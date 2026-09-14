@@ -583,10 +583,10 @@ describe('union members are recorded in declared-set order, not resolution order
 
   it('every line of the committed snapshot is a fixed point of normalizeTypeText', () => {
     // A normaliser that is not idempotent leaves lines that will move on the
-    // next regeneration for no reason. The only tolerated exception is the
-    // pre-existing #6080 class, where `sortTypeMembers` counts the `>` of
-    // `=>` as a closer and appends a `;` on every pass — so a second pass may
-    // differ from the first ONLY by semicolons. Nothing else may join it.
+    // next regeneration for no reason. Until #6080 one class was tolerated:
+    // `sortTypeMembers` counted the `>` of `=>` as a closer and appended a
+    // `;` on every pass. That is fixed, so the tolerance is gone — every line
+    // must be a fixed point, and none may carry the `;;` that class left.
     const snapshot = readFileSync(join(import.meta.dirname, '..', 'api-surface.txt'), 'utf-8');
     // A method line is `name` + type with no separator (`m(a: A) => B`, or
     // `m((a: A) => B) | undefined` for an optional method), so the name has
@@ -598,12 +598,8 @@ describe('union members are recorded in declared-set order, not resolution order
     };
     const lines = snapshot.split('\n').filter((l) => l.startsWith('  '));
     const unstable = lines.filter((l) => normalizeTypeText(memberText(l)) !== memberText(l));
-    const semicolonsOnly = (l: string): boolean =>
-      normalizeTypeText(memberText(l)).replace(/;/g, '') === memberText(l).replace(/;/g, '');
-    expect(unstable.filter((l) => !semicolonsOnly(l))).toEqual([]);
-    // The tolerated class is bounded, not open-ended: 18 lines today. A
-    // growing count means a new instance of #6080 shipped.
-    expect(unstable.length).toBeLessThanOrEqual(18);
+    expect(unstable).toEqual([]);
+    expect(lines.filter((l) => l.includes(';;'))).toEqual([]);
   });
 
   it('renders boolean as boolean', () => {
@@ -623,5 +619,35 @@ describe('union members are recorded in declared-set order, not resolution order
     // a documented choice, not a surprise.
     const src = "export type C<T> = T extends string ? 'b' | 'a' : never;";
     expect(surfaceOf({ '/index.ts': src })).toContain("  = T extends string ? 'b' | 'a' : never");
+  });
+});
+
+describe('members after an arrow-typed member are split and sorted (#6080)', () => {
+  // `splitTopLevel` counted the `>` of every `=>` as a closer, so after the
+  // first function-typed member the nesting count was negative and every later
+  // top-level `;` was skipped: the remaining members were neither split nor
+  // sorted, and the printer's trailing `;` was kept and doubled on re-join.
+  const arrowFirst = 'export interface I { readonly o: { z: () => void; a: string }; }';
+  const arrowLast = 'export interface I { readonly o: { a: string; z: () => void }; }';
+
+  it('the two orderings of an object with an arrow member render the SAME line', () => {
+    expect(surfaceOf({ '/index.ts': arrowFirst })).toBe(surfaceOf({ '/index.ts': arrowLast }));
+  });
+
+  it('no rendered line contains ;; — the member after the arrow is split, not appended', () => {
+    for (const src of [arrowFirst, arrowLast]) {
+      const out = surfaceOf({ '/index.ts': src });
+      expect(out.split('\n').filter((l) => l.includes(';;'))).toEqual([]);
+      expect(out).toContain('  readonly o: { a: string; z: () => void; }');
+    }
+  });
+
+  it('a string-literal member containing ; or > is not a split point', () => {
+    // Sharing `pastOpaque` with the union scanner also makes string literals
+    // opaque to the member splitter, which the old bracket counter never was.
+    const out = surfaceOf({
+      '/index.ts': "export interface I { readonly o: { z: () => void; a: 'x;y>' }; }",
+    });
+    expect(out).toContain('  readonly o: { a: "x;y>"; z: () => void; }');
   });
 });

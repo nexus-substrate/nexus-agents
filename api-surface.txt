@@ -1304,9 +1304,9 @@ ClassDeclaration ChildProcess
   readonly spawnfile: string
   readonly stdio: [Stream.Writable | null, Readable | null, Readable | null, Readable | Stream.Writable | null | undefined, Readable | Stream.Writable | null | undefined]
   ref() => void
-  send{ (message: Serializable, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, options?: MessageOptions, callback?: (error: Error | null) => void): boolean;; }
-  send{ (message: Serializable, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, options?: MessageOptions, callback?: (error: Error | null) => void): boolean;; }
-  send{ (message: Serializable, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, options?: MessageOptions, callback?: (error: Error | null) => void): boolean;; }
+  send{ (message: Serializable, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, options?: MessageOptions, callback?: (error: Error | null) => void): boolean; }
+  send{ (message: Serializable, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, options?: MessageOptions, callback?: (error: Error | null) => void): boolean; }
+  send{ (message: Serializable, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, callback?: (error: Error | null) => void): boolean; (message: Serializable, sendHandle?: SendHandle, options?: MessageOptions, callback?: (error: Error | null) => void): boolean; }
   stderr: Readable | null
   stdin: Stream.Writable | null
   stdout: Readable | null
@@ -2522,7 +2522,7 @@ FunctionDeclaration createTemplateRegistry
 FunctionDeclaration createTestingExpert
   : (options?: (Partial<BaseAgentOptions> & { expertOptions?: TestingExpertOptions; }) | undefined) => TestingExpert
 FunctionDeclaration createTimer
-  : () => { elapsed: () => number;; }
+  : () => { elapsed: () => number; }
 FunctionDeclaration createTokenCounter
   : (config?: TokenCounterConfig) => TokenCounter
 FunctionDeclaration createToolLogger
@@ -4202,7 +4202,7 @@ ClassDeclaration GraphBuilder
 TypeAliasDeclaration GraphCompileError
   = { field: string; type: 'missing_reducer'; } | { message: string; type: 'no_entry'; } | { nodeId: string; referencedBy: string; type: 'missing_node'; } | { nodeId: string; type: 'duplicate_node'; } | { nodeId: string; type: 'unreachable_node'; } | { path: readonly string[]; type: 'cycle_detected'; }
 TypeAliasDeclaration GraphEdge
-  = { readonly from: string; readonly maxTraversals?: number; readonly to: string; readonly type: 'fixed'; } | { readonly from: string; readonly router: (state: Readonly<GraphState>) => string; readonly targets: readonly string[]; readonly maxTraversals?: number;; readonly type: 'conditional'; }
+  = { readonly from: string; readonly maxTraversals?: number; readonly router: (state: Readonly<GraphState>) => string; readonly targets: readonly string[]; readonly type: 'conditional'; } | { readonly from: string; readonly maxTraversals?: number; readonly to: string; readonly type: 'fixed'; }
 InterfaceDeclaration GraphEdgeDisplay
   readonly avgLatencyMs: number
   readonly count: number
@@ -6133,7 +6133,7 @@ ClassDeclaration ParallelProtocol
   execute(config: CollaborationConfig, agents: Map<string, IAgent>) => Promise<Result<CollaborationResult, AgentError>>
   readonly pattern: "parallel"
 InterfaceDeclaration ParallelState
-  abortCleanup?: undefined | { handler: () => void;; signal: AbortSignal; }
+  abortCleanup?: undefined | { handler: () => void; signal: AbortSignal; }
   abortController: AbortController
   completed: boolean
   firstError: WorkflowError | null
@@ -8683,7 +8683,7 @@ ClassDeclaration StepExecutor @workflows/step-executor
   execute(step: WorkflowStep, context: WorkflowExecutionContext, options?: StepExecutionOptions) => Promise<Result<StepResult, WorkflowError>>
 InterfaceDeclaration StepExecutorDeps
   expertFactory: IExpertFactory
-  logger?: undefined | { debug: (message: string, data?: Record<string, unknown>) => void; info: (message: string, data?: Record<string, unknown>) => void; warn: (message: string, data?: Record<string, unknown>) => void; error: (message: string, data?: Record<string, unknown>) => void;; }
+  logger?: undefined | { debug: (message: string, data?: Record<string, unknown>) => void; error: (message: string, data?: Record<string, unknown>) => void; info: (message: string, data?: Record<string, unknown>) => void; warn: (message: string, data?: Record<string, unknown>) => void; }
 InterfaceDeclaration StepOutcome
   readonly durationMs: number
   readonly error?: string | undefined
@@ -10199,10 +10199,10 @@ InterfaceDeclaration ZeroRoutingDecision
 InterfaceDeclaration ZodError
   addIssue(issue: core.$ZodIssue) => void
   addIssues(issues: core.$ZodIssue[]) => void
-  flatten{ (): core.$ZodFlattenedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFlattenedError<T, U>;; }
-  flatten{ (): core.$ZodFlattenedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFlattenedError<T, U>;; }
-  format{ (): core.$ZodFormattedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFormattedError<T, U>;; }
-  format{ (): core.$ZodFormattedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFormattedError<T, U>;; }
+  flatten{ (): core.$ZodFlattenedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFlattenedError<T, U>; }
+  flatten{ (): core.$ZodFlattenedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFlattenedError<T, U>; }
+  format{ (): core.$ZodFormattedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFormattedError<T, U>; }
+  format{ (): core.$ZodFormattedError<T>; <U>(mapper: (issue: core.$ZodIssue) => U): core.$ZodFormattedError<T, U>; }
   isEmpty: boolean
 TypeAliasDeclaration ZodSafeParseResult
   = ZodSafeParseError<T> | ZodSafeParseSuccess<T>
@@ -10215,15 +10215,15 @@ InterfaceDeclaration ZodType
   apply<T, TArgs extends unknown[] = []>(fn: (schema: this, ...args: TArgs) => T, ...args: TArgs) => T
   array() => ZodArray<this>
   brand<T extends PropertyKey = PropertyKey, Dir extends "in" | "inout" | "out" = "out">(value?: T) => PropertyKey extends T ? this : core.$ZodBranded<this, T, Dir>
-  catch{ (def: (ctx: core.$ZodCatchCtx) => core.output<this>): ZodCatch<this>;; (def: core.output<this>): ZodCatch<this>; }
-  catch{ (def: (ctx: core.$ZodCatchCtx) => core.output<this>): ZodCatch<this>;; (def: core.output<this>): ZodCatch<this>; }
+  catch{ (def: (ctx: core.$ZodCatchCtx) => core.output<this>): ZodCatch<this>; (def: core.output<this>): ZodCatch<this>; }
+  catch{ (def: (ctx: core.$ZodCatchCtx) => core.output<this>): ZodCatch<this>; (def: core.output<this>): ZodCatch<this>; }
   check(...checks: (core.$ZodCheck<core.output<this>> | core.CheckFn<core.output<this>>)[]) => this
   clone(def?: Internals["def"], params?: { parent: boolean; }) => this
   decode(data: core.input<this>, params?: core.ParseContext<core.$ZodIssue>) => core.output<this>
   decodeAsync(data: core.input<this>, params?: core.ParseContext<core.$ZodIssue>) => Promise<core.output<this>>
   def: Internals["def"]
-  default{ (def: () => util.NoUndefined<core.output<this>>): ZodDefault<this>;; (def: util.NoUndefined<core.output<this>>): ZodDefault<this>; }
-  default{ (def: () => util.NoUndefined<core.output<this>>): ZodDefault<this>;; (def: util.NoUndefined<core.output<this>>): ZodDefault<this>; }
+  default{ (def: () => util.NoUndefined<core.output<this>>): ZodDefault<this>; (def: util.NoUndefined<core.output<this>>): ZodDefault<this>; }
+  default{ (def: () => util.NoUndefined<core.output<this>>): ZodDefault<this>; (def: util.NoUndefined<core.output<this>>): ZodDefault<this>; }
   describe(description: string) => this
   description?: string | undefined
   encode(data: core.output<this>, params?: core.ParseContext<core.$ZodIssue>) => core.input<this>
@@ -10242,8 +10242,8 @@ InterfaceDeclaration ZodType
   parse(data: unknown, params?: core.ParseContext<core.$ZodIssue>) => core.output<this>
   parseAsync(data: unknown, params?: core.ParseContext<core.$ZodIssue>) => Promise<core.output<this>>
   pipe<T extends core.$ZodType<any, core.output<this>>>(target: T | core.$ZodType<any, core.output<this>>) => ZodPipe<this, T>
-  prefault{ (def: () => core.input<this>): ZodPrefault<this>; (def: core.input<this>): ZodPrefault<this>;; }
-  prefault{ (def: () => core.input<this>): ZodPrefault<this>; (def: core.input<this>): ZodPrefault<this>;; }
+  prefault{ (def: () => core.input<this>): ZodPrefault<this>; (def: core.input<this>): ZodPrefault<this>; }
+  prefault{ (def: () => core.input<this>): ZodPrefault<this>; (def: core.input<this>): ZodPrefault<this>; }
   readonly() => ZodReadonly<this>
   refine<Ch extends (arg: core.output<this>) => Promise<unknown> | unknown>(check: Ch, params?: core.$ZodCustomParams | string) => Ch extends (arg: any) => arg is infer R ? this & ZodType<R, core.input<this>> : this
   register<R extends core.$ZodRegistry>(registry: R, ...meta: this extends R["_schema"] ? undefined extends R["_meta"] ? [core.$replace<R["_meta"], this>?] : [core.$replace<R["_meta"], this>] : ["Incompatible schema"]) => this
