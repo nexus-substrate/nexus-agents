@@ -31,7 +31,7 @@ Run the multi-agent development pipeline. Accepts direct task instructions, a pl
 | `votingStrategy` | enum | no | one of: simple_majority \| supermajority \| unanimous \| higher_order \| proof_of_learning \| opinion_wise | Voting strategy for plan approval (default: higher_order) |
 | `quickMode` | boolean | no | default false | Use 3 agents instead of 6 for faster consensus voting |
 | `timeoutMs` | integer | no | min 30000; max 600000 | Max time per stage in ms (30000-600000). Default: varies by stage complexity |
-| `mode` | enum | no | one of: autonomous \| harness; default autonomous | 'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement. |
-| `dispatch` | enum | no | one of: sync \| async; default sync | Dispatch mode (#3726). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun. |
+| `mode` | enum | no | one of: autonomous \| harness; default autonomous | 'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement. (Not the async switch — that is `dispatch`.) |
+| `dispatch` | enum | no | one of: sync \| async; default sync | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). Ignored for dryRun. |
 | `qualityGate` | enum | no | one of: off \| advisory \| blocking; default off | Pre-ship local quality gate. 'off' (default): skip. 'advisory': run + record feedback, never fail. 'blocking': a red gate fails the pipeline. |
 | `maxBudgetTokens` | integer | no | max 9007199254740991; > 0 | Per-run token ceiling (#3395). When set, expert calls stop (returning failures) once cumulative usage crosses it — a hard-stop safety cap for unattended/multi-day runs. Omit to disable (default). |

@@ -23,4 +23,5 @@ DEFAULT ENTRY POINT (epic #3548): give a goal and nexus-agents selects the right
 | `isNovel` | boolean | no | — | Hint: this kind of task has not been seen before. |
 | `execute` | boolean | no | — | When true, actually run the selected strategy (if an executor is wired) and return its result; otherwise return the routing decision only (default false, read-only). |
 | `dryRun` | boolean | no | — | Plan and vote only, no implementation (#4806). Requires the dev-pipeline strategy — refused (never silently executed) when the router selects another. |
-| `dispatch` | enum | no | one of: sync \| async | Dispatch mode (#3732). 'sync' (default): run inline. 'async' (only with execute:true): return a jobId immediately + run in background (poll get_job_result). |
+| `dispatch` | enum | no | one of: sync \| async | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). Only with execute:true. |
+| `mode` | never | no | — | Not an input of this tool. The async switch is `dispatch`; `mode: 'async'` is rejected (#4968). |

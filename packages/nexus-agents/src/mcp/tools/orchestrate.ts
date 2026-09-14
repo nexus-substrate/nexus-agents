@@ -77,6 +77,7 @@ import {
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { DEFAULT_CLI, type CliNameLiteral } from '../../config/model-capabilities-types.js';
+import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import {
   OrchestrateInputSchema,
   ORCHESTRATE_TOOL_SCHEMA,
@@ -1319,22 +1320,29 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
         message: `Validation error: ${formatZodError(validated.error)}`,
       });
     }
-    // #3042 / epic #2631: async-mode dispatch — return immediately with
+    // #4968: `dispatch` is canonical; `mode` is the deprecated alias. A call
+    // that sent only `mode` still runs, and says so in `_meta` warnings.
+    const dispatch = resolveDispatch(validated.data);
+    const modeWarning = deprecatedModeWarning(validated.data);
+    // #3042 / epic #2631: async dispatch — return immediately with
     // a jobId and run the pipeline in the background. Sidesteps the
     // MCP-SDK 60s client-request timeout that was killing long
     // orchestrations. Caller polls `get_job_result(jobId)`.
-    if (validated.data.mode === 'async') {
-      return dispatchAsyncOrchestrate({
-        input: validated.data,
-        deps,
-        notifier,
-        logger: ctx.logger,
-        trustTier: ctx.requestContext.trustTier,
-      });
+    if (dispatch === 'async') {
+      return withWarnings(
+        dispatchAsyncOrchestrate({
+          input: validated.data,
+          deps,
+          notifier,
+          logger: ctx.logger,
+          trustTier: ctx.requestContext.trustTier,
+        }),
+        [modeWarning]
+      );
     }
     // Depth guard: prevent runaway nested orchestration (#1500)
     try {
-      return await withDepthGuard('orchestrate', () =>
+      const result = await withDepthGuard('orchestrate', () =>
         runOrchestratePipeline({
           input: validated.data,
           deps,
@@ -1344,6 +1352,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
           trustTier: ctx.requestContext.trustTier,
         })
       );
+      return withWarnings(result, [modeWarning]);
     } catch (depthError: unknown) {
       const msg = depthError instanceof Error ? depthError.message : String(depthError);
       ctx.logger.warn('Orchestration depth guard triggered', { error: msg });

@@ -25,9 +25,9 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   execute_expert:
     'Run a task through an expert YOU PREVIOUSLY CREATED via `create_expert`. Requires the expertId returned by create_expert; not for ad-hoc execution.',
   run_workflow:
-    "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching or per-node checkpoints, use `run_graph_workflow` instead. Supports mode: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.",
+    "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching or per-node checkpoints, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs; `mode` is a deprecated alias) — returns a jobId immediately; poll get_job_result.",
   consensus_vote:
-    'Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async mode (returns a jobId to poll via get_job_result).',
+    "Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async dispatch (dispatch: 'async' returns a jobId to poll via get_job_result).",
   delegate_to_model:
     'Pick which existing model should HANDLE a task. Inspects task complexity and returns the best-fit model from the routing registry — does NOT add a new model. Records the routing decision to tool-memory for learning feedback (not a pure read).',
   list_experts:

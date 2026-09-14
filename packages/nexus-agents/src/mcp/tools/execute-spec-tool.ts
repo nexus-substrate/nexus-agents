@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { asyncDispatchInput, asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
@@ -54,12 +55,7 @@ export const ExecuteSpecInputSchema = z.object({
    * background; poll `get_job_result({ jobId })` for the result. Ignored when
    * `dryRun` is true (parse+decompose completes fast, so dry runs stay sync).
    */
-  dispatch: z
-    .enum(['sync', 'async'])
-    .default('sync')
-    .describe(
-      "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
-    ),
+  ...asyncDispatchInputDefaultSync('Ignored for dryRun.'),
 });
 
 export type ExecuteSpecInput = z.infer<typeof ExecuteSpecInputSchema>;
@@ -208,12 +204,9 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
           'Must contain "## Requirements" and "## Acceptance Criteria" sections.'
       ),
     dryRun: z.boolean().optional().describe('Parse and decompose only (no execution)'),
-    dispatch: z
-      .enum(['sync', 'async'])
-      .optional()
-      .describe(
-        "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
-      ),
+    // #4968: the same fragment the internal schema composes — the advertised
+    // shape is what the SDK parses, so the wrong-key trap must be here too.
+    ...asyncDispatchInput('Ignored for dryRun.'),
   };
 
   const description =

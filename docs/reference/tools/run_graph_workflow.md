@@ -20,4 +20,5 @@ Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an aud
 | `inputs` | object | no | default {} | Input values for the workflow |
 | `enableCheckpointing` | boolean | no | default true | Enable checkpoint saving between steps |
 | `enableAuditTrail` | boolean | no | default false | Enable audit trail event logging |
-| `dispatch` | enum | no | one of: sync \| async; default sync | Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). |
+| `dispatch` | enum | no | one of: sync \| async; default sync | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). Ignored for the `list` sentinel. |
+| `mode` | never | no | — | Not an input of this tool. The async switch is `dispatch`; `mode: 'async'` is rejected (#4968). |

@@ -161,7 +161,10 @@ function indexSchemaFiles(): Map<string, string> {
   for (const file of readdirSync(TOOLS_DIR)) {
     if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue;
     const source = readFileSync(join(TOOLS_DIR, file), 'utf-8');
-    const re = /export\s+const\s+([A-Za-z0-9_]+InputSchema)\s*=\s*z\.object\(/g;
+    // `z\n  .object(` is how Prettier lays out a chained
+    // `z.object({...}).superRefine(...)` (#4968), so the dot may be preceded by
+    // whitespace.
+    const re = /export\s+const\s+([A-Za-z0-9_]+InputSchema)\s*=\s*z\s*\.object\(/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
       if (m[1] !== undefined && !byName.has(m[1])) byName.set(m[1], file);
@@ -190,6 +193,8 @@ interface JsonSchemaNode {
   readonly pattern?: string;
   readonly format?: string;
   readonly items?: unknown;
+  /** `{ not: {} }` is how `z.toJSONSchema` spells `z.never()` (#4968). */
+  readonly not?: unknown;
 }
 
 /** The object-shaped JSON Schema `z.toJSONSchema` emits for a `z.object`. */
@@ -225,7 +230,16 @@ function nodeType(node: JsonSchemaNode): string {
     return t;
   }
   if (Array.isArray(t)) return t.join(' | ');
+  // `z.never()` converts to `{ not: {} }`: a key that is advertised only to be
+  // rejected (the #4968 wrong-key trap). Rendering it as `object` would invite
+  // the caller to send one.
+  if (isNever(node)) return 'never';
   return 'object';
+}
+
+function isNever(node: JsonSchemaNode): boolean {
+  const not = asNode(node.not);
+  return not !== undefined && Object.keys(not).length === 0;
 }
 
 /** Numeric/length range constraints, each rendered only when present. */

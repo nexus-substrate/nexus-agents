@@ -16,6 +16,7 @@
  */
 
 import { z } from 'zod';
+import { asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
@@ -217,12 +218,7 @@ export const PrReviewInputSchema = z.object({
    * runs the panel in the background; poll `get_job_result({ jobId })` for the
    * result.
    */
-  dispatch: z
-    .enum(['sync', 'async'])
-    .default('sync')
-    .describe(
-      "Dispatch mode (#3731). 'sync' (default): run inline. 'async': return a jobId immediately + run the panel in background (poll get_job_result)."
-    ),
+  ...asyncDispatchInputDefaultSync(),
 });
 
 export type PrReviewInput = z.infer<typeof PrReviewInputSchema>;

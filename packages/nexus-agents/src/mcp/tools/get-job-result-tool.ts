@@ -1,7 +1,7 @@
 /**
  * `get_job_result` MCP tool (#3042, Stage 1 of epic #2631).
  *
- * Read-only companion to `orchestrate({ mode: 'async' })`: returns the
+ * Read-only companion to `orchestrate({ dispatch: 'async' })`: returns the
  * job-result record written by the background dispatch. Callers poll
  * until `status !== 'pending'` and then read `result` (on `complete`)
  * or `error` (on `failed` / `cancelled`).
@@ -36,7 +36,11 @@ import { getToolAnnotations } from '../tool-annotations.js';
 import { getTimeProvider } from '../../core/index.js';
 
 export const GetJobResultInputSchema = z.object({
-  jobId: z.string().min(1).max(128).describe('Job ID returned by orchestrate({ mode: "async" })'),
+  jobId: z
+    .string()
+    .min(1)
+    .max(128)
+    .describe('Job ID returned by any tool called with dispatch: "async" (e.g. orchestrate)'),
 });
 export type GetJobResultInput = z.infer<typeof GetJobResultInputSchema>;
 
@@ -128,7 +132,11 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
 export function registerGetJobResultTool(server: McpServer, deps: GetJobResultDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'get_job_result' });
   const toolSchema = {
-    jobId: z.string().min(1).max(128).describe('Job ID returned by orchestrate({ mode: "async" })'),
+    jobId: z
+      .string()
+      .min(1)
+      .max(128)
+      .describe('Job ID returned by any tool called with dispatch: "async" (e.g. orchestrate)'),
   };
 
   const description =

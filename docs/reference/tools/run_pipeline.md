@@ -23,5 +23,6 @@ Single unified entry point for all pipeline templates (dev/research/audit/greenf
 | `quickMode` | boolean | no | default false | Use 3 agents instead of 6 for faster consensus voting |
 | `timeoutMs` | integer | no | min 30000; max 600000 | Max time per stage in ms (30000-600000). Default: varies by stage complexity |
 | `dryRun` | boolean | no | default false | Stop after vote stage (no implementation) |
-| `dispatch` | enum | no | one of: sync \| async; default sync | Dispatch mode (#3730). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun. |
+| `dispatch` | enum | no | one of: sync \| async; default sync | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). Ignored for dryRun. |
+| `mode` | never | no | — | Not an input of this tool. The async switch is `dispatch`; `mode: 'async'` is rejected (#4968). |
 | `simulateVotes` | boolean | no | default false | TESTS ONLY — random output, must not be used for real decisions (#2319) |

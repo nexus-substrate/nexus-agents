@@ -49,6 +49,7 @@ import { getToolAnnotations } from '../tool-annotations.js';
 // #3044 / epic #2631 Stage 3 — async-mode dispatch via the shared `runAsJob`
 // helper (#3729).
 import { runAsJob } from '../jobs/run-as-job.js';
+import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
 
 // Re-export types for backward compatibility
@@ -377,7 +378,7 @@ function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput)
         successResponse({
           status: 'busy',
           retryAfterMs,
-          note: 'Async-mode concurrency cap reached for run_workflow. Retry later or use mode: "sync".',
+          note: 'Async-mode concurrency cap reached for run_workflow. Retry later or use dispatch: "sync".',
         }),
       replay: buildRunWorkflowReplayEnvelope,
       collision: buildRunWorkflowCollisionEnvelope,
@@ -406,28 +407,32 @@ function createRunWorkflowHandler(
       return errorResponse(`Validation error: ${errorMessage}`);
     }
 
+    // #4968: `dispatch` is canonical; `mode` is the deprecated alias. A call
+    // that sent only `mode` still runs, and says so in `_meta` warnings.
+    const dispatch = resolveDispatch(validated.data);
+    const modeWarning = deprecatedModeWarning(validated.data);
     ctx.logger.debug('Running workflow', {
       template: validated.data.template,
       dryRun: validated.data.dryRun,
-      ...(validated.data.mode !== undefined ? { mode: validated.data.mode } : {}),
+      ...(dispatch !== undefined ? { dispatch } : {}),
     });
     notifier.info('run_workflow', { event: 'workflow_start', template: validated.data.template });
     const startMs = getTimeProvider().now();
 
-    // #3044 / epic #2631 Stage 3 — async-mode dispatch. Returns
+    // #3044 / epic #2631 Stage 3 — async dispatch. Returns
     // immediately with a pending envelope or a busy envelope. dryRun
-    // is fast enough to stay synchronous regardless of mode (no point
+    // is fast enough to stay synchronous regardless of dispatch (no point
     // backgrounding a sub-second validation).
-    if (validated.data.mode === 'async' && !validated.data.dryRun) {
+    if (dispatch === 'async' && !validated.data.dryRun) {
       const asyncResult = dispatchAsyncRunWorkflow(deps, validated.data);
       notifier.info('run_workflow', {
         event: 'workflow_dispatched_async',
         template: validated.data.template,
       });
-      return asyncResult;
+      return withWarnings(asyncResult, [modeWarning]);
     }
 
-    const result = await handleRunWorkflow(deps, validated.data);
+    const result = withWarnings(await handleRunWorkflow(deps, validated.data), [modeWarning]);
 
     // Notify on completion (only for non-error responses)
     if (result.isError !== true) {
@@ -472,7 +477,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     'run_workflow',
     {
       description:
-        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports mode: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.",
+        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs; `mode` is a deprecated alias) — returns a jobId immediately; poll get_job_result.",
       inputSchema: toolInputSchema,
 
       annotations: getToolAnnotations('run_workflow'),
