@@ -15,6 +15,10 @@
  */
 
 import { z } from 'zod';
+import {
+  DEPRECATED_MODE_ALIAS_INPUT,
+  refineDispatchModeAgreement,
+} from './async-dispatch-input.js';
 import type { AgentVoteResult, SeatFallback, VotingResult } from '../../cli/vote-types.js';
 import {
   panelDiversityOf,
@@ -190,127 +194,128 @@ export type VoteThreshold = z.infer<typeof VoteThresholdSchema>;
 export { ERROR_FLOOR_FRACTION } from '../../consensus/decision/thresholds.js';
 export { getDefaultErrorPolicy } from '../../consensus/decision/strategy.js';
 
-export const ConsensusVoteInputSchema = z.object({
-  proposal: z
-    .string()
-    .min(1)
-    .max(MAX_PROPOSAL_LENGTH)
-    .describe(
-      'Proposal text to vote on. If the proposal asks voters to choose among named ' +
-        'alternatives, declare them in `options` (#4472) — otherwise the tally records ' +
-        'approve/reject/abstain only, so every voter who engages returns `approve` and a 6-1 ' +
-        'split on WHICH option persists as 7-0, 100% (#4452). This is ENFORCED AS A WARNING, ' +
-        'not a refusal: a heuristic over the proposal text flags an apparent multi-option ' +
-        'proposal with no `options` and says so on `panelWarning` (#5360). The wording says ' +
-        '"declare", not "MUST", because the warning is what the code actually holds — it is ' +
-        'tightened back only in the same change that promotes the warning to a refusal.'
+export const ConsensusVoteInputSchema = z
+  .object({
+    proposal: z
+      .string()
+      .min(1)
+      .max(MAX_PROPOSAL_LENGTH)
+      .describe(
+        'Proposal text to vote on. If the proposal asks voters to choose among named ' +
+          'alternatives, declare them in `options` (#4472) — otherwise the tally records ' +
+          'approve/reject/abstain only, so every voter who engages returns `approve` and a 6-1 ' +
+          'split on WHICH option persists as 7-0, 100% (#4452). This is ENFORCED AS A WARNING, ' +
+          'not a refusal: a heuristic over the proposal text flags an apparent multi-option ' +
+          'proposal with no `options` and says so on `panelWarning` (#5360). The wording says ' +
+          '"declare", not "MUST", because the warning is what the code actually holds — it is ' +
+          'tightened back only in the same change that promotes the warning to a refusal.'
+      ),
+    options: z
+      .array(z.string().min(1).max(200))
+      .min(2)
+      .max(10)
+      .optional()
+      .describe(
+        'Named alternatives for a multi-option proposal (#4472). When present, the threshold must ' +
+          'ALSO be cleared by the leading option, in addition to the ordinary approve/reject bar: ' +
+          '`unanimous` requires every approver to have chosen the SAME option, and ' +
+          "`supermajority`/`majority` measure the leading option's share of approvers. An " +
+          'approving voter whose selection is absent or matches no declared option stays in the ' +
+          'denominator and credits no option, so a degraded response can only lower the leading ' +
+          'share, never raise it. Omit for an ordinary yes/no vote — behaviour is then unchanged.'
+      ),
+    project: VoterProjectInputSchema,
+    threshold: VoteThresholdSchema.optional().describe(
+      'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
     ),
-  options: z
-    .array(z.string().min(1).max(200))
-    .min(2)
-    .max(10)
-    .optional()
-    .describe(
-      'Named alternatives for a multi-option proposal (#4472). When present, the threshold must ' +
-        'ALSO be cleared by the leading option, in addition to the ordinary approve/reject bar: ' +
-        '`unanimous` requires every approver to have chosen the SAME option, and ' +
-        "`supermajority`/`majority` measure the leading option's share of approvers. An " +
-        'approving voter whose selection is absent or matches no declared option stays in the ' +
-        'denominator and credits no option, so a degraded response can only lower the leading ' +
-        'share, never raise it. Omit for an ordinary yes/no vote — behaviour is then unchanged.'
+    strategy: VotingStrategySchema.optional().describe(
+      'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal). ' +
+        'NOTE (#4452): thresholds are evaluated over approve/reject/abstain, not over which option a voter chose. On a ' +
+        'multi-option proposal even `unanimous` clears trivially — see the `proposal` field description.'
     ),
-  project: VoterProjectInputSchema,
-  threshold: VoteThresholdSchema.optional().describe(
-    'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
-  ),
-  strategy: VotingStrategySchema.optional().describe(
-    'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal). ' +
-      'NOTE (#4452): thresholds are evaluated over approve/reject/abstain, not over which option a voter chose. On a ' +
-      'multi-option proposal even `unanimous` clears trivially — see the `proposal` field description.'
-  ),
-  errorPolicy: ErrorPolicySchema.optional().describe(
-    'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous only; reduce_denominator for all other strategies incl. higher_order/opinion_wise (#3138 — a single infra timeout should not void an otherwise-unanimous vote). Opt-in absolute_quorum (#4132): an errored voter — especially the contrarian (catfish) — degrades the verdict to no_quorum (recoverable re-run) instead of being dropped from the denominator; never manufactures approved/rejected from an induced error. Regardless of policy, errors > 50% always fails.'
-  ),
-  quickMode: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Use 3 agents instead of the full 7-role panel for faster execution'),
-  simulateVotes: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe(
-      'TESTS ONLY — when true, voters return random decisions. Output must not be used for real decisions. (#2319)'
+    errorPolicy: ErrorPolicySchema.optional().describe(
+      'How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous only; reduce_denominator for all other strategies incl. higher_order/opinion_wise (#3138 — a single infra timeout should not void an otherwise-unanimous vote). Opt-in absolute_quorum (#4132): an errored voter — especially the contrarian (catfish) — degrades the verdict to no_quorum (recoverable re-run) instead of being dropped from the denominator; never manufactures approved/rejected from an induced error. Regardless of policy, errors > 50% always fails.'
     ),
-  /**
-   * Async-mode dispatch (#3045, Stage 4 of epic #2631). Default `sync` —
-   * backward-compat invariant. `async` returns `{ status: 'pending', jobId }`
-   * immediately; caller polls `get_job_result(jobId)`. Per-tool cap via
-   * `NEXUS_JOB_MAX_CONCURRENT_CONSENSUS_VOTE` (default 2 — voting is
-   * 7-fan-out so concurrent jobs multiply adapter load fast).
-   *
-   * Cancellation semantics (#3041 vote deferred this to Stage 4): when
-   * a polling client calls `cancel_job` mid-vote, the dispatcher aborts
-   * in-flight voters via the AbortSignal plumbing from #3038. The
-   * resulting job result is `{ status: 'cancelled', partialVotes: [...] }`
-   * with whatever voters completed before the abort signal — preserves
-   * audit visibility into who voted before the cancel landed.
-   *
-   * Kept optional (no `.default()`) so the inferred type doesn't force
-   * `mode: 'sync'` on every existing call site / test fixture.
-   */
-  mode: z
-    .enum(['sync', 'async'])
-    .optional()
-    .describe(
-      'Dispatch mode (default: sync). Use "async" for higher-order strategies with 7 voters.'
+    quickMode: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('Use 3 agents instead of the full 7-role panel for faster execution'),
+    simulateVotes: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'TESTS ONLY — when true, voters return random decisions. Output must not be used for real decisions. (#2319)'
+      ),
+    /**
+     * Async dispatch (#3045, Stage 4 of epic #2631). Default `sync` —
+     * backward-compat invariant. `async` returns `{ status: 'pending', jobId }`
+     * immediately; caller polls `get_job_result(jobId)`. Per-tool cap via
+     * `NEXUS_JOB_MAX_CONCURRENT_CONSENSUS_VOTE` (default 2 — voting is
+     * 7-fan-out so concurrent jobs multiply adapter load fast).
+     *
+     * Cancellation semantics (#3041 vote deferred this to Stage 4): when
+     * a polling client calls `cancel_job` mid-vote, the dispatcher aborts
+     * in-flight voters via the AbortSignal plumbing from #3038. The
+     * resulting job result is `{ status: 'cancelled', partialVotes: [...] }`
+     * with whatever voters completed before the abort signal — preserves
+     * audit visibility into who voted before the cancel landed.
+     *
+     * The key is `dispatch` (#4968); `mode` is the deprecated alias this tool
+     * used to spell it with, resolved as `dispatch ?? mode` by the handler and
+     * rejected when the two disagree (the `superRefine` below). Both optional
+     * (no `.default()`) so the inferred type doesn't force a value onto every
+     * existing call site / test fixture.
+     */
+    ...DEPRECATED_MODE_ALIAS_INPUT,
+    /**
+     * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
+     * #2631). When set: identical (key, inputs) returns the existing job;
+     * same key with different inputs fails closed with
+     * `idempotency_key_collision`. Sync mode ignores this.
+     */
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(256)
+      .optional()
+      .describe(
+        'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
+      ),
+    /**
+     * Authority-tier ratification subject (#4004). Set ONLY when this vote
+     * ratifies an authority-ladder promotion: the loop/strategy id (the
+     * tier-transition `subject`) this vote authorizes. It is bound into the
+     * persisted record's self-hash as `ratifies`, so the promotion gate
+     * (`check-authority-tier-drift.ts`) can resolve a `ratificationVoteRef` to this
+     * record and require `ratifies === transition.subject` (with decision=approved,
+     * strategy=higher_order). Omit on an ordinary vote.
+     */
+    ratifies: z
+      .string()
+      .min(1)
+      .max(256)
+      .optional()
+      .describe(
+        'Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes.'
+      ),
+    /**
+     * Governor-path PR ratification binding (#5130 step 1). Set ONLY when this
+     * vote ratifies a PR that touches governor-owned paths: the PR number and
+     * the FULL head sha the panel reviewed. Bound into the persisted record's
+     * self-hash as `ratifiesPr` (schema 1.10), so the caller-commits script
+     * (`scripts/append-ratification-record.ts`) can copy the record into the
+     * committed ledger and the governor gate (step 2) can require it to name
+     * the PR under review at its head. Validated by the same schema the record
+     * uses, so producer and ledger cannot disagree on the shape.
+     */
+    ratifiesPr: VoteRecordPrBindingSchema.optional().describe(
+      'Governor-path PR ratification binding (#5130): pr is the PR number and headSha the full 40-hex head sha the panel reviewed. Bound into the authentic vote record so the committed ledger and the governor gate can verify which PR, at which head, this panel ratified. Omit for ordinary votes.'
     ),
-  /**
-   * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
-   * #2631). When set: identical (key, inputs) returns the existing job;
-   * same key with different inputs fails closed with
-   * `idempotency_key_collision`. Sync mode ignores this.
-   */
-  idempotencyKey: z
-    .string()
-    .min(1)
-    .max(256)
-    .optional()
-    .describe(
-      'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
-    ),
-  /**
-   * Authority-tier ratification subject (#4004). Set ONLY when this vote
-   * ratifies an authority-ladder promotion: the loop/strategy id (the
-   * tier-transition `subject`) this vote authorizes. It is bound into the
-   * persisted record's self-hash as `ratifies`, so the promotion gate
-   * (`check-authority-tier-drift.ts`) can resolve a `ratificationVoteRef` to this
-   * record and require `ratifies === transition.subject` (with decision=approved,
-   * strategy=higher_order). Omit on an ordinary vote.
-   */
-  ratifies: z
-    .string()
-    .min(1)
-    .max(256)
-    .optional()
-    .describe(
-      'Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes.'
-    ),
-  /**
-   * Governor-path PR ratification binding (#5130 step 1). Set ONLY when this
-   * vote ratifies a PR that touches governor-owned paths: the PR number and
-   * the FULL head sha the panel reviewed. Bound into the persisted record's
-   * self-hash as `ratifiesPr` (schema 1.10), so the caller-commits script
-   * (`scripts/append-ratification-record.ts`) can copy the record into the
-   * committed ledger and the governor gate (step 2) can require it to name
-   * the PR under review at its head. Validated by the same schema the record
-   * uses, so producer and ledger cannot disagree on the shape.
-   */
-  ratifiesPr: VoteRecordPrBindingSchema.optional().describe(
-    'Governor-path PR ratification binding (#5130): pr is the PR number and headSha the full 40-hex head sha the panel reviewed. Bound into the authentic vote record so the committed ledger and the governor gate can verify which PR, at which head, this panel ratified. Omit for ordinary votes.'
-  ),
-});
+    // #4968: `dispatch` and the deprecated `mode` alias must agree when both are sent.
+  })
+  .superRefine(refineDispatchModeAgreement);
 
 export type ConsensusVoteInput = z.infer<typeof ConsensusVoteInputSchema>;
 

@@ -59,6 +59,17 @@ describe('generate-tool-reference', () => {
     expect(maxVote?.constraints).toMatch(/min 1|max 5/);
   });
 
+  it('renders a rejected key (z.never, JSON Schema `{ not: {} }`) as never, not object (#4968)', async () => {
+    const docs = await collectToolDocs();
+    const pipeline = docs.find((d) => d.name === 'run_pipeline');
+    const mode = pipeline?.params.find((p) => p.name === 'mode');
+    // `mode` is advertised on the dispatch-only tools purely so `mode: 'async'`
+    // is rejected with an error naming `dispatch`; the page must say so.
+    expect(mode?.type).toBe('never');
+    expect(mode?.required).toBe(false);
+    expect(mode?.description).toContain('dispatch');
+  });
+
   it('renders a parameter table with the Constraints column', async () => {
     const docs = await collectToolDocs();
     const consensus = docs.find((d) => d.name === 'consensus_vote');

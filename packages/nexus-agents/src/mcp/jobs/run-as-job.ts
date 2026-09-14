@@ -142,7 +142,7 @@ export function defaultBusyEnvelope(retryAfterMs: number, toolName: string): Too
     JSON.stringify({
       status: 'busy',
       retryAfterMs,
-      note: `Async-mode concurrency cap reached for ${toolName}. Retry later or use mode: "sync".`,
+      note: `Async-mode concurrency cap reached for ${toolName}. Retry later or use dispatch: "sync".`,
     })
   );
 }

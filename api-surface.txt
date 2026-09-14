@@ -1055,7 +1055,7 @@ InterfaceDeclaration BuildPlanOptions
   readonly maxScanners?: number | undefined
   readonly repo: string
 FunctionDeclaration buildPrReviewProposal
-  : (input: Pick<{ baseRef?: string | undefined; baseSha?: string | undefined; dispatch: "async" | "sync"; errorPolicy: "absolute_quorum" | "standard"; headRef?: string | undefined; prDescription?: string | undefined; prDiff: string; prNumber?: number | undefined; project?: string | undefined; prTitle: string; repoContext?: string | undefined; repoPath?: string | undefined; simulate: boolean; }, "baseRef" | "headRef" | "prDescription" | "prDiff" | "prTitle" | "repoContext">, removedBefore?: { comments: number; fields: number; tags: number; }) => string
+  : (input: Pick<{ baseRef?: string | undefined; baseSha?: string | undefined; dispatch: "async" | "sync"; errorPolicy: "absolute_quorum" | "standard"; headRef?: string | undefined; mode?: undefined; prDescription?: string | undefined; prDiff: string; prNumber?: number | undefined; project?: string | undefined; prTitle: string; repoContext?: string | undefined; repoPath?: string | undefined; simulate: boolean; }, "baseRef" | "headRef" | "prDescription" | "prDiff" | "prTitle" | "repoContext">, removedBefore?: { comments: number; fields: number; tags: number; }) => string
 FunctionDeclaration buildSkillDependencyGraph
   : (skills: readonly Skill[]) => ISkillDependencyGraph
 FunctionDeclaration buildTimeoutResult
@@ -2023,7 +2023,7 @@ InterfaceDeclaration ConsensusVoteDeps
 TypeAliasDeclaration ConsensusVoteInput
   = z.infer<typeof ConsensusVoteInputSchema>
 VariableDeclaration ConsensusVoteInputSchema
-  : z.ZodObject<{ errorPolicy: z.ZodOptional<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; count_as_abstain: "count_as_abstain"; fail_closed: "fail_closed"; reduce_denominator: "reduce_denominator"; }>>; idempotencyKey: z.ZodOptional<z.ZodString>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; options: z.ZodOptional<z.ZodArray<z.ZodString>>; project: z.ZodOptional<z.ZodString>; proposal: z.ZodString; quickMode: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; ratifies: z.ZodOptional<z.ZodString>; ratifiesPr: z.ZodOptional<z.ZodObject<{ headSha: z.ZodString; pr: z.ZodNumber; }, z.core.$strict>>; simulateVotes: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; strategy: z.ZodOptional<z.ZodEnum<{ higher_order: "higher_order"; opinion_wise: "opinion_wise"; proof_of_learning: "proof_of_learning"; simple_majority: "simple_majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; threshold: z.ZodOptional<z.ZodEnum<{ majority: "majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; errorPolicy: z.ZodOptional<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; count_as_abstain: "count_as_abstain"; fail_closed: "fail_closed"; reduce_denominator: "reduce_denominator"; }>>; idempotencyKey: z.ZodOptional<z.ZodString>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; options: z.ZodOptional<z.ZodArray<z.ZodString>>; project: z.ZodOptional<z.ZodString>; proposal: z.ZodString; quickMode: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; ratifies: z.ZodOptional<z.ZodString>; ratifiesPr: z.ZodOptional<z.ZodObject<{ headSha: z.ZodString; pr: z.ZodNumber; }, z.core.$strict>>; simulateVotes: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; strategy: z.ZodOptional<z.ZodEnum<{ higher_order: "higher_order"; opinion_wise: "opinion_wise"; proof_of_learning: "proof_of_learning"; simple_majority: "simple_majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; threshold: z.ZodOptional<z.ZodEnum<{ majority: "majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; }, z.core.$strip>
 TypeAliasDeclaration ConsensusVoter
   = (input: ConsensusProposalInput) => Promise<ConsensusVerdict>
 InterfaceDeclaration ConsensusVoteRequestedEvent
@@ -3245,7 +3245,7 @@ TypeAliasDeclaration ExecuteSpecDeps
 TypeAliasDeclaration ExecuteSpecInput
   = z.infer<typeof ExecuteSpecInputSchema>
 VariableDeclaration ExecuteSpecInputSchema
-  : z.ZodObject<{ dispatch: z.ZodDefault<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; spec: z.ZodString; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodDefault<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; spec: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration ExecutionContext @orchestration/graph/graph-executor
   allResults: NodeResult[]
   edgeTraversals: Map<string, number>
@@ -5930,7 +5930,7 @@ InterfaceDeclaration OrchestrateInputLike
   readonly maxIterations?: number | undefined
   readonly task: string
 VariableDeclaration OrchestrateInputSchema
-  : z.ZodObject<{ context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; idempotencyKey: z.ZodOptional<z.ZodString>; maxIterations: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; task: z.ZodString; timeout: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
+  : z.ZodObject<{ context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; idempotencyKey: z.ZodOptional<z.ZodString>; maxIterations: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; task: z.ZodString; timeout: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 FunctionDeclaration orchestrateInputToTaskContract
   : (input: OrchestrateInputLike, opts?: OrchestrateContractOpts) => { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "analysis" | "code" | "plan" | "report" | "review" | "spec" | "test" | "vote"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "clarifying" | "done" | "executing" | "failed" | "intake" | "planning" | "validating"; updatedAt: number; }
 TypeAliasDeclaration OrchestrateOutput
@@ -6744,7 +6744,7 @@ InterfaceDeclaration PrReviewDeps
 TypeAliasDeclaration PrReviewInput
   = z.infer<typeof PrReviewInputSchema>
 VariableDeclaration PrReviewInputSchema
-  : z.ZodObject<{ baseRef: z.ZodOptional<z.ZodString>; baseSha: z.ZodOptional<z.ZodString>; dispatch: z.ZodDefault<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; errorPolicy: z.ZodDefault<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; standard: "standard"; }>>; headRef: z.ZodOptional<z.ZodString>; prDescription: z.ZodOptional<z.ZodString>; prDiff: z.ZodString; prNumber: z.ZodOptional<z.ZodNumber>; project: z.ZodOptional<z.ZodString>; prTitle: z.ZodString; repoContext: z.ZodOptional<z.ZodString>; repoPath: z.ZodOptional<z.ZodString>; simulate: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>
+  : z.ZodObject<{ baseRef: z.ZodOptional<z.ZodString>; baseSha: z.ZodOptional<z.ZodString>; dispatch: z.ZodDefault<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; errorPolicy: z.ZodDefault<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; standard: "standard"; }>>; headRef: z.ZodOptional<z.ZodString>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; prDescription: z.ZodOptional<z.ZodString>; prDiff: z.ZodString; prNumber: z.ZodOptional<z.ZodNumber>; project: z.ZodOptional<z.ZodString>; prTitle: z.ZodString; repoContext: z.ZodOptional<z.ZodString>; repoPath: z.ZodOptional<z.ZodString>; simulate: z.ZodDefault<z.ZodBoolean>; }, z.core.$strip>
 TypeAliasDeclaration PrReviewRecordOutcome
   = { readonly baseSha: string; readonly persisted: true; readonly prNumber: number; readonly reviewedDiffHash: string; readonly sequence: number; } | { readonly detail: string; readonly persisted: false; readonly reason: 'binding-inputs-absent' | 'diff-not-unified' | 'no-live-votes' | 'raw-hash-absent' | 'simulated' | 'write-failed'; }
 InterfaceDeclaration PrReviewResponse
@@ -7804,7 +7804,7 @@ InterfaceDeclaration RunGraphWorkflowDeps
 TypeAliasDeclaration RunGraphWorkflowInput
   = z.infer<typeof RunGraphWorkflowInputSchema>
 VariableDeclaration RunGraphWorkflowInputSchema
-  : z.ZodObject<{ dispatch: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>>; enableAuditTrail: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; enableCheckpointing: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; inputs: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>; workflow: z.ZodString; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodDefault<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; enableAuditTrail: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; enableCheckpointing: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; inputs: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>; mode: import("src/mcp/tools/async-dispatch-input").RejectedModeKey; workflow: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration RunGraphWorkflowResponse
   readonly checkpointCount: number
   readonly durationMs: number
@@ -7838,7 +7838,7 @@ InterfaceDeclaration RunWorkflowDeps
 TypeAliasDeclaration RunWorkflowInput
   = z.infer<typeof RunWorkflowInputSchema>
 VariableDeclaration RunWorkflowInputSchema
-  : z.ZodObject<{ dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; idempotencyKey: z.ZodOptional<z.ZodString>; inputs: z.ZodRecord<z.ZodString, z.ZodUnknown>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; template: z.ZodString; timeoutMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; idempotencyKey: z.ZodOptional<z.ZodString>; inputs: z.ZodRecord<z.ZodString, z.ZodUnknown>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; template: z.ZodString; timeoutMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 VariableDeclaration safePathsRule
   : PolicyRule
 VariableDeclaration SAFETY_CATEGORIES

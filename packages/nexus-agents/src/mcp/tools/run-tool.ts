@@ -21,6 +21,7 @@
  */
 
 import { z } from 'zod';
+import { asyncDispatchInput } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { IModelAdapter } from '../../core/index.js';
@@ -136,12 +137,7 @@ export const RunInputSchema = z.object({
    * envelope immediately and runs in the background; poll
    * `get_job_result({ jobId })`. Ignored for read-only routing (execute:false).
    */
-  dispatch: z
-    .enum(['sync', 'async'])
-    .optional()
-    .describe(
-      "Dispatch mode (#3732). 'sync' (default): run inline. 'async' (only with execute:true): return a jobId immediately + run in background (poll get_job_result)."
-    ),
+  ...asyncDispatchInput('Only with execute:true.'),
 });
 
 export type RunInput = z.infer<typeof RunInputSchema>;

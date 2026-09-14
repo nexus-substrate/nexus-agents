@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { asyncDispatchInput, asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
@@ -74,13 +75,7 @@ export const RunGraphWorkflowInputSchema = z.object({
    * envelope immediately and runs in the background; poll
    * `get_job_result({ jobId })` for the result. Ignored for the `list` sentinel.
    */
-  dispatch: z
-    .enum(['sync', 'async'])
-    .optional()
-    .default('sync')
-    .describe(
-      "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result)."
-    ),
+  ...asyncDispatchInputDefaultSync('Ignored for the `list` sentinel.'),
 });
 
 export type RunGraphWorkflowInput = z.infer<typeof RunGraphWorkflowInputSchema>;
@@ -263,12 +258,9 @@ const GRAPH_WORKFLOW_SCHEMA = {
   inputs: z.record(z.string(), z.unknown()).optional().describe('Input values for the workflow'),
   enableCheckpointing: z.boolean().optional().describe('Enable checkpoint saving'),
   enableAuditTrail: z.boolean().optional().describe('Enable audit trail logging'),
-  dispatch: z
-    .enum(['sync', 'async'])
-    .optional()
-    .describe(
-      "Dispatch mode (#3732). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result)."
-    ),
+  // #4968: the same fragment the internal schema composes — the advertised
+  // shape is what the SDK parses, so the wrong-key trap must be here too.
+  ...asyncDispatchInput('Ignored for the `list` sentinel.'),
 };
 
 /**

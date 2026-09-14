@@ -66,6 +66,7 @@ import {
   unwrapVoteOrThrow,
 } from './consensus-vote.js';
 import { readJobResult } from '../jobs/job-result-store.js';
+import { WARNINGS_META_KEY } from './async-dispatch-input.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import { getCorrelationJsonlPath } from '../../consensus/correlation-persistence.js';
@@ -73,6 +74,7 @@ import { getCorrelationJsonlPath } from '../../consensus/correlation-persistence
 interface CapturedToolResult {
   isError?: boolean;
   content: Array<{ type: string; text: string }>;
+  _meta?: Record<string, unknown>;
 }
 
 function erroredVotes(roles: readonly VoterRole[]): AgentVoteResult[] {
@@ -202,6 +204,88 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
     expect(collectRealVotesMock).toHaveBeenCalledWith(
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
+  });
+});
+
+describe('consensus_vote dispatch key end to end (#4968)', () => {
+  // The issue's own reproduction: `dispatch: 'async'` used to be stripped as an
+  // unknown key and the vote ran synchronously for 97 seconds. These rows drive
+  // the REAL registered handler with the vote collector canned (no network).
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-vote-dispatch-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    collectRealVotesMock.mockReset();
+    collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>
+      Promise.resolve(erroredVotes(opts.roles))
+    );
+    recordingMocks.recordVoteSuccess.mockClear();
+    recordingMocks.recordAuthenticVote.mockClear();
+  });
+
+  afterEach(async () => {
+    // Let any backgrounded job settle before the data dir goes away.
+    await new Promise((r) => setTimeout(r, 50));
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetJobConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function envelopeOf(result: CapturedToolResult): Record<string, unknown> {
+    return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+  }
+
+  it('dispatch: async returns a pending envelope with a jobId — no warning', async () => {
+    const result = await captureHandler()(
+      { proposal: 'ship the thing', quickMode: true, dispatch: 'async' },
+      CTX
+    );
+    const env = envelopeOf(result);
+    expect(env['status']).toBe('pending');
+    expect(typeof env['jobId']).toBe('string');
+    expect(result._meta?.[WARNINGS_META_KEY]).toBeUndefined();
+  });
+
+  it('deprecated mode: async still dispatches and warns, naming dispatch', async () => {
+    const result = await captureHandler()(
+      { proposal: 'ship the thing', quickMode: true, mode: 'async' },
+      CTX
+    );
+    expect(envelopeOf(result)['status']).toBe('pending');
+    const warnings = result._meta?.[WARNINGS_META_KEY];
+    expect(warnings).toHaveLength(1);
+    expect(String((warnings as string[])[0])).toContain('dispatch: "async"');
+  });
+
+  it('deprecated mode: sync runs inline and the warning rides on that result too', async () => {
+    // Every-voter-errored panel → structured error; the deprecation warning
+    // must survive alongside the error envelope, not only on the happy path.
+    const result = await captureHandler()(
+      { proposal: 'ship the thing', quickMode: true, mode: 'sync' },
+      CTX
+    );
+    expect(result.isError).toBe(true);
+    const warnings = result._meta?.[WARNINGS_META_KEY];
+    expect(warnings).toHaveLength(1);
+    expect(String((warnings as string[])[0])).toContain('dispatch: "sync"');
+    expect(result._meta?.['nexus-agents/error']).toBeDefined();
+  });
+
+  it('dispatch and mode disagreeing is a validation error naming both, and nothing is dispatched', async () => {
+    const result = await captureHandler()(
+      { proposal: 'ship the thing', quickMode: true, dispatch: 'async', mode: 'sync' },
+      CTX
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('dispatch: "async"');
+    expect(result.content[0]!.text).toContain('mode: "sync"');
+    expect(collectRealVotesMock).not.toHaveBeenCalled();
   });
 });
 

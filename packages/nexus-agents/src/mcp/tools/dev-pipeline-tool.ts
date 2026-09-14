@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { dispatchFieldDefaultSync, modeEnumErrorNamingDispatch } from './async-dispatch-input.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -137,27 +138,27 @@ export const DevPipelineInputSchema = z.object({
     .max(600_000)
     .optional()
     .describe('Max time per stage in ms (30000-600000). Default: varies by stage complexity'),
-  /** Pipeline execution mode. */
+  /**
+   * Pipeline execution mode — a REAL field on this tool, unrelated to async
+   * dispatch. A caller who learned `mode: 'async'` elsewhere gets an error
+   * naming `dispatch` rather than the bare enum message (#4968).
+   */
   mode: z
-    .enum(['autonomous', 'harness'])
+    .enum(['autonomous', 'harness'], { error: modeEnumErrorNamingDispatch })
     .default('autonomous')
     .describe(
-      "'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement."
+      "'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement. (Not the async switch — that is `dispatch`.)"
     ),
   /**
-   * Dispatch mode (#3726). `sync` (default) runs the pipeline inline and
-   * returns the result — but a real autonomous run can exceed the 900s MCP
-   * request timeout. `async` returns a `{ status: 'pending', jobId }`
-   * envelope immediately and runs the pipeline in the background; poll
-   * `get_job_result({ jobId })` for the result. Ignored when `dryRun` is
-   * true (plan+vote completes fast, so dry runs always stay sync).
+   * Async dispatch (#3726, canonical key per #4968). `sync` (default) runs the
+   * pipeline inline and returns the result — but a real autonomous run can
+   * exceed the 900s MCP request timeout. `async` returns a
+   * `{ status: 'pending', jobId }` envelope immediately and runs the pipeline
+   * in the background; poll `get_job_result({ jobId })` for the result.
+   * Ignored when `dryRun` is true (plan+vote completes fast, so dry runs
+   * always stay sync).
    */
-  dispatch: z
-    .enum(['sync', 'async'])
-    .default('sync')
-    .describe(
-      "Dispatch mode (#3726). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
-    ),
+  dispatch: dispatchFieldDefaultSync('Ignored for dryRun.'),
   /** Local pre-ship quality gate (typecheck/lint/tests) mode (#3356). */
   qualityGate: z
     .enum(['off', 'advisory', 'blocking'])

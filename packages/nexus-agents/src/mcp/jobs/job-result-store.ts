@@ -3,7 +3,7 @@
  *
  * Persists the final result of a background-dispatched MCP tool
  * invocation to `<NEXUS_DATA_DIR>/jobs/result-<jobId>.json`. Lets a
- * caller dispatch a long-running tool via `mode: 'async'`, receive a
+ * caller dispatch a long-running tool via `dispatch: 'async'`, receive a
  * `jobId` immediately, and poll for the result via `get_job_result`
  * (or any other reader that imports `readJobResult`).
  *

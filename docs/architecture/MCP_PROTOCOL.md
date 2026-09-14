@@ -464,6 +464,22 @@ const result = await client.request(
 );
 ```
 
+### Async dispatch — `dispatch: 'async'` (#4968)
+
+The alternative to a long blocking request is asynchronous dispatch. Every async-capable tool (`orchestrate`, `consensus_vote`, `run_workflow`, `run_dev_pipeline`, `run_pipeline`, `run`, `pr_review`, `execute_spec`, `supply_chain_tradeoff_panel`, `run_graph_workflow`) takes the same input, composed from `packages/nexus-agents/src/mcp/tools/async-dispatch-input.ts`:
+
+| Input                | Value                | Effect                                                                                                                                                              |
+| -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dispatch` (omitted) | —                    | Run inline; the response is the result.                                                                                                                             |
+| `dispatch: 'sync'`   | —                    | Same as omitted.                                                                                                                                                    |
+| `dispatch: 'async'`  | —                    | Return `{ status: 'pending', jobId }` immediately; poll `get_job_result({ jobId })`.                                                                                |
+| `mode: 'async'`      | on the 3 tools above | **Deprecated alias** on `orchestrate`, `consensus_vote`, `run_workflow` only; works, and the response carries a warning (below). Removed in the next major (#6225). |
+| `mode: 'async'`      | on the other 7 tools | **Rejected** (`-32602`) with an error naming `dispatch`. Before #4968 the key was silently dropped and the tool ran synchronously.                                  |
+
+Sending both `dispatch` and `mode` with different values is a validation error naming both. `run_dev_pipeline`'s `mode: 'autonomous' | 'harness'` is an unrelated, real field and is unchanged.
+
+**Warnings channel.** A deprecation warning rides in the result's out-of-band `_meta`, next to the error envelope (`nexus-agents/error`, #2649) and the build stamp (`nexus-agents/build`): `_meta['nexus-agents/warnings']` is a `string[]`, present only when there is something to say. It is never validated against `outputSchema`, so it is safe on both the pending envelope and a structured error.
+
 ### Operator diagnostic
 
 `toSdkCallbackWithBudgetCheck` (`packages/nexus-agents/src/mcp/middleware/tool-wrapper.ts`) emits a WARN at invocation time when a tool's configured budget exceeds the SDK default AND the request arrived without `_meta.progressToken`. The WARN names the tool, the configured budget, and the SDK default — operators can grep server logs to confirm whether a "tool timed out" failure is actually a client-config mismatch rather than a real CLI failure. (Source: audit on #2619 / #2631.)

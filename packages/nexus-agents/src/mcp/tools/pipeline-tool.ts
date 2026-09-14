@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
 import { parseBoolEnv } from '../../config/defaults-env.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -112,12 +113,7 @@ export const PipelineInputSchema = z.object({
    * `get_job_result({ jobId })` for the result. Ignored when `dryRun` is true
    * (plan+vote completes fast, so dry runs always stay sync).
    */
-  dispatch: z
-    .enum(['sync', 'async'])
-    .default('sync')
-    .describe(
-      "Dispatch mode (#3730). 'sync' (default): run inline. 'async': return a jobId immediately + run in background (poll get_job_result). Ignored for dryRun."
-    ),
+  ...asyncDispatchInputDefaultSync('Ignored for dryRun.'),
   /** TESTS ONLY — random output, must not be used for real decisions. (#2319) */
   simulateVotes: z
     .boolean()

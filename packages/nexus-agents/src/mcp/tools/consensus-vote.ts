@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import {
@@ -1016,27 +1017,33 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
     }
     const strategy = validationResult.data.strategy ?? 'simple_majority';
+    // #4968: `dispatch` is canonical; `mode` is the deprecated alias. A call
+    // that sent only `mode` still runs, and says so in `_meta` warnings.
+    const dispatch = resolveDispatch(validationResult.data);
+    const modeWarning = deprecatedModeWarning(validationResult.data);
     ctx.logger.debug('Starting consensus vote', {
       strategy,
       quickMode: validationResult.data.quickMode,
-      ...(validationResult.data.mode !== undefined ? { mode: validationResult.data.mode } : {}),
+      ...(dispatch !== undefined ? { dispatch } : {}),
     });
     notifier.info('consensus_vote', {
       event: 'vote_start',
       proposalLength: validationResult.data.proposal.length,
       strategy,
     });
-    // #3045 / epic #2631 Stage 4 — async-mode dispatch.
-    if (validationResult.data.mode === 'async') {
+    // #3045 / epic #2631 Stage 4 — async dispatch.
+    if (dispatch === 'async') {
       const asyncResult = dispatchAsyncConsensusVote(deps, validationResult.data);
       notifier.info('consensus_vote', {
         event: 'vote_dispatched_async',
         proposalLength: validationResult.data.proposal.length,
         strategy,
       });
-      return asyncResult;
+      return withWarnings(asyncResult, [modeWarning]);
     }
-    return runSyncConsensusVote(deps, notifier, validationResult.data);
+    return withWarnings(await runSyncConsensusVote(deps, notifier, validationResult.data), [
+      modeWarning,
+    ]);
   };
 }
 
@@ -1060,7 +1067,7 @@ const ASYNC_ENVELOPES: JobEnvelopeBuilders<ToolResult> = {
     toolSuccessStructured({
       status: 'busy',
       retryAfterMs,
-      note: `Async-mode concurrency cap reached for ${toolName}. Retry later or use mode: "sync".`,
+      note: `Async-mode concurrency cap reached for ${toolName}. Retry later or use dispatch: "sync".`,
     }),
   replay: (jobId) =>
     toolSuccessStructured({
@@ -1244,7 +1251,7 @@ const CONSENSUS_VOTE_DESCRIPTION =
   'is a simple tally of the panel, so correlated voters each carry full independent weight. The ' +
   'Bayesian correlation analysis is computed and feeds contrarian escalation only. Choose it for the ' +
   'escalation behaviour, not for a weighted verdict. ' +
-  "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result. " +
+  "Supports async dispatch (dispatch: 'async'; `mode` is a deprecated alias) — returns a jobId to poll via get_job_result. " +
   'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record, ' +
   'and ratifiesPr={pr, headSha} to bind a governor-path PR ratification to the head the panel saw (#5130); ' +
   'the result carries voteRecordId for the caller-commits append. ' +

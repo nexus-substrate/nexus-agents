@@ -355,8 +355,15 @@ export function executeDryRun(
 // Response Formatting
 // ============================================================================
 
-/** MCP tool response type */
-export type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+/**
+ * MCP tool response type. `_meta` is the envelope's out-of-band channel — the
+ * #2649 error envelope and the #4968 deprecation warnings ride there.
+ */
+export type ToolResponse = {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+  _meta?: Record<string, unknown>;
+};
 
 /** Create a successful JSON response. Thin wrapper around canonical toolSuccess. */
 export function successResponse(data: unknown): ToolResponse {

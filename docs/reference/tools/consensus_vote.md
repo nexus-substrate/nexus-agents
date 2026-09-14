@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, consensus_vote]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async mode (returns a jobId to poll via get_job_result).
+Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 3 with quickMode), voting with configurable strategies. Supports async dispatch (dispatch: 'async' returns a jobId to poll via get_job_result).
 
 ## Parameters
 
@@ -24,7 +24,8 @@ Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 
 | `errorPolicy` | enum | no | one of: reduce_denominator \| count_as_abstain \| fail_closed \| absolute_quorum | How to treat voters that errored or timed out (#2630). Default: fail_closed for unanimous only; reduce_denominator for all other strategies incl. higher_order/opinion_wise (#3138 — a single infra timeout should not void an otherwise-unanimous vote). Opt-in absolute_quorum (#4132): an errored voter — especially the contrarian (catfish) — degrades the verdict to no_quorum (recoverable re-run) instead of being dropped from the denominator; never manufactures approved/rejected from an induced error. Regardless of policy, errors > 50% always fails. |
 | `quickMode` | boolean | no | default false | Use 3 agents instead of the full 7-role panel for faster execution |
 | `simulateVotes` | boolean | no | default false | TESTS ONLY — when true, voters return random decisions. Output must not be used for real decisions. (#2319) |
-| `mode` | enum | no | one of: sync \| async | Dispatch mode (default: sync). Use "async" for higher-order strategies with 7 voters. |
+| `dispatch` | enum | no | one of: sync \| async | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). |
+| `mode` | enum | no | one of: sync \| async | DEPRECATED alias of `dispatch` (removed in the next major, #6225). Send `dispatch` instead; a call that sends only `mode` still works and returns a deprecation warning. |
 | `idempotencyKey` | string | no | minLength 1; maxLength 256 | Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId. |
 | `ratifies` | string | no | minLength 1; maxLength 256 | Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes. |
 | `ratifiesPr` | object | no | — | Governor-path PR ratification binding (#5130): pr is the PR number and headSha the full 40-hex head sha the panel reviewed. Bound into the authentic vote record so the committed ledger and the governor gate can verify which PR, at which head, this panel ratified. Omit for ordinary votes. |
