@@ -486,7 +486,8 @@ async function runContrarianCheck(
   try {
     const { executeExpert } = await import('../../pipeline/expert-bridge.js');
     // #5301: the proposal was cut to 2000 chars with no marker. A `pr_review`
-    // proposal carries up to MAX_DIFF_LENGTH = 50_000 bytes of diff, so the
+    // proposal carries the whole diff whenever it fits the panel's context
+    // (#6003; up to the 2 MB input cap), so the
     // contrarian could be deciding whether to escalate having seen ~4% of it —
     // the header region, where a diff is least informative — and returned the
     // same `shouldEscalate: false` it returns after reading the whole thing.

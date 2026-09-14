@@ -54,7 +54,7 @@ import {
   type PrReviewRecordOutcome,
   type ReviewSanitizationInput,
 } from './pr-review-record-producer.js';
-import { removalsBefore, sanitizationViewOf } from './pr-review-sanitization-view.js';
+import { sanitizationViewOf } from './pr-review-sanitization-view.js';
 // prettier-ignore
 import {
   applyPartialCoverageGate,
@@ -63,7 +63,7 @@ import {
   type PrReviewCoverage,
 } from './pr-review-diff-budget.js';
 // #6003: what the panel reads is decided against the voters' context windows.
-import { preparePanelProposal } from './pr-review-panel-budget.js';
+import { preparePanelForReview } from './pr-review-panel-budget.js';
 // #4278: split out of this file to stay under the max-lines budget (no behavior change).
 import { toPrReviewVote, summarizeReviews } from './pr-review-result-mapping.js';
 
@@ -531,24 +531,23 @@ async function executePrReviewBody(
 ): Promise<ToolResult> {
   const start = Date.now();
   const { gatewayAdapters: adapters, sanitization } = opts;
-  const removedBefore = removalsBefore(sanitization);
-  const panel = { gatewayAdapters: adapters, simulate: input.simulate };
-  const { proposal, coverage } = preparePanelProposal(input, panel, removedBefore, logger);
+  // #6003: seats resolved ONCE, budgeted, then handed to the vote below.
+  const panel = await preparePanelForReview(input, PR_REVIEW_ROLES, opts, logger);
   // #6123: resolved ONCE per review; every seat's system prompt names it.
   const project = resolveAndLogVoterProject(input.project, logger);
   const voteResults = await collectRealVotes({
     roles: PR_REVIEW_ROLES,
-    proposal,
+    proposal: panel.proposal,
     simulate: input.simulate,
     logger,
     project: project.name,
     ...(adapters !== undefined && { gatewayAdapters: adapters }),
+    ...(panel.seats?.ok === true && { roleAdapters: panel.seats.seats }),
   });
 
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
-  const aggregate = resolveAggregate(reviews, input, counts, coverage, logger);
-
+  const aggregate = resolveAggregate(reviews, input, counts, panel.coverage, logger);
   const costSummary = rollUpDecisionCost(voteResults, logger);
 
   // #4031: best-effort Option-C audit-record persistence. The producer surfaces
@@ -568,7 +567,7 @@ async function executePrReviewBody(
     counts,
     reviewCount: reviews.length,
     logger,
-    ...(coverage !== undefined ? { coverage } : {}),
+    ...(panel.coverage !== undefined ? { coverage: panel.coverage } : {}),
   });
 
   const response: PrReviewResponse = {
@@ -580,7 +579,7 @@ async function executePrReviewBody(
     project,
     ...(costSummary !== undefined ? { costSummary } : {}),
     recordOutcome,
-    ...(coverage !== undefined ? { coverage } : {}),
+    ...(panel.coverage !== undefined ? { coverage: panel.coverage } : {}),
   };
   return toolSuccess(JSON.stringify(response, null, 2));
 }

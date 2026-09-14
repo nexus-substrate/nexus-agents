@@ -111,35 +111,36 @@ function bytes(n: number): string {
 
 /**
  * The #6003 summary stamp: what the PANEL read and what the BINDING covers, as
- * two statements, plus the budget's source. Placed BEFORE the title (and before
- * the #4140 file stamp, whose dropped-file list is unbounded) so the store's
- * 500-char summary cap truncates the free text, never the disclosure.
+ * two statements, plus the budget's source. No hash here — the record's own
+ * `reviewedDiffHash` field already carries it, and 71 chars of the store's
+ * 500-char summary cap are better spent on the dropped-file list.
  */
-function bindingStamp(coverage: PrReviewCoverageStamp, reviewedDiffHash: string): string {
+function bindingStamp(coverage: PrReviewCoverageStamp): string {
   const binding =
     coverage.binding === 'prefix'
       ? `binding covers first ${bytes(coverage.boundBytes)} bytes`
       : `binding covers all ${bytes(coverage.boundBytes)} bytes`;
   return (
     `[panel read ${bytes(coverage.reviewedBytes)}/${bytes(coverage.totalBytes)} bytes; ` +
-    `${binding} sha256:${reviewedDiffHash}; budget: ${coverage.budgetSource} (${coverage.budgetDetail})]`
+    `${binding}; budget: ${coverage.budgetSource} (${coverage.budgetDetail})]`
   );
 }
 
 /**
- * Both coverage stamps, or `''` when there is nothing to disclose. The #4140
- * file stamp fires only on a partial PANEL read: a full read over a prefix
- * binding dropped no file, and must not be recorded as if it had.
+ * Both coverage stamps, or `''` when there is nothing to disclose. Order is
+ * load-bearing: the store caps the summary at 500 chars, so the stamps go
+ * BEFORE the title, and the #4140 file stamp — whose dropped-file list is the
+ * one unbounded, per-review fact — goes before the fixed-width binding stamp
+ * so it is the last thing truncated. The file stamp fires only on a partial
+ * PANEL read: a full read over a prefix binding dropped no file, and must not
+ * be recorded as if it had.
  */
-function coverageStamps(
-  coverage: PrReviewCoverageStamp | undefined,
-  reviewedDiffHash: string
-): string {
+function coverageStamps(coverage: PrReviewCoverageStamp | undefined): string {
   if (coverage === undefined) return '';
   const files = coverage.partial
-    ? ` [partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}]`
+    ? `[partial coverage: ${String(coverage.reviewedFiles)}/${String(coverage.totalFiles)} files reviewed, dropped: ${coverage.droppedFiles.join(', ')}] `
     : '';
-  return ` ${bindingStamp(coverage, reviewedDiffHash)}${files}`;
+  return ` ${files}${bindingStamp(coverage)}`;
 }
 
 /**
@@ -305,7 +306,7 @@ function buildAndPersist(
   // sees both. Does NOT touch reviewedDiffHash (the gate's binding), so gate
   // parity is preserved. Stamped BEFORE the title: the store caps the summary at
   // 500 chars, and a title can be 500 chars on its own.
-  const stamps = coverageStamps(coverage, reviewedDiffHash);
+  const stamps = coverageStamps(coverage);
   const disclosure = sanitizationDisclosureOf(sanitization, input.prDiff);
   warnIfDiffTruncated(input.prDiff, prNumber, logger);
   const record = persistPrReviewRecord({

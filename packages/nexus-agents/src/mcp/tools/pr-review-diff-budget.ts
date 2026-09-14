@@ -2,7 +2,9 @@
  * nexus-agents/mcp — PR-Review Large-Diff Budget Packer (#4140, epic #4130).
  *
  * Option A of the large-diff affordance: when a PR diff exceeds the voter PANEL
- * budget (`MAX_DIFF_LENGTH`), pack it down to a REAL, security-prioritized subset
+ * budget (since #6003 derived from the panel's context windows in
+ * `pr-review-panel-budget.ts`; the hash cap `MAX_DIFF_LENGTH` is a separate
+ * budget, see `packDiffForPanelAndBinding`), pack it down to a REAL, security-prioritized subset
  * of WHOLE files instead of hard-failing at the schema or lossily hand-truncating
  * mid-hunk. A packed review is honestly labeled PARTIAL and (per the #4140 C1
  * gate wired in pr-review-tool.ts) is BARRED from a verified-approve — it can

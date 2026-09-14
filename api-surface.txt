@@ -1713,6 +1713,7 @@ InterfaceDeclaration CollectRealVotesOptions
   readonly gatewayAdapters?: readonly IModelAdapter[] | undefined
   readonly project?: string | undefined
   readonly proposal: string
+  readonly roleAdapters?: ReadonlyMap<VoterRole, IModelAdapter> | undefined
   readonly roles: readonly VoterRole[]
   readonly signal?: AbortSignal | undefined
   readonly simulate?: boolean | undefined
