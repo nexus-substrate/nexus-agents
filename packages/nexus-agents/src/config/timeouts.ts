@@ -263,10 +263,9 @@ export const TIMEOUT_MULTIPLIER_MAX = 10;
 /** Floor for the env-override base, applied before the multiplier. */
 const CLASS_OVERRIDE_MIN_MS = 1_000;
 /**
- * Per-class override maximum. For a request-bound class it clamps the base
- * before the multiplier (and the lower `MCP_TIMEOUTS.maxMs` then bounds the
- * product). For `async-job-body`, the one class with no MCP request, it is
- * the ceiling itself, applied once after the multiplier (#5995).
+ * The ceiling for `async-job-body`, the one class with no MCP request. Applied
+ * once, to the product of the floored base and the multiplier (#5995). Every
+ * other class is ceilinged at `MCP_TIMEOUTS.maxMs` the same way.
  */
 const CLASS_OVERRIDE_MAX_MS = 7_200_000;
 
@@ -283,6 +282,11 @@ const CLASS_OVERRIDE_MAX_MS = 7_200_000;
  */
 const REQUEST_CEILING_EXEMPT_CLASS: OperationClassName = 'async-job-body';
 
+/** The ceiling that bounds a class: only the value differs per class, never the order. */
+function classCeilingMs(cls: OperationClassName): number {
+  return cls === REQUEST_CEILING_EXEMPT_CLASS ? CLASS_OVERRIDE_MAX_MS : MCP_TIMEOUTS.maxMs;
+}
+
 /** The request and ceiling a class resolves to, in the order its clamps apply. */
 interface ClampedRequest {
   readonly requestedMs: number;
@@ -292,32 +296,24 @@ interface ClampedRequest {
 }
 
 /**
- * Applies the clamps in the order each class has always had them.
+ * One clamp order for every class: floor, then × multiplier, then the class
+ * ceiling (#6162, quick panel 3 of 3).
  *
- * Every request-bound class keeps origin/main's order — base clamped to
- * `[CLASS_OVERRIDE_MIN_MS, CLASS_OVERRIDE_MAX_MS]`, then × multiplier, then the
- * MCP request ceiling — so its resolution is identical for every input; the
- * #5995 panel's constraint was that only `async-job-body` changes. The exempt
- * class takes the floor, then × multiplier, then `CLASS_OVERRIDE_MAX_MS` once:
- * applying the ceiling to the product rather than the base is what lets a base
- * one past it be REPORTED as reduced instead of silently trimmed before the
- * multiplier ever sees it.
+ * The ceiling is applied to the PRODUCT, never to the base, so a base past it
+ * reaches `describeClassGuard` intact and is REPORTED as reduced instead of
+ * being trimmed before the multiplier ever sees it. Until #6162 a request-bound
+ * class clamped its base to `CLASS_OVERRIDE_MAX_MS` first, which differed from
+ * this order only when an override above 7.2M met a multiplier below 1: that
+ * corner now resolves to `min(override × multiplier, ceiling)` and is
+ * attributed to the override — the pin in `timeout-override-clamp.test.ts`
+ * records it. The final guard is still bounded by the ceiling either way.
  */
 function clampRequest(cls: OperationClassName, chosen: number): ClampedRequest {
-  const multiplier = resolveTimeoutMultiplier();
   const flooredBase = Math.max(chosen, CLASS_OVERRIDE_MIN_MS);
-  if (cls === REQUEST_CEILING_EXEMPT_CLASS) {
-    return {
-      requestedMs: Math.round(flooredBase * multiplier),
-      ceilingMs: CLASS_OVERRIDE_MAX_MS,
-      baseForCause: flooredBase,
-    };
-  }
-  const clampedBase = Math.min(flooredBase, CLASS_OVERRIDE_MAX_MS);
   return {
-    requestedMs: Math.round(clampedBase * multiplier),
-    ceilingMs: MCP_TIMEOUTS.maxMs,
-    baseForCause: clampedBase,
+    requestedMs: Math.round(flooredBase * resolveTimeoutMultiplier()),
+    ceilingMs: classCeilingMs(cls),
+    baseForCause: flooredBase,
   };
 }
 
@@ -342,11 +338,11 @@ export function classOverrideEnvVar(cls: OperationClassName): string {
 /**
  * Resolves the runaway-guard for an operation class.
  *
- * Request-bound classes: `clamp(envClassOverride ?? base, classMin, classMax)
- * * multiplier`, re-clamped to `MCP_TIMEOUTS.maxMs`, so none can silently
- * exceed the MCP wrapper ceiling. `async-job-body`, which runs outside any MCP
- * request: `max(envClassOverride ?? base, classMin) * multiplier`, clamped to
- * {@link CLASS_OVERRIDE_MAX_MS} (#5995).
+ * Every class: `max(envClassOverride ?? base, classMin) * multiplier`, clamped
+ * to the class ceiling — `MCP_TIMEOUTS.maxMs` for a class that runs inside an
+ * MCP request, so none can silently exceed the MCP wrapper ceiling;
+ * {@link CLASS_OVERRIDE_MAX_MS} for `async-job-body`, which runs outside any
+ * MCP request (#5995). One order for all of them since #6162.
  *
  * @param cls - The operation class to resolve.
  * @returns The resolved guard in milliseconds.
