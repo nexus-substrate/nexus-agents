@@ -1322,7 +1322,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
         budgetSource: 'registry',
         budgetDetail: coverage.budgetDetail,
       });
-      expect(record.binding).toEqual({ kind: 'prefix', boundBytes: 50_000 });
+      expect(record.bindingBounds).toEqual({ kind: 'prefix', boundBytes: 50_000 });
       expect(verifyPrReviewRecordSet([record]).ok).toBe(true);
 
       // The summary stays human-readable and bounded: a count, the first three,
@@ -1369,7 +1369,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       const record = readRecords(6010);
       expect(record.coverage?.panelRead).toBe('full');
       expect(record.coverage?.droppedFiles).toEqual([]);
-      expect(record.binding).toEqual({ kind: 'prefix', boundBytes: 50_000 });
+      expect(record.bindingBounds).toEqual({ kind: 'prefix', boundBytes: 50_000 });
     });
 
     it('a both-full review (coverage undefined) writes NEITHER field — absence, not zeros', () => {
@@ -1386,7 +1386,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       expect(outcome.persisted).toBe(true);
       const record = readRecords(6011);
       expect(record.coverage).toBeUndefined();
-      expect(record.binding).toBeUndefined();
+      expect(record.bindingBounds).toBeUndefined();
     });
 
     it('panel partial + binding full: the binding is stated as covering every byte', () => {

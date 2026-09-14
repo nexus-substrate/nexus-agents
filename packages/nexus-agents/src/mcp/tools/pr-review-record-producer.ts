@@ -21,7 +21,7 @@ import {
 } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
 import type {
-  PrReviewBinding,
+  PrReviewBindingBounds,
   PrReviewDiffProvenance,
   PrReviewDiffSource,
   PrReviewPanelCoverage,
@@ -88,7 +88,7 @@ export interface PrReviewCounts {
  * Large-diff review coverage stamped onto the record (#4140, #6003, #6190).
  * Present when the panel read was partial OR the hash binds only a prefix.
  * Written to the record TWICE, on purpose: as the structured, hash-covered
- * `coverage` / `binding` fields (the evidence — every dropped path, uncapped)
+ * `coverage` / `bindingBounds` fields (the evidence — every dropped path, uncapped)
  * and as a human-readable stamp in the (also hash-covered, 500-char-capped)
  * `summary`, which lists at most {@link SUMMARY_DROPPED_FILES_LISTED} of the
  * dropped paths and counts the rest. The `reviewedDiffHash` binding is
@@ -181,7 +181,7 @@ function coverageStamps(coverage: PrReviewCoverageStamp | undefined): string {
  */
 function coverageFieldsOf(
   coverage: PrReviewCoverageStamp | undefined
-): { coverage: PrReviewPanelCoverage; binding: PrReviewBinding } | undefined {
+): { coverage: PrReviewPanelCoverage; bindingBounds: PrReviewBindingBounds } | undefined {
   if (coverage === undefined) return undefined;
   return {
     coverage: {
@@ -194,7 +194,7 @@ function coverageFieldsOf(
       budgetSource: coverage.budgetSource,
       budgetDetail: coverage.budgetDetail,
     },
-    binding: { kind: coverage.binding, boundBytes: coverage.boundBytes },
+    bindingBounds: { kind: coverage.binding, boundBytes: coverage.boundBytes },
   };
 }
 
@@ -253,7 +253,7 @@ export interface PersistReviewRecordArgs {
   readonly diffSource: PrReviewDiffSource;
   /**
    * #4140/#6003/#6190: large-diff coverage; written as the structured
-   * `coverage` / `binding` record fields AND stamped into the summary whenever
+   * `coverage` / `bindingBounds` record fields AND stamped into the summary whenever
    * present (the packer supplies it only when the panel read was partial or the
    * binding is a prefix — absent means both were full, and the record then
    * carries neither field).

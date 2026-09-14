@@ -278,6 +278,6 @@ describe('the module documents the two-budget semantics, not the pre-#6003 one (
     expect(SOURCE).toMatch(/BINDING cap/);
     expect(SOURCE).toMatch(/panel may read (the whole diff|past)/i);
     expect(SOURCE).toMatch(/pr-review-panel-budget/);
-    expect(SOURCE).toMatch(/`coverage`.*`binding`|`binding`.*`coverage`/s);
+    expect(SOURCE).toMatch(/`coverage`.*`bindingBounds`|`bindingBounds`.*`coverage`/s);
   });
 });

@@ -266,15 +266,18 @@ export const PrReviewPanelCoverageSchema = z
 export type PrReviewPanelCoverage = z.infer<typeof PrReviewPanelCoverageSchema>;
 
 /**
- * What the record's `reviewedDiffHash` BINDS (#6003, #6190): every byte of the
- * diff, or only its first `boundBytes`. A separate field from
- * {@link PrReviewPanelCoverageSchema} because it answers a different question —
- * the panel may read the whole diff while the hash binds a prefix, and a
- * record must be able to say both (the two-budget contract, #6003).
+ * The BOUNDS of what the record's `reviewedDiffHash` binds (#6003, #6190):
+ * every byte of the diff, or only its first `boundBytes`. A separate field
+ * from {@link PrReviewPanelCoverageSchema} because it answers a different
+ * question — the panel may read the whole diff while the hash binds a prefix,
+ * and a record must be able to say both (the two-budget contract, #6003).
  *
- * Carries no hash of its own: the record's `reviewedDiffHash` IS the binding
- * hash, and a second copy inside another hash-covered field would be one more
- * place for the two to disagree.
+ * Named `bindingBounds`, not `binding`, on the #6221 ratification panel's
+ * objection: a field called `binding` that carries no hash could be passed
+ * around as if it were the cryptographic binding. It is not. It carries no
+ * hash of its own: the record's `reviewedDiffHash` IS the binding hash, and a
+ * second copy inside another hash-covered field would be one more place for
+ * the two to disagree. This field only says how far that hash reaches.
  *
  * KNOWN, PRE-EXISTING, NOT WIDENED (#6177): the producer measures `kind` and
  * `boundBytes` over the diff it was handed, which on the MCP path is the
@@ -282,7 +285,7 @@ export type PrReviewPanelCoverage = z.infer<typeof PrReviewPanelCoverageSchema>;
  * The summary stamp had exactly this window before the field existed; the
  * field carries the same measurement in a structured place, no stronger.
  */
-export const PrReviewBindingSchema = z
+export const PrReviewBindingBoundsSchema = z
   .object({
     /** `'full'` — the hash covers every byte; `'prefix'` — only the first `boundBytes`. */
     kind: z.enum(['full', 'prefix']),
@@ -290,12 +293,12 @@ export const PrReviewBindingSchema = z
     boundBytes: z.number().int().nonnegative(),
   })
   .strict();
-export type PrReviewBinding = z.infer<typeof PrReviewBindingSchema>;
+export type PrReviewBindingBounds = z.infer<typeof PrReviewBindingBoundsSchema>;
 
 /**
  * One authentic, self-hashed pr-review record. The `hash` covers every
  * authenticity field INCLUDING `prNumber`, `baseSha`, `reviewedDiffHash`, `verdict`,
- * `diffProvenance`, `coverage`, `binding`, and `sequence`
+ * `diffProvenance`, `coverage`, `bindingBounds`, and `sequence`
  * but EXCLUDING `previousHash`, so the record is tamper-EVIDENT and
  * POSITION-INDEPENDENT: any edit to a persisted line is detected by
  * {@link verifyPrReviewRecordSet} as a `hash_mismatch`, while reordering file
@@ -321,7 +324,7 @@ export const PrReviewRecordSchema = z
      * invalidate. Reading a '1.2' record as if it were '1.3' would be the unsafe
      * move — its hash may bind SANITIZED bytes the gate can never reproduce.
      * '1.4' (#6190) marks the boundary at which records began carrying
-     * {@link coverage} and {@link binding} as structured fields. NOT a clean
+     * {@link coverage} and {@link bindingBounds} as structured fields. NOT a clean
      * break this time: a '1.3' record is still accepted and — because both new
      * fields are folded into the hash ONLY when present, like `diffProvenance`
      * and `sanitization` — re-hashes byte-identically (the pinned 1.3 golden in
@@ -396,12 +399,12 @@ export const PrReviewRecordSchema = z
      */
     coverage: PrReviewPanelCoverageSchema.optional(),
     /**
-     * What the hash BINDS (#6190). Same optionality rule. Written together with
-     * {@link coverage} by the pr_review producer; absent ⇒ nothing stated, and
-     * a consumer that needs the answer recomputes it from the diff length
+     * How far the hash BINDS (#6190). Same optionality rule. Written together
+     * with {@link coverage} by the pr_review producer; absent ⇒ nothing stated,
+     * and a consumer that needs the answer recomputes it from the diff length
      * against `MAX_REVIEWED_DIFF_BYTES` (which the governor gate does).
      */
-    binding: PrReviewBindingSchema.optional(),
+    bindingBounds: PrReviewBindingBoundsSchema.optional(),
     /**
      * ADVISORY hash of the tip record at write time (absent for the first).
      * Retained for audit texture but NOT covered by `hash` and NOT verified —
@@ -437,8 +440,8 @@ function projectPanelCoverage(c: PrReviewPanelCoverage): PrReviewPanelCoverage {
   };
 }
 
-/** Rebuild the binding in schema order for the hash (#6190): `kind`, then `boundBytes`. */
-function projectBinding(b: PrReviewBinding): PrReviewBinding {
+/** Rebuild the binding bounds in schema order for the hash (#6190): `kind`, then `boundBytes`. */
+function projectBindingBounds(b: PrReviewBindingBounds): PrReviewBindingBounds {
   return { kind: b.kind, boundBytes: b.boundBytes };
 }
 
@@ -446,7 +449,7 @@ function projectBinding(b: PrReviewBinding): PrReviewBinding {
  * Compute the SHA-256 over the canonical payload projection. Folds in EVERY
  * authenticity-bearing field — crucially `prNumber`, `baseSha`, `reviewedDiffHash`, and `verdict`
  * (the diff-binding, Option-C), `diffProvenance` (#4459), `sanitization`
- * (#5385), `coverage` and `binding` (#6190), plus the monotonic
+ * (#5385), `coverage` and `bindingBounds` (#6190), plus the monotonic
  * `sequence` — but EXCLUDES
  * `previousHash`, so the hash is position-independent and stable across
  * concurrent-branch merges and file reorders. Built field-by-field (not
@@ -512,11 +515,13 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
           },
         }
       : {}),
-    // #6190 panel coverage and binding, INSIDE the hash. Present-only on the
+    // #6190 panel coverage and binding bounds, INSIDE the hash. Present-only on the
     // same rule as the two blocks above, so a 1.3 record projects
     // byte-identically (the pinned golden is the guard).
     ...(payload.coverage !== undefined ? { coverage: projectPanelCoverage(payload.coverage) } : {}),
-    ...(payload.binding !== undefined ? { binding: projectBinding(payload.binding) } : {}),
+    ...(payload.bindingBounds !== undefined
+      ? { bindingBounds: projectBindingBounds(payload.bindingBounds) }
+      : {}),
   });
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }

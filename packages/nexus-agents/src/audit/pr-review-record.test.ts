@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import * as crypto from 'node:crypto';
 
 import type {
-  PrReviewBinding,
+  PrReviewBindingBounds,
   PrReviewDiffProvenance,
   PrReviewPanelCoverage,
   PrReviewRecord,
@@ -295,7 +295,7 @@ describe('diffProvenance (#4459)', () => {
 });
 
 describe('record version (#4459, #5385, #6190)', () => {
-  it('the builder writes 1.4 — the boundary at which records carry coverage/binding fields', () => {
+  it('the builder writes 1.4 — the boundary at which records carry coverage/bindingBounds fields', () => {
     expect(buildPrReviewRecord(BUILD_MINIMAL).version).toBe('1.4');
   });
 
@@ -323,7 +323,7 @@ const BUILD_MINIMAL = {
   recordedAt: '2026-06-15T00:00:00.000Z',
 };
 
-describe('coverage and binding as structured, hash-covered fields (#6190)', () => {
+describe('coverage and bindingBounds as structured, hash-covered fields (#6190)', () => {
   /** Forty dropped paths: the count the 500-char summary cap demonstrably loses. */
   const DROPPED_40 = Array.from({ length: 40 }, (_, i) => `src/dropped/file-${String(i)}.ts`);
 
@@ -337,7 +337,7 @@ describe('coverage and binding as structured, hash-covered fields (#6190)', () =
     budgetSource: 'registry',
     budgetDetail: 'min window 1,000,000 tok (claude-fable-5) − 16,000 × 3.5 B/tok = 3,444,000 B',
   };
-  const BINDING: PrReviewBinding = { kind: 'prefix', boundBytes: 50_000 };
+  const BINDING: PrReviewBindingBounds = { kind: 'prefix', boundBytes: 50_000 };
 
   /**
    * Every field a 1.3 record can carry. The golden was captured by running
@@ -374,7 +374,7 @@ describe('coverage and binding as structured, hash-covered fields (#6190)', () =
     ...MAXIMAL_1_3,
     version: '1.4',
     coverage: COVERAGE,
-    binding: BINDING,
+    bindingBounds: BINDING,
   };
 
   it('the 1.3 fixture is schema-valid — otherwise the golden below pins the wrong thing', () => {
@@ -390,18 +390,20 @@ describe('coverage and binding as structured, hash-covered fields (#6190)', () =
     expect(verifyPrReviewRecordSet([{ ...MAXIMAL_1_3, hash: GOLDEN_1_3 }]).ok).toBe(true);
   });
 
-  it('a 1.3 record with coverage/binding explicitly undefined still hashes to the 1.3 golden', () => {
+  it('a 1.3 record with coverage/bindingBounds explicitly undefined still hashes to the 1.3 golden', () => {
     expect(
-      computePrReviewRecordHash({ ...MAXIMAL_1_3, coverage: undefined, binding: undefined })
+      computePrReviewRecordHash({ ...MAXIMAL_1_3, coverage: undefined, bindingBounds: undefined })
     ).toBe(GOLDEN_1_3);
   });
 
   it('pins the MAXIMAL 1.4 record to a golden captured by execution', () => {
     // Captured by running `computePrReviewRecordHash` on this exact fixture once
-    // the projection carried `coverage` and `binding`, then pinned. If it moves,
-    // the canonical order or the present-only rule changed.
+    // the projection carried `coverage` and `bindingBounds`, then pinned, and
+    // cross-checked against a hand-assembled canonical string sha256'd with
+    // node:crypto alone (#6221). If it moves, the canonical order or the
+    // present-only rule changed.
     expect(computePrReviewRecordHash(MAXIMAL_1_4)).toBe(
-      '46d9ae89c85dbb577636e0f44251b094ae37152bf279a6d05a50abbd8d9b11d8'
+      '3b7a22acb52d01fc59a58e4e4154231c3c1f6ce8bba989a42ae955d8d912ae0a'
     );
   });
 
@@ -428,7 +430,7 @@ describe('coverage and binding as structured, hash-covered fields (#6190)', () =
     if (!result.ok) expect(result.reason).toBe('hash_mismatch');
   });
 
-  it('folds every coverage and binding field: flipping any one is a hash_mismatch', () => {
+  it('folds every coverage and bindingBounds field: flipping any one is a hash_mismatch', () => {
     const authentic = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
     const forgeries: PrReviewRecord[] = [
       { ...authentic, coverage: { ...COVERAGE, panelRead: 'full' } },
@@ -438,17 +440,17 @@ describe('coverage and binding as structured, hash-covered fields (#6190)', () =
       { ...authentic, coverage: { ...COVERAGE, totalBytes: 40_000 } },
       { ...authentic, coverage: { ...COVERAGE, budgetSource: 'binding-cap-fallback' } },
       { ...authentic, coverage: { ...COVERAGE, budgetDetail: 'edited' } },
-      { ...authentic, binding: { kind: 'full', boundBytes: 50_000 } },
-      { ...authentic, binding: { kind: 'prefix', boundBytes: 161_204 } },
+      { ...authentic, bindingBounds: { kind: 'full', boundBytes: 50_000 } },
+      { ...authentic, bindingBounds: { kind: 'prefix', boundBytes: 161_204 } },
     ];
     for (const forged of forgeries) {
       expect(verifyPrReviewRecordSet([forged]).ok).toBe(false);
     }
   });
 
-  it('DETECTS deletion of the whole coverage or binding field as a hash_mismatch', () => {
+  it('DETECTS deletion of the whole coverage or bindingBounds field as a hash_mismatch', () => {
     const authentic = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
-    for (const field of ['coverage', 'binding'] as const) {
+    for (const field of ['coverage', 'bindingBounds'] as const) {
       const stripped = { ...authentic };
       Reflect.deleteProperty(stripped, field);
       expect(verifyPrReviewRecordSet([stripped]).ok).toBe(false);
@@ -469,30 +471,34 @@ describe('coverage and binding as structured, hash-covered fields (#6190)', () =
           totalFiles: COVERAGE.totalFiles,
           reviewedFiles: COVERAGE.reviewedFiles,
         },
-        binding: { boundBytes: BINDING.boundBytes, kind: BINDING.kind },
+        bindingBounds: { boundBytes: BINDING.boundBytes, kind: BINDING.kind },
       })
     ) as Omit<PrReviewRecord, 'hash'>;
     expect(computePrReviewRecordHash(reordered)).toBe(computePrReviewRecordHash(MAXIMAL_1_4));
   });
 
-  it('the schemas are strict: an unknown key inside coverage or binding is rejected', () => {
+  it('the schemas are strict: an unknown key inside coverage or bindingBounds is rejected — a sha256 in particular', () => {
     const rec = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
     expect(
       PrReviewRecordSchema.safeParse({ ...rec, coverage: { ...COVERAGE, extra: 1 } }).success
     ).toBe(false);
     expect(
-      PrReviewRecordSchema.safeParse({ ...rec, binding: { ...BINDING, sha256: 'x' } }).success
+      PrReviewRecordSchema.safeParse({ ...rec, bindingBounds: { ...BINDING, sha256: 'x' } }).success
     ).toBe(false);
     expect(
-      PrReviewRecordSchema.safeParse({ ...rec, binding: { kind: 'partial', boundBytes: 1 } })
+      PrReviewRecordSchema.safeParse({ ...rec, bindingBounds: { kind: 'partial', boundBytes: 1 } })
         .success
     ).toBe(false);
   });
 
   it('the builder passes both fields through and the record verifies', () => {
-    const rec = buildPrReviewRecord({ ...BUILD_MINIMAL, coverage: COVERAGE, binding: BINDING });
+    const rec = buildPrReviewRecord({
+      ...BUILD_MINIMAL,
+      coverage: COVERAGE,
+      bindingBounds: BINDING,
+    });
     expect(rec.coverage?.droppedFiles).toEqual(DROPPED_40);
-    expect(rec.binding).toEqual(BINDING);
+    expect(rec.bindingBounds).toEqual(BINDING);
     expect(verifyPrReviewRecordSet([rec]).ok).toBe(true);
   });
 });

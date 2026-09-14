@@ -1377,7 +1377,7 @@ describe('the gate says what the panel READ, from the structured field first (#6
           budgetDetail:
             'min window 1,000,000 tok (claude-fable-5) − 16,000 × 3.5 B/tok = 3,444,000 B',
         },
-        binding: { kind: 'prefix', boundBytes: 50_000 },
+        bindingBounds: { kind: 'prefix', boundBytes: 50_000 },
       })
     );
     expect(outcome.kind).toBe('pass');
@@ -1438,7 +1438,7 @@ describe('the gate says what the panel READ, from the structured field first (#6
           budgetSource: 'registry',
           budgetDetail: 'x',
         },
-        binding: { kind: 'prefix', boundBytes: 50_000 },
+        bindingBounds: { kind: 'prefix', boundBytes: 50_000 },
       })
     );
     expect(outcome.kind).toBe('pass');

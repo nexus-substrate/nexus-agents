@@ -31,7 +31,7 @@ import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 
 import type {
-  PrReviewBinding,
+  PrReviewBindingBounds,
   PrReviewDiffProvenance,
   PrReviewPanelCoverage,
   PrReviewSanitization,
@@ -92,8 +92,8 @@ export interface BuildPrReviewRecordInput {
    * The pr_review producer passes it whenever its packer measured coverage.
    */
   readonly coverage?: PrReviewPanelCoverage | undefined;
-  /** What the hash BINDS (#6190). Passed together with `coverage`. */
-  readonly binding?: PrReviewBinding | undefined;
+  /** How far the hash BINDS (#6190). Passed together with `coverage`. */
+  readonly bindingBounds?: PrReviewBindingBounds | undefined;
   /**
    * Monotonic sequence number for this record. Defaults to 0 (first record)
    * when omitted; the future producer supplies (max existing sequence)+1.
@@ -138,7 +138,7 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
     ...(input.diffProvenance !== undefined ? { diffProvenance: input.diffProvenance } : {}),
     ...(input.sanitization !== undefined ? { sanitization: input.sanitization } : {}),
     ...(input.coverage !== undefined ? { coverage: input.coverage } : {}),
-    ...(input.binding !== undefined ? { binding: input.binding } : {}),
+    ...(input.bindingBounds !== undefined ? { bindingBounds: input.bindingBounds } : {}),
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };

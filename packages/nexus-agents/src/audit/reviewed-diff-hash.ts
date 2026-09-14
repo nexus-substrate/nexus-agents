@@ -28,7 +28,7 @@
  * voters' own context windows (`mcp/tools/pr-review-panel-budget.ts`), so a
  * diff over this cap goes to the panel whole whenever it fits that budget. The
  * two portions are stated separately on the record: `coverage` says what the
- * panel read, `binding` says what the hash covers (#6190), and the summary
+ * panel read, `bindingBounds` says how far the hash reaches (#6190), and the summary
  * stamp repeats both for a human reader. Producers MUST surface
  * {@link reviewedDiffWasTruncated} so an over-cap review is visible.
  *
