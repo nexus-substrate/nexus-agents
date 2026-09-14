@@ -73,6 +73,14 @@ export const SELF = 'check-script-wiring.ts';
  * test also asserts each entry against the real tree.
  */
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
+  // The caller-commits half of #5130: copies ONE verified, PR-bound vote
+  // record from the operator's runtime store into the committed
+  // `governance/vote-records.jsonl` so it lands in the PR it ratifies. The
+  // runtime store exists only on the machine that ran the panel, and the
+  // whole design is that CI never needs push access — a workflow could not
+  // run it. The gate that READS the committed ledger is #5130 step 2.
+  'append-ratification-record.ts':
+    'caller-commits append from a local runtime store the CI runner never has (#5130)',
   // Requires the `agy` binary, which no CI runner has. Wiring it into a
   // workflow would make it report `unmeasured` — a failure — on every run, so
   // it is operator-invoked: `pnpm exec tsx scripts/check-agy-model-drift.ts`, and on

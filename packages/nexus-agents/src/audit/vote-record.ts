@@ -396,6 +396,35 @@ export const VoteRecordOptionCountSchema = z
   .strict();
 export type VoteRecordOptionCount = z.infer<typeof VoteRecordOptionCountSchema>;
 
+/** A full 40-hex lowercase commit sha — an abbreviated or uppercase form is not a binding. */
+const GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
+
+/**
+ * The `{pr, headSha}` binding of a PR-ratification vote (#5130 step 1, schema
+ * 1.10). `pr` is the PR number the panel ratified; `headSha` is the full head
+ * commit the panel saw. Exported for the `consensus_vote` input schema and the
+ * caller-commits append script, so producer, record and script validate the
+ * same shape.
+ */
+export const VoteRecordPrBindingSchema = z
+  .object({
+    pr: z.number().int().positive(),
+    headSha: z.string().regex(GIT_SHA_PATTERN, 'expected a full 40-hex lowercase commit sha'),
+  })
+  .strict();
+export type VoteRecordPrBinding = z.infer<typeof VoteRecordPrBindingSchema>;
+
+/**
+ * Rebuild a PR binding in canonical order — `pr`, then `headSha` — so the hash
+ * does not depend on the object's key order (#3962, the `voteCounts` rule).
+ * Shared with the builder (`vote-record-store.ts`) on the
+ * {@link projectSeatFallback} rule: the object the ledger line carries and the
+ * object the hash covers are the same projection.
+ */
+export function projectPrBinding(b: VoteRecordPrBinding): VoteRecordPrBinding {
+  return { pr: b.pr, headSha: b.headSha };
+}
+
 /**
  * One authentic, self-hashed vote record. The `hash` covers every authenticity
  * field INCLUDING `sequence` but EXCLUDING `previousHash`, so the record is
@@ -407,12 +436,14 @@ export const VoteRecordSchema = z
   .object({
     /**
      * Schema version. '1.1' marked the chain→record-set+sequence model (#3927);
-     * '1.2' adds the optional `ratifies` subject-binding field (#3927 item 1).
-     * Both are accepted — a 1.1 record (no `ratifies`) verifies unchanged because
-     * `ratifies` is folded into the self-hash ONLY when present (see
-     * {@link computeVoteRecordHash}).
+     * '1.2' adds the optional `ratifies` subject-binding field (#3927 item 1);
+     * '1.10' adds the optional `ratifiesPr` PR-binding (#5130). Every tier is
+     * accepted — a 1.1 record (no `ratifies`) verifies unchanged because each
+     * optional is folded into the self-hash ONLY when present (see
+     * {@link computeVoteRecordHash}). Tiers are labels, not ordered numbers:
+     * '1.10' follows '1.9' by convention only and nothing compares them.
      */
-    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9']),
+    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9', '1.10']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
@@ -504,6 +535,23 @@ export const VoteRecordSchema = z
      */
     ratifies: z.string().min(1).optional(),
     /**
+     * The PR this vote RATIFIES, bound to the head the panel saw (#5130 step 1,
+     * schema 1.10; panel decision Q1 option A, 5 of 6). Present only on a
+     * governor-path ratification vote; hash-covered like `ratifies`, so a
+     * record cannot be repointed at a different PR or a later push without
+     * breaking its hash. The governor gate (step 2, #5779/#5131) resolves the
+     * record from the committed ledger and requires `pr` to be the PR under
+     * review and `headSha` to be its head (or `head^` when `head` touches only
+     * the ledger — the caller-commits tip). Absent on every pre-1.10 record.
+     *
+     * A SEPARATE key rather than a structured encoding of `ratifies`: that
+     * field is the authority-ladder SUBJECT, compared by string equality to
+     * `transition.subject` and grouped by `conflictingRatifiedSubjects`; no
+     * resolver parses it. Overloading it would give one field two consumers
+     * with two equality rules. The two may coexist on one record.
+     */
+    ratifiesPr: VoteRecordPrBindingSchema.optional(),
+    /**
      * ADVISORY hash of the tip record at write time (absent for the first).
      * Retained for audit texture but NOT covered by `hash` and NOT verified —
      * the record-set model is position-independent (#3927).
@@ -578,7 +626,15 @@ function foldOptionalFields(base: object, payload: VoteRecordPayload): object {
           },
         }
       : withCoverage;
-  return payload.ratifies !== undefined ? { ...withPanel, ratifies: payload.ratifies } : withPanel;
+  const withRatifies =
+    payload.ratifies !== undefined ? { ...withPanel, ratifies: payload.ratifies } : withPanel;
+  // `ratifiesPr` (#5130, schema 1.10) is the LAST key on the same rule: present-
+  // only, after `ratifies`, rebuilt field-by-field (`pr`, then `headSha`) so
+  // the hash does not depend on the binding's key order. Absent ⇒ byte-
+  // identical to the 1.9 form; the pinned 1.9 golden is the guard.
+  return payload.ratifiesPr !== undefined
+    ? { ...withRatifies, ratifiesPr: projectPrBinding(payload.ratifiesPr) }
+    : withRatifies;
 }
 
 /**
