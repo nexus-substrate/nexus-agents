@@ -398,6 +398,9 @@ describe('persistVoteRecord', () => {
           model: 'codex-5.3',
           source: 'unverifiable',
           unverifiableSignal: 'stderr',
+          // #6115: where the seat was assigned, and that it answered elsewhere.
+          assignedCli: 'claude',
+          fallback: { fromCli: 'claude', fromModel: 'claude-opus', reason: 'capacity' },
           vote: { ...votes[0]!.vote, decision: 'abstain', reasoning: clipped },
         },
       ],
@@ -411,6 +414,12 @@ describe('persistVoteRecord', () => {
     expect(entry.reasoningTruncated).toBe(true);
     expect(entry.model).toBe('codex-5.3');
     expect(entry.unverifiable).toBe(true);
+    expect(entry.assignedCli).toBe('claude');
+    expect(entry.fallback).toEqual({
+      fromCli: 'claude',
+      fromModel: 'claude-opus',
+      reason: 'capacity',
+    });
     expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
   });
 
@@ -1235,5 +1244,154 @@ describe('schema 1.8: the seat carries its model and an unverifiable marker (#60
     expect(invalidLines).toHaveLength(0);
     expect(records[0]?.voters[0]?.model).toBeUndefined();
     expect(verifyVoteRecordSet(records).ok).toBe(true);
+  });
+});
+
+describe('schema 1.9: the seat carries its assigned CLI and any fallback (#6115)', () => {
+  // Three consecutive 7-seat panels answered every seat on one gemini model
+  // while the round-robin had assigned claude to three and codex to two. The
+  // live result learned to say so in #6150; this is the record half. Without
+  // it a 1.8 record shows `model: gemini-3.1-pro-preview` on seven seats and
+  // nothing that says five of them were meant to answer elsewhere.
+  function build(v: readonly AgentVoteResult[]): VoteRecord {
+    return buildVoteRecord({
+      id: 'rt-19',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: v,
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      sequence: 0,
+      previousHash: undefined,
+    });
+  }
+
+  /** A seat that answered where it was assigned. */
+  function nativeSeat(role: VoterRole, cli: string, model: string): AgentVoteResult {
+    return { ...agentVote(role, 'approve'), assignedCli: cli, cli, model };
+  }
+
+  /** A seat assigned to `from` that fell over to gemini (#3587). */
+  function fallenSeat(role: VoterRole, from: string, fromModel?: string): AgentVoteResult {
+    return {
+      ...agentVote(role, 'approve'),
+      assignedCli: from,
+      cli: 'gemini',
+      model: 'gemini-3.1-pro-preview',
+      fallback: {
+        fromCli: from,
+        ...(fromModel !== undefined ? { fromModel } : {}),
+        reason: 'capacity',
+      },
+    };
+  }
+
+  it('records the assigned CLI on every seat that carries one', () => {
+    const record = build([
+      nativeSeat('architect', 'gemini', 'gemini-3.1-pro-preview'),
+      agentVote('security', 'approve'),
+    ]);
+    expect(record.voters.find((v) => v.role === 'architect')?.assignedCli).toBe('gemini');
+    // A seat whose result carried no assignment records none — absence stays absent.
+    expect(record.voters.find((v) => v.role === 'security')?.assignedCli).toBeUndefined();
+    expect(record.version).toBe('1.9');
+  });
+
+  it('records the fallback exactly as the live result stated it, fromModel present-only', () => {
+    const record = build([fallenSeat('devex', 'claude', 'claude-opus'), fallenSeat('pm', 'codex')]);
+    expect(record.voters.find((v) => v.role === 'devex')?.fallback).toEqual({
+      fromCli: 'claude',
+      fromModel: 'claude-opus',
+      reason: 'capacity',
+    });
+    const pm = record.voters.find((v) => v.role === 'pm')?.fallback;
+    expect(pm).toEqual({ fromCli: 'codex', reason: 'capacity' });
+    expect(pm !== undefined && 'fromModel' in pm).toBe(false);
+    expect(record.version).toBe('1.9');
+  });
+
+  it('a seat with a fallback but no assignedCli is still 1.9 — either key lifts the tier', () => {
+    const { assignedCli: _a, ...noAssignment } = fallenSeat('devex', 'claude');
+    expect(build([noAssignment]).version).toBe('1.9');
+  });
+
+  it('a 1.8 seat (model, no assignment, no fallback) stays 1.8', () => {
+    expect(build([{ ...agentVote('architect', 'approve'), model: 'claude-sonnet' }]).version).toBe(
+      '1.8'
+    );
+  });
+
+  it('a record with a fallback hashes differently from the same record without it', () => {
+    const withIt = build([fallenSeat('devex', 'claude', 'claude-opus')]);
+    const { hash: _h, ...payload } = withIt;
+    const stripped = {
+      ...payload,
+      voters: payload.voters.map(({ fallback: _f, ...rest }) => rest),
+    };
+    expect(computeVoteRecordHash(payload)).not.toBe(computeVoteRecordHash(stripped));
+  });
+
+  it('a 1.9 record round-trips through serializeValidatedRecord and verifies', () => {
+    const record = build([
+      fallenSeat('devex', 'claude', 'claude-opus'),
+      nativeSeat('architect', 'gemini', 'gemini-3.1-pro-preview'),
+    ]);
+    const line = serializeValidatedRecord(VoteRecordSchema, record, 'vote');
+    expect(line).toBe(JSON.stringify(record) + '\n');
+    const { records, invalidLines } = parseVoteRecordsText(line);
+    expect(invalidLines).toHaveLength(0);
+    expect(records[0]?.version).toBe('1.9');
+    expect(records[0]?.voters.find((v) => v.role === 'devex')?.fallback?.reason).toBe('capacity');
+    expect(records[0]?.voters.find((v) => v.role === 'architect')?.assignedCli).toBe('gemini');
+    expect(verifyVoteRecordSet(records).ok).toBe(true);
+  });
+
+  it('a 1.8 record (model, no assignment) still round-trips and verifies under the 1.9 schema', () => {
+    const record = build([{ ...agentVote('security', 'approve'), model: 'claude-sonnet' }]);
+    expect(record.version).toBe('1.8');
+    const { records, invalidLines } = parseVoteRecordsText(
+      serializeValidatedRecord(VoteRecordSchema, record, 'vote')
+    );
+    expect(invalidLines).toHaveLength(0);
+    expect(records[0]?.voters[0]?.assignedCli).toBeUndefined();
+    expect(records[0]?.voters[0]?.fallback).toBeUndefined();
+    expect(verifyVoteRecordSet(records).ok).toBe(true);
+  });
+
+  it('a PERSISTED record for a vote whose live result carried a fallback carries it', () => {
+    // The #6115 defect, end to end: the seat the live result says fell over
+    // reaches the ledger line with the fallback on it, and reads back.
+    const dir = mkdtempSync(join(tmpdir(), 'vote-records-19-'));
+    const filePath = join(dir, 'governance', 'vote-records.jsonl');
+    try {
+      const written = persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        id: 'vote-fallback',
+        proposal: 'p',
+        strategy: 'supermajority',
+        result: consensusResult(),
+        votes: [
+          fallenSeat('devex', 'codex'),
+          nativeSeat('architect', 'gemini', 'gemini-3.1-pro-preview'),
+        ],
+        filePath,
+      });
+      expect(written).toBeDefined();
+      expect(written?.voters.find((v) => v.role === 'devex')?.fallback).toEqual({
+        fromCli: 'codex',
+        reason: 'capacity',
+      });
+      expect(written?.voters.find((v) => v.role === 'devex')?.assignedCli).toBe('codex');
+      const { records } = readVoteRecords(filePath);
+      expect(records[0]?.voters.find((v) => v.role === 'devex')?.fallback).toEqual({
+        fromCli: 'codex',
+        reason: 'capacity',
+      });
+      expect(verifyVoteRecordSet(records).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

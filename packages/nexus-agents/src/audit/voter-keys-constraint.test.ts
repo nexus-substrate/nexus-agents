@@ -15,7 +15,7 @@
  * nothing. `expectTypeOf` is a runtime no-op; the type argument is the test.
  *
  * `VOTER_SUMMARY_KEYS` is module-private, so the real-universe cases mirror
- * its eight literals rather than importing the tuple's type. The pinned
+ * its ten literals rather than importing the tuple's type. The pinned
  * literal in vote-record.test.ts keeps the mirror honest: a key added to the
  * schema without being added here fails `defineVoterKeys` itself first.
  */
@@ -37,6 +37,8 @@ type VoterSummaryKeysMirror = readonly [
   'retried',
   'model',
   'unverifiable',
+  'assignedCli',
+  'fallback',
 ];
 
 /** The mirror with `retried` dropped — the #6077 mutation, as a type. */
@@ -48,6 +50,8 @@ type MissingRetried = readonly [
   'reasoningTruncated',
   'model',
   'unverifiable',
+  'assignedCli',
+  'fallback',
 ];
 
 describe('CompleteKeys (#6092)', () => {

@@ -11,10 +11,11 @@
  * @module audit/vote-record.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import { createHash } from 'node:crypto';
 
-import type { VoteRecord } from './vote-record.js';
+import type { FallbackReason } from '../cli/vote-types.js';
+import type { VoteRecord, VoterSummary } from './vote-record.js';
 import { VoteRecordSchema, computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
 
 /**
@@ -544,5 +545,169 @@ describe('schema 1.8: `model` and `unverifiable` per seat (#6091, #6094)', () =>
     const full = computeVoteRecordHash(MAXIMAL_1_8);
     expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [withoutModel] })).not.toBe(full);
     expect(computeVoteRecordHash({ ...MAXIMAL_1_8, voters: [withoutFlag] })).not.toBe(full);
+  });
+});
+
+describe('schema 1.9: `assignedCli` and `fallback` per seat (#6115)', () => {
+  // Same tier logic as 1.8: both keys are appended PRESENT-ONLY after
+  // `unverifiable`, so every 1.8-and-earlier entry projects byte-identically.
+  // The 1.7 and 1.8 goldens above are the guard for that; this block pins the
+  // new maximal form. `fallback` is the first NESTED voter field, so its own
+  // keys are rebuilt in canonical order too (#3962) — the reorder test below
+  // reorders both levels.
+  const MAXIMAL_1_9 = {
+    version: '1.9' as const,
+    id: 'vote-max-19',
+    sequence: 0,
+    recordedAt: '2026-09-13T00:00:00.000Z',
+    proposalHash: 'e'.repeat(64),
+    proposal: 'max',
+    strategy: 'supermajority' as const,
+    decision: 'approved' as const,
+    approvalPercentage: 100,
+    voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+    voters: [
+      {
+        role: 'devex' as const,
+        decision: 'approve' as const,
+        confidence: 0.8,
+        reasoning: 'grounds',
+        reasoningTruncated: true as const,
+        retried: true as const,
+        model: 'gemini-3.1-pro-preview',
+        unverifiable: true as const,
+        assignedCli: 'codex',
+        fallback: { fromCli: 'codex', fromModel: 'codex-5.3', reason: 'capacity' as const },
+      },
+    ],
+  };
+
+  it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
+    const parsed = VoteRecordSchema.safeParse({
+      ...MAXIMAL_1_9,
+      hash: computeVoteRecordHash(MAXIMAL_1_9),
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('pins the MAXIMAL 1.9 entry to a golden captured by execution', () => {
+    // Captured by running `computeVoteRecordHash` on this exact fixture once
+    // the projection carried both fields, then pinned. If it moves, the
+    // canonical voter order, the nested fallback order, or the present-only
+    // rule changed.
+    expect(computeVoteRecordHash(MAXIMAL_1_9)).toBe(
+      '11457d041d2adcbd4c2f3c5def01e69d008d0fa105b60c720bf84d2543085228'
+    );
+  });
+
+  it('a 1.8 entry with the 1.9 keys explicitly undefined still hashes to the 1.8 golden', () => {
+    // The back-compat property stated directly, against the PINNED 1.8
+    // golden rather than a self-computed value: a record that lacks the new
+    // keys must not move.
+    const v18 = {
+      role: 'scope_steward' as const,
+      decision: 'abstain' as const,
+      confidence: 0,
+      reasoning: "repository reads failed with 'bwrap: loopback: Failed RTM_NEWADDR'",
+      reasoningTruncated: true as const,
+      retried: true as const,
+      model: 'codex-5.3',
+      unverifiable: true as const,
+      assignedCli: undefined,
+      fallback: undefined,
+    };
+    const record18 = {
+      version: '1.8' as const,
+      id: 'vote-max-18',
+      sequence: 0,
+      recordedAt: '2026-09-10T00:00:00.000Z',
+      proposalHash: 'd'.repeat(64),
+      proposal: 'max',
+      strategy: 'supermajority' as const,
+      decision: 'no_quorum' as const,
+      approvalPercentage: 0,
+      voteCounts: { approve: 0, reject: 0, abstain: 1, total: 1 },
+      voters: [v18],
+    };
+    expect(computeVoteRecordHash(record18)).toBe(
+      'eaba3ce41c8dd4208b126bc907cd7978bc305b38c361766495edcd8ad4864fcd'
+    );
+  });
+
+  it("reordering a 1.9 voter entry's keys — and the nested fallback's — does not change the hash", () => {
+    const v = MAXIMAL_1_9.voters[0]!;
+    const reordered = {
+      fallback: {
+        reason: v.fallback.reason,
+        fromModel: v.fallback.fromModel,
+        fromCli: v.fallback.fromCli,
+      },
+      assignedCli: v.assignedCli,
+      unverifiable: v.unverifiable,
+      model: v.model,
+      retried: v.retried,
+      reasoning: v.reasoning,
+      confidence: v.confidence,
+      reasoningTruncated: v.reasoningTruncated,
+      decision: v.decision,
+      role: v.role,
+    };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [reordered] })).toBe(
+      computeVoteRecordHash(MAXIMAL_1_9)
+    );
+  });
+
+  it('an explicitly-undefined assignedCli, fallback or fromModel hashes identically to an absent one', () => {
+    const v = MAXIMAL_1_9.voters[0]!;
+    const { assignedCli: _a, fallback: _f, ...bare } = v;
+    const explicit = { ...bare, assignedCli: undefined, fallback: undefined };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [explicit] })).toBe(
+      computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [bare] })
+    );
+    const { fromModel: _m, ...fallbackWithoutModel } = v.fallback;
+    const explicitNested = { ...v, fallback: { ...fallbackWithoutModel, fromModel: undefined } };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [explicitNested] })).toBe(
+      computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [{ ...v, fallback: fallbackWithoutModel }] })
+    );
+  });
+
+  it('dropping `assignedCli` alone moves the hash; dropping `fallback` alone moves it; dropping `fromModel` alone moves it', () => {
+    const v = MAXIMAL_1_9.voters[0]!;
+    const { assignedCli: _a, ...withoutAssigned } = v;
+    const { fallback: _f, ...withoutFallback } = v;
+    const { fromModel: _m, ...fallbackWithoutModel } = v.fallback;
+    const full = computeVoteRecordHash(MAXIMAL_1_9);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [withoutAssigned] })).not.toBe(full);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [withoutFallback] })).not.toBe(full);
+    expect(
+      computeVoteRecordHash({ ...MAXIMAL_1_9, voters: [{ ...v, fallback: fallbackWithoutModel }] })
+    ).not.toBe(full);
+  });
+
+  it('the read schema accepts exactly the live `SeatFallback` shape and nothing wider', () => {
+    const base = { ...MAXIMAL_1_9, hash: computeVoteRecordHash(MAXIMAL_1_9) };
+    const v = MAXIMAL_1_9.voters[0]!;
+    const withKey = (fallback: unknown): unknown => ({ ...base, voters: [{ ...v, fallback }] });
+    expect(
+      VoteRecordSchema.safeParse(withKey({ fromCli: 'codex', reason: 'unknown' })).success
+    ).toBe(true);
+    // An unknown reason class, a missing `fromCli`, and an extra key are all
+    // refused: the record must not accept a shape the live result cannot emit.
+    expect(VoteRecordSchema.safeParse(withKey({ fromCli: 'codex', reason: 'bored' })).success).toBe(
+      false
+    );
+    expect(VoteRecordSchema.safeParse(withKey({ reason: 'timeout' })).success).toBe(false);
+    expect(
+      VoteRecordSchema.safeParse(withKey({ fromCli: 'codex', reason: 'timeout', toCli: 'gemini' }))
+        .success
+    ).toBe(false);
+  });
+
+  it('the recorded reason vocabulary IS the live FallbackReason — neither side can drift alone', () => {
+    // A class added to `FallbackReason` without the schema learning it would
+    // make the #6054 write-time validation refuse every record that carries
+    // it; a class in the schema the live type lacks would accept a record no
+    // producer can write. Checked by `pnpm typecheck`, not at runtime.
+    expectTypeOf<NonNullable<VoterSummary['fallback']>['reason']>().toEqualTypeOf<FallbackReason>();
   });
 });
