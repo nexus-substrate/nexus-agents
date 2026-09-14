@@ -3,17 +3,23 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runAsJob, runJobInBackground } from './run-as-job.js';
-import { readJobResult, writeJobPending, writeJobCancelled } from './job-result-store.js';
+import {
+  readJobResult,
+  writeJobPending,
+  writeJobCancelled,
+  JOB_RECORD_RETENTION_MS,
+} from './job-result-store.js';
 import { abortJob } from './job-abort-registry.js';
 import { registerIdempotentJob, resolveIdempotency } from './job-idempotency.js';
 import { _resetForTests as resetConcurrency, getInFlight, getJobCap } from './job-concurrency.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
 import { VERSION } from '../../version.js';
+import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../../core/index.js';
 import { initTaskState, readTaskState } from '../../context/structured-task-state.js';
 
 interface DummyInput {
@@ -700,5 +706,85 @@ describe('runAsJob — producerVersion stamps the record at write time (#5008)',
     runAsJob<DummyInput, { value: number }>({ ...params, run: () => new Promise(() => {}) });
     await runJobInBackground('job-pv-default', params);
     expect(readJobResult('job-pv-default')?.producerVersion).toBe(VERSION);
+  });
+});
+
+describe('runAsJob — retention sweep before the pending write (#6224, #4976 gap 2)', () => {
+  let tmpDir: string;
+  let clock: FixedTimeProvider;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-runasjob-prune-test-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+    clock = new FixedTimeProvider(Date.parse('2026-09-14T12:00:00.000Z'));
+    setTimeProvider(clock);
+  });
+
+  afterEach(() => {
+    resetTimeProvider();
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** A `complete` record settled `msAgo` before the fixed clock. */
+  function seedSettled(jobId: string, msAgo: number): string {
+    const nowMs = clock.now();
+    const path = nexusDataPath('jobs', `result-${jobId}.json`);
+    mkdirSync(nexusDataPath('jobs'), { recursive: true });
+    writeFileSync(
+      path,
+      JSON.stringify({
+        v: 1,
+        jobId,
+        toolName: 'orchestrate',
+        status: 'complete',
+        createdAt: new Date(nowMs - msAgo - 1_000).toISOString(),
+        completedAt: new Date(nowMs - msAgo).toISOString(),
+        result: { ok: true },
+      })
+    );
+    return path;
+  }
+
+  function dispatch(jobId: string): void {
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: jobId },
+      freshJobId: () => jobId,
+      run: () => new Promise(() => {}),
+    });
+  }
+
+  it('sweeps expired records on the first dispatch of the process', () => {
+    const expired = seedSettled('expired', JOB_RECORD_RETENTION_MS + 1);
+    const fresh = seedSettled('fresh', JOB_RECORD_RETENTION_MS - 1);
+
+    dispatch('job-sweep-1');
+
+    expect(existsSync(expired)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
+    expect(readJobResult('job-sweep-1')?.status).toBe('pending');
+  });
+
+  it('is bounded to one sweep per process per hour', () => {
+    dispatch('job-sweep-first');
+    const expiredAfterFirstSweep = seedSettled('expired-later', JOB_RECORD_RETENTION_MS + 1);
+
+    // 59 minutes later: not due, the expired record survives the dispatch.
+    // `JOB_PRUNE_SWEEP_INTERVAL_MS` in the store, pinned as a literal here.
+    clock.advance(3_600_000 - 60_000);
+    dispatch('job-sweep-second');
+    expect(existsSync(expiredAfterFirstSweep)).toBe(true);
+
+    // At the hour: due again.
+    clock.advance(60_000);
+    dispatch('job-sweep-third');
+    expect(existsSync(expiredAfterFirstSweep)).toBe(false);
   });
 });

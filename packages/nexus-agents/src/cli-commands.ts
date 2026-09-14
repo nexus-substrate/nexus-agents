@@ -90,6 +90,8 @@ export { handleHealthCommand } from './cli/health-command.js';
 export { handleValidateCommand } from './cli/validate-command.js';
 // Issue #3214: Mode Command — expose mode detection for inspection/debugging
 export { handleModeCommand } from './cli/mode-command.js';
+// #6224: Jobs Command — job-record retention sweep on demand
+export { handleJobsCommand } from './cli/jobs-command.js';
 
 // Import handlers for dispatch
 import {
@@ -167,6 +169,8 @@ import { handleHealthCommand } from './cli/health-command.js';
 import { handleValidateCommand } from './cli/validate-command.js';
 // Issue #3214: Mode Command — expose mode detection for inspection/debugging
 import { handleModeCommand } from './cli/mode-command.js';
+// #6224: Jobs Command — job-record retention sweep on demand
+import { handleJobsCommand } from './cli/jobs-command.js';
 // Issue #1398: Lazy data directory initialization
 import { initDataDirectories } from './cli/setup-data-dir.js';
 // #1930: Step notifications (human-readable progress trail)
@@ -251,6 +255,8 @@ const SYNC_COMMAND_HANDLERS: Record<
   health: handleHealthCommand,
   // Issue #3214: Mode Command — print detected mode + signals + reasoning
   mode: handleModeCommand,
+  // #6224: `jobs prune [--dry-run]` — job-record retention sweep, counts printed
+  jobs: handleJobsCommand,
 };
 
 /**

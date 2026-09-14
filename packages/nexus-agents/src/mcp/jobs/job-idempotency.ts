@@ -236,8 +236,12 @@ export function shortCircuitOrFreshJobId<TEnvelope>(params: {
   return { kind: 'continue', jobId: r.jobId };
 }
 
-/** Read + schema-validate an index file. Returns `null` on miss / corruption. */
-function readIndexEntry(path: string): IdempotencyIndexEntry | null {
+/**
+ * Read + schema-validate an index file. Returns `null` on miss / corruption.
+ * Exported for the retention sweep in `job-result-store.ts` (#6224), which
+ * must read an entry to learn which job it points at before dropping it.
+ */
+export function readIndexEntry(path: string): IdempotencyIndexEntry | null {
   try {
     const raw = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
     const parsed = IdempotencyIndexEntrySchema.safeParse(raw);

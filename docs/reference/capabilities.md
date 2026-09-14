@@ -8,7 +8,7 @@
 
 ---
 
-## CLI Commands (52)
+## CLI Commands (53)
 
 Binary: `nexus-agents`
 
@@ -32,6 +32,7 @@ Binary: `nexus-agents`
 | `index` | async | `handleIndexCommand` | `src/cli-commands-handlers.ts` |
 | `init` | async | `handleInitCommand` | `src/cli-commands-handlers-setup.ts` |
 | `issue` | sync | `handleIssueCommand` | `src/cli-commands-handlers.ts` |
+| `jobs` | sync | `handleJobsCommand` | `src/cli/jobs-command.ts` |
 | `learning-metrics` | sync | `handleLearningMetricsCommand` | `src/cli-commands-handlers.ts` |
 | `login` | async | `handleLoginCommand` | `src/cli/login-command.ts` |
 | `memory-benchmark` | async | `handleMemoryBenchmarkCommand` | `src/cli/memory-benchmark-command.ts` |

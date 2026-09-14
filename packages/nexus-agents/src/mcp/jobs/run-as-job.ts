@@ -19,9 +19,14 @@
  * @module mcp/jobs/run-as-job
  */
 
-import type { ILogger } from '../../core/index.js';
+import { getTimeProvider, type ILogger } from '../../core/index.js';
 import { toolSuccess, toolStructuredError, type ToolResult } from '../tools/tool-result.js';
-import { writeJobComplete, writeJobFailed, writeJobPending } from './job-result-store.js';
+import {
+  pruneJobRecordsIfDue,
+  writeJobComplete,
+  writeJobFailed,
+  writeJobPending,
+} from './job-result-store.js';
 import { registerJobAbort, unregisterJobAbort } from './job-abort-registry.js';
 import { registerIdempotentJob, shortCircuitOrFreshJobId } from './job-idempotency.js';
 import { release, suggestRetryAfterMs, tryAcquire } from './job-concurrency.js';
@@ -294,7 +299,8 @@ export function detectFailureShapedResult(result: unknown): FailureShape | null 
  * 1. Resolve idempotency BEFORE acquiring a slot — a replay/collision must
  *    not burn capacity a live caller could use.
  * 2. `tryAcquire(toolName)` — over-cap returns the `busy` envelope.
- * 3. `writeJobPending` + `registerIdempotentJob` (when a key was supplied).
+ * 3. `pruneJobRecordsIfDue` (#6224), then `writeJobPending` +
+ *    `registerIdempotentJob` (when a key was supplied).
  * 4. Fire-and-forget `run(jobId, input)`: on resolve `writeJobComplete`,
  *    on reject `writeJobFailed`, `release` in a `finally`.
  * 5. Return the `pending` envelope (`{ status: 'pending', jobId, … }`).
@@ -326,7 +332,11 @@ export function runAsJob<I, R, E = ToolResult>(params: RunAsJobParams<I, R, E>):
   }
 
   const jobId = idempotency.jobId;
-  // Step 3: pending record + idempotency index entry.
+  // Step 3: retention sweep, then pending record + idempotency index entry.
+  // #6224: the store had no reaper (#4976 gap 2), so every dispatch left a
+  // record forever. Bounded to one sweep per process per hour inside the
+  // store; a failed sweep is logged there and never blocks the dispatch.
+  pruneJobRecordsIfDue(getTimeProvider().now());
   // #4972: record whether this tool can even receive a cancel. `run.length`
   // is the callback's declared arity, so >= 3 means it takes the `signal`
   // parameter. Structural, not behavioural — see `signalAccepted`'s doc.
