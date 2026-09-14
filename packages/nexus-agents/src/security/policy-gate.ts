@@ -268,6 +268,27 @@ function checkSourceTrustTiers(action: AgentAction): Violation | undefined {
 // ============================================================================
 
 /**
+ * Rule ids that only an ACTION-shaped evaluation can produce (#5380).
+ *
+ * Of the seven checks {@link evaluatePolicy} runs, one — {@link checkRuleOfTwo}
+ * — reads the `ActionContext` alone; the other six read the `AgentAction` and
+ * emit these ids. A caller that has a context but no action (the firewall's
+ * input-shaped `process()` without a supplied action) can run only the Rule of
+ * Two, and must report THESE as unmeasured rather than let their absence from
+ * a violation list read as a pass. Kept beside the check list below so a new
+ * action-scoped check is added to both or to neither.
+ */
+export const ACTION_SCOPED_POLICY_RULES: readonly string[] = [
+  'REQUIRE_CITATION',
+  'INSUFFICIENT_TRUST',
+  'UNTRUSTED_INFLUENCE',
+  'LABEL_SET_UNAVAILABLE',
+  'INVALID_LABELS',
+  'PRIVILEGED_LABEL',
+  'SOURCE_TRUST_MISMATCH',
+];
+
+/**
  * Evaluate an agent action against the policy gate.
  *
  * This is a deterministic check — no LLM in the loop. Returns a

@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 8.59.1
+
+### Patch Changes
+
+- [#6282](https://github.com/nexus-substrate/nexus-agents/pull/6282) [`32fc91e`](https://github.com/nexus-substrate/nexus-agents/commit/32fc91e3fd61d14bf44579546d17920586bbe910) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `verifyClaims` no longer passes an empty claims registry. A `ClaimsRegistry` with zero claims used to verify as `passed: true` (`[].every(...)` is `true`); it now returns `passed: false` with a new optional `VerifyReport.unmeasured` string naming the reason (`registry holds 0 claims — nothing was verified`), and `pnpm claims:check` prints that reason instead of `0 of 0 claims drifted`. A registry with at least one claim is reported exactly as before and `unmeasured` is absent. The YAML loader already rejected an empty list; this closes the same gap for callers that build the registry object themselves ([#4586](https://github.com/nexus-substrate/nexus-agents/issues/4586)).
+
+## 8.59.0
+
+### Minor Changes
+
+- [#6297](https://github.com/nexus-substrate/nexus-agents/pull/6297) [`5492665`](https://github.com/nexus-substrate/nexus-agents/commit/549266552f7a1679092e521e29be3d43ac22d304) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): `HostileInputFirewall.process()` runs the full `evaluatePolicy` set, not Rule of Two alone ([#5380](https://github.com/nexus-substrate/nexus-agents/issues/5380))
+
+  The `policyEnforcement` stage ran one of the seven policy checks production runs (`checkRuleOfTwo`); the other six read an `AgentAction`, which input-shaped `process()` never had, so they were never evaluated and the result could not say so. `FirewallProcessOptions` gains `action` (the action the caller intends to take on the input) and `existingLabels` (the repository label set); with `action` the stage runs `evaluatePolicy` in full — citation, trust requirement, influence block, Rule of Two, label validity, privileged labels, source trust tiers — and the new `FirewallResult.policy` (`FirewallPolicyEvaluation`) carries every violation plus the decision's own `allowed` and `requiresApproval`. Without `action`, `policy.scope` is `'context'`: the Rule of Two is measured and the six action-scoped rule ids are listed as `unmeasured`, never counted as passed. `wouldRefuse` (audit) and the `POLICY_REFUSED` refusal (enforce) now fire on any `severity: 'block'` violation, so audit-mode telemetry reports more would-be refusals for callers that supply an action; `NEXUS_FIREWALL_POLICY` off/audit/enforce semantics are unchanged, `ruleOfTwoViolation` is kept as a view onto `policy`, and a caller that passes no action gets exactly the checks it got before. Minor because the published surface grows (all additions optional).
+
+## 8.58.10
+
+### Patch Changes
+
+- [#6296](https://github.com/nexus-substrate/nexus-agents/pull/6296) [`35fdc3c`](https://github.com/nexus-substrate/nexus-agents/commit/35fdc3c26abe34086aa7b3d0a2e4f5ab3deb8dae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The MCP policy firewall's `deny-mutations-without-mode` rule now classifies every registered tool from its `TOOL_MANIFEST` entry's `readOnlyHint` instead of guessing ([#5114](https://github.com/nexus-substrate/nexus-agents/issues/5114)). Before, `isMutationTool` knew six generic names and called every other tool a mutation, so enforcing the firewall would have denied 45 of the 47 registered tools; the enforce path was closed for that reason. Now 26 tools are read-only and 21 are mutations, one source of truth shared with the tool-prerequisite gate, and a test fails by tool name if a new tool is registered without a `readOnlyHint`. `orchestrate` and `delegate_to_model`, which the old hand-kept set called read-only against their own manifest entries, are now mutations. A tool the manifest does not carry is reported as `unclassified` in the verdict — still denied when enforcing, but no longer recorded as a mutation the rule did not measure. `MUTATION_TOOLS` / `READ_ONLY_TOOLS` in `policy-rules` keep only generic agent/filesystem names and are tested disjoint from the manifest. No behaviour changes in warn mode, which remains forced on; reopening enforce stays [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988)'s decision.
+
 ## 8.58.9
 
 ### Patch Changes

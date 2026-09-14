@@ -19,6 +19,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
+import { allOf } from '../utils/verdict-aggregation.js';
 import type { ClaimEntry, ClaimsRegistry } from './claims-registry.js';
 
 /** Minimal filesystem surface, injectable for tests. */
@@ -45,6 +46,12 @@ export interface ClaimResult {
 export interface VerifyReport {
   results: ClaimResult[];
   passed: boolean;
+  /**
+   * Set when the run verified nothing — an empty `claims` list — and `passed`
+   * is therefore `false` for that reason rather than for a drifted claim
+   * (#4586). Absent on every run that inspected at least one claim.
+   */
+  unmeasured?: string;
 }
 
 /**
@@ -197,12 +204,25 @@ export function verifyClaim(claim: ClaimEntry, repoRoot: string, fs: ClaimFs): C
   return { id: claim.id, ok: true, detail: outcome.detail };
 }
 
-/** Verify every claim in the registry. */
+/**
+ * Verify every claim in the registry. An empty registry verifies nothing and
+ * does not pass: `[].every(...)` is `true`, which used to report a registry
+ * with zero claims as a clean gate (#4586). `ClaimsRegistrySchema` rejects an
+ * empty list at the YAML boundary, but this function takes any
+ * `ClaimsRegistry`-shaped value, so the empty case is named here too.
+ */
 export function verifyClaims(
   registry: ClaimsRegistry,
   repoRoot: string,
   fs: ClaimFs = nodeFs
 ): VerifyReport {
   const results = registry.claims.map((c) => verifyClaim(c, repoRoot, fs));
-  return { results, passed: results.every((r) => r.ok) };
+  if (results.length === 0) {
+    return {
+      results,
+      passed: false,
+      unmeasured: 'registry holds 0 claims — nothing was verified (#4586)',
+    };
+  }
+  return { results, passed: allOf(results, (r) => r.ok, false) };
 }
