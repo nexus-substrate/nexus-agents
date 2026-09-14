@@ -292,7 +292,19 @@ jobs:
           # what stops a future action version from silently voiding this guard
           # again the way v2 did.
           local_version=$(git show "$GITHUB_SHA:packages/nexus-agents/package.json" | jq -r '.version')
-          published_version=$(npm view nexus-agents version 2>/dev/null || echo "0.0.0")
+          # A failed lookup is unmeasured, never a version. This used to be
+          # `|| echo "0.0.0"`, which the `larger` comparison below read as
+          # "local is ahead" and — with no changesets pending — walked straight
+          # into `pnpm release` on a registry outage (#4927 finding 4). The
+          # sentinel was only caught on the pending-changesets branch.
+          if ! published_version=$(npm view nexus-agents version 2>"$RUNNER_TEMP/npm-view.err"); then
+            echo "::error::npm view nexus-agents version failed (or the package has never been published), so the publish-race skew is unmeasured. package.json is at $local_version. Not force-publishing; re-run once the registry answers. npm said: $(tr '\n' ' ' <"$RUNNER_TEMP/npm-view.err")"
+            exit 1
+          fi
+          if [ -z "$published_version" ]; then
+            echo "::error::npm view nexus-agents version printed nothing, so the publish-race skew is unmeasured. Not force-publishing."
+            exit 1
+          fi
 
           # Use sort -V to pick the larger of the two versions.
           larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
@@ -322,13 +334,9 @@ jobs:
             # race; two is a stalled loop. "Cannot measure" is its own failure,
             # never 0, and every exit path below carries an annotation.
             pending_names=$(pnpm exec tsx scripts/count-pending-changesets.ts --names "$GITHUB_SHA" | sed 's#^#.changeset/#; s#$#.md#' | paste -sd ',' -) || { echo "::error::count-pending-changesets.ts --names failed; see its output above. Not force-publishing (#5077)"; exit 1; }
-            # `published_version` is the `|| echo "0.0.0"` sentinel when the
-            # registry did not answer; walking to 0.0.0 would misreport that as
-            # "not on main's first-parent line".
-            if [ "$published_version" = "0.0.0" ]; then
-              echo "::error::npm view nexus-agents version failed (or the package has never been published), so the publish gap cannot be measured. package.json is at $local_version with $pending_changesets changeset(s) pending ($pending_names). Not force-publishing; re-run once the registry answers (#5077)"
-              exit 1
-            fi
+            # `published_version` is a real registry answer here: a failed
+            # `npm view` already failed the step above, so the walk below can
+            # never be asked to find a 0.0.0 sentinel on main's first-parent line.
             set +e
             unpublished_list=$(pnpm exec tsx scripts/count-unpublished-bumps.ts "$GITHUB_SHA" "$published_version")
             bumps_status=$?
@@ -359,25 +367,58 @@ jobs:
           # next block the tag + Release + SBOM trail is silently lost (#2696:
           # 2.68.0–2.76.0 reached npm with no git tag and no GitHub Release).
           TAG="nexus-agents@$local_version"
-          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            git push origin "refs/tags/$TAG" || echo "::warning::tag $TAG already on origin"
-          else
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "::warning::changeset publish did not create tag $TAG — creating it now"
             git tag "$TAG" "$GITHUB_SHA"
-            git push origin "refs/tags/$TAG"
+          fi
+          # The commit the tag resolves to, on origin. `--tags` lists the peeled
+          # `^{}` line for an annotated tag; a lightweight tag has only the
+          # direct line, which already IS the commit. Empty when origin has no
+          # such tag — and also empty when ls-remote itself fails, so a dead
+          # origin lands in the explicit error branches below rather than in a
+          # bare `set -e` exit with no annotation.
+          remote_tag_commit() {
+            git ls-remote --tags origin "refs/tags/$TAG" \
+              | awk -v t="refs/tags/$TAG" '$2 == t "^{}" { peeled = $1 } $2 == t { direct = $1 } END { print (peeled != "" ? peeled : direct) }'
+          }
+          local_tag_commit=$(git rev-list -n 1 "refs/tags/$TAG")
+          # A push failure used to be `|| echo "::warning::tag already on origin"`
+          # — every rejection, auth failure and network error read as benign, and
+          # the assertion below then read the LOCAL tag, so a rejected push
+          # reproduced #2696 (on npm, no remote tag) under a green run (#4927
+          # finding 4). Only "origin already has this tag at this commit" is
+          # benign, and that is verified against origin, not assumed.
+          if ! git push origin "refs/tags/$TAG"; then
+            remote_after_push=$(remote_tag_commit || true)
+            if [ -n "$remote_after_push" ] && [ "$remote_after_push" = "$local_tag_commit" ]; then
+              echo "::warning::tag $TAG already on origin at $local_tag_commit; push was a no-op"
+            else
+              echo "::error::git push of tag $TAG failed and origin does not hold it at $local_tag_commit (origin has: '${remote_after_push:-<none>}'). $local_version is on npm but its tag is not on origin (#2696) — push the tag by hand."
+              exit 1
+            fi
           fi
 
-          # Assert the tag points at a commit that actually holds this version
-          # (#4624). Before #4487 the fallback fired on feature merges and tagged
-          # $GITHUB_SHA, whose package.json was the PREVIOUS version — 14 of 14
-          # tags checked were off by one, and nothing noticed for weeks. Now that
-          # the decision reads the commit object, a legitimate firing means
-          # $GITHUB_SHA genuinely holds $local_version, so this assertion should
-          # never fire; it exists so that if that stops being true, a release
-          # fails loudly instead of quietly mislabelling its own provenance.
-          tagged_version=$(git show "$TAG:packages/nexus-agents/package.json" | jq -r '.version')
+          # Assert the tag ON ORIGIN points at a commit that actually holds this
+          # version (#4624). Before #4487 the fallback fired on feature merges
+          # and tagged $GITHUB_SHA, whose package.json was the PREVIOUS version
+          # — 14 of 14 tags checked were off by one, and nothing noticed for
+          # weeks. Now that the decision reads the commit object, a legitimate
+          # firing means $GITHUB_SHA genuinely holds $local_version, so this
+          # assertion should never fire; it exists so that if that stops being
+          # true, a release fails loudly instead of quietly mislabelling its own
+          # provenance. It reads the remote tag, not the local one, so it also
+          # fails if the push above did not land what it claimed to.
+          remote_tag=$(remote_tag_commit || true)
+          if [ -z "$remote_tag" ]; then
+            echo "::error::Tag $TAG is not on origin after the push (#2696)."
+            exit 1
+          fi
+          if ! tagged_version=$(git show "$remote_tag:packages/nexus-agents/package.json" | jq -r '.version'); then
+            echo "::error::Tag $TAG on origin points at $remote_tag, which is not a commit this checkout can read (#4624)."
+            exit 1
+          fi
           if [ "$tagged_version" != "$local_version" ]; then
-            echo "::error::Tag $TAG points at a commit whose package.json is $tagged_version, not $local_version (#4624)."
+            echo "::error::Tag $TAG on origin points at $remote_tag whose package.json is $tagged_version, not $local_version (#4624)."
             exit 1
           fi
           # Release notes = this version's section of the changesets CHANGELOG.

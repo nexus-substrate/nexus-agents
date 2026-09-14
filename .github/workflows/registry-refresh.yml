@@ -91,8 +91,15 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # The PR is opened whether or not verification passed, so that the head
+      # commit can carry a status that says which. A failed verification used to
+      # kill the job here, before any PR existed, so the branch carried NO status
+      # at all — the "absent is indistinguishable from verified" state of #4424
+      # (#4927 finding 8). The job still ends red on a failure (last step).
       - name: Verify refreshed data before opening a PR
+        id: verify
         if: steps.changed.outputs.changed == 'true'
+        continue-on-error: true
         run: bash scripts/verify-refresh.sh
 
       - name: Open PR with refreshed registry
@@ -114,20 +121,27 @@ jobs:
             automated
 
       - name: Publish verification status onto the PR head
-        if: steps.cpr.outputs.pull-request-number != ''
+        if: always() && steps.cpr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
           set -euo pipefail
-          # The gates above already passed (the job would have failed otherwise),
-          # so this records THAT on the commit the PR points at. Without it the
-          # PR carries no status at all and is indistinguishable from a verified
-          # one — the actual defect in #4424.
+          # Records the verify step's ACTUAL outcome on the commit the PR points
+          # at. This used to be a hardcoded `state=success` that could only run
+          # after a pass, so the status could only ever say pass (#4927 finding
+          # 8). Anything other than success/failure means verification did not
+          # run, which is reported as `error`, never as passed.
+          case "$VERIFY_OUTCOME" in
+            success) state=success; description='typecheck + registry-coverage + config tests passed' ;;
+            failure) state=failure; description='verify-refresh.sh failed — see the run log before merging' ;;
+            *)       state=error;   description="verification did not run (step outcome: ${VERIFY_OUTCOME:-none})" ;;
+          esac
           gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
-            -f state=success \
+            -f state="$state" \
             -f context=refresh/verify \
-            -f description='typecheck + registry-coverage + config tests passed' \
+            -f description="$description" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
       - name: Label PR needs-human-review when guardrails trip
@@ -165,3 +179,9 @@ jobs:
       - name: Print diff summary
         if: always()
         run: cat /tmp/diff-report.md || echo '(no diff report)'
+
+      - name: Fail the job when verification failed
+        if: always() && steps.verify.outcome == 'failure'
+        run: |
+          echo "::error::verify-refresh.sh failed; the PR (if opened) carries a failing refresh/verify status. See the verify step's log."
+          exit 1

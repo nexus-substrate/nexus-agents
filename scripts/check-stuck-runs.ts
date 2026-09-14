@@ -88,12 +88,18 @@ export function assessStuckRuns(runs: readonly RunSummary[]): StuckRunVerdict {
 
 /* eslint-disable no-console */
 /**
- * Parse the `gh run list --json databaseId,status,createdAt` output the
- * workflow passes in `RUNS_JSON`. Returns `undefined` when the input is absent
- * or empty (#5670): the workflow runs `RUNS_JSON=$(gh ...) pnpm exec tsx ...`,
- * so a `gh` failure leaves the variable empty and the step still runs. That
- * used to parse as `[]` and pass as "no runs waiting" — a measured-sounding
- * verdict over nothing. `gh`'s literal `[]` is still a genuinely empty list.
+ * Parse the `[{databaseId, status, createdAt}]` array the workflow passes in
+ * `RUNS_JSON`. Returns `undefined` when the input is absent or empty (#5670):
+ * the workflow once ran `RUNS_JSON=$(gh ...) pnpm exec tsx ...`, so a `gh`
+ * failure left the variable empty and the step still ran. That used to parse
+ * as `[]` and pass as "no runs waiting" — a measured-sounding verdict over
+ * nothing. A literal `[]` is still a genuinely empty list.
+ *
+ * The workflow now fetches runs BY WAITING STATUS (queued / pending / waiting /
+ * requested) rather than the 30 newest, and fails its own step when any fetch
+ * fails (#4927 finding 7). A wedged run is the oldest thing in the queue, so a
+ * recency window is exactly the window it falls outside of; this guard remains
+ * as the second line for an empty hand-off.
  */
 export function readRunsFrom(raw: string | undefined, now: number): RunSummary[] | undefined {
   if (raw === undefined || raw.trim() === '') return undefined;

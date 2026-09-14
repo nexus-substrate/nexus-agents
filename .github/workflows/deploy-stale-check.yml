@@ -65,8 +65,34 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RUNS_JSON=$(gh run list --workflow=deploy-website.yml --limit 30 \
-            --json databaseId,status,createdAt) pnpm exec tsx scripts/check-stuck-runs.ts
+          set -euo pipefail
+          # Fetch by WAITING STATUS, not by recency. `gh run list --limit 30` is
+          # newest-first, and a wedged run is by definition the OLDEST thing in
+          # the queue: the 2026-08-09 wedge had 34 later runs behind it and would
+          # have sat outside the window (#4927 finding 7). A status filter is
+          # unbounded by age. The REST endpoint is used directly because the
+          # accepted status set (`pending` in particular) is validated by the
+          # API, not by whichever `gh` version the runner ships.
+          #
+          # Each fetch is checked on its own: a failed or rate-limited call fails
+          # this step with an annotation instead of handing the script an empty
+          # or partial list (the script also refuses an empty RUNS_JSON, #5670).
+          runs_dir="$RUNNER_TEMP/deploy-runs"
+          mkdir -p "$runs_dir"
+          for status in queued pending waiting requested; do
+            if ! gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy-website.yml/runs?status=${status}&per_page=100" \
+                 --jq '.workflow_runs[] | {databaseId: .id, status: .status, createdAt: .created_at}' \
+                 > "$runs_dir/$status.jsonl"; then
+              echo "::error::unmeasured: listing deploy-website runs with status=$status failed, so whether a deploy is wedged could not be checked. Not evidence that nothing is waiting."
+              exit 1
+            fi
+          done
+          # `jq -s .` over the concatenated objects yields `[]` when every
+          # status query returned nothing — a measured empty list, which the
+          # script distinguishes from an unset RUNS_JSON.
+          RUNS_JSON=$(jq -sc '.' "$runs_dir"/*.jsonl)
+          export RUNS_JSON
+          pnpm exec tsx scripts/check-stuck-runs.ts
 
       - name: File or update the tracking issue
         if: steps.assess.outcome == 'failure' || steps.stuck.outcome == 'failure'
