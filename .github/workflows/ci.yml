@@ -29,6 +29,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # #4932: `actions/checkout` hung until `timeout-minutes` cancelled the
+      # job four times in one afternoon, and each time the PR page reported
+      # the JOB'S name as the failure ("Commit Messages: fail") for a check
+      # that never ran. `always()` runs this step after a cancelled or failed
+      # checkout too, so the log's first error line names the real failure.
+      # It is inline, not in `setup-node`: a `uses: ./.github/actions/...`
+      # step is resolved FROM the checked-out tree, so it cannot run when the
+      # checkout never completed (and is skipped after a cancel anyway). No
+      # retry was added — a retry would mask the signal this step names.
+      - name: Assert checkout completed (#4932)
+        if: always()
+        run: |
+          if ! { test -d .git && git rev-parse --verify HEAD >/dev/null; }; then
+            echo '::error::checkout did not complete - no git tree in the workspace, so the check this job is named after never ran (#4932)'
+            exit 1
+          fi
       - uses: ./.github/actions/setup-node
 
       - name: Validate conventional commits
@@ -49,6 +65,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # #4932: see the same step under `commitlint` for the rationale.
+      - name: Assert checkout completed (#4932)
+        if: always()
+        run: |
+          if ! { test -d .git && git rev-parse --verify HEAD >/dev/null; }; then
+            echo '::error::checkout did not complete - no git tree in the workspace, so the check this job is named after never ran (#4932)'
+            exit 1
+          fi
       - uses: ./.github/actions/setup-node
 
       # A PR that changes shippable source must add a changeset — changeset
@@ -72,6 +96,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # #4932: see the same step under `commitlint` for the rationale.
+      - name: Assert checkout completed (#4932)
+        if: always()
+        run: |
+          if ! { test -d .git && git rev-parse --verify HEAD >/dev/null; }; then
+            echo '::error::checkout did not complete - no git tree in the workspace, so the check this job is named after never ran (#4932)'
+            exit 1
+          fi
       - uses: ./.github/actions/setup-node
 
       # Every NEW .ts file added under packages/nexus-agents/src/ must have
@@ -425,6 +457,14 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # #4932: see the same step under `commitlint` for the rationale.
+      - name: Assert checkout completed (#4932)
+        if: always()
+        run: |
+          if ! { test -d .git && git rev-parse --verify HEAD >/dev/null; }; then
+            echo '::error::checkout did not complete - no git tree in the workspace, so the check this job is named after never ran (#4932)'
+            exit 1
+          fi
       - uses: ./.github/actions/setup-node
 
       # Blocking mode (#2199 Child 4). Drift findings fail the build.
