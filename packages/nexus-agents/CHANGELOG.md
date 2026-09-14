@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.54.1
+
+### Patch Changes
+
+- [#6151](https://github.com/nexus-substrate/nexus-agents/pull/6151) [`152af4b`](https://github.com/nexus-substrate/nexus-agents/commit/152af4bdebaeb079464113f5c455944568c562e3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Every `max-lines` suppression in `src/` now states its reason, and `arch-lint` fails on a bare one ([#6008](https://github.com/nexus-substrate/nexus-agents/issues/6008)); no runtime change.
+
 ## 8.54.0
 
 ### Minor Changes
