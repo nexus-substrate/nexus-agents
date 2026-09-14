@@ -322,6 +322,12 @@ jobs:
           # verdict; `no-record` (the empty ledger included), every other
           # kind, and `unmeasured` are ::error:: and exit 1. A governor-path
           # PR is red until the orchestrator appends its ratifying record.
+          # #6256: a record bound to an EARLIER head of this PR is
+          # `ratified-rebased` when that commit is present (the gate fetches
+          # it from origin by sha when a rebase orphaned it), its non-ledger
+          # patch identity equals the head's, and its ledger is a subsequence
+          # of the head's. The probe runs over this checkout (fetch-depth: 0,
+          # credentials persisted) with PR_BASE_SHA below as the PR base.
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.head_parent }}
@@ -562,6 +568,11 @@ jobs:
           # record in the landed ledger is exit 1, and so is `unmeasured`.
           # A red backstop is the durable signal: the pre-merge job can be
           # admin-bypassed, this cannot.
+          # #6256: the same moved-head rule as the pre-merge job, against the
+          # pre-squash head: PR_BASE_SHA is `${SHA}~1` (main before the
+          # squash), so each probed sha's merge-base with it is that sha's own
+          # fork point and the non-ledger diff is the PR's patch there. A
+          # ratified sha a rebase orphaned is fetched from origin by sha.
           PR_NUMBER: ${{ steps.evidence.outputs.pr_number }}
           PR_HEAD_SHA: ${{ steps.evidence.outputs.pr_head }}
           PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.pr_head_parent }}

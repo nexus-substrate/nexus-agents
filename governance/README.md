@@ -68,6 +68,10 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
 4. The caller commits the ledger in the ratified PR. The ledger-only tip
    commit is expected; the gate (step 2, #5779 / #5131) treats
    `headSha ∈ {head, head^}` as bound when `head` touches only the ledger.
+   A head that later moves to pick up another PR's ledger line — a rebase,
+   or GitHub's "Update branch" merge from main — keeps its record under the
+   moved-head rule (`ratified-rebased`, #6256) as long as the non-ledger
+   patch is byte-identical; see below.
 
 ### How the gate reads it (#5130 step 2)
 
@@ -79,8 +83,34 @@ and exits on it (#5131 — see "Fail-closed" below):
 `unanimous`; `panelCoverage` present with `errored === 0`; and the ledger is
 append-only against the base), or one of:
 
+- `ratified-rebased` — passes like `ratified` (#6256): no record binds
+  `head` or `head^`, but one binds an EARLIER head of this PR and all three
+  hold: (1) that commit's object is present in the checkout — a merge from
+  main keeps it as an ancestor; a rebase orphans it, so the gate fetches it
+  from `origin` by sha, which GitHub serves (measured on #6252's rebased-away
+  heads); (2) the non-ledger patch identity is equal — `sha256` over
+  `git diff -U0 <merge-base(sha, PR base)> <sha> -- . ':!governance/vote-records.jsonl'`
+  with `index` lines and `@@` hunk headers removed, for the ratified sha and
+  for the head; (3) the ledger at the ratified sha is an ordered subsequence
+  of the head ledger. The notice names the ratified sha, the head, whether
+  the relation is a merge (`ancestor`) or a rebase (`rewritten-history`),
+  and the shared identity. Why `-U0` and not `git patch-id`: #6282's
+  SKILL.md hunk differs at the default 3 lines of context only in a trailing
+  context line (main's newer PIPELINE NOTE — every workflow PR appends
+  there), and `git patch-id` strips whitespace before hashing, so a
+  whitespace-only edit inside a string literal would count as the same
+  patch. Disclosed limit: the identity is position-insensitive within a
+  file — the same added/removed lines at another location in the same file
+  hash the same. Everything else (a changed byte, a file added or dropped, a
+  mode change) changes it and the verdict is `sha-mismatch`. Both incidents
+  that motivated the rule (2026-09-14): #6252 ratified 7-0 at `fca64e9ea8`,
+  rebased to `cce938eec2` for #6249's ledger line, re-paneled; #6282
+  ratified at `43cb8bec`, merged from main to `8618d18d`, re-paneled.
 - `no-record` — nothing binds this PR; an empty ledger is this, never `ratified`.
-- `sha-mismatch` — records bind this PR, none at an accepted head.
+- `sha-mismatch` — records bind this PR, none at an accepted head, and none
+  passes the moved-head rule; the line names, per recorded sha, why —
+  `object not found`, the patch identity `differs`, or `not measured` (no
+  `PR_BASE_SHA`).
 - `not-approved` — a bound record's decision is not `approved`.
 - `wrong-error-policy` — a bound record records an `errorPolicy` other than
   `absolute_quorum` (#6211, schema tier 1.11). The record carries the
@@ -115,7 +145,9 @@ append-only against the base), or one of:
   rebase or a merge into main yields `base + A1 + B1`, but merging main INTO
   the branch (GitHub's "Update branch") yields `base + B1 + A1` — a
   legitimate refresh that a prefix rule refused. Outranks everything but
-  `ledger-invalid`.
+  `ledger-invalid`. The moved-head rule applies the same subsequence test
+  between the ledger at the ratified sha and the head ledger; a failure
+  there is this kind too, naming the ratified sha it was compared against.
 - `duplicate-id` — one id names two different records.
 
 An unreadable ledger (a directory at the path, a permissions error) prints
@@ -149,7 +181,9 @@ warn-first ended when it did.
 Precedence (the verdict's `kind`): `ledger-invalid` → `ledger-rewritten` →
 `duplicate-id` → `no-record` → `sha-mismatch` → `not-approved` →
 `wrong-error-policy` → `wrong-strategy` → `unmeasured-panel` →
-`degraded-panel` → `ratified`. **Report order differs from precedence** for
+`degraded-panel` → `ratified` / `ratified-rebased` (the per-record checks
+run over the records bound at the moved sha exactly as over a head-bound
+set, so a dissent there is `not-approved`). **Report order differs from precedence** for
 the per-record checks (the #6219 panel's note, applied at flip time): the
 printed line lists EVERY failing check over the bound records, with the
 misconfiguration kinds — `wrong-error-policy`, `wrong-strategy`,

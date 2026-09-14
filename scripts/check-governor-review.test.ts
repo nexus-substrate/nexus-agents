@@ -1254,7 +1254,8 @@ describe('the governor section is bounded by dedicated directives, not the human
    * The governor set parsed from origin/main at 32c14595b6, BEFORE the
    * directives landed, plus the two #6000 step-3 entries (the pure decision
    * computation and the voter-role set), plus the #6174 CODEOWNERS-parses gate
-   * script, plus the #5130 step-2 ledger-evidence module. The migration must not change what
+   * script, plus the #5130 step-2 ledger-evidence module and its #6256 report
+   * and patch-identity siblings. The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
    * recomputed, so an addition to the section is a reviewed act here too.
    */
@@ -1268,6 +1269,8 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/check-governor-review.ts',
     '/scripts/check-governor-ratification.ts',
     '/scripts/governor-ledger-evidence.ts',
+    '/scripts/governor-ledger-report.ts',
+    '/scripts/governor-patch-identity.ts',
     '/scripts/check-codeowners-errors.ts',
     '/scripts/governor-paths-touched.ts',
     '/.github/CODEOWNERS',
@@ -1301,7 +1304,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (21 entries)', () => {
+  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (23 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1312,7 +1315,12 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/docs/CODEOWNERS');
     // #5130 step 2: the committed-ledger half of the ratification gate.
     expect(set).toContain('/scripts/governor-ledger-evidence.ts');
-    expect(set).toHaveLength(21);
+    // #6256: its env reader / printed line, and the git probe the moved-head
+    // rule measures with — a probe outside the set could be weakened without
+    // ratification.
+    expect(set).toContain('/scripts/governor-ledger-report.ts');
+    expect(set).toContain('/scripts/governor-patch-identity.ts');
+    expect(set).toHaveLength(23);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

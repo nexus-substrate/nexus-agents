@@ -55,7 +55,12 @@
  * (the `verifyChain([])` → ok shape #5131 names as the whole defect) and
  * `unmeasured` (the ledger could not be read, or no PR number was supplied).
  * Warn-first ended on 2026-09-14 when the first bound record reached the
- * committed ledger (PR #6241).
+ * committed ledger (PR #6241). `ratified-rebased` (#6256) passes too: the
+ * record binds an earlier head of the PR whose non-ledger patch identity is
+ * byte-identical to the current head's — a rebase or merge from main that
+ * picked up another PR's ledger line — and the evidence module's notice says
+ * the head moved and why it still counts. That path needs `PR_BASE_SHA`,
+ * which both jobs already pass for the stamp exemption.
  *
  * @module scripts/check-governor-ratification
  */
@@ -72,7 +77,7 @@ import {
   injectorIsClean,
   EXEMPT_SPAN_NAMES,
 } from './governance-stamp-exemption.js';
-import { reportLedgerEvidence } from './governor-ledger-evidence.js';
+import { reportLedgerEvidence } from './governor-ledger-report.js';
 import { VOTE_RECORDS_REL_PATH } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
