@@ -9,154 +9,145 @@
  * sibling with a real producer/consumer relationship rather than a same-file
  * extraction the wiring gate would read as no consumer at all.
  *
- * CLAUDE.md: the governor path set is PARSED from the section bounded by the
- * `Governor's own core` marker and the `END governor-owned paths` sentinel, and
- * BOTH governor gates derive their set from this single parse. An entry outside
- * those markers is an ordinary review-request, not a governor path.
+ * CLAUDE.md: the governor path set is PARSED from the section of CODEOWNERS
+ * bounded by the `# @governor-section-start` and `# @governor-section-end`
+ * directives, and BOTH governor gates derive their set from this single parse.
+ * An entry outside those directives is an ordinary review-request, not a
+ * governor path.
  *
  * @module scripts/governor-section
  */
 
 /**
- * The GOVERNANCE-OF-THE-GOVERNOR section of /CODEOWNERS. Only the path patterns
- * BELOW this marker comment are treated as governor paths; the rest of CODEOWNERS
- * (security, pipeline, mcp, …) carries its own review requirements but is out of
- * scope for THIS gate. The marker is the section heading committed in CODEOWNERS.
+ * The directive line that OPENS the governor section of /CODEOWNERS (#6048).
+ *
+ * A dedicated directive, not the human heading. Until #6048 the boundary was a
+ * prefix of the committed heading (`# Governor's own core — …`), which made a
+ * line written for people double as a parser boundary: a mention of the phrase
+ * opened the section (#6032), and the prefix and the prose had to be separated
+ * by hand. Four defects in this ~20-line parser — #5137, #5576, #6030, #6032 —
+ * and three of them were boundary-matching, which indicts the representation
+ * rather than any single matcher.
+ *
+ * The directive carries no prose, so nothing about it gets edited, and it is
+ * matched as a whole trimmed line (see {@link governorSectionLines}), so a
+ * comment NAMING it does not open anything. There is deliberately NO fallback
+ * to the old heading prefix: a silent fallback would recreate the #6032 class
+ * with one more accepted spelling. The heading that follows it in CODEOWNERS
+ * is free prose that nobody has to be careful about.
  */
-export const GOVERNOR_SECTION_MARKER = "Governor's own core";
+export const GOVERNOR_SECTION_START_DIRECTIVE = '# @governor-section-start';
 
 /**
- * The prefix a line must START with to open the governor section (#6032).
+ * The directive line that ENDS the governor section (#4683, #6048).
  *
- * Anchored, not a substring. `raw.includes(GOVERNOR_SECTION_MARKER)` opened the
- * section on any line NAMING the phrase — a comment documenting the section, a
- * reference to it from a neighbouring one. Measured against the real file, one
- * such comment above the heading took the governor set from 14 patterns to 19,
- * sweeping in five entries that are not governor-owned. Fail-CLOSED (more paths
- * governed, not fewer), which is why this ranked below #6030 and #6034 — but
- * `governance-stamp-exemption.ts` names the cost precisely: a gate that blocks
- * ordinary work is a gate that gets bypassed.
- *
- * The comment sigil is part of the prefix on purpose. Matching the bare phrase
- * would not distinguish a heading from an owner-rule line that happened to
- * begin with it.
- *
- * A PREFIX rather than the whole heading, which reads:
- *
- *   # Governor's own core — the governance-of-the-governor paths (#3830, Epic #3829).
- *
- * That tail carries prose and issue references that get edited. Pinning the
- * full line would turn every such edit into a red governor gate — the same
- * blocks-ordinary-work cost, self-inflicted. Drift past this prefix is still
- * fail-closed: the section never opens, `started` stays false, and #5576's
- * guard reports it loudly instead of yielding a silently wrong set.
+ * #4683 introduced an end sentinel because the section previously ran from
+ * its heading to end of file, and `#` lines are skipped as comments, so a
+ * later section heading could not end it either: any CODEOWNERS entry appended
+ * below became a governor path AND its owners became ratifiers. #6048 renames
+ * that sentinel into the directive pair so both boundaries share one shape.
  */
-export const GOVERNOR_SECTION_START_PREFIX = `# ${GOVERNOR_SECTION_MARKER}`;
+export const GOVERNOR_SECTION_END_DIRECTIVE = '# @governor-section-end';
 
 /**
- * Sentinel that ends the governor section (#4683).
- *
- * The section previously ran from its heading to end of file, and `#` lines are
- * skipped as comments, so a later section heading could not end it either. Any
- * CODEOWNERS entry appended below therefore became a governor path AND — far
- * worse — its owners became ratifiers of governor changes. That was latent only
- * because the governor section happens to be last today; appending one ordinary
- * section would have silently handed ratification rights to its owners.
+ * Thrown when the governor section cannot be derived from CODEOWNERS: a
+ * directive is missing, duplicated, or out of order, or the bounded section
+ * yields no path pattern. A distinct class so a gate can tell a parse refusal
+ * from an I/O failure; both are fail-closed, but they are repaired differently.
  */
-export const GOVERNOR_SECTION_END_MARKER = 'END governor-owned paths';
+export class GovernorSectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GovernorSectionError';
+  }
+}
 
-/** The literal CODEOWNERS line that terminates the governor section. */
-export const GOVERNOR_SECTION_END_LINE = `# ${GOVERNOR_SECTION_END_MARKER}`;
+function cannotDerive(what: string): GovernorSectionError {
+  return new GovernorSectionError(`CODEOWNERS: ${what} — the governor path set cannot be derived`);
+}
 
 /**
- * The governor section's owner-rule lines, plus whether the section was
- * explicitly terminated.
+ * The zero-based line index of the ONE directive line, or a named refusal.
+ *
+ * Whole-line match after trimming, never a substring or a prefix. `includes`
+ * ended the section on a comment that named the sentinel (#6030); a prefix
+ * opened it on a comment that named the heading (#6032). A directive that is
+ * absent and one that appears twice are both refused with the count, because
+ * a second start above the real one would silently widen the set and a second
+ * one inside it would silently vanish as a comment.
+ */
+function directiveLineIndex(
+  lines: readonly string[],
+  directive: string,
+  role: 'start' | 'end'
+): number {
+  const hits = lines.flatMap((raw, index) => (raw.trim() === directive ? [index] : []));
+  const name = `governor section ${role} directive '${directive}'`;
+  if (hits.length > 1) {
+    throw cannotDerive(`${name} duplicated (${String(hits.length)} occurrences)`);
+  }
+  const [only] = hits;
+  if (only === undefined) throw cannotDerive(`${name} not found`);
+  return only;
+}
+
+/**
+ * The governor section's owner-rule lines: every non-blank, non-comment line
+ * strictly between the start and end directives.
  *
  * Shared by the path and owner parsers so the two cannot disagree about where
- * the section ends. `terminated` is reported rather than assumed, because the
- * two callers fail closed in OPPOSITE directions: an unterminated section must
- * yield MORE protected paths (protect everything below) but NO ratifiers (we
- * cannot say who is authorised).
+ * the section is. Refuses, with a {@link GovernorSectionError} naming the
+ * cause, rather than returning a flag: #5576 and #5137 were both a missing
+ * boundary reported as a boolean that one consumer forgot to read, and the
+ * two consumers then failed closed in OPPOSITE directions (paths ran to end of
+ * file, owners went empty). One thrown error is one verdict for both gates.
  */
-export function governorSectionLines(codeownersText: string): {
-  lines: string[];
-  terminated: boolean;
-  /**
-   * Whether the START marker was found (#5576). Only `terminated` was tracked,
-   * so a missing or renamed start marker returned `lines: []` with no signal —
-   * indistinguishable from a section that exists and is empty, and both derive
-   * zero governor patterns, which every gate downstream read as "nothing to
-   * assert". The end-marker case was #5137; this is the same shape one line
-   * earlier.
-   */
-  started: boolean;
-} {
-  const lines: string[] = [];
-  let inSection = false;
-  let terminated = false;
-  for (const raw of codeownersText.split('\n')) {
-    if (!inSection) {
-      if (raw.trim().startsWith(GOVERNOR_SECTION_START_PREFIX)) inSection = true;
-      continue;
-    }
-    // EXACT LINE, not a substring (#6030). `includes` here ended the section on
-    // any line NAMING the sentinel, and because this test runs BEFORE the
-    // comment skip below, an ordinary explanatory comment did it. Measured
-    // against the real file: one comment under the start marker took the set
-    // from 13 patterns to 0 while `started` and `terminated` both still
-    // reported success -- so neither the #5576 missing-start guard nor the
-    // #5137 missing-end guard could fire. Fail-OPEN, on the governor path.
-    //
-    // Exact matching is fail-closed in the other direction too: a sentinel
-    // whose text drifts leaves the section unterminated, which #4683 already
-    // routes to end-of-file -- MORE paths governed, not fewer.
-    if (raw.trim() === GOVERNOR_SECTION_END_LINE) {
-      terminated = true;
-      break;
-    }
-    const line = raw.trim();
-    if (line === '' || line.startsWith('#')) continue;
-    lines.push(line);
+export function governorSectionLines(codeownersText: string): string[] {
+  const raw = codeownersText.split('\n');
+  const start = directiveLineIndex(raw, GOVERNOR_SECTION_START_DIRECTIVE, 'start');
+  const end = directiveLineIndex(raw, GOVERNOR_SECTION_END_DIRECTIVE, 'end');
+  if (end < start) {
+    throw cannotDerive(
+      `governor section end directive '${GOVERNOR_SECTION_END_DIRECTIVE}' precedes the start directive`
+    );
   }
-  return { lines, terminated, started: inSection };
+  return raw
+    .slice(start + 1, end)
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
 }
 
 /**
  * Extract the governor path PATTERNS from CODEOWNERS text — the patterns in the
- * governance-of-the-governor section only (everything from the
- * {@link GOVERNOR_SECTION_MARKER} heading to end of file). Each owner-rule line's
- * FIRST token is the path pattern; comment/blank lines are skipped. This is the
- * SINGLE SOURCE — the gate never hardcodes a divergent copy.
+ * governance-of-the-governor section only (everything between the
+ * {@link GOVERNOR_SECTION_START_DIRECTIVE} and {@link GOVERNOR_SECTION_END_DIRECTIVE}
+ * lines). Each owner-rule line's FIRST token is the path pattern; comment/blank
+ * lines are skipped. This is the SINGLE SOURCE — the gate never hardcodes a
+ * divergent copy.
+ *
+ * Never returns an empty array: an absent or malformed section throws from
+ * {@link governorSectionLines}, and a well-bounded section that yields nothing
+ * throws here.
  */
 export function governorPathsFromCodeowners(codeownersText: string): string[] {
-  // An UNterminated section falls back to end-of-file (#4683). For paths that
-  // is the fail-closed direction: more paths treated as governor-owned, not
-  // fewer. The owner parser fails closed the other way.
-  const section = governorSectionLines(codeownersText);
   const patterns: string[] = [];
-  for (const line of section.lines) {
+  for (const line of governorSectionLines(codeownersText)) {
     const pattern = line.split(/\s+/)[0];
     if (pattern !== undefined && pattern !== '') patterns.push(pattern);
   }
 
-  // A section that STARTED must yield patterns (#6030). Returning [] here would
+  // A bounded section must yield patterns (#6030). Returning [] here would
   // report "no governor paths exist" when the truth is "I failed to find them",
   // and both gates read that as nothing to assert -- the exact shape CLAUDE.md
-  // forbids: a check that cannot fail by construction. This parser has now
-  // produced three boundary defects (#5137, #5576, #6030), each landing on an
-  // empty set with healthy flags, so the guard is on the OUTPUT invariant
-  // rather than on one more known input spelling.
-  //
-  // An absent section is NOT this error -- `started === false` is #5576's case
-  // and is reported there. This fires only when the markers were found and the
-  // parse still came back empty.
-  if (section.started && patterns.length === 0) {
-    throw new Error(
+  // forbids: a check that cannot fail by construction. The guard is on the
+  // OUTPUT invariant rather than on one more known input spelling.
+  if (patterns.length === 0) {
+    throw new GovernorSectionError(
       `CODEOWNERS governor section found but yielded ZERO path patterns. ` +
         `This is a parse failure, not an empty set: both governor gates derive ` +
         `their path set from here, so an empty result would silently disable them. ` +
-        `Check for a comment between "${GOVERNOR_SECTION_MARKER}" and ` +
-        `"${GOVERNOR_SECTION_END_LINE}" that terminates the section early.`
+        `Every line between "${GOVERNOR_SECTION_START_DIRECTIVE}" and ` +
+        `"${GOVERNOR_SECTION_END_DIRECTIVE}" is blank or a comment.`
     );
   }
   return patterns;

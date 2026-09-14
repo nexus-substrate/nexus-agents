@@ -19,6 +19,7 @@
 # Consensus / voter configuration — the loop's own judge (#3653 self-mod guard)
 /packages/nexus-agents/src/consensus/ @williamzujkowski
 
+# @governor-section-start
 # Governor's own core — the governance-of-the-governor paths (#3830, Epic #3829).
 # These are NEVER auto-merged: human ratification is required. Admin-merge
 # discipline applies to them too — an agent-authored PR must not modify the
@@ -49,9 +50,9 @@
 
 # Governance rules — the review bar's own definition (#5997). `.rules/governance.md`
 # holds the voting thresholds and refactor gates, so a change here can lower the bar
-# every other governor path is measured against. It sat ABOVE the section marker
+# every other governor path is measured against. It sat ABOVE the section start
 # until #5997, so the parser read it as an ordinary review-request while CLAUDE.md
-# claimed it required ratification. Keep it below the marker.
+# claimed it required ratification. Keep it inside the directives.
 /.rules/ @williamzujkowski
 
 # Project governance
@@ -59,9 +60,12 @@
 /AGENTS.md @williamzujkowski
 /CODEOWNERS @williamzujkowski
 
-# END governor-owned paths
-# ^ Sentinel (#4683). The governor section is bounded by this line. Entries
-# BELOW it are ordinary CODEOWNERS rules: they are not governor paths, and
-# their owners cannot ratify a governor change. Add new governor paths ABOVE
-# this marker. Removing it makes the ratification verdict `indeterminate`,
-# which fails closed.
+# @governor-section-end
+# ^ Directive (#4683, #6048). The governor section is the lines between the
+# `# @governor-section-start` and `# @governor-section-end` directives above;
+# the parser (scripts/governor-section.ts) matches those two lines exactly and
+# nothing else — the "Governor's own core" heading under the start directive is
+# free prose. Entries BELOW this line are ordinary CODEOWNERS rules: they are
+# not governor paths, and their owners cannot ratify a governor change. Add new
+# governor paths ABOVE it. A missing, duplicated or reordered directive makes
+# both governor gates refuse with a named error, which fails closed.

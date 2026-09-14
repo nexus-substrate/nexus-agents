@@ -35,9 +35,9 @@ import {
   unresolvedGovernorPatterns,
   matchesCodeownersPattern,
   isGovernorPath,
-  GOVERNOR_SECTION_MARKER,
-  GOVERNOR_SECTION_START_PREFIX,
-  GOVERNOR_SECTION_END_LINE,
+  GovernorSectionError,
+  GOVERNOR_SECTION_START_DIRECTIVE,
+  GOVERNOR_SECTION_END_DIRECTIVE,
 } from './governor-section.js';
 import {
   isStampOnlyChange,
@@ -77,6 +77,7 @@ const CODEOWNERS_SAMPLE = [
   '/packages/nexus-agents/src/security/ @owner',
   '/packages/nexus-agents/src/mcp/ @owner',
   '',
+  GOVERNOR_SECTION_START_DIRECTIVE,
   "# Governor's own core — the governance-of-the-governor paths.",
   '# Audit hash chain',
   '/packages/nexus-agents/src/audit/ @owner',
@@ -86,7 +87,7 @@ const CODEOWNERS_SAMPLE = [
   '/governance/ @owner',
   '/CLAUDE.md @owner',
   '/CODEOWNERS @owner',
-  '# END governor-owned paths',
+  GOVERNOR_SECTION_END_DIRECTIVE,
 ].join('\n');
 
 const GOVERNOR_PATTERNS = governorPathsFromCodeowners(CODEOWNERS_SAMPLE);
@@ -159,22 +160,28 @@ describe('the gate says how much of the ledger it verified (#5818)', () => {
   });
 });
 
-describe('governor section start marker (#5576)', () => {
-  const NO_START_MARKER = [
-    // Deliberately does NOT contain the section marker text — a fixture that
-    // quotes the marker it claims is missing would start the section anyway.
+describe('governor section start directive (#5576, #6048)', () => {
+  const NO_START_DIRECTIVE = [
     '# Ownership',
+    // The human heading is present and is NOT a boundary (#6048): only the
+    // directive opens the section, so this fixture has no section at all.
+    "# Governor's own core — the governance-of-the-governor paths.",
     '/packages/nexus-agents/src/audit/ @owner',
     '/CODEOWNERS @owner',
-    '# END governor-owned paths',
+    GOVERNOR_SECTION_END_DIRECTIVE,
   ].join('\n');
 
-  it('reports that the section never started', () => {
-    // Only `terminated` was tracked. With the start marker absent the parser
-    // returned lines: [] and no signal, so the caller derived zero governor
-    // patterns and every gate downstream reported a pass it never measured.
-    expect(governorSectionLines(NO_START_MARKER).started).toBe(false);
-    expect(governorSectionLines(CODEOWNERS_SAMPLE).started).toBe(true);
+  it('refuses to derive a set when the start directive is absent', () => {
+    // #5576: only `terminated` was tracked, so a missing start returned
+    // lines: [] with no signal and every gate downstream passed unmeasured.
+    // #6048 replaces the `started` flag with a thrown, named error — a flag a
+    // caller can forget to read is the #5576 shape one consumer over.
+    expect(() => governorSectionLines(NO_START_DIRECTIVE)).toThrow(GovernorSectionError);
+    expect(() => governorSectionLines(NO_START_DIRECTIVE)).toThrow(
+      "CODEOWNERS: governor section start directive '# @governor-section-start' not found — " +
+        'the governor path set cannot be derived'
+    );
+    expect(governorSectionLines(CODEOWNERS_SAMPLE)).toHaveLength(6);
   });
 
   it('fails the review gate when no governor pattern could be parsed', () => {
@@ -908,56 +915,58 @@ describe('the governor section terminates on the sentinel LINE, not a mention (#
     expect(REAL_COUNT).toBeGreaterThan(5);
   });
 
-  it('an explanatory comment naming the sentinel does NOT end the section', () => {
+  it('an explanatory comment naming the end directive does NOT end the section', () => {
     // The measured trigger. Under `includes()` this took the real file from 13
     // patterns to 0 with started AND terminated both still reporting success,
     // so neither existing guard could fire. No adversary needed: this is the
     // comment a maintainer writes while documenting the section.
     const withComment = REAL_CODEOWNERS.replace(
-      GOVERNOR_SECTION_MARKER,
-      `${GOVERNOR_SECTION_MARKER}\n# Everything below, up to END governor-owned paths, needs ratification.`
+      GOVERNOR_SECTION_START_DIRECTIVE,
+      `${GOVERNOR_SECTION_START_DIRECTIVE}\n# Everything below, up to ${GOVERNOR_SECTION_END_DIRECTIVE}, needs ratification.`
     );
     expect(withComment).not.toEqual(REAL_CODEOWNERS);
     expect(governorPathsFromCodeowners(withComment)).toHaveLength(REAL_COUNT);
   });
 
-  it('the real sentinel line still ends the section', () => {
-    const section = governorSectionLines(REAL_CODEOWNERS);
-    expect(section.terminated).toBe(true);
-    expect(section.lines).toHaveLength(REAL_COUNT);
+  it('the real end directive line still ends the section', () => {
+    expect(governorSectionLines(REAL_CODEOWNERS)).toHaveLength(REAL_COUNT);
   });
 
-  it('a sentinel whose text drifted leaves the section unterminated, not collapsed', () => {
-    // #4683's fallback: unterminated runs to end-of-file, governing MORE paths
-    // rather than fewer. Exact matching routes a drifted sentinel there.
+  it('an end directive whose text drifted is reported as MISSING, not run to end-of-file', () => {
+    // #4683 routed an unterminated section to end-of-file: more paths governed
+    // and no ratifiers. #6048 makes it a named error instead, so both gates go
+    // red on the same message rather than one silently widening its set while
+    // the other reports `indeterminate`.
     const drifted = REAL_CODEOWNERS.replace(
-      GOVERNOR_SECTION_END_LINE,
-      `${GOVERNOR_SECTION_END_LINE} (do not move)`
+      GOVERNOR_SECTION_END_DIRECTIVE,
+      `${GOVERNOR_SECTION_END_DIRECTIVE} (do not move)`
     );
-    const section = governorSectionLines(drifted);
-    expect(section.terminated).toBe(false);
-    expect(section.lines.length).toBeGreaterThanOrEqual(REAL_COUNT);
+    expect(drifted).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorSectionLines(drifted)).toThrow(
+      "CODEOWNERS: governor section end directive '# @governor-section-end' not found — " +
+        'the governor path set cannot be derived'
+    );
   });
 });
 
 describe('a started governor section that yields nothing is a failure, not an empty set (#6030)', () => {
-  it('throws when the markers are present but no pattern survives', () => {
+  it('throws when the directives are present but no pattern survives', () => {
     const collapsed = [
       '/some/other/path @someone',
-      // The real heading is a COMMENT, so the fixture must be one too (#6032).
-      // Using the bare marker made this fixture unrealistic, and the anchored
-      // start matcher surfaced that rather than being weakened to accommodate it.
-      GOVERNOR_SECTION_START_PREFIX,
+      GOVERNOR_SECTION_START_DIRECTIVE,
+      "# Governor's own core — the heading is prose (#6048)",
       '# only commentary in here',
-      GOVERNOR_SECTION_END_LINE,
+      GOVERNOR_SECTION_END_DIRECTIVE,
     ].join('\n');
+    expect(() => governorPathsFromCodeowners(collapsed)).toThrow(GovernorSectionError);
     expect(() => governorPathsFromCodeowners(collapsed)).toThrow(/ZERO path patterns/);
   });
 
-  it('does NOT throw when the section is simply absent — that is #5576, reported there', () => {
+  it('an absent section is the missing-start error, never an empty set (#5576 → #6048)', () => {
+    // Before #6048 this returned [] with `started: false` and relied on every
+    // consumer reading the flag. Now there is no flag to forget.
     const noSection = ['/some/other/path @someone', '# nothing governor-ish here'].join('\n');
-    expect(governorPathsFromCodeowners(noSection)).toEqual([]);
-    expect(governorSectionLines(noSection).started).toBe(false);
+    expect(() => governorPathsFromCodeowners(noSection)).toThrow(/start directive .* not found/);
   });
 });
 
@@ -1020,11 +1029,12 @@ describe('a governor pattern that matches nothing is not a governed path (#6034)
   // `terminated` stay healthy, #6030's non-empty guard is satisfied — and the
   // path is silently ungoverned. Fail-OPEN.
   const LINES = [
+    GOVERNOR_SECTION_START_DIRECTIVE,
     "# Governor's own core",
     '/packages/nexus-agents/src/audit/ @owner',
     '/scripts/inject-governance.ts @owner',
     '/governance/claims-registry.* @owner',
-    '# END governor-owned paths',
+    GOVERNOR_SECTION_END_DIRECTIVE,
   ];
   const TRACKED = [
     'packages/nexus-agents/src/audit/logger.ts',
@@ -1045,9 +1055,9 @@ describe('a governor pattern that matches nothing is not a governed path (#6034)
   it('reports a typo, naming the pattern AND its line', () => {
     // "some pattern is stale" is not actionable on a 14-entry list.
     const result = unresolvedGovernorPatterns(['/pakages/nexus-agents/src/audit/'], TRACKED, [
-      "# Governor's own core",
+      GOVERNOR_SECTION_START_DIRECTIVE,
       '/pakages/nexus-agents/src/audit/ @owner',
-      '# END governor-owned paths',
+      GOVERNOR_SECTION_END_DIRECTIVE,
     ]);
     expect(result).toEqual(['CODEOWNERS:2  /pakages/nexus-agents/src/audit/']);
   });
@@ -1095,59 +1105,184 @@ describe('a governor pattern that matches nothing is not a governed path (#6034)
   });
 });
 
-describe('the governor section opens on the heading, not a mention (#6032)', () => {
-  // The same defect as #6030 one line earlier, and the fourth in this ~20-line
-  // parser (#5137, #5576, #6030, this). Measured: one comment naming the phrase
-  // above the real heading took the set from 14 patterns to 19, sweeping in five
-  // entries that are not governor-owned.
+describe('the governor section is bounded by dedicated directives, not the human heading (#6048)', () => {
+  // The fifth boundary change to this ~20-line parser (#5137, #5576, #6030,
+  // #6032). Three of the four defects were boundary-matching, which indicts the
+  // representation rather than any single matcher: the start boundary was a
+  // human heading doing double duty, so its prefix and its prose had to be
+  // separated by hand (#6032). The directives carry no prose and are matched
+  // as exact trimmed lines. There is NO fallback to the heading prefix — a
+  // silent fallback would recreate the #6032 class with one more spelling.
   const REAL_CODEOWNERS = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
-  const REAL_COUNT = governorPathsFromCodeowners(REAL_CODEOWNERS).length;
 
-  it('the real file parses to a non-trivial set', () => {
-    expect(REAL_COUNT).toBeGreaterThan(5);
+  /**
+   * The governor set parsed from origin/main at 32c14595b6, BEFORE the
+   * directives landed. The migration must not change what is governed: this
+   * is the identical-set proof, pinned as data rather than recomputed.
+   */
+  const PINNED_SET = [
+    '/packages/nexus-agents/src/audit/',
+    '/packages/nexus-agents/src/governance/',
+    '/scripts/inject-governance.ts',
+    '/governance/',
+    '/governance/claims-registry.*',
+    '/.github/workflows/governor-review.yml',
+    '/scripts/check-governor-review.ts',
+    '/scripts/check-governor-ratification.ts',
+    '/scripts/governance-stamp-exemption.ts',
+    '/scripts/governor-section.ts',
+    '/.rules/',
+    '/CLAUDE.md',
+    '/AGENTS.md',
+    '/CODEOWNERS',
+  ];
+
+  const CANNOT_DERIVE = 'the governor path set cannot be derived';
+  const MISSING_START =
+    "CODEOWNERS: governor section start directive '# @governor-section-start' not found — " +
+    CANNOT_DERIVE;
+  const MISSING_END =
+    "CODEOWNERS: governor section end directive '# @governor-section-end' not found — " +
+    CANNOT_DERIVE;
+
+  it('the directives are the committed spelling', () => {
+    // The error messages above quote them literally, so a renamed constant
+    // must show up here and not only in a regex that happens to still match.
+    expect(GOVERNOR_SECTION_START_DIRECTIVE).toBe('# @governor-section-start');
+    expect(GOVERNOR_SECTION_END_DIRECTIVE).toBe('# @governor-section-end');
   });
 
-  it('a comment NAMING the marker above the heading does not open the section', () => {
-    const withMention = REAL_CODEOWNERS.replace(
+  it('the real file parses to exactly the pre-migration set', () => {
+    expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
+  });
+
+  it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {
+    // #6032's defect, re-run against the new boundary. Under the prefix
+    // matcher a full heading line above the security block opened the section
+    // early and swept five non-governor entries in. Under the directives the
+    // heading is prose wherever it appears.
+    const withStrayHeading = REAL_CODEOWNERS.replace(
       '# Security modules',
-      `# See ${GOVERNOR_SECTION_MARKER} below for the governed set.\n# Security modules`
+      "# Governor's own core — see the directive-bounded section below.\n# Security modules"
     );
-    expect(withMention).not.toEqual(REAL_CODEOWNERS);
-    expect(governorPathsFromCodeowners(withMention)).toHaveLength(REAL_COUNT);
+    expect(withStrayHeading).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(withStrayHeading)).toEqual(PINNED_SET);
   });
 
-  it('the real heading still opens it, tail and all', () => {
-    // The prefix deliberately stops before the em-dash and issue references, so
-    // editing that tail cannot break the parse.
-    const section = governorSectionLines(REAL_CODEOWNERS);
-    expect(section.started).toBe(true);
-    expect(section.lines).toHaveLength(REAL_COUNT);
+  it('a path listed above the start directive is NOT governor', () => {
+    const above = REAL_CODEOWNERS.replace(
+      GOVERNOR_SECTION_START_DIRECTIVE,
+      `/packages/nexus-agents/src/not-governed/ @owner\n${GOVERNOR_SECTION_START_DIRECTIVE}`
+    );
+    expect(above).not.toEqual(REAL_CODEOWNERS);
+    const set = governorPathsFromCodeowners(above);
+    expect(set).not.toContain('/packages/nexus-agents/src/not-governed/');
+    expect(set).toEqual(PINNED_SET);
   });
 
-  it('a heading whose PREFIX drifts leaves started false — #5576 reports it', () => {
-    // Fail-closed: the section never opens rather than opening somewhere wrong.
-    const drifted = REAL_CODEOWNERS.replace(GOVERNOR_SECTION_START_PREFIX, '# Governors own core');
-    expect(drifted).not.toEqual(REAL_CODEOWNERS);
-    expect(governorSectionLines(drifted).started).toBe(false);
-  });
-
-  it('editing the heading TAIL does not break the parse — the point of a prefix', () => {
-    // The reason option A (pin the whole line) was rejected: this edit is
-    // ordinary, and under A it would redden the governor gate.
-    const retitled = REAL_CODEOWNERS.replace(
+  it('the human heading is free prose: rewording or deleting it changes nothing', () => {
+    // The reason for the migration. Under #6032 the heading PREFIX was load-
+    // bearing and a drifted prefix silently closed the section (started=false).
+    const reworded = REAL_CODEOWNERS.replace(
       /^# Governor's own core.*$/m,
-      `${GOVERNOR_SECTION_START_PREFIX} — reworded tail (#9999).`
+      '# Whatever the maintainers want to call this section (#9999)'
     );
-    expect(retitled).not.toEqual(REAL_CODEOWNERS);
-    expect(governorPathsFromCodeowners(retitled)).toHaveLength(REAL_COUNT);
+    expect(reworded).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(reworded)).toEqual(PINNED_SET);
+
+    const deleted = REAL_CODEOWNERS.replace(/^# Governor's own core.*\n/m, '');
+    expect(deleted).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(deleted)).toEqual(PINNED_SET);
   });
 
-  it('an owner-rule line beginning with the phrase is not a heading', () => {
-    // Why the comment sigil is part of the prefix.
-    const section = governorSectionLines(
-      [`${GOVERNOR_SECTION_MARKER}/path @owner`, '/a/b @owner'].join('\n')
+  it('start directive missing → the named error', () => {
+    const noStart = REAL_CODEOWNERS.replace(`${GOVERNOR_SECTION_START_DIRECTIVE}\n`, '');
+    expect(noStart).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorPathsFromCodeowners(noStart)).toThrow(GovernorSectionError);
+    expect(() => governorPathsFromCodeowners(noStart)).toThrow(MISSING_START);
+  });
+
+  it('end directive missing → the named error', () => {
+    const noEnd = REAL_CODEOWNERS.replace(`${GOVERNOR_SECTION_END_DIRECTIVE}\n`, '');
+    expect(noEnd).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorPathsFromCodeowners(noEnd)).toThrow(GovernorSectionError);
+    expect(() => governorPathsFromCodeowners(noEnd)).toThrow(MISSING_END);
+  });
+
+  it('duplicate start directive → the named error, with the count', () => {
+    // A second start ABOVE the real one would otherwise widen the set silently
+    // (the #6032 shape); a second start INSIDE would be swallowed as a comment.
+    // Neither is a section; both are refused.
+    const dupAbove = REAL_CODEOWNERS.replace(
+      '# Security modules',
+      `${GOVERNOR_SECTION_START_DIRECTIVE}\n# Security modules`
     );
-    expect(section.started).toBe(false);
+    expect(dupAbove).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorPathsFromCodeowners(dupAbove)).toThrow(
+      "CODEOWNERS: governor section start directive '# @governor-section-start' duplicated " +
+        `(2 occurrences) — ${CANNOT_DERIVE}`
+    );
+    const dupInside = REAL_CODEOWNERS.replace(
+      '# Audit hash chain',
+      `${GOVERNOR_SECTION_START_DIRECTIVE}\n# Audit hash chain`
+    );
+    expect(dupInside).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorPathsFromCodeowners(dupInside)).toThrow(/start directive .* duplicated/);
+  });
+
+  it('duplicate end directive → the named error, with the count', () => {
+    const dup = REAL_CODEOWNERS.replace(
+      '# Audit hash chain',
+      `${GOVERNOR_SECTION_END_DIRECTIVE}\n# Audit hash chain`
+    );
+    expect(dup).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorPathsFromCodeowners(dup)).toThrow(
+      "CODEOWNERS: governor section end directive '# @governor-section-end' duplicated " +
+        `(2 occurrences) — ${CANNOT_DERIVE}`
+    );
+  });
+
+  it('an end directive ABOVE the start directive → the named error', () => {
+    // Both present, once each, in the wrong order. Slicing start..end would
+    // yield an empty range that the ZERO-patterns guard also catches, but the
+    // message would blame a comment; name the actual cause.
+    const swapped = REAL_CODEOWNERS.replace(`${GOVERNOR_SECTION_END_DIRECTIVE}\n`, '').replace(
+      '# Security modules',
+      `${GOVERNOR_SECTION_END_DIRECTIVE}\n# Security modules`
+    );
+    expect(swapped).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorPathsFromCodeowners(swapped)).toThrow(
+      "CODEOWNERS: governor section end directive '# @governor-section-end' precedes the " +
+        `start directive — ${CANNOT_DERIVE}`
+    );
+  });
+
+  it('a comment NAMING a directive is not a directive — whole-line match', () => {
+    // #6030's defect (substring match on the sentinel) re-run against the new
+    // boundary. This is the comment a maintainer writes while documenting it.
+    const naming = REAL_CODEOWNERS.replace(
+      '# Security modules',
+      `# The governor section is bounded by ${GOVERNOR_SECTION_START_DIRECTIVE} and ` +
+        `${GOVERNOR_SECTION_END_DIRECTIVE}; see below.\n# Security modules`
+    );
+    expect(naming).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(naming)).toEqual(PINNED_SET);
+  });
+
+  it('the directive line tolerates surrounding whitespace but not a suffix', () => {
+    const indented = REAL_CODEOWNERS.replace(
+      GOVERNOR_SECTION_START_DIRECTIVE,
+      `  ${GOVERNOR_SECTION_START_DIRECTIVE}  `
+    );
+    expect(indented).not.toEqual(REAL_CODEOWNERS);
+    expect(governorPathsFromCodeowners(indented)).toEqual(PINNED_SET);
+
+    const suffixed = REAL_CODEOWNERS.replace(
+      GOVERNOR_SECTION_START_DIRECTIVE,
+      `${GOVERNOR_SECTION_START_DIRECTIVE} (#3830)`
+    );
+    expect(suffixed).not.toEqual(REAL_CODEOWNERS);
+    expect(() => governorPathsFromCodeowners(suffixed)).toThrow(MISSING_START);
   });
 });
 

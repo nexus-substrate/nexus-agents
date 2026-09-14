@@ -48,11 +48,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { governorFilesTouched } from './check-governor-review.js';
-import {
-  GOVERNOR_SECTION_END_LINE,
-  governorPathsFromCodeowners,
-  governorSectionLines,
-} from './governor-section.js';
+import { governorPathsFromCodeowners, governorSectionLines } from './governor-section.js';
 import {
   readAtBase,
   readAtHead,
@@ -60,8 +56,6 @@ import {
   injectorIsClean,
   EXEMPT_SPAN_NAMES,
 } from './governance-stamp-exemption.js';
-
-export { GOVERNOR_SECTION_END_LINE };
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
@@ -161,17 +155,16 @@ export interface RatificationInputs {
  * was a comment rather than behaviour: the section ran to end of file, so any
  * entry appended below it granted ratification rights.
  *
- * Fails CLOSED on an unterminated section by returning NO owners. An unbounded
- * section means we cannot say who is authorised, and
- * {@link evaluateRatification} turns an empty owner set into `indeterminate` —
- * which is the honest verdict, not a default dressed as a measurement.
+ * Fails CLOSED on an unbounded section: since #6048 the parser throws a named
+ * `GovernorSectionError` when either directive is missing, so this never sees
+ * a section it cannot bound. `runRatificationGate` parses the same text first
+ * through `parseGovernorPatternsOrReport`, which renders that refusal as the
+ * `indeterminate` verdict — the honest one, not a default dressed as a
+ * measurement.
  */
 export function governorOwnersFromCodeowners(codeownersText: string): string[] {
-  const { lines, terminated } = governorSectionLines(codeownersText);
-  if (!terminated) return [];
-
   const owners = new Set<string>();
-  for (const line of lines) {
+  for (const line of governorSectionLines(codeownersText)) {
     for (const token of line.split(/\s+/).slice(1)) {
       if (token.startsWith('@')) owners.add(token.slice(1).toLowerCase());
     }
