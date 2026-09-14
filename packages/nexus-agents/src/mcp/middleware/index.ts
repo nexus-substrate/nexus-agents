@@ -60,6 +60,7 @@ export {
   // Default rules
   denyMutationsWithoutModeRule,
   safePathsRule,
+  secretPathsRule,
   // Factory functions
   createDefaultPolicyFirewall,
   evaluatePolicy,
