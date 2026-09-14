@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.58.7
+
+### Patch Changes
+
+- [#6285](https://github.com/nexus-substrate/nexus-agents/pull/6285) [`7f90bb5`](https://github.com/nexus-substrate/nexus-agents/commit/7f90bb5dbe52dc3d3b8c06957a16edca11242ebe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The gemini seat (`agy`) now receives `--print-timeout` derived from the task's timeout budget (guard minus 5 s, never below 30 s) instead of agy's fixed 5-minute default. Before, a voter seat given a 600 s budget hit agy's own 5-minute wait first, agy exited 0 with an empty response, and the vote path reported a parse failure for the rest of the budget; the seat's full budget now reaches the CLI, and a task with no timeout keeps agy's default.
+
 ## 8.58.6
 
 ### Patch Changes
