@@ -67,6 +67,7 @@ export {
   VoterSummarySchema,
   VoteRecordCountsSchema,
   VoteRecordDecisionSchema,
+  VoteRecordPrBindingSchema,
   computeVoteRecordHash,
   hashProposal,
   verifyVoteRecordSet,
@@ -76,6 +77,7 @@ export type {
   VoterSummary,
   VoteRecordCounts,
   VoteRecordDecision,
+  VoteRecordPrBinding,
   VoteRecordVerification,
 } from './vote-record.js';
 export {

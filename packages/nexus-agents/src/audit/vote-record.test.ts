@@ -711,3 +711,150 @@ describe('schema 1.9: `assignedCli` and `fallback` per seat (#6115)', () => {
     expectTypeOf<NonNullable<VoterSummary['fallback']>['reason']>().toEqualTypeOf<FallbackReason>();
   });
 });
+
+describe('schema 1.10: `ratifiesPr` PR-ratification binding (#5130 step 1)', () => {
+  // Record-level, present-only, folded AFTER `ratifies` — the last key in the
+  // canonical projection — so every 1.9-and-earlier record projects
+  // byte-identically. The 1.9 golden above is the guard for that; this block
+  // pins the new maximal RECORD form (every record-level optional present, not
+  // just every voter field) and proves the binding is tamper-evident.
+  const MAXIMAL_1_10 = {
+    version: '1.10' as const,
+    id: 'vote-max-110',
+    sequence: 3,
+    recordedAt: '2026-09-14T00:00:00.000Z',
+    proposalHash: 'f'.repeat(64),
+    proposal: 'Ratify PR #6200 at its head',
+    strategy: 'supermajority' as const,
+    decision: 'approved' as const,
+    approvalPercentage: 100,
+    voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+    voters: [
+      {
+        role: 'architect' as const,
+        decision: 'approve' as const,
+        confidence: 0.9,
+        reasoning: 'grounds',
+        model: 'claude-opus',
+        assignedCli: 'claude',
+      },
+    ],
+    correlationId: 'consensus-1-abcdef01',
+    optionTally: [{ option: 'A', count: 1 }],
+    optionCoverage: { approverCount: 1, selectedCount: 1, unattributedApprovals: 0 },
+    panelCoverage: { requested: 2, responded: 1, errored: 1, erroredRoles: ['security'] },
+    ratifies: 'loop:dev-pipeline',
+    ratifiesPr: { pr: 6200, headSha: '0123456789abcdef0123456789abcdef01234567' },
+    previousHash: '9'.repeat(64),
+  };
+
+  it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
+    const parsed = VoteRecordSchema.safeParse({
+      ...MAXIMAL_1_10,
+      hash: computeVoteRecordHash(MAXIMAL_1_10),
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('pins the MAXIMAL 1.10 record to a golden captured by execution', () => {
+    // Captured by running `computeVoteRecordHash` on this exact fixture once
+    // the projection carried `ratifiesPr`, then pinned. If it moves, the
+    // record-level canonical order or the present-only rule changed.
+    expect(computeVoteRecordHash(MAXIMAL_1_10)).toBe(
+      '587422106245586745a76eb3a3deb5f7121beef80912abb9cf80384d6a8df3b2'
+    );
+  });
+
+  it('a 1.9 record with `ratifiesPr` explicitly undefined still hashes to the 1.9 golden', () => {
+    const record19 = {
+      version: '1.9' as const,
+      id: 'vote-max-19',
+      sequence: 0,
+      recordedAt: '2026-09-13T00:00:00.000Z',
+      proposalHash: 'e'.repeat(64),
+      proposal: 'max',
+      strategy: 'supermajority' as const,
+      decision: 'approved' as const,
+      approvalPercentage: 100,
+      voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+      voters: [
+        {
+          role: 'devex' as const,
+          decision: 'approve' as const,
+          confidence: 0.8,
+          reasoning: 'grounds',
+          reasoningTruncated: true as const,
+          retried: true as const,
+          model: 'gemini-3.1-pro-preview',
+          unverifiable: true as const,
+          assignedCli: 'codex',
+          fallback: { fromCli: 'codex', fromModel: 'codex-5.3', reason: 'capacity' as const },
+        },
+      ],
+      ratifiesPr: undefined,
+    };
+    expect(computeVoteRecordHash(record19)).toBe(
+      '11457d041d2adcbd4c2f3c5def01e69d008d0fa105b60c720bf84d2543085228'
+    );
+  });
+
+  it('editing either binding field is a hash_mismatch — the binding is tamper-evident', () => {
+    const record: VoteRecord = { ...MAXIMAL_1_10, hash: computeVoteRecordHash(MAXIMAL_1_10) };
+    const repointedPr: VoteRecord = {
+      ...record,
+      ratifiesPr: { ...MAXIMAL_1_10.ratifiesPr, pr: 6201 },
+    };
+    const repointedSha: VoteRecord = {
+      ...record,
+      ratifiesPr: { ...MAXIMAL_1_10.ratifiesPr, headSha: 'a'.repeat(40) },
+    };
+    for (const tampered of [repointedPr, repointedSha]) {
+      const result = verifyVoteRecordSet([tampered]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+    }
+  });
+
+  it('detects ADDING a binding to a record that had none, and REMOVING one that had it', () => {
+    const unbound = makeRecord('vote-1', 0, { version: '1.2', ratifies: 'loop:x' });
+    const forgedIn: VoteRecord = {
+      ...unbound,
+      ratifiesPr: { pr: 1, headSha: 'b'.repeat(40) },
+    };
+    expect(verifyVoteRecordSet([forgedIn]).ok).toBe(false);
+
+    const bound: VoteRecord = { ...MAXIMAL_1_10, hash: computeVoteRecordHash(MAXIMAL_1_10) };
+    const forgedOut: VoteRecord = { ...bound };
+    delete forgedOut.ratifiesPr;
+    const result = verifyVoteRecordSet([forgedOut]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it("reordering the binding's keys does not change the hash (#3962 at one more level)", () => {
+    const reordered = {
+      ...MAXIMAL_1_10,
+      ratifiesPr: { headSha: MAXIMAL_1_10.ratifiesPr.headSha, pr: MAXIMAL_1_10.ratifiesPr.pr },
+    };
+    expect(computeVoteRecordHash(reordered)).toBe(computeVoteRecordHash(MAXIMAL_1_10));
+  });
+
+  it('the read schema accepts only a positive-integer PR and a lowercase 40-hex head sha', () => {
+    const base = { ...MAXIMAL_1_10, hash: computeVoteRecordHash(MAXIMAL_1_10) };
+    const withBinding = (ratifiesPr: unknown): unknown => ({ ...base, ratifiesPr });
+    const accepts = (ratifiesPr: unknown): boolean =>
+      VoteRecordSchema.safeParse(withBinding(ratifiesPr)).success;
+    expect(accepts({ pr: 1, headSha: 'a'.repeat(40) })).toBe(true);
+    // Not a commit: too short, uppercase, a branch name.
+    expect(accepts({ pr: 1, headSha: 'a'.repeat(39) })).toBe(false);
+    expect(accepts({ pr: 1, headSha: 'A'.repeat(40) })).toBe(false);
+    expect(accepts({ pr: 1, headSha: 'main' })).toBe(false);
+    // Not a PR number: zero, negative, fractional, a string.
+    expect(accepts({ pr: 0, headSha: 'a'.repeat(40) })).toBe(false);
+    expect(accepts({ pr: -6200, headSha: 'a'.repeat(40) })).toBe(false);
+    expect(accepts({ pr: 1.5, headSha: 'a'.repeat(40) })).toBe(false);
+    expect(accepts({ pr: '6200', headSha: 'a'.repeat(40) })).toBe(false);
+    // An extra key: the binding is exactly {pr, headSha}, nothing wider.
+    expect(accepts({ pr: 1, headSha: 'a'.repeat(40), baseSha: 'b'.repeat(40) })).toBe(false);
+  });
+});

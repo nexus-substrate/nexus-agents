@@ -11,10 +11,12 @@
  * `governance/` category, consistent with the 10+ other runtime stores — so it
  * works for sandbox and global-install layouts and always has a writable home:
  *   - `NEXUS_VOTE_RECORDS_PATH` explicit override (absolute used as-is; relative
- *     resolved against cwd per #3963) — the escape hatch, and the ONLY way to
- *     reach the committed `<repo>/governance/vote-records.jsonl` ledger the
- *     promotion gate (#3895) reads (a separate caller-commits/governor-gate
- *     artifact, deferred — never auto-written);
+ *     resolved against cwd per #3963) — the escape hatch for targeting a
+ *     specific file. The committed `<repo>/governance/vote-records.jsonl`
+ *     ledger the gates read is NOT written by this store at all: it is fed by
+ *     the caller-commits path, `scripts/append-ratification-record.ts`, which
+ *     copies ONE verified, PR-bound record out of the runtime store (#5130
+ *     step 1; the deferral this comment used to record is resolved);
  *   - otherwise `nexusDataPath('governance', 'vote-records.jsonl')` →
  *     `<sandbox-root>/.nexus-agents/governance/...` (sandbox),
  *     `<repo>/.nexus-agents/governance/...` (repo-preferred, gitignored), or
@@ -56,6 +58,7 @@ import type {
   VoteRecordOptionCount,
   VoteRecordOptionCoverage,
   VoteRecordPanelCoverage,
+  VoteRecordPrBinding,
   VoterSummary,
 } from './vote-record.js';
 import {
@@ -63,15 +66,20 @@ import {
   computeVoteRecordHash,
   hashProposal,
   MAX_VOTER_REASONING_CHARS,
+  projectPrBinding,
   projectSeatFallback,
 } from './vote-record.js';
 
 /**
- * Repo-relative path of the COMMITTED governance ledger the promotion gate
- * (#3895) reads. As of #3991 the runtime store no longer auto-writes here — this
- * committed artifact is reached only via the {@link VOTE_RECORDS_PATH_ENV}
- * override (the separate caller-commits/governor-gate path, deferred). Kept
- * exported as the canonical relative location for the gate + override guidance.
+ * Repo-relative path of the COMMITTED governance ledger the gates read
+ * (`check-authority-tier-drift.ts` #3895; the governor gate's ledger read is
+ * #5130 step 2). As of #3991 the runtime store never auto-writes here. The
+ * committed ledger is fed by the caller-commits path (#5130 step 1):
+ * `scripts/append-ratification-record.ts` copies one verified, `ratifiesPr`-
+ * bound, approved record out of the runtime store, re-sequenced into this
+ * ledger, and the caller commits it in the PR it ratifies. The
+ * {@link VOTE_RECORDS_PATH_ENV} override can still point the runtime store here
+ * directly; the source-checkout guard refuses that from a test run (#6070).
  */
 export const VOTE_RECORDS_REL_PATH = 'governance/vote-records.jsonl';
 
@@ -252,6 +260,12 @@ export interface BuildVoteRecordInput {
    */
   readonly ratifies?: string | undefined;
   /**
+   * The PR this vote ratifies, bound to the head the panel saw (#5130 step 1,
+   * schema 1.10). Set ONLY for a governor-path ratification vote; hash-covered
+   * so the gate can trust it. Omitted on an ordinary vote.
+   */
+  readonly ratifiesPr?: VoteRecordPrBinding | undefined;
+  /**
    * Monotonic sequence number for this record (#3927). Defaults to 0 (first
    * record) when omitted; the producer ({@link persistVoteRecord}) supplies
    * (max existing sequence)+1.
@@ -326,7 +340,8 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.9 carries a voter `assignedCli` or `fallback`, 1.8 a voter `model` or an
+ * 1.10 carries a record-level `ratifiesPr` PR binding (#5130), 1.9 a voter
+ * `assignedCli` or `fallback`, 1.8 a voter `model` or an
  * `unverifiable` seat, 1.7 a retried voter seat, 1.6 voter reasoning, 1.5
  * panel coverage, 1.4 option coverage, 1.3 a bare tally (historical only — a
  * tally now always travels with coverage), 1.2 neither.
@@ -335,9 +350,14 @@ function recordVersion(
   optionTally: VoteRecordOptionCount[] | undefined,
   optionCoverage: VoteRecordOptionCoverage | undefined,
   panelCoverage: VoteRecordPanelCoverage | undefined,
-  voters: readonly VoterSummary[]
-): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' {
-  // 1.9 first, on the same tier logic as 1.8: either key alone lifts the
+  voters: readonly VoterSummary[],
+  ratifiesPr: VoteRecordPrBinding | undefined
+): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' | '1.10' {
+  // 1.10 first: the binding is record-level and orthogonal to every voter
+  // tier below, and a reader needs to know from the version alone whether the
+  // record may carry it (#5130).
+  if (ratifiesPr !== undefined) return '1.10';
+  // 1.9 next, on the same tier logic as 1.8: either key alone lifts the
   // tier, so a reader knows from the version whether a seat's assignment and
   // fallover may be on its entry (#6115).
   if (voters.some((v) => v.assignedCli !== undefined || v.fallback !== undefined)) return '1.9';
@@ -412,6 +432,21 @@ function tallySelectedOptions(
     .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.option.localeCompare(b.option)));
 }
 
+/**
+ * The two ratification bindings, each present only when supplied: the
+ * authority-ladder subject (#3927 item 1) and the PR binding (#5130). The PR
+ * binding is rebuilt field-by-field on the `voteCounts` rule — the object the
+ * caller passed is not the object the ledger line carries.
+ */
+function ratificationBindings(
+  input: Pick<BuildVoteRecordInput, 'ratifies' | 'ratifiesPr'>
+): Pick<VoteRecord, 'ratifies' | 'ratifiesPr'> {
+  return {
+    ...(input.ratifies !== undefined ? { ratifies: input.ratifies } : {}),
+    ...(input.ratifiesPr !== undefined ? { ratifiesPr: projectPrBinding(input.ratifiesPr) } : {}),
+  };
+}
+
 export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   const proposalTruncated =
     input.proposal.length > MAX_PROPOSAL_RECORD_CHARS
@@ -428,7 +463,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   const panelCoverage = panelCoverageOf(input.votes);
   const voters = toVoterSummaries(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: recordVersion(optionTally, optionCoverage, panelCoverage, voters),
+    version: recordVersion(optionTally, optionCoverage, panelCoverage, voters, input.ratifiesPr),
     id: input.id,
     sequence: input.sequence ?? 0,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
@@ -445,7 +480,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     },
     voters,
     ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
-    ...(input.ratifies !== undefined ? { ratifies: input.ratifies } : {}),
+    ...ratificationBindings(input),
     ...(optionTally !== undefined ? { optionTally } : {}),
     ...(optionCoverage !== undefined ? { optionCoverage } : {}),
     ...(panelCoverage !== undefined ? { panelCoverage } : {}),
@@ -585,9 +620,9 @@ export interface PersistVoteRecordOptions extends Omit<
  * {@link nexusDataPath} under `governance/`, so it essentially always resolves to
  * a writable `.nexus-agents/governance/` location (sandbox / repo-preferred /
  * homedir) and the server-side write essentially always succeeds. The committed
- * `<repo>/governance/vote-records.jsonl` ledger the promotion gate (#3895) reads
- * is a SEPARATE caller-commits artifact (deferred), reached only via the
- * {@link VOTE_RECORDS_PATH_ENV} override.
+ * `<repo>/governance/vote-records.jsonl` ledger the gates read is a SEPARATE
+ * caller-commits artifact, fed by `scripts/append-ratification-record.ts`
+ * (#5130 step 1) from the records this function writes.
  *
  * Path precedence: `opts.filePath` > {@link VOTE_RECORDS_PATH_ENV} >
  * `nexusDataPath('governance', 'vote-records.jsonl')`.

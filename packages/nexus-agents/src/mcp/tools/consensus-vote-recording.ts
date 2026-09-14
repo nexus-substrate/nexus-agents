@@ -16,7 +16,7 @@ import {
 } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ConsensusResult } from '../../consensus/types.js';
-import type { VoteRecord } from '../../audit/vote-record.js';
+import type { VoteRecord, VoteRecordPrBinding } from '../../audit/vote-record.js';
 import {
   persistVoteRecord,
   resolveVoteRecordsPath,
@@ -167,6 +167,8 @@ interface RecordAuthenticVoteArgs {
   correlationId?: string | undefined;
   /** Authority-tier ratification subject (#4004) — bound into the record's self-hash. */
   ratifies?: string | undefined;
+  /** Governor-path PR binding (#5130) — bound into the record's self-hash as `ratifiesPr`. */
+  ratifiesPr?: VoteRecordPrBinding | undefined;
   /** #4053: vote voided by an error-policy short-circuit → persist `no_quorum`. */
   errorVoided?: boolean | undefined;
   /** Declared options; see `BuildVoteRecordInput.declaredOptions` (#6049). */
@@ -218,6 +220,7 @@ export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPe
     ...(args.errorVoided !== undefined ? { errorVoided: args.errorVoided } : {}),
     ...(args.correlationId !== undefined ? { correlationId: args.correlationId } : {}),
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
+    ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
     logger,
   });
   if (record === undefined) {

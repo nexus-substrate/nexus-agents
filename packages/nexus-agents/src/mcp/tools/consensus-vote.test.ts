@@ -1772,6 +1772,8 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     ),
     voteRecordPersisted: true,
     voteRecordNote: 'persisted',
+    // #5130: the persisted record's id, so the caller-commits script can name it.
+    voteRecordId: 'vote-1789355315783-lo96xb6',
   };
 
   it('strictly accepts a response carrying panelWarning + costSummary', () => {

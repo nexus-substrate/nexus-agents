@@ -73,6 +73,7 @@ import {
   recordAuthenticVote,
 } from './consensus-vote-recording.js';
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
+import type { VoteRecordPrBinding } from '../../audit/vote-record.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
 import { DecisionCostSummarySchema } from '../../observability/decision-cost.js';
 import type { IModelAdapter } from '../../core/index.js';
@@ -931,6 +932,17 @@ function finalizeVotingResult(args: {
 
 // --- Handler & Registration ---
 /**
+ * Context from the tool input the record needs but the voting result does not
+ * carry: the declared options (#6053) and the two ratification bindings
+ * (#4004, #5130).
+ */
+interface DeclaredByCaller {
+  readonly options: readonly string[] | undefined;
+  readonly ratifies?: string;
+  readonly ratifiesPr?: VoteRecordPrBinding;
+}
+
+/**
  * Best-effort post-vote side effects, extracted to keep `handleConsensusVote`
  * under the per-function line cap. Persists the authentic hash-chained vote
  * record (#3897) and rolls up per-decision cost (#3855), sharing one decision
@@ -946,12 +958,11 @@ function recordVoteSideEffects(
   result: ExtendedVotingResult,
   logger: ILogger,
   /**
-   * Context from the tool input the record needs but the voting result does
-   * not carry. Grouped rather than two more positional params: both answer
-   * "what did the caller declare", and the sixth positional argument tipped
-   * this past the max-params cap.
+   * Grouped rather than positional params: all answer "what did the caller
+   * declare", and the sixth positional argument tipped this past the
+   * max-params cap.
    */
-  declared: { options: readonly string[] | undefined; ratifies?: string }
+  declared: DeclaredByCaller
 ): {
   costSummary: ReturnType<typeof recordDecisionCost> | undefined;
   voteRecord: VoteRecordPersistOutcome;
@@ -978,6 +989,9 @@ function recordVoteSideEffects(
     resolvedDecision: toRecordDecision(result.decision),
     correlationId: decisionId,
     ...(declared.ratifies !== undefined ? { ratifies: declared.ratifies } : {}),
+    // #5130: the PR binding takes the same hop as `ratifies`; the seam test
+    // (`consensus-vote-ratifies-pr.test.ts`) reads it back off the ledger.
+    ...(declared.ratifiesPr !== undefined ? { ratifiesPr: declared.ratifiesPr } : {}),
   });
   // #3855: roll up + persist this decision's per-voter cost and ride it on the
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
@@ -991,6 +1005,15 @@ function recordVoteSideEffects(
     costSummary = undefined;
   }
   return { costSummary, voteRecord };
+}
+
+/** What the tool input declared that the voting result does not carry. */
+function declaredByCaller(args: ConsensusVoteInput): DeclaredByCaller {
+  return {
+    options: args.options,
+    ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
+    ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
+  };
 }
 
 async function handleConsensusVote(
@@ -1032,7 +1055,7 @@ async function handleConsensusVote(
       result.strategy,
       result,
       logger,
-      { options: args.options, ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}) }
+      declaredByCaller(args)
     );
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
@@ -1340,6 +1363,8 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   // a previously WARN-only skip visible to MCP callers.
   voteRecordPersisted: z.boolean().optional(),
   voteRecordNote: z.string().max(500).optional(),
+  // #5130: the persisted record's id, so the caller-commits script can name it.
+  voteRecordId: z.string().max(200).optional(),
   // #3587: set when the panel DEGRADED (some voters errored), so the decision
   // rests on fewer voters than requested. Part of the response since #3587 but
   // omitted from this schema until #4032 — its absence made a strict MCP client
@@ -1400,7 +1425,9 @@ const CONSENSUS_VOTE_DESCRIPTION =
   'Bayesian correlation analysis is computed and feeds contrarian escalation only. Choose it for the ' +
   'escalation behaviour, not for a weighted verdict. ' +
   "Supports async mode (mode: 'async') — returns a jobId to poll via get_job_result. " +
-  'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record. ' +
+  'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record, ' +
+  'and ratifiesPr={pr, headSha} to bind a governor-path PR ratification to the head the panel saw (#5130); ' +
+  'the result carries voteRecordId for the caller-commits append. ' +
   'If your proposal asks voters to choose among named alternatives, you MUST pass them in ' +
   '`options` (#4472) — the threshold is then measured over WHICH option won, and the record ' +
   'carries the per-option tally plus selection coverage. WITHOUT `options` the tally is ' +

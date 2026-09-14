@@ -1395,3 +1395,95 @@ describe('schema 1.9: the seat carries its assigned CLI and any fallback (#6115)
     }
   });
 });
+
+describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () => {
+  const binding = { pr: 6200, headSha: '0123456789abcdef0123456789abcdef01234567' };
+
+  it('buildVoteRecord carries the binding verbatim, lifts the tier to 1.10, and the record verifies', () => {
+    const record = buildVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      id: 'vote-ratify-pr',
+      proposal: 'Ratify PR #6200',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+      ratifiesPr: binding,
+    });
+    expect(record.version).toBe('1.10');
+    expect(record.ratifiesPr).toEqual(binding);
+    // Both bindings may coexist: `ratifies` is the authority-ladder subject.
+    expect(record.ratifies).toBeUndefined();
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('omitting the binding leaves the record on its pre-1.10 tier with no key at all', () => {
+    const record = buildVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      id: 'vote-plain',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+    });
+    expect(record.version).toBe('1.6');
+    expect('ratifiesPr' in record).toBe(false);
+  });
+
+  it('persistVoteRecord writes the binding to disk and it reads back hash-verified', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vote-records-pr-'));
+    const filePath = join(dir, 'vote-records.jsonl');
+    try {
+      const written = persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        id: 'vote-ratify-pr-disk',
+        proposal: 'Ratify PR #6200',
+        strategy: 'supermajority',
+        result: consensusResult(),
+        votes,
+        ratifiesPr: binding,
+        filePath,
+      });
+      expect(written?.ratifiesPr).toEqual(binding);
+      const { records, invalidLines } = readVoteRecords(filePath);
+      expect(invalidLines).toEqual([]);
+      expect(records).toHaveLength(1);
+      expect(records[0]?.ratifiesPr).toEqual(binding);
+      expect(records[0]?.version).toBe('1.10');
+      expect(verifyVoteRecordSet(records).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('REFUSES to persist a binding the read schema rejects — an abbreviated sha never becomes durable (#6054)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vote-records-pr-bad-'));
+    const filePath = join(dir, 'vote-records.jsonl');
+    try {
+      const warn = vi.fn();
+      const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() } as unknown as ILogger;
+      const written = persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        id: 'vote-ratify-pr-short',
+        proposal: 'Ratify PR #6200',
+        strategy: 'supermajority',
+        result: consensusResult(),
+        votes,
+        ratifiesPr: { pr: 6200, headSha: 'abc1234' },
+        filePath,
+        logger,
+      });
+      expect(written).toBeUndefined();
+      expect(existsSync(filePath)).toBe(false);
+      expect(warn).toHaveBeenCalledWith(
+        'Failed to persist authentic vote record',
+        expect.objectContaining({ error: expect.stringContaining(UNREADABLE_RECORD_PREFIX) })
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -31,6 +31,7 @@ import type { HigherOrderVotingResult } from '../../consensus/higher-order-types
 import type { OptionGateVerdict } from './consensus-vote-option-gate.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
+import { VoteRecordPrBindingSchema } from '../../audit/vote-record.js';
 import {
   SUPERMAJORITY_THRESHOLD,
   VOTING_THRESHOLDS,
@@ -296,6 +297,19 @@ export const ConsensusVoteInputSchema = z.object({
     .describe(
       'Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes.'
     ),
+  /**
+   * Governor-path PR ratification binding (#5130 step 1). Set ONLY when this
+   * vote ratifies a PR that touches governor-owned paths: the PR number and
+   * the FULL head sha the panel reviewed. Bound into the persisted record's
+   * self-hash as `ratifiesPr` (schema 1.10), so the caller-commits script
+   * (`scripts/append-ratification-record.ts`) can copy the record into the
+   * committed ledger and the governor gate (step 2) can require it to name
+   * the PR under review at its head. Validated by the same schema the record
+   * uses, so producer and ledger cannot disagree on the shape.
+   */
+  ratifiesPr: VoteRecordPrBindingSchema.optional().describe(
+    'Governor-path PR ratification binding (#5130): { pr: <PR number>, headSha: <full 40-hex head sha the panel reviewed> }. Bound into the authentic vote record so the committed ledger and the governor gate can verify which PR, at which head, this panel ratified. Omit for ordinary votes.'
+  ),
 });
 
 export type ConsensusVoteInput = z.infer<typeof ConsensusVoteInputSchema>;
@@ -556,6 +570,14 @@ export interface ConsensusVoteResponse {
    * → fix permissions or set `NEXUS_VOTE_RECORDS_PATH` to a writable path).
    */
   voteRecordNote?: string;
+  /**
+   * #5130: the persisted record's `id`, present only when
+   * {@link voteRecordPersisted} is `true`. The caller-commits script
+   * (`scripts/append-ratification-record.ts --record-id`) is keyed on it, and
+   * a job result carries it so `--job <jobId>` can find the record. Without
+   * it nothing downstream of the vote could name the record it produced.
+   */
+  voteRecordId?: string;
 }
 
 /** Extended voting result with optional Higher-Order metadata. */
@@ -840,6 +862,9 @@ export function buildResponse(
   };
   if (voteRecord !== undefined && !voteRecord.persisted) {
     response.voteRecordNote = voteRecord.detail;
+  }
+  if (voteRecord?.persisted === true) {
+    response.voteRecordId = voteRecord.record.id;
   }
 
   if (result.optionGate !== undefined) {

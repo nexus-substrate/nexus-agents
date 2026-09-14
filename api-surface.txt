@@ -2023,7 +2023,7 @@ InterfaceDeclaration ConsensusVoteDeps
 TypeAliasDeclaration ConsensusVoteInput
   = z.infer<typeof ConsensusVoteInputSchema>
 VariableDeclaration ConsensusVoteInputSchema
-  : z.ZodObject<{ errorPolicy: z.ZodOptional<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; count_as_abstain: "count_as_abstain"; fail_closed: "fail_closed"; reduce_denominator: "reduce_denominator"; }>>; idempotencyKey: z.ZodOptional<z.ZodString>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; options: z.ZodOptional<z.ZodArray<z.ZodString>>; project: z.ZodOptional<z.ZodString>; proposal: z.ZodString; quickMode: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; ratifies: z.ZodOptional<z.ZodString>; simulateVotes: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; strategy: z.ZodOptional<z.ZodEnum<{ higher_order: "higher_order"; opinion_wise: "opinion_wise"; proof_of_learning: "proof_of_learning"; simple_majority: "simple_majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; threshold: z.ZodOptional<z.ZodEnum<{ majority: "majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; }, z.core.$strip>
+  : z.ZodObject<{ errorPolicy: z.ZodOptional<z.ZodEnum<{ absolute_quorum: "absolute_quorum"; count_as_abstain: "count_as_abstain"; fail_closed: "fail_closed"; reduce_denominator: "reduce_denominator"; }>>; idempotencyKey: z.ZodOptional<z.ZodString>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; options: z.ZodOptional<z.ZodArray<z.ZodString>>; project: z.ZodOptional<z.ZodString>; proposal: z.ZodString; quickMode: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; ratifies: z.ZodOptional<z.ZodString>; ratifiesPr: z.ZodOptional<z.ZodObject<{ headSha: z.ZodString; pr: z.ZodNumber; }, z.core.$strict>>; simulateVotes: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; strategy: z.ZodOptional<z.ZodEnum<{ higher_order: "higher_order"; opinion_wise: "opinion_wise"; proof_of_learning: "proof_of_learning"; simple_majority: "simple_majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; threshold: z.ZodOptional<z.ZodEnum<{ majority: "majority"; supermajority: "supermajority"; unanimous: "unanimous"; }>>; }, z.core.$strip>
 TypeAliasDeclaration ConsensusVoter
   = (input: ConsensusProposalInput) => Promise<ConsensusVerdict>
 InterfaceDeclaration ConsensusVoteRequestedEvent
@@ -2046,6 +2046,7 @@ InterfaceDeclaration ConsensusVoteResponse
   strategy: VotingStrategy
   threshold?: "majority" | "supermajority" | "unanimous" | undefined
   voteCounts: { abstain: number; approve: number; error: number; reject: number; unverifiable: number; }
+  voteRecordId?: string | undefined
   voteRecordNote?: string | undefined
   voteRecordPersisted: boolean
   votes: AgentVoteSummary[]
