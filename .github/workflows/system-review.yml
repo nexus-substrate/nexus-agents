@@ -74,6 +74,8 @@ jobs:
       issues_open: ${{ steps.issues.outputs.open_count }}
       issues_stale: ${{ steps.issues.outputs.stale_count }}
       audit_vulns: ${{ steps.security.outputs.vulns }}
+      quality_typecheck: ${{ steps.quality.outputs.typecheck }}
+      quality_lint: ${{ steps.quality.outputs.lint }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -235,14 +237,21 @@ jobs:
         run: |
           echo "## Phase 5: Code Quality" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          # The verdicts used to reach the summary table and nowhere else, and
+          # `2>/dev/null` threw the diagnostics away: a broken typecheck was a
+          # table cell (#4927 finding 6). Each result is now a step output the
+          # job exports and the create-issue gate reads, and the tool output is
+          # kept in a file whose tail travels with the summary.
           TYPECHECK_RESULT="Pass"
-          if ! pnpm typecheck 2>/dev/null; then
+          if ! pnpm typecheck > "$RUNNER_TEMP/typecheck.log" 2>&1; then
             TYPECHECK_RESULT="Fail"
           fi
           LINT_RESULT="Pass"
-          if ! pnpm lint 2>/dev/null; then
+          if ! pnpm lint > "$RUNNER_TEMP/lint.log" 2>&1; then
             LINT_RESULT="Fail"
           fi
+          echo "typecheck=$TYPECHECK_RESULT" >> "$GITHUB_OUTPUT"
+          echo "lint=$LINT_RESULT" >> "$GITHUB_OUTPUT"
           # #4727 sibling: this correctly defaults to Unknown rather than 0%,
           # but rendered it as "Unknown%" — and a bare `jq` (no -e) returns the
           # string "null" for a missing field, which rendered as "null%". The
@@ -263,6 +272,20 @@ jobs:
           echo "| ESLint | $LINT_RESULT |" >> $GITHUB_STEP_SUMMARY
           echo "| Coverage | ${COVERAGE} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          for check in typecheck lint; do
+            if [ "$check" = typecheck ]; then result="$TYPECHECK_RESULT"; else result="$LINT_RESULT"; fi
+            if [ "$result" = "Fail" ]; then
+              {
+                echo "<details><summary>pnpm $check output (last 80 lines)</summary>"
+                echo
+                echo '```'
+                tail -n 80 "$RUNNER_TEMP/$check.log"
+                echo '```'
+                echo "</details>"
+                echo
+              } >> $GITHUB_STEP_SUMMARY
+            fi
+          done
 
   create-issue:
     name: Create Review Issue
@@ -276,6 +299,9 @@ jobs:
     # Doc-age comparisons use fromJSON() — GitHub Actions outputs are strings,
     # and the old `> '30'` was lexicographic (so `'5' > '30'` was true, falsely
     # firing on a 5-day-old doc; this is what filed #2859, see #2922).
+    # The quality verdicts compare against 'Pass', not against 'Fail': an
+    # empty output (the quality step never ran or never wrote it) files an
+    # issue too, since "unmeasured" is not green (#4927 finding 6).
     if: |
       needs.check-trigger.outputs.should_run == 'true' &&
       (
@@ -287,7 +313,9 @@ jobs:
             needs.run-review.outputs.issues_stale != '0' ||
             needs.run-review.outputs.audit_vulns != '0' ||
             fromJSON(needs.run-review.outputs.docs_claude_age) > 30 ||
-            fromJSON(needs.run-review.outputs.docs_arch_age) > 30
+            fromJSON(needs.run-review.outputs.docs_arch_age) > 30 ||
+            needs.run-review.outputs.quality_typecheck != 'Pass' ||
+            needs.run-review.outputs.quality_lint != 'Pass'
           )
         )
       )
@@ -314,6 +342,8 @@ jobs:
           OPEN="${{ needs.run-review.outputs.issues_open }}"
           STALE="${{ needs.run-review.outputs.issues_stale }}"
           VULNS="${{ needs.run-review.outputs.audit_vulns }}"
+          TYPECHECK="${{ needs.run-review.outputs.quality_typecheck }}"
+          LINT="${{ needs.run-review.outputs.quality_lint }}"
 
           # Build the Action Items section conditionally — emit one bullet per
           # genuinely non-green metric, so a healthy review reads as healthy
@@ -324,6 +354,8 @@ jobs:
           [ "$CLAUDE" -gt 30 ] 2>/dev/null && ACTIONS="${ACTIONS}- [ ] Update CLAUDE.md (>30 days since touched)"$'\n'
           [ "$ARCH" -gt 30 ] 2>/dev/null && ACTIONS="${ACTIONS}- [ ] Update ARCHITECTURE.md (>30 days since touched)"$'\n'
           [ "$VULNS" != "0" ] && ACTIONS="${ACTIONS}- [ ] Address $VULNS open vulnerability/vulnerabilities"$'\n'
+          [ "$TYPECHECK" != "Pass" ] && ACTIONS="${ACTIONS}- [ ] Fix \`pnpm typecheck\` on main (result: ${TYPECHECK:-unmeasured})"$'\n'
+          [ "$LINT" != "Pass" ] && ACTIONS="${ACTIONS}- [ ] Fix \`pnpm lint\` on main (result: ${LINT:-unmeasured})"$'\n'
           [ -z "$ACTIONS" ] && ACTIONS="_All metrics green — no follow-up needed._"
 
           BODY=$(cat << 'ENDOFBODY'
@@ -347,6 +379,10 @@ jobs:
           ### Phase 4: Security
           - Vulnerabilities: VULNS_PLACEHOLDER
 
+          ### Phase 5: Code Quality
+          - TypeScript: TYPECHECK_PLACEHOLDER
+          - ESLint: LINT_PLACEHOLDER
+
           ### Action Items
           ACTIONS_PLACEHOLDER
 
@@ -363,6 +399,8 @@ jobs:
           BODY="${BODY//OPEN_PLACEHOLDER/$OPEN}"
           BODY="${BODY//STALE_PLACEHOLDER/$STALE}"
           BODY="${BODY//VULNS_PLACEHOLDER/$VULNS}"
+          BODY="${BODY//TYPECHECK_PLACEHOLDER/${TYPECHECK:-unmeasured}}"
+          BODY="${BODY//LINT_PLACEHOLDER/${LINT:-unmeasured}}"
           BODY="${BODY//ACTIONS_PLACEHOLDER/$ACTIONS}"
 
           gh issue create \
