@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- 669 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); the synchronous execute path (lookup, access policy, fallback, classification) plus its MCP Tasks async handler; split tracked in #6148 */
+/* eslint max-lines: ["error", { "max": 600, "skipBlankLines": true, "skipComments": true }] */
 /**
  * nexus-agents/mcp - Execute Expert Tool
  *
@@ -7,32 +7,20 @@
  *
  * @module mcp/tools/execute-expert
  * (Source: Issue #437 - Add execute_expert tool)
- * (Refactored: Issue #1298 - MCP Tasks async execution)
+ * (Refactored: Issue #1298 - MCP Tasks async execution; its task handler
+ * lives in `execute-expert-task-handler.ts` since #6148)
  */
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type {
-  ToolTaskHandler,
-  CreateTaskRequestHandlerExtra,
-  TaskRequestHandlerExtra,
-} from '@modelcontextprotocol/sdk/experimental/tasks';
-import type { CreateTaskResult, GetTaskResult } from '@modelcontextprotocol/sdk/experimental/tasks';
 import type { ILogger, Task } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
 import { parseBoolEnv } from '../../config/defaults-env.js';
 import { isRateLimitLikeError } from '../../adapters/rate-limit-detector.js';
 
-import {
-  createLogger,
-  getTimeProvider,
-  getRandomProvider,
-  formatZodError,
-  withStep,
-} from '../../core/index.js';
+import { createLogger, getTimeProvider, getRandomProvider, withStep } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
-import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
+import { createMcpNotifier } from '../mcp-notifier.js';
 import type { Expert } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
 import {
@@ -81,9 +69,9 @@ import {
   inferTaskCategory,
   summarizeContextForPrompt,
 } from '../../context/context-retriever.js';
-import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
-import { toolStructuredError, toolSuccess, type BaseMcpToolDeps } from './tool-result.js';
+import type { BaseMcpToolDeps } from './tool-result.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { createTaskHandler, EXECUTE_EXPERT_TOOL_SCHEMA } from './execute-expert-task-handler.js';
 
 /**
  * Minimum effective timeout for expert tasks — LLM inference takes 20-90s
@@ -766,180 +754,6 @@ async function handleExecuteExpert(
 }
 
 // ============================================================================
-// Task Handler (Issue #1298 — Layer 2 MCP Tasks async execution)
-// ============================================================================
-
-/** Input shape type for registerToolTask. */
-type ExecuteExpertToolSchema = typeof EXECUTE_EXPERT_TOOL_SCHEMA;
-
-const EXECUTE_EXPERT_TOOL_SCHEMA = {
-  expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
-  task: z.string().min(1).max(50000).describe('Task description for the expert to execute'),
-  context: z
-    .record(z.string(), z.unknown())
-    .optional()
-    .describe('Additional context metadata for the task'),
-  timeoutMs: z
-    .number()
-    .int()
-    .min(EXPERT_TIMEOUT_FLOOR_MS)
-    .max(EXPERT_TIMEOUTS.maxMs)
-    .optional()
-    .describe('Optional timeout in ms (120s-900s). Overrides auto-detected timeout.'),
-};
-
-/**
- * Creates a ToolTaskHandler for execute_expert.
- *
- * Implements the MCP Tasks primitive (SEP-1686):
- * - createTask: validates, starts background execution, returns task immediately
- * - getTask: returns current task status from store
- * - getTaskResult: returns completed/failed result from store
- *
- * When the client supports tasks, createTask returns immediately and the client
- * polls for status. When the client doesn't support tasks, the SDK internally
- * polls until completion (handleAutomaticTaskPolling).
- *
- * @param deps - Tool dependencies
- * @param logger - Logger instance
- */
-function createTaskHandler(
-  deps: ExecuteExpertDeps,
-  logger: ILogger
-): ToolTaskHandler<ExecuteExpertToolSchema> {
-  const notifier = deps.notifier ?? NOOP_NOTIFIER;
-
-  return {
-    createTask: (
-      args: ExecuteExpertInput,
-      extra: CreateTaskRequestHandlerExtra
-    ): Promise<CreateTaskResult> => {
-      // Validate input
-      const parsed = ExecuteExpertInputSchema.safeParse(args);
-      if (!parsed.success) {
-        return Promise.reject(new Error(`Validation error: ${formatZodError(parsed.error)}`));
-      }
-
-      const validatedArgs = parsed.data;
-      const { taskStore } = extra;
-
-      // Create task with clamped TTL
-      const ttl = clampTaskTtl(DEFAULT_TASK_TTL_MS);
-      const taskPromise = taskStore.createTask({ ttl, pollInterval: 5000 }).then((task) => {
-        logger.info('Task created for execute_expert', {
-          taskId: task.taskId,
-          expertId: validatedArgs.expertId,
-        });
-
-        // Start background execution (fire-and-forget)
-        void runBackgroundExpertTask({
-          deps,
-          args: validatedArgs,
-          taskId: task.taskId,
-          taskStore,
-          notifier,
-        });
-
-        return { task };
-      });
-
-      return taskPromise;
-    },
-
-    getTask: (
-      _args: ExecuteExpertInput,
-      extra: TaskRequestHandlerExtra
-    ): Promise<GetTaskResult> => {
-      return extra.taskStore.getTask(extra.taskId);
-    },
-
-    getTaskResult: (
-      _args: ExecuteExpertInput,
-      extra: TaskRequestHandlerExtra
-    ): Promise<CallToolResult> => {
-      return extra.taskStore.getTaskResult(extra.taskId) as Promise<CallToolResult>;
-    },
-  };
-}
-
-/** Options for background expert task execution. */
-interface BackgroundExpertTaskOpts {
-  deps: ExecuteExpertDeps;
-  args: ExecuteExpertInput;
-  taskId: string;
-  taskStore: CreateTaskRequestHandlerExtra['taskStore'];
-  notifier: IMcpNotifier;
-}
-
-/** Report a completed background expert task with token provenance. */
-function notifyExpertComplete(
-  notifier: IMcpNotifier,
-  taskId: string,
-  response: ExecuteExpertResponse
-): void {
-  notifier.info('execute_expert', {
-    event: 'expert_complete',
-    taskId,
-    role: response.role,
-    confidence: response.status === 'success' ? 1 : 0,
-    tokenUsage: response.tokensUsed,
-    ...(response.tokensMeasured !== undefined ? { tokensMeasured: response.tokensMeasured } : {}),
-  });
-}
-
-/**
- * Runs expert execution in the background, updating task store on completion.
- * Fire-and-forget — errors are caught and stored as task failures.
- */
-async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<void> {
-  const { deps, args, taskId, taskStore, notifier } = opts;
-  const logger = deps.logger ?? createLogger({ tool: 'execute_expert' });
-  try {
-    notifier.info('execute_expert', {
-      event: 'expert_start',
-      taskId,
-      expertId: args.expertId,
-    });
-
-    const result = await withProgressHeartbeat('execute_expert', notifier, () =>
-      handleExecuteExpert(deps, args)
-    );
-
-    if (!result.ok) {
-      await taskStore.storeTaskResult(taskId, 'failed', {
-        ...toolStructuredError({
-          errorCategory: 'internal',
-          message: `Failed to execute expert: ${result.error}`,
-        }),
-      });
-      return;
-    }
-
-    notifyExpertComplete(notifier, taskId, result.value);
-
-    await taskStore.storeTaskResult(taskId, 'completed', {
-      ...toolSuccess(JSON.stringify(result.value, null, 2)),
-    });
-  } catch (error: unknown) {
-    const message = getErrorMessage(error);
-    logger.warn('Background expert task failed', { taskId, error: message });
-    try {
-      await taskStore.storeTaskResult(taskId, 'failed', {
-        ...toolStructuredError({
-          errorCategory: 'internal',
-          message: `Expert execution error: ${message}`,
-        }),
-      });
-    } catch (storeError: unknown) {
-      logger.warn('Failed to store task failure result', {
-        taskId,
-        error: getErrorMessage(storeError),
-      });
-    }
-  }
-}
-
-// ============================================================================
 // Registration
 // ============================================================================
 
@@ -981,7 +795,10 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
 
       annotations: getToolAnnotations('execute_expert'),
     },
-    createTaskHandler(depsWithNotifier, logger)
+    createTaskHandler(depsWithNotifier, logger, {
+      inputSchema: ExecuteExpertInputSchema,
+      execute: handleExecuteExpert,
+    })
   );
   logger.info('Registered execute_expert tool with MCP Tasks support (taskSupport: optional)');
 }
