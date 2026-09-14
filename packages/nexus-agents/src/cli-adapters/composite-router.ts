@@ -101,11 +101,8 @@ import {
   type IRoutingMetricsCollector,
 } from './composite-router-types.js';
 import { buildDecisionFields, buildPreferenceStats } from './composite-router-helpers.js';
-import {
-  analyzeTaskProfile,
-  runPipeline,
-  type StageDependencies,
-} from './composite-router-stages.js';
+import { analyzeTaskProfile, runPipeline } from './composite-router-stages.js';
+import type { StageDependencies } from './composite-router-scoring-stages.js';
 import { getDefaultAvailableModelsCache } from '../config/available-models-cache.js';
 import {
   isDynamicModelsEnabled,
