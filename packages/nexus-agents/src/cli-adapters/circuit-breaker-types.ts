@@ -8,7 +8,7 @@
 
 import { NexusError, ErrorCode } from '../core/errors.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
-import type { CliName } from './types.js';
+import type { RoutingArmId } from './types.js';
 
 // ============================================================================
 // Types
@@ -74,8 +74,8 @@ export interface CircuitBreakerSnapshot {
  * Event emitted on circuit state changes.
  */
 export interface CircuitStateChangeEvent {
-  /** CLI name */
-  readonly cliName: CliName;
+  /** Routing arm the breaker guards — a CLI slot or an `api:*` arm (#4392). */
+  readonly cliName: RoutingArmId;
   /** Previous state */
   readonly previousState: CircuitState;
   /** New state */
@@ -152,7 +152,7 @@ export type CircuitErrorCode = (typeof CircuitErrorCode)[keyof typeof CircuitErr
  */
 export class CircuitError extends NexusError {
   readonly circuitErrorCode: CircuitErrorCode;
-  readonly cliName: CliName;
+  readonly cliName: RoutingArmId;
   readonly circuitState: CircuitState;
   readonly failureCategory?: FailureCategory;
 
@@ -160,7 +160,7 @@ export class CircuitError extends NexusError {
     message: string,
     options: {
       circuitErrorCode: CircuitErrorCode;
-      cliName: CliName;
+      cliName: RoutingArmId;
       circuitState: CircuitState;
       failureCategory?: FailureCategory;
       cause?: Error;

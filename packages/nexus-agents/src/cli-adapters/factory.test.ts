@@ -239,6 +239,61 @@ describe('createAllAdapters', () => {
       expect(adapters.has('api:anthropic')).toBe(false);
     });
   });
+
+  // #4392 increment 1: the arm-id type widened from a closed 4-literal union
+  // to endpoint identity. These pin the EXACT arm-id strings and their order
+  // in both billing modes, so the widening is provably byte-neutral for every
+  // id the factory mints today. Captured against the pre-widening tree.
+  describe('arm-id snapshot (#4392 increment 1, behaviour-neutral proof)', () => {
+    const VENDOR_ENV = [
+      'NEXUS_BILLING_MODE',
+      'ANTHROPIC_API_KEY',
+      'OPENAI_API_KEY',
+      'GOOGLE_AI_API_KEY',
+      'NEXUS_CUSTOM_API_KEY',
+      'NEXUS_CUSTOM_API_BASE_URL',
+    ] as const;
+    const saved = new Map<string, string | undefined>();
+
+    beforeEach(() => {
+      for (const name of VENDOR_ENV) saved.set(name, process.env[name]);
+    });
+
+    afterEach(() => {
+      for (const name of VENDOR_ENV) {
+        const prev = saved.get(name);
+        if (prev === undefined) Reflect.deleteProperty(process.env, name);
+        else process.env[name] = prev;
+      }
+    });
+
+    it('plan mode mints exactly the four CLI slot ids, in slot order', () => {
+      delete process.env['NEXUS_BILLING_MODE'];
+
+      expect([...createAllAdapters().keys()]).toEqual(['claude', 'gemini', 'codex', 'opencode']);
+    });
+
+    it('api mode with every vendor key mints the four slots then the four api:<vendor> arms', () => {
+      process.env['NEXUS_BILLING_MODE'] = 'api';
+      // Fake, key-presence-only: createAllAdapters never calls out (#3422).
+      process.env['ANTHROPIC_API_KEY'] = 'test-not-a-real-key';
+      process.env['OPENAI_API_KEY'] = 'test-not-a-real-key';
+      process.env['GOOGLE_AI_API_KEY'] = 'test-not-a-real-key';
+      process.env['NEXUS_CUSTOM_API_KEY'] = 'test-not-a-real-key';
+      process.env['NEXUS_CUSTOM_API_BASE_URL'] = 'https://gateway.example.com/v1';
+
+      expect([...createAllAdapters().keys()]).toEqual([
+        'claude',
+        'gemini',
+        'codex',
+        'opencode',
+        'api:anthropic',
+        'api:openai',
+        'api:google',
+        'api:custom-openai',
+      ]);
+    });
+  });
 });
 
 describe('adapter capabilities', () => {

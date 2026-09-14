@@ -22,7 +22,8 @@ import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { ApiArmId, CliName, RoutingArmId } from '../cli-adapters/types.js';
+import { isApiArmId } from '../cli-adapters/types.js';
 import { TASK_SPECIALIZATION_MATRIX, detectTaskCategory } from '../config/task-specialization.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import {
@@ -55,7 +56,8 @@ export interface TaskRoutingEntry {
 /** Snapshot of registry state for observability. */
 export interface RegistrySnapshot {
   readonly taskRouting: readonly TaskRoutingEntry[];
-  readonly cachedAdapters: readonly CliName[];
+  /** Every cached arm: lazily created CLI slots and registered `api:*` arms (#4392). */
+  readonly cachedAdapters: readonly RoutingArmId[];
   readonly availableModels: number;
 }
 
@@ -79,8 +81,12 @@ export class UnifiedAdapterRegistry {
   private readonly logger: ILogger;
   private readonly defaultCliTimeoutMs: number | undefined;
 
-  /** Per-CLI adapter cache — max 3 entries (claude/gemini/codex). */
-  private readonly cliAdapters = new Map<CliName, IResilientAdapter>();
+  /**
+   * Per-arm adapter cache. CLI slots are created lazily by
+   * {@link getAdapterForCli}; `api:*` arms enter only through
+   * {@link registerApiArm} and are never synthesised (#4392).
+   */
+  private readonly cliAdapters = new Map<RoutingArmId, IResilientAdapter>();
 
   /** Default adapter for unscoped requests. */
   private defaultAdapter: IResilientAdapter | undefined;
@@ -158,6 +164,38 @@ export class UnifiedAdapterRegistry {
       cli,
     });
     return adapter;
+  }
+
+  /**
+   * Get the adapter for a routing arm (#4392). A CLI slot resolves exactly as
+   * {@link getAdapterForCli} (created lazily, cached, armed with the shared
+   * breaker registry). An `api:*` arm resolves to what {@link registerApiArm}
+   * supplied, or `undefined` — never to a CLI slot, and never by creating one.
+   */
+  getAdapterForArm(arm: RoutingArmId): IResilientAdapter | undefined {
+    // Split on CLI-slot membership, not on the validator: an `api:` string
+    // that fails validation must read as "not registered", never be handed
+    // to getAdapterForCli to mint a slot adapter under a garbage name.
+    if ((CLI_NAMES as readonly string[]).includes(arm)) {
+      return this.getAdapterForCli(arm as CliName);
+    }
+    return this.cliAdapters.get(arm);
+  }
+
+  /**
+   * Register an `api:*` routing arm's adapter under its endpoint identity
+   * (#4392). The id is re-validated at runtime: the `ApiArmId` type admits any
+   * `api:` string, so a cast from an unvalidated name is exactly what this
+   * refuses. Registering an id twice replaces (and disposes) the earlier
+   * adapter. CLI-slot behaviour is untouched.
+   */
+  registerApiArm(arm: ApiArmId, adapter: IResilientAdapter): void {
+    if (!isApiArmId(arm)) {
+      throw new Error(`Invalid api arm id: ${JSON.stringify(arm)} (expected api:<endpoint>)`);
+    }
+    this.cliAdapters.get(arm)?.dispose();
+    this.cliAdapters.set(arm, adapter);
+    this.logger.info('Registered api arm adapter', { arm });
   }
 
   /**

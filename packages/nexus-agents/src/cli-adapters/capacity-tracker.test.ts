@@ -537,3 +537,44 @@ describe('#4456 follow-up: a success outranks a stale provider assertion', () =>
     expect(tracker.getCapacity().quotaExhausted).toBe(false);
   });
 });
+
+// #4392 increment 1: the tracker factory took a `CliName`, so an `api:*` arm
+// could only be tracked under its display slot's name. It now takes a
+// `RoutingArmId` and resolves the per-slot defaults and env overrides through
+// the arm's display slot — identical for CLI names, and identical for the
+// built-in vendor arms to what their slot produced before.
+describe('getDefaultConfig() / createCapacityTracker() over RoutingArmId (#4392)', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('a built-in vendor arm resolves to its display slot defaults', () => {
+    expect(getDefaultConfig('api:anthropic')).toEqual(getDefaultConfig('claude'));
+    expect(getDefaultConfig('api:google')).toEqual(getDefaultConfig('gemini'));
+  });
+
+  it('an endpoint-identity arm resolves through the display-slot fallback', () => {
+    expect(getDefaultConfig('api:gw-prod')).toEqual(getDefaultConfig('opencode'));
+    expect(getDefaultConfig('api:gw-prod').tokenLimit).toBe(DEFAULT_TOKEN_LIMITS.opencode);
+  });
+
+  it('the slot env override applies to the arm, under the slot name', () => {
+    process.env.NEXUS_OPENCODE_TOKEN_LIMIT = '4242';
+
+    expect(getDefaultConfig('api:gw-prod').tokenLimit).toBe(4242);
+    expect(getDefaultConfig('api:custom-openai').tokenLimit).toBe(4242);
+  });
+
+  it('createCapacityTracker accepts an api arm', () => {
+    const tracker = createCapacityTracker('api:gw-prod');
+
+    expect(tracker).toBeInstanceOf(CapacityTracker);
+    expect(tracker.getCapacity().quotaExhausted).toBe(false);
+  });
+});

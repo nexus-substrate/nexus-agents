@@ -17,6 +17,7 @@ import {
   type CircuitStateChangeEvent,
 } from './circuit-breaker.js';
 import { ErrorCode, ModelError } from '../core/errors.js';
+import type { RoutingArmId } from './types-core.js';
 
 describe('CliCircuitBreaker', () => {
   let breaker: CliCircuitBreaker;
@@ -867,5 +868,66 @@ describe('categorizeError', () => {
     const timeoutError = new Error('Some error');
     timeoutError.name = 'TimeoutError';
     expect(categorizeError(timeoutError)).toBe('timeout');
+  });
+});
+
+// #4392 increment 1: the breaker and its registry were typed around `CliName`,
+// so an `api:*` routing arm could get no health tracking at all. They are now
+// keyed by `RoutingArmId`; CLI names behave exactly as before.
+describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
+  let registry: CircuitBreakerRegistry;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    registry = new CircuitBreakerRegistry();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('creates a distinct breaker for an endpoint-identity arm', () => {
+    const arm: RoutingArmId = 'api:gw-prod';
+
+    const breaker = registry.getBreaker(arm);
+
+    expect(breaker).toBeInstanceOf(CliCircuitBreaker);
+    expect(registry.getBreaker(arm)).toBe(breaker);
+    expect(registry.getBreaker('opencode')).not.toBe(breaker);
+  });
+
+  it('carries the arm id, not a collapsed slot, on state-change events', async () => {
+    const events: CircuitStateChangeEvent[] = [];
+    registry.addGlobalStateChangeListener((e) => events.push(e));
+    const breaker = registry.getBreaker('api:gw-prod', { failureThreshold: 1 });
+
+    await breaker.execute(() => Promise.reject(new Error('boom')));
+
+    expect(events.map((e) => e.cliName)).toEqual(['api:gw-prod']);
+    expect(registry.isOpen('api:gw-prod')).toBe(true);
+    expect(registry.getUnhealthyClis()).toEqual(['api:gw-prod']);
+    expect(registry.getAllSnapshots().has('api:gw-prod')).toBe(true);
+  });
+
+  it('names the arm on the CircuitError it raises', async () => {
+    const breaker = registry.getBreaker('api:gw-prod', { failureThreshold: 1 });
+    await breaker.execute(() => Promise.reject(new Error('boom')));
+
+    const blocked = await breaker.execute(() => Promise.resolve('never'));
+
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.error).toBeInstanceOf(CircuitError);
+      expect(blocked.error.cliName).toBe('api:gw-prod');
+    }
+  });
+
+  it('an api arm opening never touches a CLI slot sharing its display slot', async () => {
+    const api = registry.getBreaker('api:gw-prod', { failureThreshold: 1 });
+    await api.execute(() => Promise.reject(new Error('boom')));
+
+    expect(registry.isOpen('opencode')).toBe(false);
+    expect(registry.getHealthyClis()).toEqual([]);
+    expect(registry.getBreaker('opencode').getState()).toBe('closed');
   });
 });

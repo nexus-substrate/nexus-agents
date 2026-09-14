@@ -17,26 +17,48 @@ import { z } from 'zod';
 export type CliName = CliNameLiteral;
 
 /**
- * API-vendor identifiers an `AdapterSelection{source:'api'}` reports (#3422).
- * Distinct from the four CLI slots: a direct vendor API and the same vendor's
- * CLI binary have different latency/failure profiles, so they must NOT share a
- * routing/bandit arm (would pollute the learned model).
+ * Built-in API-vendor identifiers an `AdapterSelection{source:'api'}` reports
+ * (#3422). Distinct from the four CLI slots: a direct vendor API and the same
+ * vendor's CLI binary have different latency/failure profiles, so they must
+ * NOT share a routing/bandit arm (would pollute the learned model).
+ *
+ * Deliberately still a closed union: the per-vendor selection switch in
+ * `adapters/auto-adapter.ts` is exhaustive over it. Endpoint identity lives
+ * one level up, in {@link ApiArmId} (#4392).
  */
 export type ApiVendor = 'anthropic' | 'openai' | 'google' | 'custom-openai';
 
-/** Prefixed routing arm id for a direct-API adapter, e.g. `api:anthropic` (#3422). */
-export type ApiArmId = `api:${ApiVendor}`;
+/**
+ * Endpoint-identity segment of an {@link ApiArmId} (#4392): a built-in vendor
+ * name or an operator-named endpoint. Lowercase alphanumerics plus `.`, `_`,
+ * `-`; must start alphanumeric; 1–64 chars. `:`, `/`, `@` and whitespace are
+ * excluded ON PURPOSE so a base URL — and any userinfo credential inside one —
+ * can never become an arm id, telemetry key or display string. The four
+ * {@link ApiVendor} names all satisfy it, so every pre-#4392 id survives
+ * byte-identical.
+ */
+const API_ENDPOINT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+/**
+ * Prefixed routing arm id for a direct-API adapter, e.g. `api:anthropic`
+ * (#3422). Since #4392 the segment after `api:` is an endpoint identity, not a
+ * closed vendor enum — one arm per GATEWAY, so two operator-named endpoints
+ * are distinct arms. The runtime shape is enforced by {@link ApiArmIdSchema}
+ * / {@link isApiArmId}; the type alone admits any `api:` string, so a cast
+ * from an unvalidated string is exactly what the validator exists to refuse.
+ */
+export type ApiArmId = `api:${string}`;
 
 /**
  * Zod schema for {@link ApiArmId}, so persisted records can validate an API arm
  * (#4400). Kept next to the type rather than in the outcome schema so the two
- * cannot drift as `ApiVendor` changes.
+ * cannot drift. A template literal over the endpoint pattern: the inferred type
+ * stays `api:${string}` (not `string`), and the pattern is the single source
+ * for both the persisted-record schema and the runtime guard (#4392).
  */
-export const ApiArmIdSchema = z.enum([
-  'api:anthropic',
-  'api:openai',
-  'api:google',
-  'api:custom-openai',
+export const ApiArmIdSchema = z.templateLiteral([
+  'api:',
+  z.string().regex(API_ENDPOINT_ID_PATTERN),
 ]);
 
 /**
@@ -46,17 +68,36 @@ export const ApiArmIdSchema = z.enum([
  */
 export type RoutingArmId = CliName | ApiArmId;
 
-/** Build the routing arm id for an API vendor. */
+/** Build the routing arm id for a built-in API vendor. */
 export function apiArmId(vendor: ApiVendor): ApiArmId {
   return `api:${vendor}`;
 }
 
 /**
+ * Runtime guard for {@link ApiArmId} (#4392): true iff `value` is `api:` plus
+ * a valid endpoint identity. Same rule as {@link ApiArmIdSchema}. Use it
+ * before a discovered or operator-supplied name becomes an arm id.
+ */
+export function isApiArmId(value: string): value is ApiArmId {
+  return ApiArmIdSchema.safeParse(value).success;
+}
+
+/**
+ * Display slot for an `api:*` arm whose endpoint is not one of the built-in
+ * vendors (#4392). `opencode` is the slot whose capability profile describes an
+ * OpenAI-compatible endpoint of unknown model family, and the slot the only
+ * pre-existing gateway arm (`api:custom-openai`) already collapses to. The
+ * bandit keeps the distinct arm; only slot-level surfaces see this collapse.
+ */
+const UNKNOWN_API_ARM_DISPLAY_SLOT: CliName = 'opencode';
+
+/**
  * Map a routing arm id to its display CLI slot (#3422) — identity for CLI
- * slots, vendor→slot for API arms. Used where a feature is intrinsically
- * slot-level (e.g. ZeroRouter difficulty calibration) and must collapse the
- * distinct API arm to its attribution slot. The bandit keeps the distinct arm;
- * only slot-level surfaces collapse.
+ * slots, vendor→slot for the built-in API arms, and the explicit
+ * {@link UNKNOWN_API_ARM_DISPLAY_SLOT} for any other `api:*` endpoint (#4392).
+ * Used where a feature is intrinsically slot-level (e.g. ZeroRouter difficulty
+ * calibration) and must collapse the distinct API arm to its attribution slot.
+ * The bandit keeps the distinct arm; only slot-level surfaces collapse.
  */
 export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
   switch (armId) {
@@ -69,8 +110,17 @@ export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
     case 'api:custom-openai':
       return 'opencode';
     default:
-      return armId;
+      return isApiArmPrefixed(armId) ? UNKNOWN_API_ARM_DISPLAY_SLOT : armId;
   }
+}
+
+/**
+ * Type-level split of a {@link RoutingArmId} into its two halves. Prefix-only
+ * on purpose: the input is already typed, so this is a narrowing aid for the
+ * display-slot fallback, not a validator — {@link isApiArmId} is the validator.
+ */
+function isApiArmPrefixed(armId: RoutingArmId): armId is ApiArmId {
+  return armId.startsWith('api:');
 }
 
 /**

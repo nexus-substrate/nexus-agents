@@ -28,6 +28,7 @@ import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
 import * as modelConfigHelpers from '../config/model-config-helpers.js';
 import type { ModelId } from '../config/model-capabilities-types.js';
+import type { IResilientAdapter } from './resilient-adapter-types.js';
 
 // Silence logging in tests
 const mockLogger = {
@@ -448,5 +449,91 @@ describe('the registry singleton has a designated composition root (#6012)', () 
     const b = claimGlobalRegistry(second);
     expect(b).toBe(a);
     expect(a.getLogger()).toBe(first);
+  });
+});
+
+// #4392 increment 1: the registry keyed strictly by `CliName`, so an `api:*`
+// routing arm had no place in it at all. It now accepts an explicitly
+// registered API arm alongside the CLI slots. CLI-name behaviour is unchanged:
+// a slot is still created lazily and cached; an API arm is never synthesised.
+describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
+  let registry: UnifiedAdapterRegistry;
+
+  function stubResilientAdapter(id: string): IResilientAdapter {
+    return {
+      providerId: 'stub',
+      modelId: id,
+      capabilities: [],
+      complete: vi.fn(),
+      stream: vi.fn(),
+      getHealth: vi.fn(() => undefined),
+      refresh: vi.fn(() => Promise.resolve()),
+      setPreferredCli: vi.fn(),
+      onFailover: vi.fn(() => () => undefined),
+      dispose: vi.fn(),
+    } as unknown as IResilientAdapter;
+  }
+
+  beforeEach(() => {
+    resetGlobalRegistry();
+    registry = createUnifiedRegistry({ logger: mockLogger });
+  });
+
+  afterEach(() => {
+    registry.dispose();
+  });
+
+  it('getAdapterForArm on a CLI slot is the SAME instance getAdapterForCli returns', () => {
+    const viaCli = registry.getAdapterForCli('claude');
+
+    expect(registry.getAdapterForArm('claude')).toBe(viaCli);
+    expect(registry.getSnapshot().cachedAdapters).toEqual(['claude']);
+  });
+
+  it('getAdapterForArm on an unregistered api arm is undefined, not a CLI fallback', () => {
+    expect(registry.getAdapterForArm('api:gw-prod')).toBeUndefined();
+    // Asking did not create anything.
+    expect(registry.getSnapshot().cachedAdapters).toEqual([]);
+  });
+
+  it('a registered api arm is returned by id and listed in the snapshot', () => {
+    const stub = stubResilientAdapter('gw-prod');
+
+    registry.registerApiArm('api:gw-prod', stub);
+
+    expect(registry.getAdapterForArm('api:gw-prod')).toBe(stub);
+    expect(registry.getSnapshot().cachedAdapters).toEqual(['api:gw-prod']);
+  });
+
+  it('registering an api arm leaves CLI-slot behaviour untouched', () => {
+    const stub = stubResilientAdapter('gw-prod');
+    registry.registerApiArm('api:gw-prod', stub);
+
+    const opencode = registry.getAdapterForCli('opencode');
+
+    expect(opencode).not.toBe(stub);
+    expect(opencode.getCircuitBreakerRegistry?.()).toBe(getDefaultCliCircuitBreakerRegistry());
+    expect(registry.getSnapshot().cachedAdapters).toEqual(['api:gw-prod', 'opencode']);
+  });
+
+  it('rejects an id that fails the endpoint validator, even through a cast', () => {
+    const stub = stubResilientAdapter('bad');
+
+    // No cast needed: the TYPE admits any `api:` string, which is exactly why
+    // the registry re-validates at runtime.
+    expect(() => {
+      registry.registerApiArm('api:https://user:secret@gw', stub);
+    }).toThrow(/api arm id/i);
+    expect(registry.getAdapterForArm('api:https://user:secret@gw')).toBeUndefined();
+  });
+
+  it('dispose() disposes a registered api arm along with the CLI slots', () => {
+    const stub = stubResilientAdapter('gw-prod');
+    registry.registerApiArm('api:gw-prod', stub);
+
+    registry.dispose();
+
+    expect(stub.dispose).toHaveBeenCalledTimes(1);
+    expect(registry.getSnapshot().cachedAdapters).toEqual([]);
   });
 });
