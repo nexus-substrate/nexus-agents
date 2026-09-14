@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- 890 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); the canonical CompositeRouter class (CLAUDE.md entry point): construction, the route/execute path and outcome recording for the whole chain; split tracked in #6148 */
+/* eslint-disable max-lines -- 801 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); the canonical CompositeRouter class (CLAUDE.md entry point): construction, the route/execute path and outcome recording for the whole chain. The #6148 seam (model-selection-shadow glue) moved to composite-router-model-shadow.ts; what remains is the class itself, and no further dependency-driven seam is identified */
 /**
  * CompositeRouter — chains the full routing pipeline.
  *
@@ -113,14 +113,9 @@ import {
 } from '../config/register-model-sources.js';
 import { resolveModelForTier, isRouteModelSelectionEnabled } from './resolve-model-for-tier.js';
 import {
-  MODEL_SELECTION_SHADOW_SCHEMA_VERSION,
-  computeModelSelectionShadow,
-  isRouteModelShadowEnabled,
-  persistModelSelectionShadowRecord,
-  recordModelSelectionShadowFailure,
-  type ModelSelectionShadowComparison,
-} from './model-selection-shadow.js';
-import { logModelSelectionReadinessOnce } from './model-selection-readiness.js';
+  PendingRoutingOutcomes,
+  type PendingRoutingOutcome,
+} from './composite-router-model-shadow.js';
 import {
   recordBanditOutcome,
   recordPreferenceSignal,
@@ -241,16 +236,9 @@ export class CompositeRouter implements ICompositeRouter {
 
   /**
    * Route-time outcome data keyed by the exact task object for execution-safe
-   * feedback joins. Weak keys avoid retaining abandoned task objects.
+   * feedback joins (#4197 shadow glue + difficulty attribution; #6148 split).
    */
-  private readonly pendingRoutingOutcomes = new WeakMap<
-    CliTask,
-    {
-      readonly difficultyAttribution:
-        { readonly difficulty: number; readonly selectedCli: RoutingArmId } | undefined;
-      readonly modelShadow: ModelSelectionShadowComparison | undefined;
-    }
-  >();
+  private readonly pendingRoutingOutcomes: PendingRoutingOutcomes;
 
   constructor(
     adapters: Map<RoutingArmId, ICliAdapter>,
@@ -276,6 +264,7 @@ export class CompositeRouter implements ICompositeRouter {
     } = config ?? {};
     this.config = CompositeRouterConfigSchema.parse(baseConfig);
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
+    this.pendingRoutingOutcomes = new PendingRoutingOutcomes(this.logger);
     this.adapters = adapters;
     this.cliNames = Array.from(adapters.keys());
     this.assignOptionalCollaborators(metricsCollector, orchestrationObserver);
@@ -713,7 +702,7 @@ export class CompositeRouter implements ICompositeRouter {
       // the model actually used. Exception-guarded inside — never alters or
       // breaks the live decision.
       if (decisionResult.ok) {
-        this.trackPendingRoutingOutcome(task, decisionResult.value);
+        this.pendingRoutingOutcomes.track(task, decisionResult.value);
       }
       return decisionResult;
     } catch (error: unknown) {
@@ -817,104 +806,6 @@ export class CompositeRouter implements ICompositeRouter {
       // arXiv:2505.12601 KNN routing
       knnRoutingStage: this.knnRoutingStage,
     };
-  }
-
-  private trackPendingRoutingOutcome(task: CliTask, decision: CompositeRoutingDecision): void {
-    if (this.pendingRoutingOutcomes.get(task)?.modelShadow !== undefined) {
-      this.logger.debug('Dropping incomplete model-selection shadow comparison after task reroute');
-    }
-    const difficultyAttribution =
-      decision.difficultyEstimate === undefined
-        ? undefined
-        : {
-            difficulty: decision.difficultyEstimate.aggregateScore,
-            selectedCli: decision.cliName,
-          };
-    this.pendingRoutingOutcomes.set(task, {
-      difficultyAttribution,
-      modelShadow: this.computePendingModelShadow(task, decision),
-    });
-  }
-
-  /**
-   * Compute the model-selection SHADOW comparison for a routed decision
-   * (#4197): what `resolveModelForTier` WOULD have picked vs the model the
-   * decision actually carries (or the CLI default the adapter will resolve).
-   * Held pending until `recordDifficultyOutcome` supplies the outcome, then
-   * persisted to the dedicated shadow log. Gated behind
-   * `NEXUS_ROUTE_MODEL_SHADOW=1` (default OFF). NEVER affects the live
-   * decision — any failure increments the shadow-failure counter and is
-   * logged, not thrown into the routing path.
-   *
-   * Tasks with a PINNED model (`CliTask.model`) are SKIPPED entirely: the
-   * adapter executes the pinned model (base-adapter), not the CLI default the
-   * comparison would otherwise assume, so a pinned run says nothing about the
-   * tier selector — sampling it would mislabel the agree/diverge cohorts and
-   * pad the volume criterion with garbage (#4218 review).
-   */
-  private computePendingModelShadow(
-    task: CliTask,
-    decision: CompositeRoutingDecision
-  ): ModelSelectionShadowComparison | undefined {
-    try {
-      if (!isRouteModelShadowEnabled() || decision.difficultyTier === undefined) return undefined;
-      if (task.model !== undefined) return undefined; // pinned model — not selector evidence
-      // Log-once flip-readiness signal (#4197, mirrors #4161's pattern):
-      // surfaced alongside shadow enablement, observed, never acted on.
-      logModelSelectionReadinessOnce(this.logger);
-      const comparison = computeModelSelectionShadow(
-        routingArmDisplaySlot(decision.cliName),
-        decision.difficultyTier,
-        decision.model
-      );
-      this.logger.debug('Model-selection shadow computed (#4197)', {
-        cli: comparison.cli,
-        tier: comparison.tier,
-        actualModel: comparison.actualModel,
-        shadowModel: comparison.shadowModel,
-        agree: comparison.agree,
-      });
-      return comparison;
-    } catch (error: unknown) {
-      const failures = recordModelSelectionShadowFailure();
-      this.logger.warn('Model-selection shadow failed (non-fatal, #4197)', {
-        error: getErrorMessage(error),
-        failures,
-      });
-      return undefined;
-    }
-  }
-
-  /**
-   * Join a pending model-selection shadow comparison with its task outcome and
-   * persist the completed record (#4197). `costUsd` is deliberately
-   * absent: the routing outcome path measures no per-decision cost today, and
-   * the readiness gate's cost criterion stays fail-closed until it does.
-   * Exception-guarded — an outcome-join failure never breaks outcome recording.
-   */
-  private joinModelSelectionShadowOutcome(
-    pending: ModelSelectionShadowComparison | undefined,
-    success: boolean
-  ): void {
-    if (pending === undefined) return;
-    try {
-      persistModelSelectionShadowRecord({
-        schema: MODEL_SELECTION_SHADOW_SCHEMA_VERSION,
-        timestamp: new Date(getTimeProvider().now()).toISOString(),
-        cli: pending.cli,
-        tier: pending.tier,
-        actualModel: pending.actualModel,
-        shadowModel: pending.shadowModel,
-        agree: pending.agree,
-        success,
-      });
-    } catch (error: unknown) {
-      const failures = recordModelSelectionShadowFailure();
-      this.logger.warn('Model-selection shadow outcome join failed (non-fatal, #4197)', {
-        error: getErrorMessage(error),
-        failures,
-      });
-    }
   }
 
   private buildRoutingDecision(
@@ -1044,8 +935,7 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number): void {
-    const pending = this.pendingRoutingOutcomes.get(task);
-    this.pendingRoutingOutcomes.delete(task);
+    const pending = this.pendingRoutingOutcomes.take(task);
     this.finishDifficultyOutcome(task, success, qualityScore, pending);
   }
 
@@ -1054,8 +944,7 @@ export class CompositeRouter implements ICompositeRouter {
     task: CliTask,
     success: boolean
   ): void {
-    const pending = this.pendingRoutingOutcomes.get(task);
-    this.pendingRoutingOutcomes.delete(task);
+    const pending = this.pendingRoutingOutcomes.take(task);
     const difficultyAttribution =
       decision.difficultyEstimate === undefined
         ? undefined
@@ -1073,13 +962,7 @@ export class CompositeRouter implements ICompositeRouter {
     task: CliTask,
     success: boolean,
     qualityScore: number | undefined,
-    pending:
-      | {
-          readonly difficultyAttribution:
-            { readonly difficulty: number; readonly selectedCli: RoutingArmId } | undefined;
-          readonly modelShadow: ModelSelectionShadowComparison | undefined;
-        }
-      | undefined
+    pending: PendingRoutingOutcome | undefined
   ): void {
     recordZeroRouterOutcome(
       task,
@@ -1088,7 +971,7 @@ export class CompositeRouter implements ICompositeRouter {
       this.getOutcomeDependencies(),
       pending?.difficultyAttribution
     );
-    this.joinModelSelectionShadowOutcome(pending?.modelShadow, success);
+    this.pendingRoutingOutcomes.joinModelShadowOutcome(pending?.modelShadow, success);
   }
 
   hasMinimumPreferenceData(): boolean {
