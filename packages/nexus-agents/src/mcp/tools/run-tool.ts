@@ -548,6 +548,9 @@ async function runHandler(
         toolName: 'run',
         input,
         freshJobId: () => `rn-${randomUUID()}`,
+        // #5393: deliberately arity-0 — `executeGoal`'s strategy executors take
+        // no AbortSignal, so taking the signal would flip `signalAccepted` to
+        // true with nothing reading it. Executor-level gate first: #6305.
         run: () => executeRunBodyOrThrow(input, logger, trustTier, gatewayAdapters),
         logger,
       });

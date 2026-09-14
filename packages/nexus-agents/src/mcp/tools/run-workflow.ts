@@ -365,6 +365,10 @@ function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput)
     // `handleRunWorkflow` already encapsulates the full sync path (dry-run +
     // validation + recording); recording its whole envelope as the job result
     // preserves the success/error discriminator + stepResults for polling.
+    // #5393: deliberately arity-2 — `handleRunWorkflow` drives
+    // `executionEngine.execute`, which has no AbortSignal option, so taking the
+    // signal here would flip `signalAccepted` to true with nothing reading it.
+    // Threading it needs a phase-boundary gate in the engine first: #6305.
     run: (_jobId, input) => handleRunWorkflow(deps, input),
     toEnvelope: {
       pending: (jobId) =>
