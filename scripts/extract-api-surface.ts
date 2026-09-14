@@ -186,9 +186,8 @@ export function normalizeTypeText(text: string): string {
  *   groups are descended into. Four snapshot lines, all zod signatures.
  *
  * `=>` is opaque to the bracket count, or the `>` of every arrow would close
- * a generic that was never opened. The existing `splitTopLevel` above has
- * exactly that bug (#6080) and is left alone here so that this change's
- * snapshot churn stays one kind of line.
+ * a generic that was never opened. `splitTopLevel` below shares this scanner
+ * for the same reason (#6080).
  */
 const OPENERS = '{(<[';
 const CLOSERS = '})>]';
@@ -358,25 +357,20 @@ function matchingBrace(text: string, open: number): number {
   return -1;
 }
 
-/** Splits on `;` that are not inside a nested group. */
+/**
+ * Splits on `;` that are not inside a nested group, a string literal or `=>`.
+ *
+ * Delegates to the union scanner's `splitAtDepthZero` rather than carrying a
+ * second bracket counter: the first cut here counted the `>` of every `=>` as
+ * a closer, so after one function-typed member the depth went negative and
+ * every later top-level `;` was skipped — the members that followed were
+ * neither split nor sorted, and the printer's trailing `;` was kept and
+ * doubled on re-join (`{ z: () => void; a: string;; }`, #6080).
+ */
 function splitTopLevel(inner: string): string[] {
-  const OPENERS = '{(<[';
-  const CLOSERS = '})>]';
-  const out: string[] = [];
-  let buf = '';
-  let nest = 0;
-  for (const ch of inner) {
-    if (OPENERS.includes(ch)) nest++;
-    else if (CLOSERS.includes(ch)) nest--;
-    if (ch === ';' && nest === 0) {
-      out.push(buf.trim());
-      buf = '';
-    } else {
-      buf += ch;
-    }
-  }
-  out.push(buf.trim());
-  return out.filter((m) => m !== '');
+  return splitAtDepthZero(inner, ';')
+    .map((m) => m.trim())
+    .filter((m) => m !== '');
 }
 
 function sortTypeMembers(text: string): string {
