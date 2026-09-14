@@ -11,15 +11,32 @@
 #   - matching sha-bound record ABSENT => script prints a ::warning:: and exits 0
 #     => job SUCCEEDS but surfaces the annotation (warn-first, condition 2).
 #
-# This job is intentionally NOT added to branch protection as a required check in
-# this stage, so even the (rare) integrity failure does not hard-block a human
-# merge until the fail-closed FLIP follow-on. Flipping absence to a block and
-# making this required are tracked follow-ons.
+# The pr_review AUDIT job is intentionally NOT a branch-protection required
+# check in this stage, so even the (rare) integrity failure does not hard-block
+# a human merge until the fail-closed FLIP follow-on. The RATIFICATION job
+# below is the one branch protection is meant to require (#4802) — see the
+# next paragraph for what makes that possible.
 #
-# The `paths:` filter restricts the trigger to the governor path set. It is kept
-# in lockstep with the governance-of-the-governor section of /CODEOWNERS (the
-# single source the gate script itself parses); if those CODEOWNERS entries
-# change, update this filter to match.
+# NO `paths:` FILTER (#4802 part 1). Branch protection can only require a
+# status context that appears on EVERY pull request; a path-filtered job never
+# reports on a PR outside its paths, so as a required context it would sit
+# `expected` forever on an ordinary PR. The workflow therefore runs on every
+# pull_request and every push to main. The governor-path verdict is computed
+# INSIDE the run from the one parse of /CODEOWNERS (`scripts/governor-section.ts`):
+#   - `governor-ratification` runs on every PR. Its gate script returns
+#     `not-applicable` → exit 0 when no governor path is touched (~60 s on an
+#     ordinary PR, of which ~35 s is the full-history checkout and ~5 s the
+#     injector spawn, #6250), and fails closed on a governor PR without a bound
+#     record. Its job name — `Governor-path ratification gate` — is the context
+#     branch protection requires; renaming it un-requires the gate.
+#   - `governor-review` and `codeowners-errors` do NOT run on an ordinary PR.
+#     They read the `governor_touched` output the ratification jobs compute
+#     (`scripts/governor-paths-touched.ts`, the same parser and matcher the
+#     gates use) and are skipped when it is not `true`. Per-job reasons sit on
+#     the jobs. A skipped job is a legitimate state for a job that is not a
+#     required context; the ratification gate is never skipped on a PR.
+# The `paths:` blocks this replaces were a hand-maintained second copy of the
+# governor set, kept in lockstep by a test (#5997). Nothing is copied now.
 #
 # A third job (#6174) asks GitHub's OWN parser whether /CODEOWNERS is valid at
 # the sha under review. It lives here rather than in a sibling workflow so the
@@ -41,56 +58,29 @@ name: Governor Review Gate
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths:
-      - 'packages/nexus-agents/src/audit/**'
-      - 'packages/nexus-agents/src/governance/**'
-      - 'scripts/inject-governance.ts'
-      - 'governance/**'
-      - 'CLAUDE.md'
-      - 'AGENTS.md'
-      - 'CODEOWNERS'
-      - '.github/CODEOWNERS'
-      - 'docs/CODEOWNERS'
-      - '.github/workflows/governor-review.yml'
-      - 'scripts/check-governor-review.ts'
-      - 'scripts/check-governor-ratification.ts'
-      - 'scripts/governor-ledger-evidence.ts'
-      - 'scripts/check-codeowners-errors.ts'
-      - 'scripts/governance-stamp-exemption.ts'
-      - 'scripts/governor-section.ts'
-      - '.rules/**'
-      - 'packages/nexus-agents/src/consensus/decision/**'
-      - 'packages/nexus-agents/src/cli/voter-roles.ts'
   push:
     branches: [main]
-    paths:
-      - 'packages/nexus-agents/src/audit/**'
-      - 'packages/nexus-agents/src/governance/**'
-      - 'scripts/inject-governance.ts'
-      - 'governance/**'
-      - 'CLAUDE.md'
-      - 'AGENTS.md'
-      - 'CODEOWNERS'
-      - '.github/CODEOWNERS'
-      - 'docs/CODEOWNERS'
-      - '.github/workflows/governor-review.yml'
-      - 'scripts/check-governor-review.ts'
-      - 'scripts/check-governor-ratification.ts'
-      - 'scripts/governor-ledger-evidence.ts'
-      - 'scripts/check-codeowners-errors.ts'
-      - 'scripts/governance-stamp-exemption.ts'
-      - 'scripts/governor-section.ts'
-      - '.rules/**'
-      - 'packages/nexus-agents/src/consensus/decision/**'
-      - 'packages/nexus-agents/src/cli/voter-roles.ts'
 
 permissions:
   contents: read
 
 jobs:
+  # Gated on the ratification job's detector output rather than a `paths:`
+  # filter (#4802 part 1). Why gated and not always-on: this job is warn-first
+  # and not a required context, and on an ordinary PR its full-history checkout
+  # (~35 s, measured) plus install (~13 s) buys a verdict of "no governor paths
+  # touched — nothing to assert" that the ratification job already computed.
+  # Cost of the gating: the job now starts after the ratification job (~60 s)
+  # on a governor PR instead of in parallel with it.
+  #
+  # `!cancelled()` rather than the implicit `success()`: the ratification job
+  # FAILS on an unratified governor PR, and this job must still run then —
+  # it reports the other half of the evidence. A failed job's outputs are
+  # still delivered to a dependent that runs under `!cancelled()`.
   governor-review:
     name: Governor-path pr_review audit gate
-    if: github.event_name == 'pull_request'
+    needs: governor-ratification
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.governor-ratification.outputs.governor_touched == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -143,6 +133,12 @@ jobs:
   # Distinct from the audit gate above, which asks whether the change was
   # REVIEWED. This asks whether the owner RATIFIED it — the requirement
   # CODEOWNERS and CLAUDE.md both state and nothing enforced until now.
+  #
+  # Runs on EVERY pull request (#4802 part 1): this job's name is the status
+  # context branch protection requires, and a required context must be
+  # reported on every PR or the PR can never merge. On a PR that touches no
+  # governor path the gate prints `not-applicable` and exits 0. Do not add a
+  # `paths:` filter, a `needs:`, or a narrower `if:` here.
   # ---------------------------------------------------------------------------
   governor-ratification:
     name: Governor-path ratification gate
@@ -152,6 +148,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      # Read by `governor-review` and `codeowners-errors` in place of the
+      # `paths:` filter. `true` / `false`; empty when the detector step did
+      # not run to completion, which the dependents treat as not-true.
+      governor_touched: ${{ steps.touched.outputs.governor_touched }}
 
     steps:
       - name: Checkout PR head
@@ -256,6 +257,18 @@ jobs:
             echo "base_ledger_path=${BASE_LEDGER_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Which governor paths does this PR touch?
+        id: touched
+        env:
+          CHANGED_FILES: ${{ steps.evidence.outputs.files }}
+        # Prints exactly one `governor_touched=true|false` line to stdout, or
+        # nothing and exit 1 when the set could not be measured (no file list,
+        # unparseable governor section) — a failed detector fails this job and
+        # leaves the dependents' condition empty, never `false`. Same parser
+        # and matcher as the gate below; this is the `paths:` filter's
+        # replacement, not a second copy of the set (#4802 part 1).
+        run: npx tsx scripts/governor-paths-touched.ts >> "${GITHUB_OUTPUT}"
+
       - name: Run ratification gate
         env:
           CHANGED_FILES: ${{ steps.evidence.outputs.files }}
@@ -314,6 +327,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      # The push-event twin of the pre-merge job's output, read by
+      # `codeowners-errors` so it still runs when a governor change LANDS.
+      governor_touched: ${{ steps.touched.outputs.governor_touched }}
 
     steps:
       - name: Checkout
@@ -456,6 +473,14 @@ jobs:
             echo "base_ledger_path=${BASE_LEDGER_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Which governor paths did this push touch?
+        id: touched
+        env:
+          CHANGED_FILES: ${{ steps.evidence.outputs.files }}
+        # See the pre-merge job's twin step. Over the push's own file list, so
+        # the CODEOWNERS parse runs on the sha that landed a governor change.
+        run: npx tsx scripts/governor-paths-touched.ts >> "${GITHUB_OUTPUT}"
+
       - name: Run ratification gate against what actually landed
         env:
           CHANGED_FILES: ${{ steps.evidence.outputs.files }}
@@ -501,14 +526,22 @@ jobs:
   # The script fails on a non-empty `errors` array AND on any payload without an
   # `errors` array (a 404 body has none) — an unmeasured file is not a clean one.
   #
-  # Runs on both events. The workflow-level `paths:` already names CODEOWNERS,
-  # so every PR that edits it and every push to main that lands such an edit
-  # reaches this job; the other governor paths reach it too, which is a cheap
+  # Runs on both events, gated on the `governor_touched` output of whichever
+  # ratification job ran (#4802 part 1; the pre-merge job on pull_request, the
+  # backstop on push — the other is skipped and its output is empty). Why
+  # gated rather than always-on: the job is cheap (~18 s measured, shallow
+  # checkout), but on an ordinary PR CODEOWNERS is byte-identical to main's,
+  # so the answer is main's answer, and a check whose input cannot differ from
+  # the last one is a redundant context, not a measurement. Every PR that edits
+  # CODEOWNERS or creates a shadow copy touches a governor path, so it still
+  # reaches this job, and the other governor paths reach it too — a cheap
   # superset (one API call). Match SEMANTICS are not verified — see the script
   # header and #6174 for why that half is not measurable here.
   # ---------------------------------------------------------------------------
   codeowners-errors:
     name: CODEOWNERS parses under GitHub's parser
+    needs: [governor-ratification, governor-ratification-backstop]
+    if: ${{ !cancelled() && (needs.governor-ratification.outputs.governor_touched == 'true' || needs.governor-ratification-backstop.outputs.governor_touched == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

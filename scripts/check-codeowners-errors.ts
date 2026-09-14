@@ -28,8 +28,10 @@
  * {@link SHADOW_CODEOWNERS_PATHS}. This lives here rather than in
  * `governor-section.ts` because the question is "what does GitHub read", which
  * is this gate's question; the two ratification gates keep parsing the root
- * file, and any PR that creates a shadow file reaches this job through the
- * workflow's `paths:` filter.
+ * file, and any PR that creates a shadow file reaches this job because the
+ * shadow paths are governor paths: the workflow's `governor_touched` detector
+ * (`governor-paths-touched.ts`, the `paths:` filter's replacement since #4802)
+ * reports `true` for them.
  *
  * ## What it does NOT verify
  *
