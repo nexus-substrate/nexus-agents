@@ -32,21 +32,20 @@ import { withAsyncTaskStateDispatch } from '../../context/structured-task-state.
  * Async-job-body runaway-guard (#3734). A backgrounded job body has NO MCP
  * request timeout (that is the point of async mode), so without a ceiling a
  * wedged `run` would hold its concurrency slot and pending record forever.
- * The `async-job-body` operation class (3600s) bounds it.
+ * The `async-job-body` operation class (3600s by default) bounds it.
  *
- * It does NOT honour NEXUS_TIMEOUT_MULTIPLIER or the per-class override
- * UPWARDS, which this comment used to claim (#5785). The class is declared at
- * exactly `MCP_TIMEOUTS.maxMs`, and `describeClassGuard` re-clamps to that
- * ceiling, so for this class alone both knobs can only LOWER the guard —
- * `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS=7200000` resolves to 3600000. That is
- * reported at startup by `findIneffectiveVars`, naming the variable and the
- * reason, so it is disclosed rather than silent; the comment was the last place
- * still asserting otherwise.
+ * Because the body has no MCP request, it is the one class NOT ceilinged by
+ * `MCP_TIMEOUTS.maxMs` (#5995, panel option 1). `NEXUS_TIMEOUT_MULTIPLIER` and
+ * `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` raise it up to the class override
+ * ceiling (7200000ms); a value past that is clamped and reported at startup by
+ * `findIneffectiveVars`. The default is unchanged — the extra hour is opt-in,
+ * and it costs something: a wedged job holds its concurrency slot for the whole
+ * guard. The guard a job actually runs under is logged once at job start so
+ * real job durations can be judged against it.
  *
- * Whether the MCP REQUEST ceiling should bound a body that by construction has
- * no MCP request is tracked separately in #5995. On expiry the job is recorded as failed
- * with `runaway guard exceeded` and the slot is released by the existing
- * `finally`. This is a runaway-guard, not an SLA — 1h is generous.
+ * On expiry the job is recorded as failed with `runaway guard exceeded` and the
+ * slot is released by the existing `finally`. This is a runaway-guard, not an
+ * SLA — 1h is generous.
  */
 export const ASYNC_JOB_BODY_GUARD_CLASS = 'async-job-body' as const;
 
@@ -359,6 +358,13 @@ export async function runJobInBackground<I, R, E>(
   params: RunAsJobParams<I, R, E>
 ): Promise<void> {
   const guardMs = resolveClassGuardMs(ASYNC_JOB_BODY_GUARD_CLASS);
+  // Once per job, at info: the guard is operator-tunable (#5995), so the value
+  // a job actually ran under is the record, not the config that produced it.
+  params.logger?.info(`Async ${params.toolName} job started under runaway guard`, {
+    jobId,
+    guardMs,
+    guardClass: ASYNC_JOB_BODY_GUARD_CLASS,
+  });
   const guard = makeAsyncBodyGuard(jobId, params.toolName, guardMs, params.logger);
   // #4086: register an AbortController so cancel_job can stop this job's work. Its
   // signal is threaded into params.run; abort → run rejects → writeJobFailed, which
