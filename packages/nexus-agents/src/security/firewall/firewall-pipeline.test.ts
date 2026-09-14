@@ -9,6 +9,9 @@ import { ROLE_DEFAULT_TRUST } from '../trust-types.js';
 import { createGitHubAdapter } from './github-adapter.js';
 import { HostileInputFirewall } from './firewall-pipeline.js';
 import { parseATL } from './agent-trust-labels.js';
+import type { FirewallProcessOptions } from './firewall-types.js';
+import type { AgentAction, SourceCitation } from '../action-schema.js';
+import { ACTION_SCOPED_POLICY_RULES } from '../policy-gate.js';
 
 /** Helper to create a firewall with GitHub adapter. */
 function createFirewall(overrides: Record<string, unknown> = {}): HostileInputFirewall {
@@ -828,5 +831,278 @@ describe('durable sink and caller-supplied reputation (#4992 review)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.reputationGate).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// The full evaluatePolicy check set, not Rule of Two alone (#5380)
+// ============================================================================
+
+describe('policyEnforcement stage — the full evaluatePolicy set (#5380)', () => {
+  /**
+   * `process()` used to run ONE of the seven policy checks (`checkRuleOfTwo`).
+   * The other six need an `AgentAction`, which input-shaped `process()` never
+   * had — so they were not "passing", they were never evaluated, and the
+   * result could not say so. A caller that supplies the action it intends to
+   * take now gets `evaluatePolicy` in full; a caller that does not gets the
+   * action-scoped rules listed as `unmeasured`, never as passed.
+   */
+  const READ_ONLY = { hasWriteAccess: false, hasSecretAccess: false } as const;
+  // A repo-file citation is Tier 1 unconditionally, so it trips no source check.
+  const REPO_FILE_SOURCE: SourceCitation = { type: 'repoFile', path: 'README.md' };
+
+  const draftReply: Extract<AgentAction, { type: 'DraftReply' }> = {
+    type: 'DraftReply',
+    body: 'Thanks for the report, we will look into it.',
+    requiresApproval: true,
+    sources: [REPO_FILE_SOURCE],
+  };
+
+  it('a hostile author driving a mutating action trips checkInfluenceBlock, which never ran before', () => {
+    // NONE author → Tier 3 (no injection needed). Read-only posture so the
+    // Rule of Two — the one check that DID run — stays silent; every violation
+    // below is therefore one the old stage was structurally unable to report.
+    const fw = createFirewall({ context: READ_ONLY });
+    const result = fw.process(issueInput(), { action: draftReply });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.ruleOfTwoViolation).toBeUndefined();
+    expect(result.value.policy?.scope).toBe('action');
+    const rules = result.value.policy?.violations.map((v) => v.rule) ?? [];
+    expect(rules).toContain('UNTRUSTED_INFLUENCE');
+    expect(rules).toContain('INSUFFICIENT_TRUST');
+  });
+
+  describe('every check in evaluatePolicy can fail through process()', () => {
+    // A check that cannot fail is not a check. One row per rule id; OWNER
+    // authors isolate the action-shaped rules from the trust-shaped ones.
+    const owner = (): Record<string, unknown> =>
+      issueInput({ username: 'owner', authorAssociation: 'OWNER' });
+    const proposeLabels = (labels: string[]): AgentAction => ({
+      type: 'ProposeLabels',
+      labels,
+      reason: 'matches the report category',
+      sources: [REPO_FILE_SOURCE],
+    });
+    const lowTierComment = {
+      type: 'issueComment',
+      issueNumber: 1,
+      commentId: 7,
+      author: 'drive-by',
+      authorTrustTier: '3',
+    } as const;
+
+    const rows: ReadonlyArray<{
+      rule: string;
+      severity: 'block' | 'warn';
+      input: Record<string, unknown>;
+      options: FirewallProcessOptions;
+    }> = [
+      {
+        rule: 'REQUIRE_CITATION',
+        severity: 'block',
+        input: owner(),
+        // Zod would reject an empty source list; the policy check exists for
+        // exactly the caller that bypassed validation.
+        options: { context: READ_ONLY, action: { ...draftReply, sources: [] } },
+      },
+      {
+        rule: 'INSUFFICIENT_TRUST',
+        severity: 'block',
+        input: issueInput(),
+        options: { context: READ_ONLY, action: draftReply },
+      },
+      {
+        rule: 'UNTRUSTED_INFLUENCE',
+        severity: 'block',
+        input: issueInput(),
+        options: { context: READ_ONLY, action: draftReply },
+      },
+      {
+        rule: 'RULE_OF_TWO',
+        severity: 'block',
+        input: issueInput(),
+        options: { context: { hasWriteAccess: true, hasSecretAccess: true }, action: draftReply },
+      },
+      {
+        rule: 'LABEL_SET_UNAVAILABLE',
+        severity: 'block',
+        input: owner(),
+        // No label set supplied: unevaluable label validity fails CLOSED.
+        options: { context: READ_ONLY, action: proposeLabels(['bug']) },
+      },
+      {
+        rule: 'INVALID_LABELS',
+        severity: 'block',
+        input: owner(),
+        options: {
+          context: READ_ONLY,
+          action: proposeLabels(['nonexistent']),
+          existingLabels: new Set(['bug']),
+        },
+      },
+      {
+        rule: 'PRIVILEGED_LABEL',
+        severity: 'block',
+        input: owner(),
+        options: {
+          context: READ_ONLY,
+          action: proposeLabels(['owner-ratified']),
+          existingLabels: new Set(['owner-ratified']),
+        },
+      },
+      {
+        rule: 'SOURCE_TRUST_MISMATCH',
+        severity: 'warn',
+        input: owner(),
+        options: { context: READ_ONLY, action: { ...draftReply, sources: [lowTierComment] } },
+      },
+    ];
+
+    it.each(rows)(
+      '$rule is reachable and reports severity $severity',
+      ({ rule, severity, input, options }) => {
+        const result = createFirewall().process(input, options);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.value.policy?.scope).toBe('action');
+        const hit = result.value.policy?.violations.find((v) => v.rule === rule);
+        expect(hit?.severity).toBe(severity);
+      }
+    );
+
+    it('covers every action-scoped rule plus Rule of Two — no check is left untested', () => {
+      const tested = new Set(rows.map((r) => r.rule));
+      for (const rule of ACTION_SCOPED_POLICY_RULES) expect(tested.has(rule)).toBe(true);
+      expect(tested.has('RULE_OF_TWO')).toBe(true);
+    });
+  });
+
+  describe('without an action the action-scoped rules are unmeasured, never passed', () => {
+    it('reports scope: context with the unmeasured rule ids named', () => {
+      const result = createFirewall({ context: READ_ONLY }).process(issueInput());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.policy?.scope).toBe('context');
+      expect(result.value.policy?.unmeasured).toEqual(ACTION_SCOPED_POLICY_RULES);
+      // `requiresApproval` depends on the action type; with no action it must
+      // not read as a measured `false`.
+      expect(result.value.policy).not.toHaveProperty('requiresApproval');
+    });
+
+    it('still surfaces the Rule of Two on the same field as before', () => {
+      const fw = createFirewall({ context: { hasWriteAccess: true, hasSecretAccess: true } });
+      const result = fw.process(issueInput());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.policy?.violations.map((v) => v.rule)).toEqual(['RULE_OF_TWO']);
+      expect(result.value.ruleOfTwoViolation?.rule).toBe('RULE_OF_TWO');
+    });
+
+    it('is absent, not context-scoped, when the policyEnforcement stage is disabled', () => {
+      const fw = createFirewall({ stages: { policyEnforcement: false }, context: READ_ONLY });
+      const result = fw.process(issueInput(), { action: draftReply });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.policy).toBeUndefined();
+    });
+  });
+
+  describe('refusal semantics are unchanged: any blocking violation, under the same mode gate', () => {
+    it('audit reports wouldRefuse for an action-scoped block without refusing', () => {
+      const fw = createFirewall({ context: READ_ONLY, policyMode: 'audit' });
+      const result = fw.process(issueInput(), { action: draftReply });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.ruleOfTwoViolation).toBeUndefined();
+      expect(result.value.wouldRefuse).toBe(true);
+    });
+
+    it('enforce refuses an action-scoped block and names every blocking rule', () => {
+      const fw = createFirewall({ context: READ_ONLY, policyMode: 'enforce' });
+      const result = fw.process(issueInput(), { action: draftReply });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('POLICY_REFUSED');
+      expect(result.error.stage).toBe('policy');
+      expect(result.error.message).toContain('UNTRUSTED_INFLUENCE');
+      expect(result.error.message).toContain('INSUFFICIENT_TRUST');
+    });
+
+    it('off keeps the signal and reports no would-be refusal', () => {
+      const fw = createFirewall({ context: READ_ONLY });
+      const result = fw.process(issueInput(), { action: draftReply });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.policy?.scope).toBe('action');
+      if (result.value.policy?.scope !== 'action') return;
+      expect(result.value.policy.allowed).toBe(false);
+      expect(result.value.wouldRefuse).toBe(false);
+    });
+
+    it('a warn-only violation neither refuses under enforce nor counts as wouldRefuse under audit', () => {
+      const warnOnly: FirewallProcessOptions = {
+        context: READ_ONLY,
+        action: {
+          ...draftReply,
+          sources: [
+            {
+              type: 'issueComment',
+              issueNumber: 1,
+              commentId: 7,
+              author: 'x',
+              authorTrustTier: '3',
+            },
+          ],
+        },
+      };
+      const ownerInput = issueInput({ username: 'owner', authorAssociation: 'OWNER' });
+
+      const enforced = createFirewall({ policyMode: 'enforce' }).process(ownerInput, warnOnly);
+      expect(enforced.ok).toBe(true);
+
+      const audited = createFirewall({ policyMode: 'audit' }).process(ownerInput, warnOnly);
+      expect(audited.ok).toBe(true);
+      if (!audited.ok) return;
+      expect(audited.value.policy?.violations.map((v) => v.rule)).toEqual([
+        'SOURCE_TRUST_MISMATCH',
+      ]);
+      expect(audited.value.wouldRefuse).toBe(false);
+    });
+  });
+
+  describe('requiresApproval is the decision’s own field, not a new approval path', () => {
+    it('a clean DraftReply is allowed, requires approval, and is not refused under enforce', () => {
+      // Approval is orthogonal to refusal (#4735): the firewall surfaces it and
+      // acts on it no more than the production gate does.
+      const fw = createFirewall({ context: READ_ONLY, policyMode: 'enforce' });
+      const result = fw.process(issueInput({ username: 'owner', authorAssociation: 'OWNER' }), {
+        action: draftReply,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.policy).toEqual({
+        scope: 'action',
+        actionType: 'DraftReply',
+        allowed: true,
+        requiresApproval: true,
+        violations: [],
+        unmeasured: [],
+      });
+      expect(result.value.wouldRefuse).toBe(false);
+    });
+  });
+
+  it('records the policy decision on the audit trail when an action was evaluated', () => {
+    const fw = createFirewall({ context: READ_ONLY });
+    fw.process(issueInput(), { action: draftReply });
+    const events = fw.getAuditTrail().query({ type: 'policy_gate' });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      actionType: 'DraftReply',
+      allowed: false,
+      violationRules: expect.arrayContaining(['UNTRUSTED_INFLUENCE']),
+    });
   });
 });
