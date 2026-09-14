@@ -26,11 +26,22 @@
  * What the seam does NOT cover: the MCP transport above `executeVoting`
  * (`handleConsensusVote`, the secure handler, async dispatch, the vote-record
  * ledger) — the response is built by the same `buildResponse` this file calls,
- * but the tool registration is not driven here. The engine's `quorumReached`
- * flag is taken from the caller as an INPUT to `determineFinalStatus` (it is
- * the quorum, not the verdict). The option gate's bar lives in
+ * but the tool registration is not driven here. The option gate's bar lives in
  * `consensus/option-tally.ts` as its own literal; the declared-options row pins
  * it to `VOTING_THRESHOLDS` at one fixture point (3 of 5 under supermajority).
+ *
+ * Quorum (#6180). The engine's `quorumReached` used to be taken from the
+ * caller as an INPUT to the expected side, so a caller that hardcoded it true
+ * still matched. It is now DERIVED from the fixture through the governed
+ * `isQuorumReached(seats that reached the engine, DEFAULT_MIN_VOTERS_FOR_QUORUM)`
+ * and asserted against the emitted flag at both seams. Seam 1 is driven on
+ * both sides of the bar (one answering seat vs two). Seam 2 cannot be: the
+ * real producer returns one seat per requested role, the `>50%` error floor
+ * short-circuits before the engine runs, and any panel that is NOT
+ * short-circuited has at least `ceil(N/2) >= 2` seats reaching the engine —
+ * so at the tool the engine's bar is unreachable behind the error floor, and
+ * the below-quorum rows land there as a short-circuit (`no_quorum`), which
+ * the seam also pins.
  *
  * Every expected value is COMPUTED by the governed functions from the fixture
  * tally — no verdict and no bar appears as a literal on the expected side. The
@@ -56,8 +67,9 @@ vi.mock('../../cli/voter-agents.js', () => ({
 }));
 
 // --- the governed side (this directory + cli/voter-roles.ts) ---
-import { VOTING_THRESHOLDS } from './thresholds.js';
-import { resolveStrategy, strategyToAlgorithm } from './strategy.js';
+import { ERROR_FLOOR_FRACTION, VOTING_THRESHOLDS } from './thresholds.js';
+import { getDefaultErrorPolicy, resolveStrategy, strategyToAlgorithm } from './strategy.js';
+import { DEFAULT_MIN_VOTERS_FOR_QUORUM, isQuorumReached } from './quorum.js';
 import { determineFinalStatus, evaluateThreshold, resolveVoteDecision } from './verdict.js';
 import { getVoterRoles } from '../../cli/voter-roles.js';
 
@@ -131,15 +143,45 @@ const ROWS: readonly SeamRow[] = [
     errored: 0,
     options: { declared: ['A', 'B'], picks: ['A', 'A', 'A', 'B', 'B'] },
   },
+  // #6180: the engine's quorum bar. One answering seat is below
+  // `DEFAULT_MIN_VOTERS_FOR_QUORUM`; two is at it. Neither is a tally
+  // question — 1/1 and 2/2 both clear every ratio bar — so the verdicts
+  // differ at seam 1 only through the quorum. At seam 2 both rows exceed the
+  // error floor and short-circuit before the engine runs (see the header).
+  {
+    name: 'quorum: one seat answered',
+    strategy: 'supermajority',
+    approve: 1,
+    reject: 0,
+    errored: 6,
+  },
+  {
+    name: 'quorum: two seats answered',
+    strategy: 'supermajority',
+    approve: 2,
+    reject: 0,
+    errored: 5,
+  },
 ];
 
-/** The pairs the table must straddle: same bar, opposite governed verdicts. */
-const STRADDLE_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ['supermajority 4/7', 'supermajority 5/7'],
-  ['simple_majority 3/7', 'simple_majority 4/7'],
-  ['unanimous 6/7', 'unanimous 7/7'],
-  ['absolute_quorum with one errored seat', 'reduce_denominator with the same errored seat'],
-  ['declared options, leading share below the bar', 'supermajority 5/7'],
+/**
+ * The pairs the table must straddle: same bar, opposite governed verdicts.
+ * `tool` pairs differ in the seam-2 decision (`resolveVoteDecision` over the
+ * option-gated engine verdict); the `engine` pair differs in the seam-1
+ * verdict alone — at the tool both of its rows short-circuit to the same
+ * `no_quorum` (#6180), so the engine verdict is the only place it straddles.
+ */
+const STRADDLE_PAIRS: ReadonlyArray<readonly [string, string, 'tool' | 'engine']> = [
+  ['supermajority 4/7', 'supermajority 5/7', 'tool'],
+  ['simple_majority 3/7', 'simple_majority 4/7', 'tool'],
+  ['unanimous 6/7', 'unanimous 7/7', 'tool'],
+  [
+    'absolute_quorum with one errored seat',
+    'reduce_denominator with the same errored seat',
+    'tool',
+  ],
+  ['declared options, leading share below the bar', 'supermajority 5/7', 'tool'],
+  ['quorum: one seat answered', 'quorum: two seats answered', 'engine'],
 ];
 
 const FULL_PANEL = getVoterRoles(false);
@@ -202,6 +244,42 @@ function algorithmFor(row: SeamRow): ConsensusAlgorithm {
   return strategyToAlgorithm(resolveStrategy(inputFor(row)));
 }
 
+/**
+ * Seam 1 drives the engine directly and an errored seat never votes, so the
+ * seats the engine counts toward quorum are the ones that answered.
+ */
+function seatsAtEngineSeam(row: SeamRow): number {
+  return row.approve + row.reject;
+}
+
+/**
+ * Seam 2: the seats `applyErrorPolicy` (ungoverned,
+ * `consensus-vote-error-policy.ts`) hands the engine, stated from its contract
+ * so the expected side is a function of the fixture and the governed bars
+ * alone: none when errors exceed `ERROR_FLOOR_FRACTION` or `fail_closed` sees
+ * any error (the vote short-circuits before the engine runs); every seat under
+ * `count_as_abstain` and `absolute_quorum` (errors become abstentions and stay
+ * in the panel); the non-errored seats under `reduce_denominator`.
+ */
+function seatsAtToolSeam(row: SeamRow): number {
+  const seats = row.approve + row.reject + row.errored;
+  const policy = row.errorPolicy ?? getDefaultErrorPolicy(row.strategy);
+  if (row.errored / seats > ERROR_FLOOR_FRACTION) return 0;
+  if (policy === 'fail_closed' && row.errored > 0) return 0;
+  if (policy === 'count_as_abstain' || policy === 'absolute_quorum') return seats;
+  return seats - row.errored;
+}
+
+/**
+ * The governed quorum over the seats that reached the engine. Both seams
+ * construct the engine with no config (`createConsensusEngine()`), so the bar
+ * is the governed default — a caller that lowered it would fail the
+ * `quorum: one seat answered` row at seam 1.
+ */
+function governedQuorum(seatsAtEngine: number): boolean {
+  return isQuorumReached(seatsAtEngine, DEFAULT_MIN_VOTERS_FOR_QUORUM);
+}
+
 /** Seam 1: the engine-level verdict the governed functions compute for the tally. */
 function governedEngineVerdict(
   row: SeamRow,
@@ -212,7 +290,9 @@ function governedEngineVerdict(
   const bar = VOTING_THRESHOLDS[algorithm];
   const mode = inclusiveFor(algorithm);
   const respondents = row.approve + row.reject;
-  let approved = evaluateThreshold(row.approve, respondents, bar, mode).approved;
+  // `evaluateThreshold` defines no ratio over zero respondents (the guard is
+  // the strategy's, outside this directory); a panel of none approves nothing.
+  let approved = respondents > 0 && evaluateThreshold(row.approve, respondents, bar, mode).approved;
   if (withOptionGate && row.options !== undefined) {
     // #4472: the leading option must clear the SAME bar over the approvers.
     const counts = new Map<string, number>();
@@ -240,7 +320,8 @@ function governedToolDecision(row: SeamRow, emitted: ExtendedVotingResult): Vote
     contrarianRequested: FULL_PANEL.includes('catfish'),
     result: {
       ...emitted.result,
-      outcome: governedEngineVerdict(row, emitted.result.quorumReached, true),
+      quorumReached: governedQuorum(seatsAtToolSeam(row)),
+      outcome: governedEngineVerdict(row, governedQuorum(seatsAtToolSeam(row)), true),
     },
   };
   return resolveVoteDecision(inputFor(row), governedResult, row.errored).decision;
@@ -275,8 +356,12 @@ async function closeThroughEngine(
 describe('seam 1: ConsensusEngine.close() emits the governed verdict (#6172)', () => {
   it.each(ROWS)('$name', async (row) => {
     const emitted = await closeThroughEngine(row);
+    // #6180: the quorum is derived from the seats that voted, never read back
+    // from the caller — a close path that hardcodes it fails the one-seat row.
+    const quorum = governedQuorum(seatsAtEngineSeam(row));
+    expect(emitted.quorumReached).toBe(quorum);
     // The engine knows nothing of declared options; that gate is seam 2's.
-    expect(emitted.outcome).toBe(governedEngineVerdict(row, emitted.quorumReached, false));
+    expect(emitted.outcome).toBe(governedEngineVerdict(row, quorum, false));
   });
 
   it('the empty case: zero votes close as the governed no-approval verdict', async () => {
@@ -292,8 +377,8 @@ describe('seam 1: ConsensusEngine.close() emits the governed verdict (#6172)', (
     // `evaluateThreshold` defines no ratio over zero respondents (the guard is
     // the strategy's, outside this directory), so the governed statement of
     // the empty case is: nothing approved, and a panel of none has no quorum.
-    expect(closed.value.quorumReached).toBe(false);
-    expect(closed.value.outcome).toBe(determineFinalStatus(closed.value.quorumReached, false));
+    expect(closed.value.quorumReached).toBe(governedQuorum(0));
+    expect(closed.value.outcome).toBe(determineFinalStatus(governedQuorum(0), false));
     expect(closed.value.outcome).not.toBe('approved');
   });
 });
@@ -332,16 +417,28 @@ describe('seam 2: executeVoting + buildResponse emit the governed decision (#617
     // The full 7-seat panel was requested and answered by the fixture.
     expect(collectRealVotesMock).toHaveBeenCalledTimes(1);
     expect(collectRealVotesMock.mock.calls[0]?.[0].roles).toEqual(FULL_PANEL);
-    // No row is an error-policy short-circuit (`governedToolDecision` relies on
-    // it); the errored seats reached the result intact.
-    expect(emitted.policyReason).toBeUndefined();
+    // The errored seats reached the result intact, and the vote reached the
+    // engine exactly when the fixture says it should: a row over the error
+    // floor is a short-circuit (`policyReason` set, the engine never ran, and
+    // the synthetic result lists the responding seats per #3124 rather than
+    // an engine tally); every other row reaches the engine with exactly the
+    // seats the policy hands it.
     expect(emitted.votes.filter((v) => v.source === 'error')).toHaveLength(row.errored);
+    const seatsAtEngine = seatsAtToolSeam(row);
+    if (seatsAtEngine === 0) {
+      expect(emitted.policyReason).toBeDefined();
+    } else {
+      expect(emitted.policyReason).toBeUndefined();
+      expect(emitted.result.votes.size).toBe(seatsAtEngine);
+    }
 
+    // #6180: the quorum the tool reports is the governed quorum over the seats
+    // that reached the engine, derived from the fixture.
+    const quorum = governedQuorum(seatsAtEngine);
+    expect(emitted.result.quorumReached).toBe(quorum);
     // Seam 1 through the tool: the engine outcome the tool assembled (after
     // the option gate) is the governed verdict.
-    expect(emitted.result.outcome).toBe(
-      governedEngineVerdict(row, emitted.result.quorumReached, true)
-    );
+    expect(emitted.result.outcome).toBe(governedEngineVerdict(row, quorum, true));
     // Seam 2: both emitted decisions — the stamp and the response — are the
     // governed decision for the same seats.
     const governed = governedToolDecision(row, emitted);
@@ -359,8 +456,8 @@ describe('seam 2: executeVoting + buildResponse emit the governed decision (#617
     const response = buildResponse(input, emitted);
 
     expect(emitted.votes).toHaveLength(0);
-    expect(emitted.result.quorumReached).toBe(false);
-    expect(emitted.result.outcome).toBe(determineFinalStatus(emitted.result.quorumReached, false));
+    expect(emitted.result.quorumReached).toBe(governedQuorum(0));
+    expect(emitted.result.outcome).toBe(determineFinalStatus(governedQuorum(0), false));
     const governed = resolveVoteDecision(input, emitted, 0).decision;
     expect(emitted.decision).toBe(governed);
     expect(response.decision).toBe(governed);
@@ -379,8 +476,13 @@ describe('the fixture table straddles every bar', () => {
     return row;
   }
 
-  /** The governed decision with quorum reached — the tally alone decides. */
-  function governedFor(row: SeamRow): VoteDecisionStatus {
+  /** The governed seam-1 verdict: the answering seats' tally under their quorum. */
+  function governedEngineFor(row: SeamRow): ProposalStatus {
+    return governedEngineVerdict(row, governedQuorum(seatsAtEngineSeam(row)), false);
+  }
+
+  /** The governed seam-2 decision over the fixture seats. */
+  function governedToolFor(row: SeamRow): VoteDecisionStatus {
     const skeleton: ExtendedVotingResult = {
       proposal: inputFor(row).proposal,
       threshold: algorithmFor(row),
@@ -404,12 +506,25 @@ describe('the fixture table straddles every bar', () => {
     return governedToolDecision(row, skeleton);
   }
 
-  it.each(STRADDLE_PAIRS)('%s vs %s', (below, above) => {
+  it.each(STRADDLE_PAIRS)('%s vs %s (%s)', (below, above, seam) => {
+    const governedFor = seam === 'engine' ? governedEngineFor : governedToolFor;
     expect(governedFor(rowNamed(below))).not.toBe(governedFor(rowNamed(above)));
   });
 
+  it('the quorum pair straddles the bar itself, not a ratio (#6180)', () => {
+    // Both rows clear every ratio bar over their answering seats; only the
+    // seat count separates them, and only at the engine — at the tool neither
+    // reaches it.
+    const below = rowNamed('quorum: one seat answered');
+    const above = rowNamed('quorum: two seats answered');
+    expect(governedQuorum(seatsAtEngineSeam(below))).toBe(false);
+    expect(governedQuorum(seatsAtEngineSeam(above))).toBe(true);
+    expect(seatsAtToolSeam(below)).toBe(0);
+    expect(seatsAtToolSeam(above)).toBe(0);
+  });
+
   it('every straddle pair names a row that exists, and every row is in a pair', () => {
-    const paired = new Set(STRADDLE_PAIRS.flat());
+    const paired = new Set(STRADDLE_PAIRS.flatMap(([below, above]) => [below, above]));
     for (const row of ROWS) expect(paired.has(row.name)).toBe(true);
     for (const name of paired) expect(ROWS.some((r) => r.name === name)).toBe(true);
   });

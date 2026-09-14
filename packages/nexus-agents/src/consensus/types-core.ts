@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { DEFAULT_MIN_VOTERS_FOR_QUORUM } from './decision/quorum.js';
 
 /**
  * Consensus algorithm types.
@@ -330,7 +331,7 @@ export const ProposalCacheConfigSchema = z.object({
  */
 export const ConsensusEngineConfigSchema = z.object({
   defaultTimeout: z.number().int().positive().default(300000), // 5 minutes
-  minVotersForQuorum: z.number().int().positive().default(2),
+  minVotersForQuorum: z.number().int().positive().default(DEFAULT_MIN_VOTERS_FOR_QUORUM),
   maxActiveProposals: z.number().int().positive().default(100),
   enablePerformanceTracking: z.boolean().default(true),
   maxClosedProposals: z.number().int().positive().default(1000), // Issue #549
@@ -342,7 +343,7 @@ export const ConsensusEngineConfigSchema = z.object({
  */
 export const DEFAULT_CONSENSUS_CONFIG: ConsensusEngineConfig = {
   defaultTimeout: 300000, // 5 minutes
-  minVotersForQuorum: 2,
+  minVotersForQuorum: DEFAULT_MIN_VOTERS_FOR_QUORUM, // governed: decision/quorum.ts (#6180)
   maxActiveProposals: 100,
   enablePerformanceTracking: true,
   maxClosedProposals: 1000, // Issue #549: Prevent unbounded memory growth

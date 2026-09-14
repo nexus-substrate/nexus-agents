@@ -89,6 +89,18 @@ describe('governed-decision-imports-6000 — a governed symbol is imported only 
     expect(messages.map((m) => m.ruleId)).toEqual(['no-restricted-imports']);
   });
 
+  it('names the quorum predicate reached through result-builder, its former inline home (#6180)', async () => {
+    const messages = await lintAt(
+      `${PKG}/consensus/rogue-quorum.ts`,
+      "import { isQuorumReached, DEFAULT_MIN_VOTERS_FOR_QUORUM } from './result-builder.js';\nexport const q = isQuorumReached(1, DEFAULT_MIN_VOTERS_FOR_QUORUM);\n"
+    );
+    expect(messages.map((m) => m.ruleId)).toEqual([
+      'no-restricted-imports',
+      'no-restricted-imports',
+    ]);
+    expect(messages[0].message).toContain('quorum');
+  });
+
   it('accepts the governed import from consensus/decision', async () => {
     const messages = await lintAt(
       `${PKG}/consensus/fine-tally.ts`,

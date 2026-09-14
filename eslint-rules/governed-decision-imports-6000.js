@@ -40,10 +40,12 @@
 export const GOVERNED_DECISION_BLOCK_NAME = 'nexus-agents/governed-decision-imports-6000';
 
 /**
- * The symbols step 1 moved. Listed by name, not by home: `resolveStrategy`,
- * `strategyToAlgorithm` and `evaluateThreshold` were private before step 1 and
- * no legacy home re-exports them today, but a future re-export through one
- * would be exactly the bypass this block exists to refuse.
+ * The symbols step 1 moved, plus the quorum predicate #6180 extracted the same
+ * way. Listed by name, not by home: `resolveStrategy`, `strategyToAlgorithm`,
+ * `evaluateThreshold`, `isQuorumReached` and `DEFAULT_MIN_VOTERS_FOR_QUORUM`
+ * were private (or inline) before extraction and no legacy home re-exports
+ * them today, but a future re-export through one would be exactly the bypass
+ * this block exists to refuse.
  */
 export const GOVERNED_DECISION_SYMBOLS = Object.freeze([
   // decision/thresholds.ts
@@ -59,6 +61,9 @@ export const GOVERNED_DECISION_SYMBOLS = Object.freeze([
   'determineFinalStatus',
   'mapOutcomeToDecision',
   'resolveVoteDecision',
+  // decision/quorum.ts (#6180)
+  'isQuorumReached',
+  'DEFAULT_MIN_VOTERS_FOR_QUORUM',
   // cli/voter-roles.ts
   'VOTER_ROLES',
 ]);
@@ -116,7 +121,7 @@ const governedDecisionImports = {
             group: LEGACY_HOMES,
             importNames: [...GOVERNED_DECISION_SYMBOLS],
             message:
-              'Verdict computation is governed (#6000): import this from consensus/decision/{thresholds,strategy,verdict}.js or cli/voter-roles.js, not from a legacy re-export home. A verdict site outside those modules is a bypass of the governor path.',
+              'Verdict computation is governed (#6000): import this from consensus/decision/{thresholds,strategy,verdict,quorum}.js or cli/voter-roles.js, not from a legacy re-export home. A verdict site outside those modules is a bypass of the governor path.',
           },
         ],
       },

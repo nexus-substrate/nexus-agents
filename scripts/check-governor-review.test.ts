@@ -869,6 +869,7 @@ describe('the governor path set matches what the docs claim (#5997)', () => {
     ['packages/nexus-agents/src/consensus/decision/verdict.ts', true],
     ['packages/nexus-agents/src/consensus/decision/thresholds.ts', true],
     ['packages/nexus-agents/src/consensus/decision/strategy.ts', true],
+    ['packages/nexus-agents/src/consensus/decision/quorum.ts', true], // #6180
     ['packages/nexus-agents/src/cli/voter-roles.ts', true],
     ['packages/nexus-agents/src/consensus/engine.ts', false],
     ['packages/nexus-agents/src/consensus/types-core.ts', false],
