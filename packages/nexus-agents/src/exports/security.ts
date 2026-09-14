@@ -184,6 +184,10 @@ export type { FirewallProcessOptions } from '../security/firewall/firewall-types
 // FirewallPolicyMode below — a consumer cannot narrow a value it is handed
 // without the type that names its discriminant.
 export type { ActionValidation } from '../security/firewall/firewall-pipeline.js';
+// #5380: the type of `FirewallResult.policy` — a consumer cannot narrow on
+// `scope` ('action': all seven checks ran; 'context': Rule of Two only, the
+// rest named as unmeasured) without the type that declares the discriminant.
+export type { FirewallPolicyEvaluation } from '../security/firewall/firewall-policy-stage.js';
 // #5382: the rollout gate for firewall behaviour changes. Exported because
 // `FirewallResult.policyMode` is part of the published surface — a consumer
 // cannot read the field it is handed without the type that names its values.

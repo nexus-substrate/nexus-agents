@@ -358,6 +358,9 @@ async function runPipelineHandler(
         toolName: 'run_pipeline',
         input,
         freshJobId: () => `rp-${randomUUID()}`,
+        // #5393: deliberately arity-0 — `runAdaptiveOrchestrator` has no
+        // AbortSignal option, so taking the signal would flip `signalAccepted`
+        // to true with nothing reading it. Stage-boundary gate first: #6305.
         run: () => executePipelineBody(task, stages, input.template, input.dryRun, simulated),
         logger,
       });

@@ -28,7 +28,15 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, cpSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  cpSync,
+  renameSync,
+} from 'node:fs';
 import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -73,6 +81,8 @@ let core: {
   injectGovernance: () => Promise<void>;
   GOVERNANCE_STAMP_SOURCES: readonly string[];
   renderClaudeMd: (currentClaudeMd: string) => Promise<string>;
+  checkMcpErrorEnvelope: () => boolean;
+  checkToolPrerequisites: () => boolean;
 };
 
 /** Absolute path inside the sandbox for a repo-relative path. */
@@ -2221,9 +2231,204 @@ describe('governance stamp derivation (#5943)', () => {
       // Already absolute, and inside the sandbox because `core` was loaded
       // from there — joining SANDBOX again would double-join.
       const source = core.GOVERNANCE_STAMP_SOURCES[0] ?? '';
-      writeFileSync(source, `${readFileSync(source, 'utf-8')}\n// #5943 probe\n`);
-      await runInject();
-      expect(stampOf()).not.toBe(before);
+      const sourceOriginal = readFileSync(source, 'utf-8');
+      try {
+        writeFileSync(source, `${sourceOriginal}\n// #5943 probe\n`);
+        await runInject();
+        expect(stampOf()).not.toBe(before);
+      } finally {
+        // Not an INJECT_WRITES file, so `withInjectSnapshot` does not restore
+        // it; left probed, every later healthy-tree check fails on stamp drift.
+        writeFileSync(source, sourceOriginal);
+      }
+    });
+  });
+});
+
+// ============================================================================
+// Empty-input gates (#4586) — a gate whose input set is empty or whose source
+// is missing must NOT report pass
+// ============================================================================
+
+describe('inject-governance empty-input gates (#4586)', () => {
+  /** Move a sandbox directory aside, run `body`, move it back. */
+  async function withDirAside(rel: string, body: () => void | Promise<void>): Promise<void> {
+    const path = box(rel);
+    const aside = `${path}.aside`;
+    renameSync(path, aside);
+    try {
+      await body();
+    } finally {
+      rmSync(path, { recursive: true, force: true });
+      renameSync(aside, path);
+    }
+  }
+
+  /** Run one exported gate directly, capturing its `console.error` lines. */
+  function runGate(gate: () => boolean): { ok: boolean; output: string } {
+    const lines: string[] = [];
+    const err = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
+      lines.push(a.map(String).join(' '));
+    });
+    try {
+      return { ok: gate(), output: lines.join('\n') };
+    } finally {
+      err.mockRestore();
+    }
+  }
+
+  describe('checkRuleFrontmatter', () => {
+    it('fails naming the missing .rules/ directory', async () => {
+      await withDirAside('.rules', async () => {
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('.rules/ directory missing');
+        expect(output).toContain('frontmatter unmeasured');
+      });
+    });
+
+    it('fails when .rules/ holds zero .md files', async () => {
+      await withDirAside('.rules', async () => {
+        mkdirSync(box('.rules'));
+        writeFileSync(box('.rules/README.txt'), 'not a rule\n');
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('.rules/ holds no *.md files');
+        expect(output).toContain('frontmatter unmeasured');
+      });
+    });
+  });
+
+  // The tools directory also carries the manifest that `loadAllRegistries`
+  // reads, so an end-to-end `checkGovernance` throws before this gate runs;
+  // the gate is exercised directly against the redirected sandbox root.
+  describe('checkMcpErrorEnvelope', () => {
+    const TOOLS_DIR = 'packages/nexus-agents/src/mcp/tools';
+
+    it('fails when the tools directory is missing', async () => {
+      await withDirAside(TOOLS_DIR, () => {
+        const { ok, output } = runGate(core.checkMcpErrorEnvelope);
+        expect(ok).toBe(false);
+        expect(output).toContain('scanned 0 tool files');
+        expect(output).toContain('directory missing');
+      });
+    });
+
+    it('fails when the tools directory holds no scannable tool file', async () => {
+      await withDirAside(TOOLS_DIR, () => {
+        mkdirSync(box(TOOLS_DIR), { recursive: true });
+        // The two exclusions, and nothing else: zero files are inspected.
+        writeFileSync(box(`${TOOLS_DIR}/tool-result.ts`), 'export const x = 1;\n');
+        writeFileSync(box(`${TOOLS_DIR}/memory-stats.test.ts`), 'export const y = 1;\n');
+        const { ok, output } = runGate(core.checkMcpErrorEnvelope);
+        expect(ok).toBe(false);
+        expect(output).toContain('scanned 0 tool files');
+      });
+    });
+  });
+
+  describe('checkToolPrerequisites', () => {
+    const MANIFEST = 'packages/nexus-agents/src/mcp/tools/tool-manifest.ts';
+
+    it('fails when the manifest parse yields zero non-read-only tools', async () => {
+      await withSandboxFile(MANIFEST, (original) => {
+        // A manifest whose entries the annotation parser cannot see is the
+        // realistic failure: a layout change silently empties the set and
+        // `missing` is [] over nothing. Same observable as "every tool is
+        // read-only" — both mean the gate measured nothing.
+        const unparsable = original.replace(/annotations:\s*\{/g, 'annotations: /* moved */ [{');
+        expect(unparsable).not.toBe(original);
+        writeFileSync(box(MANIFEST), unparsable);
+        const { ok, output } = runGate(core.checkToolPrerequisites);
+        expect(ok).toBe(false);
+        expect(output).toContain('zero non-read-only tools');
+        expect(output).toContain('prerequisite gate measured nothing');
+      });
+    });
+  });
+
+  describe('checkCanonicalPaths', () => {
+    const DRIFT = 'Canonical Paths drift';
+
+    it('fails naming a missing AGENTS.md', async () => {
+      await withSandboxFile('AGENTS.md', async () => {
+        rmSync(box('AGENTS.md'));
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('Canonical paths unmeasured: AGENTS.md missing');
+      });
+    });
+
+    it('fails when the "## Canonical paths" heading is gone', async () => {
+      await withSandboxFile('AGENTS.md', async (original) => {
+        const broken = original.replace(/^## Canonical paths$/m, '## Canonical locations');
+        expect(broken).not.toBe(original);
+        writeFileSync(box('AGENTS.md'), broken);
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('Canonical paths unmeasured: no "## Canonical paths" heading');
+        expect(output).not.toContain(DRIFT);
+      });
+    });
+
+    it('fails when the table section carries no path entries', async () => {
+      await withSandboxFile('AGENTS.md', async (original) => {
+        const headerIdx = original.search(/^## Canonical paths$/m);
+        expect(headerIdx).toBeGreaterThan(-1);
+        const tail = original.slice(headerIdx);
+        const sectionEnd = tail.search(/\n### /);
+        expect(sectionEnd).toBeGreaterThan(-1);
+        // Keep the heading, drop every row between it and the first `###`.
+        const emptied =
+          original.slice(0, headerIdx) + '## Canonical paths\n' + tail.slice(sectionEnd);
+        writeFileSync(box('AGENTS.md'), emptied);
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('Canonical paths unmeasured: 0 path entries');
+        expect(output).not.toContain(DRIFT);
+      });
+    });
+  });
+
+  describe('checkRegistryDrift', () => {
+    const TOOLS_PHRASE = /\*\*(\d+) MCP tools registered\.\*\*/;
+    const SKILLS_PHRASE = /\*\*(\d+) skills registered\.\*\*/;
+
+    it('reads the documented tool and skill counts that CLAUDE.md actually carries', async () => {
+      // The old extractor counted table rows a #2555 rewrite removed, so every
+      // documented count was 0 and the `documented !== 0` guard skipped all
+      // four probes on every run. The healthy tree must still pass with the
+      // guard gone — i.e. the phrases must be found and agree.
+      const content = readFileSync(box('CLAUDE.md'), 'utf-8');
+      expect(TOOLS_PHRASE.test(content)).toBe(true);
+      expect(SKILLS_PHRASE.test(content)).toBe(true);
+      const { ok, output } = await runCheck();
+      expect(ok).toBe(true);
+      expect(output).not.toContain('drift: documented');
+      expect(output).not.toContain('count not documented');
+    });
+
+    it('fails when CLAUDE.md documents zero MCP tools', async () => {
+      await withSandboxFile('CLAUDE.md', async (original) => {
+        const zeroed = original.replace(TOOLS_PHRASE, '**0 MCP tools registered.**');
+        expect(zeroed).not.toBe(original);
+        writeFileSync(box('CLAUDE.md'), zeroed);
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('MCP tools drift: documented 0, actual');
+      });
+    });
+
+    it('fails when CLAUDE.md no longer states a skills count', async () => {
+      await withSandboxFile('CLAUDE.md', async (original) => {
+        const absent = original.replace(SKILLS_PHRASE, '**Skills registered.**');
+        expect(absent).not.toBe(original);
+        writeFileSync(box('CLAUDE.md'), absent);
+        const { ok, output } = await runCheck();
+        expect(ok).toBe(false);
+        expect(output).toContain('Skills count not documented in CLAUDE.md');
+        expect(output).toContain('unmeasured');
+      });
     });
   });
 });

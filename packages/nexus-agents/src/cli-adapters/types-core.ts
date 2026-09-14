@@ -7,7 +7,7 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
-import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
 import { z } from 'zod';
 
 /**
@@ -15,6 +15,16 @@ import { z } from 'zod';
  * Derived from canonical source: config/model-capabilities-types.ts CliNameLiteral
  */
 export type CliName = CliNameLiteral;
+
+/**
+ * Runtime guard for {@link CliName}: true iff `value` is one of the four CLI
+ * slots. The `CliName`-typed readers on the circuit-breaker registry and the
+ * adapter registry are filtered views over arm-keyed maps (#6290 panel), and
+ * this is the one predicate they filter on.
+ */
+export function isCliName(value: string): value is CliName {
+  return (CLI_NAMES as readonly string[]).includes(value);
+}
 
 /**
  * API-vendor identifiers an `AdapterSelection{source:'api'}` reports (#3422).
@@ -71,6 +81,86 @@ export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
     default:
       return armId;
   }
+}
+
+/**
+ * Endpoint-identity segment of an {@link EndpointArmId} (#4392): an
+ * operator-named endpoint. Lowercase alphanumerics plus `.`, `_`, `-`; must
+ * start alphanumeric; 1–64 chars. `:`, `/`, `@` and whitespace are excluded
+ * ON PURPOSE so a base URL — and any userinfo credential inside one — can
+ * never become an arm id, telemetry key or display string. The four
+ * {@link ApiVendor} names all satisfy it, so every {@link ApiArmId} is also a
+ * valid endpoint arm id.
+ */
+const API_ENDPOINT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+/**
+ * Routing arm id for a dynamically registered API endpoint (#4392 increment
+ * 1): `api:` plus a validated endpoint identity — one arm per GATEWAY, so two
+ * operator-named endpoints are distinct arms. Deliberately NOT a member of
+ * {@link RoutingArmId} or of the persisted `OutcomeCli` union (#6290 panel):
+ * an endpoint arm can be registered and observed (breaker, capacity,
+ * telemetry key) but cannot enter an outcome record until #6291 widens the
+ * published ids in 9.0. The type alone admits any `api:` string; the runtime
+ * shape is enforced by {@link isEndpointArmId}, and a cast from an
+ * unvalidated string is exactly what that validator exists to refuse.
+ */
+export type EndpointArmId = `api:${string}`;
+
+/** Zod schema for {@link EndpointArmId}; the single source for {@link isEndpointArmId}. */
+const EndpointArmIdSchema = z.templateLiteral(['api:', z.string().regex(API_ENDPOINT_ID_PATTERN)]);
+
+/**
+ * Runtime guard for {@link EndpointArmId} (#4392): true iff `value` is `api:`
+ * plus a valid endpoint identity. Use it before a discovered or
+ * operator-supplied name becomes an arm id. Every {@link ApiArmId} passes.
+ */
+export function isEndpointArmId(value: string): value is EndpointArmId {
+  return EndpointArmIdSchema.safeParse(value).success;
+}
+
+/**
+ * Every arm the circuit-breaker registry and the adapter registry can hold
+ * (#4392 increment 1): a published {@link RoutingArmId} or a dynamically
+ * registered {@link EndpointArmId}. This is the parameter type of the
+ * arm-typed registry siblings (`getArmBreaker`, `getAdapterForArm`, …) and of
+ * the `armId` fields on circuit events and errors. It is NOT the routing /
+ * bandit / outcome arm type — that stays {@link RoutingArmId} until #6291.
+ */
+export type ObservedArmId = RoutingArmId | EndpointArmId;
+
+/**
+ * Display slot for an endpoint arm that is not one of the built-in API arms
+ * (#4392). `opencode` is the slot whose capability profile describes an
+ * OpenAI-compatible endpoint of unknown model family, and the slot the only
+ * pre-existing gateway arm (`api:custom-openai`) already collapses to. The
+ * breaker keeps the distinct arm; only slot-level surfaces see this collapse.
+ */
+const UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT: CliName = 'opencode';
+
+/**
+ * Runtime split of an {@link ObservedArmId}: true iff `value` is one of the
+ * four built-in {@link ApiArmId} literals. Module-private on purpose — the
+ * exhaustive switch in {@link routingArmDisplaySlot} is the type-level
+ * contract, and this is only the guard that lets {@link observedArmDisplaySlot}
+ * route to it.
+ */
+function isBuiltInApiArmId(value: string): value is ApiArmId {
+  return ApiArmIdSchema.safeParse(value).success;
+}
+
+/**
+ * Display slot for any observed arm (#4392): {@link routingArmDisplaySlot} for
+ * a published {@link RoutingArmId}, and the explicit
+ * {@link UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT} for every other endpoint arm.
+ * Used by the breaker and the `cliName` fields on its events and errors, which
+ * keep their `CliName` type (#6290 panel).
+ */
+export function observedArmDisplaySlot(armId: ObservedArmId): CliName {
+  if (isCliName(armId) || isBuiltInApiArmId(armId)) {
+    return routingArmDisplaySlot(armId);
+  }
+  return UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT;
 }
 
 /**

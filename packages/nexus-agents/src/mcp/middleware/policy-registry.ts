@@ -44,15 +44,16 @@ export function resetGlobalPolicyFirewall(): void {
  * moment the wiring lands would turn rules that have never evaluated a single
  * real call into denials, for every operator, in one release.
  *
- * There is deliberately **no opt-in to enforce yet**. The default rule set
- * includes `denyMutationsWithoutModeRule`, `isMutationTool` treats an unknown
- * tool as a mutation (`policy-rules.ts:63`), `READ_ONLY_TOOLS` lists six names
- * of which two are nexus tools, and nothing passes `executionMode` into
- * `createSecureHandler` — so `mode` is always `'read-only'`. Enforcing today
- * would deny roughly 45 of the 47 registered tools and leave the operator no
- * remedy but to switch the control back off. An escape hatch that bricks the
- * server is worse than none, so the enforce path stays closed until the tools
- * are classified (see the enforce-default issue).
+ * There is deliberately **no opt-in to enforce yet**. Until #5114 the default
+ * rule set's `isMutationTool` guessed "mutation" for every name outside two
+ * hand-kept sets, so enforcing would have denied roughly 45 of the 47
+ * registered tools. Every registered tool is now classified from its manifest
+ * `readOnlyHint`, so the rule denies only declared mutations — but nothing
+ * passes `executionMode` into `createSecureHandler` (#6294), so `mode` is
+ * always `'read-only'` and every `readOnlyHint: false` tool (21 of 47 at the
+ * time of writing) would still be denied. Whether that is the right enforced
+ * default is #4988's decision, not this function's; the enforce path stays
+ * closed until it is made.
  *
  * `warn` still evaluates every rule and logs every would-be denial, which is
  * the evidence that classification work needs.

@@ -89,8 +89,10 @@ import {
   type RoutingInfo,
 } from './orchestrate-types.js';
 // ClawGuard access-policy derivation (#1977, #2022).
-// When NEXUS_ACCESS_POLICY_MODE is unset/off, this returns a bypass policy
-// and the middleware short-circuits — zero behavior change from pre-#2022.
+// When NEXUS_ACCESS_POLICY_MODE is unset/off, this returns a bypass policy.
+// Since #5107 no dispatch stage reads the derived policy (the middleware
+// mount is gone); the derivation and its ALS scope survive until #5108
+// decides what, if anything, consumes them.
 import {
   deriveAccessPolicy,
   withAccessPolicy,
@@ -98,8 +100,9 @@ import {
   resolveAccessPolicyMode,
 } from '../../security/access-constraint-deriver/index.js';
 // Durable AUDIT-mode violation persistence (#4097). Establishes the audit
-// trail in ALS so the access-policy middleware can mirror log-and-allow
-// violations from the orchestrator's nested tool calls to the hash chain.
+// trail in ALS for the access-policy middleware to mirror log-and-allow
+// violations to the hash chain. That middleware has been unmounted since
+// #5107, so no dispatch writes to this trail; #5108 owns the cleanup.
 import { createDurableAuditTrail } from '../../security/audit-bridge.js';
 import type { AuditTrail } from '../../security/audit-trail.js';
 // Structured task state (#2033, integration from #2043). Enabled by
@@ -909,8 +912,9 @@ function recordTaskStateFailure(taskId: string, message: string, logger: ILogger
  *
  * Returns a live policy when `NEXUS_ACCESS_POLICY_MODE=audit|enforce` and
  * a model adapter is available; returns a bypass policy in `off` mode
- * (the default), which makes the mounted middleware short-circuit to
- * pass-through.
+ * (the default). Since #5107 nothing on the dispatch path reads either:
+ * the ClawGuard middleware mount is gone, and the policy sits in ALS
+ * unconsumed until #5108 settles the deriver's fate.
  *
  * Never throws — derivation failure falls back to a permissive `off`
  * policy so orchestration proceeds. All failures are logged.
@@ -1414,6 +1418,10 @@ function dispatchAsyncOrchestrate(params: {
     // taskId, so get_job_result(jobId) resolves directly from the task-state
     // log (orch-<ts>-<rand>) under the Stage-2 reader.
     freshJobId: () => generateTaskId(),
+    // #5393: deliberately arity-1 — the orchestrator pipeline behind
+    // `runOrchestratePipelineAsJob` has no AbortSignal surface, so taking the
+    // signal would flip `signalAccepted` to true with nothing reading it.
+    // Stage-boundary gate first: #6305.
     run: (jobId) => runOrchestratePipelineAsJob(jobId, params),
     toEnvelope: {
       pending: defaultPendingEnvelope,
@@ -1496,6 +1504,7 @@ export async function runOrchestrateInBackground(
     toolName: 'orchestrate',
     input: params.input,
     freshJobId: () => jobId,
+    // #5393: deliberately arity-1 — same body as the dispatch above; see #6305.
     run: (id) => runOrchestratePipelineAsJob(id, params),
     logger: params.logger,
   });

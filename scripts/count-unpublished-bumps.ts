@@ -27,23 +27,44 @@
  * walk is testable offline, where run retention, pagination and cancelled runs
  * are not.
  *
- * ## What is actually measured
+ * ## Classification against the registry (#5463)
  *
- * "Distinct versions on main's first-parent line after the one npm reports as
- * `latest`", which equals "versions npm never received" for every version in
- * this repo's history (707 first-parent bumps checked, 2026-09-04) but not in
- * general: a `dist-tag` rollback of `latest`, or a reverted bump, both put
- * versions npm already has after `latest` on the walk. The workflow message
- * says "since npm's latest", not "never received", for that reason; #5463
- * tracks intersecting with `npm view versions --json` if either case occurs.
+ * "After `latest` on the walk" is not "npm never received": a `dist-tag`
+ * rollback of `latest`, or a reverted bump, both put versions npm already has
+ * after `latest`, and the walk then fails a release that is not stalled. So
+ * every walked version is intersected with `npm view <pkg> versions --json`
+ * (a version on npm is published whatever `latest` says) and classified:
  *
- * ## Named empty case
+ * - `pending`   — after `latest` on the line, not on npm. The stall count the
+ *                 workflow acts on: these are the bumps the loop has missed.
+ * - `published` — after `latest` on the line, on npm. Rollback or revert;
+ *                 npm has them, so they are not missed publishes.
+ * - `skipped`   — between `latest` and its published predecessor on the line,
+ *                 not on npm. Superseded: `changeset publish` only ever
+ *                 publishes HEAD's version, so these will never publish and
+ *                 must not count toward the stall verdict — but they are the
+ *                 skew, and a walk that stopped at `latest` could not see them.
+ *                 On 2026-09-14 main went 8.58.10 → 8.59.0 → 8.59.1 with 8.59.0
+ *                 never on npm; with `latest` = 8.59.1 the old walk reported 0.
  *
- * A walk that never finds the published version returns `unmeasured`, never an
- * empty list. Reading "not found" as "nothing unpublished" would licence the
- * same silent stand-down this exists to expose. The published version is an
- * argument, so the function is pure over (repo, ref, version); the `npm view`
- * call stays in the workflow.
+ * "After" and "before" are positions on main's first-parent line, not semver
+ * comparisons: the line IS the order the stall measurement is defined over,
+ * and `semver` is not resolvable from `scripts/`.
+ *
+ * ## Named empty cases
+ *
+ * A walk that never finds `latest` returns `unmeasured`, never an empty list.
+ * Reading "not found" as "nothing unpublished" would licence the same silent
+ * stand-down this exists to expose. A registry list that does not contain
+ * `latest` (the empty list included — it would make every version pending) is
+ * two registry answers that disagree, and is `unmeasured` for the same reason.
+ * Running out of history while looking for `latest`'s published predecessor is
+ * NOT unmeasured: the pending count is fully determined once `latest` is
+ * found, and the older versions are simply all skipped.
+ *
+ * The published version and the registry list are arguments, so the function
+ * is pure over (repo, ref, version, list); the `npm view` calls live in the
+ * CLI entry and the workflow, never in a test.
  *
  * @module scripts/count-unpublished-bumps
  */
@@ -52,6 +73,9 @@ import { execFileSync } from 'node:child_process';
 
 /** Repo-relative path of the published package's manifest. */
 export const PACKAGE_JSON_PATH = 'packages/nexus-agents/package.json';
+
+/** The npm package whose version list the CLI entry fetches. */
+export const PACKAGE_NAME = 'nexus-agents';
 
 /**
  * Upper bound on first-parent commits (touching `package.json`) inspected
@@ -64,8 +88,15 @@ export const DEFAULT_MAX_COMMITS = 500;
 export type UnpublishedBumpsVerdict =
   | {
       readonly kind: 'measured';
-      /** Distinct versions after `publishedVersion` on the walk, newest first. */
-      readonly versions: readonly string[];
+      /** After `publishedVersion` on the walk and not on npm, newest first. */
+      readonly pending: readonly string[];
+      /** After `publishedVersion` on the walk but on npm (rollback, revert), newest first. */
+      readonly published: readonly string[];
+      /**
+       * Before `publishedVersion` on the walk, up to its published predecessor
+       * (exclusive), and not on npm — superseded, will never publish. Newest first.
+       */
+      readonly skipped: readonly string[];
     }
   | { readonly kind: 'unmeasured'; readonly reason: string };
 
@@ -83,15 +114,47 @@ function versionAt(repoDir: string, sha: string): string | undefined {
 }
 
 /**
- * Versions of `PACKAGE_JSON_PATH` on the first-parent line from `ref` that
- * come after `publishedVersion`, newest first.
+ * Parses `npm view <pkg> versions --json` output. npm prints a JSON array, or
+ * a bare JSON string when the package has exactly one version. Anything else
+ * throws: classifying against a guessed list would be the intersection
+ * silently degrading to the `latest`-only walk this replaces.
+ */
+export function parseRegistryVersions(raw: string): readonly string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error: unknown) {
+    throw new Error(`npm versions output is not JSON: ${String(error)}`);
+  }
+  if (typeof parsed === 'string') return [parsed];
+  if (Array.isArray(parsed) && parsed.every((v): v is string => typeof v === 'string')) {
+    return parsed;
+  }
+  throw new Error(`npm versions output is neither a string array nor a string: ${raw.trim()}`);
+}
+
+/**
+ * Versions of `PACKAGE_JSON_PATH` on the first-parent line from `ref`,
+ * classified against `publishedVersion` (npm's `latest`) and
+ * `registryVersions` (every version npm has). See the module doc for the
+ * three classes and the named empty cases.
  */
 export function unpublishedBumpsAt(
   repoDir: string,
   ref: string,
   publishedVersion: string,
+  registryVersions: readonly string[],
   options: { readonly maxCommits?: number } = {}
 ): UnpublishedBumpsVerdict {
+  const onNpm = new Set(registryVersions);
+  if (!onNpm.has(publishedVersion)) {
+    return {
+      kind: 'unmeasured',
+      reason:
+        `latest ${publishedVersion} is not in the registry's version list ` +
+        `(${String(registryVersions.length)} version(s)); the two npm answers disagree`,
+    };
+  }
   const maxCommits = options.maxCommits ?? DEFAULT_MAX_COMMITS;
   const shas = git(repoDir, [
     'log',
@@ -106,15 +169,8 @@ export function unpublishedBumpsAt(
     .map((line) => line.trim())
     .filter((line) => line !== '');
 
-  const versions: string[] = [];
-  for (const sha of shas) {
-    const version = versionAt(repoDir, sha);
-    if (version === undefined) {
-      return { kind: 'unmeasured', reason: `${PACKAGE_JSON_PATH} at ${sha} has no string version` };
-    }
-    if (version === publishedVersion) return { kind: 'measured', versions };
-    if (!versions.includes(version)) versions.push(version);
-  }
+  const verdict = classifyWalk(repoDir, shas, publishedVersion, onNpm);
+  if (verdict !== undefined) return verdict;
   return {
     kind: 'unmeasured',
     reason:
@@ -123,6 +179,58 @@ export function unpublishedBumpsAt(
   };
 }
 
+function pushDistinct(bucket: string[], version: string): void {
+  if (!bucket.includes(version)) bucket.push(version);
+}
+
+/**
+ * Walks `shas` (newest first) and classifies the versions found. Returns
+ * `undefined` when `publishedVersion` is never reached — the caller names that
+ * as unmeasured with the walk's bound — and an unmeasured verdict of its own
+ * for a manifest without a string version.
+ */
+function classifyWalk(
+  repoDir: string,
+  shas: readonly string[],
+  publishedVersion: string,
+  onNpm: ReadonlySet<string>
+): UnpublishedBumpsVerdict | undefined {
+  const pending: string[] = [];
+  const published: string[] = [];
+  const skipped: string[] = [];
+  let latestSeen = false;
+  for (const sha of shas) {
+    const version = versionAt(repoDir, sha);
+    if (version === undefined) {
+      return { kind: 'unmeasured', reason: `${PACKAGE_JSON_PATH} at ${sha} has no string version` };
+    }
+    if (version === publishedVersion) {
+      latestSeen = true;
+    } else if (!latestSeen) {
+      pushDistinct(onNpm.has(version) ? published : pending, version);
+    } else if (onNpm.has(version)) {
+      // Past latest, at its published predecessor: the skipped walk ends here
+      // (history running out ends it too).
+      break;
+    } else {
+      pushDistinct(skipped, version);
+    }
+  }
+  return latestSeen ? { kind: 'measured', pending, published, skipped } : undefined;
+}
+
+/** Fetches every version npm has for `PACKAGE_NAME`. Network; CLI entry only. */
+function fetchRegistryVersions(): readonly string[] {
+  const raw = execFileSync('npm', ['view', PACKAGE_NAME, 'versions', '--json'], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  return parseRegistryVersions(raw);
+}
+
+const csv = (versions: readonly string[]): string =>
+  versions.length === 0 ? '-' : versions.join(',');
+
 if (process.argv[1]?.endsWith('count-unpublished-bumps.ts') === true) {
   const [ref, publishedVersion] = process.argv.slice(2);
   if (ref === undefined || publishedVersion === undefined) {
@@ -130,16 +238,29 @@ if (process.argv[1]?.endsWith('count-unpublished-bumps.ts') === true) {
     process.exit(1);
   }
   try {
-    const verdict = unpublishedBumpsAt(process.cwd(), ref, publishedVersion);
+    const verdict = unpublishedBumpsAt(
+      process.cwd(),
+      ref,
+      publishedVersion,
+      fetchRegistryVersions()
+    );
     if (verdict.kind === 'unmeasured') {
       // Exit 2, distinct from a crash: the workflow treats "cannot measure" as
       // its own failure, never as zero.
       process.stderr.write(`count-unpublished-bumps: unmeasured — ${verdict.reason}\n`);
       process.exit(2);
     }
-    // One version per line, nothing for zero: `grep -c .` over stdout is the
-    // count, mirroring count-pending-changesets.ts --names.
-    process.stdout.write(verdict.versions.map((v) => `${v}\n`).join(''));
+    // The full classification goes to stderr so the run log carries the skew
+    // even when the verdict is clean; stdout stays the workflow's contract.
+    process.stderr.write(
+      `count-unpublished-bumps: latest=${publishedVersion} pending=${String(verdict.pending.length)} ` +
+        `(${csv(verdict.pending)}) published-after-latest=${String(verdict.published.length)} ` +
+        `(${csv(verdict.published)}) skipped=${String(verdict.skipped.length)} (${csv(verdict.skipped)})\n`
+    );
+    // One PENDING version per line, nothing for zero: `grep -c .` over stdout
+    // is the count the workflow's stall verdict reads, mirroring
+    // count-pending-changesets.ts --names.
+    process.stdout.write(verdict.pending.map((v) => `${v}\n`).join(''));
   } catch (error: unknown) {
     process.stderr.write(`count-unpublished-bumps failed: ${String(error)}\n`);
     process.exit(1);

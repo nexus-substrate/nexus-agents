@@ -518,6 +518,9 @@ function dispatchAsyncDevPipeline(
       toolName: 'run_dev_pipeline',
       input,
       freshJobId: () => `dp-${randomUUID()}`,
+      // #5393: deliberately arity-0 — `runDevPipeline` has no AbortSignal
+      // option, so taking the signal would flip `signalAccepted` to true with
+      // nothing reading it. Stage-boundary gate first: #6305.
       run,
       logger,
     });
@@ -544,6 +547,7 @@ function dispatchAsyncDevPipeline(
     toolName: 'run_dev_pipeline',
     input,
     freshJobId: () => sessionId,
+    // #5393: deliberately arity-0 — same body as the keyless dispatch above; see #6305.
     run,
     logger,
   });
