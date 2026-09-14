@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.54.13
+
+### Patch Changes
+
+- [#6193](https://github.com/nexus-substrate/nexus-agents/pull/6193) [`072583f`](https://github.com/nexus-substrate/nexus-agents/commit/072583f1cd432f9f67c66d58f6aeab9edbc63ea9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `improvement_review` issue-filing step (the only code that shells out to `gh`) now lives in `mcp/tools/improvement-review-issue-filing.ts`, moved verbatim out of `improvement-review.ts` with no behaviour change ([#6148](https://github.com/nexus-substrate/nexus-agents/issues/6148) row 2).
+
 ## 8.54.12
 
 ### Patch Changes
