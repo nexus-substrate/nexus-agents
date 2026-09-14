@@ -418,7 +418,12 @@ function toPanelVote(result: AgentVoteResult, axes: readonly string[]): PanelVot
  */
 async function executeTradeoffPanelBody(
   input: SupplyChainTradeoffPanelInput,
-  logger: ILogger
+  logger: ILogger,
+  /**
+   * `cancel_job`'s signal (#5393): stops LAUNCHING seats not yet started; a
+   * seat inside its adapter call settles. `undefined` in sync mode.
+   */
+  signal?: AbortSignal
 ): Promise<ToolResult> {
   const axes = input.axes ?? DEFAULT_AXES;
   const roles = input.quickMode ? QUICK_PANEL : FULL_PANEL;
@@ -433,6 +438,7 @@ async function executeTradeoffPanelBody(
     simulate: input.simulate,
     logger,
     project: project.name,
+    signal,
   });
 
   const votes = voteResults.map((r) => toPanelVote(r, axes));
@@ -485,7 +491,9 @@ async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise
         toolName: 'supply_chain_tradeoff_panel',
         input,
         freshJobId: () => `sc-${randomUUID()}`,
-        run: () => executeTradeoffPanelBody(input, ctx.logger),
+        // #5393: arity 3 — `runAsJob` derives `signalAccepted` from `run.length`.
+        // The signal reaches `collectRealVotes`, so a cancel stops the un-launched seats.
+        run: (_jobId, _input, signal) => executeTradeoffPanelBody(input, ctx.logger, signal),
         logger: ctx.logger,
       });
     }

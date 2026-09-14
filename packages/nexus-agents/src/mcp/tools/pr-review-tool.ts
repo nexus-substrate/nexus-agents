@@ -523,10 +523,16 @@ async function executePrReviewBody(
      * disclosure on the record asserting a sanitizer ran and removed nothing.
      */
     sanitization?: ReviewSanitizationInput;
+    /**
+     * `cancel_job`'s signal (#5393). Reaches the vote launcher, which stops
+     * LAUNCHING seats that have not started; a seat already inside its adapter
+     * call settles (its cost is incurred either way). Absent in sync mode.
+     */
+    signal?: AbortSignal | undefined;
   } = {}
 ): Promise<ToolResult> {
   const start = Date.now();
-  const { gatewayAdapters: adapters, sanitization } = opts;
+  const { gatewayAdapters: adapters, sanitization, signal } = opts;
   // #6003: seats resolved ONCE, budgeted, then handed to the vote below.
   const panel = await preparePanelForReview(input, PR_REVIEW_ROLES, opts, logger);
   // #6123: resolved ONCE per review; every seat's system prompt names it.
@@ -539,6 +545,7 @@ async function executePrReviewBody(
     project: project.name,
     ...(adapters !== undefined && { gatewayAdapters: adapters }),
     ...(panel.seats?.ok === true && { roleAdapters: panel.seats.seats }),
+    signal,
   });
 
   const reviews = voteResults.map(toPrReviewVote);
@@ -619,10 +626,15 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
           toolName: 'pr_review',
           input,
           freshJobId: () => `pr-${randomUUID()}`,
-          run: () =>
+          // #5393: arity 3. `runAsJob` derives `signalAccepted` from `run.length`,
+          // so taking the signal is what makes the job record say cancellation
+          // works — the claim follows the capability. The signal reaches
+          // `collectRealVotes`, so `cancel_job` stops the seats not yet launched.
+          run: (_jobId, _input, signal) =>
             executePrReviewBody(input, ctx.logger, {
               ...adapterOpt,
               sanitization: sanitizationViewOf(ctx),
+              signal,
             }),
           logger: ctx.logger,
         });

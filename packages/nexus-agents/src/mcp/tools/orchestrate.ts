@@ -1418,6 +1418,10 @@ function dispatchAsyncOrchestrate(params: {
     // taskId, so get_job_result(jobId) resolves directly from the task-state
     // log (orch-<ts>-<rand>) under the Stage-2 reader.
     freshJobId: () => generateTaskId(),
+    // #5393: deliberately arity-1 — the orchestrator pipeline behind
+    // `runOrchestratePipelineAsJob` has no AbortSignal surface, so taking the
+    // signal would flip `signalAccepted` to true with nothing reading it.
+    // Stage-boundary gate first: #6305.
     run: (jobId) => runOrchestratePipelineAsJob(jobId, params),
     toEnvelope: {
       pending: defaultPendingEnvelope,
@@ -1500,6 +1504,7 @@ export async function runOrchestrateInBackground(
     toolName: 'orchestrate',
     input: params.input,
     freshJobId: () => jobId,
+    // #5393: deliberately arity-1 — same body as the dispatch above; see #6305.
     run: (id) => runOrchestratePipelineAsJob(id, params),
     logger: params.logger,
   });

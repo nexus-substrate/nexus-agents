@@ -177,11 +177,25 @@ function createEventCollector(
   };
 }
 
+/**
+ * #4351: was hardcoded 'completed'. The executor returns ok() even when
+ * nodes failed — its err() paths cover checkpoint/validation/timeout only —
+ * so a graph whose nodes all failed reported success to the caller.
+ * 'interrupted' is intentionally NOT treated as a failure here: the executor
+ * signals that separately via `halted`, and conflating the two would change
+ * interrupt semantics this change has not studied.
+ */
+function nodeStatusOf(nodeResults: readonly { status: string }[]): 'failed' | 'completed' {
+  return nodeResults.some((n) => n.status === 'failed') ? 'failed' : 'completed';
+}
+
 /** Executes a named graph workflow with full integration. */
 async function handleRunGraphWorkflow(
   input: RunGraphWorkflowInput,
   logger: ILogger,
-  auditLogger?: IAuditLogger
+  auditLogger?: IAuditLogger,
+  /** `cancel_job`'s signal (#5393): the executor gates every super-step on it. */
+  signal?: AbortSignal
 ): Promise<RunGraphWorkflowResponse> {
   const startTime = getTimeProvider().now();
   const resolved = resolveGraph(input.workflow, startTime);
@@ -204,11 +218,11 @@ async function handleRunGraphWorkflow(
     executionId,
     onEvent,
     timeout: CLI_SUBPROCESS_TIMEOUTS.graphWorkflowMs,
+    ...(signal !== undefined ? { signal } : {}),
   });
 
   const durationMs = getTimeProvider().now() - startTime;
   const checkpointCount = checkpointStore?.size() ?? 0;
-
   if (!result.ok) {
     return createErrorResponse({
       workflow: input.workflow,
@@ -219,18 +233,9 @@ async function handleRunGraphWorkflow(
     });
   }
 
-  // #4351: was hardcoded 'completed'. The executor returns ok() even when
-  // nodes failed — its err() paths cover checkpoint/validation/timeout only —
-  // so a graph whose nodes all failed reported success to the caller.
-  // 'interrupted' is intentionally NOT treated as a failure here: the executor
-  // signals that separately via `halted`, and conflating the two would change
-  // interrupt semantics this change has not studied.
-  const nodeStatus = result.value.nodeResults.some((n) => n.status === 'failed')
-    ? ('failed' as const)
-    : ('completed' as const);
   return {
     workflow: input.workflow,
-    status: nodeStatus,
+    status: nodeStatusOf(result.value.nodeResults),
     finalState: result.value.finalState,
     stepsExecuted: result.value.stepsExecuted,
     nodesExecuted: result.value.nodeResults.length,
@@ -273,9 +278,10 @@ async function executeGraphWorkflowBody(
   input: RunGraphWorkflowInput,
   logger: ILogger,
   notifier: IMcpNotifier,
-  auditLogger?: IAuditLogger
+  auditLogger?: IAuditLogger,
+  signal?: AbortSignal
 ): Promise<ToolResult> {
-  const result = await handleRunGraphWorkflow(input, logger, auditLogger);
+  const result = await handleRunGraphWorkflow(input, logger, auditLogger, signal);
   const succeeded = result.status === 'completed';
   notifier.info('run_graph_workflow', {
     event: succeeded ? 'graph_workflow_complete' : 'graph_workflow_failed',
@@ -328,7 +334,10 @@ function createGraphWorkflowHandler(
         toolName: 'run_graph_workflow',
         input,
         freshJobId: () => `gw-${randomUUID()}`,
-        run: () => executeGraphWorkflowBody(input, logger, notifier, auditLogger),
+        // #5393: arity 3 — `runAsJob` derives `signalAccepted` from `run.length`.
+        // The signal reaches `executeGraph`, which gates every super-step on it.
+        run: (_jobId, _input, signal) =>
+          executeGraphWorkflowBody(input, logger, notifier, auditLogger, signal),
         logger,
       });
     }
