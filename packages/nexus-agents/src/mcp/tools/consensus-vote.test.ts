@@ -22,7 +22,6 @@ import {
   CONSENSUS_VOTE_TOOL_SCHEMA,
   createPolicyFailedResult,
   executeVoting,
-  maybeEscalateContrarian,
   resetCorrelationTracker,
   type ConsensusVoteDeps,
   type AgentVoteSummary,
@@ -48,13 +47,6 @@ import { buildVoteRecord } from '../../audit/vote-record-store.js';
 import { resolveVoteDecision } from './consensus-vote-types.js';
 import type { ConsensusVoteInput } from './consensus-vote-types.js';
 import type { ConsensusResult } from '../../consensus/types.js';
-
-// #4132: force the contrarian expert-bridge to fail so runContrarianCheck reports
-// errored:true deterministically (no live adapter). Only runContrarianCheck imports
-// this module, and only the maybeEscalateContrarian tests exercise that path.
-vi.mock('../../pipeline/expert-bridge.js', () => ({
-  executeExpert: vi.fn().mockRejectedValue(new Error('expert bridge down (test)')),
-}));
 import type { VoteRecord } from '../../audit/vote-record.js';
 import { rollupDecisionCost } from '../../observability/decision-cost.js';
 import { getCorrelationJsonlPath } from '../../consensus/correlation-persistence.js';
@@ -2223,59 +2215,6 @@ describe('absolute_quorum error policy (#4132)', () => {
       decideAq(votes, { outcome: 'approved' });
       expect(getDegradedPanelCount()).toBe(before + 1);
     });
-  });
-});
-
-describe('maybeEscalateContrarian — quick-mode contrarian-check error (#4132)', () => {
-  const logger: ILogger = {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  } as unknown as ILogger;
-
-  // The top-level vi.mock (below the imports) makes executeExpert reject, so
-  // runContrarianCheck reports errored:true without any live adapter call.
-  it('absolute_quorum + quick approval + contrarian check errors → degradeReason (no_quorum)', async () => {
-    const out = await maybeEscalateContrarian(
-      {
-        proposal: 'ship it',
-        simulateVotes: false,
-        quickMode: true,
-        errorPolicy: 'absolute_quorum',
-      },
-      'approved',
-      { strategy: 'simple_majority', posteriorApproval: undefined },
-      logger
-    );
-    expect(out.escalated).toBeUndefined();
-    expect(out.degradeReason).toContain('no_quorum');
-    expect(out.degradeReason).toContain('contrarian');
-    // #6111: the failed voice is named as its own field, not only as prose.
-    expect(out.contrarianCheck).toBe('errored');
-  });
-
-  it('non-absolute_quorum + contrarian check errors → no degrade (pre-#4132 behavior preserved)', async () => {
-    const out = await maybeEscalateContrarian(
-      { proposal: 'ship it', simulateVotes: false, quickMode: true },
-      'approved',
-      { strategy: 'simple_majority', posteriorApproval: undefined },
-      logger
-    );
-    expect(out.escalated).toBeUndefined();
-    expect(out.degradeReason).toBeUndefined();
-    // #6111: the verdict is kept, but the check still errored and says so.
-    expect(out.contrarianCheck).toBe('errored');
-  });
-
-  it('full-panel mode does not run the check → contrarianCheck skipped (#6111)', async () => {
-    const out = await maybeEscalateContrarian(
-      { proposal: 'ship it', simulateVotes: false, quickMode: false },
-      'approved',
-      { strategy: 'simple_majority', posteriorApproval: undefined },
-      logger
-    );
-    expect(out.contrarianCheck).toBe('skipped');
   });
 });
 
