@@ -27,7 +27,11 @@ import {
   validateTimeout as _validateTimeout,
 } from '../config/timeouts.js';
 import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
+import { isAuthFailureText } from '../cli-adapters/cli-error-envelope.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
+import { extractTextFromResponse } from './voter-response-text.js';
+
+export { extractTextFromResponse };
 
 /** Default vote timeout. Canonical source: `config/timeouts.ts`. */
 export const DEFAULT_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.defaultMs;
@@ -221,39 +225,6 @@ export { withTimeout, delay } from '../utils/async-utils.js';
 // ============================================================================
 
 /**
- * Extracts text content from completion response.
- *
- * The result is passed through `sanitizeOutput` (#6267): the subprocess
- * adapter scrubs API keys from CLI stdout, but the API adapters (gateway,
- * SDK, Claude) return raw model text, and since #6194 this string becomes
- * the `reasoning` of a record committed to the public ledger. Scrubbing here
- * bounds every seat uniformly; already-scrubbed CLI text is unchanged.
- */
-export function extractTextFromResponse(content: unknown): string {
-  return sanitizeOutput(rawTextFromResponse(content));
-}
-
-function rawTextFromResponse(content: unknown): string {
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (Array.isArray(content)) {
-    return content
-      .map((block) => {
-        if (typeof block === 'object' && block !== null && 'type' in block) {
-          const typed = block as { type: string; text?: string };
-          if (typed.type === 'text' && typeof typed.text === 'string') {
-            return typed.text;
-          }
-        }
-        return '';
-      })
-      .join('');
-  }
-  return String(content);
-}
-
-/**
  * Executes a single vote attempt (no retries).
  *
  * By default, throws SyntheticVoteError if response parsing fails.
@@ -434,13 +405,24 @@ interface VotePromptContext {
   readonly workspace?: string | undefined;
 }
 
+/**
+ * A failed attempt. `cliStderr` is present only on the parse-failure branch —
+ * the transport completed but the output was not a vote (#6269): it says WHY
+ * the answer was empty. An adapter error carries its cause in `error`.
+ */
+interface VoteAttemptFailure {
+  readonly ok: false;
+  readonly error: string;
+  readonly cliStderr?: string | undefined;
+}
+
 export async function executeSingleVoteAttempt(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
   timeoutMs: number,
   context: VotePromptContext = {}
-): Promise<VoteAttemptSuccess | { ok: false; error: string }> {
+): Promise<VoteAttemptSuccess | VoteAttemptFailure> {
   const { options, project, workspace } = context;
   const completionArgs = { role, proposal, adapter, timeoutMs, options, project, workspace };
   let completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: true });
@@ -465,7 +447,11 @@ export async function executeSingleVoteAttempt(
     };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
-      return { ok: false, error: `Vote parsing failed: ${error.message}` };
+      return {
+        ok: false,
+        error: `Vote parsing failed: ${error.message}`,
+        cliStderr: completion.cliStderr,
+      };
     }
     throw error; // Re-throw unexpected errors
   }
@@ -506,9 +492,10 @@ function logAbandonedRetries(
   logger: ILogger,
   role: VoterRole,
   attempt: number,
-  maxRetries: number
+  maxRetries: number,
+  cause: 'durable capacity cap' | 'auth failure'
 ): void {
-  logger.warn('Durable capacity cap — abandoning retries for this voter', {
+  logger.warn(`${cause} — abandoning retries for this voter`, {
     role,
     attempt: attempt + 1,
     remainingAttemptsSkipped: maxRetries - attempt,
@@ -565,8 +552,16 @@ export async function executeWithRetries(
     }
 
     lastError = result.error;
-    if (logFailedAttempt(logger, { role, attempt, maxRetries, attemptMs, error: lastError })) {
-      logAbandonedRetries(logger, role, attempt, maxRetries);
+    const terminal = logFailedAttempt(logger, {
+      role,
+      attempt,
+      maxRetries,
+      attemptMs,
+      error: lastError,
+      cliStderr: result.cliStderr,
+    });
+    if (terminal !== null) {
+      logAbandonedRetries(logger, role, attempt, maxRetries, terminal);
       break;
     }
   }
@@ -581,18 +576,37 @@ interface FailedAttempt {
   readonly maxRetries: number;
   readonly attemptMs: number;
   readonly error: string;
+  /** Stderr the transport captured when the output was not a vote (#6269). */
+  readonly cliStderr: string | undefined;
+}
+
+/** Longest stderr excerpt carried on the `Vote attempt failed` line (#6269). */
+const LOGGED_STDERR_MAX_CHARS = 200;
+
+/**
+ * The first non-blank stderr line, secret-redacted and clipped: enough to name
+ * the cause (an auth line, a sandbox failure) without a stack trace (#6269).
+ */
+function loggedStderrLine(cliStderr: string): string {
+  const first = cliStderr.split('\n').find((line) => line.trim() !== '') ?? '';
+  return sanitizeOutput(first.trim()).slice(0, LOGGED_STDERR_MAX_CHARS);
 }
 
 /**
- * Log one failed attempt's timing and classification. Returns true when the
- * error is a DURABLE capacity cap, so the caller abandons the remaining
- * attempts (#5359). Extracted from {@link executeWithRetries} for the
- * per-function line cap.
+ * Log one failed attempt's timing and classification. Returns the reason the
+ * remaining attempts are futile — a DURABLE capacity cap (#5359) or an auth
+ * failure (#6269: a retry on the same credential cannot clear it, and the
+ * budget it would burn is what the #3587 fallback needs) — or `null` when the
+ * caller should keep retrying.
  */
-function logFailedAttempt(logger: ILogger, failed: FailedAttempt): boolean {
-  const { role, attempt, maxRetries, attemptMs, error } = failed;
+function logFailedAttempt(
+  logger: ILogger,
+  failed: FailedAttempt
+): 'durable capacity cap' | 'auth failure' | null {
+  const { role, attempt, maxRetries, attemptMs, error, cliStderr } = failed;
   const rateLimited = isRateLimitError(error);
   const durableCap = isDurableCapacityText(error);
+  const authFailure = isAuthFailureText(error);
   logger.info('Vote attempt timing', {
     role,
     attempt: attempt + 1,
@@ -607,6 +621,12 @@ function logFailedAttempt(logger: ILogger, failed: FailedAttempt): boolean {
     error,
     ...(rateLimited ? { rateLimited: true } : {}),
     ...(durableCap ? { durableCap: true } : {}),
+    ...(authFailure ? { authFailure: true } : {}),
+    ...(cliStderr !== undefined && cliStderr !== ''
+      ? { cliStderr: loggedStderrLine(cliStderr) }
+      : {}),
   });
-  return durableCap;
+  if (durableCap) return 'durable capacity cap';
+  if (authFailure) return 'auth failure';
+  return null;
 }
