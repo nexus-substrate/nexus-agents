@@ -10,15 +10,21 @@
  *
  * Division of labour, ratified by the #4992 panel:
  *
- * - The firewall is INPUT-shaped: it sanitizes, classifies, evaluates the
- *   Rule of Two against the caller's access posture, and records the trust
- *   event. Under the default `NEXUS_FIREWALL_POLICY=off` it is signal-only.
- * - The callers keep their own `evaluatePolicy` (Rule of Two per action) and
- *   measure reputation themselves with metadata the firewall cannot see
- *   (account age, comment history). They pass that measurement per call, and
- *   the firewall runs the ONE reputation gate both sides act on — so its
- *   Rule-of-Two check, `wouldRefuse` count and trust audit event use the same
- *   enforced tier the caller's policy gate uses.
+ * - The firewall is INPUT-shaped: it sanitizes, classifies, evaluates policy
+ *   against the caller's access posture, and records the trust event. Under
+ *   the default `NEXUS_FIREWALL_POLICY=off` it is signal-only. Since #5380 the
+ *   policy stage runs the full `evaluatePolicy` set when the caller passes the
+ *   action it intends (`FirewallProcessOptions.action`); both live callers
+ *   classify BEFORE they have an action, so on this path only the Rule of Two
+ *   is measured and the result names the six action-scoped checks as
+ *   `unmeasured` (`policy.scope: 'context'`) — migrating them onto a per-action
+ *   surface is #5383.
+ * - The callers keep their own `evaluatePolicy` per action and measure
+ *   reputation themselves with metadata the firewall cannot see (account age,
+ *   comment history). They pass that measurement per call, and the firewall
+ *   runs the ONE reputation gate both sides act on — so its policy checks,
+ *   `wouldRefuse` count and trust audit event use the same enforced tier the
+ *   caller's policy gate uses.
  * - Facts that vary per call — the caller's access posture and, when a source
  *   for one exists, the repository's maintainer allowlist — are passed per
  *   call via `FirewallProcessOptions`, never held on the shared instance. No
@@ -120,11 +126,16 @@ export function runUntrustedInputFirewall(
     return err(new Error(`Untrusted-input firewall ${code} at stage ${stage}: ${message}`));
   }
   if (result.value.wouldRefuse) {
+    // Names every blocking rule and the checks that could NOT run (#5380), so
+    // the telemetry sizes the flip to `enforce` on what was measured.
+    const policy = result.value.policy;
     logger.warn('Untrusted-input firewall would refuse under enforce (audit mode)', {
       user: input.username,
       sourceType: input.type,
       trustTier: result.value.effectiveTrustTier,
-      rule: result.value.ruleOfTwoViolation?.rule,
+      scope: policy?.scope,
+      rules: policy?.violations.filter((v) => v.severity === 'block').map((v) => v.rule),
+      unmeasured: policy?.unmeasured,
     });
   }
   return ok(result.value);
