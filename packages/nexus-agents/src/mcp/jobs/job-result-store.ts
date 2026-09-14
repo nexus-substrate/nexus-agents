@@ -27,14 +27,22 @@
  * @module mcp/jobs/job-result-store
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, chmodSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+  chmodSync,
+} from 'node:fs';
 
 import { z } from 'zod';
 
 import { createLogger } from '../../core/index.js';
 import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
-import { OPERATION_CLASSES } from '../../config/timeouts.js';
+import { resolveClassGuardMs, type OperationClassName } from '../../config/timeouts.js';
 import { VERSION } from '../../version.js';
+import { readIndexEntry } from './job-idempotency.js';
 
 const logger = createLogger({ component: 'job-result-store' });
 
@@ -67,6 +75,15 @@ export const JobResultSchema = z.object({
    * `result` — the discriminator is `status`.
    */
   error: z.string().optional(),
+  /**
+   * Machine-readable reason for a `failed` record that was NOT settled by the
+   * process that ran the job (#6224). `abandoned` is written only by
+   * {@link pruneJobRecords}: the record was `pending` past the runaway guard
+   * (so no live process could still own it) AND past the retention window, and
+   * the sweep rewrote it rather than deleting it. Absent on every record the
+   * job's own process wrote — `error` alone carries those failures.
+   */
+  errorKind: z.literal('abandoned').optional(),
   /**
    * Whether the tool's `run` callback accepts `runAsJob`'s `AbortSignal`
    * (#4972).
@@ -128,6 +145,27 @@ export function isMeasuredBuildVersion(version: string | undefined): boolean {
 }
 
 /**
+ * The operation class `runJobInBackground` guards every job body with. Spelled
+ * here rather than imported from `run-as-job.ts` because that module imports
+ * this one; the literal is typed against `OperationClassName` so a rename
+ * there is a compile error here.
+ */
+const ASYNC_JOB_BODY_CLASS: OperationClassName = 'async-job-body';
+
+/**
+ * Slack added to the resolved guard before a `pending` record is called
+ * abandoned (#6224).
+ *
+ * The guard is a `setTimeout`, which fires no earlier than `guardMs` but later
+ * under event-loop starvation, and the terminal `writeJobFailed` it triggers is
+ * a synchronous JSON write. A record read in that gap is a live job that is
+ * still in the guard's `finally`, not an abandoned one. 30 s covers a starved
+ * loop plus the write; it is deliberately under a minute so the boundary stays
+ * within the resolution operators reason about (the guard is quoted in hours).
+ */
+const ABANDONED_TERMINAL_WRITE_SLACK_MS = 30_000;
+
+/**
  * Whether a `pending` record describes work no process is still doing (#4976).
  *
  * The record is durable; the work is a detached in-process promise. If the
@@ -136,21 +174,43 @@ export function isMeasuredBuildVersion(version: string | undefined): boolean {
  * forever and a caller polling `get_job_result` waits on work that no longer
  * exists.
  *
- * The anchor is objective rather than a guess: `async-job-body` (3600s) is the
- * runaway guard `runAsJob` applies to every body, so a live job CANNOT still be
- * pending past it — it would have been recorded `failed` by the guard.
+ * The anchor is objective rather than a guess: `async-job-body` is the runaway
+ * guard `runAsJob` applies to every body, so a live job CANNOT still be pending
+ * past it — it would have been recorded `failed` by the guard. The anchor is
+ * the guard as RESOLVED for this process (`resolveClassGuardMs`, the same call
+ * `runJobInBackground` makes), not the declared 3,600,000 ms base: since #6159
+ * an operator may raise the guard to 7,200,000 ms via
+ * `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` or `NEXUS_TIMEOUT_MULTIPLIER`, and
+ * anchoring on the base reported a job 61 minutes into a live 2-hour body as
+ * abandoned while its guard had 59 minutes left (#6224). Resolved on every
+ * call, never cached, so a reader sees the environment the writer ran under.
  *
  * Reported rather than written back. The record is evidence of what was
  * observed; overwriting it on read would destroy that. This is the same
- * treatment `notVerified` gives an audit chain that verified nothing.
+ * treatment `notVerified` gives an audit chain that verified nothing. The one
+ * exception is {@link pruneJobRecords}, which rewrites an abandoned record
+ * only once it is also past the retention window.
  */
 export function isAbandonedJob(record: JobResult, nowMs: number): boolean {
+  return isAbandonedAt(record, nowMs, abandonedAfterMs());
+}
+
+/**
+ * Milliseconds a `pending` record may be old before no live process can own it:
+ * the resolved `async-job-body` guard plus {@link ABANDONED_TERMINAL_WRITE_SLACK_MS}.
+ */
+function abandonedAfterMs(): number {
+  return resolveClassGuardMs(ASYNC_JOB_BODY_CLASS) + ABANDONED_TERMINAL_WRITE_SLACK_MS;
+}
+
+/** The predicate with the threshold already resolved — one resolution per sweep. */
+function isAbandonedAt(record: JobResult, nowMs: number, abandonedAfter: number): boolean {
   if (record.status !== 'pending') return false;
   // An unparseable `createdAt` yields NaN, and every NaN comparison is false —
   // so an unknown age reports "not abandoned" without a separate guard. That is
   // the right default: killing a job whose age cannot be read would be a guess.
   const startedMs = Date.parse(record.createdAt);
-  return nowMs - startedMs > OPERATION_CLASSES['async-job-body'].guardMs;
+  return nowMs - startedMs > abandonedAfter;
 }
 
 /** Resolve the sidecar path for a given jobId. */
@@ -451,4 +511,243 @@ export function listJobsWithDiagnostics(): JobListing {
     jobs: summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     diagnostics: { dirUnreadable: false, unparseableRecords },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Retention (#6224, #4976 gap 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a job record is kept after it settles.
+ *
+ * Seven days. The record is the only durable evidence an async tool ran, so
+ * the window trades disk against auditability (#4976 asked for a decision
+ * rather than a guess): a week covers the weekly end-to-end validation cadence
+ * (CLAUDE.md, "Periodic end-to-end validation"), which is the longest-lived
+ * reader of a job's result, and on the machine measured in #6224, 198 of 303
+ * records were older than three days — a window of days, not hours, is what
+ * bounds the store. The audit chain next door is kept forever on purpose; job
+ * results are not the audit chain. A constant, not an env var: no consumer has
+ * asked to tune it, and a knob nobody reads is the shape #2977 removed.
+ */
+export const JOB_RECORD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Minimum gap between two sweeps run from `runAsJob` in one process. A sweep
+ * enumerates and parses every record, so running it on every dispatch would
+ * put a directory walk on the async hot path; once an hour bounds that to the
+ * scale of the guard itself.
+ */
+const JOB_PRUNE_SWEEP_INTERVAL_MS = 3_600_000;
+
+/** What one retention sweep did — or, with `dryRun`, would have done. */
+export interface JobPruneCounts {
+  /** Terminal records older than the window, removed. */
+  readonly deleted: number;
+  /** `pending` records past the guard AND the window, rewritten as `failed`. */
+  readonly markedAbandoned: number;
+  /** Records inside the window, or `pending` records the guard still covers. */
+  readonly kept: number;
+  /** Record or key files that would not parse — counted, never touched. */
+  readonly unreadable: number;
+  /**
+   * Idempotency index entries (`key-*.json`, `job-idempotency.ts`) older than
+   * the window whose job record no longer exists, removed. Counted apart from
+   * `deleted` because they are not records: a key that outlives its record
+   * would replay a jobId `get_job_result` cannot find, and the caller could
+   * never dispatch under that key again.
+   */
+  readonly deletedKeys: number;
+}
+
+interface PruneJobRecordsOptions {
+  /** The sweep's notion of now, in epoch milliseconds. */
+  readonly nowMs: number;
+  /** Retention window in milliseconds; {@link JOB_RECORD_RETENTION_MS} in production. */
+  readonly retentionMs: number;
+  /** Count what would change and change nothing. */
+  readonly dryRun?: boolean;
+}
+
+/**
+ * Sweep `<NEXUS_DATA_DIR>/jobs/` (#6224, closing #4976 gap 2).
+ *
+ * Rules, in the order they are tested:
+ *
+ * - A terminal record (`complete` / `failed` / `cancelled`) whose `completedAt`
+ *   — `createdAt` when a legacy record has none — is older than `retentionMs`
+ *   is deleted. "Older than" is strict: a record exactly at the window is kept.
+ * - A `pending` record that is abandoned ({@link isAbandonedJob}: older than the
+ *   resolved guard, so no live process can own it) AND older than the window is
+ *   rewritten as `failed` with `errorKind: 'abandoned'`. Never deleted: the
+ *   record is the only evidence the dispatch happened. This is the ONE path
+ *   that writes an abandoned verdict back; `get_job_result` keeps reporting it.
+ *   A `pending` record younger than either bound is kept — the guard may still
+ *   settle it, or a poller may still need to see it `pending`.
+ * - A file matching `result-*.json` or `key-*.json` that fails to parse or
+ *   validate is counted as `unreadable` and left in place. It may have been
+ *   written by a newer build, or be mid-write by a concurrent job; deleting on
+ *   "could not read" would turn a parse error into data loss.
+ * - An idempotency key entry (`key-*.json`) older than the window whose job
+ *   record is absent — deleted by this sweep or never written — is removed
+ *   AFTER the records pass, so a key and its record leave together. A key
+ *   inside the window is kept even without a record: it is registered right
+ *   after the pending write, so a young dangling key may be mid-dispatch.
+ *
+ * The guard is resolved ONCE per sweep, not once per record.
+ *
+ * Empty case: an absent or empty jobs directory returns all-zero counts. A
+ * directory that exists but cannot be enumerated THROWS — reporting zeros
+ * there would present "could not look" as "nothing to do".
+ */
+export function pruneJobRecords(options: PruneJobRecordsOptions): JobPruneCounts {
+  const dir = nexusDataPath('jobs');
+  if (!existsSync(dir)) {
+    return { deleted: 0, markedAbandoned: 0, kept: 0, unreadable: 0, deletedKeys: 0 };
+  }
+  // Deliberately not wrapped: an unreadable directory is the caller's problem
+  // to report, not a zero.
+  const entries = readdirSync(dir);
+  const sweep: SweepContext = {
+    nowMs: options.nowMs,
+    retentionMs: options.retentionMs,
+    dryRun: options.dryRun === true,
+    abandonedAfter: abandonedAfterMs(),
+  };
+  const counts = { deleted: 0, markedAbandoned: 0, kept: 0, unreadable: 0, deletedKeys: 0 };
+  /** Records this pass deleted (or, dry-run, would have) — keys check against it. */
+  const removedJobIds = new Set<string>();
+  const keyEntries = entries.filter((entry) => /^key-.+\.json$/.test(entry));
+  for (const entry of entries) {
+    const jobId = /^result-(.+)\.json$/.exec(entry)?.[1];
+    if (jobId === undefined) continue;
+    const verdict = sweepRecord(jobId, entry, sweep);
+    counts[verdict] += 1;
+    if (verdict === 'deleted') removedJobIds.add(jobId);
+  }
+  for (const entry of keyEntries) {
+    const verdict = sweepKeyEntry(entry, removedJobIds, sweep);
+    if (verdict !== null) counts[verdict] += 1;
+  }
+  logger.debug('Job record sweep', { dir, ...counts, dryRun: sweep.dryRun });
+  return counts;
+}
+
+/** One sweep's inputs, resolved once and threaded through every verdict. */
+interface SweepContext {
+  readonly nowMs: number;
+  readonly retentionMs: number;
+  readonly dryRun: boolean;
+  /** {@link abandonedAfterMs}, resolved once per sweep. */
+  readonly abandonedAfter: number;
+}
+
+/** What the sweep did with one record — each maps to a {@link JobPruneCounts} key. */
+type RecordVerdict = 'deleted' | 'markedAbandoned' | 'kept' | 'unreadable';
+
+/** Apply the record rules to one `result-*.json` entry and report which fired. */
+function sweepRecord(jobId: string, entry: string, sweep: SweepContext): RecordVerdict {
+  const record = readJobResult(jobId);
+  if (record === null) return 'unreadable';
+  const path = nexusDataPath('jobs', entry);
+  if (record.status === 'pending') {
+    const pastGuard = isAbandonedAt(record, sweep.nowMs, sweep.abandonedAfter);
+    const pastWindow = isOlderThan(record.createdAt, sweep.nowMs, sweep.retentionMs);
+    if (!(pastGuard && pastWindow)) return 'kept';
+    if (!sweep.dryRun) persistJobRecord(path, abandonedRecord(record, sweep.nowMs));
+    return 'markedAbandoned';
+  }
+  const settledAt = record.completedAt ?? record.createdAt;
+  if (!isOlderThan(settledAt, sweep.nowMs, sweep.retentionMs)) return 'kept';
+  if (!sweep.dryRun) unlinkSync(path);
+  return 'deleted';
+}
+
+/**
+ * Apply the key rule to one `key-*.json` entry: `deletedKeys` when it is past
+ * the window and its record is gone, `unreadable` when it will not parse, and
+ * `null` (no count — keys are not records, so they are never "kept") otherwise.
+ */
+function sweepKeyEntry(
+  entry: string,
+  removedJobIds: ReadonlySet<string>,
+  sweep: SweepContext
+): 'deletedKeys' | 'unreadable' | null {
+  const path = nexusDataPath('jobs', entry);
+  const indexEntry = readIndexEntry(path);
+  if (indexEntry === null) return 'unreadable';
+  if (!isOlderThan(indexEntry.createdAt, sweep.nowMs, sweep.retentionMs)) return null;
+  const recordGone =
+    removedJobIds.has(indexEntry.jobId) ||
+    !existsSync(nexusDataPath('jobs', `result-${indexEntry.jobId}.json`));
+  if (!recordGone) return null;
+  if (!sweep.dryRun) unlinkSync(path);
+  return 'deletedKeys';
+}
+
+/**
+ * Strictly older than `windowMs`. An unparseable timestamp yields NaN, and a
+ * NaN comparison is false — an age that cannot be read is never "old enough".
+ */
+function isOlderThan(isoTimestamp: string, nowMs: number, windowMs: number): boolean {
+  return nowMs - Date.parse(isoTimestamp) > windowMs;
+}
+
+/**
+ * The `failed` rewrite of an abandoned `pending` record. Every field of the
+ * original survives (`createdAt`, `signalAccepted`, the tool); the original
+ * producer's version moves into the message because `producerVersion` names
+ * the writer that settled the record, and that is now the sweep.
+ */
+function abandonedRecord(record: JobResult, nowMs: number): JobResult {
+  const producer = record.producerVersion ?? 'unrecorded';
+  return {
+    ...record,
+    status: 'failed',
+    completedAt: new Date(nowMs).toISOString(),
+    error:
+      `abandoned: pending since ${record.createdAt} under producer ${producer}; ` +
+      'no process settled it within the runaway guard, and the retention sweep ' +
+      'marked it failed rather than deleting the evidence',
+    errorKind: 'abandoned',
+    producerVersion: VERSION,
+  };
+}
+
+/**
+ * Epoch ms of the last sweep this process ran, per jobs directory. Keyed by
+ * directory rather than a single timestamp because `NEXUS_DATA_DIR` routes
+ * per-repo state (#2872), so one process can serve more than one jobs
+ * directory and each deserves its own hourly sweep. Bounded by the number of
+ * distinct data dirs a process touches.
+ */
+const lastSweepAtMsByDir = new Map<string, number>();
+
+/**
+ * Run {@link pruneJobRecords} with the production window if at least
+ * {@link JOB_PRUNE_SWEEP_INTERVAL_MS} has passed since this process last swept
+ * the current jobs directory (#6224). Called by `runAsJob` before every
+ * pending write.
+ *
+ * A sweep that throws is logged and swallowed: retention must never block a
+ * dispatch. The timestamp is taken BEFORE the sweep so a directory that keeps
+ * failing is retried once an hour, not on every call.
+ *
+ * @returns The counts when a sweep ran, `null` when one was not due or failed.
+ */
+export function pruneJobRecordsIfDue(nowMs: number): JobPruneCounts | null {
+  const dir = nexusDataPath('jobs');
+  const lastSweepAtMs = lastSweepAtMsByDir.get(dir);
+  if (lastSweepAtMs !== undefined && nowMs - lastSweepAtMs < JOB_PRUNE_SWEEP_INTERVAL_MS) {
+    return null;
+  }
+  lastSweepAtMsByDir.set(dir, nowMs);
+  try {
+    return pruneJobRecords({ nowMs, retentionMs: JOB_RECORD_RETENTION_MS });
+  } catch (err) {
+    logger.warn('Job record sweep failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }

@@ -114,6 +114,12 @@
         "file": "src/cli-commands-handlers.ts"
       },
       {
+        "name": "jobs",
+        "type": "sync",
+        "handler": "handleJobsCommand",
+        "file": "src/cli/jobs-command.ts"
+      },
+      {
         "name": "learning-metrics",
         "type": "sync",
         "handler": "handleLearningMetricsCommand",

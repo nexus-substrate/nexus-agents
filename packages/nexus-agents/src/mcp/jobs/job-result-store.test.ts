@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -15,6 +15,9 @@ import {
   readJobResult,
   isAbandonedJob,
   isMeasuredBuildVersion,
+  pruneJobRecords,
+  pruneJobRecordsIfDue,
+  JOB_RECORD_RETENTION_MS,
   type JobResult,
 } from './job-result-store.js';
 import { VERSION } from '../../version.js';
@@ -168,12 +171,23 @@ describe('job-result-store', () => {
 // A pending record that outlived the guard is abandoned (#4976)
 // =============================================================================
 
-describe('isAbandonedJob (#4976)', () => {
+describe('isAbandonedJob (#4976, anchored on the resolved guard since #6224)', () => {
   // `runAsJob` writes the pending record then backgrounds the body. If the
   // process dies mid-body no terminal writer runs, and `writeJobPending`
   // refuses to overwrite — so the record stays `pending` forever and a poller
   // waits on work that no longer exists.
   const GUARD_MS = 3_600_000;
+  const OVERRIDE_ENV = 'NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS';
+  const originalOverride = process.env[OVERRIDE_ENV];
+
+  beforeEach(() => {
+    delete process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'];
+  });
+
+  afterEach(() => {
+    if (originalOverride === undefined) delete process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'];
+    else process.env[OVERRIDE_ENV] = originalOverride;
+  });
 
   function pendingRecord(createdAt: string): JobResult {
     return { v: 1, jobId: 'j', toolName: 't', status: 'pending', createdAt };
@@ -195,6 +209,39 @@ describe('isAbandonedJob (#4976)', () => {
     expect(isAbandonedJob(record, now)).toBe(true);
   });
 
+  it('with no override, the boundary is the declared 3,600,000 ms guard plus the write slack', () => {
+    // The slack is smaller than a minute, so the two rows above still hold;
+    // this pins the exact edge so a change to the slack is a visible change.
+    const now = Date.parse('2026-08-25T12:00:00.000Z');
+    // `ABANDONED_TERMINAL_WRITE_SLACK_MS` in the store — pinned here as a
+    // literal so a change to it is a visible change to this test.
+    const SLACK_MS = 30_000;
+    const edge = GUARD_MS + SLACK_MS;
+    expect(isAbandonedJob(pendingRecord(new Date(now - edge).toISOString()), now)).toBe(false);
+    expect(isAbandonedJob(pendingRecord(new Date(now - edge - 1).toISOString()), now)).toBe(true);
+  });
+
+  it('follows the operator override the guard itself runs under (#6224)', () => {
+    // Since #6159 `runAsJob` guards the body with the RESOLVED class guard,
+    // which `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` may raise to 7,200,000 ms.
+    // Anchoring on the declared 3,600,000 ms base reported a job 61 minutes
+    // into a live 2-hour body as abandoned while its guard had 59 minutes left.
+    process.env[OVERRIDE_ENV] = '7200000';
+    const now = Date.parse('2026-08-25T12:00:00.000Z');
+
+    expect(isAbandonedJob(pendingRecord(new Date(now - 4_000_000).toISOString()), now)).toBe(false);
+    expect(isAbandonedJob(pendingRecord(new Date(now - 7_300_000).toISOString()), now)).toBe(true);
+  });
+
+  it('re-resolves the guard on every read rather than caching it across env changes', () => {
+    const now = Date.parse('2026-08-25T12:00:00.000Z');
+    const record = pendingRecord(new Date(now - 4_000_000).toISOString());
+
+    expect(isAbandonedJob(record, now)).toBe(true);
+    process.env[OVERRIDE_ENV] = '7200000';
+    expect(isAbandonedJob(record, now)).toBe(false);
+  });
+
   it('never calls a settled record abandoned, however old', () => {
     // The pair. A `complete` record from last year is history, not a stuck
     // job — flagging it would make the field meaningless.
@@ -212,6 +259,340 @@ describe('isAbandonedJob (#4976)', () => {
     // pinned: NaN comparisons are false, so this holds with or without an
     // explicit guard and no mutation can distinguish the two.
     expect(isAbandonedJob(pendingRecord('not-a-date'), Date.now())).toBe(false);
+    process.env[OVERRIDE_ENV] = '7200000';
+    expect(isAbandonedJob(pendingRecord('not-a-date'), Date.now())).toBe(false);
+  });
+});
+
+describe('pruneJobRecords (#6224, #4976 gap 2)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  const NOW = Date.parse('2026-09-14T12:00:00.000Z');
+  const RETENTION_MS = 7 * 24 * 3_600_000;
+  const GUARD_MS = 3_600_000;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-jobs-prune-test-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const jobsDir = (): string => nexusDataPath('jobs');
+  const pathOf = (jobId: string): string => join(jobsDir(), `result-${jobId}.json`);
+
+  function seed(record: JobResult): void {
+    mkdirSync(jobsDir(), { recursive: true });
+    writeFileSync(pathOf(record.jobId), JSON.stringify(record));
+  }
+
+  function at(msAgo: number): string {
+    return new Date(NOW - msAgo).toISOString();
+  }
+
+  function terminal(
+    jobId: string,
+    status: 'complete' | 'failed' | 'cancelled',
+    completedMsAgo: number
+  ): JobResult {
+    return {
+      v: 1,
+      jobId,
+      toolName: 't',
+      status,
+      createdAt: at(completedMsAgo + 1_000),
+      completedAt: at(completedMsAgo),
+      ...(status === 'complete' ? { result: { ok: true } } : { error: 'boom' }),
+    };
+  }
+
+  function pending(jobId: string, createdMsAgo: number): JobResult {
+    return { v: 1, jobId, toolName: 't', status: 'pending', createdAt: at(createdMsAgo) };
+  }
+
+  /** An idempotency index entry (`key-*.json`) pointing at `jobId`. */
+  function seedKey(name: string, jobId: string, createdMsAgo: number): string {
+    mkdirSync(jobsDir(), { recursive: true });
+    const path = join(jobsDir(), `key-${name}.json`);
+    writeFileSync(
+      path,
+      JSON.stringify({
+        v: 1,
+        tool: 't',
+        key: name,
+        inputsHash: 'a'.repeat(64),
+        jobId,
+        createdAt: at(createdMsAgo),
+      })
+    );
+    return path;
+  }
+
+  const ZERO = { deleted: 0, markedAbandoned: 0, kept: 0, unreadable: 0, deletedKeys: 0 };
+
+  it('names the empty case: an absent or empty jobs dir prunes nothing and counts zero', () => {
+    expect(existsSync(jobsDir())).toBe(false);
+    expect(pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS })).toEqual(ZERO);
+
+    mkdirSync(jobsDir(), { recursive: true });
+    expect(pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS })).toEqual(ZERO);
+  });
+
+  it('drops an idempotency key entry past the window whose record is gone, in the same sweep', () => {
+    // Before retention a key always replayed a record that existed. Deleting
+    // the record without the key would replay a jobId `get_job_result` cannot
+    // find, and the caller could never re-dispatch under that key.
+    seed(terminal('old-complete', 'complete', RETENTION_MS + 1));
+    const dangling = seedKey('dangling', 'old-complete', RETENTION_MS + 1);
+    const alreadyGone = seedKey('already-gone', 'never-written', RETENTION_MS + 1);
+    seed(terminal('fresh', 'complete', 0));
+    const live = seedKey('live', 'fresh', 0);
+    // Record still present (pending inside the window): the key stays with it.
+    seed(pending('pending-young', 60_000));
+    const youngKey = seedKey('young', 'pending-young', RETENTION_MS + 1);
+    // Younger than the window: kept even though its record is missing — it may
+    // be mid-dispatch (the key is registered right after the pending write).
+    const recentDangling = seedKey('recent-dangling', 'not-yet', 1_000);
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts).toEqual({ ...ZERO, deleted: 1, kept: 2, deletedKeys: 2 });
+    expect(existsSync(dangling)).toBe(false);
+    expect(existsSync(alreadyGone)).toBe(false);
+    expect(existsSync(live)).toBe(true);
+    expect(existsSync(youngKey)).toBe(true);
+    expect(existsSync(recentDangling)).toBe(true);
+  });
+
+  it('counts an unreadable key entry and leaves it in place', () => {
+    mkdirSync(jobsDir(), { recursive: true });
+    const corrupt = join(jobsDir(), 'key-corrupt.json');
+    writeFileSync(corrupt, '{not json');
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts).toEqual({ ...ZERO, unreadable: 1 });
+    expect(existsSync(corrupt)).toBe(true);
+  });
+
+  it('deletes terminal records whose completedAt is older than the window and keeps the rest', () => {
+    seed(terminal('old-complete', 'complete', RETENTION_MS + 1));
+    seed(terminal('old-failed', 'failed', RETENTION_MS + 1));
+    seed(terminal('old-cancelled', 'cancelled', RETENTION_MS + 1));
+    seed(terminal('fresh-complete', 'complete', RETENTION_MS - 1));
+    seed(terminal('edge-complete', 'complete', RETENTION_MS));
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts).toEqual({
+      deleted: 3,
+      markedAbandoned: 0,
+      kept: 2,
+      unreadable: 0,
+      deletedKeys: 0,
+    });
+    expect(existsSync(pathOf('old-complete'))).toBe(false);
+    expect(existsSync(pathOf('old-failed'))).toBe(false);
+    expect(existsSync(pathOf('old-cancelled'))).toBe(false);
+    expect(existsSync(pathOf('fresh-complete'))).toBe(true);
+    // Exactly at the window is kept: "older than", not "at least as old as".
+    expect(existsSync(pathOf('edge-complete'))).toBe(true);
+  });
+
+  it('falls back to createdAt when a terminal record carries no completedAt', () => {
+    const { completedAt: _dropped, ...noCompletedAt } = terminal('legacy', 'complete', 0);
+    seed({ ...noCompletedAt, createdAt: at(RETENTION_MS + 1) });
+    const { completedAt: _dropped2, ...noCompletedAtFresh } = terminal(
+      'legacy-fresh',
+      'complete',
+      0
+    );
+    seed({ ...noCompletedAtFresh, createdAt: at(RETENTION_MS - 1) });
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts).toEqual({
+      deleted: 1,
+      markedAbandoned: 0,
+      kept: 1,
+      unreadable: 0,
+      deletedKeys: 0,
+    });
+    expect(existsSync(pathOf('legacy'))).toBe(false);
+    expect(existsSync(pathOf('legacy-fresh'))).toBe(true);
+  });
+
+  it('marks a pending record that is abandoned AND older than the window as failed, keeping the evidence', () => {
+    seed({ ...pending('gone', RETENTION_MS + 1), signalAccepted: true, producerVersion: '8.50.0' });
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts).toEqual({
+      deleted: 0,
+      markedAbandoned: 1,
+      kept: 0,
+      unreadable: 0,
+      deletedKeys: 0,
+    });
+    const rewritten = readJobResult('gone');
+    expect(rewritten?.status).toBe('failed');
+    expect(rewritten?.errorKind).toBe('abandoned');
+    expect(rewritten?.error).toContain('abandoned');
+    expect(rewritten?.error).toContain('8.50.0');
+    // The original evidence travels with the rewrite.
+    expect(rewritten?.createdAt).toBe(at(RETENTION_MS + 1));
+    expect(rewritten?.signalAccepted).toBe(true);
+    expect(rewritten?.completedAt).toBe(new Date(NOW).toISOString());
+    expect(rewritten?.producerVersion).toBe(VERSION);
+    expect(statSync(pathOf('gone')).mode & 0o777).toBe(0o600);
+  });
+
+  it('never deletes a pending record, however old', () => {
+    // Deleting would erase the only evidence that the dispatch happened. The
+    // abandoned mark is a rewrite, never a removal.
+    seed(pending('ancient', RETENTION_MS * 52));
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts.deleted).toBe(0);
+    expect(counts.markedAbandoned).toBe(1);
+    expect(existsSync(pathOf('ancient'))).toBe(true);
+  });
+
+  it('leaves a pending record alone while it is inside the window, even when abandoned', () => {
+    // Older than the guard (so `get_job_result` reports it abandoned) but
+    // younger than the window: reported, not written back — the existing rule.
+    seed(pending('recent-abandoned', GUARD_MS * 2));
+    seed(pending('live', GUARD_MS / 2));
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts).toEqual({
+      deleted: 0,
+      markedAbandoned: 0,
+      kept: 2,
+      unreadable: 0,
+      deletedKeys: 0,
+    });
+    expect(readJobResult('recent-abandoned')?.status).toBe('pending');
+    expect(readJobResult('live')?.status).toBe('pending');
+  });
+
+  it('leaves a pending record alone when the window has passed but the guard has not', () => {
+    // Both conditions are real: a short window on its own must not mark a job
+    // that may still be running under its guard.
+    seed(pending('still-running', GUARD_MS / 2));
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: 1_000 });
+
+    expect(counts).toEqual({
+      deleted: 0,
+      markedAbandoned: 0,
+      kept: 1,
+      unreadable: 0,
+      deletedKeys: 0,
+    });
+    expect(readJobResult('still-running')?.status).toBe('pending');
+  });
+
+  it('counts unreadable files and leaves them in place, never deleting them', () => {
+    mkdirSync(jobsDir(), { recursive: true });
+    writeFileSync(pathOf('corrupt'), '{not json');
+    writeFileSync(pathOf('future'), JSON.stringify({ v: 2, jobId: 'future' }));
+    writeFileSync(join(jobsDir(), 'notes.txt'), 'not a record');
+    seed(terminal('old-complete', 'complete', RETENTION_MS + 1));
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS });
+
+    expect(counts).toEqual({
+      deleted: 1,
+      markedAbandoned: 0,
+      kept: 0,
+      unreadable: 2,
+      deletedKeys: 0,
+    });
+    expect(existsSync(pathOf('corrupt'))).toBe(true);
+    expect(existsSync(pathOf('future'))).toBe(true);
+    expect(existsSync(join(jobsDir(), 'notes.txt'))).toBe(true);
+  });
+
+  it('with dryRun, reports the same counts and changes nothing on disk', () => {
+    seed(terminal('old-complete', 'complete', RETENTION_MS + 1));
+    seed(pending('gone', RETENTION_MS + 1));
+    seed(terminal('fresh', 'complete', 0));
+
+    const counts = pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS, dryRun: true });
+
+    expect(counts).toEqual({
+      deleted: 1,
+      markedAbandoned: 1,
+      kept: 1,
+      unreadable: 0,
+      deletedKeys: 0,
+    });
+    expect(readJobResult('old-complete')?.status).toBe('complete');
+    expect(readJobResult('gone')?.status).toBe('pending');
+  });
+
+  it('the default window is seven days', () => {
+    expect(JOB_RECORD_RETENTION_MS).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('throws when the jobs path exists but cannot be enumerated', () => {
+    // A directory that will not open is not an empty directory; reporting
+    // zeros there would be the vacuous verdict the Mission section names.
+    writeFileSync(jobsDir(), 'not a directory');
+    expect(() => pruneJobRecords({ nowMs: NOW, retentionMs: RETENTION_MS })).toThrow();
+  });
+
+  describe('pruneJobRecordsIfDue — one sweep per process per hour', () => {
+    // The throttle is keyed by jobs directory, and every test here gets a fresh
+    // one, so the first call in a test is always the first sweep of that dir.
+    const SWEEP_INTERVAL_MS = 3_600_000;
+
+    it('sweeps on the first call and not again until the interval has elapsed', () => {
+      seed(terminal('first', 'complete', RETENTION_MS + 1));
+      expect(pruneJobRecordsIfDue(NOW)?.deleted).toBe(1);
+      expect(existsSync(pathOf('first'))).toBe(false);
+
+      seed(terminal('second', 'complete', RETENTION_MS + 1));
+      expect(pruneJobRecordsIfDue(NOW + SWEEP_INTERVAL_MS - 1)).toBeNull();
+      expect(existsSync(pathOf('second'))).toBe(true);
+
+      expect(pruneJobRecordsIfDue(NOW + SWEEP_INTERVAL_MS)?.deleted).toBe(1);
+      expect(existsSync(pathOf('second'))).toBe(false);
+    });
+
+    it('the throttle is per jobs directory, so a second data dir gets its own first sweep', () => {
+      seed(terminal('first', 'complete', RETENTION_MS + 1));
+      expect(pruneJobRecordsIfDue(NOW)?.deleted).toBe(1);
+
+      const otherDir = mkdtempSync(join(tmpdir(), 'nexus-jobs-prune-other-'));
+      try {
+        process.env['NEXUS_DATA_DIR'] = otherDir;
+        resetNexusDataDirCache();
+        seed(terminal('other', 'complete', RETENTION_MS + 1));
+        expect(pruneJobRecordsIfDue(NOW + 1)?.deleted).toBe(1);
+      } finally {
+        rmSync(otherDir, { recursive: true, force: true });
+      }
+    });
+
+    it('a sweep that throws does not escape, and the next call still waits for the interval', () => {
+      // The jobs path is a FILE, so readdirSync throws (ENOTDIR).
+      writeFileSync(jobsDir(), 'not a directory');
+      expect(pruneJobRecordsIfDue(NOW)).toBeNull();
+      rmSync(jobsDir());
+      seed(terminal('after-failure', 'complete', RETENTION_MS + 1));
+      expect(pruneJobRecordsIfDue(NOW + 1)).toBeNull();
+      expect(existsSync(pathOf('after-failure'))).toBe(true);
+    });
   });
 });
 

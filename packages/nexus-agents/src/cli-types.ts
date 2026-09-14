@@ -180,7 +180,8 @@ export type CliCommand =
   | 'improvement-review'
   | 'auto-remediate'
   | 'remediation-review'
-  | 'mode';
+  | 'mode'
+  | 'jobs';
 
 /**
  * Parsed CLI arguments and command.
@@ -712,6 +713,7 @@ export const VALID_COMMANDS: readonly CliCommand[] = [
   'auto-remediate',
   'remediation-review',
   'mode',
+  'jobs',
 ];
 
 /**

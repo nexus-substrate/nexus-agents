@@ -168,6 +168,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'advanced',
   },
   {
+    command: 'jobs',
+    description:
+      'Async job-record maintenance (#6224): `prune` deletes terminal records past the 7-day retention window and marks abandoned pending records failed; --dry-run prints the counts only.',
+    audience: 'advanced',
+  },
+  {
     command: 'registry',
     description: 'Inspect + refresh the dynamic model registry (doctor / refresh)',
     audience: 'advanced',

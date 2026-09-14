@@ -86,6 +86,7 @@ prints flags and examples for any of them.
 | `status`             | At-a-glance project health dashboard                                                                                                                                                                                                |
 | `capabilities`       | Show model capabilities matrix                                                                                                                                                                                                      |
 | `mode`               | Inspect detected mode (server/orchestrator) + signals + reasoning (#3214)                                                                                                                                                           |
+| `jobs`               | Async job-record maintenance (#6224): `prune` deletes terminal records past the 7-day retention window and marks abandoned pending records failed; --dry-run prints the counts only.                                                |
 | `registry`           | Inspect + refresh the dynamic model registry (doctor / refresh)                                                                                                                                                                     |
 | `migrate`            | Relocate homedir state (sessions, checkpoints, traces, runs, audit, pipeline, tasks) into \<repo>/.nexus-agents/ for users adopting NEXUS_REPO_PREFERRED=1. Cross-repo state stays homedir. --dry-run for a no-op plan. Epic #2872. |
 | `init`               | Initialize portable nexus-agents config in a repo. Flags: --portable (#2305/#2308/#2311), --install / --uninstall (#2311), --gitignore, --mcp-config, --opencode \<path> (#2504), --force, --dry-run.                               |
@@ -132,7 +133,7 @@ prints flags and examples for any of them.
 | `scenario`         | Execute a named scenario from the testing framework   |
 | `warm-up`          | Warm the model/adapter caches before a run            |
 
-_Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 53 commands._
+_Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 54 commands._
 
 <!-- GOVERNANCE:ENTRYPOINTS_CLI:END -->
 
