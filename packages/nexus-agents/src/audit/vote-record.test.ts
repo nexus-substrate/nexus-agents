@@ -14,10 +14,15 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import { createHash } from 'node:crypto';
 
-import type { FallbackReason } from '../cli/vote-types.js';
+import type { FallbackReason, RetriedFrom } from '../cli/vote-types.js';
 import type { ErrorPolicy } from '../mcp/tools/consensus-vote-types.js';
 import type { VoteRecord, VoterSummary } from './vote-record.js';
-import { VoteRecordSchema, computeVoteRecordHash, verifyVoteRecordSet } from './vote-record.js';
+import {
+  MAX_VOTER_REASONING_CHARS,
+  VoteRecordSchema,
+  computeVoteRecordHash,
+  verifyVoteRecordSet,
+} from './vote-record.js';
 
 /**
  * Build a self-hashed record at `sequence`. `previousHash` is advisory (NOT
@@ -860,48 +865,54 @@ describe('schema 1.10: `ratifiesPr` PR-ratification binding (#5130 step 1)', () 
   });
 });
 
+/**
+ * The maximal 1.10 RECORD (every record-level optional present) and its 1.11
+ * extension. Module-scoped so the 1.11 block can pin them and the 1.12 block
+ * can prove a 1.11 record still hashes to the 1.11 golden.
+ */
+const MAXIMAL_1_10_PAYLOAD = {
+  version: '1.10' as const,
+  id: 'vote-max-110',
+  sequence: 3,
+  recordedAt: '2026-09-14T00:00:00.000Z',
+  proposalHash: 'f'.repeat(64),
+  proposal: 'Ratify PR #6200 at its head',
+  strategy: 'supermajority' as const,
+  decision: 'approved' as const,
+  approvalPercentage: 100,
+  voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+  voters: [
+    {
+      role: 'architect' as const,
+      decision: 'approve' as const,
+      confidence: 0.9,
+      reasoning: 'grounds',
+      model: 'claude-opus',
+      assignedCli: 'claude',
+    },
+  ],
+  correlationId: 'consensus-1-abcdef01',
+  optionTally: [{ option: 'A', count: 1 }],
+  optionCoverage: { approverCount: 1, selectedCount: 1, unattributedApprovals: 0 },
+  panelCoverage: { requested: 2, responded: 1, errored: 1, erroredRoles: ['security'] },
+  ratifies: 'loop:dev-pipeline',
+  ratifiesPr: { pr: 6200, headSha: '0123456789abcdef0123456789abcdef01234567' },
+  previousHash: '9'.repeat(64),
+};
+const MAXIMAL_1_11 = {
+  ...MAXIMAL_1_10_PAYLOAD,
+  version: '1.11' as const,
+  id: 'vote-max-111',
+  errorPolicy: 'absolute_quorum' as const,
+};
+const GOLDEN_1_10 = '587422106245586745a76eb3a3deb5f7121beef80912abb9cf80384d6a8df3b2';
+const GOLDEN_1_11 = 'a8cbec584f9c341125e5378cb5f541ecf53b4e8ce8b162f35f494c63483098cf';
+
 describe('schema 1.11: `errorPolicy` — the policy the panel ran under (#6211)', () => {
   // Record-level, present-only, folded AFTER `ratifiesPr` — the new last key
   // in the canonical projection — so every 1.10-and-earlier record projects
   // byte-identically. The 1.10 golden above is the guard for that; this block
   // pins the new maximal RECORD form and proves the policy is tamper-evident.
-  const MAXIMAL_1_10_PAYLOAD = {
-    version: '1.10' as const,
-    id: 'vote-max-110',
-    sequence: 3,
-    recordedAt: '2026-09-14T00:00:00.000Z',
-    proposalHash: 'f'.repeat(64),
-    proposal: 'Ratify PR #6200 at its head',
-    strategy: 'supermajority' as const,
-    decision: 'approved' as const,
-    approvalPercentage: 100,
-    voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
-    voters: [
-      {
-        role: 'architect' as const,
-        decision: 'approve' as const,
-        confidence: 0.9,
-        reasoning: 'grounds',
-        model: 'claude-opus',
-        assignedCli: 'claude',
-      },
-    ],
-    correlationId: 'consensus-1-abcdef01',
-    optionTally: [{ option: 'A', count: 1 }],
-    optionCoverage: { approverCount: 1, selectedCount: 1, unattributedApprovals: 0 },
-    panelCoverage: { requested: 2, responded: 1, errored: 1, erroredRoles: ['security'] },
-    ratifies: 'loop:dev-pipeline',
-    ratifiesPr: { pr: 6200, headSha: '0123456789abcdef0123456789abcdef01234567' },
-    previousHash: '9'.repeat(64),
-  };
-  const MAXIMAL_1_11 = {
-    ...MAXIMAL_1_10_PAYLOAD,
-    version: '1.11' as const,
-    id: 'vote-max-111',
-    errorPolicy: 'absolute_quorum' as const,
-  };
-  const GOLDEN_1_10 = '587422106245586745a76eb3a3deb5f7121beef80912abb9cf80384d6a8df3b2';
-
   it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
     const parsed = VoteRecordSchema.safeParse({
       ...MAXIMAL_1_11,
@@ -916,9 +927,7 @@ describe('schema 1.11: `errorPolicy` — the policy the panel ran under (#6211)'
     // hand-deriving the canonical string (`errorPolicy` last, after
     // `ratifiesPr`) with `node -e` + sha256. If it moves, the record-level
     // canonical order or the present-only rule changed.
-    expect(computeVoteRecordHash(MAXIMAL_1_11)).toBe(
-      'a8cbec584f9c341125e5378cb5f541ecf53b4e8ce8b162f35f494c63483098cf'
-    );
+    expect(computeVoteRecordHash(MAXIMAL_1_11)).toBe(GOLDEN_1_11);
   });
 
   it('a 1.10 record with `errorPolicy` explicitly undefined still hashes to the 1.10 golden', () => {
@@ -980,5 +989,171 @@ describe('schema 1.11: `errorPolicy` — the policy the panel ran under (#6211)'
     // ledger line claim a policy no panel can be configured with. Checked by
     // `pnpm typecheck`, not at runtime.
     expectTypeOf<NonNullable<VoteRecord['errorPolicy']>>().toEqualTypeOf<ErrorPolicy>();
+  });
+});
+
+describe('schema 1.12: `retriedFrom` — what a recovered seat was retried from (#6246)', () => {
+  // Voter-level, present-only, appended AFTER `fallback` — the new last voter
+  // key in the canonical order — so every 1.11-and-earlier entry projects
+  // byte-identically. The 1.9 voter golden and the 1.11 record golden above
+  // are the guard for that; this block pins the new maximal form, at both
+  // levels, and proves the carried cause is tamper-evident.
+  const PARSE_FAILURE =
+    'Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input';
+  const MAXIMAL_1_12 = {
+    ...MAXIMAL_1_11,
+    version: '1.12' as const,
+    id: 'vote-max-112',
+    voters: [
+      {
+        role: 'catfish' as const,
+        decision: 'abstain' as const,
+        confidence: 0,
+        reasoning: 'UNVERIFIABLE: could not read the artifact',
+        reasoningTruncated: true as const,
+        retried: true as const,
+        model: 'gemini-3.1-pro-preview',
+        unverifiable: true as const,
+        assignedCli: 'codex',
+        fallback: { fromCli: 'codex', fromModel: 'codex-5.3', reason: 'capacity' as const },
+        retriedFrom: {
+          source: 'error' as const,
+          error: PARSE_FAILURE,
+          errorTruncated: true as const,
+        },
+      },
+    ],
+  };
+
+  it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
+    const parsed = VoteRecordSchema.safeParse({
+      ...MAXIMAL_1_12,
+      hash: computeVoteRecordHash(MAXIMAL_1_12),
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('pins the MAXIMAL 1.12 record to a golden captured by execution', () => {
+    // Captured by running `computeVoteRecordHash` on this exact fixture once
+    // the projection carried `retriedFrom`, then pinned — and reproduced by
+    // hand-deriving the canonical string (`retriedFrom` last among the voter
+    // keys, nested `source`, `error`, `errorTruncated`) with `node` + sha256.
+    // If it moves, the canonical voter order, the nested order, or the
+    // present-only rule changed.
+    expect(computeVoteRecordHash(MAXIMAL_1_12)).toBe(
+      '99b69c30289a2cd0dff2aeb0f120478007d2c08029f8ab1eb17220541482a52c'
+    );
+  });
+
+  it('a 1.11 record with `retriedFrom` explicitly undefined still hashes to the 1.11 golden', () => {
+    // Against the PINNED literal, not a self-computed value: an entry that
+    // lacks the new key must project exactly as it did before the key existed.
+    const v = MAXIMAL_1_11.voters[0]!;
+    expect(
+      computeVoteRecordHash({ ...MAXIMAL_1_11, voters: [{ ...v, retriedFrom: undefined }] })
+    ).toBe(GOLDEN_1_11);
+  });
+
+  it("reordering a 1.12 voter entry's keys — and the nested retriedFrom's — does not change the hash", () => {
+    const v = MAXIMAL_1_12.voters[0]!;
+    const reordered = {
+      retriedFrom: {
+        errorTruncated: v.retriedFrom.errorTruncated,
+        error: v.retriedFrom.error,
+        source: v.retriedFrom.source,
+      },
+      fallback: v.fallback,
+      assignedCli: v.assignedCli,
+      unverifiable: v.unverifiable,
+      model: v.model,
+      retried: v.retried,
+      reasoningTruncated: v.reasoningTruncated,
+      reasoning: v.reasoning,
+      confidence: v.confidence,
+      decision: v.decision,
+      role: v.role,
+    };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_12, voters: [reordered] })).toBe(
+      computeVoteRecordHash(MAXIMAL_1_12)
+    );
+  });
+
+  it('an explicitly-undefined error or errorTruncated hashes identically to an absent one', () => {
+    const v = MAXIMAL_1_12.voters[0]!;
+    const bare = { ...v, retriedFrom: { source: v.retriedFrom.source } };
+    const explicit = {
+      ...v,
+      retriedFrom: { source: v.retriedFrom.source, error: undefined, errorTruncated: undefined },
+    };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_12, voters: [explicit] })).toBe(
+      computeVoteRecordHash({ ...MAXIMAL_1_12, voters: [bare] })
+    );
+  });
+
+  it('dropping `retriedFrom` alone moves the hash; dropping the nested `error` alone moves it; dropping `errorTruncated` alone moves it', () => {
+    const v = MAXIMAL_1_12.voters[0]!;
+    const { retriedFrom: _r, ...withoutFrom } = v;
+    const { error: _e, ...fromWithoutError } = v.retriedFrom;
+    const { errorTruncated: _t, ...fromWithoutMarker } = v.retriedFrom;
+    const full = computeVoteRecordHash(MAXIMAL_1_12);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_12, voters: [withoutFrom] })).not.toBe(full);
+    expect(
+      computeVoteRecordHash({ ...MAXIMAL_1_12, voters: [{ ...v, retriedFrom: fromWithoutError }] })
+    ).not.toBe(full);
+    expect(
+      computeVoteRecordHash({ ...MAXIMAL_1_12, voters: [{ ...v, retriedFrom: fromWithoutMarker }] })
+    ).not.toBe(full);
+  });
+
+  it('editing the carried cause is a hash_mismatch — the join cannot be rewritten after the fact', () => {
+    // The property that makes the carried cause evidence rather than decoration:
+    // the parse failure the seat recovered from cannot be edited into a
+    // friendlier one, and the source cannot be relabelled, without the record
+    // failing verification.
+    const record: VoteRecord = { ...MAXIMAL_1_12, hash: computeVoteRecordHash(MAXIMAL_1_12) };
+    const v = record.voters[0]!;
+    const causeEdited: VoteRecord = {
+      ...record,
+      voters: [{ ...v, retriedFrom: { ...v.retriedFrom!, error: 'transient rate limit' } }],
+    };
+    const edited = verifyVoteRecordSet([causeEdited]);
+    expect(edited.ok).toBe(false);
+    if (!edited.ok) expect(edited.reason).toBe('hash_mismatch');
+    const relabelled: VoteRecord = {
+      ...record,
+      voters: [{ ...v, retriedFrom: { ...v.retriedFrom!, source: 'unverifiable' } }],
+    };
+    const result = verifyVoteRecordSet([relabelled]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('the read schema accepts exactly the live `RetriedFrom` shape and nothing wider', () => {
+    const base = { ...MAXIMAL_1_12, hash: computeVoteRecordHash(MAXIMAL_1_12) };
+    const v = MAXIMAL_1_12.voters[0]!;
+    const withKey = (retriedFrom: unknown): boolean =>
+      VoteRecordSchema.safeParse({ ...base, voters: [{ ...v, retriedFrom }] }).success;
+    expect(withKey({ source: 'error' })).toBe(true);
+    expect(withKey({ source: 'unverifiable', error: 'x' })).toBe(true);
+    // A source the retry never produces, a missing source, a marker that is
+    // not literally true, an extra key, and a cause over the #5373 bound are
+    // all refused: the record must not accept a shape the live result cannot emit.
+    expect(withKey({ source: 'timeout' })).toBe(false);
+    expect(withKey({ error: 'x' })).toBe(false);
+    expect(withKey({ source: 'error', errorTruncated: false })).toBe(false);
+    expect(withKey({ source: 'error', reason: 'capacity' })).toBe(false);
+    expect(withKey({ source: 'error', error: 'e'.repeat(MAX_VOTER_REASONING_CHARS + 1) })).toBe(
+      false
+    );
+  });
+
+  it('the recorded source vocabulary IS the live RetriedFrom source — neither side can drift alone', () => {
+    // A source added on the live side without the schema learning it would
+    // make the #6054 write-time validation refuse every record that carries
+    // it; one the schema accepts that the retry never produces would accept a
+    // record no producer can write. Checked by `pnpm typecheck`, not at runtime.
+    expectTypeOf<NonNullable<VoterSummary['retriedFrom']>['source']>().toEqualTypeOf<
+      RetriedFrom['source']
+    >();
   });
 });

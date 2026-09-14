@@ -133,6 +133,26 @@ describe('per-seat fallback on the vote summary (#6115)', () => {
   });
 });
 
+describe('per-seat retriedFrom on the vote summary (#6246)', () => {
+  it('is present only on a seat the per-role retry replaced — a caller sees what the ledger will', () => {
+    const recovered = toAgentVoteSummary(
+      seat('catfish', {
+        retried: true,
+        retriedFrom: {
+          source: 'error',
+          error: 'Vote parsing failed: Unexpected end of JSON input',
+        },
+      })
+    );
+    expect(recovered.retried).toBe(true);
+    expect(recovered.retriedFrom).toEqual({
+      source: 'error',
+      error: 'Vote parsing failed: Unexpected end of JSON input',
+    });
+    expect('retriedFrom' in toAgentVoteSummary(seat('catfish'))).toBe(false);
+  });
+});
+
 describe('per-voter cost row names the assigned CLI (#6115)', () => {
   it('carries assignedCli beside the model that answered', () => {
     const inputs = votesToCostInputs([

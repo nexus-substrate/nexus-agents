@@ -41,11 +41,13 @@ import type {
 } from '../mcp/tools/consensus-vote-types.js';
 import { toRecordDecision } from '../mcp/tools/consensus-vote-types.js';
 import {
+  absentSeatSummaryRow,
   commentVoteRow,
   contrarianCheckLine,
   contrarianCheckSummaryLine,
   modelsLine,
   projectLine,
+  retriedFromLabel,
   tallySummaryLine,
   type VotingResultWithProject,
 } from './vote-summary-lines.js';
@@ -111,30 +113,16 @@ function formatReasoning(reasoning: string): string {
 }
 
 /**
- * The row for a seat that did not judge: errored, or unverifiable (#6094 — a
- * seat that never saw the artifact is not an ABSTAIN; rendering it as one is
- * how a blind seat reads as a considered one). Undefined for a seat that
- * returned a judgment.
- */
-function formatAbsentSeatRow(v: AgentVoteResult, label: string): string | undefined {
-  if (v.source === 'error') {
-    const reason = (v.error ?? 'execution failed').split('\n')[0] ?? 'execution failed';
-    return `  ${colors.red}✗${colors.reset} ${label}: ${colors.red}ERROR${colors.reset} — ${reason}`;
-  }
-  if (v.source === 'unverifiable') {
-    return `  ${colors.yellow}?${colors.reset} ${label}: ${colors.yellow}UNVERIFIABLE${colors.reset} — could not read the artifact (${v.unverifiableSignal ?? 'unknown'} signal)`;
-  }
-  return undefined;
-}
-
-/**
  * Pure formatter for a single voter row. Errors render distinct from
  * simulations so operators don't mistake an auth failure for a successful
- * (if questionable) vote (#2441). @internal — exported for tests only.
+ * (if questionable) vote (#2441). The absent-seat arm and the #6246 recovery
+ * parenthetical live in `vote-summary-lines.ts`. @internal — exported for
+ * tests only.
  */
 export function formatVoteRow(v: AgentVoteResult, opts?: { verbose?: boolean }): string {
   const label = VOTER_ROLES[v.role].split(' - ')[0] ?? v.role;
-  const absent = formatAbsentSeatRow(v, label);
+  const recovery = retriedFromLabel(v);
+  const absent = absentSeatSummaryRow(v, label);
   if (absent !== undefined) return absent;
   const icon =
     v.vote.decision === 'approve'
@@ -147,7 +135,7 @@ export function formatVoteRow(v: AgentVoteResult, opts?: { verbose?: boolean }):
   // above returns before this point, so an errored voter's placeholder vote
   // stub is never rendered as though it had reasoned.
   const grounds = opts?.verbose === true ? formatReasoning(v.vote.reasoning) : '';
-  return `  ${icon}${colors.reset} ${label}: ${v.vote.decision.toUpperCase()} (${formatPercentage(v.vote.confidence)})${tag}${grounds}`;
+  return `  ${icon}${colors.reset} ${label}: ${v.vote.decision.toUpperCase()} (${formatPercentage(v.vote.confidence)})${tag}${recovery}${grounds}`;
 }
 
 interface SummaryContext {

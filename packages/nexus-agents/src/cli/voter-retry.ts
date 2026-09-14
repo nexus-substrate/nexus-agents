@@ -5,10 +5,36 @@
  * @module cli/voter-retry
  */
 
-import type { VoterRole, AgentVoteResult } from './vote-types.js';
+import type { VoterRole, AgentVoteResult, RetriedFrom } from './vote-types.js';
 import type { ILogger } from '../core/index.js';
+import { clipForRecord } from '../audit/vote-record.js';
 import { sleep } from '../utils/async-utils.js';
 import { isAbsentSeat } from './voter-unverifiable.js';
+
+/**
+ * C0 and C1 control characters, DEL included (#6246, security seat; the C1
+ * range on the #6252 panel's rejection — `\x9b` is the single-byte CSI,
+ * equivalent to `ESC [`, so an ASCII-only range still let a terminal escape
+ * through). A first-pass error string can be a subprocess's stderr; each of
+ * these becomes one space so the carried cause cannot inject a line into the
+ * summary row or the JSONL ledger line, nor an escape sequence into the
+ * terminal.
+ */
+const CONTROL_CHARS_RE = /[\x00-\x1f\x7f-\x9f]/g;
+
+/**
+ * What the retry is about to discard, carried onto the seat that replaces it
+ * (#6246). `source` is the first pass's; `error` is its error string when it
+ * had one — de-controlled, then bounded by the #5373 record clip so the marker
+ * travels with it rather than a silent slice. Called only at the discard site,
+ * so a seat that was never retried, or whose retry failed again, has no key.
+ */
+function retriedFromOf(first: AgentVoteResult): RetriedFrom {
+  const source = first.source === 'unverifiable' ? 'unverifiable' : 'error';
+  if (first.error === undefined) return { source };
+  const { text, truncated } = clipForRecord(first.error.replace(CONTROL_CHARS_RE, ' '));
+  return { source, error: text, ...(truncated === true ? { errorTruncated: true as const } : {}) };
+}
 
 /**
  * Backoff before retrying an errored voter role (#5578).
@@ -60,10 +86,22 @@ export async function retryErroredRoles(
   if (backoffMs > 0) await sleep(backoffMs);
 
   const retriedResults = await relaunch(erroredRoles);
+  const firstByRole = new Map(first.map((v) => [v.role, v]));
   const recovered = new Map<VoterRole, AgentVoteResult>();
   for (const r of retriedResults) {
     if (r.source === 'error') continue;
-    recovered.set(r.role, { ...r, retried: true });
+    // #6246: this is where the first pass is discarded — carry what it was
+    // before it goes, so the seat names both what it is and what it recovered
+    // from. Every relaunched role has an absent first pass; the guard holds
+    // the relaunch to that contract rather than carrying a `source` the first
+    // pass never had.
+    const prior = firstByRole.get(r.role);
+    const from = prior !== undefined && isAbsentSeat(prior) ? retriedFromOf(prior) : undefined;
+    recovered.set(r.role, {
+      ...r,
+      retried: true,
+      ...(from !== undefined ? { retriedFrom: from } : {}),
+    });
   }
   if (recovered.size === 0) {
     logger.warn('Per-role retry recovered no voter — the panel stays degraded', { erroredRoles });

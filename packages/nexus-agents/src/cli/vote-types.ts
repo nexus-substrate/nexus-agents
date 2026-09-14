@@ -136,6 +136,30 @@ export interface SeatFallback {
 }
 
 /**
+ * What a recovered seat was retried FROM (#6246).
+ *
+ * `retryErroredRoles` replaces an absent first-pass seat — errored, or
+ * unverifiable — with the retry's result. Before this the first pass was
+ * discarded at that point: the merged panel, the summary row and the ledger
+ * entry said the seat was retried, but not what it recovered from. On the
+ * #6241 ratification panel the catfish seat's first pass errored on two
+ * response-parse failures and the retry came back unverifiable; nothing joined
+ * the two, and #6244 read the parse errors as a misclassification.
+ *
+ * `source` is the first pass's `source` — only the two absent values, a
+ * literal union so a record cannot claim a first pass that was never retried.
+ * `error` is the first pass's `error` string, present only when it had one
+ * (an unverifiable seat's cause lives in its reasoning and carries no
+ * `error`), with control characters replaced and bounded by the #5373 record
+ * clip; `errorTruncated` is that clip's marker, present only when it fired.
+ */
+export interface RetriedFrom {
+  readonly source: 'error' | 'unverifiable';
+  readonly error?: string | undefined;
+  readonly errorTruncated?: true | undefined;
+}
+
+/**
  * Individual agent vote with metadata.
  */
 export interface AgentVoteResult {
@@ -184,6 +208,15 @@ export interface AgentVoteResult {
    * visible instead of indistinguishable from a clean first attempt.
    */
   readonly retried?: boolean | undefined;
+  /**
+   * What this seat was retried from (#6246): the first pass's source and, when
+   * it had one, its error string. Present only on a seat the per-role retry
+   * REPLACED — never on a first-attempt result, and never on a seat whose retry
+   * failed again (that seat keeps its first attempt, unmarked). Orthogonal to
+   * {@link retried}: that flag says a recovery happened; this says what it
+   * recovered from.
+   */
+  readonly retriedFrom?: RetriedFrom | undefined;
   /**
    * Model id that executed this vote, when known (e.g. 'claude-sonnet'). Carried
    * so per-decision cost aggregation can attribute spend per model (#3855). Absent
