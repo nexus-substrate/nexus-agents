@@ -63,6 +63,7 @@ import {
   computeVoteRecordHash,
   hashProposal,
   MAX_VOTER_REASONING_CHARS,
+  projectSeatFallback,
 } from './vote-record.js';
 
 /**
@@ -177,6 +178,11 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
       // `decision` is abstain; this flag is what keeps it from reading as a
       // considered abstention.
       ...(v.source === 'unverifiable' ? { unverifiable: true as const } : {}),
+      // #6115: where the seat was assigned, and — when it answered elsewhere —
+      // the fallback the live result stated. `model` alone showed seven
+      // identical values on a panel assigned three ways and could not say so.
+      ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
+      ...(v.fallback !== undefined ? { fallback: projectSeatFallback(v.fallback) } : {}),
     });
   }
   return summaries;
@@ -320,20 +326,24 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.8 carries a voter `model` or an `unverifiable` seat, 1.7 a retried voter
- * seat, 1.6 voter reasoning, 1.5 panel coverage, 1.4 option coverage, 1.3 a
- * bare tally (historical only — a tally now always travels with coverage),
- * 1.2 neither.
+ * 1.9 carries a voter `assignedCli` or `fallback`, 1.8 a voter `model` or an
+ * `unverifiable` seat, 1.7 a retried voter seat, 1.6 voter reasoning, 1.5
+ * panel coverage, 1.4 option coverage, 1.3 a bare tally (historical only — a
+ * tally now always travels with coverage), 1.2 neither.
  */
 function recordVersion(
   optionTally: VoteRecordOptionCount[] | undefined,
   optionCoverage: VoteRecordOptionCoverage | undefined,
   panelCoverage: VoteRecordPanelCoverage | undefined,
   voters: readonly VoterSummary[]
-): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' {
-  // 1.8 first, on the same tier logic as 1.7: both new fields are orthogonal
-  // to the tiers below, and a reader needs to know from the version alone
-  // whether voter entries may carry them (#6091, #6094).
+): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' {
+  // 1.9 first, on the same tier logic as 1.8: either key alone lifts the
+  // tier, so a reader knows from the version whether a seat's assignment and
+  // fallover may be on its entry (#6115).
+  if (voters.some((v) => v.assignedCli !== undefined || v.fallback !== undefined)) return '1.9';
+  // 1.8, same rule: both fields are orthogonal to the tiers below, and a
+  // reader needs to know from the version alone whether voter entries may
+  // carry them (#6091, #6094).
   if (voters.some((v) => v.model !== undefined || v.unverifiable === true)) return '1.8';
   // 1.7: `retried` is ORTHOGONAL to the tiers below it, not a refinement
   // of one. A retried seat implies an errored seat, so it usually co-occurs

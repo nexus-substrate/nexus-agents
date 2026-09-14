@@ -125,6 +125,24 @@ export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSche
 export const MAX_VOTER_REASONING_CHARS = 20_000;
 
 /**
+ * A seat's fallback as recorded (#6115, schema 1.9). Module-private on the
+ * `VoteRecordPanelCoverageSchema` rule: only `VoterSummarySchema` consumes it.
+ * The `reason` enum is the live `FallbackReason` spelled out — an `enum` rather
+ * than a bare string so a record cannot carry a class the adapter layer never
+ * emits — and the two are held equal by a type test.
+ */
+const SeatFallbackRecordSchema = z
+  .object({
+    /** The CLI the seat was assigned to, bare (`claude`, not `cli-claude`). */
+    fromCli: z.string().min(1).max(100),
+    /** The model the assigned adapter had detected, when it had one. */
+    fromModel: z.string().min(1).max(200).optional(),
+    /** The adapter-layer class of the error that moved the seat. */
+    reason: z.enum(['rate-limit', 'capacity', 'auth', 'timeout', 'sandbox', 'unknown']),
+  })
+  .strict();
+
+/**
  * The declared field ORDER here is not load-bearing (#6057): canonical hash order
  * comes from `VOTER_SUMMARY_KEYS` below, which is compile-checked against this
  * schema in both directions. Adding a field here without adding it there is a
@@ -201,6 +219,29 @@ export const VoterSummarySchema = z
      * present-only, so every pre-1.8 entry re-hashes byte-identical.
      */
     unverifiable: z.literal(true).optional(),
+    /**
+     * The CLI the round-robin or `NEXUS_VOTER_MODEL_<ROLE>` pin chose for the
+     * seat, as a bare name (#6115, schema 1.9). `model` says where a seat
+     * answered; this says where it was MEANT to. Three consecutive 7-seat
+     * ratification panels on 2026-09-13 answered every seat on one gemini
+     * model while the assignment was three claude, two codex, two gemini,
+     * and the 1.8 record showed seven identical `model` values with nothing
+     * that said five of them were substitutes. Present-only, on the `model`
+     * rule; absent on a result built outside the panel launcher.
+     */
+    assignedCli: z.string().min(1).max(100).optional(),
+    /**
+     * Present only when the seat answered on a different CLI or model than
+     * assigned (#6115, schema 1.9): the exact `SeatFallback` shape the live
+     * result carries, rebuilt field-by-field. `fromCli` is the assigned CLI,
+     * `fromModel` the model it had detected (absent when it never did — the
+     * pending-detection placeholder is not a model), `reason` the adapter
+     * layer's error class. The vocabulary is compile-checked against the live
+     * `FallbackReason` in vote-record.test.ts; a class one side learns alone
+     * would either refuse every record that carries it (#6054) or accept one
+     * no producer can write.
+     */
+    fallback: SeatFallbackRecordSchema.optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -260,19 +301,69 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // entry projects byte-identically.
   'model',
   'unverifiable',
+  // 1.9 (#6115): appended after `unverifiable`, present-only, so a 1.8 entry
+  // projects byte-identically. `fallback` is the first nested voter field;
+  // `projectSeatFallback` rebuilds it in its own canonical order.
+  'assignedCli',
+  'fallback',
 ] as const satisfies readonly (keyof VoterSummary)[]);
+
+/** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
+type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
+
+/**
+ * Identity at runtime; an exhaustiveness constraint at compile time, on the
+ * {@link defineVoterKeys} rule. `rest` is what {@link projectSeatFallback}'s
+ * destructure did NOT name, and only `{}` is assignable to
+ * `Record<string, never>` — so a key added to `SeatFallbackRecordSchema`
+ * without the projector learning it is a `tsc` error at the projection, not a
+ * silently unhashed nested field (ratification note on #6179).
+ */
+function noUnprojectedKeys(rest: Record<string, never>): Record<string, never> {
+  return rest;
+}
+
+/**
+ * Rebuild a seat's fallback in canonical order — `fromCli`, `fromModel` (only
+ * when present), `reason` — so the hash does not depend on how the nested
+ * object's keys were ordered (#3962, the `voteCounts` rule applied one level
+ * deeper). Shared with the builder (`vote-record-store.ts`), so the entry the
+ * ledger line carries and the entry the hash covers are the same projection.
+ *
+ * The destructure is exhaustive: {@link noUnprojectedKeys} makes the
+ * remainder a compile error unless it is empty. Add a field to the fallback
+ * schema and this function stops compiling until the field is placed in the
+ * canonical order below.
+ */
+export function projectSeatFallback(f: VoterSummaryFallback): VoterSummaryFallback {
+  const { fromCli, fromModel, reason, ...rest } = f;
+  noUnprojectedKeys(rest);
+  return {
+    fromCli,
+    ...(fromModel !== undefined ? { fromModel } : {}),
+    reason,
+  };
+}
 
 /**
  * Project one voter entry for the canonical hash: every key in
  * {@link VOTER_SUMMARY_KEYS}, in that order, PRESENT-ONLY. An absent optional is
  * omitted, never emitted as `null` — that is what keeps every pre-1.7 record's
  * canonical string byte-identical. The two optional flags are `literal(true)`,
- * so `!== undefined` is exactly the old `=== true`.
+ * so `!== undefined` is exactly the old `=== true`. The one nested key is
+ * rebuilt by {@link projectSeatFallback}; every other value is a scalar and is
+ * carried as-is.
  */
 function projectVoterSummary(v: VoterSummary): Partial<VoterSummary> {
   const out: Record<string, unknown> = {};
   for (const key of VOTER_SUMMARY_KEYS) {
-    if (v[key] !== undefined) out[key] = v[key];
+    const value =
+      key === 'fallback'
+        ? v.fallback === undefined
+          ? undefined
+          : projectSeatFallback(v.fallback)
+        : v[key];
+    if (value !== undefined) out[key] = value;
   }
   return out;
 }
@@ -321,7 +412,7 @@ export const VoteRecordSchema = z
      * `ratifies` is folded into the self-hash ONLY when present (see
      * {@link computeVoteRecordHash}).
      */
-    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8']),
+    version: z.enum(['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9']),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
     /**
