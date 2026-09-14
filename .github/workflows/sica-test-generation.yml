@@ -140,38 +140,61 @@ jobs:
               console.log(`Writing test: ${testPath}`);
               await fs.writeFile(testPath, test.code, 'utf-8');
             }
-
-            process.exit(result.tests.length > 0 ? 0 : 1);
           }
 
-          main().catch(console.error);
+          // Exit code is the contract: 0 means the generator ran to completion
+          // and sica-results.json holds the count (which may be 0 — a measured
+          // "nothing to generate"). Anything else is a failure. It used to exit
+          // 1 on zero tests and `.catch(console.error)` on a crash, i.e. exit
+          // 0 — so the step below could not tell a crash from a clean empty
+          // run (#4927 finding 2).
+          main().catch((e: unknown) => {
+            console.error(e);
+            process.exit(1);
+          });
           EOF
 
-          # Run the generator
-          pnpm exec tsx generate-tests.ts 2>&1 || echo "No tests generated"
+          # Run the generator. Its exit code propagates: this step runs under
+          # `bash -e`, so a non-zero exit fails the step here. The old
+          # `|| echo "No tests generated"` swallowed it.
+          pnpm exec tsx generate-tests.ts 2>&1
 
-          # Check if tests were generated
-          if [ -f sica-results.json ]; then
-            TEST_COUNT=$(jq '.tests | length' sica-results.json)
-            COVERAGE_GAIN=$(jq '.coverageGain' sica-results.json)
-            echo "test_count=$TEST_COUNT" >> $GITHUB_OUTPUT
-            echo "coverage_gain=$COVERAGE_GAIN" >> $GITHUB_OUTPUT
-            echo "Generated $TEST_COUNT tests with $COVERAGE_GAIN% coverage gain"
-          else
-            echo "test_count=0" >> $GITHUB_OUTPUT
-            echo "coverage_gain=0" >> $GITHUB_OUTPUT
+          # A zero exit without the results file is a generator bug, not an
+          # empty run — say so rather than defaulting to test_count=0.
+          if [ ! -f sica-results.json ]; then
+            echo "::error::generator exited 0 but wrote no sica-results.json — cannot tell how many tests were generated"
+            exit 1
           fi
+          TEST_COUNT=$(jq '.tests | length' sica-results.json)
+          COVERAGE_GAIN=$(jq '.coverageGain' sica-results.json)
+          echo "test_count=$TEST_COUNT" >> "$GITHUB_OUTPUT"
+          echo "coverage_gain=$COVERAGE_GAIN" >> "$GITHUB_OUTPUT"
+          echo "Generated $TEST_COUNT tests with $COVERAGE_GAIN% coverage gain"
 
+      # This is the only gate between machine-written tests and an open PR.
+      # It used to be `pnpm test || echo "Some tests may need adjustment"`,
+      # which cannot fail, so failing generated tests produced a green step and
+      # a PR (#4927 finding 2). Now the step fails, the job goes red, and no PR
+      # is opened: a generated test that fails is most likely a wrong test, and
+      # the failing output is in this step's log for triage. If a draft PR for
+      # triage is ever wanted, it must be `draft: true` with a body line that
+      # says the tests failed — never a green step.
       - name: Validate generated tests
+        id: validate
         if: steps.generate.outputs.test_count > 0
         run: |
           echo "✅ Validating generated tests..."
           # `pnpm test` is `turbo test`, which already runs vitest in --run
           # mode; passing --run through to turbo trips "Unknown option: 'run'".
-          pnpm test 2>&1 || echo "Some tests may need adjustment"
+          pnpm test
 
       - name: Create Pull Request
+        id: pr
+        # `steps.validate.outcome == 'success'` is explicit even though a failed
+        # validate already fails the job: the condition is the record of what
+        # a PR from this workflow means (the generated tests passed).
         if: |
+          steps.validate.outcome == 'success' &&
           steps.generate.outputs.test_count > 0 &&
           github.event.inputs.dry_run != 'true'
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
@@ -239,11 +262,20 @@ jobs:
           echo "- Tests Generated: ${{ steps.generate.outputs.test_count || 0 }}" >> $GITHUB_STEP_SUMMARY
           echo "- Coverage Gain: ${{ steps.generate.outputs.coverage_gain || 0 }}%" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.generate.outputs.test_count }}" -gt "0" ]; then
-            if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+          # Report what happened, not what the happy path would have been.
+          # `always()` runs this after a failed generate or validate, so each
+          # branch reads the step outcome that decides it.
+          if [ "${{ steps.generate.outcome }}" != "success" ]; then
+            echo "❌ Generator failed (outcome: ${{ steps.generate.outcome }}) — no tests written, no PR" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.generate.outputs.test_count || 0 }}" -gt "0" ]; then
+            if [ "${{ steps.validate.outcome }}" != "success" ]; then
+              echo "❌ Generated tests FAILED validation (outcome: ${{ steps.validate.outcome }}) — no PR opened; see the Validate step log" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
               echo "⚠️ Dry run - no PR created" >> $GITHUB_STEP_SUMMARY
-            else
+            elif [ "${{ steps.pr.outcome }}" = "success" ]; then
               echo "✅ PR created with generated tests" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ PR creation did not succeed (outcome: ${{ steps.pr.outcome }})" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "ℹ️ No tests generated (coverage may already meet target)" >> $GITHUB_STEP_SUMMARY
