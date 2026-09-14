@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.58.1
+
+### Patch Changes
+
+- [#6243](https://github.com/nexus-substrate/nexus-agents/pull/6243) [`4b63bd7`](https://github.com/nexus-substrate/nexus-agents/commit/4b63bd734d6c54a250671611c3716be393430739) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents vote` without `--timeout` now waits the documented 300 seconds per seat instead of 90, read from `VOTE_TIMEOUTS.defaultMs` in both the parser and `vote --help` ([#6236](https://github.com/nexus-substrate/nexus-agents/issues/6236)).
+
 ## 8.58.0
 
 ### Minor Changes
