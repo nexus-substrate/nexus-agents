@@ -14,6 +14,18 @@ name: Release Stall Check
 # The issue — not this run's colour — is the output that matters. A red
 # scheduled run would reproduce the exact "reported but nobody consumes it"
 # failure the detector exists to fix.
+#
+# Grace period (#6215). Repo state at one instant cannot tell a stall from a
+# healthy pipeline mid-cycle: the 2026-09-14 03:59Z run filed #6196 two minutes
+# after a squash-merge landed a changeset, and release.yml opened the version PR
+# moments later. The assess step therefore reports only when the NEWEST
+# unconsumed changeset is older than DEFAULT_GRACE_SEC in
+# scripts/check-release-stuck.ts (30 minutes). Measured 2026-09-14 over the 12
+# most recent releases (#6185..#6212), push-triggered release.yml run createdAt
+# to version-PR createdAt: min 99 s, max 182 s; 3x the max is 546 s, so the
+# 30-minute floor is the binding bound (~10x the max). Ages come from the commit
+# that last touched the file, which is why the checkout below is full-depth: a
+# shallow clone reports HEAD's time for every file and the script refuses it.
 
 on:
   schedule:
@@ -41,6 +53,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
+          # Full history: changeset ages are commit times (#6215, header comment).
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 
@@ -68,6 +82,13 @@ jobs:
         run: |
           set -euo pipefail
           # The body was rendered by the assess step into release-stall-body.md.
+          # Only a stall verdict writes it; an assess step that died measuring
+          # (shallow clone, a changeset with no commit) exits 1 without one, and
+          # that must read as a red run, not as a reopened stall report (#6215).
+          if [ ! -f release-stall-body.md ]; then
+            echo "::error::assess step failed without a stall verdict — see its log; not filing."
+            exit 1
+          fi
           #
           # Dedupe WITHOUT the search index (#5729). `gh issue list --search`
           # reads GitHub's search API, which is eventually consistent: on
