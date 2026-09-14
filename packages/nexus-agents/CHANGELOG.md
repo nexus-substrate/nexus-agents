@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.54.9
+
+### Patch Changes
+
+- [#6168](https://github.com/nexus-substrate/nexus-agents/pull/6168) [`ae2b89d`](https://github.com/nexus-substrate/nexus-agents/commit/ae2b89d148647d209de3fb681176987a88bf10ad) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The ANSI-strip regex in `vote-command.test.ts` and the control-character scrub in `research-context.ts` now spell their control characters as `\x1b` / `[\x00-\x1f\x7f]` escapes instead of raw bytes (regex behaviour unchanged, proven by a byte-identity test per site), and the `control-bytes` arch-lint rule errors on any raw control byte with no baseline allowance ([#6158](https://github.com/nexus-substrate/nexus-agents/issues/6158)).
+
 ## 8.54.8
 
 ### Patch Changes
