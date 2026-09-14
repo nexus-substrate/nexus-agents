@@ -110,7 +110,8 @@ describe('async-job-body is bounded by the class ceiling, not the MCP request ce
   it('every OTHER class still clamps at MCP_TIMEOUTS.maxMs', () => {
     // The exemption is for the one class with no MCP request. A class that IS
     // a request keeps the request ceiling — pinned so widening the exemption
-    // by accident fails here.
+    // by accident fails here. (The full clamp ORDER for those classes is
+    // pinned against a reference implementation at the end of this file.)
     vi.stubEnv(PIPELINE_OVERRIDE, String(CLASS_CEILING_MS));
 
     const resolution = describeClassGuard('pipeline');
@@ -216,5 +217,62 @@ describe('validateNexusEnv surfaces it alongside typos and bad values', () => {
     vi.stubEnv(OVERRIDE, String(MCP_TIMEOUTS.maxMs / 2));
 
     expect(validateNexusEnv().ineffectiveVars).toEqual([]);
+  });
+});
+
+describe('the exemption changes nothing for a request-bound class', () => {
+  // The panel's constraint was that ONLY `async-job-body` changes. This is
+  // origin/main's resolver, copied as a reference implementation: base clamped
+  // to [1000, 7200000] BEFORE the multiplier, then the MCP request ceiling.
+  // The edge inputs are the ones where "ceiling once, after the multiplier"
+  // would differ (an override above 7.2M with a multiplier below 1).
+  const MULTIPLIER_MIN = 0.25;
+  const MULTIPLIER_MAX = 10;
+  function referenceResolve(overrideMs: number, multiplier: number): number {
+    const clampedBase = Math.min(Math.max(overrideMs, 1_000), CLASS_CEILING_MS);
+    const m = Math.min(Math.max(multiplier, MULTIPLIER_MIN), MULTIPLIER_MAX);
+    return Math.min(Math.round(clampedBase * m), MCP_TIMEOUTS.maxMs);
+  }
+
+  const edgeInputs: ReadonlyArray<readonly [overrideMs: number, multiplier: number]> = [
+    [8_000_000, 0.4],
+    [10_000_000, 0.5],
+    [3_000_000, 2.0],
+  ];
+
+  it('pins the reference values so the table cannot drift with the resolver', () => {
+    // Computed on origin/main: 7.2M×0.4, 7.2M×0.5, and 3M×2 clamped to 3.6M.
+    expect(referenceResolve(8_000_000, 0.4)).toBe(2_880_000);
+    expect(referenceResolve(10_000_000, 0.5)).toBe(3_600_000);
+    expect(referenceResolve(3_000_000, 2.0)).toBe(3_600_000);
+  });
+
+  it.each([
+    ['pipeline', 'NEXUS_TIMEOUT_CLASS_PIPELINE_MS'],
+    ['single-llm', 'NEXUS_TIMEOUT_CLASS_SINGLE_LLM_MS'],
+  ] as const)('%s resolves identically to origin/main on every edge input', (cls, envVar) => {
+    for (const [overrideMs, multiplier] of edgeInputs) {
+      vi.stubEnv(envVar, String(overrideMs));
+      vi.stubEnv(MULTIPLIER, String(multiplier));
+      const label = `${cls} ${String(overrideMs)}×${String(multiplier)}`;
+      expect(resolveClassGuardMs(cls), label).toBe(referenceResolve(overrideMs, multiplier));
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('async-job-body alone takes the single post-multiplier ceiling', () => {
+    const rows: ReadonlyArray<readonly [overrideMs: number, multiplier: number, want: number]> = [
+      [8_000_000, 0.4, 3_200_000], // 8M×0.4, not 7.2M×0.4 = 2.88M
+      [10_000_000, 0.5, 5_000_000], // 10M×0.5, not 7.2M×0.5 = 3.6M
+      [3_000_000, 2.0, 6_000_000], // reachable now; was clamped to 3.6M
+      [8_000_000, 1.0, CLASS_CEILING_MS], // the ceiling itself
+    ];
+    for (const [overrideMs, multiplier, want] of rows) {
+      vi.stubEnv(OVERRIDE, String(overrideMs));
+      vi.stubEnv(MULTIPLIER, String(multiplier));
+      const label = `${String(overrideMs)}×${String(multiplier)}`;
+      expect(resolveClassGuardMs('async-job-body'), label).toBe(want);
+      vi.unstubAllEnvs();
+    }
   });
 });

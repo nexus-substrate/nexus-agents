@@ -263,15 +263,15 @@ export const TIMEOUT_MULTIPLIER_MAX = 10;
 /** Floor for the env-override base, applied before the multiplier. */
 const CLASS_OVERRIDE_MIN_MS = 1_000;
 /**
- * Ceiling for the one class that has no MCP request to be bounded by
- * (`async-job-body`, #5995). Every other class is ceilinged by
- * `MCP_TIMEOUTS.maxMs`, which is lower. Applied AFTER the multiplier, so it is
- * the ceiling on what a job actually runs under, not on the base alone.
+ * Per-class override maximum. For a request-bound class it clamps the base
+ * before the multiplier (and the lower `MCP_TIMEOUTS.maxMs` then bounds the
+ * product). For `async-job-body`, the one class with no MCP request, it is
+ * the ceiling itself, applied once after the multiplier (#5995).
  */
 const CLASS_OVERRIDE_MAX_MS = 7_200_000;
 
 /**
- * The ceiling a class guard is clamped to, after every knob has been applied.
+ * The one class exempt from the MCP request ceiling.
  *
  * A class that runs inside an MCP request cannot outlive the request, so the
  * request ceiling bounds it. `async-job-body` runs a backgrounded job with no
@@ -281,8 +281,44 @@ const CLASS_OVERRIDE_MAX_MS = 7_200_000;
  * default is unchanged, and a wedged job holds its concurrency slot for the
  * whole guard, so a 2h guard doubles pool-starvation exposure.
  */
-function classGuardCeilingMs(cls: OperationClassName): number {
-  return cls === 'async-job-body' ? CLASS_OVERRIDE_MAX_MS : MCP_TIMEOUTS.maxMs;
+const REQUEST_CEILING_EXEMPT_CLASS: OperationClassName = 'async-job-body';
+
+/** The request and ceiling a class resolves to, in the order its clamps apply. */
+interface ClampedRequest {
+  readonly requestedMs: number;
+  readonly ceilingMs: number;
+  /** The base the ceiling is compared against when attributing a clamp. */
+  readonly baseForCause: number;
+}
+
+/**
+ * Applies the clamps in the order each class has always had them.
+ *
+ * Every request-bound class keeps origin/main's order — base clamped to
+ * `[CLASS_OVERRIDE_MIN_MS, CLASS_OVERRIDE_MAX_MS]`, then × multiplier, then the
+ * MCP request ceiling — so its resolution is identical for every input; the
+ * #5995 panel's constraint was that only `async-job-body` changes. The exempt
+ * class takes the floor, then × multiplier, then `CLASS_OVERRIDE_MAX_MS` once:
+ * applying the ceiling to the product rather than the base is what lets a base
+ * one past it be REPORTED as reduced instead of silently trimmed before the
+ * multiplier ever sees it.
+ */
+function clampRequest(cls: OperationClassName, chosen: number): ClampedRequest {
+  const multiplier = resolveTimeoutMultiplier();
+  const flooredBase = Math.max(chosen, CLASS_OVERRIDE_MIN_MS);
+  if (cls === REQUEST_CEILING_EXEMPT_CLASS) {
+    return {
+      requestedMs: Math.round(flooredBase * multiplier),
+      ceilingMs: CLASS_OVERRIDE_MAX_MS,
+      baseForCause: flooredBase,
+    };
+  }
+  const clampedBase = Math.min(flooredBase, CLASS_OVERRIDE_MAX_MS);
+  return {
+    requestedMs: Math.round(clampedBase * multiplier),
+    ceilingMs: MCP_TIMEOUTS.maxMs,
+    baseForCause: clampedBase,
+  };
 }
 
 /**
@@ -306,11 +342,11 @@ export function classOverrideEnvVar(cls: OperationClassName): string {
 /**
  * Resolves the runaway-guard for an operation class.
  *
- * `resolve = min(max(envClassOverride ?? base, classMin) * multiplier, ceiling)`,
- * where the ceiling is `MCP_TIMEOUTS.maxMs` for every class that runs inside an
- * MCP request and {@link CLASS_OVERRIDE_MAX_MS} for `async-job-body`, which
- * does not (#5995). No request-bound class can silently exceed the MCP wrapper
- * ceiling.
+ * Request-bound classes: `clamp(envClassOverride ?? base, classMin, classMax)
+ * * multiplier`, re-clamped to `MCP_TIMEOUTS.maxMs`, so none can silently
+ * exceed the MCP wrapper ceiling. `async-job-body`, which runs outside any MCP
+ * request: `max(envClassOverride ?? base, classMin) * multiplier`, clamped to
+ * {@link CLASS_OVERRIDE_MAX_MS} (#5995).
  *
  * @param cls - The operation class to resolve.
  * @returns The resolved guard in milliseconds.
@@ -372,12 +408,7 @@ export function describeClassGuard(cls: OperationClassName): ClassGuardResolutio
       overrideSet = true;
     }
   }
-  // The floor is applied to the base and the ceiling to the product, so a
-  // base one past the ceiling is REPORTED as reduced rather than silently
-  // trimmed before the multiplier ever sees it.
-  const flooredBase = Math.max(chosen, CLASS_OVERRIDE_MIN_MS);
-  const ceilingMs = classGuardCeilingMs(cls);
-  const requestedMs = Math.round(flooredBase * resolveTimeoutMultiplier());
+  const { requestedMs, ceilingMs, baseForCause } = clampRequest(cls, chosen);
   const effectiveMs = Math.min(requestedMs, ceilingMs);
   const clamped = requestedMs > effectiveMs;
   return {
@@ -387,7 +418,7 @@ export function describeClassGuard(cls: OperationClassName): ClassGuardResolutio
     ceilingMs,
     clampedByCeiling: clamped,
     overrideEnvVar: overrideSet ? envVar : null,
-    clampCause: clamped ? clampCauseFor(overrideSet, flooredBase, ceilingMs) : null,
+    clampCause: clamped ? clampCauseFor(overrideSet, baseForCause, ceilingMs) : null,
   };
 }
 
@@ -399,10 +430,10 @@ export function describeClassGuard(cls: OperationClassName): ClassGuardResolutio
  */
 function clampCauseFor(
   overrideSet: boolean,
-  flooredBase: number,
+  baseForCause: number,
   ceilingMs: number
 ): 'override' | 'multiplier' | 'declared_default' {
-  if (overrideSet && flooredBase > ceilingMs) return 'override';
+  if (overrideSet && baseForCause > ceilingMs) return 'override';
   if (process.env[TIMEOUT_MULTIPLIER_ENV_VAR] !== undefined) return 'multiplier';
   return overrideSet ? 'override' : 'declared_default';
 }
