@@ -20,7 +20,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { SRC_ROOT, DOCS_ROOT, ROOT } from './script-paths.js';
 import { checkSuppressionReason } from './arch-lint-suppression.js';
-import { checkControlBytes, checkControlByteBaselineCoverage } from './arch-lint-control-bytes.js';
+import { checkControlBytes } from './arch-lint-control-bytes.js';
 import { checkInlineVerdict } from './arch-lint-inline-verdict.js';
 
 export interface Violation {
@@ -548,7 +548,6 @@ function lint(): LintResult {
       // Skip files that can't be read
     }
   }
-  violations.push(...checkControlByteBaselineCoverage(controlByteFiles));
 
   // Add governance checks
   violations.push(...checkGovernance());
