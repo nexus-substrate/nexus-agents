@@ -17,7 +17,7 @@ import {
   type CircuitStateChangeEvent,
 } from './circuit-breaker.js';
 import { ErrorCode, ModelError } from '../core/errors.js';
-import type { RoutingArmId } from './types-core.js';
+import type { ObservedArmId } from './types-core.js';
 
 describe('CliCircuitBreaker', () => {
   let breaker: CliCircuitBreaker;
@@ -872,10 +872,11 @@ describe('categorizeError', () => {
 });
 
 // #4392 increment 1: the breaker and its registry were typed around `CliName`,
-// so an `api:*` routing arm could get no health tracking at all. The registry
-// is now keyed by `RoutingArmId` underneath; the `CliName`-typed readers keep
-// their types and become FILTERED VIEWS over the arm-typed siblings (panel on
-// #6290: additive now, removals in #6291).
+// so an `api:*` arm could get no health tracking at all. The registry is now
+// keyed by `ObservedArmId` (`RoutingArmId | EndpointArmId`) underneath; the
+// `CliName`-typed readers keep their types and become FILTERED VIEWS over the
+// arm-typed siblings (#6290 panel: additive now, the union into `RoutingArmId`
+// and the removals are #6291).
 describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
   let registry: CircuitBreakerRegistry;
 
@@ -889,7 +890,7 @@ describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
   });
 
   it('creates a distinct breaker for an endpoint-identity arm', () => {
-    const arm: RoutingArmId = 'api:gw-prod';
+    const arm: ObservedArmId = 'api:gw-prod';
 
     const breaker = registry.getArmBreaker(arm);
 

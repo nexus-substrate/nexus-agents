@@ -8,8 +8,7 @@
 
 import { NexusError, ErrorCode } from '../core/errors.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
-import type { CliName, RoutingArmId } from './types.js';
-import { routingArmDisplaySlot } from './types.js';
+import type { CliName, ObservedArmId } from './types.js';
 
 // ============================================================================
 // Types
@@ -77,12 +76,16 @@ export interface CircuitBreakerSnapshot {
 export interface CircuitStateChangeEvent {
   /**
    * Display slot of the guarded arm: identity for a CLI slot, the collapsed
-   * slot for an `api:*` arm (#4392). Always `routingArmDisplaySlot(armId)`;
+   * slot for an `api:*` arm (#4392). Always `observedArmDisplaySlot(armId)`;
    * read {@link armId} to tell an endpoint arm from the slot it displays under.
    */
   readonly cliName: CliName;
-  /** Routing arm the breaker guards — a CLI slot or an `api:*` arm (#4392). */
-  readonly armId: RoutingArmId;
+  /**
+   * Arm the breaker guards — a CLI slot, a built-in `api:*` arm or a
+   * registered endpoint arm (#4392). The breaker is the only producer of this
+   * event in tree; a listener that builds one by hand must supply it.
+   */
+  readonly armId: ObservedArmId;
   /** Previous state */
   readonly previousState: CircuitState;
   /** New state */
@@ -159,10 +162,14 @@ export type CircuitErrorCode = (typeof CircuitErrorCode)[keyof typeof CircuitErr
  */
 export class CircuitError extends NexusError {
   readonly circuitErrorCode: CircuitErrorCode;
-  /** Display slot of {@link armId} — `routingArmDisplaySlot(armId)`, never the raw `api:*` id. */
+  /** Display slot of {@link armId} — never the raw `api:*` id. */
   readonly cliName: CliName;
-  /** Routing arm whose circuit blocked the request — a CLI slot or an `api:*` arm (#4392). */
-  readonly armId: RoutingArmId;
+  /**
+   * Arm whose circuit blocked the request — a CLI slot, a built-in `api:*` arm
+   * or a registered endpoint arm (#4392). Defaults to `cliName` when the
+   * constructor is called with the pre-#4392 option shape.
+   */
+  readonly armId: ObservedArmId;
   readonly circuitState: CircuitState;
   readonly failureCategory?: FailureCategory;
 
@@ -170,19 +177,22 @@ export class CircuitError extends NexusError {
     message: string,
     options: {
       circuitErrorCode: CircuitErrorCode;
-      armId: RoutingArmId;
+      /** Display slot; the breaker passes `observedArmDisplaySlot(armId)`. */
+      cliName: CliName;
+      /** The guarded arm (#4392). Optional so the pre-#4392 option shape still compiles; defaults to `cliName`. */
+      armId?: ObservedArmId;
       circuitState: CircuitState;
       failureCategory?: FailureCategory;
       cause?: Error;
     }
   ) {
-    const cliName = routingArmDisplaySlot(options.armId);
+    const armId: ObservedArmId = options.armId ?? options.cliName;
     const baseOptions: { code: ErrorCode; cause?: Error; context: Record<string, unknown> } = {
       code: ErrorCode.INTERNAL_ERROR,
       context: {
         circuitErrorCode: options.circuitErrorCode,
-        cliName,
-        armId: options.armId,
+        cliName: options.cliName,
+        armId,
         circuitState: options.circuitState,
       },
     };
@@ -195,8 +205,8 @@ export class CircuitError extends NexusError {
     super(message, baseOptions);
     this.name = 'CircuitError';
     this.circuitErrorCode = options.circuitErrorCode;
-    this.cliName = cliName;
-    this.armId = options.armId;
+    this.cliName = options.cliName;
+    this.armId = armId;
     this.circuitState = options.circuitState;
     if (options.failureCategory !== undefined) {
       this.failureCategory = options.failureCategory;

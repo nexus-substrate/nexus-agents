@@ -525,8 +525,8 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
   it('rejects an id that fails the endpoint validator, even through a cast', () => {
     const stub = stubResilientAdapter('bad');
 
-    // No cast needed: the TYPE admits any `api:` string, which is exactly why
-    // the registry re-validates at runtime.
+    // No cast needed: `EndpointArmId` admits any `api:` string, which is
+    // exactly why the registry re-validates at runtime.
     expect(() => {
       registry.registerApiArm('api:https://user:secret@gw', stub);
     }).toThrow(/api arm id/i);

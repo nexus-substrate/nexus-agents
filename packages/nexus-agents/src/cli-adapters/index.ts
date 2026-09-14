@@ -27,15 +27,21 @@ export type {
   ICliAdapter,
   ICliResponseParser,
   VersionRequirements,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- kept exported until its removal in #6291
   ApiVendor,
-  BuiltInApiVendor,
   ApiArmId,
   RoutingArmId,
+  EndpointArmId,
+  ObservedArmId,
 } from './types.js';
 
 export { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
-export { apiArmId, isApiArmId, isCliName, routingArmDisplaySlot } from './types.js';
+export {
+  apiArmId,
+  isCliName,
+  isEndpointArmId,
+  observedArmDisplaySlot,
+  routingArmDisplaySlot,
+} from './types.js';
 
 // Base adapter
 export { BaseCliAdapter } from './base-adapter.js';

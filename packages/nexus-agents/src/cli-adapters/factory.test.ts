@@ -240,10 +240,10 @@ describe('createAllAdapters', () => {
     });
   });
 
-  // #4392 increment 1: the arm-id type widened from a closed 4-literal union
-  // to endpoint identity. These pin the EXACT arm-id strings and their order
-  // in both billing modes, so the widening is provably byte-neutral for every
-  // id the factory mints today. Captured against the pre-widening tree.
+  // #4392 increment 1 added `EndpointArmId` beside the closed 4-literal
+  // `ApiArmId`. These pin the EXACT arm-id strings and their order in both
+  // billing modes, so the increment is provably byte-neutral for every id the
+  // factory mints today. Captured against the pre-#4392 tree.
   describe('arm-id snapshot (#4392 increment 1, behaviour-neutral proof)', () => {
     const VENDOR_ENV = [
       'NEXUS_BILLING_MODE',

@@ -22,15 +22,21 @@ export type {
   VersionStatus,
   HealthStatus,
   CapacityStatus,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- kept exported until its removal in #6291
   ApiVendor,
-  BuiltInApiVendor,
   ApiArmId,
   RoutingArmId,
+  EndpointArmId,
+  ObservedArmId,
 } from './types-core.js';
 
 // Routing arm id helpers (#3422)
-export { apiArmId, isApiArmId, isCliName, routingArmDisplaySlot } from './types-core.js';
+export {
+  apiArmId,
+  isCliName,
+  isEndpointArmId,
+  observedArmDisplaySlot,
+  routingArmDisplaySlot,
+} from './types-core.js';
 
 // Capability types
 export type {
