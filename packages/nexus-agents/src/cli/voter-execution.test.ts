@@ -29,6 +29,8 @@ import {
 import type { VoterRole } from './vote-types.js';
 import type { IModelAdapter, CompletionResponse, ILogger, Result } from '../core/index.js';
 import { ModelError } from '../core/index.js';
+import { REDACTED_KEY_PLACEHOLDER } from '../security/output-sanitizer.js';
+import { FAKE_ANTHROPIC_KEY } from '../testing/test-secrets.js';
 
 // Mock delay to resolve instantly — avoids 1000ms+ exponential backoff waits (perf: saves ~3s)
 vi.mock('../utils/async-utils.js', async (importOriginal) => {
@@ -349,6 +351,40 @@ describe('voter-execution', () => {
     it('should handle empty array', () => {
       const text = extractTextFromResponse([]);
       expect(text).toBe('');
+    });
+
+    // #6267: API-routed seats bypass the subprocess scrubber, so the text
+    // this seam returns is what lands in the committed ledger's `reasoning`.
+    describe('API-key scrubbing (#6267)', () => {
+      it('replaces an sk-ant-shaped key in string content with the placeholder', () => {
+        const text = extractTextFromResponse(
+          `Approve. Fixture used key ${FAKE_ANTHROPIC_KEY} in the diff.`
+        );
+
+        expect(text).toBe(`Approve. Fixture used key ${REDACTED_KEY_PLACEHOLDER} in the diff.`);
+        expect(text).not.toContain(FAKE_ANTHROPIC_KEY);
+      });
+
+      it('replaces a key carried in a content block', () => {
+        const content = [
+          { type: 'text', text: 'The env line reads ' },
+          { type: 'text', text: `ANTHROPIC_API_KEY=${FAKE_ANTHROPIC_KEY}` },
+        ];
+        const text = extractTextFromResponse(content);
+
+        expect(text).toBe(`The env line reads ANTHROPIC_API_KEY=${REDACTED_KEY_PLACEHOLDER}`);
+      });
+
+      it('is idempotent: already-scrubbed subprocess text is unchanged', () => {
+        const alreadyScrubbed = `Reject. Key ${REDACTED_KEY_PLACEHOLDER} was committed.`;
+        const text = extractTextFromResponse(alreadyScrubbed);
+
+        expect(text).toBe(alreadyScrubbed);
+      });
+
+      it('returns the empty string unchanged', () => {
+        expect(extractTextFromResponse('')).toBe('');
+      });
     });
   });
 

@@ -27,6 +27,7 @@ import {
   validateTimeout as _validateTimeout,
 } from '../config/timeouts.js';
 import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
+import { sanitizeOutput } from '../security/output-sanitizer.js';
 
 /** Default vote timeout. Canonical source: `config/timeouts.ts`. */
 export const DEFAULT_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.defaultMs;
@@ -221,8 +222,18 @@ export { withTimeout, delay } from '../utils/async-utils.js';
 
 /**
  * Extracts text content from completion response.
+ *
+ * The result is passed through `sanitizeOutput` (#6267): the subprocess
+ * adapter scrubs API keys from CLI stdout, but the API adapters (gateway,
+ * SDK, Claude) return raw model text, and since #6194 this string becomes
+ * the `reasoning` of a record committed to the public ledger. Scrubbing here
+ * bounds every seat uniformly; already-scrubbed CLI text is unchanged.
  */
 export function extractTextFromResponse(content: unknown): string {
+  return sanitizeOutput(rawTextFromResponse(content));
+}
+
+function rawTextFromResponse(content: unknown): string {
   if (typeof content === 'string') {
     return content;
   }
