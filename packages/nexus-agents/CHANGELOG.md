@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.55.3
+
+### Patch Changes
+
+- [#6206](https://github.com/nexus-substrate/nexus-agents/pull/6206) [`7538c66`](https://github.com/nexus-substrate/nexus-agents/commit/7538c66ff2a0e3477ae606adbcd696241f647f8c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Moves the `init` and `setup` CLI handlers and their private helpers from `cli-commands-handlers.ts` into a sibling `cli-commands-handlers-setup.ts` (no CLI behaviour change; `docs/reference/capabilities.md` now names the module each handler is actually imported from).
+
 ## 8.55.2
 
 ### Patch Changes
