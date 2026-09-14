@@ -63,6 +63,7 @@ import { createLogger } from '../../core/index.js';
 import type { HandlerContext } from '../middleware/secure-handler.js';
 import { PrReviewRecordSchema } from '../../audit/pr-review-record.js';
 import { PR_REVIEW_RECORDS_PATH_ENV } from '../../audit/pr-review-record-store.js';
+import { MAX_REVIEWED_DIFF_BYTES } from '../../audit/reviewed-diff-hash.js';
 
 type Ctx = Pick<HandlerContext, 'logger' | 'sanitization'>;
 type Handler = (args: unknown, ctx: Ctx) => Promise<unknown>;
@@ -98,6 +99,7 @@ function ctx(commentsRemoved: number): Ctx {
       fieldsModified: commentsRemoved,
       tagsRemoved: 0,
       rawFieldHashes: {},
+      rawFieldBytes: {},
     },
   };
 }
@@ -168,6 +170,7 @@ describe('the middleware disclosure reaches the persisted RECORD (#5385)', () =>
           fieldsModified: 1,
           tagsRemoved: 3,
           rawFieldHashes: { prDiff: 'b'.repeat(64) },
+          rawFieldBytes: { prDiff: ARGS.prDiff.length + 30 },
         },
       }
     );
@@ -194,6 +197,7 @@ describe('the middleware disclosure reaches the persisted RECORD (#5385)', () =>
           fieldsModified: 5,
           tagsRemoved: 0,
           rawFieldHashes: { prDiff: 'a'.repeat(64) },
+          rawFieldBytes: { prDiff: ARGS.prDiff.length + 30 },
         },
       }
     );
@@ -206,5 +210,143 @@ describe('the middleware disclosure reaches the persisted RECORD (#5385)', () =>
     expect(record.sanitization?.fieldsModified).toBe(5);
     // And the binding used the RAW hash the middleware supplied, not prDiff's.
     expect(record.reviewedDiffHash).toBe('a'.repeat(64));
+  });
+});
+
+describe('binding bounds are decided over the RAW bytes the hash covers (#6177)', () => {
+  // The #6003 stamp measured `totalBytes` / `boundBytes` / `binding` over
+  // `input.prDiff`, which on the MCP path is the middleware-SANITIZED text,
+  // while `reviewedDiffHash` was computed by the middleware over the RAW bytes
+  // and truncated at MAX_REVIEWED_DIFF_BYTES. A raw diff over the cap whose
+  // sanitized form is under it was recorded as `binding covers all N bytes`
+  // beside a hash that had truncated — and `warnIfDiffTruncated`, reading the
+  // same sanitized input, stayed silent.
+  //
+  // Drives the REAL handler: ctx.sanitization -> view -> packer -> producer ->
+  // record, exactly the wire the defect lives on.
+  let dir: string;
+  let prev: string | undefined;
+  const warn = vi.fn();
+
+  beforeEach(() => {
+    liveVote.on = true;
+    warn.mockReset();
+    dir = mkdtempSync(join(tmpdir(), 'pr-review-raw-binding-'));
+    prev = process.env[PR_REVIEW_RECORDS_PATH_ENV];
+    process.env[PR_REVIEW_RECORDS_PATH_ENV] = join(dir, 'records.jsonl');
+  });
+
+  afterEach(() => {
+    liveVote.on = false;
+    if (prev === undefined) Reflect.deleteProperty(process.env, PR_REVIEW_RECORDS_PATH_ENV);
+    else process.env[PR_REVIEW_RECORDS_PATH_ENV] = prev;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A logger whose `warn` is observable; everything else is the real one. */
+  function spyLogger(): Ctx['logger'] {
+    const real = createLogger({ tool: 'pr-review-raw-binding.test' });
+    return { ...real, warn, child: () => real };
+  }
+
+  /** The raw diff was `rawBytes` long; the middleware hands the handler the sanitized form. */
+  function ctxWithRaw(rawBytes: number | undefined): Ctx {
+    return {
+      logger: spyLogger(),
+      sanitization: {
+        wasModified: true,
+        commentsRemoved: 1,
+        fieldsModified: 1,
+        tagsRemoved: 0,
+        rawFieldHashes: { prDiff: 'c'.repeat(64) },
+        rawFieldBytes: rawBytes === undefined ? {} : { prDiff: rawBytes },
+      },
+    };
+  }
+
+  function firstRecord(): ReturnType<typeof PrReviewRecordSchema.parse> {
+    const line = readFileSync(process.env[PR_REVIEW_RECORDS_PATH_ENV]!, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim() !== '')[0];
+    return PrReviewRecordSchema.parse(JSON.parse(line!));
+  }
+
+  /** A unified diff of at least `bytes` UTF-8 bytes (ASCII, so bytes == length). */
+  function diffOfBytes(bytes: number): string {
+    const head = 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n';
+    const line = '+0123456789abcdef\n';
+    return head + line.repeat(Math.ceil((bytes - head.length) / line.length));
+  }
+
+  function warnings(): string[] {
+    return warn.mock.calls.map((c) => String(c[0]));
+  }
+
+  // The sanitized diff the handler receives is ARGS.prDiff, a few dozen bytes;
+  // the raw one was 50,010 — an HTML comment of ~50k bytes was stripped before
+  // dispatch, which is the reach condition the issue names.
+  const RAW_OVER_CAP = MAX_REVIEWED_DIFF_BYTES + 10;
+
+  it('raw over the cap, sanitized under it: the record says the binding is a PREFIX', async () => {
+    await captureHandler()(
+      { ...ARGS, simulate: false, prNumber: 6177, baseSha: 'a'.repeat(40) },
+      ctxWithRaw(RAW_OVER_CAP)
+    );
+    const record = firstRecord();
+    expect(record.bindingBounds).toEqual({ kind: 'prefix', boundBytes: MAX_REVIEWED_DIFF_BYTES });
+    expect(record.summary).toContain('binding covers first 50,000 bytes');
+    // The panel read the whole sanitized text; only the BINDING is partial.
+    expect(record.coverage?.panelRead).toBe('full');
+  });
+
+  it('and the truncation warning fires on the RAW length, not the sanitized one', async () => {
+    await captureHandler()(
+      { ...ARGS, simulate: false, prNumber: 6178, baseSha: 'a'.repeat(40) },
+      ctxWithRaw(RAW_OVER_CAP)
+    );
+    expect(warnings().some((m) => m.includes('exceeds the hash byte cap'))).toBe(true);
+  });
+
+  it('the pair: raw under the cap states nothing and warns nothing', async () => {
+    await captureHandler()(
+      { ...ARGS, simulate: false, prNumber: 6179, baseSha: 'a'.repeat(40) },
+      ctxWithRaw(ARGS.prDiff.length + 40)
+    );
+    expect(firstRecord().bindingBounds).toBeUndefined();
+    expect(warnings().some((m) => m.includes('exceeds the hash byte cap'))).toBe(false);
+    expect(warnings().some((m) => m.includes('no raw byte length'))).toBe(false);
+  });
+
+  it('names the empty case: no raw byte length falls back to the sanitized measurement and SAYS SO', async () => {
+    // An older middleware that hashes but does not measure. The sanitized diff
+    // is over the cap here so the fallback has something to state; the stamp
+    // must name the sanitized source rather than read as a raw measurement.
+    await captureHandler()(
+      {
+        ...ARGS,
+        prDiff: diffOfBytes(MAX_REVIEWED_DIFF_BYTES + 200),
+        simulate: false,
+        prNumber: 6180,
+        baseSha: 'a'.repeat(40),
+      },
+      ctxWithRaw(undefined)
+    );
+    const record = firstRecord();
+    expect(record.bindingBounds?.kind).toBe('prefix');
+    expect(record.summary).toContain(
+      'binding covers first 50,000 bytes (sanitized; raw length not supplied)'
+    );
+    expect(warnings().some((m) => m.includes('no raw byte length'))).toBe(true);
+  });
+
+  it('the empty case never claims FULL from a missing number', async () => {
+    // Sanitized under the cap, raw length unknown: the record must not carry a
+    // `full` binding it could not measure. Absent is honest; `full` is not.
+    await captureHandler()(
+      { ...ARGS, simulate: false, prNumber: 6181, baseSha: 'a'.repeat(40) },
+      ctxWithRaw(undefined)
+    );
+    expect(firstRecord().bindingBounds?.kind).not.toBe('full');
+    expect(warnings().some((m) => m.includes('no raw byte length'))).toBe(true);
   });
 });

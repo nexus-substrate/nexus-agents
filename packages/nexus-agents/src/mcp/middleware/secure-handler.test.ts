@@ -1650,3 +1650,60 @@ describe('adoption preserves caller-derived fields (#4981 review)', () => {
     });
   });
 });
+
+describe('the middleware measures the RAW byte length beside the raw hash (#6177)', () => {
+  // A hash cannot say how much it covers. pr_review's hasher truncates at a
+  // byte cap, and the handler — holding only the sanitized text — measured the
+  // binding over that, so a raw diff over the cap whose sanitized form was
+  // under it was recorded as fully bound. The middleware is the only party
+  // that ever sees the raw value, so the length has to travel from here.
+  async function captureSanitization(
+    config: Parameters<typeof createSecureHandler>[1],
+    args: unknown
+  ): Promise<HandlerContext['sanitization'] | undefined> {
+    let seen: HandlerContext['sanitization'] | undefined;
+    const handler = createSecureHandler((_args: unknown, ctx: HandlerContext) => {
+      seen = ctx.sanitization;
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    }, config);
+    await handler(args);
+    return seen;
+  }
+
+  const CONFIG = {
+    toolName: 'pr_review',
+    rawHashFields: { prDiff: (raw: string) => `hash:${String(raw.length)}` },
+  } satisfies Parameters<typeof createSecureHandler>[1];
+
+  // Multibyte content AND a comment the sanitizer strips, so three wrong
+  // measurements are each distinguishable from the right one: UTF-16 units
+  // (`.length`), the sanitized length, and the sanitized UTF-8 length.
+  const RAW = 'diff --git a/x b/x\n+<!-- stripped --> ' + '→'.repeat(10) + '\n';
+
+  it('reports Buffer.byteLength of the RAW value, under the same key as the hash', async () => {
+    const sanitization = await captureSanitization(CONFIG, { prDiff: RAW });
+    expect(sanitization?.rawFieldBytes['prDiff']).toBe(Buffer.byteLength(RAW, 'utf-8'));
+    expect(sanitization?.rawFieldBytes['prDiff']).not.toBe(RAW.length);
+    expect(Object.keys(sanitization?.rawFieldBytes ?? {})).toEqual(
+      Object.keys(sanitization?.rawFieldHashes ?? {})
+    );
+  });
+
+  it('is the raw length, not the sanitized one — the sanitizer really fired', async () => {
+    const sanitization = await captureSanitization(CONFIG, { prDiff: RAW });
+    expect(sanitization?.wasModified).toBe(true);
+    const sanitizedBytes = Buffer.byteLength(RAW.replace('<!-- stripped -->', ''), 'utf-8');
+    expect(sanitization?.rawFieldBytes['prDiff']).toBeGreaterThan(sanitizedBytes);
+  });
+
+  it('a tool that declares no raw fields gets an empty map', async () => {
+    const sanitization = await captureSanitization({ toolName: 'other' }, { prDiff: RAW });
+    expect(sanitization?.rawFieldBytes).toEqual({});
+  });
+
+  it('a declared field that is ABSENT contributes no key — never a zero', async () => {
+    const sanitization = await captureSanitization(CONFIG, { prTitle: 'no diff' });
+    expect(sanitization?.rawFieldBytes).toEqual({});
+    expect('prDiff' in (sanitization?.rawFieldBytes ?? {})).toBe(false);
+  });
+});

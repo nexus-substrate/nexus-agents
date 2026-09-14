@@ -50,7 +50,10 @@ import {
   PR_REVIEW_RECORDS_PATH_ENV,
   readPrReviewRecords,
 } from '../../audit/pr-review-record-store.js';
-import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
+import {
+  MAX_REVIEWED_DIFF_BYTES,
+  computeReviewedDiffHash,
+} from '../../audit/reviewed-diff-hash.js';
 import {
   PrReviewRecordSchema,
   verifyPrReviewRecordSet,
@@ -759,6 +762,7 @@ const TEST_CTX: HandlerCtx = {
     fieldsModified: 0,
     tagsRemoved: 0,
     rawFieldHashes: {},
+    rawFieldBytes: {},
   },
 };
 
@@ -949,6 +953,11 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     return found;
   }
 
+  /** The raw diff's UTF-8 length: `prDiff` plus the comment line the middleware stripped. */
+  function rawDiffBytesOf(prDiff: string): number {
+    return Buffer.byteLength(`${prDiff}\n<!-- stripped before review -->`, 'utf-8');
+  }
+
   it('binds the RAW hash when the middleware supplied one (#5385)', () => {
     // The seam. `reviewedDiffHash` must bind bytes the governor gate can
     // recompute from git, and `input.prDiff` is NOT those bytes -- the
@@ -960,7 +969,14 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     );
     const outcome = persistReviewRecord({
       diffSource: 'caller-supplied',
-      sanitization: { rawDiffHash, commentsRemoved: 1, fieldsModified: 1, tagsRemoved: 0 },
+      sanitization: {
+        rawDiffHash,
+        rawDiffBytes: rawDiffBytesOf(parsed.prDiff),
+        rawTruncated: false,
+        commentsRemoved: 1,
+        fieldsModified: 1,
+        tagsRemoved: 0,
+      },
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -986,7 +1002,14 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     );
     persistReviewRecord({
       diffSource: 'caller-supplied',
-      sanitization: { rawDiffHash, commentsRemoved: 2, fieldsModified: 2, tagsRemoved: 0 },
+      sanitization: {
+        rawDiffHash,
+        rawDiffBytes: rawDiffBytesOf(parsed.prDiff),
+        rawTruncated: false,
+        commentsRemoved: 2,
+        fieldsModified: 2,
+        tagsRemoved: 0,
+      },
       input: parsed,
       aggregate: APPROVE_AGG,
       counts: COUNTS,
@@ -1019,6 +1042,8 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       diffSource: 'caller-supplied',
       sanitization: {
         rawDiffHash: undefined,
+        rawDiffBytes: undefined,
+        rawTruncated: undefined,
         commentsRemoved: 1,
         fieldsModified: 1,
         tagsRemoved: 0,
@@ -1196,6 +1221,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
         partial: true,
         panelRead: 'partial',
         binding: 'prefix',
+        bindingSource: 'input',
         reviewedBytes: 48_000,
         boundBytes: 50_000,
         totalBytes: 120_000,
@@ -1227,6 +1253,7 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
         partial: panelRead === 'partial',
         panelRead,
         binding,
+        bindingSource: 'input',
         reviewedBytes: panelRead === 'full' ? 61_204 : 40_000,
         boundBytes: binding === 'full' ? 61_204 : 50_000,
         totalBytes: 61_204,
@@ -1416,6 +1443,110 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
       });
       expect(summary).toContain('binding covers first 50,000 bytes');
       expect(summary).not.toContain(longTitle);
+    });
+
+    describe('the truncation warning and the stamp read the RAW side (#6177)', () => {
+      // `warnIfDiffTruncated` read `input.prDiff` — the sanitized text on the
+      // MCP path — so it was silent in exactly the state it exists for: a raw
+      // diff over the cap that the sanitizer brought under it.
+      const spy = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const spyLogger = { ...createLogger({ tool: 'pr-review-test' }), ...spy };
+      const RAW_HASH = 'e'.repeat(64);
+
+      beforeEach(() => {
+        spy.warn.mockReset();
+      });
+
+      function warnings(): string[] {
+        return spy.warn.mock.calls.map((c) => String(c[0]));
+      }
+
+      function persistWith(
+        prNumber: number,
+        sanitization: Parameters<typeof persistReviewRecord>[0]['sanitization'],
+        coverage?: ReturnType<typeof coverageRow>
+      ): void {
+        const outcome = persistReviewRecord({
+          diffSource: 'caller-supplied',
+          sanitization,
+          input: input({ prNumber, baseSha: BASE_SHA }),
+          aggregate: APPROVE_AGG,
+          counts: COUNTS,
+          reviewCount: 5,
+          logger: spyLogger,
+          ...(coverage !== undefined ? { coverage } : {}),
+        });
+        expect(outcome.persisted).toBe(true);
+      }
+
+      it('warns when the middleware says the RAW input was truncated, though prDiff is tiny', () => {
+        persistWith(6177, {
+          rawDiffHash: RAW_HASH,
+          rawDiffBytes: 50_010,
+          rawTruncated: true,
+          commentsRemoved: 1,
+          fieldsModified: 1,
+          tagsRemoved: 0,
+        });
+        expect(warnings().some((m) => m.includes('exceeds the hash byte cap'))).toBe(true);
+        expect(warnings().some((m) => m.includes('no raw byte length'))).toBe(false);
+      });
+
+      it('the pair: a raw input under the cap does not warn', () => {
+        persistWith(6178, {
+          rawDiffHash: RAW_HASH,
+          rawDiffBytes: 200,
+          rawTruncated: false,
+          commentsRemoved: 1,
+          fieldsModified: 1,
+          tagsRemoved: 0,
+        });
+        expect(warnings().some((m) => m.includes('exceeds the hash byte cap'))).toBe(false);
+      });
+
+      it('names the empty case: no raw length is its own warning, and no truncation claim', () => {
+        persistWith(6179, {
+          rawDiffHash: RAW_HASH,
+          rawDiffBytes: undefined,
+          rawTruncated: undefined,
+          commentsRemoved: 1,
+          fieldsModified: 1,
+          tagsRemoved: 0,
+        });
+        expect(warnings().some((m) => m.includes('no raw byte length'))).toBe(true);
+        expect(warnings().some((m) => m.includes('exceeds the hash byte cap'))).toBe(false);
+      });
+
+      it('no sanitizer: the warning still reads prDiff, which IS the raw diff on that door', () => {
+        const big = input({
+          prNumber: 6180,
+          baseSha: BASE_SHA,
+          prDiff: 'diff --git a/x b/x\n' + '+y\n'.repeat(MAX_REVIEWED_DIFF_BYTES / 2),
+        });
+        const outcome = persistReviewRecord({
+          diffSource: 'canonical-git',
+          sanitization: undefined,
+          input: big,
+          aggregate: APPROVE_AGG,
+          counts: COUNTS,
+          reviewCount: 5,
+          logger: spyLogger,
+        });
+        expect(outcome.persisted).toBe(true);
+        expect(warnings().some((m) => m.includes('exceeds the hash byte cap'))).toBe(true);
+      });
+
+      it('the stamp names a raw measurement, and the fallback spells out what it measured', () => {
+        persistWith(6181, undefined, { ...coverageRow('full', 'prefix'), bindingSource: 'raw' });
+        expect(readRecords(6181).summary).toContain('binding covers first 50,000 bytes (raw)');
+        persistWith(6182, undefined, {
+          ...coverageRow('full', 'full'),
+          bindingSource: 'sanitized-fallback',
+        });
+        expect(readRecords(6182).summary).toContain(
+          'binding covers all 61,204 bytes (sanitized; raw length not supplied)'
+        );
+      });
     });
   });
 

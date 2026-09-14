@@ -56,6 +56,7 @@ function makeCtx(): Parameters<typeof extractSymbolsHandler>[1] {
       fieldsModified: 0,
       tagsRemoved: 0,
       rawFieldHashes: {},
+      rawFieldBytes: {},
     },
   };
 }

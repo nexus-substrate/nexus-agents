@@ -411,16 +411,58 @@ export interface PrReviewBindingCoverage extends PrReviewCoverage {
   readonly panelRead: 'full' | 'partial';
   /** `'full'` — the hash covers every byte; `'prefix'` — only the first `boundBytes`. */
   readonly binding: 'full' | 'prefix';
+  /**
+   * Which bytes `binding` / `boundBytes` were measured over (#6177): the RAW
+   * input the hash covers, the diff as handed (no sanitizer in the path), or
+   * the SANITIZED text as a stated fallback. See {@link BindingMeasurementSource}.
+   */
+  readonly bindingSource: BindingMeasurementSource;
   /** UTF-8 bytes of the diff text the panel actually read (`packedDiff`). */
   readonly reviewedBytes: number;
-  /** UTF-8 bytes the hash binds: `min(totalBytes, bindingCapBytes)`. */
+  /**
+   * UTF-8 bytes the hash binds: `min(<bytes the hash covers>, bindingCapBytes)`.
+   * Measured over the {@link BindingMeasurement}, NOT over `totalBytes` — on the
+   * MCP path the two differ by whatever the sanitizer stripped (#6177).
+   */
   readonly boundBytes: number;
-  /** UTF-8 bytes of the raw input diff. */
+  /**
+   * UTF-8 bytes of the diff the packer was handed — the panel-read
+   * denominator. On the MCP path this is the SANITIZED text; the binding side
+   * is measured separately (see `bindingSource`).
+   */
   readonly totalBytes: number;
   /** Where the panel-read budget came from. */
   readonly budgetSource: PanelBudgetSource;
   /** The budget derivation or the fallback reason, verbatim from {@link ReviewBudgets.detail}. */
   readonly budgetDetail: string;
+}
+
+/**
+ * Where the bytes the BINDING is measured over came from (#6177):
+ *  - `'raw'` — the middleware's pre-sanitization measurement, taken beside the
+ *    raw hash. The bytes `reviewedDiffHash` actually covers.
+ *  - `'input'` — no sanitizer in the path (the local-ledger door), so the diff
+ *    as handed IS the raw diff and the hash was computed over it.
+ *  - `'sanitized-fallback'` — a sanitizer ran but supplied no raw byte length
+ *    (an older middleware). Measured over the sanitized text and SAID SO: this
+ *    source can under-state a prefix binding, so a consumer must not read its
+ *    `full` as a raw measurement.
+ */
+export type BindingMeasurementSource = 'raw' | 'input' | 'sanitized-fallback';
+
+/**
+ * The bytes the hash binding is decided over (#6177). Produced by
+ * `resolveBindingMeasurement` (`pr-review-sanitization-view.ts`), which is the
+ * one place that chooses between the raw middleware measurement and the diff
+ * as handed; the packer takes it as an input rather than measuring `prDiff`,
+ * because on the MCP path `prDiff` is the sanitized text and the hash is not.
+ */
+export interface BindingMeasurement {
+  /** UTF-8 bytes of the diff the hash was computed over (before its cap). */
+  readonly totalBytes: number;
+  /** Whether the canonical hash truncated those bytes (`reviewedDiffWasTruncated`). */
+  readonly truncated: boolean;
+  readonly source: BindingMeasurementSource;
 }
 
 /** {@link packDiffForPanelAndBinding}'s result — {@link DiffReviewPacking} with binding coverage. */
@@ -449,9 +491,14 @@ function wholeDiffFileCoverage(prDiff: string): PrReviewCoverage {
  * answered both, so a diff over the hash cap was packed down even when every
  * voter could have read it whole.
  *
- *  - The panel read is decided by `panelReadBudgetBytes` via {@link packDiffForReview}.
- *  - The binding is `'prefix'` iff the diff exceeds `bindingCapBytes` — the same
- *    UTF-8 test `reviewedDiffWasTruncated` applies.
+ *  - The panel read is decided by `panelReadBudgetBytes` via {@link packDiffForReview},
+ *    over `prDiff` — the text the panel is actually sent.
+ *  - The binding is `'prefix'` iff the bytes the HASH covers exceed
+ *    `bindingCapBytes` — the same UTF-8 test `reviewedDiffWasTruncated` applies,
+ *    but over `binding.totalBytes`, not `prDiff` (#6177): on the MCP path the
+ *    hash was computed by the middleware over the RAW input, and `prDiff` is
+ *    the sanitized text. Measuring the binding over `prDiff` recorded a raw
+ *    diff over the cap whose sanitized form was under it as fully bound.
  *
  * Returns `coverage: undefined` (byte-identical proposal, no note) ONLY when both
  * are full — the pre-#4140 contract for a small diff. The empty diff is that
@@ -461,16 +508,17 @@ function wholeDiffFileCoverage(prDiff: string): PrReviewCoverage {
  */
 export function packDiffForPanelAndBinding(
   prDiff: string,
-  budgets: ReviewBudgets
+  budgets: ReviewBudgets,
+  binding: BindingMeasurement
 ): PanelReviewPacking {
   const totalBytes = byteLen(prDiff);
-  const binding: PrReviewBindingCoverage['binding'] =
-    totalBytes > budgets.bindingCapBytes ? 'prefix' : 'full';
-  const boundBytes = Math.min(totalBytes, budgets.bindingCapBytes);
+  const bindingKind: PrReviewBindingCoverage['binding'] =
+    binding.totalBytes > budgets.bindingCapBytes ? 'prefix' : 'full';
+  const boundBytes = Math.min(binding.totalBytes, budgets.bindingCapBytes);
   const panel = packDiffForReview(prDiff, budgets.panelReadBudgetBytes);
   const panelRead: PrReviewBindingCoverage['panelRead'] =
     panel.coverage?.partial === true ? 'partial' : 'full';
-  if (panelRead === 'full' && binding === 'full') {
+  if (panelRead === 'full' && bindingKind === 'full') {
     return { coverage: undefined, packedDiff: prDiff, note: '' };
   }
   // A full panel read over a prefix binding: the packer had nothing to pack, so
@@ -480,7 +528,8 @@ export function packDiffForPanelAndBinding(
   const coverage: PrReviewBindingCoverage = {
     ...fileCoverage,
     panelRead,
-    binding,
+    binding: bindingKind,
+    bindingSource: binding.source,
     reviewedBytes: byteLen(panel.packedDiff),
     boundBytes,
     totalBytes,

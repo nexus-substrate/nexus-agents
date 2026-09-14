@@ -70,6 +70,7 @@ const CTX: Ctx = {
     fieldsModified: 0,
     tagsRemoved: 0,
     rawFieldHashes: {},
+    rawFieldBytes: {},
   },
 };
 

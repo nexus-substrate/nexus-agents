@@ -44,7 +44,7 @@ import {
 } from './pr-review-diff-budget.js';
 import { buildPrReviewProposal } from './pr-review-proposal.js';
 import type { ReviewSanitizationInput } from './pr-review-record-producer.js';
-import { removalsBefore } from './pr-review-sanitization-view.js';
+import { removalsBefore, resolveBindingMeasurement } from './pr-review-sanitization-view.js';
 import type { PrReviewInput } from './pr-review-tool.js';
 
 /**
@@ -248,16 +248,22 @@ export function resolvePrReviewPanelBudget(
  * partial-review NOTE (warned). Over only the binding cap → the panel reads the
  * whole diff and the coverage object says the hash binds a prefix (logged, not
  * warned: the record discloses it, and nothing was withheld from the voters).
+ *
+ * The binding side is measured over the bytes the HASH covers, resolved from
+ * `sanitization` (#6177): on the MCP path that is the middleware's raw
+ * measurement, not `input.prDiff`, which is the sanitized text the panel reads.
  */
 export function preparePanelProposal(
   input: PrReviewInput,
   panel: PanelShape,
-  removedBefore: { comments: number; fields: number; tags: number },
+  sanitization: ReviewSanitizationInput | undefined,
   logger: ILogger,
   registry: ContextWindowLookup = getDefaultRegistry()
 ): { proposal: string; coverage: PanelReviewPacking['coverage'] } {
   const budgets = resolvePrReviewPanelBudget(panel, logger, registry);
-  const { coverage, packedDiff, note } = packDiffForPanelAndBinding(input.prDiff, budgets);
+  const binding = resolveBindingMeasurement(input.prDiff, sanitization);
+  const { coverage, packedDiff, note } = packDiffForPanelAndBinding(input.prDiff, budgets, binding);
+  const removedBefore = removalsBefore(sanitization);
   const body = coverage === undefined ? input : { ...input, prDiff: packedDiff };
   if (coverage?.partial === true) {
     logger.warn(
@@ -267,6 +273,8 @@ export function preparePanelProposal(
     logger.info('pr_review panel read the whole diff; the audit hash binds a prefix (#6003)', {
       totalBytes: coverage.totalBytes,
       boundBytes: coverage.boundBytes,
+      bindingSource: coverage.bindingSource,
+      bindingTotalBytes: binding.totalBytes,
       budgetSource: coverage.budgetSource,
     });
   }
@@ -297,6 +305,6 @@ export async function preparePanelForReview(
     ? undefined
     : await resolvePanelSeats(roles, opts.gatewayAdapters, logger);
   const panel = { seats, simulate: input.simulate };
-  const packed = preparePanelProposal(input, panel, removalsBefore(opts.sanitization), logger);
+  const packed = preparePanelProposal(input, panel, opts.sanitization, logger);
   return { ...packed, seats };
 }
