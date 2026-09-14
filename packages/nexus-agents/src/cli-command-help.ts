@@ -69,10 +69,25 @@ const VOTE_HELP: CommandHelpEntry = {
     'nexus-agents vote -p "Pick a cache" --option "Redis" --option "in-process LRU"',
     'nexus-agents vote -p "Quick decision" --quick',
     'nexus-agents vote -p "Test idea" --dry-run',
+    'nexus-agents vote -p "Ratify PR #6227 at <sha>" --strategy supermajority --error-policy absolute_quorum --ratifies-pr 6227@<sha>',
   ],
   flags: [
     { flag: '-p, --proposal <text>', description: 'Proposal text to vote on (required)' },
-    { flag: '--threshold <t>', description: 'Threshold: majority, supermajority, unanimous' },
+    {
+      flag: '--strategy <s>',
+      description:
+        'The bar, as the consensus_vote tool spells it: simple_majority (default) | supermajority | unanimous | proof_of_learning | higher_order | opinion_wise. Wins over --threshold when both are given (#6227)',
+    },
+    {
+      flag: '--threshold <t>',
+      description:
+        'Legacy spelling of the bar: majority | supermajority | unanimous. --strategy wins when both are given',
+    },
+    {
+      flag: '--ratifies-pr <n>@<sha>',
+      description:
+        'Bind the audit record to a governor-path PR at its full 40-hex lowercase head sha (#6227, #5130), e.g. 6227@0123…; prints `record <id> bound to PR n @ sha` for scripts/append-ratification-record.ts --record-id. The governor bar is --strategy supermajority --error-policy absolute_quorum; a vote below it is still recorded, with a notice',
+    },
     {
       flag: '--option <text>',
       description:

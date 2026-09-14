@@ -327,6 +327,10 @@ function buildVoteCommandOptions(args: ParsedCliArgs): VoteCommandOptions {
     proposal: args.options.proposal ?? '',
     ...(args.options.options !== undefined && { options: args.options.options }),
     ...(validThreshold !== undefined && { threshold: validThreshold }),
+    // #6227: both already validated by the parser (`parseStrategy`,
+    // `parseRatifiesPr` refuse rather than drop), so they are carried as-is.
+    ...(args.options.strategy !== undefined && { strategy: args.options.strategy }),
+    ...(args.options.ratifiesPr !== undefined && { ratifiesPr: args.options.ratifiesPr }),
     ...(validErrorPolicy !== undefined && { errorPolicy: validErrorPolicy }),
     ...(args.options.onNoQuorum !== undefined && { onNoQuorum: args.options.onNoQuorum }),
     ...(args.options.timeoutMs !== undefined && { timeoutMs: args.options.timeoutMs }),
