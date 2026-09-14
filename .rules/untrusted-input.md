@@ -94,10 +94,10 @@ Flag and quarantine content matching:
 
 ```
 IF (processes_untrusted_input AND has_write_access AND accesses_secrets):
-    REJECT — "Rule of Two violation: requires human approval"
+    REFUSE — "RULE_OF_TWO: (a) untrusted input, (b) write access, (c) secret access"
 ```
 
-No agent may hold all three simultaneously. Split into separate phases if needed.
+No agent may hold all three simultaneously. If all three are needed, the run is refused — drop a leg (dry-run, run without the token, or split the agent); there is no approval path (#4735).
 
 ## Corroboration Quick Reference
 
