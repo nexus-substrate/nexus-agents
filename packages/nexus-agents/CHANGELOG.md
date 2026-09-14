@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.58.5
+
+### Patch Changes
+
+- [#6270](https://github.com/nexus-substrate/nexus-agents/pull/6270) [`d52c396`](https://github.com/nexus-substrate/nexus-agents/commit/d52c3963d2a094b4558d01e38d9d0ce5a852ce9f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Voter reasoning from seats routed to an API adapter (OpenAI-compatible gateway, OpenRouter, SDK, Claude) now has API-key-shaped tokens replaced with `[REDACTED_KEY]` before it becomes the `reasoning` of a vote record, matching what CLI subprocess seats already did. A voter that quotes a key from the artifact it reviewed no longer writes it verbatim into `governance/vote-records.jsonl` ([#6267](https://github.com/nexus-substrate/nexus-agents/issues/6267)). Already-scrubbed text is unchanged.
+
 ## 8.58.4
 
 ### Patch Changes
