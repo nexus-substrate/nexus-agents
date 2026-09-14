@@ -25,6 +25,10 @@ import {
   soakRefOf,
   type ReviewRecord,
 } from '../mcp/tools/remediation-review.js';
+import { runAutoRemediationCycle } from '../mcp/tools/auto-remediation-cycle.js';
+import { buildAutoRemediationDeps } from '../mcp/tools/auto-remediation-deps.js';
+import type { ImprovementSignal } from '../mcp/tools/improvement-review.js';
+import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../core/time-provider.js';
 
 function args(
   subcommand: string | undefined,
@@ -222,6 +226,84 @@ describe('handleRemediationReviewCommand', () => {
   });
 });
 
+/**
+ * #4279 item 3 — the readiness verdict carries a legible staleness/flatline
+ * signal for the operator soak store. An empty store says UNMEASURED; a store
+ * with ≤1 record, or none newer than the alarm window, says ALARM; and the
+ * JSON shape carries the same signal for machine consumers.
+ */
+describe('readiness renders the soak-store staleness signal (#4279)', () => {
+  const NOW = Date.parse('2026-09-14T12:00:00.000Z');
+
+  beforeEach(() => {
+    setTimeProvider(new FixedTimeProvider(NOW));
+  });
+  afterEach(() => {
+    resetTimeProvider();
+  });
+
+  it('EMPTY store: text says UNMEASURED with 0 records — never a silent NOT READY', async () => {
+    await handleRemediationReviewCommand(args('readiness'));
+    const text = output();
+    expect(text).toContain('Enforcement readiness: NOT READY');
+    expect(text).toMatch(/Soak store: UNMEASURED — 0 records/);
+  });
+
+  it('EMPTY store: json carries soakStore.status = unmeasured', async () => {
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const parsed = JSON.parse(output()) as {
+      soakStore: { status: string; recordCount: number; reasons: string[] };
+    };
+    expect(parsed.soakStore.status).toBe('unmeasured');
+    expect(parsed.soakStore.recordCount).toBe(0);
+  });
+
+  it('FLATLINED store (1 record, 97 days old): text prints ALARM with both causes', async () => {
+    seedSoak(); // one p2 record dated 2026-06-08 → 98 days before NOW
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(args('readiness'));
+    const text = output();
+    expect(text).toMatch(/Soak store: ALARM — 1 record/);
+    expect(text).toMatch(/flatlined/i);
+    expect(text).toMatch(/no new record for 98 days \(alarm at ≥ 14 days\)/);
+  });
+
+  it('FLATLINED store: json carries status = alarm, idleDays and the reasons', async () => {
+    seedSoak();
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const parsed = JSON.parse(output()) as {
+      ready: boolean;
+      soakStore: { status: string; recordCount: number; idleDays?: number; reasons: string[] };
+    };
+    expect(parsed.ready).toBe(false);
+    expect(parsed.soakStore.status).toBe('alarm');
+    expect(parsed.soakStore.recordCount).toBe(1);
+    expect(parsed.soakStore.idleDays).toBe(98);
+    expect(parsed.soakStore.reasons.length).toBe(2);
+  });
+
+  it('a live store (2 records, newest 1 day old) prints fresh with the last timestamp', async () => {
+    const sink = createRemediationSoakSink(getRemediationSoakFile());
+    for (const ts of ['2026-09-01T00:00:00.000Z', '2026-09-13T12:00:00.000Z']) {
+      sink.record({
+        timestamp: ts,
+        signalKey: 'routing:floor:codex',
+        category: 'routing',
+        priority: 'p2',
+        severity: 'warning',
+        planStepCount: 3,
+        reason: 'plan produced',
+      });
+    }
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(args('readiness'));
+    expect(output()).toMatch(
+      /Soak store: fresh — 2 records, last 2026-09-13T12:00:00\.000Z \(1 day ago\)/
+    );
+  });
+});
+
 describe('harmfulRate', () => {
   it('returns 0 when nothing judged', () => {
     expect(harmfulRate({ shadowSelections: 5, judgedSelections: 0, judgedSound: 0 })).toBe(0);
@@ -231,5 +313,66 @@ describe('harmfulRate', () => {
     expect(harmfulRate({ shadowSelections: 10, judgedSelections: 10, judgedSound: 8 })).toBeCloseTo(
       0.2
     );
+  });
+});
+
+/**
+ * #4279 Gap 2 — judgeability of a NON-p0 record. The panel's premise was that
+ * p1–p4 records carry no `dryRunResult` (`requiresDryRun` is p0-only) and so can
+ * never be judged, failing `minJudgedRate`. This pins the end-to-end path the
+ * operator actually uses: the tool produces a p2 record in audit mode → `list`
+ * shows it → `mark` accepts it → `readiness` counts it as judged. Judgeability
+ * is a named-evaluator act over the soak ref and must never depend on a dry-run
+ * having been captured.
+ */
+describe('a p2 record produced by the tool is judgeable (#4279 Gap 2)', () => {
+  it('audit cycle → list → mark → readiness counts the p2 selection as judged', async () => {
+    const deps = buildAutoRemediationDeps({
+      voteRunner: async () => Promise.resolve({ approved: true, approvalPercentage: 100 }),
+    });
+    const p2Signal: ImprovementSignal = {
+      category: 'routing',
+      signalKey: 'routing:cli-floor:codex:docs',
+      severity: 'warning', // warning → p2 (classifySignalPriority)
+      title: 'routing: codex 30% on docs',
+      body: 'floor breach',
+      evidence: {},
+    };
+    await runAutoRemediationCycle(
+      { mode: 'audit' },
+      { collectSignals: async () => Promise.resolve([p2Signal]), deps }
+    );
+    _resetRemediationSoakSinkForTests();
+
+    // The tool wrote a p2 record with NO dryRunResult — the exact shape at issue.
+    const soak = createRemediationSoakSink(getRemediationSoakFile()).getRecords();
+    expect(soak).toHaveLength(1);
+    const rec = soak[0] as RemediationSoakRecord;
+    expect(rec.priority).toBe('p2');
+    expect(rec.dryRunResult).toBeUndefined();
+    const ref = soakRefOf(rec);
+
+    await handleRemediationReviewCommand(args('list'));
+    expect(output()).toContain(ref);
+    expect(output()).toContain('1 pending');
+
+    out.mockClear();
+    await handleRemediationReviewCommand(args('mark', { evaluator: 'alice', sound: true }, [ref]));
+    expect(output()).toContain(`marked ${ref} as SOUND by alice`);
+
+    _resetRemediationReviewStoreForTests();
+    out.mockClear();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const parsed = JSON.parse(output()) as {
+      evidence: { shadowSelections: number; judgedSelections: number; judgedSound: number };
+      criteria: { name: string; met: boolean }[];
+    };
+    expect(parsed.evidence).toMatchObject({
+      shadowSelections: 1,
+      judgedSelections: 1,
+      judgedSound: 1,
+    });
+    // judged-coverage is 100% ≥ 80% on the strength of the p2 record alone.
+    expect(parsed.criteria.find((c) => c.name === 'judged-coverage')?.met).toBe(true);
   });
 });
