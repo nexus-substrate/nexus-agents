@@ -632,7 +632,7 @@ async function executeVotingInner(
   const escalation = await maybeEscalateContrarian(
     input,
     outcome,
-    { strategy, posteriorApproval: higherOrderResult?.posteriorApproval },
+    { strategy, posteriorApproval: higherOrderResult?.posteriorApproval, revote: executeVoting },
     logger,
     opts
   );

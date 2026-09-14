@@ -3,10 +3,11 @@
  * `consensus-vote.test.ts` alongside the block itself (#6148, row 1).
  *
  * Only `maybeEscalateContrarian` is exported; `runContrarianCheck` and the
- * escalation threshold are tested through it. The re-vote it triggers goes
- * through `executeVoting`, so `collectRealVotes` is canned (clean approvals
- * for whatever panel is requested) and the expert-bridge is a controllable
- * mock; everything downstream is real.
+ * escalation threshold are tested through it. The re-vote is injected as
+ * `ctx.revote`: most cases pass the real `executeVoting`, so `collectRealVotes`
+ * is canned (clean approvals for whatever panel is requested) and the
+ * expert-bridge is a controllable mock; everything downstream is real. One
+ * case passes a spy to prove the injected function is the one called.
  *
  * @module mcp/tools/consensus-vote-contrarian.test
  */
@@ -32,6 +33,8 @@ vi.mock('../../pipeline/expert-bridge.js', () => ({
 }));
 
 import { maybeEscalateContrarian } from './consensus-vote-contrarian.js';
+import { executeVoting } from './consensus-vote.js';
+import type { ConsensusVoteInput, ExtendedVotingResult } from './consensus-vote-types.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 
 const logger: ILogger = {
@@ -52,7 +55,11 @@ function cleanApprovals(roles: readonly VoterRole[]): AgentVoteResult[] {
 }
 
 const QUICK = { proposal: 'ship it', simulateVotes: false, quickMode: true };
-const CTX = { strategy: 'simple_majority' as const, posteriorApproval: undefined };
+const CTX = {
+  strategy: 'simple_majority' as const,
+  posteriorApproval: undefined,
+  revote: executeVoting,
+};
 
 describe('maybeEscalateContrarian — quick-mode contrarian-check error (#4132)', () => {
   beforeEach(() => {
@@ -128,6 +135,24 @@ describe('maybeEscalateContrarian — escalation threshold (#1799)', () => {
     // The re-vote is the full 7-seat panel, not the 3-seat quick panel.
     expect(collectRealVotesMock).toHaveBeenCalledTimes(1);
     expect(collectRealVotesMock.mock.calls[0]?.[0].roles).toHaveLength(7);
+  });
+
+  it('the injected revote is what runs the full-panel re-vote (#6148)', async () => {
+    executeExpertMock.mockResolvedValue({
+      success: true,
+      text: '{"decision":"reject","confidence":0.9,"reasoning":"YAGNI"}',
+    });
+    const escalatedResult = { proposal: 'from the spy' } as unknown as ExtendedVotingResult;
+    const revote = vi.fn<(input: ConsensusVoteInput) => Promise<ExtendedVotingResult>>();
+    revote.mockResolvedValue(escalatedResult);
+
+    const out = await maybeEscalateContrarian(QUICK, 'approved', { ...CTX, revote }, logger);
+
+    expect(out.escalated).toBe(escalatedResult);
+    expect(revote).toHaveBeenCalledTimes(1);
+    // The spy was handed the full-panel input, and the real voters never ran.
+    expect(revote.mock.calls[0]?.[0]).toMatchObject({ proposal: 'ship it', quickMode: false });
+    expect(collectRealVotesMock).not.toHaveBeenCalled();
   });
 
   it('a rejection below the threshold keeps the quick-mode result', async () => {

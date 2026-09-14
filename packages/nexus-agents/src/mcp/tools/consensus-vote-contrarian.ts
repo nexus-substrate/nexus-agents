@@ -9,8 +9,9 @@
  * the verdict degrades to `no_quorum` instead of silently proceeding.
  *
  * Moved out of `consensus-vote.ts` as a pure extraction (#6148, row 1): the
- * only in-tree consumer is `executeVotingInner`, and the re-vote it triggers
- * goes back through `executeVoting` in the parent module.
+ * only in-tree consumer is `executeVotingInner`. The full-panel re-vote is
+ * INJECTED (`ctx.revote`) rather than imported, so this module does not
+ * import the parent and the split introduces no import cycle.
  *
  * @module mcp/tools/consensus-vote-contrarian
  * (Source: Issue #6148)
@@ -26,7 +27,27 @@ import type {
   ExtendedVotingResult,
   VotingStrategy,
 } from './consensus-vote-types.js';
-import { executeVoting } from './consensus-vote.js';
+
+/** Options forwarded unchanged to the full-panel re-vote (#4040, #5393, #6110). */
+interface RevoteOpts {
+  voteTimeoutMs?: number;
+  gatewayAdapters?: readonly IModelAdapter[] | undefined;
+  /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
+  signal?: AbortSignal | undefined;
+  /** #6110: already resolved by the outer frame; the re-vote reuses it. */
+  project?: ResolvedVoterProject | undefined;
+}
+
+/**
+ * The full-panel re-vote, supplied by the caller. `executeVoting` in
+ * `consensus-vote.ts` satisfies it; declared here so the sibling never
+ * imports the parent.
+ */
+type QuickModeRevote = (
+  input: ConsensusVoteInput,
+  logger: ILogger,
+  opts?: RevoteOpts
+) => Promise<ExtendedVotingResult>;
 
 /** Confidence threshold above which a contrarian rejection triggers escalation (#1799). */
 const CONTRARIAN_ESCALATION_THRESHOLD = 0.8;
@@ -163,19 +184,17 @@ async function runContrarianCheck(
 export async function maybeEscalateContrarian(
   input: ConsensusVoteInput,
   outcome: 'approved' | 'rejected',
-  ctx: { strategy: VotingStrategy; posteriorApproval: number | undefined },
+  ctx: {
+    strategy: VotingStrategy;
+    posteriorApproval: number | undefined;
+    /** Required, not defaulted: the compiler names every call site (#6148). */
+    revote: QuickModeRevote;
+  },
   logger: ILogger,
   // Mirror executeVoting's opts so gateway routing (#4040) survives the escalation
   // re-vote — the object is forwarded by reference today, but the wider type makes
   // that contract explicit and refactor-safe.
-  opts?: {
-    voteTimeoutMs?: number;
-    gatewayAdapters?: readonly IModelAdapter[] | undefined;
-    /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
-    signal?: AbortSignal | undefined;
-    /** #6110: already resolved by the outer frame; the re-vote reuses it. */
-    project?: ResolvedVoterProject | undefined;
-  }
+  opts?: RevoteOpts
 ): Promise<{
   escalated?: ExtendedVotingResult;
   degradeReason?: string;
@@ -191,7 +210,7 @@ export async function maybeEscalateContrarian(
       posteriorApproval: ctx.posteriorApproval,
     });
     return {
-      escalated: await executeVoting({ ...input, quickMode: false }, logger, opts),
+      escalated: await ctx.revote({ ...input, quickMode: false }, logger, opts),
       contrarianCheck: 'skipped',
     };
   }
@@ -215,7 +234,7 @@ export async function maybeEscalateContrarian(
     confidence: escalation.confidence,
   });
   return {
-    escalated: await executeVoting({ ...input, quickMode: false }, logger, opts),
+    escalated: await ctx.revote({ ...input, quickMode: false }, logger, opts),
     contrarianCheck,
   };
 }
