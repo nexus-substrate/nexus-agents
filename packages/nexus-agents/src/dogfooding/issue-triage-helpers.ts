@@ -1,15 +1,23 @@
 /**
  * nexus-agents/dogfooding - Issue Triage Helpers
  *
- * Pure helper functions for issue classification, label extraction,
- * and result formatting. No side effects or API calls.
+ * Helper functions for issue classification, label extraction, per-action
+ * validation and result formatting. Pure except `validateActionsThroughFirewall`,
+ * which runs the shared untrusted-input firewall (#5383).
  *
  * @module dogfooding/issue-triage-helpers
  * (Source: Issue #828 — Wire remaining security modules)
  */
 
+import type { Result } from '../core/index.js';
+import { ok } from '../core/index.js';
 import type { CorroborationResult } from '../security/corroboration-validator.js';
+import { validateCorroboration } from '../security/corroboration-validator.js';
 import type { AgentAction } from '../security/action-schema.js';
+import type { GitHubInput } from '../security/firewall/github-adapter.js';
+import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
+import type { TrustTier } from '../security/trust-types.js';
+import { evaluateActionThroughFirewall } from './untrusted-input-firewall.js';
 import type { ScmCommentDetail } from '../scm/types.js';
 import type {
   IssueCategory,
@@ -159,6 +167,49 @@ export function buildActionDetails(
     ...(action.type === 'ClassifyIssue' && { category: action.category }),
     ...(action.type === 'ProposeLabels' && { labels: action.labels }),
   };
+}
+
+/**
+ * Validates every action through the firewall's policy gate and the
+ * corroboration validator (originally Issue #828; #5383 moved the policy
+ * evaluation inside the firewall so this path has ONE composition).
+ *
+ * Each action is one firewall run with `action` and the repository label set.
+ * The decision is read from `FirewallResult.policy` and enforced HERE as
+ * `policyApproved`, whatever `NEXUS_FIREWALL_POLICY` is — the mode only
+ * decides whether the firewall refuses on its own (`enforce`), and such a
+ * refusal lands on the record as `policyApproved: false` with its rules,
+ * exactly where the direct `evaluatePolicy` verdict used to land.
+ *
+ * `gate.enforcedTier` is the classification run's (the reputation gate's under
+ * the #3122 rollout mode); a per-action run that enforces a different tier
+ * fails the whole call closed, because the citations were stamped with it.
+ */
+export function validateActionsThroughFirewall(
+  input: GitHubInput,
+  gate: Pick<FirewallProcessOptions, 'context' | 'reputation'> & {
+    readonly enforcedTier: TrustTier;
+  },
+  actions: readonly AgentAction[],
+  existingLabels: ReadonlySet<string> | undefined
+): Result<ProposedAction[], Error> {
+  // Spread in only when present, so the firewall sees absence as absence and
+  // fails the label-validity check closed (`LABEL_SET_UNAVAILABLE`).
+  const labels = existingLabels !== undefined ? { existingLabels } : {};
+  const proposed: ProposedAction[] = [];
+  for (const action of actions) {
+    const decision = evaluateActionThroughFirewall(input, { ...gate, ...labels, action });
+    if (!decision.ok) return decision;
+    const corrobResult = validateCorroboration(action);
+    proposed.push({
+      type: action.type,
+      description: describeAction(action),
+      policyApproved: decision.value.allowed,
+      corroborated: corrobResult.satisfied,
+      details: buildActionDetails(action, decision.value, corrobResult),
+    });
+  }
+  return ok(proposed);
 }
 
 // ============================================================================

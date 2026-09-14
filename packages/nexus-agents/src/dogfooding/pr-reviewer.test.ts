@@ -8,7 +8,7 @@
  * @module dogfooding/pr-reviewer.test
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { ok, err, ModelError } from '../core/index.js';
 import type { IModelAdapter } from '../core/index.js';
 import { ScmError } from '../scm/types.js';
@@ -29,11 +29,21 @@ const mockCreateFullGitHubProvider = vi.fn();
 const mockFetchUserMetadata = vi.fn();
 const mockFormatReviewComment = vi.hoisted(() => vi.fn());
 const mockValidateAgentAction = vi.hoisted(() => vi.fn());
+// #5383: counts every `evaluatePolicy` call in the module graph, whoever makes
+// it. The spread form intercepts here because both the firewall's policy stage
+// and (before #5383) this caller import the function directly.
+const mockEvaluatePolicy = vi.hoisted(() => vi.fn());
 
 vi.mock('./pr-reviewer-helpers.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./pr-reviewer-helpers.js')>();
   mockFormatReviewComment.mockImplementation(actual.formatReviewComment);
   return { ...actual, formatReviewComment: mockFormatReviewComment };
+});
+
+vi.mock('../security/policy-gate.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../security/policy-gate.js')>();
+  mockEvaluatePolicy.mockImplementation(actual.evaluatePolicy);
+  return { ...actual, evaluatePolicy: mockEvaluatePolicy };
 });
 
 vi.mock('../security/action-schema.js', async (importOriginal) => {
@@ -967,5 +977,101 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     if (returned?.ok !== true) return;
     expect(returned.value.effectiveTrustTier).toBe('4');
     expect(returned.value.wouldRefuse).toBe(true);
+  });
+
+  // #5383: the firewall is the ONE composition on this path. The DraftReply's
+  // policy decision is read from `FirewallResult.policy`, not from a direct
+  // `evaluatePolicy` call beside the firewall.
+  describe('per-action policy through the firewall (#5383)', () => {
+    async function reviewAndPost(fw: HostileInputFirewall): Promise<{
+      result: PRReviewResult;
+      processSpy: MockInstance<HostileInputFirewall['process']>;
+    }> {
+      const processSpy = vi.spyOn(fw, 'process');
+      _setUntrustedInputFirewallForTests(fw);
+      mockFormatReviewComment.mockReturnValueOnce('Ordinary review body');
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const r = await new PRReviewer(
+        { dryRun: false, enableReputation: false, experts: ['code_quality'] },
+        adapterReturning({ content: 'APPROVED', warnings: [] })
+      ).reviewPR(URL);
+      if (!r.ok) throw r.error;
+      return { result: r.value, processSpy };
+    }
+
+    it('under off: the DraftReply is evaluated exactly once, via the firewall, and a tier-3 author is not posted to', async () => {
+      prBy('drive-by', 'NONE');
+      mockEvaluatePolicy.mockClear();
+
+      const { result, processSpy } = await reviewAndPost(firewallWith());
+
+      // Enforced under `off`: the caller acts on `policy.allowed`, which the
+      // mode does not gate — the firewall itself refused nothing.
+      expect(mockCreateReview).not.toHaveBeenCalled();
+      expect(result.postOutcome).toMatchObject({ status: 'skipped' });
+      expect((result.postOutcome as { reason?: string }).reason).toContain('INSUFFICIENT_TRUST');
+
+      // ONE composition: `evaluatePolicy` ran once, for the one action…
+      expect(mockEvaluatePolicy).toHaveBeenCalledTimes(1);
+      // …asked THROUGH the firewall, with that action…
+      const actionCalls = processSpy.mock.calls.filter(([, o]) => o?.action !== undefined);
+      expect(actionCalls.map(([, o]) => o?.action?.type)).toEqual(['DraftReply']);
+      // …and carrying the firewall's audit trail, which a direct call never has.
+      expect(mockEvaluatePolicy.mock.calls[0]?.[2]).toBeDefined();
+      for (const r of processSpy.mock.results) {
+        expect(r.value).toMatchObject({ ok: true, value: { policyMode: 'off' } });
+      }
+    });
+
+    it('under off: a tier-2 author with cited files is posted, once the same single evaluation allows it', async () => {
+      prBy('contributor', 'CONTRIBUTOR');
+      mockEvaluatePolicy.mockClear();
+
+      const { result } = await reviewAndPost(firewallWith());
+
+      expect(mockEvaluatePolicy).toHaveBeenCalledTimes(1);
+      expect(mockCreateReview).toHaveBeenCalledOnce();
+      expect(result.postOutcome).toEqual({ status: 'posted' });
+    });
+
+    it('under enforce: a per-action refusal skips posting with the rules named, and the review still returns', async () => {
+      // A tier-2 author passes the input-level Rule of Two, so the review
+      // reaches the DraftReply. With this path's fixed posture every tier that
+      // fails the action already trips the Rule of Two at the input, so the
+      // per-action refusal is reached here by handing the gate a DraftReply
+      // without citations — the schema would reject that first on the real
+      // path, which is why the validator is stubbed for this one case.
+      prBy('contributor', 'CONTRIBUTOR');
+      mockValidateAgentAction.mockReturnValueOnce(
+        ok({
+          type: 'DraftReply',
+          body: 'Ordinary review body',
+          requiresApproval: true,
+          sources: [],
+        })
+      );
+
+      const { result } = await reviewAndPost(firewallWith({ policyMode: 'enforce' }));
+
+      expect(mockCreateReview).not.toHaveBeenCalled();
+      // The refusal's rule comes first, from the firewall; the corroboration
+      // check (still the caller's) appends its own for the same missing sources.
+      expect(result.postOutcome).toEqual({
+        status: 'skipped',
+        reason: 'Policy gate: REQUIRE_CITATION, INSUFFICIENT_CORROBORATION',
+      });
+    });
+
+    it('fails closed when the policy stage did not run: an unevaluated DraftReply is not posted', async () => {
+      prBy('contributor', 'CONTRIBUTOR');
+
+      const { result } = await reviewAndPost(
+        firewallWith({ stages: { policyEnforcement: false } })
+      );
+
+      expect(mockCreateReview).not.toHaveBeenCalled();
+      expect(result.postOutcome).toMatchObject({ status: 'skipped' });
+      expect((result.postOutcome as { reason?: string }).reason).toContain('FIREWALL_ERROR');
+    });
   });
 });

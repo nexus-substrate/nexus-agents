@@ -3749,6 +3749,7 @@ InterfaceDeclaration FirewallError
   readonly code: FirewallErrorCode
   readonly message: string
   readonly stage: string
+  readonly violations?: readonly { message: string; rule: string; severity: "block" | "warn"; }[] | undefined
 TypeAliasDeclaration FirewallErrorCode
   = 'CLASSIFICATION_FAILED' | 'EXTRACTION_FAILED' | 'INVALID_CONFIG' | 'POLICY_REFUSED' | 'REPUTATION_FAILED' | 'SANITIZATION_FAILED'
 TypeAliasDeclaration FirewallPolicyEvaluation
