@@ -41,16 +41,21 @@ import { parse } from 'yaml';
  * Each entry is a decision to let this job go red without blocking a merge.
  * Removing a job from this list makes it required; adding one to it needs a
  * reason. Tracked for review in #4790.
+ *
+ * Empty since #4794 stage 2: `security` was the last advisory job. It is now
+ * required (see the dedicated describe block below), so every job in ci.yml
+ * can block a merge. The set stays so a future advisory job must be declared
+ * here rather than slipping out of `needs` unnoticed.
  */
-const ADVISORY_JOBS = new Set([
-  // Runs `pnpm audit`, a function of (tree x npm advisory DB at time t), so a
-  // third-party publication can redden every open PR. Requiring it is approved
-  // (consensus_vote 6-1) but gated on the reviewed-allowlist mechanism — #4794.
-  'security',
-]);
+const ADVISORY_JOBS = new Set<string>([]);
+
+interface CiStep {
+  run?: string;
+  'continue-on-error'?: boolean | string;
+}
 
 interface CiWorkflow {
-  jobs: Record<string, { needs?: string[]; steps?: Array<{ run?: string }> }>;
+  jobs: Record<string, { needs?: string[]; steps?: CiStep[] }>;
 }
 
 const ci = parse(
@@ -139,6 +144,53 @@ describe('CI required-job wiring', () => {
         `needs.${job}.result }}" != "skipped"`
       );
     }
+  });
+
+  it('does not let a required job swallow its own failure with continue-on-error', () => {
+    // The third can't-fail shape, after "absent from needs" and "awaited but
+    // unchecked": a job IS in needs and IS checked, but every step that could
+    // fail carries `continue-on-error: true`, so the job's result is always
+    // success. That is how `security` was advisory before #4794 stage 2.
+    const swallowed = [...required].flatMap((job) =>
+      (ci.jobs[job]?.steps ?? [])
+        .filter((step) => step['continue-on-error'] === true)
+        .map(() => job)
+    );
+
+    expect(
+      swallowed,
+      `Required job with a continue-on-error step, so it cannot go red: ${swallowed.join(', ')}`
+    ).toEqual([]);
+  });
+});
+
+// ============================================================================
+// Security Audit (#4794 stage 2)
+// ============================================================================
+
+describe('Security Audit is a required job (#4794 stage 2)', () => {
+  // Approved by consensus_vote 6-1 and gated on the exception ledger
+  // (.github/audit-exceptions.json + pnpm.auditConfig, #4796) landing first.
+  // Before this, a high-severity advisory sat under a green CI Success — a
+  // misreporting record, not merely a missing check. Named explicitly, like
+  // producer-consumer-check above, so the flip cannot be undone by a quiet
+  // edit to ADVISORY_JOBS: removing any of these three lines is the change.
+  const security = ci.jobs['security'];
+
+  it('exists in ci.yml with an audit step', () => {
+    // Guard the guard: a renamed job would make the assertions below vacuous.
+    expect(security).toBeDefined();
+    expect((security?.steps ?? []).some((s) => s.run?.includes('pnpm audit') === true)).toBe(true);
+  });
+
+  it('is in ci-success.needs and its result is checked', () => {
+    expect(required.has('security')).toBe(true);
+    expect(gateScript).toContain('needs.security.result');
+  });
+
+  it('has no continue-on-error step, so a failing audit reddens CI Success', () => {
+    const swallowing = (security?.steps ?? []).filter((s) => s['continue-on-error'] === true);
+    expect(swallowing).toEqual([]);
   });
 });
 

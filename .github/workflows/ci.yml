@@ -506,18 +506,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
 
-      # Advisory today (#4790). Approved to become required by consensus_vote
-      # 6-1, gated on the exception ledger landing first (#4794): `pnpm audit`
-      # answers to the npm advisory database, so requiring it with no reviewed
-      # escape path means a third-party publication can redden every open PR,
-      # and the recovery becomes admin-bypassing a required check.
+      # REQUIRED (#4794 stage 2, consensus_vote 6-1): this job is in
+      # `ci-success.needs` and its result is checked there, so a failing audit
+      # turns the one branch-protection context, CI Success, red. It was
+      # advisory (`continue-on-error: true`) from #4790 until the exception
+      # ledger landed (#4796); scripts/ci-required-jobs.test.ts pins it as
+      # required now, so putting continue-on-error back is a red test, not a
+      # silent downgrade.
       #
-      # Suppressions go in package.json > pnpm.auditConfig, and EVERY id there
-      # needs a warrant in .github/audit-exceptions.json — owner, tracking
-      # issue, expiry — enforced by scripts/audit-exceptions.test.ts.
+      # `pnpm audit` answers to the npm advisory database, so a third-party
+      # publication CAN redden every open PR. The reviewed escape path is the
+      # only recovery — never an admin bypass: suppressions go in package.json
+      # > pnpm.auditConfig, and EVERY id there needs a warrant in
+      # .github/audit-exceptions.json — owner, tracking issue, expiry —
+      # enforced by scripts/audit-exceptions.test.ts inside the required
+      # script-tests job. The ledger is governor-owned (#4797). An EXPIRED
+      # warrant reddens every open PR by design: an exception nobody renews
+      # should stop working. An empty ledger means full enforcement.
       - name: Run security audit
         run: pnpm audit --audit-level=high
-        continue-on-error: true
 
   # Gate for branch protection - requires all checks to pass.
   # Cargo Audit / Cargo Deny jobs were removed: this is a Node.js
@@ -538,6 +545,7 @@ jobs:
         producer-consumer-check,
         script-tests,
         model-string-drift,
+        security,
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -562,7 +570,8 @@ jobs:
              [[ "${{ needs.consolidation-test.result }}" != "success" ]] || \
              [[ "${{ needs.fitness-audit.result }}" != "success" ]] || \
              [[ "${{ needs.script-tests.result }}" != "success" ]] || \
-             [[ "${{ needs.model-string-drift.result }}" != "success" ]]; then
+             [[ "${{ needs.model-string-drift.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1
           fi

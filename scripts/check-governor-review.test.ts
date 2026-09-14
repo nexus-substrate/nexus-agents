@@ -1333,7 +1333,9 @@ describe('the governor section is bounded by dedicated directives, not the human
    * directives landed, plus the two #6000 step-3 entries (the pure decision
    * computation and the voter-role set), plus the #6174 CODEOWNERS-parses gate
    * script, plus the #5130 step-2 ledger-evidence module and its #6256 report
-   * and patch-identity siblings. The migration must not change what
+   * and patch-identity siblings, plus the #4797 audit-exception warrant ledger
+   * (the file whose entries mute advisories the required Security Audit job
+   * would otherwise block — #4794 stage 2). The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
    * recomputed, so an addition to the section is a reviewed act here too.
    */
@@ -1358,6 +1360,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/.rules/',
     '/packages/nexus-agents/src/consensus/decision/',
     '/packages/nexus-agents/src/cli/voter-roles.ts',
+    '/.github/audit-exceptions.json',
     '/CLAUDE.md',
     '/AGENTS.md',
     '/CODEOWNERS',
@@ -1382,7 +1385,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (23 entries)', () => {
+  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (24 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1398,7 +1401,9 @@ describe('the governor section is bounded by dedicated directives, not the human
     // ratification.
     expect(set).toContain('/scripts/governor-ledger-report.ts');
     expect(set).toContain('/scripts/governor-patch-identity.ts');
-    expect(set).toHaveLength(23);
+    // #4797: the audit-exception warrant ledger can lower the security bar.
+    expect(set).toContain('/.github/audit-exceptions.json');
+    expect(set).toHaveLength(24);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {
