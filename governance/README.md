@@ -158,6 +158,44 @@ run that was rejected under the wrong policy reads as a misconfigured run
 rather than a plain rejection. The verdict's `kind` stays `not-approved` in
 that case; its `failures` list carries the full set.
 
+### How the gate becomes a required status context (#4802)
+
+Branch protection on `main` requires one context, `CI Success`, so the gate
+above can go red without blocking a merge (#4802). Making it required has two
+parts; only the first is code.
+
+**Part 1 (landed): the gate reports on every PR.** A required context must
+appear on every pull request, or the PR can never merge — GitHub shows it as
+`expected` and waits. `governor-review.yml` used to be path-filtered to the
+governor set, so its jobs never reported on an ordinary PR. The workflow-level
+`paths:` filter is gone: the `Governor-path ratification gate` job runs on
+every `pull_request`, computes the governor-path verdict itself from the one
+parse of `CODEOWNERS`, and exits 0 with `not-applicable` when no governor path
+is touched. The detector runs before any GitHub API call, and the evidence
+and gate steps are gated on its output (#6260): an ordinary PR performs one
+`git diff` and one `CODEOWNERS` parse and never reaches the API, so a
+transient `gh api` failure cannot block a PR the gate has nothing to say
+about. On an ordinary PR that costs about 60 s of runner time, ~35 s of
+it the full-history checkout and ~5 s the injector spawn (#6250). The
+post-merge backstop runs on every push to `main` the same way. The pr_review
+audit gate and the CODEOWNERS parse do not run on an ordinary PR: they read a
+`governor_touched` output the ratification jobs compute
+(`scripts/governor-paths-touched.ts`, same parser and matcher as the gate)
+and are skipped otherwise. The `paths:` blocks were a second, hand-maintained
+copy of the governor set; nothing is copied now.
+
+**Part 2 (owner-visible settings change, by panel): require the context.**
+Add the status context named exactly `Governor-path ratification gate` to
+`main`'s required status checks
+(`gh api -X PATCH repos/{owner}/{repo}/branches/main/protection/required_status_checks`
+with the context appended to `contexts`, or the branch-protection UI). The
+name is pinned by `scripts/check-governor-review.test.ts`: renaming the job
+does not fail CI, it makes the required context stop reporting, which blocks
+every PR until the setting or the name is fixed. `enforce_admins` is a
+separate decision: while it is off, `gh pr merge --admin` still bypasses the
+required set, and the post-merge backstop is what turns that into a red
+`main`.
+
 ## pr-review-records.jsonl
 
 The diff-bound `pr_review` ledger (#3831), read by the warn-first

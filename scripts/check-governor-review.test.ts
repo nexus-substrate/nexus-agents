@@ -21,6 +21,8 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
+import { GOVERNOR_TOUCHED_OUTPUT_KEY } from './governor-paths-touched.js';
 import {
   analyzeGovernorReview,
   parseGenesisExemptions,
@@ -882,52 +884,150 @@ describe('the governor path set matches what the docs claim (#5997)', () => {
   });
 });
 
-describe('CODEOWNERS governor section and the workflow paths filters stay in lockstep (#5997)', () => {
-  const REAL_CODEOWNERS = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
-  const REAL_PATTERNS = governorPathsFromCodeowners(REAL_CODEOWNERS);
+describe('the ratification gate runs on EVERY pull request, so branch protection can require it (#4802 part 1)', () => {
+  // Until #4802 the workflow carried a `paths:` filter — a hand-maintained
+  // second copy of the governor set, kept in lockstep with CODEOWNERS by the
+  // test this block replaces (#5997). A path-filtered job never reports on a
+  // PR outside its paths, so as a required status context it would sit
+  // `expected` forever on an ordinary PR. The set now has one copy (CODEOWNERS)
+  // and one parser; the two jobs that should not run on an ordinary PR read a
+  // detector output computed from that parse.
   const WORKFLOW = readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8');
+  interface Step {
+    id?: string;
+    name?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    env?: Record<string, string>;
+  }
+  interface Job {
+    name?: string;
+    needs?: string | string[];
+    if?: string;
+    outputs?: Record<string, string>;
+    steps?: Step[];
+  }
+  const parsed = parseYaml(WORKFLOW) as {
+    on?: Record<string, Record<string, unknown>>;
+    true?: Record<string, Record<string, unknown>>;
+    jobs: Record<string, Job>;
+  };
+  // `on:` parses as the boolean `true` under YAML 1.1.
+  const triggers = parsed.true ?? parsed.on ?? {};
+  const jobs = parsed.jobs;
 
-  /** Every `- 'x'` entry inside a `paths:` block, one array per block. */
-  function pathsFilters(yaml: string): string[][] {
-    const blocks: string[][] = [];
-    let current: string[] | undefined;
-    for (const raw of yaml.split('\n')) {
-      if (/^\s*paths:\s*$/.test(raw)) {
-        current = [];
-        blocks.push(current);
-        continue;
-      }
-      if (current === undefined) continue;
-      const entry = /^\s*-\s*'([^']+)'\s*$/.exec(raw);
-      if (entry?.[1] !== undefined) current.push(entry[1]);
-      else if (raw.trim() !== '') current = undefined; // block ended
+  it('neither trigger carries a paths filter', () => {
+    expect(Object.keys(triggers)).toEqual(['pull_request', 'push']);
+    for (const [event, config] of Object.entries(triggers)) {
+      expect(config, event).not.toHaveProperty('paths');
+      expect(config, event).not.toHaveProperty('paths-ignore');
     }
-    return blocks;
-  }
-
-  /** Does some workflow glob cause the gate to run for this governor pattern? */
-  function isCovered(pattern: string, globs: string[]): boolean {
-    const normalized = pattern.replace(/^\//, '');
-    return globs.some((glob) => {
-      if (glob === normalized) return true;
-      if (glob.endsWith('/**')) return normalized.startsWith(glob.slice(0, -2));
-      return false;
-    });
-  }
-
-  const filters = pathsFilters(WORKFLOW);
-
-  it('finds both trigger blocks (pull_request and push)', () => {
-    // If this drops to one, the loop below would silently stop checking a filter.
-    expect(filters).toHaveLength(2);
   });
 
-  it.each([0, 1])('covers every governor path in paths filter #%i', (index) => {
-    const globs = filters[index] as string[];
-    const uncovered = REAL_PATTERNS.filter((p) => !isCovered(p, globs));
-    // A governor path the workflow does not list is a path whose gate never
-    // runs — the second half of the #5997 defect, independent of the parser.
-    expect(uncovered).toEqual([]);
+  it('the ratification job keeps the context name branch protection requires, and nothing narrows it', () => {
+    const job = jobs['governor-ratification'];
+    expect(job).toBeDefined();
+    // The exact string the required-context setting names. A rename does not
+    // fail CI; it makes the required context never report, which blocks every
+    // PR — or, if the setting is then removed, un-requires the gate.
+    expect(job?.name).toBe('Governor-path ratification gate');
+    expect(job?.if).toBe("github.event_name == 'pull_request'");
+    expect(job?.needs).toBeUndefined();
+  });
+
+  it('the ratification jobs publish the detector output from the detector step', () => {
+    for (const id of ['governor-ratification', 'governor-ratification-backstop']) {
+      const job = jobs[id];
+      expect(job?.outputs?.[GOVERNOR_TOUCHED_OUTPUT_KEY], id).toBe(
+        `\${{ steps.touched.outputs.${GOVERNOR_TOUCHED_OUTPUT_KEY} }}`
+      );
+      const detector = (job?.steps ?? []).find((s) => s.id === 'touched');
+      // The `run:` body — not the script — writes the `governor_touched=`
+      // line, so the #4698 wiring test can resolve the producer (#6260). The
+      // script prints only the value; `bash -e` turns its exit 1 into a
+      // failed assignment, so an unmeasured detector writes no line at all.
+      expect(detector?.run, id).toBe(
+        [
+          'TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)',
+          `echo "${GOVERNOR_TOUCHED_OUTPUT_KEY}=\${TOUCHED}" >> "\${GITHUB_OUTPUT}"`,
+          '',
+        ].join('\n')
+      );
+    }
+  });
+
+  describe('the detector runs BEFORE the GitHub API is touched, and gates it (#6260)', () => {
+    // Scope steward, #6260 panel: with evidence collected first, a transient
+    // `gh api` failure would block an ORDINARY PR once this context is
+    // required. The order is checkout → setup → changed files → detector →
+    // (evidence → gate, both gated on the detector) → the not-touched verdict.
+    const job = jobs['governor-ratification'];
+    const steps = job?.steps ?? [];
+    const ids = steps.map((s) => s.id);
+    const at = (id: string): number => ids.indexOf(id);
+    const gatedOnDetector = `steps.touched.outputs.${GOVERNOR_TOUCHED_OUTPUT_KEY} == 'true'`;
+
+    it('the detector consumes the changed-files step, which precedes it', () => {
+      expect(at('changed')).toBeGreaterThanOrEqual(0);
+      expect(at('touched')).toBeGreaterThan(at('changed'));
+      const detector = steps[at('touched')];
+      expect(detector?.env?.['CHANGED_FILES']).toBe('${{ steps.changed.outputs.files }}');
+      // The detector itself makes no API call — its only input is the diff.
+      expect(detector?.run ?? '').not.toContain('gh api');
+      expect(detector?.if).toBeUndefined();
+    });
+
+    it('the evidence step runs AFTER the detector and only when a governor path is touched', () => {
+      expect(at('evidence')).toBeGreaterThan(at('touched'));
+      const evidence = steps[at('evidence')];
+      expect(evidence?.if).toBe(gatedOnDetector);
+      // This is the step that reaches the API; nothing before it does.
+      expect(evidence?.run ?? '').toContain('gh api');
+      for (const step of steps.slice(0, at('evidence'))) {
+        expect(step.run ?? '', step.id ?? step.name ?? step.uses ?? '?').not.toContain('gh api');
+      }
+    });
+
+    it('the gate step is gated the same way and reads the diff from the changed-files step', () => {
+      const gate = steps.find((s) => s.run?.includes('check-governor-ratification.ts') === true);
+      expect(gate).toBeDefined();
+      expect(steps.indexOf(gate as Step)).toBeGreaterThan(at('evidence'));
+      expect(gate?.if).toBe(gatedOnDetector);
+      expect(gate?.env?.['CHANGED_FILES']).toBe('${{ steps.changed.outputs.files }}');
+      expect(gate?.env?.['PR_BASE_SHA']).toBe('${{ steps.changed.outputs.base }}');
+    });
+
+    it('the final step names the not-touched verdict and is reached even when the detector failed', () => {
+      const last = steps[steps.length - 1];
+      expect(last?.if).toBe(
+        `\${{ always() && steps.touched.outputs.${GOVERNOR_TOUCHED_OUTPUT_KEY} != 'true' }}`
+      );
+      expect(last?.run).toContain('not-applicable');
+      // `false` exits 0; an empty (unmeasured) value exits 1 — the empty
+      // case is named, not defaulted to a pass.
+      expect(last?.run).toContain('exit 0');
+      expect(last?.run).toContain('exit 1');
+      expect(last?.run).toContain('unmeasured');
+    });
+  });
+
+  it.each([
+    ['governor-review', ['governor-ratification']],
+    ['codeowners-errors', ['governor-ratification', 'governor-ratification-backstop']],
+  ])('%s is gated on the detector output and still runs when the gate FAILS', (id, needs) => {
+    const job = jobs[id];
+    const declared = Array.isArray(job?.needs) ? job.needs : [job?.needs];
+    expect(declared, id).toEqual(needs);
+    const condition = job?.if ?? '';
+    // Without `!cancelled()` the implicit `success()` skips this job whenever
+    // the ratification gate fails — exactly the governor PRs it must report on.
+    expect(condition, id).toContain('!cancelled()');
+    for (const upstream of needs) {
+      expect(condition, id).toContain(
+        `needs.${upstream}.outputs.${GOVERNOR_TOUCHED_OUTPUT_KEY} == 'true'`
+      );
+    }
   });
 });
 
@@ -1169,6 +1269,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/check-governor-ratification.ts',
     '/scripts/governor-ledger-evidence.ts',
     '/scripts/check-codeowners-errors.ts',
+    '/scripts/governor-paths-touched.ts',
     '/.github/CODEOWNERS',
     '/docs/CODEOWNERS',
     '/scripts/governance-stamp-exemption.ts',
@@ -1200,15 +1301,18 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (20 entries)', () => {
+  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (21 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
+    // #4802 part 1: the detector that decides whether the audit gate and the
+    // CODEOWNERS parse run at all — the `paths:` filter's replacement.
+    expect(set).toContain('/scripts/governor-paths-touched.ts');
     // Entries for files that must NOT exist: creating one is a governor change.
     expect(set).toContain('/.github/CODEOWNERS');
     expect(set).toContain('/docs/CODEOWNERS');
     // #5130 step 2: the committed-ledger half of the ratification gate.
     expect(set).toContain('/scripts/governor-ledger-evidence.ts');
-    expect(set).toHaveLength(20);
+    expect(set).toHaveLength(21);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

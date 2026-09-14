@@ -126,6 +126,52 @@ describe('SubprocessCliAdapter', () => {
     });
   });
 
+  describe('getCommand sees the resolved timeout (#6277)', () => {
+    it('hands options.timeoutMs to getCommand when the task carries none', async () => {
+      // agy sizes its own --print-timeout from the task; the voter passes the
+      // budget through ExecutionOptions, so the seam must copy it onto the task.
+      const seen: Array<number | undefined> = [];
+      const spy = adapter as unknown as { getCommand: (t: CliTask) => CommandConfig };
+      const original = spy.getCommand.bind(adapter);
+      spy.getCommand = (t: CliTask): CommandConfig => {
+        seen.push(t.timeoutMs);
+        return original(t);
+      };
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      await adapter.initialize();
+      const promise = adapter.execute({ content: 'test' }, { timeoutMs: 42_000 });
+      stdout.push('response\n');
+      stdout.push(null);
+      mockChild.emit('close', 0);
+      await promise;
+
+      expect(seen).toEqual([42_000]);
+    });
+
+    it('keeps an explicit task.timeoutMs over the resolved option', async () => {
+      const seen: Array<number | undefined> = [];
+      const spy = adapter as unknown as { getCommand: (t: CliTask) => CommandConfig };
+      const original = spy.getCommand.bind(adapter);
+      spy.getCommand = (t: CliTask): CommandConfig => {
+        seen.push(t.timeoutMs);
+        return original(t);
+      };
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      await adapter.initialize();
+      const promise = adapter.execute({ content: 'test', timeoutMs: 7_000 }, { timeoutMs: 42_000 });
+      stdout.push('response\n');
+      stdout.push(null);
+      mockChild.emit('close', 0);
+      await promise;
+
+      expect(seen).toEqual([7_000]);
+    });
+  });
+
   describe('initialize() and dispose()', () => {
     it('should set initialized flag on initialize', async () => {
       await adapter.initialize();

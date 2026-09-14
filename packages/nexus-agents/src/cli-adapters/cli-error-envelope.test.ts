@@ -7,6 +7,7 @@ import {
   parseCliErrorEnvelope,
   authRemediation,
   classifyExtractedError,
+  isAuthFailureText,
 } from './cli-error-envelope.js';
 
 describe('parseCliErrorEnvelope (#2440)', () => {
@@ -264,5 +265,61 @@ describe('parseCliErrorEnvelope (#2440)', () => {
     it('trims surrounding whitespace from the message', () => {
       expect(classifyExtractedError('  Unauthorized  ', 'opencode').message).toBe('Unauthorized');
     });
+  });
+});
+
+/**
+ * #6269: the auth-failure vocabulary is ONE list (`AUTH_FAILURE_PATTERNS`,
+ * module-private), read by the subprocess stderr classifier and by the voter
+ * retry loop through `isAuthFailureText`. One case per pattern, in the list's
+ * order, each the real line a CLI wrote, so a pattern that stops matching its
+ * motivating case is named by the failing test.
+ */
+describe('isAuthFailureText — one case per AUTH_FAILURE_PATTERNS entry (#6269)', () => {
+  const casePerPattern: readonly (readonly [RegExp, string])[] = [
+    [/not logged in/i, 'Error: Not logged in. Please run /login'],
+    [/please run \/?login/i, 'Please run /login to authenticate'],
+    [/authentication (?:required|expired|failed)/i, 'Authentication failed for provider openai'],
+    [/invalid (?:api ?key|credentials)/i, 'Invalid API key provided'],
+    [/unauthorized/i, 'HTTP 401 Unauthorized'],
+    [/api[- ]?key (?:expired|revoked|missing)/i, 'API key expired; rotate it in settings'],
+    [/token (?:expired|revoked)/i, 'Token expired. Please re-auth.'],
+    [/refresh token .*already used/i, 'Your refresh token was already used.'],
+    [/could not be refreshed/i, 'Your access token could not be refreshed'],
+    [/log ?out and sign in/i, 'Please log out and sign in again.'],
+    [/sign in again/i, 'Session ended; sign in again to continue'],
+    // The #6269 incident line, verbatim from the gemini/agy stderr of 2026-09-14.
+    [
+      /error authenticating/i,
+      'Error authenticating: IneligibleTierError: This client is no longer supported',
+    ],
+    [/ineligible ?tier/i, "tierId: 'free-tier' (IneligibleTierError: UNSUPPORTED_CLIENT)"],
+  ];
+
+  it.each(casePerPattern)('%s matches its motivating line', (re, line) => {
+    // The table's own regex is the documented pattern; the function is what
+    // production reads. Both must accept the line.
+    expect(re.test(line)).toBe(true);
+    expect(isAuthFailureText(line)).toBe(true);
+  });
+
+  it('a line that matches NO tabled pattern is not an auth failure — the table is the whole list', () => {
+    // If a pattern is added to the module list without a row here, this
+    // sentence must still be rejected; a row-less pattern that matched it
+    // would surface as a failure here, not silently widen the list.
+    const benign = 'the model produced an internal error while reading the repository';
+    expect(casePerPattern.some(([re]) => re.test(benign))).toBe(false);
+    expect(isAuthFailureText(benign)).toBe(false);
+  });
+
+  it('does not match authorization text or a bare status number', () => {
+    // authz is not authn (#2455 ruled `permission denied` out), and a bare
+    // "401" in a stack-trace line number is not a credential failure.
+    expect(isAuthFailureText('permission denied: cannot write /etc/hosts')).toBe(false);
+    expect(isAuthFailureText('at Object.<anonymous> (file.js:401:12)')).toBe(false);
+  });
+
+  it('the empty string is NOT an auth failure — absent stderr is not a verdict', () => {
+    expect(isAuthFailureText('')).toBe(false);
   });
 });
