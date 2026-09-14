@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import type { Vote } from './types-core.js';
-import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
+import { SUPERMAJORITY_THRESHOLD } from './decision/thresholds.js';
 import { OPERATION_CLASSES } from '../config/timeouts.js';
 
 /**

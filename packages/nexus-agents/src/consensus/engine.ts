@@ -43,9 +43,9 @@ import {
   ProposalSchema,
   VoteSchema,
   DEFAULT_CONSENSUS_CONFIG,
-  VOTING_THRESHOLDS,
   DEFAULT_INCREMENTAL_QUORUM_CONFIG,
 } from './types.js';
+import { VOTING_THRESHOLDS } from './decision/thresholds.js';
 import { VotingStrategyFactory, calculateVoteWeight, type VotingOutcome } from './strategies.js';
 import { buildFinalResult, buildTimeoutResult, buildPendingResult } from './result-builder.js';
 import { generateProposalId } from './helpers.js';

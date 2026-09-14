@@ -2,6 +2,7 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import jsdoc from 'eslint-plugin-jsdoc';
 import noVacuousVerdict from './eslint-rules/no-vacuous-verdict.js';
+import governedDecisionImports from './eslint-rules/governed-decision-imports-6000.js';
 
 /**
  * In-repo custom rules (#4581). Flat config lets a plugin be an object literal,
@@ -260,6 +261,16 @@ export default defineConfig([
       ],
     },
   },
+
+  // #6000 step 2: a verdict site under consensus/, cli/ or mcp/tools/ reaches
+  // the governed decision symbols only through consensus/decision/ (and
+  // cli/voter-roles.ts), never through a legacy re-export home — so step 3's
+  // governor path cannot be bypassed by importing around it. Stock
+  // `no-restricted-imports`, same shape as the two blocks above; the block
+  // lives in eslint-rules/ so its fixtures can run it without type information.
+  // What it cannot catch (inline re-implementation, `|| true`) is stated in the
+  // module header; `scripts/arch-lint-inline-verdict.ts` ratchets the former.
+  governedDecisionImports,
 
   // Audit-sink interfaces must declare members as function PROPERTIES, never
   // method shorthand (#4991). TypeScript exempts method-shorthand parameters
