@@ -319,3 +319,44 @@ describe('GeminiCliAdapter resilient parsing', () => {
     await adapter.dispose();
   });
 });
+
+describe('GeminiCliAdapter hands agy the working tree (#6254)', () => {
+  function getCommand(task: unknown): { command: string; args: string[] } {
+    const adapter = new GeminiCliAdapter();
+    return (
+      adapter as unknown as { getCommand: (t: unknown) => { command: string; args: string[] } }
+    ).getCommand(task);
+  }
+
+  it('passes the process working directory as --add-dir', () => {
+    // Measured on #6254: agy's workspace is its STORED project, not the
+    // directory it is spawned in. Spawned from this repository with no
+    // --add-dir, a seat read `packages/nexus-agents/package.json` out of an
+    // unrelated checkout and reported that file's version; with --add-dir
+    // <cwd> it read this tree. The other arms (claude, codex) take the cwd
+    // as their workspace by default, so this is the parity flag.
+    const { args } = getCommand({ content: 'hi' });
+
+    expect(args[args.indexOf('--add-dir') + 1]).toBe(process.cwd());
+  });
+
+  it('an explicit workDir option names the tree instead of the cwd', () => {
+    const { args } = getCommand({ content: 'hi', options: { workDir: '/srv/other-tree' } });
+
+    expect(args[args.indexOf('--add-dir') + 1]).toBe('/srv/other-tree');
+    expect(args).not.toContain(process.cwd());
+  });
+
+  it('an empty workDir option falls back to the cwd, never an empty --add-dir', () => {
+    const { args } = getCommand({ content: 'hi', options: { workDir: '' } });
+
+    expect(args[args.indexOf('--add-dir') + 1]).toBe(process.cwd());
+  });
+
+  it('puts --add-dir before --print, which must stay last', () => {
+    const { args } = getCommand({ content: 'hi' });
+
+    expect(args.indexOf('--add-dir')).toBeLessThan(args.indexOf('--print'));
+    expect(args.indexOf('--print')).toBe(args.length - 2);
+  });
+});

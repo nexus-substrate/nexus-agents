@@ -250,6 +250,18 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
       args.push('--conversation', task.sessionId);
     }
 
+    // #6254: agy's workspace is its STORED project, not the directory it is
+    // spawned in — the other arms take the cwd as their tree by default; agy
+    // does not. Measured: spawned from this repository with no --add-dir, a
+    // voter seat read `packages/nexus-agents/package.json` out of an unrelated
+    // checkout on the same machine and reported that file's version, and on
+    // governor panels it abstained "no repository or accessible sandbox was
+    // provided". The task's `workDir` (the same option the claude adapter
+    // honours) wins; otherwise the process cwd, which is what the subprocess
+    // inherits and what the voter prompt names.
+    const workDir = task.options?.['workDir'];
+    args.push('--add-dir', typeof workDir === 'string' && workDir !== '' ? workDir : process.cwd());
+
     // agy has no system-prompt flag. The old CLI's `--policy <file>` preserved
     // system-role framing (#1886); agy offers only `--agent`, which selects a
     // preconfigured agent rather than accepting inline instructions. So the

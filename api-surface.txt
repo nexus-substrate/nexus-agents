@@ -9780,6 +9780,7 @@ InterfaceDeclaration VoteExecutionSettings
   maxRetries: number
   project: string | undefined
   timeoutMs: number
+  workspace: string | undefined
 InterfaceDeclaration VoteMessage
   conditions?: string[] | undefined
   decision: VoteDecision
