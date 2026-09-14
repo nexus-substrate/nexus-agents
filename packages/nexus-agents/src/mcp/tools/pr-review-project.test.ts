@@ -101,6 +101,7 @@ const CLEAN_SANITIZATION: Ctx['sanitization'] = {
   fieldsModified: 0,
   tagsRemoved: 0,
   rawFieldHashes: {},
+  rawFieldBytes: {},
 };
 
 function captureHandler(): Handler {

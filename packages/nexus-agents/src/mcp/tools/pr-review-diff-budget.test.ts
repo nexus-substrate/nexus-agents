@@ -14,6 +14,7 @@ import {
   packDiffForReview,
   securityFirstPack,
   splitByFile,
+  type BindingMeasurement,
   type DiffFile,
   type PrReviewBindingCoverage,
   type ReviewBudgets,
@@ -394,6 +395,12 @@ describe('the review budget and the hash cap measure the same unit (#5818)', () 
   });
 });
 
+/** The no-sanitizer measurement: the diff as handed IS the bytes the hash covers. */
+function asHanded(prDiff: string): BindingMeasurement {
+  const totalBytes = Buffer.byteLength(prDiff, 'utf-8');
+  return { totalBytes, truncated: totalBytes > MAX_REVIEWED_DIFF_BYTES, source: 'input' };
+}
+
 describe('packDiffForPanelAndBinding — the panel read and the binding are two decisions (#6003)', () => {
   const CAP = 1_000;
   /** Budgets with a registry-derived panel read of `panelReadBudgetBytes`. */
@@ -416,7 +423,11 @@ describe('packDiffForPanelAndBinding — the panel read and the binding are two 
   it('panel reads FULL, binding is a PREFIX: the whole diff goes to the panel', () => {
     // Before #6003 one comparison decided both, so this diff was packed down
     // and the panel read less than it could have.
-    const { coverage, packedDiff, note } = packDiffForPanelAndBinding(twoFiles, budgets(4_000));
+    const { coverage, packedDiff, note } = packDiffForPanelAndBinding(
+      twoFiles,
+      budgets(4_000),
+      asHanded(twoFiles)
+    );
     expect(packedDiff).toBe(twoFiles);
     expect(note).toBe('');
     const total = Buffer.byteLength(twoFiles, 'utf-8');
@@ -428,6 +439,7 @@ describe('packDiffForPanelAndBinding — the panel read and the binding are two 
       strategy: 'budget',
       panelRead: 'full',
       binding: 'prefix',
+      bindingSource: 'input',
       reviewedBytes: total,
       boundBytes: CAP,
       totalBytes: total,
@@ -443,7 +455,11 @@ describe('packDiffForPanelAndBinding — the panel read and the binding are two 
     const oneFile = fileDiff('src/a.ts', 60);
     const oneFileBytes = Buffer.byteLength(oneFile, 'utf-8');
     expect(oneFileBytes).toBeLessThanOrEqual(CAP);
-    const { coverage, packedDiff } = packDiffForPanelAndBinding(oneFile, budgets(oneFileBytes - 1));
+    const { coverage, packedDiff } = packDiffForPanelAndBinding(
+      oneFile,
+      budgets(oneFileBytes - 1),
+      asHanded(oneFile)
+    );
     expect(coverage?.panelRead).toBe('partial');
     expect(coverage?.binding).toBe('full');
     expect(coverage?.partial).toBe(true);
@@ -453,7 +469,11 @@ describe('packDiffForPanelAndBinding — the panel read and the binding are two 
   });
 
   it('BOTH partial: over the panel budget and over the binding cap', () => {
-    const { coverage, note } = packDiffForPanelAndBinding(twoFiles, budgets(CAP));
+    const { coverage, note } = packDiffForPanelAndBinding(
+      twoFiles,
+      budgets(CAP),
+      asHanded(twoFiles)
+    );
     expect(coverage?.panelRead).toBe('partial');
     expect(coverage?.binding).toBe('prefix');
     expect(coverage?.partial).toBe(true);
@@ -464,14 +484,14 @@ describe('packDiffForPanelAndBinding — the panel read and the binding are two 
 
   it('BOTH full: a diff under both budgets is byte-identical with NO coverage (pre-#4140 contract)', () => {
     const small = fileDiff('src/a.ts', 3);
-    const packing = packDiffForPanelAndBinding(small, budgets(4_000));
+    const packing = packDiffForPanelAndBinding(small, budgets(4_000), asHanded(small));
     expect(packing.coverage).toBeUndefined();
     expect(packing.packedDiff).toBe(small);
     expect(packing.note).toBe('');
   });
 
   it('names the empty case: an empty diff is both-full with no coverage', () => {
-    const packing = packDiffForPanelAndBinding('', budgets(4_000));
+    const packing = packDiffForPanelAndBinding('', budgets(4_000), asHanded(''));
     expect(packing.coverage).toBeUndefined();
     expect(packing.packedDiff).toBe('');
   });
@@ -484,7 +504,7 @@ describe('packDiffForPanelAndBinding — the panel read and the binding are two 
     const bytes = Buffer.byteLength(multibyte, 'utf-8');
     expect(bytes).toBeGreaterThan(units);
     const between = { ...budgets(bytes + 100), bindingCapBytes: units + 1 };
-    const { coverage } = packDiffForPanelAndBinding(multibyte, between);
+    const { coverage } = packDiffForPanelAndBinding(multibyte, between, asHanded(multibyte));
     expect(coverage?.binding).toBe('prefix');
     expect(coverage?.totalBytes).toBe(bytes);
     expect(coverage?.reviewedBytes).toBe(bytes);
@@ -498,13 +518,81 @@ describe('packDiffForPanelAndBinding — the panel read and the binding are two 
       source: 'binding-cap-fallback',
       detail: 'context window unknown for "x"',
     };
-    const { coverage } = packDiffForPanelAndBinding(twoFiles, fallback);
+    const { coverage } = packDiffForPanelAndBinding(twoFiles, fallback, asHanded(twoFiles));
     expect(coverage?.budgetSource).toBe('binding-cap-fallback');
     expect(coverage?.budgetDetail).toContain('context window unknown');
     // A fallback budget equals the cap, so the panel read is partial exactly
     // when the binding is a prefix — the pre-#6003 behaviour, by construction.
     expect(coverage?.panelRead).toBe('partial');
     expect(coverage?.binding).toBe('prefix');
+  });
+
+  describe('the binding is decided over the measurement, not over prDiff (#6177)', () => {
+    // On the MCP path `prDiff` is the sanitized text and the hash covers the
+    // raw input. A raw diff over the cap whose sanitized form is under it was
+    // `binding: 'full'` — with `coverage: undefined`, so the record said
+    // nothing at all beside a hash that had truncated.
+    const small = fileDiff('src/a.ts', 5);
+    const rawOverCap: BindingMeasurement = {
+      totalBytes: CAP + 300,
+      truncated: true,
+      source: 'raw',
+    };
+
+    it('raw over the cap, sanitized under it: prefix, bound to the cap, source raw', () => {
+      expect(Buffer.byteLength(small, 'utf-8')).toBeLessThanOrEqual(CAP);
+      const { coverage, packedDiff, note } = packDiffForPanelAndBinding(
+        small,
+        budgets(4_000),
+        rawOverCap
+      );
+      expect(coverage?.binding).toBe('prefix');
+      expect(coverage?.boundBytes).toBe(CAP);
+      expect(coverage?.bindingSource).toBe('raw');
+      // The panel side is still over the text the panel is sent.
+      expect(coverage?.panelRead).toBe('full');
+      expect(coverage?.totalBytes).toBe(Buffer.byteLength(small, 'utf-8'));
+      expect(coverage?.reviewedBytes).toBe(Buffer.byteLength(small, 'utf-8'));
+      expect(packedDiff).toBe(small);
+      expect(note).toBe('');
+    });
+
+    it('the pair: raw under the cap with the same sanitized text is both-full, no coverage', () => {
+      const rawUnderCap: BindingMeasurement = {
+        totalBytes: CAP - 1,
+        truncated: false,
+        source: 'raw',
+      };
+      expect(
+        packDiffForPanelAndBinding(small, budgets(4_000), rawUnderCap).coverage
+      ).toBeUndefined();
+    });
+
+    it('a full binding reports the RAW byte count as bound, not the sanitized one', () => {
+      // Sanitized text over the panel budget (so coverage exists) while the raw
+      // diff is under the cap: `boundBytes` is what the hash covers — every raw
+      // byte — which is not `totalBytes` (the sanitized panel denominator).
+      const rawBytes = Buffer.byteLength(twoFiles, 'utf-8') + 40;
+      expect(rawBytes).toBeLessThanOrEqual(4_000);
+      const wide = { ...budgets(CAP), bindingCapBytes: 4_000 };
+      const { coverage } = packDiffForPanelAndBinding(twoFiles, wide, {
+        totalBytes: rawBytes,
+        truncated: false,
+        source: 'raw',
+      });
+      expect(coverage?.panelRead).toBe('partial');
+      expect(coverage?.binding).toBe('full');
+      expect(coverage?.boundBytes).toBe(rawBytes);
+      expect(coverage?.totalBytes).toBe(Buffer.byteLength(twoFiles, 'utf-8'));
+    });
+
+    it('the fallback source travels onto the coverage object', () => {
+      const { coverage } = packDiffForPanelAndBinding(twoFiles, budgets(4_000), {
+        ...asHanded(twoFiles),
+        source: 'sanitized-fallback',
+      });
+      expect(coverage?.bindingSource).toBe('sanitized-fallback');
+    });
   });
 });
 
@@ -521,6 +609,7 @@ describe('applyPartialCoverageGate over the four #6003 rows', () => {
     strategy: 'budget',
     panelRead,
     binding,
+    bindingSource: 'input',
     reviewedBytes: panelRead === 'full' ? 1_100 : 550,
     boundBytes: binding === 'full' ? 1_100 : 1_000,
     totalBytes: 1_100,

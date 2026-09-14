@@ -43,6 +43,7 @@ function makeCtx(): Parameters<typeof searchUsagesHandler>[1] {
       fieldsModified: 0,
       tagsRemoved: 0,
       rawFieldHashes: {},
+      rawFieldBytes: {},
     },
   };
 }

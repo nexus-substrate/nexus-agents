@@ -137,6 +137,20 @@ interface SanitizationContext {
    * no key here and the handler can tell the two apart by what it asked for.
    */
   readonly rawFieldHashes: Readonly<Record<string, string>>;
+  /**
+   * UTF-8 byte length (`Buffer.byteLength`) of each field in
+   * {@link rawFieldHashes}, measured on the SAME raw value the hash was
+   * computed over, before sanitization (#6177). Same key set as the hashes: a
+   * declared-but-absent field has no entry in either.
+   *
+   * Carried because a hash alone cannot say how much it covers. `pr_review`'s
+   * hasher truncates at a byte cap, and the handler — holding only the
+   * sanitized text — measured coverage over that text, so a raw diff over the
+   * cap whose sanitized form was under it was recorded as fully bound. A byte
+   * count, like a digest, cannot be injected into anything, so the seam stays
+   * sanitize-before-dispatch.
+   */
+  readonly rawFieldBytes: Readonly<Record<string, number>>;
 }
 
 export interface HandlerContext {
@@ -441,27 +455,34 @@ function emitToolAudit({
   });
 }
 
+/** The raw-field measurements {@link measureRawFields} takes before sanitization. */
+type RawFieldMeasurements = Pick<SanitizationContext, 'rawFieldHashes' | 'rawFieldBytes'>;
+
 /**
- * Hash the declared raw fields before sanitization (#5385).
+ * Hash AND measure the declared raw fields before sanitization (#5385, #6177).
  *
- * Only string values are hashed; a missing or non-string field contributes no
+ * Only string values are measured; a missing or non-string field contributes no
  * key rather than an empty-string hash, so "absent" cannot be mistaken for
  * "present and empty" — the two have different digests and only one is a
- * measurement.
+ * measurement. The byte length is taken in the same loop, on the same value,
+ * so the two maps describe the same bytes by construction.
  */
-function hashRawFields(
+function measureRawFields(
   fields: Readonly<Record<string, (raw: string) => string>> | undefined,
   args: unknown
-): Readonly<Record<string, string>> {
-  if (fields === undefined) return {};
-  if (typeof args !== 'object' || args === null) return {};
+): RawFieldMeasurements {
+  if (fields === undefined) return { rawFieldHashes: {}, rawFieldBytes: {} };
+  if (typeof args !== 'object' || args === null) return { rawFieldHashes: {}, rawFieldBytes: {} };
   const source = args as Record<string, unknown>;
-  const out: Record<string, string> = {};
+  const rawFieldHashes: Record<string, string> = {};
+  const rawFieldBytes: Record<string, number> = {};
   for (const [field, hash] of Object.entries(fields)) {
     const value = source[field];
-    if (typeof value === 'string') out[field] = hash(value);
+    if (typeof value !== 'string') continue;
+    rawFieldHashes[field] = hash(value);
+    rawFieldBytes[field] = Buffer.byteLength(value, 'utf-8');
   }
-  return out;
+  return { rawFieldHashes, rawFieldBytes };
 }
 
 /**
@@ -479,7 +500,7 @@ function unsanitizedContext(config: SecureHandlerConfig, args: unknown): Sanitiz
     commentsRemoved: 0,
     fieldsModified: 0,
     tagsRemoved: 0,
-    rawFieldHashes: hashRawFields(config.rawHashFields, args),
+    ...measureRawFields(config.rawHashFields, args),
   };
 }
 
@@ -516,8 +537,9 @@ function runPreChecks(
     commentsRemoved: sanitizeResult.commentsRemoved,
     fieldsModified: sanitizeResult.modifiedCount,
     tagsRemoved: sanitizeResult.tagsRemoved,
-    // #5385: hashed from `args`, the RAW input, before sanitization touched it.
-    rawFieldHashes: hashRawFields(config.rawHashFields, args),
+    // #5385/#6177: hashed and measured from `args`, the RAW input, before
+    // sanitization touched it.
+    ...measureRawFields(config.rawHashFields, args),
   };
 
   // Tiered validation: reject (not strip) for user-facing/external tools (Issue #1586)

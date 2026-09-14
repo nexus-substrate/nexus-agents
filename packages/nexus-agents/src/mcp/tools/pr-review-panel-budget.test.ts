@@ -262,7 +262,7 @@ describe('preparePanelProposal — the panel is handed the PACKED subset (#6003)
     const { proposal, coverage } = preparePanelProposal(
       input,
       { seats, simulate: false },
-      { comments: 0, fields: 0, tags: 0 },
+      undefined,
       logger,
       registry
     );
@@ -282,7 +282,7 @@ describe('preparePanelProposal — the panel is handed the PACKED subset (#6003)
     const { proposal, coverage } = preparePanelProposal(
       input,
       { seats: uniformSeats(adapter('big')), simulate: false },
-      { comments: 0, fields: 0, tags: 0 },
+      undefined,
       logger,
       registry
     );

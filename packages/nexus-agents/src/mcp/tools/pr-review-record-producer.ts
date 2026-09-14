@@ -15,10 +15,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import {
-  computeReviewedDiffHash,
-  reviewedDiffWasTruncated,
-} from '../../audit/reviewed-diff-hash.js';
+import { computeReviewedDiffHash } from '../../audit/reviewed-diff-hash.js';
 import { persistPrReviewRecord } from '../../audit/pr-review-record-store.js';
 import type {
   PrReviewBindingBounds,
@@ -30,8 +27,11 @@ import type {
 import {
   hasFileBoundaries,
   looksLikeUnifiedDiff,
+  type BindingMeasurement,
+  type BindingMeasurementSource,
   type PanelBudgetSource,
 } from './pr-review-diff-budget.js';
+import { resolveBindingMeasurement } from './pr-review-sanitization-view.js';
 import type { PrReviewAggregate, PrReviewInput } from './pr-review-tool.js';
 
 /**
@@ -92,9 +92,11 @@ export interface PrReviewCounts {
  * and as a human-readable stamp in the (also hash-covered, 500-char-capped)
  * `summary`, which lists at most {@link SUMMARY_DROPPED_FILES_LISTED} of the
  * dropped paths and counts the rest. The `reviewedDiffHash` binding is
- * UNCHANGED (still the canonical first-`MAX_REVIEWED_DIFF_BYTES` of
- * `input.prDiff`); the gate matches on `{prNumber, reviewedDiffHash}`, never on
- * the summary text. The byte fields are UTF-8 (see `PrReviewBindingCoverage`).
+ * UNCHANGED (still the canonical first-`MAX_REVIEWED_DIFF_BYTES` of the bytes
+ * the hash was computed over); the gate matches on `{prNumber,
+ * reviewedDiffHash}`, never on the summary text. The byte fields are UTF-8
+ * (see `PrReviewBindingCoverage`); `binding` / `boundBytes` are measured over
+ * the bytes the hash covers and `bindingSource` says which those were (#6177).
  */
 export interface PrReviewCoverageStamp {
   readonly reviewedFiles: number;
@@ -103,6 +105,7 @@ export interface PrReviewCoverageStamp {
   readonly partial: boolean;
   readonly panelRead: 'full' | 'partial';
   readonly binding: 'full' | 'prefix';
+  readonly bindingSource: BindingMeasurementSource;
   readonly reviewedBytes: number;
   readonly boundBytes: number;
   readonly totalBytes: number;
@@ -116,6 +119,19 @@ function bytes(n: number): string {
 }
 
 /**
+ * The human-readable name of the bytes the binding was measured over (#6177).
+ * `'input'` says nothing — the diff as handed is the raw diff, the pre-#6177
+ * wording. `'raw'` is stated so a reader can see the binding figure and the
+ * `panel read` figure are over different texts. The fallback is spelled out
+ * because its `full` is not a raw measurement and must not read as one.
+ */
+function bindingSourceClause(source: BindingMeasurementSource): string {
+  if (source === 'raw') return ' (raw)';
+  if (source === 'sanitized-fallback') return ' (sanitized; raw length not supplied)';
+  return '';
+}
+
+/**
  * The #6003 summary stamp: what the PANEL read and what the BINDING covers, as
  * two statements, plus the budget's source. No hash here — the record's own
  * `reviewedDiffHash` field already carries it, and 71 chars of the store's
@@ -123,9 +139,10 @@ function bytes(n: number): string {
  */
 function bindingStamp(coverage: PrReviewCoverageStamp): string {
   const binding =
-    coverage.binding === 'prefix'
+    (coverage.binding === 'prefix'
       ? `binding covers first ${bytes(coverage.boundBytes)} bytes`
-      : `binding covers all ${bytes(coverage.boundBytes)} bytes`;
+      : `binding covers all ${bytes(coverage.boundBytes)} bytes`) +
+    bindingSourceClause(coverage.bindingSource);
   return (
     `[panel read ${bytes(coverage.reviewedBytes)}/${bytes(coverage.totalBytes)} bytes; ` +
     `${binding}; budget: ${coverage.budgetSource} (${coverage.budgetDetail})]`
@@ -210,6 +227,22 @@ export interface ReviewSanitizationInput {
    * pre-sanitization hash" rather than pass a hash of the wrong artifact.
    */
   readonly rawDiffHash: string | undefined;
+  /**
+   * UTF-8 byte length of the RAW `prDiff` the hash above was computed over,
+   * measured by the middleware beside the hash (#6177). Its own `undefined`
+   * case, like the hash's: a middleware that hashed but did not measure must
+   * be representable, and the producer then measures the sanitized text and
+   * SAYS SO rather than claiming a raw measurement it never received.
+   */
+  readonly rawDiffBytes: number | undefined;
+  /**
+   * Whether `computeReviewedDiffHash` truncated the raw input at
+   * `MAX_REVIEWED_DIFF_BYTES` (#6177) — the raw-side answer to
+   * `reviewedDiffWasTruncated`, which the producer cannot compute itself
+   * because it never holds the raw text. `undefined` exactly when
+   * `rawDiffBytes` is.
+   */
+  readonly rawTruncated: boolean | undefined;
   /** HTML comments the middleware stripped from the args before dispatch. */
   readonly commentsRemoved: number;
   /**
@@ -267,12 +300,26 @@ export interface PersistReviewRecordArgs {
  * exceeds that byte cap, content past it is UNBOUND, so a record can match a
  * different tail than the voters saw. Warn so the silent truncation is observable
  * (the diff-hash module documents this producer obligation).
+ *
+ * Decided over the bytes the hash COVERS (#6177): the middleware's raw
+ * measurement when it supplied one, `input.prDiff` when no sanitizer was in
+ * the path. Reading `input.prDiff` on the MCP path read the sanitized text,
+ * which is under the cap exactly when the sanitizer stripped enough — the
+ * state this warning exists for. The fallback (a sanitizer that supplied no
+ * raw length) is its own warning, so a measurement over the wrong artifact is
+ * never silent.
  */
-function warnIfDiffTruncated(diff: string, prNumber: number, logger: ILogger): void {
-  if (!reviewedDiffWasTruncated(diff)) return;
+function warnIfDiffTruncated(binding: BindingMeasurement, prNumber: number, logger: ILogger): void {
+  if (binding.source === 'sanitized-fallback') {
+    logger.warn(
+      'Binding bounds measured over the SANITIZED diff: the sanitizer supplied no raw byte length, so a prefix binding can be under-stated (#6177)',
+      { prNumber, sanitizedBytes: binding.totalBytes }
+    );
+  }
+  if (!binding.truncated) return;
   logger.warn(
     'Reviewed diff exceeds the hash byte cap; content past it is unbound in reviewedDiffHash',
-    { prNumber }
+    { prNumber, measuredOver: binding.source, totalBytes: binding.totalBytes }
   );
 }
 
@@ -367,7 +414,7 @@ function buildAndPersist(
   const stamps = coverageStamps(coverage);
   const coverageFields = coverageFieldsOf(coverage);
   const disclosure = sanitizationDisclosureOf(sanitization, input.prDiff);
-  warnIfDiffTruncated(input.prDiff, prNumber, logger);
+  warnIfDiffTruncated(resolveBindingMeasurement(input.prDiff, sanitization), prNumber, logger);
   const record = persistPrReviewRecord({
     prNumber,
     baseSha,

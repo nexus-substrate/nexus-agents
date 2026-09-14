@@ -71,6 +71,7 @@ function makeCtx(): HandlerContext {
       fieldsModified: 0,
       tagsRemoved: 0,
       rawFieldHashes: {},
+      rawFieldBytes: {},
     },
     requestContext: {
       requestId: 'test-req',
