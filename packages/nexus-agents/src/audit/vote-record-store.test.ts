@@ -318,7 +318,8 @@ describe('buildVoteRecord', () => {
   it('orders the tally deterministically regardless of voter arrival order (#4452)', () => {
     // The array is hash-covered, so two vote sets differing only in order must
     // not produce different hashes. Since #6263 every built record also
-    // carries a fresh per-entry nonce, so two builds never share a hash; the
+    // carries a fresh per-entry nonce whose digest is hashed, so two builds
+    // never share a hash; the
     // comparison holds the nonces constant by re-hashing the second payload
     // with the first's voter entries, leaving the tally as the only variable.
     const mk = (opts: readonly string[]): VoteRecord =>
@@ -1767,7 +1768,8 @@ describe('schema 1.13: the builder commits to each stored reasoning with a salte
   // The producer half of #5748 step 1. Every responding voter's entry carries
   // a fresh `reasoningNonce` and `reasoningDigest = sha256(nonce ‖ reasoning)`
   // over the text AS STORED (clipped), so the commitment is re-openable from
-  // the record alone. The hash folds the two keys and not the text.
+  // the record alone. The hash folds the digest only; text and nonce (the
+  // opening) travel outside it (#6274 panel 1).
   function build(
     v: readonly AgentVoteResult[],
     extra: Partial<Pick<BuildVoteRecordInput, 'errorPolicy' | 'ratifiesPr'>> = {}

@@ -7,17 +7,24 @@
  * `hash_mismatch`. On the digest tier (schema 1.13) a voter entry instead
  * carries a per-entry salt, `reasoningNonce`, and a commitment to the text,
  * `reasoningDigest = sha256(reasoningNonce ‖ reasoning)`; the record hash
- * folds the nonce and the digest and NOT the text. The text still travels on
- * the record, outside the hash, and the verifier re-opens the commitment
- * whenever the opening (nonce + text) is present — so while the text is there
- * the tier is exactly as tamper-evident as the one before it, and once a
- * later step drops the text (#6264) the original hash, and any signature
- * over it, still verifies.
+ * folds ONLY the digest. The OPENING — the text AND the nonce — travels on
+ * the record outside the hash, and the verifier re-opens the commitment
+ * whenever both are present — so while the opening is there the tier is
+ * exactly as tamper-evident as the one before it (editing text or nonce
+ * alone breaks the re-opening; editing both to another opening is a second
+ * preimage), and once a later step drops text and nonce together (#6264)
+ * the original hash, and any signature over it, still verifies.
  *
- * The salt is the contrarian's amendment: an unsalted digest over
- * low-entropy boilerplate prose is dictionary-attackable once the plaintext
- * is gone. One fresh nonce per ENTRY, not per record, so two seats that
- * answered with the same boilerplate do not reveal it through equal digests.
+ * The salt is the contrarian's amendment, and it is the SECRET, which is why
+ * it must be outside the hash (#6274 panel 1 rejected the fold that hashed
+ * it): an unsalted or public-salted digest over low-entropy boilerplate
+ * prose is dictionary-attackable once the plaintext is gone —
+ * `sha256(nonce ‖ guess)` confirms the guess — while a hashed salt could not
+ * be dropped at redaction without breaking the hash and the signature. With
+ * the 256-bit nonce dropped alongside the text the digest is an opaque
+ * commitment: no offline guessing. One fresh nonce per ENTRY, not per record,
+ * so two seats that answered with the same boilerplate do not reveal it
+ * through equal digests.
  *
  * Split out of `vote-record.ts` when the tier pushed that file past the
  * line cap. Structural parameter types (not `VoterSummary`) so this module
@@ -91,11 +98,15 @@ function textTierShapeDefect(v: ReasoningCommitmentFields): ReasoningCommitmentS
 }
 
 /**
- * On the digest tier an entry WITH reasoning carries both keys — a digest
- * without its nonce cannot be opened, a nonce without its digest commits to
- * nothing — and an entry WITHOUT reasoning carries neither: a commitment with
- * nothing to open it is refused HERE; step 2's redacted form (digest kept,
- * nonce and text dropped) is its own tier with its own verifier state (#6264).
+ * On the digest tier two rules hold the keys together. The OPENING rule:
+ * text ⇔ nonce — both present or both absent, because the two are opened and
+ * dropped as one (a text without its salt cannot be re-opened; a salt without
+ * its text opens nothing). The COMMITMENT rule: any entry that has reasoning
+ * carries `reasoningDigest`, the one hash-covered key. A digest with NO
+ * opening at all (text and nonce both absent) is, for now, refused HERE —
+ * step 2 (#6264) admits exactly that shape as `redacted` under a redaction
+ * record naming the entry; until then a commitment nothing can open is not a
+ * state this tier has a verdict for.
  */
 function digestTierShapeDefect(
   v: ReasoningCommitmentFields
@@ -106,11 +117,17 @@ function digestTierShapeDefect(
   if (hasText && !hasNonce) {
     return { key: 'reasoningNonce', message: 'reasoning without its reasoningNonce' };
   }
+  if (hasNonce && !hasText) {
+    return { key: 'reasoning', message: 'reasoningNonce without the reasoning it opens' };
+  }
   if (hasText && !hasDigest) {
     return { key: 'reasoningDigest', message: 'reasoning without its reasoningDigest' };
   }
-  if (!hasText && (hasNonce || hasDigest)) {
-    return { key: 'reasoning', message: 'a reasoning commitment with no reasoning to open it' };
+  if (hasDigest && !hasText) {
+    return {
+      key: 'reasoning',
+      message: 'a reasoning commitment with no opening (redaction is step 2, #6264)',
+    };
   }
   return null;
 }
@@ -137,10 +154,10 @@ export function reasoningCommitmentShapeDefect(
  * Two checks per entry: the shape rule ({@link reasoningCommitmentShapeDefect})
  * and — when nonce and text are both present — the commitment itself,
  * `reasoningDigest === sha256(nonce ‖ reasoning)`. On the digest tier the
- * record hash cannot see the text, so THIS is what makes a text edited in
- * place a verification failure rather than a silent change: the hash still
- * matches, the commitment does not. A digest nobody re-opens would be a
- * check that cannot fail.
+ * record hash cannot see the text OR the nonce, so THIS is what makes a text
+ * or nonce edited in place a verification failure rather than a silent
+ * change: the hash still matches, the commitment does not. A digest nobody
+ * re-opens would be a check that cannot fail.
  *
  * Used by `verifyVoteRecordSet` and by the caller-commits append script,
  * which vets a source record's self-hash alone (its sequence census would

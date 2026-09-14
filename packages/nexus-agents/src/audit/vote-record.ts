@@ -300,13 +300,20 @@ export const VoterSummarySchema = z
      * lowercase hex, minted by `mintReasoningNonce` (reasoning-commitment.ts)
      * once per entry.
      *
-     * On the digest tier the record hash folds THIS and `reasoningDigest`
-     * and NOT `reasoning`, which travels on the record outside the hash
-     * (`reasoningTruncated` stays hashed). That is what lets a later step drop the text while
-     * the original hash — and any signature over it — still verifies. The
-     * record-level refinement below holds the three together: on 1.13 an
-     * entry with `reasoning` carries both keys; on every older tier it
-     * carries neither (there they would be unhashed decoration).
+     * The nonce is the OPENING of the commitment, together with `reasoning`:
+     * on the digest tier the record hash folds ONLY `reasoningDigest`, and
+     * both text and nonce travel on the record outside the hash
+     * (`reasoningTruncated` stays hashed). The salt is the secret (#6274
+     * panel 1): hashed, it could not be dropped at redaction without
+     * breaking the hash and the #3927 signature; public, it would let
+     * `sha256(nonce ‖ guess)` confirm low-entropy reasoning once the text is
+     * gone. Outside the hash, a later step (#6264) drops text and nonce
+     * together while the original hash — and any signature over it — still
+     * verifies, and the 256-bit unknown salt keeps the digest opaque. The
+     * record-level refinement below holds the three together: on 1.13 text
+     * and nonce are present or absent TOGETHER and an entry with reasoning
+     * carries the digest; on every older tier it carries neither key (there
+     * they would be unhashed decoration).
      */
     reasoningNonce: z.string().regex(HEX_256_PATTERN).optional(),
     /**
@@ -387,29 +394,43 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // projects byte-identically. Nested; `projectRetriedFrom` rebuilds it in
   // its own canonical order.
   'retriedFrom',
-  // 1.13 (#6263): appended after `retriedFrom`, present-only. Folded ONLY on
-  // the digest tier, where `reasoning` above is NOT (`reasoningTruncated`
-  // stays folded on every tier) — `projectVoterField` keys the swap on the
-  // record version, so a 1.12 entry still projects byte-identically.
+  // 1.13 (#6263): appended after `retriedFrom`, present-only. Only
+  // `reasoningDigest` is ever folded, and only on the digest tier, where
+  // `reasoning` above is NOT (`reasoningTruncated` stays folded on every
+  // tier); `reasoningNonce` is listed because every schema key must be (the
+  // `defineVoterKeys` constraint) but projects to absent on EVERY tier — it
+  // is the opening's salt, never hash-covered. `projectVoterField` keys the
+  // swap on the record version, so a 1.12 entry still projects
+  // byte-identically.
   'reasoningNonce',
   'reasoningDigest',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
-/** The voter keys the digest tier folds INSTEAD of `reasoning`. */
-const REASONING_DIGEST_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
+/**
+ * The 1.13 keys — outside the hash on every TEXT tier, where the schema
+ * refuses them anyway (they would be unhashed decoration there).
+ */
+const REASONING_TIER_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
   'reasoningNonce',
   'reasoningDigest',
 ]);
 
 /**
- * The voter keys the digest tier leaves OUTSIDE the hash: the raw text ONLY.
- * The #5748 decision exempts the text so a later step can drop it; the clip
- * marker `reasoningTruncated` is a boolean with no privacy content that
- * redaction keeps, so it stays folded on every tier like any other
- * present-only key — an unhashed marker would let "this argument was clipped"
- * be erased from a committed record without `hash_mismatch` (#6274 review).
+ * The OPENING of the commitment — outside the hash on the DIGEST tier: the
+ * raw text and its salt, `reasoningNonce`. Both, not the text alone (#6274
+ * panel 1): the hash folds only `reasoningDigest`, so a later step can drop
+ * text and nonce together while the hash and any signature over it verify
+ * unchanged, and the unknown 256-bit salt keeps the digest an opaque
+ * commitment rather than a dictionary target. The clip marker
+ * `reasoningTruncated` is a boolean with no privacy content that redaction
+ * keeps, so it stays folded on every tier like any other present-only key — an
+ * unhashed marker would let "this argument was clipped" be erased from a
+ * committed record without `hash_mismatch` (#6274 review).
  */
-const REASONING_TEXT_KEYS: ReadonlySet<keyof VoterSummary> = new Set(['reasoning']);
+const REASONING_OPENING_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
+  'reasoning',
+  'reasoningNonce',
+]);
 
 /** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
 type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
@@ -474,16 +495,17 @@ export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetr
  * their own projectors; every other value is a scalar and is carried as-is.
  *
  * `digestTier` (#6263) is the one place the fold depends on the record's
- * tier: on the digest tier the text key projects to ABSENT and the digest
- * keys are carried; on every other tier the digest keys project to absent
- * and the text is carried exactly as it was — the pinned 1.7–1.12 goldens
- * are the guard. The clip marker is carried on BOTH sides of the swap. Keyed on the tier and not on key presence so that a stray
- * digest on an old record, or a stray text on a new one, cannot change what
- * the hash covers (the schema refuses both shapes; this makes the fold not
- * depend on that refusal).
+ * tier: on the digest tier the opening keys (text and nonce) project to
+ * ABSENT and the digest is carried; on every other tier the 1.13 keys project
+ * to absent and the text is carried exactly as it was — the pinned 1.7–1.12
+ * goldens are the guard. The clip marker is carried on BOTH sides of the
+ * swap; the nonce on NEITHER. Keyed on the tier and not on key presence so
+ * that a stray digest on an old record, or a stray text on a new one, cannot
+ * change what the hash covers (the schema refuses both shapes; this makes the
+ * fold not depend on that refusal).
  */
 function projectVoterField(v: VoterSummary, key: keyof VoterSummary, digestTier: boolean): unknown {
-  if (digestTier ? REASONING_TEXT_KEYS.has(key) : REASONING_DIGEST_KEYS.has(key)) return undefined;
+  if (digestTier ? REASONING_OPENING_KEYS.has(key) : REASONING_TIER_KEYS.has(key)) return undefined;
   if (key === 'fallback') {
     return v.fallback === undefined ? undefined : projectSeatFallback(v.fallback);
   }
@@ -889,9 +911,10 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
     // fields: a pre-1.6 voter entry re-hashes byte-identical, so every
     // historical record still verifies, while editing or removing a stored
     // reasoning flips the hash. On the digest tier (#6263, schema 1.13) the
-    // entry folds `reasoningNonce` + `reasoningDigest` INSTEAD of the text
-    // (the clip marker stays folded); the text is bound by the digest, which
-    // `verifyVoteRecordSet` re-opens.
+    // entry folds `reasoningDigest` INSTEAD of the text, and the salt
+    // `reasoningNonce` stays outside the hash with the text (the clip marker
+    // stays folded); the text is bound by the digest, which
+    // `verifyVoteRecordSet` re-opens with the nonce.
     voters: payload.voters.map((v) =>
       projectVoterSummary(v, isReasoningDigestTier(payload.version))
     ),
@@ -970,8 +993,8 @@ function verifyVoteRecord(record: VoteRecord, index: number): VoteRecordVerifica
       detail: `record at index ${String(index)} stored hash=${record.hash} does not match recomputed=${recomputed}`,
     };
   }
-  // #6263: on the digest tier the hash above cannot see the reasoning text,
-  // so the commitment is re-opened here. Reported as `hash_mismatch`, not a
+  // #6263: on the digest tier the hash above cannot see the reasoning text
+  // or its nonce, so the commitment is re-opened here. Reported as `hash_mismatch`, not a
   // fourth reason: it is the same fact — a stored field no longer matches
   // what the record attests — and every consumer of the reason set keeps
   // its meaning. Step 2 (#6264) adds the `redacted` state for an entry whose

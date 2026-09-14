@@ -1173,12 +1173,16 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
   // can ever be removed from it without `hash_mismatch`. On this tier each
   // voter entry carries `reasoningNonce` (32 random bytes, hex) and
   // `reasoningDigest = sha256(reasoningNonce ‖ reasoning)`; the record hash
-  // folds the nonce and the digest and NOT `reasoning`. The clip marker
-  // `reasoningTruncated` stays folded — only the text is exempt.
-  // The text travels on the record OUTSIDE the hash — the digest is the
-  // commitment to it, and the verifier checks that commitment whenever the
-  // opening (nonce + text) is present. Older tiers keep folding the text; the
-  // 1.12 golden is the guard for that.
+  // folds ONLY the digest. The OPENING — the text AND the nonce — travels on
+  // the record outside the hash, and the verifier re-opens the commitment
+  // whenever both are present. The nonce must be outside the hash because the
+  // salt is the secret (#6274 panel 1): a public salt lets `sha256(nonce ‖
+  // guess)` confirm any low-entropy reasoning once the text is dropped, and
+  // a hashed salt cannot be dropped without breaking the hash and the #3927
+  // signature. With both dropped (step 2, #6264) the digest stays hash-covered
+  // and is an opaque commitment. The clip marker `reasoningTruncated` stays
+  // folded — only the opening is exempt. Older tiers keep folding the text;
+  // the 1.12 golden is the guard for that.
   const NONCE = '0f'.repeat(32);
   const REASONING = 'UNVERIFIABLE: could not read the artifact';
   // Derived independently of the implementation: `printf '%s%s' "$nonce"
@@ -1191,7 +1195,7 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     id: 'vote-max-113',
     voters: [{ ...v12, reasoning: REASONING, reasoningNonce: NONCE, reasoningDigest: DIGEST }],
   };
-  const GOLDEN_1_13 = 'eaebde857be136215a0618c8bbe56a7e278b63b9fe1aaf04bc3ca8c3e3629d62';
+  const GOLDEN_1_13 = 'b93e7c041fa4be70490f4640b5353114e41bf4834415d21180df5c5569c1ba51';
   const asRecord = (payload: Omit<VoteRecord, 'hash'>): VoteRecord => ({
     ...payload,
     hash: computeVoteRecordHash(payload),
@@ -1221,13 +1225,15 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
   it('pins the MAXIMAL 1.13 record to a golden derived BY HAND before the projection existed', () => {
     // The canonical string was built by hand in the documented order — the
     // voter keys through `retriedFrom` (`reasoningTruncated` in its 1.6
-    // slot, `reasoning` OMITTED), then `reasoningNonce`, then
+    // slot, `reasoning` and `reasoningNonce` OMITTED), then
     // `reasoningDigest` — hashed with node's sha256 in a scratch script and
     // cross-checked with coreutils `sha256sum` over the same bytes, so the
     // literal is not the implementation agreeing with itself. The same
-    // string with the marker removed reproduces the pre-review golden
-    // (`10cb8add…8ee9`), which pinned the marker as unhashed. If it moves,
-    // the canonical voter order or the digest-tier fold rule changed.
+    // hand-built string with `"reasoningNonce":…` inserted before the digest
+    // reproduces the golden the panel rejected (`eaebde85…9d62`, nonce
+    // folded), and with the text in its 1.6 slot instead reproduces the
+    // 1.12 golden — both cross-checks that the hand string is right. If it
+    // moves, the canonical voter order or the digest-tier fold rule changed.
     expect(computeVoteRecordHash(MAXIMAL_1_13)).toBe(GOLDEN_1_13);
   });
 
@@ -1243,15 +1249,50 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
   });
 
   it('on the digest tier the TEXT is outside the hash: editing or dropping reasoning leaves the hash unchanged', () => {
-    // Stated directly because it is the property step 2 (#6264) rests on: the
-    // hash — and any signature over it — survives the text being dropped. The
-    // digest, not the hash, is what binds the text (next test). Only the
-    // text: the clip marker is hashed (the two `reasoningTruncated` tests).
+    // The digest, not the hash, is what binds the text (next test). Only the
+    // opening: the clip marker is hashed (the two `reasoningTruncated` tests).
     const v = MAXIMAL_1_13.voters[0]!;
     const textEdited = { ...MAXIMAL_1_13, voters: [{ ...v, reasoning: REASONING + '!' }] };
     const { reasoning: _r, ...withoutText } = v;
     expect(computeVoteRecordHash(textEdited)).toBe(GOLDEN_1_13);
     expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutText] })).toBe(GOLDEN_1_13);
+  });
+
+  it('dropping BOTH text and nonce leaves the record hash unchanged — the redaction property step 2 rests on', () => {
+    // Asserted as hash-value EQUALITY, not `not.toBe`: the hash — and any
+    // #3927 signature over it — survives the whole opening being dropped,
+    // which is what lets step 2 (#6264) redact without re-signing. Under the
+    // rejected fold (nonce hashed) this moved the hash (#6274 panel 1). The
+    // schema still refuses the shape on THIS tier (a commitment with nothing
+    // to open it); step 2 admits it under a redaction record.
+    const { reasoning: _r, reasoningNonce: _n, ...redacted } = MAXIMAL_1_13.voters[0]!;
+    expect(redacted.reasoningDigest).toBe(DIGEST);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [redacted] })).toBe(GOLDEN_1_13);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [redacted] })).toBe(
+      computeVoteRecordHash(MAXIMAL_1_13)
+    );
+    const parsed = VoteRecordSchema.safeParse(asRecord({ ...MAXIMAL_1_13, voters: [redacted] }));
+    expect(parsed.success).toBe(false);
+  });
+
+  it('editing text AND nonce together to a different opening is a hash_mismatch — the digest re-opening fails while the record hash cannot see it', () => {
+    // A second opening of the same commitment is a second preimage. The
+    // record hash is unchanged (both keys are outside it), so it is ONLY the
+    // verifier's re-opening of `sha256(nonce ‖ text)` against the
+    // hash-covered digest that refuses the record.
+    const record = asRecord(MAXIMAL_1_13);
+    const v = record.voters[0]!;
+    const other: VoteRecord = {
+      ...record,
+      voters: [{ ...v, reasoning: 'a different argument', reasoningNonce: 'a5'.repeat(32) }],
+    };
+    expect(computeVoteRecordHash(other)).toBe(record.hash);
+    const result = verifyVoteRecordSet([other]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('hash_mismatch');
+      expect(result.detail).toContain('reasoningDigest');
+    }
   });
 
   it('editing reasoning WITHOUT recomputing the digest is a hash_mismatch naming the digest — the commitment is checked, not decorative', () => {
@@ -1311,13 +1352,28 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     expect(verifyVoteRecordSet([asRecord({ ...reproduced, sequence: 0 })]).ok).toBe(true);
   });
 
-  it('dropping the nonce alone moves the hash; dropping the digest alone moves it; editing the nonce is a hash_mismatch', () => {
+  it('the NONCE is outside the hash: dropping it alone leaves the hash unchanged, and the verifier refuses the half-opening as hash_mismatch', () => {
+    // Inverts the test that pinned the rejected fold ("dropping the nonce
+    // alone moves the hash"). The nonce is the secret salt, so it travels
+    // with the text, not in the hash; what refuses a nonce-less entry that
+    // still carries text is the opening rule text ⇔ nonce
+    // (`reasoningCommitmentShapeDefect`), reported by `verifyVoteRecordSet`
+    // as `hash_mismatch` at the missing key — and the schema refuses the line.
+    const record = asRecord(MAXIMAL_1_13);
+    const { reasoningNonce: _n, ...withoutNonce } = record.voters[0]!;
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutNonce] })).toBe(GOLDEN_1_13);
+    const result = verifyVoteRecordSet([{ ...record, voters: [withoutNonce] }]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('hash_mismatch');
+      expect(result.detail).toContain('reasoning without its reasoningNonce');
+    }
+    expect(VoteRecordSchema.safeParse({ ...record, voters: [withoutNonce] }).success).toBe(false);
+  });
+
+  it('dropping the digest alone moves the hash; editing the nonce alone is a hash_mismatch from the re-opening, not the hash', () => {
     const v = MAXIMAL_1_13.voters[0]!;
-    const { reasoningNonce: _n, ...withoutNonce } = v;
     const { reasoningDigest: _d, ...withoutDigest } = v;
-    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutNonce] })).not.toBe(
-      GOLDEN_1_13
-    );
     expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutDigest] })).not.toBe(
       GOLDEN_1_13
     );
@@ -1326,9 +1382,13 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
       ...record,
       voters: [{ ...record.voters[0]!, reasoningNonce: 'e0'.repeat(32) }],
     };
+    expect(computeVoteRecordHash(nonceEdited)).toBe(record.hash);
     const result = verifyVoteRecordSet([nonceEdited]);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+    if (!result.ok) {
+      expect(result.reason).toBe('hash_mismatch');
+      expect(result.detail).toContain('reasoningDigest');
+    }
   });
 
   it("reordering a 1.13 voter entry's keys does not change the hash", () => {
@@ -1359,13 +1419,17 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     const { reasoningNonce: _n, ...noNonce } = v;
     const { reasoningDigest: _d, ...noDigest } = v;
     const { reasoning: _r, ...noText } = v;
+    const { reasoning: _r2, reasoningNonce: _n2, ...noOpening } = v;
     expect(accepts(v)).toBe(true);
-    // The issue's named case: a digest with no nonce cannot be opened.
+    // The opening rule: text ⇔ nonce. A text without its salt cannot be
+    // re-opened; a salt without its text opens nothing.
     expect(accepts(noNonce)).toBe(false);
-    expect(accepts(noDigest)).toBe(false);
-    // A commitment with nothing to open it is refused on THIS tier; step 2's
-    // redacted form (digest kept, nonce and text dropped) is its own tier.
     expect(accepts(noText)).toBe(false);
+    // The digest is required on 1.13 for any entry that has reasoning.
+    expect(accepts(noDigest)).toBe(false);
+    // A commitment with no opening at all is refused on THIS tier, for now;
+    // step 2 (#6264) admits it under a redaction record naming the entry.
+    expect(accepts(noOpening)).toBe(false);
     // Shape: 64 lowercase hex, nothing else.
     expect(accepts({ ...v, reasoningNonce: NONCE.toUpperCase() })).toBe(false);
     expect(accepts({ ...v, reasoningNonce: NONCE.slice(2) })).toBe(false);
@@ -1413,6 +1477,14 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     expect(findReasoningCommitmentDefect({ ...record, voters: [noNonce] })).toContain(
       'reasoningNonce'
     );
+    // The opening rule in the other direction: a salt with no text.
+    const { reasoning: _r2, ...noText } = v;
+    expect(findReasoningCommitmentDefect({ ...record, voters: [noText] })).toContain(
+      'reasoningNonce without the reasoning it opens'
+    );
+    // And a bare commitment: refused for now, admitted by step 2 (#6264).
+    const { reasoning: _r3, reasoningNonce: _n3, ...bare } = v;
+    expect(findReasoningCommitmentDefect({ ...record, voters: [bare] })).toContain('no opening');
     // An older tier never has a commitment to check.
     expect(findReasoningCommitmentDefect(asRecord(MAXIMAL_1_12))).toBeNull();
   });
