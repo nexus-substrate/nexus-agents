@@ -79,6 +79,11 @@ every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`:
 - `no-record` — nothing binds this PR; an empty ledger is this, never `ratified`.
 - `sha-mismatch` — records bind this PR, none at an accepted head.
 - `not-approved` — a bound record's decision is not `approved`.
+- `wrong-error-policy` — a bound record records an `errorPolicy` other than
+  `absolute_quorum` (#6211, schema tier 1.11). The record carries the
+  EFFECTIVE policy the panel ran under; a pre-1.11 record has no such field
+  and falls through to the panel-coverage inference below, and the
+  `ratified` line then says `errorPolicy: unrecorded`.
 - `unmeasured-panel` — a bound record has no `panelCoverage`, or one naming
   zero seats; the record cannot show the panel ran whole (#6213). A bound
   record written by `buildVoteRecord` always carries coverage, so this names
@@ -108,11 +113,10 @@ post-merge backstop keys on the PR number only — the squash commit is not the
 head the panel saw — and says the sha was not checked; it does check
 append-only against the landed commit's parent. **Warn-first:** the line is
 an annotation and the exit code is still the label/approval verdict's; #5131
-flips every non-`ratified` verdict above, and `unmeasured`, to a failure. The
-record does not carry `errorPolicy`; an approved record with errored seats is
-the only ledger-observable trace of a policy other than `absolute_quorum`,
-which is why `degraded-panel` is the check and there is no separate policy
-verdict.
+flips every non-`ratified` verdict above, and `unmeasured`, to a failure.
+Precedence: `ledger-invalid` → `ledger-rewritten` → `duplicate-id` →
+`no-record` → `sha-mismatch` → `not-approved` → `wrong-error-policy` →
+`unmeasured-panel` → `degraded-panel` → `ratified`.
 
 ## pr-review-records.jsonl
 

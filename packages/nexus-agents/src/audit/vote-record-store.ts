@@ -266,6 +266,16 @@ export interface BuildVoteRecordInput {
    */
   readonly ratifiesPr?: VoteRecordPrBinding | undefined;
   /**
+   * The error policy the panel ran under (#6211, schema 1.11) — the EFFECTIVE
+   * policy `executeVoting` resolved (`input.errorPolicy ??
+   * getDefaultErrorPolicy(strategy)`), never the raw tool input. Hash-covered
+   * so the governor ledger gate can trust it. Optional here because the
+   * builder is also the fixture path for gate tests; the producer-facing
+   * `RecordAuthenticVoteArgs` requires it (including its `undefined` case) so
+   * the compiler names every live call site.
+   */
+  readonly errorPolicy?: VoteRecord['errorPolicy'] | undefined;
+  /**
    * Monotonic sequence number for this record (#3927). Defaults to 0 (first
    * record) when omitted; the producer ({@link persistVoteRecord}) supplies
    * (max existing sequence)+1.
@@ -340,23 +350,28 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.10 carries a record-level `ratifiesPr` PR binding (#5130), 1.9 a voter
- * `assignedCli` or `fallback`, 1.8 a voter `model` or an
- * `unverifiable` seat, 1.7 a retried voter seat, 1.6 voter reasoning, 1.5
- * panel coverage, 1.4 option coverage, 1.3 a bare tally (historical only — a
- * tally now always travels with coverage), 1.2 neither.
+ * 1.11 carries a record-level `errorPolicy` (#6211), 1.10 a record-level
+ * `ratifiesPr` PR binding (#5130), 1.9 a voter `assignedCli` or `fallback`,
+ * 1.8 a voter `model` or an `unverifiable` seat, 1.7 a retried voter seat,
+ * 1.6 voter reasoning, 1.5 panel coverage, 1.4 option coverage, 1.3 a bare
+ * tally (historical only — a tally now always travels with coverage), 1.2
+ * neither.
  */
 function recordVersion(
   optionTally: VoteRecordOptionCount[] | undefined,
   optionCoverage: VoteRecordOptionCoverage | undefined,
   panelCoverage: VoteRecordPanelCoverage | undefined,
   voters: readonly VoterSummary[],
-  ratifiesPr: VoteRecordPrBinding | undefined
-): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' | '1.10' {
-  // 1.10 first: the binding is record-level and orthogonal to every voter
-  // tier below, and a reader needs to know from the version alone whether the
-  // record may carry it (#5130).
-  if (ratifiesPr !== undefined) return '1.10';
+  /** The two record-level optionals the caller supplies directly (grouped: max-params). */
+  recordLevel: Pick<BuildVoteRecordInput, 'ratifiesPr' | 'errorPolicy'>
+): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' | '1.10' | '1.11' {
+  // 1.11 first: the policy is record-level and orthogonal to every tier
+  // below, and a reader needs to know from the version alone whether the
+  // record may carry it (#6211).
+  if (recordLevel.errorPolicy !== undefined) return '1.11';
+  // 1.10 next: the binding is record-level and orthogonal to every voter
+  // tier below, on the same rule (#5130).
+  if (recordLevel.ratifiesPr !== undefined) return '1.10';
   // 1.9 next, on the same tier logic as 1.8: either key alone lifts the
   // tier, so a reader knows from the version whether a seat's assignment and
   // fallover may be on its entry (#6115).
@@ -469,7 +484,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   const panelCoverage = panelCoverageOf(input.votes, input.ratifiesPr !== undefined);
   const voters = toVoterSummaries(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
-    version: recordVersion(optionTally, optionCoverage, panelCoverage, voters, input.ratifiesPr),
+    version: recordVersion(optionTally, optionCoverage, panelCoverage, voters, input),
     id: input.id,
     sequence: input.sequence ?? 0,
     recordedAt: input.recordedAt ?? new Date().toISOString(),
@@ -490,6 +505,8 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
     ...(optionTally !== undefined ? { optionTally } : {}),
     ...(optionCoverage !== undefined ? { optionCoverage } : {}),
     ...(panelCoverage !== undefined ? { panelCoverage } : {}),
+    // #6211: the effective error policy, present-only, on the `ratifiesPr` rule.
+    ...(input.errorPolicy !== undefined ? { errorPolicy: input.errorPolicy } : {}),
     ...(input.previousHash !== undefined ? { previousHash: input.previousHash } : {}),
   };
   return { ...payload, hash: computeVoteRecordHash(payload) };

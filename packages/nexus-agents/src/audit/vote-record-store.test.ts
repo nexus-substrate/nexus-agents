@@ -1515,3 +1515,79 @@ describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () =>
     }
   });
 });
+
+describe('errorPolicy — the policy the panel ran under (#6211, schema 1.11)', () => {
+  it('buildVoteRecord carries the policy verbatim, lifts the tier to 1.11, and the record verifies', () => {
+    const record = buildVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      id: 'vote-policy',
+      proposal: 'Ratify PR #6211',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+      errorPolicy: 'absolute_quorum',
+    });
+    expect(record.version).toBe('1.11');
+    expect(record.errorPolicy).toBe('absolute_quorum');
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('1.11 outranks 1.10: a record carrying both the PR binding and the policy is 1.11', () => {
+    const record = buildVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      id: 'vote-policy-bound',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+      ratifiesPr: { pr: 6211, headSha: '0123456789abcdef0123456789abcdef01234567' },
+      errorPolicy: 'reduce_denominator',
+    });
+    expect(record.version).toBe('1.11');
+    expect(record.ratifiesPr?.pr).toBe(6211);
+    expect(record.errorPolicy).toBe('reduce_denominator');
+  });
+
+  it('omitting the policy leaves the record on its pre-1.11 tier with no key at all', () => {
+    const record = buildVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      id: 'vote-plain',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+    });
+    expect(record.version).toBe('1.6');
+    expect('errorPolicy' in record).toBe(false);
+  });
+
+  it('persistVoteRecord writes the policy to disk and it reads back hash-verified', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vote-records-policy-'));
+    const filePath = join(dir, 'vote-records.jsonl');
+    try {
+      const written = persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        id: 'vote-policy-disk',
+        proposal: 'p',
+        strategy: 'unanimous',
+        result: consensusResult(),
+        votes,
+        errorPolicy: 'fail_closed',
+        filePath,
+      });
+      expect(written?.errorPolicy).toBe('fail_closed');
+      const { records, invalidLines } = readVoteRecords(filePath);
+      expect(invalidLines).toEqual([]);
+      expect(records).toHaveLength(1);
+      expect(records[0]?.errorPolicy).toBe('fail_closed');
+      expect(records[0]?.version).toBe('1.11');
+      expect(verifyVoteRecordSet(records).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

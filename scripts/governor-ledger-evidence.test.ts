@@ -93,6 +93,8 @@ interface RecordOpts {
   readonly bound?: boolean;
   readonly decision?: VoteRecord['decision'];
   readonly votes?: readonly AgentVoteResult[];
+  /** #6211: absent ⇒ a pre-1.11 record that never recorded its policy. */
+  readonly errorPolicy?: VoteRecord['errorPolicy'];
 }
 
 function record(id: string, opts: RecordOpts): VoteRecord {
@@ -105,6 +107,7 @@ function record(id: string, opts: RecordOpts): VoteRecord {
     result: consensusResult(),
     votes: opts.votes ?? WHOLE_PANEL,
     sequence: opts.sequence,
+    ...(opts.errorPolicy !== undefined ? { errorPolicy: opts.errorPolicy } : {}),
     ...(opts.bound === false
       ? {}
       : { ratifiesPr: { pr: opts.pr ?? PR, headSha: opts.headSha ?? HEAD } }),
@@ -585,6 +588,85 @@ describe('panel coverage is REQUIRED on a bound record (#6213, unmeasured-panel)
     expect(kindOf(evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR }))).toBe(
       'unmeasured-panel'
     );
+  });
+});
+
+describe('wrong-error-policy: the recorded policy is legible on a whole-panel record (#6211)', () => {
+  it('wrong-error-policy when a bound, approved, WHOLE panel recorded a policy other than absolute_quorum', () => {
+    // The case #6211 names: before the record carried the policy, a whole
+    // panel ratified under `reduce_denominator` was indistinguishable from an
+    // `absolute_quorum` one — `degraded-panel` needs an errored seat to fire.
+    const text = ledgerText([record('v0', { sequence: 0, errorPolicy: 'reduce_denominator' })]);
+    const e = evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('wrong-error-policy');
+    if (e.kind !== 'wrong-error-policy') throw new Error('unreachable');
+    expect(e.errorPolicy).toBe('reduce_denominator');
+    expect(e.record.id).toBe('v0');
+  });
+
+  it('every non-absolute_quorum policy is wrong, not only the default', () => {
+    for (const errorPolicy of ['count_as_abstain', 'fail_closed'] as const) {
+      const text = ledgerText([record('v0', { sequence: 0, errorPolicy })]);
+      expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD }))).toBe(
+        'wrong-error-policy'
+      );
+    }
+  });
+
+  it('ratified when the recorded policy IS absolute_quorum, and the notice names it', () => {
+    const text = ledgerText([record('v0', { sequence: 0, errorPolicy: 'absolute_quorum' })]);
+    const e = evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('ratified');
+    expect(formatLedgerEvidence(e)).toContain('errorPolicy: absolute_quorum');
+  });
+
+  it('a record WITHOUT the field keeps the panel-coverage inference and says the policy is unrecorded', () => {
+    // A pre-1.11 record cannot answer the policy question; the gate must not
+    // print "absolute_quorum" for a record that never said so.
+    const text = ledgerText([record('v0', { sequence: 0 })]);
+    const e = evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('ratified');
+    expect(formatLedgerEvidence(e)).toContain('errorPolicy: unrecorded');
+  });
+
+  it('precedes degraded-panel: a degraded record with a wrong policy reports the policy', () => {
+    // The policy is the CAUSE and the errored seat is the symptom the old
+    // inference read; when the record can name the cause, it does.
+    const text = ledgerText([
+      record('v0', { sequence: 0, votes: DEGRADED_PANEL, errorPolicy: 'reduce_denominator' }),
+    ]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD }))).toBe(
+      'wrong-error-policy'
+    );
+  });
+
+  it('does not precede not-approved: a rejected record is not-approved whatever its policy', () => {
+    const text = ledgerText([
+      record('v0', { sequence: 0, decision: 'rejected', errorPolicy: 'reduce_denominator' }),
+    ]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD }))).toBe(
+      'not-approved'
+    );
+  });
+
+  it('post-merge (no head) still refuses a wrong policy', () => {
+    const text = ledgerText([record('v0', { sequence: 0, errorPolicy: 'count_as_abstain' })]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR }))).toBe('wrong-error-policy');
+  });
+
+  it('renders as a ::warning:: naming the record, the recorded policy and the required one', () => {
+    const r = record('v0', { sequence: 0, errorPolicy: 'reduce_denominator' });
+    const line = formatLedgerEvidence({
+      kind: 'wrong-error-policy',
+      record: r,
+      errorPolicy: 'reduce_denominator',
+    });
+    expect(line.startsWith('::warning::')).toBe(true);
+    expect(line).toContain('wrong-error-policy');
+    expect(line).toContain("'v0'");
+    expect(line).toContain('reduce_denominator');
+    expect(line).toContain('absolute_quorum');
+    expect(line).toContain('#5131');
   });
 });
 

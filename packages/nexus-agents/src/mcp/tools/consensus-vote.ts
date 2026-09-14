@@ -93,6 +93,7 @@ import type {
   VotingStrategy,
   ConsensusVoteInput,
   ConsensusVoteResponse,
+  ErrorPolicy,
   ExtendedVotingResult,
 } from './consensus-vote-types.js';
 
@@ -440,7 +441,8 @@ function buildPolicyShortCircuitResult(args: {
   algorithm: ConsensusAlgorithm;
   roles: readonly VoterRole[];
   votes: readonly AgentVoteResult[];
-  errorPolicy: ConsensusVoteInput['errorPolicy'];
+  /** The RESOLVED policy (`executeVotingInner` applied the default before calling). */
+  errorPolicy: ErrorPolicy;
   reason: string;
   startTime: number;
   logger: ILogger;
@@ -468,6 +470,8 @@ function buildPolicyShortCircuitResult(args: {
     // #3124: surface WHY a high-approval result is still 'rejected' so callers
     // don't mistake a fail-closed policy short-circuit for a genuine rejection.
     policyReason: args.reason,
+    // #6211: the policy that short-circuited is the policy the record states.
+    errorPolicy: args.errorPolicy,
   };
 }
 
@@ -654,6 +658,7 @@ async function executeVotingInner(
     votes,
     outcome,
     cascaded,
+    errorPolicy,
     startTime,
     logger,
   });
@@ -710,6 +715,8 @@ function finalizeVotingResult(args: {
   votes: readonly AgentVoteResult[];
   outcome: 'approved' | 'rejected';
   cascaded: boolean;
+  /** #6211: the RESOLVED policy the tally above was computed under. */
+  errorPolicy: ErrorPolicy;
   startTime: number;
   logger: ILogger;
 }): ExtendedVotingResult {
@@ -731,6 +738,9 @@ function finalizeVotingResult(args: {
     // #4132: PANEL_SIZE + contrarian-presence for the absolute_quorum predicate.
     panelSize: args.roles.length,
     contrarianRequested: args.roles.includes('catfish'),
+    // #6211: carried to the persisted record; the response never needed it
+    // because `buildResponse` still holds the input, but the record does not.
+    errorPolicy: args.errorPolicy,
   };
   if (args.higherOrderResult !== undefined) result.higherOrderResult = args.higherOrderResult;
   return result;
@@ -793,6 +803,10 @@ function recordVoteSideEffects(
     // and never on the result — so the record used to say `approved` for a vote
     // this tool reports as `no_quorum`.
     resolvedDecision: toRecordDecision(result.decision),
+    // #6211: the EFFECTIVE policy `executeVoting` stamped, so a caller that
+    // took the per-strategy default still gets `reduce_denominator` on the
+    // ledger line rather than nothing.
+    errorPolicy: result.errorPolicy,
     correlationId: decisionId,
     ...(declared.ratifies !== undefined ? { ratifies: declared.ratifies } : {}),
     // #5130: the PR binding takes the same hop as `ratifies`; the seam test

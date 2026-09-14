@@ -711,6 +711,21 @@ describe('voteCommand persists to the audit chain (#4924)', () => {
     expect(recordAuthenticVoteMock).toHaveBeenCalledTimes(1);
   });
 
+  it('records the error policy the panel ran under (#6211)', async () => {
+    // `executeVoting` stamps the EFFECTIVE policy on its result; the CLI's
+    // narrowing to `CliVoteResult` is exactly where #5362 lost `optionGate`,
+    // so the hop is asserted on what the CLI HANDS the recorder.
+    executeVotingMock.mockResolvedValue({
+      ...extendedResult('approved'),
+      errorPolicy: 'absolute_quorum',
+    });
+
+    await voteCommand({ proposal: 'p' });
+
+    const firstCall = recordAuthenticVoteMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({ errorPolicy: 'absolute_quorum' });
+  });
+
   it('does not record a dry run', async () => {
     // Simulated votes must never seed governance (#2319). The recorder skips
     // them on its own; not calling it at all keeps the CLI from printing a
