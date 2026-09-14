@@ -520,11 +520,13 @@ describe('AGENTS.md toolchain footer (#5142, item 2; #6146 in the one render)', 
         expect(before.output).toContain(
           `AGENTS.md ${label} is stale (#6146): ${bogus} → ${expected} — AGENTS.md:${line}`
         );
-        // A generated value, not prose drift. CLAUDE.md is NOT a fixed point
-        // here: `renderClaudeMd` copies the on-disk (stale) AGENTS.md slice,
-        // so the block is also reported stale with the stale value as
-        // "expected" — pre-existing under the #5142 probes, tracked in #6167.
+        // A generated value, not prose drift — and named ONCE. CLAUDE.md is a
+        // fixed point: its render copies the RENDERED AGENTS.md, not the file,
+        // so the stale row is not also reported as block drift with the stale
+        // value labelled `expected` (#6167; it was, under the #5142 probes).
         expect(before.output).not.toContain(OUTSIDE);
+        expect(before.output).not.toContain(BLOCK_STALE);
+        expect(before.output).not.toContain('CLAUDE.md');
         expect(before.output).toContain('pnpm governance:inject');
 
         await runInject();
@@ -1061,7 +1063,12 @@ describe('inject-governance whole-file parity + formatter errors (#6087)', () =>
       try {
         const { ok, output } = await runCheck();
         expect(ok).toBe(false);
-        expect(output).toContain(`${COULD_NOT_FORMAT} ${box('CLAUDE.md')}: `);
+        // AGENTS.md is rendered first and once, for both files (#6167); its
+        // formatter failure is reported once, and CLAUDE.md — whose render
+        // copies it — is named as unmeasured, not as a second formatter line.
+        expect(output).toContain(`${COULD_NOT_FORMAT} ${box('AGENTS.md')}: `);
+        expect(output).toContain('CLAUDE.md is unmeasured');
+        expect(output).not.toContain(`${COULD_NOT_FORMAT} ${box('CLAUDE.md')}`);
         // The prettier message travels with it, naming the offending config file.
         expect(output).toContain('.prettierrc');
       } finally {
@@ -1576,8 +1583,10 @@ describe('inject-governance AGENTS.md generated tables (#6105)', () => {
           expect(before.output).toContain(
             `AGENTS.md ${label} is stale (#6130): ${bogus} → ${expected}`
           );
-          // A generated value, not prose drift.
+          // A generated value, not prose drift; and CLAUDE.md is a fixed point
+          // (#6167) — the same one-line report the stamp test asserts.
           expect(before.output).not.toContain(OUTSIDE);
+          expect(before.output).not.toContain(BLOCK_STALE);
 
           await runInject();
           expect(readFileSync(box('AGENTS.md'), 'utf-8')).toBe(original);

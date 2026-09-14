@@ -1294,32 +1294,52 @@ function describeMissingAgentsMdSections(content: string): string[] {
   );
 }
 
+/** AGENTS.md as read from disk and as rendered: the one render `check` measures and `inject` writes. */
+interface AgentsMdRender {
+  readonly content: string;
+  readonly rendered: string;
+}
+
+/**
+ * Read AGENTS.md and render it ONCE (#6167). Both files' renders consume the
+ * result: `inject` writes `rendered` to AGENTS.md and `renderClaudeMd` copies
+ * its AGNOSTIC:BODY slice, so an AGENTS.md value that is stale on disk is
+ * stale in exactly one place — the file — and the CLAUDE.md render is a fixed
+ * point whenever CLAUDE.md is current. Before this, the CLAUDE.md render
+ * copied the on-disk slice, and `check` reported a stale AGENTS.md count
+ * phrase or footer row twice: once as AGENTS.md drift (the finding) and once
+ * as CLAUDE.md block drift with the stale value labelled `expected`.
+ *
+ * Throws a plain Error when AGENTS.md is absent — it is a required source of
+ * CLAUDE.md, so a silent empty slice would erase the agnostic body (#3446) —
+ * and a {@link FormatError} when prettier rejects it.
+ */
+async function renderAgentsMdFromDisk(
+  registries: Pick<GovernanceRegistries, 'tools' | 'skills'>
+): Promise<AgentsMdRender> {
+  if (!existsSync(AGENTS_MD_PATH)) {
+    throw new Error(
+      `AGENTS.md not found at ${AGENTS_MD_PATH} — required by the CLAUDE.md generator (#3446)`
+    );
+  }
+  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+  return { content, rendered: await renderAgentsMd(content, loadAgentsMdSources(registries)) };
+}
+
 /**
  * `renderAgentsMd(content) === content` AND every generated section present:
  * the AGENTS.md sibling of {@link checkClaudeMd} (#6105). The two are measured
  * and reported independently — a missing section and a stale one can co-occur.
- * Soft-skips when AGENTS.md is absent (the CLAUDE.md render already fails
- * loudly on that). A formatter failure is an actionable line and a failed
- * check; a malformed `.rules/*.md` frontmatter still throws out of
- * `extractRules`, as it did from `checkRulesIndex`.
+ * The render arrives from {@link checkCrossAdapterDocGates}, which produced it
+ * once for both checks and already reported a formatter failure (#6167); a
+ * malformed `.rules/*.md` frontmatter still throws out of `extractRules`, as
+ * it did from `checkRulesIndex`.
  */
-async function checkAgentsMd(
-  registries: Pick<GovernanceRegistries, 'tools' | 'skills'>
-): Promise<boolean> {
-  if (!existsSync(AGENTS_MD_PATH)) return true;
-  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+function checkAgentsMd({ content, rendered }: AgentsMdRender): boolean {
   const missing = describeMissingAgentsMdSections(content);
   for (const line of missing) console.error(line);
-  let expected: string;
-  try {
-    expected = await renderAgentsMd(content, loadAgentsMdSources(registries));
-  } catch (error: unknown) {
-    if (!(error instanceof FormatError)) throw error;
-    console.error(`governance:check: ${error.message}`);
-    return false;
-  }
-  const stale = expected !== content;
-  if (stale) console.error(describeAgentsMdDrift(expected, content));
+  const stale = rendered !== content;
+  if (stale) console.error(describeAgentsMdDrift(rendered, content));
   return missing.length === 0 && !stale;
 }
 
@@ -1334,16 +1354,14 @@ async function checkAgentsMd(
  * agnostic prose — CLAUDE.md re-uses it verbatim via the generated block so no
  * harness-neutral content is authored twice (#3446).
  *
+ * `content` is the RENDERED AGENTS.md ({@link renderAgentsMdFromDisk}), never
+ * the file: the slice must carry the values `inject` is about to write, or a
+ * stale AGENTS.md value is reported as CLAUDE.md drift too (#6167).
+ *
  * Throws if either marker is missing — AGENTS.md is a required source for the
  * CLAUDE.md generator, so a silent empty slice would erase the agnostic body.
  */
-function extractAgnosticBody(): string {
-  if (!existsSync(AGENTS_MD_PATH)) {
-    throw new Error(
-      `AGENTS.md not found at ${AGENTS_MD_PATH} — required by the CLAUDE.md generator (#3446)`
-    );
-  }
-  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
+function extractAgnosticBody(content: string): string {
   const startIdx = content.indexOf(AGNOSTIC_BODY_START);
   const endIdx = content.indexOf(AGNOSTIC_BODY_END);
   if (startIdx === -1 || endIdx === -1) {
@@ -1400,13 +1418,13 @@ function generateClaudeFromAgents(slice: string): string {
  * CLAUDE.md has no `GENERATED:FROM_AGENTS` markers yet, so the script stays
  * drop-in compatible with checkouts that have not been marker-prepped.
  */
-function injectClaudeAgnosticBlock(content: string): string {
+function injectClaudeAgnosticBlock(content: string, agentsMd: string): string {
   if (!content.includes(MARKERS.claudeAgnosticStart)) return content;
   return injectSection(
     content,
     MARKERS.claudeAgnosticStart,
     MARKERS.claudeAgnosticEnd,
-    generateClaudeFromAgents(extractAgnosticBody())
+    generateClaudeFromAgents(extractAgnosticBody(agentsMd))
   );
 }
 
@@ -2274,11 +2292,28 @@ async function checkCrossAdapterDocGates(
   claudeMd: string,
   registries: GovernanceRegistries
 ): Promise<boolean[]> {
+  // The two source-side gates first: a malformed `.rules/*.md` frontmatter is
+  // named by `checkRuleFrontmatter` BEFORE `extractRules` throws on it inside
+  // the AGENTS.md render below (the render used to run last, after this gate).
+  const precedence = checkAdapterPrecedenceDocs();
+  const frontmatter = checkRuleFrontmatter();
+  // One AGENTS.md render for both files (#6167). A formatter failure on it is
+  // one actionable line (#6087); the CLAUDE.md render copies it, so CLAUDE.md
+  // is then unmeasured — reported as such, not as a second formatter line.
+  let agents: AgentsMdRender;
+  try {
+    agents = await renderAgentsMdFromDisk(registries);
+  } catch (error: unknown) {
+    if (!(error instanceof FormatError)) throw error;
+    console.error(`governance:check: ${error.message}`);
+    console.error('CLAUDE.md is unmeasured: its render copies the AGENTS.md render (#6167)');
+    return [false, precedence, frontmatter, false];
+  }
   return [
-    await checkClaudeMd(claudeMd, registries),
-    checkAdapterPrecedenceDocs(),
-    checkRuleFrontmatter(),
-    await checkAgentsMd(registries),
+    await checkClaudeMd(claudeMd, registries, agents.rendered),
+    precedence,
+    frontmatter,
+    checkAgentsMd(agents),
   ];
 }
 
@@ -2575,16 +2610,20 @@ function loadAllRegistries(): GovernanceRegistries {
   };
 }
 
-function applyAllSectionInjections(content: string, r: GovernanceRegistries): string {
+function applyAllSectionInjections(
+  content: string,
+  r: GovernanceRegistries,
+  agentsMd: string
+): string {
   // #3446: regenerate the agnostic body FIRST from AGENTS.md's AGNOSTIC:BODY
   // slice, so the harness-neutral prose stays single-sourced. The remaining
   // injections target the authored header / Claude-specific overlay markers,
   // which live in disjoint regions of the file.
-  let next = injectClaudeAgnosticBlock(content);
-  // #6105: the slice now arrives with these two tables already generated (the
-  // AGENTS.md render runs first), so on a freshly injected AGENTS.md the two
-  // injections below are no-ops. They stay because CLAUDE.md's copy is still
-  // a hand-editable surface that `check` measures against this render.
+  let next = injectClaudeAgnosticBlock(content, agentsMd);
+  // #6105: the slice arrives with these two tables already generated (it is
+  // the AGENTS.md render, #6167), so the two injections below are no-ops on
+  // it. They stay because CLAUDE.md's copy is still a hand-editable surface
+  // that `check` measures against this render.
   next = injectToolIndex(next, r.tools);
   next = injectWorkflowIndex(next, extractWorkflowRows());
   next = injectSection(
@@ -2612,14 +2651,26 @@ function applyAllSectionInjections(content: string, r: GovernanceRegistries): st
  * its parity with CI's "inject, then `git diff --exit-code CLAUDE.md`" was
  * closer but not total.
  *
- * Pure with respect to CLAUDE.md: reads AGENTS.md's AGNOSTIC:BODY slice and
- * the registries, writes nothing. Exported so the test can assert that.
+ * The AGNOSTIC:BODY slice is copied from `agentsMd`, the RENDERED AGENTS.md
+ * (#6167) — rendered here from the file when the caller has not already done
+ * so ({@link injectGovernance} and {@link checkCrossAdapterDocGates} render it
+ * once and pass it to both files' paths). Copying the file instead made a
+ * stale AGENTS.md value CLAUDE.md drift as well, with the stale value
+ * labelled `expected`.
+ *
+ * Pure with respect to CLAUDE.md: reads AGENTS.md and the registries, writes
+ * nothing. Exported so the test can assert that.
  */
 export async function renderClaudeMd(
   currentClaudeMd: string,
-  registries: GovernanceRegistries = loadAllRegistries()
+  registries: GovernanceRegistries = loadAllRegistries(),
+  agentsMd?: string
 ): Promise<string> {
-  return formatWithPrettier(CLAUDE_MD_PATH, applyAllSectionInjections(currentClaudeMd, registries));
+  const rendered = agentsMd ?? (await renderAgentsMdFromDisk(registries)).rendered;
+  return formatWithPrettier(
+    CLAUDE_MD_PATH,
+    applyAllSectionInjections(currentClaudeMd, registries, rendered)
+  );
 }
 
 /**
@@ -2631,10 +2682,14 @@ export async function renderClaudeMd(
  * check (#6087); a generator invariant (malformed AGNOSTIC:BODY markers) still
  * throws, as it did before, so it cannot be mistaken for a formatter error.
  */
-async function checkClaudeMd(content: string, registries: GovernanceRegistries): Promise<boolean> {
+async function checkClaudeMd(
+  content: string,
+  registries: GovernanceRegistries,
+  agentsMd: string
+): Promise<boolean> {
   let expected: string;
   try {
-    expected = await renderClaudeMd(content, registries);
+    expected = await renderClaudeMd(content, registries, agentsMd);
   } catch (error: unknown) {
     if (!(error instanceof FormatError)) throw error;
     console.error(`governance:check: ${error.message}`);
@@ -2660,18 +2715,15 @@ export async function injectGovernance(): Promise<void> {
   const { tools, experts, workflows, skills, models } = registries;
   const agents = extractAgents();
 
-  // ORDER MATTERS (#5142). Everything that writes AGENTS.md must run BEFORE
-  // `applyAllSectionInjections`, because that step copies AGENTS.md's
-  // AGNOSTIC:BODY slice into CLAUDE.md (#3446). Run the other way round, a
-  // single `inject` leaves CLAUDE.md one pass behind any AGENTS.md value that
-  // just changed, and `check` then reports the FROM_AGENTS block stale. It
-  // was masked while the only inline values were counts that rarely move; the
-  // toolchain footer surfaced it on its first run.
-
-  // Render AGENTS.md's generated text (#2657 rules index; #6105 workflow and
-  // tool tables; #6130 governance stamp and count phrases; #6146 toolchain
-  // footer) from the same generators the CLAUDE.md render uses.
-  await injectAgentsMd(registries);
+  // Render AGENTS.md's generated text ONCE (#2657 rules index; #6105 workflow
+  // and tool tables; #6130 governance stamp and count phrases; #6146 toolchain
+  // footer) and write it; the CLAUDE.md render below copies the SAME string
+  // (#6167), so a single `inject` cannot leave CLAUDE.md a pass behind an
+  // AGENTS.md value that just changed. Before #6167 the CLAUDE.md render
+  // re-read the file, which is why the AGENTS.md write had to come first
+  // (#5142); the order is kept, but nothing depends on it any more.
+  const agentsMd = await renderAgentsMdFromDisk(registries);
+  injectAgentsMd(agentsMd);
 
   // #1837: keep ancillary count surfaces (plugin manifests, install docs)
   // aligned with canonical registries. The AGENTS.md toolchain footer (#5142)
@@ -2684,7 +2736,7 @@ export async function injectGovernance(): Promise<void> {
 
   // #6099: the same render `check` compares against the file.
   const original = readFileSync(CLAUDE_MD_PATH, 'utf-8');
-  writeFileSync(CLAUDE_MD_PATH, await renderClaudeMd(original, registries));
+  writeFileSync(CLAUDE_MD_PATH, await renderClaudeMd(original, registries, agentsMd.rendered));
 
   // Inject README MCP tools table (#2269) — same registry, scannable
   // descriptions. Soft-skip if README has no markers yet so this script
@@ -2772,16 +2824,12 @@ async function injectReadmeToolTable(tools: ToolMetadata[]): Promise<void> {
 
 /**
  * Write AGENTS.md's generated text (#2657, #6105, #6130) — the render `check`
- * compares against the file ({@link renderAgentsMd}). Soft-skips when
- * AGENTS.md is missing; each injector soft-skips its own absent markers, so
- * the script stays drop-in compatible with un-prepped checkouts.
+ * compares against the file ({@link renderAgentsMd}), produced once by
+ * {@link renderAgentsMdFromDisk} and shared with the CLAUDE.md render (#6167).
+ * Each injector soft-skips its own absent markers, so the script stays
+ * drop-in compatible with un-prepped checkouts.
  */
-async function injectAgentsMd(
-  registries: Pick<GovernanceRegistries, 'tools' | 'skills'>
-): Promise<void> {
-  if (!existsSync(AGENTS_MD_PATH)) return;
-  const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
-  const rendered = await renderAgentsMd(content, loadAgentsMdSources(registries));
+function injectAgentsMd({ content, rendered }: AgentsMdRender): void {
   if (rendered !== content) writeFileSync(AGENTS_MD_PATH, rendered);
 }
 
