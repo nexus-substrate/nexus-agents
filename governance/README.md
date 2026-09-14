@@ -88,15 +88,18 @@ every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`:
   bad hash, a sequence hole).
 - `ledger-rewritten` — the head ledger is not the base ledger plus appended
   lines (#6213). The workflow reads the ledger at the merge-base (empty when
-  the file did not exist there) and the base's record lines must be a strict
-  PREFIX of the head's: present, byte-identical, in order. This is what
-  catches a dropped tail line with the new record re-sequenced into its
-  slot, an edit-and-re-hash, or a reorder — shapes the set verifier accepts.
-  Prefix, not subsequence, because it is the measured shape of every ledger
-  git produces: for two branches that each append one line, the second
-  branch un-rebased is compared to the old merge-base, and rebased it gets
-  the union driver's upstream-first order (`base + A1 + B1`). An interleave
-  is a hand edit; move the line. Outranks everything but `ledger-invalid`.
+  the file did not exist there) and the base's record lines must be an
+  ordered SUBSEQUENCE of the head's: present, byte-identical, in the same
+  relative order, with insertions allowed anywhere. This is what catches a
+  dropped tail line with the new record re-sequenced into its slot, an
+  edit-and-re-hash, a reorder or a truncation — shapes the set verifier
+  accepts, each of which deletes or alters a base line. Subsequence, not
+  prefix, because the union driver writes OURS first: for two branches that
+  each append one line (A merged first, merge-base now `base + A1`), a
+  rebase or a merge into main yields `base + A1 + B1`, but merging main INTO
+  the branch (GitHub's "Update branch") yields `base + B1 + A1` — a
+  legitimate refresh that a prefix rule refused. Outranks everything but
+  `ledger-invalid`.
 - `duplicate-id` — one id names two different records.
 
 An unreadable ledger (a directory at the path, a permissions error) prints

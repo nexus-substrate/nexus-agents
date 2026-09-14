@@ -223,13 +223,14 @@ jobs:
           # file, not an output: a 100-record ledger exceeds the single-string
           # env limit. Absent at base → an EMPTY file (a measured, empty base);
           # present but unreadable → `git show` fails this step under -e.
+          LEDGER_BASE_SHA="${BASE_SHA}"
           BASE_LEDGER_PATH="${RUNNER_TEMP}/base-vote-records.jsonl"
           # The commit must exist: an unknown sha would otherwise read as
           # "no ledger at base" and the append-only check would pass over
           # an empty base. Fails the step under -e.
-          git cat-file -e "${BASE_SHA}^{commit}"
-          if git cat-file -e "${BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
-            git show "${BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
+          git cat-file -e "${LEDGER_BASE_SHA}^{commit}"
+          if git cat-file -e "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
+            git show "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
           else
             : > "${BASE_LEDGER_PATH}"
           fi
@@ -318,6 +319,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
+          # #6213: the tip of main BEFORE this push. A multi-commit push could
+          # rewrite the ledger in one commit and append in the next, and
+          # `SHA~1` would compare only the last hop.
+          BEFORE: ${{ github.event.before }}
         run: |
           # See the pre-merge job: a failed `gh api` must fail the step rather
           # than vote "no approvals" (#5685).
@@ -370,19 +375,26 @@ jobs:
               HEAD_TIME=""
             fi
           fi
-          # #6213: the ledger AS OF THE PARENT of what landed, so the gate can require the
-          # head ledger to be the base plus appended lines (a PR that deletes
-          # or rewrites a recorded line is `ledger-rewritten`). Written to a
-          # file, not an output: a 100-record ledger exceeds the single-string
-          # env limit. Absent at base → an EMPTY file (a measured, empty base);
-          # present but unreadable → `git show` fails this step under -e.
+          # #6213: the ledger AS OF THE TIP BEFORE THIS PUSH (`github.event.before`),
+          # so the append-only check spans the whole push, not the last commit.
+          # A null `before` (the first push of a branch) has no such tip; then
+          # `SHA~1` is the only base there is, and the annotation says so.
+          # Written to a file, not an output: a 100-record ledger exceeds the
+          # single-string env limit. Absent at base → an EMPTY file (a measured,
+          # empty base); present but unreadable → `git show` fails this step under -e.
+          if [ -n "${BEFORE}" ] && [ "${BEFORE}" != "0000000000000000000000000000000000000000" ]; then
+            LEDGER_BASE_SHA="${BEFORE}"
+          else
+            LEDGER_BASE_SHA="${BASE_SHA}"
+            echo "::notice::[governor-ledger] github.event.before is the null sha (first push of this ref): the append-only base is ${SHA}~1, the last commit only"
+          fi
           BASE_LEDGER_PATH="${RUNNER_TEMP}/base-vote-records.jsonl"
           # The commit must exist: an unknown sha would otherwise read as
           # "no ledger at base" and the append-only check would pass over
           # an empty base. Fails the step under -e.
-          git cat-file -e "${BASE_SHA}^{commit}"
-          if git cat-file -e "${BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
-            git show "${BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
+          git cat-file -e "${LEDGER_BASE_SHA}^{commit}"
+          if git cat-file -e "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
+            git show "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
           else
             : > "${BASE_LEDGER_PATH}"
           fi
@@ -414,8 +426,9 @@ jobs:
           # PR_HEAD_SHA on purpose. A direct push has no PR number, and the
           # gate reports the ledger as unmeasured rather than as "no record".
           PR_NUMBER: ${{ steps.evidence.outputs.pr_number }}
-          # #6213: the ledger at `${SHA}~1`; the squash commit's ledger must be
-          # that plus appended lines, the same rule the pre-merge job applies.
+          # #6213: the ledger at `github.event.before` (`${SHA}~1` only when
+          # `before` is the null sha); what landed must be that plus appended
+          # lines, the same rule the pre-merge job applies.
           RATIFICATION_BASE_LEDGER_PATH: ${{ steps.evidence.outputs.base_ledger_path }}
           # #6029: the backstop set NO base at all, so its exemption was
           # unreachable by a second mechanism. Both jobs must grant the same

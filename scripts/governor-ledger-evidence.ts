@@ -42,19 +42,25 @@
  * ledger still verifies as a set. So the pre-merge job also reads the ledger
  * at the merge-base (`git show <base>:governance/vote-records.jsonl`, empty
  * when the file did not exist there) and the verdict requires the base's
- * record lines to be a strict PREFIX of the head's: every base line present,
- * byte-identical, in order, before anything appended. Blank lines are not
- * records and are ignored on both sides.
+ * record lines to be an ordered SUBSEQUENCE of the head's: every base line
+ * present, byte-identical, in the same relative order; insertions anywhere.
+ * Blank lines are not records and are ignored on both sides.
  *
- * Prefix, not subsequence, is the measured shape of every ledger git itself
- * produces. For the #6194 fork (two branches each append one line, A merges
- * first): B un-rebased is compared to its merge-base, which is still the old
- * base, so `base + B1` is a prefix match; B rebased onto `base + A1` is
- * union-merged with the upstream side first, `base + A1 + B1`, again a prefix
- * match; and merging un-rebased B into main yields the same order. A union
- * merge does not interleave. An interleave (`base + B1 + A1` against
- * `base + A1`) can therefore only come from a hand edit, and it is refused as
- * `ledger-rewritten` like any other reorder — the remedy is to move the line.
+ * Subsequence, not prefix, because the union driver's order depends on
+ * which side is "ours". Measured for the #6194 fork (two branches each
+ * append one line, A merges first; merge-base is then `base + A1`):
+ *
+ * | B refreshed by | head ledger | prefix? | subsequence? |
+ * | --- | --- | --- | --- |
+ * | rebase onto main | `base + A1 + B1` | yes | yes |
+ * | un-rebased, merged into main | `base + A1 + B1` | yes | yes |
+ * | main merged INTO B ("Update branch") | `base + B1 + A1` | NO | yes |
+ *
+ * The third row is the standard GitHub refresh, so a prefix rule refused a
+ * legitimate merge (found by the #6218 panel). What subsequence still
+ * catches, because each deletes or alters a base line: a dropped tail line
+ * with the new record re-sequenced into its slot, an edit-and-re-hash, a
+ * reorder, a truncation.
  *
  * Precedence puts `ledger-rewritten` right after `ledger-invalid`: a rewrite
  * outranks `duplicate-id` and `no-record` because the ledger it is computed
@@ -204,7 +210,7 @@ export type LedgerEvidence =
       /** Record lines at the base and at the head. */
       readonly baseLineCount: number;
       readonly headLineCount: number;
-      /** 1-based index of the first base line that is missing, changed or moved at the head. */
+      /** 1-based index of the first base line not found at the head in order (missing, changed or moved). */
       readonly divergesAt: number;
     }
   | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] };
@@ -266,10 +272,12 @@ function recordLines(text: string): string[] {
 }
 
 /**
- * Append-only against the base (#6213): the base's record lines must be a
- * strict prefix of the head's. Returns the verdict on the first base line
- * that is missing, changed or moved; `undefined` when the head is the base
- * plus appended lines (an empty base is a prefix of everything).
+ * Append-only against the base (#6213): the base's record lines must be an
+ * ordered subsequence of the head's — a single forward scan, each base line
+ * matched byte-for-byte to the next unconsumed head line. Returns the
+ * verdict on the first base line that cannot be matched in order (missing,
+ * changed, or moved before an earlier base line); `undefined` when every
+ * base line is found (an empty base is a subsequence of everything).
  */
 function appendOnlyVerdict(
   headText: string,
@@ -277,8 +285,10 @@ function appendOnlyVerdict(
 ): Extract<LedgerEvidence, { kind: 'ledger-rewritten' }> | undefined {
   const base = recordLines(baseText);
   const head = recordLines(headText);
+  let cursor = 0;
   for (let i = 0; i < base.length; i++) {
-    if (head[i] !== base[i]) {
+    const at = head.indexOf(base[i] ?? '', cursor);
+    if (at === -1) {
       return {
         kind: 'ledger-rewritten',
         baseLineCount: base.length,
@@ -286,6 +296,7 @@ function appendOnlyVerdict(
         divergesAt: i + 1,
       };
     }
+    cursor = at + 1;
   }
   return undefined;
 }
@@ -410,7 +421,7 @@ function warningBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): s
       return (
         `the ledger at head is not the base ledger plus appended lines: base line ${String(evidence.divergesAt)} ` +
         `of ${String(evidence.baseLineCount)} is missing, changed or moved (head has ${String(evidence.headLineCount)} ` +
-        'record line(s)) — the ledger is append-only; restore the base lines verbatim and append after them'
+        'record line(s)) — the ledger is append-only; restore the base lines verbatim, in their order'
       );
     case 'duplicate-id':
       return (

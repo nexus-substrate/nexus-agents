@@ -424,11 +424,12 @@ describe('append-only against the base (#6213, ledger-rewritten)', () => {
   });
 
   describe('the #6194 fork: two branches each append one line (measured against git merge=union)', () => {
-    // Measured in a scratch repo (see the PR): the union driver writes the
-    // upstream side first, so every git-produced shape keeps the base as a
-    // strict PREFIX. An interleave (an appended line BEFORE a base line) is
-    // not a shape git produces; it is a rewrite and is refused as one.
+    // Measured in a scratch repo (see PR #6218): the union driver writes
+    // OURS first, so the order of the two appended lines depends on which
+    // side did the merging. Every git-produced shape keeps the base as an
+    // ordered SUBSEQUENCE; a prefix rule refused the "Update branch" shape.
     const L = [L0, L1];
+    const B2 = record('vB2', { sequence: 3 });
 
     it('branch A merged first: A head = base + A1 over merge-base = base → append-only', () => {
       expect(kindOf(ev(ledgerText([...L, A1]), ledgerText(L)))).toBe('no-record');
@@ -442,11 +443,24 @@ describe('append-only against the base (#6213, ledger-rewritten)', () => {
       expect(kindOf(ev(ledgerText([...L, A1, B1]), ledgerText([...L, A1])))).toBe('ratified');
     });
 
-    it('an INTERLEAVE (B1 before A1 over base + A1) is not a prefix → ledger-rewritten', () => {
-      expect(ev(ledgerText([...L, B1, A1]), ledgerText([...L, A1]))).toEqual({
+    it('main merged INTO branch B ("Update branch"): union puts OURS first → base + B1 + A1 is append-only over base + A1', () => {
+      // The merge-base after the refresh is main's tip (base + A1); B1 now
+      // sits BEFORE A1. Not a rewrite: every base line is present, in order.
+      const e = ev(ledgerText([...L, B1, A1]), ledgerText([...L, A1]));
+      expect(e.kind).toBe('ratified');
+      if (e.kind !== 'ratified') throw new Error('unreachable');
+      expect(e.appendOnlyChecked).toBe(true);
+    });
+
+    it('...and the next append on the refreshed branch (base + B1 + A1 + B2) still lands as append-only', () => {
+      expect(kindOf(ev(ledgerText([...L, B1, A1, B2]), ledgerText([...L, A1])))).toBe('ratified');
+    });
+
+    it('the refreshed branch with A1 DROPPED (base + B1) over base + A1 → ledger-rewritten at base line 3', () => {
+      expect(ev(ledgerText([...L, B1]), ledgerText([...L, A1]))).toEqual({
         kind: 'ledger-rewritten',
         baseLineCount: 3,
-        headLineCount: 4,
+        headLineCount: 3,
         divergesAt: 3,
       });
     });
@@ -774,9 +788,25 @@ describe('the workflow wires the base ledger (#6213)', () => {
   );
 
   it('both jobs read the ledger at the base by the module path constant, guarded by a commit-exists check', () => {
-    const show = `git show "\${BASE_SHA}:${VOTE_RECORDS_REL_PATH}" > "\${BASE_LEDGER_PATH}"`;
+    const show = `git show "\${LEDGER_BASE_SHA}:${VOTE_RECORDS_REL_PATH}" > "\${BASE_LEDGER_PATH}"`;
     expect(workflow.split(show).length - 1).toBe(2);
-    expect(workflow.split('git cat-file -e "${BASE_SHA}^{commit}"').length - 1).toBe(2);
+    expect(workflow.split('git cat-file -e "${LEDGER_BASE_SHA}^{commit}"').length - 1).toBe(2);
+  });
+
+  it('the push job bases append-only on github.event.before, falling back to SHA~1 only for the null sha', () => {
+    // `SHA~1` compares only the last hop; a multi-commit push could rewrite
+    // the ledger in one commit and append in the next.
+    expect(workflow).toContain('BEFORE: ${{ github.event.before }}');
+    expect(workflow).toContain(
+      'if [ -n "${BEFORE}" ] && [ "${BEFORE}" != "0000000000000000000000000000000000000000" ]; then'
+    );
+    expect(workflow).toContain('LEDGER_BASE_SHA="${BEFORE}"');
+    // The fallback names itself in an annotation.
+    expect(workflow).toContain(
+      '::notice::[governor-ledger] github.event.before is the null sha (first push of this ref)'
+    );
+    // The merge-base/parent form appears twice: the pre-merge job, and the push job fallback.
+    expect(workflow.split('LEDGER_BASE_SHA="${BASE_SHA}"').length - 1).toBe(2);
   });
 
   it(`both gate steps receive ${BASE_LEDGER_PATH_ENV} from the evidence step`, () => {
