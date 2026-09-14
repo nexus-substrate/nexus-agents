@@ -308,7 +308,7 @@ export const ConsensusVoteInputSchema = z.object({
    * uses, so producer and ledger cannot disagree on the shape.
    */
   ratifiesPr: VoteRecordPrBindingSchema.optional().describe(
-    'Governor-path PR ratification binding (#5130): { pr: <PR number>, headSha: <full 40-hex head sha the panel reviewed> }. Bound into the authentic vote record so the committed ledger and the governor gate can verify which PR, at which head, this panel ratified. Omit for ordinary votes.'
+    'Governor-path PR ratification binding (#5130): pr is the PR number and headSha the full 40-hex head sha the panel reviewed. Bound into the authentic vote record so the committed ledger and the governor gate can verify which PR, at which head, this panel ratified. Omit for ordinary votes.'
   ),
 });
 
