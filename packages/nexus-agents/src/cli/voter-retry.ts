@@ -12,12 +12,15 @@ import { sleep } from '../utils/async-utils.js';
 import { isAbsentSeat } from './voter-unverifiable.js';
 
 /**
- * ASCII control characters, DEL included (#6246, security seat). A first-pass
- * error string can be a subprocess's stderr; each of these becomes one space
- * so the carried cause cannot inject a line into the summary row or the JSONL
- * ledger line, nor an escape sequence into the terminal.
+ * C0 and C1 control characters, DEL included (#6246, security seat; the C1
+ * range on the #6252 panel's rejection — `\x9b` is the single-byte CSI,
+ * equivalent to `ESC [`, so an ASCII-only range still let a terminal escape
+ * through). A first-pass error string can be a subprocess's stderr; each of
+ * these becomes one space so the carried cause cannot inject a line into the
+ * summary row or the JSONL ledger line, nor an escape sequence into the
+ * terminal.
  */
-const CONTROL_CHARS_RE = /[\x00-\x1f\x7f]/g;
+const CONTROL_CHARS_RE = /[\x00-\x1f\x7f-\x9f]/g;
 
 /**
  * What the retry is about to discard, carried onto the seat that replaces it

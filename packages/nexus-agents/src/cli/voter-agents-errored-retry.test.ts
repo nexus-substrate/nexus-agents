@@ -295,4 +295,16 @@ describe('a recovered seat carries what it recovered from (#6246)', () => {
     expect(carried).toBe('Vote parsing failed [31m: fake  | catfish | APPROVE | end');
     expect(/[\x00-\x1f\x7f]/.test(carried)).toBe(false);
   });
+
+  it('C1 controls are replaced too — \\x9b is the single-byte CSI, equivalent to ESC [', async () => {
+    // The #6252 panel's rejection: an ASCII-only range let `\x9b31m` through
+    // as a terminal escape on the summary row and the ledger line.
+    const hostile = 'Vote parsing failed\x9b31m: fake\x85end\x80';
+    const first = [erroredWith('pm', hostile)];
+    const relaunch = vi.fn(() => Promise.resolve([ok('pm')]));
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+    const carried = merged[0]?.retriedFrom?.error ?? '';
+    expect(carried).toBe('Vote parsing failed 31m: fake end ');
+    expect(/[\x80-\x9f]/.test(carried)).toBe(false);
+  });
 });
