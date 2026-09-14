@@ -1,0 +1,760 @@
+/**
+ * Tests for the stateless scoring-stage runners in composite-router-scoring-stages.
+ *
+ * Covers: each `run*Stage` runner's disabled default, its stage call, the
+ * signal → typed-result projection, and the #4866 typed-argument channel.
+ * `runPipeline`, the hard filters and the gating stay in
+ * composite-router-stages.test.ts.
+ */
+
+import { describe, expect, it, vi } from 'vitest';
+import { ResourceStrategyStage } from './routing/stages/index.js';
+
+import { ok } from '../core/index.js';
+import type { CliName, CliTask } from './types.js';
+import { createRoutingContext } from './routing/router-stage.js';
+
+import { analyzeTaskProfile } from './composite-router-stages.js';
+import {
+  runConfidenceCascadeStage,
+  runCapabilityMatchStage,
+  runQualityConstraintStage,
+  runResourceStrategyStage,
+  runDistilledRuleStage,
+  runZeroRouterStage,
+  runTopsisStage,
+  runLinUCBStage,
+  runPreferenceStage,
+  runLatencyStage,
+  runRoutingMemoryStage,
+  type StageDependencies,
+} from './composite-router-scoring-stages.js';
+
+// ============================================================================
+// Test helpers
+// ============================================================================
+
+const mockTask: CliTask = { content: 'Implement a feature' };
+
+const mockLogger = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  setLevel: vi.fn(),
+  getLevel: vi.fn(),
+  setFormat: vi.fn(),
+  setDestination: vi.fn(),
+  child: vi.fn().mockReturnThis(),
+};
+
+function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies {
+  return {
+    config: {
+      enableConfidenceCascade: false,
+      enableBudgetFilter: false,
+      enableCapabilityMatch: false,
+      enableZeroRouter: false,
+      enablePreferenceRouting: false,
+      enableTopsisRanking: false,
+      enableLinUCBSelection: false,
+      enableQualityConstraint: false,
+      enableResourceStrategy: false,
+      enableStrategyDistillation: false,
+      enableLatencyTracking: false,
+      enableRoutingMemory: false,
+      enableKnnRouting: false,
+      enableCapacityBalancing: true,
+      billingMode: 'api',
+      latencyScoreWeight: 0.2,
+      linucbAlpha: 1.0,
+      maxDecisionTimeMs: 50,
+      preferenceMinDataPoints: 10,
+    },
+    logger: mockLogger,
+    cliNames: ['claude', 'gemini', 'codex'] as CliName[],
+    budgetRouter: undefined,
+    zeroRouter: undefined,
+    preferenceRouter: undefined,
+    topsisRouter: undefined,
+    linucbBandit: undefined,
+    latencyTracker: undefined,
+    routingMemory: undefined,
+    confidenceCascadeStage: undefined,
+    capabilityMatchStage: undefined,
+    qualityConstraintStage: undefined,
+    resourceStrategyStage: undefined,
+    distilledRuleStage: undefined,
+    knnRoutingStage: undefined,
+    capacityFilterStage: undefined,
+    ...overrides,
+  };
+}
+
+// ============================================================================
+// runConfidenceCascadeStage
+// ============================================================================
+
+describe('runConfidenceCascadeStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini'];
+
+  it('returns defaults when disabled', async () => {
+    const stages: string[] = [];
+    const deps = makeDeps();
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
+    expect(result.scores.size).toBe(0);
+    expect(result.complexity).toBe('moderate');
+    expect(result.shouldEscalate).toBe(false);
+    expect(stages).not.toContain('confidence-cascade');
+  });
+
+  it('returns defaults when stage instance is undefined', async () => {
+    const stages: string[] = [];
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableConfidenceCascade: true },
+      confidenceCascadeStage: undefined,
+    });
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
+    expect(result.scores.size).toBe(0);
+    expect(stages).not.toContain('confidence-cascade');
+  });
+
+  it('tracks stage and extracts scores when enabled', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['confidence:complexity-simple', 'confidence:best-claude'],
+            scores: new Map([
+              ['claude', 0.9],
+              ['gemini', 0.7],
+            ]),
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableConfidenceCascade: true },
+      confidenceCascadeStage: mockStage as unknown as StageDependencies['confidenceCascadeStage'],
+    });
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
+    expect(stages).toContain('confidence-cascade');
+    expect(result.complexity).toBe('simple');
+    expect(result.scores.get('claude')).toBe(0.9);
+    expect(result.scores.get('gemini')).toBe(0.7);
+  });
+
+  it('returns defaults on stage error', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue({ ok: false, error: new Error('cascade fail') }),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableConfidenceCascade: true },
+      confidenceCascadeStage: mockStage as unknown as StageDependencies['confidenceCascadeStage'],
+    });
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
+    expect(stages).toContain('confidence-cascade');
+    expect(result.scores.size).toBe(0);
+    expect(result.complexity).toBe('moderate');
+  });
+});
+
+// ============================================================================
+// runCapabilityMatchStage
+// ============================================================================
+
+describe('runCapabilityMatchStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini'];
+
+  it('returns defaults when disabled', async () => {
+    const stages: string[] = [];
+    const result = await runCapabilityMatchStage(mockTask, candidates, stages, makeDeps());
+    expect(result.scores.size).toBe(0);
+    expect(result.taskType).toBe('general');
+    expect(result.bestCli).toBeUndefined();
+    expect(stages).not.toContain('capability-match');
+  });
+
+  it('tracks stage and extracts scores when enabled', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['capability:task-coding', 'capability:best-claude'],
+            scores: new Map([
+              ['claude', 0.85],
+              ['gemini', 0.6],
+            ]),
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableCapabilityMatch: true },
+      capabilityMatchStage: mockStage as unknown as StageDependencies['capabilityMatchStage'],
+    });
+    const result = await runCapabilityMatchStage(mockTask, candidates, stages, deps);
+    expect(stages).toContain('capability-match');
+    expect(result.taskType).toBe('coding');
+    expect(result.bestCli).toBe('claude');
+    expect(result.scores.get('claude')).toBe(0.85);
+  });
+});
+
+// ============================================================================
+// runQualityConstraintStage
+// ============================================================================
+
+describe('runQualityConstraintStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns all candidates as eligible when disabled', async () => {
+    const stages: string[] = [];
+    const result = await runQualityConstraintStage(candidates, stages, makeDeps());
+    expect(result.eligible).toEqual(candidates);
+    expect(result.filtered.size).toBe(0);
+    expect(result.usedFallback).toBe(false);
+    expect(stages).not.toContain('quality-constraint');
+  });
+
+  it('filters candidates and tracks stage when enabled', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: [],
+            filtered: new Map([['codex', 'quality-below-threshold']]),
+            availableClis: ['claude', 'gemini', 'codex'],
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableQualityConstraint: true },
+      qualityConstraintStage: mockStage as unknown as StageDependencies['qualityConstraintStage'],
+    });
+    const result = await runQualityConstraintStage(candidates, stages, deps);
+    expect(stages).toContain('quality-constraint');
+    expect(result.eligible).toEqual(['claude', 'gemini']);
+    expect(result.filtered.get('codex')).toBe('quality-below-threshold');
+  });
+
+  it('falls back to all candidates when all filtered', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['quality:used-fallback'],
+            filtered: new Map([
+              ['claude', 'quality-below-threshold'],
+              ['gemini', 'quality-below-threshold'],
+              ['codex', 'quality-below-threshold'],
+            ]),
+            availableClis: ['claude', 'gemini', 'codex'],
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableQualityConstraint: true },
+      qualityConstraintStage: mockStage as unknown as StageDependencies['qualityConstraintStage'],
+    });
+    const result = await runQualityConstraintStage(candidates, stages, deps);
+    expect(result.eligible).toEqual(candidates);
+    expect(result.usedFallback).toBe(true);
+  });
+});
+
+// ============================================================================
+// runResourceStrategyStage
+// ============================================================================
+
+describe('runResourceStrategyStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns defaults when disabled', async () => {
+    const stages: string[] = [];
+    const result = await runResourceStrategyStage(mockTask, candidates, stages, makeDeps());
+    expect(result.tier).toBe('balanced');
+    expect(result.resourceLevel).toBeUndefined();
+    expect(stages).not.toContain('resource-strategy');
+  });
+
+  it('returns defaults when stage instance is undefined', async () => {
+    const stages: string[] = [];
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: undefined,
+    });
+    const result = await runResourceStrategyStage(mockTask, candidates, stages, deps);
+    expect(result.tier).toBe('balanced');
+    expect(stages).not.toContain('resource-strategy');
+  });
+
+  it('extracts tier and scores when enabled', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['resource-strategy:tier=performance'],
+            scores: new Map([
+              ['claude', 0.8],
+              ['gemini', 0.6],
+            ]),
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: mockStage as unknown as StageDependencies['resourceStrategyStage'],
+    });
+    const result = await runResourceStrategyStage(mockTask, candidates, stages, deps);
+    expect(stages).toContain('resource-strategy');
+    expect(result.tier).toBe('performance');
+    expect(result.scores.get('claude')).toBe(0.8);
+  });
+});
+
+// ============================================================================
+// runDistilledRuleStage
+// ============================================================================
+
+describe('runDistilledRuleStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns defaults when disabled', async () => {
+    const stages: string[] = [];
+    const result = await runDistilledRuleStage(mockTask, candidates, stages, makeDeps());
+    expect(result.rulesApplied).toBe(0);
+    expect(stages).not.toContain('distilled-rule');
+  });
+
+  it('returns defaults when stage instance is undefined', async () => {
+    const stages: string[] = [];
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: undefined,
+    });
+    const result = await runDistilledRuleStage(mockTask, candidates, stages, deps);
+    expect(result.rulesApplied).toBe(0);
+    expect(stages).not.toContain('distilled-rule');
+  });
+
+  it('extracts rules applied and scores when enabled', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: [
+              'distilled-rule:applied=coding-preference',
+              'distilled-rule:applied=latency-bias',
+            ],
+            scores: new Map([['claude', 0.75]]),
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: mockStage as unknown as StageDependencies['distilledRuleStage'],
+    });
+    const result = await runDistilledRuleStage(mockTask, candidates, stages, deps);
+    expect(stages).toContain('distilled-rule');
+    expect(result.rulesApplied).toBe(2);
+    expect(result.scores.get('claude')).toBe(0.75);
+  });
+});
+
+// ============================================================================
+// runZeroRouterStage
+// ============================================================================
+
+describe('runZeroRouterStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns default result when disabled', () => {
+    const stages: string[] = [];
+    const result = runZeroRouterStage(mockTask, candidates, stages, makeDeps());
+    expect(result.filteredCandidates).toEqual(candidates);
+    expect(stages).not.toContain('zero-router');
+  });
+
+  it('returns default result when zeroRouter undefined', () => {
+    const stages: string[] = [];
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableZeroRouter: true },
+      zeroRouter: undefined,
+    });
+    const result = runZeroRouterStage(mockTask, candidates, stages, deps);
+    expect(result.filteredCandidates).toEqual(candidates);
+  });
+});
+
+// ============================================================================
+// runTopsisStage
+// ============================================================================
+
+describe('runTopsisStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini'];
+
+  it('returns candidates unranked when disabled', () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    const result = runTopsisStage(profile, candidates, stages, makeDeps());
+    expect(result.ranking).toEqual(candidates);
+    expect(result.score).toBeUndefined();
+    expect(stages).not.toContain('topsis-ranking');
+  });
+
+  it('returns candidates unranked when topsisRouter undefined', () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableTopsisRanking: true },
+      topsisRouter: undefined,
+    });
+    const result = runTopsisStage(profile, candidates, stages, deps);
+    expect(result.ranking).toEqual(candidates);
+    expect(result.score).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// runLinUCBStage
+// ============================================================================
+
+describe('runLinUCBStage', () => {
+  const ranking: CliName[] = ['claude', 'gemini'];
+
+  it('returns first candidate when disabled', () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    const result = runLinUCBStage(profile, ranking, stages, makeDeps());
+    expect(result.selectedCli).toBe('claude');
+    expect(result.ucbScore).toBeUndefined();
+    expect(stages).not.toContain('linucb-selection');
+  });
+
+  it('passes the real budget utilization into the bandit context (#4834)', () => {
+    // The seam. The stage tests cover the builder and the pipeline covers the
+    // producer; without this, dropping the argument here leaves both green
+    // and the bandit's budget feature silently constant again.
+    const selectMock = vi.fn(() => ({ armName: 'claude', ucbScore: 0.5 }));
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: { select: selectMock } as never,
+    });
+
+    runLinUCBStage(analyzeTaskProfile(mockTask, []), ranking, [], deps, 0.87);
+
+    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({ budgetUtilization: 0.87 }));
+  });
+
+  it('falls back to the neutral feature value when no ceiling is configured (#4834)', () => {
+    const selectMock = vi.fn(() => ({ armName: 'claude', ucbScore: 0.5 }));
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: { select: selectMock } as never,
+    });
+
+    runLinUCBStage(analyzeTaskProfile(mockTask, []), ranking, [], deps, undefined);
+
+    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({ budgetUtilization: 0.5 }));
+  });
+
+  it('returns first candidate when bandit undefined', () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: undefined,
+    });
+    const result = runLinUCBStage(profile, ranking, stages, deps);
+    expect(result.selectedCli).toBe('claude');
+  });
+
+  it('uses bandit selection when enabled', () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    const mockBandit = {
+      select: vi.fn().mockReturnValue({ armName: 'gemini', ucbScore: 0.85 }),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: mockBandit as unknown as StageDependencies['linucbBandit'],
+    });
+    const result = runLinUCBStage(profile, ranking, stages, deps);
+    expect(result.selectedCli).toBe('gemini');
+    expect(result.ucbScore).toBe(0.85);
+    expect(stages).toContain('linucb-selection');
+  });
+
+  it('constrains the bandit pick to the candidate set — an excluded CLI is not routed (#3111)', () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    // Candidate set narrowed to ['codex'] (e.g. a fail-closed category
+    // override), but the bandit's learned preference is 'claude' (outside it).
+    const constrained: CliName[] = ['codex'];
+    const mockBandit = {
+      select: vi.fn().mockReturnValue({ armName: 'claude', ucbScore: 0.99 }),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLinUCBSelection: true },
+      linucbBandit: mockBandit as unknown as StageDependencies['linucbBandit'],
+    });
+    const result = runLinUCBStage(profile, constrained, stages, deps);
+    expect(result.selectedCli).toBe('codex'); // NOT the excluded 'claude'
+  });
+});
+
+// ============================================================================
+// runPreferenceStage
+// ============================================================================
+
+describe('runPreferenceStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns defaults when disabled', () => {
+    const stages: string[] = [];
+    const result = runPreferenceStage(mockTask, candidates, stages, makeDeps());
+    expect(result.preferredCandidates).toEqual(candidates);
+    expect(result.preferenceScore).toBeUndefined();
+    expect(result.preferenceTier).toBeUndefined();
+    expect(stages).not.toContain('preference-routing');
+  });
+
+  it('returns defaults when preferenceRouter undefined', () => {
+    const stages: string[] = [];
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enablePreferenceRouting: true },
+      preferenceRouter: undefined,
+    });
+    const result = runPreferenceStage(mockTask, candidates, stages, deps);
+    expect(result.preferredCandidates).toEqual(candidates);
+  });
+
+  it('returns defaults when insufficient data', () => {
+    const stages: string[] = [];
+    const mockPrefRouter = {
+      hasMinimumData: vi.fn().mockReturnValue(false),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enablePreferenceRouting: true },
+      preferenceRouter: mockPrefRouter as unknown as StageDependencies['preferenceRouter'],
+    });
+    const result = runPreferenceStage(mockTask, candidates, stages, deps);
+    expect(result.preferredCandidates).toEqual(candidates);
+    expect(stages).not.toContain('preference-routing');
+  });
+});
+
+// ============================================================================
+// runLatencyStage
+// ============================================================================
+
+describe('runLatencyStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini'];
+
+  it('returns defaults when disabled', () => {
+    const stages: string[] = [];
+    const result = runLatencyStage(candidates, stages, makeDeps());
+    expect(result.latencyScore).toBeUndefined();
+    expect(result.latencyAdjustedRanking).toEqual(candidates);
+    expect(stages).not.toContain('latency-scoring');
+  });
+
+  it('sorts candidates by latency score when enabled', () => {
+    const stages: string[] = [];
+    const mockTracker = {
+      getScores: vi.fn().mockReturnValue([
+        { cli: 'claude', score: 0.7, hasReliableData: true },
+        { cli: 'gemini', score: 0.9, hasReliableData: true },
+      ]),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableLatencyTracking: true },
+      latencyTracker: mockTracker as unknown as StageDependencies['latencyTracker'],
+    });
+    const result = runLatencyStage(candidates, stages, deps);
+    // Gemini has higher score (faster), should be first
+    expect(result.latencyAdjustedRanking[0]).toBe('gemini');
+    expect(result.latencyScore).toBe(0.9);
+    expect(stages).toContain('latency-scoring');
+  });
+});
+
+// ============================================================================
+// runRoutingMemoryStage
+// ============================================================================
+
+describe('runRoutingMemoryStage', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns defaults when disabled', () => {
+    const stages: string[] = [];
+    const result = runRoutingMemoryStage(mockTask, candidates, stages, makeDeps());
+    expect(result.recommendation).toBeUndefined();
+    expect(result.memoryConfidence).toBeUndefined();
+    expect(stages).not.toContain('routing-memory');
+  });
+
+  it('returns recommendation when in candidates', () => {
+    const stages: string[] = [];
+    const mockMemory = {
+      getRecommendation: vi.fn().mockReturnValue('gemini'),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableRoutingMemory: true },
+      routingMemory: mockMemory as unknown as StageDependencies['routingMemory'],
+    });
+    const result = runRoutingMemoryStage(mockTask, candidates, stages, deps);
+    expect(result.recommendation).toBe('gemini');
+    expect(result.memoryConfidence).toBe(0.8);
+    expect(stages).toContain('routing-memory');
+  });
+
+  it('returns undefined when recommendation not in candidates', () => {
+    const stages: string[] = [];
+    const mockMemory = {
+      getRecommendation: vi.fn().mockReturnValue('unknown-cli'),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableRoutingMemory: true },
+      routingMemory: mockMemory as unknown as StageDependencies['routingMemory'],
+    });
+    const result = runRoutingMemoryStage(mockTask, candidates, stages, deps);
+    expect(result.recommendation).toBeUndefined();
+    expect(result.memoryConfidence).toBeUndefined();
+  });
+
+  it('infers task type from content keywords', () => {
+    const stages: string[] = [];
+    const mockMemory = {
+      getRecommendation: vi.fn().mockReturnValue('claude'),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableRoutingMemory: true },
+      routingMemory: mockMemory as unknown as StageDependencies['routingMemory'],
+    });
+
+    // "code" keyword -> should infer "coding"
+    runRoutingMemoryStage({ content: 'Write code for API' }, candidates, stages, deps);
+    expect(mockMemory.getRecommendation).toHaveBeenCalledWith('coding');
+
+    // "review" keyword -> should infer "review"
+    mockMemory.getRecommendation.mockClear();
+    runRoutingMemoryStage({ content: 'review the PR' }, candidates, [], deps);
+    expect(mockMemory.getRecommendation).toHaveBeenCalledWith('review');
+
+    // "test" keyword -> should infer "testing"
+    mockMemory.getRecommendation.mockClear();
+    runRoutingMemoryStage({ content: 'Write test suite' }, candidates, [], deps);
+    expect(mockMemory.getRecommendation).toHaveBeenCalledWith('testing');
+
+    // "document" keyword -> should infer "documentation"
+    mockMemory.getRecommendation.mockClear();
+    runRoutingMemoryStage({ content: 'document the API' }, candidates, [], deps);
+    expect(mockMemory.getRecommendation).toHaveBeenCalledWith('documentation');
+
+    // "refactor" keyword -> should infer "refactoring"
+    mockMemory.getRecommendation.mockClear();
+    runRoutingMemoryStage({ content: 'refactor this module' }, candidates, [], deps);
+    expect(mockMemory.getRecommendation).toHaveBeenCalledWith('refactoring');
+
+    // "debug" keyword -> should infer "debugging"
+    mockMemory.getRecommendation.mockClear();
+    runRoutingMemoryStage({ content: 'debug this error' }, candidates, [], deps);
+    expect(mockMemory.getRecommendation).toHaveBeenCalledWith('debugging');
+
+    // No keyword -> should infer "general"
+    mockMemory.getRecommendation.mockClear();
+    runRoutingMemoryStage({ content: 'do something' }, candidates, [], deps);
+    expect(mockMemory.getRecommendation).toHaveBeenCalledWith('general');
+  });
+});
+
+// ============================================================================
+// The signal channel does not cross stage boundaries (#4866)
+// ============================================================================
+
+describe('cross-stage routing signals (#4866)', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  // Every other test in this file hands `runResourceStrategyStage` a MOCKED
+  // stage whose result already contains `resource-strategy:tier=…`. That
+  // pre-seeds the answer, so none of them can see that a real stage is given
+  // an empty context and skips. These drive the real stage instead.
+
+  it('a real ResourceStrategyStage receives budget data through the runner (#4866)', async () => {
+    // Was `it.fails`: the runner built a fresh empty context and passed no
+    // metadata, so `extractResourceLevel` found neither the
+    // `budget:utilization=` signal nor a `resourceLevel`, and the stage
+    // skipped with trace reason "no budget data" on every production call.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: new ResourceStrategyStage(),
+    });
+
+    const result = await runResourceStrategyStage(mockTask, candidates, [], deps, 0.25);
+
+    // Utilization is the SPENT ratio; resource level is what remains.
+    expect(result.resourceLevel).toBeCloseTo(0.75);
+  });
+
+  it('leaves the stage skipped when no budget ceiling is configured (#4866)', async () => {
+    // The benign majority. Without `maxCostUsd` there is no utilization to
+    // compute, and an unknown budget must not be rendered as a known one —
+    // defaulting here would activate tier adjustments for every user who
+    // never asked for budget-aware routing.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: new ResourceStrategyStage(),
+    });
+
+    const result = await runResourceStrategyStage(mockTask, candidates, [], deps, undefined);
+
+    expect(result.resourceLevel).toBeUndefined();
+    expect(result.tierMeasured).toBe(false);
+  });
+
+  it('marks the tier as measured even when it comes out balanced (#4866)', async () => {
+    // `buildOptionalFields` omitted `resourceTier` whenever the tier equalled
+    // 'balanced', so a tier that WAS selected and happened to be balanced was
+    // indistinguishable in the recorded decision from a stage that never ran.
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: new ResourceStrategyStage(),
+    });
+
+    const result = await runResourceStrategyStage(mockTask, candidates, [], deps, 0.5);
+
+    expect(result.tierMeasured).toBe(true);
+  });
+
+  it('a real ResourceStrategyStage does reach a tier when given the data directly', async () => {
+    // The control: the stage itself works. It reads `resourceLevel` from
+    // context metadata (resource-strategy-stage.ts:238-244) — a channel
+    // `createRoutingContext` accepts as its third argument and the runner
+    // never supplies. So the defect is the plumbing, not the stage, and
+    // deleting the stage would be the wrong reading of #4866.
+    const stage = new ResourceStrategyStage();
+
+    const routed = await stage.route(
+      createRoutingContext(mockTask.content, candidates, { resourceLevel: 0.9 })
+    );
+
+    expect(routed.ok).toBe(true);
+    if (!routed.ok) return;
+    expect(routed.value.context.signals.some((s) => s.startsWith('resource-strategy:tier='))).toBe(
+      true
+    );
+  });
+});

@@ -78,11 +78,12 @@ export function recordBanditOutcome(
     deps.budgetConstraints
   );
   // Built through the SAME converter chain the select path uses
-  // (`composite-router-stages.ts:666`). LinUCB is only consistent if `update`
-  // sees the vector `selectArm` scored, and the two converters disagree on
-  // three of six columns: `taskProfileToBanditContext` quantizes complexity to
-  // 0.1 steps, adds the legacy +500 token offset, and emits `isReasoningTask`
-  // as 0/1 where the analysis-based one emits 0/0.5/1 (#4953).
+  // (`runLinUCBStage` in `composite-router-scoring-stages.ts`). LinUCB is only
+  // consistent if `update` sees the vector `selectArm` scored, and the two
+  // converters disagree on three of six columns: `taskProfileToBanditContext`
+  // quantizes complexity to 0.1 steps, adds the legacy +500 token offset, and
+  // emits `isReasoningTask` as 0/1 where the analysis-based one emits 0/0.5/1
+  // (#4953).
   const context = taskProfileToBanditContext(
     taskAnalysisResultToTaskProfile(analysis),
     budgetUtilization

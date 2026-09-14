@@ -11,11 +11,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import {
-  analyzeTaskProfile,
-  runPipeline,
-  type StageDependencies,
-} from './composite-router-stages.js';
+import { analyzeTaskProfile, runPipeline } from './composite-router-stages.js';
+import type { StageDependencies } from './composite-router-scoring-stages.js';
 import type { CliName, CliTask } from './types.js';
 import { CompositeRoutingError } from './composite-router-types.js';
 import { isCategoryFailClosed, SENSITIVE_CATEGORIES } from './fallback-chains.js';

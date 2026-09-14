@@ -224,9 +224,10 @@ export class ResourceStrategyStage implements IRouterStage {
    * The `budget:utilization=` signal branch that used to lead this method is
    * gone with its only producer (#4872). `BudgetFilterStage` was the sole
    * emitter, and #4869 had already superseded the channel by passing the same
-   * figure as typed metadata from `composite-router-stages.ts:464`. Reading a
-   * prefix nothing emits is a branch that cannot fire; the signal-contract
-   * ratchet caught it the moment the producer was deleted.
+   * figure as typed metadata from `runResourceStrategyStage` in
+   * `composite-router-scoring-stages.ts`. Reading a prefix nothing emits is a
+   * branch that cannot fire; the signal-contract ratchet caught it the moment
+   * the producer was deleted.
    */
   private extractResourceLevel(ctx: RoutingContext): number | undefined {
     // Check metadata for explicit resource level
