@@ -20,6 +20,11 @@
  * `clean`/"no drift") so a provider outage can never mask real drift. Advisory:
  * always exits 0 (drift is reported via an issue, never a red build).
  *
+ * The verdict is computed by {@link parameterDriftVerdict}, a pure function over
+ * a {@link ParameterDriftMeasurement}, so the three outcomes — unmeasured,
+ * measured-zero, measured-N — are tested as values (#6237; mirrors
+ * `check-pricing-drift.ts`, #4927).
+ *
  * Usage: `pnpm exec tsx scripts/check-parameter-drift.ts`
  *
  * @module scripts/check-parameter-drift
@@ -33,8 +38,47 @@ import { unsupportedParametersForModel } from '../packages/nexus-agents/src/conf
 import {
   reconcileParameterDrift,
   summarizeParameterJoin,
+  type ParameterDriftFinding,
   type RegistryParamView,
 } from './parameter-drift-reconcile.js';
+
+export type ParameterDriftStatus = 'clean' | 'drift' | 'skipped';
+
+/** What the run established, before it is rendered as a verdict. */
+export type ParameterDriftMeasurement =
+  | { readonly kind: 'unmeasured'; readonly reason: string }
+  | { readonly kind: 'measured'; readonly findings: readonly ParameterDriftFinding[] };
+
+export interface ParameterDriftVerdict {
+  readonly status: ParameterDriftStatus;
+  /**
+   * Drifted (model, param) pairs. Always 0 when `status` is `skipped`, but that
+   * 0 is not a measurement — consumers must branch on `status` first.
+   */
+  readonly count: number;
+}
+
+/**
+ * The one place a measurement becomes a verdict.
+ *
+ * `unmeasured` never renders as `clean`: an empty catalog, an empty join or a
+ * thrown error is absence of a measurement, not absence of drift. `measured`
+ * with no findings is a genuine zero.
+ */
+export function parameterDriftVerdict(
+  measurement: ParameterDriftMeasurement
+): ParameterDriftVerdict {
+  if (measurement.kind === 'unmeasured') {
+    return { status: 'skipped', count: 0 };
+  }
+  const count = measurement.findings.length;
+  return { status: count === 0 ? 'clean' : 'drift', count };
+}
+
+/** The two stdout lines the workflow greps for. */
+export function formatVerdict(verdict: ParameterDriftVerdict): string {
+  return `PARAM_DRIFT_STATUS=${verdict.status}\nPARAM_DRIFT_COUNT=${String(verdict.count)}`;
+}
 
 /** Build the curated-map view: one entry per registered model with the ids it may
  * appear under in the provider catalog and its resolver-computed unsupported set. */
@@ -76,8 +120,7 @@ function reportJoin(
       '⚠️  SKIP: no registry model joined the provider catalog — nothing was reconciled. ' +
         'Not "no drift".'
     );
-    console.log('PARAM_DRIFT_STATUS=skipped');
-    console.log('PARAM_DRIFT_COUNT=0');
+    console.log(formatVerdict(parameterDriftVerdict({ kind: 'unmeasured', reason: 'empty join' })));
     return false;
   }
   return true;
@@ -96,8 +139,9 @@ async function main(): Promise<void> {
     console.error(
       '   A provider outage must not mask real parameter drift. Re-run when reachable.'
     );
-    console.log('PARAM_DRIFT_STATUS=skipped');
-    console.log('PARAM_DRIFT_COUNT=0');
+    console.log(
+      formatVerdict(parameterDriftVerdict({ kind: 'unmeasured', reason: 'empty catalog' }))
+    );
     return;
   }
   console.log(`Catalog has ${String(catalog.length)} models.`);
@@ -110,13 +154,13 @@ async function main(): Promise<void> {
   if (!reportJoin(catalog, registryViews)) return;
 
   const findings = reconcileParameterDrift(catalog, registryViews);
+  const verdict = parameterDriftVerdict({ kind: 'measured', findings });
 
-  if (findings.length === 0) {
+  if (verdict.status === 'clean') {
     console.log(
       '✅ No parameter drift — the curated map agrees with the provider for every model that joined.'
     );
-    console.log('PARAM_DRIFT_STATUS=clean');
-    console.log('PARAM_DRIFT_COUNT=0');
+    console.log(formatVerdict(verdict));
     return;
   }
 
@@ -136,15 +180,17 @@ async function main(): Promise<void> {
   console.log(
     'and the affected models’ unsupportedParameters in in-tree-data.ts, then reconcile by hand.'
   );
-  console.log(`PARAM_DRIFT_STATUS=drift`);
-  console.log(`PARAM_DRIFT_COUNT=${String(findings.length)}`);
+  console.log(formatVerdict(verdict));
 }
 
-main().catch((e: unknown) => {
-  const msg = e instanceof Error ? e.message : String(e);
-  // Even an unexpected error is a LOUD skip, never a silent "clean".
-  console.error(`⚠️  SKIP: parameter-drift check errored (non-blocking): ${msg}`);
-  console.log('PARAM_DRIFT_STATUS=skipped');
-  console.log('PARAM_DRIFT_COUNT=0');
-  process.exit(0);
-});
+// Entry guard so the test can import the verdict function without running the
+// fetch. Same shape as check-pricing-drift.ts / check-deploy-stale.ts.
+if (process.argv[1]?.endsWith('check-parameter-drift.ts') === true) {
+  main().catch((e: unknown) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Even an unexpected error is a LOUD skip, never a silent "clean".
+    console.error(`⚠️  SKIP: parameter-drift check errored (non-blocking): ${msg}`);
+    console.log(formatVerdict(parameterDriftVerdict({ kind: 'unmeasured', reason: msg })));
+    process.exit(0);
+  });
+}

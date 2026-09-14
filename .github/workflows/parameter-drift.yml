@@ -35,18 +35,42 @@ jobs:
       - name: Reconcile curated param map against provider supported_parameters
         id: drift
         run: |
+          # The script's exit code carries no signal by contract (it always
+          # exits 0), so capture it only to catch the one thing that CAN make
+          # it non-zero: tsx failing to load the script at all. That path
+          # prints no verdict and must read as unmeasured, not as clean.
+          set +e
           OUTPUT=$(pnpm check:parameter-drift 2>&1)
+          SCRIPT_EXIT=$?
+          set -e
           echo "$OUTPUT"
-          STATUS=$(echo "$OUTPUT" | grep -oP 'PARAM_DRIFT_STATUS=\K\S+' | tail -1 || echo "skipped")
-          COUNT=$(echo "$OUTPUT" | grep -oP 'PARAM_DRIFT_COUNT=\K\d+' | tail -1 || echo "0")
+          # The default is applied with `${VAR:-default}`, NOT `|| echo`. In
+          # `grep … | tail -1 || echo skipped` the `||` sees tail's status, and
+          # tail exits 0 on empty input — so the fallback never fired and an
+          # absent verdict became `drift_status=` (empty), which matched no step
+          # below and left the run green. Executed and confirmed before this
+          # rewrite (#6237; same construct as pricing-drift, #4927 finding 1).
+          STATUS=$(echo "$OUTPUT" | grep -oP 'PARAM_DRIFT_STATUS=\K\S+' | tail -1)
+          COUNT=$(echo "$OUTPUT" | grep -oP 'PARAM_DRIFT_COUNT=\K\d+' | tail -1)
+          if [ "$SCRIPT_EXIT" -ne 0 ]; then
+            echo "::warning::check:parameter-drift exited $SCRIPT_EXIT — its verdict, if any, is discarded"
+            STATUS=skipped
+          fi
+          STATUS="${STATUS:-skipped}"
+          COUNT="${COUNT:-0}"
           echo "drift_status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "drift_count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "$OUTPUT" > parameter-drift-report.txt
 
-      - name: Note a loud skip (provider fetch failure — NOT "no drift")
+      # A skip is its own outcome and it is RED. A ::warning:: on a green run
+      # was still a green weekly run, and a green run is what a human reading
+      # the Actions list takes for "parameters checked, no drift". The error
+      # text says UNMEASURED so the red is not misread as drift either.
+      - name: Fail loudly on a skip (provider fetch failure — NOT "no drift")
         if: steps.drift.outputs.drift_status == 'skipped'
         run: |
-          echo "::warning::Parameter-drift check SKIPPED — OpenRouter catalog fetch failed or empty. Not treated as 'no drift'; re-run when the provider is reachable."
+          echo "::error::Parameter drift UNMEASURED — the OpenRouter catalog fetch failed or came back empty, no registry model joined it, or the script errored. This is not 'no drift'; re-run when the provider is reachable."
+          exit 1
 
       - name: Create issue if parameter drift found
         if: steps.drift.outputs.drift_status == 'drift'
