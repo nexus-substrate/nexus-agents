@@ -1,5 +1,0 @@
----
-'nexus-agents': patch
----
-
-The persisted vote record now says where each seat was assigned and whether it answered somewhere else. Schema 1.9 adds two present-only voter fields: `assignedCli`, the bare CLI name the round-robin or `NEXUS_VOTER_MODEL_<ROLE>` pin chose for the seat, and `fallback`, the same `{ fromCli, fromModel?, reason }` object the live `consensus_vote` result carries when a seat fell over to another CLI or model (reason classes: `rate-limit`, `capacity`, `auth`, `timeout`, `sandbox`, `unknown`). A 1.8 record showed seven identical `model` values on a panel assigned three ways and nothing that said five of them were substitutes; a 1.9 record shows both. Both fields are covered by the record's self-hash, so removing or editing one on a persisted line is a `hash_mismatch`. Records at 1.8 and below carry neither key, parse unchanged, and re-hash byte-identical. Nothing is aggregated at the record level: distinct-model and fallback counts are derivable from the per-seat entries.
