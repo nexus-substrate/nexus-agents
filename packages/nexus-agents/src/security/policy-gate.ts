@@ -129,6 +129,15 @@ function checkInfluenceBlock(action: AgentAction, context: ActionContext): Viola
  * Enforce the Rule of Two: no agent may simultaneously
  * (a) process untrusted input, (b) have write access, AND (c) access secrets.
  *
+ * A violation is REFUSED, never routed to human approval (#4735, panel
+ * option A, 7-0). The rule measures the capability posture of the process —
+ * callers derive `hasWriteAccess` from `!dryRun` and `hasSecretAccess` from
+ * token presence for the whole run — not the blast radius of one action, so a
+ * human approving one action would not remove the agent's simultaneous
+ * possession of all three legs. The only remedy is to drop a leg, and the
+ * violation message names all three so the caller's existing logging carries
+ * the diagnosis (this module has no logger of its own).
+ *
  * Exported (#3198) so the firewall's `policyEnforcement` stage can surface the
  * same assessment during input composition without duplicating the predicate.
  */
@@ -138,7 +147,10 @@ export function checkRuleOfTwo(context: ActionContext): Violation | undefined {
     return {
       rule: 'RULE_OF_TWO',
       message:
-        'Rule of Two violation: agent simultaneously processes untrusted input, has write access, and accesses secrets',
+        `RULE_OF_TWO: agent simultaneously (a) processes untrusted input ` +
+        `(Tier ${context.inputTrustTier}), (b) has write access, and ` +
+        `(c) has secret/token access. Refused; there is no approval path — ` +
+        `drop a leg: dry-run, run without the token, or split the agent (#4735).`,
       severity: 'block',
     };
   }
