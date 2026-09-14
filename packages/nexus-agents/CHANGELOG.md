@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.54.15
+
+### Patch Changes
+
+- [#6195](https://github.com/nexus-substrate/nexus-agents/pull/6195) [`3b4bca6`](https://github.com/nexus-substrate/nexus-agents/commit/3b4bca650aac484cba44c02114a1f350a6410487) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Internal split: the quick-mode contrarian-escalation block of `consensus_vote` moved from `consensus-vote.ts` to a sibling `consensus-vote-contrarian.ts` with no behaviour change ([#6148](https://github.com/nexus-substrate/nexus-agents/issues/6148)).
+
 ## 8.54.14
 
 ### Patch Changes
