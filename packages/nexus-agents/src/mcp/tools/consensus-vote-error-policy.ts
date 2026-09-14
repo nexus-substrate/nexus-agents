@@ -33,7 +33,7 @@
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ErrorPolicy } from './consensus-vote-types.js';
-import { ERROR_FLOOR_FRACTION } from './consensus-vote-types.js';
+import { ERROR_FLOOR_FRACTION } from '../../consensus/decision/thresholds.js';
 
 export interface ErrorPolicyDecision {
   /** True when the vote should short-circuit to failed without reaching the engine. */

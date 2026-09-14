@@ -8,7 +8,8 @@
  */
 import { colors } from './ansi-output.js';
 import { formatPercentage } from '../core/index.js';
-import { VOTER_ROLES, type AgentVoteResult, type VotingResult } from './vote-types.js';
+import type { AgentVoteResult, VotingResult } from './vote-types.js';
+import { VOTER_ROLES } from './voter-roles.js';
 import { panelDiversityOf, seatFallbacks, type SeatFallbackDetail } from './vote-diversity.js';
 import type { ResolvedVoterProject } from './voter-project.js';
 import type { ContrarianCheckStatus } from '../mcp/tools/consensus-vote-types.js';

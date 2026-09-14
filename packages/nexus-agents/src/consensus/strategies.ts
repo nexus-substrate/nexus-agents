@@ -13,7 +13,7 @@ import type {
   AgentPerformance,
   WeightBasis,
 } from './types.js';
-import { VOTING_THRESHOLDS } from './types.js';
+import { VOTING_THRESHOLDS } from './decision/thresholds.js';
 import { HigherOrderVotingStrategy } from './higher-order-voting.js';
 // The ratio-vs-bar comparison lives in the governed decision module (#6000 step 1).
 import { evaluateThreshold } from './decision/verdict.js';

@@ -31,10 +31,14 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
-import { SUPERMAJORITY_THRESHOLD } from '../../consensus/types-core.js';
+import { SUPERMAJORITY_THRESHOLD } from '../../consensus/decision/thresholds.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { getVoterRoles } from '../../cli/voter-roles.js';
-import { resolveStrategy, strategyToAlgorithm } from '../../consensus/decision/strategy.js';
+import {
+  getDefaultErrorPolicy,
+  resolveStrategy,
+  strategyToAlgorithm,
+} from '../../consensus/decision/strategy.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
@@ -57,12 +61,11 @@ import {
   VoteThresholdSchema,
   ConsensusVoteInputSchema,
   buildResponse,
-  getDefaultErrorPolicy,
   isHigherOrderStrategy,
   shouldEscalateLowPosterior,
-  resolveVoteDecision,
   toRecordDecision,
 } from './consensus-vote-types.js';
+import { resolveVoteDecision } from '../../consensus/decision/verdict.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import {
   recordVoteSuccess,

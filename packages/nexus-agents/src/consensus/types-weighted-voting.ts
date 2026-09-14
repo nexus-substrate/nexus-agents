@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import type { Vote } from './types-core.js';
-import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
+import { SUPERMAJORITY_THRESHOLD } from './decision/thresholds.js';
 
 /**
  * Task outcome STATUS for tracking agent performance — a 4-state vote status,

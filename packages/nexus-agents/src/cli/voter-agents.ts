@@ -18,7 +18,7 @@
 
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { resolveVoterModelOverrides } from './voter-model-overrides.js';
-import { VOTER_ROLES } from './vote-types.js';
+import { VOTER_ROLES } from './voter-roles.js';
 import type { VoteOutcome } from './voter-execution.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider } from '../core/index.js';

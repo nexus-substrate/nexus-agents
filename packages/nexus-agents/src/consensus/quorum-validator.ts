@@ -27,7 +27,7 @@
 
 import { createLogger, formatPercentage, type ILogger } from '../core/index.js';
 import type { ConsensusAlgorithm, Vote, VoteCounts, WeightedVoteCounts } from './types-core.js';
-import { SUPERMAJORITY_THRESHOLD } from './types-core.js';
+import { SUPERMAJORITY_THRESHOLD } from './decision/thresholds.js';
 
 // ============================================================================
 // Types

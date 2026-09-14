@@ -26,7 +26,7 @@ import type {
   VoteHash,
   NoQuorumPolicy,
 } from './vote-types.js';
-import { VOTER_ROLES } from './vote-types.js';
+import { VOTER_ROLES } from './voter-roles.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult } from '../consensus/types.js';
 import { DEFAULT_VOTE_TIMEOUT_MS, type AgentVoteResult } from './voter-agents.js';
 import type { ResolvedVoterProject } from './voter-project.js';
@@ -48,7 +48,7 @@ import {
   tallySummaryLine,
   type VotingResultWithProject,
 } from './vote-summary-lines.js';
-import { mapOutcomeToDecision } from '../mcp/tools/consensus-vote-types.js';
+import { mapOutcomeToDecision } from '../consensus/decision/verdict.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
 import { auditLineFor } from './vote-audit-line.js';
