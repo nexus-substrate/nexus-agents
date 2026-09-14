@@ -5,14 +5,16 @@
  */
 
 import { getTimeProvider } from '../core/index.js';
-import type {
-  ProposalId,
-  ProposalState,
-  ConsensusResult,
-  ProposalStatus,
-  ConsensusEngineConfig,
-} from './types.js';
+import type { ProposalId, ProposalState, ConsensusResult, ConsensusEngineConfig } from './types.js';
 import type { VotingOutcome } from './strategies.js';
+import { determineFinalStatus } from './decision/verdict.js';
+
+/**
+ * `determineFinalStatus` moved to `decision/verdict.ts` (#6000 step 1) so the
+ * quorum + approval → outcome step can be governed on its own path.
+ * Re-exported here so every existing import keeps resolving.
+ */
+export { determineFinalStatus } from './decision/verdict.js';
 
 /**
  * Build a pending result for an active proposal.
@@ -93,12 +95,4 @@ export function buildTimeoutResult(
     closedAt: now.toISOString(),
     durationMs: now.getTime() - state.startedAt.getTime(),
   };
-}
-
-/**
- * Determine final status based on quorum and approval.
- */
-export function determineFinalStatus(quorumReached: boolean, approved: boolean): ProposalStatus {
-  if (!quorumReached || !approved) return 'rejected';
-  return 'approved';
 }

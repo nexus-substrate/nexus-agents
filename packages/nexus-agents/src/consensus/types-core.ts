@@ -349,26 +349,12 @@ export const DEFAULT_CONSENSUS_CONFIG: ConsensusEngineConfig = {
 };
 
 /**
- * The exact 2/3 supermajority agreement threshold — the governance constant for
- * "supermajority" / Byzantine (2-of-3) quorum. SINGLE SOURCE (#3571): every
- * consensus site that needs a supermajority references this constant. It must
- * not be rounded: `0.67` rejected an exact 2-of-3 quorum (#5543).
- * (Per-algorithm values like 0.5/1.0 are intentionally NOT centralized — 0.5 is
- * semantically overloaded across several algorithms.)
+ * `SUPERMAJORITY_THRESHOLD` and `VOTING_THRESHOLDS` moved to
+ * `decision/thresholds.ts` (#6000 step 1) so the bars a tally is measured
+ * against can be governed on their own path. Re-exported here so every
+ * existing import keeps resolving.
  */
-export const SUPERMAJORITY_THRESHOLD = 2 / 3;
-
-/**
- * Voting thresholds for each algorithm.
- */
-export const VOTING_THRESHOLDS: Record<ConsensusAlgorithm, number> = {
-  simple_majority: 0.5,
-  supermajority: SUPERMAJORITY_THRESHOLD,
-  unanimous: 1.0,
-  proof_of_learning: 0.5, // Uses weighted voting
-  opinion_wise: 0.5, // Uses correlation-aware Bayesian aggregation (Issue #333)
-  higher_order: 0.5, // Alias for opinion_wise (Issue #514)
-};
+export { SUPERMAJORITY_THRESHOLD, VOTING_THRESHOLDS } from './decision/thresholds.js';
 
 /**
  * Internal proposal state managed by the engine.

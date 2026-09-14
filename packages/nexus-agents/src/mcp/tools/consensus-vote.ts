@@ -33,6 +33,8 @@ import {
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
 import { SUPERMAJORITY_THRESHOLD } from '../../consensus/types-core.js';
 import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
+import { getVoterRoles } from '../../cli/voter-roles.js';
+import { resolveStrategy, strategyToAlgorithm } from '../../consensus/decision/strategy.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
@@ -157,35 +159,10 @@ export interface ConsensusVoteDeps extends BaseMcpToolDeps {
 }
 
 // --- Strategy Resolution ---
-function resolveStrategy(input: ConsensusVoteInput): VotingStrategy {
-  if (input.strategy !== undefined) return input.strategy;
-  if (input.threshold !== undefined) {
-    switch (input.threshold) {
-      case 'majority':
-        return 'simple_majority';
-      case 'supermajority':
-        return 'supermajority';
-      case 'unanimous':
-        return 'unanimous';
-    }
-  }
-  return 'simple_majority';
-}
-
-function strategyToAlgorithm(strategy: VotingStrategy): ConsensusAlgorithm {
-  if (strategy === 'higher_order') return 'higher_order';
-  if (strategy === 'opinion_wise') return 'opinion_wise';
-  return strategy;
-}
-
-function getVoterRoles(quickMode: boolean): readonly VoterRole[] {
-  // Default panel expanded to 7 roles 2026-04-25 — scope_steward added to
-  // catch build-vs-buy blind spots (#2185). QuickMode substitutes
-  // scope_steward for pm so fast triage covers existence-justification.
-  return quickMode
-    ? ['architect', 'security', 'scope_steward']
-    : ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish', 'scope_steward'];
-}
+// `resolveStrategy`, `strategyToAlgorithm` and `getVoterRoles` moved to the
+// governed decision modules (#6000 step 1): `consensus/decision/strategy.ts`
+// and `cli/voter-roles.ts`. They were module-private here, so nothing is
+// re-exported.
 
 // --- Voting Execution ---
 /** Creates a synthetic ConsensusResult when all votes are errors (Issue #815). */
