@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.54.17
+
+### Patch Changes
+
+- [#6201](https://github.com/nexus-substrate/nexus-agents/pull/6201) [`2566676`](https://github.com/nexus-substrate/nexus-agents/commit/2566676c51c9b98d5a139cf5cf584571cc1b337e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Move the model-selection-shadow glue ([#4197](https://github.com/nexus-substrate/nexus-agents/issues/4197)) out of `composite-router.ts` into `composite-router-model-shadow.ts`; `CompositeRouter` routing and outcome recording are unchanged ([#6148](https://github.com/nexus-substrate/nexus-agents/issues/6148)).
+
 ## 8.54.16
 
 ### Patch Changes
