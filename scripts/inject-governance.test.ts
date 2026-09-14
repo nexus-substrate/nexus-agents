@@ -435,7 +435,7 @@ describe('inject-governance inject', () => {
 // Section injection (marker replacement logic)
 // ============================================================================
 
-describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
+describe('AGENTS.md toolchain footer (#5142, item 2; #6146 in the one render)', () => {
   const PKG_REL = 'packages/nexus-agents/package.json';
   const footer = (
     file: string,
@@ -444,6 +444,15 @@ describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
     new RegExp(`_${key.replace('.', '\\.')}: ([^_\\n]+)_`).exec(
       readFileSync(box(file), 'utf-8')
     )?.[1];
+  /** 1-based line of the first difference between two texts, computed independently of the script. */
+  function firstDiffLine(a: string, b: string): number {
+    const x = a.split('\n');
+    const y = b.split('\n');
+    let i = 0;
+    while (i < x.length && i < y.length && x[i] === y[i]) i++;
+    return i + 1;
+  }
+  const OUTSIDE = 'AGENTS.md differs outside its generated sections';
 
   it('generates the footer from package.json and the installed SDK, into both files', async () => {
     // Before this, the footer said `TypeScript: 5.9+` while package.json said
@@ -477,42 +486,89 @@ describe('AGENTS.md toolchain footer (#5142, item 2)', () => {
     });
   });
 
-  it('check fails when the TypeScript footer disagrees with package.json', async () => {
+  // #6146: the three rows were written by `injectAncillaryCounts` and probed
+  // by `buildToolchainProbes` — a third mechanism beside the sections and the
+  // inline values, after #6130 had folded the stamp and the count phrases
+  // into the AGENTS.md render. Now the render writes them and `check`
+  // measures each against the render, in the inline-value shape, with the
+  // AGENTS.md line the stale row sits on.
+  const FOOTER_ROWS = [
+    { label: 'TypeScript footer', pattern: /_TypeScript: [^_\n]+_/, bogus: '_TypeScript: 5.9+_' },
+    { label: 'Node.js footer', pattern: /_Node\.js: [^_\n]+_/, bogus: '_Node.js: >=1.0.0_' },
+    {
+      label: 'MCP Protocol footer',
+      pattern: /_MCP Protocol: [^_\n]+_/,
+      bogus: '_MCP Protocol: 2000-01-01_',
+    },
+  ] as const;
+
+  it.each(FOOTER_ROWS)(
+    '$label: a stale row is named with both values and its line; inject repairs it, and twice is byte-identical',
+    async ({ label, pattern, bogus }) => {
+      await withInjectSnapshot(async () => {
+        await runInject();
+        const original = readFileSync(box('AGENTS.md'), 'utf-8');
+        const expected = pattern.exec(original)?.[0] ?? '';
+        expect(expected).not.toBe('');
+        expect(expected).not.toBe(bogus);
+        const perturbed = original.replace(pattern, bogus);
+        writeFileSync(box('AGENTS.md'), perturbed);
+
+        const before = await runCheck();
+        expect(before.ok).toBe(false);
+        const line = String(firstDiffLine(original, perturbed));
+        expect(before.output).toContain(
+          `AGENTS.md ${label} is stale (#6146): ${bogus} → ${expected} — AGENTS.md:${line}`
+        );
+        // A generated value, not prose drift. CLAUDE.md is NOT a fixed point
+        // here: `renderClaudeMd` copies the on-disk (stale) AGENTS.md slice,
+        // so the block is also reported stale with the stale value as
+        // "expected" — pre-existing under the #5142 probes, tracked in #6167.
+        expect(before.output).not.toContain(OUTSIDE);
+        expect(before.output).toContain('pnpm governance:inject');
+
+        await runInject();
+        expect(readFileSync(box('AGENTS.md'), 'utf-8')).toBe(original);
+        await runInject();
+        expect(readFileSync(box('AGENTS.md'), 'utf-8')).toBe(original);
+        const after = await runCheck();
+        expect(after.output).not.toContain(`AGENTS.md ${label} is stale`);
+        expect(after.ok).toBe(true);
+      });
+    }
+  );
+
+  it('all three rows current: check passes and names no footer row', async () => {
     await withInjectSnapshot(async () => {
       await runInject();
-      const agentsPath = box('AGENTS.md');
-      writeFileSync(
-        agentsPath,
-        readFileSync(agentsPath, 'utf-8').replace(/_TypeScript: [^_\n]+_/, '_TypeScript: 5.9+_')
-      );
-
       const { ok, output } = await runCheck();
-
-      expect(ok).toBe(false);
-      expect(output).toContain('AGENTS.md TypeScript footer');
-      expect(output).toContain('found 5.9+');
+      expect(ok).toBe(true);
+      expect(output).not.toContain('footer is stale');
     });
   });
 
-  it('check fails when the MCP Protocol footer disagrees with the installed SDK', async () => {
-    // The only occurrences of the protocol date in src/ are comments; the SDK
-    // export is the fact. A footer that drifts from it must be reportable.
+  it('a stale Node.js row alongside a bogus governance stamp: both are named — measured independently, not first-only', async () => {
     await withInjectSnapshot(async () => {
       await runInject();
-      const agentsPath = box('AGENTS.md');
+      const original = readFileSync(box('AGENTS.md'), 'utf-8');
+      const [, node] = FOOTER_ROWS;
+      const expectedRow = node.pattern.exec(original)?.[0] ?? '';
+      expect(expectedRow).not.toBe('');
+      const STAMP = /_Governance Version: [0-9a-f]{12}_/;
+      expect(STAMP.test(original)).toBe(true);
       writeFileSync(
-        agentsPath,
-        readFileSync(agentsPath, 'utf-8').replace(
-          /_MCP Protocol: [^_\n]+_/,
-          '_MCP Protocol: 2000-01-01_'
-        )
+        box('AGENTS.md'),
+        original
+          .replace(STAMP, '_Governance Version: stale000000_')
+          .replace(node.pattern, node.bogus)
       );
 
       const { ok, output } = await runCheck();
-
       expect(ok).toBe(false);
-      expect(output).toContain('AGENTS.md MCP Protocol footer');
-      expect(output).toContain('found 2000-01-01');
+      expect(output).toContain('AGENTS.md governance stamp is stale (#6130)');
+      expect(output).toContain(
+        `AGENTS.md Node.js footer is stale (#6146): ${node.bogus} → ${expectedRow}`
+      );
     });
   });
 

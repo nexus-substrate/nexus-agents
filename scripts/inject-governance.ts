@@ -952,6 +952,74 @@ function injectRulesIndex(content: string, rules: readonly RuleMetadata[]): stri
 // AGENTS.md generated sections (#2657, #6105) — one render, like CLAUDE.md's
 // ============================================================================
 
+/**
+ * The toolchain facts the AGENTS.md footer states (#5142, item 2).
+ *
+ * The footer said `TypeScript: 5.9+` while `package.json` said `^6.0.3`, and
+ * `MCP Protocol: 2025-11-25` while the only occurrences of that date in
+ * source are comments. Nothing read the footer, and the AGENTS→CLAUDE copy
+ * guaranteed the two COPIES agreed while checking neither against anything —
+ * the generator had made the drift more durable, not less.
+ *
+ * Same remedy as the #5218 governance stamp: one computed value, rendered into
+ * AGENTS.md by the one render ({@link AGENTS_MD_INLINE_VALUES}, #6146) that
+ * `inject` writes and `check` compares. CLAUDE.md inherits it through the
+ * AGNOSTIC:BODY copy, so it is never a second writer. Until #6146 the rows
+ * were written by a replacer and probed separately (`buildToolchainProbes`),
+ * a third mechanism beside the sections and the inline values.
+ */
+interface Toolchain {
+  /** Major version of the `typescript` dependency, rendered `6.x`. */
+  typescript: string;
+  /** `engines.node` verbatim, e.g. `>=22.5.0`. */
+  node: string;
+  /** The SDK's `LATEST_PROTOCOL_VERSION` — what the server actually speaks. */
+  mcpProtocol: string;
+}
+
+/**
+ * The package directory whose installed SDK is the one the published server
+ * runs. Resolved from THIS file's location on purpose: `ROOT` may point at a
+ * test sandbox (`NEXUS_SCRIPT_ROOT`) that has no `node_modules`, and the
+ * sandbox's `package.json` declares the same SDK range as the real one.
+ */
+const INSTALLED_PACKAGE_JSON = fileURLToPath(
+  new URL('../packages/nexus-agents/package.json', import.meta.url)
+);
+
+function readToolchain(): Toolchain {
+  const pkg = JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as {
+    dependencies?: Record<string, string>;
+    engines?: Record<string, string>;
+  };
+  const tsRange = pkg.dependencies?.['typescript'];
+  const tsMajor = tsRange === undefined ? undefined : /(\d+)/.exec(tsRange)?.[1];
+  if (tsMajor === undefined) {
+    throw new Error(`cannot read a typescript major out of ${PACKAGE_JSON_PATH} dependencies`);
+  }
+  const node = pkg.engines?.['node'];
+  if (node === undefined || node === '') {
+    throw new Error(`cannot read engines.node out of ${PACKAGE_JSON_PATH}`);
+  }
+  // CJS build, so this is a synchronous `require` — the only async step in
+  // `checkGovernance()` is the prettier pass in `renderClaudeMd` (#6062, #6099).
+  const sdk = createRequire(INSTALLED_PACKAGE_JSON)('@modelcontextprotocol/sdk/types.js') as {
+    LATEST_PROTOCOL_VERSION?: unknown;
+  };
+  const mcpProtocol = sdk.LATEST_PROTOCOL_VERSION;
+  if (typeof mcpProtocol !== 'string' || mcpProtocol === '') {
+    throw new Error('@modelcontextprotocol/sdk did not export a string LATEST_PROTOCOL_VERSION');
+  }
+  return { typescript: `${tsMajor}.x`, node, mcpProtocol };
+}
+
+/** The footer rows, whatever value each currently carries. */
+const TOOLCHAIN_PATTERNS = {
+  typescript: /_TypeScript: [^_\n]+_/,
+  node: /_Node\.js: [^_\n]+_/,
+  mcpProtocol: /_MCP Protocol: [^_\n]+_/,
+} as const;
+
 /** What the AGENTS.md generated sections and inline values are rendered from. */
 interface AgentsMdSources {
   tools: ToolMetadata[];
@@ -959,6 +1027,8 @@ interface AgentsMdSources {
   rules: readonly RuleMetadata[];
   /** For the `for all N skills.` phrase (#6130). */
   skillCount: number;
+  /** For the three footer rows (#5142, #6146). */
+  toolchain: Toolchain;
 }
 
 function loadAgentsMdSources(r: Pick<GovernanceRegistries, 'tools' | 'skills'>): AgentsMdSources {
@@ -967,6 +1037,7 @@ function loadAgentsMdSources(r: Pick<GovernanceRegistries, 'tools' | 'skills'>):
     workflowRows: extractWorkflowRows(),
     rules: extractRules(),
     skillCount: r.skills.length,
+    toolchain: readToolchain(),
   };
 }
 
@@ -1053,29 +1124,53 @@ function applyAgentsMdSections(content: string, sources: AgentsMdSources): strin
 interface AgentsMdInlineValue {
   /** Named in the drift message, e.g. `AGENTS.md skills count is stale`. */
   readonly label: string;
+  /** The issue the message cites. */
+  readonly issue: string;
   /** Matches the phrase whatever value it currently carries. */
   readonly pattern: RegExp;
   readonly render: (sources: AgentsMdSources) => string;
 }
 
 /**
- * The count phrases `inject` rewrites inside AGENTS.md's prose (#1837, #6130).
- * They used to be rows of `buildAncillaryReplacements`, applied after the
- * AGENTS.md render; now the render carries them, so `renderAgentsMd` is the
- * one write path for AGENTS.md's generated text and `check` measures each
- * phrase against it. The count probes (`buildAgentsMdProbes`) still measure
- * the same phrases against the registries — a different question, kept.
+ * The inline values `inject` rewrites inside AGENTS.md's prose: the count
+ * phrases (#1837, #6130) and the toolchain footer rows (#5142, #6146). They
+ * used to be replacer rows applied after the AGENTS.md render, the footer
+ * rows probed separately by `buildToolchainProbes`; now the render carries
+ * them all, so `renderAgentsMd` is the one write path for AGENTS.md's
+ * generated text and `check` measures each value against it. The count
+ * probes (`buildAgentsMdProbes`) still measure the count phrases against the
+ * registries — a different question, kept.
  */
 const AGENTS_MD_INLINE_VALUES: readonly AgentsMdInlineValue[] = [
   {
     label: 'skills count',
+    issue: '#6130',
     pattern: /for all \d+ skills\./,
     render: (sources) => `for all ${String(sources.skillCount)} skills.`,
   },
   {
     label: 'MCP tools count',
+    issue: '#6130',
     pattern: /Nexus-agents exposes \d+ MCP tools/,
     render: (sources) => `Nexus-agents exposes ${String(sources.tools.length)} MCP tools`,
+  },
+  {
+    label: 'TypeScript footer',
+    issue: '#6146',
+    pattern: TOOLCHAIN_PATTERNS.typescript,
+    render: (sources) => `_TypeScript: ${sources.toolchain.typescript}_`,
+  },
+  {
+    label: 'Node.js footer',
+    issue: '#6146',
+    pattern: TOOLCHAIN_PATTERNS.node,
+    render: (sources) => `_Node.js: ${sources.toolchain.node}_`,
+  },
+  {
+    label: 'MCP Protocol footer',
+    issue: '#6146',
+    pattern: TOOLCHAIN_PATTERNS.mcpProtocol,
+    render: (sources) => `_MCP Protocol: ${sources.toolchain.mcpProtocol}_`,
   },
 ];
 
@@ -1102,19 +1197,30 @@ async function renderAgentsMd(current: string, sources: AgentsMdSources): Promis
 
 /**
  * One line per inline value whose on-disk phrase differs from the rendered
- * one (#6130): `AGENTS.md skills count is stale (#6130): <on disk> → <expected>`.
- * A phrase absent from both is not drift of the value — the count probe names
- * a missing phrase, loudly (#5882).
+ * one (#6130): `AGENTS.md skills count is stale (#6130): <on disk> → <expected>
+ * — AGENTS.md:N`, N being the 1-based line the on-disk phrase sits on
+ * (#6146; omitted when the phrase is absent on disk). A phrase absent from
+ * both is not drift of the value — the count probe names a missing count
+ * phrase, loudly (#5882), and a footer row absent from both is prose.
  */
 function describeStaleAgentsMdInlineValues(expected: string, content: string): string[] {
   const lines: string[] = [];
   for (const value of AGENTS_MD_INLINE_VALUES) {
-    const onDisk = value.pattern.exec(content)?.[0] ?? '<absent>';
+    const match = value.pattern.exec(content);
+    const onDisk = match?.[0] ?? '<absent>';
     const rendered = value.pattern.exec(expected)?.[0] ?? '<absent>';
     if (onDisk === rendered) continue;
-    lines.push(`AGENTS.md ${value.label} is stale (#6130): ${onDisk} → ${rendered}`);
+    const at = match === null ? '' : ` — AGENTS.md:${String(lineNumberAt(content, match.index))}`;
+    lines.push(`AGENTS.md ${value.label} is stale (${value.issue}): ${onDisk} → ${rendered}${at}`);
   }
   return lines;
+}
+
+/** 1-based line of the character at `index`. */
+function lineNumberAt(content: string, index: number): number {
+  let line = 1;
+  for (let i = 0; i < index; i++) if (content.charCodeAt(i) === 10) line++;
+  return line;
 }
 
 /** Whether either side of the first differing line is an inline generated value. */
@@ -2243,116 +2349,12 @@ function checkStrategyRegistryGates(): boolean[] {
 interface Probe {
   path: string;
   pattern: RegExp;
-  /** A count, or (#5142) an exact string such as a version. */
-  expected: number | string;
+  /**
+   * A count. The string form (#5142, the toolchain footer) left with those
+   * rows when they joined the AGENTS.md render (#6146).
+   */
+  expected: number;
   label: string;
-}
-
-/**
- * The toolchain facts the AGENTS.md footer states (#5142, item 2).
- *
- * The footer said `TypeScript: 5.9+` while `package.json` said `^6.0.3`, and
- * `MCP Protocol: 2025-11-25` while the only occurrences of that date in
- * source are comments. Nothing read the footer, and the AGENTS→CLAUDE copy
- * guaranteed the two COPIES agreed while checking neither against anything —
- * the generator had made the drift more durable, not less.
- *
- * Same remedy as the #5218 governance stamp: one computed value, written into
- * AGENTS.md by `inject`, probed by `check`. CLAUDE.md inherits it through the
- * AGNOSTIC:BODY copy, so it is never a second writer.
- */
-interface Toolchain {
-  /** Major version of the `typescript` dependency, rendered `6.x`. */
-  typescript: string;
-  /** `engines.node` verbatim, e.g. `>=22.5.0`. */
-  node: string;
-  /** The SDK's `LATEST_PROTOCOL_VERSION` — what the server actually speaks. */
-  mcpProtocol: string;
-}
-
-/**
- * The package directory whose installed SDK is the one the published server
- * runs. Resolved from THIS file's location on purpose: `ROOT` may point at a
- * test sandbox (`NEXUS_SCRIPT_ROOT`) that has no `node_modules`, and the
- * sandbox's `package.json` declares the same SDK range as the real one.
- */
-const INSTALLED_PACKAGE_JSON = fileURLToPath(
-  new URL('../packages/nexus-agents/package.json', import.meta.url)
-);
-
-function readToolchain(): Toolchain {
-  const pkg = JSON.parse(readFileSync(PACKAGE_JSON_PATH, 'utf-8')) as {
-    dependencies?: Record<string, string>;
-    engines?: Record<string, string>;
-  };
-  const tsRange = pkg.dependencies?.['typescript'];
-  const tsMajor = tsRange === undefined ? undefined : /(\d+)/.exec(tsRange)?.[1];
-  if (tsMajor === undefined) {
-    throw new Error(`cannot read a typescript major out of ${PACKAGE_JSON_PATH} dependencies`);
-  }
-  const node = pkg.engines?.['node'];
-  if (node === undefined || node === '') {
-    throw new Error(`cannot read engines.node out of ${PACKAGE_JSON_PATH}`);
-  }
-  // CJS build, so this is a synchronous `require` — the only async step in
-  // `checkGovernance()` is the prettier pass in `renderClaudeMd` (#6062, #6099).
-  const sdk = createRequire(INSTALLED_PACKAGE_JSON)('@modelcontextprotocol/sdk/types.js') as {
-    LATEST_PROTOCOL_VERSION?: unknown;
-  };
-  const mcpProtocol = sdk.LATEST_PROTOCOL_VERSION;
-  if (typeof mcpProtocol !== 'string' || mcpProtocol === '') {
-    throw new Error('@modelcontextprotocol/sdk did not export a string LATEST_PROTOCOL_VERSION');
-  }
-  return { typescript: `${tsMajor}.x`, node, mcpProtocol };
-}
-
-const TOOLCHAIN_PATTERNS = {
-  typescript: /_TypeScript: ([^_\n]+)_/,
-  node: /_Node\.js: ([^_\n]+)_/,
-  mcpProtocol: /_MCP Protocol: ([^_\n]+)_/,
-} as const;
-
-function buildToolchainProbes(tc: Toolchain): Probe[] {
-  return [
-    {
-      path: AGENTS_MD_PATH,
-      pattern: TOOLCHAIN_PATTERNS.typescript,
-      expected: tc.typescript,
-      label: 'AGENTS.md TypeScript footer',
-    },
-    {
-      path: AGENTS_MD_PATH,
-      pattern: TOOLCHAIN_PATTERNS.node,
-      expected: tc.node,
-      label: 'AGENTS.md Node.js footer',
-    },
-    {
-      path: AGENTS_MD_PATH,
-      pattern: TOOLCHAIN_PATTERNS.mcpProtocol,
-      expected: tc.mcpProtocol,
-      label: 'AGENTS.md MCP Protocol footer',
-    },
-  ];
-}
-
-function buildToolchainReplacements(tc: Toolchain): Replacement[] {
-  return [
-    {
-      path: AGENTS_MD_PATH,
-      pattern: TOOLCHAIN_PATTERNS.typescript,
-      replacement: `_TypeScript: ${tc.typescript}_`,
-    },
-    {
-      path: AGENTS_MD_PATH,
-      pattern: TOOLCHAIN_PATTERNS.node,
-      replacement: `_Node.js: ${tc.node}_`,
-    },
-    {
-      path: AGENTS_MD_PATH,
-      pattern: TOOLCHAIN_PATTERNS.mcpProtocol,
-      replacement: `_MCP Protocol: ${tc.mcpProtocol}_`,
-    },
-  ];
 }
 
 function buildAgentsMdProbes(t: number, s: number): Probe[] {
@@ -2446,7 +2448,6 @@ function buildAncillaryProbes(counts: AncillaryCounts): Probe[] {
   const { toolCount: t, skillCount: s, agentCount: a } = counts;
   return [
     ...buildAgentsMdProbes(t, s),
-    ...buildToolchainProbes(readToolchain()),
     ...buildMarketplaceProbes(t, s, a),
     ...buildPluginInstallProbes(t, s, a),
   ];
@@ -2475,7 +2476,7 @@ function runProbe(probe: Probe): boolean {
     console.error(`❌ ${probe.label}: pattern not found in ${probe.path}`);
     return false;
   }
-  const actual = typeof probe.expected === 'string' ? (match[1] ?? '') : Number(match[1]);
+  const actual = Number(match[1]);
   if (actual !== probe.expected) {
     console.error(
       `❌ ${probe.label}: expected ${String(probe.expected)}, found ${String(actual)} in ${probe.path}`
@@ -2668,13 +2669,13 @@ export async function injectGovernance(): Promise<void> {
   // toolchain footer surfaced it on its first run.
 
   // Render AGENTS.md's generated text (#2657 rules index; #6105 workflow and
-  // tool tables; #6130 governance stamp and count phrases) from the same
-  // generators the CLAUDE.md render uses.
+  // tool tables; #6130 governance stamp and count phrases; #6146 toolchain
+  // footer) from the same generators the CLAUDE.md render uses.
   await injectAgentsMd(registries);
 
   // #1837: keep ancillary count surfaces (plugin manifests, install docs)
-  // aligned with canonical registries — and (#5142) the AGENTS.md toolchain
-  // footer with package.json and the installed SDK.
+  // aligned with canonical registries. The AGENTS.md toolchain footer (#5142)
+  // is part of the AGENTS.md render above since #6146.
   injectAncillaryCounts({
     toolCount: tools.length,
     skillCount: skills.length,
@@ -2803,9 +2804,10 @@ interface Replacement {
 
 /**
  * Count replacements for the plugin manifests and the install doc. AGENTS.md's
- * rows — the governance stamp (#5218) and the two count phrases — moved into
- * the AGENTS.md render (#6130): `check` compares that render to the file, and
- * a value written here instead would be one the check cannot see.
+ * rows — the governance stamp (#5218), the two count phrases (#6130) and the
+ * toolchain footer (#5142, #6146) — moved into the AGENTS.md render: `check`
+ * compares that render to the file, and a value written here instead would be
+ * one the check cannot see.
  */
 function buildAncillaryReplacements(c: AncillaryCounts): Replacement[] {
   const { toolCount: t, skillCount: s, agentCount: a } = c;
@@ -2867,11 +2869,7 @@ function buildPluginInstallReplacements(t: number, s: number, a: number): Replac
 }
 
 function injectAncillaryCounts(counts: AncillaryCounts): void {
-  const replacements = [
-    ...buildAncillaryReplacements(counts),
-    ...buildToolchainReplacements(readToolchain()),
-  ];
-  for (const { path, pattern, replacement } of replacements) {
+  for (const { path, pattern, replacement } of buildAncillaryReplacements(counts)) {
     if (!existsSync(path)) continue;
     const current = readFileSync(path, 'utf-8');
     const updated = current.replace(pattern, replacement);
