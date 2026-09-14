@@ -1,9 +1,11 @@
 /**
  * Shared resolver for `off`/`audit`/`enforce`-style security-mode env vars
- * (#3130). Both `resolveAccessPolicyMode` (ClawGuard, #1977) and
- * `resolveReputationGatingMode` (reputation gating, #3122) parse an enum env
- * var, coerce an invalid value to a safe default, and must NEVER throw — a
- * security layer must not fail-closed on a misconfiguration at startup.
+ * (#3130). `resolveReputationGatingMode` (reputation gating, #3122) and
+ * `resolveFirewallPolicyMode` (#5382) parse an enum env var, coerce an invalid
+ * value to a safe default, and must NEVER throw — a security layer must not
+ * fail-closed on a misconfiguration at startup. (`resolveAccessPolicyMode`,
+ * the original second caller, went with the access-constraint deriver in
+ * #5108.)
  *
  * Previously the coercion was silent: a typo'd `enforce` (`enfroce`) degraded
  * to the default with no signal. This helper keeps the never-throw coercion but

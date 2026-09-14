@@ -137,7 +137,12 @@ const NexusEnvSchema = z.object({
   // Scratch root for short-lived working files (#4412, getNexusTmpDir). Unset
   // resolves to `<dataDir>/tmp`; set it to relocate scratch off the repo.
   NEXUS_TMPDIR: z.string().optional(),
-  // ClawGuard access-policy mode.
+  // ClawGuard access-policy mode. NO READER since #5108 deleted the
+  // access-constraint deriver; the secret-path denylist it carried is now the
+  // PolicyFirewall `secret-paths` rule (enforce behind #4988). Still registered
+  // so a value an operator set from the AGENTS.md table is not reported as a
+  // typo (#4722 class); the row and this entry are retired together under
+  // #6303 / #6319, since that table is governor-owned.
   NEXUS_ACCESS_POLICY_MODE: z.enum(['off', 'audit', 'confirm_risky', 'enforce']).optional(),
   // Sandbox FLAVOR string (`docker-opencode`, `codex`, …), set by the host
   // image so sandbox-detection knows it is inside one (epic #2500, #5026). It
