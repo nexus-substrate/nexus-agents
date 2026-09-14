@@ -29,8 +29,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './script-paths.js';
 import { loadClaimsRegistry } from '../packages/nexus-agents/src/governance/claims-registry.js';
-import { verifyClaims } from '../packages/nexus-agents/src/governance/claims-verify.js';
-import { checkCoverage } from '../packages/nexus-agents/src/governance/claims-coverage.js';
+import {
+  verifyClaims,
+  type VerifyReport,
+} from '../packages/nexus-agents/src/governance/claims-verify.js';
+import {
+  checkCoverage,
+  type CoverageReport,
+} from '../packages/nexus-agents/src/governance/claims-coverage.js';
 
 const REGISTRY_PATH = join(ROOT, 'governance/claims-registry.yaml');
 
@@ -72,18 +78,32 @@ export function checkClaims(): boolean {
   }
 
   const passed = report.passed && coverage.passed;
+  printClaimsVerdict(passed, report, coverage, registry.claims.length);
+  return passed;
+}
+
+/** The one summary line, naming which half failed and why. */
+function printClaimsVerdict(
+  passed: boolean,
+  report: VerifyReport,
+  coverage: CoverageReport,
+  claimCount: number
+): void {
   if (passed) {
-    // The scanned count is the coverage half. `registry.claims.length` is the
-    // FORWARD number and says nothing about how many docs the reverse scan
-    // opened, so on its own it read as coverage the scan never had.
+    // The scanned count is the coverage half. `claimCount` is the FORWARD
+    // number and says nothing about how many docs the reverse scan opened,
+    // so on its own it read as coverage the scan never had.
     console.log(
-      `Claims check passed: ${String(registry.claims.length)} claims verified, ` +
+      `Claims check passed: ${String(claimCount)} claims verified, ` +
         `${String(coverage.docsScanned)} doc(s) scanned for uncovered claims.`
     );
+  } else if (report.unmeasured !== undefined) {
+    // An empty registry verified nothing (#4586) — not "0 of 0 drifted".
+    console.error(`Claims check FAILED: ${report.unmeasured}`);
   } else if (!report.passed) {
     const failed = report.results.filter((r) => !r.ok).length;
     console.error(
-      `Claims check FAILED: ${String(failed)} of ${String(registry.claims.length)} claims drifted.`
+      `Claims check FAILED: ${String(failed)} of ${String(claimCount)} claims drifted.`
     );
   } else {
     console.error(
@@ -92,7 +112,6 @@ export function checkClaims(): boolean {
         `${String(coverage.docsScanned)} doc(s) scanned.`
     );
   }
-  return passed;
 }
 
 const invokedPath = process.argv[1] ?? '';
