@@ -22,8 +22,11 @@
  * block a merge — that is the same branch-protection decision below.
  * That is a real hole, but it is not one a `needs:` entry can close: those jobs
  * would have to be added to branch protection's required contexts directly.
- * Tracked in #4802 as an owner decision. A green run here means "ci.yml is
- * classified", never "every PR gate can block".
+ * Tracked in #4802 as an owner decision. Part 1 of it landed: the
+ * `Governor-path ratification gate` context now reports on EVERY PR
+ * (`governor-review.yml` lost its `paths:` filter), which is the precondition
+ * for requiring it; part 2 is the settings change. A green run here means
+ * "ci.yml is classified", never "every PR gate can block".
  *
  * @module scripts/ci-required-jobs.test
  */
