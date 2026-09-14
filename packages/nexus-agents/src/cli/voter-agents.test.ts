@@ -447,6 +447,44 @@ That's my vote.`;
         expect(result.vote.decision).toBe('abstain');
         expect(result.unverifiableSignal).toBeUndefined();
       });
+
+      // #6244: the catfish seat on the #6241 panel logged two response-parse
+      // failures; a parse failure says the model returned non-JSON, not that
+      // the seat could not read the repository. It is an errored seat whose
+      // `error` names the parse cause, it spends the retry budget (the
+      // failure is transient), and it is never re-recorded as unverifiable.
+      it.each([
+        ['an empty completion', '', /Unexpected end of JSON input$/],
+        [
+          'prose instead of JSON',
+          'I cannot access the repository from here.',
+          /Unexpected token 'I', "I cannot a"\.\.\. is not valid JSON$/,
+        ],
+      ])(
+        'a response-parse failure (%s) is an errored seat with the parse cause, not unverifiable',
+        async (_label, nonJson, cause) => {
+          const adapter = createMockAdapter({
+            response: {
+              ok: true,
+              value: {
+                content: nonJson as unknown as CompletionResponse['content'],
+                stopReason: 'end_turn' as const,
+                model: 'test',
+              },
+            },
+          });
+          const result = await executeAgentVote('catfish', 'Test proposal', adapter, logger, {
+            timeoutMs: 5000,
+            maxRetries: 1,
+          });
+          expect(adapter.complete).toHaveBeenCalledTimes(2);
+          expect(result.source).toBe('error');
+          expect(result.error).toMatch(/^Vote parsing failed: Vote response parsing failed: /);
+          expect(result.error).toMatch(cause);
+          expect(result.unverifiableSignal).toBeUndefined();
+          expect(result.vote.decision).toBe('abstain');
+        }
+      );
     });
 
     it('should retry on failure and succeed', async () => {
