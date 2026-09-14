@@ -123,7 +123,10 @@ export interface OperationClass {
  * - `pipeline` (1800s): multi-stage orchestration / spec / graph execution.
  * - `network-fetch` (120s): external discovery / catalog / repo fetches.
  * - `async-job-body` (3600s): the body of a backgrounded job, which has no
- *   request timeout but still needs a ceiling so a runaway job is reaped.
+ *   request timeout but still needs a ceiling so a runaway job is reaped. The
+ *   only class NOT bounded by `MCP_TIMEOUTS.maxMs` (#5995): its override range
+ *   runs to {@link CLASS_OVERRIDE_MAX_MS}, and a body that runs that long holds
+ *   its concurrency slot the whole time.
  */
 export const OPERATION_CLASSES = {
   interactive: { guardMs: 60_000, name: 'interactive' },
@@ -257,9 +260,66 @@ export const TIMEOUT_MULTIPLIER_ENV_VAR = 'NEXUS_TIMEOUT_MULTIPLIER';
 export const TIMEOUT_MULTIPLIER_MIN = 0.25;
 export const TIMEOUT_MULTIPLIER_MAX = 10;
 
-/** Per-class clamp bounds for the env-override base, before the multiplier. */
+/** Floor for the env-override base, applied before the multiplier. */
 const CLASS_OVERRIDE_MIN_MS = 1_000;
+/**
+ * Per-class override maximum. For a request-bound class it clamps the base
+ * before the multiplier (and the lower `MCP_TIMEOUTS.maxMs` then bounds the
+ * product). For `async-job-body`, the one class with no MCP request, it is
+ * the ceiling itself, applied once after the multiplier (#5995).
+ */
 const CLASS_OVERRIDE_MAX_MS = 7_200_000;
+
+/**
+ * The one class exempt from the MCP request ceiling.
+ *
+ * A class that runs inside an MCP request cannot outlive the request, so the
+ * request ceiling bounds it. `async-job-body` runs a backgrounded job with no
+ * MCP request at all — bounding it by a request ceiling made the documented
+ * override range `(3.6M, 7.2M]` unreachable and every multiplier ≥ 1 a no-op
+ * for that class (#5995, panel option 1). Raising it is opt-in: the declared
+ * default is unchanged, and a wedged job holds its concurrency slot for the
+ * whole guard, so a 2h guard doubles pool-starvation exposure.
+ */
+const REQUEST_CEILING_EXEMPT_CLASS: OperationClassName = 'async-job-body';
+
+/** The request and ceiling a class resolves to, in the order its clamps apply. */
+interface ClampedRequest {
+  readonly requestedMs: number;
+  readonly ceilingMs: number;
+  /** The base the ceiling is compared against when attributing a clamp. */
+  readonly baseForCause: number;
+}
+
+/**
+ * Applies the clamps in the order each class has always had them.
+ *
+ * Every request-bound class keeps origin/main's order — base clamped to
+ * `[CLASS_OVERRIDE_MIN_MS, CLASS_OVERRIDE_MAX_MS]`, then × multiplier, then the
+ * MCP request ceiling — so its resolution is identical for every input; the
+ * #5995 panel's constraint was that only `async-job-body` changes. The exempt
+ * class takes the floor, then × multiplier, then `CLASS_OVERRIDE_MAX_MS` once:
+ * applying the ceiling to the product rather than the base is what lets a base
+ * one past it be REPORTED as reduced instead of silently trimmed before the
+ * multiplier ever sees it.
+ */
+function clampRequest(cls: OperationClassName, chosen: number): ClampedRequest {
+  const multiplier = resolveTimeoutMultiplier();
+  const flooredBase = Math.max(chosen, CLASS_OVERRIDE_MIN_MS);
+  if (cls === REQUEST_CEILING_EXEMPT_CLASS) {
+    return {
+      requestedMs: Math.round(flooredBase * multiplier),
+      ceilingMs: CLASS_OVERRIDE_MAX_MS,
+      baseForCause: flooredBase,
+    };
+  }
+  const clampedBase = Math.min(flooredBase, CLASS_OVERRIDE_MAX_MS);
+  return {
+    requestedMs: Math.round(clampedBase * multiplier),
+    ceilingMs: MCP_TIMEOUTS.maxMs,
+    baseForCause: clampedBase,
+  };
+}
 
 /**
  * Resolves the global timeout multiplier from `NEXUS_TIMEOUT_MULTIPLIER`,
@@ -282,9 +342,11 @@ export function classOverrideEnvVar(cls: OperationClassName): string {
 /**
  * Resolves the runaway-guard for an operation class.
  *
- * `resolve = clamp(envClassOverride ?? base, classMin, classMax) * multiplier`,
- * re-clamped to `MCP_TIMEOUTS.maxMs` so no class can silently exceed the MCP
- * wrapper ceiling.
+ * Request-bound classes: `clamp(envClassOverride ?? base, classMin, classMax)
+ * * multiplier`, re-clamped to `MCP_TIMEOUTS.maxMs`, so none can silently
+ * exceed the MCP wrapper ceiling. `async-job-body`, which runs outside any MCP
+ * request: `max(envClassOverride ?? base, classMin) * multiplier`, clamped to
+ * {@link CLASS_OVERRIDE_MAX_MS} (#5995).
  *
  * @param cls - The operation class to resolve.
  * @returns The resolved guard in milliseconds.
@@ -296,14 +358,15 @@ export function resolveClassGuardMs(cls: OperationClassName): number {
 /**
  * What an operator asked for, and what they actually got.
  *
- * `resolveClassGuardMs` applies three clamps and returns one number, so a
+ * `resolveClassGuardMs` applies its clamps and returns one number, so a
  * request that was reduced is indistinguishable from one that was honoured.
  * That matters most for the classes whose declared guard already sits at or
- * near `MCP_TIMEOUTS.maxMs`: `async-job-body` is declared at exactly the
- * ceiling, so `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS=7200000` is accepted by
- * the schema (an unbounded positive int) and every `NEXUS_TIMEOUT_MULTIPLIER`
- * above 1 is a no-op — for that class the two documented knobs can only lower
- * the guard, never raise it, and nothing said so.
+ * near their ceiling: `async-job-body` is declared at exactly
+ * `MCP_TIMEOUTS.maxMs`, and until #5995 was ceilinged there too, so
+ * `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS=7200000` was accepted by the schema
+ * (an unbounded positive int) and discarded, and every
+ * `NEXUS_TIMEOUT_MULTIPLIER` above 1 was a no-op. The class now has its own
+ * ceiling; the report names whichever one bit.
  */
 export interface ClassGuardResolution {
   readonly cls: OperationClassName;
@@ -311,13 +374,18 @@ export interface ClassGuardResolution {
   readonly effectiveMs: number;
   /** What the base, env override and multiplier asked for, before the ceiling. */
   readonly requestedMs: number;
-  /** True when the request was reduced by `MCP_TIMEOUTS.maxMs`. */
-  readonly clampedByRequestCeiling: boolean;
+  /**
+   * The ceiling this class is clamped to: `MCP_TIMEOUTS.maxMs` for a class
+   * that runs inside an MCP request, `CLASS_OVERRIDE_MAX_MS` for `async-job-body`.
+   */
+  readonly ceilingMs: number;
+  /** True when the request was reduced to `ceilingMs`. */
+  readonly clampedByCeiling: boolean;
   /** The per-class override env var name, when one is set. */
   readonly overrideEnvVar: string | null;
   /**
    * What asked for more than the ceiling allowed. Meaningful only when
-   * `clampedByRequestCeiling` is true.
+   * `clampedByCeiling` is true.
    *
    * `declared_default` is the case with no operator involvement at all — a
    * class declared above the ceiling in `OPERATION_CLASSES`. No class is today,
@@ -340,17 +408,17 @@ export function describeClassGuard(cls: OperationClassName): ClassGuardResolutio
       overrideSet = true;
     }
   }
-  const clampedBase = Math.min(Math.max(chosen, CLASS_OVERRIDE_MIN_MS), CLASS_OVERRIDE_MAX_MS);
-  const requestedMs = Math.round(clampedBase * resolveTimeoutMultiplier());
-  const effectiveMs = Math.min(requestedMs, MCP_TIMEOUTS.maxMs);
+  const { requestedMs, ceilingMs, baseForCause } = clampRequest(cls, chosen);
+  const effectiveMs = Math.min(requestedMs, ceilingMs);
   const clamped = requestedMs > effectiveMs;
   return {
     cls,
     effectiveMs,
     requestedMs,
-    clampedByRequestCeiling: clamped,
+    ceilingMs,
+    clampedByCeiling: clamped,
     overrideEnvVar: overrideSet ? envVar : null,
-    clampCause: clamped ? clampCauseFor(overrideSet, clampedBase) : null,
+    clampCause: clamped ? clampCauseFor(overrideSet, baseForCause, ceilingMs) : null,
   };
 }
 
@@ -362,9 +430,10 @@ export function describeClassGuard(cls: OperationClassName): ClassGuardResolutio
  */
 function clampCauseFor(
   overrideSet: boolean,
-  clampedBase: number
+  baseForCause: number,
+  ceilingMs: number
 ): 'override' | 'multiplier' | 'declared_default' {
-  if (overrideSet && clampedBase > MCP_TIMEOUTS.maxMs) return 'override';
+  if (overrideSet && baseForCause > ceilingMs) return 'override';
   if (process.env[TIMEOUT_MULTIPLIER_ENV_VAR] !== undefined) return 'multiplier';
   return overrideSet ? 'override' : 'declared_default';
 }
@@ -412,7 +481,9 @@ export const MCP_TIMEOUTS = {
   /**
    * Maximum allowed MCP tool timeout. Raised 900_000 → 3_600_000 (#3734) so the
    * `pipeline` (1800s) and `async-job-body` (3600s) classes are not silently
-   * clamped below their declared guard.
+   * clamped below their declared guard. Bounds every class that runs inside an
+   * MCP request; `async-job-body` runs outside one and is bounded by
+   * `CLASS_OVERRIDE_MAX_MS` instead (#5995).
    */
   maxMs: 3_600_000,
   /**

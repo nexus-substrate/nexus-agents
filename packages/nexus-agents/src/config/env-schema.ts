@@ -456,7 +456,7 @@ function findIneffectiveVars(): IneffectiveVar[] {
   const classNames = Object.keys(OPERATION_CLASSES) as OperationClassName[];
   const resolutions: ClassGuardResolution[] = classNames.map((cls) => describeClassGuard(cls));
   return resolutions
-    .filter((r) => r.clampedByRequestCeiling)
+    .filter((r) => r.clampedByCeiling)
     .flatMap((r) => {
       // Name the knob that actually asked for more.
       const name =
@@ -471,12 +471,31 @@ function findIneffectiveVars(): IneffectiveVar[] {
           name,
           requestedMs: r.requestedMs,
           effectiveMs: r.effectiveMs,
-          reason:
-            `The '${r.cls}' class guard is capped at the MCP request ceiling ` +
-            `(${String(MCP_TIMEOUTS.maxMs)}ms), so values above it are discarded.`,
+          reason: ineffectiveReason(r),
         },
       ];
     });
+}
+
+/**
+ * Names the ceiling that bit. `async-job-body` is the one class not bounded by
+ * the MCP request ceiling (#5995); its ceiling is the class override maximum,
+ * and the cost of sitting at it is stated because that is what the operator
+ * is trading for the extra hour.
+ */
+function ineffectiveReason(r: ClassGuardResolution): string {
+  if (r.ceilingMs !== MCP_TIMEOUTS.maxMs) {
+    return (
+      `The '${r.cls}' class guard is capped at the class override ceiling ` +
+      `(${String(r.ceilingMs)}ms), so values above it are discarded. A backgrounded ` +
+      `job holds its concurrency slot for the whole guard, so a longer guard means a ` +
+      `wedged job starves the pool for longer.`
+    );
+  }
+  return (
+    `The '${r.cls}' class guard is capped at the MCP request ceiling ` +
+    `(${String(r.ceilingMs)}ms), so values above it are discarded.`
+  );
 }
 
 // ============================================================================

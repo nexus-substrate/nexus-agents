@@ -301,6 +301,86 @@ describe('runAsJob', () => {
       // The finally must still release the slot even on guard expiry.
       expect(getInFlight('orchestrate')).toBe(0);
     });
+
+    it('logs the effective guard once at job start, so job-duration telemetry has a baseline (#5995)', async () => {
+      // The 2h ceiling is opt-in; the panel's condition for it was that the
+      // guard a job actually runs under is recorded, not inferred from config.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = '2000';
+      const info = vi.fn();
+      const logger = {
+        warn: vi.fn(),
+        error: vi.fn(),
+        info,
+        debug: vi.fn(),
+      } as unknown as import('../../core/index.js').ILogger;
+      const params = {
+        toolName: 'orchestrate',
+        input: { task: 'quick' } as DummyInput,
+        freshJobId: () => 'job-guard-log-1',
+        run: () => Promise.resolve({ ok: true as const }),
+        logger,
+      };
+      // The dispatch's own detached runner gets no logger, so every start log
+      // seen here comes from the one run driven below — "once" is per run.
+      runAsJob<DummyInput, { ok: true }>({
+        ...params,
+        run: () => new Promise(() => {}),
+        logger: undefined,
+      });
+      await runJobInBackground('job-guard-log-1', params);
+
+      const startLogs = info.mock.calls.filter(
+        (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('runaway guard')
+      );
+      expect(startLogs).toHaveLength(1);
+      expect(startLogs[0]?.[1]).toEqual(
+        expect.objectContaining({
+          jobId: 'job-guard-log-1',
+          guardMs: 2000,
+          guardClass: 'async-job-body',
+        })
+      );
+    });
+
+    it('fires the near-timeout WARN at 0.5 of a guard raised to the 2h ceiling (#5995)', async () => {
+      // The exemption widens the guard; the WARN fraction is unchanged, so an
+      // operator who opts into 2h is warned at 1h, not at the old fixed point.
+      const CEILING_MS = 7_200_000;
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(CEILING_MS);
+      vi.useFakeTimers();
+      const warn = vi.fn();
+      const logger = {
+        warn,
+        error: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+      } as unknown as import('../../core/index.js').ILogger;
+      let finish: (value: { ok: true }) => void = () => {};
+      const params = {
+        toolName: 'orchestrate',
+        input: { task: 'long' } as DummyInput,
+        freshJobId: () => 'job-warn-raised-1',
+        run: () =>
+          new Promise<{ ok: true }>((resolve) => {
+            finish = resolve;
+          }),
+        logger,
+      };
+      runAsJob<DummyInput, { ok: true }>({ ...params, run: () => new Promise(() => {}) });
+      const bg = runJobInBackground('job-warn-raised-1', params);
+
+      await vi.advanceTimersByTimeAsync(CEILING_MS / 2 - 1);
+      expect(warn).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('approaching runaway guard'),
+        expect.objectContaining({ jobId: 'job-warn-raised-1', guardMs: CEILING_MS })
+      );
+
+      finish({ ok: true });
+      await bg;
+      expect(readJobResult('job-warn-raised-1')?.status).toBe('complete');
+    });
   });
 
   // ==========================================================================
