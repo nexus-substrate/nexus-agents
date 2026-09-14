@@ -125,6 +125,40 @@ export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSche
 export const MAX_VOTER_REASONING_CHARS = 20_000;
 
 /**
+ * Clip a voter-entry text to {@link MAX_VOTER_REASONING_CHARS} with a marker
+ * (#5373): the returned `truncated` is the flag the record stores beside the
+ * text (`reasoningTruncated`, `retriedFrom.errorTruncated`), present only when
+ * the clip fired. ONE clip for every bounded voter string — the builder's
+ * `reasoningFields` and the live retry's carried cause (#6246) both call this,
+ * so there is one number and one marker rule, not a silent slice somewhere.
+ */
+export function clipForRecord(text: string): { text: string; truncated?: true } {
+  if (text.length <= MAX_VOTER_REASONING_CHARS) return { text };
+  return { text: text.slice(0, MAX_VOTER_REASONING_CHARS), truncated: true };
+}
+
+/**
+ * What a recovered seat was retried from, as recorded (#6246, schema 1.12).
+ * Module-private on the `SeatFallbackRecordSchema` rule: only
+ * `VoterSummarySchema` consumes it. `source` is the live `RetriedFrom['source']`
+ * spelled out — an `enum`, not a bare string, so a record cannot claim a first
+ * pass the retry never replaces (a `'llm'` seat is not retried) — and the two
+ * are held equal by a type test. `error` shares the #5373 bound and marker
+ * with `reasoning`: the live retry clips with {@link clipForRecord} before the
+ * value reaches the builder, and the schema refuses anything longer.
+ */
+const RetriedFromRecordSchema = z
+  .object({
+    /** The first pass's `source`: errored, or answered without reading. */
+    source: z.enum(['error', 'unverifiable']),
+    /** The first pass's `error` string, when it had one; already clipped. */
+    error: z.string().max(MAX_VOTER_REASONING_CHARS).optional(),
+    /** True when `error` was clipped to {@link MAX_VOTER_REASONING_CHARS}. */
+    errorTruncated: z.literal(true).optional(),
+  })
+  .strict();
+
+/**
  * A seat's fallback as recorded (#6115, schema 1.9). Module-private on the
  * `VoteRecordPanelCoverageSchema` rule: only `VoterSummarySchema` consumes it.
  * The `reason` enum is the live `FallbackReason` spelled out — an `enum` rather
@@ -242,6 +276,18 @@ export const VoterSummarySchema = z
      * no producer can write.
      */
     fallback: SeatFallbackRecordSchema.optional(),
+    /**
+     * Present only when the per-role retry REPLACED this seat (#6246, schema
+     * 1.12): the first pass's source and, when it had one, its clipped error
+     * string. `retried` (1.7) says a recovery happened; this says what it
+     * recovered from. On the #6241 panel a seat recorded `retried: true,
+     * unverifiable: true` after a first pass that errored on two response-parse
+     * failures, and nothing in the record joined the two — a reader of the
+     * ledger and the log together concluded the parse errors had been
+     * misclassified (#6244). Rebuilt field-by-field on the `fallback` rule; the
+     * `source` vocabulary is compile-checked against the live `RetriedFrom`.
+     */
+    retriedFrom: RetriedFromRecordSchema.optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -306,10 +352,17 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // `projectSeatFallback` rebuilds it in its own canonical order.
   'assignedCli',
   'fallback',
+  // 1.12 (#6246): appended after `fallback`, present-only, so a 1.11 entry
+  // projects byte-identically. Nested; `projectRetriedFrom` rebuilds it in
+  // its own canonical order.
+  'retriedFrom',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
 /** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
 type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
+
+/** The record's retried-from shape; `VoterSummary['retriedFrom']` minus its optionality. */
+type VoterSummaryRetriedFrom = NonNullable<VoterSummary['retriedFrom']>;
 
 /**
  * Identity at runtime; an exhaustiveness constraint at compile time, on the
@@ -346,23 +399,48 @@ export function projectSeatFallback(f: VoterSummaryFallback): VoterSummaryFallba
 }
 
 /**
+ * Rebuild what a seat was retried from in canonical order — `source`, `error`
+ * (only when present), `errorTruncated` (only when present) — on the
+ * {@link projectSeatFallback} rule (#6246): the hash does not depend on how the
+ * nested object's keys were ordered, and the builder shares the projection so
+ * the ledger line and the hash cover the same object. The destructure is
+ * exhaustive on the {@link noUnprojectedKeys} rule.
+ */
+export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetriedFrom {
+  const { source, error, errorTruncated, ...rest } = r;
+  noUnprojectedKeys(rest);
+  return {
+    source,
+    ...(error !== undefined ? { error } : {}),
+    ...(errorTruncated !== undefined ? { errorTruncated } : {}),
+  };
+}
+
+/**
+ * One voter field for the canonical hash. The two nested keys are rebuilt by
+ * their own projectors; every other value is a scalar and is carried as-is.
+ */
+function projectVoterField(v: VoterSummary, key: keyof VoterSummary): unknown {
+  if (key === 'fallback') {
+    return v.fallback === undefined ? undefined : projectSeatFallback(v.fallback);
+  }
+  if (key === 'retriedFrom') {
+    return v.retriedFrom === undefined ? undefined : projectRetriedFrom(v.retriedFrom);
+  }
+  return v[key];
+}
+
+/**
  * Project one voter entry for the canonical hash: every key in
  * {@link VOTER_SUMMARY_KEYS}, in that order, PRESENT-ONLY. An absent optional is
  * omitted, never emitted as `null` — that is what keeps every pre-1.7 record's
- * canonical string byte-identical. The two optional flags are `literal(true)`,
- * so `!== undefined` is exactly the old `=== true`. The one nested key is
- * rebuilt by {@link projectSeatFallback}; every other value is a scalar and is
- * carried as-is.
+ * canonical string byte-identical. The optional flags are `literal(true)`,
+ * so `!== undefined` is exactly the old `=== true`.
  */
 function projectVoterSummary(v: VoterSummary): Partial<VoterSummary> {
   const out: Record<string, unknown> = {};
   for (const key of VOTER_SUMMARY_KEYS) {
-    const value =
-      key === 'fallback'
-        ? v.fallback === undefined
-          ? undefined
-          : projectSeatFallback(v.fallback)
-        : v[key];
+    const value = projectVoterField(v, key);
     if (value !== undefined) out[key] = value;
   }
   return out;
@@ -454,7 +532,8 @@ export const VoteRecordSchema = z
      * Schema version. '1.1' marked the chain→record-set+sequence model (#3927);
      * '1.2' adds the optional `ratifies` subject-binding field (#3927 item 1);
      * '1.10' adds the optional `ratifiesPr` PR-binding (#5130); '1.11' the
-     * optional `errorPolicy` (#6211). Every tier is accepted — a 1.1 record
+     * optional `errorPolicy` (#6211); '1.12' the per-voter `retriedFrom`
+     * (#6246). Every tier is accepted — a 1.1 record
      * (no `ratifies`) verifies unchanged because each optional is folded into
      * the self-hash ONLY when present (see {@link computeVoteRecordHash}).
      * Tiers are labels, not ordered numbers: '1.10' follows '1.9' by
@@ -472,6 +551,7 @@ export const VoteRecordSchema = z
       '1.9',
       '1.10',
       '1.11',
+      '1.12',
     ]),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),

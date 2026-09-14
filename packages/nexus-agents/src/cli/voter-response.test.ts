@@ -360,6 +360,54 @@ describe('buildVotePrompt', () => {
   });
 });
 
+describe('buildVotePrompt names the repository the seat can read (#6254)', () => {
+  // On governor panels a gemini seat abstained UNVERIFIABLE with "no repository
+  // or accessible sandbox was provided": nothing in the prompt said where the
+  // tree was or that reading it was expected. The block names the working
+  // directory the seats' tools run in and says the proposal text is not the
+  // artifact — without weakening the UNVERIFIABLE rule for a seat that truly
+  // cannot read.
+  const WORKSPACE = '/srv/checkouts/widgets';
+
+  it('states the working directory and that reading it is expected', () => {
+    const prompt = buildVotePrompt('Ratify PR #1 at head abc123', undefined, WORKSPACE);
+
+    expect(prompt).toContain('REPOSITORY ACCESS:');
+    expect(prompt).toContain(WORKSPACE);
+    expect(prompt).toMatch(/reading it is expected/i);
+    expect(prompt).toMatch(/proposal text .* not .* the artifact|not a substitute/i);
+  });
+
+  it('keeps the UNVERIFIABLE rule for a seat whose tools cannot read the tree', () => {
+    const prompt = buildVotePrompt('Ratify PR #1', undefined, WORKSPACE);
+
+    expect(prompt).toContain('UNVERIFIABLE');
+  });
+
+  it('places the block after the proposal and before the response schema', () => {
+    const prompt = buildVotePrompt('The proposal body', undefined, WORKSPACE);
+
+    expect(prompt.indexOf('The proposal body')).toBeLessThan(prompt.indexOf('REPOSITORY ACCESS:'));
+    expect(prompt.indexOf('REPOSITORY ACCESS:')).toBeLessThan(
+      prompt.indexOf('Respond with a JSON')
+    );
+  });
+
+  it('without a workspace the prompt is byte-identical to the two-argument form — the empty case', () => {
+    // A caller that has no tree to offer (a unit test, a direct
+    // `executeAgentVote`) must not claim one exists.
+    expect(buildVotePrompt('p', undefined, undefined)).toBe(buildVotePrompt('p'));
+    expect(buildVotePrompt('p')).not.toContain('REPOSITORY ACCESS:');
+  });
+
+  it('coexists with declared options — the OPTIONS block comes first', () => {
+    const prompt = buildVotePrompt('p', ['a', 'b'], WORKSPACE);
+
+    expect(prompt.indexOf('OPTIONS')).toBeLessThan(prompt.indexOf('REPOSITORY ACCESS:'));
+    expect(prompt).toContain('- a\n- b');
+  });
+});
+
 // ============================================================================
 // extractJsonFromResponse Tests
 // ============================================================================

@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 8.58.4
+
+### Patch Changes
+
+- [#6259](https://github.com/nexus-substrate/nexus-agents/pull/6259) [`8098bf8`](https://github.com/nexus-substrate/nexus-agents/commit/8098bf8f2fbab45dbb39b055786c9422507e88f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A gemini voter seat now reads the repository it was asked to judge, and every seat is told where that repository is.
+
+  The `gemini` arm spawns `agy`, whose workspace is the project it has stored — not the directory it is started in. The claude and codex arms take the working directory as their tree by default, so on a CLI-run governor panel (`nexus-agents vote --ratifies-pr …`) those seats read the PR head while a gemini seat searched a different checkout and abstained with `UNVERIFIABLE: could not read the artifact … no repository or accessible sandbox was provided`. Under `absolute_quorum` one such seat voids the ratification and costs a full re-run. Measured: spawned from this repository with the adapter's exact arguments, `agy` read `packages/nexus-agents/package.json` out of an unrelated checkout on the same machine and reported that file's version; with the working directory added it read this tree.
+
+  The adapter now passes `--add-dir <cwd>` on every `agy` invocation (a task's `workDir` option, the one the claude adapter honours, replaces the cwd). The vote prompt gains a `REPOSITORY ACCESS` block naming the working directory the panel runs in, stating that every seat's file and shell tools run there and that reading it is expected, and that the proposal text describes the artifact and is not a substitute for it. A seat whose tools genuinely cannot read that directory is still told to answer `UNVERIFIABLE`; the protocol is unchanged. The block is rendered only when a working directory is supplied — `collectRealVotes` always supplies the process cwd — so a direct `executeAgentVote` with no workspace produces the same prompt as before.
+
+## 8.58.3
+
+### Patch Changes
+
+- [#6252](https://github.com/nexus-substrate/nexus-agents/pull/6252) [`bc3e732`](https://github.com/nexus-substrate/nexus-agents/commit/bc3e7323878849e7edf11224e86dcc759dc6b4ef) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A voter seat recovered by the per-role retry now carries what it was retried from. The live `consensus_vote` result and the `nexus-agents vote` result gain a present-only `retriedFrom: { source, error?, errorTruncated? }` on the recovered seat: `source` is the first pass's outcome (`error` or `unverifiable`) and `error` is its error string when it had one, with ASCII control characters replaced by spaces and the text bounded by the same 20,000-character clip the stored reasoning uses, `errorTruncated: true` marking a clip that fired. The `vote` command's per-seat summary row appends `(retried after: error: Vote parsing failed: …)`. The persisted vote record carries the same object on the voter entry as schema tier `1.12`, appended after `fallback` as the last present-only voter key and folded into the record's self-hash, so the carried cause cannot be edited or the source relabelled after the fact without a `hash_mismatch`. A seat that was never retried has no key, a retry that fails again still keeps its unmarked first attempt, and records at 1.11 and below re-hash byte-identically; nothing in an existing ledger needs rewriting. Before this, a seat whose first pass errored on a response-parse failure and whose retry came back unverifiable was recorded as `retried: true, unverifiable: true` with nothing joining the two, and a reader of the record and the log together concluded the parse errors had been misclassified.
+
 ## 8.58.2
 
 ### Patch Changes

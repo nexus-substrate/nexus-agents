@@ -245,6 +245,65 @@ describe('formatVoteRow unverifiable seat (#6094)', () => {
   });
 });
 
+describe('formatVoteRow retried seat discloses what it recovered from (#6246)', () => {
+  const PARSE_FAILURE = 'Vote parsing failed: Unexpected end of JSON input';
+
+  it('renders the first-pass source and cause after the judgment', () => {
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({
+          role: 'catfish',
+          retried: true,
+          retriedFrom: { source: 'error', error: PARSE_FAILURE },
+          vote: { decision: 'reject', reasoning: 'r', confidence: 0.7 },
+        })
+      )
+    );
+    expect(row).toContain('REJECT');
+    expect(row).toContain(`(retried after: error: ${PARSE_FAILURE})`);
+  });
+
+  it('renders it on an unverifiable seat too, and without a cause when none was carried', () => {
+    // The #6241 shape: errored first pass, retry came back unverifiable. The
+    // row now joins the two, which is the join #6244 could not make.
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({
+          role: 'catfish',
+          source: 'unverifiable',
+          unverifiableSignal: 'reasoning',
+          retried: true,
+          retriedFrom: { source: 'error', error: PARSE_FAILURE },
+          vote: { decision: 'abstain', reasoning: 'UNVERIFIABLE: could not read', confidence: 0 },
+        })
+      )
+    );
+    expect(row).toContain('UNVERIFIABLE');
+    expect(row).toContain(`(retried after: error: ${PARSE_FAILURE})`);
+    const bare = stripAnsi(
+      formatVoteRow(makeVoteRow({ retried: true, retriedFrom: { source: 'unverifiable' } }))
+    );
+    expect(bare).toContain('(retried after: unverifiable)');
+  });
+
+  it('says when the carried cause was clipped', () => {
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({
+          retried: true,
+          retriedFrom: { source: 'error', error: 'e'.repeat(40), errorTruncated: true },
+        })
+      )
+    );
+    expect(row).toContain('[truncated]');
+  });
+
+  it('a seat that was never retried carries no such text — the pair', () => {
+    const row = stripAnsi(formatVoteRow(makeVoteRow()));
+    expect(row).not.toContain('retried after');
+  });
+});
+
 describe('formatVoteRow reasoning (#5339)', () => {
   const dissent = makeVoteRow({
     role: 'catfish',

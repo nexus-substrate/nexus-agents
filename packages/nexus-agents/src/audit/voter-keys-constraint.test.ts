@@ -15,7 +15,7 @@
  * nothing. `expectTypeOf` is a runtime no-op; the type argument is the test.
  *
  * `VOTER_SUMMARY_KEYS` is module-private, so the real-universe cases mirror
- * its ten literals rather than importing the tuple's type. The pinned
+ * its eleven literals rather than importing the tuple's type. The pinned
  * literal in vote-record.test.ts keeps the mirror honest: a key added to the
  * schema without being added here fails `defineVoterKeys` itself first.
  */
@@ -42,6 +42,7 @@ type VoterSummaryKeysMirror = readonly [
   'unverifiable',
   'assignedCli',
   'fallback',
+  'retriedFrom',
 ];
 
 /** The mirror with `retried` dropped — the #6077 mutation, as a type. */
@@ -55,7 +56,11 @@ type MissingRetried = readonly [
   'unverifiable',
   'assignedCli',
   'fallback',
+  'retriedFrom',
 ];
+
+/** The record's nested retried-from shape, derived the way the projector sees it (#6246). */
+type VoterSummaryRetriedFrom = NonNullable<VoterSummary['retriedFrom']>;
 
 describe('CompleteKeys (#6092)', () => {
   it('is unknown for a tuple that covers the whole universe', () => {
@@ -94,5 +99,15 @@ describe('CompleteKeys (#6092)', () => {
       Record<never, never>
     >();
     expectTypeOf<keyof VoterSummaryFallback>().toEqualTypeOf<'fromCli' | 'fromModel' | 'reason'>();
+  });
+
+  it('the nested retriedFrom projection is exhaustive: nothing is left after its three keys (#6246)', () => {
+    // Mirror of `projectRetriedFrom`'s destructure, on the #6179 rule above.
+    expectTypeOf<
+      Omit<VoterSummaryRetriedFrom, 'source' | 'error' | 'errorTruncated'>
+    >().toEqualTypeOf<Record<never, never>>();
+    expectTypeOf<keyof VoterSummaryRetriedFrom>().toEqualTypeOf<
+      'source' | 'error' | 'errorTruncated'
+    >();
   });
 });

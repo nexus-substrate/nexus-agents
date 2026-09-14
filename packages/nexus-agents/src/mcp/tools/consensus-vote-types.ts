@@ -19,7 +19,12 @@ import {
   DEPRECATED_MODE_ALIAS_INPUT,
   refineDispatchModeAgreement,
 } from './async-dispatch-input.js';
-import type { AgentVoteResult, SeatFallback, VotingResult } from '../../cli/vote-types.js';
+import type {
+  AgentVoteResult,
+  RetriedFrom,
+  SeatFallback,
+  VotingResult,
+} from '../../cli/vote-types.js';
 import {
   panelDiversityOf,
   singleModelPanelWarning,
@@ -360,6 +365,12 @@ export interface AgentVoteSummary {
    * class that moved it. `panelDiversity.fallbacks` counts these seats.
    */
   fallback?: SeatFallback;
+  /**
+   * Present only when the per-role retry REPLACED this seat (#6246): the first
+   * pass's source and, when it had one, its clipped error string. `retried`
+   * says a recovery happened; this says what it recovered from.
+   */
+  retriedFrom?: RetriedFrom;
 }
 
 /**
@@ -674,6 +685,8 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     ...(result.source === 'unverifiable' ? { unverifiable: true as const } : {}),
     // #6115: and for a seat that answered elsewhere.
     ...(result.fallback !== undefined ? { fallback: result.fallback } : {}),
+    // #6246: and for what a recovered seat was retried from.
+    ...(result.retriedFrom !== undefined ? { retriedFrom: result.retriedFrom } : {}),
   };
 }
 

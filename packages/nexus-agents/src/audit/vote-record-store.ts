@@ -63,10 +63,11 @@ import type {
 } from './vote-record.js';
 import {
   VoteRecordSchema,
+  clipForRecord,
   computeVoteRecordHash,
   hashProposal,
-  MAX_VOTER_REASONING_CHARS,
   projectPrBinding,
+  projectRetriedFrom,
   projectSeatFallback,
 } from './vote-record.js';
 
@@ -191,6 +192,10 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
       // identical values on a panel assigned three ways and could not say so.
       ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
       ...(v.fallback !== undefined ? { fallback: projectSeatFallback(v.fallback) } : {}),
+      // #6246: what the per-role retry replaced, so the record names both the
+      // seat's final state and the state it recovered from. The live retry
+      // already clipped and de-controlled the cause; this is projection only.
+      ...(v.retriedFrom !== undefined ? { retriedFrom: projectRetriedFrom(v.retriedFrom) } : {}),
     });
   }
   return summaries;
@@ -204,11 +209,8 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
  * mid-sentence and its grounds were unrecoverable.
  */
 function reasoningFields(reasoning: string): { reasoning: string; reasoningTruncated?: true } {
-  if (reasoning.length <= MAX_VOTER_REASONING_CHARS) return { reasoning };
-  return {
-    reasoning: reasoning.slice(0, MAX_VOTER_REASONING_CHARS),
-    reasoningTruncated: true,
-  };
+  const { text, truncated } = clipForRecord(reasoning);
+  return { reasoning: text, ...(truncated === true ? { reasoningTruncated: true as const } : {}) };
 }
 
 /**
@@ -350,12 +352,12 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.11 carries a record-level `errorPolicy` (#6211), 1.10 a record-level
- * `ratifiesPr` PR binding (#5130), 1.9 a voter `assignedCli` or `fallback`,
- * 1.8 a voter `model` or an `unverifiable` seat, 1.7 a retried voter seat,
- * 1.6 voter reasoning, 1.5 panel coverage, 1.4 option coverage, 1.3 a bare
- * tally (historical only — a tally now always travels with coverage), 1.2
- * neither.
+ * 1.12 carries a voter `retriedFrom` (#6246), 1.11 a record-level
+ * `errorPolicy` (#6211), 1.10 a record-level `ratifiesPr` PR binding (#5130),
+ * 1.9 a voter `assignedCli` or `fallback`, 1.8 a voter `model` or an
+ * `unverifiable` seat, 1.7 a retried voter seat, 1.6 voter reasoning, 1.5
+ * panel coverage, 1.4 option coverage, 1.3 a bare tally (historical only — a
+ * tally now always travels with coverage), 1.2 neither.
  */
 function recordVersion(
   optionTally: VoteRecordOptionCount[] | undefined,
@@ -364,17 +366,39 @@ function recordVersion(
   voters: readonly VoterSummary[],
   /** The two record-level optionals the caller supplies directly (grouped: max-params). */
   recordLevel: Pick<BuildVoteRecordInput, 'ratifiesPr' | 'errorPolicy'>
-): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' | '1.10' | '1.11' {
-  // 1.11 first: the policy is record-level and orthogonal to every tier
+): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' | '1.10' | '1.11' | '1.12' {
+  const voterTier = voterTierOf(voters);
+  // 1.12 first: a carried first-pass cause is orthogonal to every tier below
+  // — it co-occurs with `retried` (1.7) but a retried seat need not carry one
+  // — and a reader needs to know from the version alone whether a voter entry
+  // may carry it (#6246). It is the one voter tier ABOVE the record-level
+  // tiers, so it is checked before them.
+  if (voterTier === '1.12') return '1.12';
+  // 1.11 next: the policy is record-level and orthogonal to every tier
   // below, and a reader needs to know from the version alone whether the
   // record may carry it (#6211).
   if (recordLevel.errorPolicy !== undefined) return '1.11';
   // 1.10 next: the binding is record-level and orthogonal to every voter
   // tier below, on the same rule (#5130).
   if (recordLevel.ratifiesPr !== undefined) return '1.10';
-  // 1.9 next, on the same tier logic as 1.8: either key alone lifts the
-  // tier, so a reader knows from the version whether a seat's assignment and
-  // fallover may be on its entry (#6115).
+  if (voterTier !== undefined) return voterTier;
+  if (panelCoverage !== undefined) return '1.5';
+  if (optionCoverage !== undefined) return '1.4';
+  return optionTally !== undefined ? '1.3' : '1.2';
+}
+
+/**
+ * The tier the voter entries alone imply, or undefined when no entry carries
+ * a field above 1.5. Split from {@link recordVersion} when 1.12 (#6246) pushed
+ * it past the complexity cap; the ordering comments are the tier rule.
+ */
+function voterTierOf(
+  voters: readonly VoterSummary[]
+): '1.6' | '1.7' | '1.8' | '1.9' | '1.12' | undefined {
+  if (voters.some((v) => v.retriedFrom !== undefined)) return '1.12';
+  // 1.9, on the same tier logic as 1.8: either key alone lifts the tier, so
+  // a reader knows from the version whether a seat's assignment and fallover
+  // may be on its entry (#6115).
   if (voters.some((v) => v.assignedCli !== undefined || v.fallback !== undefined)) return '1.9';
   // 1.8, same rule: both fields are orthogonal to the tiers below, and a
   // reader needs to know from the version alone whether voter entries may
@@ -386,9 +410,7 @@ function recordVersion(
   // alone whether voter entries may carry the field (#6050).
   if (voters.some((v) => v.retried === true)) return '1.7';
   if (voters.some((v) => v.reasoning !== undefined)) return '1.6';
-  if (panelCoverage !== undefined) return '1.5';
-  if (optionCoverage !== undefined) return '1.4';
-  return optionTally !== undefined ? '1.3' : '1.2';
+  return undefined;
 }
 
 /**
