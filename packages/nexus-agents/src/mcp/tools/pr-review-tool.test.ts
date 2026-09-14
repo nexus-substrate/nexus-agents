@@ -1194,6 +1194,13 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
         totalFiles: 5,
         droppedFiles: ['src/z.ts', 'src/w.ts', 'src/v.ts'],
         partial: true,
+        panelRead: 'partial',
+        binding: 'prefix',
+        reviewedBytes: 48_000,
+        boundBytes: 50_000,
+        totalBytes: 120_000,
+        budgetSource: 'binding-cap-fallback',
+        budgetDetail: 'context window unknown for "x"',
       },
     });
     expect(outcome.persisted).toBe(true);
@@ -1205,6 +1212,95 @@ describe('pr_review Option-C audit-record persistence (#4031)', () => {
     expect(records[0]?.reviewedDiffHash).toBe(computeReviewedDiffHash(parsed.prDiff));
     // The summary stamp is hash-covered, so verification still passes.
     expect(verifyPrReviewRecordSet(records).ok).toBe(true);
+  });
+
+  describe('the summary states what the panel read AND what the binding covers (#6003)', () => {
+    /** The #6003 coverage rows. Byte figures are fixed so the stamp is checkable. */
+    function coverageRow(
+      panelRead: 'full' | 'partial',
+      binding: 'full' | 'prefix'
+    ): NonNullable<Parameters<typeof persistReviewRecord>[0]['coverage']> {
+      return {
+        reviewedFiles: panelRead === 'full' ? 3 : 2,
+        totalFiles: 3,
+        droppedFiles: panelRead === 'full' ? [] : ['src/z.ts'],
+        partial: panelRead === 'partial',
+        panelRead,
+        binding,
+        reviewedBytes: panelRead === 'full' ? 61_204 : 40_000,
+        boundBytes: binding === 'full' ? 61_204 : 50_000,
+        totalBytes: 61_204,
+        budgetSource: 'registry',
+        budgetDetail: 'min context window 200,000 tokens (claude-fable-5) × 3.5 bytes/token',
+      };
+    }
+
+    function summaryFor(
+      prNumber: number,
+      coverage: ReturnType<typeof coverageRow>,
+      overrides: Record<string, unknown> = {}
+    ): { summary: string; reviewedDiffHash: string } {
+      const parsed = input({ prNumber, baseSha: BASE_SHA, ...overrides });
+      const outcome = persistReviewRecord({
+        diffSource: 'caller-supplied',
+        sanitization: undefined,
+        input: parsed,
+        aggregate: APPROVE_AGG,
+        counts: COUNTS,
+        reviewCount: 5,
+        logger,
+        coverage,
+      });
+      expect(outcome.persisted).toBe(true);
+      const record = readRecords(prNumber);
+      return { summary: record.summary, reviewedDiffHash: record.reviewedDiffHash };
+    }
+
+    it('panel full + binding prefix: an approve record that discloses the prefix binding', () => {
+      const { summary, reviewedDiffHash } = summaryFor(6003, coverageRow('full', 'prefix'));
+      expect(summary).toContain('[panel read 61,204/61,204 bytes');
+      expect(summary).toContain(`binding covers first 50,000 bytes sha256:${reviewedDiffHash}`);
+      expect(summary).toContain('budget: registry');
+      expect(summary).toContain('claude-fable-5');
+      // Nothing was dropped, so the file-coverage stamp must NOT claim a partial read.
+      expect(summary).not.toContain('partial coverage');
+    });
+
+    it('panel partial + binding prefix: both stamps, in one summary', () => {
+      const { summary } = summaryFor(6004, coverageRow('partial', 'prefix'));
+      expect(summary).toContain('[panel read 40,000/61,204 bytes');
+      expect(summary).toContain('binding covers first 50,000 bytes');
+      expect(summary).toContain('[partial coverage: 2/3 files reviewed, dropped: src/z.ts]');
+    });
+
+    it('panel partial + binding full: the binding is stated as covering every byte', () => {
+      const { summary } = summaryFor(6005, coverageRow('partial', 'full'));
+      expect(summary).toContain('[panel read 40,000/61,204 bytes');
+      expect(summary).toContain('binding covers all 61,204 bytes');
+      expect(summary).toContain('partial coverage: 2/3 files reviewed');
+    });
+
+    it('names the fallback: a binding-cap budget states why the registry was not used', () => {
+      const { summary } = summaryFor(6006, {
+        ...coverageRow('partial', 'prefix'),
+        budgetSource: 'binding-cap-fallback',
+        budgetDetail: 'context window unknown for "mystery-model"',
+      });
+      expect(summary).toContain('budget: binding-cap-fallback');
+      expect(summary).toContain('mystery-model');
+    });
+
+    it('the stamp survives the store’s 500-char summary cap even under a max-length title', () => {
+      // The store truncates `summary` at 500 chars. A stamp appended AFTER a
+      // 500-char title would be cut off — a record that claims nothing about
+      // its coverage on exactly the PRs with the longest titles.
+      const longTitle = 'T'.repeat(500);
+      const { summary } = summaryFor(6007, coverageRow('full', 'prefix'), {
+        prTitle: longTitle,
+      });
+      expect(summary).toContain('binding covers first 50,000 bytes');
+      expect(summary).not.toContain(longTitle);
+    });
   });
 
   it('stamps diffProvenance {source, fileBoundaries} onto the record (#4459)', () => {
