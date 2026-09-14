@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.58.10
+
+### Patch Changes
+
+- [#6296](https://github.com/nexus-substrate/nexus-agents/pull/6296) [`35fdc3c`](https://github.com/nexus-substrate/nexus-agents/commit/35fdc3c26abe34086aa7b3d0a2e4f5ab3deb8dae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The MCP policy firewall's `deny-mutations-without-mode` rule now classifies every registered tool from its `TOOL_MANIFEST` entry's `readOnlyHint` instead of guessing ([#5114](https://github.com/nexus-substrate/nexus-agents/issues/5114)). Before, `isMutationTool` knew six generic names and called every other tool a mutation, so enforcing the firewall would have denied 45 of the 47 registered tools; the enforce path was closed for that reason. Now 26 tools are read-only and 21 are mutations, one source of truth shared with the tool-prerequisite gate, and a test fails by tool name if a new tool is registered without a `readOnlyHint`. `orchestrate` and `delegate_to_model`, which the old hand-kept set called read-only against their own manifest entries, are now mutations. A tool the manifest does not carry is reported as `unclassified` in the verdict — still denied when enforcing, but no longer recorded as a mutation the rule did not measure. `MUTATION_TOOLS` / `READ_ONLY_TOOLS` in `policy-rules` keep only generic agent/filesystem names and are tested disjoint from the manifest. No behaviour changes in warn mode, which remains forced on; reopening enforce stays [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988)'s decision.
+
 ## 8.58.9
 
 ### Patch Changes
