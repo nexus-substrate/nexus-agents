@@ -301,8 +301,8 @@ export const VoterSummarySchema = z
      * once per entry.
      *
      * On the digest tier the record hash folds THIS and `reasoningDigest`
-     * and NOT `reasoning` / `reasoningTruncated`, which travel on the record
-     * outside the hash. That is what lets a later step drop the text while
+     * and NOT `reasoning`, which travels on the record outside the hash
+     * (`reasoningTruncated` stays hashed). That is what lets a later step drop the text while
      * the original hash — and any signature over it — still verifies. The
      * record-level refinement below holds the three together: on 1.13 an
      * entry with `reasoning` carries both keys; on every older tier it
@@ -388,24 +388,28 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // its own canonical order.
   'retriedFrom',
   // 1.13 (#6263): appended after `retriedFrom`, present-only. Folded ONLY on
-  // the digest tier, where `reasoning` / `reasoningTruncated` above are NOT —
-  // `projectVoterField` keys the swap on the record version, so a 1.12
-  // entry still projects byte-identically.
+  // the digest tier, where `reasoning` above is NOT (`reasoningTruncated`
+  // stays folded on every tier) — `projectVoterField` keys the swap on the
+  // record version, so a 1.12 entry still projects byte-identically.
   'reasoningNonce',
   'reasoningDigest',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
-/** The voter keys the digest tier folds INSTEAD of `reasoning` / `reasoningTruncated`. */
+/** The voter keys the digest tier folds INSTEAD of `reasoning`. */
 const REASONING_DIGEST_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
   'reasoningNonce',
   'reasoningDigest',
 ]);
 
-/** The voter keys the digest tier leaves OUTSIDE the hash. */
-const REASONING_TEXT_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
-  'reasoning',
-  'reasoningTruncated',
-]);
+/**
+ * The voter keys the digest tier leaves OUTSIDE the hash: the raw text ONLY.
+ * The #5748 decision exempts the text so a later step can drop it; the clip
+ * marker `reasoningTruncated` is a boolean with no privacy content that
+ * redaction keeps, so it stays folded on every tier like any other
+ * present-only key — an unhashed marker would let "this argument was clipped"
+ * be erased from a committed record without `hash_mismatch` (#6274 review).
+ */
+const REASONING_TEXT_KEYS: ReadonlySet<keyof VoterSummary> = new Set(['reasoning']);
 
 /** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
 type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
@@ -470,10 +474,10 @@ export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetr
  * their own projectors; every other value is a scalar and is carried as-is.
  *
  * `digestTier` (#6263) is the one place the fold depends on the record's
- * tier: on the digest tier the text keys project to ABSENT and the digest
+ * tier: on the digest tier the text key projects to ABSENT and the digest
  * keys are carried; on every other tier the digest keys project to absent
  * and the text is carried exactly as it was — the pinned 1.7–1.12 goldens
- * are the guard. Keyed on the tier and not on key presence so that a stray
+ * are the guard. The clip marker is carried on BOTH sides of the swap. Keyed on the tier and not on key presence so that a stray
  * digest on an old record, or a stray text on a new one, cannot change what
  * the hash covers (the schema refuses both shapes; this makes the fold not
  * depend on that refusal).
@@ -594,8 +598,8 @@ export const VoteRecordSchema = z
      * optional `errorPolicy` (#6211); '1.12' the per-voter `retriedFrom`
      * (#6246); '1.13' the per-voter `reasoningNonce` + `reasoningDigest`
      * and — the one tier that changes what an EXISTING key means to the
-     * hash — folds those instead of `reasoning` / `reasoningTruncated`
-     * (#6263). Every tier is accepted — a 1.1 record
+     * hash — folds those instead of `reasoning` (#6263; the clip marker
+     * `reasoningTruncated` stays folded). Every tier is accepted — a 1.1 record
      * (no `ratifies`) verifies unchanged because each optional is folded into
      * the self-hash ONLY when present (see {@link computeVoteRecordHash}).
      * Tiers are labels, not ordered numbers: '1.10' follows '1.9' by
@@ -885,8 +889,9 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
     // fields: a pre-1.6 voter entry re-hashes byte-identical, so every
     // historical record still verifies, while editing or removing a stored
     // reasoning flips the hash. On the digest tier (#6263, schema 1.13) the
-    // entry folds `reasoningNonce` + `reasoningDigest` INSTEAD of the text;
-    // the text is bound by the digest, which `verifyVoteRecordSet` re-opens.
+    // entry folds `reasoningNonce` + `reasoningDigest` INSTEAD of the text
+    // (the clip marker stays folded); the text is bound by the digest, which
+    // `verifyVoteRecordSet` re-opens.
     voters: payload.voters.map((v) =>
       projectVoterSummary(v, isReasoningDigestTier(payload.version))
     ),

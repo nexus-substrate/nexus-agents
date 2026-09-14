@@ -1173,7 +1173,8 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
   // can ever be removed from it without `hash_mismatch`. On this tier each
   // voter entry carries `reasoningNonce` (32 random bytes, hex) and
   // `reasoningDigest = sha256(reasoningNonce ‖ reasoning)`; the record hash
-  // folds the nonce and the digest and NOT `reasoning` / `reasoningTruncated`.
+  // folds the nonce and the digest and NOT `reasoning`. The clip marker
+  // `reasoningTruncated` stays folded — only the text is exempt.
   // The text travels on the record OUTSIDE the hash — the digest is the
   // commitment to it, and the verifier checks that commitment whenever the
   // opening (nonce + text) is present. Older tiers keep folding the text; the
@@ -1190,7 +1191,7 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     id: 'vote-max-113',
     voters: [{ ...v12, reasoning: REASONING, reasoningNonce: NONCE, reasoningDigest: DIGEST }],
   };
-  const GOLDEN_1_13 = '10cb8add08100c1d613db1eb17279bc96f6c8e5694c25ae4b5132eae294f8ee9';
+  const GOLDEN_1_13 = 'eaebde857be136215a0618c8bbe56a7e278b63b9fe1aaf04bc3ca8c3e3629d62';
   const asRecord = (payload: Omit<VoteRecord, 'hash'>): VoteRecord => ({
     ...payload,
     hash: computeVoteRecordHash(payload),
@@ -1219,11 +1220,14 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
 
   it('pins the MAXIMAL 1.13 record to a golden derived BY HAND before the projection existed', () => {
     // The canonical string was built by hand in the documented order — the
-    // voter keys through `retriedFrom`, then `reasoningNonce`, then
-    // `reasoningDigest`, with `reasoning` and `reasoningTruncated` OMITTED —
-    // and hashed with node's sha256 in a scratch script, so the literal is
-    // not the implementation agreeing with itself. If it moves, the canonical
-    // voter order or the digest-tier fold rule changed.
+    // voter keys through `retriedFrom` (`reasoningTruncated` in its 1.6
+    // slot, `reasoning` OMITTED), then `reasoningNonce`, then
+    // `reasoningDigest` — hashed with node's sha256 in a scratch script and
+    // cross-checked with coreutils `sha256sum` over the same bytes, so the
+    // literal is not the implementation agreeing with itself. The same
+    // string with the marker removed reproduces the pre-review golden
+    // (`10cb8add…8ee9`), which pinned the marker as unhashed. If it moves,
+    // the canonical voter order or the digest-tier fold rule changed.
     expect(computeVoteRecordHash(MAXIMAL_1_13)).toBe(GOLDEN_1_13);
   });
 
@@ -1238,15 +1242,16 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     ).toBe(GOLDEN_1_12);
   });
 
-  it('on the digest tier the TEXT is outside the hash: editing reasoning or dropping reasoningTruncated leaves the hash unchanged', () => {
+  it('on the digest tier the TEXT is outside the hash: editing or dropping reasoning leaves the hash unchanged', () => {
     // Stated directly because it is the property step 2 (#6264) rests on: the
     // hash — and any signature over it — survives the text being dropped. The
-    // digest, not the hash, is what binds the text (next test).
+    // digest, not the hash, is what binds the text (next test). Only the
+    // text: the clip marker is hashed (the two `reasoningTruncated` tests).
     const v = MAXIMAL_1_13.voters[0]!;
     const textEdited = { ...MAXIMAL_1_13, voters: [{ ...v, reasoning: REASONING + '!' }] };
-    const { reasoningTruncated: _t, ...withoutMarker } = v;
+    const { reasoning: _r, ...withoutText } = v;
     expect(computeVoteRecordHash(textEdited)).toBe(GOLDEN_1_13);
-    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutMarker] })).toBe(GOLDEN_1_13);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutText] })).toBe(GOLDEN_1_13);
   });
 
   it('editing reasoning WITHOUT recomputing the digest is a hash_mismatch naming the digest — the commitment is checked, not decorative', () => {
@@ -1264,6 +1269,30 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
       expect(result.detail).toContain('reasoningDigest');
       expect(result.detail).toContain('catfish');
     }
+  });
+
+  it('dropping `reasoningTruncated` from a truncated 1.13 record is a hash_mismatch — the clip marker is hashed, only the text is exempt', () => {
+    // The #5748 decision exempts the raw `reasoning` TEXT from the hash so it
+    // can later be dropped; the marker is a boolean with no privacy content,
+    // redaction keeps it, and an unhashed marker would let "this argument was
+    // clipped" be silently erased from a committed record.
+    const record = asRecord(MAXIMAL_1_13);
+    const { reasoningTruncated: _t, ...withoutMarker } = record.voters[0]!;
+    expect(withoutMarker.reasoning).toBe(REASONING);
+    const result = verifyVoteRecordSet([{ ...record, voters: [withoutMarker] }]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('adding `reasoningTruncated` to an untruncated 1.13 record is a hash_mismatch', () => {
+    // `sequence: 0` so the lone baseline record is not a sequence gap.
+    const { reasoningTruncated: _t, ...untruncated } = MAXIMAL_1_13.voters[0]!;
+    const record = asRecord({ ...MAXIMAL_1_13, sequence: 0, voters: [untruncated] });
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+    const marked = { ...record, voters: [{ ...untruncated, reasoningTruncated: true as const }] };
+    const result = verifyVoteRecordSet([marked]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
   });
 
   it('flipping one byte of reasoning and RE-PRODUCING the entry changes the digest and the hash', () => {
