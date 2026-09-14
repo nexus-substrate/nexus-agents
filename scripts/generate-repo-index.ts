@@ -107,12 +107,44 @@ function log(message: string): void {
 // ============================================================================
 
 /**
+ * The module a handler is listed under when the dispatcher's import statements
+ * do not name it. Kept as the fallback only: every dispatch-table handler is
+ * imported by name, so a row that lands here is a parse gap, not a location.
+ */
+const DEFAULT_HANDLER_FILE = 'src/cli-commands-handlers.ts';
+
+/**
+ * Map each imported handler name to the module cli-commands.ts imports it
+ * from, so the `file` column names where the dispatcher really gets the
+ * handler rather than a constant (#6148: the init / setup handlers moved to
+ * `cli-commands-handlers-setup.ts` and the column kept saying otherwise).
+ * A handler re-exported through a barrel is attributed to the barrel — that
+ * is the module the dispatcher imports.
+ */
+function resolveHandlerFiles(content: string): ReadonlyMap<string, string> {
+  const files = new Map<string, string>();
+  const importRegex = /^import\s*\{([^}]*)\}\s*from\s*'\.\/([^']+)\.js';/gm;
+  let match: RegExpExecArray | null;
+  while ((match = importRegex.exec(content)) !== null) {
+    const specifier = match[2] ?? '';
+    for (const rawName of (match[1] ?? '').split(',')) {
+      const name = rawName.replace(/\/\/.*$/gm, '').trim();
+      if (name !== '' && !name.startsWith('type ')) {
+        files.set(name, `src/${specifier}.ts`);
+      }
+    }
+  }
+  return files;
+}
+
+/**
  * Parse commands from a handler block
  */
 function parseCommandsFromBlock(
   blockContent: string,
   commandType: 'sync' | 'async',
-  handlerPrefix: string
+  handlerPrefix: string,
+  handlerFiles: ReadonlyMap<string, string>
 ): CLICommand[] {
   const commands: CLICommand[] = [];
   const regex = /(?:'([^']+)'|([a-zA-Z][a-zA-Z0-9-]*))\s*:\s*(\w+)/g;
@@ -127,7 +159,7 @@ function parseCommandsFromBlock(
         name: cmdName,
         type: commandType,
         handler,
-        file: 'src/cli-commands-handlers.ts',
+        file: handlerFiles.get(handler) ?? DEFAULT_HANDLER_FILE,
       });
     }
   }
@@ -141,19 +173,20 @@ function parseCommandsFromBlock(
 function extractCLICommands(): CLICommand[] {
   const content = fs.readFileSync(CLI_COMMANDS_FILE, 'utf-8');
   const commands: CLICommand[] = [];
+  const handlerFiles = resolveHandlerFiles(content);
 
   // Extract sync commands from SYNC_COMMAND_HANDLERS
   const syncMatch = content.match(/const SYNC_COMMAND_HANDLERS[^=]*=[^{]*{([\s\S]*?)};/);
   const syncBlock = syncMatch?.[1];
   if (syncBlock !== undefined) {
-    commands.push(...parseCommandsFromBlock(syncBlock, 'sync', 'handle'));
+    commands.push(...parseCommandsFromBlock(syncBlock, 'sync', 'handle', handlerFiles));
   }
 
   // Extract async commands from ASYNC_COMMAND_HANDLERS
   const asyncMatch = content.match(/const ASYNC_COMMAND_HANDLERS[^=]*=[\s\S]*?{([\s\S]*?)};/);
   const asyncBlock = asyncMatch?.[1];
   if (asyncBlock !== undefined) {
-    commands.push(...parseCommandsFromBlock(asyncBlock, 'async', 'handle'));
+    commands.push(...parseCommandsFromBlock(asyncBlock, 'async', 'handle', handlerFiles));
   }
 
   // Cross-check against the catalog single-source-of-truth (#2156). Warn on
