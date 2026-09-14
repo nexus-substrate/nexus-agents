@@ -78,6 +78,42 @@ export function modelsLine(votes: readonly AgentVoteResult[]): string {
 }
 
 /**
+ * The parenthetical a recovered seat carries on its summary row (#6246):
+ * ` (retried after: error: Vote parsing failed: …)`. Empty for a seat that was
+ * never retried — the pair that keeps a clean panel's rows unchanged. The
+ * carried cause is already single-line and bounded (`voter-retry.ts`); when
+ * the bound fired the row says so rather than trailing off.
+ */
+export function retriedFromLabel(v: Pick<AgentVoteResult, 'retriedFrom'>): string {
+  const from = v.retriedFrom;
+  if (from === undefined) return '';
+  const cause = from.error === undefined ? '' : `: ${from.error}`;
+  const clipped = from.errorTruncated === true ? ' [truncated]' : '';
+  return ` (retried after: ${from.source}${cause}${clipped})`;
+}
+
+/**
+ * The terminal-summary row for a seat that did not judge: errored, or
+ * unverifiable (#6094 — a seat that never saw the artifact is not an ABSTAIN;
+ * rendering it as one is how a blind seat reads as a considered one). Carries
+ * the #6246 recovery parenthetical — the #6241 shape is an errored first pass
+ * whose retry came back unverifiable. Undefined for a seat that returned a
+ * judgment. Moved here from `vote-command.ts` when #6246 put that file over
+ * its line cap.
+ */
+export function absentSeatSummaryRow(v: AgentVoteResult, label: string): string | undefined {
+  const recovery = retriedFromLabel(v);
+  if (v.source === 'error') {
+    const reason = (v.error ?? 'execution failed').split('\n')[0] ?? 'execution failed';
+    return `  ${colors.red}✗${colors.reset} ${label}: ${colors.red}ERROR${colors.reset} — ${reason}${recovery}`;
+  }
+  if (v.source === 'unverifiable') {
+    return `  ${colors.yellow}?${colors.reset} ${label}: ${colors.yellow}UNVERIFIABLE${colors.reset} — could not read the artifact (${v.unverifiableSignal ?? 'unknown'} signal)${recovery}`;
+  }
+  return undefined;
+}
+
+/**
  * One `| Agent | Decision | Confidence |` row of the GitHub comment. Moved
  * here from `vote-command.ts` when #6115 put that file over its line cap.
  *

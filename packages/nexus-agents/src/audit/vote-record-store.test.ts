@@ -30,6 +30,7 @@ import { findRepoRoot } from '../config/repo-root-detection.js';
 
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../cli/vote-types.js';
+import { retryErroredRoles } from '../cli/voter-retry.js';
 
 // #3991: the store now resolves the runtime ledger via nexusDataPath (governance
 // category) instead of findRepoRoot. Mock the resolver so each test pins the
@@ -401,6 +402,8 @@ describe('persistVoteRecord', () => {
           // #6115: where the seat was assigned, and that it answered elsewhere.
           assignedCli: 'claude',
           fallback: { fromCli: 'claude', fromModel: 'claude-opus', reason: 'capacity' },
+          // #6246: what the per-role retry replaced.
+          retriedFrom: { source: 'error', error: 'Vote parsing failed', errorTruncated: true },
           vote: { ...votes[0]!.vote, decision: 'abstain', reasoning: clipped },
         },
       ],
@@ -419,6 +422,11 @@ describe('persistVoteRecord', () => {
       fromCli: 'claude',
       fromModel: 'claude-opus',
       reason: 'capacity',
+    });
+    expect(entry.retriedFrom).toEqual({
+      source: 'error',
+      error: 'Vote parsing failed',
+      errorTruncated: true,
     });
     expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
   });
@@ -1585,6 +1593,130 @@ describe('errorPolicy — the policy the panel ran under (#6211, schema 1.11)', 
       expect(records).toHaveLength(1);
       expect(records[0]?.errorPolicy).toBe('fail_closed');
       expect(records[0]?.version).toBe('1.11');
+      expect(verifyVoteRecordSet(records).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('schema 1.12: a recovered seat carries what it was retried from (#6246)', () => {
+  // On the #6241 ratification panel the catfish seat's first pass errored on
+  // two response-parse failures and the retry came back unverifiable. The
+  // record said `retried: true, unverifiable: true` — both true of the seat
+  // that was recorded — and nothing joined them to the parse errors in the
+  // log. This is the record half of the join; `voter-retry.ts` is the live half.
+  const PARSE_FAILURE =
+    'Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input';
+
+  function build(
+    v: readonly AgentVoteResult[],
+    errorPolicy?: VoteRecord['errorPolicy']
+  ): VoteRecord {
+    return buildVoteRecord({
+      id: 'rt-112',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: v,
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      sequence: 0,
+      previousHash: undefined,
+      ...(errorPolicy !== undefined ? { errorPolicy } : {}),
+    });
+  }
+
+  /** A seat the per-role retry recovered from an errored first pass. */
+  function recoveredSeat(role: VoterRole): AgentVoteResult {
+    return {
+      ...agentVote(role, 'reject'),
+      retried: true,
+      retriedFrom: { source: 'error', error: PARSE_FAILURE },
+    };
+  }
+
+  it('carries retriedFrom on the recovered seat, rebuilt in canonical order, and NOT on the others', () => {
+    const record = build([recoveredSeat('catfish'), agentVote('architect', 'approve')]);
+    const catfish = record.voters.find((v) => v.role === 'catfish');
+    expect(catfish?.retriedFrom).toEqual({ source: 'error', error: PARSE_FAILURE });
+    expect(Object.keys(catfish?.retriedFrom ?? {})).toEqual(['source', 'error']);
+    const architect = record.voters.find((v) => v.role === 'architect');
+    expect(architect !== undefined && 'retriedFrom' in architect).toBe(false);
+    expect(record.version).toBe('1.12');
+  });
+
+  it('a clean panel carries no retriedFrom key anywhere — the pair', () => {
+    const record = build([agentVote('architect', 'approve'), agentVote('security', 'approve')]);
+    expect(record.voters.some((v) => 'retriedFrom' in v)).toBe(false);
+    expect(record.version).toBe('1.6');
+  });
+
+  it('retriedFrom is orthogonal to retried: a retried seat with no carried cause stays 1.7', () => {
+    expect(build([{ ...agentVote('pm', 'approve'), retried: true }]).version).toBe('1.7');
+  });
+
+  it('1.12 outranks 1.11: a record carrying both the policy and a carried cause is 1.12', () => {
+    const record = build([recoveredSeat('catfish')], 'absolute_quorum');
+    expect(record.version).toBe('1.12');
+    expect(record.errorPolicy).toBe('absolute_quorum');
+  });
+
+  it('a 1.12 record round-trips through serializeValidatedRecord and verifies', () => {
+    const record = build([recoveredSeat('catfish'), agentVote('architect', 'approve')]);
+    const line = serializeValidatedRecord(VoteRecordSchema, record, 'vote');
+    expect(line).toBe(JSON.stringify(record) + '\n');
+    const { records, invalidLines } = parseVoteRecordsText(line);
+    expect(invalidLines).toHaveLength(0);
+    expect(records[0]?.version).toBe('1.12');
+    expect(records[0]?.voters.find((v) => v.role === 'catfish')?.retriedFrom).toEqual({
+      source: 'error',
+      error: PARSE_FAILURE,
+    });
+    expect(verifyVoteRecordSet(records).ok).toBe(true);
+  });
+
+  it('end to end: the real retry feeds the real recorder, and the row reads back from disk', async () => {
+    // The #6241 shape, run through the two production seams in sequence: the
+    // per-role retry replaces an errored catfish seat with an unverifiable
+    // one, `persistVoteRecord` writes the merged panel, and the ledger line
+    // read back names BOTH the seat's final state and what it recovered from.
+    const firstPass: readonly AgentVoteResult[] = [
+      agentVote('architect', 'approve'),
+      { ...agentVote('catfish', 'abstain', 'error'), error: PARSE_FAILURE },
+    ];
+    const merged = await retryErroredRoles(
+      firstPass,
+      () =>
+        Promise.resolve([
+          {
+            ...agentVote('catfish', 'abstain', 'unverifiable'),
+            unverifiableSignal: 'reasoning' as const,
+          },
+        ]),
+      { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as ILogger,
+      0
+    );
+    const dir = mkdtempSync(join(tmpdir(), 'vote-records-112-'));
+    const filePath = join(dir, 'governance', 'vote-records.jsonl');
+    try {
+      const written = persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        id: 'vote-retried-from',
+        proposal: 'p',
+        strategy: 'supermajority',
+        result: consensusResult(),
+        votes: merged,
+        filePath,
+      });
+      expect(written?.version).toBe('1.12');
+      const { records, invalidLines } = readVoteRecords(filePath);
+      expect(invalidLines).toEqual([]);
+      const catfish = records[0]?.voters.find((v) => v.role === 'catfish');
+      expect(catfish?.retried).toBe(true);
+      expect(catfish?.unverifiable).toBe(true);
+      expect(catfish?.retriedFrom).toEqual({ source: 'error', error: PARSE_FAILURE });
       expect(verifyVoteRecordSet(records).ok).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });

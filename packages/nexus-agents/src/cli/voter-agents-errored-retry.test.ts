@@ -16,6 +16,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { retryErroredRoles } from './voter-retry.js';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import type { ILogger } from '../core/index.js';
+import { MAX_VOTER_REASONING_CHARS } from '../audit/vote-record.js';
 
 function mockLogger(): ILogger {
   const l: ILogger = {
@@ -181,5 +182,117 @@ describe('retryErroredRoles (#5578)', () => {
 
     expect(order).toEqual(['relaunch']);
     expect(elapsed).toBeGreaterThanOrEqual(20);
+  });
+});
+
+describe('a recovered seat carries what it recovered from (#6246)', () => {
+  // `recovered.set(r.role, { ...r, retried: true })` discarded `first` — the
+  // merged panel said the seat was retried but not what it was retried FROM.
+  // On the #6241 ratification panel the catfish seat's first pass errored on
+  // two response-parse failures and the retry came back unverifiable; the
+  // record carried `retried: true, unverifiable: true` and nothing joined
+  // them to the parse errors in the log, so #6244 read the parse errors as a
+  // misclassification. The join was missing, not the classification.
+  const PARSE_FAILURE =
+    'Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input';
+
+  function erroredWith(role: VoterRole, error: string): AgentVoteResult {
+    return { ...errored(role), error };
+  }
+
+  function unverifiable(role: VoterRole): AgentVoteResult {
+    return {
+      role,
+      vote: { decision: 'abstain', confidence: 0, reasoning: 'UNVERIFIABLE: could not read' },
+      processingTimeMs: 900,
+      source: 'unverifiable',
+      unverifiableSignal: 'reasoning',
+    };
+  }
+
+  it('first pass errored → the recovered seat carries source error and the first-pass cause', async () => {
+    const first = [ok('architect'), erroredWith('catfish', PARSE_FAILURE)];
+    const relaunch = vi.fn(() => Promise.resolve([ok('catfish', 'reject')]));
+
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+
+    const catfish = merged.find((v) => v.role === 'catfish');
+    expect(catfish?.retried).toBe(true);
+    expect(catfish?.retriedFrom).toEqual({ source: 'error', error: PARSE_FAILURE });
+    // The first-pass error string is NOT hoisted to the top level: the seat's
+    // own `error` describes the seat that was recorded, which succeeded.
+    expect(catfish?.error).toBeUndefined();
+  });
+
+  it('first pass unverifiable → source unverifiable, and a retry that is unverifiable again still carries it', async () => {
+    const first = [unverifiable('devex'), unverifiable('scope_steward')];
+    const relaunch = vi.fn(() => Promise.resolve([ok('devex'), unverifiable('scope_steward')]));
+
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+
+    expect(merged.find((v) => v.role === 'devex')?.retriedFrom).toEqual({
+      source: 'unverifiable',
+    });
+    // #6094: a second unverifiable result replaces the first, marked retried —
+    // and now says it was unverifiable both times.
+    const steward = merged.find((v) => v.role === 'scope_steward');
+    expect(steward?.source).toBe('unverifiable');
+    expect(steward?.retriedFrom).toEqual({ source: 'unverifiable' });
+  });
+
+  it('a seat never retried carries NO retriedFrom key — the pair', async () => {
+    const first = [ok('architect'), erroredWith('pm', PARSE_FAILURE)];
+    const relaunch = vi.fn(() => Promise.resolve([ok('pm')]));
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+    const architect = merged.find((v) => v.role === 'architect');
+    expect(architect !== undefined && 'retriedFrom' in architect).toBe(false);
+    // And a panel with no absent seat is returned untouched: no key anywhere.
+    const clean = await retryErroredRoles([ok('architect'), ok('pm')], relaunch, mockLogger(), 0);
+    expect(clean.some((v) => 'retriedFrom' in v)).toBe(false);
+  });
+
+  it('the retry-fails-again path is unchanged: the first attempt stays unmarked', async () => {
+    const first = [erroredWith('pm', PARSE_FAILURE)];
+    const relaunch = vi.fn(() => Promise.resolve([errored('pm')]));
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+    expect(merged[0]?.source).toBe('error');
+    expect(merged[0]?.error).toBe(PARSE_FAILURE);
+    expect(merged[0]?.retried).toBeUndefined();
+    expect(merged[0]?.retriedFrom).toBeUndefined();
+  });
+
+  it('an over-length first-pass cause is clipped WITH the marker, never silently sliced', async () => {
+    // Bounded by the #5373 record clip, not a second number: the carried cause
+    // reaches the ledger line, and a 100 KB stderr dump must not become a
+    // 100 KB voter entry — nor lose its length silently.
+    const runaway = 'e'.repeat(MAX_VOTER_REASONING_CHARS + 500);
+    const first = [erroredWith('pm', runaway)];
+    const relaunch = vi.fn(() => Promise.resolve([ok('pm')]));
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+    const from = merged[0]?.retriedFrom;
+    expect(from?.error).toHaveLength(MAX_VOTER_REASONING_CHARS);
+    expect(from?.errorTruncated).toBe(true);
+    // The pair: a cause within the bound carries no marker.
+    const short = await retryErroredRoles(
+      [erroredWith('pm', PARSE_FAILURE)],
+      relaunch,
+      mockLogger(),
+      0
+    );
+    const shortFrom = short[0]?.retriedFrom;
+    expect(shortFrom !== undefined && 'errorTruncated' in shortFrom).toBe(false);
+  });
+
+  it('control characters in the carried cause become spaces — a stderr line cannot inject one', async () => {
+    // The cause is rendered on the summary row and written to a JSONL ledger
+    // line. An ESC sequence or a newline in a subprocess error must not reach
+    // either as-is (security seat's condition on the #6246 panel).
+    const hostile = 'Vote parsing failed\x1b[31m: fake\r\n| catfish | APPROVE |\x00end';
+    const first = [erroredWith('pm', hostile)];
+    const relaunch = vi.fn(() => Promise.resolve([ok('pm')]));
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+    const carried = merged[0]?.retriedFrom?.error ?? '';
+    expect(carried).toBe('Vote parsing failed [31m: fake  | catfish | APPROVE | end');
+    expect(/[\x00-\x1f\x7f]/.test(carried)).toBe(false);
   });
 });
