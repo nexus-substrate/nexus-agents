@@ -258,6 +258,23 @@ describe('appendRatificationRecord', () => {
     expect(existsSync(ledgerPath)).toBe(false);
   });
 
+  it('DISCLOSED LIMIT: a source record edited AND re-hashed IS appended — the path trusts the operator store; provenance is step 2 or signing (#3927 item 4)', () => {
+    // The pair of the test above. Anyone with the exported hash function can
+    // edit the operator's copy and recompute; the self-hash check cannot tell
+    // that from a genuine record. This asserts the CURRENT behaviour so that
+    // signing (#3927 item 4) or the step-2 sidecar cross-check has a RED test
+    // to flip, rather than a silent change of guarantee.
+    const genuine = sourceRecord('vote-a', { sequence: 0 });
+    const { hash: _stale, ...payload } = genuine;
+    const editedPayload = { ...payload, ratifiesPr: { pr: 6200, headSha: 'f'.repeat(40) } };
+    const rehashed: VoteRecord = { ...editedPayload, hash: computeVoteRecordHash(editedPayload) };
+    writeLedger(sourcePath, [rehashed]);
+
+    const outcome = appendRatificationRecord({ sourcePath, ledgerPath, recordId: 'vote-a' });
+    expect(outcome.kind).toBe('appended');
+    expect(readLedger(ledgerPath)[0]?.ratifiesPr?.headSha).toBe('f'.repeat(40));
+  });
+
   it('REFUSES to append onto a committed ledger that fails verification, leaving its bytes untouched', () => {
     const c0 = sourceRecord('vote-c0', { sequence: 0, pr: 6100 });
     const tampered: VoteRecord = { ...c0, approvalPercentage: 57 }; // hash now stale

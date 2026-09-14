@@ -35,16 +35,32 @@
  * `approvalPercentage`, `voteCounts`, `voters`, `correlationId`, the option
  * and panel coverage, `ratifies`, `ratifiesPr`) is carried verbatim; only
  * `sequence`, `previousHash` and therefore `hash` are ledger-local. The
- * source copy's hash is verified BEFORE the copy, which is what carries the
- * tamper-evidence across: an edited runtime record is refused, and the
- * committed record is self-hashed under the committed ledger's own sequence.
- * `id` is preserved and unique per ledger, so the same record can be matched
- * across the two stores and a re-run is idempotent.
+ * source copy's hash is verified BEFORE the copy, and the committed record is
+ * self-hashed under the committed ledger's own sequence. `id` is preserved and
+ * unique per ledger, so the same record can be matched across the two stores
+ * and a re-run is idempotent.
+ *
+ * ## What the self-hash check does NOT prove (disclosed limit)
+ *
+ * The source check refuses a record edited WITHOUT re-hashing. A record edited
+ * and re-hashed with the exported `computeVoteRecordHash`, or fabricated
+ * outright, passes it and is appended — the caller-commits path TRUSTS the
+ * operator's runtime store, exactly as the verifier JSDoc and the audit
+ * hash-chain threat model state for author-typed records (tamper-EVIDENT, not
+ * tamper-PROOF). Provenance is step 2's job — the gate cross-checks the
+ * record against the job sidecar and the PR tally comment — or signing
+ * (#3927 item 4). `append-ratification-record.test.ts` pins this limit with a
+ * test that asserts the re-hashed edit IS appended, so signing has a RED test
+ * to flip.
  *
  * Two branches that each append from the same committed tip produce two
  * records at the same sequence; `merge=union` (`.gitattributes`) concatenates
  * them and the verifier reports the duplicate as a benign `forks` entry
- * (tested with real git in `append-ratification-record.test.ts`).
+ * (tested with real git in `append-ratification-record.test.ts`). The same
+ * merge can also land two records with ONE `id` and different content (two
+ * branches appending the same id): today that is a fork the verifier
+ * tolerates and a later append reports as `already-present`; whether two
+ * records under one id is a refusal is step 2's decision, not this script's.
  *
  * Usage (from the repo root, after the vote):
  *   pnpm exec tsx scripts/append-ratification-record.ts --record-id <voteRecordId>
@@ -157,10 +173,11 @@ function locateSourceRecord(sourcePath: string, recordId: string): SourceStep {
 /** Vet a located source record: self-hash, PR binding, approval — in that order. */
 function vetSourceRecord(record: VoteRecord, sourcePath: string): SourceStep {
   const recordId = record.id;
-  // The source copy's own hash must verify. This is what carries tamper-
-  // evidence across the copy: the committed record is re-hashed under a new
-  // sequence, so an edit to the operator's copy would otherwise be laundered
-  // into a cleanly self-hashed committed line. The SELF-hash only — not
+  // The source copy's own hash must verify: the committed record is re-hashed
+  // under a new sequence, so an edit WITHOUT a re-hash would otherwise be
+  // laundered into a cleanly self-hashed committed line. An edit WITH a
+  // re-hash passes — see the module header's disclosed limit. The SELF-hash
+  // only — not
   // `verifyVoteRecordSet([record])`, whose sequence census would call a lone
   // record at sequence 311 a gap; the runtime store's coverage is not what is
   // being copied.
@@ -171,7 +188,7 @@ function vetSourceRecord(record: VoteRecord, sourcePath: string): SourceStep {
       outcome: refused(
         'source-hash-mismatch',
         `record '${recordId}' in ${sourcePath} fails its own self-hash: stored ` +
-          `${record.hash || '(none)'} vs recomputed ${recomputed}. An edited runtime record is never copied.`
+          `${record.hash || '(none)'} vs recomputed ${recomputed}. A record edited without re-hashing is not copied.`
       ),
     };
   }

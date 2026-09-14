@@ -20,7 +20,10 @@ A new operator script, `scripts/append-ratification-record.ts --record-id <id>`
 `governance/vote-records.jsonl` so the caller can commit it in the PR it
 ratifies. It refuses a record that carries no `ratifiesPr`, whose own hash does
 not verify, or whose decision is not `approved`, and it refuses to extend a
-committed ledger that fails verification. The committed copy is re-sequenced
+committed ledger that fails verification. The hash check catches a record
+edited without re-hashing; a re-hashed edit passes, because this path trusts
+the operator's runtime store — provenance is the gate's job (step 2) or
+record signing. The committed copy is re-sequenced
 to the ledger's next `sequence` and re-hashed; every content field and the
 record `id` are carried verbatim. Two branches appending concurrently merge
 under the existing `merge=union` attribute, tested with real git.

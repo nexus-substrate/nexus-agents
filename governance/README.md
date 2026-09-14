@@ -6,7 +6,10 @@ by `verifyVoteRecordSet` / `verifyPrReviewRecordSet` (a hash-covered monotonic
 `sequence`, not a linear chain — see `packages/nexus-agents/src/audit/`). Both
 carry `merge=union` in `.gitattributes`, so two PRs that each append a record
 merge without conflict; the duplicated sequence they leave behind is a benign
-fork signal, not corruption.
+fork signal, not corruption. Two branches appending the same record `id` merge
+the same way — two lines under one id, tolerated by the verifier today and
+reported as `already-present` by a later append; whether that is a refusal is
+step 2's decision.
 
 A JSONL reader treats every non-blank line as a record and fails closed on one
 it cannot parse, so the ledgers cannot carry a header comment. This file is
@@ -48,7 +51,12 @@ record is a gate finding (#5131), not an empty-ledger condition.
    (or `--job <jobId>` for an async vote). The script copies that one record
    from the runtime store into this ledger. It refuses a record that is not
    PR-bound, whose own hash does not verify, or whose decision is not
-   `approved`, and it refuses to extend a ledger that does not verify.
+   `approved`, and it refuses to extend a ledger that does not verify. The
+   hash check refuses a record edited WITHOUT re-hashing; a record edited and
+   re-hashed, or fabricated, passes it — this path trusts the operator's
+   store, as the threat model states for author-typed records. Provenance is
+   step 2's job (cross-check against the job sidecar and the PR tally
+   comment) or signing (#3927 item 4).
 3. The copy is re-sequenced to this ledger's next `sequence` and re-hashed;
    every content field is carried verbatim, and `id` is preserved so the two
    copies can be matched. `sequence` is hash-covered by design (#3927), so a
