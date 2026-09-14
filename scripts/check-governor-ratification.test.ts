@@ -9,7 +9,11 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { governorPathsFromCodeowners, GOVERNOR_SECTION_END_LINE } from './governor-section.js';
+import {
+  governorPathsFromCodeowners,
+  GOVERNOR_SECTION_START_DIRECTIVE,
+  GOVERNOR_SECTION_END_DIRECTIVE,
+} from './governor-section.js';
 import {
   evaluateRatification,
   governorOwnersFromCodeowners,
@@ -21,10 +25,10 @@ import {
 const OWNERS = ['williamzujkowski'];
 const GOVERNOR_PATTERNS = governorPathsFromCodeowners(
   [
-    "# Governor's own core",
+    GOVERNOR_SECTION_START_DIRECTIVE,
     '/packages/nexus-agents/src/audit/ @owner',
     '/CODEOWNERS @owner',
-    '# END governor-owned paths',
+    GOVERNOR_SECTION_END_DIRECTIVE,
   ].join('\n')
 );
 
@@ -33,10 +37,11 @@ describe('governorOwnersFromCodeowners', () => {
     '# Security modules',
     '/packages/nexus-agents/src/security/ @someone-else',
     '',
+    GOVERNOR_SECTION_START_DIRECTIVE,
     "# Governor's own core — never auto-merged",
     '/packages/nexus-agents/src/audit/ @williamzujkowski',
     '/CODEOWNERS @williamzujkowski @second-owner',
-    GOVERNOR_SECTION_END_LINE,
+    GOVERNOR_SECTION_END_DIRECTIVE,
   ].join('\n');
 
   it('reads ratifiers from the governor section only', () => {
@@ -171,10 +176,11 @@ describe('governor section is bounded (#4683)', () => {
   // governor path AND its owners became ratifiers. Latent only because the
   // governor section happens to be last today.
   const WITH_TRAILING_SECTION = [
+    GOVERNOR_SECTION_START_DIRECTIVE,
     "# Governor's own core — the governance-of-the-governor paths.",
     '/packages/nexus-agents/src/audit/ @owner',
     '/CODEOWNERS @owner',
-    GOVERNOR_SECTION_END_LINE,
+    GOVERNOR_SECTION_END_DIRECTIVE,
     '',
     '# Docs — added later by someone with no governor authority',
     '/docs/ @docs-maintainer',
@@ -192,30 +198,38 @@ describe('governor section is bounded (#4683)', () => {
     expect(paths).not.toContain('/docs/');
   });
 
-  it('yields NO ratifiers when the end marker is missing — fail closed', () => {
+  it('refuses to name ratifiers when the end directive is missing — the parser throws (#6048)', () => {
     const unterminated = [
+      GOVERNOR_SECTION_START_DIRECTIVE,
       "# Governor's own core — the governance-of-the-governor paths.",
       '/packages/nexus-agents/src/audit/ @owner',
     ].join('\n');
-    // No end marker ⇒ the boundary is unknown ⇒ we cannot say who may ratify.
-    // `evaluateRatification` turns an empty owner set into `indeterminate`.
-    expect(governorOwnersFromCodeowners(unterminated)).toEqual([]);
-  });
-
-  it('still protects every governor path when the end marker is missing', () => {
-    const unterminated = [
-      "# Governor's own core — the governance-of-the-governor paths.",
-      '/packages/nexus-agents/src/audit/ @owner',
-    ].join('\n');
-    // Paths fail closed in the OTHER direction: more protected paths, not fewer.
-    expect(governorPathsFromCodeowners(unterminated)).toContain(
-      '/packages/nexus-agents/src/audit/'
+    // Before #6048 this returned [] and relied on `evaluateRatification` to
+    // turn the empty owner set into `indeterminate`. The parser now refuses
+    // outright with a named error; `runRatificationGate` renders it as the
+    // same `indeterminate` verdict via parseGovernorPatternsOrReport.
+    expect(() => governorOwnersFromCodeowners(unterminated)).toThrow(
+      "CODEOWNERS: governor section end directive '# @governor-section-end' not found — " +
+        'the governor path set cannot be derived'
     );
   });
 
-  it('the real CODEOWNERS carries the end marker', () => {
+  it('refuses to name governor paths when the end directive is missing — same error', () => {
+    const unterminated = [
+      GOVERNOR_SECTION_START_DIRECTIVE,
+      "# Governor's own core — the governance-of-the-governor paths.",
+      '/packages/nexus-agents/src/audit/ @owner',
+    ].join('\n');
+    // #4683 ran an unterminated section to end-of-file (MORE paths). #6048
+    // trades that for a loud refusal on BOTH sides, so the two gates cannot
+    // disagree about a file neither can bound.
+    expect(() => governorPathsFromCodeowners(unterminated)).toThrow(/end directive .* not found/);
+  });
+
+  it('the real CODEOWNERS carries both directives', () => {
     const real = readFileSync(resolve(import.meta.dirname, '../CODEOWNERS'), 'utf8');
-    expect(real).toContain(GOVERNOR_SECTION_END_LINE);
+    expect(real).toContain(GOVERNOR_SECTION_START_DIRECTIVE);
+    expect(real).toContain(GOVERNOR_SECTION_END_DIRECTIVE);
     expect(governorOwnersFromCodeowners(real).length).toBeGreaterThan(0);
   });
 });

@@ -39,7 +39,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { governorPathsFromCodeowners, isGovernorPath } from './governor-section.js';
+import {
+  governorPathsFromCodeowners,
+  GovernorSectionError,
+  isGovernorPath,
+} from './governor-section.js';
 
 import { ROOT } from './script-paths.js';
 import {
@@ -603,6 +607,24 @@ function resolveGateContext(
   };
 }
 
+/**
+ * The governor path set, or null after printing the parser's refusal in this
+ * gate's own FAIL vocabulary (#6048). The parser throws a named
+ * `GovernorSectionError` for a missing, duplicated or reordered directive;
+ * letting it propagate would still exit non-zero, but as a stack trace rather
+ * than the `[governor-review] FAIL` line the workflow and a human look for.
+ * Mirrors `parseGovernorPatternsOrReport` in check-governor-ratification.ts.
+ */
+function parseGovernorPatternsOrFail(codeownersText: string): string[] | null {
+  try {
+    return governorPathsFromCodeowners(codeownersText);
+  } catch (error) {
+    if (!(error instanceof GovernorSectionError)) throw error;
+    console.error(`[governor-review] FAIL (integrity, fail-closed): ${error.message}`);
+    return null;
+  }
+}
+
 export function runGovernorReviewGate(
   argv: readonly string[],
   // A parameter, not an env var: the ledger path must not be steerable by the
@@ -611,7 +633,8 @@ export function runGovernorReviewGate(
   ledgerFile: string = PR_REVIEW_RECORDS_FILE
 ): number {
   const codeownersText = existsSync(CODEOWNERS_FILE) ? readFileSync(CODEOWNERS_FILE, 'utf-8') : '';
-  const governorPatterns = governorPathsFromCodeowners(codeownersText);
+  const governorPatterns = parseGovernorPatternsOrFail(codeownersText);
+  if (governorPatterns === null) return 1;
   const { records, invalidLines } = readPrReviewRecords(ledgerFile);
 
   // A dropped line is evidence that vanished, not evidence that passed. The
