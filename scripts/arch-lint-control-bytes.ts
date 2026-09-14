@@ -20,20 +20,6 @@ import { ROOT } from './script-paths.js';
  */
 const CONTROL_BYTE = /[\x00-\x08\x0B\x0C\x0E-\x1F]/;
 
-/**
- * Files that carried raw control bytes when the rule landed, keyed on the
- * ROOT-relative path, valued with the number of offending lines (#6158).
- *
- * A ratchet, not an allowlist: a baselined file may carry exactly this many
- * offending lines. One more is an error, and so is one fewer — a baseline
- * entry whose file is now clean is a blind spot for the next raw byte, so the
- * fix that removes the bytes must remove the entry in the same change.
- */
-export const CONTROL_BYTE_BASELINE: ReadonlyMap<string, number> = new Map([
-  ['packages/nexus-agents/src/cli/vote-command.test.ts', 1],
-  ['packages/nexus-agents/src/pipeline/research-context.ts', 1],
-]);
-
 interface ControlByteHit {
   readonly line: number;
   readonly col: number;
@@ -54,12 +40,7 @@ function hex(code: number): string {
   return `0x${code.toString(16).toUpperCase().padStart(2, '0')}`;
 }
 
-function violation(
-  file: string,
-  hit: ControlByteHit,
-  detail: string,
-  severity: Violation['severity']
-): Violation {
+function violation(file: string, hit: ControlByteHit): Violation {
   return {
     file,
     line: hit.line,
@@ -68,8 +49,8 @@ function violation(
     message:
       `${file}:${String(hit.line)}:${String(hit.col)} raw control byte ${hex(hit.code)}` +
       ` — write it as an escape (\`\\0\`, \`\\x${hit.code.toString(16).padStart(2, '0')}\`)` +
-      ` so grep stops classifying the file as binary${detail} (#6149)`,
-    severity,
+      ` so grep stops classifying the file as binary (#6149)`,
+    severity: 'error',
   };
 }
 
@@ -84,60 +65,11 @@ function violation(
  *
  * Reports `file:line:col` — the column is the 1-based character index on the
  * line, which is also the byte column whenever the bytes before it are ASCII.
- * Baselined files (see `CONTROL_BYTE_BASELINE`) get warnings at their recorded
- * count and errors on either side of it.
+ * Every hit is an error: the two files that carried raw bytes inside regex
+ * literals when the rule landed were rewritten as escapes in #6158, so there
+ * is no baseline allowance left to ratchet.
  */
 export function checkControlBytes(filePath: string, content: string): Violation[] {
   const file = relative(ROOT, filePath);
-  const hits = findControlBytes(content);
-  const expected = CONTROL_BYTE_BASELINE.get(file);
-
-  if (expected === undefined) {
-    return hits.map((hit) => violation(file, hit, '', 'error'));
-  }
-  if (hits.length === expected) {
-    return hits.map((hit) =>
-      violation(file, hit, `; baselined at ${String(expected)} (#6158)`, 'warning')
-    );
-  }
-  if (hits.length > expected) {
-    return hits.map((hit) =>
-      violation(
-        file,
-        hit,
-        `; baseline allows ${String(expected)}, found ${String(hits.length)}`,
-        'error'
-      )
-    );
-  }
-  return [
-    {
-      file,
-      line: 1,
-      rule: 'control-bytes',
-      category: 'Source Encoding',
-      message:
-        `${file} is in CONTROL_BYTE_BASELINE at ${String(expected)} but carries ` +
-        `${String(hits.length)}; remove the entry so the file is guarded again (#6149)`,
-      severity: 'error',
-    },
-  ];
-}
-
-/**
- * A baseline entry naming a file the walk never reached (renamed, deleted) is
- * as stale as one whose file is clean; the per-file check cannot see it.
- */
-export function checkControlByteBaselineCoverage(scannedPaths: readonly string[]): Violation[] {
-  const scanned = new Set(scannedPaths.map((p) => relative(ROOT, p)));
-  return [...CONTROL_BYTE_BASELINE.keys()]
-    .filter((file) => !scanned.has(file))
-    .map((file) => ({
-      file,
-      line: 1,
-      rule: 'control-bytes',
-      category: 'Source Encoding',
-      message: `${file} is in CONTROL_BYTE_BASELINE but was not scanned; remove the entry (#6149)`,
-      severity: 'error',
-    }));
+  return findControlBytes(content).map((hit) => violation(file, hit));
 }

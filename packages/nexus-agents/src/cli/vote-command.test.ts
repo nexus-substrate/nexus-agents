@@ -194,8 +194,33 @@ function makeVoteRow(overrides: Partial<AgentVoteResult> = {}): AgentVoteResult 
 
 // Strip ANSI escape codes so tests don't depend on the active color theme.
 function stripAnsi(s: string): string {
-  return s.replace(/\[[0-9;]*m/g, '');
+  return s.replace(/\x1b\[[0-9;]*m/g, '');
 }
+
+describe('stripAnsi regex spelled as an escape (#6158)', () => {
+  it('matches exactly what the raw-ESC spelling matched', () => {
+    // The regex used to carry a raw 0x1B byte, which made grep classify this
+    // file as binary. The old spelling is rebuilt here from the code point so
+    // this file never carries the byte again; the two must agree on every
+    // fixture, and at least one fixture must actually be rewritten.
+    const ESC = String.fromCharCode(0x1b);
+    expect(ESC).toHaveLength(1);
+    const rawSpelling = new RegExp(`${ESC}\\[[0-9;]*m`, 'g');
+    const fixtures = [
+      `${ESC}[31mred${ESC}[0m`, // both codes stripped: the regex is unanchored
+      `${ESC}[1;32mbold green`,
+      `${ESC}[m`, // empty parameter list
+      ` ${ESC}[31mnot at start`, // stripped mid-string too
+      `${ESC}]0;title${ESC}\\`, // OSC, not CSI: no [ after ESC
+      'plain text',
+      '',
+    ];
+    for (const fixture of fixtures) {
+      expect(stripAnsi(fixture)).toBe(fixture.replace(rawSpelling, ''));
+    }
+    expect(fixtures.filter((f) => stripAnsi(f) !== f)).toHaveLength(4);
+  });
+});
 
 describe('formatVoteRow unverifiable seat (#6094)', () => {
   it('renders UNVERIFIABLE, not ABSTAIN, so a blind seat is never read as a considered one', () => {

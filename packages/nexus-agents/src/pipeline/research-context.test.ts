@@ -136,6 +136,38 @@ describe('buildResearchContext (#3372)', () => {
     expect(ctx.text).not.toContain('\n newline');
   });
 
+  it('scrubs exactly the control chars the raw-byte regex spelling scrubbed (#6158)', () => {
+    // sanitizeExternal's class used to be written with raw 0x00/0x1F/0x7F
+    // bytes, which made grep classify the module as binary. The old class is
+    // rebuilt here from code points so this file never carries a raw byte;
+    // the fixture holds every code point 0x00-0x7F (bar the backtick, which
+    // a separate replace strips) plus two C1 controls neither spelling
+    // touches, so any change to the range's edges shows up as a mismatch.
+    const cp = (n: number): string => String.fromCharCode(n);
+    const rawSpelling = new RegExp(`[${cp(0x00)}-${cp(0x1f)}${cp(0x7f)}]`, 'g');
+    const fixture = Array.from({ length: 0x80 }, (_, n) => n)
+      .filter((n) => n !== 0x60)
+      .map(cp)
+      .join('')
+      .concat(cp(0x80), cp(0x9f));
+    const expected = fixture.replace(rawSpelling, ' ').replace(/\s+/g, ' ').trim();
+    expect(expected).not.toBe(fixture);
+    expect(expected).toContain(cp(0x80));
+    expect(expected).toContain(cp(0x9f));
+    expect(expected).not.toContain(cp(0x7f));
+
+    const text = renderResearchText(
+      {
+        discoveredItems: [],
+        recommendations: [fixture],
+        qualitySignals: { totalFound: 0, newItems: 0, alreadyInRegistry: 0 },
+      },
+      'topic'
+    );
+    const rendered = text.split('\n').at(-1);
+    expect(rendered).toBe(`- ${expected}`);
+  });
+
   it('bounds the rendered item list to MAX_RENDERED_ITEMS', () => {
     const many = Array.from({ length: MAX_RENDERED_ITEMS + 5 }, (_, i) => ({
       source: 'a',

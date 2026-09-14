@@ -3,16 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { collectControlByteTargets } from './arch-lint.js';
-import {
-  CONTROL_BYTE_BASELINE,
-  checkControlByteBaselineCoverage,
-  checkControlBytes,
-} from './arch-lint-control-bytes.js';
+import { checkControlBytes } from './arch-lint-control-bytes.js';
 import { ROOT } from './script-paths.js';
 
 const rootFile = (rel: string): string => join(ROOT, rel);
 const UNBASELINED = 'packages/nexus-agents/src/mcp/tools/thing.ts';
-const [BASELINED_FILE, BASELINED_COUNT] = [...CONTROL_BYTE_BASELINE.entries()][0] ?? ['', 0];
 
 /** Fixtures are built from escapes so this test file never carries a raw byte itself. */
 const withByte = (code: number): string =>
@@ -55,38 +50,13 @@ describe('checkControlBytes — no raw control byte in source (#6149)', () => {
     expect(checkControlBytes(rootFile(UNBASELINED), '')).toEqual([]);
   });
 
-  describe('baseline ratchet (#6158)', () => {
-    it('a baselined file at its recorded count is a warning, not an error', () => {
-      expect(BASELINED_COUNT).toBe(1);
-      const violations = checkControlBytes(rootFile(BASELINED_FILE), withByte(0x1b));
-      expect(violations.map((v) => v.severity)).toEqual(['warning']);
-      expect(violations[0]?.message).toContain('baselined at 1');
-    });
-
-    it('a baselined file with one MORE offending line is an error', () => {
-      const nul = String.fromCharCode(0);
-      const content = [`'${nul}'`, `'${nul}'`].join('\n');
-      const violations = checkControlBytes(rootFile(BASELINED_FILE), content);
-      expect(violations.map((v) => v.severity)).toEqual(['error', 'error']);
-      expect(violations[0]?.message).toContain('baseline allows 1, found 2');
-    });
-
-    it('a baselined file that is now clean is an error: the entry must go', () => {
-      const violations = checkControlBytes(rootFile(BASELINED_FILE), 'export const a = 1;\n');
-      expect(violations.map((v) => v.severity)).toEqual(['error']);
-      expect(violations[0]?.message).toContain('remove the entry');
-    });
-
-    it('a baseline entry the walk never reached is an error', () => {
-      const scanned = collectControlByteTargets().filter((f) => !f.endsWith(BASELINED_FILE));
-      const violations = checkControlByteBaselineCoverage(scanned);
-      expect(violations.map((v) => v.file)).toEqual([BASELINED_FILE]);
-      expect(violations[0]?.message).toContain('was not scanned');
-    });
-
-    it('the full walk covers every baseline entry', () => {
-      expect(checkControlByteBaselineCoverage(collectControlByteTargets())).toEqual([]);
-    });
+  it.each([
+    'packages/nexus-agents/src/cli/vote-command.test.ts',
+    'packages/nexus-agents/src/pipeline/research-context.ts',
+  ])('the files #6161 baselined get no allowance any more: %s (#6158)', (file) => {
+    const violations = checkControlBytes(rootFile(file), withByte(0x1b));
+    expect(violations.map((v) => v.severity)).toEqual(['error']);
+    expect(violations[0]?.message).not.toContain('baseline');
   });
 });
 
@@ -101,10 +71,12 @@ describe('collectControlByteTargets', () => {
   });
 });
 
-describe('the real tree carries no raw control byte outside the baseline (#6149)', () => {
+describe('the real tree carries no raw control byte (#6149, #6158)', () => {
   it('holds over every .ts file the lint walks', () => {
     // The guard the issue asked for. On origin/main before #6149 this named
-    // packages/nexus-agents/src/mcp/tools/improvement-review.ts:613:52 (a NUL).
+    // packages/nexus-agents/src/mcp/tools/improvement-review.ts:613:52 (a NUL);
+    // before #6158 it named vote-command.test.ts:197:21 (ESC) and
+    // research-context.ts:69:16 (NUL) once the baseline allowance was removed.
     const files = collectControlByteTargets();
     const errors = files
       .flatMap((f) => checkControlBytes(f, readFileSync(f, 'utf-8')))
