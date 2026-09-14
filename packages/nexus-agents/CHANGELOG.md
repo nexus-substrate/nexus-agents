@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.55.1
+
+### Patch Changes
+
+- [#6203](https://github.com/nexus-substrate/nexus-agents/pull/6203) [`8292278`](https://github.com/nexus-substrate/nexus-agents/commit/8292278e2cab2ab0847ff5ee9764ae586e3aa63c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The per-model weather lens (`getModelWeatherSummary`) moved from `mcp/tools/weather-report.ts` to a sibling `weather-report-model-lens.ts` with no change to the `weather_report` tool's schema, output, or the package's public API.
+
 ## 8.55.0
 
 ### Minor Changes
