@@ -833,7 +833,7 @@ describe('formatLedgerEvidence', () => {
       shaChecked: false,
       appendOnlyChecked: false,
     });
-    expect(unchecked).toContain('sha not checked');
+    expect(unchecked).toContain('sha NOT checked');
     expect(unchecked).toContain('append-only not checked');
 
     const rejected: BoundRecordFailure = {
@@ -904,7 +904,10 @@ describe('ledgerEvidenceFromEnv', () => {
   });
 
   it('a MISSING ledger file is the empty case (no-record with 0 records), not unmeasured', () => {
-    const e = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR) }, join(dir, 'absent.jsonl'));
+    const e = ledgerEvidenceFromEnv(
+      { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD },
+      join(dir, 'absent.jsonl')
+    );
     expect(e).toEqual({ kind: 'no-record', recordCount: 0 });
   });
 
@@ -918,11 +921,12 @@ describe('ledgerEvidenceFromEnv', () => {
     expect(ledgerEvidenceFromEnv({ ...base, HEAD_COMMIT_FILES: 'src/a.ts' }, path).kind).toBe(
       'sha-mismatch'
     );
-    // No head sha at all: the post-merge shape.
-    const post = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR) }, path);
-    expect(post.kind).toBe('ratified');
-    if (post.kind !== 'ratified') throw new Error('unreachable');
-    expect(post.shaChecked).toBe(false);
+    // No head sha at all is UNMEASURED (#6249): this used to be the backstop's
+    // shape, and it accepted any approved record for the PR number.
+    const noHead = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR) }, path);
+    expect(noHead.kind).toBe('unmeasured');
+    if (noHead.kind !== 'unmeasured') throw new Error('unreachable');
+    expect(noHead.reason).toContain('PR_HEAD_SHA is not set');
   });
 
   it('an UNREADABLE ledger (a directory at the path) is unmeasured naming the error, not a crash (#6213)', () => {
@@ -1024,6 +1028,22 @@ describe('the workflow wires the base ledger (#6213)', () => {
     );
     // The merge-base/parent form appears twice: the pre-merge job, and the push job fallback.
     expect(workflow.split('LEDGER_BASE_SHA="${BASE_SHA}"').length - 1).toBe(2);
+  });
+
+  it("the push job binds the ledger to the merged PR's pre-squash head, fetched via refs/pull/N/head (#6249)", () => {
+    // The backstop used to pass no PR_HEAD_SHA at all; the gate now refuses
+    // to run without one, so this pins the producer side of that contract.
+    expect(workflow).toContain('git fetch --quiet origin "refs/pull/${PR_NUMBER}/head" || true');
+    expect(workflow).toContain('if git cat-file -e "${PR_HEAD_SHA}^{commit}" 2>/dev/null; then');
+    expect(workflow).toContain('PR_HEAD_SHA: ${{ steps.evidence.outputs.pr_head }}');
+    expect(workflow).toContain('PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.pr_head_parent }}');
+    expect(workflow).toContain(
+      'HEAD_COMMIT_FILES: ${{ steps.evidence.outputs.pr_head_commit_files }}'
+    );
+    expect(workflow).toContain('echo "pr_head=${PR_HEAD_SHA}"');
+    // Every gate step receives a head: the audit gate and the pre-merge
+    // ratification gate the PR head, the backstop the PR's final head.
+    expect(workflow.split('PR_HEAD_SHA: ${{').length - 1).toBe(3);
   });
 
   it(`both gate steps receive ${BASE_LEDGER_PATH_ENV} from the evidence step`, () => {
@@ -1348,26 +1368,48 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
     expect(code).toBe(1);
   }, 60_000);
 
-  it('post-merge shape (PR number, no head sha): a bound record passes and an empty ledger fails', () => {
-    produce('vote-e2e');
+  it("the backstop's shape (#6249): the merged PR's pre-squash head is bound, and a record for an EARLIER head is sha-mismatch — the contrarian's scenario", () => {
+    // The #6249 panel's contrarian: the panel ratified sha1, the author pushed
+    // sha2 past the red pre-merge gate, and the PR was admin-merged. The
+    // backstop keyed on the PR number alone and exited 0. Now it binds to the
+    // PR's final head (`pulls/{n}` → head.sha) exactly as the pre-merge job
+    // does, so the same ledger is `sha-mismatch` and exit 1.
+    produce('vote-e2e', { sequence: 0, headSha: HEAD }); // bound to sha1
     expect(append('vote-e2e').status).toBe(0);
+    const backstop = {
+      ...OWNER_APPROVED_ENV,
+      PR_HEAD_SHA: OTHER, // sha2: the head that actually merged
+      PR_HEAD_PARENT_SHA: HEAD,
+      HEAD_COMMIT_FILES: 'scripts/x.ts',
+      RATIFICATION_LEDGER_PATH: ledgerPath,
+    };
+    const laterPush = runGate(backstop);
+    expect(laterPush.out).toContain('::error::[governor-ledger] sha-mismatch: ');
+    expect(laterPush.out).toContain(HEAD);
+    expect(laterPush.out).not.toContain('sha NOT checked');
+    expect(laterPush.code).toBe(1);
+
+    // The ledger-only tip: the final head is the append commit on top of the
+    // head the panel saw, so head^ is accepted and the record ratifies.
+    const tip = runGate({ ...backstop, HEAD_COMMIT_FILES: VOTE_RECORDS_REL_PATH });
+    expect(tip.out).toContain("::notice::[governor-ledger] ratified: record 'vote-e2e'");
+    expect(tip.out).toContain(`at ${HEAD}`);
+    expect(tip.code).toBe(0);
+
+    // The head could not be resolved (no PR_HEAD_SHA): unmeasured, exit 1 —
+    // never "the PR number matched".
     const {
       PR_HEAD_SHA: _sha,
       PR_HEAD_PARENT_SHA: _parent,
       HEAD_COMMIT_FILES: _files,
-      ...postMerge
-    } = OWNER_APPROVED_ENV;
-    const ok = runGate({ ...postMerge, RATIFICATION_LEDGER_PATH: ledgerPath });
-    expect(ok.out).toContain('sha not checked');
-    expect(ok.code).toBe(0);
-
-    writeFileSync(ledgerPath, '', 'utf-8');
-    const empty = runGate({ ...postMerge, RATIFICATION_LEDGER_PATH: ledgerPath });
-    expect(empty.out).toContain(
-      '::error::[governor-ledger] no-record: the committed ledger is empty'
+      ...noHead
+    } = backstop;
+    const unresolved = runGate(noHead);
+    expect(unresolved.out).toContain(
+      '::error::[governor-ledger] unmeasured: PR_HEAD_SHA is not set'
     );
-    expect(empty.code).toBe(1);
-  }, 60_000);
+    expect(unresolved.code).toBe(1);
+  }, 90_000);
 });
 
 // ---------------------------------------------------------------------------

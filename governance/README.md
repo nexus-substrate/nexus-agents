@@ -120,10 +120,18 @@ append-only against the base), or one of:
 
 An unreadable ledger (a directory at the path, a permissions error) prints
 `unmeasured` naming the error instead of crashing the gate (#6213); so does a
-run with no PR number (a direct push to `main`). The post-merge backstop keys
-on the PR number only — the squash commit is not the head the panel saw — and
-says the sha was not checked; it does check append-only against the tip
-before the push (`github.event.before`, #6218).
+run with no PR number (a direct push to `main`), or with no head sha. The
+post-merge backstop binds to the merged PR's FINAL pre-squash head (#6249):
+the squash commit is not the head the panel saw, so the job resolves
+`pulls/{n}` → `head.sha`, fetches `refs/pull/{n}/head` so that commit's
+parent and file list resolve for the ledger-only-tip rule, and passes the
+same `PR_HEAD_SHA` / parent / files the pre-merge job does. It used to key
+on the PR number alone, which accepted a record bound to sha1 for a PR whose
+final head was sha2 (pushed past a red pre-merge gate and admin-merged) — the
+#6249 panel's contrarian named that, and a backstop that cannot see it is not
+a backstop. A PR whose head cannot be resolved is `unmeasured`, exit 1. The
+backstop checks append-only against the tip before the push
+(`github.event.before`, #6218).
 
 **Fail-closed since 2026-09-14 (#5131).** The ledger verdict is part of the
 gate's exit code: a governor-path PR passes only when the label/approval

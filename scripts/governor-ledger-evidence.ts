@@ -69,9 +69,23 @@
  *
  * Precedence puts `ledger-rewritten` right after `ledger-invalid`: a rewrite
  * outranks `duplicate-id` and `no-record` because the ledger it is computed
- * over is not the ledger main will carry. No base supplied (the post-merge
- * backstop, a local run) leaves the check NOT MADE, and the `ratified` line
- * says so (`appendOnlyChecked: false`) rather than reading absence as health.
+ * over is not the ledger main will carry. No base supplied (a local run;
+ * both workflow jobs supply one since #6218) leaves the check NOT MADE, and
+ * the `ratified` line says so (`appendOnlyChecked: false`) rather than
+ * reading absence as health.
+ *
+ * ## The backstop binds to the PR's pre-squash head (#6249)
+ *
+ * The post-merge job runs on the squash commit, which no panel saw, so it
+ * used to key on the PR number alone (`shaChecked: false`). The #6249 panel's
+ * contrarian showed what that accepts: a record bound to sha1, a later push
+ * of sha2 past the red pre-merge gate, an admin merge — and the backstop,
+ * the one signal that cannot be bypassed, exits 0. So the backstop now
+ * resolves the merged PR's final head (`pulls/{n}` → `head.sha`), fetches
+ * `refs/pull/{n}/head` so that commit's parent and file list resolve, and
+ * passes the same `PR_HEAD_SHA` / parent / files the pre-merge job does.
+ * A head that cannot be resolved is `unmeasured` (exit 1), never "PR number
+ * matched".
  *
  * ## Coverage is required on a bound record (#6213)
  *
@@ -190,7 +204,13 @@ export const LEDGER_PATH_ENV = 'RATIFICATION_LEDGER_PATH';
  */
 export const BASE_LEDGER_PATH_ENV = 'RATIFICATION_BASE_LEDGER_PATH';
 
-/** The PR head as the pre-merge job sees it. Absent on the post-merge backstop. */
+/**
+ * The head the record must bind to. The pre-merge job passes the PR head; the
+ * post-merge backstop passes the merged PR's FINAL pre-squash head
+ * (`pulls/{n}` → `head.sha`), fetched via `refs/pull/{n}/head` so its parent
+ * and file list resolve (#6249 panel). The squash commit itself is never a
+ * binding target — no panel saw it.
+ */
 export interface HeadBinding {
   readonly sha: string;
   /** `head^`. Absent when it could not be resolved; then only `sha` is accepted. */
@@ -205,9 +225,12 @@ export interface LedgerEvidenceInputs {
   /** The PR under review. */
   readonly pr: number;
   /**
-   * The head to bind against. Omitted by the post-merge backstop, which runs
-   * on the squash commit — a sha the panel never saw — and so keys on the PR
-   * number alone; the verdict then says the sha was not checked.
+   * The head to bind against. The workflow ALWAYS supplies one (#6249): the
+   * backstop used to key on the PR number alone, which accepted a record
+   * bound to sha1 for a PR whose final head was sha2 — a later push past a
+   * red pre-merge gate, admin-merged, exited 0. `ledgerEvidenceFromEnv`
+   * reports `unmeasured` when it is absent. A caller of this pure function
+   * that omits it gets `shaChecked: false` on the ratified line, named.
    */
   readonly head?: HeadBinding | undefined;
   /**
@@ -260,7 +283,11 @@ export type LedgerEvidence =
   | {
       readonly kind: 'ratified';
       readonly record: VoteRecord;
-      /** False on the post-merge backstop: the PR number matched, the sha was not compared. */
+      /**
+       * False only when the caller passed no head: the PR number matched and
+       * the sha was not compared. Neither workflow job takes that path since
+       * #6249 — `ledgerEvidenceFromEnv` refuses to run without `PR_HEAD_SHA`.
+       */
       readonly shaChecked: boolean;
       /** False when no base ledger was supplied: append-only was not compared (#6213). */
       readonly appendOnlyChecked: boolean;
@@ -511,7 +538,7 @@ function formatRatified(evidence: Extract<LedgerEvidence, { kind: 'ratified' }>)
   const recordedHead = b?.headSha ?? '(unbound)';
   const sha = evidence.shaChecked
     ? `at ${recordedHead}`
-    : `— sha not checked (post-merge: the squash commit is not the head the panel saw; recorded head ${recordedHead})`;
+    : `— sha NOT checked (the caller supplied no head; recorded head ${recordedHead})`;
   const coverage = evidence.record.panelCoverage;
   const panel =
     coverage === undefined
@@ -663,9 +690,12 @@ function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): Re
  * ratified this". A missing ledger FILE is the empty ledger (`no-record`,
  * count 0) — that is a measurement; an UNREADABLE one (a directory at the
  * path, a permissions error) is `unmeasured` naming the error (#6213).
- * `PR_HEAD_SHA` absent is the post-merge shape (PR number only).
- * `RATIFICATION_BASE_LEDGER_PATH` names the ledger at the merge-base; absent,
- * append-only is not checked and the verdict says so.
+ * `PR_HEAD_SHA` absent is `unmeasured` too (#6249): without a head the
+ * binding cannot be checked, and the backstop that once ran that way
+ * accepted a record for sha1 on a PR whose final head was sha2. Both jobs
+ * supply it — the pre-merge job the PR head, the backstop the merged PR's
+ * pre-squash head. `RATIFICATION_BASE_LEDGER_PATH` names the ledger at the
+ * merge-base; absent, append-only is not checked and the verdict says so.
  */
 export function ledgerEvidenceFromEnv(
   env: NodeJS.ProcessEnv,
@@ -682,10 +712,18 @@ export function ledgerEvidenceFromEnv(
   if (base !== undefined && !base.ok) return { kind: 'unmeasured', reason: base.reason };
 
   const head = headFromEnv(env);
+  if (head === undefined) {
+    return {
+      kind: 'unmeasured',
+      reason:
+        'PR_HEAD_SHA is not set; a record cannot be bound to a head that was not supplied ' +
+        "(the backstop must resolve the merged PR's pre-squash head, #6249)",
+    };
+  }
   return evaluateLedgerEvidence({
     ledgerText: ledger.text,
     pr,
-    ...(head !== undefined ? { head } : {}),
+    head,
     ...(base !== undefined ? { baseLedgerText: base.text } : {}),
   });
 }
