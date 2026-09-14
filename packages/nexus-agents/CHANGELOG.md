@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.54.16
+
+### Patch Changes
+
+- [#6200](https://github.com/nexus-substrate/nexus-agents/pull/6200) [`74387fe`](https://github.com/nexus-substrate/nexus-agents/commit/74387fec1c1a646b7a6a095e471e14fba9edc8e4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Move the dev-pipeline hindsight and prior-research plan-context block into a sibling `pipeline/dev-pipeline-context.ts` module ([#6148](https://github.com/nexus-substrate/nexus-agents/issues/6148)); no behaviour change.
+
 ## 8.54.15
 
 ### Patch Changes
