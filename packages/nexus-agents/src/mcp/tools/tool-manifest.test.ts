@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TOOL_MANIFEST } from './tool-manifest.js';
+import { TOOL_MANIFEST, classifyRegisteredTool } from './tool-manifest.js';
 import { REGISTERED_TOOL_NAMES, TOOL_ANNOTATIONS } from './index.js';
 import { getAvailableToolCount } from '../../core/task-analysis/capability-gap-detector.js';
 
@@ -96,5 +96,45 @@ describe('idempotentHint has something behind it (#5504)', () => {
     for (const tool of TOOL_MANIFEST) {
       expect((tool.annotations as Record<string, unknown>)['idempotencyBasis']).toBeUndefined();
     }
+  });
+});
+
+describe('execution classification derives from readOnlyHint (#5114)', () => {
+  /**
+   * The policy firewall's `deny-mutations-without-mode` rule used to guess:
+   * two hand-kept sets named six generic tools, and every other name — 45 of
+   * the 47 registered tools — fell through to "unknown, so mutation". The
+   * manifest already carries the answer in `readOnlyHint` (the prerequisite
+   * gate reads it), so it is the ONE source; this gate is what stops tool #48
+   * from being registered without a classification and silently inheriting
+   * "mutation" (or, worse, "read-only").
+   */
+  it.each(TOOL_MANIFEST.map((t) => t.name))('%s is classified read-only or mutation', (name) => {
+    expect(classifyRegisteredTool(name), `${name} must carry readOnlyHint`).not.toBe(
+      'unclassified'
+    );
+  });
+
+  it('classifies every registered tool — the count is the measurement', () => {
+    const classes = TOOL_MANIFEST.map((t) => classifyRegisteredTool(t.name));
+    const readOnly = classes.filter((c) => c === 'read-only').length;
+    const mutation = classes.filter((c) => c === 'mutation').length;
+    // Guards the per-tool gate above against a manifest that shrank to nothing.
+    expect(TOOL_MANIFEST.length).toBeGreaterThan(0);
+    expect(readOnly + mutation).toBe(TOOL_MANIFEST.length);
+  });
+
+  it('maps readOnlyHint true → read-only and false → mutation, per entry', () => {
+    for (const entry of TOOL_MANIFEST) {
+      const expected = entry.annotations.readOnlyHint ? 'read-only' : 'mutation';
+      expect(classifyRegisteredTool(entry.name), entry.name).toBe(expected);
+    }
+  });
+
+  it('reports a name the manifest does not carry as unclassified, not as a guess', () => {
+    expect(classifyRegisteredTool('tool_48_not_yet_registered')).toBe('unclassified');
+    // A generic filesystem name the policy rules know is still not a MANIFEST
+    // classification; the fallback for it lives in policy-rules, not here.
+    expect(classifyRegisteredTool('write_file')).toBe('unclassified');
   });
 });
