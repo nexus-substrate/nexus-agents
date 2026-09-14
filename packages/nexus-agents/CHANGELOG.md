@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.59.1
+
+### Patch Changes
+
+- [#6282](https://github.com/nexus-substrate/nexus-agents/pull/6282) [`32fc91e`](https://github.com/nexus-substrate/nexus-agents/commit/32fc91e3fd61d14bf44579546d17920586bbe910) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `verifyClaims` no longer passes an empty claims registry. A `ClaimsRegistry` with zero claims used to verify as `passed: true` (`[].every(...)` is `true`); it now returns `passed: false` with a new optional `VerifyReport.unmeasured` string naming the reason (`registry holds 0 claims — nothing was verified`), and `pnpm claims:check` prints that reason instead of `0 of 0 claims drifted`. A registry with at least one claim is reported exactly as before and `unmeasured` is absent. The YAML loader already rejected an empty list; this closes the same gap for callers that build the registry object themselves ([#4586](https://github.com/nexus-substrate/nexus-agents/issues/4586)).
+
 ## 8.59.0
 
 ### Minor Changes
