@@ -383,11 +383,17 @@ function recordVersion(
  * only responders, so without this the record cannot distinguish a genuine
  * three-voter panel from a seven-voter panel that lost four. Returns undefined
  * when every requested voter responded — absence keeps a clean record on the
- * pre-1.5 hash projection.
+ * pre-1.5 hash projection — UNLESS `always` is set: a PR-bound record (#5130,
+ * 1.10 by construction, no older projection to keep) carries its coverage
+ * even when whole, because the ratification gate refuses a bound record whose
+ * coverage is absent rather than reading absence as whole (#6213).
  */
-function panelCoverageOf(votes: readonly AgentVoteResult[]): VoteRecordPanelCoverage | undefined {
+function panelCoverageOf(
+  votes: readonly AgentVoteResult[],
+  always: boolean
+): VoteRecordPanelCoverage | undefined {
   const erroredRoles = votes.filter((v) => v.source === 'error').map((v) => v.role);
-  if (erroredRoles.length === 0) return undefined;
+  if (erroredRoles.length === 0 && !always) return undefined;
   return {
     requested: votes.length,
     responded: votes.length - erroredRoles.length,
@@ -460,7 +466,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   // which is a different question and is why a declared-options vote with no
   // parseable selection lost its option fields entirely.)
   const { optionTally, optionCoverage } = deriveOptionFields(input.votes, input.declaredOptions);
-  const panelCoverage = panelCoverageOf(input.votes);
+  const panelCoverage = panelCoverageOf(input.votes, input.ratifiesPr !== undefined);
   const voters = toVoterSummaries(input.votes);
   const payload: Omit<VoteRecord, 'hash'> = {
     version: recordVersion(optionTally, optionCoverage, panelCoverage, voters, input.ratifiesPr),

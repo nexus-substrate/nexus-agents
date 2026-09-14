@@ -73,16 +73,46 @@ record is a gate finding (#5131), not an empty-ledger condition.
 `scripts/check-governor-ratification.ts` prints a second evidence line for
 every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`:
 `ratified` (a record binds this PR at `head` or, for a ledger-only tip,
-`head^`; `decision === 'approved'`; `panelCoverage` absent or `errored === 0`),
-or one of `no-record` (an empty ledger is this, never `ratified`),
-`sha-mismatch`, `not-approved`, `degraded-panel`, `ledger-invalid`,
-`duplicate-id`. The post-merge backstop keys on the PR number only — the
-squash commit is not the head the panel saw — and says the sha was not
-checked. **Warn-first:** the line is an annotation and the exit code is still
-the label/approval verdict's; #5131 flips it to a failure. The record does not
-carry `errorPolicy`; an approved record with errored seats is the only
-ledger-observable trace of a policy other than `absolute_quorum`, which is why
-`degraded-panel` is the check and there is no separate policy verdict.
+`head^`; `decision === 'approved'`; `panelCoverage` present with
+`errored === 0`; and the ledger is append-only against the base), or one of:
+
+- `no-record` — nothing binds this PR; an empty ledger is this, never `ratified`.
+- `sha-mismatch` — records bind this PR, none at an accepted head.
+- `not-approved` — a bound record's decision is not `approved`.
+- `unmeasured-panel` — a bound record has no `panelCoverage`, or one naming
+  zero seats; the record cannot show the panel ran whole (#6213). A bound
+  record written by `buildVoteRecord` always carries coverage, so this names
+  a hand-typed or pre-#6213 line.
+- `degraded-panel` — a bound record's `panelCoverage.errored > 0`.
+- `ledger-invalid` — a line does not parse, or the set does not verify (a
+  bad hash, a sequence hole).
+- `ledger-rewritten` — the head ledger is not the base ledger plus appended
+  lines (#6213). The workflow reads the ledger at the merge-base (empty when
+  the file did not exist there) and the base's record lines must be an
+  ordered SUBSEQUENCE of the head's: present, byte-identical, in the same
+  relative order, with insertions allowed anywhere. This is what catches a
+  dropped tail line with the new record re-sequenced into its slot, an
+  edit-and-re-hash, a reorder or a truncation — shapes the set verifier
+  accepts, each of which deletes or alters a base line. Subsequence, not
+  prefix, because the union driver writes OURS first: for two branches that
+  each append one line (A merged first, merge-base now `base + A1`), a
+  rebase or a merge into main yields `base + A1 + B1`, but merging main INTO
+  the branch (GitHub's "Update branch") yields `base + B1 + A1` — a
+  legitimate refresh that a prefix rule refused. Outranks everything but
+  `ledger-invalid`.
+- `duplicate-id` — one id names two different records.
+
+An unreadable ledger (a directory at the path, a permissions error) prints
+`unmeasured` naming the error instead of crashing the gate (#6213). The
+post-merge backstop keys on the PR number only — the squash commit is not the
+head the panel saw — and says the sha was not checked; it does check
+append-only against the landed commit's parent. **Warn-first:** the line is
+an annotation and the exit code is still the label/approval verdict's; #5131
+flips every non-`ratified` verdict above, and `unmeasured`, to a failure. The
+record does not carry `errorPolicy`; an approved record with errored seats is
+the only ledger-observable trace of a policy other than `absolute_quorum`,
+which is why `degraded-panel` is the check and there is no separate policy
+verdict.
 
 ## pr-review-records.jsonl
 

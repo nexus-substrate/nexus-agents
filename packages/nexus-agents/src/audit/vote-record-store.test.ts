@@ -1417,6 +1417,34 @@ describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () =>
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
+  it('a BOUND record from a whole panel carries panelCoverage (0 errored), so the gate can require it (#6213)', () => {
+    // An unbound whole panel omits the field to keep the pre-1.5 projection
+    // (`panel-coverage.test.ts`). A bound record is 1.10 by construction, has
+    // no older projection to keep, and the ratification gate refuses a bound
+    // record whose coverage is absent — absence must not read as whole.
+    const record = buildVoteRecord({
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      id: 'vote-ratify-pr-whole',
+      proposal: 'Ratify PR #6200',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes,
+      ratifiesPr: binding,
+    });
+    expect(record.panelCoverage).toEqual({
+      requested: 3,
+      responded: 3,
+      errored: 0,
+      erroredRoles: [],
+    });
+    expect(record.version).toBe('1.10');
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+    // The coverage is inside the hash: dropping it changes the hash.
+    const { panelCoverage: _coverage, hash: _hash, ...withoutCoverage } = record;
+    expect(computeVoteRecordHash(withoutCoverage)).not.toBe(record.hash);
+  });
+
   it('omitting the binding leaves the record on its pre-1.10 tier with no key at all', () => {
     const record = buildVoteRecord({
       declaredOptions: undefined,

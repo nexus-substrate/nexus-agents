@@ -21,12 +21,17 @@ import type { ConsensusResult, Vote } from '../packages/nexus-agents/src/consens
 import type { AgentVoteResult, VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
 import {
+  computeVoteRecordHash,
+  verifyVoteRecordSet,
+} from '../packages/nexus-agents/src/audit/vote-record.js';
+import {
   buildVoteRecord,
   persistVoteRecord,
   VOTE_RECORDS_REL_PATH,
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 
 import {
+  BASE_LEDGER_PATH_ENV,
   acceptedHeadShas,
   evaluateLedgerEvidence,
   formatLedgerEvidence,
@@ -104,6 +109,17 @@ function record(id: string, opts: RecordOpts): VoteRecord {
       ? {}
       : { ratifiesPr: { pr: opts.pr ?? PR, headSha: opts.headSha ?? HEAD } }),
   });
+}
+
+/**
+ * The same record with `panelCoverage` removed and re-hashed: a bound record
+ * that says nothing about whether its panel ran whole. The producer now always
+ * writes coverage on a bound record, so this is the hand-typed shape #6213
+ * names — it self-verifies, and only the gate can refuse it.
+ */
+function withoutCoverage(r: VoteRecord): VoteRecord {
+  const { hash: _hash, panelCoverage: _coverage, ...payload } = r;
+  return { ...payload, hash: computeVoteRecordHash(payload) };
 }
 
 function ledgerText(records: readonly VoteRecord[]): string {
@@ -290,6 +306,288 @@ describe('evaluateLedgerEvidence', () => {
   });
 });
 
+describe('append-only against the base (#6213, ledger-rewritten)', () => {
+  // The verifier already refuses a ledger with a HOLE in `0..max` as
+  // `ledger-invalid` (sequence_gap), so deleting a line from the middle is
+  // caught before this check runs. What the set verifier cannot see, and this
+  // check exists for: dropping the TAIL and re-sequencing the new record
+  // into the freed slot, editing a line and re-hashing it, and reordering.
+  const L0 = record('v0', { sequence: 0, pr: 1 });
+  const L1 = record('v1', { sequence: 1, pr: 2 });
+  const A1 = record('vA', { sequence: 2, pr: 3 });
+  const B1 = record('vB', { sequence: 2 });
+  /** The ratifying record re-sequenced into a slot a deleted base line freed. */
+  const B_AT_1 = record('vB', { sequence: 1 });
+  const B_AT_0 = record('vB', { sequence: 0 });
+  const base = ledgerText([L0, L1]);
+
+  function ev(headText: string, baseText: string | undefined): LedgerEvidence {
+    return evaluateLedgerEvidence({
+      ledgerText: headText,
+      pr: PR,
+      head: AT_HEAD,
+      ...(baseText !== undefined ? { baseLedgerText: baseText } : {}),
+    });
+  }
+
+  it('head = base + appended line is NOT rewritten, and the verdict says append-only was checked', () => {
+    const e = ev(ledgerText([L0, L1, B1]), base);
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.appendOnlyChecked).toBe(true);
+  });
+
+  it('head identical to base is not rewritten (nothing appended; the verdict is about the PR, not the diff)', () => {
+    expect(ev(base, base)).toEqual({ kind: 'no-record', recordCount: 2 });
+  });
+
+  it('deleting a base line from the MIDDLE leaves a sequence hole: ledger-invalid, which outranks the rewrite', () => {
+    const e = ev(ledgerText([L1, B1]), base);
+    expect(e.kind).toBe('ledger-invalid');
+    if (e.kind !== 'ledger-invalid') throw new Error('unreachable');
+    expect(e.detail).toContain('sequence_gap');
+  });
+
+  it('deleting the LAST base line (a recorded dissent, say) and re-sequencing the new record into its slot → ledger-rewritten', () => {
+    // The set verifies (0..1, both hashes good); only the base comparison sees it.
+    const head = ledgerText([L0, B_AT_1]);
+    expect(evaluateLedgerEvidence({ ledgerText: head, pr: PR, head: AT_HEAD }).kind).toBe(
+      'ratified'
+    );
+    expect(ev(head, base)).toEqual({
+      kind: 'ledger-rewritten',
+      baseLineCount: 2,
+      headLineCount: 2,
+      divergesAt: 2,
+    });
+  });
+
+  it('truncating the ledger to a prefix of the base (nothing appended) → ledger-rewritten', () => {
+    expect(ev(ledgerText([L0]), base)).toEqual({
+      kind: 'ledger-rewritten',
+      baseLineCount: 2,
+      headLineCount: 1,
+      divergesAt: 2,
+    });
+  });
+
+  it('editing a base line and RE-HASHING it (the self-hash cannot see this) → ledger-rewritten', () => {
+    const { hash: _h, ...payload } = L1;
+    const edited: VoteRecord = {
+      ...payload,
+      approvalPercentage: 99,
+      hash: computeVoteRecordHash({ ...payload, approvalPercentage: 99 }),
+    };
+    const head = ledgerText([L0, edited, B1]);
+    // The rewritten ledger verifies as a set — that is why the base comparison exists.
+    expect(evaluateLedgerEvidence({ ledgerText: head, pr: PR, head: AT_HEAD }).kind).toBe(
+      'ratified'
+    );
+    expect(ev(head, base)).toEqual({
+      kind: 'ledger-rewritten',
+      baseLineCount: 2,
+      headLineCount: 3,
+      divergesAt: 2,
+    });
+  });
+
+  it('reordering the base lines → ledger-rewritten (same set, not the same ledger)', () => {
+    expect(kindOf(ev(ledgerText([L1, L0, B1]), base))).toBe('ledger-rewritten');
+  });
+
+  it('an emptied or missing head ledger over a non-empty base → ledger-rewritten with headLineCount 0', () => {
+    expect(ev('', base)).toEqual({
+      kind: 'ledger-rewritten',
+      baseLineCount: 2,
+      headLineCount: 0,
+      divergesAt: 1,
+    });
+  });
+
+  it('an EMPTY base (the PR adds the file) constrains nothing: every head is append-only over it', () => {
+    const e = ev(ledgerText([B_AT_0]), '');
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.appendOnlyChecked).toBe(true);
+  });
+
+  it('blank lines between records are not a rewrite: the comparison is over record lines', () => {
+    const head = `${JSON.stringify(L0)}\n\n${JSON.stringify(L1)}\n${JSON.stringify(B1)}\n`;
+    expect(kindOf(ev(head, base))).toBe('ratified');
+  });
+
+  it('no base supplied → append-only is NOT checked, and the ratified verdict says so', () => {
+    const e = ev(ledgerText([L0, L1, B1]), undefined);
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.appendOnlyChecked).toBe(false);
+  });
+
+  describe('the #6194 fork: two branches each append one line (measured against git merge=union)', () => {
+    // Measured in a scratch repo (see PR #6218): the union driver writes
+    // OURS first, so the order of the two appended lines depends on which
+    // side did the merging. Every git-produced shape keeps the base as an
+    // ordered SUBSEQUENCE; a prefix rule refused the "Update branch" shape.
+    const L = [L0, L1];
+    const B2 = record('vB2', { sequence: 3 });
+
+    it('branch A merged first: A head = base + A1 over merge-base = base → append-only', () => {
+      expect(kindOf(ev(ledgerText([...L, A1]), ledgerText(L)))).toBe('no-record');
+    });
+
+    it('branch B un-rebased: its merge-base is still the old base, so base + B1 is append-only', () => {
+      expect(kindOf(ev(ledgerText([...L, B1]), ledgerText(L)))).toBe('ratified');
+    });
+
+    it('branch B rebased onto main (base + A1): union puts A1 first → base + A1 + B1 is append-only', () => {
+      expect(kindOf(ev(ledgerText([...L, A1, B1]), ledgerText([...L, A1])))).toBe('ratified');
+    });
+
+    it('main merged INTO branch B ("Update branch"): union puts OURS first → base + B1 + A1 is append-only over base + A1', () => {
+      // The merge-base after the refresh is main's tip (base + A1); B1 now
+      // sits BEFORE A1. Not a rewrite: every base line is present, in order.
+      const e = ev(ledgerText([...L, B1, A1]), ledgerText([...L, A1]));
+      expect(e.kind).toBe('ratified');
+      if (e.kind !== 'ratified') throw new Error('unreachable');
+      expect(e.appendOnlyChecked).toBe(true);
+    });
+
+    it('...and the next append on the refreshed branch (base + B1 + A1 + B2) still lands as append-only', () => {
+      expect(kindOf(ev(ledgerText([...L, B1, A1, B2]), ledgerText([...L, A1])))).toBe('ratified');
+    });
+
+    it('the refreshed branch with A1 DROPPED (base + B1) over base + A1 → ledger-rewritten at base line 3', () => {
+      expect(ev(ledgerText([...L, B1]), ledgerText([...L, A1]))).toEqual({
+        kind: 'ledger-rewritten',
+        baseLineCount: 3,
+        headLineCount: 3,
+        divergesAt: 3,
+      });
+    });
+  });
+
+  it('precedence: ledger-invalid beats ledger-rewritten; ledger-rewritten beats duplicate-id and no-record', () => {
+    // Unparseable head line AND a dropped base line → the parse failure is reported.
+    expect(kindOf(ev(`${JSON.stringify(L0)}\nnot json\n`, base))).toBe('ledger-invalid');
+    // Dropped tail line AND a duplicate id (two contents under 'vB') → the rewrite is reported.
+    const { hash: _h, ...dupePayload } = B_AT_1;
+    const dupe = { ...dupePayload, approvalPercentage: 50 };
+    const dupeHead = ledgerText([L0, B_AT_1, { ...dupe, hash: computeVoteRecordHash(dupe) }]);
+    expect(evaluateLedgerEvidence({ ledgerText: dupeHead, pr: PR, head: AT_HEAD }).kind).toBe(
+      'duplicate-id'
+    );
+    expect(kindOf(ev(dupeHead, base))).toBe('ledger-rewritten');
+    // Dropped tail line AND no record for this PR → the rewrite is reported.
+    expect(kindOf(ev(ledgerText([L0]), base))).toBe('ledger-rewritten');
+  });
+
+  it('the deadlock claim is false: a dissent bound at sha A does not touch a record bound at sha B', () => {
+    // Binding is PR + sha. The contrarian seat on #6210 argued a recorded
+    // dissent would block every later approval of the same PR, so append-only
+    // would deadlock the PR. It does not: the dissent stays in the ledger
+    // (deleting it IS the rewrite refused above) and binds only the head it
+    // names.
+    const dissentAtA = record('v-dissent', { sequence: 0, headSha: OTHER, decision: 'rejected' });
+    const approvalAtB = record('v-approve', { sequence: 1, headSha: HEAD });
+    const baseWithDissent = ledgerText([dissentAtA]);
+    const head = ledgerText([dissentAtA, approvalAtB]);
+    const atB = evaluateLedgerEvidence({
+      ledgerText: head,
+      pr: PR,
+      head: AT_HEAD,
+      baseLedgerText: baseWithDissent,
+    });
+    expect(atB.kind).toBe('ratified');
+    if (atB.kind !== 'ratified') throw new Error('unreachable');
+    expect(atB.record.id).toBe('v-approve');
+    // At head A the dissent DOES bind — the same ledger, the other head.
+    const atA = evaluateLedgerEvidence({
+      ledgerText: head,
+      pr: PR,
+      head: { ...AT_HEAD, sha: OTHER },
+      baseLedgerText: baseWithDissent,
+    });
+    expect(atA.kind).toBe('not-approved');
+    // And removing the dissent to "unblock" (re-sequencing the approval into
+    // its slot so the set still verifies) is the rewrite.
+    expect(
+      kindOf(
+        evaluateLedgerEvidence({
+          ledgerText: ledgerText([record('v-approve', { sequence: 0, headSha: HEAD })]),
+          pr: PR,
+          head: AT_HEAD,
+          baseLedgerText: baseWithDissent,
+        })
+      )
+    ).toBe('ledger-rewritten');
+  });
+});
+
+describe('panel coverage is REQUIRED on a bound record (#6213, unmeasured-panel)', () => {
+  it('a bound record without panelCoverage → unmeasured-panel, never ratified', () => {
+    const r = withoutCoverage(record('v0', { sequence: 0 }));
+    expect(r.panelCoverage).toBeUndefined();
+    expect(verifyVoteRecordSet([r]).ok).toBe(true);
+    const e = evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('unmeasured-panel');
+    if (e.kind !== 'unmeasured-panel') throw new Error('unreachable');
+    expect(e.record.id).toBe('v0');
+  });
+
+  it('a bound record whose coverage names an errored seat → degraded-panel (unchanged)', () => {
+    const r = record('v0', { sequence: 0, votes: DEGRADED_PANEL });
+    expect(
+      kindOf(evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR, head: AT_HEAD }))
+    ).toBe('degraded-panel');
+  });
+
+  it('a bound record whose coverage says 0 of 0 seats → unmeasured-panel (the empty panel is named)', () => {
+    const r = record('v0', { sequence: 0, votes: [] });
+    expect(r.panelCoverage?.requested).toBe(0);
+    expect(
+      kindOf(evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR, head: AT_HEAD }))
+    ).toBe('unmeasured-panel');
+  });
+
+  it('an UNBOUND record without coverage is irrelevant: the bound whole record still ratifies', () => {
+    const unbound = withoutCoverage(record('v-old', { sequence: 0, bound: false }));
+    const other = withoutCoverage(record('v-other', { sequence: 1, pr: 1 }));
+    const bound = record('v0', { sequence: 2 });
+    const e = evaluateLedgerEvidence({
+      ledgerText: ledgerText([unbound, other, bound]),
+      pr: PR,
+      head: AT_HEAD,
+    });
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.record.id).toBe('v0');
+  });
+
+  it('precedence: not-approved beats unmeasured-panel; unmeasured-panel beats ratified', () => {
+    const dissent = record('v-no', { sequence: 0, decision: 'rejected' });
+    const blind = withoutCoverage(record('v-blind', { sequence: 1 }));
+    const whole = record('v-ok', { sequence: 2 });
+    const text = ledgerText([dissent, blind, whole]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD }))).toBe(
+      'not-approved'
+    );
+    const blindFirst = ledgerText([
+      withoutCoverage(record('v-blind', { sequence: 0 })),
+      record('v-ok', { sequence: 1 }),
+    ]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: blindFirst, pr: PR, head: AT_HEAD }))).toBe(
+      'unmeasured-panel'
+    );
+  });
+
+  it('post-merge (no head) requires coverage too', () => {
+    const r = withoutCoverage(record('v0', { sequence: 0 }));
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR }))).toBe(
+      'unmeasured-panel'
+    );
+  });
+});
+
 describe('isLedgerOnlyTip / acceptedHeadShas', () => {
   it('is true only for exactly the ledger file', () => {
     expect(isLedgerOnlyTip([VOTE_RECORDS_REL_PATH])).toBe(true);
@@ -313,13 +611,26 @@ describe('isLedgerOnlyTip / acceptedHeadShas', () => {
 describe('formatLedgerEvidence', () => {
   it('renders ratified as a notice naming the record id, and every other kind as a ::warning::', () => {
     const r = record('v0', { sequence: 0 });
-    const ok = formatLedgerEvidence({ kind: 'ratified', record: r, shaChecked: true });
+    const ok = formatLedgerEvidence({
+      kind: 'ratified',
+      record: r,
+      shaChecked: true,
+      appendOnlyChecked: true,
+    });
     expect(ok.startsWith('::notice::')).toBe(true);
     expect(ok).toContain("'v0'");
     expect(ok).toContain(HEAD);
+    expect(ok).toContain('append-only');
+    expect(ok).not.toContain('not checked');
 
-    const unchecked = formatLedgerEvidence({ kind: 'ratified', record: r, shaChecked: false });
-    expect(unchecked).toContain('not checked');
+    const unchecked = formatLedgerEvidence({
+      kind: 'ratified',
+      record: r,
+      shaChecked: false,
+      appendOnlyChecked: false,
+    });
+    expect(unchecked).toContain('sha not checked');
+    expect(unchecked).toContain('append-only not checked');
 
     const kinds: LedgerEvidence[] = [
       { kind: 'no-record', recordCount: 0 },
@@ -332,6 +643,8 @@ describe('formatLedgerEvidence', () => {
       },
       { kind: 'ledger-invalid', detail: 'hash_mismatch at v0' },
       { kind: 'duplicate-id', ids: ['v0'] },
+      { kind: 'ledger-rewritten', baseLineCount: 3, headLineCount: 3, divergesAt: 2 },
+      { kind: 'unmeasured-panel', record: r, reason: 'no panelCoverage on the record' },
     ];
     for (const e of kinds) {
       const line = formatLedgerEvidence(e);
@@ -342,6 +655,8 @@ describe('formatLedgerEvidence', () => {
     expect(formatLedgerEvidence(kinds[1] as LedgerEvidence)).toContain(OTHER);
     expect(formatLedgerEvidence(kinds[3] as LedgerEvidence)).toContain('catfish');
     expect(formatLedgerEvidence(kinds[5] as LedgerEvidence)).toContain("'v0'");
+    expect(formatLedgerEvidence(kinds[6] as LedgerEvidence)).toContain('base line 2');
+    expect(formatLedgerEvidence(kinds[7] as LedgerEvidence)).toContain("'v0'");
   });
 
   it('an empty ledger says so explicitly, distinct from "no record for this PR"', () => {
@@ -391,6 +706,113 @@ describe('ledgerEvidenceFromEnv', () => {
     expect(post.kind).toBe('ratified');
     if (post.kind !== 'ratified') throw new Error('unreachable');
     expect(post.shaChecked).toBe(false);
+  });
+
+  it('an UNREADABLE ledger (a directory at the path) is unmeasured naming the error, not a crash (#6213)', () => {
+    const path = join(dir, 'vote-records.jsonl');
+    mkdirSync(path);
+    const e = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD }, path);
+    expect(e.kind).toBe('unmeasured');
+    if (e.kind !== 'unmeasured') throw new Error('unreachable');
+    expect(e.reason).toContain('EISDIR');
+    expect(e.reason).toContain(path);
+  });
+
+  it(`reads the base ledger from ${BASE_LEDGER_PATH_ENV} and checks append-only against it`, () => {
+    const headPath = join(dir, 'head.jsonl');
+    const basePath = join(dir, 'base.jsonl');
+    const older = record('v-old', { sequence: 0, pr: 1 });
+    writeFileSync(basePath, ledgerText([older]), 'utf-8');
+    const env = { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: basePath };
+
+    writeFileSync(headPath, ledgerText([older, record('v0', { sequence: 1 })]), 'utf-8');
+    const ok = ledgerEvidenceFromEnv(env, headPath);
+    expect(ok.kind).toBe('ratified');
+    if (ok.kind !== 'ratified') throw new Error('unreachable');
+    expect(ok.appendOnlyChecked).toBe(true);
+
+    // The base line dropped and the new record re-sequenced into its slot.
+    writeFileSync(headPath, ledgerText([record('v0', { sequence: 0 })]), 'utf-8');
+    expect(ledgerEvidenceFromEnv(env, headPath).kind).toBe('ledger-rewritten');
+
+    // The variable absent: append-only is not checked and the verdict says so.
+    const unchecked = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD }, headPath);
+    expect(unchecked.kind).toBe('ratified');
+    if (unchecked.kind !== 'ratified') throw new Error('unreachable');
+    expect(unchecked.appendOnlyChecked).toBe(false);
+  });
+
+  it('an EMPTY base ledger file (the file did not exist at base) is a measured, empty base', () => {
+    const headPath = join(dir, 'head.jsonl');
+    const basePath = join(dir, 'base.jsonl');
+    writeFileSync(basePath, '', 'utf-8');
+    writeFileSync(headPath, ledgerText([record('v0', { sequence: 0 })]), 'utf-8');
+    const e = ledgerEvidenceFromEnv(
+      { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: basePath },
+      headPath
+    );
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.appendOnlyChecked).toBe(true);
+  });
+
+  it('an unreadable or missing BASE ledger file is unmeasured naming the error (the workflow promised a file)', () => {
+    const headPath = join(dir, 'head.jsonl');
+    writeFileSync(headPath, ledgerText([record('v0', { sequence: 0 })]), 'utf-8');
+    const asDir = join(dir, 'base-dir');
+    mkdirSync(asDir);
+    const dirCase = ledgerEvidenceFromEnv(
+      { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: asDir },
+      headPath
+    );
+    expect(dirCase.kind).toBe('unmeasured');
+    if (dirCase.kind !== 'unmeasured') throw new Error('unreachable');
+    expect(dirCase.reason).toContain('EISDIR');
+    const missing = ledgerEvidenceFromEnv(
+      { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: join(dir, 'nope') },
+      headPath
+    );
+    expect(missing.kind).toBe('unmeasured');
+    if (missing.kind !== 'unmeasured') throw new Error('unreachable');
+    expect(missing.reason).toContain('ENOENT');
+  });
+});
+
+describe('the workflow wires the base ledger (#6213)', () => {
+  // The shell hardcodes the ledger path and the env var name; if either
+  // drifts from the module's constants the base reads as absent and
+  // append-only passes over an empty base. Pinned here, in both jobs.
+  const workflow = readFileSync(
+    join(REPO_ROOT, '.github', 'workflows', 'governor-review.yml'),
+    'utf-8'
+  );
+
+  it('both jobs read the ledger at the base by the module path constant, guarded by a commit-exists check', () => {
+    const show = `git show "\${LEDGER_BASE_SHA}:${VOTE_RECORDS_REL_PATH}" > "\${BASE_LEDGER_PATH}"`;
+    expect(workflow.split(show).length - 1).toBe(2);
+    expect(workflow.split('git cat-file -e "${LEDGER_BASE_SHA}^{commit}"').length - 1).toBe(2);
+  });
+
+  it('the push job bases append-only on github.event.before, falling back to SHA~1 only for the null sha', () => {
+    // `SHA~1` compares only the last hop; a multi-commit push could rewrite
+    // the ledger in one commit and append in the next.
+    expect(workflow).toContain('BEFORE: ${{ github.event.before }}');
+    expect(workflow).toContain(
+      'if [ -n "${BEFORE}" ] && [ "${BEFORE}" != "0000000000000000000000000000000000000000" ]; then'
+    );
+    expect(workflow).toContain('LEDGER_BASE_SHA="${BEFORE}"');
+    // The fallback names itself in an annotation.
+    expect(workflow).toContain(
+      '::notice::[governor-ledger] github.event.before is the null sha (first push of this ref)'
+    );
+    // The merge-base/parent form appears twice: the pre-merge job, and the push job fallback.
+    expect(workflow.split('LEDGER_BASE_SHA="${BASE_SHA}"').length - 1).toBe(2);
+  });
+
+  it(`both gate steps receive ${BASE_LEDGER_PATH_ENV} from the evidence step`, () => {
+    const wired = `${BASE_LEDGER_PATH_ENV}: \${{ steps.evidence.outputs.base_ledger_path }}`;
+    expect(workflow.split(wired).length - 1).toBe(2);
+    expect(workflow.split('echo "base_ledger_path=${BASE_LEDGER_PATH}"').length - 1).toBe(2);
   });
 });
 
@@ -471,6 +893,15 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
     expect(e.kind).toBe('ratified');
     if (e.kind !== 'ratified') throw new Error('unreachable');
     expect(e.record.id).toBe(produced.id);
+    // #6213: the real producer writes coverage on a bound whole panel, so the
+    // gate's coverage requirement is satisfiable by the real path, not only by
+    // fixtures.
+    expect(e.record.panelCoverage).toEqual({
+      requested: 3,
+      responded: 3,
+      errored: 0,
+      erroredRoles: [],
+    });
     expect(e.record.ratifiesPr).toEqual(produced.ratifiesPr);
     // Re-sequenced by the append (0 in the fresh committed ledger), so the hash
     // legitimately differs from the runtime copy; the content is what carries.
@@ -574,6 +1005,22 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
       writeFileSync(ledgerPath, '', 'utf-8');
       expect(runRatificationGate(env)).toBe(1);
       expect(lines.join('\n')).toContain('::warning::[governor-ledger] no-record');
+
+      // #6213: the base ledger had a record this head no longer carries.
+      lines.length = 0;
+      const basePath = join(dir, 'base.jsonl');
+      writeFileSync(basePath, ledgerText([record('v-base', { sequence: 0, pr: 1 })]), 'utf-8');
+      expect(append('vote-e2e').status).toBe(0);
+      expect(runRatificationGate({ ...env, [BASE_LEDGER_PATH_ENV]: basePath })).toBe(1);
+      expect(lines.join('\n')).toContain('::warning::[governor-ledger] ledger-rewritten');
+
+      // #6213: a directory at the ledger path — unmeasured, named, exit code untouched.
+      lines.length = 0;
+      rmSync(ledgerPath);
+      mkdirSync(ledgerPath);
+      expect(runRatificationGate(env)).toBe(1);
+      expect(lines.join('\n')).toContain('[governor-ledger] unmeasured:');
+      expect(lines.join('\n')).toContain('EISDIR');
     } finally {
       log.mockRestore();
       err.mockRestore();
@@ -585,6 +1032,8 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
   // when an owner approval or label is present, and an empty ledger must fail
   // rather than pass. Left as `todo` so the flip has a named test to make green.
   it.todo(
-    '#5131: a governor-path PR with no ratified ledger record FAILS the gate (warn→fail flip)'
+    '#5131: a governor-path PR whose ledger verdict is not ratified — no-record, sha-mismatch, ' +
+      'not-approved, degraded-panel, unmeasured-panel, ledger-invalid, duplicate-id or ' +
+      'ledger-rewritten — FAILS the gate, and an unreadable ledger (unmeasured) fails too (warn→fail flip)'
   );
 });
