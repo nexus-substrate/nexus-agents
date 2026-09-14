@@ -1,7 +1,0 @@
----
-'nexus-agents': minor
----
-
-feat(security): `HostileInputFirewall.process()` runs the full `evaluatePolicy` set, not Rule of Two alone (#5380)
-
-The `policyEnforcement` stage ran one of the seven policy checks production runs (`checkRuleOfTwo`); the other six read an `AgentAction`, which input-shaped `process()` never had, so they were never evaluated and the result could not say so. `FirewallProcessOptions` gains `action` (the action the caller intends to take on the input) and `existingLabels` (the repository label set); with `action` the stage runs `evaluatePolicy` in full — citation, trust requirement, influence block, Rule of Two, label validity, privileged labels, source trust tiers — and the new `FirewallResult.policy` (`FirewallPolicyEvaluation`) carries every violation plus the decision's own `allowed` and `requiresApproval`. Without `action`, `policy.scope` is `'context'`: the Rule of Two is measured and the six action-scoped rule ids are listed as `unmeasured`, never counted as passed. `wouldRefuse` (audit) and the `POLICY_REFUSED` refusal (enforce) now fire on any `severity: 'block'` violation, so audit-mode telemetry reports more would-be refusals for callers that supply an action; `NEXUS_FIREWALL_POLICY` off/audit/enforce semantics are unchanged, `ruleOfTwoViolation` is kept as a view onto `policy`, and a caller that passes no action gets exactly the checks it got before. Minor because the published surface grows (all additions optional).
