@@ -13,7 +13,12 @@
 import { describe, it, expect } from 'vitest';
 import * as crypto from 'node:crypto';
 
-import type { PrReviewDiffProvenance, PrReviewRecord } from './pr-review-record.js';
+import type {
+  PrReviewBinding,
+  PrReviewDiffProvenance,
+  PrReviewPanelCoverage,
+  PrReviewRecord,
+} from './pr-review-record.js';
 import {
   PrReviewRecordSchema,
   computePrReviewRecordHash,
@@ -289,10 +294,205 @@ describe('diffProvenance (#4459)', () => {
   });
 });
 
-describe('record version (#4459, #5385)', () => {
-  it('pins the schema version at 1.3 — the pre/post sanitization-disclosure boundary', () => {
-    expect(makeRecord(1, 0).version).toBe('1.3');
-    const stale = { ...makeRecord(1, 0), version: '1.1' };
-    expect(PrReviewRecordSchema.safeParse(stale).success).toBe(false);
+describe('record version (#4459, #5385, #6190)', () => {
+  it('the builder writes 1.4 — the boundary at which records carry coverage/binding fields', () => {
+    expect(buildPrReviewRecord(BUILD_MINIMAL).version).toBe('1.4');
+  });
+
+  it('still accepts a 1.3 record — the first tier kept rather than clean-broken (#6190)', () => {
+    expect(PrReviewRecordSchema.safeParse(makeRecord(1, 0)).success).toBe(true);
+  });
+
+  it('rejects the pre-1.3 tiers whose hashes may bind sanitized bytes', () => {
+    for (const version of ['1.0', '1.1', '1.2']) {
+      const stale = { ...makeRecord(1, 0), version };
+      expect(PrReviewRecordSchema.safeParse(stale).success).toBe(false);
+    }
+  });
+});
+
+const BUILD_MINIMAL = {
+  prNumber: 1,
+  baseSha: SHA_A,
+  reviewedDiffHash: DIFF_HASH_A,
+  verdict: 'approve' as const,
+  verified: false,
+  voteCounts: { approve: 1, request_changes: 0, abstain: 0, error: 0, total: 1 },
+  summary: 'ok',
+  sequence: 0,
+  recordedAt: '2026-06-15T00:00:00.000Z',
+};
+
+describe('coverage and binding as structured, hash-covered fields (#6190)', () => {
+  /** Forty dropped paths: the count the 500-char summary cap demonstrably loses. */
+  const DROPPED_40 = Array.from({ length: 40 }, (_, i) => `src/dropped/file-${String(i)}.ts`);
+
+  const COVERAGE: PrReviewPanelCoverage = {
+    panelRead: 'partial',
+    reviewedFiles: 2,
+    totalFiles: 42,
+    droppedFiles: DROPPED_40,
+    reviewedBytes: 40_000,
+    totalBytes: 161_204,
+    budgetSource: 'registry',
+    budgetDetail: 'min window 1,000,000 tok (claude-fable-5) − 16,000 × 3.5 B/tok = 3,444,000 B',
+  };
+  const BINDING: PrReviewBinding = { kind: 'prefix', boundBytes: 50_000 };
+
+  /**
+   * Every field a 1.3 record can carry. The golden was captured by running
+   * `computePrReviewRecordHash` on this exact fixture against the pre-#6190
+   * projection (origin/main at 7b8bcff841), then pinned: it is the hash an
+   * already-written ledger line carries, and the property under test is that
+   * the new projection reproduces it byte-for-byte.
+   */
+  const MAXIMAL_1_3: Omit<PrReviewRecord, 'hash'> = {
+    version: '1.3',
+    sequence: 0,
+    prNumber: 6190,
+    baseSha: SHA_A,
+    reviewedDiffHash: DIFF_HASH_A,
+    recordedAt: '2026-09-14T00:00:00.000Z',
+    verdict: 'approve',
+    verified: false,
+    voteCounts: { approve: 4, request_changes: 0, abstain: 1, error: 0, total: 5 },
+    summary:
+      'approve (4 approve / 0 request_changes / 1 abstain) [partial coverage: 2/5 files reviewed, dropped: src/a.ts, src/b.ts, src/c.ts] [panel read 40,000/61,204 bytes; binding covers first 50,000 bytes; budget: registry (min window 1,000,000 tok (claude-fable-5) − 16,000 × 3.5 B/tok = 3,444,000 B)] — maximal',
+    correlationId: 'pr-review-6190',
+    diffProvenance: { source: 'caller-supplied', fileBoundaries: true },
+    sanitization: {
+      sanitizedDiffHash: DIFF_HASH_B,
+      commentsRemoved: 1,
+      fieldsModified: 2,
+      tagsRemoved: 1,
+    },
+    previousHash: '9'.repeat(64),
+  };
+  const GOLDEN_1_3 = '86db26a631a9e75e2f54ed7bc5e66b5bea0af238fe2a5ae017fec83bd2123a0f';
+
+  const MAXIMAL_1_4: Omit<PrReviewRecord, 'hash'> = {
+    ...MAXIMAL_1_3,
+    version: '1.4',
+    coverage: COVERAGE,
+    binding: BINDING,
+  };
+
+  it('the 1.3 fixture is schema-valid — otherwise the golden below pins the wrong thing', () => {
+    const parsed = PrReviewRecordSchema.safeParse({
+      ...MAXIMAL_1_3,
+      hash: computePrReviewRecordHash(MAXIMAL_1_3),
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('an old 1.3 record without the fields hashes to the pre-#6190 golden (unchanged)', () => {
+    expect(computePrReviewRecordHash(MAXIMAL_1_3)).toBe(GOLDEN_1_3);
+    expect(verifyPrReviewRecordSet([{ ...MAXIMAL_1_3, hash: GOLDEN_1_3 }]).ok).toBe(true);
+  });
+
+  it('a 1.3 record with coverage/binding explicitly undefined still hashes to the 1.3 golden', () => {
+    expect(
+      computePrReviewRecordHash({ ...MAXIMAL_1_3, coverage: undefined, binding: undefined })
+    ).toBe(GOLDEN_1_3);
+  });
+
+  it('pins the MAXIMAL 1.4 record to a golden captured by execution', () => {
+    // Captured by running `computePrReviewRecordHash` on this exact fixture once
+    // the projection carried `coverage` and `binding`, then pinned. If it moves,
+    // the canonical order or the present-only rule changed.
+    expect(computePrReviewRecordHash(MAXIMAL_1_4)).toBe(
+      '46d9ae89c85dbb577636e0f44251b094ae37152bf279a6d05a50abbd8d9b11d8'
+    );
+  });
+
+  it('the 1.4 fixture is schema-valid and verifies', () => {
+    const rec = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
+    expect(PrReviewRecordSchema.safeParse(rec).success).toBe(true);
+    expect(verifyPrReviewRecordSet([rec]).ok).toBe(true);
+  });
+
+  it('a present coverage hashes differently from an absent one', () => {
+    expect(computePrReviewRecordHash({ ...MAXIMAL_1_4, coverage: undefined })).not.toBe(
+      computePrReviewRecordHash(MAXIMAL_1_4)
+    );
+  });
+
+  it('every dropped path is hash-covered: removing ONE of forty is a hash_mismatch', () => {
+    const authentic = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
+    const forged: PrReviewRecord = {
+      ...authentic,
+      coverage: { ...COVERAGE, droppedFiles: DROPPED_40.slice(0, 39) },
+    };
+    const result = verifyPrReviewRecordSet([forged]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('folds every coverage and binding field: flipping any one is a hash_mismatch', () => {
+    const authentic = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
+    const forgeries: PrReviewRecord[] = [
+      { ...authentic, coverage: { ...COVERAGE, panelRead: 'full' } },
+      { ...authentic, coverage: { ...COVERAGE, reviewedFiles: 42 } },
+      { ...authentic, coverage: { ...COVERAGE, totalFiles: 2 } },
+      { ...authentic, coverage: { ...COVERAGE, reviewedBytes: 161_204 } },
+      { ...authentic, coverage: { ...COVERAGE, totalBytes: 40_000 } },
+      { ...authentic, coverage: { ...COVERAGE, budgetSource: 'binding-cap-fallback' } },
+      { ...authentic, coverage: { ...COVERAGE, budgetDetail: 'edited' } },
+      { ...authentic, binding: { kind: 'full', boundBytes: 50_000 } },
+      { ...authentic, binding: { kind: 'prefix', boundBytes: 161_204 } },
+    ];
+    for (const forged of forgeries) {
+      expect(verifyPrReviewRecordSet([forged]).ok).toBe(false);
+    }
+  });
+
+  it('DETECTS deletion of the whole coverage or binding field as a hash_mismatch', () => {
+    const authentic = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
+    for (const field of ['coverage', 'binding'] as const) {
+      const stripped = { ...authentic };
+      Reflect.deleteProperty(stripped, field);
+      expect(verifyPrReviewRecordSet([stripped]).ok).toBe(false);
+    }
+  });
+
+  it('is independent of key order at every level (#3962 applied to the nested fields)', () => {
+    const reordered = JSON.parse(
+      JSON.stringify({
+        ...MAXIMAL_1_4,
+        coverage: {
+          budgetDetail: COVERAGE.budgetDetail,
+          droppedFiles: COVERAGE.droppedFiles,
+          totalBytes: COVERAGE.totalBytes,
+          panelRead: COVERAGE.panelRead,
+          budgetSource: COVERAGE.budgetSource,
+          reviewedBytes: COVERAGE.reviewedBytes,
+          totalFiles: COVERAGE.totalFiles,
+          reviewedFiles: COVERAGE.reviewedFiles,
+        },
+        binding: { boundBytes: BINDING.boundBytes, kind: BINDING.kind },
+      })
+    ) as Omit<PrReviewRecord, 'hash'>;
+    expect(computePrReviewRecordHash(reordered)).toBe(computePrReviewRecordHash(MAXIMAL_1_4));
+  });
+
+  it('the schemas are strict: an unknown key inside coverage or binding is rejected', () => {
+    const rec = { ...MAXIMAL_1_4, hash: computePrReviewRecordHash(MAXIMAL_1_4) };
+    expect(
+      PrReviewRecordSchema.safeParse({ ...rec, coverage: { ...COVERAGE, extra: 1 } }).success
+    ).toBe(false);
+    expect(
+      PrReviewRecordSchema.safeParse({ ...rec, binding: { ...BINDING, sha256: 'x' } }).success
+    ).toBe(false);
+    expect(
+      PrReviewRecordSchema.safeParse({ ...rec, binding: { kind: 'partial', boundBytes: 1 } })
+        .success
+    ).toBe(false);
+  });
+
+  it('the builder passes both fields through and the record verifies', () => {
+    const rec = buildPrReviewRecord({ ...BUILD_MINIMAL, coverage: COVERAGE, binding: BINDING });
+    expect(rec.coverage?.droppedFiles).toEqual(DROPPED_40);
+    expect(rec.binding).toEqual(BINDING);
+    expect(verifyPrReviewRecordSet([rec]).ok).toBe(true);
   });
 });

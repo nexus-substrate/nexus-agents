@@ -22,10 +22,15 @@
  *
  * KNOWN LIMITATION (#3831 condition B): because the truncation is part of the
  * canonical form, content past {@link MAX_REVIEWED_DIFF_BYTES} is UNBOUND — two
- * diffs sharing the first 50k bytes hash identically. The voters only saw the
- * first 50k, so binding to that is the honest contract, but a record cannot attest
- * anything beyond the cap. Producers MUST surface {@link reviewedDiffWasTruncated}
- * so an over-cap review is visible.
+ * diffs sharing the first 50k bytes hash identically, so a record cannot attest
+ * anything beyond the cap. This is the BINDING cap only (#6003, #6188): the
+ * panel may read the whole diff — what the panel is sent is bounded by the
+ * voters' own context windows (`mcp/tools/pr-review-panel-budget.ts`), so a
+ * diff over this cap goes to the panel whole whenever it fits that budget. The
+ * two portions are stated separately on the record: `coverage` says what the
+ * panel read, `binding` says what the hash covers (#6190), and the summary
+ * stamp repeats both for a human reader. Producers MUST surface
+ * {@link reviewedDiffWasTruncated} so an over-cap review is visible.
  *
  * @module audit/reviewed-diff-hash
  */
@@ -33,9 +38,13 @@
 import * as crypto from 'node:crypto';
 
 /**
- * Max reviewed-diff size folded into the canonical hash, in BYTES (UTF-8). Mirrors
- * the pr_review tool's `MAX_DIFF_LENGTH` review cap — the voters never see past it,
- * so the binding cannot honestly attest past it either (#3831 condition B).
+ * Max reviewed-diff size folded into the canonical hash, in BYTES (UTF-8). The
+ * BINDING cap: the hash attests the first this-many bytes and nothing past them
+ * (#3831 condition B). NOT the panel-read cap — since #6003 the panel may read
+ * past it, up to its seats' context windows; the pr_review tool's
+ * `MAX_DIFF_LENGTH` mirrors this value as the binding cap and as the panel
+ * budget only when that derivation fails closed. The record states which
+ * portion was read and which is bound (#6190).
  */
 export const MAX_REVIEWED_DIFF_BYTES = 50_000;
 

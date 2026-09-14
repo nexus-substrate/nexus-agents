@@ -12,9 +12,10 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   computeReviewedDiffHash,
@@ -252,5 +253,31 @@ describe('ledger exclusion is authenticity-safe (#4229 — real git)', () => {
     expect(computeReviewedDiffHash(excluded)).not.toBe(
       computeReviewedDiffHash(git(canonicalGitDiffArgs(baseSha, baseSha)))
     );
+  });
+});
+
+describe('the module documents the two-budget semantics, not the pre-#6003 one (#6188)', () => {
+  // Since #6003 the panel-read budget is derived from the panel's own seats'
+  // context windows (`pr-review-panel-budget.ts`), so a diff over this cap goes
+  // to the panel WHOLE whenever it fits. The cap is the BINDING cap only. The
+  // JSDoc here said the voters never see past it — a doc that a reader of the
+  // governor path would have trusted. Pinned by reading the source: a JSDoc
+  // has no runtime surface, so nothing else can fail when it goes stale.
+  const SOURCE = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'reviewed-diff-hash.ts'),
+    'utf-8'
+  );
+
+  it('no longer claims the voters never see past the cap', () => {
+    expect(SOURCE).not.toMatch(/voters never see past/i);
+    expect(SOURCE).not.toMatch(/voters only saw/i);
+    expect(SOURCE).not.toMatch(/MAX_DIFF_LENGTH` review cap/);
+  });
+
+  it('states that the cap binds, that the panel may read past it, and that the record states both', () => {
+    expect(SOURCE).toMatch(/BINDING cap/);
+    expect(SOURCE).toMatch(/panel may read (the whole diff|past)/i);
+    expect(SOURCE).toMatch(/pr-review-panel-budget/);
+    expect(SOURCE).toMatch(/`coverage`.*`binding`|`binding`.*`coverage`/s);
   });
 });

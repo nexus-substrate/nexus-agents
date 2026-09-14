@@ -1341,6 +1341,120 @@ describe('the governor section is bounded by dedicated directives, not the human
   });
 });
 
+describe('the gate says what the panel READ, from the structured field first (#6190)', () => {
+  // A hash match proves the record is bound to this PR's diff; the C1 gate
+  // proves a partial panel read cannot verified-approve. Neither says, in the
+  // gate's own pass line, that the panel read 2 of 42 files. Since #6190 the
+  // record carries that as a hash-covered `coverage` field; before it, only the
+  // 500-char summary stamp did (and it could cut the list).
+  const DROPPED_40 = Array.from({ length: 40 }, (_, i) => `src/dropped/file-${String(i)}.ts`);
+
+  function passingRecord(overrides: Partial<BuildPrReviewRecordInput>): GovernorReviewInputs {
+    return inputs({
+      records: [
+        record({ prNumber: 5000, reviewedDiffHash: DIFF_HASH, verdict: 'approve', ...overrides }),
+      ],
+    });
+  }
+
+  it('reads the structured coverage field and lists EVERY dropped path, naming the source', () => {
+    // The summary here carries a legacy-format stamp that DISAGREES with the
+    // field (three paths, 2/5) so the precedence is actually exercised: a
+    // reader that consulted the stamp first would report 2 of 5 and three
+    // paths. No producer writes this shape; the conflict is the test's.
+    const outcome = analyzeGovernorReview(
+      passingRecord({
+        summary:
+          'approve [partial coverage: 2/5 files reviewed, dropped: src/dropped/file-0.ts, src/dropped/file-1.ts, src/dropped/file-2.ts] — t',
+        coverage: {
+          panelRead: 'partial',
+          reviewedFiles: 2,
+          totalFiles: 42,
+          droppedFiles: DROPPED_40,
+          reviewedBytes: 40_000,
+          totalBytes: 161_204,
+          budgetSource: 'registry',
+          budgetDetail:
+            'min window 1,000,000 tok (claude-fable-5) − 16,000 × 3.5 B/tok = 3,444,000 B',
+        },
+        binding: { kind: 'prefix', boundBytes: 50_000 },
+      })
+    );
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).toContain('PARTIAL: the panel read 2 of 42 files');
+      expect(outcome.reason).toContain('40 dropped');
+      for (const path of DROPPED_40) expect(outcome.reason).toContain(path);
+      expect(outcome.reason).toContain('from the record’s coverage field');
+      expect(outcome.reason).not.toContain('summary stamp');
+    }
+  });
+
+  it('falls back to the summary stamp for a pre-#6190 record, and says so', () => {
+    // A 1.3 record: no `coverage` field; the stamp is the only disclosure and
+    // its list may have been cut by the summary cap. The caveat must name the
+    // weaker source rather than present a parsed stamp as the field.
+    const outcome = analyzeGovernorReview(
+      passingRecord({
+        summary:
+          'approve (3 approve / 0 request_changes / 0 abstain) [partial coverage: 2/5 files reviewed, dropped: src/a.ts, src/b.ts, src/c.ts] [panel read 40,000/61,204 bytes; binding covers first 50,000 bytes; budget: registry (x)] — t',
+      })
+    );
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).toContain('PARTIAL: the panel read 2 of 5 files');
+      expect(outcome.reason).toContain('src/a.ts, src/b.ts, src/c.ts');
+      expect(outcome.reason).toContain('parsed from the summary stamp');
+      expect(outcome.reason).toContain('may be incomplete');
+    }
+  });
+
+  it('a summary stamp cut mid-list by the store cap drops the cut fragment, never a fabricated path', () => {
+    const outcome = analyzeGovernorReview(
+      passingRecord({
+        summary:
+          'approve [partial coverage: 3/9 files reviewed, dropped: src/whole.ts, src/also-whole.ts, src/cut-in-ha...',
+      })
+    );
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).toContain('PARTIAL: the panel read 3 of 9 files');
+      expect(outcome.reason).toContain('src/whole.ts, src/also-whole.ts');
+      expect(outcome.reason).not.toContain('src/cut-in-ha');
+      expect(outcome.reason).toContain('parsed from the summary stamp');
+    }
+  });
+
+  it('a full panel read over a prefix binding adds NO panel caveat', () => {
+    const outcome = analyzeGovernorReview(
+      passingRecord({
+        coverage: {
+          panelRead: 'full',
+          reviewedFiles: 3,
+          totalFiles: 3,
+          droppedFiles: [],
+          reviewedBytes: 61_204,
+          totalBytes: 61_204,
+          budgetSource: 'registry',
+          budgetDetail: 'x',
+        },
+        binding: { kind: 'prefix', boundBytes: 50_000 },
+      })
+    );
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') {
+      expect(outcome.reason).not.toContain('the panel read');
+      expect(outcome.reason).not.toContain('PARTIAL');
+    }
+  });
+
+  it('a record with neither field nor stamp adds no panel caveat (absence is not a claim)', () => {
+    const outcome = analyzeGovernorReview(passingRecord({ summary: 'ok' }));
+    expect(outcome.kind).toBe('pass');
+    if (outcome.kind === 'pass') expect(outcome.reason).not.toContain('the panel read');
+  });
+});
+
 describe('the gate says whether the voters read the bytes it bound (#5385)', () => {
   // A hash match proves the record is bound to THIS PR's canonical diff. It does
   // NOT prove the panel read that diff: the MCP middleware strips HTML comments
