@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.58.2
+
+### Patch Changes
+
+- [#6248](https://github.com/nexus-substrate/nexus-agents/pull/6248) [`9a85898`](https://github.com/nexus-substrate/nexus-agents/commit/9a85898d7ff1f24698cb85874088d24ca93ca849) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `vote` command's timeout-clamp message now renders both bounds from `VOTE_TIMEOUTS` — it said `max: 300s` while the real ceiling is 600 s ([#6242](https://github.com/nexus-substrate/nexus-agents/issues/6242)).
+
 ## 8.58.1
 
 ### Patch Changes
