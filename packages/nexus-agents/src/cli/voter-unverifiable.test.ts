@@ -64,6 +64,18 @@ const ERROR_WITHOUT_RECOVERY =
 /** Begins with the prefix the prompt asks for; matches no error string, and even cites a line. */
 const PREFIX_ONLY = 'UNVERIFIABLE: the sandbox refused every read of src/x.ts:12.';
 
+/**
+ * The two response-parse errors the catfish seat logged on the #6241 panel
+ * (#6244), plus the form an errored seat's placeholder reasoning carries.
+ * A parse failure says the model returned non-JSON, not that the seat could
+ * not read the repository: it stays an errored seat, never unverifiable.
+ */
+const PARSE_FAILURE_ERRORS: readonly string[] = [
+  'Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input',
+  `Vote parsing failed: Vote response parsing failed: Unexpected token 'I', "I cannot ac"... is not valid JSON`,
+  '[Error] Vote execution failed: Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input',
+];
+
 function llm(overrides: Partial<AgentVoteResult> = {}): AgentVoteResult {
   return {
     role: 'scope_steward',
@@ -96,6 +108,13 @@ describe('UNVERIFIABLE_REASONING_RE — the fallback (#6094)', () => {
   it('matches the phrase the voter prompt asks a blind seat to write', () => {
     expect(UNVERIFIABLE_REASONING_RE.test('UNVERIFIABLE: could not read the artifact.')).toBe(true);
   });
+
+  it.each(PARSE_FAILURE_ERRORS.map((r) => [r.slice(0, 60), r] as const))(
+    'a response-parse failure is not a failed read (#6244): %s',
+    (_label, error) => {
+      expect(UNVERIFIABLE_REASONING_RE.test(error)).toBe(false);
+    }
+  );
 });
 
 describe('the recovery guard (#6104)', () => {
@@ -200,6 +219,17 @@ describe('classifyUnverifiable', () => {
     ).toBeUndefined();
     expect(UNVERIFIABLE_STDERR_RE.test('warning: model deprecated')).toBe(false);
   });
+
+  it.each(PARSE_FAILURE_ERRORS.map((r) => [r.slice(0, 60), r] as const))(
+    'a response-parse failure has no citation and no recovery phrase and is still NOT unverifiable (#6244): %s',
+    (_label, error) => {
+      const rules: string[] = [];
+      expect(
+        classifyUnverifiable({ reasoning: error }, (rule) => rules.push(rule))
+      ).toBeUndefined();
+      expect(rules).toEqual([]);
+    }
+  );
 
   it('the empty case, named: no stderr and clean reasoning is NOT unverifiable', () => {
     expect(classifyUnverifiable({ reasoning: '' })).toBeUndefined();

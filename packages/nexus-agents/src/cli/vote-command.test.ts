@@ -321,6 +321,22 @@ describe('formatVoteRow reasoning (#5339)', () => {
     // reasoning from the vote stub would fabricate one.
     expect(row).not.toContain('ok');
   });
+
+  it('a response-parse failure renders as ERROR with the parse cause, never as UNVERIFIABLE (#6244)', () => {
+    const row = stripAnsi(
+      formatVoteRow(
+        makeVoteRow({
+          source: 'error',
+          error: 'Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input',
+        })
+      )
+    );
+    expect(row).toContain(
+      'ERROR — Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input'
+    );
+    expect(row).not.toContain('UNVERIFIABLE');
+    expect(row).not.toContain('could not read the artifact');
+  });
 });
 
 describe('formatVoteRow (#2441)', () => {
