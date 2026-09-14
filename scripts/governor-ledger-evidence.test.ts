@@ -95,6 +95,10 @@ interface RecordOpts {
   readonly votes?: readonly AgentVoteResult[];
   /** #6211: absent ⇒ a pre-1.11 record that never recorded its policy. */
   readonly errorPolicy?: VoteRecord['errorPolicy'];
+  /** #6235: the strategy the panel ran at; `supermajority` by default. Always present on a record. */
+  readonly strategy?: VoteRecord['strategy'];
+  /** The tally the record carries; the 3-0 whole-panel result by default. */
+  readonly result?: ConsensusResult;
 }
 
 function record(id: string, opts: RecordOpts): VoteRecord {
@@ -103,8 +107,8 @@ function record(id: string, opts: RecordOpts): VoteRecord {
     resolvedDecision: opts.decision ?? 'approved',
     id,
     proposal: `Ratify PR #${String(opts.pr ?? PR)}`,
-    strategy: 'supermajority',
-    result: consensusResult(),
+    strategy: opts.strategy ?? 'supermajority',
+    result: opts.result ?? consensusResult(),
     votes: opts.votes ?? WHOLE_PANEL,
     sequence: opts.sequence,
     ...(opts.errorPolicy !== undefined ? { errorPolicy: opts.errorPolicy } : {}),
@@ -670,6 +674,124 @@ describe('wrong-error-policy: the recorded policy is legible on a whole-panel re
   });
 });
 
+describe('wrong-strategy: the recorded strategy must meet the governor bar (#6235)', () => {
+  // The case #6235 names: 4 approve / 3 reject on a whole 7-seat panel under
+  // `absolute_quorum` is `approved` at `simple_majority` (0.5) and was
+  // reported `ratified` — the gate never read `record.strategy`. The
+  // governor bar is `supermajority` (0.667; CLAUDE.md "Consensus voting
+  // thresholds"), and `unanimous` (1.0) exceeds it. `strategy` is a required
+  // field of `VoteRecordSchema`, so there is no absent case to name.
+  const SPLIT_PANEL: readonly AgentVoteResult[] = [
+    seat('architect', 'approve'),
+    seat('security', 'approve'),
+    seat('devex', 'approve'),
+    seat('ai_ml', 'approve'),
+    seat('pm', 'reject'),
+    seat('catfish', 'reject'),
+    seat('scope_steward', 'reject'),
+  ];
+  const SPLIT_RESULT = consensusResult({
+    proposal: { title: 'T', description: 'D', algorithm: 'simple_majority' },
+    voteCounts: { approve: 4, reject: 3, abstain: 0, total: 7 },
+    approvalPercentage: 57.14,
+  });
+  function splitRecord(strategy: VoteRecord['strategy']): VoteRecord {
+    return record('v0', {
+      sequence: 0,
+      strategy,
+      votes: SPLIT_PANEL,
+      result: SPLIT_RESULT,
+      errorPolicy: 'absolute_quorum',
+    });
+  }
+
+  it("wrong-strategy for the issue's case: simple_majority, approved 4/7, absolute_quorum, whole, bound at head", () => {
+    const text = ledgerText([splitRecord('simple_majority')]);
+    const e = evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('wrong-strategy');
+    if (e.kind !== 'wrong-strategy') throw new Error('unreachable');
+    expect(e.strategy).toBe('simple_majority');
+    expect(e.record.id).toBe('v0');
+  });
+
+  it('ratified at supermajority (the bar) and at unanimous (above it), and the notice names the strategy', () => {
+    for (const strategy of ['supermajority', 'unanimous'] as const) {
+      const text = ledgerText([
+        record('v0', { sequence: 0, strategy, errorPolicy: 'absolute_quorum' }),
+      ]);
+      const e = evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD });
+      expect(e.kind).toBe('ratified');
+      expect(formatLedgerEvidence(e)).toContain(`strategy: ${strategy}`);
+    }
+  });
+
+  it('wrong-strategy for higher_order (a 0.5 tally, #5315) and every other sub-bar strategy', () => {
+    for (const strategy of ['higher_order', 'opinion_wise', 'proof_of_learning'] as const) {
+      const text = ledgerText([
+        record('v0', { sequence: 0, strategy, errorPolicy: 'absolute_quorum' }),
+      ]);
+      const e = evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD });
+      expect(e.kind).toBe('wrong-strategy');
+      if (e.kind !== 'wrong-strategy') throw new Error('unreachable');
+      expect(e.strategy).toBe(strategy);
+    }
+  });
+
+  it('does not precede wrong-error-policy: a wrong policy AND a wrong strategy reports the policy', () => {
+    const text = ledgerText([
+      record('v0', { sequence: 0, strategy: 'simple_majority', errorPolicy: 'reduce_denominator' }),
+    ]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD }))).toBe(
+      'wrong-error-policy'
+    );
+  });
+
+  it('precedes unmeasured-panel and degraded-panel: the strategy is read before the coverage', () => {
+    const noCoverage = ledgerText([withoutCoverage(splitRecord('simple_majority'))]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: noCoverage, pr: PR, head: AT_HEAD }))).toBe(
+      'wrong-strategy'
+    );
+    // A pre-1.11 record (no errorPolicy) with an errored seat: the coverage
+    // inference would say degraded-panel, but the strategy is read first.
+    const degraded = ledgerText([
+      record('v0', { sequence: 0, strategy: 'higher_order', votes: DEGRADED_PANEL }),
+    ]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: degraded, pr: PR, head: AT_HEAD }))).toBe(
+      'wrong-strategy'
+    );
+  });
+
+  it('does not precede not-approved: a rejected record is not-approved whatever its strategy', () => {
+    const text = ledgerText([
+      record('v0', { sequence: 0, strategy: 'simple_majority', decision: 'rejected' }),
+    ]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD }))).toBe(
+      'not-approved'
+    );
+  });
+
+  it('post-merge (no head) still refuses a sub-bar strategy', () => {
+    const text = ledgerText([splitRecord('simple_majority')]);
+    expect(kindOf(evaluateLedgerEvidence({ ledgerText: text, pr: PR }))).toBe('wrong-strategy');
+  });
+
+  it('renders as a ::warning:: naming the record, the strategy found and the accepted set', () => {
+    const r = splitRecord('simple_majority');
+    const line = formatLedgerEvidence({
+      kind: 'wrong-strategy',
+      record: r,
+      strategy: 'simple_majority',
+    });
+    expect(line.startsWith('::warning::')).toBe(true);
+    expect(line).toContain('wrong-strategy');
+    expect(line).toContain("'v0'");
+    expect(line).toContain("'simple_majority'");
+    expect(line).toContain('supermajority');
+    expect(line).toContain('unanimous');
+    expect(line).toContain('#5131');
+  });
+});
+
 describe('isLedgerOnlyTip / acceptedHeadShas', () => {
   it('is true only for exactly the ledger file', () => {
     expect(isLedgerOnlyTip([VOTE_RECORDS_REL_PATH])).toBe(true);
@@ -1115,7 +1237,7 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
   // rather than pass. Left as `todo` so the flip has a named test to make green.
   it.todo(
     '#5131: a governor-path PR whose ledger verdict is not ratified — no-record, sha-mismatch, ' +
-      'not-approved, degraded-panel, unmeasured-panel, ledger-invalid, duplicate-id or ' +
-      'ledger-rewritten — FAILS the gate, and an unreadable ledger (unmeasured) fails too (warn→fail flip)'
+      'not-approved, wrong-error-policy, wrong-strategy, unmeasured-panel, degraded-panel, ' +
+      'ledger-invalid, duplicate-id or ledger-rewritten — FAILS the gate, and an unreadable ledger (unmeasured) fails too (warn→fail flip)'
   );
 });

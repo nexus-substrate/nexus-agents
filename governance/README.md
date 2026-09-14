@@ -73,8 +73,9 @@ record is a gate finding (#5131), not an empty-ledger condition.
 `scripts/check-governor-ratification.ts` prints a second evidence line for
 every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`:
 `ratified` (a record binds this PR at `head` or, for a ledger-only tip,
-`head^`; `decision === 'approved'`; `panelCoverage` present with
-`errored === 0`; and the ledger is append-only against the base), or one of:
+`head^`; `decision === 'approved'`; `strategy` is `supermajority` or
+`unanimous`; `panelCoverage` present with `errored === 0`; and the ledger is
+append-only against the base), or one of:
 
 - `no-record` — nothing binds this PR; an empty ledger is this, never `ratified`.
 - `sha-mismatch` — records bind this PR, none at an accepted head.
@@ -84,6 +85,14 @@ every governor-path PR, computed by `scripts/governor-ledger-evidence.ts`:
   EFFECTIVE policy the panel ran under; a pre-1.11 record has no such field
   and falls through to the panel-coverage inference below, and the
   `ratified` line then says `errorPolicy: unrecorded`.
+- `wrong-strategy` — a bound record's `strategy` is below the governor bar:
+  anything other than `supermajority` (0.667, the bar in CLAUDE.md
+  "Consensus voting thresholds") or `unanimous` (1.0, above it) (#6235).
+  `decision: approved` only says the tally cleared the strategy's own bar —
+  a 4/7 whole panel under `absolute_quorum` is `approved` at
+  `simple_majority`, and `higher_order` is a 0.5 tally (#5315). `strategy`
+  is a required, hash-covered field on every record, so there is no
+  unrecorded case; the `ratified` line names the strategy it read.
 - `unmeasured-panel` — a bound record has no `panelCoverage`, or one naming
   zero seats; the record cannot show the panel ran whole (#6213). A bound
   record written by `buildVoteRecord` always carries coverage, so this names
@@ -116,7 +125,7 @@ an annotation and the exit code is still the label/approval verdict's; #5131
 flips every non-`ratified` verdict above, and `unmeasured`, to a failure.
 Precedence: `ledger-invalid` → `ledger-rewritten` → `duplicate-id` →
 `no-record` → `sha-mismatch` → `not-approved` → `wrong-error-policy` →
-`unmeasured-panel` → `degraded-panel` → `ratified`.
+`wrong-strategy` → `unmeasured-panel` → `degraded-panel` → `ratified`.
 
 ## pr-review-records.jsonl
 

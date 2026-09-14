@@ -24,6 +24,7 @@
  * | `sha-mismatch` | records bind this PR, but none at an accepted head — lists the shas found |
  * | `not-approved` | a bound record's `decision` is not `approved` |
  * | `wrong-error-policy` | a bound record RECORDS an `errorPolicy` other than `absolute_quorum` (#6211) |
+ * | `wrong-strategy` | a bound record's `strategy` is below the governor bar — not `supermajority` or `unanimous` (#6235) |
  * | `unmeasured-panel` | a bound record has no `panelCoverage`, or one that names no seats — it cannot show the panel ran whole |
  * | `degraded-panel` | a bound record's `panelCoverage.errored > 0` |
  * | `ledger-invalid` | a line does not parse, or `verifyVoteRecordSet` fails (tamper, gap) |
@@ -96,6 +97,22 @@
  * says which of the two it applied: `errorPolicy: absolute_quorum` when the
  * record stated it, `errorPolicy: unrecorded` when the panel-coverage
  * inference stood in.
+ *
+ * ## `strategy`: the bar the tally was measured against (#6235)
+ *
+ * `decision: 'approved'` says the tally cleared SOME bar; `strategy` says
+ * which. A 4-approve / 3-reject whole panel under `absolute_quorum` is
+ * `approved` at `simple_majority` (0.5) and read as `ratified` until the
+ * gate looked at the strategy. The governor bar is `supermajority` (0.667,
+ * CLAUDE.md "Consensus voting thresholds"); `unanimous` (1.0) exceeds it and
+ * is accepted. Every other strategy is refused as `wrong-strategy`:
+ * `simple_majority`, `higher_order` (a plain 0.5 tally despite the name,
+ * #5315), `opinion_wise` and `proof_of_learning` (weighted aggregations,
+ * not bars). `strategy` is a REQUIRED, hash-covered field of every record,
+ * so unlike `errorPolicy` there is no unrecorded case to infer around. It
+ * is read after `wrong-error-policy` (both are properties of the vote the
+ * panel ran, and the policy check landed first) and before the coverage
+ * checks (which are properties of how the seats answered).
  *
  * ## Duplicate ids are REFUSED
  *
@@ -208,6 +225,12 @@ export type LedgerEvidence =
       readonly record: VoteRecord;
       /** The policy the record states; never `absolute_quorum` here. */
       readonly errorPolicy: NonNullable<VoteRecord['errorPolicy']>;
+    }
+  | {
+      readonly kind: 'wrong-strategy';
+      readonly record: VoteRecord;
+      /** The strategy the record states; never one of `GOVERNOR_STRATEGIES` here. */
+      readonly strategy: VoteRecord['strategy'];
     }
   | { readonly kind: 'unmeasured-panel'; readonly record: VoteRecord; readonly reason: string }
   | {
@@ -326,29 +349,68 @@ function panelUnmeasuredReason(record: VoteRecord): string | undefined {
 /** The policy a governor ratification must have run under (#5779). */
 const REQUIRED_ERROR_POLICY: NonNullable<VoteRecord['errorPolicy']> = 'absolute_quorum';
 
+/**
+ * The strategies whose bar meets or exceeds the governor's `supermajority`
+ * (0.667; CLAUDE.md "Consensus voting thresholds", #6235). `higher_order`
+ * is a 0.5 tally (#5315), `simple_majority` is 0.5, and `opinion_wise` /
+ * `proof_of_learning` are weighted aggregations rather than bars.
+ */
+const GOVERNOR_STRATEGIES: ReadonlySet<VoteRecord['strategy']> = new Set<VoteRecord['strategy']>([
+  'supermajority',
+  'unanimous',
+]);
+
+/** A refusal that names the bound record it was computed over. */
+type BoundRecordRefusal = Exclude<
+  Extract<LedgerEvidence, { readonly record: VoteRecord }>,
+  { readonly kind: 'ratified' }
+>;
+
+/** `unmeasured-panel` / `degraded-panel` from the record's coverage; `undefined` for a whole panel. */
+function panelVerdict(record: VoteRecord): BoundRecordRefusal | undefined {
+  const reason = panelUnmeasuredReason(record);
+  if (reason !== undefined) return { kind: 'unmeasured-panel', record, reason };
+  // Narrowed above: `reason` is undefined only when coverage is present.
+  const coverage = record.panelCoverage;
+  if (coverage !== undefined && coverage.errored > 0) {
+    return { kind: 'degraded-panel', record, coverage };
+  }
+  return undefined;
+}
+
+/**
+ * The per-record checks in precedence order, each over the WHOLE bound set
+ * before the next: every bound record must pass a check before any is
+ * judged on the following one, so a dissent beside an approval is
+ * `not-approved` whatever else the approval says.
+ */
+const BOUND_RECORD_CHECKS: readonly ((record: VoteRecord) => BoundRecordRefusal | undefined)[] = [
+  (record) => (record.decision === 'approved' ? undefined : { kind: 'not-approved', record }),
+  // #6211: a RECORDED policy is read before the panel-coverage inference —
+  // the policy is the cause, the errored seat only its symptom. An absent
+  // field is a pre-1.11 record and falls through to the inference.
+  (record) =>
+    record.errorPolicy !== undefined && record.errorPolicy !== REQUIRED_ERROR_POLICY
+      ? { kind: 'wrong-error-policy', record, errorPolicy: record.errorPolicy }
+      : undefined,
+  // #6235: `approved` only says the tally cleared the strategy's bar; the
+  // strategy says which bar. Required on every record, so no absent case.
+  (record) =>
+    GOVERNOR_STRATEGIES.has(record.strategy)
+      ? undefined
+      : { kind: 'wrong-strategy', record, strategy: record.strategy },
+  panelVerdict,
+];
+
 /** The bound records' verdict: every one must be approved and whole; the latest is reported. */
 function verdictOverBound(
   bound: readonly VoteRecord[],
   checked: { readonly shaChecked: boolean; readonly appendOnlyChecked: boolean }
 ): LedgerEvidence {
-  for (const record of bound) {
-    if (record.decision !== 'approved') return { kind: 'not-approved', record };
-  }
-  // #6211: a RECORDED policy is read before the panel-coverage inference —
-  // the policy is the cause, the errored seat only its symptom. An absent
-  // field is a pre-1.11 record and falls through to the inference.
-  for (const record of bound) {
-    if (record.errorPolicy !== undefined && record.errorPolicy !== REQUIRED_ERROR_POLICY) {
-      return { kind: 'wrong-error-policy', record, errorPolicy: record.errorPolicy };
-    }
-  }
-  for (const record of bound) {
-    const reason = panelUnmeasuredReason(record);
-    if (reason !== undefined) return { kind: 'unmeasured-panel', record, reason };
-    // Narrowed above: `reason` is undefined only when coverage is present.
-    const coverage = record.panelCoverage;
-    if (coverage !== undefined && coverage.errored > 0) {
-      return { kind: 'degraded-panel', record, coverage };
+  for (const check of BOUND_RECORD_CHECKS) {
+    for (const record of bound) {
+      const refusal = check(record);
+      if (refusal !== undefined) return refusal;
     }
   }
   // `bound` is non-empty by the caller's construction; the reduce needs no seed.
@@ -360,8 +422,8 @@ function verdictOverBound(
  * Compute the ledger verdict for a PR. Pure — the ledger bytes, the base
  * ledger bytes and the head are passed in. Precedence: `ledger-invalid` →
  * `ledger-rewritten` → `duplicate-id` → `no-record` → `sha-mismatch` →
- * `not-approved` → `wrong-error-policy` → `unmeasured-panel` →
- * `degraded-panel` → `ratified`.
+ * `not-approved` → `wrong-error-policy` → `wrong-strategy` →
+ * `unmeasured-panel` → `degraded-panel` → `ratified`.
  */
 export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvidence {
   const loaded = loadLedger(inputs.ledgerText);
@@ -415,7 +477,8 @@ function formatRatified(evidence: Extract<LedgerEvidence, { kind: 'ratified' }>)
     : 'base ledger not supplied — append-only not checked';
   return (
     `::notice::${TAG} ratified: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
-    `${sha}, decision ${evidence.record.decision}, ${panel}, ${policy}, ${appendOnly}.`
+    `${sha}, decision ${evidence.record.decision}, strategy: ${evidence.record.strategy}, ` +
+    `${panel}, ${policy}, ${appendOnly}.`
   );
 }
 
@@ -424,6 +487,37 @@ function noRecordBody(recordCount: number): string {
   return recordCount === 0
     ? 'the committed ledger is empty — no panel record ratifies this PR'
     : `none of the ${String(recordCount)} record(s) in the committed ledger ratifies this PR`;
+}
+
+/** The reason text for a refusal that names its record — the `BOUND_RECORD_CHECKS` kinds. */
+function boundRecordBody(evidence: BoundRecordRefusal): string {
+  const id = `record '${evidence.record.id}'`;
+  switch (evidence.kind) {
+    case 'not-approved':
+      return `${id} binds this PR with decision '${evidence.record.decision}'`;
+    case 'wrong-error-policy':
+      return (
+        `${id} was approved under errorPolicy '${evidence.errorPolicy}' ` +
+        `— a governor ratification must run under '${REQUIRED_ERROR_POLICY}'`
+      );
+    case 'wrong-strategy':
+      return (
+        `${id} was approved at strategy '${evidence.strategy}', below the governor bar ` +
+        `— a governor ratification must run at one of ` +
+        `${[...GOVERNOR_STRATEGIES].map((s) => `'${s}'`).join(', ')} (supermajority, 0.667)`
+      );
+    case 'unmeasured-panel':
+      return (
+        `${id} binds this PR but ${evidence.reason} — the record cannot ` +
+        'show the panel ran whole, and absence is not measured as whole'
+      );
+    case 'degraded-panel':
+      return (
+        `${id} was approved with ${String(evidence.coverage.errored)} of ` +
+        `${String(evidence.coverage.requested)} seat(s) errored (${evidence.coverage.erroredRoles.join(', ')}) ` +
+        '— a governor ratification must run whole under absolute_quorum'
+      );
+  }
 }
 
 /** The reason text for every non-ratified kind; the caller adds the annotation prefix and the flip note. */
@@ -435,24 +529,6 @@ function warningBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): s
       return (
         `record(s) ratify this PR at ${evidence.found.join(', ')}, not at the accepted head(s) ` +
         `${evidence.accepted.join(', ')} — the panel saw a different diff`
-      );
-    case 'not-approved':
-      return `record '${evidence.record.id}' binds this PR with decision '${evidence.record.decision}'`;
-    case 'wrong-error-policy':
-      return (
-        `record '${evidence.record.id}' was approved under errorPolicy '${evidence.errorPolicy}' ` +
-        `— a governor ratification must run under '${REQUIRED_ERROR_POLICY}'`
-      );
-    case 'unmeasured-panel':
-      return (
-        `record '${evidence.record.id}' binds this PR but ${evidence.reason} — the record cannot ` +
-        'show the panel ran whole, and absence is not measured as whole'
-      );
-    case 'degraded-panel':
-      return (
-        `record '${evidence.record.id}' was approved with ${String(evidence.coverage.errored)} of ` +
-        `${String(evidence.coverage.requested)} seat(s) errored (${evidence.coverage.erroredRoles.join(', ')}) ` +
-        '— a governor ratification must run whole under absolute_quorum'
       );
     case 'ledger-invalid':
       return evidence.detail;
@@ -467,6 +543,9 @@ function warningBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): s
         `${evidence.ids.map((id) => `'${id}'`).join(', ')} name(s) more than one record with different ` +
         "content; the ledger is ambiguous until the line that is not the panel's is removed"
       );
+    default:
+      // Narrowed to the kinds that carry a record: every `BOUND_RECORD_CHECKS` refusal.
+      return boundRecordBody(evidence);
   }
 }
 
