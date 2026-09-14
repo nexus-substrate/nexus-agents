@@ -374,13 +374,9 @@ describe('buildSuccessResponse token provenance (#5536)', () => {
     expect(response.tokensMeasured).toBe(true);
   });
 
-  it('threads unmeasured provenance through the registered task and notifier', async () => {
-    const { response, completion } = await executeRegisteredExpert(0, false);
-
-    expect(response).toMatchObject({ tokensUsed: 0, tokensMeasured: false });
-    expect(completion).toMatchObject({ tokenUsage: 0, tokensMeasured: false });
-  });
-
+  // Seam case (#6148): the registered task handler runs the REAL
+  // handleExecuteExpert through the injected execute path. The per-branch
+  // provenance cases live in execute-expert-task-handler.test.ts.
   it('threads measured provenance through the registered task and notifier', async () => {
     const { response, completion } = await executeRegisteredExpert(321, true);
 
