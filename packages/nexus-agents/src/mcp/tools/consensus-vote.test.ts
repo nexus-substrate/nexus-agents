@@ -476,6 +476,7 @@ describe('ConsensusVoteResponse structure', () => {
       contrarianCheck: 'skipped',
       durationMs: 5000,
       simulateVotes: false,
+      panelDiversity: { distinctModels: 1, fallbacks: 0 },
       voteRecordPersisted: true,
     };
 
@@ -507,6 +508,7 @@ describe('ConsensusVoteResponse structure', () => {
       contrarianCheck: 'skipped',
       durationMs: 4500,
       simulateVotes: false,
+      panelDiversity: { distinctModels: 0, fallbacks: 0 },
       voteRecordPersisted: false,
     };
 
@@ -1730,10 +1732,15 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
         error: false,
         modelUsed: 'claude-sonnet',
         rejectionCategories: [],
+        // #6115: present only on a seat that answered elsewhere; set here so
+        // the strict parse covers the shape.
+        fallback: { fromCli: 'codex', fromModel: 'codex-5.3', reason: 'capacity' },
       },
     ],
     durationMs: 4321,
     simulateVotes: false,
+    // #6115: always present on the response; the key-parity guard covers it.
+    panelDiversity: { distinctModels: 1, fallbacks: 1 },
     higherOrderMetadata: {
       posteriorApproval: 0.8,
       posteriorRejection: 0.2,
@@ -1755,6 +1762,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
         {
           role: 'architect',
           model: 'claude-sonnet',
+          assignedCli: 'codex',
           inputTokens: 1000,
           outputTokens: 200,
           costUsd: 0.006,

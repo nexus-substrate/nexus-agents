@@ -15,7 +15,12 @@
  */
 
 import { z } from 'zod';
-import type { AgentVoteResult, VotingResult } from '../../cli/vote-types.js';
+import type { AgentVoteResult, SeatFallback, VotingResult } from '../../cli/vote-types.js';
+import {
+  panelDiversityOf,
+  singleModelPanelWarning,
+  type PanelDiversity,
+} from '../../cli/vote-diversity.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
 import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import {
@@ -346,6 +351,12 @@ export interface AgentVoteSummary {
    * considered abstention.
    */
   unverifiable?: true;
+  /**
+   * Present only when this seat answered on a different CLI or model than it
+   * was assigned (#6115): where it was meant to answer and the adapter error
+   * class that moved it. `panelDiversity.fallbacks` counts these seats.
+   */
+  fallback?: SeatFallback;
 }
 
 /**
@@ -505,6 +516,15 @@ export interface ConsensusVoteResponse {
    */
   panelWarning?: string;
   /**
+   * #6115: how many distinct models answered and how many seats answered
+   * somewhere other than where they were assigned. Always present, explicit
+   * zeros included — three consecutive 7-seat panels ran every seat on one
+   * model after the claude and codex seats fell over, and the response read
+   * identically to a three-model panel. `panelWarning` names a single-model
+   * panel of 3+ seats.
+   */
+  panelDiversity: PanelDiversity;
+  /**
    * Per-decision cost rollup (#3855): per-voter / per-model token + USD totals
    * for this governed decision. Rides the existing response — no new MCP tool.
    * Totals are a floor when `costSummary.unmeasuredVoters > 0` (voters whose
@@ -630,6 +650,8 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     ...(result.retried === true ? { retried: true } : {}),
     // #6094: same rule for a seat that could not read the artifact.
     ...(result.source === 'unverifiable' ? { unverifiable: true as const } : {}),
+    // #6115: and for a seat that answered elsewhere.
+    ...(result.fallback !== undefined ? { fallback: result.fallback } : {}),
   };
 }
 
@@ -1041,6 +1063,8 @@ export function buildResponse(
     durationMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
     project: disclosedProject(input, result),
+    // #6115: always present — a panel nobody answered is explicit zeros.
+    panelDiversity: panelDiversityOf(result.votes),
     // #3991: surface the authentic-vote-record persistence outcome so a skipped
     // or failed persist is visible to the MCP caller (was WARN-only).
     voteRecordPersisted: voteRecord?.persisted ?? false,
@@ -1111,6 +1135,9 @@ function applyOptionalResponseFields(
     response,
     unverifiableSeatsWarning(response.voteCounts.unverifiable, result.votes.length)
   );
+  // #6115: a 3+ panel whose every answering seat ran on ONE model. Appended for
+  // the same reason as the two above.
+  appendPanelWarning(response, singleModelPanelWarning(result.votes));
   // #5360: a proposal that names alternatives while `options` is undefined
   // records a split as uniform approval — every voter approves the ACT of
   // deciding, not a side. A 3-3 tie was recorded as `APPROVED 83.3%` that way.

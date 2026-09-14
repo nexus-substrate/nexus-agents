@@ -15,6 +15,7 @@
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import { createErrorVoteResult, delay } from './voter-execution.js';
+import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
 
 export interface VoteOptions {
   readonly timeoutMs: number;
@@ -91,9 +92,17 @@ function adapterCliKey(adapter: IModelAdapter): string {
   return (adapter as { name?: string }).name ?? adapter.providerId;
 }
 
-/** Preserve the panel resolver's primary assignment across fallback execution. */
-function withPinnedModel(result: AgentVoteResult, pinnedModel: string): AgentVoteResult {
-  return { ...result, pinnedModel };
+/**
+ * Preserve the panel resolver's primary assignment across fallback execution:
+ * the model it pinned, and (#6115) the CLI it chose, which unlike the model is
+ * known before detection and so survives the `pending-detection` placeholder.
+ */
+function withAssignment(
+  result: AgentVoteResult,
+  pinnedModel: string,
+  assignedKey: string
+): AgentVoteResult {
+  return withAssignedCli({ ...result, pinnedModel }, assignedKey);
 }
 
 /**
@@ -163,21 +172,30 @@ async function launchRoleVote(
   if (index > 0 && input.interDelay > 0) await delay(input.interDelay);
   const adapter = input.roleAdapters.get(role) ?? input.fallbackAdapter;
   const pinnedModel = adapter.modelId;
+  const assignedKey = adapterCliKey(adapter);
+  const stamp = (r: AgentVoteResult): AgentVoteResult =>
+    withAssignment(r, pinnedModel, assignedKey);
   if (cancelled(input.signal)) {
-    return withPinnedModel(createErrorVoteResult(role, CANCELLED_MESSAGE, 0), pinnedModel);
+    return stamp(createErrorVoteResult(role, CANCELLED_MESSAGE, 0));
   }
   const primary = await voteOnAdapter(role, adapter);
-  if (!shouldRetryOnFallback(primary, adapter, input.fallbackAdapter)) {
-    return withPinnedModel(primary, pinnedModel);
-  }
-  if (cancelled(input.signal)) return withPinnedModel(primary, pinnedModel);
+  if (!shouldRetryOnFallback(primary, adapter, input.fallbackAdapter)) return stamp(primary);
+  if (cancelled(input.signal)) return stamp(primary);
   input.logger.warn('Voter failed on diverse adapter; retrying on fallback (#3587)', {
     role,
-    failedCli: adapterCliKey(adapter),
+    failedCli: assignedKey,
     fallbackCli: adapterCliKey(input.fallbackAdapter),
     error: primary.error,
   });
-  return withPinnedModel(await voteOnAdapter(role, input.fallbackAdapter), pinnedModel);
+  const recovered = await voteOnAdapter(role, input.fallbackAdapter);
+  if (recovered.source === 'error') return stamp(recovered);
+  // #6115: the seat ANSWERED somewhere other than where it was assigned. Say
+  // where it was meant to answer and which error class moved it, so a panel
+  // that collapsed onto one model during a capacity window is legible in the
+  // result rather than only in this log line. A seat that errored on the
+  // fallback too answered nowhere and carries no fallback.
+  const fallback = crossCliFallback(adapter, assignedKey, primary.error ?? '');
+  return stamp({ ...recovered, fallback });
 }
 
 export async function launchVotesWithOverallDeadline(

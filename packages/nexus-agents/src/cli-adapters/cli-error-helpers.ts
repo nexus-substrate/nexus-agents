@@ -33,6 +33,19 @@ export function isRetryableErrorCode(code: CliErrorCode): boolean {
 }
 
 /**
+ * Text patterns that classify a CLI failure as `TIMEOUT`. One list, shared by
+ * the subprocess stderr classifier and the voter fallover disclosure (#6115)
+ * so the reason a seat fell over is the class the adapter layer assigned.
+ */
+const TIMEOUT_TEXT_PATTERNS = ['timeout', 'timed out', 'etimedout'] as const;
+
+/** Whether an error message names a timeout (the `TIMEOUT` code's text signature). */
+export function isTimeoutText(text: string): boolean {
+  const lower = text.toLowerCase();
+  return TIMEOUT_TEXT_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
  * Constructs a CliError with `retryable` auto-derived from the code.
  * Every adapter that needs to surface a CliError should prefer this
  * helper (or the `createError` method on `BaseCliAdapter`, which calls

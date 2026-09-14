@@ -1043,3 +1043,93 @@ describe('voteCommand — target project (#6110)', () => {
     expect(formatVoteComment(createMockVotingResult())).toContain('**Project: unresolved**');
   });
 });
+
+describe('voteCommand — panel model diversity line (#6115)', () => {
+  /** A 3-seat panel where devex fell over from codex to gemini on a capacity error. */
+  function panelWithFallover(): AgentVoteResult[] {
+    return [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+        cli: 'cli-claude',
+        model: 'claude-opus',
+        assignedCli: 'claude',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+        cli: 'cli-gemini',
+        model: 'gemini-3.1-pro-preview',
+        assignedCli: 'gemini',
+      },
+      {
+        role: 'devex',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 10,
+        source: 'llm',
+        cli: 'cli-gemini',
+        model: 'gemini-3.1-pro-preview',
+        assignedCli: 'codex',
+        fallback: { fromCli: 'codex', reason: 'capacity' },
+      },
+    ];
+  }
+
+  let stdout: string[];
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    recordAuthenticVoteMock.mockReset();
+    recordAuthenticVoteMock.mockReturnValue(
+      persistedOutcome() as unknown as {
+        persisted: boolean;
+        record: { id: string; sequence: number };
+      }
+    );
+    stdout = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('prints one summary line naming the distinct models and each fallback', async () => {
+    executeVotingMock.mockResolvedValue({
+      ...createMockVotingResult({ votes: panelWithFallover() }),
+      strategy: 'simple_majority',
+      decision: 'approved',
+    });
+    await voteCommand({ proposal: 'p', quick: true });
+    expect(stdout.join('')).toContain(
+      'Models: 2 distinct, 1 fallbacks (devex: codex→gemini, capacity)'
+    );
+  });
+
+  it('prints explicit zeros for a clean panel', async () => {
+    executeVotingMock.mockResolvedValue({
+      ...createMockVotingResult({ votes: panelWithFallover().slice(0, 2) }),
+      strategy: 'simple_majority',
+      decision: 'approved',
+    });
+    await voteCommand({ proposal: 'p', quick: true });
+    expect(stdout.join('')).toContain('Models: 2 distinct, 0 fallbacks');
+  });
+
+  it('the GitHub comment carries the same line', () => {
+    const comment = formatVoteComment(
+      createMockVotingResult({ votes: panelWithFallover() }),
+      'approved'
+    );
+    expect(comment).toContain(
+      '**Models: 2 distinct, 1 fallbacks (devex: codex→gemini, capacity)**'
+    );
+  });
+});

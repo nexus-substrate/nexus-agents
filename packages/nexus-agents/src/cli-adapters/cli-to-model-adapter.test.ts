@@ -101,6 +101,37 @@ describe('CliToModelAdapter.complete', () => {
     }
   });
 
+  it('carries the in-family model substitution up as fallbackFrom (#6120 → #6115)', async () => {
+    const adapter = new CliToModelAdapter(
+      makeMockCliAdapter({
+        execute: vi.fn().mockResolvedValue({
+          ok: true,
+          value: { text: 'ok', model: 'opus', fallbackFrom: 'fable' } satisfies CliResponse,
+        }),
+      })
+    );
+    const result = await adapter.complete({ messages: [{ role: 'user', content: 'vote' }] });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.model).toBe('opus');
+      expect(result.value.fallbackFrom).toBe('fable');
+    }
+  });
+
+  it('an un-substituted answer carries no fallbackFrom key', async () => {
+    const adapter = new CliToModelAdapter(
+      makeMockCliAdapter({
+        execute: vi.fn().mockResolvedValue({
+          ok: true,
+          value: { text: 'ok', model: 'fable' } satisfies CliResponse,
+        }),
+      })
+    );
+    const result = await adapter.complete({ messages: [{ role: 'user', content: 'vote' }] });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect('fallbackFrom' in result.value).toBe(false);
+  });
+
   it('absent or empty stderr stays absent — never an empty-string signal', async () => {
     const adapter = new CliToModelAdapter(
       makeMockCliAdapter({

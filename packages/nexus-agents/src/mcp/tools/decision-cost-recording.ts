@@ -82,6 +82,8 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
     const input: VoterCostInput = {
       role: v.role,
       model: v.model,
+      // #6115: the assignment beside the model that answered.
+      ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
       ...reportedTokenFields(v),
       ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
       // #4406 — state what kind of rate the cost rests on, but only when we

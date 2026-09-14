@@ -10,6 +10,8 @@
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import { getErrorMessage } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
+import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
+import type { VoterRole } from './vote-types.js';
 
 /** The adapter-bearing subset of the collect options this module needs. */
 export interface AdapterResolveOptions {
@@ -73,4 +75,23 @@ export function resolveAdapterOrFail(
     `No adapter available for voting: ${resolved.error}. ` +
       'Install a CLI (claude/gemini/codex) or set ANTHROPIC_API_KEY.'
   );
+}
+
+/**
+ * #2659 — warn (don't block) when more voter roles land on Codex than its
+ * default `max_threads`, e.g. a single-CLI fallback with a full panel.
+ * Moved here from `voter-agents.ts` when the #6136/#6115 rebase put that
+ * file over its line cap.
+ */
+export function warnIfCodexConcurrencyExceeded(
+  roleAdapters: ReadonlyMap<VoterRole, IModelAdapter>,
+  logger: ILogger
+): void {
+  const codexBound = [...roleAdapters.values()].filter(
+    (a) => (a as { name?: string }).name === 'codex'
+  ).length;
+  const warning = checkCodexConcurrency(codexBound);
+  if (warning !== null) {
+    logger.warn('Codex concurrency limit may be exceeded', { detail: warning });
+  }
 }

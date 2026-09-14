@@ -19,24 +19,27 @@
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { resolveVoterModelOverrides } from './voter-model-overrides.js';
 import { VOTER_ROLES } from './vote-types.js';
-import type { Vote } from '../consensus/types.js';
-import type { VoteUsage } from './voter-execution.js';
+import type { VoteOutcome } from './voter-execution.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
 import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
-import { checkCodexConcurrency } from '../cli-adapters/codex-limits.js';
 import { countDistinctModels } from '../config/model-equivalence.js';
 import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
 import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
-import { NoAdapterError, resolveAdapterOrFail } from './voter-adapter-resolve.js';
+import {
+  NoAdapterError,
+  resolveAdapterOrFail,
+  warnIfCodexConcurrencyExceeded,
+} from './voter-adapter-resolve.js';
 import {
   classifyUnverifiable,
   markUnverifiable,
   type UnverifiableReasoningRule,
 } from './voter-unverifiable.js';
+import { inFamilyFallback } from './voter-fallback.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
 export { NoAdapterError };
@@ -146,8 +149,7 @@ const defaultLogger = createLogger({ component: 'voter-agents' });
  */
 function buildLlmVoteResult(
   role: VoterRole,
-  vote: Vote,
-  usage: VoteUsage,
+  { vote, usage, fallbackFrom }: VoteOutcome,
   adapter: IModelAdapter,
   processingTimeMs: number
 ): AgentVoteResult {
@@ -158,6 +160,11 @@ function buildLlmVoteResult(
     source: 'llm',
     cli: adapter.providerId,
     model: adapter.modelId,
+    // #6115: the CLI answered on another model of its family (#6120) — a
+    // capacity fallback by construction, disclosed on the seat.
+    ...(fallbackFrom !== undefined
+      ? { fallback: inFamilyFallback(adapter.providerId, fallbackFrom) }
+      : {}),
     // #4472: surface the voter's choice at the result level, where the tally
     // and the record read it. Absent when no options were declared or the
     // selection matched none of them.
@@ -240,7 +247,7 @@ export async function executeAgentVote(
   const processingTimeMs = getTimeProvider().now() - start;
 
   if (result.ok) {
-    const built = buildLlmVoteResult(role, result.vote, result.usage, adapter, processingTimeMs);
+    const built = buildLlmVoteResult(role, result, adapter, processingTimeMs);
     return finalizeParsedVote(built, result.cliStderr, logger);
   }
 
@@ -307,23 +314,6 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
    * every error policy, per the #5578 design panel (option b, 6 of 6).
    */
   readonly erroredRoleBackoffMs?: number | undefined;
-}
-
-/**
- * #2659 — warn (don't block) when more voter roles land on Codex than its
- * default `max_threads`, e.g. a single-CLI fallback with a full panel.
- */
-function warnIfCodexConcurrencyExceeded(
-  roleAdapters: ReadonlyMap<VoterRole, IModelAdapter>,
-  logger: ILogger
-): void {
-  const codexBound = [...roleAdapters.values()].filter(
-    (a) => (a as { name?: string }).name === 'codex'
-  ).length;
-  const warning = checkCodexConcurrency(codexBound);
-  if (warning !== null) {
-    logger.warn('Codex concurrency limit may be exceeded', { detail: warning });
-  }
 }
 
 /** Assigns a single adapter to all roles (fallback path). */

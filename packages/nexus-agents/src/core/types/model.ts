@@ -188,6 +188,14 @@ export interface CompletionResponse {
    */
   cliStderr?: string;
   /**
+   * The model the caller asked for, when a CLI bridge answered with a different
+   * one from the same family (#6120): the claude adapter substitutes the next
+   * registry alias after an out-of-credits envelope. Present only on a
+   * substituted response, so the voter path can disclose which model actually
+   * voted (#6115). Absent means the requested model answered.
+   */
+  fallbackFrom?: string;
+  /**
    * Request params the adapter dropped before sending (#4069, epic #4066 layer 3).
    * Present (and non-empty) only when a param was silently unsupported — e.g. a
    * post-Opus-4.6 Claude or OpenAI reasoning model that rejects `temperature`. The

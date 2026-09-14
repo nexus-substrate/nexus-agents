@@ -7,7 +7,9 @@
  * @module cli/vote-summary-lines
  */
 import { colors } from './ansi-output.js';
-import type { VotingResult } from './vote-types.js';
+import { formatPercentage } from '../core/index.js';
+import { VOTER_ROLES, type AgentVoteResult, type VotingResult } from './vote-types.js';
+import { panelDiversityOf, seatFallbacks, type SeatFallbackDetail } from './vote-diversity.js';
 import type { ResolvedVoterProject } from './voter-project.js';
 import type { ContrarianCheckStatus } from '../mcp/tools/consensus-vote-types.js';
 
@@ -42,6 +44,55 @@ export function contrarianCheckLine(status: ContrarianCheckStatus): string {
 export function contrarianCheckSummaryLine(status: ContrarianCheckStatus): string {
   const tint = status === 'errored' ? colors.red : '';
   return `  ${tint}${contrarianCheckLine(status)}${colors.reset}`;
+}
+
+/**
+ * One fallback as the models line names it: `devex: codex→gemini, capacity`
+ * for a cross-CLI fallover, `pm: claude-fable-5→claude-opus, capacity` for
+ * an in-family substitution (same CLI, different model, #6120).
+ */
+function fallbackLabel({ role, fallback, toCli, toModel }: SeatFallbackDetail): string {
+  const inFamily = fallback.fromCli === toCli && fallback.fromModel !== undefined;
+  const from = inFamily ? fallback.fromModel : fallback.fromCli;
+  const to = inFamily ? (toModel ?? toCli) : toCli;
+  return `${role}: ${from}→${to}, ${fallback.reason}`;
+}
+
+/**
+ * The one-line rendering of panel model diversity (#6115) —
+ * `Models: 3 distinct, 2 fallbacks (devex: codex→gemini, capacity)`.
+ *
+ * Always emitted, explicit zeros included: the three single-model panels
+ * that motivated it read exactly like a three-model panel because nothing
+ * was printed. Plain text — the terminal summary indents it, the GitHub
+ * comment bolds it.
+ */
+export function modelsLine(votes: readonly AgentVoteResult[]): string {
+  const { distinctModels, fallbacks } = panelDiversityOf(votes);
+  const detail = seatFallbacks(votes).map(fallbackLabel).join('; ');
+  return (
+    `Models: ${String(distinctModels)} distinct, ${String(fallbacks)} fallbacks` +
+    (detail === '' ? '' : ` (${detail})`)
+  );
+}
+
+/**
+ * One `| Agent | Decision | Confidence |` row of the GitHub comment. Moved
+ * here from `vote-command.ts` when #6115 put that file over its line cap.
+ *
+ * `createErrorVoteResult` gives a failed seat `decision: 'abstain',
+ * confidence: 0`. Dropping `source` published a timed-out or auth-failed
+ * voter as a genuine ABSTAIN — indistinguishable, in the durable
+ * governance artifact, from a voter that convened and declined.
+ */
+const ABSENT_SEAT_LABEL = { error: 'ERRORED', unverifiable: 'UNVERIFIABLE' } as const;
+
+export function commentVoteRow({ role, vote, source }: AgentVoteResult): string {
+  const roleLabel = VOTER_ROLES[role].split(' - ')[0] ?? role;
+  const absent = source === 'error' || source === 'unverifiable';
+  const decision = absent ? ABSENT_SEAT_LABEL[source] : vote.decision.toUpperCase();
+  const confidence = absent ? '—' : formatPercentage(vote.confidence);
+  return `| ${roleLabel} | ${decision} | ${confidence} |`;
 }
 
 /**

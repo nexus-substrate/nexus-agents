@@ -1300,6 +1300,14 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
         error: z.boolean(),
         /** #6094: present only when the seat could not read the artifact. */
         unverifiable: z.literal(true).optional(),
+        /** #6115: present only when the seat answered elsewhere than assigned. */
+        fallback: z
+          .object({
+            fromCli: z.string().max(100),
+            fromModel: z.string().max(100).optional(),
+            reason: z.enum(['rate-limit', 'capacity', 'auth', 'timeout', 'sandbox', 'unknown']),
+          })
+          .optional(),
         modelUsed: z.string().max(100).optional(),
         rejectionCategories: z
           .array(
@@ -1356,6 +1364,15 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   // omitted from this schema until #4032 — its absence made a strict MCP client
   // reject any degraded-panel vote (`-32602 additional properties`).
   panelWarning: z.string().optional(),
+  // #6115: distinct answering models and seats that answered elsewhere than
+  // assigned. Always on the response (explicit zeros); optional here only
+  // because the async `pending` envelope shares this schema.
+  panelDiversity: z
+    .object({
+      distinctModels: z.number().int().nonnegative(),
+      fallbacks: z.number().int().nonnegative(),
+    })
+    .optional(),
   // #3855: per-decision cost rollup. Same omission as panelWarning (#4032) — it
   // is present on the response whenever cost recording succeeds (common in `api`
   // billing mode). Shared schema lives with the type (single source of truth).

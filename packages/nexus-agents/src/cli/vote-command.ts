@@ -40,8 +40,10 @@ import type {
 } from '../mcp/tools/consensus-vote-types.js';
 import { toRecordDecision } from '../mcp/tools/consensus-vote-types.js';
 import {
+  commentVoteRow,
   contrarianCheckLine,
   contrarianCheckSummaryLine,
+  modelsLine,
   projectLine,
   tallySummaryLine,
   type VotingResultWithProject,
@@ -195,6 +197,8 @@ function printSummary(ctx: SummaryContext): void {
   writeLine(`  Approval: ${approvalPercentage.toFixed(1)}%`);
   writeLine(`  Threshold: ${threshold}`);
   writeLine(`  ${projectLine(ctx.project)}`);
+  // #6115: always printed, zeros included — a collapsed panel read as diverse without it.
+  writeLine(`  ${modelsLine(votes)}`);
 
   // Yellow for a void: it is neither an approval nor the panel rejecting, and
   // the colour is the first thing a human reads.
@@ -379,7 +383,7 @@ export function formatVoteComment(
 
   const effectiveDecision = decision ?? mapOutcomeToDecision(result.result.outcome);
   const { emoji: outcomeEmoji, text: outcomeText } = decisionResultLabel(effectiveDecision);
-  const voteRows = result.votes.map(formatCommentRow).join('\n');
+  const voteRows = result.votes.map(commentVoteRow).join('\n');
 
   return `## Consensus Vote Result
 
@@ -396,27 +400,10 @@ ${voteRows}
 
 **Summary:** ${tallySummaryLine(result)}
 **${contrarianCheckLine(contrarianCheck)}**
+**${modelsLine(result.votes)}**
 
 ---
 *Vote conducted per CLAUDE.md Consensus Voting Protocol*`;
-}
-
-/**
- * One `| Agent | Decision | Confidence |` row of the GitHub comment.
- *
- * `createErrorVoteResult` gives a failed seat `decision: 'abstain',
- * confidence: 0`. Dropping `source` published a timed-out or auth-failed
- * voter as a genuine ABSTAIN — indistinguishable, in the durable
- * governance artifact, from a voter that convened and declined.
- */
-const ABSENT_SEAT_LABEL = { error: 'ERRORED', unverifiable: 'UNVERIFIABLE' } as const;
-
-function formatCommentRow({ role, vote, source }: AgentVoteResult): string {
-  const roleLabel = VOTER_ROLES[role].split(' - ')[0] ?? role;
-  const absent = source === 'error' || source === 'unverifiable';
-  const decision = absent ? ABSENT_SEAT_LABEL[source] : vote.decision.toUpperCase();
-  const confidence = absent ? '—' : formatPercentage(vote.confidence);
-  return `| ${roleLabel} | ${decision} | ${confidence} |`;
 }
 
 /**
