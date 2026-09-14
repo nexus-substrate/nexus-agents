@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseArgs } from 'node:util';
 import { PARSE_ARGS_CONFIG } from './cli-types.js';
+import { VOTE_TIMEOUTS } from './config/timeouts.js';
 
 describe('PARSE_ARGS_CONFIG short flags', () => {
   it('assigns each short flag to exactly one option', () => {
@@ -79,5 +80,21 @@ describe('--option is repeatable (#4941)', () => {
     });
 
     expect(values.option).toBeUndefined();
+  });
+});
+
+describe('--timeout defaults to VOTE_TIMEOUTS.defaultMs (#6236)', () => {
+  it('parses an argv with no --timeout to the documented default', () => {
+    // `vote --help` said 300 (#4965) while this config hard-coded '90', so an
+    // operator trusting the help ran every seat at less than a third of the
+    // #1640 budget. The default is read from the constant, not spelled here.
+    const { values } = parseArgs({
+      args: ['vote', '-p', 'x'],
+      options: PARSE_ARGS_CONFIG.options,
+      allowPositionals: true,
+      strict: false,
+    });
+
+    expect(values.timeout).toBe(String(VOTE_TIMEOUTS.defaultMs / 1000));
   });
 });

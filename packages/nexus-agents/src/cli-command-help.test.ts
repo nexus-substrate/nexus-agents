@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { COMMAND_HELP, formatCommandHelp, formatAllCommandsHelp } from './cli-command-help.js';
 import { getCommandDescription } from './cli-command-catalog.js';
 import { VOTE_TIMEOUTS } from './config/timeouts.js';
+import { PARSE_ARGS_CONFIG } from './cli-types.js';
 
 // ============================================================================
 // Help metadata registry
@@ -155,5 +156,19 @@ describe('vote --timeout documents the real default (#4965)', () => {
 
     expect(flag).toBeDefined();
     expect(flag?.defaultValue).toBe(String(VOTE_TIMEOUTS.defaultMs / 1000));
+  });
+
+  it('renders the constant, and the same number parseArgs applies (#6236)', () => {
+    // #4965 corrected the help to 300 but left `PARSE_ARGS_CONFIG.timeout`
+    // at '90', so the help and the applied value disagreed for a year. The
+    // rendered line is what the operator reads; it must carry the number
+    // derived from the constant AND match what an argv with no --timeout gets.
+    const help = formatCommandHelp('vote')!;
+    const line = help.split('\n').find((l) => l.includes('--timeout=<seconds>'));
+    const documented = `(default: ${String(VOTE_TIMEOUTS.defaultMs / 1000)})`;
+
+    expect(line).toBeDefined();
+    expect(line).toContain(documented);
+    expect(line).toContain(`(default: ${PARSE_ARGS_CONFIG.options.timeout.default})`);
   });
 });

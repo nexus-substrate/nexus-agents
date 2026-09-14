@@ -17,6 +17,7 @@ import type {
 import type { NoQuorumPolicy } from './cli/vote-types.js';
 import type { VoteRecordPrBinding } from './audit/vote-record.js';
 import type { CommandResult } from './core/command-result.js';
+import { VOTE_TIMEOUTS } from './config/timeouts.js';
 
 // Re-export help text from extracted module for backward compatibility
 export { HELP_TEXT } from './cli-help-text.js';
@@ -450,9 +451,12 @@ export const PARSE_ARGS_CONFIG = {
       short: 'q',
       default: false,
     },
+    // #6236 — seconds, read from the same constant `vote --help` renders and
+    // `runVote` falls back to. A hard-coded '90' here ran every seat at less
+    // than a third of the #1640 budget while the help said 300.
     timeout: {
       type: 'string' as const,
-      default: '90',
+      default: String(VOTE_TIMEOUTS.defaultMs / 1000),
     },
     // #2630 — error policy for the vote command.
     'error-policy': {

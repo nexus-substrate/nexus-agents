@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseCliArgs, printHelp, printVersion, EXIT_CODES, type ParsedCliArgs } from './cli.js';
 import { VERSION } from './version.js';
+import { VOTE_TIMEOUTS } from './config/timeouts.js';
 
 describe('CLI Argument Parsing', () => {
   describe('parseCliArgs', () => {
@@ -462,6 +463,24 @@ describe('parseCliArgs carries --option through to vote options (#4941)', () => 
     };
 
     expect(parsed.options).not.toHaveProperty('options');
+  });
+});
+
+// =============================================================================
+// --timeout default reaches the vote command's options (#6236)
+// =============================================================================
+
+describe('parseCliArgs applies the documented --timeout default (#6236)', () => {
+  // Measured on a real ratification panel: argv with no `--timeout` printed
+  // `timeout: 90s each` while `--help` said 300, and three gemini seats timed
+  // out. The parse default and the help must both derive from
+  // `VOTE_TIMEOUTS.defaultMs`.
+  it('yields timeoutMs === VOTE_TIMEOUTS.defaultMs when --timeout is absent', () => {
+    const parsed = parseCliArgs(['vote', '-p', 'x']) as ParsedCliArgs & {
+      options?: { timeoutMs?: number };
+    };
+
+    expect(parsed.options?.timeoutMs).toBe(VOTE_TIMEOUTS.defaultMs);
   });
 });
 

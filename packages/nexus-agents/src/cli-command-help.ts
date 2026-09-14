@@ -14,6 +14,7 @@
  */
 
 import { getCommandDescription } from './cli-command-catalog.js';
+import { VOTE_TIMEOUTS } from './config/timeouts.js';
 
 /**
  * Flag metadata for a CLI command.
@@ -98,9 +99,11 @@ const VOTE_HELP: CommandHelpEntry = {
     {
       flag: '--timeout=<seconds>',
       description: 'Timeout per vote in seconds',
-      // VOTE_TIMEOUTS.defaultMs, raised to 300s by #1640 after architecture and
-      // security voters were observed averaging 315s. The help said 90 (#4965).
-      defaultValue: '300',
+      // Rendered from VOTE_TIMEOUTS.defaultMs (300s since #1640, after
+      // architecture and security voters were observed averaging 315s). The
+      // help said 90 (#4965); then the parseArgs default said 90 while the
+      // help said 300 (#6236). Both now read the constant.
+      defaultValue: String(VOTE_TIMEOUTS.defaultMs / 1000),
     },
     {
       flag: '--error-policy <p>',
