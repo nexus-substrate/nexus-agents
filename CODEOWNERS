@@ -43,6 +43,9 @@
 /.github/workflows/governor-review.yml @williamzujkowski
 /scripts/check-governor-review.ts @williamzujkowski
 /scripts/check-governor-ratification.ts @williamzujkowski
+# #5130 step 2 — the committed-ledger half of the ratification gate; decides
+# what counts as a panel record that ratifies a PR.
+/scripts/governor-ledger-evidence.ts @williamzujkowski
 # #6174 — asks GitHub's own parser whether this file is valid at the sha under review.
 /scripts/check-codeowners-errors.ts @williamzujkowski
 # #6174 — files that must NOT exist. GitHub reads .github/CODEOWNERS over this
