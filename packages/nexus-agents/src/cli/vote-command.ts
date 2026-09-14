@@ -30,7 +30,7 @@ import { VOTER_ROLES } from './voter-roles.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult } from '../consensus/types.js';
 import { DEFAULT_VOTE_TIMEOUT_MS, type AgentVoteResult } from './voter-agents.js';
 import type { ResolvedVoterProject } from './voter-project.js';
-import { validateTimeout } from '../config/timeouts.js';
+import { validateTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
 import { executeVoting } from '../mcp/tools/consensus-vote.js';
 import type {
   ConsensusVoteInput,
@@ -474,8 +474,12 @@ async function runVote(options: VoteCommandOptions): Promise<CliVoteResult> {
   const timeoutSec = timeoutMs / 1000;
 
   if (clamped) {
+    // Both bounds are rendered from the constants validateTimeout clamps to.
+    // A spelled-out `max: 300s` outlived the ceiling's move to 600 s (#6242).
+    const minSec = VOTE_TIMEOUTS.minMs / 1000;
+    const maxSec = VOTE_TIMEOUTS.maxMs / 1000;
     writeLine(
-      `${colors.yellow}Timeout adjusted to ${String(timeoutSec)}s (min: 30s, max: 300s)${colors.reset}\n`
+      `${colors.yellow}Timeout adjusted to ${String(timeoutSec)}s (min: ${String(minSec)}s, max: ${String(maxSec)}s)${colors.reset}\n`
     );
   }
 

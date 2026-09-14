@@ -3,7 +3,7 @@
  * (Source: Issue #227)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { VotingResult } from './vote-types.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from './voter-agents.js';
@@ -34,6 +34,7 @@ import {
   voteCommand,
 } from './vote-command.js';
 import { auditLineFor } from './vote-audit-line.js';
+import { VOTE_TIMEOUTS } from '../config/timeouts.js';
 
 function createMockConsensusResult(overrides: Partial<ConsensusResult> = {}): ConsensusResult {
   return {
@@ -640,6 +641,55 @@ describe('voteCommand — exit-code mapping for no_quorum (#4135)', () => {
   it('a rejected decision → exit 1 (unchanged)', async () => {
     executeVotingMock.mockResolvedValue(extendedResult('rejected'));
     expect(await voteCommand({ proposal: 'p', onNoQuorum: 'exit2' })).toBe(1);
+  });
+});
+
+describe('voteCommand — the clamp message names the real bounds (#6242)', () => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function approvedResult() {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult(),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision: 'approved',
+    };
+  }
+
+  let stdout: string[];
+  let stdoutSpy: MockInstance;
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    safeExecSandboxedMock.mockReset();
+    executeVotingMock.mockResolvedValue(approvedResult());
+    stdout = [];
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+  });
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+  });
+
+  it('an over-max timeout is clamped to maxMs and the message says so, not a stale literal', async () => {
+    // The message used to spell `max: 300s` while validateTimeout clamped to
+    // VOTE_TIMEOUTS.maxMs (600 s), so the line contradicted itself.
+    await voteCommand({ proposal: 'p', timeoutMs: VOTE_TIMEOUTS.maxMs + 100_000 });
+    const line = stdout.find((l) => l.includes('Timeout adjusted'));
+    expect(line).toBeDefined();
+    expect(line).toContain(`max: ${String(VOTE_TIMEOUTS.maxMs / 1000)}s`);
+    expect(line).toContain(`min: ${String(VOTE_TIMEOUTS.minMs / 1000)}s`);
+    expect(line).toContain(`adjusted to ${String(VOTE_TIMEOUTS.maxMs / 1000)}s`);
+    expect(line).not.toContain('300s');
+  });
+
+  it('an in-range timeout prints no adjustment line', async () => {
+    await voteCommand({ proposal: 'p', timeoutMs: VOTE_TIMEOUTS.minMs });
+    expect(stdout.some((l) => l.includes('Timeout adjusted'))).toBe(false);
   });
 });
 
