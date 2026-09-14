@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.54.4
+
+### Patch Changes
+
+- [#6161](https://github.com/nexus-substrate/nexus-agents/pull/6161) [`7bc549b`](https://github.com/nexus-substrate/nexus-agents/commit/7bc549b55a55e9efd0eb75cd56209044c84847f1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `improvement-review.ts` no longer carries a raw NUL byte in its dedup-key separator (now the escape `\0`, same hash), so `grep` reads the file as text again; the arch lint now fails on any raw control byte in `packages/nexus-agents/src/**/*.ts` or `scripts/**/*.ts`, naming file:line:col ([#6149](https://github.com/nexus-substrate/nexus-agents/issues/6149)).
+
 ## 8.54.3
 
 ### Patch Changes
