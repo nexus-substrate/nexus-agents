@@ -27,7 +27,11 @@ import { BaseCliAdapter } from './base-adapter.js';
 import { buildChildEnv } from './subprocess-env.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
-import { parseCliErrorEnvelope, classifyExtractedError } from './cli-error-envelope.js';
+import {
+  parseCliErrorEnvelope,
+  classifyExtractedError,
+  isAuthFailureText,
+} from './cli-error-envelope.js';
 import { isTimeoutText } from './cli-error-helpers.js';
 import { generateHyphenId } from '../utils/id-utils.js';
 
@@ -104,7 +108,24 @@ function classifyStderrError(stderr: string): CliErrorCode {
   if (STDERR_CONNECTION_PATTERNS.some((p) => lower.includes(p))) return 'CONNECTION_ERROR';
   if (isRateLimitText(stderr)) return 'RATE_LIMITED';
   if (isTimeoutText(stderr)) return 'TIMEOUT';
+  // #6269: a credential failure is terminal for this CLI (not in
+  // RETRYABLE_ERROR_CODES) and counts as `authentication` on the breaker.
+  if (isAuthFailureText(stderr)) return 'NOT_AUTHENTICATED';
   return 'EXECUTION_ERROR';
+}
+
+/**
+ * The first non-blank stderr line, for an error message that names the cause
+ * without the stack frames and tier tables that follow it (#6269). `stderr`
+ * is already sanitized by the caller.
+ */
+function firstStderrLine(stderr: string): string {
+  return (
+    stderr
+      .split('\n')
+      .find((line) => line.trim() !== '')
+      ?.trim() ?? ''
+  );
 }
 
 const subprocessLogger = createLogger({ component: 'subprocess-adapter' });
@@ -452,7 +473,12 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     options: ResolvedExecutionOptions,
     requestId: string
   ): Promise<Result<CliResponse, CliError>> {
-    const cmdConfig = this.getCommand(task);
+    // #6277: the resolved guard reaches getCommand on the task, so an adapter
+    // whose CLI has its own wait (agy --print-timeout) can size it to the
+    // budget instead of a default that races the guard.
+    const cmdConfig = this.getCommand(
+      task.timeoutMs === undefined ? { ...task, timeoutMs: options.timeoutMs } : task
+    );
     const startTime = getTimeProvider().now();
 
     // #3026 finding 2: fast-fail if the caller already aborted before we
@@ -704,18 +730,13 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     startTime: number
   ): Result<CliResponse, CliError> {
     if (stderr !== '' && stdout === '') {
-      return err(this.createError('EXECUTION_ERROR', stderr));
+      return err(this.createError(classifyStderrError(stderr), stderr));
     }
 
     const text = this.parser.extractResponse(stdout);
-    if (text === null) {
-      // Error-only stream (e.g. OpenCode NDJSON `{"type":"error"}`): the parser
-      // surfaced an `errorMessage` but no usable content. Classify it before
-      // the generic PARSE_ERROR path, which would mask the real cause.
-      const errorOnly = this.classifyErrorOnlyStream(stdout);
-      if (errorOnly !== null) return errorOnly;
-      return this.handleUnparseableOutput(stdout, stderr, startTime);
-    }
+    if (text === null) return this.handleNoAnswer(stdout, stderr, startTime);
+    const authFailure = this.classifyEmptyAnswer(text, stderr);
+    if (authFailure !== null) return authFailure;
 
     const usage = this.parser.extractUsage(stdout);
     const sessionId = this.parser.extractSessionId(stdout);
@@ -736,6 +757,37 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         ...successStderrField(stderr),
       })
     );
+  }
+
+  /**
+   * The parser found no usable content. An error-only stream (e.g. OpenCode
+   * NDJSON `{"type":"error"}`) surfaced an `errorMessage`: classify it before
+   * the generic PARSE_ERROR path, which would mask the real cause.
+   */
+  private handleNoAnswer(
+    stdout: string,
+    stderr: string,
+    startTime: number
+  ): Result<CliResponse, CliError> {
+    const errorOnly = this.classifyErrorOnlyStream(stdout);
+    if (errorOnly !== null) return errorOnly;
+    return this.handleUnparseableOutput(stdout, stderr, startTime);
+  }
+
+  /**
+   * #6269: a well-formed envelope carrying NO answer while stderr names a
+   * credential failure is that failure, not a completion. `agy` exits 0 with
+   * `{"status":"SUCCESS","response":""}` and "Error authenticating: …" on
+   * stderr; handing "" downstream had the vote path parse it (and retry the
+   * parse) for the whole panel budget. Returns `null` — no reclassification —
+   * for a non-empty answer, and for an empty answer with stderr that names no
+   * auth failure: empty stderr is NOT evidence, so that case still flows
+   * through as the empty answer it is.
+   */
+  private classifyEmptyAnswer(text: string, stderr: string): Result<CliResponse, CliError> | null {
+    if (text.trim() !== '' || !isAuthFailureText(stderr)) return null;
+    const msg = `${this.name}: ${firstStderrLine(stderr)}`;
+    return err(this.createError('NOT_AUTHENTICATED', msg));
   }
 
   /**

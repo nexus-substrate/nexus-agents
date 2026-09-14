@@ -77,7 +77,16 @@ const LOGIN_HINTS: Record<CliName, string> = {
   opencode: 'opencode auth login',
 };
 
-const NOT_AUTH_PATTERNS: readonly RegExp[] = [
+/**
+ * The auth-failure vocabulary: the ONE list that says a CLI's credential is
+ * unusable. Read by {@link classifyMessage} (error envelopes and error-only
+ * streams), by the subprocess stderr classifier and by the voter retry loop
+ * (#6269) — a retry on the same credential cannot clear any of these, so the
+ * seat falls over to another CLI instead. Module-private (the export gate
+ * refuses a test-only export); the test names every pattern with the line
+ * that motivated it, in this order, through {@link isAuthFailureText}.
+ */
+const AUTH_FAILURE_PATTERNS: readonly RegExp[] = [
   /not logged in/i,
   /please run \/?login/i,
   /authentication (?:required|expired|failed)/i,
@@ -100,12 +109,26 @@ const NOT_AUTH_PATTERNS: readonly RegExp[] = [
   /could not be refreshed/i,
   /log ?out and sign in/i,
   /sign in again/i,
+  // #6269: the gemini/agy binary's OAuth-personal tier was discontinued; it
+  // writes "Error authenticating: IneligibleTierError: This client is no
+  // longer supported…" to stderr and may still exit 0 with an EMPTY answer.
+  // Neither word matched any pattern above, so the seat was retried as a
+  // parse failure for the whole panel budget instead of falling over.
+  /error authenticating/i,
+  /ineligible ?tier/i,
 ];
 
+/**
+ * Whether `text` names an authentication failure. The empty string is NOT one:
+ * absent stderr is no evidence, and a caller aggregating over "no output" must
+ * not read it as a credential verdict (#6269).
+ */
+export function isAuthFailureText(text: string): boolean {
+  return AUTH_FAILURE_PATTERNS.some((re) => re.test(text));
+}
+
 function classifyMessage(message: string): { code: CliErrorCode; auth: boolean } {
-  for (const re of NOT_AUTH_PATTERNS) {
-    if (re.test(message)) return { code: 'NOT_AUTHENTICATED', auth: true };
-  }
+  if (isAuthFailureText(message)) return { code: 'NOT_AUTHENTICATED', auth: true };
   return { code: 'EXECUTION_ERROR', auth: false };
 }
 
