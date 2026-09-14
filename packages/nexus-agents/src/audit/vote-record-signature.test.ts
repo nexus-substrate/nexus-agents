@@ -33,6 +33,7 @@ import type {
 import {
   runSshKeygen,
   signVoteRecordHash,
+  sshKeygenVerifyTime,
   verifyVoteRecordSignature,
 } from './vote-record-signature.js';
 
@@ -43,6 +44,12 @@ import {
 const OPERATOR = 'alice@test';
 const EXPIRED = 'expired@test';
 const FUTURE = 'future@test';
+/** Rotated out: window closed years ago, but open at the time the OLD record was made. */
+const ROTATED = 'rotated@test';
+/** Onboarded recently: valid now, but not yet at the time the OLD record was made. */
+const ONBOARDED = 'onboarded@test';
+/** A `recordedAt` inside ROTATED's window and before ONBOARDED's — long before the wall clock. */
+const OLD_RECORDED_AT = '2020-06-01T00:00:00.000Z';
 
 let dir: string;
 /** Listed as OPERATOR, inside its validity window, restricted to the namespace. */
@@ -51,6 +58,10 @@ let operatorKey: string;
 let windowedKey: string;
 /** Listed nowhere. */
 let strangerKey: string;
+/** Listed as ROTATED (valid 2020-01-01 .. 2021-01-01) — the rotation case. */
+let rotatedKey: string;
+/** Listed as ONBOARDED (valid from 2025-01-01) — the late-onboarding case. */
+let onboardedKey: string;
 let allowedSigners: string;
 
 function keygen(path: string, comment: string): void {
@@ -64,9 +75,13 @@ beforeAll(() => {
   operatorKey = join(dir, 'operator');
   windowedKey = join(dir, 'windowed');
   strangerKey = join(dir, 'stranger');
+  rotatedKey = join(dir, 'rotated');
+  onboardedKey = join(dir, 'onboarded');
   keygen(operatorKey, 'ephemeral test key — operator');
   keygen(windowedKey, 'ephemeral test key — windowed');
   keygen(strangerKey, 'ephemeral test key — stranger');
+  keygen(rotatedKey, 'ephemeral test key — rotated');
+  keygen(onboardedKey, 'ephemeral test key — onboarded');
   const pub = (p: string): string => readFileSync(`${p}.pub`, 'utf-8').trim();
   // Options are ONE comma-joined token (sshd's authorized_keys form); written
   // space-separated, ssh-keygen reports the line as `invalid key` and the
@@ -76,6 +91,8 @@ beforeAll(() => {
     `${OPERATOR} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101",valid-before="20991231" ${pub(operatorKey)}`,
     `${EXPIRED} valid-before="20200101" ${pub(windowedKey)}`,
     `${FUTURE} valid-after="20990101" ${pub(windowedKey)}`,
+    `${ROTATED} valid-after="20200101",valid-before="20210101" ${pub(rotatedKey)}`,
+    `${ONBOARDED} valid-after="20250101" ${pub(onboardedKey)}`,
     '',
   ].join('\n');
 });
@@ -84,12 +101,16 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function unsignedRecord(id = 'vote-sig-1', sequence = 0): VoteRecord {
+function unsignedRecord(
+  id = 'vote-sig-1',
+  sequence = 0,
+  recordedAt = '2026-09-14T00:00:00.000Z'
+): VoteRecord {
   const payload: Omit<VoteRecord, 'hash'> = {
     version: '1.11',
     id,
     sequence,
-    recordedAt: '2026-09-14T00:00:00.000Z',
+    recordedAt,
     proposalHash: 'a'.repeat(64),
     proposal: 'Ratify PR #6200 at its head',
     strategy: 'supermajority',
@@ -343,13 +364,103 @@ describe('the signed message is the committed `hash` string, never re-serialised
 });
 
 // ---------------------------------------------------------------------------
+// Verification is anchored at the record's `recordedAt`, not the wall clock —
+// otherwise rotating a key (adding `valid-before`) would turn every record it
+// ever signed into `unknown-signer` (PR #6275 review).
+// ---------------------------------------------------------------------------
+
+describe('sshKeygenVerifyTime — recordedAt in the form `-Overify-time` accepts', () => {
+  it('renders an ISO-8601 UTC instant as YYYYMMDDHHMMSSZ', () => {
+    expect(sshKeygenVerifyTime('2026-09-14T13:05:09.123Z')).toEqual({
+      ok: true,
+      verifyTime: '20260914130509Z',
+    });
+  });
+
+  it('normalises an offset timestamp to UTC — the Z suffix is what keeps ssh-keygen off the local zone', () => {
+    expect(sshKeygenVerifyTime('2026-09-14T09:05:09-04:00')).toEqual({
+      ok: true,
+      verifyTime: '20260914130509Z',
+    });
+  });
+
+  it('refuses a recordedAt that is not a timestamp, naming it', () => {
+    for (const bad of ['', 'yesterday', '2026-13-45T00:00:00Z']) {
+      const out = sshKeygenVerifyTime(bad);
+      expect(out.ok).toBe(false);
+      if (out.ok) throw new Error('unreachable');
+      expect(out.reason).toContain(`'${bad}'`);
+    }
+  });
+});
+
+describe('verification is anchored at recordedAt: key rotation keeps old records verifiable', () => {
+  it('signed: a ROTATED key whose valid-before predates now but postdates the record', () => {
+    // The old record was made in 2020, inside the rotated key's window. The
+    // key has since been rotated out (valid-before 2021). At wall-clock time
+    // ssh-keygen would refuse it as expired; anchored at recordedAt it holds.
+    const r = signed(unsignedRecord('vote-sig-old', 0, OLD_RECORDED_AT), rotatedKey, ROTATED);
+    expect(verdictOf(r)).toEqual({ code: 'signed', keyId: ROTATED });
+  });
+
+  it('unknown-signer: a key whose valid-after is AFTER the record — valid now, not when the record was made', () => {
+    // A key onboarded in 2025 cannot have signed a 2020 record. At wall-clock
+    // time it is in window and the forgery would read `signed`.
+    const r = signed(unsignedRecord('vote-sig-old', 0, OLD_RECORDED_AT), onboardedKey, ONBOARDED);
+    const v = verdictOf(r);
+    expect(v.code).toBe('unknown-signer');
+    if (v.code !== 'unknown-signer') throw new Error('unreachable');
+    expect(v.reason).toContain('not yet valid');
+  });
+
+  it('both ssh-keygen calls carry the verify time derived from recordedAt', () => {
+    const { runner, seen } = recordingRunner();
+    const r = signed(unsignedRecord('vote-sig-old', 0, OLD_RECORDED_AT), rotatedKey, ROTATED);
+    expect(verdictOf(r, runner).code).toBe('signed');
+    const times = seen.map((i) => (i.op === 'sign' ? 'sign' : i.verifyTime));
+    expect(times).toEqual(['20200601000000Z', '20200601000000Z']);
+  });
+
+  it('signature-not-measured: a recordedAt no verify time can be derived from — never a wall-clock fallback', () => {
+    const { runner, seen } = recordingRunner();
+    const r = signed(
+      unsignedRecord('vote-sig-bad-ts', 0, 'not-a-timestamp'),
+      operatorKey,
+      OPERATOR
+    );
+    const v = verdictOf(r, runner);
+    expect(v.code).toBe('signature-not-measured');
+    if (v.code !== 'signature-not-measured') throw new Error('unreachable');
+    expect(v.reason).toContain("'not-a-timestamp'");
+    expect(seen).toEqual([]);
+  });
+
+  it('the signer anchors at recordedAt too: a key not yet valid at recordedAt is refused, so the gate never sees it', () => {
+    const out = signVoteRecordHash({
+      hash: unsignedRecord('vote-sig-old', 0, OLD_RECORDED_AT).hash,
+      recordedAt: OLD_RECORDED_AT,
+      keyPath: onboardedKey,
+      allowedSigners,
+    });
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error('unreachable');
+    expect(out.reason).toContain('not yet valid');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // signVoteRecordHash — the append script's half of the round trip.
 // ---------------------------------------------------------------------------
 
 describe('signVoteRecordHash', () => {
   it('signs the hash string; `keyId` is the principal allowed_signers lists the key under; the result verifies as `signed`', () => {
     const r = unsignedRecord();
-    const out = signVoteRecordHash({ hash: r.hash, keyPath: operatorKey, allowedSigners });
+    const out = signVoteRecordHash({
+      hash: r.hash,
+      recordedAt: r.recordedAt,
+      keyPath: operatorKey,
+      allowedSigners,
+    });
     expect(out.ok).toBe(true);
     if (!out.ok) throw new Error('unreachable');
     // The caller never supplied the name: the file did.
@@ -365,7 +476,10 @@ describe('signVoteRecordHash', () => {
   it('passes the bare hash as the message to ssh-keygen -Y sign', () => {
     const { runner, seen } = recordingRunner();
     const r = unsignedRecord();
-    const out = signVoteRecordHash({ hash: r.hash, keyPath: operatorKey, allowedSigners }, runner);
+    const out = signVoteRecordHash(
+      { hash: r.hash, recordedAt: r.recordedAt, keyPath: operatorKey, allowedSigners },
+      runner
+    );
     expect(out.ok).toBe(true);
     const sign = seen[0];
     if (sign?.op !== 'sign') throw new Error('unreachable');
@@ -378,6 +492,7 @@ describe('signVoteRecordHash', () => {
   it('a key that cannot be read is a named failure, not a throw and not an empty signature', () => {
     const out = signVoteRecordHash({
       hash: unsignedRecord().hash,
+      recordedAt: unsignedRecord().recordedAt,
       keyPath: join(dir, 'no-such-key'),
       allowedSigners,
     });
@@ -389,6 +504,7 @@ describe('signVoteRecordHash', () => {
   it('a key allowed_signers does not list (or lists only outside its window) is REFUSED, not signed as nobody', () => {
     const stranger = signVoteRecordHash({
       hash: unsignedRecord().hash,
+      recordedAt: unsignedRecord().recordedAt,
       keyPath: strangerKey,
       allowedSigners,
     });
@@ -398,6 +514,7 @@ describe('signVoteRecordHash', () => {
 
     const expired = signVoteRecordHash({
       hash: unsignedRecord().hash,
+      recordedAt: unsignedRecord().recordedAt,
       keyPath: windowedKey,
       allowedSigners,
     });
@@ -408,7 +525,12 @@ describe('signVoteRecordHash', () => {
 
   it('an unavailable ssh-keygen is a named failure', () => {
     const out = signVoteRecordHash(
-      { hash: unsignedRecord().hash, keyPath: operatorKey, allowedSigners },
+      {
+        hash: unsignedRecord().hash,
+        recordedAt: unsignedRecord().recordedAt,
+        keyPath: operatorKey,
+        allowedSigners,
+      },
       () => ({ kind: 'unavailable', reason: 'spawn ssh-keygen ENOENT' })
     );
     expect(out).toEqual({ ok: false, reason: 'spawn ssh-keygen ENOENT' });

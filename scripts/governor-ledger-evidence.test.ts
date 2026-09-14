@@ -2411,6 +2411,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
   function signed(r: VoteRecord): VoteRecord {
     const out = signVoteRecordHash({
       hash: r.hash,
+      recordedAt: r.recordedAt,
       keyPath,
       allowedSigners: readFileSync(allowedSignersPath, 'utf-8'),
     });

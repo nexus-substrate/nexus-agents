@@ -41,10 +41,22 @@
  *
  * `unknown-signer` and `bad-signature` are told apart by `ssh-keygen -Y
  * find-principals`, which resolves a signature's key to the principals the
- * file lists for it at verify time (windows honoured); only when `keyId` is
- * among them does `-Y verify` run. A refusal at either step keeps ssh-keygen's
- * own reason text (`key has expired: …`, `namespace does not match`,
- * `incorrect signature`) so the gate line says why.
+ * file lists for it (windows honoured); only when `keyId` is among them does
+ * `-Y verify` run. A refusal at either step keeps ssh-keygen's own reason
+ * text (`key has expired: …`, `namespace does not match`, `incorrect
+ * signature`) so the gate line says why.
+ *
+ * ## Windows are evaluated at the record's `recordedAt`, not the wall clock
+ *
+ * Both calls pass `-Overify-time=<recordedAt>` ({@link sshKeygenVerifyTime}).
+ * Without it ssh-keygen evaluates `valid-after` / `valid-before` at the
+ * moment of verification, so rotating a key — adding `valid-before` to its
+ * line, as `governance/allowed_signers` documents — would turn every record
+ * that key ever signed into `unknown-signer` (PR #6275 review). Anchored at
+ * `recordedAt`, a rotated key still verifies the records it signed while it
+ * was valid, and a key onboarded AFTER a record was made cannot verify it. A
+ * `recordedAt` no verify time can be derived from is `signature-not-measured`
+ * with the value named, never a silent fall-back to now.
  *
  * ## What `signed` proves
  *
@@ -93,6 +105,8 @@ export type SshKeygenInvocation =
       readonly allowedSigners: string;
       /** The armored signature block. */
       readonly signature: string;
+      /** `-Overify-time` value: the record's `recordedAt` as {@link sshKeygenVerifyTime} renders it. */
+      readonly verifyTime: string;
     }
   | {
       readonly op: 'verify';
@@ -102,6 +116,8 @@ export type SshKeygenInvocation =
       readonly namespace: string;
       /** Goes to stdin, byte-exact. */
       readonly message: string;
+      /** `-Overify-time` value, the same one `find-principals` was given. */
+      readonly verifyTime: string;
     }
   | {
       readonly op: 'sign';
@@ -130,11 +146,20 @@ function argvFor(
 ): string[] {
   switch (invocation.op) {
     case 'find-principals':
-      return ['-Y', 'find-principals', '-f', files.allowedSigners, '-s', files.signature];
+      return [
+        '-Y',
+        'find-principals',
+        `-Overify-time=${invocation.verifyTime}`,
+        '-f',
+        files.allowedSigners,
+        '-s',
+        files.signature,
+      ];
     case 'verify':
       return [
         '-Y',
         'verify',
+        `-Overify-time=${invocation.verifyTime}`,
         '-f',
         files.allowedSigners,
         '-I',
@@ -149,6 +174,31 @@ function argvFor(
       // message never touches disk and no `<file>.sig` is left behind.
       return ['-Y', 'sign', '-f', invocation.keyPath, '-n', invocation.namespace, '-'];
   }
+}
+
+/**
+ * A record's `recordedAt` in the form `ssh-keygen -O verify-time` accepts:
+ * `YYYYMMDDHHMMSSZ`. The `Z` suffix matters — without it ssh-keygen reads the
+ * value in the local zone, and a verdict would depend on where the gate ran.
+ * `recordedAt` is schema-checked only as a non-empty string, so an
+ * unparseable value is a named refusal here; the caller reports it, never
+ * substitutes the wall clock.
+ */
+export function sshKeygenVerifyTime(
+  recordedAt: string
+):
+  | { readonly ok: true; readonly verifyTime: string }
+  | { readonly ok: false; readonly reason: string } {
+  const ms = Date.parse(recordedAt);
+  if (Number.isNaN(ms)) {
+    return {
+      ok: false,
+      reason: `recordedAt '${recordedAt}' is not a parseable timestamp; the verification time cannot be anchored`,
+    };
+  }
+  // 2026-09-14T13:05:09.123Z → 20260914130509Z
+  const verifyTime = `${new Date(ms).toISOString().slice(0, 19).replace(/[-T:]/g, '')}Z`;
+  return { ok: true, verifyTime };
 }
 
 /**
@@ -255,19 +305,21 @@ type Principals =
   | { readonly kind: 'unavailable'; readonly reason: string };
 
 /**
- * Which principal(s) does a signature's KEY belong to, as of now? `ssh-keygen
- * -Y find-principals` honours the validity windows, so a key that is unlisted,
- * or listed only outside its window, resolves to `none` with ssh-keygen's
- * reason (`key has expired: …`). Shared by the verifier (is the claimed
- * identity among them?) and the signer (what identity should the record
- * claim?), so the two cannot disagree about what the file says.
+ * Which principal(s) does a signature's KEY belong to, as of `verifyTime`?
+ * `ssh-keygen -Y find-principals` honours the validity windows at that
+ * instant, so a key that is unlisted, or listed only outside its window,
+ * resolves to `none` with ssh-keygen's reason (`key has expired: …`). Shared
+ * by the verifier (is the claimed identity among them?) and the signer (what
+ * identity should the record claim?), so the two cannot disagree about what
+ * the file says.
  */
 function principalsFor(
   allowedSigners: string,
   signature: string,
+  verifyTime: string,
   runner: SshKeygenRunner
 ): Principals {
-  const outcome = runner({ op: 'find-principals', allowedSigners, signature });
+  const outcome = runner({ op: 'find-principals', allowedSigners, signature, verifyTime });
   if (outcome.kind === 'unavailable') return { kind: 'unavailable', reason: outcome.reason };
   if (outcome.status !== 0) return { kind: 'none', reason: reasonFrom(outcome) };
   const principals = outcome.stdout
@@ -302,8 +354,10 @@ export function verifyVoteRecordSignature(
   if (!listedPrincipals(allowedSigners).has(keyId)) {
     return { code: 'unknown-signer', keyId, reason: `no allowed_signers entry names '${keyId}'` };
   }
+  const anchored = sshKeygenVerifyTime(record.recordedAt);
+  if (!anchored.ok) return { code: 'signature-not-measured', reason: anchored.reason };
 
-  const principals = principalsFor(allowedSigners, signature.sig, runner);
+  const principals = principalsFor(allowedSigners, signature.sig, anchored.verifyTime, runner);
   if (principals.kind === 'unavailable') {
     return { code: 'signature-not-measured', reason: principals.reason };
   }
@@ -318,13 +372,25 @@ export function verifyVoteRecordSignature(
   }
 
   // The right key. Does the signature hold over THIS hash, in THIS namespace?
+  return verifyHolds({ ...record, signature }, allowedSigners, anchored.verifyTime, runner);
+}
+
+/** The last rung: `ssh-keygen -Y verify` over the hash, for a key already known to be the claimed identity's. */
+function verifyHolds(
+  record: VoteRecord & { readonly signature: VoteRecordSignature },
+  allowedSigners: string,
+  verifyTime: string,
+  runner: SshKeygenRunner
+): VoteRecordSignatureVerdict {
+  const keyId = record.signature.keyId;
   const verified = runner({
     op: 'verify',
     allowedSigners,
-    signature: signature.sig,
+    signature: record.signature.sig,
     identity: keyId,
     namespace: VOTE_RECORD_SIGNATURE_NAMESPACE,
     message: record.hash,
+    verifyTime,
   });
   if (verified.kind === 'unavailable') {
     return { code: 'signature-not-measured', reason: verified.reason };
@@ -336,6 +402,8 @@ export function verifyVoteRecordSignature(
 export interface SignVoteRecordHashInput {
   /** The COMMITTED hash — after re-sequencing, after re-hashing. Signing an earlier hash signs nothing the ledger carries. */
   readonly hash: string;
+  /** The record's `recordedAt`: the key must be in window THEN, since that is when the gate will evaluate it. */
+  readonly recordedAt: string;
   /** Private key path (or its `.pub` when the private half is in ssh-agent). Named, never read, by this module. */
   readonly keyPath: string;
   /** The `governance/allowed_signers` CONTENT the signature will be verified against; it supplies `keyId`. */
@@ -347,9 +415,9 @@ export interface SignVoteRecordHashInput {
  * record — its `keyId` is the principal `allowed_signers` lists the key
  * under, so the file, not the caller, names the signer — or a named failure:
  * a key that cannot be read, a passphrase prompt with no terminal, no
- * ssh-keygen, or a key the file does not list (a signature no gate could
- * verify is refused here rather than written and reported `unknown-signer`
- * later). Never an empty signature.
+ * ssh-keygen, or a key the file does not list at the record's `recordedAt`
+ * (a signature no gate could verify is refused here rather than written and
+ * reported `unknown-signer` later). Never an empty signature.
  */
 export function signVoteRecordHash(
   input: SignVoteRecordHashInput,
@@ -367,7 +435,14 @@ export function signVoteRecordHash(
   if (outcome.status !== 0 || !ARMORED_SIGNATURE.test(outcome.stdout)) {
     return { ok: false, reason: `ssh-keygen -Y sign failed: ${reasonFrom(outcome)}` };
   }
-  const principals = principalsFor(input.allowedSigners, outcome.stdout, runner);
+  const anchored = sshKeygenVerifyTime(input.recordedAt);
+  if (!anchored.ok) return { ok: false, reason: anchored.reason };
+  const principals = principalsFor(
+    input.allowedSigners,
+    outcome.stdout,
+    anchored.verifyTime,
+    runner
+  );
   if (principals.kind === 'unavailable') return { ok: false, reason: principals.reason };
   if (principals.kind === 'none') {
     return {

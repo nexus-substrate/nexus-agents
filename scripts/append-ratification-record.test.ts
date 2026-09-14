@@ -540,7 +540,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       expect(r.status).toBe(0);
       expect(r.output).toContain(`signed by ${OPERATOR}`);
       expect(r.output).not.toContain('PRIVATE KEY');
-      expect(r.output).not.toContain(readFileSync(keyPath, 'utf-8').split('\n')[1] ?? ' ');
+      expect(r.output).not.toContain(readFileSync(keyPath, 'utf-8').split('\n')[1] ?? '\0');
       const [committed] = readLedger(ledgerPath);
       if (committed === undefined) throw new Error('nothing on disk');
       expect(

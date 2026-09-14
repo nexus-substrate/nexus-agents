@@ -64,6 +64,7 @@ export function signCommitted(record: VoteRecord, signing: SigningOptions | unde
   }
   const signed = signVoteRecordHash({
     hash: record.hash,
+    recordedAt: record.recordedAt,
     keyPath: signing.keyPath,
     allowedSigners,
   });
