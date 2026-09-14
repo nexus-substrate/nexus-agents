@@ -8,11 +8,17 @@ import { getTimeProvider } from '../core/index.js';
 import type { ProposalId, ProposalState, ConsensusResult, ConsensusEngineConfig } from './types.js';
 import type { VotingOutcome } from './strategies.js';
 import { determineFinalStatus } from './decision/verdict.js';
+import { isQuorumReached } from './decision/quorum.js';
 
 /**
  * `determineFinalStatus` moved to `decision/verdict.ts` (#6000 step 1) so the
  * quorum + approval → outcome step can be governed on its own path.
  * Re-exported here so every existing import keeps resolving.
+ *
+ * The quorum comparison the three builders inlined moved to
+ * `decision/quorum.ts` as `isQuorumReached` (#6180). It was never exported
+ * from here, so nothing is re-exported: a verdict site reaches it only
+ * through the governed module.
  */
 export { determineFinalStatus } from './decision/verdict.js';
 
@@ -35,7 +41,7 @@ export function buildPendingResult(
     weightedCounts: outcome.weightedCounts,
     weightBasis: outcome.weightBasis,
     approvalPercentage: outcome.approvalPercentage,
-    quorumReached: state.votes.size >= config.minVotersForQuorum,
+    quorumReached: isQuorumReached(state.votes.size, config.minVotersForQuorum),
     startedAt: state.startedAt.toISOString(),
     closedAt: now.toISOString(),
     durationMs: now.getTime() - state.startedAt.getTime(),
@@ -52,7 +58,7 @@ export function buildFinalResult(
   config: ConsensusEngineConfig
 ): ConsensusResult {
   const now = new Date(getTimeProvider().now());
-  const quorumReached = state.votes.size >= config.minVotersForQuorum;
+  const quorumReached = isQuorumReached(state.votes.size, config.minVotersForQuorum);
   const finalStatus = determineFinalStatus(quorumReached, outcome.approved);
 
   return {
@@ -90,7 +96,7 @@ export function buildTimeoutResult(
     weightedCounts: outcome.weightedCounts,
     weightBasis: outcome.weightBasis,
     approvalPercentage: outcome.approvalPercentage,
-    quorumReached: state.votes.size >= config.minVotersForQuorum,
+    quorumReached: isQuorumReached(state.votes.size, config.minVotersForQuorum),
     startedAt: state.startedAt.toISOString(),
     closedAt: now.toISOString(),
     durationMs: now.getTime() - state.startedAt.getTime(),
