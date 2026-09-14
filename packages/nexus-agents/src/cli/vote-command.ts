@@ -52,7 +52,7 @@ import {
 import { mapOutcomeToDecision } from '../consensus/decision/verdict.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
-import { auditLineFor } from './vote-audit-line.js';
+import { persistLines } from './vote-audit-line.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
@@ -450,6 +450,8 @@ function toVoteInput(options: VoteCommandOptions, quickMode: boolean): Consensus
     quickMode,
     simulateVotes: options.dryRun === true,
     ...(options.threshold !== undefined && { threshold: options.threshold }),
+    // #6227: both bar spellings go through; `resolveStrategy` lets `strategy` win.
+    ...(options.strategy !== undefined && { strategy: options.strategy }),
     ...(options.errorPolicy !== undefined && { errorPolicy: options.errorPolicy }),
   };
 }
@@ -627,26 +629,24 @@ function persistToAuditChain(
   }
 ): void {
   if (options.dryRun === true) return;
-  writeLine(
-    auditLineFor(
-      recordAuthenticVote({
-        proposal: result.proposal,
-        strategy: result.strategy,
-        result: result.result,
-        votes: result.votes,
-        // #6049: the CLI path had the declared options all along and did not
-        // pass them, so its records lost the option fields whenever no
-        // selection was parseable -- the same defect as the MCP path.
-        declaredOptions: options.options,
-        // A vote an error policy voided is not a rejection. Without this the
-        // chain records `rejected` while the CLI exits `no_quorum` (#4953).
-        errorVoided: result.policyReason !== undefined,
-        resolvedDecision: toRecordDecision(result.decision),
-        // #6211: the policy the panel ran under, as `executeVoting` resolved it.
-        errorPolicy: result.errorPolicy,
-      })
-    )
-  );
+  const outcome = recordAuthenticVote({
+    proposal: result.proposal,
+    strategy: result.strategy,
+    result: result.result,
+    votes: result.votes,
+    // #6049: the CLI path had the declared options all along and did not
+    // pass them, so its records lost the option fields whenever no
+    // selection was parseable -- the same defect as the MCP path.
+    declaredOptions: options.options,
+    // A vote an error policy voided is not a rejection. Without this the
+    // chain records `rejected` while the CLI exits `no_quorum` (#4953).
+    errorVoided: result.policyReason !== undefined,
+    resolvedDecision: toRecordDecision(result.decision),
+    // #6211: the policy the panel ran under, as `executeVoting` resolved it.
+    errorPolicy: result.errorPolicy,
+    ratifiesPr: options.ratifiesPr,
+  });
+  for (const line of persistLines(outcome, options.ratifiesPr, result)) writeLine(line);
 }
 
 /**

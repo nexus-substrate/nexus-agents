@@ -7,7 +7,12 @@
  */
 
 import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../consensus/types.js';
-import type { ErrorPolicy, VoteThreshold } from '../mcp/tools/consensus-vote-types.js';
+import type {
+  ErrorPolicy,
+  VoteThreshold,
+  VotingStrategy,
+} from '../mcp/tools/consensus-vote-types.js';
+import type { VoteRecordPrBinding } from '../audit/vote-record.js';
 import type { VoterRole } from './voter-roles.js';
 
 /**
@@ -36,7 +41,26 @@ export interface VoteCommandOptions {
    * asking a panel a multi-way question in the first place.
    */
   readonly options?: readonly string[];
+  /**
+   * Legacy spelling of the bar (`--threshold majority|supermajority|unanimous`).
+   * Passed to the engine alongside {@link strategy}; `resolveStrategy` lets
+   * `strategy` win when both are given (#6227), as it does for the MCP tool.
+   */
   readonly threshold?: VoteThreshold;
+  /**
+   * The bar as the tool spells it (`--strategy`, #6227): the same enum
+   * `consensus_vote` takes, handed to `executeVoting` unchanged. The governor
+   * bar is `supermajority` (with `errorPolicy: 'absolute_quorum'`).
+   */
+  readonly strategy?: VotingStrategy;
+  /**
+   * Governor-path PR binding (`--ratifies-pr <n>@<sha>`, #6227 / #5130):
+   * already parsed into the record's own shape. Bound into the persisted
+   * record's self-hash as `ratifiesPr`, so
+   * `scripts/append-ratification-record.ts --record-id` can copy it into the
+   * committed ledger and the governor gate can match it to the PR head.
+   */
+  readonly ratifiesPr?: VoteRecordPrBinding;
   /** Use simulated votes instead of LLM execution (maps from --dry-run CLI flag) */
   readonly dryRun?: boolean;
   readonly quick?: boolean;

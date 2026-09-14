@@ -36,13 +36,9 @@ import { isDirectRun } from './cli-direct-run.js';
 import { formatCommandHelp } from './cli-command-help.js';
 import { catalogCommandNames, formatUnknownCommandMessage } from './cli-command-suggester.js';
 import { CLI_NAMES, type CliNameLiteral } from './config/model-capabilities-types.js';
-import {
-  VoteThresholdSchema,
-  ErrorPolicySchema,
-  type VoteThreshold,
-  type ErrorPolicy,
-} from './mcp/tools/consensus-vote-types.js';
+import { ErrorPolicySchema, type ErrorPolicy } from './mcp/tools/consensus-vote-types.js';
 import type { NoQuorumPolicy } from './cli/vote-types.js';
+import { parseVoteBarFlags } from './cli/vote-bar-flags.js';
 
 // Re-export types and constants for external use
 export { EXIT_CODES, type CliCommand, type ParsedCliArgs } from './cli-types.js';
@@ -130,6 +126,10 @@ interface ParsedValues {
   fix: boolean;
   proposal?: string;
   threshold?: string;
+  /** #6227 — the bar as the tool spells it; wins over `threshold`. */
+  strategy?: string;
+  /** #6227 — `<pr>@<40-hex sha>`, the governor-path PR binding. */
+  'ratifies-pr'?: string;
   /** Repeatable `--option` for a multi-option vote (#4941). */
   option?: string[];
   quick: boolean;
@@ -211,16 +211,6 @@ function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> 
 }
 
 /**
- * Validates threshold option for vote command. Uses `VoteThresholdSchema`
- * as the single source of truth (#2638).
- */
-function parseThreshold(value: string | undefined): VoteThreshold | undefined {
-  if (value === undefined) return undefined;
-  const parsed = VoteThresholdSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
-/**
  * Validates errorPolicy option for vote command (#2630). Uses
  * `ErrorPolicySchema` as the single source of truth (#2638).
  */
@@ -240,7 +230,6 @@ function parseNoQuorumPolicy(value: string | undefined): NoQuorumPolicy | undefi
 
 /** Builds vote-specific options. */
 function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
-  const threshold = parseThreshold(values.threshold);
   const timeoutSec = parseNumericOption(values.timeout);
   // Convert seconds to milliseconds (CLI uses seconds for readability)
   const timeoutMs = timeoutSec !== undefined ? timeoutSec * 1000 : undefined;
@@ -250,7 +239,9 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   return {
     ...(values.proposal !== undefined && { proposal: values.proposal }),
     ...(options !== undefined && options.length > 0 && { options }),
-    ...(threshold !== undefined && { threshold }),
+    // #6227: `--threshold` (legacy), `--strategy` and `--ratifies-pr`; the
+    // latter two REFUSE an invalid value (see `vote-bar-flags.ts`).
+    ...parseVoteBarFlags(values),
     ...(timeoutMs !== undefined && { timeoutMs }),
     ...(errorPolicy !== undefined && { errorPolicy }),
     ...(onNoQuorum !== undefined && { onNoQuorum }),

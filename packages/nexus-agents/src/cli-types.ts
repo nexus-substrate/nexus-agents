@@ -9,8 +9,13 @@
 
 import type { ServerMode } from './cli/index.js';
 import type { CliNameLiteral } from './config/model-capabilities-types.js';
-import type { ErrorPolicy, VoteThreshold } from './mcp/tools/consensus-vote-types.js';
+import type {
+  ErrorPolicy,
+  VoteThreshold,
+  VotingStrategy,
+} from './mcp/tools/consensus-vote-types.js';
 import type { NoQuorumPolicy } from './cli/vote-types.js';
+import type { VoteRecordPrBinding } from './audit/vote-record.js';
 import type { CommandResult } from './core/command-result.js';
 
 // Re-export help text from extracted module for backward compatibility
@@ -219,7 +224,12 @@ export interface ParsedCliArgs {
     fix: boolean;
     // Vote command options
     proposal?: string;
+    /** Legacy spelling of the bar; `strategy` wins when both are given (#6227). */
     threshold?: VoteThreshold;
+    /** #6227 — `--strategy`, the tool's own enum, passed to the engine as the MCP tool passes it. */
+    strategy?: VotingStrategy;
+    /** #6227 — `--ratifies-pr <n>@<sha>`, already parsed into the record's binding shape. */
+    ratifiesPr?: VoteRecordPrBinding;
     quick: boolean;
     timeoutMs?: number;
     /** #2630 — see `applyErrorPolicy`. */
@@ -422,6 +432,16 @@ export const PARSE_ARGS_CONFIG = {
     // `vote -t supermajority` silently ran a simple-majority vote. Long form
     // only — `cli-types.test.ts` pins that no two options share a letter.
     threshold: {
+      type: 'string' as const,
+    },
+    // #6227 — the bar as the tool spells it. `threshold` is the legacy spelling;
+    // the engine's `resolveStrategy` lets `strategy` win when both are given.
+    strategy: {
+      type: 'string' as const,
+    },
+    // #6227 — `<pr>@<40-hex sha>`: binds the record to a governor-path PR for
+    // `scripts/append-ratification-record.ts`. Validated in `buildVoteOptions`.
+    'ratifies-pr': {
       type: 'string' as const,
     },
     quick: {
