@@ -217,7 +217,11 @@ export const RemediationSoakRecordSchema = z.object({
   voteOutcome: SoakVoteOutcomeSchema.optional(),
   /** Number of plan steps research produced (0 if research/plan failed). */
   planStepCount: z.number(),
-  /** p0 dry-run result detail (scrubbed); undefined for non-p0 or when no dry-run ran. */
+  /**
+   * p0 dry-run result detail (scrubbed); undefined for non-p0 or when no dry-run
+   * ran. Informational only — the review surface and the readiness gate never
+   * read it, so its absence does not make a record un-judgeable (#4279).
+   */
   dryRunResult: z.string().optional(),
   /** Human-readable verdict reason (scrubbed). */
   reason: z.string(),
