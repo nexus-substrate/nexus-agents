@@ -435,47 +435,51 @@ A push is **impossible** unless ALL of the following conjunctive gates hold:
 See #3670 for the staged rollout (the push path is the gated capability; nothing
 here wires it to a live runtime trigger).
 
-### Scheduled audit-mode remediation soak (#4224)
+### Audit-mode remediation soak: the operator store is the evidence path (#4224, #4279)
 
 The enforce-readiness soak (`learning/remediation-soak.jsonl`, read by
 `remediation-readiness-collector.ts`) only accrues when someone runs
 `nexus-agents auto-remediate`. It is **not** a byproduct of normal work, so
 without a scheduler the evidence the enforce gate depends on cannot accumulate —
-it flatlined on 2026-06-17 despite heavy repo activity. Two ways to give it an
-organic feed:
+it flatlined on 2026-06-17 despite heavy repo activity, and again at one record
+for the five weeks before #4279 was re-verified. There is ONE evidence path (the
+local operator cycle below) and one CI job that is deliberately **not** one:
 
-**1. Scheduled GitHub Actions run (`.github/workflows/remediation-audit-soak.yml`).**
-Runs the build then `nexus-agents auto-remediate` in **audit** mode daily
-(`cron: '17 7 * * *'`) plus `workflow_dispatch` for a manual trigger. Audit is
-the default and produces vote/plan soak evidence with **zero writes** — it never
-opens a PR and never remediates. The workflow exports `NEXUS_AUTO_REMEDIATE=audit`
-explicitly and asserts it before running (belt-and-braces), and the cycle entry
-point structurally withholds `repoRoot`, so `enforce` cannot engage from CI. It
-persists the soak across runs with an `actions/cache` **rolling key**
-(`remediation-audit-soak-${{ github.run_id }}` + a bare `restore-keys` prefix): each
-run restores the most-recent prior file, the append-only JSONL sink hydrates it and
-appends this run's records, and the post-job save writes a fresh cache entry — so
-volume genuinely accumulates run-over-run. A single-flight `concurrency` group
-(`cancel-in-progress: false`) prevents overlapping runs from racing the file.
+**1. The CI job is a smoke test, not evidence
+(`.github/workflows/remediation-audit-soak.yml`, display name
+"Remediation Audit Smoke (no readiness evidence)").** It runs the build then
+`nexus-agents auto-remediate` in **audit** mode daily (`cron: '17 7 * * *'`)
+plus `workflow_dispatch`, and proves the audit path — collect → research → vote
+→ append — runs end to end on the built CLI. It exports `NEXUS_AUTO_REMEDIATE=audit`
+and asserts it before running, and the cycle entry point structurally withholds
+`repoRoot`, so `enforce` cannot engage from CI. It keeps `permissions: contents: read`.
 
-> **CI evidence is thin by design — no LLM credentials.** This workflow wires no
-> model/gateway secrets, so the per-signal consensus vote degrades to `no_quorum`
-> (the job stays green and incurs **zero LLM cost** — `createAutoAdapter` throws
-> before any network call). Consequently CI-accrued records carry only volume +
-> `signalKey`/`category`/`priority`/`planStepCount`/`reason` — **not** `voteOutcome`
-> (no vote ran) and not `dryRunResult`. That's safe (thinner evidence can only keep
-> the enforce gate fail-closed, never falsely enable it), but it means CI alone
-> cannot produce soundness-judgeable evidence. Vote-bearing evidence requires the
-> local path below, where your real gateway credentials + telemetry are present.
+> **A green run is not progress toward #3769.** The #4279 panel (5–2, Option B)
+> declared the CI soak non-evidence, for three reasons that hold independently:
+>
+> - **Disjoint store.** The job appends under a workspace `NEXUS_DATA_DIR` that
+>   lives only in `actions/cache` (evicted after 7 idle days). The readiness gate
+>   reads the operator store (`~/.nexus-agents/learning/remediation-soak.jsonl`);
+>   nothing bridges the two, and 43 green runs moved the gate by zero records.
+> - **Un-judged by construction.** Readiness requires a NAMED evaluator and owner
+>   (`remediation-review mark` / `sign-off`) — human acts. A bridged CI corpus
+>   would arrive with `judgedSelections: 0` and fail `judged-coverage`,
+>   `named-evaluator` and `named-owner` regardless of its volume.
+> - **Self-authorship.** Letting the job commit its records would widen the
+>   cron-triggered token to `contents: write` so the automation seeking enforce
+>   authority could author the evidence that grants it.
+>
+> The job also wires no model/gateway secrets, so its per-signal vote degrades to
+> `no_quorum` at zero LLM cost and its records carry no `voteOutcome` — thin even
+> as smoke coverage. Treat it as an alarm that the audit path still runs, nothing more.
 
-**2. LOCAL cron / systemd timer (recommended for real operators).** A fresh CI
+**2. LOCAL cron / systemd timer — the evidence path.** Readiness evidence comes
+from **your real `~/.nexus-agents` telemetry**, not a clean CI runner: a fresh
 checkout has little of your outcome/decision-cost telemetry, so the
-`improvement_review` signals it collects are thin. **Richer, more representative
-signals come from your real `~/.nexus-agents` telemetry**, not a clean CI runner —
-so if you operate nexus-agents day-to-day, schedule the audit cycle _locally_ where
-that telemetry lives. This is the more valuable feed; the CI workflow is the
-always-on floor. Audit mode is the default, so a bare invocation is soak-only with
-zero writes:
+`improvement_review` signals it collects are thin and near-identical day to day.
+If you operate nexus-agents day-to-day, schedule the audit cycle _locally_ where
+that telemetry lives. Audit mode is the default, so a bare invocation is soak-only
+with zero writes:
 
 ```cron
 # crontab -e — daily audit-mode soak against your real ~/.nexus-agents telemetry
@@ -487,6 +491,15 @@ Or as a systemd timer (`~/.config/systemd/user/nexus-soak.service` +
 
 After a soak window, judge a batch with `nexus-agents remediation-review` and the
 readiness gate reflects **genuine** soundness over real, plan-bearing selections.
+Every tier's record is judgeable — `mark` keys on the soak ref, never on whether a
+dry-run was captured (#4279 Gap 2).
+
+**Watch the store, not the CI job.** `nexus-agents remediation-review readiness`
+prints a `Soak store:` line beside the verdict (#4279): `UNMEASURED` when the
+store is empty, `ALARM` when it holds ≤1 record or has had no new record for
+14 days (each cause named), `fresh` otherwise; `--format json` carries the same
+signal as `soakStore`. A flatlined operator store is a stalled evidence path and
+this is the only place it is reported — the CI smoke job cannot see it.
 
 > **Known limitation — `dryRunResult` (plan content) is not captured in the
 > scheduled/local audit cycle.** The p0 `dry-run` audit event that populates a
@@ -496,7 +509,8 @@ readiness gate reflects **genuine** soundness over real, plan-bearing selections
 > `signalKey`, `category`, `priority`, `planStepCount`, and `reason` (plus
 > `voteOutcome` only where LLM credentials are present — i.e. the local path, not
 > credential-less CI, per the note above), a large improvement over the prior
-> synthetic, uniform volume — but not the full dry-run plan text. Wiring a `dryRun`
+> synthetic, uniform volume — but not the full dry-run plan text. This limits what
+> an evaluator has to read; it does not limit what they can mark. Wiring a `dryRun`
 > adapter into the audit cycle so the accrued selections are fully plan-bearing is
 > tracked as follow-up to #4224 (and would also need the dry-run audit `detail` to
 > carry plan content rather than just `ok`/error).

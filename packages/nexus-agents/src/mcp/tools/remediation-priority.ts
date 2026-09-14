@@ -41,7 +41,12 @@ export interface ConsensusRequirement {
   readonly autoRemediate: boolean;
   /** Consensus algorithm to require (undefined when not auto-remediated). */
   readonly algorithm?: ConsensusAlgorithm;
-  /** p0 additionally requires a green audit-mode dry-run before a PR is opened. */
+  /**
+   * p0 additionally requires a green audit-mode dry-run before a PR is opened.
+   * This gates IMPLEMENT only. It does NOT gate soundness review: every tier's
+   * soak record is judgeable by `remediation-review mark` whether or not a
+   * `dryRunResult` was captured (#4279 Gap 2 — pinned by the review-command test).
+   */
   readonly requiresDryRun: boolean;
 }
 

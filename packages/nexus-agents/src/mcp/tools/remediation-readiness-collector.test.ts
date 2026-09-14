@@ -6,7 +6,10 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { buildEnforceReadinessEvidence } from './remediation-readiness-collector.js';
+import {
+  assessSoakStaleness,
+  buildEnforceReadinessEvidence,
+} from './remediation-readiness-collector.js';
 import { evaluateEnforceReadiness } from './improvement-enforce-readiness.js';
 import type { RemediationSoakSummary } from './improvement-remediation-shadow.js';
 import type { RemediationReviewSummary } from './remediation-review.js';
@@ -77,5 +80,70 @@ describe('buildEnforceReadinessEvidence', () => {
     });
     expect(evidence.evaluator).toBeUndefined();
     expect(evidence.owner).toBeUndefined();
+  });
+});
+
+/**
+ * #4279 item 3 — staleness/flatline alarm on the operator soak store. A store
+ * that has stopped accruing (1 record for five weeks went unnoticed behind a
+ * green CI job) must be a visible signal in the readiness report, and an EMPTY
+ * store must read as unmeasured, never as a quiet pass.
+ */
+describe('assessSoakStaleness (#4279)', () => {
+  const NOW = Date.parse('2026-09-14T12:00:00.000Z');
+  const daysAgo = (d: number): string => new Date(NOW - d * 86_400_000).toISOString();
+
+  it('empty store → unmeasured (not fresh, not alarm), with no idle measurement', () => {
+    const s = assessSoakStaleness(soak(0), NOW);
+    expect(s.status).toBe('unmeasured');
+    expect(s.recordCount).toBe(0);
+    expect(s.idleDays).toBeUndefined();
+    expect(s.reasons.join(' ')).toMatch(/empty/i);
+  });
+
+  it('a single record → alarm: flatlined (even when it is recent)', () => {
+    const s = assessSoakStaleness({ ...soak(1), lastTimestamp: daysAgo(1) }, NOW);
+    expect(s.status).toBe('alarm');
+    expect(s.reasons.some((r) => /flatlined/i.test(r))).toBe(true);
+    expect(s.reasons.some((r) => /no new record/i.test(r))).toBe(false);
+  });
+
+  it('no new record for the alarm window → alarm: stale, naming the idle days and the threshold', () => {
+    const s = assessSoakStaleness({ ...soak(3), lastTimestamp: daysAgo(20) }, NOW);
+    expect(s.status).toBe('alarm');
+    expect(s.idleDays).toBe(20);
+    expect(s.alarmAfterDays).toBe(14);
+    expect(s.reasons).toContain('no new record for 20 days (alarm at ≥ 14 days)');
+    expect(s.reasons.some((r) => /flatlined/i.test(r))).toBe(false);
+  });
+
+  it('one record AND stale → BOTH reasons are rendered (never else-if)', () => {
+    const s = assessSoakStaleness({ ...soak(1), lastTimestamp: daysAgo(97) }, NOW);
+    expect(s.status).toBe('alarm');
+    expect(s.reasons.some((r) => /flatlined/i.test(r))).toBe(true);
+    expect(s.reasons.some((r) => /no new record for 97 days/.test(r))).toBe(true);
+  });
+
+  it('exactly at the alarm boundary is stale; one day inside is fresh', () => {
+    expect(assessSoakStaleness({ ...soak(3), lastTimestamp: daysAgo(14) }, NOW).status).toBe(
+      'alarm'
+    );
+    const fresh = assessSoakStaleness({ ...soak(3), lastTimestamp: daysAgo(13) }, NOW);
+    expect(fresh.status).toBe('fresh');
+    expect(fresh.idleDays).toBe(13);
+    expect(fresh.reasons).toEqual([]);
+  });
+
+  it('an unreadable last timestamp is an alarm, not a silent fresh', () => {
+    const s = assessSoakStaleness({ ...soak(5), lastTimestamp: 'not-a-date' }, NOW);
+    expect(s.status).toBe('alarm');
+    expect(s.idleDays).toBeUndefined();
+    expect(s.reasons.some((r) => /unreadable/i.test(r))).toBe(true);
+  });
+
+  it('a last record in the future (clock skew) measures as 0 idle days, fresh', () => {
+    const s = assessSoakStaleness({ ...soak(5), lastTimestamp: daysAgo(-2) }, NOW);
+    expect(s.idleDays).toBe(0);
+    expect(s.status).toBe('fresh');
   });
 });

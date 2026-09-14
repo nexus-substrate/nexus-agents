@@ -13,7 +13,8 @@
  *   mark <soakRef> --evaluator <name> (--sound | --unsound) [--note <text>]
  *                                     Record one reviewed verdict by a named evaluator.
  *   sign-off --owner <name>           Record an owner sign-off across reviewed selections.
- *   readiness                         Show the enforce-readiness verdict + per-criterion rates + harmful-rate (read-only).
+ *   readiness                         Show the enforce-readiness verdict + per-criterion rates + harmful-rate
+ *                                     + the soak-store staleness signal (#4279; read-only).
  *
  * `--format json` emits structured output. Never flips enforcement on itself.
  * An optional LLM-judge pre-pass is deferred to #3773 (advisory only — the
@@ -38,7 +39,11 @@ import {
   summarizeRemediationReviews,
   type ReviewRecord,
 } from '../mcp/tools/remediation-review.js';
-import { buildEnforceReadinessEvidence } from '../mcp/tools/remediation-readiness-collector.js';
+import {
+  assessSoakStaleness,
+  buildEnforceReadinessEvidence,
+  type SoakStalenessSignal,
+} from '../mcp/tools/remediation-readiness-collector.js';
 import {
   DEFAULT_ENFORCE_READINESS_CONFIG,
   evaluateEnforceReadiness,
@@ -70,15 +75,33 @@ export function harmfulRate(ev: EnforceReadinessEvidence): number {
     : (ev.judgedSelections - ev.judgedSound) / ev.judgedSelections;
 }
 
+/**
+ * One line naming how the soak store reads (#4279): `UNMEASURED` for an empty
+ * store, `ALARM` with every cause for a flatlined/stale one, `fresh` otherwise.
+ * Printed in the readiness verdict so a store that stopped accruing is visible.
+ */
+function formatSoakStore(s: SoakStalenessSignal): string {
+  const n = `${String(s.recordCount)} record${s.recordCount === 1 ? '' : 's'}`;
+  if (s.status === 'unmeasured') return `Soak store: UNMEASURED — ${n}; ${s.reasons.join('; ')}`;
+  const last =
+    s.lastTimestamp === undefined
+      ? ''
+      : `, last ${s.lastTimestamp}${s.idleDays === undefined ? '' : ` (${String(s.idleDays)} day${s.idleDays === 1 ? '' : 's'} ago)`}`;
+  if (s.status === 'alarm') return `Soak store: ALARM — ${n}${last}; ${s.reasons.join('; ')}`;
+  return `Soak store: fresh — ${n}${last}`;
+}
+
 /** Render the text-mode readiness report (kept separate to hold `runReadiness` under the line cap). */
 function formatReadiness(
   verdict: ReturnType<typeof evaluateEnforceReadiness>,
   evidence: EnforceReadinessEvidence,
-  harmful: number
+  harmful: number,
+  soakStore: SoakStalenessSignal
 ): string {
   const maxPct = Math.round((1 - DEFAULT_ENFORCE_READINESS_CONFIG.minSoundnessRate) * 100);
   const lines = [
     `Enforcement readiness: ${verdict.ready ? 'READY' : 'NOT READY'}`,
+    formatSoakStore(soakStore),
     `harmful-rate: ${String(Math.round(harmful * 100))}% of ${String(evidence.judgedSelections)} judged sound-reviews (threshold ≤ ${String(maxPct)}%)`,
     'Criteria:',
   ];
@@ -89,21 +112,25 @@ function formatReadiness(
   return lines.join('\n');
 }
 
-/** `remediation-review readiness` — read-only enforce-readiness verdict + harmful-rate (#4098). */
+/**
+ * `remediation-review readiness` — read-only enforce-readiness verdict + harmful-rate
+ * (#4098) + the soak-store staleness signal (#4279). The signal is informational:
+ * it never changes `ready`, but an empty or flatlined store is named in both
+ * output modes so a stalled evidence path cannot pass unremarked.
+ */
 function runReadiness(format: string): void {
-  const evidence = buildEnforceReadinessEvidence(
-    readRemediationSoakSummary(),
-    readRemediationReviewSummary()
-  );
+  const soak = readRemediationSoakSummary();
+  const evidence = buildEnforceReadinessEvidence(soak, readRemediationReviewSummary());
   const verdict = evaluateEnforceReadiness(evidence);
   const harmful = harmfulRate(evidence);
+  const soakStore = assessSoakStaleness(soak, getTimeProvider().now());
   if (format === 'json') {
     process.stdout.write(
-      `${JSON.stringify({ ready: verdict.ready, harmfulRate: harmful, evidence, criteria: verdict.criteria, blockers: verdict.blockers }, null, 2)}\n`
+      `${JSON.stringify({ ready: verdict.ready, harmfulRate: harmful, soakStore, evidence, criteria: verdict.criteria, blockers: verdict.blockers }, null, 2)}\n`
     );
     return;
   }
-  process.stdout.write(`${formatReadiness(verdict, evidence, harmful)}\n`);
+  process.stdout.write(`${formatReadiness(verdict, evidence, harmful, soakStore)}\n`);
 }
 
 /** Resolve the sound verdict from the mutually-exclusive flags. Throws on bad input. */

@@ -1700,40 +1700,38 @@ function injectSection(
 // Registry Summary (for check mode)
 // ============================================================================
 
-interface RegistrySummary {
-  tools: number;
-  experts: number;
-  workflows: number;
-  skills: number;
+/**
+ * The counts CLAUDE.md states in prose. `null` means the phrase is absent —
+ * distinct from a phrase that says `0` — so `checkRegistryDrift` can report
+ * "not documented" instead of comparing against a default (#4586).
+ *
+ * Only tools and skills: CLAUDE.md carries no expert-type or workflow-template
+ * count (the `expert-config.ts (N types)` / `template-types.ts (N templates)`
+ * phrases the #761 extractor looked for left the file long ago), so those two
+ * probes were retired rather than kept as checks that cannot fail.
+ */
+interface DocumentedCounts {
+  tools: number | null;
+  skills: number | null;
+}
+
+/** First capture of `pattern` as an integer, or `null` when it does not match. */
+function documentedCount(content: string, pattern: RegExp): number | null {
+  const match = pattern.exec(content);
+  return match?.[1] === undefined ? null : parseInt(match[1], 10);
 }
 
 /**
- * Extract current counts from CLAUDE.md content.
+ * Extract the counts CLAUDE.md documents. The phrases are the ones the tool
+ * index and workflow index generators render (`**N MCP tools registered.**`,
+ * `**N skills registered.**`); the previous extractor counted tool-index table
+ * rows that the #2555 rewrite removed, so every documented count was 0 and
+ * the drift probes measured nothing on any run since.
  */
-function extractDocumentedCounts(content: string): RegistrySummary {
-  // Tools: count from tool index table
-  const toolSection = content.match(/GOVERNANCE:TOOL_INDEX:START[\s\S]*?GOVERNANCE:TOOL_INDEX:END/);
-  const toolCount = toolSection ? (toolSection[0].match(/\| `[^`]+`/g) ?? []).length : 0;
-
-  // Experts: count from "Available Experts" or expert mentions
-  const expertMatches = content.match(/Experts:.*?`expert-config\.ts`\s*\((\d+)\s*types\)/);
-  const expertCount = expertMatches ? parseInt(expertMatches[1] ?? '0', 10) : 0;
-
-  // Workflows: count from canonical registries
-  const workflowMatches = content.match(
-    /Workflows:.*?`template-types\.ts`\s*\((\d+)\s*templates\)/
-  );
-  const workflowCount = workflowMatches ? parseInt(workflowMatches[1] ?? '0', 10) : 0;
-
-  // Skills: count from canonical registries
-  const skillMatches = content.match(/Skills:.*?`skills\/<name>\/SKILL\.md`\s*\((\d+)\s*skills\)/);
-  const skillCount = skillMatches ? parseInt(skillMatches[1] ?? '0', 10) : 0;
-
+function extractDocumentedCounts(content: string): DocumentedCounts {
   return {
-    tools: toolCount,
-    experts: expertCount,
-    workflows: workflowCount,
-    skills: skillCount,
+    tools: documentedCount(content, /\*\*(\d+) MCP tools registered\.\*\*/),
+    skills: documentedCount(content, /\*\*(\d+) skills registered\.\*\*/),
   };
 }
 
@@ -1799,13 +1797,25 @@ function checkToolAnnotations(tools: ToolMetadata[]): boolean {
  *   2. Contain a `paths:` field (single string or YAML list).
  *   3. Contain a `description:` field.
  *   4. Close with a second `---` line.
+ *
+ * A missing `.rules/`, or one with no `*.md` in it, is reported as unmeasured
+ * and fails (#4586): `extractRules` returns `[]` for both and `injectRulesIndex`
+ * then leaves the on-disk index untouched, so without this guard a deleted
+ * rules directory rendered the whole governance check green.
  */
 function checkRuleFrontmatter(): boolean {
   const rulesDir = join(ROOT, '.rules');
-  if (!existsSync(rulesDir)) return true; // Nothing to validate.
+  if (!existsSync(rulesDir)) {
+    console.error('.rules/ directory missing — rule frontmatter unmeasured (#2656, #4586)');
+    return false;
+  }
+  const entries = readdirSync(rulesDir).filter((entry) => entry.endsWith('.md'));
+  if (entries.length === 0) {
+    console.error('.rules/ holds no *.md files — rule frontmatter unmeasured (#2656, #4586)');
+    return false;
+  }
   const failures: string[] = [];
-  for (const entry of readdirSync(rulesDir)) {
-    if (!entry.endsWith('.md')) continue;
+  for (const entry of entries) {
     const path = join(rulesDir, entry);
     const content = readFileSync(path, 'utf-8');
     if (!content.startsWith('---\n')) {
@@ -1920,10 +1930,22 @@ function sourceHasRawIsErrorLiteral(sf: SourceFile): boolean {
  * string mention of `isError: true` is not an offender and a property
  * that follows a comment line inside a multi-line literal is (#5062) —
  * the previous line-anchored regex got both of those wrong.
+ *
+ * A missing tools directory, or one in which zero files survive the
+ * exclusions, is unmeasured and fails (#4586) — the same rule as
+ * `checkToolOutputConsistency` (#5298). Exported so the test suite can drive
+ * that case: the directory also holds the manifest `loadAllRegistries` reads,
+ * so `checkGovernance` throws before reaching this gate when it is gone.
  */
-function checkMcpErrorEnvelope(): boolean {
+export function checkMcpErrorEnvelope(): boolean {
   const toolsDir = join(ROOT, 'packages/nexus-agents/src/mcp/tools');
-  if (!existsSync(toolsDir)) return true;
+  if (!existsSync(toolsDir)) {
+    console.error(
+      'MCP error envelope: scanned 0 tool files — tools directory missing ' +
+        `(${toolsDir}); the check proved nothing (#2649, #4586).`
+    );
+    return false;
+  }
   // Syntax only: no tsconfig, no lib files, no import resolution. Each tool
   // file is parsed in isolation, so this is a parse per file, not a program.
   const project = new Project({
@@ -1932,11 +1954,19 @@ function checkMcpErrorEnvelope(): boolean {
     skipFileDependencyResolution: true,
   });
   const offenders: string[] = [];
+  let scanned = 0;
   for (const entry of readdirSync(toolsDir)) {
     if (!entry.endsWith('.ts')) continue;
     if (entry.endsWith('.test.ts') || entry === 'tool-result.ts') continue;
     const content = readFileSync(join(toolsDir, entry), 'utf-8');
+    scanned += 1;
     if (hasRawIsErrorLiteral(project, entry, content)) offenders.push(entry);
+  }
+  if (scanned === 0) {
+    console.error(
+      'MCP error envelope: scanned 0 tool files — the check proved nothing (#2649, #4586).'
+    );
+    return false;
   }
   if (offenders.length > 0) {
     console.error(
@@ -2018,8 +2048,13 @@ function extractPrerequisiteCoveredTools(prereqSrc: string): Set<string> {
  * `NO_PREREQUISITE` (deliberately ungated, with a reason) in
  * `src/mcp/middleware/tool-prerequisites.ts` — so a newly added sensitive
  * tool cannot ship ungated by omission. Read-only tools are exempt.
+ *
+ * An empty non-read-only set is unmeasured and fails (#4586): the set comes
+ * from a regex over the manifest source, so a layout change the regex cannot
+ * follow empties it silently, and `missing` is then `[]` over nothing.
+ * Exported so the test suite can drive that case directly.
  */
-function checkToolPrerequisites(): boolean {
+export function checkToolPrerequisites(): boolean {
   // #3597: readOnly hints are folded into TOOL_MANIFEST entries, so the
   // non-read-only set is parsed from the manifest (was tool-annotations.ts,
   // which #3444 had already had to chase across the #3358 move).
@@ -2029,6 +2064,14 @@ function checkToolPrerequisites(): boolean {
     return false;
   }
   const nonReadOnly = extractNonReadOnlyTools(readFileSync(TOOL_MANIFEST_FILE, 'utf-8'));
+  if (nonReadOnly.size === 0) {
+    console.error(
+      'Tool prerequisites: manifest parse found zero non-read-only tools — the ' +
+        'prerequisite gate measured nothing (#2652, #4586). Either every tool is ' +
+        'read-only or the TOOL_MANIFEST layout no longer matches the parser.'
+    );
+    return false;
+  }
   const covered = extractPrerequisiteCoveredTools(readFileSync(prereqPath, 'utf-8'));
   const missing = [...nonReadOnly].filter((t) => !covered.has(t));
   if (missing.length > 0) {
@@ -2207,11 +2250,25 @@ function checkGovernorPatternsResolve(): boolean {
   return true;
 }
 
+/**
+ * Every early exit here is a failure, not a pass (#4586): a missing AGENTS.md,
+ * a renamed heading, or a section with no path entries each mean the table was
+ * not measured, and a table that is not measured cannot be reported as
+ * resolving.
+ */
 function checkCanonicalPaths(): boolean {
-  if (!existsSync(AGENTS_MD_PATH)) return true;
+  if (!existsSync(AGENTS_MD_PATH)) {
+    console.error('Canonical paths unmeasured: AGENTS.md missing (#2317, #4586)');
+    return false;
+  }
   const content = readFileSync(AGENTS_MD_PATH, 'utf-8');
   const headerIdx = content.search(/^## Canonical paths$/m);
-  if (headerIdx === -1) return true;
+  if (headerIdx === -1) {
+    console.error(
+      'Canonical paths unmeasured: no "## Canonical paths" heading in AGENTS.md (#2317, #4586)'
+    );
+    return false;
+  }
   const tail = content.slice(headerIdx);
   // Stop at the first `###` subheading (e.g. "### Memory contract scope") so we
   // only scan the top-level concern→path table, not the promotion table below.
@@ -2219,10 +2276,18 @@ function checkCanonicalPaths(): boolean {
   const section = sectionEnd === -1 ? tail : tail.slice(0, sectionEnd);
 
   const failures: string[] = [];
+  let candidates = 0;
   for (const line of section.split('\n')) {
     for (const candidate of canonicalPathCandidates(line)) {
+      candidates += 1;
       if (!canonicalPathResolves(candidate)) failures.push(candidate);
     }
+  }
+  if (candidates === 0) {
+    console.error(
+      'Canonical paths unmeasured: 0 path entries under "## Canonical paths" (#2317, #4586)'
+    );
+    return false;
   }
 
   if (failures.length > 0) {
@@ -2234,11 +2299,23 @@ function checkCanonicalPaths(): boolean {
 }
 
 /**
- * Check a single registry for drift.
- * Returns true if the check passes (no drift).
+ * Check a single registry for drift. Returns true only when CLAUDE.md states
+ * a count AND it equals the registry's. A count CLAUDE.md does not state is
+ * unmeasured and fails; a stated `0` is compared like any other value (#4586
+ * — the old `documented !== 0` guard let a doc claiming zero entries pass, and
+ * with the extractor returning 0 for every registry, skipped every probe). A
+ * registry that loaded zero entries is the other empty side and fails too.
  */
-function checkRegistryDrift(label: string, documented: number, actual: number): boolean {
-  if (documented !== 0 && documented !== actual) {
+function checkRegistryDrift(label: string, documented: number | null, actual: number): boolean {
+  if (documented === null) {
+    console.error(`${label} count not documented in CLAUDE.md — drift unmeasured (#4586)`);
+    return false;
+  }
+  if (actual === 0) {
+    console.error(`${label} registry loaded 0 entries — drift unmeasured (#4586)`);
+    return false;
+  }
+  if (documented !== actual) {
     console.error(`${label} drift: documented ${String(documented)}, actual ${String(actual)}`);
     return false;
   }
@@ -2337,8 +2414,6 @@ export async function checkGovernance(): Promise<boolean> {
 
   const checks = [
     checkRegistryDrift('MCP tools', documented.tools, actual.tools.length),
-    checkRegistryDrift('Expert types', documented.experts, actual.experts.length),
-    checkRegistryDrift('Workflows', documented.workflows, actual.workflows.length),
     checkRegistryDrift('Skills', documented.skills, actual.skills.length),
     content.includes(MARKERS.toolIndexStart) ||
       (console.error('Tool index section not found'), false),

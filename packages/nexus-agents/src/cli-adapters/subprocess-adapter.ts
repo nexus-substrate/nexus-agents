@@ -473,7 +473,12 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     options: ResolvedExecutionOptions,
     requestId: string
   ): Promise<Result<CliResponse, CliError>> {
-    const cmdConfig = this.getCommand(task);
+    // #6277: the resolved guard reaches getCommand on the task, so an adapter
+    // whose CLI has its own wait (agy --print-timeout) can size it to the
+    // budget instead of a default that races the guard.
+    const cmdConfig = this.getCommand(
+      task.timeoutMs === undefined ? { ...task, timeoutMs: options.timeoutMs } : task
+    );
     const startTime = getTimeProvider().now();
 
     // #3026 finding 2: fast-fail if the caller already aborted before we

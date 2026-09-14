@@ -8,13 +8,19 @@
 
 import type { PolicyContext, PolicyDecision, PolicyRule } from './policy-types.js';
 import { isPathSafe, extractPathFromArgs } from './policy-helpers.js';
+import { classifyRegisteredTool, type ToolExecutionClass } from '../tools/tool-manifest.js';
 
 // =============================================================================
 // Tool Classification Constants
 // =============================================================================
 
 /**
- * Tools that are considered write/mutation operations.
+ * GENERIC agent/filesystem tool names that are write/mutation operations.
+ *
+ * Not nexus tools: a registered tool is classified by its manifest entry's
+ * `readOnlyHint` (#5114), and a test keeps this set disjoint from the manifest
+ * so no name has two answers. These names exist for callers that evaluate the
+ * firewall against tools this server does not register (proxied or upstream).
  */
 export const MUTATION_TOOLS = new Set([
   'write_file',
@@ -25,20 +31,17 @@ export const MUTATION_TOOLS = new Set([
   'execute_command',
   'run_shell',
   'bash',
-  'create_expert',
-  'run_workflow',
 ]);
 
 /**
- * Tools that are considered read-only operations.
+ * GENERIC agent/filesystem tool names that are read-only operations. Same
+ * scope rule as {@link MUTATION_TOOLS}: never a registered nexus tool.
  */
 export const READ_ONLY_TOOLS = new Set([
   'read_file',
   'list_directory',
   'search_files',
   'get_status',
-  'orchestrate',
-  'delegate_to_model',
 ]);
 
 // =============================================================================
@@ -46,21 +49,25 @@ export const READ_ONLY_TOOLS = new Set([
 // =============================================================================
 
 /**
- * Checks if a tool is a mutation operation.
+ * Classifies a tool for the mutation rule: the manifest answers for every
+ * registered tool, the generic sets answer for the handful of foreign names,
+ * and anything else is reported as `unclassified` rather than guessed (#5114).
+ */
+function classifyToolExecution(toolName: string): ToolExecutionClass {
+  const registered = classifyRegisteredTool(toolName);
+  if (registered !== 'unclassified') return registered;
+  if (MUTATION_TOOLS.has(toolName)) return 'mutation';
+  if (READ_ONLY_TOOLS.has(toolName)) return 'read-only';
+  return 'unclassified';
+}
+
+/**
+ * Checks if a tool is a mutation operation. Fail-closed boolean view of
+ * {@link classifyToolExecution}: an unclassified tool counts as a mutation.
+ * The rule itself uses the three-way class so its verdict can say which.
  */
 export function isMutationTool(toolName: string): boolean {
-  // Check explicit mutation tools
-  if (MUTATION_TOOLS.has(toolName)) {
-    return true;
-  }
-
-  // Check explicit read-only tools
-  if (READ_ONLY_TOOLS.has(toolName)) {
-    return false;
-  }
-
-  // Default to treating unknown tools as mutations (safe default)
-  return true;
+  return classifyToolExecution(toolName) !== 'read-only';
 }
 
 // =============================================================================
@@ -71,7 +78,11 @@ export function isMutationTool(toolName: string): boolean {
  * Policy rule that denies mutation operations when mode is 'read-only'.
  *
  * This ensures that write operations are only allowed when explicitly
- * enabled via the 'read-write' mode.
+ * enabled via the 'read-write' mode. Two inputs: `ctx.mode` is the permission
+ * the operator granted; the tool's class comes from the manifest (#5114). An
+ * unclassified tool is denied too, but the verdict SAYS it was unclassified —
+ * a rollout needs to tell "a write the mode forbids" from "nobody classified
+ * this", and a boolean cannot.
  */
 export const denyMutationsWithoutModeRule: PolicyRule = {
   name: 'deny-mutations-without-mode',
@@ -82,16 +93,20 @@ export const denyMutationsWithoutModeRule: PolicyRule = {
       return { allowed: true, reason: 'Read-write mode enabled' };
     }
 
-    // Check if this is a mutation tool
-    if (isMutationTool(ctx.toolName)) {
-      return {
-        allowed: false,
-        reason: `Tool '${ctx.toolName}' is a mutation operation but mode is '${ctx.mode}'. Set mode to 'read-write' to enable.`,
-      };
+    switch (classifyToolExecution(ctx.toolName)) {
+      case 'mutation':
+        return {
+          allowed: false,
+          reason: `Tool '${ctx.toolName}' is a mutation operation but mode is '${ctx.mode}'. Set mode to 'read-write' to enable.`,
+        };
+      case 'unclassified':
+        return {
+          allowed: false,
+          reason: `Tool '${ctx.toolName}' is unclassified (no TOOL_MANIFEST readOnlyHint and not a known generic tool); denied fail-closed because mode is '${ctx.mode}'. Classify it in tool-manifest.ts or set mode to 'read-write'.`,
+        };
+      case 'read-only':
+        return { allowed: true, reason: 'Read-only operation allowed' };
     }
-
-    // Read-only tool in read-only mode is allowed
-    return { allowed: true, reason: 'Read-only operation allowed' };
   },
 };
 

@@ -41,8 +41,10 @@ import {
   resolveAccessPolicyMode,
 } from '../../security/access-constraint-deriver/index.js';
 // Durable AUDIT-mode violation persistence (#4097). Establishes the audit
-// trail in ALS so the access-policy middleware can mirror log-and-allow
-// violations to the shared hash chain — ONLY when the server threaded a logger.
+// trail in ALS for the access-policy middleware to mirror log-and-allow
+// violations to the shared hash chain — ONLY when the server threaded a
+// logger. That middleware has been unmounted since #5107, so no dispatch
+// writes to this trail; #5108 owns the cleanup.
 import { createDurableAuditTrail } from '../../security/audit-bridge.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 // Per-expert context-budget observer (#2031). Telemetry-only; never

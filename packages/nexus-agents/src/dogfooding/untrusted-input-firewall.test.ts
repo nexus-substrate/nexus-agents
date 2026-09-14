@@ -144,6 +144,46 @@ describe('runUntrustedInputFirewall', () => {
     expect(result.value.trust.trustTier).toBe('3');
   });
 
+  it('under audit: an action-scoped block on the live path reports wouldRefuse (#5380)', () => {
+    // The live wrapper used to count Rule of Two only. A NONE author driving a
+    // DraftReply under a read-only posture trips no Rule of Two, so before
+    // #5380 this read `wouldRefuse: false` — an under-count of exactly the
+    // kind the audit-mode telemetry exists to size.
+    _setUntrustedInputFirewallForTests(
+      new HostileInputFirewall({
+        adapter: createGitHubAdapter(),
+        contentDowngrade: false,
+        policyMode: 'audit',
+      })
+    );
+    const result = runUntrustedInputFirewall(issue(), {
+      context: READ_ONLY,
+      action: {
+        type: 'DraftReply',
+        body: 'Thanks for the report, we will look into it.',
+        requiresApproval: true,
+        sources: [{ type: 'repoFile', path: 'README.md' }],
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.ruleOfTwoViolation).toBeUndefined();
+    expect(result.value.wouldRefuse).toBe(true);
+    expect(result.value.policy?.violations.map((v) => v.rule)).toContain('UNTRUSTED_INFLUENCE');
+  });
+
+  it('with no action the live path names the checks it could not run (#5380)', () => {
+    // Both live callers classify BEFORE they have an action, so this is the
+    // shape their records take today: Rule of Two measured, the rest unmeasured
+    // and said so — not silently passed.
+    _setUntrustedInputFirewallForTests(undefined);
+    const result = runUntrustedInputFirewall(issue(), { context: READ_ONLY });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.policy?.scope).toBe('context');
+    expect(result.value.policy?.unmeasured).toContain('UNTRUSTED_INFLUENCE');
+  });
+
   it('under enforce: a Rule-of-Two violation refuses the input as an Error', () => {
     _setUntrustedInputFirewallForTests(
       new HostileInputFirewall({

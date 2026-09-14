@@ -1,16 +1,21 @@
 /**
  * Access Constraint Deriver — MCP middleware-chain adapter (#1977 activation).
  *
- * The only `Middleware`-shaped entry point into the ClawGuard enforcer. It is
- * mounted into the standard stack (`mcp/middleware/middleware-chain.ts`), so
- * every tool wrapped via `withMiddleware` passes through it.
+ * The only `Middleware`-shaped entry point into the ClawGuard enforcer.
  *
- * ADVISORY ONLY (#5106, epic #5105). A 7-voter panel decided ClawGuard stops
- * being an enforcement mechanism and that PolicyFirewall — which already owns
- * inbound MCP dispatch (#4888/#4987) — is the single authorization boundary.
- * This middleware therefore records what it would have blocked and forwards
- * the call regardless. It cannot deny. The mount itself is removed in #5107;
- * until then this is the reversible half of the retirement.
+ * UNMOUNTED (#5107, epic #5105). It used to be mounted into the standard
+ * stack (`mcp/middleware/middleware-chain.ts`) so every tool wrapped via
+ * `withMiddleware` passed through it; #5107 deleted that mount, and nothing
+ * in production constructs this middleware any more. `checkAccess`, the
+ * denylist and `recordAuditModeViolation` have no production caller either.
+ * Their deletion is step 3 (#5108); this file is kept until that lands so the
+ * retirement stays reversible one step at a time.
+ *
+ * ADVISORY ONLY (#5106). A 7-voter panel decided ClawGuard stops being an
+ * enforcement mechanism and that PolicyFirewall — which already owns inbound
+ * MCP dispatch (#4888/#4987) — is the single authorization boundary. This
+ * middleware therefore records what it would have blocked and forwards the
+ * call regardless. It cannot deny.
  *
  * KNOWN GAP — the policy is not in scope here anyway (#5022). The enforcer reads its
  * `TaskAccessPolicy` from `AsyncLocalStorage`, and the only two production
