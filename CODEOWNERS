@@ -43,6 +43,13 @@
 /.github/workflows/governor-review.yml @williamzujkowski
 /scripts/check-governor-review.ts @williamzujkowski
 /scripts/check-governor-ratification.ts @williamzujkowski
+# #6174 — asks GitHub's own parser whether this file is valid at the sha under review.
+/scripts/check-codeowners-errors.ts @williamzujkowski
+# #6174 — files that must NOT exist. GitHub reads .github/CODEOWNERS over this
+# file and this file over docs/CODEOWNERS, while the governor gates parse only
+# this file. Creating either is itself a governor change; the gate fails closed.
+/.github/CODEOWNERS @williamzujkowski
+/docs/CODEOWNERS @williamzujkowski
 # #5944 — decides whether a CLAUDE.md/AGENTS.md diff may SKIP ratification.
 # A module that grants exemptions must itself be governed, or it is a bypass.
 /scripts/governance-stamp-exemption.ts @williamzujkowski

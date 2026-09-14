@@ -196,6 +196,23 @@ export function isGovernorPath(file: string, patterns: readonly string[]): boole
 }
 
 /**
+ * Governor entries for files that must NOT exist (#6174).
+ *
+ * GitHub reads CODEOWNERS from `.github/CODEOWNERS` (precedence over the root
+ * file), the root, or `docs/CODEOWNERS` (the root takes precedence over it).
+ * The governor gates parse only the root file, so a PR that creates a shadow
+ * file changes what GitHub enforces without changing what the gates measure.
+ * Listing them in the governor section makes creating one a governor change;
+ * `scripts/check-codeowners-errors.ts` fails closed when one exists. The #6034
+ * "matches no tracked file" rule exempts exactly these — for them, matching
+ * nothing is the healthy state.
+ */
+export const MUST_NOT_EXIST_GOVERNOR_PATHS: readonly string[] = [
+  '/.github/CODEOWNERS',
+  '/docs/CODEOWNERS',
+];
+
+/**
  * Governor patterns that match no tracked file (#6034).
  *
  * Pure: the caller supplies the pattern set, the tracked-file listing and the
@@ -208,6 +225,9 @@ export function isGovernorPath(file: string, patterns: readonly string[]): boole
  *
  * Returns `"CODEOWNERS:<line>  <pattern>"` per unresolved entry. The line
  * number matters: "some pattern is stale" is not actionable on a 14-entry list.
+ *
+ * Entries in {@link MUST_NOT_EXIST_GOVERNOR_PATHS} are skipped: they are
+ * governed precisely so that nothing matches them (#6174).
  */
 export function unresolvedGovernorPatterns(
   patterns: readonly string[],
@@ -216,6 +236,7 @@ export function unresolvedGovernorPatterns(
 ): string[] {
   const unresolved: string[] = [];
   for (const pattern of patterns) {
+    if (MUST_NOT_EXIST_GOVERNOR_PATHS.includes(pattern)) continue;
     if (trackedFiles.some((file) => matchesCodeownersPattern(file, pattern))) continue;
     const idx = codeownersLines.findIndex((l) => l.trim().split(/\s+/)[0] === pattern);
     const where = idx === -1 ? 'CODEOWNERS' : `CODEOWNERS:${String(idx + 1)}`;

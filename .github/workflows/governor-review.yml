@@ -20,6 +20,11 @@
 # in lockstep with the governance-of-the-governor section of /CODEOWNERS (the
 # single source the gate script itself parses); if those CODEOWNERS entries
 # change, update this filter to match.
+#
+# A third job (#6174) asks GitHub's OWN parser whether /CODEOWNERS is valid at
+# the sha under review. It lives here rather than in a sibling workflow so the
+# gate is itself governor-owned: a CODEOWNERS validity check an agent could
+# quietly delete without ratification is not a gate.
 
 name: Governor Review Gate
 
@@ -34,9 +39,12 @@ on:
       - 'CLAUDE.md'
       - 'AGENTS.md'
       - 'CODEOWNERS'
+      - '.github/CODEOWNERS'
+      - 'docs/CODEOWNERS'
       - '.github/workflows/governor-review.yml'
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
+      - 'scripts/check-codeowners-errors.ts'
       - 'scripts/governance-stamp-exemption.ts'
       - 'scripts/governor-section.ts'
       - '.rules/**'
@@ -52,9 +60,12 @@ on:
       - 'CLAUDE.md'
       - 'AGENTS.md'
       - 'CODEOWNERS'
+      - '.github/CODEOWNERS'
+      - 'docs/CODEOWNERS'
       - '.github/workflows/governor-review.yml'
       - 'scripts/check-governor-review.ts'
       - 'scripts/check-governor-ratification.ts'
+      - 'scripts/check-codeowners-errors.ts'
       - 'scripts/governance-stamp-exemption.ts'
       - 'scripts/governor-section.ts'
       - '.rules/**'
@@ -331,3 +342,44 @@ jobs:
           # exemption or a stamp-only PR turns main red after merging green.
           PR_BASE_SHA: ${{ steps.evidence.outputs.base }}
         run: npx tsx scripts/check-governor-ratification.ts
+
+  # ---------------------------------------------------------------------------
+  # CODEOWNERS parses under GitHub's own parser (#6174).
+  #
+  # Both gates above parse /CODEOWNERS with OUR parser (`scripts/governor-section.ts`).
+  # Nothing verified that GitHub reads the same file the same way, and a pattern
+  # GitHub rejects is a governor entry that exists for our gates and not for
+  # GitHub's review requests. `GET /repos/{owner}/{repo}/codeowners/errors?ref=`
+  # returns every line GitHub could not parse (line, column, kind, suggestion).
+  # The script fails on a non-empty `errors` array AND on any payload without an
+  # `errors` array (a 404 body has none) — an unmeasured file is not a clean one.
+  #
+  # Runs on both events. The workflow-level `paths:` already names CODEOWNERS,
+  # so every PR that edits it and every push to main that lands such an edit
+  # reaches this job; the other governor paths reach it too, which is a cheap
+  # superset (one API call). Match SEMANTICS are not verified — see the script
+  # header and #6174 for why that half is not measurable here.
+  # ---------------------------------------------------------------------------
+  codeowners-errors:
+    name: CODEOWNERS parses under GitHub's parser
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # PR head for pull_request; the pushed sha for push (the default).
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Ask GitHub to parse CODEOWNERS at the sha under review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # GITHUB_REPOSITORY and GITHUB_API_URL come from the runner environment.
+          REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        # The script's exit code is the verdict: 0 only for `{ errors: [] }`.
+        run: pnpm exec tsx scripts/check-codeowners-errors.ts --ref "${REF}"
