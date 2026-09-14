@@ -50,15 +50,30 @@ import {
   computeVoteRecordHash,
   verifyVoteRecordSet,
 } from './vote-record.js';
+import { computeReasoningDigest } from './reasoning-commitment.js';
 import {
   VOTE_RECORDS_PATH_ENV,
   VOTE_RECORDS_REL_PATH,
   buildVoteRecord,
+  type BuildVoteRecordInput,
   persistVoteRecord,
   parseVoteRecordsText,
   readVoteRecords,
   resolveVoteRecordsPath,
 } from './vote-record-store.js';
+
+/**
+ * The tier every record with at least one responding voter is built on since
+ * #6263: the builder commits to each stored reasoning with a salted digest
+ * (`reasoningNonce` + `reasoningDigest`), and that voter key outranks every
+ * tier below it. The per-field assertions beside each of these are what still
+ * pin the older tiers' FIELDS; the ordering of the tiers below 1.13 is only
+ * observable on a panel with no responding voter (see the 1.13 block).
+ */
+const BUILT_TIER = '1.13';
+
+/** A 32-byte value as lowercase hex — the shape of `reasoningNonce` and `reasoningDigest`. */
+const HEX_256 = /^[0-9a-f]{64}$/;
 
 function vote(decision: Vote['decision'], confidence: number): Vote {
   return { decision, confidence, reasoning: 'because' };
@@ -107,20 +122,28 @@ describe('buildVoteRecord', () => {
       result: consensusResult(),
       votes,
     });
-    // 1.6 since #5373: every live voter's reasoning is stored, which is the
-    // latest optional field. The optionTally/optionCoverage assertions below
-    // are what test those fields' presence.
-    expect(record.version).toBe('1.6');
+    // 1.13 since #6263: every live voter's reasoning is stored AND committed
+    // to with a salted digest, which is the latest voter field. The
+    // optionTally/optionCoverage assertions below are what test those fields'
+    // presence.
+    expect(record.version).toBe(BUILT_TIER);
     expect(record.sequence).toBe(0); // default first sequence
     expect(record.decision).toBe('approved');
     expect(record.proposalHash).toHaveLength(64);
     expect(record.approvalPercentage).toBeCloseTo(66.7);
     expect(record.voteCounts).toEqual({ approve: 2, reject: 1, abstain: 0, total: 3 });
-    // #5373: the stored grounds travel with each entry.
+    // #5373: the stored grounds travel with each entry; #6263: so does the
+    // salted commitment to them (the nonce is random, so its shape is pinned
+    // here and its binding to the text in the 1.13 block).
+    const committed = {
+      reasoning: 'because',
+      reasoningNonce: expect.stringMatching(HEX_256) as unknown as string,
+      reasoningDigest: expect.stringMatching(HEX_256) as unknown as string,
+    };
     expect(record.voters).toEqual([
-      { role: 'architect', decision: 'approve', confidence: 0.8, reasoning: 'because' },
-      { role: 'security', decision: 'approve', confidence: 0.8, reasoning: 'because' },
-      { role: 'catfish', decision: 'reject', confidence: 0.8, reasoning: 'because' },
+      { role: 'architect', decision: 'approve', confidence: 0.8, ...committed },
+      { role: 'security', decision: 'approve', confidence: 0.8, ...committed },
+      { role: 'catfish', decision: 'reject', confidence: 0.8, ...committed },
     ]);
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
@@ -204,7 +227,7 @@ describe('buildVoteRecord', () => {
       votes,
     });
     expect(record.optionTally).toBeUndefined();
-    expect(record.version).toBe('1.6'); // #5373: stored reasoning
+    expect(record.version).toBe(BUILT_TIER); // #5373 reasoning, #6263 its digest
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
@@ -227,7 +250,7 @@ describe('buildVoteRecord', () => {
     });
     // #4472: a tally now always travels with its coverage, so a record
     // carrying one is 1.4. Historical 1.3 records still verify.
-    expect(record.version).toBe('1.6'); // #5373: stored reasoning outranks 1.4
+    expect(record.version).toBe(BUILT_TIER); // the voter tier outranks 1.4
     // The fixture's third voter is catfish(reject) and was assigned 'C'. Only
     // approvers count — this expectation previously asserted `C: 1`, encoding
     // the very defect e2e validation later surfaced in a live record.
@@ -294,7 +317,10 @@ describe('buildVoteRecord', () => {
 
   it('orders the tally deterministically regardless of voter arrival order (#4452)', () => {
     // The array is hash-covered, so two vote sets differing only in order must
-    // not produce different hashes.
+    // not produce different hashes. Since #6263 every built record also
+    // carries a fresh per-entry nonce, so two builds never share a hash; the
+    // comparison holds the nonces constant by re-hashing the second payload
+    // with the first's voter entries, leaving the tally as the only variable.
     const mk = (opts: readonly string[]): VoteRecord =>
       buildVoteRecord({
         // #4986: these fixtures exercise the fallback derivation.
@@ -307,7 +333,10 @@ describe('buildVoteRecord', () => {
         result: consensusResult(),
         votes: votes.map((v, i) => ({ ...v, selectedOption: opts[i] as string })),
       });
-    expect(mk(['A', 'C', 'A']).hash).toBe(mk(['C', 'A', 'A']).hash);
+    const first = mk(['A', 'C', 'A']);
+    const { hash: _second, ...reordered } = mk(['C', 'A', 'A']);
+    expect(reordered.optionTally).toEqual(first.optionTally);
+    expect(computeVoteRecordHash({ ...reordered, voters: first.voters })).toBe(first.hash);
   });
 
   it('excludes error-source voters from the per-voter summary', () => {
@@ -1156,8 +1185,10 @@ describe('a retried voter seat is visible in the record (#6050)', () => {
     expect(computeVoteRecordHash(payload)).not.toBe(computeVoteRecordHash(cleaned));
   });
 
-  it('reports schema 1.7 when a seat was retried', () => {
-    expect(build([retriedVote('security')]).version).toBe('1.7');
+  it('carries `retried` on the seat; the record is on the built tier', () => {
+    const record = build([retriedVote('security')]);
+    expect(record.voters[0]?.retried).toBe(true);
+    expect(record.version).toBe(BUILT_TIER);
   });
 });
 
@@ -1196,13 +1227,13 @@ describe('schema 1.8: the seat carries its model and an unverifiable marker (#60
     expect(record.voters.find((v) => v.role === 'architect')?.model).toBe('claude-sonnet');
     // A seat whose result carried no model records none — absence stays absent.
     expect(record.voters.find((v) => v.role === 'security')?.model).toBeUndefined();
-    expect(record.version).toBe('1.8');
+    expect(record.version).toBe(BUILT_TIER);
   });
 
   it('never records the pending-detection placeholder as a model', () => {
     const record = build([withModel('architect', 'pending-detection')]);
     expect(record.voters[0]?.model).toBeUndefined();
-    expect(record.version).toBe('1.6');
+    expect(record.version).toBe(BUILT_TIER);
   });
 
   it('marks an unverifiable seat, keeps its entry, and records it as abstain', () => {
@@ -1212,7 +1243,7 @@ describe('schema 1.8: the seat carries its model and an unverifiable marker (#60
     expect(devex?.decision).toBe('abstain');
     expect(devex?.model).toBe('codex-5.3');
     expect(record.voters.find((v) => v.role === 'architect')?.unverifiable).toBeUndefined();
-    expect(record.version).toBe('1.8');
+    expect(record.version).toBe(BUILT_TIER);
   });
 
   it('an unverifiable seat is NOT an errored seat: panelCoverage stays absent', () => {
@@ -1238,14 +1269,14 @@ describe('schema 1.8: the seat carries its model and an unverifiable marker (#60
     expect(line).toBe(JSON.stringify(record) + '\n');
     const { records, invalidLines } = parseVoteRecordsText(line);
     expect(invalidLines).toHaveLength(0);
-    expect(records[0]?.version).toBe('1.8');
+    expect(records[0]?.version).toBe(BUILT_TIER);
     expect(records[0]?.voters.find((v) => v.role === 'devex')?.unverifiable).toBe(true);
     expect(verifyVoteRecordSet(records).ok).toBe(true);
   });
 
-  it('a 1.7 record (retried, no model) still round-trips and verifies under the 1.8 schema', () => {
+  it('a retried seat with no model still round-trips and verifies under the 1.8 schema', () => {
     const record = build([{ ...agentVote('security', 'approve'), retried: true }]);
-    expect(record.version).toBe('1.7');
+    expect(record.version).toBe(BUILT_TIER);
     const { records, invalidLines } = parseVoteRecordsText(
       serializeValidatedRecord(VoteRecordSchema, record, 'vote')
     );
@@ -1303,7 +1334,7 @@ describe('schema 1.9: the seat carries its assigned CLI and any fallback (#6115)
     expect(record.voters.find((v) => v.role === 'architect')?.assignedCli).toBe('gemini');
     // A seat whose result carried no assignment records none — absence stays absent.
     expect(record.voters.find((v) => v.role === 'security')?.assignedCli).toBeUndefined();
-    expect(record.version).toBe('1.9');
+    expect(record.version).toBe(BUILT_TIER);
   });
 
   it('records the fallback exactly as the live result stated it, fromModel present-only', () => {
@@ -1316,18 +1347,23 @@ describe('schema 1.9: the seat carries its assigned CLI and any fallback (#6115)
     const pm = record.voters.find((v) => v.role === 'pm')?.fallback;
     expect(pm).toEqual({ fromCli: 'codex', reason: 'capacity' });
     expect(pm !== undefined && 'fromModel' in pm).toBe(false);
-    expect(record.version).toBe('1.9');
+    expect(record.version).toBe(BUILT_TIER);
   });
 
-  it('a seat with a fallback but no assignedCli is still 1.9 — either key lifts the tier', () => {
+  it('a seat with a fallback but no assignedCli carries the fallback alone', () => {
     const { assignedCli: _a, ...noAssignment } = fallenSeat('devex', 'claude');
-    expect(build([noAssignment]).version).toBe('1.9');
+    const record = build([noAssignment]);
+    expect(record.voters[0]?.fallback).toEqual({ fromCli: 'claude', reason: 'capacity' });
+    expect(record.voters[0]?.assignedCli).toBeUndefined();
+    expect(record.version).toBe(BUILT_TIER);
   });
 
-  it('a 1.8 seat (model, no assignment, no fallback) stays 1.8', () => {
-    expect(build([{ ...agentVote('architect', 'approve'), model: 'claude-sonnet' }]).version).toBe(
-      '1.8'
-    );
+  it('a seat with a model, no assignment and no fallback carries the model alone', () => {
+    const record = build([{ ...agentVote('architect', 'approve'), model: 'claude-sonnet' }]);
+    expect(record.voters[0]?.model).toBe('claude-sonnet');
+    expect(record.voters[0]?.assignedCli).toBeUndefined();
+    expect(record.voters[0]?.fallback).toBeUndefined();
+    expect(record.version).toBe(BUILT_TIER);
   });
 
   it('a record with a fallback hashes differently from the same record without it', () => {
@@ -1349,15 +1385,15 @@ describe('schema 1.9: the seat carries its assigned CLI and any fallback (#6115)
     expect(line).toBe(JSON.stringify(record) + '\n');
     const { records, invalidLines } = parseVoteRecordsText(line);
     expect(invalidLines).toHaveLength(0);
-    expect(records[0]?.version).toBe('1.9');
+    expect(records[0]?.version).toBe(BUILT_TIER);
     expect(records[0]?.voters.find((v) => v.role === 'devex')?.fallback?.reason).toBe('capacity');
     expect(records[0]?.voters.find((v) => v.role === 'architect')?.assignedCli).toBe('gemini');
     expect(verifyVoteRecordSet(records).ok).toBe(true);
   });
 
-  it('a 1.8 record (model, no assignment) still round-trips and verifies under the 1.9 schema', () => {
+  it('a seat with a model and no assignment still round-trips and verifies under the 1.9 schema', () => {
     const record = build([{ ...agentVote('security', 'approve'), model: 'claude-sonnet' }]);
-    expect(record.version).toBe('1.8');
+    expect(record.version).toBe(BUILT_TIER);
     const { records, invalidLines } = parseVoteRecordsText(
       serializeValidatedRecord(VoteRecordSchema, record, 'vote')
     );
@@ -1407,7 +1443,7 @@ describe('schema 1.9: the seat carries its assigned CLI and any fallback (#6115)
 describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () => {
   const binding = { pr: 6200, headSha: '0123456789abcdef0123456789abcdef01234567' };
 
-  it('buildVoteRecord carries the binding verbatim, lifts the tier to 1.10, and the record verifies', () => {
+  it('buildVoteRecord carries the binding verbatim and the record verifies', () => {
     const record = buildVoteRecord({
       declaredOptions: undefined,
       resolvedDecision: 'approved',
@@ -1418,7 +1454,7 @@ describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () =>
       votes,
       ratifiesPr: binding,
     });
-    expect(record.version).toBe('1.10');
+    expect(record.version).toBe(BUILT_TIER);
     expect(record.ratifiesPr).toEqual(binding);
     // Both bindings may coexist: `ratifies` is the authority-ladder subject.
     expect(record.ratifies).toBeUndefined();
@@ -1446,14 +1482,14 @@ describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () =>
       errored: 0,
       erroredRoles: [],
     });
-    expect(record.version).toBe('1.10');
+    expect(record.version).toBe(BUILT_TIER);
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
     // The coverage is inside the hash: dropping it changes the hash.
     const { panelCoverage: _coverage, hash: _hash, ...withoutCoverage } = record;
     expect(computeVoteRecordHash(withoutCoverage)).not.toBe(record.hash);
   });
 
-  it('omitting the binding leaves the record on its pre-1.10 tier with no key at all', () => {
+  it('omitting the binding leaves the record with no ratifiesPr key at all', () => {
     const record = buildVoteRecord({
       declaredOptions: undefined,
       resolvedDecision: 'approved',
@@ -1463,7 +1499,7 @@ describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () =>
       result: consensusResult(),
       votes,
     });
-    expect(record.version).toBe('1.6');
+    expect(record.version).toBe(BUILT_TIER);
     expect('ratifiesPr' in record).toBe(false);
   });
 
@@ -1487,7 +1523,7 @@ describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () =>
       expect(invalidLines).toEqual([]);
       expect(records).toHaveLength(1);
       expect(records[0]?.ratifiesPr).toEqual(binding);
-      expect(records[0]?.version).toBe('1.10');
+      expect(records[0]?.version).toBe(BUILT_TIER);
       expect(verifyVoteRecordSet(records).ok).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -1525,7 +1561,7 @@ describe('ratifiesPr PR-ratification binding (#5130 step 1, schema 1.10)', () =>
 });
 
 describe('errorPolicy — the policy the panel ran under (#6211, schema 1.11)', () => {
-  it('buildVoteRecord carries the policy verbatim, lifts the tier to 1.11, and the record verifies', () => {
+  it('buildVoteRecord carries the policy verbatim and the record verifies', () => {
     const record = buildVoteRecord({
       declaredOptions: undefined,
       resolvedDecision: 'approved',
@@ -1536,12 +1572,12 @@ describe('errorPolicy — the policy the panel ran under (#6211, schema 1.11)', 
       votes,
       errorPolicy: 'absolute_quorum',
     });
-    expect(record.version).toBe('1.11');
+    expect(record.version).toBe(BUILT_TIER);
     expect(record.errorPolicy).toBe('absolute_quorum');
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
-  it('1.11 outranks 1.10: a record carrying both the PR binding and the policy is 1.11', () => {
+  it('a record carrying both the PR binding and the policy carries both', () => {
     const record = buildVoteRecord({
       declaredOptions: undefined,
       resolvedDecision: 'approved',
@@ -1553,12 +1589,12 @@ describe('errorPolicy — the policy the panel ran under (#6211, schema 1.11)', 
       ratifiesPr: { pr: 6211, headSha: '0123456789abcdef0123456789abcdef01234567' },
       errorPolicy: 'reduce_denominator',
     });
-    expect(record.version).toBe('1.11');
+    expect(record.version).toBe(BUILT_TIER);
     expect(record.ratifiesPr?.pr).toBe(6211);
     expect(record.errorPolicy).toBe('reduce_denominator');
   });
 
-  it('omitting the policy leaves the record on its pre-1.11 tier with no key at all', () => {
+  it('omitting the policy leaves the record with no errorPolicy key at all', () => {
     const record = buildVoteRecord({
       declaredOptions: undefined,
       resolvedDecision: 'approved',
@@ -1568,7 +1604,7 @@ describe('errorPolicy — the policy the panel ran under (#6211, schema 1.11)', 
       result: consensusResult(),
       votes,
     });
-    expect(record.version).toBe('1.6');
+    expect(record.version).toBe(BUILT_TIER);
     expect('errorPolicy' in record).toBe(false);
   });
 
@@ -1592,7 +1628,7 @@ describe('errorPolicy — the policy the panel ran under (#6211, schema 1.11)', 
       expect(invalidLines).toEqual([]);
       expect(records).toHaveLength(1);
       expect(records[0]?.errorPolicy).toBe('fail_closed');
-      expect(records[0]?.version).toBe('1.11');
+      expect(records[0]?.version).toBe(BUILT_TIER);
       expect(verifyVoteRecordSet(records).ok).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -1643,22 +1679,25 @@ describe('schema 1.12: a recovered seat carries what it was retried from (#6246)
     expect(Object.keys(catfish?.retriedFrom ?? {})).toEqual(['source', 'error']);
     const architect = record.voters.find((v) => v.role === 'architect');
     expect(architect !== undefined && 'retriedFrom' in architect).toBe(false);
-    expect(record.version).toBe('1.12');
+    expect(record.version).toBe(BUILT_TIER);
   });
 
   it('a clean panel carries no retriedFrom key anywhere — the pair', () => {
     const record = build([agentVote('architect', 'approve'), agentVote('security', 'approve')]);
     expect(record.voters.some((v) => 'retriedFrom' in v)).toBe(false);
-    expect(record.version).toBe('1.6');
+    expect(record.version).toBe(BUILT_TIER);
   });
 
-  it('retriedFrom is orthogonal to retried: a retried seat with no carried cause stays 1.7', () => {
-    expect(build([{ ...agentVote('pm', 'approve'), retried: true }]).version).toBe('1.7');
+  it('retriedFrom is orthogonal to retried: a retried seat with no carried cause carries none', () => {
+    const record = build([{ ...agentVote('pm', 'approve'), retried: true }]);
+    expect(record.voters[0]?.retried).toBe(true);
+    expect('retriedFrom' in (record.voters[0] ?? {})).toBe(false);
+    expect(record.version).toBe(BUILT_TIER);
   });
 
-  it('1.12 outranks 1.11: a record carrying both the policy and a carried cause is 1.12', () => {
+  it('a record carrying both the policy and a carried cause carries both', () => {
     const record = build([recoveredSeat('catfish')], 'absolute_quorum');
-    expect(record.version).toBe('1.12');
+    expect(record.version).toBe(BUILT_TIER);
     expect(record.errorPolicy).toBe('absolute_quorum');
   });
 
@@ -1668,7 +1707,7 @@ describe('schema 1.12: a recovered seat carries what it was retried from (#6246)
     expect(line).toBe(JSON.stringify(record) + '\n');
     const { records, invalidLines } = parseVoteRecordsText(line);
     expect(invalidLines).toHaveLength(0);
-    expect(records[0]?.version).toBe('1.12');
+    expect(records[0]?.version).toBe(BUILT_TIER);
     expect(records[0]?.voters.find((v) => v.role === 'catfish')?.retriedFrom).toEqual({
       source: 'error',
       error: PARSE_FAILURE,
@@ -1710,7 +1749,7 @@ describe('schema 1.12: a recovered seat carries what it was retried from (#6246)
         votes: merged,
         filePath,
       });
-      expect(written?.version).toBe('1.12');
+      expect(written?.version).toBe(BUILT_TIER);
       const { records, invalidLines } = readVoteRecords(filePath);
       expect(invalidLines).toEqual([]);
       const catfish = records[0]?.voters.find((v) => v.role === 'catfish');
@@ -1721,5 +1760,123 @@ describe('schema 1.12: a recovered seat carries what it was retried from (#6246)
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('schema 1.13: the builder commits to each stored reasoning with a salted digest (#6263)', () => {
+  // The producer half of #5748 step 1. Every responding voter's entry carries
+  // a fresh `reasoningNonce` and `reasoningDigest = sha256(nonce ‖ reasoning)`
+  // over the text AS STORED (clipped), so the commitment is re-openable from
+  // the record alone. The hash folds the two keys and not the text.
+  function build(
+    v: readonly AgentVoteResult[],
+    extra: Partial<Pick<BuildVoteRecordInput, 'errorPolicy' | 'ratifiesPr'>> = {}
+  ): VoteRecord {
+    return buildVoteRecord({
+      id: 'digest-113',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      votes: v,
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      sequence: 0,
+      previousHash: undefined,
+      ...extra,
+    });
+  }
+
+  it('every responding voter carries a fresh 64-hex nonce and the digest of nonce ‖ stored reasoning', () => {
+    const record = build([agentVote('architect', 'approve'), agentVote('security', 'reject')]);
+    expect(record.version).toBe('1.13');
+    expect(record.voters).toHaveLength(2);
+    for (const v of record.voters) {
+      expect(v.reasoningNonce).toMatch(HEX_256);
+      expect(v.reasoningDigest).toBe(computeReasoningDigest(v.reasoningNonce!, v.reasoning!));
+    }
+    // Per ENTRY, not per record: two seats with identical text must not share
+    // a nonce, or the digests would reveal that the texts are equal.
+    expect(record.voters[0]!.reasoningNonce).not.toBe(record.voters[1]!.reasoningNonce);
+    expect(record.voters[0]!.reasoningDigest).not.toBe(record.voters[1]!.reasoningDigest);
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('the digest is over the CLIPPED text the record stores, so the commitment opens from the record alone', () => {
+    const long = 'y'.repeat(MAX_VOTER_REASONING_CHARS + 1);
+    const record = build([
+      { ...agentVote('catfish', 'reject'), vote: { ...vote('reject', 0.8), reasoning: long } },
+    ]);
+    const v = record.voters[0]!;
+    expect(v.reasoningTruncated).toBe(true);
+    expect(v.reasoning).toHaveLength(MAX_VOTER_REASONING_CHARS);
+    expect(v.reasoningDigest).toBe(computeReasoningDigest(v.reasoningNonce!, v.reasoning!));
+    expect(v.reasoningDigest).not.toBe(computeReasoningDigest(v.reasoningNonce!, long));
+    expect(verifyVoteRecordSet([record]).ok).toBe(true);
+  });
+
+  it('an errored seat has no entry and therefore no commitment; an empty reasoning is committed to as the empty string', () => {
+    const record = build([
+      agentVote('architect', 'abstain', 'error'),
+      { ...agentVote('pm', 'approve'), vote: { ...vote('approve', 0.8), reasoning: '' } },
+    ]);
+    expect(record.voters).toHaveLength(1);
+    const pm = record.voters[0]!;
+    expect(pm.reasoning).toBe('');
+    expect(pm.reasoningDigest).toBe(computeReasoningDigest(pm.reasoningNonce!, ''));
+  });
+
+  it('a 1.13 record round-trips through serializeValidatedRecord, reads back and verifies', () => {
+    const record = build([agentVote('architect', 'approve')], { errorPolicy: 'absolute_quorum' });
+    const line = serializeValidatedRecord(VoteRecordSchema, record, 'vote');
+    expect(line).toBe(JSON.stringify(record) + '\n');
+    const { records, invalidLines } = parseVoteRecordsText(line);
+    expect(invalidLines).toHaveLength(0);
+    expect(records[0]?.version).toBe('1.13');
+    expect(records[0]?.voters[0]?.reasoningNonce).toBe(record.voters[0]!.reasoningNonce);
+    expect(verifyVoteRecordSet(records)).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('editing the stored text on disk without re-committing is caught on read-back verification', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vote-records-113-'));
+    const filePath = join(dir, 'governance', 'vote-records.jsonl');
+    try {
+      const written = persistVoteRecord({
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        id: 'vote-digest',
+        proposal: 'p',
+        strategy: 'supermajority',
+        result: consensusResult(),
+        votes: [agentVote('architect', 'approve')],
+        filePath,
+      });
+      expect(written?.version).toBe('1.13');
+      const line = readFileSync(filePath, 'utf-8');
+      // The record hash does not see the text (the property step 2 rests on),
+      // so a naive edit leaves `hash` intact — and the commitment check is
+      // what still refuses it.
+      writeFileSync(filePath, line.replace('"reasoning":"because"', '"reasoning":"because!"'));
+      const { records, invalidLines } = readVoteRecords(filePath);
+      expect(invalidLines).toEqual([]);
+      expect(records[0]?.voters[0]?.reasoning).toBe('because!');
+      expect(records[0]?.hash).toBe(written!.hash);
+      const result = verifyVoteRecordSet(records);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a panel with NO responding voter has nothing to commit to and stays on the tier its record-level fields imply', () => {
+    // The only place the ordering of the tiers below 1.13 is still observable
+    // through the producer: no voter entry, so no digest, so the record-level
+    // rule decides.
+    const allErrored = [agentVote('architect', 'abstain', 'error')];
+    expect(build(allErrored).version).toBe('1.5');
+    expect(build(allErrored, { ratifiesPr: { pr: 1, headSha: '0'.repeat(40) } }).version).toBe(
+      '1.10'
+    );
+    expect(build(allErrored, { errorPolicy: 'absolute_quorum' }).version).toBe('1.11');
   });
 });

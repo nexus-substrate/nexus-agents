@@ -108,7 +108,8 @@ describe('nexus-agents vote --ratifies-pr / --strategy reach the persisted recor
     expect(record.errorPolicy).toBe('absolute_quorum');
     expect(record.strategy).toBe('supermajority');
     expect(record.decision).toBe('approved');
-    expect(record.version).toBe('1.11');
+    // 1.13: every live voter entry carries a salted reasoning digest (#6263).
+    expect(record.version).toBe('1.13');
     // A whole 7-seat panel: what the ledger gate reads as `ratified`.
     expect(record.panelCoverage).toMatchObject({ requested: 7, errored: 0 });
 
