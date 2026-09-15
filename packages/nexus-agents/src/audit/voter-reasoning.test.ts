@@ -71,7 +71,8 @@ describe('voter reasoning is persisted (#5373)', () => {
     const catfish = r.voters.find((v) => v.role === 'catfish');
     expect(catfish?.reasoning).toBe(dissent);
     expect(catfish?.reasoningTruncated).toBeUndefined();
-    expect(r.version).toBe('1.6');
+    // 1.13 since #6263: the stored text is committed to with a salted digest.
+    expect(r.version).toBe('1.13');
     expect(verifyVoteRecordSet([r])).toEqual({ ok: true, recordCount: 1 });
   });
 
@@ -97,7 +98,9 @@ describe('voter reasoning is persisted (#5373)', () => {
     expect(r.panelCoverage?.erroredRoles).toEqual(['ai_ml']);
   });
 
-  it('the stored reasoning is covered by the record hash', () => {
+  it('the stored reasoning is bound by the record: a rewrite fails verification', () => {
+    // Since #6263 the hash folds a salted DIGEST of the text rather than the
+    // text; the verifier re-opens that commitment, so the verdict is the same.
     const r = record([agentVote('catfish', 'reject', 'Original grounds.')]);
     const tampered = {
       ...r,

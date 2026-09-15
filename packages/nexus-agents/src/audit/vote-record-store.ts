@@ -61,6 +61,7 @@ import type {
   VoteRecordPrBinding,
   VoterSummary,
 } from './vote-record.js';
+import { computeReasoningDigest, mintReasoningNonce } from './reasoning-commitment.js';
 import {
   VoteRecordSchema,
   clipForRecord,
@@ -202,15 +203,31 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
 }
 
 /**
- * The stored reasoning, clipped with a marker rather than silently (#5373).
+ * The stored reasoning, clipped with a marker rather than silently (#5373),
+ * and the salted commitment to it (#6263, schema 1.13).
  *
  * A truncated argument that does not say it was truncated is the failure this
  * field exists to fix — on #5228 a contrarian rejection was clipped
  * mid-sentence and its grounds were unrecoverable.
+ *
+ * The digest is over the text AS STORED — after the clip — so the commitment
+ * re-opens from the record alone; a digest over the unclipped text could
+ * never be verified once the tail is gone. One fresh nonce per entry.
  */
-function reasoningFields(reasoning: string): { reasoning: string; reasoningTruncated?: true } {
+function reasoningFields(reasoning: string): {
+  reasoning: string;
+  reasoningTruncated?: true;
+  reasoningNonce: string;
+  reasoningDigest: string;
+} {
   const { text, truncated } = clipForRecord(reasoning);
-  return { reasoning: text, ...(truncated === true ? { reasoningTruncated: true as const } : {}) };
+  const reasoningNonce = mintReasoningNonce();
+  return {
+    reasoning: text,
+    ...(truncated === true ? { reasoningTruncated: true as const } : {}),
+    reasoningNonce,
+    reasoningDigest: computeReasoningDigest(reasoningNonce, text),
+  };
 }
 
 /**
@@ -352,7 +369,10 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.12 carries a voter `retriedFrom` (#6246), 1.11 a record-level
+ * 1.13 carries a voter `reasoningDigest` (#6263) — every entry with stored
+ * reasoning does, so every record with a responding voter is 1.13 and the
+ * tiers below are reachable only through a panel with no voter entry — 1.12
+ * a voter `retriedFrom` (#6246), 1.11 a record-level
  * `errorPolicy` (#6211), 1.10 a record-level `ratifiesPr` PR binding (#5130),
  * 1.9 a voter `assignedCli` or `fallback`, 1.8 a voter `model` or an
  * `unverifiable` seat, 1.7 a retried voter seat, 1.6 voter reasoning, 1.5
@@ -366,9 +386,13 @@ function recordVersion(
   voters: readonly VoterSummary[],
   /** The two record-level optionals the caller supplies directly (grouped: max-params). */
   recordLevel: Pick<BuildVoteRecordInput, 'ratifiesPr' | 'errorPolicy'>
-): '1.2' | '1.3' | '1.4' | '1.5' | '1.6' | '1.7' | '1.8' | '1.9' | '1.10' | '1.11' | '1.12' {
+): Exclude<VoteRecord['version'], '1.1'> {
   const voterTier = voterTierOf(voters);
-  // 1.12 first: a carried first-pass cause is orthogonal to every tier below
+  // 1.13 first (#6263): the digest changes what the hash COVERS for the
+  // reasoning keys, so a reader must know from the version alone which fold
+  // rule applies; it outranks every tier below, record-level ones included.
+  if (voterTier === '1.13') return '1.13';
+  // 1.12 next: a carried first-pass cause is orthogonal to every tier below
   // — it co-occurs with `retried` (1.7) but a retried seat need not carry one
   // — and a reader needs to know from the version alone whether a voter entry
   // may carry it (#6246). It is the one voter tier ABOVE the record-level
@@ -394,7 +418,8 @@ function recordVersion(
  */
 function voterTierOf(
   voters: readonly VoterSummary[]
-): '1.6' | '1.7' | '1.8' | '1.9' | '1.12' | undefined {
+): '1.6' | '1.7' | '1.8' | '1.9' | '1.12' | '1.13' | undefined {
+  if (voters.some((v) => v.reasoningDigest !== undefined)) return '1.13';
   if (voters.some((v) => v.retriedFrom !== undefined)) return '1.12';
   // 1.9, on the same tier logic as 1.8: either key alone lifts the tier, so
   // a reader knows from the version whether a seat's assignment and fallover
