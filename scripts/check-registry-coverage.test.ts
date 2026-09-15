@@ -304,7 +304,9 @@ describe('peer files name the authored source, not a generated artifact (#5160)'
   const REPO = path.resolve(import.meta.dirname, '..');
   const manifest = JSON.parse(
     fs.readFileSync(path.join(REPO, 'docs/ops/registry-coverage-manifest.json'), 'utf-8')
-  ) as { registries: { name: string; peer_files: string[] }[] };
+  ) as {
+    registries: { name: string; peer_files: string[]; peer_mentions?: { extract: string } }[];
+  };
 
   it('CLAUDE.md is a generated artifact for harness-neutral content', () => {
     // The premise of the rule below. If this ever stops being true the rule
@@ -330,21 +332,37 @@ describe('peer files name the authored source, not a generated artifact (#5160)'
     expect(offenders).toEqual([]);
   });
 
-  it('NEXUS_ENV_VARS points at AGENTS.md and the full configuration doc', () => {
+  it('NEXUS_ENV_VARS names CONFIGURATION.md as its sole required peer (#4931)', () => {
     const env = manifest.registries.find((r) => r.name === 'NEXUS_ENV_VARS');
     expect(env).toBeDefined();
     // Named explicitly rather than asserted as a set difference: the point is
     // WHICH file carries the table, and a subtractive assertion would pass if
     // the peer list were emptied altogether.
-    expect(env?.peer_files).toContain('AGENTS.md');
-    expect(env?.peer_files).toContain('docs/getting-started/CONFIGURATION.md');
+    expect(env?.peer_files).toEqual(['docs/getting-started/CONFIGURATION.md']);
+    // The content check must survive the repoint: without `peer_mentions` the
+    // requirement collapses back to "the peer was touched" (#5222).
+    expect(env?.peer_mentions?.extract).toBe('\\bNEXUS_[A-Z0-9_]+\\b');
   });
 
-  it('the env-var table really does live in AGENTS.md', () => {
+  it('AGENTS.md is NOT a required peer for NEXUS_ENV_VARS (#4931, option 2)', () => {
+    // AGENTS.md is a governor path (CODEOWNERS), so naming it as a peer routed
+    // every env-schema addition — including one whose variable the docs already
+    // described — through owner ratification. Its table is the MOST-USED
+    // subset by design; the full reference is CONFIGURATION.md. The reverse
+    // direction (a name in AGENTS.md must be in the schema) is still pinned by
+    // env-schema.test.ts (#4722), so dropping the peer loses no check.
+    const env = manifest.registries.find((r) => r.name === 'NEXUS_ENV_VARS');
+    expect(env?.peer_files).not.toContain('AGENTS.md');
+  });
+
+  it('the env-var reference really does live in CONFIGURATION.md', () => {
     // Without this the repoint above could point at a file that never
     // documents the variables, and every assertion here would still pass.
-    const agents = fs.readFileSync(path.join(REPO, 'AGENTS.md'), 'utf-8');
-    expect(agents).toContain('NEXUS_BILLING_MODE');
+    const config = fs.readFileSync(
+      path.join(REPO, 'docs/getting-started/CONFIGURATION.md'),
+      'utf-8'
+    );
+    expect(config).toContain('NEXUS_BILLING_MODE');
   });
 });
 

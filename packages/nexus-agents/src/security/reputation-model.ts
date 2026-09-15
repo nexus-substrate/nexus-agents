@@ -392,8 +392,8 @@ export function reconcileTrustTier(
 // ============================================================================
 
 /**
- * Rollout mode for reputation-based tier gating, mirroring
- * `NEXUS_ACCESS_POLICY_MODE` (#1977): `off` (no reputation effect), `audit`
+ * Rollout mode for reputation-based tier gating, the same `off`/`audit`/
+ * `enforce` shape as `NEXUS_FIREWALL_POLICY`: `off` (no reputation effect), `audit`
  * (compute + report the would-be demotion but enforce the classifier tier), or
  * `enforce` (apply the demotion). Default `enforce` since #4667 — see
  * {@link DEFAULT_REPUTATION_GATING_MODE} for the measurement that justified the
@@ -425,7 +425,7 @@ export const DEFAULT_REPUTATION_GATING_MODE: ReputationGatingMode = 'enforce';
 /**
  * Resolve the gating mode from the environment (invalid → default + warn, never
  * throws — #3130). Delegates to the shared `resolveEnvMode` so this flag and
- * `NEXUS_ACCESS_POLICY_MODE` coerce identically.
+ * `NEXUS_FIREWALL_POLICY` coerce identically.
  */
 export function resolveReputationGatingMode(
   env: NodeJS.ProcessEnv = process.env

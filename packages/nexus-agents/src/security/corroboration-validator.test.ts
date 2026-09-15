@@ -12,7 +12,8 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
-import type { AgentAction, SourceCitation } from './action-schema.js';
+import { AgentActionSchema } from './action-schema.js';
+import type { AgentAction, AgentActionType, SourceCitation } from './action-schema.js';
 import { validateCorroboration, getCorroborationRules } from './corroboration-validator.js';
 import { getRequiredTrustTier } from './trust-classifier.js';
 
@@ -328,16 +329,17 @@ describe('the governance text matches the code (#4688)', () => {
     'utf8'
   );
 
-  const TYPED_ACTIONS = [
-    'SummarizeIssue',
-    'ProposeLabels',
-    'DraftReply',
-    'RequestHumanApproval',
-    'ClassifyIssue',
-    'IdentifyDuplicates',
-    'RefuseAction',
-    'GeneratePatchPlan',
-  ] as const;
+  /**
+   * Derived from the schema, not hand-maintained. #4750: this was a literal
+   * list of eight names, so a member added to `AgentActionSchema` and to
+   * neither the table nor the list left BOTH drift directions green — the
+   * tests pinned doc<->list, not doc<->code, and `HandoffMessage` sat
+   * undocumented. Reading the discriminator off each union member means a
+   * new action fails here until its table row lands.
+   */
+  const TYPED_ACTIONS: readonly AgentActionType[] = AgentActionSchema.options.map(
+    (option) => option.shape.type.value
+  );
 
   /**
    * The action names in the FIRST COLUMN of the per-action table only.
@@ -375,7 +377,7 @@ describe('the governance text matches the code (#4688)', () => {
     // renamed or removed would otherwise sit there looking authoritative.
     for (const documented of documentedActions()) {
       expect(
-        (TYPED_ACTIONS as readonly string[]).includes(documented),
+        TYPED_ACTIONS.includes(documented as AgentActionType),
         `table documents '${documented}', which is not a typed action`
       ).toBe(true);
     }

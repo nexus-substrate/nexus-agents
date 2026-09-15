@@ -248,8 +248,8 @@ export function createDurableAuditSink(auditLogger: IAuditLogger): DurableAuditS
  * single representation of "mirror security events to the shared hash chain when
  * a logger is threaded." Returns undefined when none is present, so the no-logger
  * path establishes NO trail and stays byte-identical (mirrors the dev-pipeline
- * `buildPolicyAuditTrail` guard). Consumers wrap execution in `withAuditTrail`
- * ONLY when this returns a trail.
+ * `buildPolicyAuditTrail` guard). Consumers establish the trail ONLY when this
+ * returns one; `run-graph-workflow.ts` is the remaining caller since #5108.
  */
 export function createDurableAuditTrail(auditLogger?: IAuditLogger): AuditTrail | undefined {
   if (auditLogger === undefined) return undefined;

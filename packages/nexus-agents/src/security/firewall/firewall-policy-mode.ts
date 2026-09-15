@@ -17,12 +17,13 @@
  * behaviour is byte-identical to pre-#5382.** A gate whose default changes
  * behaviour has not gated anything.
  *
- * Deliberately NOT a new mechanism. This is the third flag of exactly this shape
- * — `NEXUS_ACCESS_POLICY_MODE` (ClawGuard, #1977) and `NEXUS_REPUTATION_GATING`
- * (#3122) are the other two — so it delegates to the shared `resolveEnvMode`
- * helper (#3130) and coerces identically. `access-constraint-deriver/types.ts`
- * notes these env-var names are a stability contract; adding a fourth resolver
- * with subtly different coercion is the sprawl that helper exists to prevent.
+ * Deliberately NOT a new mechanism. This flag has the same shape as
+ * `NEXUS_REPUTATION_GATING` (#3122) — and as `NEXUS_ACCESS_POLICY_MODE` did
+ * until its reader, the access-constraint deriver, was deleted in #5108 — so it
+ * delegates to the shared `resolveEnvMode` helper (#3130) and coerces
+ * identically. These env-var names are a stability contract; adding another
+ * resolver with subtly different coercion is the sprawl that helper exists to
+ * prevent.
  *
  * @module security/firewall/firewall-policy-mode
  */

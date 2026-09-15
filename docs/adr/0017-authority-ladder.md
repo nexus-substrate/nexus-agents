@@ -279,7 +279,9 @@ Each is an unbundled, per-loop migration governed by this ADR — not new behavi
 - **#3815** — KNN research-maturity weighting (worked example 2). Promotion gated on a
   similarity-controlled, stable, significant success-rate lift; kill-option if none.
 - **#2077** — ClawGuard audit → `enforce`. **Retired, not promoted** (#5022, epic
-  #5105): the panel consolidated tool authorization on PolicyFirewall instead. Kept as
+  #5105): the panel consolidated tool authorization on PolicyFirewall instead, and
+  #5108 deleted the deriver, moving its secret-path denylist into the `secret-paths`
+  firewall rule. Kept as
   a worked example of the ladder's failure mode — the bake would have produced zero
   judged events because the guard's policy was never in scope, so the criterion could
   never have been evaluated. Successor: **#4988**, for PolicyFirewall.

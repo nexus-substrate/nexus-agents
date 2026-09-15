@@ -44,6 +44,7 @@ export {
   PolicyConfigSchema,
   denyMutationsWithoutModeRule,
   safePathsRule,
+  secretPathsRule,
   createDefaultPolicyFirewall,
   evaluatePolicy,
   createPolicyContext,

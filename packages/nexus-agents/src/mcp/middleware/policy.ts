@@ -23,7 +23,7 @@ import type {
   PolicyFirewallConfig,
 } from './policy-types.js';
 import { PolicyError } from './policy-types.js';
-import { denyMutationsWithoutModeRule, safePathsRule } from './policy-rules.js';
+import { denyMutationsWithoutModeRule, safePathsRule, secretPathsRule } from './policy-rules.js';
 
 // =============================================================================
 // PolicyFirewall Implementation
@@ -247,8 +247,10 @@ export class PolicyFirewall implements IPolicyFirewall {
 /**
  * Creates a policy firewall with default rules.
  *
- * Default rules included:
+ * Default rules included, in evaluation order:
  * - deny-mutations-without-mode
+ * - secret-paths (#5108) — ahead of safe-paths so a secret is reported as a
+ *   secret, not as a `..` or an out-of-root path
  * - safe-paths
  *
  * @param config - Optional configuration
@@ -259,6 +261,7 @@ export function createDefaultPolicyFirewall(config?: PolicyFirewallConfig): Poli
 
   // Add default rules
   firewall.addRule(denyMutationsWithoutModeRule);
+  firewall.addRule(secretPathsRule);
   firewall.addRule(safePathsRule);
 
   return firewall;

@@ -3,8 +3,7 @@
  *
  * Several parallel registries are keyed by MCP tool name and must stay in sync
  * with the canonical `REGISTERED_TOOL_NAMES`. Before this test, only a few had
- * freshness coverage — `TOOL_TIER_MAP`, the two `READ_ONLY_TOOLS` sets, and the
- * prerequisite maps could drift (e.g. keep a dangling entry for a removed/renamed
+ * freshness coverage — `TOOL_TIER_MAP` and the prerequisite maps could drift (e.g. keep a dangling entry for a removed/renamed
  * tool) silently. This is the single audit surface: one clear failure listing
  * exactly which registry has an orphan key or is missing an entry.
  *
@@ -18,7 +17,6 @@ import { describe, it, expect } from 'vitest';
 import { REGISTERED_TOOL_NAMES } from './index.js';
 import { TOOL_ANNOTATIONS } from './tool-annotations.js';
 import { TOOL_PREREQUISITES, NO_PREREQUISITE } from '../middleware/tool-prerequisites.js';
-import { READ_ONLY_TOOLS as READ_ONLY_RISK } from '../../security/access-constraint-deriver/tool-risk.js';
 import { TOOL_TIER_MAP } from '../gateway/tier-classifier.js';
 
 // NOTE: middleware/policy-rules.ts also exports a READ_ONLY_TOOLS set, but it is
@@ -49,7 +47,6 @@ describe('tool-registry consistency vs REGISTERED_TOOL_NAMES (#3565)', () => {
     const subsets: ReadonlyArray<readonly [string, Iterable<string>]> = [
       ['TOOL_PREREQUISITES', Object.keys(TOOL_PREREQUISITES)],
       ['NO_PREREQUISITE', Object.keys(NO_PREREQUISITE)],
-      ['READ_ONLY_TOOLS (tool-risk)', READ_ONLY_RISK],
       ['TOOL_TIER_MAP', Object.keys(TOOL_TIER_MAP)],
     ];
     it.each(subsets)('%s has no orphan keys', (_name, keys) => {
