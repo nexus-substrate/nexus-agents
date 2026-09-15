@@ -614,6 +614,7 @@ jobs:
               . 2>/dev/null \
               | grep -v 'docs/ops/docops-spec.md' \
               | grep -v 'skills/documentation-management/SKILL.md:.*PIPELINE NOTE' \
+              | grep -v 'skills/documentation-management/pipeline-notes/' \
               | grep -v '.github/workflows/docs-check.yml' || true)
             if [ -n "$hits" ]; then
               echo "::error::Found stale reference to removed path \`$path\` (removed in #1619):"
