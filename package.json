@@ -60,6 +60,7 @@
     "research:check": "pnpm exec tsx scripts/update-research-index.ts --check",
     "research:validate": "pnpm exec tsx scripts/update-research-index.ts --validate",
     "check:pricing-drift": "pnpm exec tsx scripts/check-pricing-drift.ts",
+    "check:required-contexts": "tsx scripts/check-required-contexts.ts",
     "check:parameter-drift": "pnpm exec tsx scripts/check-parameter-drift.ts",
     "check:model-drift": "pnpm exec tsx scripts/check-model-string-drift.ts",
     "build:registry": "pnpm exec tsx scripts/build-model-registry.ts",
