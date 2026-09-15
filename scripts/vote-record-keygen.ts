@@ -40,7 +40,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname } from 'node:path';
 
@@ -133,6 +133,32 @@ export type KeygenOutcome =
     }
   | { readonly kind: 'refused'; readonly reason: string };
 
+/** `lstat` that reports absence as `undefined` instead of throwing; every other error propagates. */
+function lstatOrUndefined(p: string): ReturnType<typeof lstatSync> | undefined {
+  try {
+    return lstatSync(p);
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+/**
+ * The nearest EXISTING ancestor of `dir` (including `dir` itself) that is a
+ * symlink, or `undefined` when every existing ancestor is a real directory.
+ * Walks up until the filesystem root; a missing directory is not a link.
+ */
+function firstSymlinkAncestor(dir: string): string | undefined {
+  let current = dir;
+  for (;;) {
+    const entry = lstatOrUndefined(current);
+    if (entry?.isSymbolicLink() === true) return current;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
 /**
  * Generate the key per the plan. Refuses an existing key or `.pub` at the
  * path (rotation is a new path), an ssh-keygen that cannot run, and a
@@ -143,14 +169,24 @@ export type KeygenOutcome =
 export function generateAgentKey(plan: KeygenPlan): KeygenOutcome {
   const pubPath = `${plan.keyPath}.pub`;
   for (const p of [plan.keyPath, pubPath]) {
-    if (existsSync(p)) {
-      return {
-        kind: 'refused',
-        reason:
-          `${p} already exists; this script never overwrites a key. To rotate, generate at a ` +
-          'new path (--out) and add valid-before to the old allowed_signers line.',
-      };
-    }
+    const entry = lstatOrUndefined(p);
+    if (entry === undefined) continue;
+    // lstat, not existsSync: a dangling symlink is invisible to existsSync and
+    // ssh-keygen would follow it, writing the private key wherever it points.
+    const what = entry.isSymbolicLink() ? 'is a symlink' : 'already exists';
+    return {
+      kind: 'refused',
+      reason:
+        `${p} ${what}; this script never overwrites a key or follows a link. To rotate, generate at a ` +
+        'new path (--out) and add valid-before to the old allowed_signers line.',
+    };
+  }
+  const linkedAncestor = firstSymlinkAncestor(dirname(plan.keyPath));
+  if (linkedAncestor !== undefined) {
+    return {
+      kind: 'refused',
+      reason: `${linkedAncestor} is a symlink; the key directory must be a real directory (the key would be created wherever the link points).`,
+    };
   }
   mkdirSync(dirname(plan.keyPath), { recursive: true, mode: 0o700 });
   const generated = runKeygen(plan);

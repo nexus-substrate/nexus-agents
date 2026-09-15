@@ -14,7 +14,16 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -191,6 +200,36 @@ describe('generateAgentKey', () => {
     const half = generateAgentKey(other);
     expect(half.kind).toBe('refused');
     expect(existsSync(other.keyPath)).toBe(false);
+  });
+
+  it('REFUSES a symlink at the key path, at the .pub, or at the auth directory — dangling ones too (codex review of #6355)', () => {
+    // A dangling link is invisible to existsSync, and ssh-keygen would follow it and
+    // create the private key wherever the link points. lstat sees the link itself.
+    const elsewhere = join(dir, 'elsewhere');
+    mkdirSync(elsewhere, { recursive: true });
+
+    const dangling = { ...plan, keyPath: join(dir, 'auth', 'dangling.key') };
+    mkdirSync(dirname(dangling.keyPath), { recursive: true });
+    symlinkSync(join(elsewhere, 'redirected.key'), dangling.keyPath);
+    const viaKey = generateAgentKey(dangling);
+    expect(viaKey.kind).toBe('refused');
+    if (viaKey.kind !== 'refused') throw new Error('unreachable');
+    expect(viaKey.reason).toContain('symlink');
+    expect(existsSync(join(elsewhere, 'redirected.key'))).toBe(false);
+
+    const pubLink = { ...plan, keyPath: join(dir, 'auth', 'publink.key') };
+    symlinkSync(join(elsewhere, 'redirected.pub'), `${pubLink.keyPath}.pub`);
+    const viaPub = generateAgentKey(pubLink);
+    expect(viaPub.kind).toBe('refused');
+    expect(existsSync(pubLink.keyPath)).toBe(false);
+
+    const linkedDir = { ...plan, keyPath: join(dir, 'auth-link', 'agent.key') };
+    symlinkSync(elsewhere, join(dir, 'auth-link'));
+    const viaDir = generateAgentKey(linkedDir);
+    expect(viaDir.kind).toBe('refused');
+    if (viaDir.kind !== 'refused') throw new Error('unreachable');
+    expect(viaDir.reason).toContain('symlink');
+    expect(existsSync(join(elsewhere, 'agent.key'))).toBe(false);
   });
 });
 
