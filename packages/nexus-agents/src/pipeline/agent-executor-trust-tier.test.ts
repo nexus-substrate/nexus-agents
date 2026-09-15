@@ -19,7 +19,27 @@ vi.mock('./expert-bridge.js', () => ({
   ),
 }));
 
-const { emitMock } = vi.hoisted(() => ({ emitMock: vi.fn() }));
+// Keep external research, voters and shell checks outside this event-contract test.
+vi.mock('../mcp/tools/research-discover.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../mcp/tools/research-discover.js')>()),
+  executeDiscovery: vi.fn().mockRejectedValue(new Error('research unavailable')),
+}));
+vi.mock('../mcp/tools/consensus-vote.js', () => ({
+  executeVoting: vi.fn().mockRejectedValue(new Error('voters unavailable')),
+}));
+vi.mock('../security/quality-gate.js', () => ({
+  runQualityGate: vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '' }),
+  checkTypeCheck: vi.fn(),
+  checkLint: vi.fn(),
+  checkTests: vi.fn(),
+}));
+vi.mock('./security-gate.js', () => ({
+  checkSecurityScan: () => vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '' }),
+}));
+
+const { emitMock } = vi.hoisted(() => ({
+  emitMock: vi.fn<typeof import('./pipeline-observability.js').emitPipelineStageEvent>(),
+}));
 vi.mock('./pipeline-observability.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./pipeline-observability.js')>();
   return { ...actual, emitPipelineStageEvent: emitMock };
@@ -33,9 +53,7 @@ beforeEach(() => {
 
 /** Trust tiers recorded on every `started` event emitted so far. */
 function recordedTiers(): unknown[] {
-  return emitMock.mock.calls
-    .filter((c) => c[2] === 'started')
-    .map((c) => (c[3] as Record<string, unknown> | undefined)?.['trustTier']);
+  return emitMock.mock.calls.filter((c) => c[2] === 'started').map((c) => c[3]?.['trustTier']);
 }
 
 describe('trust tier is recorded at stage entry (#4694)', () => {
@@ -75,8 +93,61 @@ describe('trust tier is recorded at stage entry (#4694)', () => {
     const started = emitMock.mock.calls.filter((c) => c[2] === 'started');
     expect(started.length).toBeGreaterThan(0);
     for (const call of started) {
-      const details = call[3] as Record<string, unknown> | undefined;
-      expect(details?.['trustTier'], `stage '${String(call[1])}' recorded no tier`).toBe('2');
+      const details = call[3];
+      expect(details?.['trustTier'], `stage '${call[1]}' recorded no tier`).toBe('2');
+    }
+  });
+});
+
+describe('caller authentication and sanitizer observations (#4733)', () => {
+  it.each([
+    [{}, 'unmeasured', 'unmeasured'],
+    [{ trustTier: '2' }, '2', 'unmeasured'],
+    [{ callerTrustTier: '1', trustTier: '3', inputSanitization: 'unmodified' }, '1', 'unmodified'],
+    [
+      {
+        callerTrustTier: '3',
+        inputSanitization: 'modified',
+        inputSanitizationCounts: { tagsRemoved: 2, commentsRemoved: 1, fieldsModified: 1 },
+      },
+      '3',
+      'modified',
+    ],
+  ] as const)('stamps all eight entries for config %j', async (config, tier, sanitization) => {
+    const stages = createAgentStages(config);
+    const task = { id: 'task-4733', title: 'feature', description: 'implement feature' } as never;
+    await stages.research('research feature');
+    await stages.plan('feature', 'research');
+    await stages.vote('plan', 'research');
+    await stages.decompose('plan');
+    await stages.implement(task);
+    await stages.qaReview(task, 'implementation');
+    if (stages.qualityGate === undefined) throw new Error('quality gate stage missing');
+    await stages.qualityGate();
+    await stages.securityScan();
+    const started = emitMock.mock.calls.filter((call) => call[2] === 'started');
+    expect(started.map((call) => call[1])).toEqual([
+      'research',
+      'plan',
+      'vote',
+      'decompose',
+      'impl-task-4733',
+      'qa-task-4733',
+      'quality-gate',
+      'security',
+    ]);
+    for (const call of started) {
+      expect(call[3]).toMatchObject({
+        callerTrustTier: tier,
+        trustTier: tier,
+        inputSanitization: sanitization,
+      });
+      const details = call[3] as Record<string, unknown>;
+      expect(details['inputSanitizationCounts']).toEqual(
+        sanitization === 'modified'
+          ? { tagsRemoved: 2, commentsRemoved: 1, fieldsModified: 1 }
+          : undefined
+      );
     }
   });
 });

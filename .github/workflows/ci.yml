@@ -373,6 +373,12 @@ jobs:
       - name: Run script tests
         run: pnpm test:scripts
 
+      - name: Check required branch-protection contexts (#6346)
+        run: |
+          pnpm check:required-contexts || { rc=$?; if [ "$rc" = 2 ]; then echo "::warning::required contexts unmeasured (no token)"; else exit $rc; fi; }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   fitness-audit:
     name: Fitness Audit (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

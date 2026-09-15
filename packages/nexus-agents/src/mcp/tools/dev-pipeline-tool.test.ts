@@ -54,14 +54,19 @@ import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import type { CallerInfo } from '../middleware/request-context.js';
+import { createRequestContext } from '../middleware/request-context.js';
+import type { HandlerContext } from '../middleware/secure-handler.js';
+import { createLogger } from '../../core/index.js';
+import * as agentExecutor from '../../pipeline/agent-executor.js';
 
 interface HandlerCtx {
   // `caller` is part of the real RequestContext and is what makes the tier a
   // measurement rather than the `deriveTrustTier({})` fallback (#4733), so the
   // fixture type has to carry it.
   requestContext: { trustTier: string; caller?: CallerInfo };
+  sanitization?: HandlerContext['sanitization'];
 }
-type CtxHandler = (args: unknown, ctx: HandlerCtx) => Promise<CapturedToolResult>;
+type CtxHandler = (args: unknown, ctx?: HandlerCtx) => Promise<CapturedToolResult>;
 
 interface CapturedToolResult {
   isError?: boolean;
@@ -432,12 +437,12 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
   });
 
   /** Read the structured payload out of an error envelope's `detail` (#5888). */
-function errorDetail(result: CapturedToolResult): Record<string, unknown> {
-  const envelope = result._meta?.[ERROR_ENVELOPE_META_KEY] as { detail?: unknown } | undefined;
-  return (envelope?.detail ?? {}) as Record<string, unknown>;
-}
+  function errorDetail(result: CapturedToolResult): Record<string, unknown> {
+    const envelope = result._meta?.[ERROR_ENVELOPE_META_KEY] as { detail?: unknown } | undefined;
+    return (envelope?.detail ?? {}) as Record<string, unknown>;
+  }
 
-// #4772: the fields exist on DevPipelineResult and must reach the MCP
+  // #4772: the fields exist on DevPipelineResult and must reach the MCP
   // envelope. A live dry run on 4.1.1 showed they did not — the response is
   // built from an explicit field list, so adding them to the result type was
   // not enough. "The field exists" and "a caller sees it" are different claims.
@@ -608,6 +613,65 @@ describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
     const handler = captureHandler();
     await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBeUndefined();
+  });
+});
+
+describe('dev pipeline input sanitization forwarding (#4733)', () => {
+  beforeEach(() => vi.spyOn(agentExecutor, 'createAgentStages'));
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([false, true])(
+    'records middleware modification result %s with its counts',
+    async (modified) => {
+      const ctx: HandlerContext = {
+        requestContext: createRequestContext({
+          toolName: 'run_dev_pipeline',
+          caller: { authenticated: false },
+        }),
+        logger: createLogger({ tool: 'run_dev_pipeline_test' }),
+        sanitization: {
+          wasModified: modified,
+          commentsRemoved: modified ? 2 : 0,
+          fieldsModified: modified ? 1 : 0,
+          tagsRemoved: modified ? 3 : 0,
+          rawFieldHashes: {},
+          rawFieldBytes: {},
+        },
+      };
+      await captureHandler()({ task: 'Build feature X' }, ctx);
+
+      expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          callerTrustTier: '3',
+          trustTier: '3',
+          inputSanitization: modified ? 'modified' : 'unmodified',
+          ...(modified && {
+            inputSanitizationCounts: { tagsRemoved: 3, commentsRemoved: 2, fieldsModified: 1 },
+          }),
+        })
+      );
+      if (!modified) {
+        expect(vi.mocked(agentExecutor.createAgentStages).mock.calls[0]?.[0]).not.toHaveProperty(
+          'inputSanitizationCounts'
+        );
+      }
+    }
+  );
+
+  it('names absent HandlerContext as unmeasured', async () => {
+    await captureHandler()({ task: 'Build feature X' });
+
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ inputSanitization: 'unmeasured' })
+    );
+  });
+
+  it('records unmeasured for the plain-goal entry point without HandlerContext', async () => {
+    await runDevPipelineForGoal('Build feature X');
+
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ inputSanitization: 'unmeasured' })
+    );
   });
 });
 

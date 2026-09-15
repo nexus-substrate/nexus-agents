@@ -24,6 +24,7 @@ import { getToolAnnotations } from '../tool-annotations.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { measuredTrustTier } from '../middleware/request-context.js';
+import { measureInputSanitization } from './pipeline-input-sanitization.js';
 import {
   toolStructuredError,
   toolSuccessStructured,
@@ -233,10 +234,9 @@ async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
 /** Create pipeline stages wired to real agents via agent-executor. */
 async function createStages(
   input: DevPipelineInput,
-  // #4694: record-only. The consensus→execute seam already ENFORCES on this
-  // tier; the executor stages have never even recorded it, so a run's stage
-  // telemetry could not say what provenance drove it.
-  trustTier?: string
+  // The stage record describes caller authentication, independently of input changes.
+  trustTier: string | undefined,
+  inputSanitization: ReturnType<typeof measureInputSanitization>
 ): Promise<ReturnType<typeof createAgentStages>> {
   // Auto-detect tracker backend if set to 'auto' or default
   const backendChoice = input.trackerBackend;
@@ -247,7 +247,8 @@ async function createStages(
       ? createTaskTracker({ backend, repo: input.repo, labels: input.labels })
       : undefined;
   return createAgentStages({
-    ...(trustTier !== undefined ? { trustTier } : {}),
+    ...(trustTier !== undefined ? { callerTrustTier: trustTier, trustTier } : {}),
+    ...inputSanitization,
     scanTarget: input.workingDir,
     simulateVotes: input.simulateVotes,
     votingStrategy: input.votingStrategy,
@@ -280,8 +281,9 @@ export async function runDevPipelineForGoal(
     task: goal,
     ...(dryRun !== undefined ? { dryRun } : {}),
   });
-  const stages = await createStages(input, trustTier);
-  // #3712: thread the caller's real content-provenance trust tier into the
+  // This plain-goal entry point has no HandlerContext to measure input changes.
+  const stages = await createStages(input, trustTier, { inputSanitization: 'unmeasured' });
+  // #3712: thread the caller authentication tier into the
   // consensus→execute policy snapshot. Undefined ⇒ seam fail-closes to tier 4
   // (never infer trust from absence). The `run` entry point passes the caller's
   // real RequestContext.trustTier here — closing the run-path hole where a
@@ -350,7 +352,7 @@ const RUN_DEV_PIPELINE_DESCRIPTION =
 /**
  * Validates input, runs the dev pipeline, and shapes the result.
  *
- * `trustTier` is the caller's real content-provenance tier, threaded from
+ * `trustTier` records caller authentication, threaded from
  * `RequestContext.trustTier` by the registered 2-arg handler (#3712). When
  * undefined (no caller context), the consensus→execute seam fail-closes to
  * untrusted (tier 4) — absence is never treated as trusted.
@@ -441,7 +443,10 @@ async function runDevPipelineHandler(
   args: unknown,
   logger: ILogger,
   trustTier?: string,
-  auditLogger?: IAuditLogger
+  auditLogger?: IAuditLogger,
+  inputSanitization: ReturnType<typeof measureInputSanitization> = {
+    inputSanitization: 'unmeasured',
+  }
 ): Promise<ToolResult> {
   const parsed = DevPipelineInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -465,7 +470,7 @@ async function runDevPipelineHandler(
     // Sync prelude — fast: input resolution + stage wiring + option build.
     // Only the pipeline BODY backgrounds in async mode (#3726).
     const taskText = await resolveTaskInput(input);
-    const stages = await createStages(input, trustTier);
+    const stages = await createStages(input, trustTier, inputSanitization);
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const resolvedOptions = hasOptions ? pipelineOptions : undefined;
@@ -571,8 +576,14 @@ export function registerDevPipelineTool(server: McpServer, deps: DevPipelineTool
   // the runDevPipeline seam. The server's durable auditLogger (#3710) is threaded
   // so the gate persists policy decisions to the shared hash chain.
   const secureHandler = createSecureHandler(
-    (args: unknown, ctx: HandlerContext) =>
-      runDevPipelineHandler(args, logger, measuredTrustTier(ctx.requestContext), deps.auditLogger),
+    (args: unknown, ctx?: HandlerContext) =>
+      runDevPipelineHandler(
+        args,
+        logger,
+        ctx && measuredTrustTier(ctx.requestContext),
+        deps.auditLogger,
+        measureInputSanitization(ctx)
+      ),
     { toolName: 'run_dev_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
   const timeoutMs = getToolTimeout('run_dev_pipeline', deps.security);
