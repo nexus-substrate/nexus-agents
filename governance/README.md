@@ -73,6 +73,44 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
    moved-head rule (`ratified-rebased`, #6256) as long as the moved head's
    tree is the ratified patch replayed onto its base; see below.
 
+### Redacting a voter's reasoning
+
+From the repository root, name the record and each voter role whose reasoning
+must be removed:
+
+```bash
+pnpm exec tsx scripts/redact-vote-record.ts \
+  --ledger governance/vote-records.jsonl \
+  --record-id <voteRecordId> \
+  --role architect --role security \
+  --by <actor> --reason "reason for removal"
+```
+
+At least one `--role` is required. The script deletes only `reasoning` and
+`reasoningNonce` from those voter entries. Their `reasoningDigest`, tally,
+decision, truncation marker, record hash and any existing signature stay intact.
+It preserves the target line's key order and every other line's bytes; if the
+target is not already canonical `JSON.stringify` output, it refuses to reformat
+it. It appends a self-hashed redaction record naming the roles, actor, time and
+reason at the next sequence across both record kinds.
+
+Unknown or ambiguous record ids, missing roles, absent openings, invalid ledgers
+and unsafe sequences are refused without replacing the ledger. Pre-digest-tier
+records are refused with “redaction here is a history rewrite; not performed.”
+The proposed ledger must verify with the target reported as `redacted` and other
+records' states unchanged before a temporary file replaces the ledger atomically.
+
+The appended redaction record is **UNSIGNED**: the current strict redaction
+schema and shared vote signing helper do not support redaction signatures.
+`--signing-key <path>` and `--as-owner` are accepted for CLI parity but cannot
+sign this record kind or record an owner attestation; the command says so.
+The `by` field is operator-supplied attribution, not authenticated identity.
+
+Review and commit the ledger diff in a PR. **The PR carrying the redaction is
+a governor-path PR and needs its own panel and owner ratification.** Purging
+plaintext from Git history is a **separate history rewrite**; this script does
+not perform it. Earlier commits still contain the original text and nonce.
+
 ### How a record is signed (#3927 item 4, phase 2)
 
 After step 3 — never before, because the signed message is the COMMITTED

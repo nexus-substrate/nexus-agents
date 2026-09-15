@@ -1368,7 +1368,8 @@ describe('the governor section is bounded by dedicated directives, not the human
    * and patch-identity siblings, plus the #3927 item-4 `allowed_signers` file
    * and signature-evidence module, plus the #4797 audit-exception warrant ledger
    * (the file whose entries mute advisories the required Security Audit job
-   * would otherwise block — #4794 stage 2). The migration must not change what
+   * would otherwise block — #4794 stage 2), plus the seven #6366 ledger-producer
+   * scripts and tests. The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
    * recomputed, so an addition to the section is a reviewed act here too.
    */
@@ -1389,6 +1390,13 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/governor-ledger-report.ts',
     '/scripts/governor-patch-identity.ts',
     '/scripts/governor-ledger-signature.ts',
+    '/scripts/append-ratification-record.ts',
+    '/scripts/append-ratification-signing.ts',
+    '/scripts/append-ratification-args.ts',
+    '/scripts/append-ratification-record.test.ts',
+    '/scripts/redact-vote-record.ts',
+    '/scripts/redact-vote-record-args.ts',
+    '/scripts/redact-vote-record.test.ts',
     '/scripts/check-codeowners-errors.ts',
     '/scripts/governor-paths-touched.ts',
     '/.github/CODEOWNERS',
@@ -1419,11 +1427,11 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(GOVERNOR_SECTION_END_DIRECTIVE).toBe('# @governor-section-end');
   });
 
-  it('the real file parses to exactly the pre-migration set', () => {
+  it('the real file parses to exactly the pinned governor set', () => {
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (29 entries)', () => {
+  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (36 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1448,7 +1456,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/governance/required-jobs.json');
     expect(set).toContain('/scripts/check-required-jobs.ts');
     expect(set).toContain('/scripts/check-required-jobs.test.ts');
-    expect(set).toHaveLength(29);
+    expect(set).toHaveLength(36);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {
