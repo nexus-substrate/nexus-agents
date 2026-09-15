@@ -228,6 +228,9 @@ VariableDeclaration AgentEventSchema
   : z.ZodObject<{ agentId: z.ZodString; durationMs: z.ZodOptional<z.ZodNumber>; eventId: z.ZodString; eventType: z.ZodEnum<{ error: "error"; memory_read: "memory_read"; memory_write: "memory_write"; message_received: "message_received"; message_sent: "message_sent"; state_change: "state_change"; task_completed: "task_completed"; task_started: "task_started"; tool_completed: "tool_completed"; tool_invoked: "tool_invoked"; }>; parentSpanId: z.ZodOptional<z.ZodString>; payload: z.ZodRecord<z.ZodString, z.ZodUnknown>; spanId: z.ZodString; timestamp: z.ZodISODateTime; traceId: z.ZodString; }, z.core.$strip>
 InterfaceDeclaration AgentExecutorConfig
   readonly budget?: AgentBudgetConfig | undefined
+  readonly callerTrustTier?: string | undefined
+  readonly inputSanitization?: "modified" | "unmeasured" | "unmodified" | undefined
+  readonly inputSanitizationCounts?: undefined | { readonly commentsRemoved: number; readonly fieldsModified: number; readonly tagsRemoved: number; }
   readonly issueNumber?: number | undefined
   readonly quickMode?: boolean | undefined
   readonly repo?: string | undefined

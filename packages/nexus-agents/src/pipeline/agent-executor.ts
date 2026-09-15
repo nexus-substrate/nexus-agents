@@ -222,19 +222,26 @@ export interface AgentExecutorConfig {
    */
   readonly budget?: AgentBudgetConfig | undefined;
   /**
-   * Trust tier of the input driving this run (#4694), threaded from the MCP
-   * request context.
-   *
-   * RECORD-ONLY today: no stage refuses on it. The consensus vote (7-0, option
-   * D) established why enforcement cannot land yet — the tier was unreachable
-   * here at all, so a fail-closed guard would have blocked every `pipeline` and
-   * `research` run rather than only untrusted ones. Threading and measuring
-   * comes first; the enforcement point is chosen on the measured distribution.
-   *
-   * `undefined` means NOT MEASURED, and is recorded as such — never defaulted
-   * to a trusted value. See {@link UNMEASURED_TRUST_TIER}.
+   * Caller authentication from measuredTrustTier(), recorded at stage entry.
+   * Absent callerInfo means 'unmeasured'; no callerInfo producer exists today.
+   * Record-only: no stage refuses on this value. Takes precedence over trustTier.
+   */
+  readonly callerTrustTier?: string | undefined;
+  /**
+   * Caller authentication, emitted with the same value as callerTrustTier.
+   * @deprecated Use callerTrustTier. Removal is scheduled for the next major.
    */
   readonly trustTier?: string | undefined;
+  /** Whether the handler's sanitizer changed its input; absent means 'unmeasured'. */
+  readonly inputSanitization?: 'unmeasured' | 'unmodified' | 'modified' | undefined;
+  /** Sanitizer counts, emitted beside inputSanitization only when it is 'modified'. */
+  readonly inputSanitizationCounts?:
+    | {
+        readonly tagsRemoved: number;
+        readonly commentsRemoved: number;
+        readonly fieldsModified: number;
+      }
+    | undefined;
 }
 
 /**
@@ -537,15 +544,24 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
   // Per-run budget guard (#3395). No-op unless config.budget is set.
   const guard = createBudgetGuard(config.budget);
 
-  // #4694: stamp every stage entry with the tier of the input driving the run.
+  // #4733: record caller authentication and sanitizer observations at stage entry.
   // Stage entry is the one point BOTH model paths pass through — `runExpert`
   // (plan/decompose/implement/qaReview) and `executeVoting`, which dispatches
   // consensus voters through its own adapters and never touches `runExpert`.
   // Recording here therefore has no coverage gap, which a `runExpert` guard
   // would have had while reporting success.
-  const trustTier = config.trustTier ?? UNMEASURED_TRUST_TIER;
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- retain the published alias until the next major (#4733)
+  const callerTrustTier = config.callerTrustTier ?? config.trustTier ?? UNMEASURED_TRUST_TIER;
+  const inputSanitization = config.inputSanitization ?? 'unmeasured';
   const startStage = (stage: string): void => {
-    emitStageEvent(stage, 'started', { trustTier });
+    emitStageEvent(stage, 'started', {
+      callerTrustTier,
+      trustTier: callerTrustTier,
+      inputSanitization,
+      ...(inputSanitization === 'modified' && config.inputSanitizationCounts !== undefined
+        ? { inputSanitizationCounts: config.inputSanitizationCounts }
+        : {}),
+    });
   };
   return {
     research: async (task) => {

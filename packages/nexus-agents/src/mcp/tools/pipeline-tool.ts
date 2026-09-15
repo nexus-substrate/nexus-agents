@@ -19,7 +19,8 @@ import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
-import { createAgentStages } from '../../pipeline/agent-executor.js';
+import { measureInputSanitization } from './pipeline-input-sanitization.js';
+import { createAgentStages, type AgentExecutorConfig } from '../../pipeline/agent-executor.js';
 import type { AgentBudgetConfig } from '../../pipeline/budget-guard.js';
 import { estimateRelativeBudget, resolveBudgetTolerance } from '../../pipeline/budget-guard.js';
 import { getTemplate } from '../../pipeline/templates.js';
@@ -269,7 +270,11 @@ export async function runPipelineForGoal(
   logger: ILogger = createLogger({ tool: 'run_pipeline' })
 ): Promise<AdaptiveOrchestratorResult> {
   const budget = resolveRunBudget(goal, undefined, logger);
-  const agentStages = createAgentStages(budget !== undefined ? { budget } : {});
+  const agentStages = createAgentStages({
+    budget,
+    // Plain-goal pipeline/research strategies have no HandlerContext.
+    inputSanitization: 'unmeasured',
+  });
   const stages = selectStageRegistry(undefined, goal, agentStages);
   return runAdaptiveOrchestrator(goal, { stages });
 }
@@ -313,7 +318,8 @@ async function executePipelineBody(
 async function runPipelineHandler(
   args: unknown,
   logger: ILogger,
-  trustTier?: string
+  callerTrustTier: string | undefined,
+  sanitization: Pick<AgentExecutorConfig, 'inputSanitization' | 'inputSanitizationCounts'>
 ): Promise<ToolResult> {
   const parsed = PipelineInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -341,9 +347,9 @@ async function runPipelineHandler(
       simulateVotes: input.simulateVotes,
       votingStrategy: input.votingStrategy,
       quickMode: input.quickMode,
-      // #4694: record-only. Absent stays absent — createAgentStages stamps
-      // UNMEASURED_TRUST_TIER rather than inventing a trusted default.
-      ...(trustTier !== undefined ? { trustTier } : {}),
+      callerTrustTier,
+      trustTier: callerTrustTier,
+      ...sanitization,
       budget: resolveRunBudget(task, input.template, logger),
     });
     const stages = selectStageRegistry(input.template, task, agentStages);
@@ -389,17 +395,19 @@ async function runPipelineHandler(
  */
 export function registerPipelineTool(server: McpServer, deps: BaseMcpToolDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_pipeline' });
-  // #4694: 2-arg context-aware form, mirroring dev-pipeline-tool (#3712).
-  // `run_pipeline` had NO trust tier at all — zero references in this file —
-  // so the shared executor path it drives could not record, let alone enforce,
-  // the provenance of its input. createSecureHandler always supplies a
-  // HandlerContext with a derived trustTier.
+  // The context-aware form records caller authentication separately from
+  // the sanitizer's observation of the handler input (#4733).
   const secureHandler = createSecureHandler(
     // Optional chaining is deliberate, not defensive noise: a handler invoked
     // without a context has genuinely NOT measured a tier, and that flows to
     // UNMEASURED_TRUST_TIER rather than to a default. Absence stays absence.
     (args: unknown, ctx?: HandlerContext) =>
-      runPipelineHandler(args, logger, ctx && measuredTrustTier(ctx.requestContext)),
+      runPipelineHandler(
+        args,
+        logger,
+        ctx && measuredTrustTier(ctx.requestContext),
+        measureInputSanitization(ctx)
+      ),
     { toolName: 'run_pipeline', rateLimiter: deps.rateLimiter, logger }
   );
   const timeoutMs = getToolTimeout('run_pipeline', deps.security);
