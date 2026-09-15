@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.61.1
+
+### Patch Changes
+
+- [#6317](https://github.com/nexus-substrate/nexus-agents/pull/6317) [`64c09d9`](https://github.com/nexus-substrate/nexus-agents/commit/64c09d9f8b802bb299181e8d1c5da14318689acd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Research scoring: the `recency` field of a `QualityScore` is documented as what it is. The 8.x changeset for the exponential decay said the value "approaches zero without reaching it"; the curve does, but the reported value is rounded to 2dp and is exactly 0 for anything published more than ~7.7 years ago. No scoring change — `composite` is also 2dp with recency weighted 0.2, so an 8-year-old and a 20-year-old source already rank identically at any precision `recency` alone could be reported at. The docstrings on `scoreRecency` and `QualityScore.recency` now state the ~7.7-year limit, and tests pin the reported floor (0 at 10 years, 0.01 at 7) so a precision change has to be deliberate. Refs [#4956](https://github.com/nexus-substrate/nexus-agents/issues/4956).
+
 ## 8.61.0
 
 ### Minor Changes
