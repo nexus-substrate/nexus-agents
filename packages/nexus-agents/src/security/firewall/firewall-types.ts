@@ -12,6 +12,7 @@
 import { z } from 'zod';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import type { AgentAction } from '../action-schema.js';
+import type { Violation } from '../policy-gate.js';
 import type { FirewallPolicyMode } from './firewall-policy-mode.js';
 import type {
   ReputationAssessment,
@@ -274,4 +275,12 @@ export interface FirewallError {
   readonly code: FirewallErrorCode;
   readonly message: string;
   readonly stage: string;
+  /**
+   * The blocking policy violations behind a `POLICY_REFUSED` from the policy
+   * stage (#5383) — the structured form of the rules `message` names, so a
+   * consumer that maps a refusal onto its own action record can list the rule
+   * ids without parsing the message. Absent for every other code, and for the
+   * corroboration stage's refusal, which carries no `Violation` list.
+   */
+  readonly violations?: readonly Violation[];
 }
