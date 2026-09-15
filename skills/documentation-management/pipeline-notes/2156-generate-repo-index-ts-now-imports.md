@@ -1,0 +1,1 @@
+PIPELINE NOTE: generate-repo-index.ts now imports cli-command-catalog.ts as single source of truth for CLI commands (#2156, 2026-04-22). Adds drift check warning when dispatch-table entries disagree with the catalog, in either direction. No output-format change.

@@ -1,0 +1,1 @@
+PIPELINE NOTE: docs-check.yml docs-content-drift job extended with MCP_TOOL_COUNT cross-check — fails CI when site-data.ts MCP_TOOL_COUNT, server.json tools[], server.json description prose, or README.md prose disagree with the authoritative count in src/mcp/tools/index.ts registerTools() (#2107, 2026-04-22)
