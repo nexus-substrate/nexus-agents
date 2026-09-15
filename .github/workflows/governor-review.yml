@@ -24,9 +24,11 @@
 # pull_request and every push to main. The governor-path verdict is computed
 # INSIDE the run from the one parse of /CODEOWNERS (`scripts/governor-section.ts`):
 #   - `governor-ratification` runs on every PR. It computes the changed-file
-#     list and runs the detector BEFORE any GitHub API call; on an ordinary PR
-#     the evidence and gate steps are skipped and a final step reports
-#     `not-applicable` → exit 0 (~60 s, of which ~35 s is the full-history
+#     list and runs the detector BEFORE any GitHub API call. The required-jobs
+#     check then measures CI wiring on every PR; an unreadable protection API
+#     is reported as unmeasured without overriding measured tree results.
+#     On an ordinary PR the evidence and gate steps are skipped and a final
+#     step reports `not-applicable` → exit 0 (~60 s, of which ~35 s is the full-history
 #     checkout and ~5 s the injector spawn, #6250), so an API outage cannot
 #     block a PR the gate has nothing to say about (#6260). On a governor PR
 #     it fails closed without a bound record. Its job name —
@@ -147,10 +149,12 @@ jobs:
   # GitHub API call, and the evidence and gate steps are gated on its output.
   # The first cut collected evidence first, so once this context is required a
   # transient `gh api` failure would have blocked an ORDINARY PR — one that
-  # touches nothing this gate governs. Now an ordinary PR performs exactly one
-  # `git diff` and one CODEOWNERS parse; the API is reached only when there is
-  # a governor path to ratify. The final step names the not-touched case so the
-  # job's success is a stated verdict, never a job with nothing left to run.
+  # touches nothing this gate governs. An ordinary PR performs one `git diff`,
+  # one CODEOWNERS parse, and the required-jobs check (#6343); ratification
+  # evidence is fetched only when there is a governor path to ratify. The
+  # required-jobs protection probe reports unreadability without blocking an
+  # otherwise healthy measured tree. The final step names the not-touched case
+  # so the job's success is a stated verdict, never a job with nothing left to run.
   # ---------------------------------------------------------------------------
   governor-ratification:
     name: Governor-path ratification gate
@@ -211,10 +215,23 @@ jobs:
           TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)
           echo "governor_touched=${TOUCHED}" >> "${GITHUB_OUTPUT}"
 
+      - name: Check governor-owned required jobs (#6343)
+        id: required-jobs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          status=0
+          pnpm exec tsx scripts/check-required-jobs.ts || status=$?
+          if [ "$status" = 2 ]; then
+            echo "::warning::required jobs unmeasured"
+          else
+            exit "$status"
+          fi
+
       - name: Collect ratification evidence
         id: evidence
-        # Gated on the detector: an ordinary PR never reaches the GitHub API,
-        # so an API outage cannot block a PR this gate has nothing to say about.
+        # Gated on the detector: an ordinary PR never fetches ratification
+        # evidence, so an evidence API outage cannot block an ordinary PR.
         if: steps.touched.outputs.governor_touched == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
