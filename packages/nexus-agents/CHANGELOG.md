@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.65.0
+
+### Minor Changes
+
+- [#6340](https://github.com/nexus-substrate/nexus-agents/pull/6340) [`6e47c17`](https://github.com/nexus-substrate/nexus-agents/commit/6e47c175ebc0b9b9cd7959aa4def137c04847807) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `getGlobalRegistry(config)` throws `RegistryAlreadyInitializedError` (a `ConfigError`, exported from the adapters barrel) when a non-empty config arrives after the singleton exists. It used to log a warning and return the existing registry, so a caller that passed a conflicting `logger` or `defaultCliTimeoutMs` silently got a registry built from someone else's settings. `getGlobalRegistry()` with no config, or with `{}`, still returns the existing instance; `resetGlobalRegistry()` first if reconfiguration is intentional, and `claimGlobalRegistry(logger)` remains the idempotent way to name the logger. Nothing in the package passes a config after initialisation; only out-of-tree callers that did are affected ([#5211](https://github.com/nexus-substrate/nexus-agents/issues/5211)).
+
 ## 8.64.1
 
 ### Patch Changes
