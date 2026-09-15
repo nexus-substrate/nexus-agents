@@ -95,7 +95,26 @@ export {
   readVoteRecords,
   parseVoteRecordsText,
 } from './vote-record-store.js';
-export type { BuildVoteRecordInput, PersistVoteRecordOptions } from './vote-record-store.js';
+export type {
+  BuildVoteRecordInput,
+  ParsedVoteLedger,
+  PersistVoteRecordOptions,
+} from './vote-record-store.js';
+
+// Redaction record (#6264, #5748 step 2) — the one sanctioned edit of a vote
+// record: drops a voter's reasoning opening under a self-hashed record the
+// verifier answers `redacted` for. The target's hash is unchanged.
+export {
+  RedactionRecordSchema,
+  buildRedactionRecord,
+  computeRedactionRecordHash,
+  redactVoterOpenings,
+} from './redaction-record.js';
+export type {
+  RedactedRecordReport,
+  RedactionRecord,
+  RedactionRecordPayload,
+} from './redaction-record.js';
 
 // PR-review audit record (#3831, Epic B) — committable, tamper-evident,
 // SHA-BOUND record SET + monotonic sequence (mirrors the #3927 vote-record

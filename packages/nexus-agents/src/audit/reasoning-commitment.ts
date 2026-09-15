@@ -12,7 +12,7 @@
  * whenever both are present — so while the opening is there the tier is
  * exactly as tamper-evident as the one before it (editing text or nonce
  * alone breaks the re-opening; editing both to another opening is a second
- * preimage), and once a later step drops text and nonce together (#6264)
+ * preimage), and when a redaction drops text and nonce together (#6264)
  * the original hash, and any signature over it, still verifies.
  *
  * The salt is the contrarian's amendment, and it is the SECRET, which is why
@@ -60,10 +60,11 @@ export function computeReasoningDigest(reasoningNonce: string, reasoning: string
 
 /**
  * The tiers whose voter hash folds the salted reasoning digest instead of the
- * text. A set, not an equality, because step 2 (#6264) adds the tier that
- * carries redaction records and must keep the same fold rule. Tiers are
- * labels: membership here is the ONLY thing that decides the fold, so an
- * older record is never re-projected by a version comparison.
+ * text. A set, not an equality, so a later tier can keep the same fold rule
+ * without a version comparison (step 2, #6264, needed no new tier: a redacted
+ * record keeps its version because the hash covers it). Tiers are labels:
+ * membership here is the ONLY thing that decides the fold, so an older record
+ * is never re-projected by a version comparison.
  */
 const REASONING_DIGEST_TIERS: ReadonlySet<string> = new Set(['1.13']);
 
@@ -103,31 +104,25 @@ function textTierShapeDefect(v: ReasoningCommitmentFields): ReasoningCommitmentS
  * dropped as one (a text without its salt cannot be re-opened; a salt without
  * its text opens nothing). The COMMITMENT rule: any entry that has reasoning
  * carries `reasoningDigest`, the one hash-covered key. A digest with NO
- * opening at all (text and nonce both absent) is, for now, refused HERE —
- * step 2 (#6264) admits exactly that shape as `redacted` under a redaction
- * record naming the entry; until then a commitment nothing can open is not a
- * state this tier has a verdict for.
+ * opening at all (text and nonce both absent) is a SHAPE this tier admits
+ * (#6264): it is what a redacted entry looks like, and whether it IS one is
+ * not a question of shape — {@link findReasoningCommitmentDefect} answers it
+ * from the redaction records in the set, and refuses it when none names the
+ * entry.
  */
 function digestTierShapeDefect(
   v: ReasoningCommitmentFields
 ): ReasoningCommitmentShapeDefect | null {
   const hasText = v.reasoning !== undefined;
   const hasNonce = v.reasoningNonce !== undefined;
-  const hasDigest = v.reasoningDigest !== undefined;
   if (hasText && !hasNonce) {
     return { key: 'reasoningNonce', message: 'reasoning without its reasoningNonce' };
   }
   if (hasNonce && !hasText) {
     return { key: 'reasoning', message: 'reasoningNonce without the reasoning it opens' };
   }
-  if (hasText && !hasDigest) {
+  if (hasText && v.reasoningDigest === undefined) {
     return { key: 'reasoningDigest', message: 'reasoning without its reasoningDigest' };
-  }
-  if (hasDigest && !hasText) {
-    return {
-      key: 'reasoning',
-      message: 'a reasoning commitment with no opening (redaction is step 2, #6264)',
-    };
   }
   return null;
 }
@@ -151,30 +146,44 @@ export function reasoningCommitmentShapeDefect(
  * The first voter entry whose reasoning commitment is broken, as a message
  * naming the entry, or `null` when every commitment is sound.
  *
- * Two checks per entry: the shape rule ({@link reasoningCommitmentShapeDefect})
- * and — when nonce and text are both present — the commitment itself,
- * `reasoningDigest === sha256(nonce ‖ reasoning)`. On the digest tier the
- * record hash cannot see the text OR the nonce, so THIS is what makes a text
- * or nonce edited in place a verification failure rather than a silent
- * change: the hash still matches, the commitment does not. A digest nobody
- * re-opens would be a check that cannot fail.
+ * Three checks per entry: the shape rule ({@link reasoningCommitmentShapeDefect});
+ * when nonce and text are both present, the commitment itself,
+ * `reasoningDigest === sha256(nonce ‖ reasoning)`; and when the digest is
+ * present with NO opening, that `redactedRoles` names the entry's role —
+ * the roles the redaction records in the set name on THIS record (#6264).
+ * The last is the named empty case: an opening gone with nothing recording
+ * its removal is the defect, not a redaction. On the digest tier the record
+ * hash cannot see the text OR the nonce, so THIS is what makes a text or
+ * nonce edited or dropped in place a verification failure rather than a
+ * silent change: the hash still matches, the commitment does not. A digest
+ * nobody re-opens would be a check that cannot fail.
  *
  * Used by `verifyVoteRecordSet` and by the caller-commits append script,
  * which vets a source record's self-hash alone (its sequence census would
  * misread a lone record) and needs the same commitment check so an edited
  * text is refused BEFORE the committed line is written, not by the
- * read-back afterwards.
+ * read-back afterwards. `redactedRoles` is REQUIRED so every caller states
+ * what it knows: the append script passes the empty set, because a record
+ * copied into the committed ledger must carry its openings.
  */
-export function findReasoningCommitmentDefect(record: {
-  readonly version: string;
-  readonly voters: readonly ReasoningCommitmentFields[];
-}): string | null {
+export function findReasoningCommitmentDefect(
+  record: {
+    readonly version: string;
+    readonly voters: readonly ReasoningCommitmentFields[];
+  },
+  redactedRoles: ReadonlySet<string>
+): string | null {
   const digestTier = isReasoningDigestTier(record.version);
   for (const [i, v] of record.voters.entries()) {
     const where = `voters[${String(i)}] (${v.role})`;
     const shape = reasoningCommitmentShapeDefect(digestTier, v);
     if (shape !== null) return `${where}: ${shape.message}`;
-    if (v.reasoningNonce === undefined || v.reasoning === undefined) continue;
+    if (v.reasoningNonce === undefined || v.reasoning === undefined) {
+      if (v.reasoningDigest !== undefined && !redactedRoles.has(v.role)) {
+        return `${where}: reasoning commitment with its opening absent and no redaction record naming it (#6264)`;
+      }
+      continue;
+    }
     const recomputed = computeReasoningDigest(v.reasoningNonce, v.reasoning);
     if (recomputed !== v.reasoningDigest) {
       return (

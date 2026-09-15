@@ -20,6 +20,11 @@ import { fileURLToPath } from 'node:url';
 import type { ConsensusResult, Vote } from '../packages/nexus-agents/src/consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
+import type { RedactionRecord } from '../packages/nexus-agents/src/audit/redaction-record.js';
+import {
+  buildRedactionRecord,
+  redactVoterOpenings,
+} from '../packages/nexus-agents/src/audit/redaction-record.js';
 import {
   VOTE_RECORD_SIGNATURE_NAMESPACE,
   computeVoteRecordHash,
@@ -623,6 +628,93 @@ describe('panel coverage is REQUIRED on a bound record (#6213, unmeasured-panel)
     expect(kindOf(evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR }))).toBe(
       'unmeasured-panel'
     );
+  });
+});
+
+describe('a redacted ratifying record is verifiable, and the gate says it was redacted (#6264)', () => {
+  // Real 1.13 records from the real builder carry a full commitment per
+  // seat; the redaction drops the opening of one seat and appends the
+  // self-hashed redaction record at the next sequence.
+  function redactedLedger(): { text: string; r: VoteRecord; red: RedactionRecord } {
+    const r = record('v0', { sequence: 0, errorPolicy: 'absolute_quorum' });
+    expect(r.version).toBe('1.13');
+    const after: VoteRecord = {
+      ...r,
+      voters: redactVoterOpenings(r.voters, new Set(['security'])),
+    };
+    const red = buildRedactionRecord({
+      id: 'red-0',
+      sequence: 1,
+      targetId: 'v0',
+      targetVoterRoles: ['security'],
+      at: '2026-09-15T00:00:00.000Z',
+      by: 'williamzujkowski',
+      reason: 'quoted a private document',
+    });
+    return { text: ledgerText([after]) + JSON.stringify(red) + '\n', r, red };
+  }
+
+  it('ratified, with the bound record’s redaction on the verdict: the tally is still hash-covered', () => {
+    const { text, r } = redactedLedger();
+    const e = evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.record.hash).toBe(r.hash);
+    expect(e.redacted).toEqual({
+      recordId: 'v0',
+      voterRoles: ['security'],
+      redactionIds: ['red-0'],
+    });
+  });
+
+  it('the notice line names the redacted roles and the redaction record, so a spot-checker sees it', () => {
+    const { text } = redactedLedger();
+    const line = formatLedgerEvidence(
+      evaluateLedgerEvidence({ ledgerText: text, pr: PR, head: AT_HEAD })
+    );
+    expect(line.startsWith('::notice::')).toBe(true);
+    expect(line).toContain('REDACTED');
+    expect(line).toContain('security');
+    expect(line).toContain("'red-0'");
+  });
+
+  it('a record without a redaction carries no `redacted` field — absence is not reported as a redaction', () => {
+    const e = evaluateLedgerEvidence({
+      ledgerText: ledgerText([record('v0', { sequence: 0 })]),
+      pr: PR,
+      head: AT_HEAD,
+    });
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect('redacted' in e).toBe(false);
+    expect(formatLedgerEvidence(e)).not.toContain('REDACTED');
+  });
+
+  it('EMPTY CASE: the opening dropped with NO redaction record is ledger-invalid (hash_mismatch), never ratified', () => {
+    const r = record('v0', { sequence: 0, errorPolicy: 'absolute_quorum' });
+    const after: VoteRecord = {
+      ...r,
+      voters: redactVoterOpenings(r.voters, new Set(['security'])),
+    };
+    const e = evaluateLedgerEvidence({ ledgerText: ledgerText([after]), pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('ledger-invalid');
+    if (e.kind !== 'ledger-invalid') throw new Error('unreachable');
+    expect(e.detail).toContain('hash_mismatch');
+    expect(e.detail).toContain('no redaction record');
+  });
+
+  it('a redaction record that binds nothing is ledger-invalid (redaction_unbound)', () => {
+    const { text, red } = redactedLedger();
+    const stray = buildRedactionRecord({ ...red, id: 'red-1', sequence: 2, targetId: 'v9' });
+    const e = evaluateLedgerEvidence({
+      ledgerText: text + JSON.stringify(stray) + '\n',
+      pr: PR,
+      head: AT_HEAD,
+    });
+    expect(e.kind).toBe('ledger-invalid');
+    if (e.kind !== 'ledger-invalid') throw new Error('unreachable');
+    expect(e.detail).toContain('redaction_unbound');
+    expect(e.detail).toContain("'red-1'");
   });
 });
 

@@ -101,14 +101,16 @@ export function buildVoteRecordRatificationResolver(
     };
   }
 
-  const { records, invalidLines } = parseVoteRecordsText(jsonlText);
+  const { records, redactions, invalidLines } = parseVoteRecordsText(jsonlText);
   if (invalidLines.length > 0) {
     return ledgerInvalid(
       `governance/vote-records.jsonl has ${String(invalidLines.length)} unparseable/invalid line(s) at ${invalidLines.join(', ')}. A malformed ledger fails closed — every promotion is rejected until it is repaired.`
     );
   }
 
-  const verification = verifyVoteRecordSet(records);
+  // #6264: the redaction records are part of the verified set — a redacted
+  // record's tally is still hash-covered and it resolves a ref as before.
+  const verification = verifyVoteRecordSet(records, redactions);
   if (!verification.ok) {
     return ledgerInvalid(
       `governance/vote-records.jsonl failed tamper-evidence verification (${verification.reason}) at record '${verification.recordId}': ${verification.detail}. The ledger fails closed until repaired.`

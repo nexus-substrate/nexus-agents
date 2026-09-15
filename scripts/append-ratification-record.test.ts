@@ -24,6 +24,10 @@ import type { ConsensusResult, Vote } from '../packages/nexus-agents/src/consens
 import type { AgentVoteResult, VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
 import {
+  buildRedactionRecord,
+  redactVoterOpenings,
+} from '../packages/nexus-agents/src/audit/redaction-record.js';
+import {
   VOTE_RECORD_SIGNATURE_NAMESPACE,
   computeVoteRecordHash,
   verifyVoteRecordSet,
@@ -204,6 +208,60 @@ describe('appendRatificationRecord', () => {
     expect(outcome.kind).toBe('appended');
     const committed = readLedger(ledgerPath);
     expect(committed.map((r) => r.id)).toEqual(['vote-c0', 'vote-a']);
+  });
+
+  it('a committed ledger whose tip is a REDACTION record (#6264) is appended PAST it — the redaction holds a sequence too', () => {
+    const c0 = sourceRecord('vote-c0', { sequence: 0, pr: 6100 });
+    const redactedC0: VoteRecord = {
+      ...c0,
+      voters: redactVoterOpenings(c0.voters, new Set(['security'])),
+    };
+    const red = buildRedactionRecord({
+      id: 'red-0',
+      sequence: 1,
+      targetId: 'vote-c0',
+      targetVoterRoles: ['security'],
+      at: '2026-09-15T00:00:00.000Z',
+      by: 'williamzujkowski',
+      reason: 'test',
+    });
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    writeFileSync(
+      ledgerPath,
+      JSON.stringify(redactedC0) + '\n' + JSON.stringify(red) + '\n',
+      'utf-8'
+    );
+    writeLedger(sourcePath, [sourceRecord('vote-a', { sequence: 5 })]);
+
+    const outcome = appendRatificationRecord({ sourcePath, ledgerPath, recordId: 'vote-a' });
+    expect(outcome.kind).toBe('appended');
+    if (outcome.kind !== 'appended') throw new Error('unreachable');
+    expect(outcome.record.sequence).toBe(2);
+    expect(outcome.record.previousHash).toBe(red.hash);
+    const after = parseVoteRecordsText(readFileSync(ledgerPath, 'utf-8'));
+    expect(after.invalidLines).toEqual([]);
+    expect(verifyVoteRecordSet(after.records, after.redactions)).toEqual({
+      ok: true,
+      recordCount: 3,
+      redacted: [{ recordId: 'vote-c0', voterRoles: ['security'], redactionIds: ['red-0'] }],
+    });
+  });
+
+  it('REFUSES a source record whose voter opening is already missing — a redaction happens on the committed ledger, not in the copy (#6264)', () => {
+    const src = sourceRecord('vote-a', { sequence: 5 });
+    const bare: VoteRecord = {
+      ...src,
+      voters: redactVoterOpenings(src.voters, new Set(['security'])),
+    };
+    expect(computeVoteRecordHash(bare)).toBe(src.hash);
+    writeLedger(sourcePath, [bare]);
+    writeLedger(ledgerPath, []);
+    const detail = expectRefused(
+      appendRatificationRecord({ sourcePath, ledgerPath, recordId: 'vote-a' }),
+      'source-hash-mismatch'
+    );
+    expect(detail).toContain('no redaction record');
+    expect(readLedger(ledgerPath)).toEqual([]);
   });
 
   it('REFUSES when the runtime store is missing, naming the path', () => {

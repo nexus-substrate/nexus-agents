@@ -117,10 +117,20 @@ function formatRatified(evidence: RatifiedEvidence): string {
   const appendOnly = evidence.appendOnlyChecked
     ? 'ledger append-only against base'
     : 'base ledger not supplied — append-only not checked';
+  // #6264: a redacted record ratifies (its tally is hash-covered), and the
+  // line says so, naming the roles and the redaction record(s), so a
+  // spot-checker who goes looking for the reasoning knows it was removed on
+  // record rather than lost.
+  const redacted =
+    evidence.redacted === undefined
+      ? ''
+      : ` REDACTED: reasoning of ${evidence.redacted.voterRoles.join(', ')} removed under ` +
+        `redaction record(s) ${evidence.redacted.redactionIds.map((id) => `'${id}'`).join(', ')} ` +
+        '(hash unchanged; the tally is verified).';
   return (
     `::notice::${TAG} ${evidence.kind}: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
     `${sha}, decision ${evidence.record.decision}, strategy: ${evidence.record.strategy}, ` +
-    `${panel}, ${policy}, ${appendOnly}, ${formatSignatures(evidence.signatures)}.`
+    `${panel}, ${policy}, ${appendOnly}, ${formatSignatures(evidence.signatures)}.${redacted}`
   );
 }
 

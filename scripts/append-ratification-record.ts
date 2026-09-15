@@ -98,6 +98,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
+import type { RedactionRecord } from '../packages/nexus-agents/src/audit/redaction-record.js';
 import { findReasoningCommitmentDefect } from '../packages/nexus-agents/src/audit/reasoning-commitment.js';
 import {
   VoteRecordSchema,
@@ -223,8 +224,11 @@ function vetSourceRecord(record: VoteRecord, sourcePath: string): SourceStep {
   // #6263: on the digest tier the self-hash folds a salted digest of each
   // voter's reasoning, not the text, so an edited text leaves the hash intact
   // and only the commitment breaks. Checked HERE, not left to the read-back
-  // after the append, so the line is never written.
-  const commitment = findReasoningCommitmentDefect(record);
+  // after the append, so the line is never written. The empty set (#6264): a
+  // record copied INTO the committed ledger must carry every opening — a
+  // redaction happens on the committed ledger afterwards (#6265), with its
+  // own record there; a source entry already missing its opening is refused.
+  const commitment = findReasoningCommitmentDefect(record, new Set<string>());
   if (commitment !== null) {
     return {
       ok: false,
@@ -261,9 +265,11 @@ function vetSourceRecord(record: VoteRecord, sourcePath: string): SourceStep {
 /** The committed ledger's current text and verified records (empty file ⇒ no records). */
 function loadLedger(
   ledgerPath: string
-): { ok: true; text: string; records: VoteRecord[] } | { ok: false; outcome: AppendOutcome } {
+):
+  | { ok: true; text: string; records: VoteRecord[]; redactions: RedactionRecord[] }
+  | { ok: false; outcome: AppendOutcome } {
   const text = existsSync(ledgerPath) ? readFileSync(ledgerPath, 'utf-8') : '';
-  const { records, invalidLines } = parseVoteRecordsText(text);
+  const { records, redactions, invalidLines } = parseVoteRecordsText(text);
   if (invalidLines.length > 0) {
     return {
       ok: false,
@@ -276,8 +282,9 @@ function loadLedger(
   }
   // A tampered committed ledger is never extended: an append onto it would
   // read as "the chain moved on past the edit". `notVerified: 'empty'` is the
-  // legitimate first-record case and passes here.
-  const verdict = verifyVoteRecordSet(records);
+  // legitimate first-record case and passes here. A `redacted` record (#6264)
+  // is ok — the tally is still hash-covered — and is appended past.
+  const verdict = verifyVoteRecordSet(records, redactions);
   if (!verdict.ok) {
     return {
       ok: false,
@@ -288,15 +295,21 @@ function loadLedger(
       ),
     };
   }
-  return { ok: true, text, records };
+  return { ok: true, text, records, redactions };
 }
 
 /**
- * Rebuild the record under the committed ledger's next sequence. A `signature`
- * on the source is dropped with the other ledger-local fields: it could only
- * have been made over the source hash, which the committed copy does not carry.
+ * Rebuild the record under the committed ledger's next sequence — past BOTH
+ * kinds of line (#6264): a redaction record holds a sequence too, and a vote
+ * appended onto its number would read as a fork. `previousHash` (advisory)
+ * is the highest-sequence line's, whichever kind. A `signature` on the source
+ * is dropped with the other ledger-local fields: it could only have been made
+ * over the source hash, which the committed copy does not carry.
  */
-function relink(source: VoteRecord, committed: readonly VoteRecord[]): VoteRecord {
+function relink(
+  source: VoteRecord,
+  committed: readonly { readonly sequence: number; readonly hash: string }[]
+): VoteRecord {
   const {
     hash: _hash,
     sequence: _sequence,
@@ -304,12 +317,11 @@ function relink(source: VoteRecord, committed: readonly VoteRecord[]): VoteRecor
     signature: _signature,
     ...content
   } = source;
-  let maxSequence = -1;
-  for (const r of committed) if (r.sequence > maxSequence) maxSequence = r.sequence;
-  const tip = committed[committed.length - 1];
+  let tip: { readonly sequence: number; readonly hash: string } | undefined;
+  for (const r of committed) if (tip === undefined || r.sequence >= tip.sequence) tip = r;
   const payload: Omit<VoteRecord, 'hash'> = {
     ...content,
-    sequence: maxSequence + 1,
+    sequence: (tip?.sequence ?? -1) + 1,
     ...(tip !== undefined ? { previousHash: tip.hash } : {}),
   };
   return { ...payload, hash: computeVoteRecordHash(payload) };
@@ -332,9 +344,15 @@ export function appendRatificationRecord(opts: AppendRatificationRecordOptions):
     return { kind: 'already-present', recordId: opts.recordId, ledgerPath: opts.ledgerPath };
   }
 
-  // Re-sequence and re-hash FIRST; the signature is over the hash the ledger
-  // will carry, so it can only be made once that hash is final.
-  const signStep = signCommitted(relink(source.record, ledger.records), opts.signing);
+  // Re-sequence and re-hash FIRST — past both vote and redaction lines — then
+  // sign; the signature is over the hash the ledger will carry, so it can only
+  // be made once that hash is final. Only the VOTE record is signed here: a
+  // redaction record is never written by this script, and signing redactions
+  // is #6265's concern (the redaction writer), not this append's.
+  const signStep = signCommitted(
+    relink(source.record, [...ledger.records, ...ledger.redactions]),
+    opts.signing
+  );
   if (!signStep.ok) return refused('signing-failed', signStep.detail);
   const record = signStep.record;
 
@@ -370,7 +388,7 @@ export function appendRatificationRecord(opts: AppendRatificationRecordOptions):
  */
 function verifyAppended(ledgerPath: string, recordId: string): AppendOutcome | null {
   const after = readVoteRecords(ledgerPath);
-  const verdict = verifyVoteRecordSet(after.records);
+  const verdict = verifyVoteRecordSet(after.records, after.redactions);
   if (after.invalidLines.length === 0 && verdict.ok) return null;
   const why = !verdict.ok
     ? `${verdict.reason} at '${verdict.recordId}': ${verdict.detail}`

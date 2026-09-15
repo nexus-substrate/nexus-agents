@@ -1264,8 +1264,9 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     // #3927 signature over it — survives the whole opening being dropped,
     // which is what lets step 2 (#6264) redact without re-signing. Under the
     // rejected fold (nonce hashed) this moved the hash (#6274 panel 1). The
-    // schema still refuses the shape on THIS tier (a commitment with nothing
-    // to open it); step 2 admits it under a redaction record.
+    // schema admits the shape (step 2); whether it VERIFIES is the
+    // verifier's question — `redacted` under a redaction record naming the
+    // entry, `hash_mismatch` under none (redaction-record.test.ts).
     const { reasoning: _r, reasoningNonce: _n, ...redacted } = MAXIMAL_1_13.voters[0]!;
     expect(redacted.reasoningDigest).toBe(DIGEST);
     expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [redacted] })).toBe(GOLDEN_1_13);
@@ -1273,7 +1274,10 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
       computeVoteRecordHash(MAXIMAL_1_13)
     );
     const parsed = VoteRecordSchema.safeParse(asRecord({ ...MAXIMAL_1_13, voters: [redacted] }));
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
+    const unrecorded = verifyVoteRecordSet([asRecord({ ...MAXIMAL_1_13, voters: [redacted] })]);
+    expect(unrecorded.ok).toBe(false);
+    if (!unrecorded.ok) expect(unrecorded.reason).toBe('hash_mismatch');
   });
 
   it('editing text AND nonce together to a different opening is a hash_mismatch — the digest re-opening fails while the record hash cannot see it', () => {
@@ -1428,9 +1432,10 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     expect(accepts(noText)).toBe(false);
     // The digest is required on 1.13 for any entry that has reasoning.
     expect(accepts(noDigest)).toBe(false);
-    // A commitment with no opening at all is refused on THIS tier, for now;
-    // step 2 (#6264) admits it under a redaction record naming the entry.
-    expect(accepts(noOpening)).toBe(false);
+    // A commitment with no opening at all is a SHAPE the schema admits (#6264
+    // step 2): it is what a redacted entry looks like. Whether it verifies is
+    // decided against the redaction records — see redaction-record.test.ts.
+    expect(accepts(noOpening)).toBe(true);
     // Shape: 64 lowercase hex, nothing else.
     expect(accepts({ ...v, reasoningNonce: NONCE.toUpperCase() })).toBe(false);
     expect(accepts({ ...v, reasoningNonce: NONCE.slice(2) })).toBe(false);
@@ -1469,25 +1474,34 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     // The single-record seam the caller-commits append script vets a source
     // record with, so a text edited in the operator store is refused before
     // the line is written rather than after.
+    // `redactedRoles` is the set of roles a redaction record names on this
+    // record; the append script passes the empty set (#6264).
+    const none = new Set<string>();
     const record = asRecord(MAXIMAL_1_13);
-    expect(findReasoningCommitmentDefect(record)).toBeNull();
+    expect(findReasoningCommitmentDefect(record, none)).toBeNull();
     const v = record.voters[0]!;
     const edited = { ...record, voters: [{ ...v, reasoning: REASONING + '!' }] };
-    expect(findReasoningCommitmentDefect(edited)).toContain('reasoningDigest');
+    expect(findReasoningCommitmentDefect(edited, none)).toContain('reasoningDigest');
     const { reasoningNonce: _n, ...noNonce } = v;
-    expect(findReasoningCommitmentDefect({ ...record, voters: [noNonce] })).toContain(
+    expect(findReasoningCommitmentDefect({ ...record, voters: [noNonce] }, none)).toContain(
       'reasoningNonce'
     );
     // The opening rule in the other direction: a salt with no text.
     const { reasoning: _r2, ...noText } = v;
-    expect(findReasoningCommitmentDefect({ ...record, voters: [noText] })).toContain(
+    expect(findReasoningCommitmentDefect({ ...record, voters: [noText] }, none)).toContain(
       'reasoningNonce without the reasoning it opens'
     );
-    // And a bare commitment: refused for now, admitted by step 2 (#6264).
+    // And a bare commitment: the empty case under no redaction record, sound
+    // under one that names the role (#6264).
     const { reasoning: _r3, reasoningNonce: _n3, ...bare } = v;
-    expect(findReasoningCommitmentDefect({ ...record, voters: [bare] })).toContain('no opening');
+    expect(findReasoningCommitmentDefect({ ...record, voters: [bare] }, none)).toContain(
+      'no redaction record'
+    );
+    expect(
+      findReasoningCommitmentDefect({ ...record, voters: [bare] }, new Set([v.role]))
+    ).toBeNull();
     // An older tier never has a commitment to check.
-    expect(findReasoningCommitmentDefect(asRecord(MAXIMAL_1_12))).toBeNull();
+    expect(findReasoningCommitmentDefect(asRecord(MAXIMAL_1_12), none)).toBeNull();
   });
 
   it('the two keys are on the VoterSummary type as optional hex strings — the defineVoterKeys constraint made the projection learn them', () => {

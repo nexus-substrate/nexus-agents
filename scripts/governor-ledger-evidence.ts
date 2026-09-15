@@ -35,9 +35,18 @@
  * | `wrong-strategy` | a bound record's `strategy` is below the governor bar — not `supermajority` or `unanimous` (#6235) |
  * | `unmeasured-panel` | a bound record has no `panelCoverage`, or one that names no seats — it cannot show the panel ran whole |
  * | `degraded-panel` | a bound record's `panelCoverage.errored > 0` |
- * | `ledger-invalid` | a line does not parse, or `verifyVoteRecordSet` fails (tamper, gap) |
+ * | `ledger-invalid` | a line does not parse, or `verifyVoteRecordSet` fails (tamper, gap, a voter opening dropped with no redaction record, a redaction record that binds nothing) |
  * | `ledger-rewritten` | the head ledger is not the base ledger plus appended lines — see below |
  * | `duplicate-id` | one id names two DIFFERENT records — refused, see below |
+ *
+ * A `ratified` / `ratified-rebased` verdict carries `redacted` when a
+ * redaction record in the ledger names the ratifying record (#6264): a
+ * voter's reasoning text and salt were removed under a recorded, self-hashed
+ * redaction, and the verifier answered `redacted` for it rather than
+ * `hash_mismatch`. The record still ratifies — the decision, tally, strategy,
+ * policy and coverage are hash-covered and unchanged — and the notice names
+ * the roles and the redaction record so a spot-checker does not read a
+ * missing argument as a missing review.
  *
  * The accepted heads are the PR head and, when the head commit touches ONLY
  * the ledger file, its first parent: the caller-commits tip is a ledger-only
@@ -292,6 +301,7 @@ import type {
   VoteRecordPanelCoverage,
 } from '../packages/nexus-agents/src/audit/vote-record.js';
 import { verifyVoteRecordSet } from '../packages/nexus-agents/src/audit/vote-record.js';
+import type { RedactedRecordReport } from '../packages/nexus-agents/src/audit/redaction-record.js';
 import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
@@ -423,11 +433,20 @@ export type LedgerEvidence =
       readonly shaChecked: boolean;
       /** False when no base ledger was supplied: append-only was not compared (#6213). */
       readonly appendOnlyChecked: boolean;
+      /**
+       * Present when a redaction record names this record (#6264): the voter
+       * roles whose reasoning was removed, and the redaction record ids. The
+       * record still ratifies — every tally field is hash-covered — and the
+       * notice says the reasoning is gone.
+       */
+      readonly redacted?: RedactedRecordReport;
     } & WithSignatures)
   | ({
       /** #6256: ratified at an earlier head of this PR; the current head's tree is that head's patch replayed onto its base. */
       readonly kind: 'ratified-rebased';
       readonly record: VoteRecord;
+      /** As on `ratified` (#6264). */
+      readonly redacted?: RedactedRecordReport;
       /** The sha the record binds — the head the panel saw. */
       readonly ratifiedSha: string;
       /** The current head, which no record binds. */
@@ -491,11 +510,18 @@ export function acceptedHeadShas(head: HeadBinding): string[] {
   return shas;
 }
 
-type Loaded = { ok: true; records: VoteRecord[] } | { ok: false; verdict: LedgerEvidence };
+type Loaded =
+  | {
+      ok: true;
+      records: VoteRecord[];
+      /** The verifier's per-record `redacted` answers, by record id (#6264). */
+      redacted: ReadonlyMap<string, RedactedRecordReport>;
+    }
+  | { ok: false; verdict: LedgerEvidence };
 
 /** Parse and verify the ledger; collapse byte-identical duplicates; refuse ambiguous ids. */
 function loadLedger(text: string): Loaded {
-  const { records, invalidLines } = parseVoteRecordsText(text);
+  const { records, redactions, invalidLines } = parseVoteRecordsText(text);
   if (invalidLines.length > 0) {
     return {
       ok: false,
@@ -505,7 +531,10 @@ function loadLedger(text: string): Loaded {
       },
     };
   }
-  const verification = verifyVoteRecordSet(records);
+  // #6264: the redaction records are part of the verified set. A record whose
+  // opening was dropped under one verifies as `redacted` (its tally is still
+  // hash-covered); dropped under none it is `hash_mismatch` and lands here.
+  const verification = verifyVoteRecordSet(records, redactions);
   if (!verification.ok) {
     return {
       ok: false,
@@ -515,6 +544,7 @@ function loadLedger(text: string): Loaded {
       },
     };
   }
+  const redacted = new Map((verification.redacted ?? []).map((r) => [r.recordId, r]));
   const byId = new Map<string, VoteRecord>();
   const ambiguous = new Set<string>();
   for (const record of records) {
@@ -525,7 +555,7 @@ function loadLedger(text: string): Loaded {
   if (ambiguous.size > 0) {
     return { ok: false, verdict: { kind: 'duplicate-id', ids: [...ambiguous].sort() } };
   }
-  return { ok: true, records: [...byId.values()] };
+  return { ok: true, records: [...byId.values()], redacted };
 }
 
 /** The ledger's record lines: every non-blank line, bytes untouched. */
@@ -688,9 +718,20 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
     if (rewritten !== undefined) return rewritten;
   }
   if (!loaded.ok) return loaded.verdict;
+  return withRedaction(
+    verdictOverLoaded(inputs, loaded.records, appendOnlyChecked),
+    loaded.redacted
+  );
+}
 
-  const forPr = loaded.records.filter((r) => r.ratifiesPr?.pr === inputs.pr);
-  if (forPr.length === 0) return { kind: 'no-record', recordCount: loaded.records.length };
+/** The verdict over a loaded, verified ledger; see {@link evaluateLedgerEvidence}. */
+function verdictOverLoaded(
+  inputs: LedgerEvidenceInputs,
+  records: readonly VoteRecord[],
+  appendOnlyChecked: boolean
+): LedgerEvidence {
+  const forPr = records.filter((r) => r.ratifiesPr?.pr === inputs.pr);
+  if (forPr.length === 0) return { kind: 'no-record', recordCount: records.length };
 
   if (inputs.head === undefined) {
     return verdictOverBound(
@@ -706,6 +747,24 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
     return movedHeadVerdict(forPr, accepted, inputs, appendOnlyChecked);
   }
   return verdictOverBound(bound, { shaChecked: true, appendOnlyChecked }, inputs.signatureVerifier);
+}
+
+/**
+ * Attach the ratifying record's redaction state (#6264) to a ratified
+ * verdict, so the report can print it: a `redacted` record RATIFIES — its
+ * tally, decision, strategy, policy and coverage are all still hash-covered,
+ * only a voter's reasoning text and salt are gone — but a spot-checker
+ * reading the notice must see that the reasoning it would go looking for was
+ * removed, and by which redaction record. Absent when nothing on the record
+ * was redacted; a non-ratified verdict is returned as-is.
+ */
+function withRedaction(
+  verdict: LedgerEvidence,
+  redacted: ReadonlyMap<string, RedactedRecordReport>
+): LedgerEvidence {
+  if (verdict.kind !== 'ratified' && verdict.kind !== 'ratified-rebased') return verdict;
+  const report = redacted.get(verdict.record.id);
+  return report === undefined ? verdict : { ...verdict, redacted: report };
 }
 
 type Measured = Extract<MovedHeadMeasurement, { kind: 'measured' }>;

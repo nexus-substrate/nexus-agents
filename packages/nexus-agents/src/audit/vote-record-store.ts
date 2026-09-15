@@ -62,6 +62,8 @@ import type {
   VoterSummary,
 } from './vote-record.js';
 import { computeReasoningDigest, mintReasoningNonce } from './reasoning-commitment.js';
+import type { RedactionRecord } from './redaction-record.js';
+import { RedactionRecordSchema } from './redaction-record.js';
 import {
   VoteRecordSchema,
   clipForRecord,
@@ -571,14 +573,22 @@ function readLedgerTip(
 ): { maxSequence: number; lastHash: string | undefined } {
   if (!existsSync(filePath)) return { maxSequence: -1, lastHash: undefined };
   try {
-    const { records } = readVoteRecords(filePath);
-    if (records.length === 0) return { maxSequence: -1, lastHash: undefined };
-    let maxSequence = -1;
-    for (const record of records) {
-      if (record.sequence > maxSequence) maxSequence = record.sequence;
+    // #6264: a redaction record holds a sequence of its own, so the tip is
+    // read over BOTH kinds — or the next vote would land on the redaction's
+    // sequence and read as a fork. The advisory `previousHash` is the hash of
+    // the highest-sequence record, whichever kind (the later of equals wins);
+    // on an append-only ledger with no fork that is the last line, as before.
+    const { records, redactions } = readVoteRecords(filePath);
+    const all: readonly { readonly sequence: number; readonly hash: string }[] = [
+      ...records,
+      ...redactions,
+    ];
+    if (all.length === 0) return { maxSequence: -1, lastHash: undefined };
+    let tip = all[0] as { sequence: number; hash: string };
+    for (const record of all) {
+      if (record.sequence >= tip.sequence) tip = record;
     }
-    const last = records[records.length - 1];
-    return { maxSequence, lastHash: last?.hash };
+    return { maxSequence: tip.sequence, lastHash: tip.hash };
   } catch (error: unknown) {
     logger.warn('Failed to read vote-record ledger tip', { error: getErrorMessage(error) });
     return { maxSequence: -1, lastHash: undefined };
@@ -749,12 +759,26 @@ export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | 
  * File-line order is NOT significant (#3927) — verification treats the records
  * as a set. Returns the parsed records and any line that failed to parse.
  */
-export function readVoteRecords(filePath: string): {
-  readonly records: VoteRecord[];
-  readonly invalidLines: number[];
-} {
-  if (!existsSync(filePath)) return { records: [], invalidLines: [] };
+export function readVoteRecords(filePath: string): ParsedVoteLedger {
+  if (!existsSync(filePath)) return { records: [], redactions: [], invalidLines: [] };
   return parseVoteRecordsText(readFileSync(filePath, 'utf-8'));
+}
+
+/** What a ledger's lines parse into: the two record kinds, and the lines that are neither. */
+export interface ParsedVoteLedger {
+  readonly records: VoteRecord[];
+  /** Redaction records (#6264), by their `kind: 'redaction'` line discriminator. */
+  readonly redactions: RedactionRecord[];
+  readonly invalidLines: number[];
+}
+
+/** True for a parsed line whose `kind` says it is a redaction record. */
+function isRedactionLine(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { readonly kind?: unknown }).kind === 'redaction'
+  );
 }
 
 /**
@@ -763,23 +787,31 @@ export function readVoteRecords(filePath: string): {
  * out (#3927) so the authority-tier gate (`scripts/check-authority-tier-drift.ts`)
  * can resolve `ratificationVoteRef` against the committed ledger TEXT in a pure,
  * unit-testable path without touching the filesystem. Blank lines are skipped.
- * Order is NOT significant — the set is verified by {@link verifyVoteRecordSet}.
+ * Order is NOT significant — the set is verified by {@link verifyVoteRecordSet},
+ * which takes BOTH arrays: a redaction line (#6264) is routed to its own
+ * schema by `kind`; every other line is a vote record, and a vote record
+ * carries no `kind`.
  */
-export function parseVoteRecordsText(text: string): {
-  readonly records: VoteRecord[];
-  readonly invalidLines: number[];
-} {
+export function parseVoteRecordsText(text: string): ParsedVoteLedger {
   const records: VoteRecord[] = [];
+  const redactions: RedactionRecord[] = [];
   const invalidLines: number[] = [];
   const lines = text.split('\n').filter((l) => l.trim() !== '');
   for (const [i, line] of lines.entries()) {
     try {
-      const parsed = VoteRecordSchema.safeParse(JSON.parse(line));
+      const value: unknown = JSON.parse(line);
+      if (isRedactionLine(value)) {
+        const parsed = RedactionRecordSchema.safeParse(value);
+        if (parsed.success) redactions.push(parsed.data);
+        else invalidLines.push(i + 1);
+        continue;
+      }
+      const parsed = VoteRecordSchema.safeParse(value);
       if (parsed.success) records.push(parsed.data);
       else invalidLines.push(i + 1);
     } catch {
       invalidLines.push(i + 1);
     }
   }
-  return { records, invalidLines };
+  return { records, redactions, invalidLines };
 }
