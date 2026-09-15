@@ -79,10 +79,40 @@ Security findings are **never** created as public GitHub issues. Instead, use a 
 Append to `.security-discoveries.jsonl` (gitignored, never committed):
 
 ```bash
-echo '{"timestamp":"'$(TZ='America/New_York' date -Iseconds)'","severity":"{critical|high|medium|low}","file":"{file}:{line}","description":"{what was found}","foundDuring":"{task}","cwe":"CWE-XXX if known"}' >> .security-discoveries.jsonl
+echo '{"id":"{unique-finding-id}","timestamp":"'$(TZ='America/New_York' date -Iseconds)'","severity":"{critical|high|medium|low}","file":"{file}:{line}","description":"{what was found}","foundDuring":"{task}","cwe":"CWE-XXX if known"}' >> .security-discoveries.jsonl
 ```
 
-This file persists across conversations so findings are never lost, even if the user isn't watching chat.
+New findings use the documented fields above, including a unique `id`. The reader
+accepts historical shapes: any object with string `severity` is a finding, with
+all other keys preserved. Identity is the first present of `id`, `timestamp`,
+`discoveredAt`, `recordedAt`, `ts`; display text uses `summary`, `title`,
+`description`, then `detail`, and location uses `file`, `component`, then `area`.
+Legacy lines with string `resolves` are resolutions: it targets the finding's
+identity; `commit` supplies `fixedIn`, `timestamp` supplies `at`, and `foundDuring`
+supplies `by` (default `unknown`), with status `fixed`.
+
+Canonical open statuses: absent, `open`, `fixing`, `latent`, `issue-filed`.
+Canonical closed statuses: `fixed`, `resolved`, `accepted`, `duplicate`, `refuted`,
+`wontfix`. A matching resolution, a `resolvedAt` field, or a string `resolution`
+also closes a finding. Other ad-hoc statuses remain **status-unmeasured**.
+`pnpm security:open` reports open, resolved, status-unmeasured, shape-unmeasured,
+and invalid counts. Objects with neither finding nor resolution shape are
+**shape-unmeasured**, listed by line and key set, never counted resolved.
+Non-JSON/non-object lines are invalid (exit 1); `--counts-only` suppresses record
+listings. An empty file has no records; blank physical lines are invalid.
+
+Close a finding by appending a resolution, never rewriting its original line:
+
+```bash
+pnpm exec tsx scripts/security-ledger.ts resolve --target '{finding-identity}' --status fixed --fixed-in '{PR-or-commit}' --by '{actor}'
+```
+
+Resolution shape: `{"kind":"resolution","target":"{finding-identity}","status":"fixed|accepted|duplicate|refuted","at":"{ISO timestamp}","by":"{actor}"}`;
+optional `fixedIn` and `note` strings record evidence and context. A matching
+resolution closes the finding regardless of its original status. Unknown or
+already resolved targets are refused. Both commands accept `--ledger <path>`;
+the default is the repo-root `.security-discoveries.jsonl`. This private file
+persists across conversations; never commit it or copy its contents into public artifacts.
 
 ### Tier 2 — GitHub Security Advisory (critical/high only)
 

@@ -31,6 +31,7 @@
     "test": "turbo test",
     "test:coverage": "turbo test:coverage",
     "test:scripts": "vitest run",
+    "security:open": "tsx scripts/security-ledger.ts open",
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
     "lint:scripts": "eslint scripts/",
