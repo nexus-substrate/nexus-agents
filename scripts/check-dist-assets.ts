@@ -215,7 +215,6 @@ export function assetListCompleteness(
   return problems;
 }
 
-/* eslint-disable no-console */
 function main(): void {
   if (!existsSync(DIST)) {
     console.error(`::error::dist/ not found at ${DIST} — run the build first.`);

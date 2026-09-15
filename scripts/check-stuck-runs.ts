@@ -86,7 +86,6 @@ export function assessStuckRuns(runs: readonly RunSummary[]): StuckRunVerdict {
   };
 }
 
-/* eslint-disable no-console */
 /**
  * Parse the `[{databaseId, status, createdAt}]` array the workflow passes in
  * `RUNS_JSON`. Returns `undefined` when the input is absent or empty (#5670):

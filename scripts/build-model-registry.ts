@@ -17,7 +17,7 @@
  *   pnpm exec tsx scripts/build-model-registry.ts --dry     # parse + validate, print counts
  *   pnpm exec tsx scripts/build-model-registry.ts --offline # use last-committed snapshot, no fetch
  */
-/* eslint-disable no-console, max-lines-per-function, complexity */
+/* eslint-disable max-lines-per-function, complexity -- `run` is one linear fetch → validate → diff → write sequence whose branches are the three CLI modes (--dry, --offline, default); splitting it would scatter one decision across helpers */
 
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

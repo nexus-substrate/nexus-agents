@@ -8,7 +8,7 @@
  * (Source: Issue #640 - Multi-model release validation swarm)
  */
 
-/* eslint-disable no-console */
+/* eslint-disable no-console -- stdout is this command's user-facing output; the logger writes to stderr */
 
 import { readFileSync } from 'node:fs';
 import { colors } from './ansi-output.js';

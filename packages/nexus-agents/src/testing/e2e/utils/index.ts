@@ -153,7 +153,7 @@ export function createDeferred<T>(): {
 /**
  * Capture console output during test execution.
  */
-/* eslint-disable no-console */
+/* eslint-disable no-console -- the function's job is to replace console.log/console.error with capturing stubs, so it has to name them */
 export function captureConsole(): {
   logs: string[];
   errors: string[];

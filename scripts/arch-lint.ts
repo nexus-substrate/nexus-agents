@@ -9,8 +9,7 @@
  * 3. Governance - CLAUDE.md compliance
  * 4. Test Hygiene - Mocks outside tests
  * 5. Security - No secrets, no silent ignores
- * 6. Suppression Hygiene - A `max-lines` disable states its reason (#6008)
- * 7. Governed Decision - No inline threshold verdict outside consensus/decision (#6000)
+ * 6. Governed Decision - No inline threshold verdict outside consensus/decision (#6000)
  *
  * @module scripts/arch-lint
  * (Source: Issue #570)
@@ -19,7 +18,6 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { SRC_ROOT, DOCS_ROOT, ROOT } from './script-paths.js';
-import { checkSuppressionReason } from './arch-lint-suppression.js';
 import { checkControlBytes } from './arch-lint-control-bytes.js';
 import { checkInlineVerdict } from './arch-lint-inline-verdict.js';
 
@@ -520,7 +518,6 @@ function lint(): LintResult {
       violations.push(...checkSecurity(filePath, content));
       violations.push(...checkTestHygiene(filePath, content));
       violations.push(...checkTempDirCleanup(filePath, content));
-      violations.push(...checkSuppressionReason(filePath, content));
       violations.push(...checkInlineVerdict(filePath, content));
     } catch {
       // Skip files that can't be read
@@ -580,7 +577,6 @@ export function lintVerdict(
 /**
  * Format and print results.
  */
-/* eslint-disable no-console */
 function printResults(result: LintResult): void {
   console.log('');
   console.log('╔════════════════════════════════════════════════════════════════╗');

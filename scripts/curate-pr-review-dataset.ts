@@ -23,8 +23,6 @@
  * (Source: Issue #3847, epic #3845; rubric #3846)
  */
 
-/* eslint-disable no-console -- this is a CLI script that prints progress */
-
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {

@@ -11,7 +11,6 @@
  * (Source: Issue #182, 5-0 consensus vote for CLI-based PR review)
  */
 
-/* eslint-disable no-console -- console output is intentional for CLI user feedback */
 import { execSync, execFileSync, spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';

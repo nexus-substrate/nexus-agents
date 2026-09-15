@@ -23,8 +23,6 @@
  *   pnpm exec tsx scripts/generate-skills-index.ts --check  # CI validation
  */
 
-/* eslint-disable no-console */
-
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';

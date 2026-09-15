@@ -17,8 +17,6 @@
  * Exits 0 always — the workflow decides what to do with the verdict via
  * the printed JSON / Markdown.
  */
-/* eslint-disable no-console */
-
 import { readFileSync } from 'node:fs';
 
 // ---------------------------------------------------------------------------

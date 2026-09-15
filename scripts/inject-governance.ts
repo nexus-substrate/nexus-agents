@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- one renderer per injected section of CLAUDE.md/AGENTS.md (tools, experts, workflows, skills, rules, env table) kept in the file that owns the injection markers; the 3,200 lines are the section catalogue, and every section is gated by the same check mode */
 /**
  * Governance Injection Script
  *
@@ -16,8 +16,6 @@
  * @module scripts/inject-governance
  * (Source: Issue #569, #761)
  */
-
-/* eslint-disable no-console */
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';

@@ -28,8 +28,6 @@
  * (Source: Issue #1896 — litellm catalog cross-check)
  */
 
-/* eslint-disable no-console */
-
 // model-capabilities.ts was renamed to in-tree-data.ts in #2546 slice E; this
 // import silently broke the gate until #4173 repointed it.
 import { DEFAULT_MODEL_CAPABILITIES } from '../packages/nexus-agents/src/config/in-tree-data.js';

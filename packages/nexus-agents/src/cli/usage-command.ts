@@ -16,7 +16,7 @@
  * `--until=<iso>`. Filter by model with `--model=<id>`.
  */
 
-/* eslint-disable no-console */
+/* eslint-disable no-console -- stdout is this command's user-facing output; the logger writes to stderr */
 
 import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
 import { cliExit, EXIT_CODES } from '../cli-types.js';

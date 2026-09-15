@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Stratified Outcome Report (#2662, Epic E).
  *

@@ -263,9 +263,8 @@ function buildBaseConfig(
     latencyScoreWeight: config.latencyScoreWeight,
     budgetConstraints: config.budget,
     linucbAlpha: config.linucb?.alpha ?? DEFAULT_COMPOSITE_CONFIG.linucbAlpha,
-    // Kept populated for the deprecation cycle (#5918); goes with the field in #5963.
     maxDecisionTimeMs:
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- kept populated for the deprecation cycle (#5918); goes with the field in #5963
       config.linucb?.maxDecisionTimeMs ?? DEFAULT_COMPOSITE_CONFIG.maxDecisionTimeMs,
     preferenceMinDataPoints:
       config.preference?.minDataPoints ?? DEFAULT_COMPOSITE_CONFIG.preferenceMinDataPoints,

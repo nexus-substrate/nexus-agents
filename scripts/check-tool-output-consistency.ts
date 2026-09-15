@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Tool-Output Consistency Lint (#2653, Epic B — reframed).
  *

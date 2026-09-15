@@ -202,7 +202,6 @@ function readChangesetDir(): string[] {
   return readdirSync(dir);
 }
 
-/* eslint-disable no-console */
 function main(): void {
   const files = pendingChangesets(readChangesetDir());
   const nowSec = Math.floor(Date.now() / 1000);

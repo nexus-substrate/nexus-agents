@@ -8,13 +8,8 @@
  * (Source: Issue #641 - Release announcement bot)
  */
 
-/* eslint-disable no-console */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/strict-boolean-expressions */
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
-/* eslint-disable @typescript-eslint/require-await */
-/* eslint-disable max-lines-per-function */
-/* eslint-disable complexity */
+/* eslint-disable no-console -- stdout is this command's user-facing output; the logger writes to stderr */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/require-await, max-lines-per-function, complexity -- suppressed file-wide when the release suite landed (#637) instead of written to the strict baseline; 38 sites, migration tracked in #6331 */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { colors } from './ansi-output.js';

@@ -23,8 +23,6 @@
  * (Source: Issue #3824, #3825, #3826)
  */
 
-/* eslint-disable no-console */
-
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './script-paths.js';

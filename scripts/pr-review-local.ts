@@ -23,8 +23,6 @@
  * @module scripts/pr-review-local
  */
 
-/* eslint-disable no-console -- this is a CLI script that prints progress */
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { collectRealVotes } from '../packages/nexus-agents/src/cli/voter-agents.js';

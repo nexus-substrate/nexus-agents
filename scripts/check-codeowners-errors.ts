@@ -299,7 +299,6 @@ export function readCheckInput(
   return { ok: true, input: { repository, ref, token, apiUrl } };
 }
 
-/* eslint-disable no-console */
 async function main(): Promise<void> {
   const read = readCheckInput(process.argv.slice(2));
   if (!read.ok) {

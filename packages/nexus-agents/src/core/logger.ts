@@ -4,6 +4,7 @@
  * JSON-structured logging with secret sanitization.
  */
 
+import { createWriteStream } from 'node:fs';
 import { getTimeProvider } from './time-provider.js';
 
 /** Log levels in order of severity */
@@ -299,17 +300,12 @@ let globalFormat: LogFormat = 'json';
 // console.log / explicit writers, not the structured logger.
 let globalDestination: LogDestination = 'stderr';
 let globalFilePath: string | undefined;
-let fileStream: import('fs').WriteStream | undefined;
+let fileStream: import('node:fs').WriteStream | undefined;
 
 /** Gets the output stream based on destination. */
 function getOutputStream(): NodeJS.WritableStream {
   if (globalDestination === 'file' && globalFilePath !== undefined) {
-    if (fileStream === undefined) {
-      // Lazy import fs to avoid issues in browser environments
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs') as typeof import('fs');
-      fileStream = fs.createWriteStream(globalFilePath, { flags: 'a' });
-    }
+    fileStream ??= createWriteStream(globalFilePath, { flags: 'a' });
     return fileStream;
   }
   return globalDestination === 'stderr' ? process.stderr : process.stdout;

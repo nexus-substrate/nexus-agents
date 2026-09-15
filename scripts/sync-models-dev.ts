@@ -27,8 +27,6 @@
  *     is what models.dev actually authors.
  */
 
-/* eslint-disable no-console */
-
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './script-paths.js';

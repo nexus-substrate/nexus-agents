@@ -101,10 +101,7 @@ export class HybridMemoryBackend implements IContextMemoryBackend {
     });
     return this.initPromise;
   }
-  // Stays async: this is a published Promise-returning API and its callers
-  // await it. The only await was the dynamic `better-sqlite3` import, which
-  // #5388 removed because `node:sqlite` is a synchronous builtin.
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- published Promise-returning API whose callers await it; the only await was the dynamic better-sqlite3 import that #5388 replaced with the synchronous node:sqlite builtin
   private async doInitialize(): Promise<Result<void, MemoryError>> {
     try {
       this.db = openSqliteDatabase(this.dbPath);

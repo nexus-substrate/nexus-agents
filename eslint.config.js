@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import jsdoc from 'eslint-plugin-jsdoc';
+import eslintComments from '@eslint-community/eslint-plugin-eslint-comments';
 import noVacuousVerdict from './eslint-rules/no-vacuous-verdict.js';
 import governedDecisionImports from './eslint-rules/governed-decision-imports-6000.js';
 
@@ -324,6 +325,45 @@ export default defineConfig([
       'packages/nexus-agents/src/mcp/tools/list-available-models-tool.ts',
     ],
     rules: { 'no-restricted-imports': 'warn', 'no-restricted-syntax': 'warn' },
+  },
+
+  // #6153: a suppression states its reason, in the directive's own
+  // `-- <reason>` clause. This is the stock rule (buy the detection, epic
+  // #5121 constraint 1) that replaced the bespoke `max-lines`-only text check
+  // in `scripts/arch-lint-suppression.ts` (#6008, #6151). A bare
+  // `eslint-disable` silences the only thing that knows the code is past the
+  // bar, and the bare ones were the ones that had drifted furthest (#6008).
+  //
+  // `ignore: ['eslint']` exempts the bounded `/* eslint max-lines: [...] */`
+  // ceilings (#6021): those are configuration, not suppression — the rule still
+  // fires on a file that outgrows its ceiling. Tests are exempt like they are
+  // for `max-lines`: 341 of the 388 undescribed directives measured on #6151's
+  // head were test boilerplate (`no-unused-vars` at the top of adapter tests),
+  // which is not the population that drifted. The rule takes `ignore` by
+  // DIRECTIVE TYPE, not rule name, so it cannot be narrowed to `max-lines`.
+  {
+    name: 'nexus-agents/suppression-reason-6153',
+    files: ['packages/*/src/**/*.ts', 'scripts/**/*.ts'],
+    ignores: ['**/*.test.ts', '**/*.spec.ts', '**/test/**', '**/__tests__/**'],
+    plugins: { '@eslint-community/eslint-comments': eslintComments },
+    rules: {
+      '@eslint-community/eslint-comments/require-description': [
+        'error',
+        // `eslint-enable` restores a rule; it suppresses nothing and the
+        // matching disable already carries the reason.
+        { ignore: ['eslint', 'eslint-enable'] },
+      ],
+    },
+  },
+
+  // scripts/ are CLI programs whose stdout IS the report (drift checks,
+  // generators, CI gates), so `console.log` is the output channel, not
+  // debugging left behind. Stated once here rather than as the same
+  // `eslint-disable no-console` at the top of 40 files (#6153).
+  {
+    name: 'nexus-agents/scripts-stdout-is-the-report-6153',
+    files: ['scripts/**/*.ts'],
+    rules: { 'no-console': 'off' },
   },
 
   // Test files - relaxed rules

@@ -35,8 +35,6 @@
  * (Source: #4311, epic #3845, unblocks #3849; scorer from #3848; rubric #3846)
  */
 
-/* eslint-disable no-console -- CLI script that prints progress */
-
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 

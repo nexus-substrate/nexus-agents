@@ -18,8 +18,6 @@
  * (Source: Issue #626, Epic #625)
  */
 
-/* eslint-disable no-console */
-
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
