@@ -345,7 +345,9 @@ describe('serializeConfig', () => {
       key: 'cliMs',
       value: 60000,
       source: 'package',
-      envVar: 'NEXUS_TIMEOUT_CLI',
+      // A fixture value: serializeConfig passes `envVar` through unchanged, and
+      // no live mapping exists for this key since #4939.
+      envVar: 'NEXUS_FIXTURE_ONLY',
     },
   ];
 

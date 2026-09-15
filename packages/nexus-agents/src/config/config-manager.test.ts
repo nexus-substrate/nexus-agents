@@ -87,17 +87,8 @@ describe('ConfigManager', () => {
       expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(120000);
     });
 
-    it('overrides environment variable values', () => {
-      vi.stubEnv('NEXUS_TIMEOUT_CLI', '45000');
-      const config = ConfigManager.getInstance();
-
-      // Without override, env var should apply
-      expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(45000);
-
-      // With override, override should win
-      config.setOverride('TIMEOUT_DEFAULTS', 'cliMs', 90000, 'session');
-      expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(90000);
-    });
+    // 'overrides environment variable values' removed in #4939 with the last
+    // ENV_VAR_MAP entry; there is no env-resolved key left to be overridden.
 
     it('throws on invalid value type', () => {
       const config = ConfigManager.getInstance();
@@ -202,38 +193,37 @@ describe('ConfigManager', () => {
       expect(filtered.every((item) => item.category === 'TIMEOUT_DEFAULTS')).toBe(true);
     });
 
-    it('shows env var names', () => {
+    it('advertises no env var for TIMEOUT_DEFAULTS.cliMs (#4939)', () => {
       const config = ConfigManager.getInstance();
       const all = config.listAll('TIMEOUT_DEFAULTS');
 
       const cliMsEntry = all.find((item) => item.key === 'cliMs');
-      expect(cliMsEntry?.envVar).toBe('NEXUS_TIMEOUT_CLI');
+      expect(cliMsEntry).toBeDefined();
+      expect(cliMsEntry?.envVar).toBeUndefined();
     });
   });
 
   describe('environment variable resolution', () => {
-    it('reads NEXUS_TIMEOUT_CLI', () => {
+    it('does not report NEXUS_TIMEOUT_CLI as an effective source — removed in #4939', () => {
+      // `config get TIMEOUT_DEFAULTS.cliMs` used to answer `Source: (env)` when
+      // the variable was set, an affirmative claim that it was in effect, while
+      // no running code read it. The mapping is gone, so the answer is the
+      // package default and no env-var name is advertised for the key.
       vi.stubEnv('NEXUS_TIMEOUT_CLI', '45000');
       const config = ConfigManager.getInstance();
 
       const meta = config.getWithMeta('TIMEOUT_DEFAULTS', 'cliMs');
-      expect(meta.value).toBe(45000);
-      expect(meta.source).toBe('env');
+      expect(meta.value).toBe(DEFAULTS.TIMEOUT_DEFAULTS.cliMs);
+      expect(meta.source).toBe('package');
+      expect(config.getEnvVarName('TIMEOUT_DEFAULTS', 'cliMs')).toBeUndefined();
     });
 
-    // The boolean and float coercion paths were covered by
-    // NEXUS_RATE_LIMIT_ENABLED and NEXUS_RETRY_JITTER, both removed in #5903 —
-    // they resolved through ENV_VAR_MAP and were reported as `Source: (env)`
-    // while nothing that runs read either. `parseEnvValue`'s own coercion is
-    // still covered by the invalid-value test below and by its unit tests.
-
-    it('ignores invalid env var values', () => {
-      vi.stubEnv('NEXUS_TIMEOUT_CLI', 'not-a-number');
-      const config = ConfigManager.getInstance();
-
-      // Should fall back to package default
-      expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(DEFAULTS.TIMEOUT_DEFAULTS.cliMs);
-    });
+    // 'reads NEXUS_TIMEOUT_CLI' and 'ignores invalid env var values' removed in
+    // #4939 with the last ENV_VAR_MAP entries. The boolean and float coercion
+    // paths went the same way in #5903 (NEXUS_RATE_LIMIT_ENABLED /
+    // NEXUS_RETRY_JITTER). ENV_VAR_MAP is empty until a production reader
+    // genuinely consults a mapped variable; `parseEnvValue`'s coercion is
+    // covered by its own unit tests.
   });
 
   describe('hasOverride', () => {
@@ -251,10 +241,8 @@ describe('ConfigManager', () => {
   });
 
   describe('getEnvVarName', () => {
-    it('returns env var name for mapped keys', () => {
-      const config = ConfigManager.getInstance();
-      expect(config.getEnvVarName('TIMEOUT_DEFAULTS', 'cliMs')).toBe('NEXUS_TIMEOUT_CLI');
-    });
+    // 'returns env var name for mapped keys' removed in #4939 — no key is
+    // mapped any more (see ENV_VAR_MAP).
 
     it('returns undefined for unmapped keys', () => {
       const config = ConfigManager.getInstance();
@@ -271,12 +259,12 @@ describe('ConfigManager', () => {
   });
 
   describe('precedence order', () => {
-    it('CLI override > session override > env > package', () => {
-      vi.stubEnv('NEXUS_TIMEOUT_CLI', '45000');
+    it('CLI override > session override > package', () => {
+      // The env tier sat between session and package until #4939 removed the
+      // last mapped variable; nothing resolves through it now.
       const config = ConfigManager.getInstance();
 
-      // Package default: 60000, env: 45000
-      expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(45000);
+      expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(DEFAULTS.TIMEOUT_DEFAULTS.cliMs);
 
       // Session override: 90000
       config.setOverride('TIMEOUT_DEFAULTS', 'cliMs', 90000, 'session');
@@ -286,9 +274,9 @@ describe('ConfigManager', () => {
       config.setOverride('TIMEOUT_DEFAULTS', 'cliMs', 120000, 'cli');
       expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(120000);
 
-      // Clear override, should fall back to env
+      // Clear override, should fall back to the package default
       config.clearOverride('TIMEOUT_DEFAULTS', 'cliMs');
-      expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(45000);
+      expect(config.get('TIMEOUT_DEFAULTS', 'cliMs')).toBe(DEFAULTS.TIMEOUT_DEFAULTS.cliMs);
     });
   });
 });
