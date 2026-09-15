@@ -46,11 +46,7 @@ import {
   formatLedgerEvidence,
   ledgerEvidenceFromEnv,
 } from './governor-ledger-report.js';
-import {
-  ORDER_SENSITIVE_FILES,
-  gitPatchIdentityProbe,
-  type PatchIdentityProbe,
-} from './governor-patch-identity.js';
+import { gitMovedHeadProbe, type MovedHeadProbe } from './governor-patch-identity.js';
 import { runRatificationGate } from './check-governor-ratification.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -152,7 +148,7 @@ function kindOf(e: LedgerEvidence): LedgerEvidence['kind'] {
 
 /**
  * #6256: a pure caller that passes no probe gets one `moved` entry per
- * recorded sha saying the identity was not measured — the fail-closed
+ * recorded sha saying the tree was not measured — the fail-closed
  * shape, distinct from "measured and different".
  */
 function notMeasured(...shas: string[]): { sha: string; reason: string }[] {
@@ -1084,9 +1080,10 @@ describe('the workflow wires the base ledger (#6213)', () => {
 describe('the workflow wires the prior heads of the PR (#6301 item 4)', () => {
   // The moved-head rule accepts a ratified sha that is not an ancestor of
   // the head ONLY as a head this PR had; the workflow is the producer of
-  // that set, from GitHub's own run history, in both jobs. A producer that
-  // drifts from the env name reads as "no prior head", which fails closed
-  // — but silently re-panels every rebased governor PR.
+  // that set, in both jobs, from the PR's own force-push timeline keyed on
+  // its NUMBER. A producer that drifts from the env name reads as "no prior
+  // head", which fails closed — but silently re-panels every rebased
+  // governor PR.
   const workflow = readFileSync(
     join(REPO_ROOT, '.github', 'workflows', 'governor-review.yml'),
     'utf-8'
@@ -1100,12 +1097,31 @@ describe('the workflow wires the prior heads of the PR (#6301 item 4)', () => {
     expect(workflow).toContain("echo 'pr_prior_heads<<FILES_EOF'");
   });
 
-  it("both evidence steps derive the set from this workflow's own runs on the PR branch, bounded to this repository and the PR's open time", () => {
-    const query = '"repos/${GITHUB_REPOSITORY}/actions/workflows/governor-review.yml/runs" \\\n';
-    expect(workflow.split(query).length - 1).toBe(2);
-    const bound =
-      'select(.head_repository.full_name == "\'"${GITHUB_REPOSITORY}"\'" and .created_at >= "\'"${PR_CREATED_AT}"\'") | .head_sha';
-    expect(workflow.split(bound).length - 1).toBe(2);
+  it("both evidence steps derive the set from the PR's HeadRefForcePushedEvent timeline, keyed on the PR number (#6301 panel 1: never the branch name)", () => {
+    // The fork hole: a workflow-run query keyed on `branch=<head ref>` let a
+    // fork PR named like a base-repo branch inherit that branch's heads.
+    // The PR's own timeline is keyed on its number by construction. And it
+    // survives the merge — `workflow_runs[].pull_requests` empties once a
+    // PR closes (measured on #6252), which would have reddened the backstop.
+    expect(workflow.split('gh api graphql --paginate').length - 1).toBe(2);
+    expect(workflow.split('itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT]').length - 1).toBe(2);
+    expect(workflow.split('pageInfo { hasNextPage endCursor }').length - 1).toBe(2);
+    expect(
+      workflow.split(
+        'nodes { ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } } }'
+      ).length - 1
+    ).toBe(2);
+    expect(workflow.split('pullRequest(number: $pr)').length - 1).toBe(2);
+    expect(workflow.split('-F pr="${PR_NUMBER}"').length - 1).toBe(2);
+    expect(
+      workflow.split(
+        "--jq '.data.repository.pullRequest.timelineItems.nodes[] | (.beforeCommit.oid // empty), (.afterCommit.oid // empty)'"
+      ).length - 1
+    ).toBe(2);
+    // Neither job keys on the branch name or the base-repo run list.
+    expect(workflow).not.toContain('actions/workflows/governor-review.yml/runs');
+    expect(workflow).not.toContain('-f branch=');
+    expect(workflow).not.toContain('HEAD_REF: ${{ github.event.pull_request.head.ref }}');
     // The current head is never its own prior head; only 40-hex shas pass.
     expect(workflow).toContain(
       'grep -E \'^[0-9a-f]{40}$\' | grep -v "^${HEAD_SHA}$" | sort -u || true'
@@ -1115,13 +1131,10 @@ describe('the workflow wires the prior heads of the PR (#6301 item 4)', () => {
     );
   });
 
-  it("the pre-merge job folds in the synchronize event's `before`; the backstop reads branch and open time from the PR (a push has no PR payload)", () => {
+  it("the pre-merge job folds in the synchronize event's `before`; the backstop folds in nothing (a push's `before` is main's old tip)", () => {
     expect(workflow).toContain('BEFORE: ${{ github.event.before }}');
-    expect(workflow).toContain('HEAD_REF: ${{ github.event.pull_request.head.ref }}');
-    expect(workflow).toContain('PR_CREATED_AT: ${{ github.event.pull_request.created_at }}');
     expect(workflow).toContain(`printf '%s\\n%s\\n' "\${PRIOR_HEADS}" "\${BEFORE}"`);
-    expect(workflow).toContain("--jq '.head.ref // empty'");
-    expect(workflow).toContain("--jq '.created_at // empty'");
+    expect(workflow).toContain(`printf '%s\\n' "\${PR_PRIOR_HEADS}"`);
   });
 
   it('no gate step describes an unconditional fetch of the ratified sha', () => {
@@ -1699,19 +1712,20 @@ describe('the committed ledger: the first real record (PR #6241, #5131 acceptanc
 // #6256: a head that moved past the ratified sha without changing the patch.
 // ---------------------------------------------------------------------------
 
-describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)', () => {
+describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tree equality)', () => {
   // Fixture repos built with `git init` — the verdict is computed over REAL
-  // commits by the REAL git probe, because the three conditions (object
-  // present, patch identity equal, ledger delta append-only) are properties
-  // of the checkout, and a stubbed probe would test the stub.
+  // commits by the REAL git probe, because the conditions (relation, object
+  // present, non-ledger change, tree equality, ledger delta append-only)
+  // are properties of the checkout, and a stubbed probe would test the stub.
   //
   // Both incidents that motivated this: #6252 was ratified at fca64e9ea8,
-  // rebased to pick up #6249's ledger line (cce938eec2), and re-paneled;
-  // #6282 was ratified at 43cb8bec, refreshed by a merge from main that
-  // resolved a SKILL.md PIPELINE NOTE conflict (8618d18d), and re-paneled.
-  // Measured on both pairs before this landed: the -U0 non-ledger diffs are
-  // byte-identical (#6282's SKILL.md hunk differs only in a trailing CONTEXT
-  // line at -U3, which is why the identity is computed at -U0).
+  // rebased to pick up #6249's ledger line (cce938eec2), and re-paneled —
+  // under tree equality (b) it passes; #6282 was ratified at 43cb8bec,
+  // refreshed by a merge from main that resolved a SKILL.md PIPELINE NOTE
+  // conflict BY HAND (8618d18d), and re-paneled — under tree equality (e)
+  // it is refused naming the path, correctly: a hand resolution is content
+  // the panel never saw. The #6301 panel 1 patch identity (a hash of -U0
+  // hunks) accepted (c) below, the same lines moved elsewhere in the file.
   let dirs: string[] = [];
   afterEach(() => {
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
@@ -1811,7 +1825,7 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     readonly pr: number;
     readonly head: HeadBinding;
     readonly baseLedgerText?: string;
-    readonly patchIdentity?: PatchIdentityProbe;
+    readonly movedHead?: MovedHeadProbe;
     readonly headSha: string;
     readonly baseSha: string;
   }
@@ -1848,7 +1862,7 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
       ...(opts.probe === false
         ? {}
         : {
-            patchIdentity: gitPatchIdentityProbe({
+            movedHead: gitMovedHeadProbe({
               repoDir: dir,
               baseSha,
               headSha,
@@ -1884,7 +1898,12 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(e.relation).toBe('ancestor');
     expect(e.record.id).toBe('v-pr');
     expect(e.appendOnlyChecked).toBe(true);
-    expect(e.patchIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    // The tree git wrote for the replay is a checkable artifact: the head's
+    // own tree, ledger aside.
+    expect(e.replayedTree).toMatch(/^[0-9a-f]{40}$/);
+    expect(
+      git(dir, 'diff-tree', '-r', '--name-only', e.replayedTree, `${inputs.headSha}^{tree}`)
+    ).toBe(VOTE_RECORDS_REL_PATH);
   });
 
   it('(b) rebase onto main: the ratified sha is orphaned but was a head of THIS PR, the patch is unchanged → ratified-rebased, prior-head', () => {
@@ -1920,10 +1939,12 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(e.moved[0]?.reason).toContain('not a head this PR had');
   });
 
-  it('(f) a record bound to a commit on an UNRELATED branch carrying the same patch → sha-mismatch naming the relation (#6301 item 4)', () => {
+  it('(g) a record bound to a commit on an UNRELATED branch carrying the same patch → sha-mismatch naming the relation (#6301 item 4)', () => {
     // The panel's record names a sha this PR never had: a sibling branch
     // with a byte-identical patch. Before #6301 the identity comparison
-    // alone accepted it as `rewritten-history`.
+    // alone accepted it as `rewritten-history`; tree equality alone would
+    // too (the content IS the same), so condition 1 is what binds the
+    // record to THIS PR.
     const { dir, A } = ratifiedBranch();
     git(dir, 'checkout', '-q', '-b', 'stranger', 'main');
     write(dir, 'src/a.ts', A_TS_PATCHED);
@@ -1948,8 +1969,28 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     );
   });
 
-  it('(c) ONE non-ledger line changed after ratification → sha-mismatch naming the patch difference', () => {
+  it('(c) the SAME lines moved to another place in an ordinary .ts file → sha-mismatch naming the path (the case that sank the #6301 panel 1 identity)', () => {
+    // At A the governed line sits between `a` and `b`; at H the identical
+    // `+` line sits after `b`. A `-U0` hunk hash with the `@@` headers
+    // stripped could not tell these apart; the blob can.
     const { dir, A } = ratifiedBranch();
+    advanceMain(dir);
+    mergeMain(dir);
+    write(dir, 'src/a.ts', `${A_TS_BEFORE}export const governed = true;\n`);
+    commitAll(dir, 'move the governed line after the panel voted');
+    const e = evaluateLedgerEvidence(inputsFor(dir));
+    expect(e.kind).toBe('sha-mismatch');
+    if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
+    expect(e.found).toEqual([A]);
+    expect(e.moved).toHaveLength(1);
+    expect(e.moved[0]?.sha).toBe(A);
+    expect(e.moved[0]?.reason).toContain('tree differs');
+    expect(e.moved[0]?.reason).toContain('src/a.ts');
+    expect(formatLedgerEvidence(e)).toContain('src/a.ts');
+  });
+
+  it('(c′) ONE non-ledger byte changed after ratification → sha-mismatch naming the path', () => {
+    const { dir } = ratifiedBranch();
     advanceMain(dir);
     mergeMain(dir);
     write(dir, 'src/a.ts', A_TS_PATCHED.replace('governed = true', 'governed = false'));
@@ -1957,22 +1998,53 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     const e = evaluateLedgerEvidence(inputsFor(dir));
     expect(e.kind).toBe('sha-mismatch');
     if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
-    expect(e.found).toEqual([A]);
-    expect(e.moved).toHaveLength(1);
-    expect(e.moved[0]?.sha).toBe(A);
-    expect(e.moved[0]?.reason).toContain('non-ledger patch');
-    expect(e.moved[0]?.reason).toContain('differs');
-    expect(formatLedgerEvidence(e)).toContain('non-ledger patch');
+    expect(e.moved[0]?.reason).toContain('src/a.ts');
   });
 
-  it('(c′) a WHITESPACE-only change after ratification is also a different patch (git patch-id would not see it)', () => {
+  it('(c″) a WHITESPACE-only change after ratification is a different blob too (git patch-id would not see it)', () => {
     const { dir } = ratifiedBranch();
     write(dir, 'src/a.ts', A_TS_PATCHED.replace('governed = true', 'governed  = true'));
     commitAll(dir, 'two spaces');
     expect(kindOf(evaluateLedgerEvidence(inputsFor(dir)))).toBe('sha-mismatch');
   });
 
-  it('(d) the ledger at the head dropped a line the ratified sha had → ledger-rewritten against the ratified sha', () => {
+  it('(e) a HAND-RESOLVED merge conflict → sha-mismatch naming "conflict resolving <path>" (the #6282 shape; content the panel never saw)', () => {
+    // main edits the line right after A's insertion; the two hunks touch,
+    // so git cannot merge them and the author resolves by hand. Whatever
+    // the resolution, `git merge-tree` reports the conflict and the head
+    // is never accepted — a fresh panel has to see the resolved content.
+    const { dir, A } = ratifiedBranch();
+    git(dir, 'checkout', '-q', 'main');
+    write(dir, 'src/a.ts', 'export const a = 1;\nexport const b = 3;\n');
+    commitAll(dir, 'main edits the neighbouring line');
+    git(dir, 'checkout', '-q', 'pr');
+    const merge = spawnSync('git', ['-c', 'commit.gpgsign=false', 'merge', '--no-edit', 'main'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      env: FIXTURE_ENV,
+    });
+    expect(merge.status).not.toBe(0);
+    expect(git(dir, 'diff', '--name-only', '--diff-filter=U')).toBe('src/a.ts');
+    // The author keeps both edits — a plausible, reasonable resolution.
+    write(
+      dir,
+      'src/a.ts',
+      'export const a = 1;\nexport const governed = true;\nexport const b = 3;\n'
+    );
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '-q', '--no-edit');
+    const inputs = inputsFor(dir);
+    expect(git(dir, 'rev-list', '--parents', '-n', '1', inputs.headSha).split(' ')).toHaveLength(3);
+    const e = evaluateLedgerEvidence(inputs);
+    expect(e.kind).toBe('sha-mismatch');
+    if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
+    expect(e.moved[0]?.sha).toBe(A);
+    expect(e.moved[0]?.reason).toContain('conflict resolving src/a.ts');
+    expect(e.moved[0]?.reason).toContain('content the panel never saw');
+    expect(formatLedgerEvidence(e)).toContain('conflict resolving src/a.ts');
+  });
+
+  it('(ledger) the ledger at the head dropped a line the ratified sha had → ledger-rewritten against the ratified sha', () => {
     const { dir, A } = ratifiedBranch();
     // Same patch, but the head ledger is the bound record ALONE, re-sequenced
     // into the older record's slot. No base ledger is supplied, so this is
@@ -1987,7 +2059,7 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(formatLedgerEvidence(e)).toContain(A);
   });
 
-  it('(e) the ratified sha is not in the checkout and cannot be fetched → sha-mismatch naming "object not found"', () => {
+  it('(missing) the ratified sha is not in the checkout and cannot be fetched → sha-mismatch naming "object not found"', () => {
     const { dir } = ratifiedBranch();
     const missing = '9999999999999999999999999999999999999999';
     write(
@@ -2008,60 +2080,41 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(unnamed.moved[0]?.reason).toContain('not fetched');
   });
 
-  // #6301 item 1: git's binary detection hid the content. Without `--text`
-  // a binary-detected file diffs as one `Binary files … differ` line plus an
-  // `index` line, and the identity strips the index line — so any two
-  // binary contents were the same patch.
-  it('(g) a binary file (`src/audit/key.bin`) with its bytes swapped after ratification → sha-mismatch (#6301 item 1)', () => {
-    // The two contents are invalid UTF-8 and decode to the SAME string under
-    // utf-8 (`\u0000\ufffd\ufffd`), so this also pins byte-exact hashing.
+  it('(d) a binary file and a `.ts` holding a NUL byte changed after ratification → sha-mismatch naming both paths (blob ids, not a rendered diff)', () => {
+    // The #6301 panel 1 identity needed `--text` here: git's binary
+    // detection rendered either file as one `Binary files … differ` line.
+    // A tree comparison never renders; the blob id changes with any byte.
+    // The two `.bin` contents are invalid UTF-8 and decode to the SAME
+    // string under utf-8 (`\u0000\ufffd\ufffd`), so nothing decodes them.
+    const NUL_TS = 'export const s = "x\u0000";\n';
     const { dir } = ratifiedBranch({
       extraBase: (d) => {
         writeBytes(d, 'src/audit/key.bin', Buffer.from([0x00, 0x01]));
+        write(d, 'src/audit/n.ts', NUL_TS);
+        write(d, '.gitattributes', 'src/audit/n.ts -diff\n');
       },
       patch: (d) => {
         writeBytes(d, 'src/audit/key.bin', Buffer.from([0x00, 0xff, 0xfe]));
+        write(d, 'src/audit/n.ts', `${NUL_TS}export const allow = false;\n`);
       },
     });
     writeBytes(dir, 'src/audit/key.bin', Buffer.from([0x00, 0xfe, 0xff]));
-    commitAll(dir, 'swap two key bytes after the panel voted');
+    write(dir, 'src/audit/n.ts', `${NUL_TS}export const allow = true;\n`);
+    commitAll(dir, 'swap two key bytes and flip allow after the panel voted');
     const e = evaluateLedgerEvidence(inputsFor(dir));
     expect(e.kind).toBe('sha-mismatch');
     if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
     expect(e.moved[0]?.reason).toContain('differs');
+    expect(e.moved[0]?.reason).toContain('src/audit/key.bin, src/audit/n.ts');
   });
 
-  it('(g′) a `.ts` file holding a NUL byte: `allow=false` flipped to `true` after ratification → sha-mismatch (#6301 item 1)', () => {
-    const NUL_TS = 'export const s = "x\u0000";\n';
-    const { dir } = ratifiedBranch({
-      extraBase: (d) => {
-        write(d, 'src/audit/n.ts', NUL_TS);
-      },
-      patch: (d) => {
-        write(d, 'src/audit/n.ts', `${NUL_TS}export const allow = false;\n`);
-      },
-    });
-    write(dir, 'src/audit/n.ts', `${NUL_TS}export const allow = true;\n`);
-    commitAll(dir, 'flip allow after the panel voted');
-    expect(kindOf(evaluateLedgerEvidence(inputsFor(dir)))).toBe('sha-mismatch');
-  });
-
-  it('(g″) `.gitattributes` marks the governed file `-diff`: a line flipped after ratification → sha-mismatch (#6301 item 1)', () => {
-    const { dir } = ratifiedBranch({
-      extraBase: (d) => {
-        write(d, '.gitattributes', 'src/a.ts -diff\n');
-      },
-    });
-    write(dir, 'src/a.ts', A_TS_PATCHED.replace('governed = true', 'governed = false'));
-    commitAll(dir, 'flip the governed line under -diff');
-    expect(kindOf(evaluateLedgerEvidence(inputsFor(dir)))).toBe('sha-mismatch');
-  });
-
-  it('(h) a ledger-only PR bound to an earlier MAIN commit: the empty identity equals itself and must be refused by name (#6301 item 2)', () => {
+  it('(f) a ledger-only PR bound to an earlier MAIN commit: refused by name — a ledger-only PR binds to head/head^ only (#6301 item 2)', () => {
     // `governance/` is a governor path, so a PR that only appends a ledger
     // line runs this gate. Its record binds an older main commit M (not
-    // head, not head^); both non-ledger diffs are empty, and EMPTY equals
-    // EMPTY. An empty identity says nothing about what the panel saw.
+    // head, not head^). M replayed onto the head's base IS the head's base,
+    // and the head changes nothing but the ledger — so tree equality holds
+    // and the explicit refusal is what stops it: a commit that changes
+    // nothing but the ledger says nothing about what the panel saw.
     const dir = newDir('ledger-only-');
     git(dir, 'init', '-q', '-b', 'main');
     write(dir, 'src/a.ts', A_TS_BEFORE);
@@ -2082,14 +2135,14 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(e.kind).toBe('sha-mismatch');
     if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
     expect(e.moved[0]?.sha).toBe(M);
-    expect(e.moved[0]?.reason).toContain('empty non-ledger patch on both sides');
+    expect(e.moved[0]?.reason).toContain('no non-ledger change at the ratified sha');
     expect(e.moved[0]?.reason).toContain('binds to head/head^ only');
   });
 
-  // #6301 item 3: the identity is position-insensitive within a file, and
-  // for a file whose meaning is which SECTION a line sits in, position is
-  // the meaning.
-  it('(i) a CODEOWNERS line added INSIDE the governor section at A and MOVED outside at H → sha-mismatch naming CODEOWNERS (#6301 item 3)', () => {
+  // #6301 item 3 asked for a special case here because the patch identity
+  // was position-insensitive within a file; under tree equality a moved
+  // line is a different blob like any other, and no special case exists.
+  it('(h) a CODEOWNERS line added INSIDE the governor section at A and MOVED outside at H → sha-mismatch naming CODEOWNERS (no special case)', () => {
     const CODEOWNERS_BASE =
       '# @governor-section-start\n/scripts/gate.ts @owner\n# @governor-section-end\n/src/ordinary.ts @owner\n';
     const NEW_LINE = '/scripts/new-gate.ts @owner\n';
@@ -2117,39 +2170,8 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(e.kind).toBe('sha-mismatch');
     if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
     expect(e.moved[0]?.sha).toBe(A);
-    expect(e.moved[0]?.reason).toContain('CODEOWNERS');
-    expect(e.moved[0]?.reason).toContain('section');
-  });
-
-  it('(i′) a `.rules/*.md` glob moved from the frontmatter into the body → sha-mismatch naming the file (#6301 item 3)', () => {
-    const RULE_BASE = "---\npaths: ['**/*.ts']\n---\n\n# Rule\n";
-    const { dir } = ratifiedBranch({
-      extraBase: (d) => {
-        write(d, '.rules/x.md', RULE_BASE);
-      },
-      patch: (d) => {
-        write(d, '.rules/x.md', "---\npaths: ['**/*.ts']\npaths: ['**/*']\n---\n\n# Rule\n");
-      },
-    });
-    write(dir, '.rules/x.md', `${RULE_BASE}paths: ['**/*']\n`);
-    commitAll(dir, 'move the glob below the frontmatter');
-    const e = evaluateLedgerEvidence(inputsFor(dir));
-    expect(e.kind).toBe('sha-mismatch');
-    if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
-    expect(e.moved[0]?.reason).toContain('.rules/x.md');
-  });
-
-  it('the order-sensitive set names CODEOWNERS and the .rules frontmatter files, each with its reason', () => {
-    const paths = ORDER_SENSITIVE_FILES.map((f) => f.pattern);
-    expect(paths).toContain('CODEOWNERS');
-    expect(paths).toContain('.rules/*.md');
-    for (const f of ORDER_SENSITIVE_FILES) expect(f.why.length).toBeGreaterThan(20);
-    const matches = (path: string): boolean => ORDER_SENSITIVE_FILES.some((f) => f.matches(path));
-    expect(matches('CODEOWNERS')).toBe(true);
-    expect(matches('.rules/governance.md')).toBe(true);
-    expect(matches('.rules/sub/x.md')).toBe(false);
-    expect(matches('docs/CODEOWNERS')).toBe(false);
-    expect(matches('src/a.ts')).toBe(false);
+    expect(e.moved[0]?.reason).toContain('tree differs');
+    expect(e.moved[0]?.reason).toContain('at CODEOWNERS');
   });
 
   it('a rebased-away PRIOR HEAD absent from the clone is fetched from origin by sha (what GitHub serves; measured on #6252); a sha that is not a prior head is NOT fetched (#6301 item 4)', () => {
@@ -2194,7 +2216,7 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(hasObject(clone, A)).toBe(true);
   });
 
-  it('no probe supplied (a caller without PR_BASE_SHA): a moved head is plain sha-mismatch, and the reason says the identity was not measured', () => {
+  it('no probe supplied (a caller without PR_BASE_SHA): a moved head is plain sha-mismatch, and the reason says the tree was not measured', () => {
     const { dir } = ratifiedBranch();
     advanceMain(dir);
     mergeMain(dir);
@@ -2206,10 +2228,10 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
 
   it('a record bound at head/head^ is judged as before; the probe is never consulted then', () => {
     const { dir } = ratifiedBranch();
-    const probe: PatchIdentityProbe = () => {
+    const probe: MovedHeadProbe = () => {
       throw new Error('the probe must not run when a record binds an accepted head');
     };
-    const e = evaluateLedgerEvidence({ ...inputsFor(dir, { probe: false }), patchIdentity: probe });
+    const e = evaluateLedgerEvidence({ ...inputsFor(dir, { probe: false }), movedHead: probe });
     expect(e.kind).toBe('ratified');
   });
 
@@ -2253,9 +2275,10 @@ describe('ratified-rebased: the head moved, the non-ledger patch did not (#6256)
     expect(line).toContain(A);
     expect(line).toContain(headSha);
     expect(line).toContain('ancestor');
-    expect(line).toContain('non-ledger patch');
+    expect(line).toContain('replayed onto the head');
+    expect(line).toContain(`tree ${e.replayedTree}`);
 
-    // Without PR_BASE_SHA the same PR is sha-mismatch: the identity needs a base.
+    // Without PR_BASE_SHA the same PR is sha-mismatch: the replay needs a base.
     const { PR_BASE_SHA: _dropped, ...noBase } = env;
     expect(ledgerEvidenceFromEnv(noBase, ledgerPath).kind).toBe('sha-mismatch');
 

@@ -57,13 +57,14 @@
  * Warn-first ended on 2026-09-14 when the first bound record reached the
  * committed ledger (PR #6241). `ratified-rebased` (#6256) passes too: the
  * record binds an earlier head of the PR — an ancestor of the head, or a
- * head the workflow measured this PR had (`PR_PRIOR_HEADS`, #6301) — whose
- * non-ledger patch identity is byte-identical to the current head's, a
+ * head the workflow measured this PR had (`PR_PRIOR_HEADS`, #6301) — and
+ * the current head's tree equals that head replayed onto the current base
+ * (`git merge-tree --write-tree`, ledger excluded; #6301 panel 1), a clean
  * rebase or merge from main that picked up another PR's ledger line, and
  * the evidence module's notice says the head moved and why it still counts.
  * That path needs `PR_BASE_SHA`, which both jobs already pass for the stamp
- * exemption, and `PR_PRIOR_HEADS`, which both jobs derive from the
- * workflow's own run history.
+ * exemption, and `PR_PRIOR_HEADS`, which both jobs derive from the PR's own
+ * force-push timeline, keyed on its number.
  *
  * @module scripts/check-governor-ratification
  */

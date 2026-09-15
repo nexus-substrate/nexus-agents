@@ -70,8 +70,8 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
    `headSha ∈ {head, head^}` as bound when `head` touches only the ledger.
    A head that later moves to pick up another PR's ledger line — a rebase,
    or GitHub's "Update branch" merge from main — keeps its record under the
-   moved-head rule (`ratified-rebased`, #6256) as long as the non-ledger
-   patch is byte-identical; see below.
+   moved-head rule (`ratified-rebased`, #6256) as long as the moved head's
+   tree is the ratified patch replayed onto its base; see below.
 
 ### How the gate reads it (#5130 step 2)
 
@@ -83,58 +83,59 @@ and exits on it (#5131 — see "Fail-closed" below):
 `unanimous`; `panelCoverage` present with `errored === 0`; and the ledger is
 append-only against the base), or one of:
 
-- `ratified-rebased` — passes like `ratified` (#6256, tightened by the
-  #6301 review): no record binds `head` or `head^`, but one binds an
-  EARLIER head of this PR and all four hold: (1) the ratified sha is
-  related to THIS PR — an ancestor of the head (a merge from main kept it),
-  or a head the workflow measured this PR had (`PR_PRIOR_HEADS`: the
-  `synchronize` event's `before` plus the head shas of the workflow's own
-  runs on the PR branch since the PR opened, bounded to this repository),
-  or the first parent of such a head when it touched only the ledger (the
-  tip a force-push replaces is the ledger-only A1; the record binds A =
-  A1^). Only a prior head a rebase orphaned is fetched from `origin` by sha
-  (GitHub serves any object by sha — measured on #6252's rebased-away
-  heads); nothing else is fetched, because that fetch reaches the whole
-  fork network; (2) the non-ledger patch identity is non-empty and equal —
-  `sha256` over
-  `git diff --text -U0 <merge-base(sha, PR base)> <sha> -- . ':!governance/vote-records.jsonl'`
-  with `index` lines and `@@` hunk headers removed, hashed byte-for-byte,
-  for the ratified sha and for the head. `--text`, because without it a
-  binary-detected file (a `.bin`, a `.ts` holding a NUL byte, a path under a
-  `.gitattributes` `-diff` rule) diffs as `Binary files … differ` plus the
-  `index` line the identity strips, so two contents were one patch. The
-  empty identity (a ledger-only PR) is refused on either side: it equals
-  itself and binds the record to no patch — a ledger-only PR binds to
-  `head`/`head^` only; (3) the order-sensitive files — `CODEOWNERS` and
-  `.rules/*.md` (`ORDER_SENSITIVE_FILES` in `governor-patch-identity.ts`,
-  with the reason per entry) — are byte-equal at both shas, because their
-  meaning is which section a line sits in and the identity is
-  position-insensitive within a file; (4) the ledger at the ratified sha is
-  an ordered subsequence of the head ledger. The notice names the ratified
-  sha, the head, whether the relation is a merge (`ancestor`) or a rebase
-  (`prior-head`), and the shared identity. Why `-U0` and not `git
-patch-id`: #6282's SKILL.md hunk differs at the default 3 lines of context
-  only in a trailing context line (main's newer PIPELINE NOTE — every
-  workflow PR appends there), and `git patch-id` strips whitespace before
-  hashing, so a whitespace-only edit inside a string literal would count as
-  the same patch. Disclosed limit: outside the order-sensitive files the
-  identity is position-insensitive within a file — the same added/removed
-  lines at another location in the same file hash the same. Everything
-  else (a changed byte, binary or text, a file added or dropped, a mode
-  change) changes it and the verdict is `sha-mismatch`. Cost of the
-  order-sensitive set: a change to one of those files merged in from main
-  between the ratified sha and the head also sends the PR back to the
-  panel. Both incidents that motivated the rule (2026-09-14): #6252
-  ratified 7-0 at `fca64e9ea8`, rebased to `cce938eec2` for #6249's ledger
-  line, re-paneled; #6282 ratified at `43cb8bec`, merged from main to
-  `8618d18d`, re-paneled.
+- `ratified-rebased` — passes like `ratified` (#6256; redesigned by the
+  #6301 panel 1 review, which rejected a position-insensitive patch-identity
+  hash): no record binds `head` or `head^`, but one binds an EARLIER head
+  `A` of this PR and all four hold: (1) `A` is related to THIS PR — an
+  ancestor of the head (a merge from main kept it), or a head the workflow
+  measured this PR had (`PR_PRIOR_HEADS`: the `synchronize` event's `before`
+  plus the `beforeCommit`/`afterCommit` of every `HeadRefForcePushedEvent`
+  on the PR's own timeline, keyed on the PR NUMBER — never a branch name,
+  which a fork PR can share with a base-repo branch; and never the
+  workflow-run list, whose `pull_requests` empties once a PR merges, which
+  would have reddened the backstop), or the first parent of such a head
+  when it touched only the ledger (the tip a force-push replaces is the
+  ledger-only A1; the record binds A = A1^). Only a prior head a rebase
+  orphaned is fetched from `origin` by sha (GitHub serves any object by sha
+  — measured on #6252's rebased-away heads); nothing else is fetched,
+  because that fetch reaches the whole fork network; (2) `A` carries a
+  non-ledger change — `git diff-tree -r <merge-base(A, PR base)> A -- .
+':!governance/vote-records.jsonl'` lists a path. A ledger-only PR is
+  refused by name: its head replays to its own base, so its record would
+  match any commit at or before the fork point — a ledger-only PR binds to
+  `head`/`head^` only; (3) the head's TREE equals `A` replayed onto the
+  head's base: with `B_H = merge-base(head, PR base)`,
+  `T = git merge-tree --write-tree B_H A` (git's own contextual three-way
+  merge; a CONFLICT is `sha-mismatch` naming `conflict resolving <path> —
+content the panel never saw`, never accepted — a hand-resolved conflict
+  is what #6282 had), and
+  `git diff-tree -r T head^{tree} -- . ':!governance/vote-records.jsonl'`
+  is EMPTY; a path listed is `sha-mismatch` naming it. A clean rebase and
+  a clean merge from main produce the same tree, so one rule covers both.
+  Blob ids, not a rendered diff: position-sensitive by construction (the
+  same lines moved to another function are another blob), binary-safe, and
+  blind to `.gitattributes` — no `--text`, no order-sensitive-file list;
+  (4) the ledger at `A` is an ordered subsequence of the head ledger. The
+  notice names the ratified sha, the head, whether the relation is a merge
+  (`ancestor`) or a rebase (`prior-head`), and the replayed tree id, which
+  `git merge-tree --write-tree` reproduces from the checkout. What the rule
+  does NOT verify, disclosed: that `B_H` is the true base branch —
+  `PR_BASE_SHA` is taken from the workflow (`merge-base origin/<base>
+  <head>` pre-merge, `main~1` in the backstop), and everything main gained
+  between `A`'s fork point and `B_H` was never before THIS panel; it landed
+  through its own PRs and gates. The rule proves `head ≡ B_H ⊕ patch(A)`,
+  nothing about `B_H`. Both incidents that motivated the rule (2026-09-14):
+  #6252 ratified 7-0 at `fca64e9ea8`, rebased to `cce938eec2` for #6249's
+  ledger line, re-paneled (passes under the rule); #6282 ratified at
+  `43cb8bec`, merged from main to `8618d18d` with a hand-resolved SKILL.md
+  conflict, re-paneled (refused under the rule, naming the path — the
+  re-panel was right).
 - `no-record` — nothing binds this PR; an empty ledger is this, never `ratified`.
 - `sha-mismatch` — records bind this PR, none at an accepted head, and none
   passes the moved-head rule; the line names, per recorded sha, why —
   `object not found`, `not an ancestor of the head … not a head this PR
-had`, the patch identity `differs`, `empty non-ledger patch`, an
-  order-sensitive file that `differs`, or `not measured` (no
-  `PR_BASE_SHA`).
+had`, `no non-ledger change`, `conflict resolving <path>`, the head's
+  `tree differs … at <path>`, or `not measured` (no `PR_BASE_SHA`).
 - `not-approved` — a bound record's decision is not `approved`.
 - `wrong-error-policy` — a bound record records an `errorPolicy` other than
   `absolute_quorum` (#6211, schema tier 1.11). The record carries the
