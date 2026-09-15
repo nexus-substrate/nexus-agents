@@ -56,12 +56,12 @@ describe('config-command handlers', () => {
       expect(result.source).toBe('session');
     });
 
-    it('returns env value when set', async () => {
+    it('does not answer Source: env for NEXUS_TIMEOUT_CLI — removed in #4939', async () => {
       vi.stubEnv('NEXUS_TIMEOUT_CLI', '45000');
 
       const result = await handleGet('TIMEOUT_DEFAULTS.cliMs');
-      expect(result.value).toBe(45000);
-      expect(result.source).toBe('env');
+      expect(result.value).toBe(120000);
+      expect(result.source).toBe('package');
     });
   });
 
@@ -110,12 +110,13 @@ describe('config-command handlers', () => {
       expect(categories.has('RETRY_DEFAULTS')).toBe(true);
     });
 
-    it('shows env var names', async () => {
+    it('lists TIMEOUT_DEFAULTS.cliMs with no env var attached (#4939)', async () => {
       const result = await handleList();
       const cliMsEntry = result.entries.find(
         (e) => e.category === 'TIMEOUT_DEFAULTS' && e.key === 'cliMs'
       );
-      expect(cliMsEntry?.envVar).toBe('NEXUS_TIMEOUT_CLI');
+      expect(cliMsEntry).toBeDefined();
+      expect(cliMsEntry?.envVar).toBeUndefined();
     });
   });
 

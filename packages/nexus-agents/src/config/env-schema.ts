@@ -59,14 +59,15 @@ const boolLooseStr = z
  */
 const NexusEnvSchema = z.object({
   // --- Timeouts ---
-  NEXUS_TIMEOUT_CLI: positiveIntStr.optional(),
   // NEXUS_TIMEOUT_CLISIMPLE + NEXUS_TIMEOUT_CLICOMPLEX removed in #4180 — silent
   // no-ops (#2977 class). Their only possible reader, getTimeout('cliSimpleMs' /
   // 'cliComplexMs'), had zero production call sites; per-complexity CLI timeouts
   // flow through getTimeoutForCli/TIMEOUT_PROFILES instead.
-  NEXUS_TIMEOUT_API: positiveIntStr.optional(),
-  NEXUS_TIMEOUT_WORKFLOW: positiveIntStr.optional(),
-  NEXUS_TIMEOUT_MCP: positiveIntStr.optional(),
+  // NEXUS_TIMEOUT_CLI / _API / _WORKFLOW / _MCP removed in #4939 — the rest of
+  // that getter's family. getTimeout() itself had zero production callers, and
+  // config-manager echoed the four back as `Source: (env)` for values nothing
+  // consumed. The real knobs are NEXUS_TIMEOUT_CLASS_*_MS and the *_TIMEOUT_MS
+  // names below.
   NEXUS_VOTE_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_MCP_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_WORKFLOW_TIMEOUT_MS: positiveIntStr.optional(),
