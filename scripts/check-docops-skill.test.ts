@@ -251,3 +251,56 @@ describe('performCheck consumes the escape-hatch recogniser (#6026, the seam)', 
     expect(result.changedPipelineFiles).toHaveLength(0);
   });
 });
+
+describe('performCheck accepts a per-PR note file under pipeline_notes_dir (#6334)', () => {
+  // Every PIPELINE NOTE used to land in one shared region of SKILL.md, so any
+  // two concurrent pipeline PRs conflicted on merge and a hand-resolved
+  // conflict voided the governor ratification binding. A note file under the
+  // manifest's `pipeline_notes_dir` now satisfies the gate as well.
+  const PIPELINE_FILE = 'scripts/inject-governance.ts';
+  const SKILL_FILE = 'skills/documentation-management/SKILL.md';
+  const NOTES_DIR = 'skills/documentation-management/pipeline-notes';
+
+  function check(changed: string[]): CheckResult {
+    return performCheck(false, {
+      readCommitMessages: () => 'fix: a real pipeline change',
+      readChangedFiles: () => changed,
+    });
+  }
+
+  it('the real manifest names the notes directory', () => {
+    const result = check(['README.md']);
+    expect(result.manifest?.pipeline_notes_dir).toBe(NOTES_DIR);
+  });
+
+  it('(a) a .md note file under the notes dir satisfies the gate', () => {
+    const result = check([PIPELINE_FILE, `${NOTES_DIR}/6334-notes-directory.md`]);
+    expect(result.skillUpdated).toBe(true);
+    expect(result.success).toBe(true);
+  });
+
+  it('(b) a non-.md file under the notes dir does NOT satisfy the gate', () => {
+    const result = check([PIPELINE_FILE, `${NOTES_DIR}/6334-notes-directory.txt`]);
+    expect(result.skillUpdated).toBe(false);
+    expect(result.success).toBe(false);
+  });
+
+  it('(c) a .md file in a sibling directory does NOT satisfy the gate', () => {
+    const sibling = 'skills/documentation-management/pipeline-notes-archive/6334.md';
+    const result = check([PIPELINE_FILE, sibling, 'skills/docs-review/SKILL.md']);
+    expect(result.skillUpdated).toBe(false);
+    expect(result.success).toBe(false);
+  });
+
+  it('(d) editing SKILL.md itself still satisfies the gate', () => {
+    const result = check([PIPELINE_FILE, SKILL_FILE]);
+    expect(result.skillUpdated).toBe(true);
+    expect(result.success).toBe(true);
+  });
+
+  it('names the empty case: a pipeline change with no note and no skill edit fails', () => {
+    const result = check([PIPELINE_FILE]);
+    expect(result.skillUpdated).toBe(false);
+    expect(result.success).toBe(false);
+  });
+});

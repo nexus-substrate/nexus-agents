@@ -446,7 +446,8 @@ jobs:
             echo "✅ DocOps skill sync check passed"
           else
             echo "::error::DocOps pipeline changed without skill update"
-            echo "Update skills/documentation-management/SKILL.md to reflect pipeline changes"
+            echo "Add a note file skills/documentation-management/pipeline-notes/<PR-or-issue-number>-<slug>.md (preferred, conflict-free; #6334)"
+            echo "or edit skills/documentation-management/SKILL.md to reflect the pipeline changes"
             exit 1
           fi
 
