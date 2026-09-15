@@ -190,13 +190,18 @@ export function stampOnlyExemptFiles(
  * determine" and "clean" must never collapse into the same answer here — the
  * whole exemption rests on this.
  */
-export function injectorIsClean(): boolean {
-  const result = spawnSync('pnpm', ['exec', 'tsx', 'scripts/inject-governance.ts', 'check'], {
-    cwd: ROOT,
-    encoding: 'utf-8',
-    timeout: 120_000,
-    maxBuffer: 32 * 1024 * 1024,
-  });
+export function injectorIsClean(targetDir: string): boolean {
+  const result = spawnSync(
+    'pnpm',
+    ['exec', 'tsx', join(ROOT, 'scripts/inject-governance.ts'), 'check'],
+    {
+      cwd: ROOT,
+      env: { ...process.env, NEXUS_SCRIPT_ROOT: targetDir, NEXUS_GOVERNOR_GATE: '1' },
+      encoding: 'utf-8',
+      timeout: 120_000,
+      maxBuffer: 32 * 1024 * 1024,
+    }
+  );
   if (result.error !== undefined) return false;
   return result.status === 0;
 }
@@ -214,11 +219,14 @@ export function injectorIsClean(): boolean {
  * path is one of the two hardcoded entries in `GENERATED_GOVERNANCE_FILES`
  * (ratification condition 4), so nothing here interpolates untrusted input.
  */
-export function readAtBase(baseSha: string | undefined): (path: string) => string | undefined {
+export function readAtBase(
+  baseSha: string | undefined,
+  targetDir: string
+): (path: string) => string | undefined {
   return (path) => {
     if (baseSha === undefined || !/^[0-9a-f]{40}$/.test(baseSha)) return undefined;
     const result = spawnSync('git', ['show', `${baseSha}:${path}`], {
-      cwd: ROOT,
+      cwd: targetDir,
       encoding: 'utf-8',
       maxBuffer: 32 * 1024 * 1024,
     });
@@ -228,9 +236,9 @@ export function readAtBase(baseSha: string | undefined): (path: string) => strin
 }
 
 /** Reads a governed file as it stands in the checkout (the PR head). */
-export function readAtHead(path: string): string | undefined {
+export function readAtHead(path: string, targetDir: string): string | undefined {
   try {
-    return readFileSync(join(ROOT, path), 'utf-8');
+    return readFileSync(join(targetDir, path), 'utf-8');
   } catch {
     return undefined;
   }

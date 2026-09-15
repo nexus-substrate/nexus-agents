@@ -4,10 +4,10 @@
  * @module scripts/governor-paths-touched.test
  */
 
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   GOVERNOR_SECTION_END_DIRECTIVE,
@@ -18,6 +18,7 @@ import {
   GOVERNOR_TOUCHED_OUTPUT_KEY,
   governorPathsTouchedReport,
   governorTouchedValue,
+  runGovernorPathsTouched,
 } from './governor-paths-touched.js';
 
 const REPO_ROOT = join(import.meta.dirname, '..');
@@ -109,5 +110,31 @@ describe('governorPathsTouchedReport', () => {
       governorPathsTouchedReport({ CHANGED_FILES: `${ordinaryFile}\n${governorFile}` }, real).value
     ).toBe('true');
     expect(governorPathsTouchedReport({ CHANGED_FILES: ordinaryFile }, real).value).toBe('false');
+  });
+});
+
+describe('target checkout (#6369)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+  it('changes the reported value when the target CODEOWNERS changes', () => {
+    const targetDir = mkdtempSync('/tmp/governor-touched-');
+    vi.stubEnv('CHANGED_FILES', 'fixture.txt');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    try {
+      writeFileSync(join(targetDir, 'CODEOWNERS'), CODEOWNERS);
+      expect(runGovernorPathsTouched(targetDir)).toBe(0);
+      expect(output).toHaveBeenLastCalledWith('false\n');
+      writeFileSync(
+        join(targetDir, 'CODEOWNERS'),
+        CODEOWNERS.replace('/CODEOWNERS', '/fixture.txt')
+      );
+      expect(runGovernorPathsTouched(targetDir)).toBe(0);
+      expect(output).toHaveBeenLastCalledWith('true\n');
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
   });
 });

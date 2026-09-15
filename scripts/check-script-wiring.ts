@@ -73,6 +73,7 @@ export const SELF = 'check-script-wiring.ts';
  * test also asserts each entry against the real tree.
  */
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
+  'governor-gate.ts': 'base-ref dispatcher; workflow activation follows in #6369 step 2',
   'security-ledger.ts':
     'operator-only report and resolution of a private, gitignored ledger (#4887)',
   'redact-vote-record.ts':

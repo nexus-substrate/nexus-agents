@@ -65,8 +65,8 @@ export const SHADOW_CODEOWNERS_PATHS: readonly string[] = MUST_NOT_EXIST_GOVERNO
 );
 
 /** Which shadow CODEOWNERS files exist under `root` (repo-relative paths, in precedence order). */
-export function findShadowCodeowners(root: string = ROOT): readonly string[] {
-  return SHADOW_CODEOWNERS_PATHS.filter((p) => existsSync(join(root, p)));
+export function findShadowCodeowners(targetDir: string): readonly string[] {
+  return SHADOW_CODEOWNERS_PATHS.filter((p) => existsSync(join(targetDir, p)));
 }
 
 /**
@@ -299,26 +299,33 @@ export function readCheckInput(
   return { ok: true, input: { repository, ref, token, apiUrl } };
 }
 
-async function main(): Promise<void> {
-  const read = readCheckInput(process.argv.slice(2));
+/** Run GitHub parsing and local shadow checks against the supplied head checkout. */
+export async function runCodeownersErrors(
+  targetDir: string,
+  argv: readonly string[]
+): Promise<number> {
+  const read = readCheckInput(argv);
   if (!read.ok) {
     console.log(`::error::CODEOWNERS check: missing ${read.missing.join(', ')}; cannot measure.`);
-    process.exitCode = 1;
-    return;
+    return 1;
   }
 
   // Both checks run so the log shows every defect; either failing fails the job.
-  const shadow = summarizeShadowCodeowners(findShadowCodeowners());
+  const shadow = summarizeShadowCodeowners(findShadowCodeowners(targetDir));
   const endpoint = await checkCodeownersErrors(read.input);
+  let exitCode = 0;
   for (const verdict of [shadow, endpoint]) {
     for (const line of verdict.lines) console.log(line);
     if (!verdict.ok) {
       console.log(`::error::${verdict.lines[0] ?? 'CODEOWNERS check failed'}`);
-      process.exitCode = 1;
+      exitCode = 1;
     }
   }
+  return exitCode;
 }
 
 if (process.argv[1]?.endsWith('check-codeowners-errors.ts') === true) {
-  void main();
+  void runCodeownersErrors(ROOT, process.argv.slice(2)).then((code) => {
+    process.exitCode = code;
+  });
 }

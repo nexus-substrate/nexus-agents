@@ -20,7 +20,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as prettier from 'prettier';
@@ -106,7 +106,8 @@ export class FormatError extends Error {
 
 /**
  * The ONE formatting authority for generated files (#6062): prettier, with the
- * config resolved for `path` and `path`'s parser. Every writer
+ * config resolved for `path` and `path`'s parser. The governor gate instead
+ * resolves config and plugins from the trusted script checkout (#6369). Every writer
  * ({@link writeFormatted}) and the CLAUDE.md render ({@link renderClaudeMd})
  * that `check` compares go through here, so what `inject` writes and what
  * `check` expects are normalized by the same pass. When they were not, any
@@ -116,8 +117,13 @@ export class FormatError extends Error {
  */
 export async function formatWithPrettier(path: string, content: string): Promise<string> {
   try {
-    const config = await prettier.resolveConfig(path);
-    return await prettier.format(content, { ...(config ?? {}), filepath: path });
+    // The governor gate treats the target as data: even formatter config can execute JS.
+    const formatterPath =
+      process.env['NEXUS_GOVERNOR_GATE'] === '1'
+        ? join(dirname(fileURLToPath(import.meta.url)), '..', basename(path))
+        : path;
+    const config = await prettier.resolveConfig(formatterPath);
+    return await prettier.format(content, { ...(config ?? {}), filepath: formatterPath });
   } catch (error: unknown) {
     throw new FormatError(path, error);
   }

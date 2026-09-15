@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   summarizeCodeownersErrors,
+  runCodeownersErrors,
   summarizeCodeownersResponse,
   checkCodeownersErrors,
   parseRefArg,
@@ -282,5 +283,36 @@ describe('shadow CODEOWNERS locations', () => {
   it('the real tree has no shadow file', () => {
     expect(findShadowCodeowners(ROOT)).toEqual([]);
     expect(summarizeShadowCodeowners(findShadowCodeowners(ROOT)).ok).toBe(true);
+  });
+});
+
+describe('target checkout runner (#6369)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+  it('changes exit when a shadow CODEOWNERS appears in the target', async () => {
+    const targetDir = mkdtempSync(join(tmpdir(), 'codeowners-target-'));
+    vi.stubEnv('GITHUB_TOKEN', 'TEST-fixture-token');
+    vi.stubEnv('GITHUB_REPOSITORY', 'fixture/repo');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('{"errors":[]}', { status: 200 }))
+    );
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      expect(await runCodeownersErrors(targetDir, ['--ref', 'fixture'])).toBe(0);
+      mkdirSync(join(targetDir, '.github'));
+      writeFileSync(join(targetDir, '.github/CODEOWNERS'), '* @fixture');
+      // Each endpoint read gets a fresh response body.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response('{"errors":[]}', { status: 200 }))
+      );
+      expect(await runCodeownersErrors(targetDir, ['--ref', 'fixture'])).toBe(1);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
   });
 });

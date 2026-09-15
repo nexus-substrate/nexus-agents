@@ -337,7 +337,7 @@ describe('runRatificationGate with no inputs (#5444)', () => {
     // one day, that no ratification was needed.
     const c = capture();
     try {
-      const code = runRatificationGate({});
+      const code = runRatificationGate({}, resolve(import.meta.dirname, '..'));
       const out = c.lines.join('\n');
       expect(code).toBe(0);
       expect(out).not.toContain('not required');
@@ -352,7 +352,7 @@ describe('runRatificationGate with no inputs (#5444)', () => {
     // genuinely not applicable, and the workflow always sets the variable.
     const c = capture();
     try {
-      const code = runRatificationGate({ CHANGED_FILES: '' });
+      const code = runRatificationGate({ CHANGED_FILES: '' }, resolve(import.meta.dirname, '..'));
       expect(code).toBe(0);
       expect(c.lines.join('\n')).toContain('not required');
     } finally {
