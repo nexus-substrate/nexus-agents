@@ -73,6 +73,8 @@ export const SELF = 'check-script-wiring.ts';
  * test also asserts each entry against the real tree.
  */
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
+  'security-ledger.ts':
+    'operator-only report and resolution of a private, gitignored ledger (#4887)',
   'redact-vote-record.ts':
     'operator-run reasoning redaction requiring a governor-path PR; not a CI gate (#6265)',
   // The caller-commits half of #5130: copies ONE verified, PR-bound vote
