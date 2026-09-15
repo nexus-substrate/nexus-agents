@@ -325,7 +325,7 @@ record or it does not merge. The flip was measured against the first real
 record (PR #6241, `vote-1789376500996-fxkw4uk`) before it landed, and
 warn-first ended when it did.
 
-Precedence (the verdict's `kind`): `ledger-invalid` → `ledger-rewritten` →
+Precedence (the verdict's `kind`): `ledger-rewritten` → `ledger-invalid` →
 `duplicate-id` → `no-record` → `sha-mismatch` → `not-approved` →
 `wrong-error-policy` → `wrong-strategy` → `unmeasured-panel` →
 `degraded-panel` → `ratified` / `ratified-rebased` (the per-record checks
@@ -337,12 +337,12 @@ misconfiguration kinds — `wrong-error-policy`, `wrong-strategy`,
 `unmeasured-panel`, `degraded-panel` — named before `not-approved`, so a
 run that was rejected under the wrong policy reads as a misconfigured run
 rather than a plain rejection. The verdict's `kind` stays `not-approved` in
-that case; its `failures` list carries the full set.
+that case; its `failures` list carries the full set. Since #6348 `ledger-rewritten` is checked FIRST: a changed base line is a rewrite even when the head ledger is also invalid, and the append-only scan admits exactly one difference — a base line whose head counterpart lacks only the `reasoning`/`reasoningNonce` openings of roles named by a redaction record that is present in head and absent from base.
 
 ### How the gate becomes a required status context (#4802)
 
-Branch protection on `main` requires one context, `CI Success`, so the gate
-above can go red without blocking a merge (#4802). Making it required has two
+Branch protection on `main` requires `CI Success` and
+`Governor-path ratification gate` (#4802). Making the gate required took two
 parts; only the first is code.
 
 **Part 1 (landed): the gate reports on every PR.** A required context must
@@ -354,10 +354,11 @@ every `pull_request`, computes the governor-path verdict itself from the one
 parse of `CODEOWNERS`, and exits 0 with `not-applicable` when no governor path
 is touched. The detector runs before any GitHub API call, and the evidence
 and gate steps are gated on its output (#6260): an ordinary PR performs one
-`git diff` and one `CODEOWNERS` parse and never reaches the API, so a
-transient `gh api` failure cannot block a PR the gate has nothing to say
-about. On an ordinary PR that costs about 60 s of runner time, ~35 s of
-it the full-history checkout and ~5 s the injector spawn (#6250). The
+`git diff` and one `CODEOWNERS` parse without fetching ratification evidence,
+so a transient evidence API failure cannot block an ordinary PR. The separate
+required-jobs check below also runs on ordinary PRs. Before this additional
+check, an ordinary PR cost about 60 s of runner time, ~35 s of it the
+full-history checkout and ~5 s the injector spawn (#6250). The
 post-merge backstop runs on every push to `main` the same way. The pr_review
 audit gate and the CODEOWNERS parse do not run on an ordinary PR: they read a
 `governor_touched` output the ratification jobs compute
@@ -365,8 +366,22 @@ audit gate and the CODEOWNERS parse do not run on an ordinary PR: they read a
 and are skipped otherwise. The `paths:` blocks were a second, hand-maintained
 copy of the governor set; nothing is copied now.
 
-**Part 2 (owner-visible settings change, by panel): require the context.**
-Add the status context named exactly `Governor-path ratification gate` to
+The governor-owned `required-jobs.json` manifest (#6343) pins every
+`ci-success.needs` job ID, its corresponding `needs.<id>.result` check, the
+required contexts `CI Success` and `Governor-path ratification gate`, and the
+absence of `pnpm.auditConfig`. `scripts/check-required-jobs.ts` runs inside
+`Governor-path ratification gate` on every PR, so weakening CI wiring is
+checked by a governor-owned job. Measured drift fails the job (exit 1);
+unreadable branch protection leaves only protection membership `unmeasured`;
+local producers are still checked, and missing producers remain drift. Exit 0
+means all checks passed; exit 2 means at least one check was unmeasured and
+none drifted. Unmeasured diagnostics use `::warning::`, drift diagnostics use
+`::error::`, and the workflow step warns on exit 2 while failing on exit 1. The manifest's
+empty needs list is drift, and its exact match to the live CI needs list is
+covered by an integration test.
+
+**Part 2 (landed, owner-visible settings change): require the context.**
+The status context named exactly `Governor-path ratification gate` is in
 `main`'s required status checks
 (`gh api -X PATCH repos/{owner}/{repo}/branches/main/protection/required_status_checks`
 with the context appended to `contexts`, or the branch-protection UI). The

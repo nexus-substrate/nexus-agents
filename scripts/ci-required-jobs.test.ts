@@ -34,6 +34,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
+import { extractJobGate } from './check-required-jobs.js';
 
 /**
  * Jobs deliberately left out of `ci-success.needs`.
@@ -61,8 +62,9 @@ interface CiWorkflow {
 const ci = parse(
   readFileSync(join(process.cwd(), '.github', 'workflows', 'ci.yml'), 'utf8')
 ) as CiWorkflow;
-const required = new Set(ci.jobs['ci-success']?.needs ?? []);
-const gateScript = (ci.jobs['ci-success']?.steps ?? []).map((s) => s.run ?? '').join('\n');
+const ciGate = extractJobGate(ci.jobs['ci-success']);
+const required = new Set(ciGate.needs);
+const gateScript = ciGate.gateScript;
 
 describe('CI required-job wiring', () => {
   it('finds the ci-success job and its gate script', () => {
@@ -210,8 +212,9 @@ const DOCS_ADVISORY_JOBS = new Set(['docs-coverage', 'spell-check']);
 const docs = parse(
   readFileSync(join(process.cwd(), '.github', 'workflows', 'docs-check.yml'), 'utf8')
 ) as CiWorkflow;
-const docsRequired = new Set(docs.jobs['docs-success']?.needs ?? []);
-const docsGateScript = (docs.jobs['docs-success']?.steps ?? []).map((s) => s.run ?? '').join('\n');
+const docsGate = extractJobGate(docs.jobs['docs-success']);
+const docsRequired = new Set(docsGate.needs);
+const docsGateScript = docsGate.gateScript;
 
 describe('Documentation Gate required-job wiring (#4809)', () => {
   // `docs-check.yml` had twenty jobs and no aggregator, so not one of them

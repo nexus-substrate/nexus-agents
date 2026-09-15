@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -989,6 +989,37 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
     expect(job?.needs).toBeUndefined();
   });
 
+  describe('the required-jobs check runs on every PR inside the governed job (#6343)', () => {
+    const steps = jobs['governor-ratification']?.steps ?? [];
+    const check = steps.find((step) => step.id === 'required-jobs');
+
+    it('runs after the detector, before evidence, without a governor-path condition', () => {
+      expect(check).toBeDefined();
+      expect(check?.if).toBeUndefined();
+      expect(check?.run).toContain('pnpm exec tsx scripts/check-required-jobs.ts');
+      expect(check?.env?.['GH_TOKEN']).toBe('${{ secrets.GITHUB_TOKEN }}');
+      const checkAt = steps.indexOf(check as Step);
+      expect(checkAt).toBeGreaterThan(steps.findIndex((step) => step.id === 'touched'));
+      expect(checkAt).toBeLessThan(steps.findIndex((step) => step.id === 'evidence'));
+    });
+
+    it.each([
+      [0, 0, false],
+      [1, 1, false],
+      [2, 0, true],
+    ])('checker exit %i yields step exit %i and warning %s', (checkerExit, stepExit, warns) => {
+      expect(check?.run).toBeDefined();
+      const result = spawnSync(
+        'bash',
+        ['-e', '-c', `pnpm() { return "$CHECKER_EXIT"; }\n${check?.run ?? 'exit 99'}`],
+        { encoding: 'utf-8', env: { ...process.env, CHECKER_EXIT: String(checkerExit) } }
+      );
+      expect(result.status, result.stderr).toBe(stepExit);
+      expect(result.stdout).toBe(warns ? '::warning::required jobs unmeasured\n' : '');
+      expect(result.stderr).toBe('');
+    });
+  });
+
   it('the ratification jobs publish the detector output from the detector step', () => {
     for (const id of ['governor-ratification', 'governor-ratification-backstop']) {
       const job = jobs[id];
@@ -1010,7 +1041,7 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
     }
   });
 
-  describe('the detector runs BEFORE the GitHub API is touched, and gates it (#6260)', () => {
+  describe('the detector precedes the GitHub API and gates ratification evidence (#6260)', () => {
     // Scope steward, #6260 panel: with evidence collected first, a transient
     // `gh api` failure would block an ORDINARY PR once this context is
     // required. The order is checkout → setup → changed files → detector →
@@ -1035,7 +1066,8 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
       expect(at('evidence')).toBeGreaterThan(at('touched'));
       const evidence = steps[at('evidence')];
       expect(evidence?.if).toBe(gatedOnDetector);
-      // This is the step that reaches the API; nothing before it does.
+      // Earlier steps make no direct evidence API calls. The required-jobs
+      // checker separately probes protection and handles unreadability.
       expect(evidence?.run ?? '').toContain('gh api');
       for (const step of steps.slice(0, at('evidence'))) {
         expect(step.run ?? '', step.id ?? step.name ?? step.uses ?? '?').not.toContain('gh api');
@@ -1350,6 +1382,9 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/.github/workflows/governor-review.yml',
     '/scripts/check-governor-review.ts',
     '/scripts/check-governor-ratification.ts',
+    '/governance/required-jobs.json',
+    '/scripts/check-required-jobs.ts',
+    '/scripts/check-required-jobs.test.ts',
     '/scripts/governor-ledger-evidence.ts',
     '/scripts/governor-ledger-report.ts',
     '/scripts/governor-patch-identity.ts',
@@ -1388,7 +1423,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (24 entries)', () => {
+  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (29 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1410,7 +1445,10 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/scripts/governor-ledger-signature.ts');
     // #4797: the audit-exception warrant ledger can lower the security bar.
     expect(set).toContain('/.github/audit-exceptions.json');
-    expect(set).toHaveLength(26);
+    expect(set).toContain('/governance/required-jobs.json');
+    expect(set).toContain('/scripts/check-required-jobs.ts');
+    expect(set).toContain('/scripts/check-required-jobs.test.ts');
+    expect(set).toHaveLength(29);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

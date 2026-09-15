@@ -1,0 +1,20 @@
+{
+  "description": "Governor-owned requirements for CI Success wiring and branch-protection contexts.",
+  "version": "1.0.0",
+  "ci_success_needs": [
+    "commitlint",
+    "changeset-check",
+    "lint",
+    "typecheck",
+    "build",
+    "test",
+    "fitness-audit",
+    "consolidation-test",
+    "producer-consumer-check",
+    "script-tests",
+    "model-string-drift",
+    "security"
+  ],
+  "required_contexts": ["CI Success", "Governor-path ratification gate"],
+  "audit_config_forbidden": true
+}
