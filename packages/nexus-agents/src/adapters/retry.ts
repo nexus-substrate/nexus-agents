@@ -29,6 +29,7 @@ import {
   ok,
   NexusError,
   ErrorCode,
+  getErrorMessage,
   getRandomProvider,
 } from '../core/index.js';
 import { DEFAULTS } from '../config/defaults.js';
@@ -88,7 +89,9 @@ export class RetryExhaustedError extends NexusError {
       code: ErrorCode.MODEL_ERROR,
       context: {
         attempts,
-        lastErrorMessage: lastError instanceof Error ? lastError.message : String(lastError),
+        // Through getErrorMessage so a throwing `.message` getter cannot reject
+        // withRetry from outside its own try/catch (#4308).
+        lastErrorMessage: getErrorMessage(lastError),
       },
     };
     // Only set cause if lastError is an Error (exactOptionalPropertyTypes compliance)
@@ -257,9 +260,12 @@ export function isRetryableError(error: unknown): boolean {
     return retryableCodes.includes(error.code);
   }
 
-  // Check error message patterns for network errors
+  // Check error message patterns for network errors. Read through
+  // getErrorMessage: this runs inside withRetry's catch block, so a throwing
+  // `.message` getter would otherwise escape the loop as a rejection (#4308).
+  // An unreadable message matches no pattern.
   if (error instanceof Error) {
-    const message = error.message;
+    const message = getErrorMessage(error, '');
     for (const pattern of RETRYABLE_ERROR_PATTERNS) {
       if (pattern.test(message)) {
         return true;
