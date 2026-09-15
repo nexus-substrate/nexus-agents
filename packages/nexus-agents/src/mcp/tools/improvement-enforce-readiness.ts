@@ -52,8 +52,8 @@ export interface EnforceReadinessConfig {
  *
  * #4158: `minShadowSelections` is 100 (raised from 20). This gate authorizes the
  * auto-remediation enforce flip, which makes REAL code changes — its volume bar
- * should match the comparably-stakes access-policy flip (clawguard-eval requires
- * ≥100 judged events, #2077), not sit 5× lower. Raising it is monotonically safer
+ * should match the comparably-stakes access-policy flip (the retired
+ * clawguard-eval required ≥100 judged events, #2077), not sit 5× lower. Raising it is monotonically safer
  * (a thinner corpus stays in audit longer); overridable per-caller via
  * `config.readinessConfig`.
  */

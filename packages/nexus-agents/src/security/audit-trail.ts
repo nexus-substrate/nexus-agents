@@ -149,11 +149,12 @@ export interface SanitizationEvent extends AuditEventBase {
 }
 
 /**
- * ClawGuard AUDIT-mode violation (#4097). Records a tool call that VIOLATED the
- * derived access policy but was ALLOWED to proceed because the policy is in
- * `audit` mode (log-and-allow). Persisting these is what lets the audit→enforce
- * graduation loop size the real violation rate from durable telemetry rather
- * than ephemeral logs.
+ * ClawGuard AUDIT-mode violation (#4097). Recorded a tool call that violated
+ * the derived access policy but was allowed under `audit` mode. Its only
+ * producer (the access-constraint deriver's MCP guard) was deleted in #5108,
+ * so no new events of this type are written; the member stays in the union
+ * because `AuditEvent` is published and existing ledgers may carry it.
+ * Removal is a breaking change scheduled for the next major (#6319).
  */
 export interface ClawGuardViolationEvent extends AuditEventBase {
   readonly type: 'clawguard_violation';
@@ -507,22 +508,6 @@ export function emitGraphExecutionEvent(
   return trail.append({
     type: 'graph_execution',
     component: 'graph-executor',
-    ...data,
-  });
-}
-
-/**
- * Records a ClawGuard AUDIT-mode violation (#4097) — a policy-violating tool
- * call that was log-and-allowed because the policy is in `audit` mode. ONE
- * append per call; mirrors to the durable sink when the trail is wired.
- */
-export function emitClawGuardViolation(
-  trail: AuditTrail,
-  data: Omit<ClawGuardViolationEvent, 'id' | 'timestamp' | 'type' | 'component'>
-): string {
-  return trail.append({
-    type: 'clawguard_violation',
-    component: 'clawguard-audit',
     ...data,
   });
 }

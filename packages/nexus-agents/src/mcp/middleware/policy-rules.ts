@@ -7,7 +7,12 @@
  */
 
 import type { PolicyContext, PolicyDecision, PolicyRule } from './policy-types.js';
-import { isPathSafe, extractPathFromArgs } from './policy-helpers.js';
+import {
+  isPathSafe,
+  extractPathFromArgs,
+  canonicalizeToolPath,
+  findSecretPathPattern,
+} from './policy-helpers.js';
 import { classifyRegisteredTool, type ToolExecutionClass } from '../tools/tool-manifest.js';
 
 // =============================================================================
@@ -148,5 +153,42 @@ export const safePathsRule: PolicyRule = {
     }
 
     return { allowed: true, reason: 'Path is within allowed directories' };
+  },
+};
+
+// =============================================================================
+// Secret paths (#5108)
+// =============================================================================
+
+/**
+ * Policy rule that denies access to secret-bearing paths (SSH keys, cloud
+ * credentials, `.env`, `/etc/shadow`, …) whatever `allowedPaths` says.
+ *
+ * Composes AND-deny with {@link safePathsRule}: that rule is containment
+ * against the allowlist, this one is a denylist inside it. A caller who widens
+ * `allowedPaths` to `$HOME` keeps `~/.ssh` closed, and `.env` inside the repo
+ * root is refused even though it passes containment. No path argument → the
+ * rule abstains (an allow with that reason), because absence of a path is not
+ * a file operation and must not be recorded as "no secret".
+ */
+export const secretPathsRule: PolicyRule = {
+  name: 'secret-paths',
+  description: 'Denies access to secret-bearing paths regardless of allowed roots',
+  check(ctx: PolicyContext): PolicyDecision {
+    const targetPath = extractPathFromArgs(ctx.args);
+    if (targetPath === undefined) {
+      return { allowed: true, reason: 'No path argument found' };
+    }
+
+    const canonical = canonicalizeToolPath(targetPath);
+    const hit = findSecretPathPattern(canonical);
+    if (hit !== undefined) {
+      return {
+        allowed: false,
+        reason: `Path '${canonical}' matches secret-path pattern '${hit}'`,
+      };
+    }
+
+    return { allowed: true, reason: 'Path matches no secret-path pattern' };
   },
 };

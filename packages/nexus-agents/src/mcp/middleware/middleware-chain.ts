@@ -12,9 +12,10 @@
  * `createSecureHandler` against the process PolicyFirewall. The ClawGuard
  * access-policy stage that used to sit after `policy` was deleted in #5107
  * (#5022 decision, epic #5105): it read its policy from an AsyncLocalStorage
- * store no inbound request ever populated. The chain reports the stages it
- * built at debug level so that composition is observable rather than
- * inferred; `access-policy-reachability.test.ts` pins it.
+ * store no inbound request ever populated, and the deriver that filled that
+ * store went in #5108. The chain reports the stages it built at debug level so
+ * that composition is observable rather than inferred;
+ * `single-authorization-mechanism.test.ts` pins it.
  *
  * @module mcp/middleware/middleware-chain
  * (Source: Issue #189 - Centralized MCP middleware chain)
@@ -301,7 +302,7 @@ function composeMiddleware(middlewares: Middleware[]): Middleware {
  *
  * `policy` is the one authorization stage. Adding a name here that gates a
  * call is a #5022-class decision (which boundary authorizes, and with what),
- * not a refactor — `access-policy-reachability.test.ts` pins the list.
+ * not a refactor — `single-authorization-mechanism.test.ts` pins the list.
  */
 type MiddlewareStageName = 'metrics' | 'audit' | 'rateLimit' | 'validation' | 'policy' | 'timeout';
 

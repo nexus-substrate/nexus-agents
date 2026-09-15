@@ -88,23 +88,6 @@ import {
   type OrchestrateDeps,
   type RoutingInfo,
 } from './orchestrate-types.js';
-// ClawGuard access-policy derivation (#1977, #2022).
-// When NEXUS_ACCESS_POLICY_MODE is unset/off, this returns a bypass policy.
-// Since #5107 no dispatch stage reads the derived policy (the middleware
-// mount is gone); the derivation and its ALS scope survive until #5108
-// decides what, if anything, consumes them.
-import {
-  deriveAccessPolicy,
-  withAccessPolicy,
-  withAuditTrail,
-  resolveAccessPolicyMode,
-} from '../../security/access-constraint-deriver/index.js';
-// Durable AUDIT-mode violation persistence (#4097). Establishes the audit
-// trail in ALS for the access-policy middleware to mirror log-and-allow
-// violations to the hash chain. That middleware has been unmounted since
-// #5107, so no dispatch writes to this trail; #5108 owns the cleanup.
-import { createDurableAuditTrail } from '../../security/audit-bridge.js';
-import type { AuditTrail } from '../../security/audit-trail.js';
 // Structured task state (#2033, integration from #2043). Enabled by
 // default from v2.50+; set NEXUS_TASK_STATE_ENABLED=0 to opt out.
 // When disabled, helpers no-op silently.
@@ -685,7 +668,6 @@ function handleOrchestratorSuccess(ctx: {
 interface ExecuteOrchestrationOpts {
   readonly router?: IWorkflowRouter;
   readonly snapshot?: OrchestrationStateSnapshot;
-  readonly trustTier?: string;
   // #3091: async-mode threads a pre-minted taskId so it equals the jobId the
   // caller polls with (`get_job_result` → task-state). Sync mode omits it and
   // a fresh id is generated, preserving prior behavior.
@@ -711,7 +693,7 @@ async function executeOrchestration(
   deps: OrchestrateDeps,
   opts: ExecuteOrchestrationOpts = {}
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { router, snapshot, trustTier, taskId: providedTaskId } = opts;
+  const { router, snapshot, taskId: providedTaskId } = opts;
   const { workflowRouter, decision, orchestrator, logger } = routeAndPrepare(input, deps, router);
   const taskId = providedTaskId ?? generateTaskId();
   const startTime = getTimeProvider().now();
@@ -735,22 +717,16 @@ async function executeOrchestration(
   const task = await createTaskFromInput(input, taskId);
   const definition: OrchestratorDefinition = { type: 'task', task };
   const hb = startHeartbeatTracking(`orchestrate-${taskId}`, logger);
-  const policy = await deriveOrchestratePolicy(input.task, deps, logger, trustTier);
-  // #4097: build the durable trail here (deps in scope); undefined on the
-  // no-logger path so that path establishes no trail and stays byte-identical.
-  const auditTrail = createDurableAuditTrail(deps.auditLogger);
   try {
     return await runTrackedOrchestration(hb.sessionId, {
       taskId,
       taskInput: input.task,
       definition,
       orchestrator,
-      policy,
       decision,
       workflowRouter,
       startTime,
       logger,
-      ...(auditTrail !== undefined ? { auditTrail } : {}),
     });
   } catch (error) {
     recordTaskStateBlocker(taskId, error instanceof Error ? error.message : String(error), logger);
@@ -770,22 +746,14 @@ async function runOrchestratorWithStateTracking(params: {
   readonly taskInput: string;
   readonly definition: OrchestratorDefinition;
   readonly orchestrator: IOrchestrator;
-  readonly policy: Awaited<ReturnType<typeof deriveAccessPolicy>>;
   readonly decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
   readonly workflowRouter: IWorkflowRouter;
   readonly startTime: number;
   readonly logger: ILogger;
-  /** Durable audit trail for ClawGuard AUDIT-mode violations (#4097). */
-  readonly auditTrail?: AuditTrail;
 }): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { taskId, taskInput, definition, orchestrator, policy, logger, auditTrail } = params;
+  const { taskId, taskInput, definition, orchestrator, logger } = params;
   recordTaskStateStage(taskId, 'executing', logger);
-  const runOrchestrator = (): ReturnType<typeof orchestrator.execute> =>
-    orchestrator.execute(definition, {});
-  const result = await withAccessPolicy(
-    policy,
-    auditTrail !== undefined ? () => withAuditTrail(auditTrail, runOrchestrator) : runOrchestrator
-  );
+  const result = await orchestrator.execute(definition, {});
   if (!result.ok) {
     recordTaskStateBlocker(taskId, result.error.message, logger);
     // #3091: see executeOrchestration — terminal failure stage is 'failed'.
@@ -905,81 +873,6 @@ function recordTaskStateFailure(taskId: string, message: string, logger: ILogger
   if (!isTaskStateEnabled()) return;
   recordTaskStateBlocker(taskId, message, logger);
   recordTaskStateStage(taskId, 'failed', logger);
-}
-
-/**
- * Derive a ClawGuard access policy for this orchestration (#1977, #2022).
- *
- * Returns a live policy when `NEXUS_ACCESS_POLICY_MODE=audit|enforce` and
- * a model adapter is available; returns a bypass policy in `off` mode
- * (the default). Since #5107 nothing on the dispatch path reads either:
- * the ClawGuard middleware mount is gone, and the policy sits in ALS
- * unconsumed until #5108 settles the deriver's fate.
- *
- * Never throws — derivation failure falls back to a permissive `off`
- * policy so orchestration proceeds. All failures are logged.
- */
-async function deriveOrchestratePolicy(
-  taskText: string,
-  deps: OrchestrateDeps,
-  logger: ILogger,
-  trustTier: string | undefined
-): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
-  const mode = resolveAccessPolicyMode();
-  try {
-    // Closes #2993: pre-fix trustTier was hardcoded to '1' (max trust)
-    // regardless of caller. Now thread it from the request context; if
-    // missing (older test harnesses that don't populate it) default to '4'
-    // so derivation runs at the strictest tier rather than falsely
-    // permissive.
-    const opts: Parameters<typeof deriveAccessPolicy>[1] = {
-      mode,
-      trustTier: (trustTier ?? '4') as '1' | '2' | '3' | '4',
-      ...(deps.modelAdapter !== undefined ? { adapter: deps.modelAdapter } : {}),
-    };
-    const policy = await deriveAccessPolicy(taskText, opts);
-    if (mode !== 'off') {
-      logger.info('access-policy: derived', {
-        mode,
-        source: policy.source,
-        allowedToolsWildcard: policy.allowedTools === '*',
-      });
-    }
-    return policy;
-  } catch (error) {
-    // Fail closed under active enforcement, fail safe under audit/off.
-    // Pre-fix #2993 this fell back to a wildcard `mode: 'off'` policy on
-    // ANY derivation exception — turning a derivation bug into a security
-    // bypass even for operators running `enforce`. Now: preserve the
-    // operator's configured mode; restrict to empty allow-lists when
-    // enforcement is active; keep the permissive policy only when the
-    // operator already opted out (`off`) or accepted log-only (`audit`).
-    logger.warn('access-policy: derivation failed', {
-      mode,
-      error: getErrorMessage(error),
-      failClosed: mode === 'enforce' || mode === 'confirm_risky',
-    });
-    if (mode === 'enforce' || mode === 'confirm_risky') {
-      return {
-        allowedTools: [],
-        allowedPathPatterns: [],
-        allowedOperations: [],
-        objectiveHash: 'derivation-failed',
-        derivedAt: getTimeProvider().nowIso(),
-        source: 'bypass',
-        mode,
-      };
-    }
-    return {
-      allowedTools: '*',
-      allowedPathPatterns: [],
-      allowedOperations: '*',
-      objectiveHash: 'derivation-failed',
-      derivedAt: getTimeProvider().nowIso(),
-      source: 'bypass',
-      mode,
-    };
-  }
 }
 
 /** Fire-and-forget V2 pipeline instrumentation (Phase E, Issue #924).
@@ -1168,11 +1061,10 @@ async function executeOrchestrationWithDeadline(params: {
   readonly deps: OrchestrateDeps;
   readonly notifier: ReturnType<typeof createMcpNotifier>;
   readonly logger: ILogger;
-  readonly trustTier?: string;
   /** #3091: pre-minted taskId (async mode) so jobId === taskId. */
   readonly taskId?: string;
 }): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { input, deps, notifier, logger, trustTier, taskId } = params;
+  const { input, deps, notifier, logger, taskId } = params;
   const overallDeadlineMs = getMcpSafeDeadlineMs(
     MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
     'orchestrate'
@@ -1185,7 +1077,6 @@ async function executeOrchestrationWithDeadline(params: {
     withProgressHeartbeat('orchestrate', notifier, () =>
       executeOrchestration(input, deps, {
         snapshot,
-        ...(trustTier !== undefined ? { trustTier } : {}),
         ...(taskId !== undefined ? { taskId } : {}),
       })
     ),
@@ -1247,7 +1138,6 @@ async function runOrchestratePipeline(params: {
     deps,
     notifier,
     logger,
-    ...(trustTier !== undefined ? { trustTier } : {}),
     ...(taskId !== undefined ? { taskId } : {}),
   });
   if (!result.ok) {

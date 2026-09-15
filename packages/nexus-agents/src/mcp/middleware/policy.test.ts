@@ -601,8 +601,9 @@ describe('createDefaultPolicyFirewall', () => {
     const firewall = createDefaultPolicyFirewall();
 
     const rules = firewall.getRules();
-    expect(rules).toHaveLength(2);
+    expect(rules).toHaveLength(3);
     expect(rules.map((r) => r.name)).toContain('deny-mutations-without-mode');
+    expect(rules.map((r) => r.name)).toContain('secret-paths');
     expect(rules.map((r) => r.name)).toContain('safe-paths');
   });
 
