@@ -375,9 +375,21 @@ async function dispatchWithRateLimitRetry(
  * @param prompt - Task prompt for the expert
  * @returns Expert result with text output
  */
-export async function executeExpert(
+export function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string
+): Promise<ExpertBridgeResult>;
+export function executeExpert(
+  expertType: BuiltInExpertType,
+  prompt: string,
+  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Preserve the published two-argument API signature.
+  options: { workDir?: string | undefined }
+): Promise<ExpertBridgeResult>;
+/** Execute with an optional working directory for the expert's CLI subprocess. */
+export async function executeExpert(
+  expertType: BuiltInExpertType,
+  prompt: string,
+  options?: { workDir?: string | undefined }
 ): Promise<ExpertBridgeResult> {
   const start = getTimeProvider().now();
   try {
@@ -415,6 +427,9 @@ export async function executeExpert(
       content: fullPrompt,
     };
     if (mcpConfigPath !== null) task.options = { mcpConfigPath };
+    if (options?.workDir !== undefined) {
+      task.options = { ...task.options, workDir: options.workDir };
+    }
 
     return await dispatchWithRateLimitRetry(router, task, expertType, start);
   } catch (error) {

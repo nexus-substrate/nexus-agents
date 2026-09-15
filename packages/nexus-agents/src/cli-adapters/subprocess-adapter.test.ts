@@ -172,6 +172,47 @@ describe('SubprocessCliAdapter', () => {
     });
   });
 
+  describe('subprocess working directory (#6358)', () => {
+    it('starts the seat in the supplied workspace, preserving spaces in its path', async () => {
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+      const workDir = '/tmp/vote scratch checkout';
+      await adapter.initialize();
+
+      const promise = adapter.execute({ content: 'test', options: { workDir } });
+      stdout.push('response\n');
+      stdout.push(null);
+      mockChild.emit('close', 0);
+      await promise;
+
+      expect(mockSpawn.mock.calls[0]?.[2]).toHaveProperty('cwd', workDir);
+    });
+
+    it.each([
+      ['absent options', undefined],
+      ['absent workDir', {}],
+      ['empty workDir', { workDir: '' }],
+      ['blank workDir', { workDir: '   ' }],
+      ['non-string workDir', { workDir: 42 }],
+    ])('omits cwd for %s so the subprocess inherits the caller directory', async (_, options) => {
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+      await adapter.initialize();
+
+      const promise = adapter.execute({
+        content: 'test',
+        ...(options === undefined ? {} : { options }),
+      });
+      stdout.push('response\n');
+      stdout.push(null);
+      mockChild.emit('close', 0);
+      await promise;
+
+      expect(mockSpawn).toHaveBeenCalledOnce();
+      expect(mockSpawn.mock.calls[0]?.[2]).not.toHaveProperty('cwd');
+    });
+  });
+
   describe('initialize() and dispose()', () => {
     it('should set initialized flag on initialize', async () => {
       await adapter.initialize();

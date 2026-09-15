@@ -488,6 +488,9 @@ export async function executeVoting(
   logger: ILogger,
   opts?: {
     voteTimeoutMs?: number;
+    /** CLI ratification checkout, retained through escalation. */
+    workspace?: string | undefined;
+    workspaceSha?: string | undefined;
     gatewayAdapters?: readonly IModelAdapter[] | undefined;
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
@@ -575,6 +578,9 @@ async function executeVotingInner(
   // boundary removes them all rather than adding one more (#5393).
   opts: {
     voteTimeoutMs?: number;
+    /** CLI ratification checkout, retained through escalation. */
+    workspace?: string | undefined;
+    workspaceSha?: string | undefined;
     gatewayAdapters?: readonly IModelAdapter[] | undefined;
     /** #5393: stops LAUNCHING un-started voters when `cancel_job` fires. */
     signal?: AbortSignal | undefined;
@@ -603,6 +609,8 @@ async function executeVotingInner(
     declaredOptions: input.options,
     // #6110: every seat's system prompt names the caller's project.
     project: opts.project.name,
+    workspace: opts.workspace,
+    workspaceSha: opts.workspaceSha,
     signal: opts.signal,
   });
 

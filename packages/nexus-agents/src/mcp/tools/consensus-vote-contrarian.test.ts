@@ -27,9 +27,20 @@ vi.mock('../../cli/voter-agents.js', () => ({
 // #4132: the contrarian expert-bridge is the only import `runContrarianCheck`
 // makes; a rejecting mock reports errored:true deterministically (no live
 // adapter), a resolving one drives the threshold comparison.
-const executeExpertMock = vi.fn<() => Promise<{ success: boolean; text: string }>>();
+const executeExpertMock =
+  vi.fn<
+    (
+      expert: string,
+      prompt: string,
+      options?: { workDir?: string | undefined }
+    ) => Promise<{ success: boolean; text: string }>
+  >();
 vi.mock('../../pipeline/expert-bridge.js', () => ({
-  executeExpert: (): Promise<{ success: boolean; text: string }> => executeExpertMock(),
+  executeExpert: (
+    expert: string,
+    prompt: string,
+    options?: { workDir?: string | undefined }
+  ): Promise<{ success: boolean; text: string }> => executeExpertMock(expert, prompt, options),
 }));
 
 import { maybeEscalateContrarian } from './consensus-vote-contrarian.js';
@@ -153,6 +164,51 @@ describe('maybeEscalateContrarian — escalation threshold (#1799)', () => {
     // The spy was handed the full-panel input, and the real voters never ran.
     expect(revote.mock.calls[0]?.[0]).toMatchObject({ proposal: 'ship it', quickMode: false });
     expect(collectRealVotesMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the contrarian and escalation re-vote in the scratch workspace (#6358)', async () => {
+    executeExpertMock.mockResolvedValue({
+      success: true,
+      text: '{"decision":"reject","confidence":0.9,"reasoning":"YAGNI"}',
+    });
+    const escalatedResult = { proposal: 'from the spy' } as unknown as ExtendedVotingResult;
+    const revote = vi.fn().mockResolvedValue(escalatedResult);
+    const opts = { workspace: '/tmp/vote-scratch', workspaceSha: 'a'.repeat(40) };
+
+    await maybeEscalateContrarian(QUICK, 'approved', { ...CTX, revote }, logger, opts);
+
+    expect(executeExpertMock).toHaveBeenCalledWith(
+      'architecture',
+      expect.stringContaining(
+        `detached scratch checkout of the ratified head ${opts.workspaceSha}`
+      ),
+      { workDir: opts.workspace }
+    );
+    expect(executeExpertMock.mock.calls[0]?.[1]).toContain(
+      'do NOT run git checkout/switch/reset/pull or modify files; read only.'
+    );
+    expect(revote).toHaveBeenCalledWith({ ...QUICK, quickMode: false }, logger, opts);
+  });
+
+  it('keeps the original contrarian prompt when no workspace is supplied', async () => {
+    executeExpertMock.mockResolvedValue({ success: true, text: '{"decision":"approve"}' });
+
+    await maybeEscalateContrarian(QUICK, 'approved', CTX, logger);
+
+    expect(executeExpertMock.mock.calls[0]?.[1]).toBe(
+      [
+        'You are a contrarian analyst. Your job is to find reasons this proposal should be REJECTED.',
+        'Look for: YAGNI (not needed), MISALIGNED (wrong tech/architecture), SECURITY_RISK, SCOPE_CREEP.',
+        '',
+        'Proposal: ship it',
+        '',
+        'If you find a strong reason to reject, respond with JSON:',
+        '{"decision":"reject","confidence":0.0-1.0,"reasoning":"your concern"}',
+        'If the proposal is sound, respond with:',
+        '{"decision":"approve","confidence":0.0-1.0,"reasoning":"why it is acceptable"}',
+      ].join('\n')
+    );
+    expect(executeExpertMock.mock.calls[0]?.[2]).toEqual({ workDir: undefined });
   });
 
   it('a rejection below the threshold keeps the quick-mode result', async () => {

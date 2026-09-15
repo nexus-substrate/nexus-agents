@@ -14,7 +14,8 @@
  * @module cli/vote-command-ratifies-pr.test
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
@@ -23,19 +24,20 @@ import { verifyVoteRecordSet, type VoteRecord } from '../audit/vote-record.js';
 import { resetNexusDataDirCache } from '../config/nexus-data-dir.js';
 
 const collectRealVotesMock =
-  vi.fn<(opts: { roles: readonly VoterRole[] }) => Promise<readonly AgentVoteResult[]>>();
+  vi.fn<(opts: CollectedOptions) => Promise<readonly AgentVoteResult[]>>();
 // Wholesale replacement (#4629): `consensus-vote.ts` must see the canned
 // collector, and `vote-command.ts` reads the timeout constant from the same
 // module.
 vi.mock('./voter-agents.js', () => ({
   DEFAULT_VOTE_TIMEOUT_MS: 90_000,
-  collectRealVotes: (opts: { roles: readonly VoterRole[] }): Promise<readonly AgentVoteResult[]> =>
+  collectRealVotes: (opts: CollectedOptions): Promise<readonly AgentVoteResult[]> =>
     collectRealVotesMock(opts),
 }));
 
 import { voteCommand } from './vote-command.js';
 
-const SHA = '0123456789abcdef0123456789abcdef01234567';
+let SHA: string;
+type CollectedOptions = { roles: readonly VoterRole[]; workspace?: string; workspaceSha?: string };
 
 function approvingPanel(roles: readonly VoterRole[]): AgentVoteResult[] {
   return roles.map((role) => ({
@@ -53,10 +55,36 @@ describe('nexus-agents vote --ratifies-pr / --strategy reach the persisted recor
   let out: string[];
   let restoreStdout: () => void;
   const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  const originalTmp = process.env['NEXUS_TMPDIR'];
+  let repo: string;
   const originalStore = process.env[VOTE_RECORDS_PATH_ENV];
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'nexus-cli-vote-ratifies-pr-'));
+    repo = join(tmpDir, 'repo');
+    mkdirSync(repo);
+    const git = (args: string[]): string =>
+      execFileSync('git', args, {
+        cwd: repo,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    git(['init']);
+    git([
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'fixture',
+    ]);
+    SHA = git(['rev-parse', 'HEAD']);
+    vi.spyOn(process, 'cwd').mockReturnValue(repo);
+    process.env['NEXUS_TMPDIR'] = join(tmpDir, 'scratch');
     store = join(tmpDir, 'vote-records.jsonl');
     process.env['NEXUS_DATA_DIR'] = tmpDir;
     process.env[VOTE_RECORDS_PATH_ENV] = store;
@@ -75,6 +103,9 @@ describe('nexus-agents vote --ratifies-pr / --strategy reach the persisted recor
 
   afterEach(() => {
     restoreStdout();
+    vi.restoreAllMocks();
+    if (originalTmp === undefined) Reflect.deleteProperty(process.env, 'NEXUS_TMPDIR');
+    else process.env['NEXUS_TMPDIR'] = originalTmp;
     if (originalDataDir === undefined) Reflect.deleteProperty(process.env, 'NEXUS_DATA_DIR');
     else process.env['NEXUS_DATA_DIR'] = originalDataDir;
     if (originalStore === undefined) Reflect.deleteProperty(process.env, VOTE_RECORDS_PATH_ENV);
@@ -119,6 +150,75 @@ describe('nexus-agents vote --ratifies-pr / --strategy reach the persisted recor
     expect(printed()).toContain(`Audit record #${String(record.sequence)} written (${record.id})`);
     // At the governor bar there is nothing to notice.
     expect(printed()).not.toContain('governor bar');
+  });
+
+  it('runs the panel in a detached scratch checkout and disposes it after tally', async () => {
+    const diagnostics = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    let workspace: string | undefined;
+    collectRealVotesMock.mockImplementation((opts) => {
+      workspace = opts.workspace;
+      expect(workspace).toBeDefined();
+      expect(opts.workspaceSha).toBe(SHA);
+      expect(workspace).not.toBe(repo);
+      expect(
+        execFileSync('git', ['rev-parse', 'HEAD'], { cwd: workspace, encoding: 'utf8' }).trim()
+      ).toBe(SHA);
+      return Promise.resolve(approvingPanel(opts.roles));
+    });
+    expect(await voteCommand({ proposal: 'p', ratifiesPr: { pr: 6358, headSha: SHA } })).toBe(0);
+    if (workspace === undefined) throw new Error('Panel workspace is missing');
+    expect(existsSync(workspace)).toBe(false);
+    expect(diagnostics).toHaveBeenCalledWith(
+      `panel workspace: ${workspace} (detached at ${SHA})\n`
+    );
+    expect(diagnostics).toHaveBeenCalledWith(`panel workspace disposed: ${workspace}\n`);
+  });
+
+  it('disposes the scratch checkout when the panel throws', async () => {
+    let workspace: string | undefined;
+    collectRealVotesMock.mockImplementation((opts) => {
+      workspace = opts.workspace;
+      throw new Error('seat launch failed');
+    });
+    expect(await voteCommand({ proposal: 'p', ratifiesPr: { pr: 6358, headSha: SHA } })).toBe(1);
+    expect(workspace).toBeDefined();
+    expect(existsSync(workspace!)).toBe(false);
+    expect(printed()).toContain('seat launch failed');
+  });
+
+  it('keeps the same scratch checkout alive through a no-quorum retry, then disposes it', async () => {
+    const workspaces: string[] = [];
+    collectRealVotesMock.mockImplementation((opts) => {
+      if (opts.workspace === undefined) throw new Error('Panel workspace is missing');
+      workspaces.push(opts.workspace);
+      expect(existsSync(opts.workspace)).toBe(true);
+      expect(opts.workspaceSha).toBe(SHA);
+      const votes = approvingPanel(opts.roles);
+      return Promise.resolve(
+        workspaces.length === 1
+          ? votes.map((vote) => ({
+              ...vote,
+              source: 'error' as const,
+              vote: { decision: 'abstain' as const, confidence: 0, reasoning: 'seat timed out' },
+              error: 'seat timed out',
+            }))
+          : votes
+      );
+    });
+
+    const code = await voteCommand({
+      proposal: 'p',
+      ratifiesPr: { pr: 6358, headSha: SHA },
+      errorPolicy: 'absolute_quorum',
+      onNoQuorum: 'retry',
+    });
+
+    expect(code).toBe(0);
+    expect(collectRealVotesMock).toHaveBeenCalledTimes(2);
+    expect(workspaces).toHaveLength(2);
+    expect(workspaces[1]).toBe(workspaces[0]);
+    expect(existsSync(workspaces[0]!)).toBe(false);
+    expect(printed()).toContain('No quorum — re-running the vote once');
   });
 
   it('records NO binding when the flag was not given — the pair', async () => {
