@@ -24,10 +24,26 @@ describe('env-schema', () => {
     it('returns no warnings for valid env vars', () => {
       vi.stubEnv('NEXUS_V2_MODE', 'full');
       vi.stubEnv('NEXUS_LOG_LEVEL', 'debug');
-      vi.stubEnv('NEXUS_TIMEOUT_CLI', '30000');
+      vi.stubEnv('NEXUS_VOTE_TIMEOUT_MS', '30000');
       const result = validateNexusEnv();
       expect(result.unknownVars).toHaveLength(0);
       expect(result.invalidVars).toHaveLength(0);
+    });
+
+    it('reports NEXUS_TIMEOUT_{CLI,API,WORKFLOW,MCP} as unknown — nothing read them (#4939)', () => {
+      // Their only reader was getTimeout(), which had zero production callers;
+      // config-manager echoed them back as `Source: (env)` for a value nothing
+      // consumed. Removed on the #2977 / #4180 / #5903 precedent.
+      vi.stubEnv('NEXUS_TIMEOUT_CLI', '30000');
+      vi.stubEnv('NEXUS_TIMEOUT_API', '30000');
+      vi.stubEnv('NEXUS_TIMEOUT_WORKFLOW', '30000');
+      vi.stubEnv('NEXUS_TIMEOUT_MCP', '30000');
+      const result = validateNexusEnv();
+      const unknown = result.unknownVars.map((v) => v.name);
+      expect(unknown).toContain('NEXUS_TIMEOUT_CLI');
+      expect(unknown).toContain('NEXUS_TIMEOUT_API');
+      expect(unknown).toContain('NEXUS_TIMEOUT_WORKFLOW');
+      expect(unknown).toContain('NEXUS_TIMEOUT_MCP');
     });
 
     it('reports NEXUS_AUTH_METHOD as unknown — it never reached enforcement (#5665)', () => {
@@ -212,10 +228,10 @@ describe('env-schema', () => {
       expect(inv?.value).toBe('invalid');
     });
 
-    it('detects invalid integer value for NEXUS_TIMEOUT_CLI', () => {
-      vi.stubEnv('NEXUS_TIMEOUT_CLI', 'abc');
+    it('detects invalid integer value for NEXUS_VOTE_TIMEOUT_MS', () => {
+      vi.stubEnv('NEXUS_VOTE_TIMEOUT_MS', 'abc');
       const result = validateNexusEnv();
-      const inv = result.invalidVars.find((v) => v.name === 'NEXUS_TIMEOUT_CLI');
+      const inv = result.invalidVars.find((v) => v.name === 'NEXUS_VOTE_TIMEOUT_MS');
       expect(inv).toBeDefined();
       expect(inv?.value).toBe('abc');
     });
@@ -239,7 +255,7 @@ describe('env-schema', () => {
     it('reports multiple issues simultaneously', () => {
       vi.stubEnv('NEXUS_PERIST_LEARNING', 'true');
       vi.stubEnv('NEXUS_V2_MODE', 'invalid');
-      vi.stubEnv('NEXUS_TIMEOUT_CLI', 'not-a-number');
+      vi.stubEnv('NEXUS_VOTE_TIMEOUT_MS', 'not-a-number');
       const result = validateNexusEnv();
       expect(result.unknownVars.length).toBeGreaterThanOrEqual(1);
       expect(result.invalidVars.length).toBeGreaterThanOrEqual(2);
@@ -395,7 +411,7 @@ describe('env-schema', () => {
 
     it('includes core known variables', () => {
       const names = getKnownNexusVarNames();
-      expect(names).toContain('NEXUS_TIMEOUT_CLI');
+      expect(names).toContain('NEXUS_VOTE_TIMEOUT_MS');
       expect(names).toContain('NEXUS_V2_MODE');
       expect(names).toContain('NEXUS_LOG_LEVEL');
       expect(names).toContain('NEXUS_PERSIST_LEARNING');

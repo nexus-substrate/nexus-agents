@@ -55,7 +55,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          ISSUES=$(gh issue list --state open --limit 400 --json number,title,body)
+          # `labels` is how the script recognises the tracker it files and
+          # excludes it from its own report (#5237).
+          ISSUES=$(gh issue list --state open --limit 400 --json number,title,body,labels)
 
           # Collect every blocker the script would parse, then resolve each once.
           # Bounded on purpose (#5088): one crafted issue body containing

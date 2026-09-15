@@ -39,8 +39,8 @@ function makeValidation(overrides?: Partial<ScenarioResult>): ScenarioResult {
     totalCriteria: 2,
     metCount: 2,
     criteria: [
-      { criterion: 'A works', met: true, matchedResults: ['[code] A works'] },
-      { criterion: 'B works', met: true, matchedResults: ['[code] B works'] },
+      { criterion: 'A works', met: true, matchedResults: ['[code] A works'], partialResults: [] },
+      { criterion: 'B works', met: true, matchedResults: ['[code] B works'], partialResults: [] },
     ],
     allMet: true,
     ...overrides,
@@ -82,8 +82,13 @@ describe('analyzeFailures', () => {
           metCount: 1,
           allMet: false,
           criteria: [
-            { criterion: 'A works', met: true, matchedResults: ['[code] A works'] },
-            { criterion: 'B works', met: false, matchedResults: [] },
+            {
+              criterion: 'A works',
+              met: true,
+              matchedResults: ['[code] A works'],
+              partialResults: [],
+            },
+            { criterion: 'B works', met: false, matchedResults: [], partialResults: [] },
           ],
         }),
       })
@@ -104,7 +109,7 @@ describe('analyzeFailures', () => {
           satisfaction: 0,
           metCount: 0,
           allMet: false,
-          criteria: [{ criterion: 'A works', met: false, matchedResults: [] }],
+          criteria: [{ criterion: 'A works', met: false, matchedResults: [], partialResults: [] }],
         }),
       })
     );
@@ -122,8 +127,8 @@ describe('analyzeFailures', () => {
           metCount: 0,
           allMet: false,
           criteria: [
-            { criterion: 'Login works', met: false, matchedResults: [] },
-            { criterion: 'Logout works', met: false, matchedResults: [] },
+            { criterion: 'Login works', met: false, matchedResults: [], partialResults: [] },
+            { criterion: 'Logout works', met: false, matchedResults: [], partialResults: [] },
           ],
         }),
       })
@@ -142,7 +147,9 @@ describe('analyzeFailures', () => {
           satisfaction: 0,
           metCount: 0,
           allMet: false,
-          criteria: [{ criterion: 'Must work', met: false, matchedResults: [] }],
+          criteria: [
+            { criterion: 'Must work', met: false, matchedResults: [], partialResults: [] },
+          ],
         }),
       })
     );
@@ -150,6 +157,61 @@ describe('analyzeFailures', () => {
     if (!result.ok) return;
 
     expect(result.value.suggestions[0]?.priority).toBe(1);
+  });
+
+  it('classifies an unmet criterion with partial keyword overlap as partial_match at priority 2 (#4827)', () => {
+    const result = analyzeFailures(
+      makeResult({
+        outputs: ['[code] Added database schema'],
+        validation: makeValidation({
+          satisfaction: 0,
+          metCount: 0,
+          allMet: false,
+          criteria: [
+            {
+              criterion: 'Database migration completes successfully',
+              met: false,
+              matchedResults: [],
+              partialResults: ['[code] Added database schema'],
+            },
+          ],
+        }),
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.failures[0]?.type).toBe('partial_match');
+    expect(result.value.failures[0]?.explanation).toContain('Partial match');
+    expect(result.value.suggestions[0]?.action).toMatch(/^Refine implementation/);
+    expect(result.value.suggestions[0]?.priority).toBe(2);
+  });
+
+  it('ranks a zero-overlap criterion above a partial one', () => {
+    const result = analyzeFailures(
+      makeResult({
+        outputs: ['[code] Added database schema'],
+        validation: makeValidation({
+          satisfaction: 0,
+          metCount: 0,
+          allMet: false,
+          criteria: [
+            {
+              criterion: 'Database migration completes successfully',
+              met: false,
+              matchedResults: [],
+              partialResults: ['[code] Added database schema'],
+            },
+            { criterion: 'Cache invalidated', met: false, matchedResults: [], partialResults: [] },
+          ],
+        }),
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const priorities = result.value.suggestions.map((s) => s.priority);
+    expect(priorities).toEqual([2, 1]);
   });
 
   it('preserves satisfaction score', () => {

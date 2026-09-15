@@ -1,5 +1,38 @@
 # nexus-agents
 
+## 8.63.1
+
+### Patch Changes
+
+- [#6330](https://github.com/nexus-substrate/nexus-agents/pull/6330) [`a70bebd`](https://github.com/nexus-substrate/nexus-agents/commit/a70bebd3cd331dd844af17b3e1689240a01c991b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the last four `NEXUS_*` variables from the [#4939](https://github.com/nexus-substrate/nexus-agents/issues/4939) census that nothing
+  read: `NEXUS_TIMEOUT_CLI`, `NEXUS_TIMEOUT_API`, `NEXUS_TIMEOUT_WORKFLOW` and
+  `NEXUS_TIMEOUT_MCP`. Their only reader was `getTimeout()`, which had zero
+  production callers, and `config get TIMEOUT_DEFAULTS.cliMs` reported a set
+  variable as `Source: (env)` for a value nothing consumed; `config set` told
+  operators to set one "to persist this value". `getTimeout` and the
+  `getEnvVarDocumentation` generator (whose only remaining rows were these four)
+  are gone with them. Same treatment as [#2977](https://github.com/nexus-substrate/nexus-agents/issues/2977), [#4180](https://github.com/nexus-substrate/nexus-agents/issues/4180) and [#5903](https://github.com/nexus-substrate/nexus-agents/issues/5903). An operator still
+  setting one now gets the unrecognized-variable report with a typo suggestion.
+  The live timeout knobs are unchanged: `NEXUS_VOTE_TIMEOUT_MS`,
+  `NEXUS_EXPERT_TIMEOUT_MS`, `NEXUS_WORKER_TIMEOUT_MS`, `NEXUS_TIMEOUT_MULTIPLIER`
+  and the `NEXUS_TIMEOUT_CLASS_*_MS` family.
+
+## 8.63.0
+
+### Minor Changes
+
+- [#6325](https://github.com/nexus-substrate/nexus-agents/pull/6325) [`5fe011a`](https://github.com/nexus-substrate/nexus-agents/commit/5fe011a38315d2baa4172e44c9f485a885f2bd54) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `execute_spec` failure analysis can now report a partial match. `CriterionResult` gains a required `partialResults: string[]` — the execution results that overlapped some of a criterion's keywords without clearing the 0.5 match threshold. `analyzeFailures` reads that field for its `partial_match` verdict and priority-2 "Refine implementation" suggestion; before, both read `matchedResults`, which is empty on every unmet criterion by construction (`met` is defined as `matchedResults.length > 0`), so every failed criterion was classified `missing_implementation` or `no_output` at priority 1 and the priority field could not rank anything. `met` and `matchedResults` keep their meaning. Readers of the schema see one added field; a caller hand-building a `SpecExecutionResult` for `analyzeFailures` must now supply `partialResults` (no in-tree caller does this by hand).
+
+  Three sites from the same sweep, no runtime change to their verdicts: the `orchestrate` tool now passes `context.filePaths` (string[]) to the AOrchestra planner's file-pattern trigger table, which no in-tree caller had ever fed; the MCP server's `initializeFeedbackIntegration` drops the `router` option its one caller never supplied and its init log names the in-memory-collector state instead of a `hasRouter` that could only be false; and the `authority-tier-guard` module header states that the tier ceiling is exercised at a constant `suggest` floor by live traffic, so `above_declared_tier` is covered by unit tests, not by traffic. Closes [#4827](https://github.com/nexus-substrate/nexus-agents/issues/4827).
+
+## 8.62.0
+
+### Minor Changes
+
+- [#6321](https://github.com/nexus-substrate/nexus-agents/pull/6321) [`b2eddda`](https://github.com/nexus-substrate/nexus-agents/commit/b2eddda39e8d846001276518cd902e19d8543b44) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - PolicyFirewall gains a `secret-paths` rule, registered in the default rule set ahead of `safe-paths` and exported beside it ([#5108](https://github.com/nexus-substrate/nexus-agents/issues/5108)). It denies tool calls whose path argument lands on a secret-bearing file — `~/.ssh/**`, `~/.aws/**`, `~/.azure/**`, `~/.gcp/**`, `~/.config/gcloud/**`, `~/.kube/config`, `.env` and `.env.*` at any depth, `/etc/shadow`, `/etc/sudoers`, `/etc/sudoers.d/**`, `*.pem`, `*_rsa`, `*_ed25519`, `ssh/id_*`, `id_rsa*`, `secrets.*`, `credentials.*`, `private_key.*` — regardless of `allowedPaths`, so widening the allowlist to `$HOME` no longer re-exposes `~/.ssh`, and `.env` inside the repo root is refused even though it passes containment. The path is canonicalized before matching (tilde expansion, `path.resolve`, and `realpath` when the file exists), so a `../` traversal or a symlink is judged by where it lands. A call with no path argument is not judged. What an operator observes today: the process firewall is still staged in `warn` mode, so a hit is reported as a would-deny in the log and the audit chain and the call proceeds; [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988) decides the flip to `enforce`, where the call is refused with `Policy denied: Path '<canonical>' matches secret-path pattern '<glob>'`.
+
+  The access-constraint deriver (`security/access-constraint-deriver/`: LLM induction prompt, keyword fallback, policy cache, `checkAccess` enforcer, denylist, chain adapter, MCP guard, trust gate) and `security/clawguard-eval/` are deleted, along with the `deriveAccessPolicy` calls in `orchestrate` and `execute_expert` and the `withAccessPolicy` / `withAuditTrail` AsyncLocalStorage channels. None of it gated a call: the middleware mount was removed in [#5107](https://github.com/nexus-substrate/nexus-agents/issues/5107), `checkAccess` had no production caller, and under `NEXUS_ACCESS_POLICY_MODE=audit|enforce` the deriver spent one model call per `orchestrate` (a keyword-fallback derivation per `execute_expert`) to write a policy nobody read. Operators running those modes see one fewer model call per `orchestrate` and no `access-policy: derived` log line. `NEXUS_ACCESS_POLICY_MODE` now has no reader; it stays registered in the env schema so a set value is not reported as a typo, and is retired together with its documentation row under [#6303](https://github.com/nexus-substrate/nexus-agents/issues/6303). `emitClawGuardViolation` is removed; the `ClawGuardViolationEvent` audit type stays in the published `AuditEvent` union (no producer writes it any more) until the next major ([#6319](https://github.com/nexus-substrate/nexus-agents/issues/6319)).
+
 ## 8.61.1
 
 ### Patch Changes

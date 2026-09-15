@@ -4,16 +4,14 @@
  * Tests for the centralized defaults configuration module.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   DEFAULTS,
   TIMEOUT_PROFILES,
-  getTimeout,
   getTimeoutProfile,
   getTimeoutForCli,
   getToolRateLimit,
   isTaskComplexity,
-  getEnvVarDocumentation,
 } from './defaults.js';
 
 describe('DEFAULTS', () => {
@@ -105,46 +103,10 @@ describe('TIMEOUT_PROFILES', () => {
   });
 });
 
-describe('getTimeout', () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it('should return default value for valid key', () => {
-    const timeout = getTimeout('cliMs');
-    expect(timeout).toBe(120_000);
-  });
-
-  it('should return API timeout default', () => {
-    const timeout = getTimeout('apiMs');
-    expect(timeout).toBe(30_000);
-  });
-
-  it('should override with environment variable', () => {
-    process.env['NEXUS_TIMEOUT_CLI'] = '90000';
-    const timeout = getTimeout('cliMs');
-    expect(timeout).toBe(90_000);
-  });
-
-  it('should ignore invalid environment variable', () => {
-    process.env['NEXUS_TIMEOUT_CLI'] = 'invalid';
-    const timeout = getTimeout('cliMs');
-    expect(timeout).toBe(120_000); // Falls back to default
-  });
-
-  it('should ignore negative environment variable', () => {
-    process.env['NEXUS_TIMEOUT_CLI'] = '-1000';
-    const timeout = getTimeout('cliMs');
-    expect(timeout).toBe(120_000); // Falls back to default
-  });
-});
-
+// getTimeout removed in #4939 — its NEXUS_TIMEOUT_{CLI,API,WORKFLOW,MCP}
+// overrides were asserted here and took effect, inside a getter nothing
+// production called. env-schema.test.ts holds the tombstone assertion.
+//
 // getRetryConfig / getRateLimitConfig / getCircuitBreakerConfig removed in
 // #5903 together with their twelve NEXUS_* variables. The tests here
 // asserted the env overrides took effect — which they did, inside a getter
@@ -230,27 +192,8 @@ describe('isTaskComplexity', () => {
   });
 });
 
-describe('getEnvVarDocumentation', () => {
-  it('should return markdown documentation', () => {
-    const docs = getEnvVarDocumentation();
-    expect(docs).toContain('# Environment Variable Overrides');
-    expect(docs).toContain('NEXUS_TIMEOUT_CLI');
-    // NEXUS_WORKERS_MAX removed in #2977 (silent no-op); the RATE_LIMIT, RETRY
-    // and CIRCUIT_BREAKER names removed in #5903 for the same reason. The
-    // remaining assertion is the point: this test proves the doc generator
-    // produces something, so it must name a variable that is still real.
-  });
-
-  it('should include actual default values', () => {
-    const docs = getEnvVarDocumentation();
-    expect(docs).toContain('120000'); // CLI timeout
-    expect(docs).toContain('30000'); // API timeout
-    // 'requests per minute' (60) and 'workflow maxParallel' (5) were the
-    // rate-limit and worker rows; both sections are gone (#5903, #2977). The
-    // remaining two are enough for what this test measures — that the generator
-    // interpolates real DEFAULTS rather than emitting a static table.
-  });
-});
+// getEnvVarDocumentation removed in #4939: after #2977 and #5903 its only
+// remaining rows were the four unread NEXUS_TIMEOUT_* names.
 
 describe('backward compatibility', () => {
   it('should match existing DEFAULT_RETRY_CONFIG values from adapters/retry.ts', () => {

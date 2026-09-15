@@ -63,7 +63,7 @@ import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/
 import { recordRoutingGaps } from '../../core/task-analysis/capability-gap-ledger.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
-import { computeAgentPlan } from './orchestrate-aorchestra.js';
+import { computeAgentPlan, filePathsFromContext } from './orchestrate-aorchestra.js';
 import {
   executeWorkerDispatch,
   isWorkerDispatchEnabled,
@@ -1122,7 +1122,9 @@ async function runOrchestratePipeline(params: {
   // measured change pending a bake (see #2921).
   await injectMemoryContextForOrchestrate(input, logger);
 
-  const agentPlan = v2Config.aorchestraEnabled ? computeAgentPlan(input.task, logger) : undefined;
+  const agentPlan = v2Config.aorchestraEnabled
+    ? computeAgentPlan(input.task, logger, { filePaths: filePathsFromContext(input.context) })
+    : undefined;
   const workerDispatchResult = await tryWorkerDispatch(
     agentPlan,
     input.task,

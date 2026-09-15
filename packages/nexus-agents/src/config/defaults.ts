@@ -5,11 +5,12 @@
  * This prevents scattered magic numbers and ensures consistency.
  *
  * Usage:
- *   import { DEFAULTS, getTimeout, TIMEOUT_PROFILES } from '../config/defaults.js';
+ *   import { DEFAULTS, TIMEOUT_PROFILES, getTimeoutForCli } from '../config/defaults.js';
  *   const timeout = options.timeout ?? DEFAULTS.TIMEOUT_DEFAULTS.cliMs;
  *   const cliTimeout = getTimeoutForCli('claude', 'complex');
  *
- * Environment overrides can be added via NEXUS_* environment variables.
+ * Nothing here reads a NEXUS_* variable. The env-driven knobs live in the
+ * canonical timeout modules (config/timeouts/*) and in config/env-schema.ts.
  *
  * @module config/defaults
  * (Source: Central config consolidation initiative)
@@ -61,11 +62,7 @@ export {
 // Re-export env helpers (internal use)
 export { parseIntEnv, parseFloatEnv, parseBoolEnv } from './defaults-env.js';
 
-import {
-  createGetTimeout,
-  createGetToolRateLimit,
-  createGetEnvVarDocumentation,
-} from './defaults-env.js';
+import { createGetToolRateLimit } from './defaults-env.js';
 import {
   API_TIMEOUTS as _API,
   WORKFLOW_TIMEOUTS as _WF,
@@ -356,14 +353,12 @@ export type SecurityDefaults = typeof DEFAULTS.SECURITY_DEFAULTS;
 // Environment Override Functions (bound to DEFAULTS)
 // ============================================================================
 
-/**
- * Get timeout with environment override support.
- *
- * @param key - Timeout key (e.g., 'cliMs', 'apiMs')
- * @returns Timeout value in milliseconds
- */
-export const getTimeout = createGetTimeout(DEFAULTS.TIMEOUT_DEFAULTS);
-
+// getTimeout removed in #4939. It promised "environment override support" for
+// NEXUS_TIMEOUT_{CLI,API,WORKFLOW,MCP} and had zero production callers — the
+// only reachable effect of setting one was `config get` answering
+// `Source: (env)`. Read DEFAULTS.TIMEOUT_DEFAULTS.* directly; env-driven
+// timeouts are the *_TIMEOUT_MS and NEXUS_TIMEOUT_CLASS_*_MS families.
+//
 // getRetryConfig, getRateLimitConfig and getCircuitBreakerConfig removed in
 // #5903. They promised "environment override support" for twelve NEXUS_*
 // variables that no running code read: `config get` reported them as
@@ -380,13 +375,6 @@ export const getTimeout = createGetTimeout(DEFAULTS.TIMEOUT_DEFAULTS);
  */
 export const getToolRateLimit = createGetToolRateLimit(DEFAULTS.TOOL_RATE_LIMITS);
 
-// ============================================================================
-// Documentation Helper
-// ============================================================================
-
-/**
- * Returns documentation for all environment variable overrides.
- *
- * @returns Markdown documentation string
- */
-export const getEnvVarDocumentation = createGetEnvVarDocumentation(DEFAULTS);
+// getEnvVarDocumentation removed in #4939. After #2977 and #5903 its only
+// remaining table was the four NEXUS_TIMEOUT_* rows, and those named variables
+// nothing read; a generator advertising zero real overrides is not documentation.

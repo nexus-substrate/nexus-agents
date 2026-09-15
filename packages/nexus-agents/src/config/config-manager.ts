@@ -73,14 +73,17 @@ function validateValue<T>(value: unknown, expectedType: T): value is T {
 // Environment Variable Mapping
 // ============================================================================
 
-/** Maps category.key to NEXUS_* environment variable names. */
-const ENV_VAR_MAP: Partial<Record<string, string>> = {
-  'TIMEOUT_DEFAULTS.cliMs': 'NEXUS_TIMEOUT_CLI',
-  'TIMEOUT_DEFAULTS.apiMs': 'NEXUS_TIMEOUT_API',
-  'TIMEOUT_DEFAULTS.workflowMs': 'NEXUS_TIMEOUT_WORKFLOW',
-  'TIMEOUT_DEFAULTS.mcpMs': 'NEXUS_TIMEOUT_MCP',
-  // WORKER_DEFAULTS.* mappings removed in #2977 — zero production consumers.
-};
+/**
+ * Maps category.key to NEXUS_* environment variable names.
+ *
+ * Empty since #4939. Every mapping this table ever held named a variable that
+ * no running code read — WORKER_DEFAULTS.* (#2977), RATE_LIMIT / RETRY /
+ * CIRCUIT_BREAKER (#5903), and last TIMEOUT_DEFAULTS.{cliMs,apiMs,workflowMs,
+ * mcpMs} → NEXUS_TIMEOUT_{CLI,API,WORKFLOW,MCP} — so `config get` reported
+ * `Source: (env)` for a value nothing consumed. Add a mapping only for a
+ * variable a production reader genuinely consults.
+ */
+const ENV_VAR_MAP: Partial<Record<string, string>> = {};
 
 function parseEnvValue<T>(envValue: string, defaultValue: T): T | undefined {
   if (typeof defaultValue === 'number') {

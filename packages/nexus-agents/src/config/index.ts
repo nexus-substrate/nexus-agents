@@ -97,9 +97,7 @@ export {
   // Main defaults object
   DEFAULTS,
   TIMEOUT_PROFILES,
-  // Environment override functions
-  getTimeout,
-  // getWorkerConfig removed in #2977 — see config/defaults.ts.
+  // getTimeout removed in #4939, getWorkerConfig in #2977 — see config/defaults.ts.
   // Convenience accessors
   getTimeoutProfile,
   getTimeoutForCli,
@@ -111,8 +109,7 @@ export {
   parseIntEnv,
   parseFloatEnv,
   parseBoolEnv,
-  // Documentation
-  getEnvVarDocumentation,
+  // getEnvVarDocumentation removed in #4939 — see config/defaults.ts.
   // Canonical timeout modules (Issue #984)
   CLI_TIMEOUTS,
   VOTE_TIMEOUTS,
