@@ -660,8 +660,8 @@ jobs:
           # commit the head incorporates (the base the ratified sha is
           # replayed onto), and each probed sha's merge-base with it is that
           # sha's own fork point. A ratified sha a rebase orphaned is
-          # accepted only as one of PR_PRIOR_HEADS (#6301 item 4) and
-          # fetched from origin by sha then.
+          # accepted as an ancestor of any prior head in PR_PRIOR_HEADS
+          # (#6364); prior heads are fetched from origin by sha if absent.
           PR_NUMBER: ${{ steps.evidence.outputs.pr_number }}
           PR_HEAD_SHA: ${{ steps.evidence.outputs.pr_head }}
           PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.pr_head_parent }}
