@@ -73,6 +73,48 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
    moved-head rule (`ratified-rebased`, #6256) as long as the moved head's
    tree is the ratified patch replayed onto its base; see below.
 
+### How a record is signed (#3927 item 4, phase 2)
+
+After step 3 — never before, because the signed message is the COMMITTED
+hash — the script signs that hash with `ssh-keygen -Y sign -n
+nexus-vote-record` when a key is configured: `--signing-key <path>`, else
+`NEXUS_VOTE_SIGNING_KEY`. The result lands on the record as
+`signature: { keyId, namespace, sig }`, OUTSIDE the self-hash (it is made
+over the hash, so it cannot be inside it; a record hashes identically with
+or without it, and no schema tier changes). `keyId` is the principal
+`allowed_signers` lists the key under — the file names the signer, not the
+caller. A configured key the file does not list is `signing-failed` and
+nothing is written. With no key configured the record is appended UNSIGNED
+and the script says so in one line: phase 2 is opt-in until phase 3.
+
+The signed message is the `hash` string — 64 hex characters, no newline —
+never a re-serialised form of the record. The re-vote's contrarian objected
+that JSON canonicalisation is brittle across runtimes; signing the hash makes
+that moot, and a verifier in any language checks the signature over that
+string. Because the hash covers `sequence`, the chain position is signed too.
+
+**What a signature proves.** Access to the listed private key from the
+environment that ran the append — not a human's presence. Measured: on
+2026-09-14 the agent process signed ledger commit `4a5acd562f` with the
+operator's cached GPG key with no prompt, and the agent implementing this
+signed a probe with the operator's ssh-agent-loaded ed25519 key the same
+way. A signature made like that is a stronger hash, not a ratification.
+Custody — a hardware-backed key, or a CI/OIDC identity for machine-made
+records — is #6257. The threat model says the same.
+
+### allowed_signers
+
+`governance/allowed_signers` is the OpenSSH allowed_signers file the gate
+verifies against (`ssh-keygen -Y verify -f`): one line per principal, with
+`namespaces="nexus-vote-record"` so a commit or file signature by the same
+key cannot be replayed as a ratification, and a validity window
+(`valid-after`/`valid-before`, one comma-joined options token) that is how a
+key is rotated — add `valid-before` to the old line rather than deleting it.
+Governor path: a change here is ratified like the ledger it vouches for. It
+holds the operator's current GitHub key
+(`SHA256:6lUiTo0SwQSY2XFa8wIkrBXR2SQLr3uNo6Q9HSSnwgk`, ed25519) as
+`williamzujkowski@nexus-agents`.
+
 ### How the gate reads it (#5130 step 2)
 
 `scripts/check-governor-ratification.ts` prints a second evidence line for
@@ -174,6 +216,34 @@ had`, `no non-ledger change`, `conflict resolving <path>`, the head's
   between the ledger at the ratified sha and the head ledger; a failure
   there is this kind too, naming the ratified sha it was compared against.
 - `duplicate-id` — one id names two different records.
+
+**Signature, reported per bound record, not yet enforced (#3927 item 4,
+phases 1-2).** The line also carries the signature verifier's code for every
+bound record, verified against `governance/allowed_signers` — distinct,
+never collapsed:
+
+- `signed by <keyId>` — a key the file lists for `keyId`, inside its window,
+  signed this record's committed hash in the `nexus-vote-record` namespace.
+- `unsigned-record` — the record carries no `signature`: every record
+  appended before phase 2, and any appended with no key configured.
+- `unknown-signer` — there is a signature, but not by a key the file lists
+  for `keyId` right now: unlisted, listed under another principal, outside
+  its window (`key has expired: …`), or `keyId` has no entry at all.
+- `bad-signature` — the key is the right one and the signature does not
+  hold: made over another message (an edited-and-re-hashed record,
+  re-serialised JSON), under another namespace, or not an armored block.
+- `signature-not-measured` — the verifier could not run: `ssh-keygen`
+  missing, or `allowed_signers` unreadable (the path is named).
+
+This phase the exit code does NOT depend on the signature: the records
+committed before phase 2 are unsigned, and refusing them would refuse every
+governor PR. Phase 3 lands a committed cutover constant
+(`SIGNATURE_CUTOVER_SEQUENCE`, not an env knob) once the count of unsigned
+records is measured; a bound record at or past it that is not `signed`
+becomes a refusal, and the grandfathered range is named on the line. A local
+call of the pure function that supplies no verifier prints `signature:
+unmeasured (no verifier supplied)` — absence is not reported as
+`unsigned-record`.
 
 An unreadable ledger (a directory at the path, a permissions error) prints
 `unmeasured` naming the error instead of crashing the gate (#6213); so does a

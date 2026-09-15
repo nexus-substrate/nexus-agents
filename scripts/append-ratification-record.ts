@@ -53,6 +53,22 @@
  * test that asserts the re-hashed edit IS appended, so signing has a RED test
  * to flip.
  *
+ * ## Signing (#3927 item 4, phase 2)
+ *
+ * After the copy is re-sequenced and re-hashed — never before — the COMMITTED
+ * hash is signed with `ssh-keygen -Y sign -n nexus-vote-record` when a key is
+ * configured (`--signing-key <path>`, else `NEXUS_VOTE_SIGNING_KEY`), and the
+ * `signature` lands on the record OUTSIDE its self-hash. The signer's identity
+ * is whatever `governance/allowed_signers` (next to the ledger) lists the key
+ * under; a key the file does not list is `signing-failed`, nothing written —
+ * a signature no gate could verify is a defect at the moment of signing, not
+ * later. With no key configured the record is appended UNSIGNED and the CLI
+ * says so in one line: phase 2 is opt-in until the phase-3 cutover constant
+ * makes an unsigned record a gate refusal. A stale `signature` on the SOURCE
+ * copy is dropped with `hash` and `sequence`: it could only be over the
+ * source hash. What a signature proves is key access from this environment,
+ * not a human's presence (#6257; threat model).
+ *
  * Two branches that each append from the same committed tip produce two
  * records at the same sequence; `merge=union` (`.gitattributes`) concatenates
  * them and the verifier reports the duplicate as a benign `forks` entry
@@ -66,7 +82,8 @@
  *   pnpm exec tsx scripts/append-ratification-record.ts --record-id <voteRecordId>
  *   pnpm exec tsx scripts/append-ratification-record.ts --job <jobId>
  * Options: `--source <path>` (default: the runtime store `resolveVoteRecordsPath()`
- * resolves), `--ledger <path>` (default: `<repo>/governance/vote-records.jsonl`).
+ * resolves), `--ledger <path>` (default: `<repo>/governance/vote-records.jsonl`),
+ * `--signing-key <path>` (default: `NEXUS_VOTE_SIGNING_KEY`; neither ⇒ unsigned).
  * Then `git add governance/vote-records.jsonl` and commit it in the ratified PR.
  *
  * Operator-run by design (listed in `check-script-wiring.ts` MANUAL_ONLY).
@@ -99,6 +116,8 @@ import type { JobResult } from '../packages/nexus-agents/src/mcp/jobs/job-result
 import { readJobResult } from '../packages/nexus-agents/src/mcp/jobs/job-result-store.js';
 import { findRepoRoot } from '../packages/nexus-agents/src/config/repo-root-detection.js';
 import { nexusDataPath } from '../packages/nexus-agents/src/config/nexus-data-dir.js';
+import type { SigningOptions, SigningState } from './append-ratification-signing.js';
+import { resolveSigning, signCommitted, signingNotice } from './append-ratification-signing.js';
 
 /** Why an append was refused. Every value names a check that ran and failed. */
 export type AppendRefusalReason =
@@ -108,6 +127,7 @@ export type AppendRefusalReason =
   | 'not-bound'
   | 'not-approved'
   | 'ledger-invalid'
+  | 'signing-failed'
   | 'appended-ledger-invalid';
 
 export type AppendOutcome =
@@ -120,6 +140,8 @@ export type AppendOutcome =
       readonly ledgerPath: string;
       /** True when the committed ledger was empty — this is its first record. */
       readonly first: boolean;
+      /** `signed` when `signing` was configured and the record carries a verified signature; `unsigned-no-key` when it was not. */
+      readonly signing: SigningState;
     }
   | { readonly kind: 'already-present'; readonly recordId: string; readonly ledgerPath: string }
   | { readonly kind: 'refused'; readonly reason: AppendRefusalReason; readonly detail: string };
@@ -131,6 +153,11 @@ export interface AppendRatificationRecordOptions {
   readonly ledgerPath: string;
   /** The `id` of the record to copy (`voteRecordId` on the `consensus_vote` result). */
   readonly recordId: string;
+  /**
+   * Sign the committed hash (#3927 item 4, phase 2). Absent ⇒ appended
+   * unsigned. See `append-ratification-signing.ts`.
+   */
+  readonly signing?: SigningOptions;
 }
 
 function refused(reason: AppendRefusalReason, detail: string): AppendOutcome {
@@ -263,9 +290,19 @@ function loadLedger(
   return { ok: true, text, records };
 }
 
-/** Rebuild the record under the committed ledger's next sequence. */
+/**
+ * Rebuild the record under the committed ledger's next sequence. A `signature`
+ * on the source is dropped with the other ledger-local fields: it could only
+ * have been made over the source hash, which the committed copy does not carry.
+ */
 function relink(source: VoteRecord, committed: readonly VoteRecord[]): VoteRecord {
-  const { hash: _hash, sequence: _sequence, previousHash: _previousHash, ...content } = source;
+  const {
+    hash: _hash,
+    sequence: _sequence,
+    previousHash: _previousHash,
+    signature: _signature,
+    ...content
+  } = source;
   let maxSequence = -1;
   for (const r of committed) if (r.sequence > maxSequence) maxSequence = r.sequence;
   const tip = committed[committed.length - 1];
@@ -294,7 +331,11 @@ export function appendRatificationRecord(opts: AppendRatificationRecordOptions):
     return { kind: 'already-present', recordId: opts.recordId, ledgerPath: opts.ledgerPath };
   }
 
-  const record = relink(source.record, ledger.records);
+  // Re-sequence and re-hash FIRST; the signature is over the hash the ledger
+  // will carry, so it can only be made once that hash is final.
+  const signStep = signCommitted(relink(source.record, ledger.records), opts.signing);
+  if (!signStep.ok) return refused('signing-failed', signStep.detail);
+  const record = signStep.record;
 
   // Before the write, not inside a try (#6070): a test that reached the source
   // checkout's tracked ledger must fail loudly, not skip the append quietly.
@@ -309,28 +350,35 @@ export function appendRatificationRecord(opts: AppendRatificationRecordOptions):
     'utf-8'
   );
 
-  // Read back what was written and verify the whole set: the claim is "the
-  // committed ledger verifies after the append", measured on the bytes on
-  // disk, not on the object in memory.
-  const after = readVoteRecords(opts.ledgerPath);
-  const verdict = verifyVoteRecordSet(after.records);
-  if (after.invalidLines.length > 0 || !verdict.ok) {
-    const why = !verdict.ok
-      ? `${verdict.reason} at '${verdict.recordId}': ${verdict.detail}`
-      : `line(s) ${after.invalidLines.join(', ')} do not parse`;
-    return refused(
-      'appended-ledger-invalid',
-      `${opts.ledgerPath} does NOT verify after appending '${opts.recordId}' (${why}). ` +
-        'The line was written; do not commit the ledger until this is understood.'
-    );
-  }
+  const invalid = verifyAppended(opts.ledgerPath, opts.recordId);
+  if (invalid !== null) return invalid;
   return {
     kind: 'appended',
     record,
     sourceRecord: source.record,
     ledgerPath: opts.ledgerPath,
     first: ledger.records.length === 0,
+    signing: signStep.signing,
   };
+}
+
+/**
+ * Read back what was written and verify the whole set: the claim is "the
+ * committed ledger verifies after the append", measured on the bytes on
+ * disk, not on the object in memory. Null when it does.
+ */
+function verifyAppended(ledgerPath: string, recordId: string): AppendOutcome | null {
+  const after = readVoteRecords(ledgerPath);
+  const verdict = verifyVoteRecordSet(after.records);
+  if (after.invalidLines.length === 0 && verdict.ok) return null;
+  const why = !verdict.ok
+    ? `${verdict.reason} at '${verdict.recordId}': ${verdict.detail}`
+    : `line(s) ${after.invalidLines.join(', ')} do not parse`;
+  return refused(
+    'appended-ledger-invalid',
+    `${ledgerPath} does NOT verify after appending '${recordId}' (${why}). ` +
+      'The line was written; do not commit the ledger until this is understood.'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -406,10 +454,13 @@ export interface AppendArgs {
   readonly selector: { readonly jobId: string } | { readonly recordId: string };
   readonly sourcePath?: string;
   readonly ledgerPath?: string;
+  /** `--signing-key`; the CLI falls back to `NEXUS_VOTE_SIGNING_KEY` when absent. */
+  readonly signingKeyPath?: string;
 }
 
 const USAGE =
-  'usage: append-ratification-record.ts (--job <jobId> | --record-id <id>) [--source <path>] [--ledger <path>]';
+  'usage: append-ratification-record.ts (--job <jobId> | --record-id <id>) [--source <path>] ' +
+  '[--ledger <path>] [--signing-key <path>]';
 
 /** Parse argv; exactly one selector, each option with a value, nothing unknown. */
 export function parseAppendArgs(
@@ -418,7 +469,7 @@ export function parseAppendArgs(
   const values = new Map<string, string>();
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i] as string;
-    if (!['--job', '--record-id', '--source', '--ledger'].includes(flag)) {
+    if (!['--job', '--record-id', '--source', '--ledger', '--signing-key'].includes(flag)) {
       return { ok: false, error: `unknown argument '${flag}'. ${USAGE}` };
     }
     const value = argv[i + 1];
@@ -435,11 +486,13 @@ export function parseAppendArgs(
   }
   const sourcePath = values.get('--source');
   const ledgerPath = values.get('--ledger');
+  const signingKeyPath = values.get('--signing-key');
   return {
     ok: true,
     selector: jobId !== undefined ? { jobId } : { recordId: recordId as string },
     ...(sourcePath !== undefined ? { sourcePath } : {}),
     ...(ledgerPath !== undefined ? { ledgerPath } : {}),
+    ...(signingKeyPath !== undefined ? { signingKeyPath } : {}),
   };
 }
 
@@ -448,21 +501,42 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+/** The record id from `--record-id`, or resolved from the `--job` result; every miss exits 1 naming why. */
+function resolveRecordId(selector: AppendArgs['selector']): string {
+  if ('recordId' in selector) return selector.recordId;
+  const resolved = recordIdFromJobResult(readJobResult(selector.jobId), selector.jobId);
+  if (!resolved.ok) fail(`${resolved.reason}: ${resolved.detail}`);
+  return resolved.recordId;
+}
+
+/** Print the outcome; exit 1 on a refusal. */
+function reportOutcome(outcome: AppendOutcome): void {
+  switch (outcome.kind) {
+    case 'appended': {
+      const b = outcome.record.ratifiesPr as NonNullable<VoteRecord['ratifiesPr']>;
+      console.log(
+        `[append-ratification-record] appended '${outcome.record.id}' to ${outcome.ledgerPath} ` +
+          `as sequence ${String(outcome.record.sequence)}${outcome.first ? ' (first record)' : ''}: ` +
+          `ratifies PR #${String(b.pr)} at ${b.headSha}, decision ${outcome.record.decision}. ` +
+          'Commit the ledger in that PR.'
+      );
+      console.log(signingNotice(outcome.signing, outcome.record));
+      return;
+    }
+    case 'already-present':
+      console.log(
+        `[append-ratification-record] '${outcome.recordId}' is already in ${outcome.ledgerPath}; nothing appended.`
+      );
+      return;
+    case 'refused':
+      fail(`${outcome.reason}: ${outcome.detail}`);
+  }
+}
+
 function main(): void {
   const args = parseAppendArgs(process.argv.slice(2));
   if (!args.ok) fail(args.error);
-
-  const recordId =
-    'recordId' in args.selector
-      ? args.selector.recordId
-      : ((): string => {
-          const resolved = recordIdFromJobResult(
-            readJobResult(args.selector.jobId),
-            args.selector.jobId
-          );
-          if (!resolved.ok) fail(`${resolved.reason}: ${resolved.detail}`);
-          return resolved.recordId;
-        })();
+  const recordId = resolveRecordId(args.selector);
 
   const sourcePath = args.sourcePath ?? resolveVoteRecordsPath();
   if (sourcePath === undefined) {
@@ -478,26 +552,15 @@ function main(): void {
       return join(root, VOTE_RECORDS_REL_PATH);
     })();
 
-  const outcome = appendRatificationRecord({ sourcePath, ledgerPath, recordId });
-  switch (outcome.kind) {
-    case 'appended': {
-      const b = outcome.record.ratifiesPr as NonNullable<VoteRecord['ratifiesPr']>;
-      console.log(
-        `[append-ratification-record] appended '${outcome.record.id}' to ${outcome.ledgerPath} ` +
-          `as sequence ${String(outcome.record.sequence)}${outcome.first ? ' (first record)' : ''}: ` +
-          `ratifies PR #${String(b.pr)} at ${b.headSha}, decision ${outcome.record.decision}. ` +
-          'Commit the ledger in that PR.'
-      );
-      return;
-    }
-    case 'already-present':
-      console.log(
-        `[append-ratification-record] '${outcome.recordId}' is already in ${outcome.ledgerPath}; nothing appended.`
-      );
-      return;
-    case 'refused':
-      fail(`${outcome.reason}: ${outcome.detail}`);
-  }
+  const signing = resolveSigning(args.signingKeyPath, process.env, ledgerPath);
+  reportOutcome(
+    appendRatificationRecord({
+      sourcePath,
+      ledgerPath,
+      recordId,
+      ...(signing !== undefined ? { signing } : {}),
+    })
+  );
 }
 
 if (process.argv[1]?.endsWith('append-ratification-record.ts') === true) {

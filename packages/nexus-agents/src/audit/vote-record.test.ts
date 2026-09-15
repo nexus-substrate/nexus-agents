@@ -24,6 +24,7 @@ import {
 } from './reasoning-commitment.js';
 import {
   MAX_VOTER_REASONING_CHARS,
+  VOTE_RECORD_SIGNATURE_NAMESPACE,
   VoteRecordSchema,
   computeVoteRecordHash,
   verifyVoteRecordSet,
@@ -1495,5 +1496,68 @@ describe('schema 1.13: a salted digest of the reasoning is hashed, not the text 
     // field" failure mode is closed at build time; this pins the read side.
     expectTypeOf<VoterSummary['reasoningNonce']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<VoterSummary['reasoningDigest']>().toEqualTypeOf<string | undefined>();
+  });
+});
+
+describe('`signature`: record-level, present-only, OUTSIDE the self-hash (#3927 item 4, phase 1)', () => {
+  // The signed message is the record's committed `hash`, so the signature
+  // cannot be inside the thing it signs. It is the second hash-excluded field
+  // after `previousHash`, and unlike every schema tier it does NOT bump
+  // `version`: `version` is hashed, and the signature is applied AFTER the
+  // committed hash is final (the append script re-sequences, re-hashes, then
+  // signs).
+  const SIG = {
+    keyId: 'williamzujkowski@nexus-agents',
+    namespace: VOTE_RECORD_SIGNATURE_NAMESPACE,
+    sig: '-----BEGIN SSH SIGNATURE-----\nU1NIU0lHTEST-NOT-A-REAL-SIGNATURE\n-----END SSH SIGNATURE-----\n',
+  } as const;
+
+  it('the fixture is schema-valid, with and without the signature — otherwise every test below passes for the wrong reason', () => {
+    const unsigned = makeRecord('vote-sig', 4, { version: '1.11', errorPolicy: 'absolute_quorum' });
+    expect(VoteRecordSchema.safeParse(unsigned).success).toBe(true);
+    expect(VoteRecordSchema.safeParse({ ...unsigned, signature: SIG }).success).toBe(true);
+  });
+
+  it('a record with and without `signature` has the SAME hash — the field is not folded', () => {
+    const unsigned = makeRecord('vote-sig', 4, { version: '1.11', errorPolicy: 'absolute_quorum' });
+    const { hash: _hash, ...payload } = unsigned;
+    expect(computeVoteRecordHash({ ...payload, signature: SIG })).toBe(unsigned.hash);
+  });
+
+  it('editing `sig` or `keyId` does not move the hash; the signed record still verifies as a set', () => {
+    const unsigned = makeRecord('vote-sig', 0);
+    const { hash: _hash, ...payload } = unsigned;
+    const a = computeVoteRecordHash({ ...payload, signature: SIG });
+    const b = computeVoteRecordHash({ ...payload, signature: { ...SIG, sig: `${SIG.sig}x` } });
+    const c = computeVoteRecordHash({ ...payload, signature: { ...SIG, keyId: 'mallory@else' } });
+    expect(a).toBe(unsigned.hash);
+    expect(b).toBe(unsigned.hash);
+    expect(c).toBe(unsigned.hash);
+    expect(verifyVoteRecordSet([{ ...unsigned, signature: SIG }])).toEqual({
+      ok: true,
+      recordCount: 1,
+    });
+  });
+
+  it('`namespace` is the one literal, `keyId`/`sig` are non-empty, and nothing wider is accepted', () => {
+    const base = makeRecord('vote-sig', 0);
+    const accepts = (signature: unknown): boolean =>
+      VoteRecordSchema.safeParse({ ...base, signature }).success;
+    expect(accepts(SIG)).toBe(true);
+    expect(accepts({ ...SIG, namespace: 'git' })).toBe(false);
+    expect(accepts({ ...SIG, namespace: 'file' })).toBe(false);
+    expect(accepts({ ...SIG, keyId: '' })).toBe(false);
+    expect(accepts({ ...SIG, sig: '' })).toBe(false);
+    expect(accepts({ keyId: SIG.keyId, sig: SIG.sig })).toBe(false); // namespace required
+    expect(accepts({ ...SIG, signedAt: '2026-09-14' })).toBe(false); // strict
+    expect(accepts('sig')).toBe(false);
+    expect(accepts(null)).toBe(false);
+  });
+
+  it('the namespace constant is the string ssh-keygen -Y sign/verify are invoked with', () => {
+    // Pinned as a literal: the committed allowed_signers restricts the key to
+    // this namespace, so a drift here would turn every signature into
+    // `bad-signature` (namespace does not match).
+    expect(VOTE_RECORD_SIGNATURE_NAMESPACE).toBe('nexus-vote-record');
   });
 });
