@@ -162,6 +162,7 @@ export {
   createUnifiedRegistry,
   getGlobalRegistry,
   resetGlobalRegistry,
+  RegistryAlreadyInitializedError,
   type UnifiedRegistryConfig,
   type TaskRoutingEntry,
   type RegistrySnapshot,
