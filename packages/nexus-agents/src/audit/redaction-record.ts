@@ -18,8 +18,9 @@
  * opening is absent ONLY when a redaction record here names that record id
  * and role; the opening absent with no such record is `hash_mismatch` — the
  * named empty case — and a redaction record that names nothing it can bind
- * to (no such record, no such role, a role with no commitment, or a role
- * whose opening is still present) is `redaction_unbound`, never ok.
+ * to (no such record, a target not at an earlier sequence, no such role, a
+ * role with no commitment, or a role whose opening is still present) is
+ * `redaction_unbound`, never ok.
  *
  * What a redaction does NOT remove: the tally, the decision, the clip marker
  * `reasoningTruncated`, and the digest all stay hash-covered and legible; and
@@ -161,6 +162,7 @@ export interface RedactedRecordReport {
 /** What the binding rule reads off a target record. */
 interface RedactionTarget {
   readonly id: string;
+  readonly sequence: number;
   readonly voters: readonly ReasoningCommitmentFields[];
 }
 
@@ -179,12 +181,15 @@ export function redactedRolesByTarget(
 
 /**
  * Why one redaction record does not bind to a redacted commitment, or `null`
- * when it does. A redaction binds when its target exists and EVERY named
- * role is a voter on it whose entry carries `reasoningDigest` with the
- * opening (text and nonce) ABSENT. Anything else is a record that claims a
- * removal the ledger does not show: no such record, no such role, a role
- * that never had a commitment, or — the misreport — a role whose text is
- * still there. A second redaction naming an already-redacted entry binds
+ * when it does. A redaction binds when its target exists AT AN EARLIER
+ * SEQUENCE and EVERY named role is a voter on it whose entry carries
+ * `reasoningDigest` with the opening (text and nonce) ABSENT. Anything else
+ * is a record that claims a removal the ledger does not show: no such
+ * record, a target at or past the redaction's own sequence (an honest ledger
+ * appends the redaction only after the target is committed, so this order
+ * cannot be produced — #6345), no such role, a role that never had a
+ * commitment, or — the misreport — a role whose text is still there. A
+ * second redaction naming an already-redacted entry binds
  * exactly as the first did (idempotent): two branches can each append one
  * and merge under `merge=union`, and refusing that would make a merged
  * ledger invalid for doing the right thing twice.
@@ -196,6 +201,9 @@ function redactionBindingDefect(
   const matched = targets.filter((t) => t.id === r.targetId);
   if (matched.length === 0) return `targetId '${r.targetId}' matches no record in the set`;
   for (const target of matched) {
+    if (target.sequence >= r.sequence) {
+      return `at sequence ${String(r.sequence)} is not past its target '${target.id}' at sequence ${String(target.sequence)} — a redaction can only follow the record it redacts`;
+    }
     for (const role of r.targetVoterRoles) {
       const entries = target.voters.filter((v) => v.role === role);
       if (entries.length === 0) {

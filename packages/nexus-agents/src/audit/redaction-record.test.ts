@@ -248,6 +248,31 @@ describe('verifyVoteRecordSet: the third per-record answer, `redacted` (#6264)',
     }
   });
 
+  it('a redaction record whose sequence is NOT past its target is redaction_unbound — the target must exist before it can be redacted (#6345 S2)', () => {
+    // An honest ledger appends the redaction at the next sequence AFTER the
+    // target was committed, so a redaction at or before its target claims an
+    // order the ledger cannot have produced. Both sequences are named.
+    const original = makeDigestRecord('vote-1', 1);
+    const before = verifyVoteRecordSet(
+      [redacted(original, ['catfish'])],
+      [redaction('red-1', 0, 'vote-1', ['catfish'])]
+    );
+    expect(before.ok).toBe(false);
+    if (!before.ok) {
+      expect(before.reason).toBe('redaction_unbound');
+      expect(before.recordId).toBe('red-1');
+      expect(before.detail).toContain('sequence 0');
+      expect(before.detail).toContain('sequence 1');
+    }
+    // Sharing the target's sequence is a fork with itself, refused the same way.
+    const same = verifyVoteRecordSet(
+      [redacted(original, ['catfish']), makeDigestRecord('vote-0', 0)],
+      [redaction('red-1', 1, 'vote-1', ['catfish'])]
+    );
+    expect(same.ok).toBe(false);
+    if (!same.ok) expect(same.reason).toBe('redaction_unbound');
+  });
+
   it('HASH UNCHANGED: the redacted record recomputes to the ORIGINAL stored hash — asserted as value equality — so a signature over it verifies unchanged', () => {
     const original = makeDigestRecord('vote-1', 0);
     const after = redacted(original, ['catfish']);
