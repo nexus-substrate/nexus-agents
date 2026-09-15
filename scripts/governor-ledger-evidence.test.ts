@@ -1284,8 +1284,9 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
   // The `todo` this flip was filed against, made real: one ledger per
   // non-ratified kind, each driven through the real entry point with the
   // label/approval side satisfied, so the exit code can only be the ledger's.
-  // Each row is its own case because every gate run spawns the injector
-  // check (`injectorIsClean`, ~5 s) before it reads the ledger.
+  // Each row is its own case so a failure names its kind. (Until #6250 every
+  // gate run also spawned the ~5 s injector check before reading the ledger;
+  // with no generated file in CHANGED_FILES it no longer does.)
   const tamperedRecord = record('v0', { sequence: 0 });
   const fork = record('v-dup', { sequence: 0 });
   const forkOtherPayload = { ...fork, proposal: 'different content under the same id' };

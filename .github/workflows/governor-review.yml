@@ -226,11 +226,14 @@ jobs:
           # empty APPROVALS/LABELS the gate reads as "nobody approved" (#5685).
           # LABEL_ACTOR keeps its tolerant `|| echo ''` — empty is its documented
           # indeterminate, and the trailing `||` still catches a failure there.
+          # LABELS joins inside `--jq` so it has no pipe to mask (#5731);
+          # APPROVALS keeps the streaming filter + shell join because gh applies
+          # `--jq` PER PAGE under `--paginate`, and `--slurp` is unverified here.
           set -o pipefail
           APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
             --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
           LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
-            --jq '.labels[].name' | tr '\n' ',')
+            --jq '[.labels[].name] | join(",")')
           # #4690: WHO applied the ratification label, not merely that it is
           # present. Most recent `labeled` event wins (a label can be removed
           # and re-applied). Empty when the timeline has no such event — the
@@ -433,7 +436,7 @@ jobs:
             APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
               --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
             LABELS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
-              --jq '.labels[].name' | tr '\n' ',')
+              --jq '[.labels[].name] | join(",")')
             # Must mirror the pre-merge job: the gate step below consumes
             # `label_actor`, and without a producer here every label-ratified
             # governor PR lands as `indeterminate` and reddens main.
