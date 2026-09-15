@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync, execSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 import {
   classifyAddedFiles,
@@ -410,6 +410,59 @@ describe('working tree is part of the scan (#6139)', () => {
   }
 
   const DEAD = join(SRC, 'dead.ts');
+
+  it.each([
+    ['scripts/operator.ts', 0],
+    ['scripts/operator.test.ts', 1],
+    ['scripts/operator.spec.ts', 1],
+    ['scripts/__tests__/operator.ts', 1],
+  ])('checks a new module consumed by %s (exit %i)', (consumer, expectedStatus) => {
+    const fx = buildFixture();
+    try {
+      fx.write(DEAD, 'export const dead = 1;\n');
+      const importPath = relative(dirname(consumer), DEAD)
+        .replaceAll('\\', '/')
+        .replace(/\.ts$/, '.js');
+      fx.write(consumer, `import { dead } from '${importPath}';\nconsole.log(dead);\n`);
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(expectedStatus);
+      expect(output).toMatch(/scanned 1 added, 0 modified source files since main/);
+      if (expectedStatus === 0) {
+        expect(output).toMatch(/1 new file\(s\) have production consumers/);
+      } else {
+        expect(output).toMatch(/Producer-without-consumer detected/);
+      }
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['scripts/operator.ts', 0],
+    ['scripts/operator.test.ts', 1],
+    ['scripts/operator.spec.ts', 1],
+    ['scripts/__tests__/operator.ts', 1],
+  ])('checks an added export consumed by %s (exit %i)', (consumer, expectedStatus) => {
+    const fx = buildFixture();
+    try {
+      fx.write(join(SRC, 'foo.ts'), 'export const keep = 2;\nexport const operatorValue = 3;\n');
+      const importPath = relative(dirname(consumer), join(SRC, 'foo.js')).replaceAll('\\', '/');
+      fx.write(
+        consumer,
+        `import { operatorValue } from '${importPath}';\nconsole.log(operatorValue);\n`
+      );
+      const { status, output } = runGate(fx.root);
+      expect(status).toBe(expectedStatus);
+      expect(output).toMatch(/scanned 0 added, 1 modified source files since main/);
+      if (expectedStatus === 0) {
+        expect(output).not.toMatch(/Exports added by this PR with no production consumer/);
+      } else {
+        expect(output).toMatch(/foo\.ts :: operatorValue/);
+      }
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
 
   it('detects a dead export in a staged, UNCOMMITTED new file', () => {
     // The #6139 reproduction: four PRs on 2026-09-13 ran the gate before

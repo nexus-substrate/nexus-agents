@@ -74,6 +74,8 @@ export const SELF = 'check-script-wiring.ts';
  */
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
   'governor-gate.ts': 'base-ref dispatcher; workflow activation follows in #6369 step 2',
+  'security-ledger.ts':
+    'operator-only report and resolution of a private, gitignored ledger (#4887)',
   'redact-vote-record.ts':
     'operator-run reasoning redaction requiring a governor-path PR; not a CI gate (#6265)',
   // The caller-commits half of #5130: copies ONE verified, PR-bound vote
