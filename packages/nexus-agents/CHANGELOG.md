@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.67.0
+
+### Minor Changes
+
+- [#6345](https://github.com/nexus-substrate/nexus-agents/pull/6345) [`e0fe01d`](https://github.com/nexus-substrate/nexus-agents/commit/e0fe01d551595a4d9f60f2b3f784b0a2eae8a45e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote ledger: a REDACTION record and a legible `redacted` verifier state ([#6264](https://github.com/nexus-substrate/nexus-agents/issues/6264), [#5748](https://github.com/nexus-substrate/nexus-agents/issues/5748) step 2).
+
+  A voter's reasoning can now be removed from a committed vote record on the record, not by editing a hash-chained file. On the digest tier (1.13) a redaction drops the entry's opening — `reasoning` and `reasoningNonce`, together — and keeps the hash-covered `reasoningDigest`; because the hash folds only the digest, the record's `hash` (and anything signed over it) is unchanged, and the 256-bit unknown salt leaves the digest an opaque commitment. What makes it an edit rather than tampering is the new self-hashed record appended at the ledger's next `sequence`: `{ kind: 'redaction', id, sequence, targetId, targetVoterRoles, at, by, reason, hash }` (`RedactionRecordSchema`, `buildRedactionRecord`, `redactVoterOpenings`, exported from the audit barrel).
+
+  `verifyVoteRecordSet(records, redactions)` gains a third per-record answer beside `ok` and `hash_mismatch`: a digest-tier entry with its opening absent is **`redacted`** — reported on the `ok` result as `redacted: [{ recordId, voterRoles, redactionIds }]` — only when a redaction record in the set names that record id and role. The empty case is named: the opening absent with no redaction record is `hash_mismatch`. A redaction record whose target, role, or commitment does not exist, or whose named entry still carries its opening, is the new failure reason **`redaction_unbound`**, never `ok`; a tampered redaction record is `hash_mismatch`; two redaction records naming the same entry are idempotent. Redaction records occupy sequences (the census runs over both kinds; `recordCount` counts both). The read schema now admits a 1.13 entry whose digest is present with no opening (text ⇔ nonce still travel together; the keys are still refused on older tiers), and `findReasoningCommitmentDefect` takes the redacted-role set as a required second argument.
+
+  `parseVoteRecordsText` / `readVoteRecords` return `redactions` beside `records` (`ParsedVoteLedger`), routing a `kind: 'redaction'` line to its own schema; the runtime store assigns the next sequence past a redaction at the tip. The governor ratification gate (`scripts/governor-ledger-evidence.ts`) treats a `redacted` ratifying record as verifiable — every tally field is still hash-covered — and prints the redacted roles and redaction record ids on the `::notice::` line; `scripts/append-ratification-record.ts` appends past redaction sequences and refuses a source record whose opening is already missing. `docs/security/audit-hash-chain-threat-model.md` §8 describes redaction as a sanctioned, recorded edit and what it does not remove (git history, copies elsewhere). The sequence census shared by the vote and PR-review verifiers moved to `audit/sequence-census.ts`.
+
 ## 8.66.1
 
 ### Patch Changes
