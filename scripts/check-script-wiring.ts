@@ -73,7 +73,8 @@ export const SELF = 'check-script-wiring.ts';
  * test also asserts each entry against the real tree.
  */
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
-  'governor-gate.ts': 'base-ref dispatcher; workflow activation follows in #6369 step 2',
+  'check-required-jobs.ts':
+    'invoked through governor-gate.ts (#6369 step 2): the gate job runs the base-ref dispatcher, never the per-check script',
   'redact-vote-record.ts':
     'operator-run reasoning redaction requiring a governor-path PR; not a CI gate (#6265)',
   // The caller-commits half of #5130: copies ONE verified, PR-bound vote
