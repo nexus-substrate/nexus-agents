@@ -28,7 +28,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
 import type { VoteRecordSignatureVerdict } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
@@ -60,10 +60,13 @@ export type SignatureVerifier = (record: VoteRecord) => VoteRecordSignatureVerdi
  */
 export function signatureVerifierFromEnv(
   env: NodeJS.ProcessEnv,
-  ledgerPath: string
+  ledgerPath: string,
+  targetDir: string
 ): SignatureVerifier {
-  const path =
-    (env[ALLOWED_SIGNERS_PATH_ENV] ?? '').trim() || join(dirname(ledgerPath), ALLOWED_SIGNERS_FILE);
+  const path = resolve(
+    targetDir,
+    (env[ALLOWED_SIGNERS_PATH_ENV] ?? '').trim() || join(dirname(ledgerPath), ALLOWED_SIGNERS_FILE)
+  );
   let allowedSigners: string;
   try {
     allowedSigners = readFileSync(path, 'utf-8');

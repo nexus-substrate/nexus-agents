@@ -1,7 +1,8 @@
 /** Governor-owned CI wiring and required-context contract (#6343). */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 export const EXPECTED_REQUIRED_CONTEXTS = [
@@ -233,18 +234,18 @@ function reportManifestFailure(directory: string, error: unknown): number {
 }
 
 /** Run local checks even when the workflow inventory or protection API is unavailable. */
-export function runRequiredJobsCheck(directory = '.'): number {
+export function runRequiredJobsCheck(targetDir: string): number {
   let manifest: unknown;
   try {
-    manifest = readJson(join(directory, 'governance/required-jobs.json'));
+    manifest = readJson(join(targetDir, 'governance/required-jobs.json'));
   } catch (error: unknown) {
-    return reportManifestFailure(directory, error);
+    return reportManifestFailure(targetDir, error);
   }
   let gate: JobGate;
   let packageJson: unknown;
   try {
-    gate = loadCiSuccessGate(join(directory, '.github/workflows/ci.yml'));
-    packageJson = readJson(join(directory, 'package.json'));
+    gate = loadCiSuccessGate(join(targetDir, '.github/workflows/ci.yml'));
+    packageJson = readJson(join(targetDir, 'package.json'));
   } catch {
     return report({
       verdict: 'drift',
@@ -253,7 +254,7 @@ export function runRequiredJobsCheck(directory = '.'): number {
   }
   let workflowJobNames: readonly string[] | 'unmeasured';
   try {
-    workflowJobNames = loadWorkflowJobNames(join(directory, '.github/workflows'));
+    workflowJobNames = loadWorkflowJobNames(join(targetDir, '.github/workflows'));
   } catch {
     workflowJobNames = 'unmeasured';
   }
@@ -270,5 +271,5 @@ export function runRequiredJobsCheck(directory = '.'): number {
 }
 
 if (process.argv[1]?.endsWith('check-required-jobs.ts') === true) {
-  process.exitCode = runRequiredJobsCheck();
+  process.exitCode = runRequiredJobsCheck(dirname(dirname(fileURLToPath(import.meta.url))));
 }

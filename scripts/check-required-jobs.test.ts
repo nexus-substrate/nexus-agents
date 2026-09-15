@@ -231,6 +231,22 @@ describe('required-jobs CLI reporting', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it('changes when only the target package or target workflow changes', async () => {
+    const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+    expect(runRequiredJobsCheck(directory)).toBe(0);
+    writeFileSync(join(directory, 'package.json'), '{"pnpm":{"auditConfig":{}}}');
+    expect(runRequiredJobsCheck(directory)).toBe(1);
+    writeFileSync(join(directory, 'package.json'), '{}');
+    expect(runRequiredJobsCheck(directory)).toBe(0);
+    const workflowPath = join(directory, '.github/workflows/ci.yml');
+    writeFileSync(
+      workflowPath,
+      readFileSync(workflowPath, 'utf8').replace('CI Success', 'Renamed')
+    );
+    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(output.join('\n')).toContain('Required context without workflow job: CI Success');
+  });
+
   it('prints ok and exits 0 for measured matching inputs', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     expect(runRequiredJobsCheck(directory)).toBe(0);

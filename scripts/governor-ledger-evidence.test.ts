@@ -1092,13 +1092,38 @@ describe('ledgerEvidenceFromEnv', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('the real ratification gate changes when only the target default ledger changes', () => {
+    mkdirSync(join(dir, 'governance'));
+    writeFileSync(
+      join(dir, 'CODEOWNERS'),
+      '# @governor-section-start\n/fixture.txt @fixture-owner\n# @governor-section-end\n'
+    );
+    const ledgerPath = join(dir, VOTE_RECORDS_REL_PATH);
+    const env = {
+      CHANGED_FILES: 'fixture.txt',
+      APPROVALS: 'fixture-owner',
+      PR_NUMBER: String(PR),
+      PR_HEAD_SHA: HEAD,
+    };
+    const output = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      writeFileSync(ledgerPath, ledgerText([record('v0', { sequence: 0 })]));
+      expect(runRatificationGate(env, dir)).toBe(0);
+      writeFileSync(ledgerPath, '');
+      expect(runRatificationGate(env, dir)).toBe(1);
+    } finally {
+      output.mockRestore();
+    }
+  });
+
   it('is unmeasured — not no-record — when PR_NUMBER is absent or not a positive integer', () => {
     const path = join(dir, 'vote-records.jsonl');
     writeFileSync(path, ledgerText([record('v0', { sequence: 0 })]), 'utf-8');
     for (const pr of [undefined, '', 'abc', '0', '-1', '1.5']) {
       const e = ledgerEvidenceFromEnv(
         { ...(pr !== undefined ? { PR_NUMBER: pr } : {}), RATIFICATION_LEDGER_PATH: path },
-        path
+        path,
+        REPO_ROOT
       );
       expect(e.kind).toBe('unmeasured');
     }
@@ -1107,7 +1132,8 @@ describe('ledgerEvidenceFromEnv', () => {
   it('a MISSING ledger file is the empty case (no-record with 0 records), not unmeasured', () => {
     const e = ledgerEvidenceFromEnv(
       { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD },
-      join(dir, 'absent.jsonl')
+      join(dir, 'absent.jsonl'),
+      REPO_ROOT
     );
     expect(e).toEqual({ kind: 'no-record', recordCount: 0 });
   });
@@ -1117,14 +1143,18 @@ describe('ledgerEvidenceFromEnv', () => {
     writeFileSync(path, ledgerText([record('v0', { sequence: 0, headSha: PARENT })]), 'utf-8');
     const base = { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, PR_HEAD_PARENT_SHA: PARENT };
     expect(
-      ledgerEvidenceFromEnv({ ...base, HEAD_COMMIT_FILES: `${VOTE_RECORDS_REL_PATH}\n` }, path).kind
+      ledgerEvidenceFromEnv(
+        { ...base, HEAD_COMMIT_FILES: `${VOTE_RECORDS_REL_PATH}\n` },
+        path,
+        REPO_ROOT
+      ).kind
     ).toBe('ratified');
-    expect(ledgerEvidenceFromEnv({ ...base, HEAD_COMMIT_FILES: 'src/a.ts' }, path).kind).toBe(
-      'sha-mismatch'
-    );
+    expect(
+      ledgerEvidenceFromEnv({ ...base, HEAD_COMMIT_FILES: 'src/a.ts' }, path, REPO_ROOT).kind
+    ).toBe('sha-mismatch');
     // No head sha at all is UNMEASURED (#6249): this used to be the backstop's
     // shape, and it accepted any approved record for the PR number.
-    const noHead = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR) }, path);
+    const noHead = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR) }, path, REPO_ROOT);
     expect(noHead.kind).toBe('unmeasured');
     if (noHead.kind !== 'unmeasured') throw new Error('unreachable');
     expect(noHead.reason).toContain('PR_HEAD_SHA is not set');
@@ -1133,7 +1163,7 @@ describe('ledgerEvidenceFromEnv', () => {
   it('an UNREADABLE ledger (a directory at the path) is unmeasured naming the error, not a crash (#6213)', () => {
     const path = join(dir, 'vote-records.jsonl');
     mkdirSync(path);
-    const e = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD }, path);
+    const e = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD }, path, REPO_ROOT);
     expect(e.kind).toBe('unmeasured');
     if (e.kind !== 'unmeasured') throw new Error('unreachable');
     expect(e.reason).toContain('EISDIR');
@@ -1148,17 +1178,21 @@ describe('ledgerEvidenceFromEnv', () => {
     const env = { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: basePath };
 
     writeFileSync(headPath, ledgerText([older, record('v0', { sequence: 1 })]), 'utf-8');
-    const ok = ledgerEvidenceFromEnv(env, headPath);
+    const ok = ledgerEvidenceFromEnv(env, headPath, REPO_ROOT);
     expect(ok.kind).toBe('ratified');
     if (ok.kind !== 'ratified') throw new Error('unreachable');
     expect(ok.appendOnlyChecked).toBe(true);
 
     // The base line dropped and the new record re-sequenced into its slot.
     writeFileSync(headPath, ledgerText([record('v0', { sequence: 0 })]), 'utf-8');
-    expect(ledgerEvidenceFromEnv(env, headPath).kind).toBe('ledger-rewritten');
+    expect(ledgerEvidenceFromEnv(env, headPath, REPO_ROOT).kind).toBe('ledger-rewritten');
 
     // The variable absent: append-only is not checked and the verdict says so.
-    const unchecked = ledgerEvidenceFromEnv({ PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD }, headPath);
+    const unchecked = ledgerEvidenceFromEnv(
+      { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD },
+      headPath,
+      REPO_ROOT
+    );
     expect(unchecked.kind).toBe('ratified');
     if (unchecked.kind !== 'ratified') throw new Error('unreachable');
     expect(unchecked.appendOnlyChecked).toBe(false);
@@ -1171,7 +1205,8 @@ describe('ledgerEvidenceFromEnv', () => {
     writeFileSync(headPath, ledgerText([record('v0', { sequence: 0 })]), 'utf-8');
     const e = ledgerEvidenceFromEnv(
       { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: basePath },
-      headPath
+      headPath,
+      REPO_ROOT
     );
     expect(e.kind).toBe('ratified');
     if (e.kind !== 'ratified') throw new Error('unreachable');
@@ -1185,14 +1220,16 @@ describe('ledgerEvidenceFromEnv', () => {
     mkdirSync(asDir);
     const dirCase = ledgerEvidenceFromEnv(
       { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: asDir },
-      headPath
+      headPath,
+      REPO_ROOT
     );
     expect(dirCase.kind).toBe('unmeasured');
     if (dirCase.kind !== 'unmeasured') throw new Error('unreachable');
     expect(dirCase.reason).toContain('EISDIR');
     const missing = ledgerEvidenceFromEnv(
       { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, [BASE_LEDGER_PATH_ENV]: join(dir, 'nope') },
-      headPath
+      headPath,
+      REPO_ROOT
     );
     expect(missing.kind).toBe('unmeasured');
     if (missing.kind !== 'unmeasured') throw new Error('unreachable');
@@ -1501,7 +1538,7 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
     const log = vi.spyOn(console, 'log').mockImplementation(push);
     const err = vi.spyOn(console, 'error').mockImplementation(push);
     try {
-      return { code: runRatificationGate(env), out: lines.join('\n') };
+      return { code: runRatificationGate(env, REPO_ROOT), out: lines.join('\n') };
     } finally {
       log.mockRestore();
       err.mockRestore();
@@ -1877,7 +1914,7 @@ describe('the committed ledger: the first real record (PR #6241, #5131 acceptanc
         PR_HEAD_SHA: PR_6241_HEAD,
         HEAD_COMMIT_FILES: 'scripts/governor-ledger-evidence.ts',
       };
-      expect(runRatificationGate(env)).toBe(0);
+      expect(runRatificationGate(env, REPO_ROOT)).toBe(0);
       expect(lines.join('\n')).toContain(
         `::notice::[governor-ledger] ratified: record '${RECORD_ID}' ratifies PR #${String(PR_6241)} at ${PR_6241_HEAD}`
       );
@@ -1887,12 +1924,12 @@ describe('the committed ledger: the first real record (PR #6241, #5131 acceptanc
       expect(lines.join('\n')).not.toContain('signature-not-measured');
 
       lines.length = 0;
-      expect(runRatificationGate({ ...env, PR_HEAD_SHA: OTHER })).toBe(1);
+      expect(runRatificationGate({ ...env, PR_HEAD_SHA: OTHER }, REPO_ROOT)).toBe(1);
       expect(lines.join('\n')).toContain('::error::[governor-ledger] sha-mismatch: ');
 
       // A PR the ledger has never heard of: no-record over a NON-empty ledger.
       lines.length = 0;
-      expect(runRatificationGate({ ...env, PR_NUMBER: '1' })).toBe(1);
+      expect(runRatificationGate({ ...env, PR_NUMBER: '1' }, REPO_ROOT)).toBe(1);
       expect(lines.join('\n')).toMatch(
         /::error::\[governor-ledger\] no-record: none of the \d+ record\(s\) in the committed ledger ratifies this PR/
       );
@@ -2582,7 +2619,7 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     expect(kindOf(evaluateLedgerEvidence(inputsFor(dir)))).toBe('not-approved');
   });
 
-  it('the gate reads PR_BASE_SHA and the checkout from the environment and exits 0 on ratified-rebased', () => {
+  it('the gate reads PR_BASE_SHA and git objects from the explicit target and exits 0 on ratified-rebased', () => {
     const { dir, A } = ratifiedBranch();
     advanceMain(dir);
     mergeMain(dir);
@@ -2595,9 +2632,11 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
       PR_HEAD_PARENT_SHA: parentSha,
       HEAD_COMMIT_FILES: 'docs/notes.md',
       PR_BASE_SHA: baseSha,
-      [REPO_DIR_ENV]: dir,
+      [REPO_DIR_ENV]: REPO_ROOT,
     };
-    const e = ledgerEvidenceFromEnv(env, ledgerPath);
+    const e = ledgerEvidenceFromEnv(env, ledgerPath, dir);
+    // Same env and ledger, a different checkout: its git objects cannot establish the replay.
+    expect(ledgerEvidenceFromEnv(env, ledgerPath, REPO_ROOT).kind).toBe('sha-mismatch');
     expect(e.kind).toBe('ratified-rebased');
     if (e.kind !== 'ratified-rebased') throw new Error('unreachable');
     expect(e.ratifiedSha).toBe(A);
@@ -2613,7 +2652,7 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
 
     // Without PR_BASE_SHA the same PR is sha-mismatch: the replay needs a base.
     const { PR_BASE_SHA: _dropped, ...noBase } = env;
-    expect(ledgerEvidenceFromEnv(noBase, ledgerPath).kind).toBe('sha-mismatch');
+    expect(ledgerEvidenceFromEnv(noBase, ledgerPath, dir).kind).toBe('sha-mismatch');
 
     // #6301 item 4: after a rebase the ratified sha is not an ancestor, and
     // the gate accepts it only as a head the workflow measured this PR had
@@ -2630,10 +2669,11 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
       HEAD_COMMIT_FILES: git(dir, 'diff', '--name-only', 'pr^', 'pr'),
       PR_BASE_SHA: git(dir, 'merge-base', 'main', 'pr'),
     };
-    expect(ledgerEvidenceFromEnv(rebased, ledgerPath).kind).toBe('sha-mismatch');
+    expect(ledgerEvidenceFromEnv(rebased, ledgerPath, dir).kind).toBe('sha-mismatch');
     const withPrior = ledgerEvidenceFromEnv(
       { ...rebased, PR_PRIOR_HEADS: `${headSha}\n\n${parentSha}\n` },
-      ledgerPath
+      ledgerPath,
+      dir
     );
     expect(withPrior.kind).toBe('ratified-rebased');
     if (withPrior.kind !== 'ratified-rebased') throw new Error('unreachable');
@@ -2641,19 +2681,23 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
 
     // The exit code follows: the label/approval half is satisfied by an owner
     // approval, and the ledger half by the moved-head rule.
+    write(dir, 'CODEOWNERS', readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf8'));
     const lines: string[] = [];
     const err = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       lines.push(args.map(String).join(' '));
     });
     try {
       expect(
-        runRatificationGate({
-          ...env,
-          RATIFICATION_LEDGER_PATH: ledgerPath,
-          CHANGED_FILES: 'scripts/governor-ledger-evidence.ts',
-          APPROVALS: 'williamzujkowski',
-          PR_LABELS: '',
-        })
+        runRatificationGate(
+          {
+            ...env,
+            RATIFICATION_LEDGER_PATH: ledgerPath,
+            CHANGED_FILES: 'scripts/governor-ledger-evidence.ts',
+            APPROVALS: 'williamzujkowski',
+            PR_LABELS: '',
+          },
+          dir
+        )
       ).toBe(0);
       expect(lines.join('\n')).toContain('::notice::[governor-ledger] ratified-rebased:');
     } finally {
@@ -2842,6 +2886,26 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       'a bound record at or past the cutover that is not `signed` is a refusal naming its code; the grandfathered range is named on the ratified line'
   );
 
+  it('resolves a relative allowed-signers override against target and changes when that file changes', () => {
+    const path = join(dir, 'vote-records.jsonl');
+    writeFileSync(path, ledgerText([signed(record('v0', { sequence: 0 }))]), 'utf8');
+    const env = {
+      PR_NUMBER: String(PR),
+      PR_HEAD_SHA: HEAD,
+      [ALLOWED_SIGNERS_PATH_ENV]: 'fixture-signers',
+    };
+    writeFileSync(join(dir, 'fixture-signers'), readFileSync(allowedSignersPath, 'utf8'));
+    const trusted = ledgerEvidenceFromEnv(env, path, dir);
+    expect(trusted.kind).toBe('ratified');
+    if (trusted.kind !== 'ratified') throw new Error('unreachable');
+    expect(trusted.signatures?.[0]?.verdict.code).toBe('signed');
+    writeFileSync(join(dir, 'fixture-signers'), '');
+    const unknown = ledgerEvidenceFromEnv(env, path, dir);
+    expect(unknown.kind).toBe('ratified');
+    if (unknown.kind !== 'ratified') throw new Error('unreachable');
+    expect(unknown.signatures?.[0]?.verdict.code).toBe('unknown-signer');
+  });
+
   it(`ledgerEvidenceFromEnv reads ${ALLOWED_SIGNERS_PATH_ENV} and runs the REAL verifier: a signed record is 'signed:<kind> by', an unsigned one is 'unsigned-record'`, () => {
     const path = join(dir, 'vote-records.jsonl');
     const r0 = signed(record('v0', { sequence: 0 }));
@@ -2852,7 +2916,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       RATIFICATION_LEDGER_PATH: path,
       [ALLOWED_SIGNERS_PATH_ENV]: allowedSignersPath,
     };
-    const e = ledgerEvidenceFromEnv(env, path);
+    const e = ledgerEvidenceFromEnv(env, path, REPO_ROOT);
     expect(e.kind).toBe('ratified');
     if (e.kind !== 'ratified') throw new Error('unreachable');
     expect(e.signatures).toEqual([{ recordId: 'v0', verdict: signedAs(OPERATOR) }]);
@@ -2861,7 +2925,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     // The same record signed by the AGENT key: the real verifier resolves the
     // principal from the file and the line says `signed:agent` (#6257).
     writeFileSync(path, ledgerText([signed(record('v0', { sequence: 0 }), agentKeyPath)]), 'utf-8');
-    const byAgent = ledgerEvidenceFromEnv(env, path);
+    const byAgent = ledgerEvidenceFromEnv(env, path, REPO_ROOT);
     expect(byAgent.kind).toBe('ratified');
     if (byAgent.kind !== 'ratified') throw new Error('unreachable');
     expect(byAgent.signatures).toEqual([{ recordId: 'v0', verdict: signedAs(AGENT) }]);
@@ -2877,7 +2941,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       ledgerText([{ ...relabelled, hash: computeVoteRecordHash(relabelled) }]),
       'utf-8'
     );
-    const bad = ledgerEvidenceFromEnv(env, path);
+    const bad = ledgerEvidenceFromEnv(env, path, REPO_ROOT);
     expect(bad.kind).toBe('ratified');
     if (bad.kind !== 'ratified') throw new Error('unreachable');
     expect(bad.signatures?.[0]?.verdict.code).toBe('bad-signature');
@@ -2899,7 +2963,8 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
           RATIFICATION_LEDGER_PATH: path,
           [ALLOWED_SIGNERS_PATH_ENV]: missing,
         },
-        path
+        path,
+        REPO_ROOT
       );
       expect(ratified).toBe(true);
       const out = lines.join('\n');
@@ -2917,7 +2982,8 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     // not signature-not-measured, which would mean the file was not found.
     const e = ledgerEvidenceFromEnv(
       { PR_NUMBER: '6241', PR_HEAD_SHA: '208f885b3f4ad0b6456f8ff9bf4bce750d3b3a1a' },
-      join(REPO_ROOT, VOTE_RECORDS_REL_PATH)
+      join(REPO_ROOT, VOTE_RECORDS_REL_PATH),
+      REPO_ROOT
     );
     expect(e.kind).toBe('ratified');
     if (e.kind !== 'ratified') throw new Error('unreachable');

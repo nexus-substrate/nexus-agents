@@ -380,6 +380,17 @@ that case; its `failures` list carries the full set. Since #6348 `ledger-rewritt
 
 ### How the gate becomes a required status context (#4802)
 
+The #6369 rollout has two increments. Step 1 adds the stable
+`scripts/governor-gate.ts` dispatcher and requires an explicit target directory
+through every gate script, including ledger, git, CODEOWNERS, and stamp reads.
+The current workflow remains unchanged. Step 2 activates base-ref scripts and
+toolchain against PR-head data using sibling `gate` and `head` checkouts; it
+must merge after step 1 makes the dispatcher available on main. Gate changes
+then take effect after merging. Ledger formats evolve reader-first in one
+ratified PR, writer-second in another, so main accepts every format a head may
+carry; there is no bypass for an unreadable format. This dispatcher increment
+makes no reader-incompatible ledger change.
+
 Branch protection on `main` requires `CI Success` and
 `Governor-path ratification gate` (#4802). Making the gate required took two
 parts; only the first is code.

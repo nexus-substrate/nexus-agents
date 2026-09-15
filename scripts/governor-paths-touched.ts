@@ -60,7 +60,6 @@ import { governorPathsFromCodeowners } from './governor-section.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
-const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
 
 /**
  * The `$GITHUB_OUTPUT` key the WORKFLOW writes (`governor_touched=<stdout>`).
@@ -140,10 +139,11 @@ export function governorPathsTouchedReport(
   };
 }
 
-function main(): number {
+/** Run the detector against the head checkout supplied by the base gate. */
+export function runGovernorPathsTouched(targetDir: string): number {
   let codeowners: string;
   try {
-    codeowners = readFileSync(CODEOWNERS_FILE, 'utf-8');
+    codeowners = readFileSync(join(targetDir, 'CODEOWNERS'), 'utf-8');
   } catch {
     console.error('[governor-paths-touched] CODEOWNERS is unreadable; nothing is reported.');
     return 1;
@@ -156,5 +156,5 @@ function main(): number {
 }
 
 if (process.argv[1]?.endsWith('governor-paths-touched.ts') === true) {
-  process.exit(main());
+  process.exit(runGovernorPathsTouched(ROOT));
 }

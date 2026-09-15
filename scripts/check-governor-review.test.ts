@@ -1399,6 +1399,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/redact-vote-record.test.ts',
     '/scripts/check-codeowners-errors.ts',
     '/scripts/governor-paths-touched.ts',
+    '/scripts/governor-gate.ts',
     '/.github/CODEOWNERS',
     '/docs/CODEOWNERS',
     '/scripts/governance-stamp-exemption.ts',
@@ -1431,12 +1432,14 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (36 entries)', () => {
+  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (37 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
     // CODEOWNERS parse run at all — the `paths:` filter's replacement.
     expect(set).toContain('/scripts/governor-paths-touched.ts');
+    // #6369: the stable dispatcher decides which base-ref checks execute.
+    expect(set).toContain('/scripts/governor-gate.ts');
     // Entries for files that must NOT exist: creating one is a governor change.
     expect(set).toContain('/.github/CODEOWNERS');
     expect(set).toContain('/docs/CODEOWNERS');
@@ -1456,7 +1459,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/governance/required-jobs.json');
     expect(set).toContain('/scripts/check-required-jobs.ts');
     expect(set).toContain('/scripts/check-required-jobs.test.ts');
-    expect(set).toHaveLength(36);
+    expect(set).toHaveLength(37);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

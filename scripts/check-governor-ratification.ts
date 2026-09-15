@@ -85,8 +85,6 @@ import { reportLedgerEvidence } from './governor-ledger-report.js';
 import { VOTE_RECORDS_REL_PATH } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
-const LEDGER_FILE = join(ROOT, VOTE_RECORDS_REL_PATH);
 
 /** The one label that asserts out-of-band owner ratification. */
 export const RATIFICATION_LABEL = 'owner-ratified';
@@ -418,7 +416,7 @@ function parseGovernorPatternsOrReport(codeowners: string): string[] | null {
   }
 }
 
-export function runRatificationGate(env: NodeJS.ProcessEnv): number {
+export function runRatificationGate(env: NodeJS.ProcessEnv, targetDir: string): number {
   // #5444: distinguish "no file list was supplied" from "the file list is
   // empty". The workflow always supplies CHANGED_FILES (governor-review.yml);
   // a local run does not. Absent, the gate has measured nothing — and it used
@@ -449,7 +447,7 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
 
   let codeowners = '';
   try {
-    codeowners = readFileSync(CODEOWNERS_FILE, 'utf-8');
+    codeowners = readFileSync(join(targetDir, 'CODEOWNERS'), 'utf-8');
   } catch {
     console.error(formatVerdict({ kind: 'indeterminate', reason: 'CODEOWNERS is unreadable' }));
     return 1;
@@ -461,9 +459,9 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
   const touched = governorFilesTouched(changed, governorPatterns);
   const exempt = stampOnlyExemptFiles(
     touched,
-    readAtBase(env['PR_BASE_SHA']),
-    readAtHead,
-    injectorIsClean
+    readAtBase(env['PR_BASE_SHA'], targetDir),
+    (path) => readAtHead(path, targetDir),
+    () => injectorIsClean(targetDir)
   );
   reportExemption(exempt);
 
@@ -476,7 +474,7 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
     ...labelEvidenceFromEnv(env),
   });
 
-  return exitCodeFor(verdict, env);
+  return exitCodeFor(verdict, env, targetDir);
 }
 
 /**
@@ -494,7 +492,11 @@ export function runRatificationGate(env: NodeJS.ProcessEnv): number {
  * The ledger is still printed for an `unratified` PR so the log shows both
  * missing pieces at once rather than one per push.
  */
-function exitCodeFor(verdict: RatificationVerdict, env: NodeJS.ProcessEnv): number {
+function exitCodeFor(
+  verdict: RatificationVerdict,
+  env: NodeJS.ProcessEnv,
+  targetDir: string
+): number {
   console.error(formatVerdict(verdict));
   switch (verdict.kind) {
     case 'not-applicable':
@@ -502,13 +504,13 @@ function exitCodeFor(verdict: RatificationVerdict, env: NodeJS.ProcessEnv): numb
     case 'indeterminate':
       return 1;
     case 'unratified':
-      reportLedgerEvidence(env, LEDGER_FILE);
+      reportLedgerEvidence(env, VOTE_RECORDS_REL_PATH, targetDir);
       return 1;
     case 'ratified':
-      return reportLedgerEvidence(env, LEDGER_FILE) ? 0 : 1;
+      return reportLedgerEvidence(env, VOTE_RECORDS_REL_PATH, targetDir) ? 0 : 1;
   }
 }
 
 if (process.argv[1]?.endsWith('check-governor-ratification.ts') === true) {
-  process.exit(runRatificationGate(process.env));
+  process.exit(runRatificationGate(process.env, ROOT));
 }

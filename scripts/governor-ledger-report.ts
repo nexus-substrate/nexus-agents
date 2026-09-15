@@ -41,6 +41,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import type {
   BoundRecordFailure,
@@ -68,9 +69,9 @@ export const LEDGER_PATH_ENV = 'RATIFICATION_LEDGER_PATH';
 export const BASE_LEDGER_PATH_ENV = 'RATIFICATION_BASE_LEDGER_PATH';
 
 /**
- * The checkout the moved-head probe runs `git` in (#6256); the process's
- * working directory when unset. Both workflow jobs run from the repository
- * root; tests point it at a fixture repo.
+ * Legacy override name retained for callers; the explicit targetDir now
+ * determines the checkout. Environment overrides cannot redirect git away
+ * from the head being evaluated (#6369).
  */
 export const REPO_DIR_ENV = 'RATIFICATION_REPO_DIR';
 
@@ -300,16 +301,17 @@ function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): Re
  */
 export function ledgerEvidenceFromEnv(
   env: NodeJS.ProcessEnv,
-  defaultLedgerPath: string
+  defaultLedgerPath: string,
+  targetDir: string
 ): LedgerEvidenceReport {
   const pr = prNumberFromEnv(env);
   if (typeof pr !== 'number') return pr;
 
-  const ledgerPath = (env[LEDGER_PATH_ENV] ?? '').trim() || defaultLedgerPath;
+  const ledgerPath = resolve(targetDir, (env[LEDGER_PATH_ENV] ?? '').trim() || defaultLedgerPath);
   const ledger = readLedgerFile(ledgerPath, 'committed ledger', true);
   if (!ledger.ok) return { kind: 'unmeasured', reason: ledger.reason };
 
-  const base = baseLedgerFromEnv(env);
+  const base = baseLedgerFromEnv(env, targetDir);
   if (base !== undefined && !base.ok) return { kind: 'unmeasured', reason: base.reason };
 
   const head = headFromEnv(env);
@@ -321,14 +323,14 @@ export function ledgerEvidenceFromEnv(
         "(the backstop must resolve the merged PR's pre-squash head, #6249)",
     };
   }
-  const probe = movedHeadProbeFromEnv(env, head.sha);
+  const probe = movedHeadProbeFromEnv(env, head.sha, targetDir);
   return evaluateLedgerEvidence({
     ledgerText: ledger.text,
     pr,
     head,
     ...(base !== undefined ? { baseLedgerText: base.text } : {}),
     ...(probe !== undefined ? { movedHead: probe } : {}),
-    signatureVerifier: signatureVerifierFromEnv(env, ledgerPath),
+    signatureVerifier: signatureVerifierFromEnv(env, ledgerPath, targetDir),
   });
 }
 
@@ -353,20 +355,20 @@ function priorHeadsFromEnv(env: NodeJS.ProcessEnv): string[] {
 }
 
 /**
- * The moved-head probe (#6256) over `RATIFICATION_REPO_DIR` (default: the
- * working directory) with `PR_BASE_SHA` as the PR base and `PR_PRIOR_HEADS`
+ * The moved-head probe (#6256) over the explicit target checkout,
+ * with `PR_BASE_SHA` as the PR base and `PR_PRIOR_HEADS`
  * as the heads this PR had; `undefined` when the base is absent or not a
  * 40-hex sha, which the verdict names.
  */
 function movedHeadProbeFromEnv(
   env: NodeJS.ProcessEnv,
-  headSha: string
+  headSha: string,
+  targetDir: string
 ): MovedHeadProbe | undefined {
   const baseSha = (env['PR_BASE_SHA'] ?? '').trim();
   if (!isFullSha(baseSha)) return undefined;
-  const repoDir = (env[REPO_DIR_ENV] ?? '').trim() || process.cwd();
   return gitMovedHeadProbe({
-    repoDir,
+    repoDir: targetDir,
     baseSha,
     headSha,
     priorHeadShas: priorHeadsFromEnv(env),
@@ -387,10 +389,10 @@ function prNumberFromEnv(
 }
 
 /** The base ledger named by `RATIFICATION_BASE_LEDGER_PATH`; `undefined` when the variable is unset. */
-function baseLedgerFromEnv(env: NodeJS.ProcessEnv): ReadResult | undefined {
+function baseLedgerFromEnv(env: NodeJS.ProcessEnv, targetDir: string): ReadResult | undefined {
   const basePath = (env[BASE_LEDGER_PATH_ENV] ?? '').trim();
   if (basePath === '') return undefined;
-  return readLedgerFile(basePath, 'base ledger', false);
+  return readLedgerFile(resolve(targetDir, basePath), 'base ledger', false);
 }
 
 /**
@@ -402,8 +404,12 @@ function baseLedgerFromEnv(env: NodeJS.ProcessEnv): ReadResult | undefined {
  * that cannot read its evidence has not found a ratification, and reporting
  * absence of measurement as a pass is the shape #5131 removes.
  */
-export function reportLedgerEvidence(env: NodeJS.ProcessEnv, defaultLedgerPath: string): boolean {
-  const report = ledgerEvidenceFromEnv(env, defaultLedgerPath);
+export function reportLedgerEvidence(
+  env: NodeJS.ProcessEnv,
+  defaultLedgerPath: string,
+  targetDir: string
+): boolean {
+  const report = ledgerEvidenceFromEnv(env, defaultLedgerPath, targetDir);
   if (report.kind === 'unmeasured') {
     console.error(
       `::error::${TAG} unmeasured: ${report.reason} — the gate fails closed on evidence it cannot read. ${FAIL_NOTE}`
