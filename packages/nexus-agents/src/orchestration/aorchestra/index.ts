@@ -40,9 +40,24 @@ export type { ContextEntry } from './context-freshness.js';
 export {
   sanitizeWorkerOutput,
   buildPriorWaveContextBlock,
+  shadowDistillPriorWave,
   MAX_PRIOR_CONTEXT_CHARS,
   MAX_CHARS_PER_WORKER,
+  DISTILLATION_SHADOW_LOG_MESSAGE,
 } from './cross-wave-context.js';
+export type {
+  ShadowInput,
+  DistillationShadowEntry,
+  PriorWaveDistillationShadow,
+} from './cross-wave-context.js';
+// Context distillation (#1607), shadow-wired into the prior-wave path in #5974.
+export {
+  distillPhaseOutput,
+  formatDistillation,
+  compressionRatio,
+  PhaseDistillationSchema,
+} from './context-distillation.js';
+export type { PhaseDistillation } from './context-distillation.js';
 export {
   synthesizeResults,
   buildSynthesisPrompt,

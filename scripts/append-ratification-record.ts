@@ -81,6 +81,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
+import { findReasoningCommitmentDefect } from '../packages/nexus-agents/src/audit/reasoning-commitment.js';
 import {
   VoteRecordSchema,
   computeVoteRecordHash,
@@ -189,6 +190,21 @@ function vetSourceRecord(record: VoteRecord, sourcePath: string): SourceStep {
         'source-hash-mismatch',
         `record '${recordId}' in ${sourcePath} fails its own self-hash: stored ` +
           `${record.hash || '(none)'} vs recomputed ${recomputed}. A record edited without re-hashing is not copied.`
+      ),
+    };
+  }
+  // #6263: on the digest tier the self-hash folds a salted digest of each
+  // voter's reasoning, not the text, so an edited text leaves the hash intact
+  // and only the commitment breaks. Checked HERE, not left to the read-back
+  // after the append, so the line is never written.
+  const commitment = findReasoningCommitmentDefect(record);
+  if (commitment !== null) {
+    return {
+      ok: false,
+      outcome: refused(
+        'source-hash-mismatch',
+        `record '${recordId}' in ${sourcePath} fails its reasoning commitment: ${commitment}. ` +
+          'A record whose reasoning was edited without re-committing is not copied.'
       ),
     };
   }

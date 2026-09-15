@@ -1,5 +1,32 @@
 # nexus-agents
 
+## 8.64.0
+
+### Minor Changes
+
+- [#6274](https://github.com/nexus-substrate/nexus-agents/pull/6274) [`39cdbf7`](https://github.com/nexus-substrate/nexus-agents/commit/39cdbf715d4124413b6aa0e01179fcbddc9b41d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote records (schema 1.13) hash a salted digest of each voter's reasoning instead of the text ([#6263](https://github.com/nexus-substrate/nexus-agents/issues/6263), [#5748](https://github.com/nexus-substrate/nexus-agents/issues/5748) step 1).
+
+  Every voter entry a `consensus_vote` persists now carries `reasoningNonce` (32 random bytes, hex, fresh per entry) and `reasoningDigest = sha256(reasoningNonce ‖ reasoning)`, computed over the reasoning as stored (after the 20,000-char clip). On this tier the record hash covers ONLY the digest; the text and the nonce — the opening of the commitment — travel on the record outside the hash. The nonce is outside the hash because the salt is the secret: a hash-covered salt could not be dropped at redaction without breaking the hash and any signature over it, and a public salt would let `sha256(nonce ‖ guess)` confirm low-entropy boilerplate reasoning once the text is gone. `verifyVoteRecordSet` re-opens the commitment whenever text and nonce are both present, so editing either alone, or both to a different opening, in a persisted record is a `hash_mismatch` — the tier is as tamper-evident as before while the opening is present — and dropping text and nonce together leaves the original hash (and any signature over it) verifying unchanged, with the 256-bit unknown salt keeping the digest an opaque commitment. The clip marker `reasoningTruncated` stays hashed on every tier, so dropping or adding it on a persisted 1.13 record is a `hash_mismatch`.
+
+  Records on every earlier tier (1.1–1.12) hash exactly as they did; nothing is migrated. The read schema holds the keys together on 1.13 — text and nonce present or absent together, the digest required for any entry with reasoning — and, until the redaction step ([#6264](https://github.com/nexus-substrate/nexus-agents/issues/6264)) lands, refuses a digest with no opening at all; it refuses the keys on any older tier. `scripts/append-ratification-record.ts` refuses a source record whose reasoning no longer matches its digest before writing the committed line. New module `audit/reasoning-commitment.ts` exports `mintReasoningNonce`, `computeReasoningDigest`, `isReasoningDigestTier` and `findReasoningCommitmentDefect`.
+
+## 8.63.2
+
+### Patch Changes
+
+- [#6335](https://github.com/nexus-substrate/nexus-agents/pull/6335) [`62ff67c`](https://github.com/nexus-substrate/nexus-agents/commit/62ff67ccaa553e8a65c0c1581b4e3de1e83423af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wire `context-distillation` into the prior-wave context path, shadow-first
+  ([#5974](https://github.com/nexus-substrate/nexus-agents/issues/5974), item 1 of [#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771)). `buildPriorWaveContextBlock` still emits exactly what
+  it emitted before — per-worker truncation decides what a downstream worker
+  receives. Alongside it, distillation now runs on the same sanitized output and a
+  `Prior-wave distillation shadow ([#5974](https://github.com/nexus-substrate/nexus-agents/issues/5974))` record is logged at info: per worker,
+  the sanitized / truncated / distilled sizes, both compression ratios, pattern
+  hits per category, and whether no pattern matched (the case where distillation
+  would degenerate to a 200-char head and the candidate falls back to
+  truncation); per block, how many predecessors truncation kept under the 6000-char
+  budget versus how many distillation would have kept. That last pair is the flip
+  criterion the panel set. The module and the pure `shadowDistillPriorWave` are
+  now exported from the `orchestration/aorchestra` barrel.
+
 ## 8.63.1
 
 ### Patch Changes

@@ -128,9 +128,10 @@ describe('ratifiesPr reaches the persisted vote record and the id reaches the ca
     expect(records).toHaveLength(1);
     const record = records[0]!;
     expect(record.ratifiesPr).toEqual({ pr: 6200, headSha: HEAD });
-    // 1.11, not 1.10: every record the live producer writes now carries the
-    // effective error policy (#6211), which outranks the binding tier.
-    expect(record.version).toBe('1.11');
+    // 1.13, not 1.10: every record the live producer writes carries the
+    // effective error policy (#6211) and a salted digest of each voter's
+    // reasoning (#6263); the voter tier outranks the binding tier.
+    expect(record.version).toBe('1.13');
     expect(verifyVoteRecordSet(records).ok).toBe(true);
 
     // The caller-commits script is keyed on the record id; the response must
@@ -224,7 +225,7 @@ describe('the persisted record carries the error policy the panel ran under (#62
       ratifiesPr: { pr: 6211, headSha: HEAD },
     });
     expect(record.errorPolicy).toBe('absolute_quorum');
-    expect(record.version).toBe('1.11');
+    expect(record.version).toBe('1.13');
   });
 
   it('records the RESOLVED default when the caller passed none — the effective policy, not the raw input', async () => {
