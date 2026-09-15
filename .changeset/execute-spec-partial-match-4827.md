@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 `execute_spec` failure analysis can now report a partial match. `CriterionResult` gains a required `partialResults: string[]` — the execution results that overlapped some of a criterion's keywords without clearing the 0.5 match threshold. `analyzeFailures` reads that field for its `partial_match` verdict and priority-2 "Refine implementation" suggestion; before, both read `matchedResults`, which is empty on every unmet criterion by construction (`met` is defined as `matchedResults.length > 0`), so every failed criterion was classified `missing_implementation` or `no_output` at priority 1 and the priority field could not rank anything. `met` and `matchedResults` keep their meaning. Readers of the schema see one added field; a caller hand-building a `SpecExecutionResult` for `analyzeFailures` must now supply `partialResults` (no in-tree caller does this by hand).
