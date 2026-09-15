@@ -26,10 +26,17 @@
  *   had", "no non-ledger change", "conflict resolving <path>", the head's
  *   tree "differs … at <path>", or "not measured" — so a rebase that
  *   changed the content is distinguishable from a checkout that could not
- *   see the ratified commit.
+ *   see the ratified commit;
+ * - every line over bound records — the two ratifying kinds and every bound
+ *   refusal — ends with the per-record signature code (#3927 item 4:
+ *   `signed by <keyId>`, `unsigned-record`, `unknown-signer`,
+ *   `bad-signature`, `signature-not-measured`), rendered by
+ *   `governor-ledger-signature.ts`; `ledgerEvidenceFromEnv` supplies the
+ *   verifier over the `allowed_signers` beside the ledger. Informational
+ *   this phase — the exit answer never reads it.
  *
  * @module scripts/governor-ledger-report
- * (Source: Issue #5131, #6219, #6256)
+ * (Source: Issue #5131, #6219, #6256, #3927)
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -45,6 +52,7 @@ import {
   evaluateLedgerEvidence,
   isRatifiedKind,
 } from './governor-ledger-evidence.js';
+import { formatSignatures, signatureVerifierFromEnv } from './governor-ledger-signature.js';
 import { gitMovedHeadProbe, isFullSha, type MovedHeadProbe } from './governor-patch-identity.js';
 
 /** Overrides the committed ledger path; for tests that drive the real gate over a temp ledger. */
@@ -112,7 +120,7 @@ function formatRatified(evidence: RatifiedEvidence): string {
   return (
     `::notice::${TAG} ${evidence.kind}: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
     `${sha}, decision ${evidence.record.decision}, strategy: ${evidence.record.strategy}, ` +
-    `${panel}, ${policy}, ${appendOnly}.`
+    `${panel}, ${policy}, ${appendOnly}, ${formatSignatures(evidence.signatures)}.`
   );
 }
 
@@ -198,7 +206,10 @@ function refusalBody(evidence: Exclude<LedgerEvidence, RatifiedEvidence>): strin
       );
     default:
       // Narrowed to the bound refusals: every `BOUND_RECORD_CHECKS` kind carries `failures`.
-      return evidence.failures.map((f) => `${f.kind}: ${boundRecordBody(f)}`).join('; ');
+      return (
+        evidence.failures.map((f) => `${f.kind}: ${boundRecordBody(f)}`).join('; ') +
+        `; ${formatSignatures(evidence.signatures)}`
+      );
   }
 }
 
@@ -271,7 +282,10 @@ function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): Re
  * or malformed, a moved head is `sha-mismatch` with the reason "not measured".
  * `PR_PRIOR_HEADS` names the heads this PR had (#6301 item 4); absent, a
  * ratified sha that is not an ancestor of the head is `sha-mismatch` naming
- * the relation.
+ * the relation. `RATIFICATION_ALLOWED_SIGNERS_PATH` overrides the
+ * `allowed_signers` the signature verifier reads (#3927 item 4; default:
+ * beside the ledger); an unreadable file is `signature-not-measured` on the
+ * line, not `unmeasured`.
  */
 export function ledgerEvidenceFromEnv(
   env: NodeJS.ProcessEnv,
@@ -303,6 +317,7 @@ export function ledgerEvidenceFromEnv(
     head,
     ...(base !== undefined ? { baseLedgerText: base.text } : {}),
     ...(probe !== undefined ? { movedHead: probe } : {}),
+    signatureVerifier: signatureVerifierFromEnv(env, ledgerPath),
   });
 }
 

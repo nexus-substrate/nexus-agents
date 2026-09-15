@@ -246,16 +246,45 @@
  * misconfiguration. Both are non-ratified either way; only the report
  * changes. The `failures` field on a bound refusal carries that list.
  *
+ * ## Signature: reported per bound record, not yet enforced (#3927 item 4)
+ *
+ * Since phase 1 a record may carry a `signature` — an `ssh-keygen -Y sign`
+ * signature over its committed hash, outside the self-hash — and the gate
+ * verifies it against the committed `governance/allowed_signers` (beside
+ * the ledger; `RATIFICATION_ALLOWED_SIGNERS_PATH` overrides it for tests;
+ * the verifier and the rendering live in `governor-ledger-signature.ts`,
+ * and `governor-ledger-report.ts` supplies the verifier from the
+ * environment and prints the codes). The verifier's code for EVERY bound
+ * record goes on the evidence line — under `ratified` and `ratified-rebased`
+ * alike, and on every bound refusal: `signed by <keyId>`,
+ * `unsigned-record`, `unknown-signer`, `bad-signature`,
+ * `signature-not-measured` — distinct, never collapsed, with ssh-keygen's
+ * reason where there is one. An unreadable allowed_signers is
+ * `signature-not-measured` naming the path, on the line, not a crash.
+ *
+ * THIS PHASE THE EXIT CODE DOES NOT DEPEND ON IT. The two records committed
+ * before phase 2 are unsigned and the append script signs only when a key is
+ * configured; enforcing now would refuse every governor PR. Phase 3 lands a
+ * COMMITTED cutover constant (`SIGNATURE_CUTOVER_SEQUENCE`, not an env knob)
+ * once the count of unsigned records is measured: a bound record at or past
+ * it that is not `signed` becomes a refusal, and the grandfathered range is
+ * named. A caller of the pure function that supplies no `signatureVerifier`
+ * gets no `signatures` field and a line that says `unmeasured (no verifier
+ * supplied)` — absence is not reported as `unsigned-record`.
+ *
  * ## Residual trust (disclosed)
  *
  * The self-hash makes a record tamper-EVIDENT, not tamper-PROOF. A record
  * fabricated and self-hashed with the exported `computeVoteRecordHash` passes
  * every check here; provenance (a cross-check against the job sidecar or the
- * PR tally comment, or signing — #3927 item 4) is not part of this step, and
- * the `ratified` line must not be read as proving more than it measures.
+ * PR tally comment) is not part of this step, and the `ratified` line must
+ * not be read as proving more than it measures. A `signed` signature proves
+ * access to a listed private key from the environment that ran the append —
+ * not that a human ratified anything (#6257; the threat model has the
+ * measured example).
  *
  * @module scripts/governor-ledger-evidence
- * (Source: Issue #5130, #5779, #5131, #5118, #6256, #6301)
+ * (Source: Issue #5130, #5779, #5131, #5118, #6256, #6301, #3927)
  */
 
 import type {
@@ -267,6 +296,7 @@ import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
+import type { RecordSignatureReport, SignatureVerifier } from './governor-ledger-signature.js';
 import type {
   MovedHeadMeasurement,
   MovedHeadProbe,
@@ -319,6 +349,22 @@ export interface LedgerEvidenceInputs {
    * fail-closed.
    */
   readonly movedHead?: MovedHeadProbe | undefined;
+  /**
+   * The signature verifier for a bound record (#3927 item 4) — the workflow
+   * supplies `verifyVoteRecordSignature` over the committed allowed_signers.
+   * Omitted ⇒ no `signatures` on the verdict, and the line says the check
+   * was not made. Informational this phase: it never changes `kind`.
+   */
+  readonly signatureVerifier?: SignatureVerifier | undefined;
+}
+
+/**
+ * The per-bound-record signature verdicts, present only when the caller
+ * supplied a verifier. Carried by `ratified`, `ratified-rebased` and by
+ * every bound refusal.
+ */
+interface WithSignatures {
+  readonly signatures?: readonly RecordSignatureReport[];
 }
 
 /** Why one recorded sha was not accepted under the moved-head rule (#6256). */
@@ -359,13 +405,14 @@ export type BoundRecordFailure =
  * as such. Never empty: the first entry in precedence order is the refusal's
  * own `kind`.
  */
-export type BoundRecordRefusal = BoundRecordFailure & {
-  readonly failures: readonly BoundRecordFailure[];
-};
+export type BoundRecordRefusal = BoundRecordFailure &
+  WithSignatures & {
+    readonly failures: readonly BoundRecordFailure[];
+  };
 
 /** The verdict. See the module header for what each kind means. */
 export type LedgerEvidence =
-  | {
+  | ({
       readonly kind: 'ratified';
       readonly record: VoteRecord;
       /**
@@ -376,8 +423,8 @@ export type LedgerEvidence =
       readonly shaChecked: boolean;
       /** False when no base ledger was supplied: append-only was not compared (#6213). */
       readonly appendOnlyChecked: boolean;
-    }
-  | {
+    } & WithSignatures)
+  | ({
       /** #6256: ratified at an earlier head of this PR; the current head's tree is that head's patch replayed onto its base. */
       readonly kind: 'ratified-rebased';
       readonly record: VoteRecord;
@@ -398,7 +445,7 @@ export type LedgerEvidence =
       readonly replayedTree: string;
       /** As on `ratified`; the sha binding was checked by construction. */
       readonly appendOnlyChecked: boolean;
-    }
+    } & WithSignatures)
   | { readonly kind: 'no-record'; readonly recordCount: number }
   | {
       readonly kind: 'sha-mismatch';
@@ -597,7 +644,8 @@ function inReportOrder(failures: readonly BoundRecordFailure[]): BoundRecordFail
  */
 function verdictOverBound(
   bound: readonly VoteRecord[],
-  checked: { readonly shaChecked: boolean; readonly appendOnlyChecked: boolean }
+  checked: { readonly shaChecked: boolean; readonly appendOnlyChecked: boolean },
+  signatureVerifier: LedgerEvidenceInputs['signatureVerifier']
 ): LedgerEvidence {
   const failures: BoundRecordFailure[] = [];
   for (const check of BOUND_RECORD_CHECKS) {
@@ -606,11 +654,17 @@ function verdictOverBound(
       if (failure !== undefined) failures.push(failure);
     }
   }
+  // #3927 item 4: computed over every bound record, attached to whichever
+  // verdict follows, never consulted for `kind` this phase.
+  const signatures: WithSignatures =
+    signatureVerifier !== undefined
+      ? { signatures: bound.map((r) => ({ recordId: r.id, verdict: signatureVerifier(r) })) }
+      : {};
   const first = failures[0];
-  if (first !== undefined) return { ...first, failures: inReportOrder(failures) };
+  if (first !== undefined) return { ...first, failures: inReportOrder(failures), ...signatures };
   // `bound` is non-empty by the caller's construction; the reduce needs no seed.
   const latest = bound.reduce((a, b) => (b.sequence > a.sequence ? b : a));
-  return { kind: 'ratified', record: latest, ...checked };
+  return { kind: 'ratified', record: latest, ...checked, ...signatures };
 }
 
 /**
@@ -639,7 +693,11 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   if (forPr.length === 0) return { kind: 'no-record', recordCount: loaded.records.length };
 
   if (inputs.head === undefined) {
-    return verdictOverBound(forPr, { shaChecked: false, appendOnlyChecked });
+    return verdictOverBound(
+      forPr,
+      { shaChecked: false, appendOnlyChecked },
+      inputs.signatureVerifier
+    );
   }
 
   const accepted = acceptedHeadShas(inputs.head);
@@ -647,7 +705,7 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   if (bound.length === 0) {
     return movedHeadVerdict(forPr, accepted, inputs, appendOnlyChecked);
   }
-  return verdictOverBound(bound, { shaChecked: true, appendOnlyChecked });
+  return verdictOverBound(bound, { shaChecked: true, appendOnlyChecked }, inputs.signatureVerifier);
 }
 
 type Measured = Extract<MovedHeadMeasurement, { kind: 'measured' }>;
@@ -709,10 +767,15 @@ function rebasedVerdict(
   forPr: readonly VoteRecord[],
   passing: ReadonlyMap<string, Measured>,
   headSha: string,
-  appendOnlyChecked: boolean
+  appendOnlyChecked: boolean,
+  signatureVerifier: LedgerEvidenceInputs['signatureVerifier']
 ): LedgerEvidence {
   const rebasedBound = forPr.filter((r) => passing.has(r.ratifiesPr?.headSha ?? ''));
-  const verdict = verdictOverBound(rebasedBound, { shaChecked: true, appendOnlyChecked });
+  const verdict = verdictOverBound(
+    rebasedBound,
+    { shaChecked: true, appendOnlyChecked },
+    signatureVerifier
+  );
   if (verdict.kind !== 'ratified') return verdict;
   const ratifiedSha = verdict.record.ratifiesPr?.headSha ?? '';
   // `verdict.record` is one of `rebasedBound`, whose shas are exactly the map's keys.
@@ -726,6 +789,8 @@ function rebasedVerdict(
     relation: measured.relation,
     replayedTree: measured.tree.replayedTree,
     appendOnlyChecked,
+    // #3927 item 4: the rebased record is a bound record; its signature code travels with it.
+    ...(verdict.signatures !== undefined ? { signatures: verdict.signatures } : {}),
   };
 }
 
@@ -770,5 +835,5 @@ function movedHeadVerdict(
     else passing.set(sha, outcome.measured);
   }
   if (passing.size === 0) return mismatch((sha) => refused.get(sha) ?? 'not judged');
-  return rebasedVerdict(forPr, passing, headSha, appendOnlyChecked);
+  return rebasedVerdict(forPr, passing, headSha, appendOnlyChecked, inputs.signatureVerifier);
 }

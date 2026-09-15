@@ -439,7 +439,9 @@ keyless hash (T3 and its specializations) is **undetectable**.
 ### Absent
 
 - **No secret/keyed integrity.** Hashing is keyless SHA-256 — defeats T3.
-- **No signing.** Events and checkpoints are unsigned.
+- **No signing** of audit events and checkpoints. (The committed vote ledger
+  is the exception since #3927 item 4 — optional per-record SSH signatures,
+  reported not enforced; see recommendation 3 for what they prove.)
 - **No external anchor / transparency log.** Nothing records the head hash or
   event count outside the mutable `logDir` — defeats T1, T2, T6.
 - **No monotonic counter / sequence number** in the hashed fields — weakens T4/T5.
@@ -477,6 +479,30 @@ Ranked by risk-reduction-per-effort. All are **out of scope for this doc**
    not readable by the agent). A process adversary without the key can no longer
    rehash. Directly closes **T3**; combined with (2) closes the rewrite class.
    Higher effort (key management).
+
+   > Partially adopted for the committed VOTE ledger (`vote-record.ts`, #3927
+   > item 4, phases 1-2). A record may carry `signature`: an `ssh-keygen -Y
+sign` signature, namespace `nexus-vote-record`, over the record's
+   > committed `hash` string (never re-serialised JSON), verified against the
+   > committed `governance/allowed_signers` with its validity windows. The
+   > append script signs when a key is configured; the gate reports the
+   > verifier's code per record (`signed by` / `unsigned-record` /
+   > `unknown-signer` / `bad-signature` / `signature-not-measured`) and does
+   > not yet fail on it — phase 3 enforces past a committed cutover sequence.
+   >
+   > **What a signature proves, and what it does not.** `signed` proves that
+   > whoever ran the append had access to a listed private key from that
+   > environment. It does NOT prove a human was present or ratified anything.
+   > Measured, 2026-09-14: the agent process signed ledger commit `4a5acd562f`
+   > with the operator's cached GPG key and no prompt was shown; the agent
+   > that implemented this feature then signed a probe with the operator's
+   > ssh-agent-loaded ed25519 key — the very key in `allowed_signers` — the
+   > same way. Under that custody a signature is a stronger hash (it closes
+   > the rewrite-and-rehash from a process WITHOUT the key), not a
+   > ratification (it does nothing against a process WITH it, which is the
+   > agent). Making it mean more is a key-custody question — a hardware-backed
+   > key with presence confirmation, or a CI/OIDC identity for machine-made
+   > records — tracked as #6257, not pretended away here.
 
 4. **Add a monotonic sequence number to the hashed fields and enforce
    monotonic, non-decreasing `timestampMs` in `verifyChain`.** Strengthens

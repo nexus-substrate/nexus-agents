@@ -1333,7 +1333,8 @@ describe('the governor section is bounded by dedicated directives, not the human
    * directives landed, plus the two #6000 step-3 entries (the pure decision
    * computation and the voter-role set), plus the #6174 CODEOWNERS-parses gate
    * script, plus the #5130 step-2 ledger-evidence module and its #6256 report
-   * and patch-identity siblings, plus the #4797 audit-exception warrant ledger
+   * and patch-identity siblings, plus the #3927 item-4 `allowed_signers` file
+   * and signature-evidence module, plus the #4797 audit-exception warrant ledger
    * (the file whose entries mute advisories the required Security Audit job
    * would otherwise block — #4794 stage 2). The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
@@ -1345,12 +1346,14 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/inject-governance.ts',
     '/governance/',
     '/governance/claims-registry.*',
+    '/governance/allowed_signers',
     '/.github/workflows/governor-review.yml',
     '/scripts/check-governor-review.ts',
     '/scripts/check-governor-ratification.ts',
     '/scripts/governor-ledger-evidence.ts',
     '/scripts/governor-ledger-report.ts',
     '/scripts/governor-patch-identity.ts',
+    '/scripts/governor-ledger-signature.ts',
     '/scripts/check-codeowners-errors.ts',
     '/scripts/governor-paths-touched.ts',
     '/.github/CODEOWNERS',
@@ -1401,9 +1404,13 @@ describe('the governor section is bounded by dedicated directives, not the human
     // ratification.
     expect(set).toContain('/scripts/governor-ledger-report.ts');
     expect(set).toContain('/scripts/governor-patch-identity.ts');
+    // #3927 item 4: the keys a vote-record signature is verified against,
+    // and the gate-side verifier that reads them.
+    expect(set).toContain('/governance/allowed_signers');
+    expect(set).toContain('/scripts/governor-ledger-signature.ts');
     // #4797: the audit-exception warrant ledger can lower the security bar.
     expect(set).toContain('/.github/audit-exceptions.json');
-    expect(set).toHaveLength(24);
+    expect(set).toHaveLength(26);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

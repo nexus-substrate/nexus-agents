@@ -368,14 +368,15 @@ These are read by production code and are registered in `config/env-schema.ts`.
 They were previously unregistered, so setting one produced an "unknown variable"
 warning at startup with a typo suggestion, even though the value was honoured.
 
-| Variable                         | Description                                                                                                                                  | Default                 |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `NEXUS_MCP_DEPTH`                | Nesting depth stamped on a child Codex MCP process; the adapter refuses to recurse past its limit. Set by the parent, not normally by a user | `0` (top level)         |
-| `NEXUS_SUBPROCESS_DEPTH`         | Same idea for spawned CLI subprocesses (`subprocess-env.ts`), guarding runaway self-invocation                                               | `0` (top level)         |
-| `NEXUS_JOB_MAX_CONCURRENT_TOTAL` | Global cap on in-flight async MCP jobs across all tools. **`0` is meaningful** — it disables async dispatch entirely                         | built-in cap            |
-| `NEXUS_CI_HEALTH_MAX_BYTES`      | Byte cap on the log slice `ci_health_check` reads before truncating                                                                          | built-in cap            |
-| `NEXUS_VOTE_RECORDS_PATH`        | Overrides where consensus vote records are written. Relative paths resolve against the repo data dir and must not escape it                  | `<dataDir>/governance/` |
-| `NEXUS_MODEL_REGISTRY_OVERLAY`   | Path to a model-registry overlay manifest layered over the in-tree model data                                                                | unset                   |
+| Variable                         | Description                                                                                                                                                   | Default                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `NEXUS_MCP_DEPTH`                | Nesting depth stamped on a child Codex MCP process; the adapter refuses to recurse past its limit. Set by the parent, not normally by a user                  | `0` (top level)         |
+| `NEXUS_SUBPROCESS_DEPTH`         | Same idea for spawned CLI subprocesses (`subprocess-env.ts`), guarding runaway self-invocation                                                                | `0` (top level)         |
+| `NEXUS_JOB_MAX_CONCURRENT_TOTAL` | Global cap on in-flight async MCP jobs across all tools. **`0` is meaningful** — it disables async dispatch entirely                                          | built-in cap            |
+| `NEXUS_CI_HEALTH_MAX_BYTES`      | Byte cap on the log slice `ci_health_check` reads before truncating                                                                                           | built-in cap            |
+| `NEXUS_VOTE_RECORDS_PATH`        | Overrides where consensus vote records are written. Relative paths resolve against the repo data dir and must not escape it                                   | `<dataDir>/governance/` |
+| `NEXUS_VOTE_SIGNING_KEY`         | SSH key `scripts/append-ratification-record.ts` signs a committed vote record's hash with (#3927 item 4); `--signing-key` overrides. Unset: appended unsigned | unset                   |
+| `NEXUS_MODEL_REGISTRY_OVERLAY`   | Path to a model-registry overlay manifest layered over the in-tree model data                                                                                 | unset                   |
 
 **Dynamic families.** Two variable names are constructed at runtime, so they are
 matched by prefix rather than listed individually:
