@@ -55,6 +55,14 @@
 /scripts/governor-patch-identity.ts @williamzujkowski
 # #3927 item 4 — the signature half of that evidence: verifier and rendering.
 /scripts/governor-ledger-signature.ts @williamzujkowski
+#6366 — the ledger PRODUCERS: what they write is what the gate trusts
+/scripts/append-ratification-record.ts @williamzujkowski
+/scripts/append-ratification-signing.ts @williamzujkowski
+/scripts/append-ratification-args.ts @williamzujkowski
+/scripts/append-ratification-record.test.ts @williamzujkowski
+/scripts/redact-vote-record.ts @williamzujkowski
+/scripts/redact-vote-record-args.ts @williamzujkowski
+/scripts/redact-vote-record.test.ts @williamzujkowski
 # #6174 — asks GitHub's own parser whether this file is valid at the sha under review.
 /scripts/check-codeowners-errors.ts @williamzujkowski
 # #4802 — decides whether the pr_review audit gate and the CODEOWNERS parse run
