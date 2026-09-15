@@ -548,9 +548,128 @@ longer use the unqualified word "immutable" (a grep of `CLAUDE.md` and
 lives as prose in those two governance files, and this doc is linked from the
 canonical index (`docs/README.md`).
 
+## 8. Sanctioned edit: redaction of voter reasoning in the vote ledger (#5748)
+
+This section covers the one edit the SET-based vote ledger
+(`governance/vote-records.jsonl`, `packages/nexus-agents/src/audit/vote-record.ts`)
+admits on purpose. Everything above says the chain is tamper-**evident**: any edit
+to a persisted record is a `hash_mismatch`. A redaction facility is by
+construction an edit, so it has to be reconciled with that claim rather than
+bolted beside it.
+
+### 8.1 What a redaction is
+
+Since schema tier 1.13 (#6263) a voter entry commits to its model-written
+reasoning instead of hashing the text: it carries a per-entry salt
+`reasoningNonce` (32 random bytes) and `reasoningDigest = sha256(nonce ‖ text)`,
+and the record hash folds **only the digest**. The text and the nonce — the
+_opening_ of the commitment — travel on the record outside the hash, and the
+verifier re-opens the commitment whenever both are present, so an edited text
+is still a `hash_mismatch`.
+
+A redaction (#6264) drops the opening — text **and** nonce, together — for the
+named voter roles and leaves the digest. Two consequences follow from the fold
+rule, and both are asserted as hash-value equality in
+`redaction-record.test.ts`:
+
+- The target record's `hash` is **unchanged**. Anything signed over it (#3927
+  item 4, when signing lands) verifies unchanged; nothing is re-hashed or
+  re-signed.
+- With the 256-bit nonce gone, the digest is an opaque commitment: there is no
+  offline `sha256(nonce ‖ guess)` check against low-entropy boilerplate
+  reasoning. (This is why the #6274 panel moved the nonce outside the hash — a
+  hashed salt could not be dropped, and a public one would be a dictionary
+  target.)
+
+### 8.2 What makes it an edit rather than tampering: the redaction record
+
+A self-hashed **redaction record** is appended at the ledger's next `sequence`:
+
+```json
+{ "kind": "redaction", "id": "…", "sequence": N, "targetId": "<vote record id>",
+  "targetVoterRoles": ["security"], "at": "<ISO-8601>", "by": "<actor>",
+  "reason": "<why>", "hash": "<sha256 over every field above>" }
+```
+
+It occupies a sequence like any record (a hole before it is a `sequence_gap`; a
+shared sequence is a benign fork), its hash covers every field (an edited
+`reason` or `by` is a `hash_mismatch`), and it is what the verifier consults.
+`verifyVoteRecordSet(records, redactions)` gives a **third per-record answer**
+beside `ok` and `hash_mismatch`:
+
+| Shape of the entry                                              | Verdict                                                                       |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| digest present, opening absent, a redaction record names it     | `ok`, with the record listed under `redacted` (roles and redaction ids named) |
+| digest present, opening absent, **no** redaction record         | `hash_mismatch` — the named empty case; a silent drop is tampering            |
+| redaction record whose `targetId` or role binds to no entry     | `redaction_unbound` — never `ok`                                              |
+| redaction record naming an entry whose opening is still present | `redaction_unbound` — recorded but not applied is a misreport                 |
+| redaction record whose `sequence` is not past its target's      | `redaction_unbound` — an honest ledger appends it only after the target       |
+| two redaction records naming the same entry                     | idempotent: `ok`, both ids listed (a `merge=union` fork of the right action)  |
+
+The governor ratification gate (`scripts/governor-ledger-evidence.ts`) treats a
+`redacted` ratifying record as verifiable — its decision, tally, strategy,
+policy and panel coverage are all still hash-covered — and prints the
+redaction on the `::notice::` line so a spot-checker who goes looking for the
+reasoning finds "removed under redaction record 'X'" rather than nothing.
+
+### 8.3 What a redaction does and does not remove
+
+Removes, from the ledger's **current state**: the voter's reasoning text and
+its salt. Keeps, hash-covered and legible: every tally field, the decision, the
+clip marker `reasoningTruncated`, the digest, and the redaction's own
+who/when/why.
+
+Does **not** remove:
+
+- **Git history.** A plaintext already committed stays in every earlier commit
+  of `governance/vote-records.jsonl` until a history rewrite, which the ledger
+  tooling does not perform and which is out of scope here; the redaction
+  script's README (#6265) states this and the procedure.
+- **Copies elsewhere** — the runtime store under `.nexus-agents/`, job
+  sidecars, PR tally comments, CI logs. A redaction is scoped to one ledger.
+- **The fact that the voter argued.** The digest and the marker remain; only
+  the words are gone.
+
+### 8.4 Landing a redaction through the ratification gate: not yet possible (#6348)
+
+The verifier above answers `redacted`; the **wired gate does not reach it on
+the PR that performs the redaction**. `scripts/governor-ledger-evidence.ts`
+enforces append-only against the base (#6213) by matching every base line of
+`governance/vote-records.jsonl` byte-for-byte, in order, to a head line. A
+redaction rewrites the target line (the opening is dropped from it) and
+appends the redaction record, so on the redacting PR the base line no longer
+exists in the head verbatim. Measured against the gate: base = the original
+ledger, head = the redacted ledger plus its redaction record →
+`ledger-rewritten`, `divergesAt: 1`. The gate refuses the PR.
+
+This is fail-closed, not a regression — a rewritten ledger line is exactly
+what that rule exists to refuse, and before #6264 the same edit was refused
+too. But it means the `redacted` verdict in §8.2 is **unreachable on the PR
+that redacts** until the append-only rule learns the one sanctioned rewrite: a
+base line whose head counterpart differs only by an absent opening, when a
+redaction record appended in the same head names that record and role. That
+amendment is #6348. Until it lands, the redaction script (#6265) can produce
+a ledger the verifier accepts but the gate will not merge, and a redaction
+reaches `main` only by an owner override of a red gate. Treat #6348 as the
+precondition for using this facility at all, not as a follow-up.
+
+### 8.5 Trust boundary
+
+A redaction record is author-typed under the same residual-trust boundary as
+every other record (§2, T3): an actor with write access can append one, and
+`by`/`reason` are whatever that actor wrote. What the mechanism guarantees is
+narrower and exact — a removal is either **recorded** (verifiable, listed as
+`redacted`, attributable to a line that names an actor and a reason) or it is
+**flagged** (`hash_mismatch`). There is no third state in which a voter's
+argument vanishes and the ledger still reads as clean. Raising the bar on who
+may append a redaction is signing's job (rec #3), not the verifier's.
+
 ## References
 
 - Implementation: `packages/nexus-agents/src/audit/audit-logger.ts`
+- Vote ledger + redaction (§8): `packages/nexus-agents/src/audit/vote-record.ts`,
+  `packages/nexus-agents/src/audit/reasoning-commitment.ts`,
+  `packages/nexus-agents/src/audit/redaction-record.ts`
 - Event schema: `packages/nexus-agents/src/audit/audit-types.ts`
 - Storage: `packages/nexus-agents/src/audit/audit-storage.ts`
 - Verifier tool: `packages/nexus-agents/src/mcp/tools/verify-audit-chain-tool.ts`

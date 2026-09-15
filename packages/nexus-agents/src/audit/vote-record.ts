@@ -76,6 +76,15 @@ import {
   isReasoningDigestTier,
   reasoningCommitmentShapeDefect,
 } from './reasoning-commitment.js';
+import {
+  findRedactionDefect,
+  redactedRecordReports,
+  redactedRolesByTarget,
+  type RedactedRecordReport,
+  type RedactionFailureReason,
+  type RedactionRecord,
+} from './redaction-record.js';
+import { censusSequences, firstSequenceGap, forkSequences } from './sequence-census.js';
 import type { CompleteKeys } from './voter-keys-constraint.js';
 
 /** Decision an `approved`/`rejected`/`no_quorum` consensus vote resolves to. */
@@ -318,7 +327,7 @@ export const VoterSummarySchema = z
      * panel 1): hashed, it could not be dropped at redaction without
      * breaking the hash and the #3927 signature; public, it would let
      * `sha256(nonce ‖ guess)` confirm low-entropy reasoning once the text is
-     * gone. Outside the hash, a later step (#6264) drops text and nonce
+     * gone. Outside the hash, a redaction (#6264) drops text and nonce
      * together while the original hash — and any signature over it — still
      * verifies, and the 256-bit unknown salt keeps the digest opaque. The
      * record-level refinement below holds the three together: on 1.13 text
@@ -429,7 +438,7 @@ const REASONING_TIER_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
 /**
  * The OPENING of the commitment — outside the hash on the DIGEST tier: the
  * raw text and its salt, `reasoningNonce`. Both, not the text alone (#6274
- * panel 1): the hash folds only `reasoningDigest`, so a later step can drop
+ * panel 1): the hash folds only `reasoningDigest`, so a redaction (#6264) can drop
  * text and nonce together while the hash and any signature over it verify
  * unchanged, and the unknown 256-bit salt keeps the digest an opaque
  * commitment rather than a dictionary target. The clip marker
@@ -1006,10 +1015,15 @@ export function hashProposal(proposal: string): string {
 /**
  * Discriminated result from {@link verifyVoteRecordSet}. On success it may
  * surface `forks` — the sequence numbers that appear on more than one record
- * (a benign concurrent-branch signal, NOT tampering). On failure it names the
- * tamper/omission signal: `hash_mismatch` (a record's content was edited),
- * `missing_hash` (a record carries no hash), or `sequence_gap` (a record is
- * missing from the 0..maxSeq run — an omission).
+ * (a benign concurrent-branch signal, NOT tampering) — and `redacted`, the
+ * per-record third answer (#6264): each record whose voter openings were
+ * dropped under a redaction record that names it. On failure it names the
+ * tamper/omission signal: `hash_mismatch` (a record's content was edited, or
+ * an opening is absent with NO redaction record naming it — the empty case),
+ * `missing_hash` (a record carries no hash), `sequence_gap` (a record is
+ * missing from the 0..maxSeq run — an omission), or `redaction_unbound` (a
+ * redaction record names nothing it can bind to; `recordIndex` then indexes
+ * the REDACTIONS array, as the detail says).
  *
  * NOT detected (#4011): the deletion of a fork PARTNER (a record sharing a
  * sequence with a survivor) leaves no gap, so `ok` stays true. Bounded by the
@@ -1019,8 +1033,11 @@ export function hashProposal(proposal: string): string {
 export type VoteRecordVerification =
   | {
       ok: true;
+      /** Every record verified — vote records AND redaction records. */
       recordCount: number;
       forks?: number[];
+      /** Present only when at least one record is redacted; never `[]`. */
+      redacted?: readonly RedactedRecordReport[];
       /**
        * Set when the verified set was EMPTY, so nothing was checked (#5818).
        *
@@ -1038,100 +1055,83 @@ export type VoteRecordVerification =
        */
       notVerified?: 'empty';
     }
-  | {
-      ok: false;
-      reason: 'hash_mismatch' | 'missing_hash' | 'sequence_gap';
-      recordIndex: number;
-      recordId: string;
-      detail: string;
-    };
+  | VoteRecordVerificationFailure;
 
-/** Per-record self-hash check; null when the record passes. */
-function verifyVoteRecord(record: VoteRecord, index: number): VoteRecordVerification | null {
-  if (record.hash.length === 0) {
-    return {
-      ok: false,
-      reason: 'missing_hash',
-      recordIndex: index,
-      recordId: record.id,
-      detail: `record at index ${String(index)} has no hash`,
-    };
-  }
+/** The failure branch of {@link VoteRecordVerification}. */
+interface VoteRecordVerificationFailure {
+  ok: false;
+  reason: 'hash_mismatch' | 'missing_hash' | 'sequence_gap' | RedactionFailureReason;
+  recordIndex: number;
+  recordId: string;
+  detail: string;
+}
+
+/** One failure, spelled once. */
+function fail(
+  reason: VoteRecordVerificationFailure['reason'],
+  recordIndex: number,
+  recordId: string,
+  detail: string
+): VoteRecordVerificationFailure {
+  return { ok: false, reason, recordIndex, recordId, detail };
+}
+
+/** No roles: what a record no redaction record names is checked against. */
+const NO_ROLES: ReadonlySet<string> = new Set();
+
+/**
+ * Per-record self-hash check; null when the record passes. `redactedRoles`
+ * are the voter roles the set's redaction records name on THIS record
+ * (#6264) — the commitment check admits an opening-less digest for exactly
+ * those roles and refuses it for every other.
+ */
+function verifyVoteRecord(
+  record: VoteRecord,
+  index: number,
+  redactedRoles: ReadonlySet<string>
+): VoteRecordVerificationFailure | null {
+  const at = `record at index ${String(index)}`;
+  if (record.hash.length === 0) return fail('missing_hash', index, record.id, `${at} has no hash`);
   const recomputed = computeVoteRecordHash(record);
   if (recomputed !== record.hash) {
-    return {
-      ok: false,
-      reason: 'hash_mismatch',
-      recordIndex: index,
-      recordId: record.id,
-      detail: `record at index ${String(index)} stored hash=${record.hash} does not match recomputed=${recomputed}`,
-    };
+    const detail = `${at} stored hash=${record.hash} does not match recomputed=${recomputed}`;
+    return fail('hash_mismatch', index, record.id, detail);
   }
   // #6263: on the digest tier the hash above cannot see the reasoning text
-  // or its nonce, so the commitment is re-opened here. Reported as `hash_mismatch`, not a
-  // fourth reason: it is the same fact — a stored field no longer matches
-  // what the record attests — and every consumer of the reason set keeps
-  // its meaning. Step 2 (#6264) adds the `redacted` state for an entry whose
-  // opening was deliberately dropped under a matching redaction record.
-  const commitment = findReasoningCommitmentDefect(record);
+  // or its nonce, so the commitment is re-opened here. Reported as
+  // `hash_mismatch`, not a fourth reason: it is the same fact — a stored
+  // field no longer matches what the record attests — and every consumer of
+  // the reason set keeps its meaning. An opening dropped under a redaction
+  // record naming the entry is not a defect (#6264); dropped under none, it is.
+  const commitment = findReasoningCommitmentDefect(record, redactedRoles);
   if (commitment !== null) {
-    return {
-      ok: false,
-      reason: 'hash_mismatch',
-      recordIndex: index,
-      recordId: record.id,
-      detail: `record at index ${String(index)} reasoning commitment broken: ${commitment}`,
-    };
+    return fail(
+      'hash_mismatch',
+      index,
+      record.id,
+      `${at} reasoning commitment broken: ${commitment}`
+    );
   }
   return null;
-}
-
-/** Tally of sequence number → how many records carry it, plus the max seen. */
-interface SequenceCensus {
-  readonly counts: ReadonlyMap<number, number>;
-  readonly maxSeq: number;
-}
-
-/** Count how many records carry each sequence number and find the max. */
-function censusSequences(records: readonly VoteRecord[]): SequenceCensus {
-  const counts = new Map<number, number>();
-  let maxSeq = 0;
-  for (const record of records) {
-    counts.set(record.sequence, (counts.get(record.sequence) ?? 0) + 1);
-    if (record.sequence > maxSeq) maxSeq = record.sequence;
-  }
-  return { counts, maxSeq };
-}
-
-/** First missing sequence in `0..maxSeq`, or null when the run is complete. */
-function firstSequenceGap({ counts, maxSeq }: SequenceCensus): number | null {
-  for (let seq = 0; seq <= maxSeq; seq++) {
-    if (!counts.has(seq)) return seq;
-  }
-  return null;
-}
-
-/** Sequence numbers carried by more than one record (concurrent forks), ascending. */
-function forkSequences({ counts }: SequenceCensus): number[] {
-  const forks: number[] = [];
-  for (const [seq, count] of counts) {
-    if (count > 1) forks.push(seq);
-  }
-  forks.sort((a, b) => a - b);
-  return forks;
 }
 
 /**
- * Verify a tamper-evident SET of vote records (#3927). For each record, the
- * self-hash must recompute from its payload (covers `sequence`, excludes
- * `previousHash`). Order of the array does NOT matter — it is a set, not a
- * chain. Semantics:
+ * Verify a tamper-evident SET of vote records (#3927) and the redaction
+ * records that name them (#6264). For each record, the self-hash must
+ * recompute from its payload (covers `sequence`, excludes `previousHash`).
+ * Order of the arrays does NOT matter — it is a set, not a chain. Semantics:
  *
  * - Any record whose content was edited → `hash_mismatch`. Empty hash →
  *   `missing_hash`. Returns the first such record (array-order scan).
- * - The set of sequence numbers, sorted, must cover `0..maxSeq` with no missing
- *   value. A GAP (an omitted/deleted record) → `sequence_gap` naming the first
- *   missing sequence.
+ * - A digest-tier voter entry whose opening (text + nonce) is absent is
+ *   `redacted` when a redaction record names its record id and role, and is
+ *   reported as such on the success result; absent with NO such record it is
+ *   `hash_mismatch` (the named empty case). A redaction record that names
+ *   nothing it can bind to → `redaction_unbound`, never ok. The target's
+ *   hash is unchanged by a redaction, so a signature over it still verifies.
+ * - The set of sequence numbers — vote AND redaction records — sorted, must
+ *   cover `0..maxSeq` with no missing value. A GAP (an omitted/deleted record)
+ *   → `sequence_gap` naming the first missing sequence.
  * - DUPLICATE sequence numbers are a BENIGN concurrent-fork signal (two branches
  *   appended from the same tip, then merged): NOT a failure. They are surfaced
  *   on the success result as `forks` (the duplicated sequence numbers, ascending).
@@ -1143,33 +1143,43 @@ function forkSequences({ counts }: SequenceCensus): number[] {
  * cryptographic signing is #3927 item 4); callers needing that guarantee must wait
  * for signing, not rely on `verification.ok` alone.
  *
- * An empty set verifies trivially.
+ * An empty set verifies trivially. `redactions` defaults to none, which is
+ * fail-closed: a caller that omits them reads a redacted ledger as
+ * `hash_mismatch` (and its redaction lines as a `sequence_gap`), never as ok.
  */
-export function verifyVoteRecordSet(records: readonly VoteRecord[]): VoteRecordVerification {
-  // 1) Self-hash every record (order-independent).
+export function verifyVoteRecordSet(
+  records: readonly VoteRecord[],
+  redactions: readonly RedactionRecord[] = []
+): VoteRecordVerification {
+  // 1) Self-hash every record (order-independent), each against the roles
+  //    the redaction records name on it.
+  const redactedRoles = redactedRolesByTarget(redactions);
   for (let i = 0; i < records.length; i++) {
-    const failure = verifyVoteRecord(records[i] as VoteRecord, i);
+    const record = records[i] as VoteRecord;
+    const failure = verifyVoteRecord(record, i, redactedRoles.get(record.id) ?? NO_ROLES);
     if (failure !== null) return failure;
   }
+  // 2) Redaction records: self-hash, then bind each to a redacted commitment.
+  const redaction = findRedactionDefect(redactions, records);
+  if (redaction !== null) return { ok: false, ...redaction };
 
   if (records.length === 0) return { ok: true, recordCount: 0, notVerified: 'empty' };
 
-  // 2) Sequence coverage: 0..maxSeq with no gap (omission); forks are benign.
-  const census = censusSequences(records);
+  // 3) Sequence coverage over BOTH kinds: 0..maxSeq with no gap (omission);
+  //    forks are benign.
+  const census = censusSequences([...records, ...redactions]);
   const gap = firstSequenceGap(census);
   if (gap !== null) {
-    const anchor = records[0] as VoteRecord;
-    return {
-      ok: false,
-      reason: 'sequence_gap',
-      recordIndex: 0,
-      recordId: anchor.id,
-      detail: `sequence gap: missing sequence ${String(gap)} in run 0..${String(census.maxSeq)}`,
-    };
+    const detail = `sequence gap: missing sequence ${String(gap)} in run 0..${String(census.maxSeq)}`;
+    return fail('sequence_gap', 0, (records[0] as VoteRecord).id, detail);
   }
 
   const forks = forkSequences(census);
-  return forks.length > 0
-    ? { ok: true, recordCount: records.length, forks }
-    : { ok: true, recordCount: records.length };
+  const redacted = redactedRecordReports(records, redactions);
+  return {
+    ok: true,
+    recordCount: records.length + redactions.length,
+    ...(forks.length > 0 ? { forks } : {}),
+    ...(redacted.length > 0 ? { redacted } : {}),
+  };
 }

@@ -67,6 +67,8 @@ import * as crypto from 'node:crypto';
 
 import { z } from 'zod';
 
+import { censusSequences, firstSequenceGap, forkSequences } from './sequence-census.js';
+
 /**
  * The aggregate verdict a `pr_review` resolves to, mirroring the pr-review
  * decision vocabulary (`approve` / `request_changes` / `abstain`).
@@ -593,41 +595,6 @@ function verifyPrReviewRecord(
     };
   }
   return null;
-}
-
-/** Tally of sequence number → how many records carry it, plus the max seen. */
-interface SequenceCensus {
-  readonly counts: ReadonlyMap<number, number>;
-  readonly maxSeq: number;
-}
-
-/** Count how many records carry each sequence number and find the max. */
-function censusSequences(records: readonly PrReviewRecord[]): SequenceCensus {
-  const counts = new Map<number, number>();
-  let maxSeq = 0;
-  for (const record of records) {
-    counts.set(record.sequence, (counts.get(record.sequence) ?? 0) + 1);
-    if (record.sequence > maxSeq) maxSeq = record.sequence;
-  }
-  return { counts, maxSeq };
-}
-
-/** First missing sequence in `0..maxSeq`, or null when the run is complete. */
-function firstSequenceGap({ counts, maxSeq }: SequenceCensus): number | null {
-  for (let seq = 0; seq <= maxSeq; seq++) {
-    if (!counts.has(seq)) return seq;
-  }
-  return null;
-}
-
-/** Sequence numbers carried by more than one record (concurrent forks), ascending. */
-function forkSequences({ counts }: SequenceCensus): number[] {
-  const forks: number[] = [];
-  for (const [seq, count] of counts) {
-    if (count > 1) forks.push(seq);
-  }
-  forks.sort((a, b) => a - b);
-  return forks;
 }
 
 /**
