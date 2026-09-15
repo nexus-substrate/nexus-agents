@@ -10,7 +10,7 @@
  *
  * **What it checks:** new `.ts` files added under
  * `packages/nexus-agents/src/**` in this PR. For each new file, the
- * script walks the rest of `packages/nexus-agents/src/**` looking for
+ * script walks the rest of `packages/nexus-agents/src/**` and `scripts/**` looking for
  * at least one non-test, non-barrel import that references the new
  * file. If none is found, the file is flagged.
  *
@@ -205,7 +205,7 @@ function listSourceFiles(dir: string): string[] {
 /** Cache the file list across multiple `findConsumers` calls within one run. */
 let allSourceFilesCache: string[] | undefined;
 function getAllSourceFiles(): string[] {
-  allSourceFilesCache ??= listSourceFiles(SRC_DIR);
+  allSourceFilesCache ??= [...listSourceFiles(SRC_DIR), ...listSourceFiles('scripts')];
   return allSourceFilesCache;
 }
 
@@ -276,7 +276,7 @@ function packageConfigFiles(): string[] {
 }
 
 /**
- * Returns the set of `.ts` files under `SRC_DIR` that contain at least
+ * Returns the set of `.ts` files under `SRC_DIR` and `scripts/` that contain at least
  * one import matching `patterns`. Excludes the candidate file itself
  * (so a file importing its own siblings doesn't self-consume) and
  * excludes test files (we want production consumers, not just tests) —
@@ -478,7 +478,7 @@ function logFailure(unconsumed: string[]): void {
   for (const f of unconsumed) console.error(`  - ${f}`);
   console.error('');
   console.error('Each new producer must have at least one non-test, non-barrel import');
-  console.error('elsewhere under packages/nexus-agents/src/ — or it joins the ~5,250 LOC');
+  console.error('under packages/nexus-agents/src/ or scripts/ — or it joins the ~5,250 LOC');
   console.error('of dead exports the 2026-05-24 audit sweep just deleted (#2937, #2938,');
   console.error('#2939, #2940, #3018, #3022).');
   console.error('');
@@ -509,7 +509,7 @@ function productionSourceFiles(): string[] {
   // production use, which is precisely the blindness that disqualified knip
   // for this job. Caught by running the ratchet against a known-dead export
   // and getting no advisory line.
-  return listSourceFiles(SRC_DIR).filter((f) => !isTestFile(f));
+  return getAllSourceFiles().filter((f) => !isTestFile(f));
 }
 
 /**

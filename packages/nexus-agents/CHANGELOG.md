@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.71.0
+
+### Minor Changes
+
+- [#6374](https://github.com/nexus-substrate/nexus-agents/pull/6374) [`c331cbe`](https://github.com/nexus-substrate/nexus-agents/commit/c331cbe9cfa5ee742bf88a3739d88fefadeedc23) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `pnpm security:open` to report open, resolved, and unmeasured findings in the private security discovery ledger. Record closures with append-only resolution records, preserving the original findings. Unrecognized status spellings remain visible as unmeasured instead of being counted as resolved.
+
 ## 8.70.0
 
 ### Minor Changes

@@ -1,5 +1,6 @@
 # Security discovery log (private, never committed)
 .security-discoveries.jsonl
+.security-discoveries.jsonl.*
 
 # Dependencies
 node_modules
