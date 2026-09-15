@@ -87,7 +87,6 @@ export function compareAgyModels(live: readonly string[]): AgyDriftVerdict {
   };
 }
 
-/* eslint-disable no-console */
 function probe(): AgyDriftVerdict {
   let stdout: string;
   try {

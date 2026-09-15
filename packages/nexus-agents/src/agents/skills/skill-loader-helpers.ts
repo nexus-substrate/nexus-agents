@@ -91,7 +91,6 @@ export function collectSkillsForCategories(
  * Strips metrics from a SkillWithMetrics to get base Skill.
  */
 function stripMetrics(skill: SkillWithMetrics): Skill {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { metrics, ...baseSkill } = skill;
   return baseSkill;
 }

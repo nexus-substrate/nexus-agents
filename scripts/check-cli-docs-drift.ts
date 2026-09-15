@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * CLI documentation drift gate (#5142).
  *

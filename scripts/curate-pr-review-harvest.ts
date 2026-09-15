@@ -24,8 +24,6 @@
  * (Source: Issue #3847, epic #3845; rubric #3846)
  */
 
-/* eslint-disable no-console -- CLI script that prints progress */
-
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';

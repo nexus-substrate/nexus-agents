@@ -262,7 +262,6 @@ async function fetchSite(): Promise<string | undefined> {
   }
 }
 
-/* eslint-disable no-console */
 async function main(): Promise<void> {
   const repoVersion = readRepoVersion();
   const [html, elapsed] = await Promise.all([fetchSite(), minutesSincePublish(repoVersion)]);

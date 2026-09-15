@@ -9,8 +9,7 @@
  * (Source: Issue #386, PuppeteerOrchestrator integration)
  */
 
-/* eslint-disable no-console */
-// Console output is intentional for CLI user feedback
+/* eslint-disable no-console -- stdout is this command's user-facing output; the logger writes to stderr */
 
 import { createLogger, getTimeProvider, formatPercentage, type ILogger } from '../core/index.js';
 import {

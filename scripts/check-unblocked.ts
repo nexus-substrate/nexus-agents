@@ -232,7 +232,6 @@ export function formatReport(verdict: UnblockedVerdict): string {
   );
 }
 
-/* eslint-disable no-console */
 import { readFileSync } from 'node:fs';
 
 /**

@@ -133,8 +133,7 @@ function parseTriageResponse(response: string): TriageVerdict | null {
     return null;
   }
   try {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const parsed = JSON.parse(candidate);
+    const parsed: unknown = JSON.parse(candidate);
     return TriageVerdictSchema.parse(parsed);
   } catch {
     return null;

@@ -17,8 +17,6 @@
  * (Source: Issue #1651)
  */
 
-/* eslint-disable no-console */
-
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, SRC_ROOT, DOCS_ROOT } from './script-paths.js';

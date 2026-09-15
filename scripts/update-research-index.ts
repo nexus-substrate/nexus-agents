@@ -15,8 +15,6 @@
  * (Source: Issue #632 - Research Index Automation)
  */
 
-/* eslint-disable no-console */
-
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';

@@ -30,8 +30,6 @@
  * @module scripts/check-parameter-drift
  * (Source: Issue #4121 — provider-reality reconciliation for the param-capability map)
  */
-/* eslint-disable no-console */
-
 import { fetchOpenRouterCatalog } from '../packages/nexus-agents/src/config/openrouter-models-source.js';
 import { getInTreeCapabilitiesMatrix } from '../packages/nexus-agents/src/config/model-config-helpers.js';
 import { unsupportedParametersForModel } from '../packages/nexus-agents/src/config/model-parameter-support.js';

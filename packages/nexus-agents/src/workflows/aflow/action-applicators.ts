@@ -84,7 +84,6 @@ export function applyRemoveStep(
         if (filteredDeps && filteredDeps.length > 0) {
           return { ...s, dependsOn: filteredDeps };
         }
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { dependsOn, ...rest } = s;
         return rest;
       }),
@@ -167,7 +166,6 @@ export function applyRemoveDependency(
       if (filteredDeps && filteredDeps.length > 0) {
         return { ...s, dependsOn: filteredDeps };
       }
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { dependsOn, ...rest } = s;
       return rest;
     }),

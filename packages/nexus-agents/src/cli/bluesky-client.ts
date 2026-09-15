@@ -8,8 +8,6 @@
  * (Source: Issue #642 - Bluesky AT Protocol posting)
  */
 
-/* eslint-disable @typescript-eslint/strict-boolean-expressions */
-
 /**
  * Result of a Bluesky post operation.
  */
@@ -39,7 +37,8 @@ export function getBlueskyConfig(): BlueskyConfig | undefined {
   const handle = process.env.BLUESKY_HANDLE;
   const appPassword = process.env.BLUESKY_APP_PASSWORD;
 
-  if (!handle || !appPassword) {
+  // An empty env var is unset, same as a missing one.
+  if (handle === undefined || handle === '' || appPassword === undefined || appPassword === '') {
     return undefined;
   }
 
@@ -87,7 +86,7 @@ export async function createBlueskyPost(
   text: string
 ): Promise<BlueskyPostResult> {
   const atp = await loadAtproto();
-  if (!atp)
+  if (atp === undefined)
     return { success: false, error: 'Missing optional dependency: npm install @atproto/api' };
 
   const agent = new atp.AtpAgent({ service: config.service ?? 'https://bsky.social' });

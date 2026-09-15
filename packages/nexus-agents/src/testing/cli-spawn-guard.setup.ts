@@ -42,11 +42,7 @@ import { afterEach, vi } from 'vitest';
  * subset chosen from current usage silently reopens the hole the next time some
  * caller reaches for a different entry point.
  */
-// `vi.mock` factories are hoisted, so every helper this wrapper needs (the
-// guarded-binary set, the promisify.custom handling) must be declared INSIDE
-// the factory — extracting them to module scope would run before the mock is
-// installed. Hence the length exemption directly below.
-// eslint-disable-next-line max-lines-per-function
+// eslint-disable-next-line max-lines-per-function -- `vi.mock` factories are hoisted, so every helper this wrapper needs (the guarded-binary set, the promisify.custom handling) must be declared INSIDE the factory; extracting them to module scope would run before the mock is installed
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   const { promisify } = await import('node:util');

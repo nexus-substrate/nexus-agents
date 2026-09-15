@@ -325,7 +325,6 @@ export function readNpmScripts(root = '.'): Record<string, string> {
   return out;
 }
 
-/* eslint-disable no-console */
 function main(): number {
   const workflowText = readWorkflowText();
   const npmScripts = readNpmScripts();

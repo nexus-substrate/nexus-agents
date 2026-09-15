@@ -2,7 +2,7 @@
  * Inline-verdict ratchet for arch-lint: a verdict is not re-implemented by
  * comparing a tally against a threshold LITERAL outside `consensus/decision/`.
  *
- * A sibling of arch-lint.ts (same shape as arch-lint-suppression.ts), so the
+ * A sibling of arch-lint.ts (same shape as arch-lint-control-bytes.ts), so the
  * rule collection can grow without the collector needing a suppression.
  *
  * Companion to the `no-restricted-imports` block in

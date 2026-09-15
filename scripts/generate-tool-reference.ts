@@ -32,8 +32,6 @@
  * (Source: Issue #3687)
  */
 
-/* eslint-disable no-console */
-
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
