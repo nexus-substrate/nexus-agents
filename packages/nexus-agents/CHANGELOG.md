@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 8.61.1
+
+### Patch Changes
+
+- [#6317](https://github.com/nexus-substrate/nexus-agents/pull/6317) [`64c09d9`](https://github.com/nexus-substrate/nexus-agents/commit/64c09d9f8b802bb299181e8d1c5da14318689acd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Research scoring: the `recency` field of a `QualityScore` is documented as what it is. The 8.x changeset for the exponential decay said the value "approaches zero without reaching it"; the curve does, but the reported value is rounded to 2dp and is exactly 0 for anything published more than ~7.7 years ago. No scoring change — `composite` is also 2dp with recency weighted 0.2, so an 8-year-old and a 20-year-old source already rank identically at any precision `recency` alone could be reported at. The docstrings on `scoreRecency` and `QualityScore.recency` now state the ~7.7-year limit, and tests pin the reported floor (0 at 10 years, 0.01 at 7) so a precision change has to be deliberate. Refs [#4956](https://github.com/nexus-substrate/nexus-agents/issues/4956).
+
+## 8.61.0
+
+### Minor Changes
+
+- [#6311](https://github.com/nexus-substrate/nexus-agents/pull/6311) [`abfcc8c`](https://github.com/nexus-substrate/nexus-agents/commit/abfcc8cc5e69b1c0774288bc1df01860d01a3df1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `issue_triage` and `pr_review` now evaluate every action's policy through `HostileInputFirewall` ([#5383](https://github.com/nexus-substrate/nexus-agents/issues/5383)): each action is one `process({ action, existingLabels })` run and the decision is read from `FirewallResult.policy`, so the dogfooding path has one composition instead of a firewall beside a direct `evaluatePolicy` call. The verdicts are unchanged in every `NEXUS_FIREWALL_POLICY` mode — under `off` and `audit` the caller still enforces `policy.allowed` as `policyApproved` / the review-posting block; under `enforce` a refused action lands on the same record as `policyApproved: false` with its rules. Two things a consumer will notice: each per-action decision now reaches the durable audit trail as a `policy_gate` record (the direct call recorded nothing), and a triage or posted review emits one `trust_classification` record per firewall run — the classification plus one per action — instead of one. A run whose policy stage did not evaluate the action, or that enforced a different tier than the classification, fails the tool closed instead of recording a verdict.
+
+  `FirewallError` gains an optional `violations` list: a `POLICY_REFUSED` from the policy stage now carries the blocking violations it refused on, so a consumer can record the rule ids without parsing the message.
+
 ## 8.60.2
 
 ### Patch Changes

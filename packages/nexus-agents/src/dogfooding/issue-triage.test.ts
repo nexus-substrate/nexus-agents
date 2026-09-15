@@ -27,6 +27,10 @@ const mockListRepositoryLabels = vi.fn();
 const mockFetchUserMetadata = vi.fn();
 const mockCreateFullGitHubProvider = vi.fn();
 const { mockWarn } = vi.hoisted(() => ({ mockWarn: vi.fn() }));
+// #5383: counts every `evaluatePolicy` call in the module graph, whoever makes
+// it. The spread form intercepts here because both the firewall's policy stage
+// and (before #5383) this caller import the function directly.
+const mockEvaluatePolicy = vi.hoisted(() => vi.fn());
 
 /** Builds ScmUserMetadata; defaults to an established (old) account. */
 function userMeta(overrides: Partial<ScmUserMetadata> = {}): ScmUserMetadata {
@@ -58,6 +62,12 @@ vi.mock('../core/index.js', async () => {
       warn: mockWarn,
     })),
   };
+});
+
+vi.mock('../security/policy-gate.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../security/policy-gate.js')>();
+  mockEvaluatePolicy.mockImplementation(actual.evaluatePolicy);
+  return { ...actual, evaluatePolicy: mockEvaluatePolicy };
 });
 
 // Re-import after mocks are set up
@@ -526,10 +536,17 @@ describe('IssueTriage', () => {
         expect(labelAction?.policyApproved).toBe(false);
         expect(labelAction?.details['policyViolations']).toContain('LABEL_SET_UNAVAILABLE');
         expect(labelAction?.details['policyViolations']).not.toContain('INVALID_LABELS');
-        expect(mockWarn).toHaveBeenCalledTimes(1);
-        expect(mockWarn).toHaveBeenCalledWith(
-          'Failed to fetch repository labels; label validity is unmeasured',
+        const fetchWarnings = mockWarn.mock.calls.filter(
+          ([msg]) => msg === 'Failed to fetch repository labels; label validity is unmeasured'
+        );
+        expect(fetchWarnings).toHaveLength(1);
+        expect(fetchWarnings[0]?.[1]).toEqual(
           expect.objectContaining({ error: expect.stringContaining('rate limited') })
+        );
+        // #5383: the firewall now sees the per-action block and says so itself.
+        expect(mockWarn).toHaveBeenCalledWith(
+          'Firewall surfaced blocking policy violations',
+          expect.objectContaining({ rules: ['LABEL_SET_UNAVAILABLE'] })
         );
       }
     });
@@ -642,9 +659,13 @@ describe('IssueTriage', () => {
       expect(result.value.trustAssessment.enforcedTrustTier).toBe(
         result.value.trustAssessment.trustTier
       );
-      expect(mockWarn).toHaveBeenCalledTimes(1);
-      expect(mockWarn).toHaveBeenCalledWith(
-        'Failed to fetch issue comments; activity reputation is unmeasured',
+      // Counted by message: since #5383 the firewall also warns, per action,
+      // when the first (demoted) triage's actions hit a blocking rule.
+      const fetchWarnings = mockWarn.mock.calls.filter(
+        ([msg]) => msg === 'Failed to fetch issue comments; activity reputation is unmeasured'
+      );
+      expect(fetchWarnings).toHaveLength(1);
+      expect(fetchWarnings[0]?.[1]).toEqual(
         expect.objectContaining({ issueNumber: 42, error: expect.stringContaining('Forbidden') })
       );
     });
@@ -958,7 +979,8 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     const v = await triage({ dryRun: false });
 
     expect(v.trustAssessment.trustTier).toBe('3');
-    expect(processSpy).toHaveBeenCalledTimes(1);
+    // One classification run, then one run per action (#5383).
+    expect(processSpy).toHaveBeenCalledTimes(1 + v.proposedActions.length);
     const [, options] = processSpy.mock.calls[0] ?? [];
     expect(options?.context).toEqual({ hasWriteAccess: true, hasSecretAccess: true });
     const returned = processSpy.mock.results[0]?.value;
@@ -978,17 +1000,22 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     expect(r.error.message).toContain('POLICY_REFUSED');
   });
 
-  it('emits exactly one trust event to the audit trail per triage', async () => {
+  it('emits a trust event to the audit trail for every firewall run of a triage', async () => {
     const { logger, log } = stubAuditLogger();
     _setUntrustedInputFirewallForTests(firewallWith({ auditLogger: logger }));
 
-    await triage();
-    await triage();
+    const first = await triage();
+    const second = await triage();
 
     const trustEvents = log.mock.calls.filter(
       ([input]) => (input as { action?: string }).action === 'security.trust_classification'
     );
-    expect(trustEvents).toHaveLength(2);
+    // Since #5383 each triage runs the firewall once to classify and once per
+    // action, and every run records its trust decision (#6310 tracks folding
+    // the per-action runs onto the classification's record).
+    expect(trustEvents).toHaveLength(
+      2 + first.proposedActions.length + second.proposedActions.length
+    );
   });
 
   it('records auditSink: none when no durable logger is configured for the process', async () => {
@@ -1030,5 +1057,127 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     if (returned?.ok !== true) return;
     expect(returned.value.effectiveTrustTier).toBe('4');
     expect(returned.value.wouldRefuse).toBe(true);
+  });
+
+  // #5383: the firewall is the ONE composition on this path. The per-action
+  // policy decision is read from `FirewallResult.policy`, not from a direct
+  // `evaluatePolicy` call beside the firewall.
+  describe('per-action policy through the firewall (#5383)', () => {
+    it('under off: every action is evaluated exactly once, via the firewall, and the tier-3 ProposeLabels is refused', async () => {
+      const fw = firewallWith();
+      const processSpy = vi.spyOn(fw, 'process');
+      _setUntrustedInputFirewallForTests(fw);
+
+      const v = await triage();
+
+      // The default fixture is a NONE author (tier 3) whose body hints `bug`,
+      // so ProposeLabels (requires tier 2) is generated and must be refused —
+      // under `off`, where the firewall itself refuses nothing.
+      const proposeLabels = v.proposedActions.find((a) => a.type === 'ProposeLabels');
+      expect(proposeLabels).toBeDefined();
+      expect(proposeLabels?.policyApproved).toBe(false);
+      expect(proposeLabels?.details['policyViolations']).toContain('INSUFFICIENT_TRUST');
+      expect(v.proposedActions.find((a) => a.type === 'ClassifyIssue')?.policyApproved).toBe(true);
+
+      // ONE composition: `evaluatePolicy` ran exactly once per proposed action…
+      expect(v.proposedActions.length).toBeGreaterThan(1);
+      expect(mockEvaluatePolicy).toHaveBeenCalledTimes(v.proposedActions.length);
+      // …each of those calls was asked THROUGH the firewall, with that action…
+      const actionCalls = processSpy.mock.calls.filter(([, o]) => o?.action !== undefined);
+      expect(actionCalls.map(([, o]) => o?.action?.type)).toEqual(
+        v.proposedActions.map((a) => a.type)
+      );
+      // …and carried the firewall's audit trail, which a direct call never has.
+      for (const call of mockEvaluatePolicy.mock.calls) {
+        expect(call[2]).toBeDefined();
+      }
+      // The mode this ran under was `off`: enforcement here is the caller acting
+      // on `policy.allowed`, which the mode does not gate.
+      for (const r of processSpy.mock.results) {
+        expect(r.value).toMatchObject({ ok: true, value: { policyMode: 'off' } });
+      }
+    });
+
+    it('passes the repository label set per action so label validity is measured, not failed closed', async () => {
+      const fw = firewallWith();
+      const processSpy = vi.spyOn(fw, 'process');
+      _setUntrustedInputFirewallForTests(fw);
+      // A COLLABORATOR is tier 2, which ProposeLabels requires; `bug` is in the
+      // repository's label set, so the label check can pass only if that set
+      // reached the firewall run.
+      mockGetIssueDetail.mockResolvedValue(
+        ok(createMockIssueDetail({ author: 'collab', authorAssociation: 'COLLABORATOR' }))
+      );
+
+      const v = await triage();
+
+      const proposeLabels = v.proposedActions.find((a) => a.type === 'ProposeLabels');
+      expect(proposeLabels?.details['policyViolations']).toEqual([]);
+      expect(proposeLabels?.policyApproved).toBe(true);
+      const labelCall = processSpy.mock.calls.find(([, o]) => o?.action?.type === 'ProposeLabels');
+      expect(labelCall?.[1]?.existingLabels).toEqual(new Set(['bug']));
+    });
+
+    it('under enforce: a per-action refusal is recorded as policyApproved: false with its rules, and the triage still returns', async () => {
+      // dryRun (no write access) and no token: the input-level Rule of Two
+      // does not trip, so the triage reaches the per-action stage. There the
+      // tier-3 ProposeLabels is a blocking violation, which `enforce` REFUSES
+      // — and the refusal lands on the action record exactly where the direct
+      // `evaluatePolicy` call used to put `allowed: false`.
+      const fw = firewallWith({ policyMode: 'enforce' });
+      _setUntrustedInputFirewallForTests(fw);
+
+      const v = await triage();
+
+      const proposeLabels = v.proposedActions.find((a) => a.type === 'ProposeLabels');
+      expect(proposeLabels?.policyApproved).toBe(false);
+      expect(proposeLabels?.details['policyViolations']).toEqual([
+        'INSUFFICIENT_TRUST',
+        'UNTRUSTED_INFLUENCE',
+      ]);
+      expect(v.proposedActions.find((a) => a.type === 'ClassifyIssue')?.policyApproved).toBe(true);
+    });
+
+    it('fails closed when the policy stage did not run: an unevaluated action is neither approved nor denied', async () => {
+      _setUntrustedInputFirewallForTests(firewallWith({ stages: { policyEnforcement: false } }));
+
+      const r = await new IssueTriage({ enableReputation: false }).triageIssue(URL);
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error.message).toContain('did not evaluate policy');
+      expect(r.error.message).toContain('ClassifyIssue');
+    });
+
+    it('fails closed when the per-action run enforces a different tier than the classification run', async () => {
+      const fw = firewallWith();
+      const real = fw.process.bind(fw);
+      vi.spyOn(fw, 'process').mockImplementation((input, options) => {
+        const r = real(input, options);
+        if (options?.action === undefined || !r.ok) return r;
+        return ok({ ...r.value, effectiveTrustTier: '1' });
+      });
+      _setUntrustedInputFirewallForTests(fw);
+
+      const r = await new IssueTriage({ enableReputation: false }).triageIssue(URL);
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error.message).toContain('enforced tier');
+    });
+
+    it('records one trust event per firewall run: the classification plus one per action', async () => {
+      const { logger, log } = stubAuditLogger();
+      _setUntrustedInputFirewallForTests(firewallWith({ auditLogger: logger }));
+
+      const v = await triage();
+
+      const byAction = (name: string): unknown[] =>
+        log.mock.calls.filter(([input]) => (input as { action?: string }).action === name);
+      expect(byAction('security.trust_classification')).toHaveLength(1 + v.proposedActions.length);
+      // The gain over the direct call: each per-action decision now reaches the
+      // durable trail, where the direct `evaluatePolicy` call recorded nothing.
+      expect(byAction('security.policy_gate')).toHaveLength(v.proposedActions.length);
+    });
   });
 });

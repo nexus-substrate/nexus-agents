@@ -146,12 +146,54 @@ describe('recency uses the publication date (#4841)', () => {
   });
 
   it('still decays a genuinely old publication toward zero', () => {
-    // The decay the original code documented and could never reach. Asserted
-    // as a bound, not `=== 0`: the exact-zero form pinned the saturation that
-    // #4882 removes, and a decay that never reaches zero is the point.
+    // The decay the original code documented and could never reach. A bound
+    // here, not `=== 0`, because this test is about the direction of decay;
+    // the exact reported value at this age is pinned in the #4956 block
+    // below, since `< 0.05` on its own passes on a hard zero.
     expect(
       scoreDiscoveredItem(createItem({ publishedAt: daysAgo(11 * 365) }), 'test').recency
     ).toBeLessThan(0.05);
+  });
+});
+
+// =============================================================================
+// The REPORTED recency floors at zero past ~7.7 years (#4956)
+// =============================================================================
+
+describe('the reported recency floors at zero past ~7.7 years (#4956)', () => {
+  it('reports exactly 0 for a 10-year-old publication', () => {
+    // 0.5 ** 10 is 0.00098, which the 2dp rounding in `scoreDiscoveredItem`
+    // renders as 0. The curve never reaches zero; the reported value does, at
+    // the age where 0.5 ** (days / 365) drops below 0.005 (~7.7 years). #4908
+    // claimed the reported value "approaches zero without reaching it", and the
+    // `< 0.05` bound above could not tell. Pinned as the honest limit rather
+    // than hidden behind a bound.
+    const tenYears = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(10 * 365) }), 'test');
+
+    expect(tenYears.recencyMeasured).toBe(true);
+    expect(tenYears.recency).toBe(0);
+  });
+
+  it('reports a non-zero recency just inside the floor', () => {
+    // 0.5 ** 7 is 0.0078, which rounds to 0.01: the floor is a property of
+    // the 2dp rounding, not of the curve, and it sits between 7 and 8 years.
+    const sevenYears = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(7 * 365) }), 'test');
+
+    expect(sevenYears.recency).toBe(0.01);
+  });
+
+  it('cannot separate an 8-year-old from a 20-year-old publication by composite', () => {
+    // The raw gap is 0.2 * (0.5 ** 8 - 0.5 ** 20) ~= 0.0008 of composite,
+    // below composite's own 2dp resolution. Reporting `recency` at higher
+    // precision would therefore change no ranking — `rankDiscoveredItems` and
+    // `executeReview` read only `composite` — which is why the limit is
+    // documented rather than chased (#4956 finding 1).
+    const eight = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(8 * 365) }), 'test');
+    const twenty = scoreDiscoveredItem(createItem({ publishedAt: daysAgo(20 * 365) }), 'test');
+
+    expect(eight.recency).toBe(0);
+    expect(twenty.recency).toBe(0);
+    expect(eight.composite).toBe(twenty.composite);
   });
 });
 
