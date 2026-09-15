@@ -39,12 +39,13 @@ import {
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 import type { JobResult } from '../packages/nexus-agents/src/mcp/jobs/job-result-store.js';
 
+import { parseAppendArgs } from './append-ratification-args.js';
 import {
   appendRatificationRecord,
-  parseAppendArgs,
   recordIdFromJobResult,
   type AppendOutcome,
 } from './append-ratification-record.js';
+import { resolveSigning, type SigningOptions } from './append-ratification-signing.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'scripts', 'append-ratification-record.ts');
@@ -402,12 +403,18 @@ describe('appendRatificationRecord', () => {
 
 describe('signing the committed record (#3927 item 4, phase 2)', () => {
   const OPERATOR = 'operator@test';
+  /** The autonomous loop's identity (#6257 increment 1). */
+  const AGENT = 'nexus-agent@fixture-host';
   let dir: string;
   let sourcePath: string;
   let ledgerPath: string;
   let allowedSignersPath: string;
   let keyPath: string;
+  /** Listed as AGENT; what a run with no flag and no env var picks up when it exists at the default path. */
+  let agentKeyPath: string;
   let strangerKeyPath: string;
+  /** The owner's key on a run a human attested to (`--as-owner`) — the phase-2 shape. */
+  let signing: SigningOptions;
 
   function keygen(path: string): void {
     execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'ephemeral', '-f', path], {
@@ -421,15 +428,20 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
     ledgerPath = join(dir, 'governance', 'vote-records.jsonl');
     allowedSignersPath = join(dir, 'governance', 'allowed_signers');
     keyPath = join(dir, 'operator_key');
+    agentKeyPath = join(dir, 'auth', 'vote-record-signing.key');
     strangerKeyPath = join(dir, 'stranger_key');
+    mkdirSync(dirname(agentKeyPath), { recursive: true });
     keygen(keyPath);
+    keygen(agentKeyPath);
     keygen(strangerKeyPath);
     mkdirSync(dirname(allowedSignersPath), { recursive: true });
     writeFileSync(
       allowedSignersPath,
-      `${OPERATOR} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${keyPath}.pub`, 'utf-8')}`,
+      `${OPERATOR} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${keyPath}.pub`, 'utf-8')}` +
+        `${AGENT} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${agentKeyPath}.pub`, 'utf-8')}`,
       'utf-8'
     );
+    signing = { keyPath, allowedSignersPath, source: 'flag', asOwner: true };
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -447,7 +459,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       sourcePath,
       ledgerPath,
       recordId: 'vote-s',
-      signing: { keyPath, allowedSignersPath },
+      signing,
     });
     expect(outcome.kind).toBe('appended');
     if (outcome.kind !== 'appended') throw new Error('unreachable');
@@ -461,7 +473,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
     expect(committed.signature?.namespace).toBe(VOTE_RECORD_SIGNATURE_NAMESPACE);
     expect(
       verifyVoteRecordSignature({ record: committed, allowedSigners: allowedSigners() })
-    ).toEqual({ code: 'signed', keyId: OPERATOR });
+    ).toEqual({ code: 'signed', keyId: OPERATOR, principal: OPERATOR, signerKind: 'owner' });
 
     // The same signature transplanted onto the SOURCE hash does not verify:
     // a script that signed before re-sequencing would produce exactly this.
@@ -483,7 +495,6 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       sourceRecord('vote-s0', { sequence: 5, pr: 6100 }),
       sourceRecord('vote-s1', { sequence: 6, pr: 6200 }),
     ]);
-    const signing = { keyPath, allowedSignersPath };
     expect(
       appendRatificationRecord({ sourcePath, ledgerPath, recordId: 'vote-s0', signing }).kind
     ).toBe('appended');
@@ -496,9 +507,137 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       expect(verifyVoteRecordSignature({ record: r, allowedSigners: allowedSigners() })).toEqual({
         code: 'signed',
         keyId: OPERATOR,
+        principal: OPERATOR,
+        signerKind: 'owner',
       });
     }
     expect(records[0]?.signature?.sig).not.toBe(records[1]?.signature?.sig);
+  });
+
+  describe('which key says which process appended (#6257 increment 1)', () => {
+    it('the AGENT key on an automated run (no --as-owner) → appended, and the real verifier says signed / agent', () => {
+      writeLedger(sourcePath, [sourceRecord('vote-a', { sequence: 0 })]);
+      const outcome = appendRatificationRecord({
+        sourcePath,
+        ledgerPath,
+        recordId: 'vote-a',
+        signing: {
+          keyPath: agentKeyPath,
+          allowedSignersPath,
+          source: 'agent-default',
+          asOwner: false,
+        },
+      });
+      expect(outcome.kind).toBe('appended');
+      if (outcome.kind !== 'appended') throw new Error('unreachable');
+      expect(outcome.signing).toBe('signed');
+      const [committed] = readLedger(ledgerPath);
+      if (committed === undefined) throw new Error('nothing on disk');
+      expect(committed.signature?.keyId).toBe(AGENT);
+      expect(
+        verifyVoteRecordSignature({ record: committed, allowedSigners: allowedSigners() })
+      ).toEqual({ code: 'signed', keyId: AGENT, principal: AGENT, signerKind: 'agent' });
+    });
+
+    it('the OWNER key on an automated run (no --as-owner) → REFUSED (signing-failed) naming --as-owner; nothing written', () => {
+      // An inherited NEXUS_VOTE_SIGNING_KEY pointing at the operator's key must
+      // not let an automated append claim human presence by accident.
+      writeLedger(sourcePath, [sourceRecord('vote-o', { sequence: 0 })]);
+      const outcome = appendRatificationRecord({
+        sourcePath,
+        ledgerPath,
+        recordId: 'vote-o',
+        signing: { keyPath, allowedSignersPath, source: 'env', asOwner: false },
+      });
+      const detail = expectRefused(outcome, 'signing-failed');
+      expect(detail).toContain('--as-owner');
+      expect(detail).toContain(`'${OPERATOR}'`);
+      expect(detail).toContain('NEXUS_VOTE_SIGNING_KEY');
+      expect(detail).not.toContain('PRIVATE KEY');
+      expect(existsSync(ledgerPath)).toBe(false);
+    });
+
+    it('--as-owner with the AGENT key → REFUSED as a misconfiguration; nothing written', () => {
+      writeLedger(sourcePath, [sourceRecord('vote-m', { sequence: 0 })]);
+      const outcome = appendRatificationRecord({
+        sourcePath,
+        ledgerPath,
+        recordId: 'vote-m',
+        signing: { keyPath: agentKeyPath, allowedSignersPath, source: 'flag', asOwner: true },
+      });
+      const detail = expectRefused(outcome, 'signing-failed');
+      expect(detail).toContain('--as-owner');
+      expect(detail).toContain(`'${AGENT}'`);
+      expect(existsSync(ledgerPath)).toBe(false);
+    });
+
+    it('the four combinations are pairwise distinct: only {owner + --as-owner} and {agent + automated} append', () => {
+      const outcomes: string[] = [];
+      for (const [key, asOwner] of [
+        [keyPath, true],
+        [keyPath, false],
+        [agentKeyPath, true],
+        [agentKeyPath, false],
+      ] as const) {
+        const id = `vote-${String(outcomes.length)}`;
+        writeLedger(sourcePath, [sourceRecord(id, { sequence: 0 })]);
+        const out = appendRatificationRecord({
+          sourcePath,
+          ledgerPath: join(dir, `ledger-${String(outcomes.length)}.jsonl`),
+          recordId: id,
+          signing: { keyPath: key, allowedSignersPath, source: 'flag', asOwner },
+        });
+        outcomes.push(out.kind === 'refused' ? out.reason : out.kind);
+      }
+      expect(outcomes).toEqual(['appended', 'signing-failed', 'signing-failed', 'appended']);
+    });
+
+    describe('resolveSigning: --signing-key, NEXUS_VOTE_SIGNING_KEY, the agent key if it exists, else unsigned', () => {
+      const ledger = '/repo/governance/vote-records.jsonl';
+      const signers = '/repo/governance/allowed_signers';
+
+      it('the flag wins over the variable and the agent key, and carries --as-owner', () => {
+        expect(
+          resolveSigning('/k', { NEXUS_VOTE_SIGNING_KEY: '/e' }, ledger, {
+            asOwner: true,
+            agentKeyPath,
+          })
+        ).toEqual({ keyPath: '/k', allowedSignersPath: signers, source: 'flag', asOwner: true });
+      });
+
+      it('the variable wins over the agent key; an empty value is "not configured"', () => {
+        expect(
+          resolveSigning(undefined, { NEXUS_VOTE_SIGNING_KEY: ' /e ' }, ledger, {
+            asOwner: false,
+            agentKeyPath,
+          })
+        ).toEqual({ keyPath: '/e', allowedSignersPath: signers, source: 'env', asOwner: false });
+        expect(
+          resolveSigning(undefined, { NEXUS_VOTE_SIGNING_KEY: '' }, ledger, {
+            asOwner: false,
+            agentKeyPath,
+          })
+        ).toEqual({
+          keyPath: agentKeyPath,
+          allowedSignersPath: signers,
+          source: 'agent-default',
+          asOwner: false,
+        });
+      });
+
+      it('the agent key is the default ONLY when its file exists; otherwise unsigned', () => {
+        expect(resolveSigning(undefined, {}, ledger, { asOwner: false, agentKeyPath })).toEqual({
+          keyPath: agentKeyPath,
+          allowedSignersPath: signers,
+          source: 'agent-default',
+          asOwner: false,
+        });
+        const missing = join(dir, 'auth', 'no-such-key');
+        expect(
+          resolveSigning(undefined, {}, ledger, { asOwner: false, agentKeyPath: missing })
+        ).toBeUndefined();
+      });
+    });
   });
 
   it('no signing configured → appended UNSIGNED, and the outcome says so (phase 2 is opt-in until phase 3)', () => {
@@ -535,7 +674,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       sourcePath,
       ledgerPath,
       recordId: 'vote-x',
-      signing: { keyPath: strangerKeyPath, allowedSignersPath },
+      signing: { ...signing, keyPath: strangerKeyPath },
     });
     const detail = expectRefused(outcome, 'signing-failed');
     expect(detail).toContain('not an allowed signer');
@@ -548,7 +687,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       sourcePath,
       ledgerPath,
       recordId: 'vote-x',
-      signing: { keyPath: join(dir, 'no-such-key'), allowedSignersPath },
+      signing: { ...signing, keyPath: join(dir, 'no-such-key') },
     });
     expect(expectRefused(noKey, 'signing-failed')).toContain('ssh-keygen -Y sign');
 
@@ -556,13 +695,26 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       sourcePath,
       ledgerPath,
       recordId: 'vote-x',
-      signing: { keyPath, allowedSignersPath: join(dir, 'no-such-signers') },
+      signing: { ...signing, allowedSignersPath: join(dir, 'no-such-signers') },
     });
     expect(expectRefused(noSigners, 'signing-failed')).toContain('no-such-signers');
     expect(existsSync(ledgerPath)).toBe(false);
   });
 
-  describe('CLI: --signing-key, NEXUS_VOTE_SIGNING_KEY, or neither', () => {
+  describe('CLI: --signing-key, NEXUS_VOTE_SIGNING_KEY, the agent key, or neither', () => {
+    /**
+     * `NEXUS_DATA_DIR` is pinned to a temp dir with NO `auth/` in it, so the
+     * agent key an operator may have generated at the real
+     * `~/.nexus-agents/auth/vote-record-signing.key` never reaches these
+     * runs; the case that wants the agent-default path points the variable
+     * at a dir that has one.
+     */
+    let emptyDataDir: string;
+    beforeEach(() => {
+      emptyDataDir = join(dir, 'empty-data-dir');
+      mkdirSync(emptyDataDir, { recursive: true });
+    });
+
     function run(
       args: readonly string[],
       env: Record<string, string> = {}
@@ -573,7 +725,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
         const output = execFileSync('pnpm', ['exec', 'tsx', SCRIPT, ...args], {
           cwd: REPO_ROOT,
           encoding: 'utf-8',
-          env: { ...base, ...env },
+          env: { ...base, NEXUS_DATA_DIR: emptyDataDir, ...env },
           stdio: ['ignore', 'pipe', 'pipe'],
         });
         return { status: 0, output };
@@ -583,7 +735,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       }
     }
 
-    it('--signing-key signs; the notice names the signer and never the key material', () => {
+    it('--signing-key with the owner key and --as-owner signs; the notice names the signer and kind, never the key material', () => {
       writeLedger(sourcePath, [sourceRecord('vote-cli-s', { sequence: 3 })]);
       const r = run([
         '--record-id',
@@ -594,9 +746,10 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
         ledgerPath,
         '--signing-key',
         keyPath,
+        '--as-owner',
       ]);
       expect(r.status).toBe(0);
-      expect(r.output).toContain(`signed by ${OPERATOR}`);
+      expect(r.output).toContain(`signed by ${OPERATOR} (owner;`);
       expect(r.output).not.toContain('PRIVATE KEY');
       expect(r.output).not.toContain(readFileSync(keyPath, 'utf-8').split('\n')[1] ?? '\0');
       const [committed] = readLedger(ledgerPath);
@@ -606,23 +759,68 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
       ).toBe('signed');
     }, 60_000);
 
-    it('NEXUS_VOTE_SIGNING_KEY signs when no flag is passed', () => {
+    it('NEXUS_VOTE_SIGNING_KEY signs when no flag is passed (owner key, --as-owner)', () => {
       writeLedger(sourcePath, [sourceRecord('vote-cli-e', { sequence: 3 })]);
-      const r = run(['--record-id', 'vote-cli-e', '--source', sourcePath, '--ledger', ledgerPath], {
-        NEXUS_VOTE_SIGNING_KEY: keyPath,
-      });
+      const r = run(
+        ['--record-id', 'vote-cli-e', '--source', sourcePath, '--ledger', ledgerPath, '--as-owner'],
+        { NEXUS_VOTE_SIGNING_KEY: keyPath }
+      );
       expect(r.status).toBe(0);
       expect(r.output).toContain(`signed by ${OPERATOR}`);
       expect(readLedger(ledgerPath)[0]?.signature?.keyId).toBe(OPERATOR);
     }, 60_000);
 
-    it('neither → appended UNSIGNED with a one-line notice naming the flag and the variable', () => {
+    it('the OWNER key without --as-owner exits 1 (signing-failed, naming the flag) and writes nothing (#6257)', () => {
+      writeLedger(sourcePath, [sourceRecord('vote-cli-o', { sequence: 3 })]);
+      const r = run(['--record-id', 'vote-cli-o', '--source', sourcePath, '--ledger', ledgerPath], {
+        NEXUS_VOTE_SIGNING_KEY: keyPath,
+      });
+      expect(r.status).toBe(1);
+      expect(r.output).toContain('signing-failed');
+      expect(r.output).toContain('--as-owner');
+      expect(existsSync(ledgerPath)).toBe(false);
+    }, 60_000);
+
+    it('no flag, no variable, the agent key at <dataDir>/auth/vote-record-signing.key → signs as the agent, no --as-owner needed (#6257)', () => {
+      // `agentKeyPath` is `<dir>/auth/vote-record-signing.key`; `dir` as the
+      // data dir makes it the default the script finds.
+      writeLedger(sourcePath, [sourceRecord('vote-cli-a', { sequence: 3 })]);
+      const r = run(['--record-id', 'vote-cli-a', '--source', sourcePath, '--ledger', ledgerPath], {
+        NEXUS_DATA_DIR: dir,
+      });
+      expect(r.status).toBe(0);
+      expect(r.output).toContain(`signed by ${AGENT} (agent;`);
+      const [committed] = readLedger(ledgerPath);
+      if (committed === undefined) throw new Error('nothing on disk');
+      expect(
+        verifyVoteRecordSignature({ record: committed, allowedSigners: allowedSigners() })
+      ).toEqual({ code: 'signed', keyId: AGENT, principal: AGENT, signerKind: 'agent' });
+    }, 60_000);
+
+    it('--as-owner with no key at all exits 1: an unsigned record cannot carry the attestation', () => {
+      writeLedger(sourcePath, [sourceRecord('vote-cli-n', { sequence: 3 })]);
+      const r = run([
+        '--record-id',
+        'vote-cli-n',
+        '--source',
+        sourcePath,
+        '--ledger',
+        ledgerPath,
+        '--as-owner',
+      ]);
+      expect(r.status).toBe(1);
+      expect(r.output).toContain('--as-owner');
+      expect(existsSync(ledgerPath)).toBe(false);
+    }, 60_000);
+
+    it('neither → appended UNSIGNED with a one-line notice naming the flag, the variable and the agent key', () => {
       writeLedger(sourcePath, [sourceRecord('vote-cli-u', { sequence: 3 })]);
       const r = run(['--record-id', 'vote-cli-u', '--source', sourcePath, '--ledger', ledgerPath]);
       expect(r.status).toBe(0);
       expect(r.output).toContain('UNSIGNED');
       expect(r.output).toContain('--signing-key');
       expect(r.output).toContain('NEXUS_VOTE_SIGNING_KEY');
+      expect(r.output).toContain('vote-record-keygen');
       expect(readLedger(ledgerPath)[0]?.signature).toBeUndefined();
     }, 60_000);
 
@@ -699,12 +897,14 @@ describe('parseAppendArgs', () => {
     expect(parseAppendArgs(['--record-id', 'vote-1'])).toEqual({
       ok: true,
       selector: { recordId: 'vote-1' },
+      asOwner: false,
     });
     expect(parseAppendArgs(['--job', 'job-1', '--ledger', '/l', '--source', '/s'])).toEqual({
       ok: true,
       selector: { jobId: 'job-1' },
       ledgerPath: '/l',
       sourcePath: '/s',
+      asOwner: false,
     });
     expect(parseAppendArgs([]).ok).toBe(false);
     expect(parseAppendArgs(['--job', 'j', '--record-id', 'r']).ok).toBe(false);
@@ -717,8 +917,25 @@ describe('parseAppendArgs', () => {
       ok: true,
       selector: { recordId: 'r' },
       signingKeyPath: '/k',
+      asOwner: false,
     });
     expect(parseAppendArgs(['--record-id', 'r', '--signing-key']).ok).toBe(false);
+  });
+
+  it('--as-owner is a bare flag (#6257): anywhere in argv, never consumed as a value', () => {
+    expect(parseAppendArgs(['--as-owner', '--record-id', 'r'])).toEqual({
+      ok: true,
+      selector: { recordId: 'r' },
+      asOwner: true,
+    });
+    expect(parseAppendArgs(['--record-id', 'r', '--signing-key', '/k', '--as-owner'])).toEqual({
+      ok: true,
+      selector: { recordId: 'r' },
+      signingKeyPath: '/k',
+      asOwner: true,
+    });
+    // A value-taking flag followed by --as-owner has no value.
+    expect(parseAppendArgs(['--record-id', 'r', '--signing-key', '--as-owner']).ok).toBe(false);
   });
 });
 
@@ -731,11 +948,15 @@ describe('CLI', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  /** Unsigned by construction: no inherited signing key, and no agent key under the pinned data dir (#6257). */
   function run(args: readonly string[]): { status: number; stdout: string } {
+    const env: NodeJS.ProcessEnv = { ...process.env, NEXUS_DATA_DIR: join(dir, 'runtime') };
+    delete env['NEXUS_VOTE_SIGNING_KEY'];
     try {
       const stdout = execFileSync('pnpm', ['exec', 'tsx', SCRIPT, ...args], {
         cwd: REPO_ROOT,
         encoding: 'utf-8',
+        env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       return { status: 0, stdout };

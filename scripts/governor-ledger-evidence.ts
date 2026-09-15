@@ -265,8 +265,9 @@
  * and `governor-ledger-report.ts` supplies the verifier from the
  * environment and prints the codes). The verifier's code for EVERY bound
  * record goes on the evidence line — under `ratified` and `ratified-rebased`
- * alike, and on every bound refusal: `signed by <keyId>`,
- * `unsigned-record`, `unknown-signer`, `bad-signature`,
+ * alike, and on every bound refusal: `signed:agent by <principal>` /
+ * `signed:owner by <principal>` (#6257), `unsigned-record`,
+ * `unknown-signer`, `bad-signature`,
  * `signature-not-measured` — distinct, never collapsed, with ssh-keygen's
  * reason where there is one. An unreadable allowed_signers is
  * `signature-not-measured` naming the path, on the line, not a crash.

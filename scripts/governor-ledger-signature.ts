@@ -7,9 +7,10 @@
  * ledger (`governance/allowed_signers` for the committed one, or the path
  * `RATIFICATION_ALLOWED_SIGNERS_PATH` names for a test over an ephemeral
  * key) — and renders each bound record's verdict for the evidence line:
- * `signed by <keyId>`, `unsigned-record`, `unknown-signer`, `bad-signature`,
- * `signature-not-measured`, distinct and never collapsed, with ssh-keygen's
- * reason where there is one.
+ * `signed:agent by <principal>` / `signed:owner by <principal>` (#6257 —
+ * which process appended, by the principal's kind), `unsigned-record`,
+ * `unknown-signer`, `bad-signature`, `signature-not-measured`, distinct and
+ * never collapsed, with ssh-keygen's reason where there is one.
  *
  * Informational this phase: the verdicts ride on the evidence and never
  * change its `kind` or the gate's exit code. Phase 3 enforces past a
@@ -78,7 +79,10 @@ export function signatureVerifierFromEnv(
 function signatureVerdictBody(verdict: VoteRecordSignatureVerdict): string {
   switch (verdict.code) {
     case 'signed':
-      return `signed by ${verdict.keyId}`;
+      // #6257 increment 1: WHICH process appended, by the principal's kind —
+      // `signed:agent` for the autonomous loop's `nexus-agent@<host>` key,
+      // `signed:owner` for a human-held key. Attribution, not host isolation.
+      return `signed:${verdict.signerKind} by ${verdict.principal}`;
     case 'unsigned-record':
       return 'unsigned-record';
     case 'unknown-signer':
