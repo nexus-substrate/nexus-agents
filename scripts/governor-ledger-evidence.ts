@@ -134,7 +134,10 @@
  * at the merge-base (`git show <base>:governance/vote-records.jsonl`, empty
  * when the file did not exist there) and the verdict requires the base's
  * record lines to be an ordered SUBSEQUENCE of the head's: every base line
- * present, byte-identical, in the same relative order; insertions anywhere.
+ * present in the same relative order; insertions anywhere. Lines remain
+ * byte-identical except for a target named by a newly appended redaction:
+ * compare it canonically after dropping only the named roles' `reasoning`
+ * and `reasoningNonce` from the base (#6348). Every other value is preserved.
  * Blank lines are not records and are ignored on both sides.
  *
  * Subsequence, not prefix, because the union driver's order depends on
@@ -153,8 +156,9 @@
  * with the new record re-sequenced into its slot, an edit-and-re-hash, a
  * reorder, a truncation.
  *
- * Precedence puts `ledger-rewritten` right after `ledger-invalid`: a rewrite
- * outranks `duplicate-id` and `no-record` because the ledger it is computed
+ * Precedence puts `ledger-rewritten` before `ledger-invalid`: a changed base
+ * line is a rewrite even if its hash or opening is also invalid (#6348).
+ * It also outranks `duplicate-id` and `no-record` because the ledger it is computed
  * over is not the ledger main will carry. No base supplied (a local run;
  * both workflow jobs supply one since #6218) leaves the check NOT MADE, and
  * the `ratified` line says so (`appendOnlyChecked: false`) rather than
@@ -300,8 +304,12 @@ import type {
   VoteRecord,
   VoteRecordPanelCoverage,
 } from '../packages/nexus-agents/src/audit/vote-record.js';
+import { isRecord } from '../packages/nexus-agents/src/utils/type-coercion.js';
 import { verifyVoteRecordSet } from '../packages/nexus-agents/src/audit/vote-record.js';
-import type { RedactedRecordReport } from '../packages/nexus-agents/src/audit/redaction-record.js';
+import {
+  redactedRolesByTarget,
+  type RedactedRecordReport,
+} from '../packages/nexus-agents/src/audit/redaction-record.js';
 import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
@@ -563,10 +571,46 @@ function recordLines(text: string): string[] {
   return text.split('\n').filter((line) => line.trim() !== '');
 }
 
+/** Stable key order at every object depth; array order and all raw values are retained. */
+function stableJson(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, entry: unknown) => {
+    if (!isRecord(entry)) return entry;
+    const keys = Object.keys(entry).sort();
+    return Object.fromEntries(keys.map((key) => [key, entry[key]] as const));
+  });
+}
+
+/** Byte-exact unless a newly appended redaction authorizes just the named openings. */
+function matchesLedgerLine(
+  baseLine: string,
+  headLine: string,
+  rolesByTarget: ReadonlyMap<string, ReadonlySet<string>>
+): boolean {
+  if (baseLine === headLine) return true;
+  try {
+    const base: unknown = JSON.parse(baseLine);
+    const head: unknown = JSON.parse(headLine);
+    if (!isRecord(base) || typeof base['id'] !== 'string') return false;
+    const roles = rolesByTarget.get(base['id']);
+    // No newly named roles (including an empty redaction set) means no rewrite exception.
+    if (roles === undefined || roles.size === 0 || !Array.isArray(base['voters'])) return false;
+    const voters = base['voters'].map((voter: unknown) => {
+      if (!isRecord(voter) || typeof voter['role'] !== 'string' || !roles.has(voter['role']))
+        return voter;
+      const { reasoning: _reasoning, reasoningNonce: _reasoningNonce, ...rest } = voter;
+      return rest;
+    });
+    return stableJson({ ...base, voters }) === stableJson(head);
+  } catch {
+    return false; // Neither malformed side can receive the redaction exception.
+  }
+}
+
 /**
  * Append-only against the base (#6213): the base's record lines must be an
  * ordered subsequence of the head's — a single forward scan, each base line
- * matched byte-for-byte to the next unconsumed head line. Returns the
+ * matched byte-for-byte, or canonically after removing only the openings a
+ * newly appended redaction names (#6348), to an unconsumed head line. Returns the
  * verdict on the first base line that cannot be matched in order (missing,
  * changed, or moved before an earlier base line); `undefined` when every
  * base line is found (an empty base is a subsequence of everything).
@@ -577,16 +621,17 @@ function appendOnlyVerdict(
 ): Extract<LedgerEvidence, { kind: 'ledger-rewritten' }> | undefined {
   const base = recordLines(baseText);
   const head = recordLines(headText);
+  if (base.length === 0) return undefined; // No historical lines to preserve.
+  const baseIds = new Set(parseVoteRecordsText(baseText).redactions.map((r) => r.id));
+  const appended = parseVoteRecordsText(headText).redactions.filter((r) => !baseIds.has(r.id));
+  const rolesByTarget = redactedRolesByTarget(appended);
+  const counts = { baseLineCount: base.length, headLineCount: head.length };
   let cursor = 0;
-  for (let i = 0; i < base.length; i++) {
-    const at = head.indexOf(base[i] ?? '', cursor);
-    if (at === -1) {
-      return {
-        kind: 'ledger-rewritten',
-        baseLineCount: base.length,
-        headLineCount: head.length,
-        divergesAt: i + 1,
-      };
+  for (const [i, baseLine] of base.entries()) {
+    let at = cursor;
+    while (at < head.length && !matchesLedgerLine(baseLine, head[at] ?? '', rolesByTarget)) at++;
+    if (at === head.length) {
+      return { kind: 'ledger-rewritten', ...counts, divergesAt: i + 1 };
     }
     cursor = at + 1;
   }
@@ -701,22 +746,20 @@ function verdictOverBound(
  * Compute the ledger verdict for a PR. Pure — the ledger bytes, the base
  * ledger bytes, the head and (optionally) the moved-head probe are passed
  * in; the probe is the one input that reads the checkout, and it is
- * consulted only on the moved-head path. Precedence: `ledger-invalid` →
- * `ledger-rewritten` → `duplicate-id` → `no-record` → `sha-mismatch` →
+ * consulted only on the moved-head path. Precedence: `ledger-rewritten` →
+ * `ledger-invalid` → `duplicate-id` → `no-record` → `sha-mismatch` →
  * `not-approved` → `wrong-error-policy` → `wrong-strategy` →
  * `unmeasured-panel` → `degraded-panel` → `ratified` / `ratified-rebased`
  * (the latter only via the moved-head rule, #6256, which can also yield
  * `ledger-rewritten` against the ratified sha).
  */
 export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvidence {
-  const loaded = loadLedger(inputs.ledgerText);
-  if (!loaded.ok && loaded.verdict.kind === 'ledger-invalid') return loaded.verdict;
-
   const appendOnlyChecked = inputs.baseLedgerText !== undefined;
   if (inputs.baseLedgerText !== undefined) {
     const rewritten = appendOnlyVerdict(inputs.ledgerText, inputs.baseLedgerText);
     if (rewritten !== undefined) return rewritten;
   }
+  const loaded = loadLedger(inputs.ledgerText);
   if (!loaded.ok) return loaded.verdict;
   return withRedaction(
     verdictOverLoaded(inputs, loaded.records, appendOnlyChecked),

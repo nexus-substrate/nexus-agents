@@ -611,6 +611,9 @@ The governor ratification gate (`scripts/governor-ledger-evidence.ts`) treats a
 policy and panel coverage are all still hash-covered — and prints the
 redaction on the `::notice::` line so a spot-checker who goes looking for the
 reasoning finds "removed under redaction record 'X'" rather than nothing.
+The append-only rule admits removal of `reasoning` and `reasoningNonce` only
+from roles named for that target by a redaction record newly appended in head,
+comparing the target canonically; every other change remains a rewrite.
 
 ### 8.3 What a redaction does and does not remove
 
@@ -630,28 +633,20 @@ Does **not** remove:
 - **The fact that the voter argued.** The digest and the marker remain; only
   the words are gone.
 
-### 8.4 Landing a redaction through the ratification gate: not yet possible (#6348)
+### 8.4 Landing a redaction through the ratification gate (#6348)
 
-The verifier above answers `redacted`; the **wired gate does not reach it on
-the PR that performs the redaction**. `scripts/governor-ledger-evidence.ts`
-enforces append-only against the base (#6213) by matching every base line of
-`governance/vote-records.jsonl` byte-for-byte, in order, to a head line. A
-redaction rewrites the target line (the opening is dropped from it) and
-appends the redaction record, so on the redacting PR the base line no longer
-exists in the head verbatim. Measured against the gate: base = the original
-ledger, head = the redacted ledger plus its redaction record →
-`ledger-rewritten`, `divergesAt: 1`. The gate refuses the PR.
+`scripts/governor-ledger-evidence.ts` preserves every base ledger line in
+relative order, admitting the target-opening removal described in §8.2 only
+when the authorizing redaction record is present in head and absent from base.
+For that target, it compares parsed JSON with stable key ordering after
+removing only the named roles' openings from the base; any other value
+change or an unparseable counterpart is `ledger-rewritten`.
+Lines no new redaction names remain byte-exact, including key order.
 
-This is fail-closed, not a regression — a rewritten ledger line is exactly
-what that rule exists to refuse, and before #6264 the same edit was refused
-too. But it means the `redacted` verdict in §8.2 is **unreachable on the PR
-that redacts** until the append-only rule learns the one sanctioned rewrite: a
-base line whose head counterpart differs only by an absent opening, when a
-redaction record appended in the same head names that record and role. That
-amendment is #6348. Until it lands, the redaction script (#6265) can produce
-a ledger the verifier accepts but the gate will not merge, and a redaction
-reaches `main` only by an owner override of a red gate. Treat #6348 as the
-precondition for using this facility at all, not as a follow-up.
+The base comparison runs before ledger verification, so an unauthorized
+removal is reported as `ledger-rewritten` even if it also breaks a commitment.
+The head must still pass the verifier's self-hash, sequence and redaction
+binding checks, and the PR still requires owner ratification.
 
 ### 8.5 Trust boundary
 

@@ -350,11 +350,9 @@ describe('evaluateLedgerEvidence', () => {
 });
 
 describe('append-only against the base (#6213, ledger-rewritten)', () => {
-  // The verifier already refuses a ledger with a HOLE in `0..max` as
-  // `ledger-invalid` (sequence_gap), so deleting a line from the middle is
-  // caught before this check runs. What the set verifier cannot see, and this
-  // check exists for: dropping the TAIL and re-sequencing the new record
-  // into the freed slot, editing a line and re-hashing it, and reordering.
+  // The base comparison runs before set verification (#6348): a missing or
+  // changed base line is a rewrite even when the head also fails its hash
+  // or sequence check. Without a base, those defects remain ledger-invalid.
   const L0 = record('v0', { sequence: 0, pr: 1 });
   const L1 = record('v1', { sequence: 1, pr: 2 });
   const A1 = record('vA', { sequence: 2, pr: 3 });
@@ -384,11 +382,9 @@ describe('append-only against the base (#6213, ledger-rewritten)', () => {
     expect(ev(base, base)).toEqual({ kind: 'no-record', recordCount: 2 });
   });
 
-  it('deleting a base line from the MIDDLE leaves a sequence hole: ledger-invalid, which outranks the rewrite', () => {
+  it('deleting a base line from the MIDDLE reports the rewrite before the sequence hole (#6348)', () => {
     const e = ev(ledgerText([L1, B1]), base);
-    expect(e.kind).toBe('ledger-invalid');
-    if (e.kind !== 'ledger-invalid') throw new Error('unreachable');
-    expect(e.detail).toContain('sequence_gap');
+    expect(e).toMatchObject({ kind: 'ledger-rewritten', divergesAt: 1 });
   });
 
   it('deleting the LAST base line (a recorded dissent, say) and re-sequencing the new record into its slot → ledger-rewritten', () => {
@@ -509,9 +505,11 @@ describe('append-only against the base (#6213, ledger-rewritten)', () => {
     });
   });
 
-  it('precedence: ledger-invalid beats ledger-rewritten; ledger-rewritten beats duplicate-id and no-record', () => {
-    // Unparseable head line AND a dropped base line → the parse failure is reported.
-    expect(kindOf(ev(`${JSON.stringify(L0)}\nnot json\n`, base))).toBe('ledger-invalid');
+  it('precedence: ledger-rewritten beats ledger-invalid, duplicate-id and no-record (#6348)', () => {
+    // Unparseable head line AND a dropped base line → the rewrite is reported.
+    expect(kindOf(ev(`${JSON.stringify(L0)}\nnot json\n`, base))).toBe('ledger-rewritten');
+    // An invalid appended line with every base line intact is still ledger-invalid.
+    expect(kindOf(ev(`${base}not json\n`, base))).toBe('ledger-invalid');
     // Dropped tail line AND a duplicate id (two contents under 'vB') → the rewrite is reported.
     const { hash: _h, ...dupePayload } = B_AT_1;
     const dupe = { ...dupePayload, approvalPercentage: 50 };
@@ -664,6 +662,88 @@ describe('a redacted ratifying record is verifiable, and the gate says it was re
       recordId: 'v0',
       voterRoles: ['security'],
       redactionIds: ['red-0'],
+    });
+  });
+
+  describe('append-only admits only newly recorded redactions (#6348)', () => {
+    function againstBase(headText: string, baseText: string): LedgerEvidence {
+      return evaluateLedgerEvidence({
+        ledgerText: headText,
+        baseLedgerText: baseText,
+        pr: PR,
+        head: AT_HEAD,
+      });
+    }
+
+    it('(a) admits an appended redaction removing only its target opening', () => {
+      const { text, r } = redactedLedger();
+      expect(againstBase(text, ledgerText([r]))).toMatchObject({
+        kind: 'ratified',
+        appendOnlyChecked: true,
+        redacted: { recordId: r.id, voterRoles: ['security'], redactionIds: ['red-0'] },
+      });
+    });
+
+    it('(b) rejects any other value change on the target line', () => {
+      const { text, r } = redactedLedger();
+      const changed = text.replace('"approve":3', '"approve":2');
+      expect(changed).not.toBe(text);
+      expect(againstBase(changed, ledgerText([r]))).toMatchObject({
+        kind: 'ledger-rewritten',
+        divergesAt: 1,
+      });
+    });
+
+    it('(c) EMPTY CASE: no appended redaction cannot authorize a stripped opening', () => {
+      const { text, r } = redactedLedger();
+      const strippedOnly = text.split('\n')[0] ?? '';
+      expect(againstBase(strippedOnly, ledgerText([r])).kind).toBe('ledger-rewritten');
+    });
+
+    it('(d) a redaction already present in base cannot authorize a new removal', () => {
+      const { text, r, red } = redactedLedger();
+      const base = ledgerText([r]) + JSON.stringify(red) + '\n';
+      expect(againstBase(text, base).kind).toBe('ledger-rewritten');
+    });
+
+    it('(e) naming security does not authorize removing architect’s opening', () => {
+      const { r, red } = redactedLedger();
+      const after = {
+        ...r,
+        voters: redactVoterOpenings(r.voters, new Set(['security', 'architect'])),
+      };
+      const head = ledgerText([after]) + JSON.stringify(red) + '\n';
+      expect(againstBase(head, ledgerText([r])).kind).toBe('ledger-rewritten');
+    });
+
+    it('(f) refuses key-order-only changes to an unredacted line', () => {
+      const { r } = redactedLedger();
+      const reordered = JSON.stringify(Object.fromEntries(Object.entries(r).reverse()));
+      // Lines no new redaction names remain byte-exact: key order alone is a rewrite.
+      expect(reordered).not.toBe(JSON.stringify(r));
+      expect(againstBase(reordered, ledgerText([r])).kind).toBe('ledger-rewritten');
+    });
+
+    it('admits reordered keys at every object depth only on the named redacted target', () => {
+      const { text, r } = redactedLedger();
+      const [target, red] = text.trim().split('\n');
+      if (red === undefined) throw new Error('missing redaction fixture');
+      const value: unknown = JSON.parse(target ?? '');
+      const reordered = JSON.stringify(value, (_key, entry: unknown) =>
+        entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+          ? Object.fromEntries(Object.entries(entry).reverse())
+          : entry
+      );
+      expect(reordered).not.toBe(target);
+      expect(againstBase(`${reordered}\n${red}\n`, ledgerText([r])).kind).toBe('ratified');
+    });
+
+    it.each(['base', 'head'])('refuses an unparseable %s target line as a rewrite', (side) => {
+      const { text, r } = redactedLedger();
+      const base = ledgerText([r]);
+      expect(
+        againstBase(side === 'head' ? '{broken\n' : text, side === 'base' ? '{broken\n' : base).kind
+      ).toBe('ledger-rewritten');
     });
   });
 
