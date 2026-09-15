@@ -73,6 +73,8 @@ export const SELF = 'check-script-wiring.ts';
  * test also asserts each entry against the real tree.
  */
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
+  'redact-vote-record.ts':
+    'operator-run reasoning redaction requiring a governor-path PR; not a CI gate (#6265)',
   // The caller-commits half of #5130: copies ONE verified, PR-bound vote
   // record from the operator's runtime store into the committed
   // `governance/vote-records.jsonl` so it lands in the PR it ratifies. The
