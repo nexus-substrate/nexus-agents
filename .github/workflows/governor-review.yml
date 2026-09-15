@@ -145,6 +145,28 @@ jobs:
   # governor path the job reports `not-applicable` and exits 0. Do not add a
   # `paths:` filter, a `needs:`, or a narrower `if:` here.
   #
+  # TWO-CHECKOUT TRUST BOUNDARY (#6369, option D): the gate judges by main's
+  # rules: base-ref scripts, base-ref toolchain, head as data; a gate change
+  # goes live after it merges. This job references only the stable dispatcher
+  # governor-gate.ts; per-check additions/renames are wired inside it on main.
+  # Ledger evolution is reader-first, writer-second: main must accept every
+  # format the head carries. This change makes no reader-incompatible ledger
+  # change, and an unreadable format has no bypass.
+  # ROLLOUT: merge after #6373 supplies the dispatcher on main. Sibling
+  # head/gate checkouts leave workspace-root configuration absent.
+  # package_json_file selects gate/package.json. Explicit node-version/cache
+  # skip automatic version-file/package.json discovery; no registry-url means
+  # no auth-file setup. cache-dependency-path hashes only gate's lockfile.
+  # Residual: pnpm setup still probes workspace-root .npmrc; setup-node runs
+  # pnpm store discovery there. Neither lookup descends into sibling head.
+  # Verified inputs and config reads at the exact action pins:
+  # https://github.com/pnpm/action-setup/blob/b307475762933b98ed359c036b0e51f26b63b74b/action.yml
+  # https://github.com/pnpm/action-setup/blob/b307475762933b98ed359c036b0e51f26b63b74b/src/install-pnpm/run.ts
+  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/action.yml
+  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/src/main.ts
+  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/src/cache-utils.ts
+  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/src/cache-restore.ts
+  #
   # STEP ORDER (#6260 panel, scope steward): the detector runs BEFORE any
   # GitHub API call, and the evidence and gate steps are gated on its output.
   # The first cut collected evidence first, so once this context is required a
@@ -175,10 +197,30 @@ jobs:
       - name: Checkout PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          path: head
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: ./.github/actions/setup-node
+      - name: Checkout base gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.base_ref }}
+          path: gate
+          fetch-depth: 1
+
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+        with:
+          package_json_file: gate/package.json
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: gate/pnpm-lock.yaml
+
+      - name: Install gate dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: gate
 
       - name: Compute changed files (base..head)
         id: changed
@@ -186,12 +228,12 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
+          BASE_SHA=$(git -C head merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
           if [ -z "${BASE_SHA}" ]; then
             echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
             exit 1
           fi
-          FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          FILES=$(git -C head diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
           {
             echo "base=${BASE_SHA}"
             echo 'files<<FILES_EOF'
@@ -212,17 +254,19 @@ jobs:
         # condition empty, never `false`. Same parser and matcher as the gate
         # below; this is the `paths:` filter's replacement, not a second copy
         # of the set (#4802 part 1).
+        working-directory: gate
         run: |
-          TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)
+          TOUCHED=$(pnpm exec tsx scripts/governor-gate.ts touched --target "${GITHUB_WORKSPACE}/head")
           echo "governor_touched=${TOUCHED}" >> "${GITHUB_OUTPUT}"
 
       - name: Check governor-owned required jobs (#6343)
         id: required-jobs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: gate
         run: |
           status=0
-          pnpm exec tsx scripts/check-required-jobs.ts || status=$?
+          pnpm exec tsx scripts/governor-gate.ts required-jobs --target "${GITHUB_WORKSPACE}/head" || status=$?
           if [ "$status" = 2 ]; then
             echo "::warning::required jobs unmeasured"
           else
@@ -245,6 +289,7 @@ jobs:
           # final push, so `before` alone would never reach the run that
           # counts); the PR's own force-push timeline supplies the rest.
           BEFORE: ${{ github.event.before }}
+        working-directory: gate
         run: |
           # pipefail: a failed `gh api` below must fail the step, not yield an
           # empty APPROVALS/LABELS the gate reads as "nobody approved" (#5685).
@@ -317,9 +362,9 @@ jobs:
           # Both values are computed from the checkout (fetch-depth: 0); a
           # root commit has no parent and yields empty strings, which the gate
           # reads as "only head is accepted".
-          HEAD_PARENT_SHA=$(git rev-parse --verify --quiet "${HEAD_SHA}^" || echo '')
+          HEAD_PARENT_SHA=$(git -C "${GITHUB_WORKSPACE}/head" rev-parse --verify --quiet "${HEAD_SHA}^" || echo '')
           if [ -n "${HEAD_PARENT_SHA}" ]; then
-            HEAD_COMMIT_FILES=$(git diff --name-only "${HEAD_PARENT_SHA}" "${HEAD_SHA}")
+            HEAD_COMMIT_FILES=$(git -C "${GITHUB_WORKSPACE}/head" diff --name-only "${HEAD_PARENT_SHA}" "${HEAD_SHA}")
           else
             HEAD_COMMIT_FILES=""
           fi
@@ -339,9 +384,9 @@ jobs:
           # The commit must exist: an unknown sha would otherwise read as
           # "no ledger at base" and the append-only check would pass over
           # an empty base. Fails the step under -e.
-          git cat-file -e "${LEDGER_BASE_SHA}^{commit}"
-          if git cat-file -e "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
-            git show "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
+          git -C "${GITHUB_WORKSPACE}/head" cat-file -e "${LEDGER_BASE_SHA}^{commit}"
+          if git -C "${GITHUB_WORKSPACE}/head" cat-file -e "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" 2>/dev/null; then
+            git -C "${GITHUB_WORKSPACE}/head" show "${LEDGER_BASE_SHA}:governance/vote-records.jsonl" > "${BASE_LEDGER_PATH}"
           else
             : > "${BASE_LEDGER_PATH}"
           fi
@@ -415,7 +460,8 @@ jobs:
           # diverged, so an unrelated PR touching a governed file could revoke
           # this PR's exemption.
           PR_BASE_SHA: ${{ steps.changed.outputs.base }}
-        run: pnpm exec tsx scripts/check-governor-ratification.ts
+        working-directory: gate
+        run: pnpm exec tsx scripts/governor-gate.ts ratification --target "${GITHUB_WORKSPACE}/head"
 
       - name: Verdict when no governor path is touched
         # `always()` so this step is reached even if the detector failed, and
@@ -427,6 +473,7 @@ jobs:
         if: ${{ always() && steps.touched.outputs.governor_touched != 'true' }}
         env:
           TOUCHED: ${{ steps.touched.outputs.governor_touched }}
+        working-directory: gate
         run: |
           if [ "${TOUCHED}" = "false" ]; then
             echo "not-applicable: this PR touches no governance-of-the-governor path — ratification not required."
