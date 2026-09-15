@@ -501,10 +501,12 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
         // CLI must not believe it's already inside Claude Code.
         const childEnv = buildChildEnv(this.name);
+        const workDir = task.options?.['workDir'];
 
         const child = spawn(cmdConfig.command, cmdConfig.args, {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: childEnv,
+          ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
         });
 
         const onProgress = options.onProgress;

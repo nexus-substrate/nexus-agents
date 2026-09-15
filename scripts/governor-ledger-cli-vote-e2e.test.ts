@@ -167,7 +167,18 @@ describe('e2e: nexus-agents vote --ratifies-pr → append script → the ledger 
       `${String(PR)}@${reviewedSha}`,
     ]);
     expect(args.command).toBe('vote');
-    const exit = await handleVoteCommand(args);
+    // The operator runs `vote` from inside the repository under review: since
+    // #6358 the handler creates a detached scratch checkout of the ratified
+    // sha from the repo at process.cwd(), so the cwd must be the fixture repo
+    // (the sha is not a commit of the nexus-agents checkout the tests run in).
+    const originalCwd = process.cwd();
+    process.chdir(repo);
+    let exit: Awaited<ReturnType<typeof handleVoteCommand>>;
+    try {
+      exit = await handleVoteCommand(args);
+    } finally {
+      process.chdir(originalCwd);
+    }
     expect(exit.exitCode).toBe(0);
     expect(collectRealVotesMock).toHaveBeenCalledTimes(1);
 

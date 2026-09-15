@@ -12,15 +12,14 @@
  * 1. How is `A` RELATED to this PR? Accepted relations, and nothing else
  *    (#6301 item 4): `ancestor` — `A` is an ancestor of the head (a merge
  *    from main kept the ratified commit in the history); or `prior-head` —
- *    `A` is a head this PR had before the current one, as the WORKFLOW
+ *    `A` is an ancestor of any prior head this PR had, as the WORKFLOW
  *    measured it (`PR_PRIOR_HEADS`: the `synchronize` event's `before` sha
  *    and the head shas of this workflow's own runs that GitHub attributes
  *    to THIS PR NUMBER — never a branch name, which a fork PR can share
- *    with the base repo), or the first parent of such a head when that head
- *    touched only the ledger — the same `head`/`head^` reading
- *    `acceptedHeadShas` gives the current head, because the tip a
- *    force-push replaces is the ledger-only commit A1 and the record binds
- *    A = A1^. A sha that is neither is `unrelated`: a commit on any other
+ *    with the base repo). The prior head itself and its first parent when
+ *    it touched only the ledger remain an explicit fast path. Ancestry
+ *    also covers a ratified sha below a merge and a ledger-only tip (#6364).
+ *    A sha that is neither is `unrelated`: a commit on any other
  *    branch carrying the same content would otherwise pass the tree rule
  *    below, and nothing binds it to THIS PR.
  * 2. Is the commit object present? A merge from main keeps it; a rebase
@@ -388,11 +387,18 @@ function relationOf(
   if (!ancestry.ok) return { kind: 'unmeasured', detail: ancestry.detail };
   if (ancestry.ancestor) return 'ancestor';
   if (prior) return 'prior-head';
+  // Empty prior heads establish no relation: fall through to unrelated.
+  for (const priorHead of priorHeads) {
+    if (ensurePresent(repoDir, priorHead, true) !== undefined) continue;
+    const priorAncestry = isAncestor(repoDir, sha, priorHead);
+    if (!priorAncestry.ok) return { kind: 'unmeasured', detail: priorAncestry.detail };
+    if (priorAncestry.ancestor) return 'prior-head';
+  }
   return {
     kind: 'unrelated',
     detail:
-      `commit ${sha} is present but is not an ancestor of the head ${headSha} and is not a ` +
-      `head this PR had (PR_PRIOR_HEADS: ${priorHeads.length === 0 ? 'none' : priorHeads.join(', ')}) ` +
+      `commit ${sha} is present but is not an ancestor of the head ${headSha} or of any prior ` +
+      `head of this PR (PR_PRIOR_HEADS: ${priorHeads.length === 0 ? 'none' : priorHeads.join(', ')}) ` +
       '— the same content on another branch is not a head the panel saw for this PR',
   };
 }

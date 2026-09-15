@@ -2015,6 +2015,41 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     return sha;
   }
 
+  /** #6357: A → M(A, main) → ledger-only L; reword A and replay M/L. */
+  function rewrittenMergedBranch(changedByte = false): { dir: string; A: string; L: string } {
+    const { dir, A, A1 } = ratifiedBranch();
+    advanceMain(dir);
+    git(dir, 'reset', '--hard', A);
+    mergeMain(dir);
+    const M = git(dir, 'rev-parse', 'HEAD');
+    git(dir, 'cherry-pick', A1);
+    const L = git(dir, 'rev-parse', 'HEAD');
+    expect(git(dir, 'rev-parse', `${L}^^`)).toBe(A);
+    expect(git(dir, 'rev-parse', `${M}^2`)).toBe(git(dir, 'rev-parse', 'main'));
+
+    git(dir, 'reset', '--hard', A);
+    if (changedByte) write(dir, 'src/a.ts', A_TS_PATCHED.replace('a = 1', 'a = 9'));
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '--amend', '-m', 'fix(governance): reword the governed change');
+    const rewrittenA = git(dir, 'rev-parse', 'HEAD');
+    expect(rewrittenA).not.toBe(A);
+    mergeMain(dir);
+    const rewrittenM = git(dir, 'rev-parse', 'HEAD');
+    git(dir, 'cherry-pick', L);
+    if (!changedByte) {
+      for (const [before, after] of [
+        [A, rewrittenA],
+        [M, rewrittenM],
+        [L, 'HEAD'],
+      ] as const) {
+        expect(git(dir, 'rev-parse', `${before}^{tree}`)).toBe(
+          git(dir, 'rev-parse', `${after}^{tree}`)
+        );
+      }
+    }
+    return { dir, A, L };
+  }
+
   interface FixtureInputs {
     readonly ledgerText: string;
     readonly pr: number;
@@ -2168,6 +2203,54 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     expect(formatLedgerEvidence(e)).toContain('a head this PR had');
   });
 
+  it.each([false, true])(
+    '#6364: rewritten A → merge → ledger tip, changed byte = %s',
+    (changedByte) => {
+      const { dir, A, L } = rewrittenMergedBranch(changedByte);
+      const inputs = inputsFor(dir, { priorHeads: [L] });
+      expect(
+        spawnSync('git', ['merge-base', '--is-ancestor', A, inputs.headSha], { cwd: dir }).status
+      ).toBe(1);
+      expect(inputs.head.commitFiles).toEqual([VOTE_RECORDS_REL_PATH]);
+      const measurement = inputs.movedHead?.(A);
+      expect(measurement).toMatchObject({ kind: 'measured', relation: 'prior-head' });
+      const e = evaluateLedgerEvidence(inputs);
+      if (changedByte) {
+        expect(e.kind).toBe('sha-mismatch');
+        expect(formatLedgerEvidence(e)).toContain('tree differs');
+        expect(formatLedgerEvidence(e)).toContain('src/a.ts');
+      } else {
+        expect(e).toMatchObject({
+          kind: 'ratified-rebased',
+          ratifiedSha: A,
+          relation: 'prior-head',
+        });
+      }
+    }
+  );
+
+  it('#6364: fetching an absent prior ledger tip also recovers its ratified grandparent', () => {
+    const { dir: work, A, L } = rewrittenMergedBranch();
+    const origin = newDir('ledger-ancestor-origin-');
+    git(origin, 'init', '-q', '--bare');
+    git(origin, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+    git(work, 'remote', 'add', 'origin', origin);
+    git(work, 'push', '-q', 'origin', 'main', `${L}:refs/heads/pr`);
+    git(work, 'push', '-q', '--force', 'origin', 'pr');
+    const clone = newDir('ledger-ancestor-clone-');
+    git(clone, 'clone', '-q', '--no-local', origin, '.');
+    git(clone, 'checkout', '-q', 'main');
+    git(clone, 'checkout', '-q', 'pr');
+    expect(hasObject(clone, A)).toBe(false);
+    expect(hasObject(clone, L)).toBe(false);
+    expect(evaluateLedgerEvidence(inputsFor(clone, { priorHeads: [L] }))).toMatchObject({
+      kind: 'ratified-rebased',
+      ratifiedSha: A,
+      relation: 'prior-head',
+    });
+    expect(hasObject(clone, A)).toBe(true);
+  });
+
   it('(b′) the same rebase with NO prior heads supplied: the ratified sha is neither an ancestor nor a known head → sha-mismatch naming the relation (#6301 item 4)', () => {
     const { dir, A } = ratifiedBranch();
     advanceMain(dir);
@@ -2177,7 +2260,7 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
     expect(e.moved[0]?.sha).toBe(A);
     expect(e.moved[0]?.reason).toContain('not an ancestor of the head');
-    expect(e.moved[0]?.reason).toContain('not a head this PR had');
+    expect(e.moved[0]?.reason).toContain('or of any prior head of this PR (PR_PRIOR_HEADS: none)');
   });
 
   it('(g) a record bound to a commit on an UNRELATED branch carrying the same patch → sha-mismatch naming the relation (#6301 item 4)', () => {
@@ -2186,7 +2269,7 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     // alone accepted it as `rewritten-history`; tree equality alone would
     // too (the content IS the same), so condition 1 is what binds the
     // record to THIS PR.
-    const { dir, A } = ratifiedBranch();
+    const { dir, A, A1 } = ratifiedBranch();
     git(dir, 'checkout', '-q', '-b', 'stranger', 'main');
     write(dir, 'src/a.ts', A_TS_PATCHED);
     const X = commitAll(dir, 'the same patch on another branch');
@@ -2198,12 +2281,15 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
       ledgerText([OLDER, record('v-pr', { sequence: 1, headSha: X })])
     );
     commitAll(dir, 'bind the record to the stranger');
-    const e = evaluateLedgerEvidence(inputsFor(dir));
+    const inputs = inputsFor(dir, { priorHeads: [A1] });
+    expect(git(dir, 'rev-parse', `${X}^{tree}`)).toBe(git(dir, 'rev-parse', `${A}^{tree}`));
+    expect(inputs.movedHead?.(X)).toMatchObject({ kind: 'unrelated' });
+    const e = evaluateLedgerEvidence(inputs);
     expect(e.kind).toBe('sha-mismatch');
     if (e.kind !== 'sha-mismatch') throw new Error('unreachable');
     expect(e.found).toEqual([X]);
     expect(e.moved[0]?.reason).toContain('not an ancestor of the head');
-    expect(e.moved[0]?.reason).toContain('not a head this PR had');
+    expect(e.moved[0]?.reason).toContain('or of any prior head of this PR');
     // Named as a prior head, the same sha passes: the relation is the only difference.
     expect(kindOf(evaluateLedgerEvidence(inputsFor(dir, { priorHeads: [X] })))).toBe(
       'ratified-rebased'
@@ -2301,7 +2387,7 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
   });
 
   it('(missing) the ratified sha is not in the checkout and cannot be fetched → sha-mismatch naming "object not found"', () => {
-    const { dir } = ratifiedBranch();
+    const { dir, A } = ratifiedBranch();
     const missing = '9999999999999999999999999999999999999999';
     write(
       dir,
@@ -2319,6 +2405,12 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     const unnamed = evaluateLedgerEvidence(inputsFor(dir));
     if (unnamed.kind !== 'sha-mismatch') throw new Error('unreachable');
     expect(unnamed.moved[0]?.reason).toContain('not fetched');
+    // An absent, unfetchable prior cannot establish ancestry for a present sha.
+    advanceMain(dir);
+    git(dir, 'rebase', '-q', 'main');
+    const inputs = inputsFor(dir, { priorHeads: [missing] });
+    expect(inputs.movedHead?.(A)).toMatchObject({ kind: 'unrelated' });
+    expect(inputs.movedHead?.(missing)).toMatchObject({ kind: 'object-missing' });
   });
 
   it('(d) a binary file and a `.ts` holding a NUL byte changed after ratification → sha-mismatch naming both paths (blob ids, not a rendered diff)', () => {

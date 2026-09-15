@@ -17,6 +17,7 @@
  */
 
 import * as crypto from 'node:crypto';
+import { withPanelWorkspace } from './vote-scratch-checkout.js';
 import { getTimeProvider, formatPercentage, getErrorMessage, createLogger } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
@@ -454,7 +455,7 @@ function toVoteInput(options: VoteCommandOptions, quickMode: boolean): Consensus
  * CLI-specific concerns (timeout clamping + diagnostic line) remain here
  * because they belong to the operator UX, not the voting flow itself.
  */
-async function runVote(options: VoteCommandOptions): Promise<CliVoteResult> {
+async function runVote(options: VoteCommandOptions, workspace?: string): Promise<CliVoteResult> {
   // Validate and constrain timeout to allowed range (Issue #607). Done at
   // the CLI boundary so the operator sees the adjustment immediately.
   const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
@@ -478,8 +479,12 @@ async function runVote(options: VoteCommandOptions): Promise<CliVoteResult> {
   );
 
   const logger = createLogger({ component: 'cli-vote' });
-  const input = toVoteInput(options, useQuick);
-  return toCliVoteResult(await executeVoting(input, logger, { voteTimeoutMs: timeoutMs }));
+  return toCliVoteResult(
+    await executeVoting(toVoteInput(options, useQuick), logger, {
+      voteTimeoutMs: timeoutMs,
+      ...(workspace !== undefined ? { workspace, workspaceSha: options.ratifiesPr?.headSha } : {}),
+    })
+  );
 }
 
 /** The view of a vote the CLI printers and recorders consume. */
@@ -656,32 +661,34 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
   );
   const onNoQuorum: NoQuorumPolicy = options.onNoQuorum ?? 'fail';
   try {
-    let result = await runVote(options);
-    // #4135: a quorum void is recoverable (a voice was missing) — under `retry`,
-    // re-run the vote ONCE before falling back to `fail`. The plan is unchanged.
-    if (result.decision === 'no_quorum' && onNoQuorum === 'retry') {
-      writeLine(
-        `${colors.yellow}No quorum — re-running the vote once (--on-no-quorum=retry)...${colors.reset}\n`
-      );
-      result = await runVote(options);
-    }
-    printVoteDetails(result.votes, options.verbose === true);
-    printSummary({
-      result: result.result,
-      votes: result.votes,
-      threshold: result.threshold,
-      decision: result.decision,
-      ...(result.optionGate === undefined ? {} : { optionGate: result.optionGate }),
-      contrarianCheck: result.contrarianCheck,
-      project: result.project,
+    return await withPanelWorkspace(options, async (workspace) => {
+      let result = await runVote(options, workspace);
+      // #4135: a quorum void is recoverable (a voice was missing) — under `retry`,
+      // re-run the vote ONCE before falling back to `fail`. The plan is unchanged.
+      if (result.decision === 'no_quorum' && onNoQuorum === 'retry') {
+        writeLine(
+          `${colors.yellow}No quorum — re-running the vote once (--on-no-quorum=retry)...${colors.reset}\n`
+        );
+        result = await runVote(options, workspace);
+      }
+      printVoteDetails(result.votes, options.verbose === true);
+      printSummary({
+        result: result.result,
+        votes: result.votes,
+        threshold: result.threshold,
+        decision: result.decision,
+        ...(result.optionGate === undefined ? {} : { optionGate: result.optionGate }),
+        contrarianCheck: result.contrarianCheck,
+        project: result.project,
+      });
+      if (options.verbose === true) printHashes(result.votes);
+      writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
+
+      persistToAuditChain(options, result);
+      handleRecording(options, result, result.decision, result.contrarianCheck);
+
+      return exitCodeForDecision(result.decision, onNoQuorum);
     });
-    if (options.verbose === true) printHashes(result.votes);
-    writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
-
-    persistToAuditChain(options, result);
-    handleRecording(options, result, result.decision, result.contrarianCheck);
-
-    return exitCodeForDecision(result.decision, onNoQuorum);
   } catch (error) {
     writeLine(`${colors.red}Error: ${getErrorMessage(error)}${colors.reset}`);
     return 1;

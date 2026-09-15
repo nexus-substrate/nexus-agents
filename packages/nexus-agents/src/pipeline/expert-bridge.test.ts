@@ -1,13 +1,56 @@
 /**
- * Tests for expert-bridge token-usage propagation (#3396).
+ * Tests for expert-bridge workspace and token-usage propagation (#6358, #3396).
  *
- * The full executeExpert path depends on a cached global router built from live
- * CLI adapters, so it's exercised in integration. Here we unit-test the pure
- * usage→total reducer that decides what `ExpertBridgeResult.tokensUsed` carries.
+ * Router and MCP-config mocks expose the task options sent by executeExpert.
+ * Pure reducer tests cover what `ExpertBridgeResult` carries for token usage.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { totalTokensFromUsage, tokenSplitFromUsage } from './expert-bridge.js';
+const { executeTaskMock } = vi.hoisted(() => ({ executeTaskMock: vi.fn() }));
+vi.mock('../cli-adapters/factory.js', () => ({
+  createAllAdapters: () => new Map([['claude', {}]]),
+}));
+vi.mock('../cli-adapters/composite-router.js', () => ({
+  createCompositeRouter: () => ({ executeTask: executeTaskMock }),
+}));
+vi.mock('../cli-adapters/cli-circuit-breaker.js', () => ({
+  createCliCircuitBreakerIntegration: () => ({
+    getHealthStatus: () => ({ systemHealthy: true, healthyCount: 1, clis: [] }),
+  }),
+}));
+vi.mock('../cli-adapters/child-mcp-config.js', () => ({
+  generateMcpConfig: () => Promise.resolve({ configPath: '/tmp/mcp.json', cleanup: vi.fn() }),
+}));
+
+import { executeExpert, totalTokensFromUsage, tokenSplitFromUsage } from './expert-bridge.js';
+
+describe('executeExpert workspace (#6358)', () => {
+  beforeEach(() => {
+    executeTaskMock.mockReset();
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'reviewed' } });
+  });
+
+  it('forwards the workspace to the router without dropping the MCP config', async () => {
+    const result = await executeExpert('architecture', 'review the head', {
+      workDir: '/tmp/vote-scratch',
+    });
+
+    expect(result.success).toBe(true);
+    expect(executeTaskMock).toHaveBeenCalledWith({
+      content: expect.stringContaining('review the head'),
+      options: { mcpConfigPath: '/tmp/mcp.json', workDir: '/tmp/vote-scratch' },
+    });
+  });
+
+  it('keeps the existing task options when no workspace is supplied', async () => {
+    await executeExpert('architecture', 'review the proposal');
+
+    expect(executeTaskMock).toHaveBeenCalledWith({
+      content: expect.stringContaining('review the proposal'),
+      options: { mcpConfigPath: '/tmp/mcp.json' },
+    });
+  });
+});
 
 describe('totalTokensFromUsage (#3396)', () => {
   it('returns undefined when no usage was reported', () => {

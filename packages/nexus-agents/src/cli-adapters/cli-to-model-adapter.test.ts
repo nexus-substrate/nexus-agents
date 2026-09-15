@@ -173,6 +173,30 @@ describe('CliToModelAdapter.complete', () => {
     expect(opts.timeoutMs).toBe(300_000);
   });
 
+  it('passes the requested workspace to CLI task options (#6358)', async () => {
+    const cli = makeMockCliAdapter();
+    const adapter = new CliToModelAdapter(cli);
+
+    await adapter.complete({
+      messages: [{ role: 'user', content: 'Review the head' }],
+      workDir: '/tmp/vote-scratch',
+    });
+
+    expect(cli.execute).toHaveBeenCalledWith(
+      { content: '[user]: Review the head', options: { workDir: '/tmp/vote-scratch' } },
+      undefined
+    );
+  });
+
+  it('leaves task options absent when no workspace is requested (#6358)', async () => {
+    const cli = makeMockCliAdapter();
+    const adapter = new CliToModelAdapter(cli);
+
+    await adapter.complete({ messages: [{ role: 'user', content: 'Hello' }] });
+
+    expect(cli.execute).toHaveBeenCalledWith({ content: '[user]: Hello' }, undefined);
+  });
+
   it('falls back to the default timeout when request.timeoutMs is absent (#3304)', async () => {
     const cli = makeMockCliAdapter();
     const adapter = new CliToModelAdapter(cli, { defaultTimeoutMs: 120_000 });

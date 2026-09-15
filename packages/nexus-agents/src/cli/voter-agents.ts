@@ -219,14 +219,15 @@ function finalizeParsedVote(
  * instead of simulated vote when execution fails.
  */
 /** Resolve per-call vote execution settings against their defaults. */
-function resolveVoteExecution(options?: VoteExecutionOverrides): VoteExecutionSettings {
+function resolveVoteExecution(options: VoteExecutionOverrides = {}): VoteExecutionSettings {
   return {
-    timeoutMs: options?.timeoutMs ?? resolveVoteTimeout(),
-    maxRetries: options?.maxRetries ?? VOTE_TIMEOUTS.maxRetries,
-    allowSimulation: options?.allowSimulation ?? false,
-    declaredOptions: options?.declaredOptions,
-    project: options?.project,
-    workspace: options?.workspace,
+    timeoutMs: options.timeoutMs ?? resolveVoteTimeout(),
+    maxRetries: options.maxRetries ?? VOTE_TIMEOUTS.maxRetries,
+    allowSimulation: options.allowSimulation ?? false,
+    declaredOptions: options.declaredOptions,
+    project: options.project,
+    workspace: options.workspace,
+    workspaceSha: options.workspaceSha,
   };
 }
 
@@ -281,6 +282,9 @@ export async function executeAgentVote(
  * Options for collecting votes from multiple agents.
  */
 export interface CollectRealVotesOptions extends VoterAgentOptions {
+  /** Repository checkout used by every panel seat. */
+  readonly workspace?: string | undefined;
+  readonly workspaceSha?: string | undefined;
   /** Voter roles to include */
   readonly roles: readonly VoterRole[];
   /** Proposal text */
@@ -493,6 +497,8 @@ export interface VoteExecutionOverrides {
   project?: string | undefined;
   /** Working directory named in every user prompt (#6254); absent ⇒ no REPOSITORY ACCESS block. */
   workspace?: string | undefined;
+  /** Ratified commit when workspace is a detached scratch checkout. */
+  workspaceSha?: string | undefined;
 }
 
 /** Resolved per-call vote execution settings. */
@@ -505,6 +511,7 @@ interface VoteExecutionSettings {
   project: string | undefined;
   /** Required KEY (#6254), for the same reason. */
   workspace: string | undefined;
+  workspaceSha: string | undefined;
 }
 
 interface StaggeredVoteInput {
@@ -608,10 +615,11 @@ export async function collectRealVotes(
   // on a default. Carried through: timeoutMs / maxRetries / allowSimulation;
   // declaredOptions (#4472) into the prompt and the selection resolver; the
   // target project (#6110) into every system prompt; and the working
-  // directory (#6254) — the one every subprocess seat inherits, which the
+  // directory (#6358) — explicitly passed to every subprocess seat, which the
   // gemini arm now also gets as --add-dir — read once so every seat of the
   // panel names the same tree in its REPOSITORY ACCESS block.
-  const voteOptions = resolveVoteExecution({ ...options, workspace: process.cwd() });
+  const workspace = options.workspace ?? process.cwd();
+  const voteOptions = resolveVoteExecution({ ...options, workspace });
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
   const launchInput: StaggeredVoteInput = {

@@ -217,15 +217,16 @@ append-only against the base), or one of:
   #6301 panel 1 review, which rejected a position-insensitive patch-identity
   hash): no record binds `head` or `head^`, but one binds an EARLIER head
   `A` of this PR and all four hold: (1) `A` is related to THIS PR — an
-  ancestor of the head (a merge from main kept it), or a head the workflow
-  measured this PR had (`PR_PRIOR_HEADS`: the `synchronize` event's `before`
+  ancestor of the head (a merge from main kept it), or an ancestor of any
+  prior head the workflow measured this PR had (`PR_PRIOR_HEADS`: the `synchronize` event's `before`
   plus the `beforeCommit`/`afterCommit` of every `HeadRefForcePushedEvent`
   on the PR's own timeline, keyed on the PR NUMBER — never a branch name,
   which a fork PR can share with a base-repo branch; and never the
   workflow-run list, whose `pull_requests` empties once a PR merges, which
-  would have reddened the backstop), or the first parent of such a head
-  when it touched only the ledger (the tip a force-push replaces is the
-  ledger-only A1; the record binds A = A1^). Only a prior head a rebase
+  would have reddened the backstop). The prior head itself and its first
+  parent when it touched only the ledger remain an explicit fast path;
+  ancestry also covers a ratified sha below a merge and a ledger-only tip.
+  Only a prior head a rebase
   orphaned is fetched from `origin` by sha (GitHub serves any object by sha
   — measured on #6252's rebased-away heads); nothing else is fetched,
   because that fetch reaches the whole fork network; (2) `A` carries a
