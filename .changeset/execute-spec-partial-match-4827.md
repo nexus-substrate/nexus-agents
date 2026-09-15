@@ -1,7 +1,0 @@
----
-'nexus-agents': minor
----
-
-`execute_spec` failure analysis can now report a partial match. `CriterionResult` gains a required `partialResults: string[]` — the execution results that overlapped some of a criterion's keywords without clearing the 0.5 match threshold. `analyzeFailures` reads that field for its `partial_match` verdict and priority-2 "Refine implementation" suggestion; before, both read `matchedResults`, which is empty on every unmet criterion by construction (`met` is defined as `matchedResults.length > 0`), so every failed criterion was classified `missing_implementation` or `no_output` at priority 1 and the priority field could not rank anything. `met` and `matchedResults` keep their meaning. Readers of the schema see one added field; a caller hand-building a `SpecExecutionResult` for `analyzeFailures` must now supply `partialResults` (no in-tree caller does this by hand).
-
-Three sites from the same sweep, no runtime change to their verdicts: the `orchestrate` tool now passes `context.filePaths` (string[]) to the AOrchestra planner's file-pattern trigger table, which no in-tree caller had ever fed; the MCP server's `initializeFeedbackIntegration` drops the `router` option its one caller never supplied and its init log names the in-memory-collector state instead of a `hasRouter` that could only be false; and the `authority-tier-guard` module header states that the tier ceiling is exercised at a constant `suggest` floor by live traffic, so `above_declared_tier` is covered by unit tests, not by traffic. Closes #4827.
