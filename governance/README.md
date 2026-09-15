@@ -78,7 +78,9 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
 After step 3 — never before, because the signed message is the COMMITTED
 hash — the script signs that hash with `ssh-keygen -Y sign -n
 nexus-vote-record` when a key is configured: `--signing-key <path>`, else
-`NEXUS_VOTE_SIGNING_KEY`. The result lands on the record as
+`NEXUS_VOTE_SIGNING_KEY`, else the agent key at
+`~/.nexus-agents/auth/vote-record-signing.key` when it exists (see "Which
+key" below). The result lands on the record as
 `signature: { keyId, namespace, sig }`, OUTSIDE the self-hash (it is made
 over the hash, so it cannot be inside it; a record hashes identically with
 or without it, and no schema tier changes). `keyId` is the principal
@@ -99,8 +101,54 @@ environment that ran the append — not a human's presence. Measured: on
 operator's cached GPG key with no prompt, and the agent implementing this
 signed a probe with the operator's ssh-agent-loaded ed25519 key the same
 way. A signature made like that is a stronger hash, not a ratification.
-Custody — a hardware-backed key, or a CI/OIDC identity for machine-made
-records — is #6257. The threat model says the same.
+The #6257 panel's answer (below) is attribution, not custody; a
+hardware-backed key was rejected (option A re-humanizes every governor
+merge), and CI/OIDC-issued keys for a CI-run append are #6350. The threat
+model says the same.
+
+### Which key: `signed:agent` and `signed:owner` (#6257 increment 1)
+
+The #6257 panel (2026-09-15, option B, 5 of 7, `supermajority`,
+`absolute_quorum`) gave the autonomous loop its own signing identity so
+that a signature says WHICH PROCESS appended — instead of one key that
+both the human and the agent could use, which made `signed` mean only "the
+key was readable".
+
+- **The agent key.** `pnpm exec tsx scripts/vote-record-keygen.ts`
+  generates an ed25519 key with no passphrase at
+  `~/.nexus-agents/auth/vote-record-signing.key` (`<dataDir>/auth/…`; mode
+  600; never inside a checkout; refuses to overwrite) and prints — public
+  material only — the fingerprint and the ready-to-paste `allowed_signers`
+  line under the principal `nexus-agent@<hostname>`. The line lands in
+  `governance/allowed_signers` through a ratified PR. When the key exists
+  and neither `--signing-key` nor `NEXUS_VOTE_SIGNING_KEY` names another,
+  `append-ratification-record.ts` signs with it; an automated run needs no
+  configuration to sign as itself.
+- **The owner's key is reserved for human-made records.** A signature that
+  resolves to a principal WITHOUT the `nexus-agent@` prefix is refused by
+  the append script unless `--as-owner` was passed — the flag is the
+  human's attestation, and without it a run that happened to inherit the
+  operator's key (an exported `NEXUS_VOTE_SIGNING_KEY`, a copied shell
+  profile) cannot claim human presence by accident. `--as-owner` with the
+  agent key, or with no key at all, is refused as a misconfiguration.
+- **The verifier returns the principal, never a bare boolean.** `signed`
+  carries `principal` and `signerKind` (`agent` when the principal starts
+  with `nexus-agent@`, else `owner`), and the gate prints
+  `signed:agent by nexus-agent@framework` / `signed:owner by
+williamzujkowski@nexus-agents` on `ratified` and `ratified-rebased` lines.
+  The kind is read from the FILE's principal for the signing key, not from
+  the record's claim: the agent key signing under the owner's name is
+  `unknown-signer`.
+
+**What this is, stated plainly.** Honest attribution of which process
+appended a record. It is NOT host isolation and adds no non-repudiation
+against a compromise of the operator's host: both keys live there, the
+agent process can read both, and the `--as-owner` refusal guards against an
+accidental owner claim, not a deliberate one (the panel's contrarian and
+pm; adopted as binding). Phase 3 (#6279) can require every base-ref record
+past a grandfather cutover to carry a valid signature from a known
+principal, and a record that claims human ratification to carry the owner
+principal — that is where the split becomes an enforced invariant.
 
 ### allowed_signers
 
@@ -113,7 +161,9 @@ key is rotated — add `valid-before` to the old line rather than deleting it.
 Governor path: a change here is ratified like the ledger it vouches for. It
 holds the operator's current GitHub key
 (`SHA256:6lUiTo0SwQSY2XFa8wIkrBXR2SQLr3uNo6Q9HSSnwgk`, ed25519) as
-`williamzujkowski@nexus-agents`.
+`williamzujkowski@nexus-agents`, and the agent key on the operator's host
+(`SHA256:gJ6ieQNe0mmhQoFHST3GOrMS4qpNNpW0Bg3v2Cg/iVc`, ed25519, generated
+2026-09-15) as `nexus-agent@framework`.
 
 ### How the gate reads it (#5130 step 2)
 
@@ -222,8 +272,10 @@ phases 1-2).** The line also carries the signature verifier's code for every
 bound record, verified against `governance/allowed_signers` — distinct,
 never collapsed:
 
-- `signed by <keyId>` — a key the file lists for `keyId`, inside its window,
-  signed this record's committed hash in the `nexus-vote-record` namespace.
+- `signed:agent by <principal>` / `signed:owner by <principal>` — a key the
+  file lists for `keyId`, inside its window, signed this record's committed
+  hash in the `nexus-vote-record` namespace; the kind is the principal's
+  prefix (`nexus-agent@` ⇒ agent, else owner — #6257 increment 1, above).
 - `unsigned-record` — the record carries no `signature`: every record
   appended before phase 2, and any appended with no key configured.
 - `unknown-signer` — there is a signature, but not by a key the file lists

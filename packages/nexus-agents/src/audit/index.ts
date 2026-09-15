@@ -85,8 +85,17 @@ export type {
 } from './vote-record.js';
 // Per-record SSH signature over the committed hash (#3927 item 4): sign and
 // verify, both through an injectable ssh-keygen runner.
-export { signVoteRecordHash, verifyVoteRecordSignature } from './vote-record-signature.js';
-export type { SshKeygenRunner, VoteRecordSignatureVerdict } from './vote-record-signature.js';
+export {
+  AGENT_PRINCIPAL_PREFIX,
+  signVoteRecordHash,
+  signerKindOf,
+  verifyVoteRecordSignature,
+} from './vote-record-signature.js';
+export type {
+  SshKeygenRunner,
+  VoteRecordSignatureVerdict,
+  VoteRecordSignerKind,
+} from './vote-record-signature.js';
 export {
   VOTE_RECORDS_REL_PATH,
   buildVoteRecord,

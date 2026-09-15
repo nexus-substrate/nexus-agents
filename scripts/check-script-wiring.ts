@@ -81,6 +81,12 @@ export const MANUAL_ONLY: Readonly<Record<string, string>> = {
   // run it. The gate that READS the committed ledger is #5130 step 2.
   'append-ratification-record.ts':
     'caller-commits append from a local runtime store the CI runner never has (#5130)',
+  // Generates the agent's vote-record signing key OUTSIDE any checkout
+  // (`<dataDir>/auth/`), once per host; a CI runner has no host identity to
+  // give a key to and must never hold one (#6257 increment 1; CI/OIDC-issued
+  // keys are #6350). Operator-run, then the printed line lands in
+  // governance/allowed_signers through a ratified PR.
+  'vote-record-keygen.ts': 'generates the per-host agent signing key outside the repo (#6257)',
   // Requires the `agy` binary, which no CI runner has. Wiring it into a
   // workflow would make it report `unmeasured` — a failure — on every run, so
   // it is operator-invoked: `pnpm exec tsx scripts/check-agy-model-drift.ts`, and on

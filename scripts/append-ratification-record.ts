@@ -53,21 +53,31 @@
  * test that asserts the re-hashed edit IS appended, so signing has a RED test
  * to flip.
  *
- * ## Signing (#3927 item 4, phase 2)
+ * ## Signing (#3927 item 4, phase 2; #6257 increment 1)
  *
  * After the copy is re-sequenced and re-hashed — never before — the COMMITTED
  * hash is signed with `ssh-keygen -Y sign -n nexus-vote-record` when a key is
- * configured (`--signing-key <path>`, else `NEXUS_VOTE_SIGNING_KEY`), and the
- * `signature` lands on the record OUTSIDE its self-hash. The signer's identity
- * is whatever `governance/allowed_signers` (next to the ledger) lists the key
- * under; a key the file does not list is `signing-failed`, nothing written —
- * a signature no gate could verify is a defect at the moment of signing, not
- * later. With no key configured the record is appended UNSIGNED and the CLI
- * says so in one line: phase 2 is opt-in until the phase-3 cutover constant
- * makes an unsigned record a gate refusal. A stale `signature` on the SOURCE
- * copy is dropped with `hash` and `sequence`: it could only be over the
- * source hash. What a signature proves is key access from this environment,
- * not a human's presence (#6257; threat model).
+ * configured (`--signing-key <path>`, else `NEXUS_VOTE_SIGNING_KEY`, else the
+ * agent key at `<dataDir>/auth/vote-record-signing.key` when it exists), and
+ * the `signature` lands on the record OUTSIDE its self-hash. The signer's
+ * identity is whatever `governance/allowed_signers` (next to the ledger)
+ * lists the key under; a key the file does not list is `signing-failed`,
+ * nothing written — a signature no gate could verify is a defect at the
+ * moment of signing, not later. With no key configured the record is
+ * appended UNSIGNED and the CLI says so in one line: phase 2 is opt-in until
+ * the phase-3 cutover constant makes an unsigned record a gate refusal. A
+ * stale `signature` on the SOURCE copy is dropped with `hash` and
+ * `sequence`: it could only be over the source hash.
+ *
+ * Which key says which process appended (#6257 panel, option B): the agent
+ * key signs under `nexus-agent@<host>` and the gate prints `signed:agent`;
+ * the owner's key is reserved for records a human appended, so a signature
+ * that resolves to an owner principal is REFUSED unless `--as-owner` is
+ * passed (and `--as-owner` with the agent key, or with no key at all, is
+ * refused as a misconfiguration). This is attribution — which key, and so
+ * which process — not host isolation: both keys are readable by the agent
+ * process on the operator's host, and the refusal only stops an accidental
+ * owner claim. See `append-ratification-signing.ts` and the threat model.
  *
  * Two branches that each append from the same committed tip produce two
  * records at the same sequence; `merge=union` (`.gitattributes`) concatenates
@@ -83,8 +93,10 @@
  *   pnpm exec tsx scripts/append-ratification-record.ts --job <jobId>
  * Options: `--source <path>` (default: the runtime store `resolveVoteRecordsPath()`
  * resolves), `--ledger <path>` (default: `<repo>/governance/vote-records.jsonl`),
- * `--signing-key <path>` (default: `NEXUS_VOTE_SIGNING_KEY`; neither ⇒ unsigned).
- * Then `git add governance/vote-records.jsonl` and commit it in the ratified PR.
+ * `--signing-key <path>` (default: `NEXUS_VOTE_SIGNING_KEY`, then the agent key if
+ * generated; none ⇒ unsigned), `--as-owner` (a human is running this; permits an
+ * owner-principal signature). Then `git add governance/vote-records.jsonl` and
+ * commit it in the ratified PR.
  *
  * Operator-run by design (listed in `check-script-wiring.ts` MANUAL_ONLY).
  *
@@ -117,8 +129,14 @@ import type { JobResult } from '../packages/nexus-agents/src/mcp/jobs/job-result
 import { readJobResult } from '../packages/nexus-agents/src/mcp/jobs/job-result-store.js';
 import { findRepoRoot } from '../packages/nexus-agents/src/config/repo-root-detection.js';
 import { nexusDataPath } from '../packages/nexus-agents/src/config/nexus-data-dir.js';
+import { AS_OWNER_FLAG, parseAppendArgs, type AppendArgs } from './append-ratification-args.js';
 import type { SigningOptions, SigningState } from './append-ratification-signing.js';
-import { resolveSigning, signCommitted, signingNotice } from './append-ratification-signing.js';
+import {
+  VOTE_SIGNING_KEY_ENV,
+  resolveSigning,
+  signCommitted,
+  signingNotice,
+} from './append-ratification-signing.js';
 
 /** Why an append was refused. Every value names a check that ran and failed. */
 export type AppendRefusalReason =
@@ -467,53 +485,6 @@ export function recordIdFromJobResult(
 // CLI
 // ---------------------------------------------------------------------------
 
-export interface AppendArgs {
-  readonly ok: true;
-  readonly selector: { readonly jobId: string } | { readonly recordId: string };
-  readonly sourcePath?: string;
-  readonly ledgerPath?: string;
-  /** `--signing-key`; the CLI falls back to `NEXUS_VOTE_SIGNING_KEY` when absent. */
-  readonly signingKeyPath?: string;
-}
-
-const USAGE =
-  'usage: append-ratification-record.ts (--job <jobId> | --record-id <id>) [--source <path>] ' +
-  '[--ledger <path>] [--signing-key <path>]';
-
-/** Parse argv; exactly one selector, each option with a value, nothing unknown. */
-export function parseAppendArgs(
-  argv: readonly string[]
-): AppendArgs | { readonly ok: false; readonly error: string } {
-  const values = new Map<string, string>();
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i] as string;
-    if (!['--job', '--record-id', '--source', '--ledger', '--signing-key'].includes(flag)) {
-      return { ok: false, error: `unknown argument '${flag}'. ${USAGE}` };
-    }
-    const value = argv[i + 1];
-    if (value === undefined || value.startsWith('--')) {
-      return { ok: false, error: `${flag} needs a value. ${USAGE}` };
-    }
-    values.set(flag, value);
-    i++;
-  }
-  const jobId = values.get('--job');
-  const recordId = values.get('--record-id');
-  if ((jobId === undefined) === (recordId === undefined)) {
-    return { ok: false, error: `pass exactly one of --job or --record-id. ${USAGE}` };
-  }
-  const sourcePath = values.get('--source');
-  const ledgerPath = values.get('--ledger');
-  const signingKeyPath = values.get('--signing-key');
-  return {
-    ok: true,
-    selector: jobId !== undefined ? { jobId } : { recordId: recordId as string },
-    ...(sourcePath !== undefined ? { sourcePath } : {}),
-    ...(ledgerPath !== undefined ? { ledgerPath } : {}),
-    ...(signingKeyPath !== undefined ? { signingKeyPath } : {}),
-  };
-}
-
 function fail(message: string): never {
   console.error(`[append-ratification-record] ${message}`);
   process.exit(1);
@@ -570,7 +541,17 @@ function main(): void {
       return join(root, VOTE_RECORDS_REL_PATH);
     })();
 
-  const signing = resolveSigning(args.signingKeyPath, process.env, ledgerPath);
+  const signing = resolveSigning(args.signingKeyPath, process.env, ledgerPath, {
+    asOwner: args.asOwner,
+  });
+  if (signing === undefined && args.asOwner) {
+    // The attestation would be recorded nowhere: an unsigned record says
+    // nothing about who ran the append (#6257).
+    fail(
+      `${AS_OWNER_FLAG} was passed but no signing key is configured (no --signing-key, no ` +
+        `${VOTE_SIGNING_KEY_ENV}); an unsigned record cannot carry the owner attestation.`
+    );
+  }
   reportOutcome(
     appendRatificationRecord({
       sourcePath,
