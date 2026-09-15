@@ -1,0 +1,1 @@
+PIPELINE NOTE: .claude/rules/ moved to .rules/ for harness neutrality (#2121, 2026-04-22). setup-rules.ts now writes to .rules/nexus-agents.md; detectProjectInfo accepts both paths during migration. CLAUDE.md pointers updated.

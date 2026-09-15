@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.69.0
+
+### Minor Changes
+
+- [#6359](https://github.com/nexus-substrate/nexus-agents/pull/6359) [`63860ec`](https://github.com/nexus-substrate/nexus-agents/commit/63860ec9379255f8f7113b1e871d655cae92d013) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Pipeline stage-entry events now expose `callerTrustTier` for caller authentication, reporting `unmeasured` when no caller information is available. The new `inputSanitization` field records `unmeasured`, `unmodified`, or `modified`; modified observations include `inputSanitizationCounts` with tags removed, comments removed, and fields modified. These observations describe sanitizer changes to the handler input. The existing `trustTier` field is deprecated for removal in the next major and continues to carry the same caller-authentication value.
+
 ## 8.68.0
 
 ### Minor Changes

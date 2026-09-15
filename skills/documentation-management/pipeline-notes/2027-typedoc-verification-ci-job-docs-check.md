@@ -1,0 +1,1 @@
+PIPELINE NOTE: TypeDoc Verification CI job (docs-check.yml) downgraded from blocking failure to warning annotation (#2027, 2026-04-19) — drift was creating merge-round-trip noise without providing actionable signal

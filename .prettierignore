@@ -11,3 +11,8 @@ agents/index.yaml
 # format that diverges from pnpm install's output and breaks CI lockfile checks.
 pnpm-lock.yaml
 docs/api/
+
+# Preserve historical note text: Prettier rewrites literal asterisks (#6353).
+skills/documentation-management/pipeline-notes/2657-inject-governance-ts-now-generates-the.md
+skills/documentation-management/pipeline-notes/3052-docs-check-yml-mcp-tool-count.md
+skills/documentation-management/pipeline-notes/3596-inject-governance-ts-extractmcptools-switched-from.md
