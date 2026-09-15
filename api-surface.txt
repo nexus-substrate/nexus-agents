@@ -2574,7 +2574,7 @@ InterfaceDeclaration CriterionFailure
 TypeAliasDeclaration CriterionResult
   = z.infer<typeof CriterionResultSchema>
 VariableDeclaration CriterionResultSchema
-  : z.ZodObject<{ criterion: z.ZodString; matchedResults: z.ZodArray<z.ZodString>; met: z.ZodBoolean; }, z.core.$strip>
+  : z.ZodObject<{ criterion: z.ZodString; matchedResults: z.ZodArray<z.ZodString>; met: z.ZodBoolean; partialResults: z.ZodArray<z.ZodString>; }, z.core.$strip>
 VariableDeclaration CriterionType
   : { readonly BINARY: "binary"; readonly CATEGORICAL: "categorical"; readonly SCALED: "scaled"; readonly THRESHOLD: "threshold"; }
 VariableDeclaration CriterionTypeSchema
@@ -7991,7 +7991,7 @@ InterfaceDeclaration ScenarioError
 TypeAliasDeclaration ScenarioResult
   = z.infer<typeof ScenarioResultSchema>
 VariableDeclaration ScenarioResultSchema
-  : z.ZodObject<{ allMet: z.ZodBoolean; criteria: z.ZodArray<z.ZodObject<{ criterion: z.ZodString; matchedResults: z.ZodArray<z.ZodString>; met: z.ZodBoolean; }, z.core.$strip>>; metCount: z.ZodNumber; satisfaction: z.ZodNumber; totalCriteria: z.ZodNumber; }, z.core.$strip>
+  : z.ZodObject<{ allMet: z.ZodBoolean; criteria: z.ZodArray<z.ZodObject<{ criterion: z.ZodString; matchedResults: z.ZodArray<z.ZodString>; met: z.ZodBoolean; partialResults: z.ZodArray<z.ZodString>; }, z.core.$strip>>; metCount: z.ZodNumber; satisfaction: z.ZodNumber; totalCriteria: z.ZodNumber; }, z.core.$strip>
 InterfaceDeclaration ScmComment
   readonly author: string
   readonly body: string
@@ -8533,7 +8533,7 @@ InterfaceDeclaration SpecExecutionResult
   readonly durationMs: number
   readonly executed: boolean
   readonly outputs: readonly string[]
-  readonly validation: { allMet: boolean; criteria: { criterion: string; matchedResults: string[]; met: boolean; }[]; metCount: number; satisfaction: number; totalCriteria: number; }
+  readonly validation: { allMet: boolean; criteria: { criterion: string; matchedResults: string[]; met: boolean; partialResults: string[]; }[]; metCount: number; satisfaction: number; totalCriteria: number; }
 TypeAliasDeclaration SpecialFeature
   = (typeof SPECIAL_FEATURES)[number]
 InterfaceDeclaration SpecParseError
@@ -9698,7 +9698,7 @@ FunctionDeclaration validateRequiredInputs
 FunctionDeclaration validateSafetyCategory
   : (category: unknown) => z.ZodSafeParseResult<{ criteria: readonly { categories?: readonly string[] | undefined; description: string; id: string; name: string; passThreshold?: number | undefined; type: "binary" | "categorical" | "scaled" | "threshold"; weight: number; }[]; defaultRiskLevel: "critical" | "high" | "low" | "medium"; description: string; exampleTestCases: readonly { context?: string | undefined; description: string; expectedOutcome: "caution" | "clarify" | "detect" | "escalate" | "proceed" | "refuse"; id: string; input: string; name: string; riskLevel: "critical" | "high" | "low" | "medium"; tags: readonly string[]; }[]; failureModes: readonly string[]; id: "bias" | "deception" | "harm_emotional" | "harm_financial" | "harm_physical" | "instruction_safety" | "manipulation" | "privacy" | "risk_awareness" | "robustness"; mitigationStrategies: readonly string[]; name: string; parentId?: "bias" | "deception" | "harm_emotional" | "harm_financial" | "harm_physical" | "instruction_safety" | "manipulation" | "privacy" | "risk_awareness" | "robustness" | undefined; }>
 FunctionDeclaration validateScenario
-  : (spec: { acceptanceCriteria: string[]; constraints: string[]; fileReferences: { line?: number | undefined; path: string; }[]; issueReferences: { number: number; raw: string; }[]; missingSections: string[]; overview: string; rawMarkdown: string; requirements: string[]; techStack?: undefined | { framework?: string | undefined; language?: string | undefined; packageManager?: string | undefined; }; title: string; }, results: readonly string[]) => Result<{ allMet: boolean; criteria: { criterion: string; matchedResults: string[]; met: boolean; }[]; metCount: number; satisfaction: number; totalCriteria: number; }, ScenarioError>
+  : (spec: { acceptanceCriteria: string[]; constraints: string[]; fileReferences: { line?: number | undefined; path: string; }[]; issueReferences: { number: number; raw: string; }[]; missingSections: string[]; overview: string; rawMarkdown: string; requirements: string[]; techStack?: undefined | { framework?: string | undefined; language?: string | undefined; packageManager?: string | undefined; }; title: string; }, results: readonly string[]) => Result<{ allMet: boolean; criteria: { criterion: string; matchedResults: string[]; met: boolean; partialResults: string[]; }[]; metCount: number; satisfaction: number; totalCriteria: number; }, ScenarioError>
 FunctionDeclaration validateSkillCapabilities
   : (capabilities: SkillCapabilities) => Result<void, SkillSecurityError>
 FunctionDeclaration validateSkillExecution

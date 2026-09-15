@@ -18,8 +18,16 @@ export const CriterionResultSchema = z.object({
   criterion: z.string(),
   /** Whether this criterion was satisfied */
   met: z.boolean(),
-  /** Which result(s) matched this criterion */
+  /** Which result(s) matched this criterion (keyword overlap at or above the threshold) */
   matchedResults: z.array(z.string()),
+  /**
+   * Result(s) that overlapped at least one keyword but fell below the match
+   * threshold. Disjoint from `matchedResults`, and the signal the failure
+   * analyzer's `partial_match` verdict reads — before #4827 that verdict was
+   * derived from `matchedResults`, which is empty on every unmet criterion by
+   * construction, so it could never fire.
+   */
+  partialResults: z.array(z.string()),
 });
 export type CriterionResult = z.infer<typeof CriterionResultSchema>;
 

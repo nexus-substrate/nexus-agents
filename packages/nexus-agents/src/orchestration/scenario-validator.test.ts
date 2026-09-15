@@ -106,6 +106,47 @@ describe('validateScenario', () => {
     expect(result.value.criteria[0]?.met).toBe(true);
   });
 
+  it('records a result that overlaps some keywords below the threshold as partial, not met (#4827)', () => {
+    const spec = makeSpec({
+      // Four significant keywords: database, migration, completes, successfully.
+      // The threshold is 0.5, so one overlapping keyword is a partial, not a match.
+      acceptanceCriteria: ['Database migration completes successfully'],
+    });
+    const results = ['[code] Added database schema', '[test] Login form renders'];
+
+    const result = validateScenario(spec, results);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const criterion = result.value.criteria[0];
+    expect(criterion?.met).toBe(false);
+    expect(criterion?.matchedResults).toEqual([]);
+    // Only the overlapping result is partial; the zero-overlap result is not.
+    expect(criterion?.partialResults).toEqual(['[code] Added database schema']);
+    expect(result.value.satisfaction).toBe(0);
+  });
+
+  it('reports no partial results when nothing overlaps', () => {
+    const spec = makeSpec({ acceptanceCriteria: ['Database migrated'] });
+    const result = validateScenario(spec, ['[code] Added login form']);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.criteria[0]?.met).toBe(false);
+    expect(result.value.criteria[0]?.partialResults).toEqual([]);
+  });
+
+  it('does not list a fully matched result as partial', () => {
+    const spec = makeSpec({ acceptanceCriteria: ['User can log in'] });
+    const result = validateScenario(spec, ['[code] User can log in via Google']);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.criteria[0]?.met).toBe(true);
+    expect(result.value.criteria[0]?.matchedResults).toHaveLength(1);
+    expect(result.value.criteria[0]?.partialResults).toEqual([]);
+  });
+
   it('matches on significant keywords, not exact string', () => {
     const spec = makeSpec({
       acceptanceCriteria: ['Session token persists after navigation'],

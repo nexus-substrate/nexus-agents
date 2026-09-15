@@ -30,7 +30,10 @@ export const OrchestrateInputSchema = z
     context: z
       .record(z.string(), z.unknown())
       .optional()
-      .describe('Additional context for the task'),
+      .describe(
+        'Additional context for the task. `filePaths: string[]` (paths the task touches) ' +
+          'feeds the AOrchestra expert trigger table (NEXUS_AORCHESTRA, default on).'
+      ),
     maxIterations: z
       .number()
       .min(1)
