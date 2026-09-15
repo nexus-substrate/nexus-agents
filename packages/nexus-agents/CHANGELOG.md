@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.70.0
+
+### Minor Changes
+
+- [#6365](https://github.com/nexus-substrate/nexus-agents/pull/6365) [`ed8c053`](https://github.com/nexus-substrate/nexus-agents/commit/ed8c05355ccf646b7c7fc42770368edf954cc480) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Ratification panels now run every voter in a detached scratch checkout of the specified PR head, protecting the caller's checkout from seat-initiated branch changes. Seats receive read-only instructions, and panel workspace creation and disposal are reported. If the commit is unavailable locally, the command asks you to fetch it first.
+
 ## 8.69.0
 
 ### Minor Changes
