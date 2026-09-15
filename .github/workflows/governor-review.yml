@@ -221,6 +221,12 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ steps.changed.outputs.base }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # #6301 item 4: the heads this PR had before this one. `before` is
+          # the head a `synchronize` event replaced (empty on every other
+          # event type — `labeled` included, and the label always follows the
+          # final push, so `before` alone would never reach the run that
+          # counts); the PR's own force-push timeline supplies the rest.
+          BEFORE: ${{ github.event.before }}
         run: |
           # pipefail: a failed `gh api` below must fail the step, not yield an
           # empty APPROVALS/LABELS the gate reads as "nobody approved" (#5685).
@@ -258,6 +264,34 @@ jobs:
           # push, and the pusher cannot forge it.
           HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
             --jq '[.workflow_runs[].created_at] | sort | first // empty' 2>/dev/null || echo '')
+          # #6301 item 4: the heads this PR had, for the moved-head rule's
+          # `prior-head` relation. SERVER-side, like HEAD_TIME, and keyed on
+          # the PR NUMBER: the PR's own `HeadRefForcePushedEvent` timeline
+          # items carry the replaced (`beforeCommit`) and replacing
+          # (`afterCommit`) tips of every force-push to THIS PR's head ref.
+          # Only a force-push orphans a head (a plain push keeps it an
+          # ancestor, which condition 1 accepts on its own), so the set is
+          # complete by construction. NOT the workflow-run list keyed on the
+          # branch name: a fork PR named like a base-repo branch inherited
+          # that branch's heads (the #6301 panel 1 contrarian's hole), and
+          # `workflow_runs[].pull_requests` is emptied once a PR merges
+          # (measured on #6252: every run `[]`), which would have reddened
+          # the backstop on every rebased governor PR. Measured on #6252
+          # after merge: the set lists its rebased-away ratified head
+          # `fca64e9ea8`. `github.event.before` is folded in: exact, free,
+          # and this PR's own payload. A failed query fails the step under
+          # pipefail rather than yielding an empty set the gate would read
+          # as "no rebase was ever ratified"; a null `beforeCommit` yields
+          # nothing, which fails closed at the gate.
+          PRIOR_HEADS=$(gh api graphql --paginate \
+            -F owner="${GITHUB_REPOSITORY_OWNER}" -F name="${GITHUB_REPOSITORY#*/}" -F pr="${PR_NUMBER}" \
+            -f query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
+              repository(owner: $owner, name: $name) { pullRequest(number: $pr) {
+                timelineItems(first: 100, after: $endCursor, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT]) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes { ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } } } } } } }' \
+            --jq '.data.repository.pullRequest.timelineItems.nodes[] | (.beforeCommit.oid // empty), (.afterCommit.oid // empty)')
+          PRIOR_HEADS=$(printf '%s\n%s\n' "${PRIOR_HEADS}" "${BEFORE}" | grep -E '^[0-9a-f]{40}$' | grep -v "^${HEAD_SHA}$" | sort -u || true)
           # #5130 step 2: the committed vote ledger binds a ratification to
           # `{pr, headSha}`. The caller appends the record in a ledger-only
           # commit ON TOP of the head the panel saw, so the gate accepts
@@ -303,6 +337,9 @@ jobs:
             echo 'head_commit_files<<FILES_EOF'
             echo "${HEAD_COMMIT_FILES}"
             echo 'FILES_EOF'
+            echo 'prior_heads<<FILES_EOF'
+            echo "${PRIOR_HEADS}"
+            echo 'FILES_EOF'
             echo "base_ledger_path=${BASE_LEDGER_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -325,10 +362,22 @@ jobs:
           # verdict; `no-record` (the empty ledger included), every other
           # kind, and `unmeasured` are ::error:: and exit 1. A governor-path
           # PR is red until the orchestrator appends its ratifying record.
+          # #6256: a record bound to an EARLIER head A of this PR is
+          # `ratified-rebased` when A is an ancestor of this head or one of
+          # PR_PRIOR_HEADS (#6301 item 4 — the gate fetches a prior head
+          # from origin by sha when a rebase orphaned it, and never any
+          # other sha), A carries a non-ledger change, this head's TREE
+          # equals `git merge-tree --write-tree <merge-base(head, PR_BASE_SHA)> A`
+          # with the ledger excluded (#6301 panel 1: a conflict, or any
+          # differing path, is `sha-mismatch` naming it), and A's ledger is
+          # a subsequence of this head's. The probe runs over this checkout
+          # (fetch-depth: 0, credentials persisted) with PR_BASE_SHA below as
+          # the PR base.
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.head_parent }}
           HEAD_COMMIT_FILES: ${{ steps.evidence.outputs.head_commit_files }}
+          PR_PRIOR_HEADS: ${{ steps.evidence.outputs.prior_heads }}
           # #6213: the ledger at the merge-base; the gate requires the head
           # ledger to be this plus appended lines (`ledger-rewritten` otherwise).
           RATIFICATION_BASE_LEDGER_PATH: ${{ steps.evidence.outputs.base_ledger_path }}
@@ -432,6 +481,7 @@ jobs:
             PR_HEAD_SHA=""
             PR_HEAD_PARENT_SHA=""
             PR_HEAD_COMMIT_FILES=""
+            PR_PRIOR_HEADS=""
           else
             APPROVALS=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
               --paginate --jq '.[] | select(.state == "APPROVED") | .user.login' | sort -u | tr '\n' ' ')
@@ -454,6 +504,24 @@ jobs:
             # benign population this gate exists to let through.
             PR_HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
               --jq '.head.sha // empty')
+            # #6301 item 4: the same prior-head set the pre-merge job derives,
+            # from the same source — the merged PR's own force-push timeline,
+            # keyed on its NUMBER. A push event has no `pull_request` payload
+            # and its `before` is main's old tip, not a PR head, so nothing
+            # is folded in here. The timeline survives the merge (measured on
+            # #6252 after it landed), which the workflow-run list does not:
+            # its `pull_requests` empties on close. The two jobs must accept
+            # the same rebased record or a PR passes pre-merge and reddens
+            # main here.
+            PR_PRIOR_HEADS=$(gh api graphql --paginate \
+              -F owner="${GITHUB_REPOSITORY_OWNER}" -F name="${GITHUB_REPOSITORY#*/}" -F pr="${PR_NUMBER}" \
+              -f query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
+                repository(owner: $owner, name: $name) { pullRequest(number: $pr) {
+                  timelineItems(first: 100, after: $endCursor, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT]) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes { ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } } } } } } }' \
+              --jq '.data.repository.pullRequest.timelineItems.nodes[] | (.beforeCommit.oid // empty), (.afterCommit.oid // empty)')
+            PR_PRIOR_HEADS=$(printf '%s\n' "${PR_PRIOR_HEADS}" | grep -E '^[0-9a-f]{40}$' | grep -v "^${PR_HEAD_SHA}$" | sort -u || true)
             if [ -n "${PR_HEAD_SHA}" ]; then
               # See the pre-merge job: server-assigned run time, never the
               # client-settable commit date.
@@ -529,6 +597,9 @@ jobs:
             echo 'pr_head_commit_files<<FILES_EOF'
             echo "${PR_HEAD_COMMIT_FILES}"
             echo 'FILES_EOF'
+            echo 'pr_prior_heads<<FILES_EOF'
+            echo "${PR_PRIOR_HEADS}"
+            echo 'FILES_EOF'
             echo "base_ledger_path=${BASE_LEDGER_PATH}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -565,10 +636,19 @@ jobs:
           # record in the landed ledger is exit 1, and so is `unmeasured`.
           # A red backstop is the durable signal: the pre-merge job can be
           # admin-bypassed, this cannot.
+          # #6256: the same moved-head rule as the pre-merge job, against the
+          # pre-squash head: PR_BASE_SHA is `${SHA}~1` (main before the
+          # squash), so the head's merge-base with it is the newest main
+          # commit the head incorporates (the base the ratified sha is
+          # replayed onto), and each probed sha's merge-base with it is that
+          # sha's own fork point. A ratified sha a rebase orphaned is
+          # accepted only as one of PR_PRIOR_HEADS (#6301 item 4) and
+          # fetched from origin by sha then.
           PR_NUMBER: ${{ steps.evidence.outputs.pr_number }}
           PR_HEAD_SHA: ${{ steps.evidence.outputs.pr_head }}
           PR_HEAD_PARENT_SHA: ${{ steps.evidence.outputs.pr_head_parent }}
           HEAD_COMMIT_FILES: ${{ steps.evidence.outputs.pr_head_commit_files }}
+          PR_PRIOR_HEADS: ${{ steps.evidence.outputs.pr_prior_heads }}
           # #6213: the ledger at `github.event.before` (`${SHA}~1` only when
           # `before` is the null sha); what landed must be that plus appended
           # lines, the same rule the pre-merge job applies.

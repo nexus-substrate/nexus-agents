@@ -215,6 +215,12 @@ describe('e2e: nexus-agents vote --ratifies-pr → append script → the ledger 
       pr: PR,
       head: { sha: OTHER, parentSha: undefined, commitFiles: ['src/a.ts'] },
     });
-    expect(mismatch).toEqual({ kind: 'sha-mismatch', accepted: [OTHER], found: [reviewedSha] });
+    expect(mismatch).toEqual({
+      kind: 'sha-mismatch',
+      accepted: [OTHER],
+      found: [reviewedSha],
+      // #6256: no probe was passed, so the moved-head rule reports "not measured".
+      moved: [{ sha: reviewedSha, reason: expect.stringContaining('not measured') as string }],
+    });
   }, 90_000);
 });
