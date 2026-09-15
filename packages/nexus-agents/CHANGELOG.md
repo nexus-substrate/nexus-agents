@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.66.1
+
+### Patch Changes
+
+- [#6338](https://github.com/nexus-substrate/nexus-agents/pull/6338) [`a03835e`](https://github.com/nexus-substrate/nexus-agents/commit/a03835e96a5865edbfa4dd5cdde58bcaeb17cdf7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `logger.setDestination('file', path)` now writes to the file. The file branch reached `fs` through a bare `require('fs')` under a lint suppression, and the package ships ESM only, so in the published bundle the first log line threw `Dynamic require of "fs" is not supported`. It is a static `node:fs` import now. Surfaced by adopting `eslint-comments/require-description` ([#6153](https://github.com/nexus-substrate/nexus-agents/issues/6153)): the suppression could not state a true reason.
+
 ## 8.66.0
 
 ### Minor Changes
