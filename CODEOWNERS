@@ -87,6 +87,10 @@
 /packages/nexus-agents/src/consensus/decision/ @williamzujkowski
 /packages/nexus-agents/src/cli/voter-roles.ts @williamzujkowski
 
+# #4797 — the warrant ledger that can lower the security bar: an entry here mutes
+# a high-severity advisory that the REQUIRED Security Audit job (#4794) would block.
+/.github/audit-exceptions.json @williamzujkowski
+
 # Project governance
 /CLAUDE.md @williamzujkowski
 /AGENTS.md @williamzujkowski

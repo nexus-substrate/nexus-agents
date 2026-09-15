@@ -91,6 +91,8 @@ export {
   createUnifiedRegistry,
   getGlobalRegistry,
   resetGlobalRegistry,
+  // #5211: what getGlobalRegistry(config) throws once the singleton exists.
+  RegistryAlreadyInitializedError,
   type UnifiedRegistryConfig,
   type TaskRoutingEntry,
   type RegistrySnapshot,

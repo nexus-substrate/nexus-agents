@@ -21,6 +21,7 @@ import {
   OperationError,
   ResourceError,
   getErrorCategory,
+  getErrorMessage,
   isRetryableError,
   type SerializedError,
 } from './errors.js';
@@ -949,5 +950,48 @@ describe('isRetryableError (ADR-0009)', () => {
   it('returns false for plain Error', () => {
     const error = new Error('Regular error');
     expect(isRetryableError(error)).toBe(false);
+  });
+});
+
+// ============================================================================
+// getErrorMessage — never throws (#4308)
+// ============================================================================
+
+describe('getErrorMessage never throws (#4308)', () => {
+  /** An Error whose `message` getter throws — the pathological shape #4307 named. */
+  class ThrowingMessageError extends Error {
+    override get message(): string {
+      throw new Error('message getter exploded');
+    }
+  }
+
+  it('returns the message of an ordinary Error', () => {
+    expect(getErrorMessage(new Error('plain'))).toBe('plain');
+  });
+
+  it('returns the fallback, not a throw, when an Error subclass message getter throws', () => {
+    // Red on main: the unguarded `error.message` read propagated the getter's
+    // throw out of the helper every other site relies on to be total.
+    expect(() => getErrorMessage(new ThrowingMessageError())).not.toThrow();
+    expect(getErrorMessage(new ThrowingMessageError())).toBe('Unknown error');
+    expect(getErrorMessage(new ThrowingMessageError(), 'custom-fallback')).toBe('custom-fallback');
+  });
+
+  it('returns the fallback when a plain object message getter throws', () => {
+    const hostile = {
+      get message(): string {
+        throw new Error('object getter exploded');
+      },
+    };
+    expect(getErrorMessage(hostile)).toBe('Unknown error');
+  });
+
+  it('keeps the non-Error branches', () => {
+    expect(getErrorMessage('text')).toBe('text');
+    expect(getErrorMessage(null)).toBe('Unknown error');
+    expect(getErrorMessage(undefined, 'fb')).toBe('fb');
+    expect(getErrorMessage(42)).toBe('42');
+    expect(getErrorMessage({ message: 'from-object' })).toBe('from-object');
+    expect(getErrorMessage({ code: 7 })).toBe('{"code":7}');
   });
 });
