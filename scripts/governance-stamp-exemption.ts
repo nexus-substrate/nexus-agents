@@ -170,10 +170,16 @@ export function stampOnlyExemptFiles(
   //
   // Required, not defaulted: a caller that forgets it would silently get the
   // widened exemption with no guard, so the compiler names every call site.
+  //
+  // Filter BEFORE asking (#6250). The injector is a ~5 s spawn, and when no
+  // generated file is in the change set nothing can be exempt whatever it
+  // answers — every gate run paid for a verdict it never read. The precondition
+  // is unchanged for the case it guards: a generated file present means the
+  // injector IS consulted, and its answer still decides.
+  const candidates = changedFiles.filter((f) => GENERATED_GOVERNANCE_FILES.includes(f));
+  if (candidates.length === 0) return [];
   if (!injectorIsClean()) return [];
-  return changedFiles
-    .filter((f) => GENERATED_GOVERNANCE_FILES.includes(f))
-    .filter((f) => isStampOnlyChange(readAtBase(f), readAtHead(f)));
+  return candidates.filter((f) => isStampOnlyChange(readAtBase(f), readAtHead(f)));
 }
 
 /**

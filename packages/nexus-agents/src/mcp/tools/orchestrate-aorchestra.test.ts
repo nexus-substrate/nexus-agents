@@ -4,7 +4,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { computeAgentPlan, computeExpertReliability } from './orchestrate-aorchestra.js';
+import {
+  computeAgentPlan,
+  computeExpertReliability,
+  filePathsFromContext,
+} from './orchestrate-aorchestra.js';
 import type { ILogger } from '../../core/index.js';
 import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 
@@ -93,6 +97,50 @@ describe('computeAgentPlan', () => {
         excludedExperts: expect.arrayContaining([expect.objectContaining({ role: 'security' })]),
       })
     );
+  });
+});
+
+describe('computeAgentPlan file-path triggers (#4827)', () => {
+  // Classified `complex` / `documentation` (budget 3, primary experts
+  // documentation + code), with no keyword that maps to the infrastructure
+  // expert, so the ONLY way that role reaches the plan is the trigger table.
+  // Trigger experts are the lowest-priority source: at `moderate` (budget 2)
+  // the task-type experts fill the budget first and a trigger never fits.
+  const task =
+    'Consolidate and migrate the deployment runbook documentation: first refactor ' +
+    'the docs, then optimize the rollout guide, and finally publish the README.';
+
+  it('adds a trigger-table expert when filePaths name a matching file', () => {
+    const logger = createMockLogger();
+    const withPaths = computeAgentPlan(task, logger, { filePaths: ['deploy/main.tf'] });
+    expect(withPaths).toBeDefined();
+    expect(withPaths?.entries.map((e) => e.role)).toContain('infrastructure');
+  });
+
+  it('does not add that expert when no filePaths are supplied', () => {
+    const logger = createMockLogger();
+    const without = computeAgentPlan(task, logger);
+    expect(without).toBeDefined();
+    expect(without?.entries.map((e) => e.role)).not.toContain('infrastructure');
+  });
+});
+
+describe('filePathsFromContext', () => {
+  it('returns the array when context.filePaths is all strings', () => {
+    expect(filePathsFromContext({ filePaths: ['a.tf', 'docs/b.md'] })).toEqual([
+      'a.tf',
+      'docs/b.md',
+    ]);
+  });
+
+  it('returns undefined when the key is absent or the context is undefined', () => {
+    expect(filePathsFromContext(undefined)).toBeUndefined();
+    expect(filePathsFromContext({})).toBeUndefined();
+  });
+
+  it('returns undefined rather than a partial list when any entry is not a string', () => {
+    expect(filePathsFromContext({ filePaths: ['a.tf', 3] })).toBeUndefined();
+    expect(filePathsFromContext({ filePaths: 'a.tf' })).toBeUndefined();
   });
 });
 

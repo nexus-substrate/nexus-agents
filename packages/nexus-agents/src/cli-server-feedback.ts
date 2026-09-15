@@ -1,21 +1,26 @@
 /**
  * nexus-agents CLI Server Feedback Integration
  *
- * Initializes FeedbackIntegration for closed-loop learning.
- * Connects routing decisions to outcome feedback.
+ * Initializes the FeedbackIntegration the MCP server hands to
+ * `delegate_to_model`. In this process it is an in-memory collector ONLY: the
+ * server constructs no CompositeRouter at startup, so there is nothing to
+ * attach, and the `router` option this module used to accept was never
+ * supplied by its one caller (`cli-server.ts`) — removed in #4827 rather than
+ * left looking wired. The live routing feedback loop closes inside
+ * `CompositeRouter.executeTask` (`autoRecordFeedback`, #929) on the router the
+ * expert bridge builds lazily, not through this module. Whether the server
+ * should construct this instance at all is #6323.
  *
  * @module cli-server-feedback
- * (Source: Issue #490 - Wire FeedbackIntegration to production)
+ * (Source: Issue #490 - Wire FeedbackIntegration to production; #4827)
  */
 
 import type { ILogger } from './core/logger.js';
 import type { IFeedbackIntegration } from './learning/feedback-integration.js';
 import {
-  FeedbackIntegration,
   createFeedbackIntegration,
   type FeedbackIntegrationConfig,
 } from './learning/feedback-integration.js';
-import type { ICompositeRouter } from './cli-adapters/composite-router.js';
 import { getErrorMessage } from './core/index.js';
 
 /**
@@ -26,8 +31,6 @@ export interface InitializeFeedbackOptions {
   readonly logger: ILogger;
   /** Optional custom configuration */
   readonly config?: Partial<FeedbackIntegrationConfig>;
-  /** Optional CompositeRouter to attach */
-  readonly router?: ICompositeRouter;
 }
 
 /**
@@ -49,13 +52,18 @@ let globalFeedbackIntegration: IFeedbackIntegration | undefined;
  * Initializes FeedbackIntegration for production use.
  * Creates a singleton instance that can be accessed via getFeedbackIntegration().
  *
+ * No CompositeRouter is attached (see the module doc), so `enableAutoFeedback`
+ * only governs the collector; `routeFeedbackToCompositeRouter` returns early
+ * on every outcome in this process. The init log says so instead of reporting
+ * a `hasRouter` that could only ever be false.
+ *
  * @param options - Initialization options
  * @returns Result with initialized FeedbackIntegration
  */
 export function initializeFeedbackIntegration(
   options: InitializeFeedbackOptions
 ): FeedbackInitResult {
-  const { logger, config, router } = options;
+  const { logger, config } = options;
 
   try {
     // Create FeedbackIntegration instance
@@ -65,16 +73,12 @@ export function initializeFeedbackIntegration(
       logger,
     });
 
-    // Attach CompositeRouter if provided
-    if (router !== undefined && globalFeedbackIntegration instanceof FeedbackIntegration) {
-      globalFeedbackIntegration.registerCompositeRouter(router);
-      logger.debug('FeedbackIntegration attached to CompositeRouter');
-    }
-
-    logger.info('FeedbackIntegration initialized', {
-      enableAutoFeedback: config?.enableAutoFeedback ?? true,
-      hasRouter: router !== undefined,
-    });
+    logger.info(
+      'FeedbackIntegration initialized (in-memory collector; no CompositeRouter attached)',
+      {
+        enableAutoFeedback: config?.enableAutoFeedback ?? true,
+      }
+    );
 
     return {
       initialized: true,

@@ -506,7 +506,9 @@ async function initializeSubsystems(
     reason: sicaResult.reason,
   });
 
-  // Initialize FeedbackIntegration for closed-loop learning (Issue #490)
+  // Initialize FeedbackIntegration (Issue #490). In-memory collector only: this
+  // process has no CompositeRouter to attach, so it does not close a routing
+  // loop — that happens inside CompositeRouter.executeTask (#4827).
   const feedbackResult = initializeFeedbackIntegration({ logger });
   logger.debug('FeedbackIntegration initialization', {
     initialized: feedbackResult.initialized,

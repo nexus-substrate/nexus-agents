@@ -42,10 +42,33 @@
  */
 const BLOCKER_PATTERN = /(?:blocked\s+(?:by|on)|depends\s+on|after|once)\s+#(\d+)/gi;
 
+/**
+ * Markdown code: fenced blocks first (so a backtick inside a fence is not read
+ * as opening a span), then inline spans. Text inside either is QUOTED, not
+ * stated by the issue that contains it.
+ *
+ * The rule exists because the tracker this script files renders other issues'
+ * titles in backticks (see {@link renderTitle}), one of those titles read
+ * "(blocked by #4888)", and the tracker re-listed itself as blocked by #4888
+ * on every run (#5237). The same holds for any issue quoting a commit
+ * message, a log line or another issue's title: a blocker phrase in a code
+ * span is evidence about the quoted text, not a dependency of the quoting
+ * issue. Blockers stated outside the span are still read.
+ */
+const QUOTED_CODE = /```[\s\S]*?```|`[^`\n]*`/g;
+
+/**
+ * The label the workflow puts on the single tracking issue it files (#5238).
+ * An issue carrying it is the report, never a subject of the report.
+ */
+export const TRACKER_LABEL = 'ops:unblocked-tracker';
+
 export interface IssueSummary {
   readonly number: number;
   readonly title: string;
   readonly body: string;
+  /** Label names. Optional so callers that do not fetch labels still work. */
+  readonly labels?: readonly string[];
 }
 
 /** An open issue every one of whose named blockers has closed. */
@@ -69,12 +92,22 @@ export interface UnblockedVerdict {
    * vanished must not report the same clean result as one that ran.
    */
   readonly unmeasured?: boolean;
+  /**
+   * Issues skipped because they carry {@link TRACKER_LABEL} — the tracker
+   * itself. Named in the report so a reader can tell "skipped by identity"
+   * from "not blocked". Empty when no open issue carries the label.
+   */
+  readonly excluded?: readonly number[];
 }
 
-/** Blocker issue numbers named in an issue body. Deduplicated, ascending. */
+/**
+ * Blocker issue numbers named in an issue body. Deduplicated, ascending.
+ * Quoted code (fenced or inline) is removed first — see {@link QUOTED_CODE}.
+ */
 export function parseBlockers(body: string): number[] {
   const found = new Set<number>();
-  for (const m of body.matchAll(BLOCKER_PATTERN)) {
+  const stated = body.replace(QUOTED_CODE, ' ');
+  for (const m of stated.matchAll(BLOCKER_PATTERN)) {
     const n = Number(m[1]);
     if (Number.isSafeInteger(n) && n > 0) found.add(n);
   }
@@ -91,15 +124,24 @@ export function parseBlockers(body: string): number[] {
  * as unblocked. An unresolvable reference is unknown, and treating unknown as
  * closed would surface work that is still blocked, which erodes trust in the
  * report faster than missing one would.
+ *
+ * The tracker issue is excluded by identity ({@link TRACKER_LABEL}), not by
+ * parsing: quoted-title matches are already ignored, but a report format that
+ * ever states a blocker in plain text would re-list the tracker again (#5237).
  */
 export function selectUnblocked(
   issues: readonly IssueSummary[],
   isClosed: (blocker: number) => boolean | undefined
 ): UnblockedVerdict {
   const unblocked: UnblockedIssue[] = [];
+  const excluded: number[] = [];
   let tracked = 0;
 
   for (const issue of issues) {
+    if (issue.labels?.includes(TRACKER_LABEL) === true) {
+      excluded.push(issue.number);
+      continue;
+    }
     const blockers = parseBlockers(issue.body);
     if (blockers.length === 0) continue;
     tracked += 1;
@@ -109,8 +151,9 @@ export function selectUnblocked(
   }
 
   unblocked.sort((a, b) => a.number - b.number);
-  if (tracked === 0) return { unblocked, tracked, unmeasured: true };
-  return { unblocked, tracked };
+  excluded.sort((a, b) => a - b);
+  if (tracked === 0) return { unblocked, tracked, unmeasured: true, excluded };
+  return { unblocked, tracked, excluded };
 }
 
 /**
@@ -172,11 +215,17 @@ export function formatReport(verdict: UnblockedVerdict): string {
         `| #${String(u.number)} | ${u.blockers.map((b) => `#${String(b)}`).join(', ')} | ${renderTitle(u.title)} |`
     )
     .join('\n');
+  const excluded = verdict.excluded ?? [];
+  const exclusionNote =
+    excluded.length > 0
+      ? `Tracker issue(s) excluded by label: ${excluded.map((n) => `#${String(n)}`).join(', ')}.\n\n`
+      : '';
   return (
     `${String(verdict.unblocked.length)} of ${String(verdict.tracked)} blocked issue(s) ` +
     'now have **every** named blocker closed:\n\n' +
     '| issue | blockers (all closed) | title (copied verbatim from the issue) |\n| --- | --- | --- |\n' +
     `${rows}\n\n` +
+    exclusionNote +
     'Each records an unblock trigger in its body — that is the handoff. Pick them up ' +
     'or re-prioritise them explicitly; leaving one here is how #4440 sat ten days ' +
     'after its blocker closed (#4617).\n'
@@ -197,8 +246,18 @@ import { readFileSync } from 'node:fs';
 function readIssues(): IssueSummary[] {
   const raw = readFileSync(0, 'utf-8');
   if (raw.trim() === '') return [];
-  const parsed = JSON.parse(raw) as Array<{ number: number; title: string; body?: string }>;
-  return parsed.map((i) => ({ number: i.number, title: i.title, body: i.body ?? '' }));
+  const parsed = JSON.parse(raw) as Array<{
+    number: number;
+    title: string;
+    body?: string;
+    labels?: Array<{ name: string }>;
+  }>;
+  return parsed.map((i) => ({
+    number: i.number,
+    title: i.title,
+    body: i.body ?? '',
+    labels: (i.labels ?? []).map((l) => l.name),
+  }));
 }
 
 /**

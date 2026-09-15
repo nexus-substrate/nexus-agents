@@ -46,6 +46,10 @@
 # #5130 step 2 — the committed-ledger half of the ratification gate; decides
 # what counts as a panel record that ratifies a PR.
 /scripts/governor-ledger-evidence.ts @williamzujkowski
+# #6256 — the same gate's env reader, git probe and printed line: what the
+# moved-head rule measures in the checkout, and the verdict the log reports.
+/scripts/governor-ledger-report.ts @williamzujkowski
+/scripts/governor-patch-identity.ts @williamzujkowski
 # #6174 — asks GitHub's own parser whether this file is valid at the sha under review.
 /scripts/check-codeowners-errors.ts @williamzujkowski
 # #4802 — decides whether the pr_review audit gate and the CODEOWNERS parse run
@@ -77,6 +81,10 @@
 # ratification, while a one-line edit here changes what "approved" means.
 /packages/nexus-agents/src/consensus/decision/ @williamzujkowski
 /packages/nexus-agents/src/cli/voter-roles.ts @williamzujkowski
+
+# #4797 — the warrant ledger that can lower the security bar: an entry here mutes
+# a high-severity advisory that the REQUIRED Security Audit job (#4794) would block.
+/.github/audit-exceptions.json @williamzujkowski
 
 # Project governance
 /CLAUDE.md @williamzujkowski

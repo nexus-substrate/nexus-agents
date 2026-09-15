@@ -138,11 +138,16 @@ describe('handleSet', () => {
     expect(r.message).toContain('TIMEOUT_DEFAULTS.apiMs');
     expect(r.message).toContain('5000');
   });
-  it('reports process scope and the mapped persistent environment variable', async () => {
+  it('does not advertise NEXUS_TIMEOUT_API as a persistence route — removed in #4939', async () => {
+    // The hint told operators to set a variable nothing read.
+    const r = await handleSet('TIMEOUT_DEFAULTS.apiMs', '5000');
+    expect(r.scope).toBe('process');
+    expect(r.message).not.toContain('NEXUS_TIMEOUT_API');
+  });
+  it('reports process scope without a persistence hint for an unmapped key', async () => {
     const r = await handleSet('TIMEOUT_DEFAULTS.apiMs', '5000');
     expect(r.scope).toBe('process');
     expect(r.message).toContain('this invocation only');
-    expect(r.message).toContain('NEXUS_TIMEOUT_API');
     expect(r.message).not.toBe('Set TIMEOUT_DEFAULTS.apiMs = 5000');
   });
   it('throws on invalid numeric value', async () => {
@@ -355,14 +360,15 @@ describe('handleImport', () => {
     expect(r.message).toContain('1');
     expect(r.message).toContain('/resolved/in.json');
   });
-  it('reports process scope and persistence guidance for mapped imported keys', async () => {
+  it('reports process scope and no env-var guidance for imported keys (#4939)', async () => {
+    // NEXUS_TIMEOUT_CLI was the hint here until #4939; nothing read it.
     vi.mocked(parseConfigFile).mockReturnValue({
       entries: [{ category: 'TIMEOUT_DEFAULTS', key: 'cliMs', value: 5000 }],
     });
     const r = await handleImport('in.json', { force: true });
     expect(r.scope).toBe('process');
     expect(r.message).toContain('this invocation only');
-    expect(r.message).toContain('NEXUS_TIMEOUT_CLI');
+    expect(r.message).not.toContain('NEXUS_TIMEOUT_CLI');
   });
   it('defaults options to empty object', async () => {
     expect((await handleImport('in.json')).success).toBe(true);

@@ -38,6 +38,26 @@ describe('parseBlockers', () => {
   it('returns nothing for a body with no blockers', () => {
     expect(parseBlockers('an ordinary issue body')).toEqual([]);
   });
+
+  it('ignores a blocker phrase quoted inside a code span (#5237)', () => {
+    // The tracker's own body: it renders other rows' titles in backticks, and
+    // one of those titles reads "(blocked by #4888)". Quoted text is not a
+    // dependency declared by the quoting issue.
+    const trackerRow =
+      '| #4988 | #4888 | `decide whether MCP policy enforcement should default on, ' +
+      'after a warn-mode soak (blocked by #4888)` |';
+    expect(parseBlockers(trackerRow)).toEqual([]);
+  });
+
+  it('ignores a blocker phrase quoted inside a fenced code block', () => {
+    const body = 'Reproduce:\n\n```\nblocked by #12\n```\n\nno dependency stated here';
+    expect(parseBlockers(body)).toEqual([]);
+  });
+
+  it('still reads a blocker stated outside the quoted span', () => {
+    // The pair: stripping quotes must not strip the claim next to them.
+    expect(parseBlockers('blocked by #7 — see `blocked by #8` in the old title')).toEqual([7]);
+  });
 });
 
 describe('selectUnblocked', () => {
@@ -89,6 +109,24 @@ describe('selectUnblocked', () => {
     expect(verdict.unmeasured).toBeUndefined();
     expect(verdict.tracked).toBe(1);
   });
+
+  it('excludes the tracker issue itself, identified by its label (#5237)', () => {
+    // The tracker re-listed itself on every run. Even with quoted titles
+    // ignored, a future report format could state a blocker in plain text, so
+    // the tracker is excluded by identity, not by parsing luck.
+    const tracker = { ...issue(5237, 'blocked by #10'), labels: ['ops:unblocked-tracker'] };
+    const verdict = selectUnblocked([tracker, issue(1, 'blocked by #10')], closed);
+
+    expect(verdict.unblocked.map((u) => u.number)).toEqual([1]);
+    expect(verdict.tracked).toBe(1);
+    expect(verdict.excluded).toEqual([5237]);
+  });
+
+  it('reports no exclusion when no issue carries the tracker label', () => {
+    const verdict = selectUnblocked([issue(1, 'blocked by #10')], closed);
+
+    expect(verdict.excluded).toEqual([]);
+  });
 });
 
 describe('formatReport', () => {
@@ -105,6 +143,17 @@ describe('formatReport', () => {
 
   it('says so plainly when everything is still blocked', () => {
     expect(formatReport({ unblocked: [], tracked: 5 })).toContain('still have an open blocker');
+  });
+
+  it('names the excluded tracker so a reader can tell it was skipped, not missed', () => {
+    const body = formatReport({
+      unblocked: [{ number: 1, title: 't', blockers: [2] }],
+      tracked: 1,
+      excluded: [5237],
+    });
+
+    expect(body).toContain('#5237');
+    expect(body).toContain('excluded');
   });
 
   it('reports the empty corpus as unmeasured, not clean', () => {

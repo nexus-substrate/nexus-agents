@@ -258,6 +258,29 @@ describe('appendRatificationRecord', () => {
     expect(existsSync(ledgerPath)).toBe(false);
   });
 
+  it('REFUSES a source record whose reasoning was edited without re-committing — the self-hash cannot see the text on the digest tier (#6263)', () => {
+    const genuine = sourceRecord('vote-a', { sequence: 0 });
+    expect(genuine.version).toBe('1.13');
+    // The operator's copy had one voter's grounds rewritten. On 1.13 the
+    // record hash folds a salted digest of the text, not the text, so the
+    // self-hash still matches — the digest is what no longer opens.
+    const [first, ...rest] = genuine.voters;
+    const edited: VoteRecord = {
+      ...genuine,
+      voters: [{ ...first!, reasoning: 'rewritten grounds' }, ...rest],
+    };
+    expect(computeVoteRecordHash(edited)).toBe(genuine.hash);
+    writeLedger(sourcePath, [edited]);
+    const detail = expectRefused(
+      appendRatificationRecord({ sourcePath, ledgerPath, recordId: 'vote-a' }),
+      'source-hash-mismatch'
+    );
+    expect(detail).toContain('reasoningDigest');
+    expect(detail).toContain('architect');
+    // Refused BEFORE the write, not flagged by the read-back after it.
+    expect(existsSync(ledgerPath)).toBe(false);
+  });
+
   it('DISCLOSED LIMIT: a source record edited AND re-hashed IS appended — the path trusts the operator store; provenance is step 2 or signing (#3927 item 4)', () => {
     // The pair of the test above. Anyone with the exported hash function can
     // edit the operator's copy and recompute; the self-hash check cannot tell

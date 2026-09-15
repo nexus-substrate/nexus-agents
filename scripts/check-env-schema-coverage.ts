@@ -133,7 +133,7 @@ export function collectSourceFiles(dir: string): readonly string[] {
 
 /** Names the schema registers, read from its source. */
 export function registeredNames(schemaSource: string): readonly string[] {
-  // Declared as unquoted Zod object keys: `NEXUS_TIMEOUT_CLI: positiveIntStr...`.
+  // Declared as unquoted Zod object keys: `NEXUS_VOTE_TIMEOUT_MS: positiveIntStr...`.
   // Commented-out names must not count as registered, so strip comments first.
   const code = stripComments(schemaSource);
   return [...new Set([...code.matchAll(/^\s*(NEXUS_[A-Z0-9_]+)\s*:/gm)].map((m) => m[1] ?? ''))];

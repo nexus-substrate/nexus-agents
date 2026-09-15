@@ -1,5 +1,69 @@
 # nexus-agents
 
+## 8.65.0
+
+### Minor Changes
+
+- [#6340](https://github.com/nexus-substrate/nexus-agents/pull/6340) [`6e47c17`](https://github.com/nexus-substrate/nexus-agents/commit/6e47c175ebc0b9b9cd7959aa4def137c04847807) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `getGlobalRegistry(config)` throws `RegistryAlreadyInitializedError` (a `ConfigError`, exported from the adapters barrel) when a non-empty config arrives after the singleton exists. It used to log a warning and return the existing registry, so a caller that passed a conflicting `logger` or `defaultCliTimeoutMs` silently got a registry built from someone else's settings. `getGlobalRegistry()` with no config, or with `{}`, still returns the existing instance; `resetGlobalRegistry()` first if reconfiguration is intentional, and `claimGlobalRegistry(logger)` remains the idempotent way to name the logger. Nothing in the package passes a config after initialisation; only out-of-tree callers that did are affected ([#5211](https://github.com/nexus-substrate/nexus-agents/issues/5211)).
+
+## 8.64.1
+
+### Patch Changes
+
+- [#6341](https://github.com/nexus-substrate/nexus-agents/pull/6341) [`8a03422`](https://github.com/nexus-substrate/nexus-agents/commit/8a03422cf9064d2a0357a7981f8fe41926ee226b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `getErrorMessage` no longer throws when the value's `message` getter throws — it returns the fallback (`'Unknown error'` by default) instead. `RetryExhaustedError`'s constructor and `isRetryableError` now read the message through it, so `withRetry` resolves to `err(RetryExhaustedError)` for such an error instead of rejecting from outside its own try/catch ([#4308](https://github.com/nexus-substrate/nexus-agents/issues/4308)). One visible side effect: `RetryExhaustedError.context.lastErrorMessage` for a non-Error object is now its JSON (`{"status":404}`) rather than `[object Object]`.
+
+## 8.64.0
+
+### Minor Changes
+
+- [#6274](https://github.com/nexus-substrate/nexus-agents/pull/6274) [`39cdbf7`](https://github.com/nexus-substrate/nexus-agents/commit/39cdbf715d4124413b6aa0e01179fcbddc9b41d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote records (schema 1.13) hash a salted digest of each voter's reasoning instead of the text ([#6263](https://github.com/nexus-substrate/nexus-agents/issues/6263), [#5748](https://github.com/nexus-substrate/nexus-agents/issues/5748) step 1).
+
+  Every voter entry a `consensus_vote` persists now carries `reasoningNonce` (32 random bytes, hex, fresh per entry) and `reasoningDigest = sha256(reasoningNonce ‖ reasoning)`, computed over the reasoning as stored (after the 20,000-char clip). On this tier the record hash covers ONLY the digest; the text and the nonce — the opening of the commitment — travel on the record outside the hash. The nonce is outside the hash because the salt is the secret: a hash-covered salt could not be dropped at redaction without breaking the hash and any signature over it, and a public salt would let `sha256(nonce ‖ guess)` confirm low-entropy boilerplate reasoning once the text is gone. `verifyVoteRecordSet` re-opens the commitment whenever text and nonce are both present, so editing either alone, or both to a different opening, in a persisted record is a `hash_mismatch` — the tier is as tamper-evident as before while the opening is present — and dropping text and nonce together leaves the original hash (and any signature over it) verifying unchanged, with the 256-bit unknown salt keeping the digest an opaque commitment. The clip marker `reasoningTruncated` stays hashed on every tier, so dropping or adding it on a persisted 1.13 record is a `hash_mismatch`.
+
+  Records on every earlier tier (1.1–1.12) hash exactly as they did; nothing is migrated. The read schema holds the keys together on 1.13 — text and nonce present or absent together, the digest required for any entry with reasoning — and, until the redaction step ([#6264](https://github.com/nexus-substrate/nexus-agents/issues/6264)) lands, refuses a digest with no opening at all; it refuses the keys on any older tier. `scripts/append-ratification-record.ts` refuses a source record whose reasoning no longer matches its digest before writing the committed line. New module `audit/reasoning-commitment.ts` exports `mintReasoningNonce`, `computeReasoningDigest`, `isReasoningDigestTier` and `findReasoningCommitmentDefect`.
+
+## 8.63.2
+
+### Patch Changes
+
+- [#6335](https://github.com/nexus-substrate/nexus-agents/pull/6335) [`62ff67c`](https://github.com/nexus-substrate/nexus-agents/commit/62ff67ccaa553e8a65c0c1581b4e3de1e83423af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wire `context-distillation` into the prior-wave context path, shadow-first
+  ([#5974](https://github.com/nexus-substrate/nexus-agents/issues/5974), item 1 of [#5771](https://github.com/nexus-substrate/nexus-agents/issues/5771)). `buildPriorWaveContextBlock` still emits exactly what
+  it emitted before — per-worker truncation decides what a downstream worker
+  receives. Alongside it, distillation now runs on the same sanitized output and a
+  `Prior-wave distillation shadow ([#5974](https://github.com/nexus-substrate/nexus-agents/issues/5974))` record is logged at info: per worker,
+  the sanitized / truncated / distilled sizes, both compression ratios, pattern
+  hits per category, and whether no pattern matched (the case where distillation
+  would degenerate to a 200-char head and the candidate falls back to
+  truncation); per block, how many predecessors truncation kept under the 6000-char
+  budget versus how many distillation would have kept. That last pair is the flip
+  criterion the panel set. The module and the pure `shadowDistillPriorWave` are
+  now exported from the `orchestration/aorchestra` barrel.
+
+## 8.63.1
+
+### Patch Changes
+
+- [#6330](https://github.com/nexus-substrate/nexus-agents/pull/6330) [`a70bebd`](https://github.com/nexus-substrate/nexus-agents/commit/a70bebd3cd331dd844af17b3e1689240a01c991b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the last four `NEXUS_*` variables from the [#4939](https://github.com/nexus-substrate/nexus-agents/issues/4939) census that nothing
+  read: `NEXUS_TIMEOUT_CLI`, `NEXUS_TIMEOUT_API`, `NEXUS_TIMEOUT_WORKFLOW` and
+  `NEXUS_TIMEOUT_MCP`. Their only reader was `getTimeout()`, which had zero
+  production callers, and `config get TIMEOUT_DEFAULTS.cliMs` reported a set
+  variable as `Source: (env)` for a value nothing consumed; `config set` told
+  operators to set one "to persist this value". `getTimeout` and the
+  `getEnvVarDocumentation` generator (whose only remaining rows were these four)
+  are gone with them. Same treatment as [#2977](https://github.com/nexus-substrate/nexus-agents/issues/2977), [#4180](https://github.com/nexus-substrate/nexus-agents/issues/4180) and [#5903](https://github.com/nexus-substrate/nexus-agents/issues/5903). An operator still
+  setting one now gets the unrecognized-variable report with a typo suggestion.
+  The live timeout knobs are unchanged: `NEXUS_VOTE_TIMEOUT_MS`,
+  `NEXUS_EXPERT_TIMEOUT_MS`, `NEXUS_WORKER_TIMEOUT_MS`, `NEXUS_TIMEOUT_MULTIPLIER`
+  and the `NEXUS_TIMEOUT_CLASS_*_MS` family.
+
+## 8.63.0
+
+### Minor Changes
+
+- [#6325](https://github.com/nexus-substrate/nexus-agents/pull/6325) [`5fe011a`](https://github.com/nexus-substrate/nexus-agents/commit/5fe011a38315d2baa4172e44c9f485a885f2bd54) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `execute_spec` failure analysis can now report a partial match. `CriterionResult` gains a required `partialResults: string[]` — the execution results that overlapped some of a criterion's keywords without clearing the 0.5 match threshold. `analyzeFailures` reads that field for its `partial_match` verdict and priority-2 "Refine implementation" suggestion; before, both read `matchedResults`, which is empty on every unmet criterion by construction (`met` is defined as `matchedResults.length > 0`), so every failed criterion was classified `missing_implementation` or `no_output` at priority 1 and the priority field could not rank anything. `met` and `matchedResults` keep their meaning. Readers of the schema see one added field; a caller hand-building a `SpecExecutionResult` for `analyzeFailures` must now supply `partialResults` (no in-tree caller does this by hand).
+
+  Three sites from the same sweep, no runtime change to their verdicts: the `orchestrate` tool now passes `context.filePaths` (string[]) to the AOrchestra planner's file-pattern trigger table, which no in-tree caller had ever fed; the MCP server's `initializeFeedbackIntegration` drops the `router` option its one caller never supplied and its init log names the in-memory-collector state instead of a `hasRouter` that could only be false; and the `authority-tier-guard` module header states that the tier ceiling is exercised at a constant `suggest` floor by live traffic, so `above_declared_tier` is covered by unit tests, not by traffic. Closes [#4827](https://github.com/nexus-substrate/nexus-agents/issues/4827).
+
 ## 8.62.0
 
 ### Minor Changes

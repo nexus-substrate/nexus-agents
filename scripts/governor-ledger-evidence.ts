@@ -9,9 +9,13 @@
  * which rules, or whether one ran at all (#5779). Step 1 of #5130 gave the
  * ledger a record shape that can say so: `ratifiesPr: { pr, headSha }`
  * inside the self-hash, appended to `governance/vote-records.jsonl` by the
- * caller in the PR it ratifies. This module reads that ledger and returns a
- * typed verdict the gate prints AND EXITS ON (#5131): only `ratified` passes;
- * every other kind, and an `unmeasured` report, is a `::error::` and exit 1.
+ * caller in the PR it ratifies. This module computes, from that ledger, a
+ * typed verdict the gate prints AND EXITS ON (#5131): only `ratified` (and,
+ * under the moved-head rule below, `ratified-rebased`) passes; every other
+ * kind, and an `unmeasured` report, is a `::error::` and exit 1. The verdict
+ * here is pure; reading the workflow environment, building the git probe
+ * and rendering the line live in `governor-ledger-report.ts`, the git probe
+ * itself in `governor-patch-identity.ts` — all three are governor paths.
  * The label/approval verdict is still required alongside it — both must
  * hold. Warn-first ended on 2026-09-14, when the first bound record reached
  * the committed ledger (PR #6241, `vote-1789376500996-fxkw4uk`); the flip is
@@ -23,8 +27,9 @@
  * | Kind | Meaning |
  * | --- | --- |
  * | `ratified` | one record binds this PR at an accepted head, is `approved`, and its recorded panel was whole |
+ * | `ratified-rebased` | as `ratified`, but the record binds an EARLIER head of this PR (an ancestor of the head, or a head the workflow saw this PR have) and the head's tree equals that head's patch replayed onto the head's base — see "The head moved" below (#6256, #6301) |
  * | `no-record` | no record carries `ratifiesPr.pr === PR`; an EMPTY ledger is this case with `recordCount: 0`, never `ratified` |
- * | `sha-mismatch` | records bind this PR, but none at an accepted head — lists the shas found |
+ * | `sha-mismatch` | records bind this PR, but none at an accepted head and none passes the moved-head rule — lists the shas found and, per sha, why the rule did not apply |
  * | `not-approved` | a bound record's `decision` is not `approved` |
  * | `wrong-error-policy` | a bound record RECORDS an `errorPolicy` other than `absolute_quorum` (#6211) |
  * | `wrong-strategy` | a bound record's `strategy` is below the governor bar — not `supermajority` or `unanimous` (#6235) |
@@ -39,6 +44,78 @@
  * commit on top of the head the panel saw (#5130 panel Q1). A tip that
  * touches anything else — including a merge from main — is a new head the
  * panel did not see, so only `head` itself is accepted.
+ *
+ * ## The head moved, the content did not (#6256, `ratified-rebased`)
+ *
+ * Every governor PR appends one ledger line, and the ledger must be
+ * append-only against the base, so when two governor PRs are in flight the
+ * second must pick up the first's line once it merges — a rebase or a merge
+ * from main — and that moves its head past the sha its record binds. Measured
+ * twice on 2026-09-14: #6252 was ratified 7-0 at `fca64e9ea8`, rebased to
+ * `cce938eec2` to pick up #6249's line, and re-paneled; #6282 was ratified
+ * at `43cb8bec`, refreshed by a merge from main (`8618d18d`) that resolved
+ * a SKILL.md PIPELINE NOTE conflict BY HAND, and re-paneled — under the rule
+ * below the first would pass and the second would not, correctly: a
+ * hand-resolved conflict is content the panel never saw.
+ *
+ * So a record whose `ratifiesPr.headSha` is neither `head` nor `head^` is
+ * still accepted — as the distinct kind `ratified-rebased`, so the log says
+ * the head moved and why it still counts — when ALL of (#6256; redesigned by
+ * the #6301 panel 1 review, which rejected the earlier patch-identity hash
+ * because it was position-insensitive within a file):
+ *
+ * 1. the ratified sha `A` is RELATED to this PR: an ancestor of the head (a
+ *    merge from main kept it), or a head this PR had before — as the
+ *    workflow measured it (`PR_PRIOR_HEADS`: the `synchronize` event's
+ *    `before` and the head shas of the workflow's own runs that GitHub
+ *    attributes to THIS PR NUMBER, in the PR's own head repository — never
+ *    a branch name, which a fork PR can share with the base repo), or the
+ *    first parent of such a head when it touched only the ledger (the tip a
+ *    force-push replaces is A1, the record binds A = A1^). Anything else is
+ *    `sha-mismatch` naming the relation: the same content on an unrelated
+ *    branch would pass condition 3 (#6301 item 4). The commit object must be
+ *    present; a prior head a rebase orphaned is fetched from `origin` by
+ *    sha (GitHub serves any object by sha — measured against the
+ *    rebased-away heads of #6252), and NO other sha is fetched, because that
+ *    fetch reaches the whole fork network. Still missing ⇒ `sha-mismatch`
+ *    naming "object not found".
+ * 2. `A` carries a NON-LEDGER change: `git diff-tree -r <merge-base(A, PR
+ *    base)> A -- . ':!governance/vote-records.jsonl'` lists at least one
+ *    path. A ledger-only PR is refused here by name (#6301 item 2): its
+ *    head replays to its own base, so its record would "match" any commit
+ *    at or before the fork point — a ledger-only PR binds to `head`/`head^`
+ *    only.
+ * 3. the head's TREE equals `A` replayed onto the head's base: with
+ *    `B_H = merge-base(H, PR base)`, `T = git merge-tree --write-tree B_H A`
+ *    (git's own contextual merge; a CONFLICT is `sha-mismatch` naming the
+ *    conflicting paths — "content the panel never saw" — and is never
+ *    accepted), and `git diff-tree -r T H^{tree} -- .
+ *    ':!governance/vote-records.jsonl'` is EMPTY; a path listed is
+ *    `sha-mismatch` naming it. A clean rebase and a clean merge from main
+ *    produce the same tree, so one rule covers both. Blob ids, not a
+ *    rendered diff: position-sensitive by construction (the same lines
+ *    moved to another function are another blob), binary-safe, and blind
+ *    to `.gitattributes` — the `--text` and order-sensitive-file special
+ *    cases the patch identity needed do not exist here.
+ * 4. the ledger at `A` is an ordered subsequence of the head ledger (the
+ *    #6218 rule, applied between the two heads) — otherwise
+ *    `ledger-rewritten` naming the ratified sha.
+ *
+ * The rule applies only when NO record binds `head` or `head^`; a record
+ * that does is judged exactly as before and the probe never runs. Every
+ * record bound at the moved sha must still ratify (a dissent there is
+ * `not-approved`), and the per-record checks are unchanged.
+ *
+ * What the tree rule does NOT catch, disclosed: nothing position-wise — a
+ * byte, a line moved, a mode, a binary, a file added or dropped all change a
+ * blob or tree id. What it takes as given: that `B_H` is the true base
+ * branch. `PR_BASE_SHA` comes from the workflow (the pre-merge job's
+ * `merge-base origin/<base> <head>`, the backstop's `main~1`), and `B_H`'s
+ * own content — everything main gained between `A`'s fork point and `B_H`
+ * — was never before THIS panel; it landed through its own PRs and their
+ * own gates. The rule proves `H ≡ B_H ⊕ patch(A)`, not that `B_H` is sound.
+ * The ledger file is excluded from the tree comparison and covered by
+ * condition 4 alone.
  *
  * ## Append-only against the base (#6213)
  *
@@ -178,10 +255,8 @@
  * the `ratified` line must not be read as proving more than it measures.
  *
  * @module scripts/governor-ledger-evidence
- * (Source: Issue #5130, #5779, #5131, #5118)
+ * (Source: Issue #5130, #5779, #5131, #5118, #6256, #6301)
  */
-
-import { existsSync, readFileSync } from 'node:fs';
 
 import type {
   VoteRecord,
@@ -192,17 +267,11 @@ import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
-
-/** Overrides the committed ledger path; for tests that drive the real gate over a temp ledger. */
-export const LEDGER_PATH_ENV = 'RATIFICATION_LEDGER_PATH';
-
-/**
- * Path to the ledger AS OF THE MERGE-BASE, written by the workflow's evidence
- * step (`git show <base>:governance/vote-records.jsonl`, or an empty file when
- * the path did not exist at base). Absent ⇒ append-only is not checked, and
- * the verdict says so; present but unreadable ⇒ `unmeasured` (#6213).
- */
-export const BASE_LEDGER_PATH_ENV = 'RATIFICATION_BASE_LEDGER_PATH';
+import type {
+  MovedHeadMeasurement,
+  MovedHeadProbe,
+  MovedHeadRelation,
+} from './governor-patch-identity.js';
 
 /**
  * The head the record must bind to. The pre-merge job passes the PR head; the
@@ -240,6 +309,22 @@ export interface LedgerEvidenceInputs {
    * `appendOnlyChecked: false` (#6213).
    */
   readonly baseLedgerText?: string | undefined;
+  /**
+   * #6256: answers, for one ratified sha, whether its commit is present, how
+   * it relates to the head, whether it carries a non-ledger change, whether
+   * the head's tree equals it replayed onto the head's base, and what its
+   * ledger held. Consulted ONLY when no record binds `head` or `head^`.
+   * Omitted (a caller with no checkout or no PR base) ⇒ a moved head is
+   * `sha-mismatch`, and each `moved` entry says the tree was not measured —
+   * fail-closed.
+   */
+  readonly movedHead?: MovedHeadProbe | undefined;
+}
+
+/** Why one recorded sha was not accepted under the moved-head rule (#6256). */
+export interface MovedHeadRefusal {
+  readonly sha: string;
+  readonly reason: string;
 }
 
 /**
@@ -292,11 +377,35 @@ export type LedgerEvidence =
       /** False when no base ledger was supplied: append-only was not compared (#6213). */
       readonly appendOnlyChecked: boolean;
     }
+  | {
+      /** #6256: ratified at an earlier head of this PR; the current head's tree is that head's patch replayed onto its base. */
+      readonly kind: 'ratified-rebased';
+      readonly record: VoteRecord;
+      /** The sha the record binds — the head the panel saw. */
+      readonly ratifiedSha: string;
+      /** The current head, which no record binds. */
+      readonly headSha: string;
+      /**
+       * `ancestor`: a merge from main kept the ratified commit in the head's
+       * history; `prior-head`: a rebase did not, and the sha is a head this
+       * PR had as the workflow measured it (`PR_PRIOR_HEADS`, #6301 item 4).
+       */
+      readonly relation: MovedHeadRelation;
+      /**
+       * The tree `git merge-tree --write-tree <merge-base(head, PR base)> <ratifiedSha>`
+       * wrote — the head's own tree, ledger aside. Reproducible from the checkout.
+       */
+      readonly replayedTree: string;
+      /** As on `ratified`; the sha binding was checked by construction. */
+      readonly appendOnlyChecked: boolean;
+    }
   | { readonly kind: 'no-record'; readonly recordCount: number }
   | {
       readonly kind: 'sha-mismatch';
       readonly accepted: readonly string[];
       readonly found: readonly string[];
+      /** #6256: per found sha, why the moved-head rule did not accept it. One entry per `found` sha. */
+      readonly moved: readonly MovedHeadRefusal[];
     }
   | BoundRecordRefusal
   | { readonly kind: 'ledger-invalid'; readonly detail: string }
@@ -307,8 +416,19 @@ export type LedgerEvidence =
       readonly headLineCount: number;
       /** 1-based index of the first base line not found at the head in order (missing, changed or moved). */
       readonly divergesAt: number;
+      /**
+       * #6256: set when the comparison was against the ledger AT THE RATIFIED
+       * SHA (condition 4 of the moved-head rule) rather than at the base;
+       * `baseLineCount` then counts that ledger's lines.
+       */
+      readonly againstRatifiedSha?: string;
     }
   | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] };
+
+/** The kinds that pass the gate (#5131): `ratified`, and `ratified-rebased` under the #6256 rule. */
+export function isRatifiedKind(kind: LedgerEvidence['kind']): boolean {
+  return kind === 'ratified' || kind === 'ratified-rebased';
+}
 
 /** A ledger-only tip: the head commit touches exactly the ledger file. Empty ⇒ false. */
 export function isLedgerOnlyTip(commitFiles: readonly string[]): boolean {
@@ -408,7 +528,7 @@ function panelUnmeasuredReason(record: VoteRecord): string | undefined {
 }
 
 /** The policy a governor ratification must have run under (#5779). */
-const REQUIRED_ERROR_POLICY: NonNullable<VoteRecord['errorPolicy']> = 'absolute_quorum';
+export const REQUIRED_ERROR_POLICY: NonNullable<VoteRecord['errorPolicy']> = 'absolute_quorum';
 
 /**
  * The strategies whose bar meets or exceeds the governor's `supermajority`
@@ -416,10 +536,9 @@ const REQUIRED_ERROR_POLICY: NonNullable<VoteRecord['errorPolicy']> = 'absolute_
  * is a 0.5 tally (#5315), `simple_majority` is 0.5, and `opinion_wise` /
  * `proof_of_learning` are weighted aggregations rather than bars.
  */
-const GOVERNOR_STRATEGIES: ReadonlySet<VoteRecord['strategy']> = new Set<VoteRecord['strategy']>([
-  'supermajority',
-  'unanimous',
-]);
+export const GOVERNOR_STRATEGIES: ReadonlySet<VoteRecord['strategy']> = new Set<
+  VoteRecord['strategy']
+>(['supermajority', 'unanimous']);
 
 /** `unmeasured-panel` / `degraded-panel` from the record's coverage; `undefined` for a whole panel. */
 function panelVerdict(record: VoteRecord): BoundRecordFailure | undefined {
@@ -496,10 +615,14 @@ function verdictOverBound(
 
 /**
  * Compute the ledger verdict for a PR. Pure — the ledger bytes, the base
- * ledger bytes and the head are passed in. Precedence: `ledger-invalid` →
+ * ledger bytes, the head and (optionally) the moved-head probe are passed
+ * in; the probe is the one input that reads the checkout, and it is
+ * consulted only on the moved-head path. Precedence: `ledger-invalid` →
  * `ledger-rewritten` → `duplicate-id` → `no-record` → `sha-mismatch` →
  * `not-approved` → `wrong-error-policy` → `wrong-strategy` →
- * `unmeasured-panel` → `degraded-panel` → `ratified`.
+ * `unmeasured-panel` → `degraded-panel` → `ratified` / `ratified-rebased`
+ * (the latter only via the moved-head rule, #6256, which can also yield
+ * `ledger-rewritten` against the ratified sha).
  */
 export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvidence {
   const loaded = loadLedger(inputs.ledgerText);
@@ -522,248 +645,130 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   const accepted = acceptedHeadShas(inputs.head);
   const bound = forPr.filter((r) => accepted.includes(r.ratifiesPr?.headSha ?? ''));
   if (bound.length === 0) {
-    const found = [...new Set(forPr.map((r) => r.ratifiesPr?.headSha ?? ''))];
-    return { kind: 'sha-mismatch', accepted, found };
+    return movedHeadVerdict(forPr, accepted, inputs, appendOnlyChecked);
   }
   return verdictOverBound(bound, { shaChecked: true, appendOnlyChecked });
 }
 
-const TAG = '[governor-ledger]';
-/** What a refusal costs, on every failing line: the flip (#5131) is stated where it bites. */
-const FAIL_NOTE =
-  'A governor-path PR fails without a ratifying record in the committed ledger (#5131).';
+type Measured = Extract<MovedHeadMeasurement, { kind: 'measured' }>;
 
-function formatRatified(evidence: Extract<LedgerEvidence, { kind: 'ratified' }>): string {
-  const b = evidence.record.ratifiesPr;
-  const recordedHead = b?.headSha ?? '(unbound)';
-  const sha = evidence.shaChecked
-    ? `at ${recordedHead}`
-    : `— sha NOT checked (the caller supplied no head; recorded head ${recordedHead})`;
-  const coverage = evidence.record.panelCoverage;
-  const panel =
-    coverage === undefined
-      ? 'panel whole'
-      : `panel whole (${String(coverage.responded)} of ${String(coverage.requested)} seats responded)`;
-  // #6211: name which check stood behind "panel whole" — the recorded policy,
-  // or the pre-1.11 inference from panel coverage.
-  const policy =
-    evidence.record.errorPolicy !== undefined
-      ? `errorPolicy: ${evidence.record.errorPolicy}`
-      : 'errorPolicy: unrecorded (pre-1.11 record; inferred from panel coverage)';
-  const appendOnly = evidence.appendOnlyChecked
-    ? 'ledger append-only against base'
-    : 'base ledger not supplied — append-only not checked';
-  return (
-    `::notice::${TAG} ratified: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
-    `${sha}, decision ${evidence.record.decision}, strategy: ${evidence.record.strategy}, ` +
-    `${panel}, ${policy}, ${appendOnly}.`
-  );
-}
+/** One recorded sha under conditions 1–4: refused with a reason, a ledger rewrite, or passing. */
+type ShaOutcome =
+  | { readonly kind: 'refused'; readonly refusal: MovedHeadRefusal }
+  | { readonly kind: 'rewritten'; readonly verdict: LedgerEvidence }
+  | { readonly kind: 'passing'; readonly measured: Measured };
 
-/** `no-record`: an empty ledger is named as such, distinct from "none of N". */
-function noRecordBody(recordCount: number): string {
-  return recordCount === 0
-    ? 'the committed ledger is empty — no panel record ratifies this PR'
-    : `none of the ${String(recordCount)} record(s) in the committed ledger ratifies this PR`;
-}
-
-/** The reason text for one failing per-record check — the `BOUND_RECORD_CHECKS` kinds. */
-function boundRecordBody(evidence: BoundRecordFailure): string {
-  const id = `record '${evidence.record.id}'`;
-  switch (evidence.kind) {
-    case 'not-approved':
-      return `${id} binds this PR with decision '${evidence.record.decision}'`;
-    case 'wrong-error-policy':
-      return (
-        `${id} was approved under errorPolicy '${evidence.errorPolicy}' ` +
-        `— a governor ratification must run under '${REQUIRED_ERROR_POLICY}'`
-      );
-    case 'wrong-strategy':
-      return (
-        `${id} was approved at strategy '${evidence.strategy}', below the governor bar ` +
-        `— a governor ratification must run at one of ` +
-        `${[...GOVERNOR_STRATEGIES].map((s) => `'${s}'`).join(', ')} (supermajority, 0.667)`
-      );
-    case 'unmeasured-panel':
-      return (
-        `${id} binds this PR but ${evidence.reason} — the record cannot ` +
-        'show the panel ran whole, and absence is not measured as whole'
-      );
-    case 'degraded-panel':
-      return (
-        `${id} was approved with ${String(evidence.coverage.errored)} of ` +
-        `${String(evidence.coverage.requested)} seat(s) errored (${evidence.coverage.erroredRoles.join(', ')}) ` +
-        '— a governor ratification must run whole under absolute_quorum'
-      );
+/** The four conditions for one recorded sha. */
+function judgeMovedSha(sha: string, probe: MovedHeadProbe, headLedgerText: string): ShaOutcome {
+  const measured = probe(sha);
+  if (measured.kind !== 'measured') {
+    return { kind: 'refused', refusal: { sha, reason: measured.detail } };
   }
+  const refuse = (reason: string): ShaOutcome => ({ kind: 'refused', refusal: { sha, reason } });
+  // Condition 2 (#6301 item 2): a ledger-only PR's head replays to its own
+  // base, so its record would match any commit at or before the fork point.
+  if (!measured.nonLedgerChanged) {
+    return refuse(
+      'no non-ledger change at the ratified sha — a ledger-only PR binds to head/head^ only; ' +
+        'a commit that changes nothing but the ledger says nothing about what the panel saw'
+    );
+  }
+  // Condition 3: the head's tree must be the ratified patch replayed onto
+  // the head's base. A conflict is content the panel never saw (#6282); a
+  // differing path is a change made after the panel voted, wherever in the
+  // file it sits.
+  if (measured.tree.kind === 'conflict') {
+    return refuse(
+      `replaying it onto the head's base conflicts — conflict resolving ` +
+        `${measured.tree.paths.join(', ')} — content the panel never saw; a hand-resolved ` +
+        'conflict needs a fresh panel'
+    );
+  }
+  if (measured.tree.kind === 'differs') {
+    return refuse(
+      `the head's tree differs from the ratified patch replayed onto the head's base at ` +
+        `${measured.tree.paths.join(', ')} (replayed tree ${measured.tree.replayedTree}) ` +
+        '— the panel saw different content'
+    );
+  }
+  // Condition 4: what the panel's ledger held must still be in the head's,
+  // in order. A dropped or altered line between the two heads is a rewrite
+  // of the ledger the panel saw, whatever the base comparison found.
+  const rewritten = appendOnlyVerdict(headLedgerText, measured.ledgerText);
+  if (rewritten !== undefined) {
+    return { kind: 'rewritten', verdict: { ...rewritten, againstRatifiedSha: sha } };
+  }
+  return { kind: 'passing', measured };
 }
 
 /**
- * `<kind>: <reason>` for every non-ratified kind; the caller adds the
- * annotation prefix and the fail note. A bound refusal renders EVERY failing
- * check in report order — the misconfiguration before the rejection (#6219
- * panel note) — joined with `; `, so the line leads with the kind that names
- * the cause even when the verdict's own `kind` is `not-approved`.
+ * The verdict over the records bound at the passing shas: the same per-record
+ * checks as a head-bound set, with `ratified` reported as `ratified-rebased`.
  */
-function refusalBody(evidence: Exclude<LedgerEvidence, { kind: 'ratified' }>): string {
-  switch (evidence.kind) {
-    case 'no-record':
-      return `${evidence.kind}: ${noRecordBody(evidence.recordCount)}`;
-    case 'sha-mismatch':
-      return (
-        `${evidence.kind}: record(s) ratify this PR at ${evidence.found.join(', ')}, not at the ` +
-        `accepted head(s) ${evidence.accepted.join(', ')} — the panel saw a different diff`
-      );
-    case 'ledger-invalid':
-      return `${evidence.kind}: ${evidence.detail}`;
-    case 'ledger-rewritten':
-      return (
-        `${evidence.kind}: the ledger at head is not the base ledger plus appended lines: base line ` +
-        `${String(evidence.divergesAt)} of ${String(evidence.baseLineCount)} is missing, changed or moved ` +
-        `(head has ${String(evidence.headLineCount)} record line(s)) — the ledger is append-only; ` +
-        'restore the base lines verbatim, in their order'
-      );
-    case 'duplicate-id':
-      return (
-        `${evidence.kind}: ${evidence.ids.map((id) => `'${id}'`).join(', ')} name(s) more than one ` +
-        "record with different content; the ledger is ambiguous until the line that is not the panel's is removed"
-      );
-    default:
-      // Narrowed to the bound refusals: every `BOUND_RECORD_CHECKS` kind carries `failures`.
-      return evidence.failures.map((f) => `${f.kind}: ${boundRecordBody(f)}`).join('; ');
-  }
-}
-
-/**
- * Render the verdict as a GitHub annotation: `::notice::` for `ratified`,
- * `::error::` for everything else (#5131 — every other kind fails the gate).
- * Names the record id or the reason so the line stands on its own in the
- * job log.
- */
-export function formatLedgerEvidence(evidence: LedgerEvidence): string {
-  if (evidence.kind === 'ratified') return formatRatified(evidence);
-  return `::error::${TAG} ${refusalBody(evidence)}. ${FAIL_NOTE}`;
-}
-
-/** The ledger verdict, or an explicit "not measured" when the inputs to compute it are absent. */
-export type LedgerEvidenceReport =
-  LedgerEvidence | { readonly kind: 'unmeasured'; readonly reason: string };
-
-function headFromEnv(env: NodeJS.ProcessEnv): HeadBinding | undefined {
-  const sha = (env['PR_HEAD_SHA'] ?? '').trim();
-  if (sha === '') return undefined;
-  const parent = (env['PR_HEAD_PARENT_SHA'] ?? '').trim();
-  const commitFiles = (env['HEAD_COMMIT_FILES'] ?? '')
-    .split('\n')
-    .map((f) => f.trim())
-    .filter((f) => f !== '');
-  return { sha, ...(parent !== '' ? { parentSha: parent } : {}), commitFiles };
-}
-
-type ReadResult = { ok: true; text: string } | { ok: false; reason: string };
-
-/**
- * Read a ledger file, naming the failure instead of throwing (#6213). An
- * EISDIR or EACCES here used to crash the gate with a stack trace; now it is
- * the `unmeasured` report, which the gate fails on by name (#5131) — the
- * exit code is the same 1, but the log says what could not be read.
- * `missingIsEmpty` is the head ledger's rule: a file that does not exist is
- * the empty ledger, a measurement (`no-record`, which also fails); the base
- * ledger is written by the workflow unconditionally, so its absence is an
- * error.
- */
-function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): ReadResult {
-  if (missingIsEmpty && !existsSync(path)) return { ok: true, text: '' };
-  try {
-    return { ok: true, text: readFileSync(path, 'utf-8') };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, reason: `the ${what} at ${path} could not be read (${message})` };
-  }
-}
-
-/**
- * Read the inputs from the workflow's environment and compute the verdict.
- *
- * `PR_NUMBER` absent or malformed is `unmeasured`, not `no-record`: a local
- * run has no PR, and "nothing was measured" must not print as "no panel
- * ratified this". A missing ledger FILE is the empty ledger (`no-record`,
- * count 0) — that is a measurement; an UNREADABLE one (a directory at the
- * path, a permissions error) is `unmeasured` naming the error (#6213).
- * `PR_HEAD_SHA` absent is `unmeasured` too (#6249): without a head the
- * binding cannot be checked, and the backstop that once ran that way
- * accepted a record for sha1 on a PR whose final head was sha2. Both jobs
- * supply it — the pre-merge job the PR head, the backstop the merged PR's
- * pre-squash head. `RATIFICATION_BASE_LEDGER_PATH` names the ledger at the
- * merge-base; absent, append-only is not checked and the verdict says so.
- */
-export function ledgerEvidenceFromEnv(
-  env: NodeJS.ProcessEnv,
-  defaultLedgerPath: string
-): LedgerEvidenceReport {
-  const pr = prNumberFromEnv(env);
-  if (typeof pr !== 'number') return pr;
-
-  const ledgerPath = (env[LEDGER_PATH_ENV] ?? '').trim() || defaultLedgerPath;
-  const ledger = readLedgerFile(ledgerPath, 'committed ledger', true);
-  if (!ledger.ok) return { kind: 'unmeasured', reason: ledger.reason };
-
-  const base = baseLedgerFromEnv(env);
-  if (base !== undefined && !base.ok) return { kind: 'unmeasured', reason: base.reason };
-
-  const head = headFromEnv(env);
-  if (head === undefined) {
-    return {
-      kind: 'unmeasured',
-      reason:
-        'PR_HEAD_SHA is not set; a record cannot be bound to a head that was not supplied ' +
-        "(the backstop must resolve the merged PR's pre-squash head, #6249)",
-    };
-  }
-  return evaluateLedgerEvidence({
-    ledgerText: ledger.text,
-    pr,
-    head,
-    ...(base !== undefined ? { baseLedgerText: base.text } : {}),
-  });
-}
-
-/** `PR_NUMBER` as a positive integer, or the `unmeasured` report that says why it is not one. */
-function prNumberFromEnv(
-  env: NodeJS.ProcessEnv
-): number | Extract<LedgerEvidenceReport, { kind: 'unmeasured' }> {
-  const prText = (env['PR_NUMBER'] ?? '').trim();
-  if (/^[1-9]\d*$/.test(prText)) return Number(prText);
-  const what = prText === '' ? 'not set' : `'${prText}', not a positive integer`;
+function rebasedVerdict(
+  forPr: readonly VoteRecord[],
+  passing: ReadonlyMap<string, Measured>,
+  headSha: string,
+  appendOnlyChecked: boolean
+): LedgerEvidence {
+  const rebasedBound = forPr.filter((r) => passing.has(r.ratifiesPr?.headSha ?? ''));
+  const verdict = verdictOverBound(rebasedBound, { shaChecked: true, appendOnlyChecked });
+  if (verdict.kind !== 'ratified') return verdict;
+  const ratifiedSha = verdict.record.ratifiesPr?.headSha ?? '';
+  // `verdict.record` is one of `rebasedBound`, whose shas are exactly the map's keys.
+  const measured = passing.get(ratifiedSha);
+  if (measured === undefined) throw new Error(`no measurement for passing sha ${ratifiedSha}`);
   return {
-    kind: 'unmeasured',
-    reason: `PR_NUMBER is ${what}; the committed ledger was not consulted`,
+    kind: 'ratified-rebased',
+    record: verdict.record,
+    ratifiedSha,
+    headSha,
+    relation: measured.relation,
+    replayedTree: measured.tree.replayedTree,
+    appendOnlyChecked,
   };
 }
 
-/** The base ledger named by `RATIFICATION_BASE_LEDGER_PATH`; `undefined` when the variable is unset. */
-function baseLedgerFromEnv(env: NodeJS.ProcessEnv): ReadResult | undefined {
-  const basePath = (env[BASE_LEDGER_PATH_ENV] ?? '').trim();
-  if (basePath === '') return undefined;
-  return readLedgerFile(basePath, 'base ledger', false);
-}
-
 /**
- * Print the report to stderr, next to the label/approval verdict, and say
- * whether the ledger RATIFIED the PR (#5131). The caller folds the answer
- * into its exit code: `true` only for `ratified`. `unmeasured` — an
- * unreadable ledger, no PR number — is `false` and a `::error::`: a gate
- * that cannot read its evidence has not found a ratification, and reporting
- * absence of measurement as a pass is the shape #5131 removes.
+ * The moved-head rule (#6256, #6301), reached only when no record binds an
+ * accepted head. Each recorded sha is probed once; a sha passes when it is
+ * an ancestor of the head or a prior head of this PR, its commit is present,
+ * it carries a non-ledger change, the head's tree equals it replayed onto
+ * the head's base, and its ledger is an ordered subsequence of the head
+ * ledger. The records bound at passing shas go through the same per-record
+ * checks as a head-bound set, and a `ratified` result over them is reported
+ * as `ratified-rebased`. No passing sha ⇒ `sha-mismatch`, with one named
+ * reason per recorded sha; no probe ⇒ every reason says "not measured".
  */
-export function reportLedgerEvidence(env: NodeJS.ProcessEnv, defaultLedgerPath: string): boolean {
-  const report = ledgerEvidenceFromEnv(env, defaultLedgerPath);
-  if (report.kind === 'unmeasured') {
-    console.error(
-      `::error::${TAG} unmeasured: ${report.reason} — the gate fails closed on evidence it cannot read. ${FAIL_NOTE}`
+function movedHeadVerdict(
+  forPr: readonly VoteRecord[],
+  accepted: readonly string[],
+  inputs: LedgerEvidenceInputs,
+  appendOnlyChecked: boolean
+): LedgerEvidence {
+  const found = [...new Set(forPr.map((r) => r.ratifiesPr?.headSha ?? ''))];
+  const mismatch = (reasonFor: (sha: string) => string): LedgerEvidence => ({
+    kind: 'sha-mismatch',
+    accepted,
+    found,
+    moved: found.map((sha) => ({ sha, reason: reasonFor(sha) })),
+  });
+  const probe = inputs.movedHead;
+  const headSha = inputs.head?.sha;
+  if (probe === undefined || headSha === undefined) {
+    return mismatch(
+      () => 'the head tree was not measured against it (no checkout or no PR base supplied)'
     );
-    return false;
   }
-  console.error(formatLedgerEvidence(report));
-  return report.kind === 'ratified';
+
+  const refused = new Map<string, string>();
+  const passing = new Map<string, Measured>();
+  for (const sha of found) {
+    const outcome = judgeMovedSha(sha, probe, inputs.ledgerText);
+    if (outcome.kind === 'rewritten') return outcome.verdict;
+    if (outcome.kind === 'refused') refused.set(sha, outcome.refusal.reason);
+    else passing.set(sha, outcome.measured);
+  }
+  if (passing.size === 0) return mismatch((sha) => refused.get(sha) ?? 'not judged');
+  return rebasedVerdict(forPr, passing, headSha, appendOnlyChecked);
 }

@@ -55,7 +55,7 @@ This project implements these security measures:
 
 ### Dependency Security
 
-- `pnpm audit --audit-level=high` runs on every CI build, **advisory** (`continue-on-error`): a third-party advisory publication must not redden every open PR, and suppressions need a warrant in `.github/audit-exceptions.json`. It audits the **workspace** lockfile, whose `pnpm.overrides` are repo-local and never reach a consumer — so it describes this checkout, not what `npm install nexus-agents` resolves. The published dependency graph is described by the release SBOM, generated from the packed tarball ([#5429](https://github.com/nexus-substrate/nexus-agents/issues/5429)).
+- `pnpm audit --audit-level=high` runs on every CI build and is **required** since #4794 stage 2: the `security` job is in `ci-success.needs`, so a high-severity finding turns `CI Success` red. A newly published advisory therefore reddens every open PR until a version bump in `pnpm.overrides` fixes it or a warranted suppression lands — every id in `pnpm.auditConfig` needs an owner, a tracking issue and an expiry in `.github/audit-exceptions.json` (governor-owned, #4797); an expired warrant reddens PRs the same way, by design. It audits the **workspace** lockfile, whose `pnpm.overrides` are repo-local and never reach a consumer — so it describes this checkout, not what `npm install nexus-agents` resolves. The published dependency graph is described by the release SBOM, generated from the packed tarball ([#5429](https://github.com/nexus-substrate/nexus-agents/issues/5429)).
 - Dependabot enabled for automated security updates
 - No deprecated packages allowed
 - Regular dependency review and updates

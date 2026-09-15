@@ -605,6 +605,20 @@ The matching (equally unread) `TIMEOUT_DEFAULTS.cliSimpleMs` /
 timeouts were never driven by these knobs — they flow through the internal
 per-CLI `TIMEOUT_PROFILES` (`getTimeoutForCli`).
 
+### Removed (#4939)
+
+The last four variables of the `getTimeout()` family — `NEXUS_TIMEOUT_CLI`,
+`NEXUS_TIMEOUT_API`, `NEXUS_TIMEOUT_WORKFLOW`, `NEXUS_TIMEOUT_MCP` — were
+registered in the env-schema and read by nothing that runs: `getTimeout()` had
+zero production callers, and the only observable effect of setting one was
+`config get TIMEOUT_DEFAULTS.cliMs` answering `Source: (env)` for a value no code
+consumed (the same false-positive #5903 removed for the rate-limit, retry and
+circuit-breaker families). They are gone from the schema; `validateNexusEnv` now
+reports them as unknown. If you had any of them set, just unset them. The
+timeout knobs that ARE read are `NEXUS_VOTE_TIMEOUT_MS`, `NEXUS_EXPERT_TIMEOUT_MS`,
+`NEXUS_WORKER_TIMEOUT_MS`, `NEXUS_TIMEOUT_MULTIPLIER` and the
+`NEXUS_TIMEOUT_CLASS_*_MS` family documented above.
+
 ### Removed (#5665)
 
 `NEXUS_AUTH_METHOD` was registered and documented (default `token`) but never

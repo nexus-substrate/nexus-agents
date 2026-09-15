@@ -43,6 +43,8 @@ type VoterSummaryKeysMirror = readonly [
   'assignedCli',
   'fallback',
   'retriedFrom',
+  'reasoningNonce',
+  'reasoningDigest',
 ];
 
 /** The mirror with `retried` dropped — the #6077 mutation, as a type. */
@@ -57,6 +59,8 @@ type MissingRetried = readonly [
   'assignedCli',
   'fallback',
   'retriedFrom',
+  'reasoningNonce',
+  'reasoningDigest',
 ];
 
 /** The record's nested retried-from shape, derived the way the projector sees it (#6246). */

@@ -22,6 +22,7 @@ import {
   normalizeTypeText,
   renderSurface,
 } from './extract-api-surface.js';
+import { diffSurface } from './check-api-surface.js';
 
 /**
  * `referencedDeclarations` only follows into this package's own source, so the
@@ -442,6 +443,100 @@ describe('exported function SIGNATURES are recorded (#6061)', () => {
     // The pre-existing stability property, re-asserted over the new renderer.
     const src = { '/index.ts': 'export function f(a: string, b?: number): void {}' };
     expect(surfaceOf(src)).toBe(surfaceOf(src));
+  });
+});
+
+describe('inherited members reach the snapshot through `extends` (#6189)', () => {
+  // #6176 changed `PrReviewResponse.coverage` to `PrReviewBindingCoverage
+  // extends PrReviewCoverage`, and the regenerated snapshot LOST
+  // `PrReviewCoverage` entirely while the child listed only its own members.
+  // A later PR could retype `reviewedFiles` on the base — a field that rides
+  // on the published response — and the gate would see nothing.
+  //
+  // The base is enqueued as its own declaration (the way a member's referenced
+  // type already is) rather than flattened into every child: a base change is
+  // then ONE changed block, and the child's `extends` line says who inherits.
+  const base = 'export interface Base { reviewedFiles: number; partial: boolean; }';
+
+  /** The member lines rendered under one symbol header (they are sorted). */
+  const blockOf = (out: string, header: string): string[] => {
+    const lines = out.split('\n');
+    const at = lines.indexOf(header);
+    expect(at).toBeGreaterThanOrEqual(0);
+    const rest = lines.slice(at + 1);
+    const end = rest.findIndex((l) => !l.startsWith(' '));
+    return rest.slice(0, end === -1 ? rest.length : end);
+  };
+
+  it('records a base interface reachable only through extends', () => {
+    const out = surfaceOf({
+      '/base.ts': base,
+      '/index.ts':
+        "import type { Base } from './base.js';\nexport interface Child extends Base { binding: string; }",
+    });
+
+    expect(out).toContain('InterfaceDeclaration Base');
+    expect(out).toContain('  reviewedFiles: number');
+    expect(out).toContain('  partial: boolean');
+  });
+
+  it('records the extends clause on the child so dropping it is a visible change', () => {
+    const out = surfaceOf({
+      '/base.ts': base,
+      '/index.ts':
+        "import type { Base } from './base.js';\nexport interface Child extends Base { binding: string; }",
+    });
+    expect(blockOf(out, 'InterfaceDeclaration Child')).toEqual([
+      '  binding: string',
+      '  extends Base',
+    ]);
+  });
+
+  it('the gate reports a field change on the base', () => {
+    const before = surfaceOf({
+      '/base.ts': base,
+      '/index.ts':
+        "import type { Base } from './base.js';\nexport interface Child extends Base { binding: string; }",
+    });
+    const after = surfaceOf({
+      '/base.ts': 'export interface Base { reviewedFiles?: number; partial: boolean; }',
+      '/index.ts':
+        "import type { Base } from './base.js';\nexport interface Child extends Base { binding: string; }",
+    });
+
+    const { added, removed } = diffSurface(before, after);
+    expect(removed).toEqual(['InterfaceDeclaration Base >  reviewedFiles: number']);
+    expect(added).toEqual(['InterfaceDeclaration Base >  reviewedFiles?: number | undefined']);
+  });
+
+  it('follows a class base and its implemented interface too', () => {
+    const out = surfaceOf({
+      '/base.ts': 'export class BaseClass { x = 1; }\nexport interface Shape { y: string; }',
+      '/index.ts':
+        "import { BaseClass, type Shape } from './base.js';\n" +
+        'export class Derived extends BaseClass implements Shape { y = ""; }',
+    });
+
+    expect(out).toContain('ClassDeclaration BaseClass');
+    expect(out).toContain('  x: number');
+    expect(out).toContain('InterfaceDeclaration Shape');
+    expect(blockOf(out, 'ClassDeclaration Derived')).toEqual([
+      '  extends BaseClass',
+      '  implements Shape',
+      '  y: string',
+    ]);
+  });
+
+  it('follows a generic base with its type argument', () => {
+    const out = surfaceOf({
+      '/base.ts': 'export interface Box<T> { value: T; }\nexport interface Item { id: string; }',
+      '/index.ts':
+        "import type { Box, Item } from './base.js';\nexport interface Crate extends Box<Item> { count: number; }",
+    });
+
+    expect(out).toContain('InterfaceDeclaration Box');
+    expect(out).toContain('InterfaceDeclaration Item');
+    expect(out).toContain('  extends Box<Item>');
   });
 });
 

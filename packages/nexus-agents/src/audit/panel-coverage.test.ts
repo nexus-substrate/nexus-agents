@@ -82,9 +82,10 @@ describe('panelCoverage (#5738)', () => {
       erroredRoles: ['scope_steward'],
     });
     // The record must not read as a clean six-voter panel any more. The
-    // version reads 1.6, not 1.5: every voter now carries stored reasoning
-    // (#5373), which is a later optional field than panelCoverage.
-    expect(record.version).toBe('1.6');
+    // version reads 1.13, not 1.5: every voter now carries stored reasoning
+    // (#5373) and a salted commitment to it (#6263), later optional fields
+    // than panelCoverage.
+    expect(record.version).toBe('1.13');
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 
@@ -135,9 +136,10 @@ describe('panelCoverage (#5738)', () => {
     });
 
     expect(record.panelCoverage).toBeUndefined();
-    // 1.6 from the stored reasoning (#5373), not from panelCoverage — the
-    // assertion above is what proves the clean panel omits the field.
-    expect(record.version).toBe('1.6');
+    // 1.13 from the stored reasoning and its digest (#5373, #6263), not from
+    // panelCoverage — the assertion above is what proves the clean panel
+    // omits the field.
+    expect(record.version).toBe('1.13');
     expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
   });
 });

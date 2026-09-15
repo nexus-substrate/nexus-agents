@@ -7,17 +7,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { ILogger } from './core/logger.js';
 import type { IFeedbackIntegration } from './learning/feedback-integration.js';
-import type { ICompositeRouter } from './cli-adapters/composite-router.js';
 
 // Mock the learning/feedback-integration module
 vi.mock('./learning/feedback-integration.js', () => ({
   createFeedbackIntegration: vi.fn(),
-  FeedbackIntegration: class MockFeedbackIntegration {
-    registerCompositeRouter = vi.fn();
-  },
 }));
 
-import { createFeedbackIntegration, FeedbackIntegration } from './learning/feedback-integration.js';
+import { createFeedbackIntegration } from './learning/feedback-integration.js';
 import {
   initializeFeedbackIntegration,
   getFeedbackIntegration,
@@ -32,22 +28,6 @@ function createMockLogger(): ILogger {
     warn: vi.fn(),
     error: vi.fn(),
   } as unknown as ILogger;
-  return mock;
-}
-
-function createMockRouter(): ICompositeRouter {
-  const mock = {
-    route: vi.fn(),
-    executeTask: vi.fn(),
-    recordOutcome: vi.fn(),
-    recordPreference: vi.fn(),
-    recordDifficultyOutcome: vi.fn(),
-    getStats: vi.fn(),
-    hasMinimumPreferenceData: vi.fn(),
-    getZeroRouter: vi.fn(),
-    getLatencyTracker: vi.fn(),
-    getRoutingMemory: vi.fn(),
-  } as unknown as ICompositeRouter;
   return mock;
 }
 
@@ -83,46 +63,6 @@ describe('cli-server-feedback', () => {
         enableAutoFeedback: true,
         logger: mockLogger,
       });
-    });
-
-    it('should attach router when provided and instance is FeedbackIntegration', () => {
-      const mockLogger = createMockLogger();
-      const mockRouter = createMockRouter();
-      const mockInstance = new FeedbackIntegration() as unknown as IFeedbackIntegration;
-      vi.mocked(createFeedbackIntegration).mockReturnValue(mockInstance);
-
-      const result = initializeFeedbackIntegration({
-        logger: mockLogger,
-        router: mockRouter,
-      });
-
-      expect(result.initialized).toBe(true);
-      const registerFn = (
-        mockInstance as unknown as { registerCompositeRouter: ReturnType<typeof vi.fn> }
-      ).registerCompositeRouter;
-      expect(registerFn).toHaveBeenCalledWith(mockRouter);
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'FeedbackIntegration attached to CompositeRouter'
-      );
-    });
-
-    it('should not attach router when instance is not FeedbackIntegration class', () => {
-      const mockLogger = createMockLogger();
-      const mockRouter = createMockRouter();
-      // Return a plain object (not instanceof FeedbackIntegration)
-      const mockInstance = createMockFeedbackIntegration();
-      vi.mocked(createFeedbackIntegration).mockReturnValue(mockInstance);
-
-      const result = initializeFeedbackIntegration({
-        logger: mockLogger,
-        router: mockRouter,
-      });
-
-      expect(result.initialized).toBe(true);
-      // logger.debug for router attachment should NOT be called
-      expect(mockLogger.debug).not.toHaveBeenCalledWith(
-        'FeedbackIntegration attached to CompositeRouter'
-      );
     });
 
     it('should return initialized: false on error', () => {
@@ -176,34 +116,20 @@ describe('cli-server-feedback', () => {
       });
     });
 
-    it('should log initialization info with config details', () => {
+    it('logs that no CompositeRouter is attached instead of a hasRouter that is always false (#4827)', () => {
       const mockLogger = createMockLogger();
       const mockInstance = createMockFeedbackIntegration();
       vi.mocked(createFeedbackIntegration).mockReturnValue(mockInstance);
 
       initializeFeedbackIntegration({ logger: mockLogger });
 
-      expect(mockLogger.info).toHaveBeenCalledWith('FeedbackIntegration initialized', {
-        enableAutoFeedback: true,
-        hasRouter: false,
-      });
-    });
-
-    it('should log hasRouter as true when router is provided', () => {
-      const mockLogger = createMockLogger();
-      const mockRouter = createMockRouter();
-      const mockInstance = createMockFeedbackIntegration();
-      vi.mocked(createFeedbackIntegration).mockReturnValue(mockInstance);
-
-      initializeFeedbackIntegration({
-        logger: mockLogger,
-        router: mockRouter,
-      });
-
-      expect(mockLogger.info).toHaveBeenCalledWith('FeedbackIntegration initialized', {
-        enableAutoFeedback: true,
-        hasRouter: true,
-      });
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'FeedbackIntegration initialized (in-memory collector; no CompositeRouter attached)',
+        { enableAutoFeedback: true }
+      );
+      expect(mockLogger.debug).not.toHaveBeenCalledWith(
+        'FeedbackIntegration attached to CompositeRouter'
+      );
     });
   });
 

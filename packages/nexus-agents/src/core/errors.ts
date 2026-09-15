@@ -509,7 +509,6 @@ export function toError(error: unknown): Error {
  * ```
  */
 export function getErrorMessage(error: unknown, fallback = 'Unknown error'): string {
-  if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   if (error === null || error === undefined) return fallback;
   if (typeof error === 'object') return extractObjectMessage(error, fallback);
@@ -519,10 +518,36 @@ export function getErrorMessage(error: unknown, fallback = 'Unknown error'): str
   return fallback;
 }
 
-/** Extract message from an error-like object, falling back to JSON serialization. */
+/**
+ * Read `.message` off an error-like value without letting the read throw.
+ *
+ * `message` is a plain data property on a real `Error`, but a subclass can
+ * declare it as a getter, and `getErrorMessage` is the helper every catch
+ * block relies on to be total (#4308): a throwing getter here used to escape
+ * the helper and reject from sites that had already left their own try/catch
+ * (`RetryExhaustedError`'s constructor, `isRetryableError`). Returns
+ * `undefined` for a getter that throws or a value that is not a string, so
+ * the caller's fallback applies.
+ */
+function readMessage(error: object): string | undefined {
+  try {
+    const message: unknown = (error as { message?: unknown }).message;
+    return typeof message === 'string' ? message : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Extract message from an error-like object (a real `Error` included), falling
+ * back to JSON serialization for a plain object and to `fallback` for an
+ * `Error` whose message could not be read — `JSON.stringify(new Error())` is
+ * `'{}'`, which names nothing.
+ */
 function extractObjectMessage(error: object, fallback: string): string {
-  const errObj = error as Record<string, unknown>;
-  if (typeof errObj['message'] === 'string') return errObj['message'];
+  const message = readMessage(error);
+  if (message !== undefined) return message;
+  if (error instanceof Error) return fallback;
   try {
     return JSON.stringify(error);
   } catch {

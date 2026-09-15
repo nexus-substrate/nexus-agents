@@ -18,6 +18,11 @@ import type { FallbackReason, RetriedFrom } from '../cli/vote-types.js';
 import type { ErrorPolicy } from '../mcp/tools/consensus-vote-types.js';
 import type { VoteRecord, VoterSummary } from './vote-record.js';
 import {
+  computeReasoningDigest,
+  findReasoningCommitmentDefect,
+  mintReasoningNonce,
+} from './reasoning-commitment.js';
+import {
   MAX_VOTER_REASONING_CHARS,
   VoteRecordSchema,
   computeVoteRecordHash,
@@ -992,38 +997,45 @@ describe('schema 1.11: `errorPolicy` — the policy the panel ran under (#6211)'
   });
 });
 
+/**
+ * The maximal 1.12 RECORD (every voter-level optional present). Module-scoped
+ * on the `MAXIMAL_1_11` rule so the 1.13 block can prove a 1.12 record still
+ * hashes to the 1.12 golden.
+ */
+const PARSE_FAILURE =
+  'Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input';
+const MAXIMAL_1_12 = {
+  ...MAXIMAL_1_11,
+  version: '1.12' as const,
+  id: 'vote-max-112',
+  voters: [
+    {
+      role: 'catfish' as const,
+      decision: 'abstain' as const,
+      confidence: 0,
+      reasoning: 'UNVERIFIABLE: could not read the artifact',
+      reasoningTruncated: true as const,
+      retried: true as const,
+      model: 'gemini-3.1-pro-preview',
+      unverifiable: true as const,
+      assignedCli: 'codex',
+      fallback: { fromCli: 'codex', fromModel: 'codex-5.3', reason: 'capacity' as const },
+      retriedFrom: {
+        source: 'error' as const,
+        error: PARSE_FAILURE,
+        errorTruncated: true as const,
+      },
+    },
+  ],
+};
+const GOLDEN_1_12 = '99b69c30289a2cd0dff2aeb0f120478007d2c08029f8ab1eb17220541482a52c';
+
 describe('schema 1.12: `retriedFrom` — what a recovered seat was retried from (#6246)', () => {
   // Voter-level, present-only, appended AFTER `fallback` — the new last voter
   // key in the canonical order — so every 1.11-and-earlier entry projects
   // byte-identically. The 1.9 voter golden and the 1.11 record golden above
   // are the guard for that; this block pins the new maximal form, at both
   // levels, and proves the carried cause is tamper-evident.
-  const PARSE_FAILURE =
-    'Vote parsing failed: Vote response parsing failed: Unexpected end of JSON input';
-  const MAXIMAL_1_12 = {
-    ...MAXIMAL_1_11,
-    version: '1.12' as const,
-    id: 'vote-max-112',
-    voters: [
-      {
-        role: 'catfish' as const,
-        decision: 'abstain' as const,
-        confidence: 0,
-        reasoning: 'UNVERIFIABLE: could not read the artifact',
-        reasoningTruncated: true as const,
-        retried: true as const,
-        model: 'gemini-3.1-pro-preview',
-        unverifiable: true as const,
-        assignedCli: 'codex',
-        fallback: { fromCli: 'codex', fromModel: 'codex-5.3', reason: 'capacity' as const },
-        retriedFrom: {
-          source: 'error' as const,
-          error: PARSE_FAILURE,
-          errorTruncated: true as const,
-        },
-      },
-    ],
-  };
 
   it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
     const parsed = VoteRecordSchema.safeParse({
@@ -1040,9 +1052,7 @@ describe('schema 1.12: `retriedFrom` — what a recovered seat was retried from 
     // keys, nested `source`, `error`, `errorTruncated`) with `node` + sha256.
     // If it moves, the canonical voter order, the nested order, or the
     // present-only rule changed.
-    expect(computeVoteRecordHash(MAXIMAL_1_12)).toBe(
-      '99b69c30289a2cd0dff2aeb0f120478007d2c08029f8ab1eb17220541482a52c'
-    );
+    expect(computeVoteRecordHash(MAXIMAL_1_12)).toBe(GOLDEN_1_12);
   });
 
   it('a 1.11 record with `retriedFrom` explicitly undefined still hashes to the 1.11 golden', () => {
@@ -1155,5 +1165,335 @@ describe('schema 1.12: `retriedFrom` — what a recovered seat was retried from 
     expectTypeOf<NonNullable<VoterSummary['retriedFrom']>['source']>().toEqualTypeOf<
       RetriedFrom['source']
     >();
+  });
+});
+
+describe('schema 1.13: a salted digest of the reasoning is hashed, not the text (#6263, #5748 step 1)', () => {
+  // The committed ledger holds model-written prose INSIDE the hash, so nothing
+  // can ever be removed from it without `hash_mismatch`. On this tier each
+  // voter entry carries `reasoningNonce` (32 random bytes, hex) and
+  // `reasoningDigest = sha256(reasoningNonce ‖ reasoning)`; the record hash
+  // folds ONLY the digest. The OPENING — the text AND the nonce — travels on
+  // the record outside the hash, and the verifier re-opens the commitment
+  // whenever both are present. The nonce must be outside the hash because the
+  // salt is the secret (#6274 panel 1): a public salt lets `sha256(nonce ‖
+  // guess)` confirm any low-entropy reasoning once the text is dropped, and
+  // a hashed salt cannot be dropped without breaking the hash and the #3927
+  // signature. With both dropped (step 2, #6264) the digest stays hash-covered
+  // and is an opaque commitment. The clip marker `reasoningTruncated` stays
+  // folded — only the opening is exempt. Older tiers keep folding the text;
+  // the 1.12 golden is the guard for that.
+  const NONCE = '0f'.repeat(32);
+  const REASONING = 'UNVERIFIABLE: could not read the artifact';
+  // Derived independently of the implementation: `printf '%s%s' "$nonce"
+  // "$reasoning" | sha256sum` — 105 bytes in, this out.
+  const DIGEST = 'd2cf1bdb5a01bf735a13969c50df30b26816a2a4904dc2209e96b509bf0d9545';
+  const v12 = MAXIMAL_1_12.voters[0]!;
+  const MAXIMAL_1_13 = {
+    ...MAXIMAL_1_12,
+    version: '1.13' as const,
+    id: 'vote-max-113',
+    voters: [{ ...v12, reasoning: REASONING, reasoningNonce: NONCE, reasoningDigest: DIGEST }],
+  };
+  const GOLDEN_1_13 = 'b93e7c041fa4be70490f4640b5353114e41bf4834415d21180df5c5569c1ba51';
+  const asRecord = (payload: Omit<VoteRecord, 'hash'>): VoteRecord => ({
+    ...payload,
+    hash: computeVoteRecordHash(payload),
+  });
+
+  it('the fixture is schema-valid — otherwise every test below passes for the wrong reason', () => {
+    expect(VoteRecordSchema.safeParse(asRecord(MAXIMAL_1_13)).success).toBe(true);
+  });
+
+  it('computeReasoningDigest is sha256 over the hex nonce followed by the text, and matches sha256sum', () => {
+    expect(computeReasoningDigest(NONCE, REASONING)).toBe(DIGEST);
+    expect(
+      createHash('sha256')
+        .update(NONCE + REASONING)
+        .digest('hex')
+    ).toBe(DIGEST);
+  });
+
+  it('mintReasoningNonce returns 32 random bytes as lowercase hex, fresh each call', () => {
+    const a = mintReasoningNonce();
+    const b = mintReasoningNonce();
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(b).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).not.toBe(b);
+  });
+
+  it('pins the MAXIMAL 1.13 record to a golden derived BY HAND before the projection existed', () => {
+    // The canonical string was built by hand in the documented order — the
+    // voter keys through `retriedFrom` (`reasoningTruncated` in its 1.6
+    // slot, `reasoning` and `reasoningNonce` OMITTED), then
+    // `reasoningDigest` — hashed with node's sha256 in a scratch script and
+    // cross-checked with coreutils `sha256sum` over the same bytes, so the
+    // literal is not the implementation agreeing with itself. The same
+    // hand-built string with `"reasoningNonce":…` inserted before the digest
+    // reproduces the golden the panel rejected (`eaebde85…9d62`, nonce
+    // folded), and with the text in its 1.6 slot instead reproduces the
+    // 1.12 golden — both cross-checks that the hand string is right. If it
+    // moves, the canonical voter order or the digest-tier fold rule changed.
+    expect(computeVoteRecordHash(MAXIMAL_1_13)).toBe(GOLDEN_1_13);
+  });
+
+  it('a 1.12 record with the 1.13 keys explicitly undefined still hashes to the 1.12 golden', () => {
+    // Against the PINNED literal: an older tier keeps folding the text exactly
+    // as before, and knows nothing of the digest keys.
+    expect(
+      computeVoteRecordHash({
+        ...MAXIMAL_1_12,
+        voters: [{ ...v12, reasoningNonce: undefined, reasoningDigest: undefined }],
+      })
+    ).toBe(GOLDEN_1_12);
+  });
+
+  it('on the digest tier the TEXT is outside the hash: editing or dropping reasoning leaves the hash unchanged', () => {
+    // The digest, not the hash, is what binds the text (next test). Only the
+    // opening: the clip marker is hashed (the two `reasoningTruncated` tests).
+    const v = MAXIMAL_1_13.voters[0]!;
+    const textEdited = { ...MAXIMAL_1_13, voters: [{ ...v, reasoning: REASONING + '!' }] };
+    const { reasoning: _r, ...withoutText } = v;
+    expect(computeVoteRecordHash(textEdited)).toBe(GOLDEN_1_13);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutText] })).toBe(GOLDEN_1_13);
+  });
+
+  it('dropping BOTH text and nonce leaves the record hash unchanged — the redaction property step 2 rests on', () => {
+    // Asserted as hash-value EQUALITY, not `not.toBe`: the hash — and any
+    // #3927 signature over it — survives the whole opening being dropped,
+    // which is what lets step 2 (#6264) redact without re-signing. Under the
+    // rejected fold (nonce hashed) this moved the hash (#6274 panel 1). The
+    // schema still refuses the shape on THIS tier (a commitment with nothing
+    // to open it); step 2 admits it under a redaction record.
+    const { reasoning: _r, reasoningNonce: _n, ...redacted } = MAXIMAL_1_13.voters[0]!;
+    expect(redacted.reasoningDigest).toBe(DIGEST);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [redacted] })).toBe(GOLDEN_1_13);
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [redacted] })).toBe(
+      computeVoteRecordHash(MAXIMAL_1_13)
+    );
+    const parsed = VoteRecordSchema.safeParse(asRecord({ ...MAXIMAL_1_13, voters: [redacted] }));
+    expect(parsed.success).toBe(false);
+  });
+
+  it('editing text AND nonce together to a different opening is a hash_mismatch — the digest re-opening fails while the record hash cannot see it', () => {
+    // A second opening of the same commitment is a second preimage. The
+    // record hash is unchanged (both keys are outside it), so it is ONLY the
+    // verifier's re-opening of `sha256(nonce ‖ text)` against the
+    // hash-covered digest that refuses the record.
+    const record = asRecord(MAXIMAL_1_13);
+    const v = record.voters[0]!;
+    const other: VoteRecord = {
+      ...record,
+      voters: [{ ...v, reasoning: 'a different argument', reasoningNonce: 'a5'.repeat(32) }],
+    };
+    expect(computeVoteRecordHash(other)).toBe(record.hash);
+    const result = verifyVoteRecordSet([other]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('hash_mismatch');
+      expect(result.detail).toContain('reasoningDigest');
+    }
+  });
+
+  it('editing reasoning WITHOUT recomputing the digest is a hash_mismatch naming the digest — the commitment is checked, not decorative', () => {
+    // The issue asks for exactly this verdict. The record hash cannot see the
+    // text, so `verifyVoteRecordSet` re-opens the commitment: with nonce and
+    // text both present it recomputes sha256(nonce ‖ text) and compares.
+    // Without this the tier would be WEAKER than 1.12 until step 2 lands.
+    const record = asRecord(MAXIMAL_1_13);
+    const v = record.voters[0]!;
+    const edited: VoteRecord = { ...record, voters: [{ ...v, reasoning: REASONING + '!' }] };
+    const result = verifyVoteRecordSet([edited]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('hash_mismatch');
+      expect(result.detail).toContain('reasoningDigest');
+      expect(result.detail).toContain('catfish');
+    }
+  });
+
+  it('dropping `reasoningTruncated` from a truncated 1.13 record is a hash_mismatch — the clip marker is hashed, only the text is exempt', () => {
+    // The #5748 decision exempts the raw `reasoning` TEXT from the hash so it
+    // can later be dropped; the marker is a boolean with no privacy content,
+    // redaction keeps it, and an unhashed marker would let "this argument was
+    // clipped" be silently erased from a committed record.
+    const record = asRecord(MAXIMAL_1_13);
+    const { reasoningTruncated: _t, ...withoutMarker } = record.voters[0]!;
+    expect(withoutMarker.reasoning).toBe(REASONING);
+    const result = verifyVoteRecordSet([{ ...record, voters: [withoutMarker] }]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('adding `reasoningTruncated` to an untruncated 1.13 record is a hash_mismatch', () => {
+    // `sequence: 0` so the lone baseline record is not a sequence gap.
+    const { reasoningTruncated: _t, ...untruncated } = MAXIMAL_1_13.voters[0]!;
+    const record = asRecord({ ...MAXIMAL_1_13, sequence: 0, voters: [untruncated] });
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+    const marked = { ...record, voters: [{ ...untruncated, reasoningTruncated: true as const }] };
+    const result = verifyVoteRecordSet([marked]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('hash_mismatch');
+  });
+
+  it('flipping one byte of reasoning and RE-PRODUCING the entry changes the digest and the hash', () => {
+    const v = MAXIMAL_1_13.voters[0]!;
+    const flipped = REASONING.slice(0, -1) + 'T';
+    const reproduced = {
+      ...MAXIMAL_1_13,
+      voters: [
+        { ...v, reasoning: flipped, reasoningDigest: computeReasoningDigest(NONCE, flipped) },
+      ],
+    };
+    expect(reproduced.voters[0]!.reasoningDigest).not.toBe(DIGEST);
+    expect(computeVoteRecordHash(reproduced)).not.toBe(GOLDEN_1_13);
+    // And the reproduced record verifies: the commitment opens. (`sequence: 0`
+    // so a lone record is not a sequence gap — the fixture sits at 3.)
+    expect(verifyVoteRecordSet([asRecord({ ...reproduced, sequence: 0 })]).ok).toBe(true);
+  });
+
+  it('the NONCE is outside the hash: dropping it alone leaves the hash unchanged, and the verifier refuses the half-opening as hash_mismatch', () => {
+    // Inverts the test that pinned the rejected fold ("dropping the nonce
+    // alone moves the hash"). The nonce is the secret salt, so it travels
+    // with the text, not in the hash; what refuses a nonce-less entry that
+    // still carries text is the opening rule text ⇔ nonce
+    // (`reasoningCommitmentShapeDefect`), reported by `verifyVoteRecordSet`
+    // as `hash_mismatch` at the missing key — and the schema refuses the line.
+    const record = asRecord(MAXIMAL_1_13);
+    const { reasoningNonce: _n, ...withoutNonce } = record.voters[0]!;
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutNonce] })).toBe(GOLDEN_1_13);
+    const result = verifyVoteRecordSet([{ ...record, voters: [withoutNonce] }]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('hash_mismatch');
+      expect(result.detail).toContain('reasoning without its reasoningNonce');
+    }
+    expect(VoteRecordSchema.safeParse({ ...record, voters: [withoutNonce] }).success).toBe(false);
+  });
+
+  it('dropping the digest alone moves the hash; editing the nonce alone is a hash_mismatch from the re-opening, not the hash', () => {
+    const v = MAXIMAL_1_13.voters[0]!;
+    const { reasoningDigest: _d, ...withoutDigest } = v;
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [withoutDigest] })).not.toBe(
+      GOLDEN_1_13
+    );
+    const record = asRecord(MAXIMAL_1_13);
+    const nonceEdited: VoteRecord = {
+      ...record,
+      voters: [{ ...record.voters[0]!, reasoningNonce: 'e0'.repeat(32) }],
+    };
+    expect(computeVoteRecordHash(nonceEdited)).toBe(record.hash);
+    const result = verifyVoteRecordSet([nonceEdited]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('hash_mismatch');
+      expect(result.detail).toContain('reasoningDigest');
+    }
+  });
+
+  it("reordering a 1.13 voter entry's keys does not change the hash", () => {
+    const v = MAXIMAL_1_13.voters[0]!;
+    const reordered = {
+      reasoningDigest: v.reasoningDigest,
+      reasoningNonce: v.reasoningNonce,
+      retriedFrom: v.retriedFrom,
+      fallback: v.fallback,
+      assignedCli: v.assignedCli,
+      unverifiable: v.unverifiable,
+      model: v.model,
+      retried: v.retried,
+      reasoningTruncated: v.reasoningTruncated,
+      reasoning: v.reasoning,
+      confidence: v.confidence,
+      decision: v.decision,
+      role: v.role,
+    };
+    expect(computeVoteRecordHash({ ...MAXIMAL_1_13, voters: [reordered] })).toBe(GOLDEN_1_13);
+  });
+
+  it('a digest-tier entry that carries reasoning with no nonce, no digest, or a stray nonce is refused by the schema', () => {
+    const base = asRecord(MAXIMAL_1_13);
+    const v = base.voters[0]!;
+    const accepts = (entry: unknown): boolean =>
+      VoteRecordSchema.safeParse({ ...base, voters: [entry] }).success;
+    const { reasoningNonce: _n, ...noNonce } = v;
+    const { reasoningDigest: _d, ...noDigest } = v;
+    const { reasoning: _r, ...noText } = v;
+    const { reasoning: _r2, reasoningNonce: _n2, ...noOpening } = v;
+    expect(accepts(v)).toBe(true);
+    // The opening rule: text ⇔ nonce. A text without its salt cannot be
+    // re-opened; a salt without its text opens nothing.
+    expect(accepts(noNonce)).toBe(false);
+    expect(accepts(noText)).toBe(false);
+    // The digest is required on 1.13 for any entry that has reasoning.
+    expect(accepts(noDigest)).toBe(false);
+    // A commitment with no opening at all is refused on THIS tier, for now;
+    // step 2 (#6264) admits it under a redaction record naming the entry.
+    expect(accepts(noOpening)).toBe(false);
+    // Shape: 64 lowercase hex, nothing else.
+    expect(accepts({ ...v, reasoningNonce: NONCE.toUpperCase() })).toBe(false);
+    expect(accepts({ ...v, reasoningNonce: NONCE.slice(2) })).toBe(false);
+    expect(accepts({ ...v, reasoningDigest: 'g'.repeat(64) })).toBe(false);
+  });
+
+  it('a 1.12 record carrying the digest keys is refused — they belong to the digest tier, where they are hashed', () => {
+    // On an older tier the projection folds the text and ignores the digest
+    // keys, so a persisted 1.12 line carrying them would hold two UNHASHED
+    // fields. The schema refuses the line before anything reads it.
+    const record = asRecord(MAXIMAL_1_12);
+    const withKeys = {
+      ...record,
+      voters: [{ ...record.voters[0]!, reasoningNonce: NONCE, reasoningDigest: DIGEST }],
+    };
+    expect(VoteRecordSchema.safeParse(withKeys).success).toBe(false);
+    const nonceOnly = { ...record, voters: [{ ...record.voters[0]!, reasoningNonce: NONCE }] };
+    expect(VoteRecordSchema.safeParse(nonceOnly).success).toBe(false);
+  });
+
+  it('a digest-tier entry with no reasoning at all carries no commitment and verifies — absence is not a broken opening', () => {
+    const v = MAXIMAL_1_13.voters[0]!;
+    const {
+      reasoning: _r,
+      reasoningTruncated: _t,
+      reasoningNonce: _n,
+      reasoningDigest: _d,
+      ...silent
+    } = v;
+    const record = asRecord({ ...MAXIMAL_1_13, sequence: 0, voters: [silent] });
+    expect(VoteRecordSchema.safeParse(record).success).toBe(true);
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it('findReasoningCommitmentDefect names the first broken commitment and is null for a sound record', () => {
+    // The single-record seam the caller-commits append script vets a source
+    // record with, so a text edited in the operator store is refused before
+    // the line is written rather than after.
+    const record = asRecord(MAXIMAL_1_13);
+    expect(findReasoningCommitmentDefect(record)).toBeNull();
+    const v = record.voters[0]!;
+    const edited = { ...record, voters: [{ ...v, reasoning: REASONING + '!' }] };
+    expect(findReasoningCommitmentDefect(edited)).toContain('reasoningDigest');
+    const { reasoningNonce: _n, ...noNonce } = v;
+    expect(findReasoningCommitmentDefect({ ...record, voters: [noNonce] })).toContain(
+      'reasoningNonce'
+    );
+    // The opening rule in the other direction: a salt with no text.
+    const { reasoning: _r2, ...noText } = v;
+    expect(findReasoningCommitmentDefect({ ...record, voters: [noText] })).toContain(
+      'reasoningNonce without the reasoning it opens'
+    );
+    // And a bare commitment: refused for now, admitted by step 2 (#6264).
+    const { reasoning: _r3, reasoningNonce: _n3, ...bare } = v;
+    expect(findReasoningCommitmentDefect({ ...record, voters: [bare] })).toContain('no opening');
+    // An older tier never has a commitment to check.
+    expect(findReasoningCommitmentDefect(asRecord(MAXIMAL_1_12))).toBeNull();
+  });
+
+  it('the two keys are on the VoterSummary type as optional hex strings — the defineVoterKeys constraint made the projection learn them', () => {
+    // Adding the keys to the schema without appending them to
+    // `VOTER_SUMMARY_KEYS` is a `tsc` error (#6077), so the "schema-only
+    // field" failure mode is closed at build time; this pins the read side.
+    expectTypeOf<VoterSummary['reasoningNonce']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<VoterSummary['reasoningDigest']>().toEqualTypeOf<string | undefined>();
   });
 });
