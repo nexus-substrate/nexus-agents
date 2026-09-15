@@ -363,5 +363,21 @@ describe('verifyClaims against the live repo', () => {
     const failures = report.results.filter((r) => !r.ok).map((r) => `${r.id}: ${r.detail}`);
     expect(failures).toEqual([]);
     expect(report.passed).toBe(true);
+    // The live registry is the non-empty population the empty-case test below
+    // is contrasted against; a registry that shrank to nothing must not pass.
+    expect(report.results.length).toBeGreaterThan(0);
+    expect(report.unmeasured).toBeUndefined();
+  });
+});
+
+describe('verifyClaims over an empty registry (#4586)', () => {
+  it('reports unmeasured and does not pass', () => {
+    // `[].every(...)` is true, so an empty claims list used to verify as a
+    // clean gate. The schema's `.min(1)` guards the YAML loader, not this
+    // function — a caller can hand it any `ClaimsRegistry`-shaped object.
+    const report = verifyClaims({ version: 1, claims: [] }, '/repo', fakeFs({}));
+    expect(report.passed).toBe(false);
+    expect(report.results).toEqual([]);
+    expect(report.unmeasured).toContain('0 claims');
   });
 });

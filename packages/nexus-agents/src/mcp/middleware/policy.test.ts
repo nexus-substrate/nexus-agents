@@ -444,16 +444,25 @@ describe('denyMutationsWithoutModeRule', () => {
     expect(denyMutationsWithoutModeRule.check(shellCtx).allowed).toBe(false);
   });
 
-  it('should allow orchestrate tool in read-only mode', () => {
+  it('should deny orchestrate in read-only mode — its manifest entry is readOnlyHint: false (#5114)', () => {
     const ctx = createPolicyContext('orchestrate', { task: 'Plan work' });
 
     const decision = denyMutationsWithoutModeRule.check(ctx);
 
-    expect(decision.allowed).toBe(true);
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('mutation operation');
   });
 
-  it('should allow delegate_to_model in read-only mode', () => {
+  it('should deny delegate_to_model in read-only mode — it records to tool-memory (#5114)', () => {
     const ctx = createPolicyContext('delegate_to_model', { prompt: 'Help' });
+
+    const decision = denyMutationsWithoutModeRule.check(ctx);
+
+    expect(decision.allowed).toBe(false);
+  });
+
+  it('should allow a manifest read-only tool in read-only mode (#5114)', () => {
+    const ctx = createPolicyContext('memory_query', { query: 'anything' });
 
     const decision = denyMutationsWithoutModeRule.check(ctx);
 
@@ -592,8 +601,9 @@ describe('createDefaultPolicyFirewall', () => {
     const firewall = createDefaultPolicyFirewall();
 
     const rules = firewall.getRules();
-    expect(rules).toHaveLength(2);
+    expect(rules).toHaveLength(3);
     expect(rules.map((r) => r.name)).toContain('deny-mutations-without-mode');
+    expect(rules.map((r) => r.name)).toContain('secret-paths');
     expect(rules.map((r) => r.name)).toContain('safe-paths');
   });
 

@@ -55,8 +55,14 @@ import type {
   SourceMetadata,
 } from './firewall-types.js';
 import { FirewallConfigSchema } from './firewall-types.js';
-import { checkRuleOfTwo } from '../policy-gate.js';
 import type { Violation } from '../policy-gate.js';
+import {
+  blockingViolations,
+  buildActionContext,
+  evaluateFirewallPolicy,
+  policyRefusal,
+  type FirewallPolicyEvaluation,
+} from './firewall-policy-stage.js';
 import { validateCorroboration } from '../corroboration-validator.js';
 import type { AgentAction, SourceCitation } from '../action-schema.js';
 import { createLogger } from '../../core/index.js';
@@ -104,12 +110,20 @@ export interface FirewallResult {
   readonly atl: string;
   /**
    * Rule-of-Two assessment surfaced by the `policyEnforcement` stage (#3198):
-   * present (with `severity: 'block'`) when the effective tier is untrusted AND
-   * the configured context has both write and secret access. The firewall is a
-   * signal provider — it SURFACES this for the consumer to enforce; it does not
-   * hard-block. `undefined` when the stage is disabled or the rule holds.
+   * present (`severity: 'block'`) when the effective tier is untrusted AND the
+   * context has both write and secret access; `undefined` when the stage is
+   * disabled or the rule holds. Since #5380 a view onto {@link policy} — its
+   * `RULE_OF_TWO` entry — kept so existing consumers read the same field.
    */
   readonly ruleOfTwoViolation?: Violation;
+  /**
+   * The `policyEnforcement` stage's full verdict (#5380). **Absent means the
+   * stage did not run.** Its `scope` says how much of `evaluatePolicy` could be
+   * evaluated ({@link FirewallPolicyEvaluation}), so "seven checks, none fired"
+   * is distinguishable from "one check, six unmeasured". `wouldRefuse` and the
+   * `enforce` refusal both derive from `policy.violations`, whichever scope.
+   */
+  readonly policy?: FirewallPolicyEvaluation;
   /**
    * The rollout mode this run was evaluated under (#5382). Recorded on the
    * result rather than left implicit so a consumer reading a verdict can tell
@@ -280,10 +294,10 @@ export class HostileInputFirewall {
     // Stage 5: Generate ATL (labelled with the enforced tier)
     const atl = this.buildATL(meta, effectiveTrustTier, sanitized, reputation);
 
-    // Stage 6: Rule-of-Two policy enforcement (#3198). Signal only: the
-    // consumer enforces — except under `enforce`, where it refuses (#5382).
-    const ruleOfTwoViolation = this.runPolicyEnforcement(meta, effectiveTrustTier, context);
-    const refusal = this.refuseIfEnforcing(ruleOfTwoViolation, meta, effectiveTrustTier);
+    // Stage 6: policy enforcement (#3198, #5380). Signal only: the consumer
+    // enforces — except under `enforce`, where a blocking violation refuses (#5382).
+    const policy = this.runPolicyEnforcement(meta, effectiveTrustTier, context, options);
+    const refusal = policyRefusal(policy, this.policyMode, meta.username, effectiveTrustTier);
     if (refusal !== undefined) return err(refusal);
 
     return ok(
@@ -296,37 +310,41 @@ export class HostileInputFirewall {
         effectiveTrustTier,
         reputationGate,
         atl,
-        ruleOfTwoViolation,
+        policy,
         start,
       })
     );
   }
 
   /**
-   * Evaluates the Rule of Two against the call's access posture and surfaces
-   * the violation (previously the `policyEnforcement` stage was declared but
-   * never read — #3198). Returns `undefined` when the stage is disabled or the
-   * rule holds.
+   * Runs the policy checks the call's facts allow — see
+   * {@link evaluateFirewallPolicy} (#5380; Rule-of-Two-only since #3198). The
+   * decision reaches the audit trail when the audit stage is on. Returns
+   * `undefined` when the stage is disabled, so absence keeps meaning "not run".
    */
   private runPolicyEnforcement(
     meta: SourceMetadata,
     effectiveTrustTier: TrustTier,
-    context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean }
-  ): Violation | undefined {
+    context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean },
+    options: FirewallProcessOptions | undefined
+  ): FirewallPolicyEvaluation | undefined {
     if (!this.stages.policyEnforcement) return undefined;
-    const violation = checkRuleOfTwo({
-      inputTrustTier: effectiveTrustTier,
-      hasWriteAccess: context.hasWriteAccess,
-      hasSecretAccess: context.hasSecretAccess,
-    });
-    if (violation !== undefined) {
-      logger.warn('Firewall surfaced a Rule-of-Two violation', {
+
+    const evaluation = evaluateFirewallPolicy(
+      buildActionContext(effectiveTrustTier, context, options),
+      options?.action,
+      this.stages.audit ? this.auditTrail : undefined
+    );
+    const blocking = blockingViolations(evaluation);
+    if (blocking.length > 0) {
+      logger.warn('Firewall surfaced blocking policy violations', {
         user: meta.username,
         effectiveTrustTier,
-        rule: violation.rule,
+        scope: evaluation.scope,
+        rules: blocking.map((v) => v.rule),
       });
     }
-    return violation;
+    return evaluation;
   }
 
   /**
@@ -342,11 +360,12 @@ export class HostileInputFirewall {
     readonly effectiveTrustTier: TrustTier;
     readonly reputationGate: ReputationGateDecision | undefined;
     readonly atl: string;
-    readonly ruleOfTwoViolation: Violation | undefined;
+    readonly policy: FirewallPolicyEvaluation | undefined;
     readonly start: number;
   }): FirewallResult {
-    const { isAllowlisted, reputation, reputationGate, ruleOfTwoViolation } = parts;
-    const blocking = ruleOfTwoViolation?.severity === 'block';
+    const { isAllowlisted, reputation, reputationGate, policy } = parts;
+    const ruleOfTwoViolation = policy?.violations.find((v) => v.rule === 'RULE_OF_TWO');
+    const blocking = blockingViolations(policy).length > 0;
     return {
       sanitized: parts.sanitized,
       trust: parts.trust,
@@ -356,46 +375,16 @@ export class HostileInputFirewall {
       ...(reputationGate !== undefined ? { reputationGate } : {}),
       atl: parts.atl,
       ...(ruleOfTwoViolation !== undefined ? { ruleOfTwoViolation } : {}),
+      ...(policy !== undefined ? { policy } : {}),
       policyMode: this.policyMode,
       // Reached only when we did NOT refuse, so this is "audit mode saw
       // something enforce would have stopped". Under `off` it stays false: the
-      // signal is already on `ruleOfTwoViolation`, and reporting a would-be
+      // signal is already on `policy.violations`, and reporting a would-be
       // refusal for a mode that has not opted in would overstate the gate.
       wouldRefuse: blocking && this.policyMode === 'audit',
       auditEvents: this.auditTrail.query().map((e) => ({ id: e.id, type: e.type })),
       auditSink: this.auditSink,
       durationMs: Date.now() - parts.start,
-    };
-  }
-
-  /**
-   * The fail-closed half of the #5382 gate: under `enforce`, a blocking policy
-   * violation refuses the input instead of riding along as a signal on an
-   * `ok()` result that a caller checking only `result.ok` walks straight past.
-   *
-   * This gates the RESPONSE to a violation, never its detection. It cannot
-   * manufacture a refusal where the `policyEnforcement` stage never ran, and it
-   * cannot refuse a non-blocking (`warn`) violation — so `enforce` is not a
-   * kill switch, and an allowlisted maintainer stays served.
-   *
-   * @returns the refusal, or `undefined` when the input passes or the mode has
-   *          not opted in.
-   */
-  private refuseIfEnforcing(
-    violation: Violation | undefined,
-    meta: SourceMetadata,
-    effectiveTrustTier: TrustTier
-  ): FirewallError | undefined {
-    if (violation?.severity !== 'block' || this.policyMode !== 'enforce') return undefined;
-    logger.warn('Firewall REFUSED input under enforce mode', {
-      user: meta.username,
-      effectiveTrustTier,
-      rule: violation.rule,
-    });
-    return {
-      code: 'POLICY_REFUSED',
-      message: `Refused by firewall policy: ${violation.rule} — ${violation.message}`,
-      stage: 'policy',
     };
   }
 

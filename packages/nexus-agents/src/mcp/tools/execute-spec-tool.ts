@@ -170,6 +170,9 @@ function createExecuteSpecHandler(
         toolName: 'execute_spec',
         input,
         freshJobId: () => `es-${randomUUID()}`,
+        // #5393: deliberately arity-0 — `executeSpec` has no AbortSignal option,
+        // so taking the signal would flip `signalAccepted` to true with nothing
+        // reading it. Step-boundary gate first: #6305.
         run: () => createFullResponse(input, logger),
         logger,
       });

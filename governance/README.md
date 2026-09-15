@@ -68,6 +68,10 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
 4. The caller commits the ledger in the ratified PR. The ledger-only tip
    commit is expected; the gate (step 2, #5779 / #5131) treats
    `headSha ∈ {head, head^}` as bound when `head` touches only the ledger.
+   A head that later moves to pick up another PR's ledger line — a rebase,
+   or GitHub's "Update branch" merge from main — keeps its record under the
+   moved-head rule (`ratified-rebased`, #6256) as long as the moved head's
+   tree is the ratified patch replayed onto its base; see below.
 
 ### How the gate reads it (#5130 step 2)
 
@@ -79,8 +83,59 @@ and exits on it (#5131 — see "Fail-closed" below):
 `unanimous`; `panelCoverage` present with `errored === 0`; and the ledger is
 append-only against the base), or one of:
 
+- `ratified-rebased` — passes like `ratified` (#6256; redesigned by the
+  #6301 panel 1 review, which rejected a position-insensitive patch-identity
+  hash): no record binds `head` or `head^`, but one binds an EARLIER head
+  `A` of this PR and all four hold: (1) `A` is related to THIS PR — an
+  ancestor of the head (a merge from main kept it), or a head the workflow
+  measured this PR had (`PR_PRIOR_HEADS`: the `synchronize` event's `before`
+  plus the `beforeCommit`/`afterCommit` of every `HeadRefForcePushedEvent`
+  on the PR's own timeline, keyed on the PR NUMBER — never a branch name,
+  which a fork PR can share with a base-repo branch; and never the
+  workflow-run list, whose `pull_requests` empties once a PR merges, which
+  would have reddened the backstop), or the first parent of such a head
+  when it touched only the ledger (the tip a force-push replaces is the
+  ledger-only A1; the record binds A = A1^). Only a prior head a rebase
+  orphaned is fetched from `origin` by sha (GitHub serves any object by sha
+  — measured on #6252's rebased-away heads); nothing else is fetched,
+  because that fetch reaches the whole fork network; (2) `A` carries a
+  non-ledger change — `git diff-tree -r <merge-base(A, PR base)> A -- .
+':!governance/vote-records.jsonl'` lists a path. A ledger-only PR is
+  refused by name: its head replays to its own base, so its record would
+  match any commit at or before the fork point — a ledger-only PR binds to
+  `head`/`head^` only; (3) the head's TREE equals `A` replayed onto the
+  head's base: with `B_H = merge-base(head, PR base)`,
+  `T = git merge-tree --write-tree B_H A` (git's own contextual three-way
+  merge; a CONFLICT is `sha-mismatch` naming `conflict resolving <path> —
+content the panel never saw`, never accepted — a hand-resolved conflict
+  is what #6282 had), and
+  `git diff-tree -r T head^{tree} -- . ':!governance/vote-records.jsonl'`
+  is EMPTY; a path listed is `sha-mismatch` naming it. A clean rebase and
+  a clean merge from main produce the same tree, so one rule covers both.
+  Blob ids, not a rendered diff: position-sensitive by construction (the
+  same lines moved to another function are another blob), binary-safe, and
+  blind to `.gitattributes` — no `--text`, no order-sensitive-file list;
+  (4) the ledger at `A` is an ordered subsequence of the head ledger. The
+  notice names the ratified sha, the head, whether the relation is a merge
+  (`ancestor`) or a rebase (`prior-head`), and the replayed tree id, which
+  `git merge-tree --write-tree` reproduces from the checkout. What the rule
+  does NOT verify, disclosed: that `B_H` is the true base branch —
+  `PR_BASE_SHA` is taken from the workflow (`merge-base origin/<base>
+  <head>` pre-merge, `main~1` in the backstop), and everything main gained
+  between `A`'s fork point and `B_H` was never before THIS panel; it landed
+  through its own PRs and gates. The rule proves `head ≡ B_H ⊕ patch(A)`,
+  nothing about `B_H`. Both incidents that motivated the rule (2026-09-14):
+  #6252 ratified 7-0 at `fca64e9ea8`, rebased to `cce938eec2` for #6249's
+  ledger line, re-paneled (passes under the rule); #6282 ratified at
+  `43cb8bec`, merged from main to `8618d18d` with a hand-resolved SKILL.md
+  conflict, re-paneled (refused under the rule, naming the path — the
+  re-panel was right).
 - `no-record` — nothing binds this PR; an empty ledger is this, never `ratified`.
-- `sha-mismatch` — records bind this PR, none at an accepted head.
+- `sha-mismatch` — records bind this PR, none at an accepted head, and none
+  passes the moved-head rule; the line names, per recorded sha, why —
+  `object not found`, `not an ancestor of the head … not a head this PR
+had`, `no non-ledger change`, `conflict resolving <path>`, the head's
+  `tree differs … at <path>`, or `not measured` (no `PR_BASE_SHA`).
 - `not-approved` — a bound record's decision is not `approved`.
 - `wrong-error-policy` — a bound record records an `errorPolicy` other than
   `absolute_quorum` (#6211, schema tier 1.11). The record carries the
@@ -115,7 +170,9 @@ append-only against the base), or one of:
   rebase or a merge into main yields `base + A1 + B1`, but merging main INTO
   the branch (GitHub's "Update branch") yields `base + B1 + A1` — a
   legitimate refresh that a prefix rule refused. Outranks everything but
-  `ledger-invalid`.
+  `ledger-invalid`. The moved-head rule applies the same subsequence test
+  between the ledger at the ratified sha and the head ledger; a failure
+  there is this kind too, naming the ratified sha it was compared against.
 - `duplicate-id` — one id names two different records.
 
 An unreadable ledger (a directory at the path, a permissions error) prints
@@ -149,7 +206,9 @@ warn-first ended when it did.
 Precedence (the verdict's `kind`): `ledger-invalid` → `ledger-rewritten` →
 `duplicate-id` → `no-record` → `sha-mismatch` → `not-approved` →
 `wrong-error-policy` → `wrong-strategy` → `unmeasured-panel` →
-`degraded-panel` → `ratified`. **Report order differs from precedence** for
+`degraded-panel` → `ratified` / `ratified-rebased` (the per-record checks
+run over the records bound at the moved sha exactly as over a head-bound
+set, so a dissent there is `not-approved`). **Report order differs from precedence** for
 the per-record checks (the #6219 panel's note, applied at flip time): the
 printed line lists EVERY failing check over the bound records, with the
 misconfiguration kinds — `wrong-error-policy`, `wrong-strategy`,

@@ -218,6 +218,11 @@ evidence requirement and the same hazard: its soak needs durable denial records,
 in #5101. Write that criterion against a sink that is verified to produce events before
 setting a threshold on their count.
 
+Issue #5108 closed the loop: the deriver, its `checkAccess` enforcer, the `clawguard-eval`
+corpus and the `NEXUS_ACCESS_POLICY_MODE` reader were deleted, and the secret-path
+denylist they carried became the PolicyFirewall `secret-paths` rule — so the control
+now sits on the boundary whose soak #4988 measures.
+
 ---
 
 ## pr_review — criterion owned by Epic E.

@@ -20,7 +20,7 @@ describe('isProtectedPath', () => {
     expect(isProtectedPath('packages/nexus-agents/src/consensus/engine.ts')).toBe(true);
     expect(isProtectedPath('.rules/untrusted-input.md')).toBe(true);
     expect(isProtectedPath('.github/workflows/ci.yml')).toBe(true);
-    expect(isProtectedPath('src/security/access-constraint-deriver/index.ts')).toBe(true);
+    expect(isProtectedPath('src/security/audit-trail.ts')).toBe(true);
     expect(isProtectedPath('src/scm/token-resolver.ts')).toBe(true);
     expect(isProtectedPath('CODEOWNERS')).toBe(true);
     expect(isProtectedPath('CLAUDE.md')).toBe(true);

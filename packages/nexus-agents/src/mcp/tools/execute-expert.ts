@@ -32,18 +32,6 @@ import { getExpertFallbackChain, ROLE_TO_TASK_CATEGORY } from './create-expert-r
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import { createExpert } from '../../agents/experts/expert-factory.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
-// ClawGuard access-policy derivation (#1977, #2022).
-// When NEXUS_ACCESS_POLICY_MODE is unset/off, this is a no-op wrapper.
-import {
-  deriveAccessPolicy,
-  withAccessPolicy,
-  withAuditTrail,
-  resolveAccessPolicyMode,
-} from '../../security/access-constraint-deriver/index.js';
-// Durable AUDIT-mode violation persistence (#4097). Establishes the audit
-// trail in ALS so the access-policy middleware can mirror log-and-allow
-// violations to the shared hash chain — ONLY when the server threaded a logger.
-import { createDurableAuditTrail } from '../../security/audit-bridge.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 // Per-expert context-budget observer (#2031). Telemetry-only; never
 // influences the call. Emits `context_warning` when utilization crosses
@@ -118,9 +106,10 @@ export interface ExecuteExpertDeps extends BaseMcpToolDeps {
   /** Registry of created experts (shared with create_expert) */
   expertRegistry: Map<string, Expert>;
   /**
-   * Durable, hash-chained audit logger (#4097). When present, ClawGuard
-   * AUDIT-mode violations during the expert's nested tool calls are persisted
-   * to the shared store. Absent on the pure-CLI path → no trail established.
+   * Durable, hash-chained audit logger (#4097). Its only reader was the
+   * access-constraint deriver's ALS audit trail, deleted in #5108; nothing in
+   * this tool consumes it today. Kept because `ExecuteExpertDeps` is published
+   * — dropping the member is a breaking change for the next major (#6319).
    */
   auditLogger?: IAuditLogger;
   /** Optional CLI detection cache for checking available CLIs (Issue #747) */
@@ -363,73 +352,6 @@ function observeExpertContextIfOk(
   observeExpertContext(observation, logger);
 }
 
-/**
- * Derive a ClawGuard access policy for this expert invocation (#1977, #2022).
- *
- * Mirrors the orchestrate-tool pattern: in `off` mode returns a bypass
- * policy (zero behavior change); in audit/enforce modes derives a real
- * policy via the regex fallback (no LLM adapter on `ExecuteExpertDeps`).
- *
- * Never throws — derivation failure falls back to a permissive `off`
- * policy so expert execution is never blocked by a policy-derivation
- * bug.
- */
-async function deriveExpertAccessPolicy(
-  objective: string,
-  logger: ILogger | undefined,
-  trustTier: string | undefined
-): Promise<Awaited<ReturnType<typeof deriveAccessPolicy>>> {
-  const mode = resolveAccessPolicyMode();
-  try {
-    // Closes #2993 (expert path): trustTier was hardcoded to '1' regardless
-    // of caller. Now threaded from secure-handler RequestContext; missing
-    // defaults to '4' so derivation runs at the strictest tier.
-    // `objective` is the prefix-free task description (#3238 review): the
-    // informational memory prefix is excluded so it cannot widen the policy.
-    const policy = await deriveAccessPolicy(objective, {
-      mode,
-      trustTier: (trustTier ?? '4') as '1' | '2' | '3' | '4',
-    });
-    if (mode !== 'off') {
-      logger?.info('access-policy: derived (expert)', {
-        mode,
-        source: policy.source,
-      });
-    }
-    return policy;
-  } catch (error) {
-    // Fail closed under active enforcement, fail safe under audit/off.
-    // See `orchestrate.ts:deriveOrchestratePolicy` for the full rationale
-    // (#2993). Mirror the behavior here so the two MCP entry points to
-    // policy derivation don't diverge.
-    logger?.warn('access-policy: derivation failed (expert)', {
-      mode,
-      error: getErrorMessage(error),
-      failClosed: mode === 'enforce' || mode === 'confirm_risky',
-    });
-    if (mode === 'enforce' || mode === 'confirm_risky') {
-      return {
-        allowedTools: [],
-        allowedPathPatterns: [],
-        allowedOperations: [],
-        objectiveHash: 'derivation-failed',
-        derivedAt: getTimeProvider().nowIso(),
-        source: 'bypass',
-        mode,
-      };
-    }
-    return {
-      allowedTools: '*',
-      allowedPathPatterns: [],
-      allowedOperations: '*',
-      objectiveHash: 'derivation-failed',
-      derivedAt: getTimeProvider().nowIso(),
-      source: 'bypass',
-      mode,
-    };
-  }
-}
-
 function injectErrorHints(task: Task, role: string): void {
   try {
     const hints = getToolMemory().getRelevantErrorHints(role);
@@ -596,32 +518,6 @@ async function classifyExpertResult(opts: ClassifyExpertResultOpts): Promise<Exp
 }
 
 /**
- * Derive the access policy (#1977) and run `expert.execute(task)` under it,
- * establishing a durable audit trail in ALS when a logger was threaded so
- * ClawGuard AUDIT-mode violations from the expert's nested tool calls are
- * persisted to the shared hash chain (#4097). No trail → byte-identical path.
- *
- * execute-expert runs through MCP's native task handler (not the
- * ContextAwareHandler chain), so HandlerContext / RequestContext isn't
- * available here. The deriver gets `undefined` and defaults to trust tier '4'
- * (untrusted). End-to-end trust-tier wiring is a follow-up (see #2993).
- */
-async function executeExpertUnderPolicy(
-  deps: ExecuteExpertDeps,
-  expert: Expert,
-  task: Parameters<Expert['execute']>[0],
-  policyObjective: string
-): Promise<Awaited<ReturnType<Expert['execute']>>> {
-  const policy = await deriveExpertAccessPolicy(policyObjective, deps.logger, undefined);
-  const auditTrail = createDurableAuditTrail(deps.auditLogger);
-  const runExpert = (): ReturnType<Expert['execute']> => expert.execute(task);
-  return withAccessPolicy(
-    policy,
-    auditTrail !== undefined ? () => withAuditTrail(auditTrail, runExpert) : runExpert
-  );
-}
-
-/**
  * Runs expert work under a heartbeat session whose liveness comes from progress
  * (#4665).
  *
@@ -682,9 +578,6 @@ async function runExpertTask(
   const { expertId } = args;
   const contextPrefix = await maybeFetchContextPrefix(args.task, deps.logger);
   const task = buildTask(args, contextPrefix);
-  // Access policy is derived from the prefix-free description so accumulated
-  // memory context can never widen the derived operations (#3238 review).
-  const policyObjective = buildTask(args).description;
   injectErrorHints(task, expert.role);
 
   // Proactive fallback for degraded experts (#1401)
@@ -699,7 +592,7 @@ async function runExpertTask(
     async (ctx) => {
       const startTime = getTimeProvider().now();
       const result = await runExpertUnderHeartbeat(expertId, deps.logger, () =>
-        executeExpertUnderPolicy(deps, expert, task, policyObjective)
+        expert.execute(task)
       );
       const durationMs = getTimeProvider().now() - startTime;
       observeExpertContextIfOk(result, expert, task, durationMs, deps.logger);

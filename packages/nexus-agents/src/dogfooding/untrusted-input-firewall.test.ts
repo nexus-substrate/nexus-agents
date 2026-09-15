@@ -11,8 +11,11 @@ import { createGitHubAdapter } from '../security/firewall/github-adapter.js';
 import { classifyTrust } from '../security/trust-classifier.js';
 import { assessReputation, ReputationCache } from '../security/reputation-model.js';
 import type { IAuditLogger } from '../audit/audit-types.js';
+import { err, ok } from '../core/index.js';
+import type { AgentAction } from '../security/action-schema.js';
 import {
   configureUntrustedInputFirewall,
+  evaluateActionThroughFirewall,
   getUntrustedInputFirewall,
   runUntrustedInputFirewall,
   _setUntrustedInputFirewallForTests,
@@ -144,6 +147,46 @@ describe('runUntrustedInputFirewall', () => {
     expect(result.value.trust.trustTier).toBe('3');
   });
 
+  it('under audit: an action-scoped block on the live path reports wouldRefuse (#5380)', () => {
+    // The live wrapper used to count Rule of Two only. A NONE author driving a
+    // DraftReply under a read-only posture trips no Rule of Two, so before
+    // #5380 this read `wouldRefuse: false` — an under-count of exactly the
+    // kind the audit-mode telemetry exists to size.
+    _setUntrustedInputFirewallForTests(
+      new HostileInputFirewall({
+        adapter: createGitHubAdapter(),
+        contentDowngrade: false,
+        policyMode: 'audit',
+      })
+    );
+    const result = runUntrustedInputFirewall(issue(), {
+      context: READ_ONLY,
+      action: {
+        type: 'DraftReply',
+        body: 'Thanks for the report, we will look into it.',
+        requiresApproval: true,
+        sources: [{ type: 'repoFile', path: 'README.md' }],
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.ruleOfTwoViolation).toBeUndefined();
+    expect(result.value.wouldRefuse).toBe(true);
+    expect(result.value.policy?.violations.map((v) => v.rule)).toContain('UNTRUSTED_INFLUENCE');
+  });
+
+  it('with no action the live path names the checks it could not run (#5380)', () => {
+    // Both live callers classify BEFORE they have an action, so this is the
+    // shape their records take today: Rule of Two measured, the rest unmeasured
+    // and said so — not silently passed.
+    _setUntrustedInputFirewallForTests(undefined);
+    const result = runUntrustedInputFirewall(issue(), { context: READ_ONLY });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.policy?.scope).toBe('context');
+    expect(result.value.policy?.unmeasured).toContain('UNTRUSTED_INFLUENCE');
+  });
+
   it('under enforce: a Rule-of-Two violation refuses the input as an Error', () => {
     _setUntrustedInputFirewallForTests(
       new HostileInputFirewall({
@@ -175,6 +218,191 @@ describe('runUntrustedInputFirewall', () => {
     const events = getUntrustedInputFirewall()
       .getAuditTrail()
       .query({ type: 'trust_classification' });
+    expect(events).toHaveLength(1);
+  });
+});
+
+describe('evaluateActionThroughFirewall (#5383)', () => {
+  const draftReply: AgentAction = {
+    type: 'DraftReply',
+    body: 'Thanks for the report, we will look into it.',
+    requiresApproval: true,
+    sources: [{ type: 'repoFile', path: 'README.md' }],
+  };
+
+  function firewall(policyMode?: 'off' | 'audit' | 'enforce'): HostileInputFirewall {
+    return new HostileInputFirewall({
+      adapter: createGitHubAdapter(),
+      contentDowngrade: false,
+      ...(policyMode !== undefined ? { policyMode } : {}),
+    });
+  }
+
+  afterEach(() => {
+    _setUntrustedInputFirewallForTests(undefined);
+  });
+
+  it('under off: returns the full evaluatePolicy verdict for the caller to enforce — the mode refuses nothing', () => {
+    _setUntrustedInputFirewallForTests(firewall('off'));
+    const result = evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.refused).toBe(false);
+    if (result.value.refused) return;
+    // A NONE author (tier 3) cannot drive a DraftReply: denied by the verdict,
+    // not by a refusal, so the caller still holds the decision under `off`.
+    expect(result.value.allowed).toBe(false);
+    expect(result.value.violations.map((v) => v.rule)).toEqual([
+      'INSUFFICIENT_TRUST',
+      'UNTRUSTED_INFLUENCE',
+    ]);
+    expect(result.value.requiresApproval).toBe(false);
+    expect(result.value.effectiveTrustTier).toBe('3');
+    expect(result.value.policyMode).toBe('off');
+    expect(result.value.wouldRefuse).toBe(false);
+  });
+
+  it('under audit: the same verdict, with wouldRefuse as the telemetry', () => {
+    _setUntrustedInputFirewallForTests(firewall('audit'));
+    const result = evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.refused) return;
+    expect(result.value.allowed).toBe(false);
+    expect(result.value.wouldRefuse).toBe(true);
+  });
+
+  it('under enforce: the firewall refuses, and the refusal carries the blocking rules it refused on', () => {
+    _setUntrustedInputFirewallForTests(firewall('enforce'));
+    const result = evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual({
+      refused: true,
+      allowed: false,
+      policyMode: 'enforce',
+      violations: [
+        expect.objectContaining({ rule: 'INSUFFICIENT_TRUST', severity: 'block' }),
+        expect.objectContaining({ rule: 'UNTRUSTED_INFLUENCE', severity: 'block' }),
+      ],
+    });
+  });
+
+  it('an allowed action reads allowed with its own requiresApproval', () => {
+    _setUntrustedInputFirewallForTests(firewall('off'));
+    const result = evaluateActionThroughFirewall(issue({ authorAssociation: 'OWNER' }), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '1',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.refused) return;
+    expect(result.value.allowed).toBe(true);
+    expect(result.value.violations).toEqual([]);
+    // DraftReply is approval-required by policy; surfaced, never defaulted.
+    expect(result.value.requiresApproval).toBe(true);
+  });
+
+  it('fails closed when the policy stage did not run: no verdict, not a denial', () => {
+    _setUntrustedInputFirewallForTests(
+      new HostileInputFirewall({
+        adapter: createGitHubAdapter(),
+        contentDowngrade: false,
+        stages: { policyEnforcement: false },
+      })
+    );
+    const result = evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('did not evaluate policy for action DraftReply');
+    expect(result.error.message).toContain('disabled');
+  });
+
+  it('fails closed when the run answered without an action scope', () => {
+    const fw = firewall('off');
+    const real = fw.process.bind(fw);
+    vi.spyOn(fw, 'process').mockImplementation((input, options) => {
+      const r = real(input, options);
+      if (!r.ok || r.value.policy === undefined) return r;
+      return ok({
+        ...r.value,
+        policy: { scope: 'context', reason: 'no-action-supplied', violations: [], unmeasured: [] },
+      });
+    });
+    _setUntrustedInputFirewallForTests(fw);
+    const result = evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('scope was context');
+  });
+
+  it('fails closed when the run enforces a different tier than the caller classified (#5719)', () => {
+    _setUntrustedInputFirewallForTests(firewall('off'));
+    // A NONE author is tier 3; the caller claims the classification enforced 2.
+    const result = evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '2',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('enforced tier 3 for action DraftReply but tier 2');
+  });
+
+  it('a refusal that names no rule is an error, not a policy decision', () => {
+    const fw = firewall('enforce');
+    vi.spyOn(fw, 'process').mockReturnValue(
+      err({ code: 'POLICY_REFUSED', message: 'Refused by firewall policy: ', stage: 'policy' })
+    );
+    _setUntrustedInputFirewallForTests(fw);
+    const result = evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('POLICY_REFUSED');
+  });
+
+  it('a non-policy firewall error fails closed as an Error', () => {
+    _setUntrustedInputFirewallForTests(firewall('off'));
+    const result = evaluateActionThroughFirewall(
+      { type: 'issue', username: '', authorAssociation: 'NONE', title: 't', body: 'b' },
+      { context: READ_ONLY, action: draftReply, enforcedTier: '3' }
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('EXTRACTION_FAILED');
+  });
+
+  it('records the per-action decision on the audit trail as a policy_gate event', () => {
+    _setUntrustedInputFirewallForTests(firewall('off'));
+    evaluateActionThroughFirewall(issue(), {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    const events = getUntrustedInputFirewall().getAuditTrail().query({ type: 'policy_gate' });
     expect(events).toHaveLength(1);
   });
 });

@@ -294,9 +294,11 @@ describe('ast-rule-runner (#4249 child C)', () => {
 
   describe('unreadable / non-directory scan root fails LOUD — #4277 gap 2', () => {
     it('throws when targetDir is a FILE, not a directory (no empty "clean" result)', async () => {
-      // A lone .py file within cwd: passes the traversal guard, then must be
-      // rejected by the is-directory check rather than yielding {findings:[]}.
-      const filePath = join('src', 'security', 'ast-rules', 'fixtures', 'sample.py');
+      // A lone .py file anchored to this test file (NOT to process.cwd() — #5099:
+      // a cwd-relative path resolved to <repo>/src/... under `--root` and hit the
+      // ENOENT branch instead). Inside cwd, so it passes the traversal guard and
+      // must be rejected by the is-directory check rather than yielding {findings:[]}.
+      const filePath = join(FIXTURES_DIR, 'sample.py');
       await expect(runAstQaRules({ rulesDir: RULES_DIR, targetDir: filePath })).rejects.toThrow(
         /must be a directory/
       );

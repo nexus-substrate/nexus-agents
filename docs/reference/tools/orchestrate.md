@@ -17,7 +17,7 @@ Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coo
 | Parameter | Type | Required | Constraints | Description |
 | --------- | ---- | -------- | ----------- | ----------- |
 | `task` | string | yes | minLength 1; maxLength 50000 | Task description to orchestrate |
-| `context` | object | no | — | Additional context for the task |
+| `context` | object | no | — | Additional context for the task. `filePaths: string[]` (paths the task touches) feeds the AOrchestra expert trigger table (NEXUS_AORCHESTRA, default on). |
 | `maxIterations` | number | no | min 1; max 50; default 10 | Maximum iterations for orchestration |
 | `timeout` | number | no | min 1000; max 600000 | Timeout in milliseconds for orchestration (default: 300000) |
 | `dispatch` | enum | no | one of: sync \| async | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). |

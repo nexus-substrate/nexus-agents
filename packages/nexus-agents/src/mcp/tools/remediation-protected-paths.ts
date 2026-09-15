@@ -47,7 +47,6 @@ export const PROTECTED_PATH_FRAGMENTS: readonly string[] = [
   // Security + auth + secrets + access-control.
   'src/security/',
   'token-resolver',
-  'access-constraint',
   'secret',
   'credential',
 ];

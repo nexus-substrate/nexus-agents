@@ -20,7 +20,11 @@ export interface QualityScore {
   readonly relevance: number;
   /** Normalized impact metric (0-1) - citation count or star count. */
   readonly impact: number;
-  /** Recency decay (0-1) - newer items score higher. */
+  /**
+   * Recency decay (0-1) - newer items score higher. Halves each year and is
+   * reported at 2dp, so it is exactly 0 for anything published more than
+   * ~7.7 years ago (#4956).
+   */
   readonly recency: number;
   /**
    * Whether {@link QualityScore.recency} is a measurement (#4841).
@@ -92,8 +96,16 @@ const RECENCY_HALF_LIFE_DAYS = 365;
  * somewhere, and the old `max(0, 1 - days/730)` bottomed out at two years:
  * every source older than that scored exactly 0.0, so a 2024 paper and a 2015
  * paper were indistinguishable to a ranking that sorts on composite alone
- * (#4882). Halving approaches zero without ever reaching it, so age keeps
- * separating sources however old they get.
+ * (#4882). Halving approaches zero without reaching it, but the value this
+ * function returns is not the value `scoreDiscoveredItem` reports: that is
+ * rounded to 2dp, so the REPORTED recency is exactly 0 once the curve drops
+ * below 0.005 — about 7.7 years — and sources older than that are again
+ * indistinguishable. #4908 claimed the reported value never reaches zero;
+ * it does, and #4956 measured where. The limit is documented rather than
+ * removed because `composite` is also 2dp and the recency weight is 0.2: the
+ * composite gap between an 8-year-old and a 20-year-old source is ~0.0008,
+ * which rounds away at any precision `recency` alone is reported at. Age
+ * discriminates over ~7.7 years, up from the old curve's 2.
  *
  * `undefined` or unparseable yields neutral with `measured: false`. Not 1.0:
  * an unknown age is not evidence of freshness, and reporting it as fresh is

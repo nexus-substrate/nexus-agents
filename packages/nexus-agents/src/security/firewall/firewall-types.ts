@@ -11,6 +11,8 @@
 
 import { z } from 'zod';
 import type { IAuditLogger } from '../../audit/audit-types.js';
+import type { AgentAction } from '../action-schema.js';
+import type { Violation } from '../policy-gate.js';
 import type { FirewallPolicyMode } from './firewall-policy-mode.js';
 import type {
   ReputationAssessment,
@@ -207,6 +209,26 @@ export interface FirewallProcessOptions {
   readonly reputation?: {
     readonly assessment: ReputationAssessment | undefined;
   };
+  /**
+   * The action the caller intends to take on this input, for THIS call (#5380).
+   *
+   * With it, the `policyEnforcement` stage runs the full `evaluatePolicy` set —
+   * the same seven checks production runs — against the enforced tier and the
+   * call's access posture, and `FirewallResult.policy` carries every violation
+   * plus the decision's own `requiresApproval`. Without it only the Rule of
+   * Two, the one context-only check, can run; the six action-scoped checks are
+   * then listed under `policy.unmeasured` rather than silently counted as
+   * passed. `process()` is input-shaped and constructs no action itself, so
+   * this is the only way those checks reach it.
+   */
+  readonly action?: AgentAction;
+  /**
+   * The repository's label set, consulted by the label-validity check when
+   * `action` is a `ProposeLabels` (#5380). When absent, `evaluatePolicy`
+   * reports `LABEL_SET_UNAVAILABLE` as a blocking violation — unevaluable
+   * label validity fails closed, exactly as it does on the production path.
+   */
+  readonly existingLabels?: ReadonlySet<string>;
 }
 
 // ============================================================================
@@ -253,4 +275,12 @@ export interface FirewallError {
   readonly code: FirewallErrorCode;
   readonly message: string;
   readonly stage: string;
+  /**
+   * The blocking policy violations behind a `POLICY_REFUSED` from the policy
+   * stage (#5383) — the structured form of the rules `message` names, so a
+   * consumer that maps a refusal onto its own action record can list the rule
+   * ids without parsing the message. Absent for every other code, and for the
+   * corroboration stage's refusal, which carries no `Violation` list.
+   */
+  readonly violations?: readonly Violation[];
 }

@@ -272,6 +272,9 @@ describe('ResilientAdapter', () => {
       for (const listener of listeners) {
         listener({
           cliName: 'claude',
+
+          armId: 'claude',
+
           previousState: 'closed',
           newState: 'open',
           timestamp: Date.now(),
@@ -295,6 +298,9 @@ describe('ResilientAdapter', () => {
       for (const listener of listeners) {
         listener({
           cliName: 'gemini',
+
+          armId: 'gemini',
+
           previousState: 'closed',
           newState: 'open',
           timestamp: Date.now(),
@@ -426,6 +432,9 @@ describe('ResilientAdapter', () => {
       for (const listener of listeners) {
         listener({
           cliName: 'claude',
+
+          armId: 'claude',
+
           previousState: 'open',
           newState: 'half-open',
           timestamp: Date.now(),
@@ -445,6 +454,9 @@ describe('ResilientAdapter', () => {
       for (const listener of listeners) {
         listener({
           cliName: 'claude',
+
+          armId: 'claude',
+
           previousState: 'half-open',
           newState: 'closed',
           timestamp: Date.now(),

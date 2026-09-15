@@ -58,10 +58,18 @@ function classifyFailure(criterion: CriterionResult, outputs: readonly string[])
   };
 }
 
-/** Determines the failure type based on context. */
+/**
+ * Determines the failure type based on context.
+ *
+ * `partial_match` reads `partialResults` — results that overlapped some of the
+ * criterion's keywords without clearing the match threshold. It must NOT read
+ * `matchedResults`: on an unmet criterion that array is empty by construction
+ * (`met` is defined as `matchedResults.length > 0`), which is what made this
+ * branch unreachable and every suggestion priority 1 before #4827.
+ */
 function determineFailureType(criterion: CriterionResult, outputs: readonly string[]): FailureType {
   if (outputs.length === 0) return 'no_output';
-  if (criterion.matchedResults.length > 0) return 'partial_match';
+  if (criterion.partialResults.length > 0) return 'partial_match';
   return 'missing_implementation';
 }
 
@@ -77,9 +85,12 @@ function buildExplanation(type: FailureType, criterion: string): string {
   }
 }
 
-/** Suggests an improvement for an unmet criterion. */
+/**
+ * Suggests an improvement for an unmet criterion. A criterion nothing resembled
+ * ranks above (priority 1) one that something partially addressed (priority 2).
+ */
 function suggestImprovement(criterion: CriterionResult): ImprovementSuggestion {
-  const hasPartial = criterion.matchedResults.length > 0;
+  const hasPartial = criterion.partialResults.length > 0;
   return {
     action: hasPartial
       ? `Refine implementation to fully satisfy: "${criterion.criterion}"`

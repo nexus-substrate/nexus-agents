@@ -1,5 +1,118 @@
 # nexus-agents
 
+## 8.63.0
+
+### Minor Changes
+
+- [#6325](https://github.com/nexus-substrate/nexus-agents/pull/6325) [`5fe011a`](https://github.com/nexus-substrate/nexus-agents/commit/5fe011a38315d2baa4172e44c9f485a885f2bd54) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `execute_spec` failure analysis can now report a partial match. `CriterionResult` gains a required `partialResults: string[]` — the execution results that overlapped some of a criterion's keywords without clearing the 0.5 match threshold. `analyzeFailures` reads that field for its `partial_match` verdict and priority-2 "Refine implementation" suggestion; before, both read `matchedResults`, which is empty on every unmet criterion by construction (`met` is defined as `matchedResults.length > 0`), so every failed criterion was classified `missing_implementation` or `no_output` at priority 1 and the priority field could not rank anything. `met` and `matchedResults` keep their meaning. Readers of the schema see one added field; a caller hand-building a `SpecExecutionResult` for `analyzeFailures` must now supply `partialResults` (no in-tree caller does this by hand).
+
+  Three sites from the same sweep, no runtime change to their verdicts: the `orchestrate` tool now passes `context.filePaths` (string[]) to the AOrchestra planner's file-pattern trigger table, which no in-tree caller had ever fed; the MCP server's `initializeFeedbackIntegration` drops the `router` option its one caller never supplied and its init log names the in-memory-collector state instead of a `hasRouter` that could only be false; and the `authority-tier-guard` module header states that the tier ceiling is exercised at a constant `suggest` floor by live traffic, so `above_declared_tier` is covered by unit tests, not by traffic. Closes [#4827](https://github.com/nexus-substrate/nexus-agents/issues/4827).
+
+## 8.62.0
+
+### Minor Changes
+
+- [#6321](https://github.com/nexus-substrate/nexus-agents/pull/6321) [`b2eddda`](https://github.com/nexus-substrate/nexus-agents/commit/b2eddda39e8d846001276518cd902e19d8543b44) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - PolicyFirewall gains a `secret-paths` rule, registered in the default rule set ahead of `safe-paths` and exported beside it ([#5108](https://github.com/nexus-substrate/nexus-agents/issues/5108)). It denies tool calls whose path argument lands on a secret-bearing file — `~/.ssh/**`, `~/.aws/**`, `~/.azure/**`, `~/.gcp/**`, `~/.config/gcloud/**`, `~/.kube/config`, `.env` and `.env.*` at any depth, `/etc/shadow`, `/etc/sudoers`, `/etc/sudoers.d/**`, `*.pem`, `*_rsa`, `*_ed25519`, `ssh/id_*`, `id_rsa*`, `secrets.*`, `credentials.*`, `private_key.*` — regardless of `allowedPaths`, so widening the allowlist to `$HOME` no longer re-exposes `~/.ssh`, and `.env` inside the repo root is refused even though it passes containment. The path is canonicalized before matching (tilde expansion, `path.resolve`, and `realpath` when the file exists), so a `../` traversal or a symlink is judged by where it lands. A call with no path argument is not judged. What an operator observes today: the process firewall is still staged in `warn` mode, so a hit is reported as a would-deny in the log and the audit chain and the call proceeds; [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988) decides the flip to `enforce`, where the call is refused with `Policy denied: Path '<canonical>' matches secret-path pattern '<glob>'`.
+
+  The access-constraint deriver (`security/access-constraint-deriver/`: LLM induction prompt, keyword fallback, policy cache, `checkAccess` enforcer, denylist, chain adapter, MCP guard, trust gate) and `security/clawguard-eval/` are deleted, along with the `deriveAccessPolicy` calls in `orchestrate` and `execute_expert` and the `withAccessPolicy` / `withAuditTrail` AsyncLocalStorage channels. None of it gated a call: the middleware mount was removed in [#5107](https://github.com/nexus-substrate/nexus-agents/issues/5107), `checkAccess` had no production caller, and under `NEXUS_ACCESS_POLICY_MODE=audit|enforce` the deriver spent one model call per `orchestrate` (a keyword-fallback derivation per `execute_expert`) to write a policy nobody read. Operators running those modes see one fewer model call per `orchestrate` and no `access-policy: derived` log line. `NEXUS_ACCESS_POLICY_MODE` now has no reader; it stays registered in the env schema so a set value is not reported as a typo, and is retired together with its documentation row under [#6303](https://github.com/nexus-substrate/nexus-agents/issues/6303). `emitClawGuardViolation` is removed; the `ClawGuardViolationEvent` audit type stays in the published `AuditEvent` union (no producer writes it any more) until the next major ([#6319](https://github.com/nexus-substrate/nexus-agents/issues/6319)).
+
+## 8.61.1
+
+### Patch Changes
+
+- [#6317](https://github.com/nexus-substrate/nexus-agents/pull/6317) [`64c09d9`](https://github.com/nexus-substrate/nexus-agents/commit/64c09d9f8b802bb299181e8d1c5da14318689acd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Research scoring: the `recency` field of a `QualityScore` is documented as what it is. The 8.x changeset for the exponential decay said the value "approaches zero without reaching it"; the curve does, but the reported value is rounded to 2dp and is exactly 0 for anything published more than ~7.7 years ago. No scoring change — `composite` is also 2dp with recency weighted 0.2, so an 8-year-old and a 20-year-old source already rank identically at any precision `recency` alone could be reported at. The docstrings on `scoreRecency` and `QualityScore.recency` now state the ~7.7-year limit, and tests pin the reported floor (0 at 10 years, 0.01 at 7) so a precision change has to be deliberate. Refs [#4956](https://github.com/nexus-substrate/nexus-agents/issues/4956).
+
+## 8.61.0
+
+### Minor Changes
+
+- [#6311](https://github.com/nexus-substrate/nexus-agents/pull/6311) [`abfcc8c`](https://github.com/nexus-substrate/nexus-agents/commit/abfcc8cc5e69b1c0774288bc1df01860d01a3df1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `issue_triage` and `pr_review` now evaluate every action's policy through `HostileInputFirewall` ([#5383](https://github.com/nexus-substrate/nexus-agents/issues/5383)): each action is one `process({ action, existingLabels })` run and the decision is read from `FirewallResult.policy`, so the dogfooding path has one composition instead of a firewall beside a direct `evaluatePolicy` call. The verdicts are unchanged in every `NEXUS_FIREWALL_POLICY` mode — under `off` and `audit` the caller still enforces `policy.allowed` as `policyApproved` / the review-posting block; under `enforce` a refused action lands on the same record as `policyApproved: false` with its rules. Two things a consumer will notice: each per-action decision now reaches the durable audit trail as a `policy_gate` record (the direct call recorded nothing), and a triage or posted review emits one `trust_classification` record per firewall run — the classification plus one per action — instead of one. A run whose policy stage did not evaluate the action, or that enforced a different tier than the classification, fails the tool closed instead of recording a verdict.
+
+  `FirewallError` gains an optional `violations` list: a `POLICY_REFUSED` from the policy stage now carries the blocking violations it refused on, so a consumer can record the rule ids without parsing the message.
+
+## 8.60.2
+
+### Patch Changes
+
+- [#6308](https://github.com/nexus-substrate/nexus-agents/pull/6308) [`2830480`](https://github.com/nexus-substrate/nexus-agents/commit/28304804e4434985a8291c8425e06fd3b4691c01) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` now interrupts an in-flight `pr_review`, `supply_chain_tradeoff_panel` and `run_graph_workflow` job ([#5393](https://github.com/nexus-substrate/nexus-agents/issues/5393)). Each of those tools' async runner takes the `AbortSignal` that `runAsJob` hands it: the two panels pass it to the vote collector, which stops launching the seats that have not started (a seat already inside its adapter call settles, since its cost is incurred either way), and the graph tool passes it to the executor, which stops at the next super-step. Their job records now report `signalAccepted: true` because the runner arity changed, not because it was asserted. Before this, cancelling a 5-voter `pr_review` marked the job cancelled and let every remaining voter run.
+
+  The six other async tools (`orchestrate`, `run`, `run_pipeline`, `run_dev_pipeline`, `run_workflow`, `execute_spec`) still report `signalAccepted: false`; their engines have no cancellation surface yet, and each site now says so in code (tracked in [#6305](https://github.com/nexus-substrate/nexus-agents/issues/6305)).
+
+## 8.60.1
+
+### Patch Changes
+
+- [#6302](https://github.com/nexus-substrate/nexus-agents/pull/6302) [`04acf04`](https://github.com/nexus-substrate/nexus-agents/commit/04acf043d5da9c990f43cdb5a3f22ffeee493806) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The ClawGuard access-policy middleware is no longer mounted on the MCP tool middleware chain ([#5107](https://github.com/nexus-substrate/nexus-agents/issues/5107), step 2 of epic [#5105](https://github.com/nexus-substrate/nexus-agents/issues/5105); [#5022](https://github.com/nexus-substrate/nexus-agents/issues/5022) decision). It had been advisory since [#5106](https://github.com/nexus-substrate/nexus-agents/issues/5106) and, for every inbound MCP request, a pass-through: it read its policy from an AsyncLocalStorage store that only the in-process `orchestrate` / `execute_expert` callers populate, never an inbound dispatch. PolicyFirewall, consulted from `createSecureHandler` against the process-wide firewall wired at startup, is now the only authorization mechanism on that boundary — and it still runs in forced `warn` mode, so no boundary can deny a tool call yet; [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988) owns reopening enforce now that [#5114](https://github.com/nexus-substrate/nexus-agents/issues/5114) has classified every tool.
+
+  What changes for operators: the `MiddlewareSkipConfig.accessPolicy` flag is gone (no production caller ever set it; it was not part of the published API). `NEXUS_ACCESS_POLICY_MODE` is still read — by `orchestrate` and `execute_expert`, which derive a ClawGuard policy (an LLM call under `audit` / `enforce` when a model adapter is present) and place it in ALS, and by the reputation-model and firewall-policy-mode resolvers that document coercing identically to it — but after this change nothing on the dispatch path consumes the derived policy or writes ClawGuard audit-mode violations to the durable trail. The `access-policy: advisory violation` log line and the ClawGuard `unbypassable` denylist verdicts no longer appear for any tool call. Step 3 ([#5108](https://github.com/nexus-substrate/nexus-agents/issues/5108)) decides what to delete.
+
+  The middleware chain now reports the stages it built at debug level (`Middleware chain built`, with the ordered `stages` list) so the composition of the dispatch boundary is observable rather than inferred; a test pins that list and fails if a second authorization stage is ever mounted.
+
+## 8.60.0
+
+### Minor Changes
+
+- [#6290](https://github.com/nexus-substrate/nexus-agents/pull/6290) [`8268a79`](https://github.com/nexus-substrate/nexus-agents/commit/8268a79b2dd4effa99f0c32751bccb6f3f8b8bab) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Dynamic API endpoints can now be registered and health-tracked as their own arm ([#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392) increment 1). Shipped ADDITIVELY per the [#6290](https://github.com/nexus-substrate/nexus-agents/issues/6290) follow-up panel: NO published id type or reader type widens in this release. `ApiVendor`, `ApiArmId` (`api:anthropic` | `api:openai` | `api:google` | `api:custom-openai`), `RoutingArmId`, the persisted `OutcomeCli` union and its Zod schema are byte-identical to 8.x, and `ApiVendor` is not deprecated. The union of endpoint ids into `RoutingArmId` / `OutcomeCli`, and the removal of the `CliName`-typed readers, are batched for 9.0 in [#6291](https://github.com/nexus-substrate/nexus-agents/issues/6291) — until then an endpoint arm cannot enter an outcome record.
+
+  What is added:
+
+  - `EndpointArmId = api:<endpoint>` — a SEPARATE type over a validated endpoint identity (lowercase alphanumerics plus `.`, `_`, `-`; 1–64 chars; no `:`, `/`, `@` or whitespace, so a base URL or credential can never become an arm id). `isEndpointArmId()` is its runtime guard; every existing `ApiArmId` literal passes it. `isCliName()` is the runtime guard for the four CLI slots.
+  - `ObservedArmId = RoutingArmId | EndpointArmId` — the arm type the breaker and adapter registries observe. `observedArmDisplaySlot()` maps any observed arm to its `CliName` display slot; an endpoint it does not know collapses to `opencode` explicitly. `routingArmDisplaySlot()` is unchanged.
+  - `CircuitBreakerRegistry` gains `getArmBreaker()`, `isArmOpen()`, `resetArm()`, `getAllArmSnapshots()`, `getHealthyArms()`, `getUnhealthyArms()`, all typed over `ObservedArmId`. The existing `CliName`-typed methods keep their exact signatures and are now filtered views over the same arm-keyed map: a registered `api:*` arm appears in the `*Arms` readers and never in `getHealthyClis()` / `getUnhealthyClis()` / `getAllSnapshots()`.
+  - `CircuitStateChangeEvent` and `CircuitError` gain `armId: ObservedArmId`; `cliName` keeps its `CliName` type and is the display slot of `armId`. The `CircuitError` constructor still accepts the 8.x option shape — `armId` is an optional option that defaults to `cliName`. The breaker is the only producer of `CircuitStateChangeEvent` in tree; a listener that constructs one by hand must now supply `armId`.
+  - `RegistrySnapshot` gains `cachedArms: ObservedArmId[]` (every cached arm); `cachedAdapters` keeps its `CliName[]` type and lists the CLI slots only.
+  - `UnifiedAdapterRegistry` gains `registerApiArm(arm: EndpointArmId, adapter)` and `getAdapterForArm(arm: ObservedArmId)`; an `api:*` arm is never synthesised, only returned when registered, and an id that fails the endpoint validator is refused at runtime.
+
+  No routing behaviour changes: `createAllAdapters()` mints exactly the same arm ids as before in both billing modes, and a compile-time test pins `ApiArmId` to its four literals until [#6291](https://github.com/nexus-substrate/nexus-agents/issues/6291) removes that pin deliberately.
+
+## 8.59.1
+
+### Patch Changes
+
+- [#6282](https://github.com/nexus-substrate/nexus-agents/pull/6282) [`32fc91e`](https://github.com/nexus-substrate/nexus-agents/commit/32fc91e3fd61d14bf44579546d17920586bbe910) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `verifyClaims` no longer passes an empty claims registry. A `ClaimsRegistry` with zero claims used to verify as `passed: true` (`[].every(...)` is `true`); it now returns `passed: false` with a new optional `VerifyReport.unmeasured` string naming the reason (`registry holds 0 claims — nothing was verified`), and `pnpm claims:check` prints that reason instead of `0 of 0 claims drifted`. A registry with at least one claim is reported exactly as before and `unmeasured` is absent. The YAML loader already rejected an empty list; this closes the same gap for callers that build the registry object themselves ([#4586](https://github.com/nexus-substrate/nexus-agents/issues/4586)).
+
+## 8.59.0
+
+### Minor Changes
+
+- [#6297](https://github.com/nexus-substrate/nexus-agents/pull/6297) [`5492665`](https://github.com/nexus-substrate/nexus-agents/commit/549266552f7a1679092e521e29be3d43ac22d304) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): `HostileInputFirewall.process()` runs the full `evaluatePolicy` set, not Rule of Two alone ([#5380](https://github.com/nexus-substrate/nexus-agents/issues/5380))
+
+  The `policyEnforcement` stage ran one of the seven policy checks production runs (`checkRuleOfTwo`); the other six read an `AgentAction`, which input-shaped `process()` never had, so they were never evaluated and the result could not say so. `FirewallProcessOptions` gains `action` (the action the caller intends to take on the input) and `existingLabels` (the repository label set); with `action` the stage runs `evaluatePolicy` in full — citation, trust requirement, influence block, Rule of Two, label validity, privileged labels, source trust tiers — and the new `FirewallResult.policy` (`FirewallPolicyEvaluation`) carries every violation plus the decision's own `allowed` and `requiresApproval`. Without `action`, `policy.scope` is `'context'`: the Rule of Two is measured and the six action-scoped rule ids are listed as `unmeasured`, never counted as passed. `wouldRefuse` (audit) and the `POLICY_REFUSED` refusal (enforce) now fire on any `severity: 'block'` violation, so audit-mode telemetry reports more would-be refusals for callers that supply an action; `NEXUS_FIREWALL_POLICY` off/audit/enforce semantics are unchanged, `ruleOfTwoViolation` is kept as a view onto `policy`, and a caller that passes no action gets exactly the checks it got before. Minor because the published surface grows (all additions optional).
+
+## 8.58.10
+
+### Patch Changes
+
+- [#6296](https://github.com/nexus-substrate/nexus-agents/pull/6296) [`35fdc3c`](https://github.com/nexus-substrate/nexus-agents/commit/35fdc3c26abe34086aa7b3d0a2e4f5ab3deb8dae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The MCP policy firewall's `deny-mutations-without-mode` rule now classifies every registered tool from its `TOOL_MANIFEST` entry's `readOnlyHint` instead of guessing ([#5114](https://github.com/nexus-substrate/nexus-agents/issues/5114)). Before, `isMutationTool` knew six generic names and called every other tool a mutation, so enforcing the firewall would have denied 45 of the 47 registered tools; the enforce path was closed for that reason. Now 26 tools are read-only and 21 are mutations, one source of truth shared with the tool-prerequisite gate, and a test fails by tool name if a new tool is registered without a `readOnlyHint`. `orchestrate` and `delegate_to_model`, which the old hand-kept set called read-only against their own manifest entries, are now mutations. A tool the manifest does not carry is reported as `unclassified` in the verdict — still denied when enforcing, but no longer recorded as a mutation the rule did not measure. `MUTATION_TOOLS` / `READ_ONLY_TOOLS` in `policy-rules` keep only generic agent/filesystem names and are tested disjoint from the manifest. No behaviour changes in warn mode, which remains forced on; reopening enforce stays [#4988](https://github.com/nexus-substrate/nexus-agents/issues/4988)'s decision.
+
+## 8.58.9
+
+### Patch Changes
+
+- [#6289](https://github.com/nexus-substrate/nexus-agents/pull/6289) [`353a0f6`](https://github.com/nexus-substrate/nexus-agents/commit/353a0f691718973670024963e57f79cc1fb6c4b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(cli): `remediation-review readiness` prints a soak-store staleness alarm ([#4279](https://github.com/nexus-substrate/nexus-agents/issues/4279))
+
+  The enforce-readiness verdict now carries a `Soak store:` line (and a `soakStore`
+  object under `--format json`): `UNMEASURED` when the operator soak store is empty,
+  `ALARM` when it holds at most one record or has had no new record for 14 days
+  (every cause named), `fresh` otherwise. The operator store sat at one record for
+  five weeks behind a daily green CI job that fed a different, cache-only store;
+  this is the surface that would have shown it. The signal is informational and
+  never changes `ready`.
+
+  Two record corrections travel with it. `requiresDryRun` (p0-only) gates IMPLEMENT
+  and never gated soundness review — a p2 record produced by the audit cycle is
+  judgeable by `remediation-review mark` and counts toward `judged-coverage`; this
+  is now pinned by an end-to-end test rather than changed. And the scheduled
+  `remediation-audit-soak.yml` workflow is relabelled "Remediation Audit Smoke (no
+  readiness evidence)": it exercises the audit path daily but produces no readiness
+  evidence for [#3769](https://github.com/nexus-substrate/nexus-agents/issues/3769) (the operator store is the evidence path, panel Option B).
+
+## 8.58.8
+
+### Patch Changes
+
+- [#6284](https://github.com/nexus-substrate/nexus-agents/pull/6284) [`8574333`](https://github.com/nexus-substrate/nexus-agents/commit/8574333cb406587694a8b31b5fc5adac4bd34c2e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A Rule-of-Two violation in the security policy gate is refused, never routed to human approval ([#4735](https://github.com/nexus-substrate/nexus-agents/issues/4735), panel option A). When an agent simultaneously processes untrusted input (Tier 3+), has write access, and holds a secret/token, `evaluatePolicy` returns `allowed: false` with `requiresApproval: false`, as it always did; what changes is the `RULE_OF_TWO` violation message, which now names all three legs (including the input's tier) and the remedy, dropping a leg: dry-run, run without the token, or split the agent. Callers that log the violation message therefore carry the diagnosis without any new logging dependency.
+
 ## 8.58.7
 
 ### Patch Changes

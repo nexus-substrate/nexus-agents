@@ -20,7 +20,8 @@
  *  - PHYSICALLY surrendering capabilities at the boundary (per-phase adapter
  *    lifecycle / no write token in RESEARCH, no fetch in IMPLEMENT) so the
  *    ledger is a tripwire over a real split, not the split itself;
- *  - reconciling with ClawGuard / NEXUS_ACCESS_POLICY_MODE rather than forking.
+ *  - reconciling with the PolicyFirewall rule set (the `secret-paths` and
+ *    `safe-paths` rules, #5108) rather than forking a second path denylist.
  * OS-level process isolation is tracked as stronger follow-up hardening.
  *
  * This file ships the pure, unit-testable boundary primitives.

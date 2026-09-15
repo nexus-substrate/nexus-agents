@@ -22,11 +22,9 @@ import { sanitizeInput } from '../security/input-sanitizer.js';
 import { hasToken } from '../scm/token-resolver.js';
 import type { ClassifyResult } from '../security/trust-classifier.js';
 import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
-import { runUntrustedInputFirewall } from './untrusted-input-firewall.js';
+import { firewallInputFor, runUntrustedInputFirewall } from './untrusted-input-firewall.js';
 import type { TrustTier } from '../security/trust-types.js';
-import { evaluatePolicy } from '../security/policy-gate.js';
-import type { ActionContext } from '../security/policy-gate.js';
-import { validateCorroboration } from '../security/corroboration-validator.js';
+import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 import { assessReputation, ReputationCache } from '../security/reputation-model.js';
 import type {
   ReputationAssessment,
@@ -38,11 +36,10 @@ import { parseIssueUrl } from '../scm/url-parsers.js';
 import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
 import type { ScmUserMetadata } from '../scm/types.js';
 import {
-  buildActionDetails,
   categorizeIssue,
-  describeAction,
   extractLabelsFromBody,
   mapIssueComments,
+  validateActionsThroughFirewall,
 } from './issue-triage-helpers.js';
 import type {
   IssueMetadata,
@@ -217,12 +214,13 @@ export class IssueTriage {
     const reputation = this.assessAuthorReputation(fetchResult.value);
 
     // #4992: classify through the shared HostileInputFirewall so the trust
-    // decision reaches the security audit trail. Signal-only under the default
-    // NEXUS_FIREWALL_POLICY=off; `validateActions` below stays the Rule-of-Two
-    // enforcement point. The firewall runs the ONE reputation gate (#3122:
-    // off/audit/enforce; audit reports a would-be demotion without enforcing
-    // it; the allowlist Tier 1 remains the escape hatch), so its Rule-of-Two
-    // signal and this path's policy gate act on the same enforced tier.
+    // decision reaches the security audit trail. Refuses only under
+    // NEXUS_FIREWALL_POLICY=enforce; `validateActions` below re-enters the
+    // firewall per action for the policy decision (#5383). The firewall runs
+    // the ONE reputation gate (#3122: off/audit/enforce; audit reports a
+    // would-be demotion without enforcing it; the allowlist Tier 1 remains the
+    // escape hatch), so its Rule-of-Two signal and the per-action policy gate
+    // act on the same enforced tier.
     const firewall = this.classifyAuthor(issueResult, reputation);
     if (!firewall.ok) return firewall;
     const trustResult = firewall.value.trust;
@@ -244,11 +242,19 @@ export class IssueTriage {
     // RefuseAction is tier-4 "always allowed" (trust-classifier.ts:170), so it
     // survives the gate that blocks the rest.
     const withEscalation = applySafetyActions(actions, gateDecision, reputation, issueResult);
-    const validatedActions = this.validateActions(withEscalation, gateDecision, existingLabels);
+    // #5383: each action is its own firewall run; the policy decision is the
+    // firewall's, enforced there as `policyApproved` under every mode.
+    const validatedActions = validateActionsThroughFirewall(
+      firewallInputFor('issue', issueResult),
+      { ...this.firewallOptions(reputation), enforcedTier: gateDecision.enforcedTier },
+      withEscalation,
+      existingLabels
+    );
+    if (!validatedActions.ok) return validatedActions;
 
     const result = this.buildResult({
       issue: issueResult,
-      actions: validatedActions,
+      actions: validatedActions.value,
       trustResult,
       isAllowlisted: firewall.value.isAllowlisted,
       auditSink: firewall.value.auditSink,
@@ -290,31 +296,33 @@ export class IssueTriage {
    * (#4992; originally Issue #828 — trust-classifier wiring).
    *
    * The access posture is passed per call so the firewall's Rule-of-Two check
-   * sees the same facts `validateActions` enforces on. No maintainer allowlist
-   * is passed: there is no source for one today (no config field, no env var),
-   * so none is consulted and `isAllowlisted` stays absent on the result rather
-   * than being recorded as `false`.
+   * sees the same facts the per-action runs enforce on. No maintainer
+   * allowlist is passed: there is no source for one today (no config field, no
+   * env var), so none is consulted and `isAllowlisted` stays absent on the
+   * result rather than being recorded as `false`.
    */
   private classifyAuthor(
     issue: IssueMetadata,
     reputation: ReputationAssessment | undefined
   ): Result<FirewallResult, Error> {
     return runUntrustedInputFirewall(
-      {
-        type: 'issue',
-        username: issue.author,
-        authorAssociation: issue.authorAssociation,
-        title: issue.title,
-        body: issue.body,
-      },
-      { context: this.accessContext(), reputation: { assessment: reputation } }
+      firewallInputFor('issue', issue),
+      this.firewallOptions(reputation)
     );
+  }
+
+  /** The per-call facts every firewall run of this triage shares (#4992, #5383). */
+  private firewallOptions(
+    reputation: ReputationAssessment | undefined
+  ): Pick<FirewallProcessOptions, 'context' | 'reputation'> {
+    return { context: this.accessContext(), reputation: { assessment: reputation } };
   }
 
   /**
    * The access posture this triage runs under — the two Rule-of-Two conjuncts
-   * that are about the agent rather than the input. Shared by the firewall
-   * (#4992) and `validateActions` so the two cannot disagree.
+   * that are about the agent rather than the input. Passed to every firewall
+   * run (#4992, #5383) so the classification and the per-action policy checks
+   * cannot disagree on it.
    */
   private accessContext(): { hasWriteAccess: boolean; hasSecretAccess: boolean } {
     return {
@@ -424,40 +432,6 @@ export class IssueTriage {
     }
 
     return actions;
-  }
-
-  /**
-   * Validates all actions through policy gate and corroboration validator.
-   * This completes the #828 wiring by integrating corroboration-validator.
-   * (Source: Issue #828 — policy-gate + corroboration-validator wiring)
-   */
-  private validateActions(
-    actions: readonly AgentAction[],
-    gateDecision: ReputationGateDecision,
-    existingLabels: ReadonlySet<string> | undefined
-  ): ProposedAction[] {
-    // #3119 + #3122: reputation GATES via the rollout mode. `enforce` uses the
-    // reconciled (possibly demoted) tier; `audit`/`off` enforce the classifier
-    // tier (the suppressed demotion is logged upstream). Demotion-only;
-    // Tier-1/allowlist always wins.
-    const context: ActionContext = {
-      inputTrustTier: gateDecision.enforcedTier,
-      ...this.accessContext(),
-      ...(existingLabels !== undefined ? { existingLabels } : {}),
-    };
-
-    return actions.map((action) => {
-      const policyDecision = evaluatePolicy(action, context);
-      const corrobResult = validateCorroboration(action);
-
-      return {
-        type: action.type,
-        description: describeAction(action),
-        policyApproved: policyDecision.allowed,
-        corroborated: corrobResult.satisfied,
-        details: buildActionDetails(action, policyDecision, corrobResult),
-      };
-    });
   }
 
   /**

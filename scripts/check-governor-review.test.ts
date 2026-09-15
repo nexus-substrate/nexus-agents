@@ -830,6 +830,59 @@ describe('stampOnlyExemptFiles (#5944)', () => {
       )
     ).toEqual([]);
   });
+
+  it('does NOT consult the injector when no generated file is in the change set (#6250)', () => {
+    // `injectorIsClean` is a ~5 s spawn of the whole governance injector. It
+    // was invoked BEFORE the filter to GENERATED_GOVERNANCE_FILES, so every
+    // gate run paid for an answer it then never used — 16 ledger-evidence
+    // tests spent ~90 s on it. The result is unchanged either way (nothing is
+    // eligible), so the spawn count is the only observable.
+    let calls = 0;
+    const injector = (): boolean => {
+      calls += 1;
+      return true;
+    };
+    expect(
+      stampOnlyExemptFiles(
+        ['src/audit/logger.ts', '.rules/governance.md'],
+        () => 'a',
+        () => 'b',
+        injector
+      )
+    ).toEqual([]);
+    expect(calls).toBe(0);
+    expect(
+      stampOnlyExemptFiles(
+        [],
+        () => 'a',
+        () => 'b',
+        injector
+      )
+    ).toEqual([]);
+    expect(calls).toBe(0);
+  });
+
+  it('STILL consults the injector when a generated file is in the change set (#6250)', () => {
+    // The other half of the short-circuit: the precondition is skipped only
+    // when nothing could be exempt. With a generated file present the injector
+    // must be asked, and its verdict must still be what decides.
+    let calls = 0;
+    const before = GENERATED({ digest: 'aaaaaaaaaaaa', tools: '`run`', count: 1 });
+    const after = GENERATED({ digest: 'bbbbbbbbbbbb', tools: '`run`', count: 1 });
+    const drifted = (): boolean => {
+      calls += 1;
+      return false;
+    };
+    expect(
+      stampOnlyExemptFiles(
+        ['src/audit/logger.ts', 'AGENTS.md'],
+        () => before,
+        () => after,
+        drifted
+      )
+    ).toEqual([]);
+    expect(calls).toBe(1);
+  });
 });
 
 /**
@@ -1148,6 +1201,31 @@ describe('both ratification jobs are handed a base sha (#6029)', () => {
   });
 });
 
+describe('the LABELS evidence expression has no shell pipe to mask (#5731)', () => {
+  // #5722 added `set -o pipefail` so a failed `gh api` fails the step instead
+  // of yielding an empty LABELS the gate reads as "not ratified". This is the
+  // structural half: with the join done inside `--jq` there is no pipe, so the
+  // next pipeline someone adds to these blocks cannot reintroduce the class.
+  // APPROVALS keeps its streaming filter + shell join deliberately: under
+  // `--paginate` gh applies `--jq` per page, so an array-wrapping filter would
+  // emit one joined string PER PAGE, and `--slurp` is unverified on the runner.
+  const WORKFLOW = readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8');
+  const JQ = `--jq '[.labels[].name] | join(",")'`;
+
+  it('both jobs build LABELS with the array-and-join filter', () => {
+    expect(WORKFLOW.split(JQ).length - 1).toBe(2);
+  });
+
+  it('neither LABELS assignment pipes gh output through another process', () => {
+    // The assignment closes `)` right after the jq string: `LABELS=$(gh api
+    // "…" \\\n  --jq '…')`. A `| tr` (or any other stage) between the two
+    // would break the match, and that is the shape this test exists to reject.
+    const assignments = WORKFLOW.match(/LABELS=\$\(gh api "[^"]+" \\\n\s+--jq '[^']*'\)/g) ?? [];
+    expect(assignments).toHaveLength(2);
+    expect(WORKFLOW).not.toMatch(/--jq '\.labels\[\]\.name' \| tr/);
+  });
+});
+
 describe('a governor pattern that matches nothing is not a governed path (#6034)', () => {
   // governorPathsFromCodeowners returns the first token of each governor-section
   // line. A pattern matching nothing on disk is indistinguishable from one
@@ -1254,7 +1332,8 @@ describe('the governor section is bounded by dedicated directives, not the human
    * The governor set parsed from origin/main at 32c14595b6, BEFORE the
    * directives landed, plus the two #6000 step-3 entries (the pure decision
    * computation and the voter-role set), plus the #6174 CODEOWNERS-parses gate
-   * script, plus the #5130 step-2 ledger-evidence module. The migration must not change what
+   * script, plus the #5130 step-2 ledger-evidence module and its #6256 report
+   * and patch-identity siblings. The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
    * recomputed, so an addition to the section is a reviewed act here too.
    */
@@ -1268,6 +1347,8 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/check-governor-review.ts',
     '/scripts/check-governor-ratification.ts',
     '/scripts/governor-ledger-evidence.ts',
+    '/scripts/governor-ledger-report.ts',
+    '/scripts/governor-patch-identity.ts',
     '/scripts/check-codeowners-errors.ts',
     '/scripts/governor-paths-touched.ts',
     '/.github/CODEOWNERS',
@@ -1301,7 +1382,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (21 entries)', () => {
+  it('the #6174 CODEOWNERS-parses gate script and the two shadow locations are governor-owned (23 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1312,7 +1393,12 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/docs/CODEOWNERS');
     // #5130 step 2: the committed-ledger half of the ratification gate.
     expect(set).toContain('/scripts/governor-ledger-evidence.ts');
-    expect(set).toHaveLength(21);
+    // #6256: its env reader / printed line, and the git probe the moved-head
+    // rule measures with — a probe outside the set could be weakened without
+    // ratification.
+    expect(set).toContain('/scripts/governor-ledger-report.ts');
+    expect(set).toContain('/scripts/governor-patch-identity.ts');
+    expect(set).toHaveLength(23);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

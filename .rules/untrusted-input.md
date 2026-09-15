@@ -42,6 +42,7 @@ When untrusted input is part of the context, agents may ONLY output:
 - `ClassifyIssue` — categorize (requires source citation)
 - `IdentifyDuplicates` — find related issues (requires source citation)
 - `RefuseAction` — explicit refusal with reason
+- `HandoffMessage` — delegate to another agent by capability (requires source citation; carries the input's trust tier)
 
 **Forbidden:** `GeneratePatchPlan` from Tier 3-4 input without maintainer corroboration.
 
@@ -55,15 +56,16 @@ implementation oscillated between two defensible readings of that text. This
 table is now the single statement, and it matches
 `security/corroboration-validator.ts`.
 
-| Action                                 | Citation floor                                                                        | Rationale                                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `SummarizeIssue`                       | a Tier 1/2 source                                                                     | read-only                                                                                                          |
-| `ClassifyIssue`                        | any source, tier recorded                                                             | read-only, bounded output                                                                                          |
-| `IdentifyDuplicates`                   | any source, tier recorded                                                             | read-only, bounded output                                                                                          |
-| `ProposeLabels`                        | issue body from a Tier 1/2 author, OR repo file / maintainer instruction / policy doc | a proposal, independently constrained: max 5 labels, must exist in the repo label set, never applied automatically |
-| `DraftReply`                           | a Tier 1 source                                                                       | publishes text under the project's identity on a surface others read                                               |
-| `GeneratePatchPlan`                    | code-level evidence AND maintainer corroboration                                      | proposes changes                                                                                                   |
-| `RequestHumanApproval`, `RefuseAction` | none                                                                                  | safety valves; requiring corroboration to refuse would make refusal blockable                                      |
+| Action                                 | Citation floor                                                                        | Rationale                                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SummarizeIssue`                       | a Tier 1/2 source                                                                     | read-only                                                                                                                                                      |
+| `ClassifyIssue`                        | any source, tier recorded                                                             | read-only, bounded output                                                                                                                                      |
+| `IdentifyDuplicates`                   | any source, tier recorded                                                             | read-only, bounded output                                                                                                                                      |
+| `ProposeLabels`                        | issue body from a Tier 1/2 author, OR repo file / maintainer instruction / policy doc | a proposal, independently constrained: max 5 labels, must exist in the repo label set, never applied automatically                                             |
+| `DraftReply`                           | a Tier 1 source                                                                       | publishes text under the project's identity on a surface others read                                                                                           |
+| `GeneratePatchPlan`                    | code-level evidence AND maintainer corroboration                                      | proposes changes                                                                                                                                               |
+| `HandoffMessage`                       | any source, tier recorded                                                             | delegation, not action: the receiving agent re-applies the floor for whatever it emits; the citation carries `inputTrustTier` across the handoff (#834, #4750) |
+| `RequestHumanApproval`, `RefuseAction` | none                                                                                  | safety valves; requiring corroboration to refuse would make refusal blockable                                                                                  |
 
 **A proposal action may cite the input it was derived from**, provided the
 input's tier travels with the citation. That is why the positive example below
@@ -94,10 +96,10 @@ Flag and quarantine content matching:
 
 ```
 IF (processes_untrusted_input AND has_write_access AND accesses_secrets):
-    REJECT — "Rule of Two violation: requires human approval"
+    REFUSE — "RULE_OF_TWO: (a) untrusted input, (b) write access, (c) secret access"
 ```
 
-No agent may hold all three simultaneously. Split into separate phases if needed.
+No agent may hold all three simultaneously. If all three are needed, the run is refused — drop a leg (dry-run, run without the token, or split the agent); there is no approval path (#4735).
 
 ## Corroboration Quick Reference
 

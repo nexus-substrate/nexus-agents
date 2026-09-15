@@ -30,7 +30,10 @@ export const OrchestrateInputSchema = z
     context: z
       .record(z.string(), z.unknown())
       .optional()
-      .describe('Additional context for the task'),
+      .describe(
+        'Additional context for the task. `filePaths: string[]` (paths the task touches) ' +
+          'feeds the AOrchestra expert trigger table (NEXUS_AORCHESTRA, default on).'
+      ),
     maxIterations: z
       .number()
       .min(1)
@@ -190,9 +193,11 @@ export interface OrchestrateDeps extends BaseMcpToolDeps {
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
   /**
-   * Durable, hash-chained audit logger (#4097). When present, ClawGuard
-   * AUDIT-mode violations during the orchestrator's nested tool calls are
-   * persisted to the shared store. Absent on the pure-CLI path → no trail.
+   * Durable, hash-chained audit logger (#4097). Its only reader was the
+   * access-constraint deriver's ALS audit trail, deleted in #5108; nothing in
+   * the orchestrate tool consumes it today. Kept because `OrchestrateDeps` is
+   * published — dropping the member is a breaking change for the next major
+   * (#6319).
    */
   auditLogger?: import('../../audit/audit-types.js').IAuditLogger;
 }

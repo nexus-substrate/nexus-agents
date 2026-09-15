@@ -293,21 +293,14 @@ Files stored:
 
 | Variable                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Default                 |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard reporting mode: `off` / `audit` / `confirm_risky` / `enforce` (#1977, #2279). **Advisory since #5106** — no mode blocks a tool call; PolicyFirewall is the authorization boundary (#5022)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `audit` (v2.50+)        |
+| `NEXUS_ACCESS_POLICY_MODE`     | ClawGuard reporting mode: `off` / `audit` / `confirm_risky` / `enforce` (#1977, #2279). **No reader since #5108** — the access-constraint deriver that read it was deleted; the secret-path denylist it carried is now the PolicyFirewall `secret-paths` rule (warn today, enforce behind #4988). Still accepted by the startup validator so a value set from the AGENTS.md table is not reported as a typo; row and schema entry retire together under #6303                                                                                                                                                                                                                                                                                   | unset (no effect)       |
 | `NEXUS_REPUTATION_GATING`      | Author-reputation tier gating: `off` / `audit` / `enforce` (#3122, epic #3118). Default flipped `audit` -> `enforce` in #4667 after measurement; this column said `audit` until #5382 corrected it. Read once per process at first use since #4992; a running MCP server needs a restart to pick up a change                                                                                                                                                                                                                                                                                                                                                                                                                                    | `enforce`               |
 | `NEXUS_FIREWALL_POLICY`        | `HostileInputFirewall` rollout gate: `off` / `audit` / `enforce` (#5382, epic #5281). `off` is pre-#5382 behaviour exactly; `audit` reports `wouldRefuse` without refusing; `enforce` returns `POLICY_REFUSED` on a blocking violation. Defaults `off` — unlike the row above — because the firewall is a **published** API whose external callers would see a stricter default as a silent breaking change. Since #4992 the `issue_triage` and `pr_review` paths route through the firewall and honour this mode: `audit` logs a would-be refusal for the caller's real access posture, `enforce` refuses the triage/review outright. Read once per process at first use since #4992; a running MCP server needs a restart to pick up a change | `off`                   |
 | `NEXUS_TASK_STATE_ENABLED`     | Structured task-state log + Magentic-One ledgers (`0`/`false` to disable, #2278)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | enabled (v2.50+)        |
 | `NEXUS_CONTEXT_WARN_THRESHOLD` | Per-expert context-warning threshold (0..1]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `0.85`                  |
 | `NEXUS_PR_REVIEW_RECORDS_PATH` | Forces the `pr_review` governance-record ledger path to an explicit absolute file. Escape hatch for MCP server processes whose `process.cwd()` has no `.git` ancestor, where cwd-based auto-detection silently fails to persist the record (#4278). Takes precedence over the per-call `pr_review({ repoPath })` input and over cwd auto-detection.                                                                                                                                                                                                                                                                                                                                                                                             | unset (cwd auto-detect) |
 
-**`NEXUS_ACCESS_POLICY_MODE` graduation path:**
-
-- `off` — bypass entirely; no policy enforcement, no audit logging
-- `audit` (default since v2.50) — log every violation, block nothing. Collects telemetry to size the violation rate before flipping to a stricter mode
-- `confirm_risky` (added v2.58) — graduated middle tier. Block violations on tools classified as risky (write/exec/network); log-and-allow violations on read-only tools. Use this to graduate from `audit` to `enforce` without breaking read-heavy workflows. Risky violations come back with a structured "would have required human approval" reason
-- `enforce` — block every violation, regardless of risk classification
-
-**`NEXUS_REPUTATION_GATING` graduation path:** mirrors the mode above for author-reputation tier demotion in `issue_triage` (epic #3118).
+**`NEXUS_REPUTATION_GATING` graduation path:** `off` bypasses entirely; `audit` logs every violation and blocks nothing; `enforce` blocks. Author-reputation tier demotion in `issue_triage` (epic #3118). (The `NEXUS_ACCESS_POLICY_MODE` ladder that used to sit here — `audit` → `confirm_risky` → `enforce` — was retired with the ClawGuard deriver in #5108; the secret-path control it fronted is the PolicyFirewall `secret-paths` rule, whose enforce rollout is #4988.)
 
 - `off` — reputation never affects the enforced trust tier
 - `audit` (default) — reputation is computed and the would-be demotion is logged + surfaced (`trustAssessment.effectiveTrustTier`/`gatingMode`), but the **classifier** tier is enforced. Collects telemetry on the demotion rate before enforcing
@@ -435,47 +428,51 @@ A push is **impossible** unless ALL of the following conjunctive gates hold:
 See #3670 for the staged rollout (the push path is the gated capability; nothing
 here wires it to a live runtime trigger).
 
-### Scheduled audit-mode remediation soak (#4224)
+### Audit-mode remediation soak: the operator store is the evidence path (#4224, #4279)
 
 The enforce-readiness soak (`learning/remediation-soak.jsonl`, read by
 `remediation-readiness-collector.ts`) only accrues when someone runs
 `nexus-agents auto-remediate`. It is **not** a byproduct of normal work, so
 without a scheduler the evidence the enforce gate depends on cannot accumulate —
-it flatlined on 2026-06-17 despite heavy repo activity. Two ways to give it an
-organic feed:
+it flatlined on 2026-06-17 despite heavy repo activity, and again at one record
+for the five weeks before #4279 was re-verified. There is ONE evidence path (the
+local operator cycle below) and one CI job that is deliberately **not** one:
 
-**1. Scheduled GitHub Actions run (`.github/workflows/remediation-audit-soak.yml`).**
-Runs the build then `nexus-agents auto-remediate` in **audit** mode daily
-(`cron: '17 7 * * *'`) plus `workflow_dispatch` for a manual trigger. Audit is
-the default and produces vote/plan soak evidence with **zero writes** — it never
-opens a PR and never remediates. The workflow exports `NEXUS_AUTO_REMEDIATE=audit`
-explicitly and asserts it before running (belt-and-braces), and the cycle entry
-point structurally withholds `repoRoot`, so `enforce` cannot engage from CI. It
-persists the soak across runs with an `actions/cache` **rolling key**
-(`remediation-audit-soak-${{ github.run_id }}` + a bare `restore-keys` prefix): each
-run restores the most-recent prior file, the append-only JSONL sink hydrates it and
-appends this run's records, and the post-job save writes a fresh cache entry — so
-volume genuinely accumulates run-over-run. A single-flight `concurrency` group
-(`cancel-in-progress: false`) prevents overlapping runs from racing the file.
+**1. The CI job is a smoke test, not evidence
+(`.github/workflows/remediation-audit-soak.yml`, display name
+"Remediation Audit Smoke (no readiness evidence)").** It runs the build then
+`nexus-agents auto-remediate` in **audit** mode daily (`cron: '17 7 * * *'`)
+plus `workflow_dispatch`, and proves the audit path — collect → research → vote
+→ append — runs end to end on the built CLI. It exports `NEXUS_AUTO_REMEDIATE=audit`
+and asserts it before running, and the cycle entry point structurally withholds
+`repoRoot`, so `enforce` cannot engage from CI. It keeps `permissions: contents: read`.
 
-> **CI evidence is thin by design — no LLM credentials.** This workflow wires no
-> model/gateway secrets, so the per-signal consensus vote degrades to `no_quorum`
-> (the job stays green and incurs **zero LLM cost** — `createAutoAdapter` throws
-> before any network call). Consequently CI-accrued records carry only volume +
-> `signalKey`/`category`/`priority`/`planStepCount`/`reason` — **not** `voteOutcome`
-> (no vote ran) and not `dryRunResult`. That's safe (thinner evidence can only keep
-> the enforce gate fail-closed, never falsely enable it), but it means CI alone
-> cannot produce soundness-judgeable evidence. Vote-bearing evidence requires the
-> local path below, where your real gateway credentials + telemetry are present.
+> **A green run is not progress toward #3769.** The #4279 panel (5–2, Option B)
+> declared the CI soak non-evidence, for three reasons that hold independently:
+>
+> - **Disjoint store.** The job appends under a workspace `NEXUS_DATA_DIR` that
+>   lives only in `actions/cache` (evicted after 7 idle days). The readiness gate
+>   reads the operator store (`~/.nexus-agents/learning/remediation-soak.jsonl`);
+>   nothing bridges the two, and 43 green runs moved the gate by zero records.
+> - **Un-judged by construction.** Readiness requires a NAMED evaluator and owner
+>   (`remediation-review mark` / `sign-off`) — human acts. A bridged CI corpus
+>   would arrive with `judgedSelections: 0` and fail `judged-coverage`,
+>   `named-evaluator` and `named-owner` regardless of its volume.
+> - **Self-authorship.** Letting the job commit its records would widen the
+>   cron-triggered token to `contents: write` so the automation seeking enforce
+>   authority could author the evidence that grants it.
+>
+> The job also wires no model/gateway secrets, so its per-signal vote degrades to
+> `no_quorum` at zero LLM cost and its records carry no `voteOutcome` — thin even
+> as smoke coverage. Treat it as an alarm that the audit path still runs, nothing more.
 
-**2. LOCAL cron / systemd timer (recommended for real operators).** A fresh CI
+**2. LOCAL cron / systemd timer — the evidence path.** Readiness evidence comes
+from **your real `~/.nexus-agents` telemetry**, not a clean CI runner: a fresh
 checkout has little of your outcome/decision-cost telemetry, so the
-`improvement_review` signals it collects are thin. **Richer, more representative
-signals come from your real `~/.nexus-agents` telemetry**, not a clean CI runner —
-so if you operate nexus-agents day-to-day, schedule the audit cycle _locally_ where
-that telemetry lives. This is the more valuable feed; the CI workflow is the
-always-on floor. Audit mode is the default, so a bare invocation is soak-only with
-zero writes:
+`improvement_review` signals it collects are thin and near-identical day to day.
+If you operate nexus-agents day-to-day, schedule the audit cycle _locally_ where
+that telemetry lives. Audit mode is the default, so a bare invocation is soak-only
+with zero writes:
 
 ```cron
 # crontab -e — daily audit-mode soak against your real ~/.nexus-agents telemetry
@@ -487,6 +484,15 @@ Or as a systemd timer (`~/.config/systemd/user/nexus-soak.service` +
 
 After a soak window, judge a batch with `nexus-agents remediation-review` and the
 readiness gate reflects **genuine** soundness over real, plan-bearing selections.
+Every tier's record is judgeable — `mark` keys on the soak ref, never on whether a
+dry-run was captured (#4279 Gap 2).
+
+**Watch the store, not the CI job.** `nexus-agents remediation-review readiness`
+prints a `Soak store:` line beside the verdict (#4279): `UNMEASURED` when the
+store is empty, `ALARM` when it holds ≤1 record or has had no new record for
+14 days (each cause named), `fresh` otherwise; `--format json` carries the same
+signal as `soakStore`. A flatlined operator store is a stalled evidence path and
+this is the only place it is reported — the CI smoke job cannot see it.
 
 > **Known limitation — `dryRunResult` (plan content) is not captured in the
 > scheduled/local audit cycle.** The p0 `dry-run` audit event that populates a
@@ -496,7 +502,8 @@ readiness gate reflects **genuine** soundness over real, plan-bearing selections
 > `signalKey`, `category`, `priority`, `planStepCount`, and `reason` (plus
 > `voteOutcome` only where LLM credentials are present — i.e. the local path, not
 > credential-less CI, per the note above), a large improvement over the prior
-> synthetic, uniform volume — but not the full dry-run plan text. Wiring a `dryRun`
+> synthetic, uniform volume — but not the full dry-run plan text. This limits what
+> an evaluator has to read; it does not limit what they can mark. Wiring a `dryRun`
 > adapter into the audit cycle so the accrued selections are fully plan-bearing is
 > tracked as follow-up to #4224 (and would also need the dry-run audit `detail` to
 > carry plan content rather than just `ok`/error).
@@ -1118,7 +1125,7 @@ A composed pipeline (research → vote → plan → run → review) inherits the
 
 The loader selects **one** config file (first match wins): `NEXUS_CONFIG_PATH`, then `./.nexus-agents/nexus-agents.yaml` or `./nexus-agents.yaml`, then `~/.nexus-agents/nexus-agents.yaml`. It does not merge a project file with a user file. Per-setting **environment variables** overlay the loaded file at consumption time, so use them — not a second file — for local overrides.
 
-Commit the **project file** for shared, reproducible choices: `models.tiers`/`default`, `routing` weights, gate modes (`NEXUS_ACCESS_POLICY_MODE`, `NEXUS_POLICY_GATE_MODE`), and `security.sandbox.mode`. Keep **machine-specific** settings out of the repo and set them per-user via env: API keys (`ANTHROPIC_API_KEY`, …), `NEXUS_DATA_DIR`, `NEXUS_SANDBOX_ROOT`, and `NEXUS_BILLING_MODE`. Committed config defines the team's pipeline; each env var wins over it locally.
+Commit the **project file** for shared, reproducible choices: `models.tiers`/`default`, `routing` weights, gate modes (`NEXUS_POLICY_GATE_MODE`, `NEXUS_FIREWALL_POLICY`), and `security.sandbox.mode`. Keep **machine-specific** settings out of the repo and set them per-user via env: API keys (`ANTHROPIC_API_KEY`, …), `NEXUS_DATA_DIR`, `NEXUS_SANDBOX_ROOT`, and `NEXUS_BILLING_MODE`. Committed config defines the team's pipeline; each env var wins over it locally.
 
 ```yaml
 # nexus-agents.yaml (committed)

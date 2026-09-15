@@ -87,18 +87,30 @@ export function validateScenario(
   });
 }
 
-/** Checks a single criterion against all results. */
+/**
+ * Checks a single criterion against all results.
+ *
+ * `met` means at least one result cleared {@link KEYWORD_MATCH_THRESHOLD}, so it
+ * is equivalent to `matchedResults.length > 0` by definition. What it is NOT
+ * equivalent to is `partialResults.length > 0`: a result that overlaps some
+ * keywords but not enough is recorded there, so a consumer can tell "nothing
+ * resembled this criterion" from "something did, but not enough" (#4827).
+ */
 function checkCriterion(criterion: string, results: readonly string[]): CriterionResult {
   const keywords = extractKeywords(criterion);
   const matched: string[] = [];
+  const partial: string[] = [];
 
   for (const result of results) {
-    if (matchesKeywords(result, keywords)) {
+    const overlap = keywordOverlap(result, keywords);
+    if (overlap >= KEYWORD_MATCH_THRESHOLD) {
       matched.push(result);
+    } else if (overlap > 0) {
+      partial.push(result);
     }
   }
 
-  return { criterion, met: matched.length > 0, matchedResults: matched };
+  return { criterion, met: matched.length > 0, matchedResults: matched, partialResults: partial };
 }
 
 /** Extracts significant keywords from text. */
@@ -109,10 +121,14 @@ function extractKeywords(text: string): string[] {
     .filter((w) => w.length >= MIN_KEYWORD_LENGTH && !STOP_WORDS.has(w));
 }
 
-/** Checks if a result matches enough keywords from a criterion. */
-function matchesKeywords(result: string, keywords: string[]): boolean {
-  if (keywords.length === 0) return false;
+/**
+ * Fraction of a criterion's keywords that appear in a result, 0..1.
+ * A criterion with no significant keywords overlaps nothing (0), so it can
+ * neither match nor partially match.
+ */
+function keywordOverlap(result: string, keywords: string[]): number {
+  if (keywords.length === 0) return 0;
   const resultLower = result.toLowerCase();
   const matched = keywords.filter((kw) => resultLower.includes(kw));
-  return matched.length / keywords.length >= KEYWORD_MATCH_THRESHOLD;
+  return matched.length / keywords.length;
 }

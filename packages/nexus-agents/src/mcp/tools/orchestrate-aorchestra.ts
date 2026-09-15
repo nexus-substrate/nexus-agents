@@ -51,18 +51,42 @@ export function computeExpertReliability(): ReadonlyMap<string, number> {
 }
 
 /**
+ * Reads `filePaths` off the orchestrate tool's free-form `context` record.
+ *
+ * All-or-nothing on purpose: a list with a non-string entry returns
+ * `undefined` rather than a silently-trimmed list, so a malformed input is
+ * observable (no trigger experts) instead of half-applied.
+ */
+export function filePathsFromContext(
+  context: Record<string, unknown> | undefined
+): readonly string[] | undefined {
+  const raw = context?.['filePaths'];
+  if (!Array.isArray(raw)) return undefined;
+  return raw.every((entry): entry is string => typeof entry === 'string') ? raw : undefined;
+}
+
+/**
  * Computes an AOrchestra agent plan for a task.
  *
  * Uses SharedTaskAnalyzer to analyze the task, then AgentPlanner to
  * select an optimal expert team. Feeds historical expert reliability
- * data to skip underperforming experts (Issue #1325).
+ * data to skip underperforming experts (Issue #1325) and the caller's
+ * file paths to the trigger table (#4827).
  * Returns undefined on failure (best-effort).
  *
  * @param task - Task description to plan for
  * @param logger - Logger for observability
+ * @param options.filePaths - File paths the task touches, fed to the planner's
+ *   file-pattern trigger table (#1314). Until #4827 the in-tree `orchestrate`
+ *   tool never supplied them, so trigger matching was inert for every caller
+ *   going through it.
  * @returns AgentPlan or undefined if planning fails
  */
-export function computeAgentPlan(task: string, logger: ILogger): AgentPlan | undefined {
+export function computeAgentPlan(
+  task: string,
+  logger: ILogger,
+  options?: { readonly filePaths?: readonly string[] | undefined }
+): AgentPlan | undefined {
   try {
     const analyzer = new SharedTaskAnalyzer();
     const analysis = analyzer.analyze(task);
@@ -76,7 +100,9 @@ export function computeAgentPlan(task: string, logger: ILogger): AgentPlan | und
     }
 
     const expertReliability = computeExpertReliability();
-    const plan = planAgentTeam(analysis, task, { expertReliability });
+    // An empty list is equivalent to none for the planner's trigger guard.
+    const filePaths = options?.filePaths ?? [];
+    const plan = planAgentTeam(analysis, task, { expertReliability, filePaths });
 
     // Log which experts were excluded by reliability filtering (Issue #1326)
     const excludedExperts: Array<{ role: string; rate: number }> = [];
@@ -92,6 +118,7 @@ export function computeAgentPlan(task: string, logger: ILogger): AgentPlan | und
       taskType: plan.taskType,
       complexity: plan.complexity,
       reliabilityEntries: expertReliability.size,
+      filePaths: filePaths.length,
     });
     return plan;
   } catch (planError) {

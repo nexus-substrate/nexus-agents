@@ -98,28 +98,28 @@ prints flags and examples for any of them.
 
 ### Maintainer — benchmarks, releases, deep diagnostics
 
-| Command              | Description                                                                                                                                                                   |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `login`              | [deprecated alias] Soft alias of "auth status"; renamed in #2449                                                                                                              |
-| `auto-remediate`     | Run one auto-remediation cycle (#3540). OFF unless NEXUS_AUTO_REMEDIATE=audit\|enforce; never auto-merges.                                                                    |
-| `remediation-review` | Soundness-review audit-mode selections (#3765): list pending · mark --evaluator --sound\|--unsound · sign-off --owner · readiness (enforce-readiness verdict + harmful-rate). |
-| `demo`               | API-free exploration mode (marketing/demo flow)                                                                                                                               |
-| `hooks`              | Claude CLI hook integration commands                                                                                                                                          |
-| `routing-audit`      | Debug model routing decisions                                                                                                                                                 |
-| `fitness-audit`      | Run CLI orchestration fitness score audit                                                                                                                                     |
-| `system-review`      | Automated system review (5-phase checklist)                                                                                                                                   |
-| `sprint`             | Automated sprint planning from open issues                                                                                                                                    |
-| `evaluate`           | Self-evaluation of codebase components                                                                                                                                        |
-| `issue`              | Issue template validation and management                                                                                                                                      |
-| `validation`         | Learning validation dashboard                                                                                                                                                 |
-| `learning-metrics`   | Aggregated learning metrics dashboard                                                                                                                                         |
-| `swe-bench`          | [deprecated] Extracted to nexus-eval-swebench (#2515); shim until next minor.                                                                                                 |
-| `atbench`            | [deprecated] Extracted to nexus-eval-atbench (#2516); shim until next minor.                                                                                                  |
-| `visualize`          | Generate Mermaid diagrams and ASCII dashboards                                                                                                                                |
-| `health`             | Swarm health metrics dashboard                                                                                                                                                |
-| `release-notes`      | Generate release notes from git commits                                                                                                                                       |
-| `release-validate`   | Run expert swarm validation for releases                                                                                                                                      |
-| `release-announce`   | Generate release announcements (blog, social)                                                                                                                                 |
+| Command              | Description                                                                                                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `login`              | [deprecated alias] Soft alias of "auth status"; renamed in #2449                                                                                                                                                  |
+| `auto-remediate`     | Run one auto-remediation cycle (#3540). OFF unless NEXUS_AUTO_REMEDIATE=audit\|enforce; never auto-merges.                                                                                                        |
+| `remediation-review` | Soundness-review audit-mode selections (#3765): list pending · mark --evaluator --sound\|--unsound · sign-off --owner · readiness (enforce-readiness verdict + harmful-rate + soak-store staleness alarm, #4279). |
+| `demo`               | API-free exploration mode (marketing/demo flow)                                                                                                                                                                   |
+| `hooks`              | Claude CLI hook integration commands                                                                                                                                                                              |
+| `routing-audit`      | Debug model routing decisions                                                                                                                                                                                     |
+| `fitness-audit`      | Run CLI orchestration fitness score audit                                                                                                                                                                         |
+| `system-review`      | Automated system review (5-phase checklist)                                                                                                                                                                       |
+| `sprint`             | Automated sprint planning from open issues                                                                                                                                                                        |
+| `evaluate`           | Self-evaluation of codebase components                                                                                                                                                                            |
+| `issue`              | Issue template validation and management                                                                                                                                                                          |
+| `validation`         | Learning validation dashboard                                                                                                                                                                                     |
+| `learning-metrics`   | Aggregated learning metrics dashboard                                                                                                                                                                             |
+| `swe-bench`          | [deprecated] Extracted to nexus-eval-swebench (#2515); shim until next minor.                                                                                                                                     |
+| `atbench`            | [deprecated] Extracted to nexus-eval-atbench (#2516); shim until next minor.                                                                                                                                      |
+| `visualize`          | Generate Mermaid diagrams and ASCII dashboards                                                                                                                                                                    |
+| `health`             | Swarm health metrics dashboard                                                                                                                                                                                    |
+| `release-notes`      | Generate release notes from git commits                                                                                                                                                                           |
+| `release-validate`   | Run expert swarm validation for releases                                                                                                                                                                          |
+| `release-announce`   | Generate release announcements (blog, social)                                                                                                                                                                     |
 
 ### Internal — dev/eval loops (hidden from --help)
 

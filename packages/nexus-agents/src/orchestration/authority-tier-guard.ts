@@ -3,8 +3,17 @@
  *
  * The machine consumer the authority-ladder ratification panel required (ADR-0017,
  * #3839): the tier field is no longer "documentation dressed as architecture". This
- * module turns a manifest's declared {@link AuthorityTier} into an ENFORCED ceiling
- * on what a strategy may do.
+ * module turns a manifest's declared {@link AuthorityTier} into a ceiling on what
+ * a strategy may do, checked at dispatch.
+ *
+ * What that ceiling does and does not do TODAY (#4827): both production dispatch
+ * modes floor at `suggest` ({@link dispatchActionClass}), and every registered
+ * manifest declares `suggest` or above, so the ceiling is real machinery that
+ * live traffic never approaches. `above_declared_tier` cannot fire until either a
+ * strategy is declared `observe` or a dispatch mode exercises a higher action
+ * class; the enforcement path is covered by unit tests, not by traffic.
+ * `tier_undeclared` is a working guard whose precondition currently holds (every
+ * dispatchable strategy is declared) — it refuses the first undeclared one.
  *
  * The contract (ADR-0017 §"The Four Tiers"): a strategy may take an action whose
  * authority class is AT OR BELOW its declared tier; an action ABOVE its declared

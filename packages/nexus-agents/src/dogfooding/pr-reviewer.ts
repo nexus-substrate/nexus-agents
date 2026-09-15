@@ -11,14 +11,9 @@ import type { Result, Task, TaskResult, IModelAdapter } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
 import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
-import { runUntrustedInputFirewall } from './untrusted-input-firewall.js';
-import { evaluatePolicy, type ActionContext } from '../security/policy-gate.js';
-import {
-  DRAFT_REPLY_BODY_MAX_LENGTH,
-  validateAgentAction,
-  type SourceCitation,
-} from '../security/action-schema.js';
-import { validateCorroboration } from '../security/corroboration-validator.js';
+import { firewallInputFor, runUntrustedInputFirewall } from './untrusted-input-firewall.js';
+import { auditReviewAction } from './pr-review-posting-gate.js';
+import { DRAFT_REPLY_BODY_MAX_LENGTH, type SourceCitation } from '../security/action-schema.js';
 import { truncateText } from '../utils/text-utils.js';
 import { ReputationCache } from '../security/reputation-model.js';
 import type { ReputationAssessment, ReputationGateDecision } from '../security/reputation-model.js';
@@ -58,9 +53,8 @@ import {
   fetchAccountAgeDays,
   formatDiffs,
   reviewPostingBlock,
-  type ReviewPostingVerdict,
 } from './pr-reviewer-helpers.js';
-import { buildReviewCitations, reportUnverifiedCorroboration } from './pr-review-citations.js';
+import { buildReviewCitations } from './pr-review-citations.js';
 
 // Re-export for convenience
 export { formatReviewComment } from './pr-reviewer-helpers.js';
@@ -70,10 +64,11 @@ const logger = createLogger({ component: 'PRReviewer' });
 /**
  * The access posture a PR review runs under, for the Rule of Two. Hardcoded
  * to the conservative answer: the reviewer can post under the project's
- * identity and the SCM provider resolves a live token. Shared by the firewall
- * (#4992) and `auditReviewAction` so the two cannot disagree — the comment on
- * `postReviewToGitHub` explains why RULE_OF_TWO firing at tier 3+ depends on
- * both conjuncts staying `true`.
+ * identity and the SCM provider resolves a live token. Passed to every
+ * firewall run (#4992, #5383) so the classification and the DraftReply's
+ * policy check cannot disagree on it — the comment on `postReviewToGitHub`
+ * explains why RULE_OF_TWO firing at tier 3+ depends on both conjuncts
+ * staying `true`.
  */
 const REVIEW_ACCESS_CONTEXT = { hasWriteAccess: true, hasSecretAccess: true } as const;
 
@@ -123,8 +118,9 @@ export class PRReviewer {
 
     // #4992: classify through the shared HostileInputFirewall so the trust
     // decision reaches the security audit trail (originally Issue #828 —
-    // defense-in-depth). Signal-only under the default NEXUS_FIREWALL_POLICY=off;
-    // `auditReviewAction` stays the Rule-of-Two enforcement point.
+    // defense-in-depth). Refuses only under NEXUS_FIREWALL_POLICY=enforce;
+    // `auditReviewAction` re-enters the firewall with the DraftReply for the
+    // policy decision (#5383).
     const firewall = this.classifyPRAuthor(prMetadata, reputation);
     if (!firewall.ok) return firewall;
     const trustResult = firewall.value.trust;
@@ -151,7 +147,7 @@ export class PRReviewer {
 
     const postOutcome: ReviewPostOutcome = this.config.dryRun
       ? { status: 'skipped', reason: 'dry-run' }
-      : await this.postReviewToGitHub(provider, prMetadata, result, gateDecision);
+      : await this.postReviewToGitHub(provider, prMetadata, result, gateDecision, reputation);
 
     logger.info('PR review completed', {
       prNumber,
@@ -266,16 +262,10 @@ export class PRReviewer {
     pr: PRMetadata,
     reputation: ReputationAssessment | undefined
   ): Result<FirewallResult, Error> {
-    return runUntrustedInputFirewall(
-      {
-        type: 'pull_request',
-        username: pr.author,
-        authorAssociation: pr.authorAssociation,
-        title: pr.title,
-        body: pr.body,
-      },
-      { context: REVIEW_ACCESS_CONTEXT, reputation: { assessment: reputation } }
-    );
+    return runUntrustedInputFirewall(firewallInputFor('pull_request', pr), {
+      context: REVIEW_ACCESS_CONTEXT,
+      reputation: { assessment: reputation },
+    });
   }
 
   /**
@@ -401,6 +391,13 @@ Provide a structured review with:
   /**
    * Posts review to GitHub after policy gate validation.
    *
+   * The gate is the firewall's (#5383): `auditReviewAction`
+   * (`pr-review-posting-gate.ts`) runs the DraftReply through it and reads
+   * `policy.allowed`. This method blocks on that verdict
+   * whatever `NEXUS_FIREWALL_POLICY` is — the mode only decides whether the
+   * firewall refuses on its own (`enforce`), and such a refusal arrives here
+   * as the same `allowed: false` with its rules.
+   *
    * Blocks on the gate's own `allowed` verdict rather than re-deriving a
    * narrower condition. It previously blocked on `hasRuleOfTwoViolation` alone
    * while `evaluatePolicy` had already computed `allowed`, on the rationale
@@ -425,17 +422,23 @@ Provide a structured review with:
     provider: FullCapableProvider,
     pr: PRMetadata,
     result: PRReviewDraft,
-    gateDecision: ReputationGateDecision
+    gateDecision: ReputationGateDecision,
+    reputation: ReputationAssessment | undefined
   ): Promise<ReviewPostOutcome> {
     const { formatReviewComment } = await import('./pr-reviewer-helpers.js');
     const formattedBody = formatReviewComment(result);
     const body = truncateText(formattedBody, DRAFT_REPLY_BODY_MAX_LENGTH, '…[review truncated]');
     const sources: SourceCitation[] = buildReviewCitations(pr.files);
-    const context: ActionContext = {
-      inputTrustTier: gateDecision.enforcedTier,
-      ...REVIEW_ACCESS_CONTEXT,
-    };
-    const policyResult = this.auditReviewAction(body, sources, context);
+    const policyResult = auditReviewAction(
+      { body, sources },
+      firewallInputFor('pull_request', pr),
+      {
+        context: REVIEW_ACCESS_CONTEXT,
+        reputation: { assessment: reputation },
+        enforcedTier: gateDecision.enforcedTier,
+      },
+      logger
+    );
     const blocked = reviewPostingBlock(policyResult);
     if (blocked !== undefined) {
       logger.warn(`${blocked.label}: review posting blocked`, {
@@ -461,37 +464,6 @@ Provide a structured review with:
       return { status: 'failed', error: postResult.error.message };
     }
     return { status: 'posted' };
-  }
-
-  private auditReviewAction(
-    body: string,
-    sources: readonly SourceCitation[],
-    context: ActionContext
-  ): ReviewPostingVerdict {
-    const validated = validateAgentAction({
-      type: 'DraftReply',
-      body,
-      requiresApproval: true,
-      sources,
-    });
-    if (!validated.ok) {
-      return {
-        allowed: false,
-        hasRuleOfTwoViolation: false,
-        violations: [{ rule: 'INVALID_ACTION', message: validated.error }],
-      };
-    }
-    const decision = evaluatePolicy(validated.value, context);
-    const corroboration = validateCorroboration(validated.value);
-    reportUnverifiedCorroboration(corroboration, logger);
-    const corroborationViolation = corroboration.satisfied
-      ? []
-      : [{ rule: 'INSUFFICIENT_CORROBORATION', message: corroboration.missing.join('; ') }];
-    return {
-      allowed: decision.allowed && corroboration.satisfied,
-      hasRuleOfTwoViolation: decision.violations.some((v) => v.rule === 'RULE_OF_TWO'),
-      violations: [...decision.violations, ...corroborationViolation],
-    };
   }
 
   /**

@@ -129,6 +129,15 @@ function checkInfluenceBlock(action: AgentAction, context: ActionContext): Viola
  * Enforce the Rule of Two: no agent may simultaneously
  * (a) process untrusted input, (b) have write access, AND (c) access secrets.
  *
+ * A violation is REFUSED, never routed to human approval (#4735, panel
+ * option A, 7-0). The rule measures the capability posture of the process —
+ * callers derive `hasWriteAccess` from `!dryRun` and `hasSecretAccess` from
+ * token presence for the whole run — not the blast radius of one action, so a
+ * human approving one action would not remove the agent's simultaneous
+ * possession of all three legs. The only remedy is to drop a leg, and the
+ * violation message names all three so the caller's existing logging carries
+ * the diagnosis (this module has no logger of its own).
+ *
  * Exported (#3198) so the firewall's `policyEnforcement` stage can surface the
  * same assessment during input composition without duplicating the predicate.
  */
@@ -138,7 +147,10 @@ export function checkRuleOfTwo(context: ActionContext): Violation | undefined {
     return {
       rule: 'RULE_OF_TWO',
       message:
-        'Rule of Two violation: agent simultaneously processes untrusted input, has write access, and accesses secrets',
+        `RULE_OF_TWO: agent simultaneously (a) processes untrusted input ` +
+        `(Tier ${context.inputTrustTier}), (b) has write access, and ` +
+        `(c) has secret/token access. Refused; there is no approval path — ` +
+        `drop a leg: dry-run, run without the token, or split the agent (#4735).`,
       severity: 'block',
     };
   }
@@ -254,6 +266,27 @@ function checkSourceTrustTiers(action: AgentAction): Violation | undefined {
 // ============================================================================
 // Public API
 // ============================================================================
+
+/**
+ * Rule ids that only an ACTION-shaped evaluation can produce (#5380).
+ *
+ * Of the seven checks {@link evaluatePolicy} runs, one — {@link checkRuleOfTwo}
+ * — reads the `ActionContext` alone; the other six read the `AgentAction` and
+ * emit these ids. A caller that has a context but no action (the firewall's
+ * input-shaped `process()` without a supplied action) can run only the Rule of
+ * Two, and must report THESE as unmeasured rather than let their absence from
+ * a violation list read as a pass. Kept beside the check list below so a new
+ * action-scoped check is added to both or to neither.
+ */
+export const ACTION_SCOPED_POLICY_RULES: readonly string[] = [
+  'REQUIRE_CITATION',
+  'INSUFFICIENT_TRUST',
+  'UNTRUSTED_INFLUENCE',
+  'LABEL_SET_UNAVAILABLE',
+  'INVALID_LABELS',
+  'PRIVILEGED_LABEL',
+  'SOURCE_TRUST_MISMATCH',
+];
 
 /**
  * Evaluate an agent action against the policy gate.

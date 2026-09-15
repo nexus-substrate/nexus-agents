@@ -2,9 +2,20 @@
  * nexus-agents/mcp - Centralized Middleware Chain
  *
  * Provides a composable middleware chain for MCP tools with guaranteed
- * execution order: audit → rate-limit → validation → policy → access-policy →
+ * execution order: metrics → audit → rate-limit → validation → policy →
  * timeout → handler. There is NO auth stage in this chain: authentication
  * lives in `auth-handler.ts` and is wired separately.
+ *
+ * `policy` (PolicyFirewall) is the only authorization stage this chain can
+ * mount, and the production wrapper (`wrapToolWithTimeout`) does not mount
+ * even that — authorization for a registered tool runs inside
+ * `createSecureHandler` against the process PolicyFirewall. The ClawGuard
+ * access-policy stage that used to sit after `policy` was deleted in #5107
+ * (#5022 decision, epic #5105): it read its policy from an AsyncLocalStorage
+ * store no inbound request ever populated, and the deriver that filled that
+ * store went in #5108. The chain reports the stages it built at debug level so
+ * that composition is observable rather than inferred;
+ * `single-authorization-mechanism.test.ts` pins it.
  *
  * @module mcp/middleware/middleware-chain
  * (Source: Issue #189 - Centralized MCP middleware chain)
@@ -26,7 +37,6 @@ import {
 } from './request-context.js';
 import { createMetricsMiddleware } from './tool-metrics.js';
 import { abortSignalStorage } from '../mcp-notifier.js';
-import { createAccessPolicyChainMiddleware } from '../../security/access-constraint-deriver/chain-adapter.js';
 import { toolStructuredError } from '../tools/tool-result.js';
 import type { ErrorCategory } from '../error-envelope.js';
 
@@ -103,8 +113,6 @@ export interface MiddlewareSkipConfig {
   rateLimit?: boolean | undefined;
   timeout?: boolean | undefined;
   audit?: boolean | undefined;
-  /** Skip the ClawGuard access-policy middleware (#1977). */
-  accessPolicy?: boolean | undefined;
 }
 
 /**
@@ -289,16 +297,30 @@ function composeMiddleware(middlewares: Middleware[]): Middleware {
   };
 }
 
+/**
+ * A stage the chain mounts, named so the built stack can be reported.
+ *
+ * `policy` is the one authorization stage. Adding a name here that gates a
+ * call is a #5022-class decision (which boundary authorizes, and with what),
+ * not a refactor — `single-authorization-mechanism.test.ts` pins the list.
+ */
+type MiddlewareStageName = 'metrics' | 'audit' | 'rateLimit' | 'validation' | 'policy' | 'timeout';
+
+interface MiddlewareStage {
+  readonly name: MiddlewareStageName;
+  readonly middleware: Middleware;
+}
+
 /** Helper: adds audit middleware if not skipped */
-function addAuditMiddleware(middlewares: Middleware[], skip: MiddlewareSkipConfig): void {
+function addAuditMiddleware(stages: MiddlewareStage[], skip: MiddlewareSkipConfig): void {
   if (skip.audit !== true) {
-    middlewares.push(createAuditMiddleware());
+    stages.push({ name: 'audit', middleware: createAuditMiddleware() });
   }
 }
 
 /** Helper: adds rate limit middleware if configured */
 function addRateLimitMiddleware(
-  middlewares: Middleware[],
+  stages: MiddlewareStage[],
   config: MiddlewareChainConfig,
   skip: MiddlewareSkipConfig
 ): void {
@@ -307,85 +329,72 @@ function addRateLimitMiddleware(
       config.rateLimiter instanceof RateLimiter
         ? config.rateLimiter
         : new RateLimiter(config.rateLimiter);
-    middlewares.push(createRateLimitMiddleware(limiter));
+    stages.push({ name: 'rateLimit', middleware: createRateLimitMiddleware(limiter) });
   }
 }
 
 /** Helper: adds validation middleware if schema provided */
 function addValidationMiddleware(
-  middlewares: Middleware[],
+  stages: MiddlewareStage[],
   config: MiddlewareChainConfig,
   skip: MiddlewareSkipConfig
 ): void {
   if (skip.validation !== true && config.schema !== undefined) {
-    middlewares.push(createValidationMiddleware(config.schema));
+    stages.push({ name: 'validation', middleware: createValidationMiddleware(config.schema) });
   }
 }
 
 /** Helper: adds policy middleware if configured */
 function addPolicyMiddleware(
-  middlewares: Middleware[],
+  stages: MiddlewareStage[],
   config: MiddlewareChainConfig,
   skip: MiddlewareSkipConfig
 ): void {
   if (skip.policy !== true && config.policyFirewall !== undefined) {
     const mode = config.executionMode ?? 'read-only';
-    middlewares.push(
-      createPolicyMiddleware(config.policyFirewall, config.toolName, mode, config.allowedPaths)
-    );
+    stages.push({
+      name: 'policy',
+      middleware: createPolicyMiddleware(
+        config.policyFirewall,
+        config.toolName,
+        mode,
+        config.allowedPaths
+      ),
+    });
   }
 }
 
 /** Helper: adds timeout middleware if configured */
 function addTimeoutMiddleware(
-  middlewares: Middleware[],
+  stages: MiddlewareStage[],
   config: MiddlewareChainConfig,
   skip: MiddlewareSkipConfig
 ): void {
   if (skip.timeout !== true && config.timeout !== undefined) {
     const guard = new TimeoutGuard(config.timeout);
-    middlewares.push(createTimeoutMiddleware(guard, config.toolName));
+    stages.push({ name: 'timeout', middleware: createTimeoutMiddleware(guard, config.toolName) });
   }
 }
 
-/**
- * Helper: adds the ClawGuard access-policy middleware (#1977).
- *
- * Always added unless explicitly skipped. The middleware is ALS-backed
- * and a no-op pass-through when no orchestrator has called
- * `withAccessPolicy(...)` — so runtime behavior is unchanged for callers
- * that haven't opted in.
- */
-function addAccessPolicyMiddleware(
-  middlewares: Middleware[],
-  config: MiddlewareChainConfig,
-  skip: MiddlewareSkipConfig
-): void {
-  if (skip.accessPolicy !== true) {
-    middlewares.push(createAccessPolicyChainMiddleware(config.toolName));
-  }
-}
-
-/** Helper: builds the middleware stack */
-function buildMiddlewareStack(config: MiddlewareChainConfig): Middleware[] {
+/** Helper: builds the middleware stack, in execution order */
+function buildMiddlewareStack(config: MiddlewareChainConfig): MiddlewareStage[] {
   const skip = config.skip ?? {};
-  const middlewares: Middleware[] = [];
+  const stages: MiddlewareStage[] = [];
 
-  middlewares.push(createMetricsMiddleware()); // Tool usage analytics (#1022)
-  addAuditMiddleware(middlewares, skip);
-  addRateLimitMiddleware(middlewares, config, skip);
-  addValidationMiddleware(middlewares, config, skip);
-  addPolicyMiddleware(middlewares, config, skip);
-  addAccessPolicyMiddleware(middlewares, config, skip); // #1977 ClawGuard
-  addTimeoutMiddleware(middlewares, config, skip);
+  stages.push({ name: 'metrics', middleware: createMetricsMiddleware() }); // Tool usage analytics (#1022)
+  addAuditMiddleware(stages, skip);
+  addRateLimitMiddleware(stages, config, skip);
+  addValidationMiddleware(stages, config, skip);
+  addPolicyMiddleware(stages, config, skip);
+  addTimeoutMiddleware(stages, config, skip);
 
-  return middlewares;
+  return stages;
 }
 
 /**
  * Creates a middleware chain with the standard execution order.
  *
- * Order: audit → rate-limit → validation → policy → timeout → handler
+ * Order: metrics → audit → rate-limit → validation → policy → timeout → handler
  *
  * Audit wraps everything to capture timing. Rate limit is checked early
  * to reject requests before expensive validation. Timeout wraps the
@@ -398,8 +407,16 @@ export function createMiddlewareChain(
   config: MiddlewareChainConfig
 ): (handler: ContextAwareToolHandler) => ToolHandler {
   const logger = config.logger ?? createLogger({ tool: config.toolName });
-  const middlewares = buildMiddlewareStack(config);
-  const composed = composeMiddleware(middlewares);
+  const stages = buildMiddlewareStack(config);
+  // The built composition, from the array that is actually composed. This is
+  // the record a test (or an operator at debug level) reads to know what sits
+  // on the dispatch boundary for a tool — a stage cannot be mounted without
+  // appearing here (#5107).
+  logger.debug('Middleware chain built', {
+    toolName: config.toolName,
+    stages: stages.map((stage) => stage.name),
+  });
+  const composed = composeMiddleware(stages.map((stage) => stage.middleware));
 
   return (handler: ContextAwareToolHandler): ToolHandler => {
     return async (args: unknown): Promise<ToolResult> => {

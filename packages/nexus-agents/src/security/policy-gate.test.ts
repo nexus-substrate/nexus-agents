@@ -197,26 +197,52 @@ describe('evaluatePolicy', () => {
     );
   });
 
-  it('blocks on rule of two violation', () => {
+  it('refuses a Rule-of-Two violation outright — never routed to approval (#4735)', () => {
+    // Panel decision #4735, option A: the Rule of Two measures the capability
+    // posture of the PROCESS (untrusted input + write + secret held at once),
+    // not the blast radius of one action, so a human approving this action
+    // would not remove the combination. SummarizeIssue is the row where
+    // RULE_OF_TWO is the SOLE violation: every approval-requiring action needs
+    // Tier <= 2 and so co-trips INSUFFICIENT_TRUST at Tier 3.
     const action = makeSummarize([tier3Comment]);
     const ctx = makeContext('3', { hasWriteAccess: true, hasSecretAccess: true });
     const decision = evaluatePolicy(action, ctx);
 
     expect(decision.allowed).toBe(false);
-    expect(decision.violations).toContainEqual(
-      expect.objectContaining({
-        rule: 'RULE_OF_TWO',
-        severity: 'block',
-      })
-    );
+    expect(decision.requiresApproval).toBe(false);
+    expect(decision.violations).toHaveLength(1);
+    expect(decision.violations[0]?.rule).toBe('RULE_OF_TWO');
+    expect(decision.violations[0]?.severity).toBe('block');
+
+    // The gate has no logger; the message is what the caller's logging
+    // carries, so it must name all three legs and the drop-a-leg remedy.
+    const message = decision.violations[0]?.message ?? '';
+    expect(message).toContain('untrusted input (Tier 3)');
+    expect(message).toContain('write access');
+    expect(message).toContain('secret/token access');
+    expect(message).toContain('no approval path');
+    expect(message).toContain('drop a leg');
   });
 
-  it('allows when rule of two partial (no violation)', () => {
-    const action = makeSummarize([tier3Comment]);
-    const ctx = makeContext('3', { hasWriteAccess: true, hasSecretAccess: false });
-    const decision = evaluatePolicy(action, ctx);
+  it.each([
+    [
+      'input is trusted (Tier 2)',
+      makeContext('2', { hasWriteAccess: true, hasSecretAccess: true }),
+    ],
+    [
+      'no write access (dry-run)',
+      makeContext('3', { hasWriteAccess: false, hasSecretAccess: true }),
+    ],
+    [
+      'no secret access (no token)',
+      makeContext('3', { hasWriteAccess: true, hasSecretAccess: false }),
+    ],
+  ])('allows when one Rule-of-Two leg is dropped: %s', (_label, ctx) => {
+    // Dropping any one leg is the remedy the policy names (#4735).
+    const decision = evaluatePolicy(makeSummarize([tier3Comment]), ctx);
 
     expect(decision.allowed).toBe(true);
+    expect(decision.violations.map((v) => v.rule)).not.toContain('RULE_OF_TWO');
   });
 
   it('blocks when proposed labels invalid', () => {

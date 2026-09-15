@@ -87,8 +87,8 @@ describe('global policy firewall registry (#4888)', () => {
 
     it('lets an ordinary read-only tool through under the DEFAULT rule set', () => {
       // The benign population, which the DENY_ALL cases above cannot speak for.
-      // With the real default rules this passes only because of warn mode — see
-      // the next test for what enforcing would do to it today.
+      // Since #5114 this passes on the merits (memory_query is readOnlyHint:
+      // true), not only because of warn mode — the next test pins that.
       const firewall = createDefaultPolicyFirewall({ mode: 'enforce' });
       const { logger } = recordingLogger();
 
@@ -98,21 +98,22 @@ describe('global policy firewall registry (#4888)', () => {
       expect(decision.allowed).toBe(true);
     });
 
-    it('documents why the enforce path stays closed', () => {
-      // Not a wish — the reason there is no opt-in yet. `isMutationTool` treats
-      // an unknown tool as a mutation, `READ_ONLY_TOOLS` names two nexus tools,
-      // and nothing supplies `executionMode`, so the effective mode is always
-      // 'read-only'. Enforcing today denies almost every registered tool.
+    it('documents what enforcing would do now that tools are classified (#5114)', () => {
+      // Before #5114 `isMutationTool` guessed "mutation" for 45 of 47 registered
+      // tools, which is why the enforce path was closed. The manifest now
+      // classifies every tool, so an enforcing firewall in read-only mode lets
+      // a read-only tool through and denies a real mutation. What is STILL
+      // true, and still #4988's call: nothing supplies `executionMode`, so the
+      // effective mode is 'read-only' and every readOnlyHint: false tool would
+      // be denied. Reopening enforce is a separate decision.
       const enforcing = createDefaultPolicyFirewall({ mode: 'enforce' });
 
-      const decision = enforcing.evaluate({
-        toolName: 'memory_query',
-        args: {},
-        mode: 'read-only',
-      });
+      const read = enforcing.evaluate({ toolName: 'memory_query', args: {}, mode: 'read-only' });
+      expect(read.allowed).toBe(true);
 
-      expect(decision.allowed).toBe(false);
-      expect(decision.reason).toContain('mutation operation');
+      const write = enforcing.evaluate({ toolName: 'memory_write', args: {}, mode: 'read-only' });
+      expect(write.allowed).toBe(false);
+      expect(write.reason).toContain('mutation operation');
     });
   });
 

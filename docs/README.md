@@ -215,7 +215,7 @@ The data plane is the engineering CLIs (Claude Code, Codex, Gemini, OpenCode) th
 
 ## Self-\* Loops (MAPE-K)
 
-The autonomic loops. Each maps to a shipped mechanism and sits at a declared rung of the [authority ladder (ADR-0017)](./adr/0017-authority-ladder.md): self-configuring (setup/doctor), self-healing (circuit-breaker demotion), self-optimizing (LinUCB/TOPSIS), self-protecting (trust tiers / ClawGuard / sandbox).
+The autonomic loops. Each maps to a shipped mechanism and sits at a declared rung of the [authority ladder (ADR-0017)](./adr/0017-authority-ladder.md): self-configuring (setup/doctor), self-healing (circuit-breaker demotion), self-optimizing (LinUCB/TOPSIS), self-protecting (trust tiers / PolicyFirewall / sandbox).
 
 ### Self-configuring & self-optimizing
 
