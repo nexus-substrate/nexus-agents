@@ -23,7 +23,9 @@
  * WHAT IT CATCHES: a member's type changing (`number` -> `number | null`),
  * required becoming optional or vice versa, a union gaining or losing members,
  * a symbol disappearing, and any of the above on a type that is public only
- * through another type's signature.
+ * through another type's signature — or only through an `extends` /
+ * `implements` clause (#6189): a base interface gets its own block, and the
+ * child records the clause.
  *
  * WHAT IT DOES NOT: judge severity. The snapshot diff tells you the surface
  * moved; a human still decides major vs minor. It also does not resolve
@@ -492,8 +494,32 @@ function signatureLines(node: Node): string[] {
   return sigs.map((sig) => `  : ${callSignatureText(sig, node)}`);
 }
 
+/**
+ * `extends X` / `implements Y` lines for an interface or class (#6189).
+ *
+ * Inherited members are NOT flattened into the child. The base is enqueued as
+ * its own declaration (see {@link referencedDeclarations}), the same way a
+ * member's referenced type already is, so a base-field change is ONE changed
+ * block in the diff instead of one per extending type — and this line is what
+ * tells a reader of the child which block to look at. Dropping the clause
+ * removes every inherited member from the child's shape, so the clause itself
+ * is part of the recorded surface.
+ */
+function heritageLines(node: Node): string[] {
+  if (!Node.isInterfaceDeclaration(node) && !Node.isClassDeclaration(node)) return [];
+  return node.getHeritageClauses().flatMap((clause) => {
+    const keyword = clause.getToken() === SyntaxKind.ExtendsKeyword ? 'extends' : 'implements';
+    return clause.getTypeNodes().map((t) => `  ${keyword} ${normalizeTypeText(t.getText())}`);
+  });
+}
+
 function memberLines(node: Node): string[] {
-  return [...propertyLines(node), ...aliasLines(node), ...signatureLines(node)];
+  return [
+    ...heritageLines(node),
+    ...propertyLines(node),
+    ...aliasLines(node),
+    ...signatureLines(node),
+  ];
 }
 
 /**
@@ -507,8 +533,19 @@ function memberLines(node: Node): string[] {
  */
 function referencedDeclarations(node: Node): Node[] {
   const found: Node[] = [];
-  for (const ref of node.getDescendantsOfKind(SyntaxKind.TypeReference)) {
-    const symbol = ref.getTypeName().getSymbol();
+  // A heritage clause names its base as an ExpressionWithTypeArguments, not a
+  // TypeReference, so `interface B extends A` never enqueued `A` and every
+  // member `B` inherits was absent from the snapshot; `A` itself vanished
+  // when its last direct reference went (#6189). The type ARGUMENTS of a
+  // generic base (`extends Box<Item>`) are TypeReferences and were already
+  // followed; only the base expression was missed.
+  const bases = node
+    .getDescendantsOfKind(SyntaxKind.ExpressionWithTypeArguments)
+    .map((e) => e.getExpression().getSymbol());
+  const names = node
+    .getDescendantsOfKind(SyntaxKind.TypeReference)
+    .map((ref) => ref.getTypeName().getSymbol());
+  for (const symbol of [...bases, ...names]) {
     if (symbol === undefined) continue;
     for (const decl of symbol.getDeclarations()) {
       // Only follow into this package's own source; node_modules and lib types
