@@ -1,4 +1,4 @@
-/* eslint-disable no-console, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/restrict-template-expressions, max-lines-per-function, complexity */
+/* eslint-disable @typescript-eslint/strict-boolean-expressions, @typescript-eslint/restrict-template-expressions, max-lines-per-function, complexity -- suppressed file-wide when the backfill landed (#1572) instead of written to the strict baseline; 23 sites, migration tracked in #6331 */
 /**
  * backfill-research-quality.ts — Enrich existing papers with quality scores.
  *

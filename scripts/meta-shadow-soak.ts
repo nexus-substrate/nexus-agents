@@ -44,8 +44,6 @@
  * (Source: Issue #4310, feeder for #3552; precedent #4224)
  */
 
-/* eslint-disable no-console -- CLI script that prints progress */
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, statSync, readFileSync } from 'node:fs';

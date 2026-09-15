@@ -34,8 +34,6 @@
  * (Source: Issue #3838)
  */
 
-/* eslint-disable no-console */
-
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DOCS_ROOT } from './script-paths.js';

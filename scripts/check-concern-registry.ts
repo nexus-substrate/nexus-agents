@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Concern registry ratchet — one canonical implementation per operation (#5123).
  *

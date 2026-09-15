@@ -7,8 +7,6 @@
  * (Source: Issue #632 - Research Index Automation)
  */
 
-/* eslint-disable no-console */
-
 import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { parse } from 'yaml';

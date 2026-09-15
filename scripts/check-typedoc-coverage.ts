@@ -137,7 +137,6 @@ function readGenerated(): string[] {
     .map((f) => basename(f, '.md'));
 }
 
-/* eslint-disable no-console */
 function main(): void {
   const verdict = assessCoverage({
     declared: readDeclared(),

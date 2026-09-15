@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function, max-lines */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string, max-lines-per-function, max-lines -- suppressed file-wide when the pipeline was wired to real agents (#1684) instead of written to the strict baseline; 13 sites and 933 lines against the 600-line governance ceiling, migration tracked in #6331 */
 /**
  * Agent Executor — Connects pipeline stages to nexus-agents infrastructure (#1684)
  *

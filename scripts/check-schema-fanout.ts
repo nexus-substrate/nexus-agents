@@ -23,8 +23,6 @@
  *   1 - Manifest missing/unparseable OR --strict and warnings emitted
  */
 
-/* eslint-disable no-console */
-
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';

@@ -75,7 +75,6 @@
  * (Source: Issue #5130, #5118, #3991)
  */
 
-/* eslint-disable no-console */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';

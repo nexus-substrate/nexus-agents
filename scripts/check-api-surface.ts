@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Public API surface gate (#4749).
  *

@@ -7,9 +7,7 @@
  * (Source: Issue #639 - Automated release notes generator)
  */
 
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/strict-boolean-expressions */
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/prefer-nullish-coalescing -- suppressed file-wide when the release suite landed (#637) instead of written to the strict baseline; 13 sites, migration tracked in #6331 */
 
 import { execFileSync } from 'node:child_process';
 import {

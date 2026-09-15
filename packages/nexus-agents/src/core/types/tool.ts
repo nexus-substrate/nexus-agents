@@ -6,8 +6,7 @@
 
 // Note: Zod types used here are for documentation.
 // Actual validation will be done in nexus-agents/mcp package.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ZodSchema = { parse: (data: unknown) => any; safeParse: (data: unknown) => any };
+type ZodSchema = { parse: (data: unknown) => unknown; safeParse: (data: unknown) => unknown };
 import type { Result } from '../result.js';
 import type { ValidationError } from '../errors.js';
 

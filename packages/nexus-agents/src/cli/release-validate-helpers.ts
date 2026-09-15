@@ -8,13 +8,7 @@
  * (Source: Issue #669 - Extract from release-validate-command.ts)
  */
 
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/strict-boolean-expressions */
-
-/* eslint-disable @typescript-eslint/require-await */
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable max-lines-per-function */
+/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/require-await, @typescript-eslint/no-unused-vars, max-lines-per-function -- suppressed file-wide when the validators were extracted (#669) instead of written to the strict baseline; 11 sites, migration tracked in #6331 */
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';

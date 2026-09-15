@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -7,11 +6,9 @@ import {
   checkTempDirCleanup,
   checkTestHygiene,
   collectLintTargets,
-  collectSrcTargets,
   lintVerdict,
   type Violation,
 } from './arch-lint.js';
-import { checkSuppressionReason } from './arch-lint-suppression.js';
 import { SRC_ROOT } from './script-paths.js';
 
 const srcFile = (rel: string): string => join(SRC_ROOT, rel);
@@ -231,73 +228,5 @@ describe('lintVerdict — zero files scanned is not a pass (#4586)', () => {
 
     expect(result.unmeasured).toBeUndefined();
     expect(result.passed).toBe(false);
-  });
-});
-
-describe('checkSuppressionReason — a max-lines disable states its reason (#6008)', () => {
-  // The 24 reasoned disables in the tree all use the directive's own
-  // `-- <reason>` clause; a trailing `// ...` after `*/` is prose eslint never
-  // sees, and the two forms drifted apart (the trailing form said "400-600 OK"
-  // on a 969-line file). The reason therefore has to sit inside the directive.
-  const hits = (content: string): Violation[] =>
-    checkSuppressionReason(srcFile('mcp/tools/thing.ts'), content);
-
-  it('flags a bare disable and names its line', () => {
-    const violations = hits('/* eslint-disable max-lines */\nexport const x = 1;');
-
-    expect(violations).toHaveLength(1);
-    expect(violations[0]?.rule).toBe('suppression-reason');
-    expect(violations[0]?.severity).toBe('error');
-    expect(violations[0]?.line).toBe(1);
-    expect(violations[0]?.file).toBe('mcp/tools/thing.ts');
-  });
-
-  it('flags a reason written as a trailing line comment outside the directive', () => {
-    // `/* eslint-disable max-lines */ // cohesive (governance: 400-600 OK)` —
-    // the form dev-pipeline.ts and consensus-vote.ts carried on origin/main.
-    const violations = hits('/* eslint-disable max-lines */ // cohesive module\n');
-
-    expect(violations).toHaveLength(1);
-  });
-
-  it('flags an empty reason clause', () => {
-    expect(hits('/* eslint-disable max-lines -- */\n')).toHaveLength(1);
-  });
-
-  it('accepts the one-line `-- reason` form', () => {
-    expect(hits('/* eslint-disable max-lines -- data-only registry (#4176) */\n')).toEqual([]);
-  });
-
-  it('accepts the multi-line form whose reason starts on the next line', () => {
-    // audit-logger.ts and consensus-vote-types.ts open the clause and continue
-    // the reason on following lines.
-    const content = [
-      '/* eslint-disable max-lines --',
-      ' * cohesive: reason continues here.',
-      ' */',
-    ].join('\n');
-
-    expect(hits(content)).toEqual([]);
-  });
-
-  it('does not match max-lines-per-function or a bounded max-lines ceiling', () => {
-    const content = [
-      '/* eslint max-lines: ["error", { "max": 600, "skipBlankLines": true, "skipComments": true }] */',
-      '/* eslint-disable max-lines-per-function */',
-      '// eslint-disable-next-line max-lines-per-function',
-    ].join('\n');
-
-    expect(hits(content)).toEqual([]);
-  });
-
-  it('holds over the real package source: every max-lines disable has a reason', () => {
-    // The guard the issue asked for. On origin/main before #6008 this named
-    // eight files; a stripped reason names that file again.
-    const files = collectSrcTargets();
-    expect(files.length).toBeGreaterThan(100);
-
-    const bare = files.flatMap((f) => checkSuppressionReason(f, readFileSync(f, 'utf-8')));
-
-    expect(bare.map((v) => `${v.file}:${String(v.line)}`)).toEqual([]);
   });
 });

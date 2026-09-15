@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Env-schema coverage gate — the reverse direction of #4722 (#5142).
  *

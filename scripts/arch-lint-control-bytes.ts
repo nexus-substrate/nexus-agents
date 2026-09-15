@@ -1,7 +1,7 @@
 /**
  * Raw control bytes in source for arch-lint: a `.ts` file must not carry one.
  *
- * A sibling of arch-lint.ts, following arch-lint-suppression.ts, so the rule
+ * A sibling of arch-lint.ts rather than a section of it, so the rule
  * collection can grow without the collector itself needing an exemption.
  *
  * @module scripts/arch-lint-control-bytes

@@ -319,7 +319,7 @@ export function zapConfigureTargetHandler(
 }
 
 /** Generate GitHub Actions workflow + ZAP automation plan. */
-// eslint-disable-next-line max-lines-per-function
+// eslint-disable-next-line max-lines-per-function -- the body is two YAML templates (the Actions workflow and the ZAP plan) rendered inline; splitting them out would move the length, not remove it
 export function zapGenerateConfigHandler(
   state: Readonly<GraphState>
 ): Promise<Partial<GraphState>> {

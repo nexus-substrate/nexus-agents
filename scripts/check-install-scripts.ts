@@ -36,7 +36,6 @@
  * @module scripts/check-install-scripts
  * (Source: Issue #5427)
  */
-/* eslint-disable no-console -- this is a CLI gate; its report IS stdout. */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';

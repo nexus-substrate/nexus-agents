@@ -162,8 +162,7 @@ export async function routeHook(input: HookInput, handlers: HookHandlers): Promi
     };
   }
 
-  // TypeScript needs help here due to discriminated union
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- `handler` is a union of seven signatures, so a call through it needs the intersection of their inputs; the event→input correspondence is established by EVENT_TO_HANDLER plus the parsed schema, not by the type system
   return handler(input as any);
 }
 

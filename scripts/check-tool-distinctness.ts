@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Tool-Description Distinctness Lint (#2650)
  *

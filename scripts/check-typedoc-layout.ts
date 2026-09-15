@@ -185,7 +185,6 @@ function readGenerated(): string[] {
     .map((f) => f.split(/[\\/]/).join('/'));
 }
 
-/* eslint-disable no-console */
 function main(): void {
   const verdict = assessLayout({
     declared: readDeclared(),

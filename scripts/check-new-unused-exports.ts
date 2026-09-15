@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Producer-without-consumer gate (#3024).
  *

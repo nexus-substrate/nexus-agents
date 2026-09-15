@@ -11,9 +11,13 @@ import {
   createLogger,
   setGlobalLogLevel,
   getGlobalLogLevel,
+  type ILogger,
   type LogLevel,
 } from './logger.js';
 import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from './time-provider.js';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { nexusMkdtempSync } from '../config/nexus-tmp-dir.js';
 import {
   FAKE_OPENAI_KEY,
   FAKE_BEARER_TOKEN,
@@ -248,5 +252,54 @@ describe('setGlobalLogLevel (#2443)', () => {
     } finally {
       stderrSpy.mockRestore();
     }
+  });
+});
+
+// ============================================================================
+// setDestination('file') (#6153)
+// ============================================================================
+
+describe("setDestination('file')", () => {
+  // The file branch used to reach `fs` through a bare `require('fs')` under a
+  // `no-require-imports` suppression. The package ships ESM only, so in the
+  // built bundle that call threw `Dynamic require of "fs" is not supported`
+  // on the first log line — the suppression was hiding a broken path, not a
+  // deliberate one (#6153). Vitest supplies a `require` shim, so this test
+  // locks the behaviour rather than reproducing the bundle failure; the
+  // reproduction is `node` against `dist/` before and after the fix.
+  let dir: string;
+  const logger = createLogger({ component: 'file-destination-test' });
+  // Optional on ILogger (a test double may omit it); createLogger always wires it.
+  const setDestination = (...args: Parameters<NonNullable<ILogger['setDestination']>>): void => {
+    if (logger.setDestination === undefined) throw new Error('createLogger omitted setDestination');
+    logger.setDestination(...args);
+  };
+
+  beforeEach(() => {
+    dir = nexusMkdtempSync('logger-file-dest-');
+  });
+
+  afterEach(() => {
+    setDestination('stderr');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('appends the log line to the configured file', async () => {
+    const target = join(dir, 'nexus.log');
+    setDestination('file', target);
+    logger.warn('written-to-file-6153');
+    // Switching away ends the stream; the flush is asynchronous.
+    setDestination('stderr');
+
+    const deadline = Date.now() + 2000;
+    let content = '';
+    while (Date.now() < deadline) {
+      content = existsSync(target) ? readFileSync(target, 'utf-8') : '';
+      if (content.includes('written-to-file-6153')) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    expect(content).toContain('written-to-file-6153');
+    expect(content).toContain('"component":"file-destination-test"');
   });
 });

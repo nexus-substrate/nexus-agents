@@ -8,8 +8,6 @@
  *
  * Source: Issue #1125
  */
-/* eslint-disable no-console */
-
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SRC_ROOT } from './script-paths.js';

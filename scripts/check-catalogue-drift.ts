@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Catalogue-drift sweep (#4417).
  *

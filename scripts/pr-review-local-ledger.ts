@@ -17,8 +17,6 @@
  * @module scripts/pr-review-local-ledger
  */
 
-/* eslint-disable no-console -- CLI-adjacent helper that prints progress */
-
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
