@@ -1015,7 +1015,8 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
         { encoding: 'utf-8', env: { ...process.env, CHECKER_EXIT: String(checkerExit) } }
       );
       expect(result.status, result.stderr).toBe(stepExit);
-      expect(result.stdout.includes('::warning::')).toBe(warns);
+      expect(result.stdout).toBe(warns ? '::warning::required jobs unmeasured\n' : '');
+      expect(result.stderr).toBe('');
     });
   });
 

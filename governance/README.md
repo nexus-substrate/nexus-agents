@@ -372,9 +372,11 @@ required contexts `CI Success` and `Governor-path ratification gate`, and the
 absence of `pnpm.auditConfig`. `scripts/check-required-jobs.ts` runs inside
 `Governor-path ratification gate` on every PR, so weakening CI wiring is
 checked by a governor-owned job. Measured drift fails the job (exit 1);
-unreadable branch protection is reported as `unmeasured` without overriding
-measured tree results. Exit 0 means measured checks passed; exit 2 means
-nothing could be measured and produces a workflow warning. The manifest's
+unreadable branch protection leaves only protection membership `unmeasured`;
+local producers are still checked, and missing producers remain drift. Exit 0
+means all checks passed; exit 2 means at least one check was unmeasured and
+none drifted. Unmeasured diagnostics use `::warning::`, drift diagnostics use
+`::error::`, and the workflow step warns on exit 2 while failing on exit 1. The manifest's
 empty needs list is drift, and its exact match to the live CI needs list is
 covered by an integration test.
 

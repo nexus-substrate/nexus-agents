@@ -1,13 +1,83 @@
 /** Governor-owned CI wiring and required-context contract (#6343). */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import {
-  checkRequiredContexts,
-  loadRequiredContexts,
-  loadWorkflowJobNames,
-} from './check-required-contexts.js';
+export const EXPECTED_REQUIRED_CONTEXTS = [
+  'CI Success',
+  'Governor-path ratification gate',
+] as const;
+
+interface RequiredContextsInput {
+  readonly expectedContexts?: readonly string[];
+  readonly requiredContexts: readonly string[] | 'unmeasured';
+  readonly workflowJobNames: readonly string[] | 'unmeasured';
+}
+
+interface RequiredContextsResult {
+  verdict: 'ok' | 'drift' | 'unmeasured';
+  missing: string[];
+  unproduced: string[];
+  expected: readonly string[];
+}
+
+/** Measure protection and producers independently; measured drift wins over unavailable input. */
+export function checkRequiredContexts(input: RequiredContextsInput): RequiredContextsResult {
+  const { requiredContexts, workflowJobNames } = input;
+  const expected = [...new Set([...EXPECTED_REQUIRED_CONTEXTS, ...(input.expectedContexts ?? [])])];
+  const missing =
+    requiredContexts === 'unmeasured'
+      ? []
+      : expected.filter((context) => !requiredContexts.includes(context));
+  const contexts = new Set([
+    ...expected,
+    ...(requiredContexts === 'unmeasured' ? [] : requiredContexts),
+  ]);
+  const unproduced =
+    workflowJobNames === 'unmeasured'
+      ? []
+      : [...contexts].filter((context) => !workflowJobNames.includes(context));
+  // The two built-in expected contexts make an empty measured inventory unproduced.
+  const drift = missing.length > 0 || unproduced.length > 0;
+  let verdict: RequiredContextsResult['verdict'] = drift ? 'drift' : 'ok';
+  if (!drift && (requiredContexts === 'unmeasured' || workflowJobNames === 'unmeasured')) {
+    verdict = 'unmeasured';
+  }
+  return { verdict, missing, unproduced, expected };
+}
+
+const WorkflowSchema = z.object({
+  jobs: z.record(z.string(), z.object({ name: z.string().optional() })),
+});
+const RequiredStatusChecksSchema = z.object({ contexts: z.array(z.string()) });
+
+/** Read every .yml workflow; an unnamed job produces its job ID as the context. */
+export function loadWorkflowJobNames(directory = '.github/workflows'): string[] {
+  return readdirSync(directory)
+    .filter((file) => file.endsWith('.yml'))
+    .sort()
+    .flatMap((file) => {
+      const parsed: unknown = parseYaml(readFileSync(join(directory, file), 'utf-8'));
+      const workflow = WorkflowSchema.parse(parsed);
+      return Object.entries(workflow.jobs).map(([id, job]) => job.name ?? id);
+    });
+}
+
+/** Failed access or invalid API data leaves branch protection unmeasured. */
+export function loadRequiredContexts(): readonly string[] | 'unmeasured' {
+  try {
+    const response = execFileSync(
+      'gh',
+      ['api', 'repos/nexus-substrate/nexus-agents/branches/main/protection/required_status_checks'],
+      { encoding: 'utf-8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+    const parsed: unknown = JSON.parse(response);
+    return RequiredStatusChecksSchema.parse(parsed).contexts;
+  } catch {
+    return 'unmeasured';
+  }
+}
 
 const ManifestSchema = z.object({
   description: z.string().min(1),
@@ -23,8 +93,11 @@ interface RequiredJobsInput {
   readonly ciSuccessResultChecks: readonly string[];
   readonly packageJson: unknown;
   readonly requiredContexts: readonly string[] | 'unmeasured';
-  readonly workflowJobNames: readonly string[];
+  readonly workflowJobNames: readonly string[] | 'unmeasured';
 }
+
+const PROTECTION_UNMEASURED = 'Required contexts: unmeasured (branch protection unreadable)';
+const INVENTORY_UNMEASURED = 'Required contexts: unmeasured (workflow inventory unreadable)';
 
 interface RequiredJobsResult {
   verdict: 'ok' | 'drift' | 'unmeasured';
@@ -52,12 +125,17 @@ export function checkRequiredJobs(input: RequiredJobsInput): RequiredJobsResult 
   }
   problems.push(...packageProblems(input.packageJson, manifest.audit_config_forbidden));
   problems.push(...contextProblems(input, manifest.required_contexts));
-  // Local policy/wiring were measured even when the remote sub-check was not.
-  const verdict = problems.length > 0 ? 'drift' : 'ok';
-  if (input.requiredContexts === 'unmeasured') {
-    problems.push('Required contexts: unmeasured (branch protection unreadable)');
-  }
-  return { verdict, problems };
+  const unmeasured = unmeasuredProblems(input);
+  let verdict: RequiredJobsResult['verdict'] = problems.length > 0 ? 'drift' : 'ok';
+  if (problems.length === 0 && unmeasured.length > 0) verdict = 'unmeasured';
+  return { verdict, problems: [...problems, ...unmeasured] };
+}
+
+function unmeasuredProblems(input: RequiredJobsInput): string[] {
+  const problems: string[] = [];
+  if (input.requiredContexts === 'unmeasured') problems.push(PROTECTION_UNMEASURED);
+  if (input.workflowJobNames === 'unmeasured') problems.push(INVENTORY_UNMEASURED);
+  return problems;
 }
 
 function packageProblems(packageJson: unknown, auditConfigForbidden: boolean): string[] {
@@ -70,15 +148,8 @@ function packageProblems(packageJson: unknown, auditConfigForbidden: boolean): s
 }
 
 function contextProblems(input: RequiredJobsInput, expected: readonly string[]): string[] {
-  const result = checkRequiredContexts(input);
-  if (input.requiredContexts === 'unmeasured') return [];
-  const required = input.requiredContexts;
-  // Preserve #6346's contract and enforce additional manifest contexts too.
-  const missing = new Set([
-    ...result.missing,
-    ...expected.filter((name) => !required.includes(name)),
-  ]);
-  const problems = [...missing].map((name) => `Missing required context: ${name}`);
+  const result = checkRequiredContexts({ ...input, expectedContexts: expected });
+  const problems = result.missing.map((name) => `Missing required context: ${name}`);
   problems.push(
     ...result.unproduced.map((name) => `Required context without workflow job: ${name}`)
   );
@@ -132,7 +203,13 @@ function readJson(path: string): unknown {
 /** Print one annotation per problem and map the measured verdict to its exit code. */
 function report(result: RequiredJobsResult): number {
   console.log(`Required jobs: ${result.verdict}`);
-  for (const problem of result.problems) console.log(`::error::${problem}`);
+  for (const problem of result.problems) {
+    const unmeasured =
+      result.verdict === 'unmeasured' ||
+      problem === PROTECTION_UNMEASURED ||
+      problem === INVENTORY_UNMEASURED;
+    console.log(`::${unmeasured ? 'warning' : 'error'}::${problem}`);
+  }
   if (result.verdict === 'drift') return 1;
   return result.verdict === 'unmeasured' ? 2 : 0;
 }
@@ -174,29 +251,21 @@ export function runRequiredJobsCheck(directory = '.'): number {
       problems: ['Required local CI wiring or package.json is missing or invalid'],
     });
   }
-  let workflowJobNames: string[] = [];
-  let requiredContexts: readonly string[] | 'unmeasured' = 'unmeasured';
-  let inventoryUnreadable = false;
+  let workflowJobNames: readonly string[] | 'unmeasured';
   try {
     workflowJobNames = loadWorkflowJobNames(join(directory, '.github/workflows'));
-    requiredContexts = loadRequiredContexts();
   } catch {
-    inventoryUnreadable = true;
+    workflowJobNames = 'unmeasured';
   }
   const result = checkRequiredJobs({
     manifest,
     ciSuccessNeeds: gate.needs,
     ciSuccessResultChecks: gate.resultChecks,
     packageJson,
-    requiredContexts,
+    requiredContexts: loadRequiredContexts(),
     workflowJobNames,
   });
-  if (inventoryUnreadable) {
-    result.problems = result.problems.filter(
-      (problem) => !problem.includes('branch protection unreadable')
-    );
-    result.problems.push('Required contexts: unmeasured (workflow inventory unreadable)');
-  }
+
   return report(result);
 }
 

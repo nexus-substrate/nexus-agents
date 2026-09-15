@@ -152,8 +152,9 @@ jobs:
   # touches nothing this gate governs. An ordinary PR performs one `git diff`,
   # one CODEOWNERS parse, and the required-jobs check (#6343); ratification
   # evidence is fetched only when there is a governor path to ratify. The
-  # required-jobs protection probe reports unreadability without blocking an
-  # otherwise healthy measured tree. The final step names the not-touched case
+  # required-jobs check exits 2 when protection is unreadable and local checks
+  # pass; the step warns. Missing local producers still fail with exit 1.
+  # The final step names the not-touched case
   # so the job's success is a stated verdict, never a job with nothing left to run.
   # ---------------------------------------------------------------------------
   governor-ratification:
