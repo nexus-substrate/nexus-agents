@@ -325,7 +325,7 @@ record or it does not merge. The flip was measured against the first real
 record (PR #6241, `vote-1789376500996-fxkw4uk`) before it landed, and
 warn-first ended when it did.
 
-Precedence (the verdict's `kind`): `ledger-invalid` → `ledger-rewritten` →
+Precedence (the verdict's `kind`): `ledger-rewritten` → `ledger-invalid` →
 `duplicate-id` → `no-record` → `sha-mismatch` → `not-approved` →
 `wrong-error-policy` → `wrong-strategy` → `unmeasured-panel` →
 `degraded-panel` → `ratified` / `ratified-rebased` (the per-record checks
@@ -337,7 +337,7 @@ misconfiguration kinds — `wrong-error-policy`, `wrong-strategy`,
 `unmeasured-panel`, `degraded-panel` — named before `not-approved`, so a
 run that was rejected under the wrong policy reads as a misconfigured run
 rather than a plain rejection. The verdict's `kind` stays `not-approved` in
-that case; its `failures` list carries the full set.
+that case; its `failures` list carries the full set. Since #6348 `ledger-rewritten` is checked FIRST: a changed base line is a rewrite even when the head ledger is also invalid, and the append-only scan admits exactly one difference — a base line whose head counterpart lacks only the `reasoning`/`reasoningNonce` openings of roles named by a redaction record that is present in head and absent from base.
 
 ### How the gate becomes a required status context (#4802)
 
