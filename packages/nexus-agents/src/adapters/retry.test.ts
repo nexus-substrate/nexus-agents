@@ -290,6 +290,24 @@ describe('retry', () => {
       expect(error.cause).toBe(cause);
     });
 
+    it('constructs when the last error has a throwing message getter (#4308)', () => {
+      // The ctor read `lastError.message` unguarded, AFTER withRetry's
+      // try/catch loop had exited — so a pathological Error rejected the
+      // Promise<Result> instead of landing in `err(...)`.
+      class ThrowingMessageError extends Error {
+        override get message(): string {
+          throw new Error('message getter exploded');
+        }
+      }
+      const lastError = new ThrowingMessageError();
+
+      expect(() => new RetryExhaustedError(2, lastError)).not.toThrow();
+      const error = new RetryExhaustedError(2, lastError);
+      expect(error.lastError).toBe(lastError);
+      expect(error.cause).toBe(lastError);
+      expect(error.toJSON().context).toEqual({ attempts: 2, lastErrorMessage: 'Unknown error' });
+    });
+
     it('serializes to JSON correctly', () => {
       const lastError = new Error('Final failure');
       const error = new RetryExhaustedError(3, lastError);
@@ -436,6 +454,30 @@ describe('retry', () => {
         expect(result.value).toBe('success');
       }
       expect(operation).toHaveBeenCalledTimes(3);
+    });
+
+    it('resolves to err(RetryExhaustedError) when every attempt throws a throwing-message Error (#4308)', async () => {
+      // execute()-level: the whole never-throws contract, not just the ctor.
+      // `isRetryableError` reads `.message` too, inside the catch block, so a
+      // throwing getter used to escape the loop as a rejection.
+      class ThrowingMessageError extends Error {
+        override get message(): string {
+          throw new Error('message getter exploded');
+        }
+      }
+      const operation = vi.fn().mockRejectedValue(new ThrowingMessageError());
+
+      const resultPromise = withRetry(operation, {
+        config: { maxRetries: 2, baseDelayMs: 10, maxDelayMs: 100, jitterFactor: 0 },
+      });
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(RetryExhaustedError);
+        expect(result.error.lastError).toBeInstanceOf(ThrowingMessageError);
+      }
     });
 
     it('stops retrying on non-retryable errors', async () => {
