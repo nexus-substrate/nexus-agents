@@ -34,6 +34,12 @@ interface DocOpsManifest {
   version: string;
   pipeline_files: string[];
   skill_file: string;
+  /**
+   * Directory of per-PR note files (#6334). A `.md` file changed directly
+   * under it satisfies the gate the same way an edit to `skill_file` does, so
+   * concurrent pipeline PRs no longer collide on one shared region of SKILL.md.
+   */
+  pipeline_notes_dir: string;
 }
 
 export interface CheckResult {
@@ -218,7 +224,8 @@ function loadManifest(): DocOpsManifest | null {
 function printVerboseInfo(manifest: DocOpsManifest, changedFiles: string[]): void {
   console.log(`Manifest version: ${manifest.version}`);
   console.log(`Pipeline files: ${String(manifest.pipeline_files.length)}`);
-  console.log(`Skill file: ${manifest.skill_file}\n`);
+  console.log(`Skill file: ${manifest.skill_file}`);
+  console.log(`Pipeline notes dir: ${manifest.pipeline_notes_dir}\n`);
   console.log(`Changed files: ${String(changedFiles.length)}`);
   changedFiles.forEach((f) => {
     console.log(`  - ${f}`);
@@ -226,11 +233,13 @@ function printVerboseInfo(manifest: DocOpsManifest, changedFiles: string[]): voi
   console.log('');
 }
 
-function printViolation(skillFile: string, changedPipelineFiles: string[]): void {
+function printViolation(skillFile: string, notesDir: string, changedPipelineFiles: string[]): void {
   console.log('✗ VIOLATION: Pipeline files changed but skill was NOT updated\n');
-  console.log('Required action:');
-  console.log(`  Update the Documentation Management skill:`);
-  console.log(`  ${skillFile}\n`);
+  console.log('Required action (either one):');
+  console.log('  Preferred, conflict-free: add a note file');
+  console.log(`    ${notesDir}/<PR-or-issue-number>-<slug>.md`);
+  console.log('  Or edit the Documentation Management skill:');
+  console.log(`    ${skillFile}\n`);
   console.log('Pipeline files that changed:');
   changedPipelineFiles.forEach((f) => {
     console.log(`  - ${f}`);
@@ -240,9 +249,10 @@ function printViolation(skillFile: string, changedPipelineFiles: string[]): void
   console.log('documentation pipeline file changes. This ensures the operating');
   console.log('manual stays in sync with the actual pipeline.\n');
   console.log('Options:');
-  console.log('  1. Update the skill file to reflect the pipeline changes');
+  console.log(`  1. Add ${notesDir}/<PR-or-issue-number>-<slug>.md describing the change (#6334)`);
+  console.log('  2. Update the skill file to reflect the pipeline changes');
   console.log(
-    '  2. For an emergency bypass, put [skip-docops] at the start or end of a commit-message line\n'
+    '  3. For an emergency bypass, put [skip-docops] at the start or end of a commit-message line\n'
   );
   console.log('See: docs/ops/docops-spec.md for enforcement rules');
 }
@@ -321,11 +331,30 @@ export function performCheck(_verbose: boolean, inputs: CheckInputs = REAL_INPUT
     return result;
   }
 
-  // Check if skill was updated
-  result.skillUpdated = result.changedFiles.includes(result.manifest.skill_file);
+  // Check if skill was updated — either the skill file itself or a per-PR
+  // note file under pipeline_notes_dir (#6334).
+  result.skillUpdated = isSkillUpdated(result.changedFiles, result.manifest);
   result.success = result.skillUpdated;
 
   return result;
+}
+
+/**
+ * True when `changedFiles` carries a Documentation Management update: the
+ * skill file itself, or a `.md` note file under `pipeline_notes_dir` (#6334).
+ * A file in a sibling directory (`pipeline-notes-archive/`) or a non-`.md`
+ * file under the notes directory does not count. Empty case: no changed file
+ * matches → false — the gate then reports a violation, never a pass by default.
+ */
+export function isSkillUpdated(
+  changedFiles: readonly string[],
+  manifest: Pick<DocOpsManifest, 'skill_file' | 'pipeline_notes_dir'>
+): boolean {
+  if (changedFiles.length === 0) return false;
+  const notesPrefix = manifest.pipeline_notes_dir.replace(/\/+$/, '') + '/';
+  return changedFiles.some(
+    (f) => f === manifest.skill_file || (f.startsWith(notesPrefix) && f.endsWith('.md'))
+  );
 }
 
 function checkDocOpsSkillSync(verbose: boolean): boolean {
@@ -363,13 +392,18 @@ function checkDocOpsSkillSync(verbose: boolean): boolean {
 
   if (result.skillUpdated) {
     console.log('✓ Documentation Management skill was updated');
-    console.log(`  File: ${result.manifest.skill_file}\n`);
+    console.log(`  File: ${result.manifest.skill_file}`);
+    console.log(`  or a note under: ${result.manifest.pipeline_notes_dir}\n`);
     console.log('✓ DocOps skill sync check passed');
     return true;
   }
 
   printMentionHint(result.escapeHatchMentions);
-  printViolation(result.manifest.skill_file, result.changedPipelineFiles);
+  printViolation(
+    result.manifest.skill_file,
+    result.manifest.pipeline_notes_dir,
+    result.changedPipelineFiles
+  );
   return false;
 }
 

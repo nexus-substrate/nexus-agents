@@ -166,6 +166,15 @@ Changes to ANY of these files require updating the Documentation Management skil
 - `.github/workflows/docs-check.yml`
 - `docs/ops/docops-spec.md`
 
+Two locations satisfy the gate (`scripts/check-docops-skill.ts`, #6334): a `.md`
+note file under `skills/documentation-management/pipeline-notes/` (the
+manifest's `pipeline_notes_dir`; preferred, one file per PR, named
+`<PR-or-issue-number>-<slug>.md`, so concurrent pipeline PRs never conflict on
+merge), or an edit to `skills/documentation-management/SKILL.md` itself. A
+non-`.md` file under the notes directory, or a file in a sibling directory,
+does not count. The existing `<!-- PIPELINE NOTE: … -->` comments still live in
+SKILL.md until they are migrated one file per note.
+
 **Enforcement:** CI gate (see docops-manifest.json)
 
 ---
@@ -185,6 +194,7 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
     "docs/ops/docops-spec.md"
   ],
   "skill_file": "skills/documentation-management/SKILL.md",
+  "pipeline_notes_dir": "skills/documentation-management/pipeline-notes",
   "checksum_location": "docs/ops/docops-manifest.json"
 }
 ```
@@ -209,7 +219,7 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 
 1. Make changes to pipeline scripts/config
 2. Update this spec (`docs/ops/docops-spec.md`)
-3. Update the Documentation Management skill
+3. Add a note file under `skills/documentation-management/pipeline-notes/` (or edit the Documentation Management skill)
 4. Update `docs/ops/docops-manifest.json` if file list changed
 5. Commit and push
 

@@ -13,6 +13,7 @@
     "scripts/generate-tool-reference.ts"
   ],
   "skill_file": "skills/documentation-management/SKILL.md",
+  "pipeline_notes_dir": "skills/documentation-management/pipeline-notes",
   "canonical_index": "docs/README.md",
   "generated_outputs": {
     "capabilities": "docs/reference/capabilities.md",
