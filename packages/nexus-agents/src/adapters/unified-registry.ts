@@ -18,6 +18,7 @@
  */
 
 import type { ILogger } from '../core/index.js';
+import { ConfigError } from '../core/errors.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
@@ -393,12 +394,39 @@ export function claimGlobalRegistry(logger: ILogger): UnifiedAdapterRegistry {
 }
 
 /**
+ * Thrown by {@link getGlobalRegistry} when a non-empty config arrives after
+ * the singleton exists (#5211). The registry has no way to apply it — the
+ * logger and `defaultCliTimeoutMs` are fixed at construction — so until this
+ * error existed the config was logged at `warn` and dropped, and the caller
+ * went on with a registry built from someone else's settings. A config that is
+ * accepted and ignored is an instrument that misreports what it was given.
+ *
+ * The check is on presence, not on equality with the live config: the registry
+ * does not keep the config it was built from, and a caller re-supplying the
+ * same values is still a caller that believes it configured something.
+ */
+export class RegistryAlreadyInitializedError extends ConfigError {
+  constructor(providedKeys: readonly string[]) {
+    super(
+      'UnifiedAdapterRegistry singleton is already initialized, so getGlobalRegistry() cannot ' +
+        `apply the supplied config (keys: ${providedKeys.join(', ')}). Call resetGlobalRegistry() ` +
+        'first if reconfiguration is intentional, or getGlobalRegistry() with no config to use the ' +
+        'existing instance; claimGlobalRegistry(logger) is the idempotent way to name the logger.',
+      { context: { providedKeys: [...providedKeys] } }
+    );
+    this.name = 'RegistryAlreadyInitializedError';
+  }
+}
+
+/**
  * Get the global singleton registry.
  * Creates it on first access with default config.
  *
- * If the singleton already exists and a non-empty config is supplied, the
- * config is ignored — callers get the pre-existing instance. A warning is
- * emitted so this asymmetry is not silent.
+ * If the singleton already exists and a non-empty config is supplied, this
+ * throws {@link RegistryAlreadyInitializedError} — the config cannot be
+ * applied, and returning the existing instance would silently hand the caller
+ * a registry configured by whoever ran first (#5211). Omitting the config, or
+ * passing an empty object, returns the existing instance as before.
  */
 export function getGlobalRegistry(config?: UnifiedRegistryConfig): UnifiedAdapterRegistry {
   if (globalRegistry === undefined) {
@@ -406,13 +434,7 @@ export function getGlobalRegistry(config?: UnifiedRegistryConfig): UnifiedAdapte
     return globalRegistry;
   }
   if (config !== undefined && Object.keys(config).length > 0) {
-    globalRegistry
-      .getLogger()
-      .warn(
-        'UnifiedAdapterRegistry singleton already initialized; provided config ignored. ' +
-          'Call resetGlobalRegistry() first if reconfiguration is intentional.',
-        { providedKeys: Object.keys(config) }
-      );
+    throw new RegistryAlreadyInitializedError(Object.keys(config));
   }
   return globalRegistry;
 }

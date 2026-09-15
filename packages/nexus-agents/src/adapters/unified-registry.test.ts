@@ -22,7 +22,9 @@ import {
   getGlobalRegistry,
   resetGlobalRegistry,
   claimGlobalRegistry,
+  RegistryAlreadyInitializedError,
 } from './unified-registry.js';
+import { ConfigError } from '../core/errors.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
@@ -334,14 +336,47 @@ describe('global registry singleton', () => {
     expect(r1).not.toBe(r2);
   });
 
-  it('should warn when config is supplied to an already-initialized singleton', () => {
-    getGlobalRegistry({ logger: mockLogger });
+  // #5211 (cheap half): a config the singleton cannot apply is refused, not
+  // logged and dropped. Before, the second call below warned and handed back
+  // the registry built by the first, so `defaultCliTimeoutMs: 9_999` was
+  // silently 5_000 wherever the caller went on to use it.
+  it('throws RegistryAlreadyInitializedError when config is supplied to an already-initialized singleton', () => {
+    const first = getGlobalRegistry({ logger: mockLogger });
     mockLogger.warn.mockClear();
-    getGlobalRegistry({ logger: mockLogger, defaultCliTimeoutMs: 9_999 });
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('already initialized'),
-      expect.any(Object)
+
+    const call = (): UnifiedAdapterRegistry =>
+      getGlobalRegistry({ logger: mockLogger, defaultCliTimeoutMs: 9_999 });
+
+    expect(call).toThrow(RegistryAlreadyInitializedError);
+    expect(call).toThrow(/defaultCliTimeoutMs/);
+    expect(call).toThrow(/resetGlobalRegistry\(\)/);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    // The refusal leaves the singleton as it was.
+    expect(getGlobalRegistry()).toBe(first);
+  });
+
+  it('the conflict error is a ConfigError carrying the refused keys', () => {
+    getGlobalRegistry({ logger: mockLogger });
+    let caught: unknown;
+    try {
+      getGlobalRegistry({ defaultCliTimeoutMs: 9_999 });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ConfigError);
+    expect(caught).toBeInstanceOf(RegistryAlreadyInitializedError);
+    expect((caught as RegistryAlreadyInitializedError).name).toBe(
+      'RegistryAlreadyInitializedError'
     );
+    expect((caught as RegistryAlreadyInitializedError).context).toEqual({
+      providedKeys: ['defaultCliTimeoutMs'],
+    });
+  });
+
+  it('an empty config object on a later call is not a conflict', () => {
+    const first = getGlobalRegistry({ logger: mockLogger });
+    expect(getGlobalRegistry({})).toBe(first);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 
   it('should not warn when config is omitted on subsequent calls', () => {
