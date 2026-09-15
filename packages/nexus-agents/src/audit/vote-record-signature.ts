@@ -33,7 +33,7 @@
  *
  * | Code | Meaning |
  * | --- | --- |
- * | `signed` | a key listed for `keyId`, inside its window, made this signature over this hash in this namespace |
+ * | `signed` | a key listed for `keyId`, inside its window, made this signature over this hash in this namespace; carries the `principal` and its `signerKind` (`agent` for `nexus-agent@…`, else `owner`) |
  * | `unsigned-record` | the record carries no `signature` — every pre-phase-2 record, and any appended with no key configured |
  * | `unknown-signer` | there IS a signature, but the signing key is not one `allowed_signers` lists for `keyId` right now: not listed at all, listed under another principal, outside its window, or `keyId` itself has no entry |
  * | `bad-signature` | the key is the right one and the signature does not hold: made over a different message (an edited-and-re-hashed record, re-serialised JSON), under another namespace, or not an armored block at all |
@@ -63,9 +63,13 @@
  * Access to the private key from the environment that ran the append — not a
  * human's presence. Measured on 2026-09-14: the agent process signed ledger
  * commit `4a5acd562f` with the operator's cached GPG key and no prompt. A
- * signature made that way is a stronger hash, not a ratification; custody
- * (a hardware-backed key, or a CI/OIDC identity for machine-made records) is
- * #6257. The threat model states the same.
+ * signature made that way is a stronger hash, not a ratification. The #6257
+ * panel (2026-09-15, option B) answered with ATTRIBUTION, not custody: the
+ * autonomous loop signs with its own local key under a `nexus-agent@<host>`
+ * principal and the owner's key is reserved for human-made records, so
+ * `signed` now says which process appended (`signerKind`). It still does
+ * not isolate the host — see {@link VoteRecordSignerKind}; CI/OIDC-issued
+ * keys for a CI-run append are #6350. The threat model states the same.
  *
  * Consumers live in `scripts/` — `append-ratification-record.ts` signs,
  * `governor-ledger-evidence.ts` verifies — which the producer/consumer gate's
@@ -251,13 +255,54 @@ function describeSpawnError(error: NodeJS.ErrnoException): string {
 }
 
 /**
+ * The principal prefix that marks a dedicated AGENT signing identity
+ * (#6257 increment 1, panel option B): `nexus-agent@<hostname>`. A record
+ * signed under such a principal was appended by the autonomous loop; any
+ * other principal (the operator's `williamzujkowski@nexus-agents`) is a
+ * human-held key. The prefix is the whole rule — the file's principal, not
+ * the record's claim and not the key's comment, is what is classified.
+ */
+export const AGENT_PRINCIPAL_PREFIX = 'nexus-agent@';
+
+/**
+ * Which kind of process a signed record's principal attributes it to:
+ * `agent` for a `nexus-agent@…` principal, `owner` for every other one.
+ *
+ * What this attribution IS and IS NOT (the #6257 panel's contrarian and pm,
+ * adopted as binding): it is an honest statement of WHICH KEY signed — and
+ * so, under the custody rule that the owner's key is reserved for
+ * human-made records, which process appended. It is NOT host isolation: an
+ * agent key on the operator's host adds no non-repudiation against a
+ * compromise of that host, and an agent that can read the owner's key can
+ * still sign as owner (the append script's `--as-owner` refusal is a
+ * guard against doing so by ACCIDENT, not against doing so on purpose).
+ */
+export type VoteRecordSignerKind = 'owner' | 'agent';
+
+/** `agent` when the principal starts with {@link AGENT_PRINCIPAL_PREFIX}; `owner` otherwise. */
+export function signerKindOf(principal: string): VoteRecordSignerKind {
+  return principal.startsWith(AGENT_PRINCIPAL_PREFIX) ? 'agent' : 'owner';
+}
+
+/**
  * The verifier's answer for one record. See the module header's table. Each
  * refusal carries the identity it was computed for and ssh-keygen's own
  * reason where there is one; `signature-not-measured` carries why nothing was
  * measured.
+ *
+ * `signed` names WHO signed, never a bare boolean (#6257 increment 1):
+ * `principal` is the identity `allowed_signers` lists the key under (equal to
+ * `keyId`, the record's claim, by construction — `signed` is only reached
+ * once the claim has been confirmed against the file; `keyId` is kept so
+ * the field set is additive), and `signerKind` classifies it by prefix.
  */
 export type VoteRecordSignatureVerdict =
-  | { readonly code: 'signed'; readonly keyId: string }
+  | {
+      readonly code: 'signed';
+      readonly keyId: string;
+      readonly principal: string;
+      readonly signerKind: VoteRecordSignerKind;
+    }
   | { readonly code: 'unsigned-record' }
   | { readonly code: 'unknown-signer'; readonly keyId: string; readonly reason: string }
   | { readonly code: 'bad-signature'; readonly keyId: string; readonly reason: string }
@@ -396,7 +441,7 @@ function verifyHolds(
     return { code: 'signature-not-measured', reason: verified.reason };
   }
   if (verified.status !== 0) return { code: 'bad-signature', keyId, reason: reasonFrom(verified) };
-  return { code: 'signed', keyId };
+  return { code: 'signed', keyId, principal: keyId, signerKind: signerKindOf(keyId) };
 }
 
 export interface SignVoteRecordHashInput {

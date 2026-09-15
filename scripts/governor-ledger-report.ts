@@ -29,8 +29,9 @@
  *   see the ratified commit;
  * - every line over bound records — the two ratifying kinds and every bound
  *   refusal — ends with the per-record signature code (#3927 item 4:
- *   `signed by <keyId>`, `unsigned-record`, `unknown-signer`,
- *   `bad-signature`, `signature-not-measured`), rendered by
+ *   `signed:agent by <principal>` / `signed:owner by <principal>` (#6257),
+ *   `unsigned-record`, `unknown-signer`, `bad-signature`,
+ *   `signature-not-measured`), rendered by
  *   `governor-ledger-signature.ts`; `ledgerEvidenceFromEnv` supplies the
  *   verifier over the `allowed_signers` beside the ledger. Informational
  *   this phase — the exit answer never reads it.

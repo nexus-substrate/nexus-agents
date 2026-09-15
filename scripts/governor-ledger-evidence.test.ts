@@ -1357,8 +1357,17 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
     return written;
   }
 
-  /** The real append script, as a subprocess, exactly as the operator runs it. */
+  /**
+   * The real append script, as a subprocess, exactly as the operator runs
+   * it — with the signing configuration the operator's shell may carry
+   * REMOVED: no `NEXUS_VOTE_SIGNING_KEY`, and `NEXUS_DATA_DIR` pinned to the
+   * temp dir so the agent key an operator has generated at the real
+   * `~/.nexus-agents/auth/` (#6257) is not picked up by default against a
+   * fixture ledger that has no `allowed_signers` beside it.
+   */
   function append(id: string): { status: number; out: string } {
+    const env: NodeJS.ProcessEnv = { ...process.env, NEXUS_DATA_DIR: join(dir, 'runtime') };
+    delete env['NEXUS_VOTE_SIGNING_KEY'];
     try {
       const out = execFileSync(
         'pnpm',
@@ -1373,7 +1382,7 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
           '--ledger',
           ledgerPath,
         ],
-        { cwd: REPO_ROOT, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
+        { cwd: REPO_ROOT, encoding: 'utf-8', env, stdio: ['ignore', 'pipe', 'pipe'] }
       );
       return { status: 0, out };
     } catch (error: unknown) {
@@ -2113,16 +2122,29 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
       ...inputs,
       signatureVerifier: (r) => {
         seen.push(r.ratifiesPr?.headSha ?? '');
-        return { code: 'signed', keyId: 'rebased@test' };
+        return {
+          code: 'signed',
+          keyId: 'rebased@test',
+          principal: 'rebased@test',
+          signerKind: 'owner',
+        };
       },
     });
     expect(e.kind).toBe('ratified-rebased');
     if (e.kind !== 'ratified-rebased') throw new Error('unreachable');
     expect(seen).toEqual([A]);
     expect(e.signatures).toEqual([
-      { recordId: 'v-pr', verdict: { code: 'signed', keyId: 'rebased@test' } },
+      {
+        recordId: 'v-pr',
+        verdict: {
+          code: 'signed',
+          keyId: 'rebased@test',
+          principal: 'rebased@test',
+          signerKind: 'owner',
+        },
+      },
     ]);
-    expect(formatLedgerEvidence(e)).toContain('signature: signed by rebased@test.');
+    expect(formatLedgerEvidence(e)).toContain('signature: signed:owner by rebased@test.');
   });
 
   it('(b) rebase onto main: the ratified sha is orphaned but was a head of THIS PR, the patch is unchanged → ratified-rebased, prior-head', () => {
@@ -2554,24 +2576,37 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
 
 describe('signature verdicts on the evidence line (#3927 item 4) — reported, not yet enforced', () => {
   const OPERATOR = 'operator@test';
+  /** The autonomous loop's identity (#6257 increment 1): `nexus-agent@<host>`. */
+  const AGENT = 'nexus-agent@fixture-host';
+  /** The `signed` verdict for a principal, as the verifier now shapes it (#6257). */
+  const signedAs = (principal: string): VoteRecordSignatureVerdict => ({
+    code: 'signed',
+    keyId: principal,
+    principal,
+    signerKind: principal.startsWith('nexus-agent@') ? 'agent' : 'owner',
+  });
   let dir: string;
   let keyPath: string;
+  let agentKeyPath: string;
   let allowedSignersPath: string;
+
+  function keygen(path: string): void {
+    execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'ephemeral', '-f', path], {
+      stdio: 'ignore',
+    });
+  }
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'ledger-evidence-signature-'));
     keyPath = join(dir, 'operator_key');
-    execFileSync(
-      'ssh-keygen',
-      ['-q', '-t', 'ed25519', '-N', '', '-C', 'ephemeral', '-f', keyPath],
-      {
-        stdio: 'ignore',
-      }
-    );
+    agentKeyPath = join(dir, 'agent_key');
+    keygen(keyPath);
+    keygen(agentKeyPath);
     allowedSignersPath = join(dir, 'allowed_signers');
     writeFileSync(
       allowedSignersPath,
-      `${OPERATOR} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${keyPath}.pub`, 'utf-8')}`,
+      `${OPERATOR} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${keyPath}.pub`, 'utf-8')}` +
+        `${AGENT} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${agentKeyPath}.pub`, 'utf-8')}`,
       'utf-8'
     );
   });
@@ -2579,12 +2614,12 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     rmSync(dir, { recursive: true, force: true });
   });
 
-  /** A real signature over the record's committed hash. */
-  function signed(r: VoteRecord): VoteRecord {
+  /** A real signature over the record's committed hash, by the operator key unless told otherwise. */
+  function signed(r: VoteRecord, withKey: string = keyPath): VoteRecord {
     const out = signVoteRecordHash({
       hash: r.hash,
       recordedAt: r.recordedAt,
-      keyPath,
+      keyPath: withKey,
       allowedSigners: readFileSync(allowedSignersPath, 'utf-8'),
     });
     if (!out.ok) throw new Error(out.reason);
@@ -2612,14 +2647,12 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       ledgerText: ledgerText([record('v0', { sequence: 0 })]),
       pr: PR,
       head: AT_HEAD,
-      signatureVerifier: constant({ code: 'signed', keyId: OPERATOR }),
+      signatureVerifier: constant(signedAs(OPERATOR)),
     });
     expect(ok.kind).toBe('ratified');
     if (ok.kind !== 'ratified') throw new Error('unreachable');
-    expect(ok.signatures).toEqual([
-      { recordId: 'v0', verdict: { code: 'signed', keyId: OPERATOR } },
-    ]);
-    expect(formatLedgerEvidence(ok)).toContain(`signature: signed by ${OPERATOR}`);
+    expect(ok.signatures).toEqual([{ recordId: 'v0', verdict: signedAs(OPERATOR) }]);
+    expect(formatLedgerEvidence(ok)).toContain(`signature: signed:owner by ${OPERATOR}`);
 
     const refused = evaluateLedgerEvidence({
       ledgerText: ledgerText([record('v0', { sequence: 0, decision: 'rejected' })]),
@@ -2643,7 +2676,8 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
         appendOnlyChecked: true,
         signatures: [{ recordId: 'v0', verdict }],
       });
-    expect(line({ code: 'signed', keyId: OPERATOR })).toContain(`signature: signed by ${OPERATOR}`);
+    expect(line(signedAs(OPERATOR))).toContain(`signature: signed:owner by ${OPERATOR}`);
+    expect(line(signedAs(AGENT))).toContain(`signature: signed:agent by ${AGENT}`);
     expect(line({ code: 'unsigned-record' })).toContain('signature: unsigned-record');
     expect(line({ code: 'unknown-signer', keyId: 'x@y', reason: 'key has expired' })).toContain(
       "signature: unknown-signer 'x@y' (key has expired)"
@@ -2664,10 +2698,34 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       appendOnlyChecked: true,
       signatures: [
         { recordId: 'v0', verdict: { code: 'unsigned-record' } },
-        { recordId: 'v1', verdict: { code: 'signed', keyId: OPERATOR } },
+        { recordId: 'v1', verdict: signedAs(OPERATOR) },
       ],
     });
-    expect(line).toContain(`signature: 'v0' unsigned-record; 'v1' signed by ${OPERATOR}`);
+    expect(line).toContain(`signature: 'v0' unsigned-record; 'v1' signed:owner by ${OPERATOR}`);
+  });
+
+  it('signed:agent and signed:owner render distinctly — the kind is on the line, not only in the verdict (#6257)', () => {
+    const r = record('v0', { sequence: 0 });
+    const line = (verdict: VoteRecordSignatureVerdict): string =>
+      formatLedgerEvidence({
+        kind: 'ratified',
+        record: r,
+        shaChecked: true,
+        appendOnlyChecked: true,
+        signatures: [{ recordId: 'v0', verdict }],
+      });
+    const owner = line(signedAs(OPERATOR));
+    const agent = line(signedAs(AGENT));
+    expect(owner).toContain('signed:owner');
+    expect(owner).not.toContain('signed:agent');
+    expect(agent).toContain('signed:agent');
+    expect(agent).not.toContain('signed:owner');
+    // The rendering reads the verdict's kind, not the principal text: a
+    // verdict that mislabels itself is printed as it says, so a collapse in
+    // the verifier would be visible here as a wrong label, not hidden.
+    expect(line({ code: 'signed', keyId: AGENT, principal: AGENT, signerKind: 'owner' })).toContain(
+      `signed:owner by ${AGENT}`
+    );
   });
 
   it('INFORMATIONAL THIS PHASE: unsigned-record and bad-signature leave the verdict `ratified`', () => {
@@ -2692,7 +2750,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       'a bound record at or past the cutover that is not `signed` is a refusal naming its code; the grandfathered range is named on the ratified line'
   );
 
-  it(`ledgerEvidenceFromEnv reads ${ALLOWED_SIGNERS_PATH_ENV} and runs the REAL verifier: a signed record is 'signed by', an unsigned one is 'unsigned-record'`, () => {
+  it(`ledgerEvidenceFromEnv reads ${ALLOWED_SIGNERS_PATH_ENV} and runs the REAL verifier: a signed record is 'signed:<kind> by', an unsigned one is 'unsigned-record'`, () => {
     const path = join(dir, 'vote-records.jsonl');
     const r0 = signed(record('v0', { sequence: 0 }));
     writeFileSync(path, ledgerText([r0]), 'utf-8');
@@ -2705,9 +2763,18 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     const e = ledgerEvidenceFromEnv(env, path);
     expect(e.kind).toBe('ratified');
     if (e.kind !== 'ratified') throw new Error('unreachable');
-    expect(e.signatures).toEqual([
-      { recordId: 'v0', verdict: { code: 'signed', keyId: OPERATOR } },
-    ]);
+    expect(e.signatures).toEqual([{ recordId: 'v0', verdict: signedAs(OPERATOR) }]);
+    expect(formatLedgerEvidence(e)).toContain(`signature: signed:owner by ${OPERATOR}`);
+
+    // The same record signed by the AGENT key: the real verifier resolves the
+    // principal from the file and the line says `signed:agent` (#6257).
+    writeFileSync(path, ledgerText([signed(record('v0', { sequence: 0 }), agentKeyPath)]), 'utf-8');
+    const byAgent = ledgerEvidenceFromEnv(env, path);
+    expect(byAgent.kind).toBe('ratified');
+    if (byAgent.kind !== 'ratified') throw new Error('unreachable');
+    expect(byAgent.signatures).toEqual([{ recordId: 'v0', verdict: signedAs(AGENT) }]);
+    expect(formatLedgerEvidence(byAgent)).toContain(`signature: signed:agent by ${AGENT}`);
+    writeFileSync(path, ledgerText([r0]), 'utf-8');
 
     // Same key, hash edited and re-hashed after signing: the set verifies,
     // the signature is what says so — and this phase still ratifies.

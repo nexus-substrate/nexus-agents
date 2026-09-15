@@ -31,8 +31,10 @@ import type {
   VoteRecordSignatureVerdict,
 } from './vote-record-signature.js';
 import {
+  AGENT_PRINCIPAL_PREFIX,
   runSshKeygen,
   signVoteRecordHash,
+  signerKindOf,
   sshKeygenVerifyTime,
   verifyVoteRecordSignature,
 } from './vote-record-signature.js';
@@ -42,6 +44,8 @@ import {
 // ---------------------------------------------------------------------------
 
 const OPERATOR = 'alice@test';
+/** The dedicated agent identity (#6257 increment 1): the `nexus-agent@` prefix is what makes it `agent`. */
+const AGENT = `${AGENT_PRINCIPAL_PREFIX}framework.test`;
 const EXPIRED = 'expired@test';
 const FUTURE = 'future@test';
 /** Rotated out: window closed years ago, but open at the time the OLD record was made. */
@@ -54,6 +58,8 @@ const OLD_RECORDED_AT = '2020-06-01T00:00:00.000Z';
 let dir: string;
 /** Listed as OPERATOR, inside its validity window, restricted to the namespace. */
 let operatorKey: string;
+/** Listed as AGENT, inside its window, restricted to the namespace — the autonomous loop's key. */
+let agentKey: string;
 /** Listed twice, as EXPIRED (window ended) and FUTURE (window not begun). */
 let windowedKey: string;
 /** Listed nowhere. */
@@ -73,11 +79,13 @@ function keygen(path: string, comment: string): void {
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'vote-record-signature-'));
   operatorKey = join(dir, 'operator');
+  agentKey = join(dir, 'agent');
   windowedKey = join(dir, 'windowed');
   strangerKey = join(dir, 'stranger');
   rotatedKey = join(dir, 'rotated');
   onboardedKey = join(dir, 'onboarded');
   keygen(operatorKey, 'ephemeral test key — operator');
+  keygen(agentKey, 'ephemeral test key — agent');
   keygen(windowedKey, 'ephemeral test key — windowed');
   keygen(strangerKey, 'ephemeral test key — stranger');
   keygen(rotatedKey, 'ephemeral test key — rotated');
@@ -89,6 +97,7 @@ beforeAll(() => {
   allowedSigners = [
     '# ephemeral allowed_signers for vote-record-signature.test.ts',
     `${OPERATOR} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101",valid-before="20991231" ${pub(operatorKey)}`,
+    `${AGENT} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${pub(agentKey)}`,
     `${EXPIRED} valid-before="20200101" ${pub(windowedKey)}`,
     `${FUTURE} valid-after="20990101" ${pub(windowedKey)}`,
     `${ROTATED} valid-after="20200101",valid-before="20210101" ${pub(rotatedKey)}`,
@@ -178,9 +187,58 @@ describe('verifyVoteRecordSignature — every code is distinct and reachable', (
     expect(verdictOf(unsignedRecord())).toEqual({ code: 'unsigned-record' });
   });
 
-  it('signed: the operator key, inside its window, over the committed hash, in the namespace', () => {
+  it('signed: the operator key, inside its window, over the committed hash, in the namespace — kind `owner`', () => {
     const r = signed(unsignedRecord(), operatorKey, OPERATOR);
-    expect(verdictOf(r)).toEqual({ code: 'signed', keyId: OPERATOR });
+    expect(verdictOf(r)).toEqual({
+      code: 'signed',
+      keyId: OPERATOR,
+      principal: OPERATOR,
+      signerKind: 'owner',
+    });
+  });
+
+  it('signed: the AGENT key under its `nexus-agent@` principal — kind `agent`, never a bare boolean (#6257)', () => {
+    const r = signed(unsignedRecord(), agentKey, AGENT);
+    expect(verdictOf(r)).toEqual({
+      code: 'signed',
+      keyId: AGENT,
+      principal: AGENT,
+      signerKind: 'agent',
+    });
+  });
+
+  it('the two kinds are distinct over the same record: owner-signed and agent-signed do not collapse', () => {
+    const owner = verdictOf(signed(unsignedRecord(), operatorKey, OPERATOR));
+    const agent = verdictOf(signed(unsignedRecord(), agentKey, AGENT));
+    if (owner.code !== 'signed' || agent.code !== 'signed') throw new Error('unreachable');
+    expect(owner.signerKind).not.toBe(agent.signerKind);
+    expect(new Set([owner.signerKind, agent.signerKind])).toEqual(new Set(['owner', 'agent']));
+  });
+
+  it("unknown-signer: the agent key signing under the OPERATOR's name — the file, not the claim, decides the kind", () => {
+    // An automated append that CLAIMS the owner principal with the agent key
+    // is not `signed` as owner: the key is listed for the agent principal.
+    const v = verdictOf(signed(unsignedRecord(), agentKey, OPERATOR));
+    expect(v.code).toBe('unknown-signer');
+    if (v.code !== 'unknown-signer') throw new Error('unreachable');
+    expect(v.reason).toContain(`'${AGENT}'`);
+  });
+
+  it('unknown-signer: an EMPTY allowed_signers — nobody is listed, so nothing reads as signed', () => {
+    const r = signed(unsignedRecord(), operatorKey, OPERATOR);
+    for (const empty of ['', '\n', '# only a comment\n']) {
+      const v = verifyVoteRecordSignature({ record: r, allowedSigners: empty });
+      expect(v.code).toBe('unknown-signer');
+      if (v.code !== 'unknown-signer') throw new Error('unreachable');
+      expect(v.reason).toContain(`no allowed_signers entry names '${OPERATOR}'`);
+    }
+  });
+
+  it('bad-signature: the agent key under its own principal but in another namespace', () => {
+    const v = verdictOf(signed(unsignedRecord(), agentKey, AGENT, 'git'));
+    expect(v.code).toBe('bad-signature');
+    if (v.code !== 'bad-signature') throw new Error('unreachable');
+    expect(v.keyId).toBe(AGENT);
   });
 
   it('unknown-signer: a key listed nowhere in allowed_signers, even under the operator identity', () => {
@@ -255,7 +313,12 @@ describe('verifyVoteRecordSignature — every code is distinct and reachable', (
     const r = signed(unsignedRecord(), operatorKey, OPERATOR);
     const edited: VoteRecord = { ...r, decision: 'rejected' };
     expect(verifyVoteRecordSet([edited]).ok).toBe(false);
-    expect(verdictOf(edited)).toEqual({ code: 'signed', keyId: OPERATOR });
+    expect(verdictOf(edited)).toEqual({
+      code: 'signed',
+      keyId: OPERATOR,
+      principal: OPERATOR,
+      signerKind: 'owner',
+    });
   });
 
   it('bad-signature: `sig` is not an armored SSH signature block — no ssh-keygen call is made', () => {
@@ -400,7 +463,12 @@ describe('verification is anchored at recordedAt: key rotation keeps old records
     // key has since been rotated out (valid-before 2021). At wall-clock time
     // ssh-keygen would refuse it as expired; anchored at recordedAt it holds.
     const r = signed(unsignedRecord('vote-sig-old', 0, OLD_RECORDED_AT), rotatedKey, ROTATED);
-    expect(verdictOf(r)).toEqual({ code: 'signed', keyId: ROTATED });
+    expect(verdictOf(r)).toEqual({
+      code: 'signed',
+      keyId: ROTATED,
+      principal: ROTATED,
+      signerKind: 'owner',
+    });
   });
 
   it('unknown-signer: a key whose valid-after is AFTER the record — valid now, not when the record was made', () => {
@@ -470,7 +538,26 @@ describe('signVoteRecordHash', () => {
     expect(verdictOf({ ...r, signature: out.signature })).toEqual({
       code: 'signed',
       keyId: OPERATOR,
+      principal: OPERATOR,
+      signerKind: 'owner',
     });
+  });
+
+  it('signing with the agent key names the agent principal, and the verifier reports kind `agent`', () => {
+    const r = unsignedRecord();
+    const out = signVoteRecordHash({
+      hash: r.hash,
+      recordedAt: r.recordedAt,
+      keyPath: agentKey,
+      allowedSigners,
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error('unreachable');
+    expect(out.signature.keyId).toBe(AGENT);
+    const v = verdictOf({ ...r, signature: out.signature });
+    expect(v.code).toBe('signed');
+    if (v.code !== 'signed') throw new Error('unreachable');
+    expect(v.signerKind).toBe('agent');
   });
 
   it('passes the bare hash as the message to ssh-keygen -Y sign', () => {
@@ -534,5 +621,29 @@ describe('signVoteRecordHash', () => {
       () => ({ kind: 'unavailable', reason: 'spawn ssh-keygen ENOENT' })
     );
     expect(out).toEqual({ ok: false, reason: 'spawn ssh-keygen ENOENT' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// signerKindOf — the principal prefix is the whole rule (#6257 increment 1).
+// ---------------------------------------------------------------------------
+
+describe('signerKindOf', () => {
+  it('`nexus-agent@<host>` is agent; the operator principal and anything else is owner', () => {
+    expect(signerKindOf('nexus-agent@framework')).toBe('agent');
+    expect(signerKindOf(AGENT)).toBe('agent');
+    expect(signerKindOf('williamzujkowski@nexus-agents')).toBe('owner');
+    expect(signerKindOf(OPERATOR)).toBe('owner');
+  });
+
+  it('the prefix must be at the START and exact: a suffix, a substring or a case change is not the agent', () => {
+    expect(signerKindOf('alice@nexus-agent@host')).toBe('owner');
+    expect(signerKindOf('x-nexus-agent@host')).toBe('owner');
+    expect(signerKindOf('NEXUS-AGENT@host')).toBe('owner');
+    expect(signerKindOf('nexus-agent')).toBe('owner');
+  });
+
+  it('the bare prefix with no host is still agent — the kind is about the prefix, not the host', () => {
+    expect(signerKindOf(AGENT_PRINCIPAL_PREFIX)).toBe('agent');
   });
 });
