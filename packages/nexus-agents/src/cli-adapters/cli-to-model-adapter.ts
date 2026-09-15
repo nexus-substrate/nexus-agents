@@ -97,7 +97,10 @@ export class CliToModelAdapter implements IModelAdapter {
       .join('\n\n');
 
     // Build task with conditional optional properties
-    const task: CliTask = { content };
+    const task: CliTask = {
+      content,
+      ...(request.workDir !== undefined ? { options: { workDir: request.workDir } } : {}),
+    };
 
     if (request.systemPrompt !== undefined) {
       (task as { systemPrompt: string }).systemPrompt = request.systemPrompt;

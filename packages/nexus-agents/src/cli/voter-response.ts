@@ -282,13 +282,14 @@ Example PR-review request_changes response with structured findings:
 export function buildVotePrompt(
   proposal: string,
   options?: readonly string[],
-  workspace?: string
+  workspace?: string,
+  workspaceSha?: string
 ): string {
   return `Evaluate the following proposal and provide your vote.
 
 PROPOSAL:
 ${proposal}
-${buildOptionsBlock(options)}${buildWorkspaceBlock(workspace)}
+${buildOptionsBlock(options)}${buildWorkspaceBlock(workspace, workspaceSha)}
 In addition to your role-specific criteria, assess these workflow-test dimensions:
 - Testability: Can the proposed changes be verified with automated tests?
 - Workflow integration: Does this fit into existing CI/make/test workflows?
@@ -336,8 +337,15 @@ ${list}
  * (a direct `executeAgentVote`, a unit test) produces a prompt byte-identical
  * to the two-argument form and claims nothing it cannot back.
  */
-function buildWorkspaceBlock(workspace?: string): string {
+export function buildWorkspaceBlock(workspace?: string, workspaceSha?: string): string {
   if (workspace === undefined || workspace === '') return '';
+  if (workspaceSha !== undefined && workspaceSha !== '') {
+    return `
+REPOSITORY ACCESS:
+The repository under review is a detached scratch checkout of the ratified head ${workspaceSha} at ${workspace}. It is already at that commit — do NOT run git checkout/switch/reset/pull or modify files; read only.
+Every seat's file and shell tools run there, and reading it is expected. Read the artifact before you vote; the proposal text is not a substitute for it. If your tools cannot read that directory, follow the UNVERIFIABLE rule in your instructions.
+`;
+  }
   return `
 REPOSITORY ACCESS:
 The repository under review is the working directory of this panel: ${workspace}

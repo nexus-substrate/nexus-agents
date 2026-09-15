@@ -88,6 +88,8 @@ export interface CompletionRequest {
    * don't support per-request timeouts ignore it.
    */
   timeoutMs?: number;
+  /** Working directory for CLI adapters; API adapters ignore this field. */
+  workDir?: string;
   /** Tools available for the model */
   tools?: ToolDefinition[];
   /**

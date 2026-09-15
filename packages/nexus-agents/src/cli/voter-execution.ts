@@ -246,6 +246,7 @@ function buildVoteRequest({
   options,
   project,
   workspace,
+  workspaceSha,
 }: VoteCompletionArgs): CompletionRequest {
   const base: CompletionRequest = {
     messages: [
@@ -254,7 +255,7 @@ function buildVoteRequest({
       { role: 'system', content: getVoterPrompts(project)[role] },
       // #6254: and the working directory the seats run in, so a seat with
       // file tools knows where the artifact is and that reading it is expected.
-      { role: 'user', content: buildVotePrompt(proposal, options, workspace) },
+      { role: 'user', content: buildVotePrompt(proposal, options, workspace, workspaceSha) },
     ],
     // 4000 (#4131): headroom so a findings-bearing verdict (JSON envelope +
     // reasoning + structured findings) isn't cut mid-JSON by the token cap and
@@ -266,6 +267,7 @@ function buildVoteRequest({
     // Thread the vote budget so the CLI timeout doesn't fire first (#3304); pass
     // signal too for CLI-vs-API cancellation parity (#3036/#3304).
     timeoutMs,
+    ...(workspace !== undefined && workspace.trim() !== '' ? { workDir: workspace } : {}),
     signal: AbortSignal.timeout(timeoutMs),
   };
   return withResponseFormat
@@ -327,6 +329,7 @@ interface VoteCompletionArgs {
    * `undefined` renders no REPOSITORY ACCESS block.
    */
   readonly workspace: string | undefined;
+  readonly workspaceSha?: string | undefined;
 }
 
 async function runVoteCompletion(args: VoteCompletionArgs): Promise<
@@ -403,6 +406,7 @@ interface VotePromptContext {
   readonly project?: string | undefined;
   /** Working directory named in the user prompt; omitted ⇒ no REPOSITORY ACCESS block. */
   readonly workspace?: string | undefined;
+  readonly workspaceSha?: string | undefined;
 }
 
 /**
@@ -423,8 +427,15 @@ export async function executeSingleVoteAttempt(
   timeoutMs: number,
   context: VotePromptContext = {}
 ): Promise<VoteAttemptSuccess | VoteAttemptFailure> {
-  const { options, project, workspace } = context;
-  const completionArgs = { role, proposal, adapter, timeoutMs, options, project, workspace };
+  const completionArgs = {
+    role,
+    proposal,
+    adapter,
+    timeoutMs,
+    project: context.project,
+    workspace: context.workspace,
+    ...context,
+  };
   let completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: true });
   // #3497: retry once WITHOUT responseFormat when the backend rejects the
   // tool-use-backed structured-output ask, so the panel keeps full strength.
@@ -436,7 +447,7 @@ export async function executeSingleVoteAttempt(
   try {
     // parseVoteResponse throws SyntheticVoteError if parsing fails — we only
     // accept real LLM votes, not synthetic fallbacks.
-    const vote = parseVoteResponse(completion.output, role, options);
+    const vote = parseVoteResponse(completion.output, role, context.options);
     return {
       ok: true,
       vote,
@@ -471,6 +482,7 @@ export interface RetryOptions {
   readonly project?: string | undefined;
   /** Working directory named in the user prompt (#6254); absent ⇒ no REPOSITORY ACCESS block. */
   readonly workspace?: string | undefined;
+  readonly workspaceSha?: string | undefined;
 }
 
 /**
@@ -517,8 +529,7 @@ export interface VoteOutcome {
 export async function executeWithRetries(
   opts: RetryOptions
 ): Promise<(VoteOutcome & { ok: true }) | { error: string; ok: false }> {
-  const { role, proposal, adapter, logger, timeoutMs, maxRetries, options, project, workspace } =
-    opts;
+  const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
   let lastError = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -534,11 +545,7 @@ export async function executeWithRetries(
     // retry succeeded (or which attempt blew the cap). Total vote time
     // is already captured at the call-site; this fills the per-attempt gap.
     const attemptStart = Date.now();
-    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, {
-      options,
-      project,
-      workspace,
-    });
+    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, opts);
     const attemptMs = Date.now() - attemptStart;
     if (result.ok) {
       logger.info('Vote attempt timing', {

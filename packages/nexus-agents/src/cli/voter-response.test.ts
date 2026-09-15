@@ -369,6 +369,28 @@ describe('buildVotePrompt names the repository the seat can read (#6254)', () =>
   // cannot read.
   const WORKSPACE = '/srv/checkouts/widgets';
 
+  it('pins the plain workspace block byte-for-byte', () => {
+    const prompt = buildVotePrompt('p', undefined, WORKSPACE);
+    const block = prompt.slice(prompt.indexOf('REPOSITORY ACCESS:'), prompt.indexOf('In addition'));
+    expect(block).toBe(`REPOSITORY ACCESS:
+The repository under review is the working directory of this panel: ${WORKSPACE}
+Every seat's file and shell tools run there, and reading it is expected. When the proposal refers to something in that repository — a PR head, a diff, the files it touches — read it there before you vote: the proposal text describes the artifact and is not a substitute for it. If your tools cannot read that directory, follow the UNVERIFIABLE rule in your instructions.
+
+`);
+  });
+
+  it('names the ratified head and forbids mutation of its scratch checkout', () => {
+    const sha = 'a'.repeat(40);
+    const prompt = buildVotePrompt('p', undefined, WORKSPACE, sha);
+    expect(prompt).toContain(
+      `detached scratch checkout of the ratified head ${sha} at ${WORKSPACE}`
+    );
+    expect(prompt).toContain(
+      'It is already at that commit — do NOT run git checkout/switch/reset/pull or modify files; read only.'
+    );
+    expect(prompt).toContain('UNVERIFIABLE');
+  });
+
   it('states the working directory and that reading it is expected', () => {
     const prompt = buildVotePrompt('Ratify PR #1 at head abc123', undefined, WORKSPACE);
 

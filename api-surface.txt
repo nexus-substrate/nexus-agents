@@ -1789,6 +1789,8 @@ InterfaceDeclaration CollectRealVotesOptions
   readonly roles: readonly VoterRole[]
   readonly signal?: AbortSignal | undefined
   readonly simulate?: boolean | undefined
+  readonly workspace?: string | undefined
+  readonly workspaceSha?: string | undefined
 FunctionDeclaration collectStream
   : (stream: AsyncIterable<T>, options?: { maxChunks?: number; signal?: AbortSignal; }) => Promise<Result<T[], StreamError>>
 InterfaceDeclaration Command
@@ -1854,6 +1856,7 @@ InterfaceDeclaration CompletionRequest
   temperature?: number | undefined
   timeoutMs?: number | undefined
   tools?: ToolDefinition[] | undefined
+  workDir?: string | undefined
 InterfaceDeclaration CompletionResponse
   cliStderr?: string | undefined
   content: ContentBlock[]
@@ -3308,6 +3311,11 @@ FunctionDeclaration executeDelegatePipeline
   : (task: { analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "analysis" | "code" | "plan" | "report" | "review" | "spec" | "test" | "vote"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "clarifying" | "done" | "executing" | "failed" | "intake" | "planning" | "validating"; updatedAt: number; }) => Promise<PipelineMetrics>
 FunctionDeclaration executeExpert
   : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
 InterfaceDeclaration ExecuteExpertDeps
   auditLogger?: IAuditLogger | undefined
   cliCache?: ICliDetectionCache | undefined
@@ -10108,6 +10116,7 @@ InterfaceDeclaration VoteExecutionSettings
   project: string | undefined
   timeoutMs: number
   workspace: string | undefined
+  workspaceSha: string | undefined
 InterfaceDeclaration VoteMessage
   conditions?: string[] | undefined
   decision: VoteDecision

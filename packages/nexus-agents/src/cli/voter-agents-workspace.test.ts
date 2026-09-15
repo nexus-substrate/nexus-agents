@@ -100,6 +100,29 @@ describe('collectRealVotes tells every seat where the repository is (#6254)', ()
     }
   });
 
+  it('uses the supplied scratch workspace for every seat prompt and completion', async () => {
+    const { adapter, requests } = capturingAdapter();
+    const workspace = '/tmp/vote-scratch';
+    const workspaceSha = 'a'.repeat(40);
+    await collectRealVotes({
+      roles: ALL_ROLES,
+      proposal: 'p',
+      logger: QUIET,
+      adapter,
+      timeoutMs: 5_000,
+      maxRetries: 0,
+      interAgentDelayMs: 0,
+      workspace,
+      workspaceSha,
+    });
+    expect(requests).toHaveLength(ALL_ROLES.length);
+    for (const request of requests) expect(request.workDir).toBe(workspace);
+    for (const prompt of userPromptsOf(requests)) {
+      expect(prompt).toContain(`ratified head ${workspaceSha} at ${workspace}`);
+      expect(prompt).toContain('read only.');
+    }
+  });
+
   it('the block sits in the USER prompt, not the pinned system prompt', async () => {
     // The seven system prompts are snapshotted byte-for-byte
     // (`voter-prompts-project.test.ts`); the working directory is per-run
@@ -126,6 +149,7 @@ describe('executeAgentVote without a workspace claims no tree — the empty case
     await executeAgentVote('architect', 'p', adapter, QUIET, { timeoutMs: 5_000, maxRetries: 0 });
     const [prompt] = userPromptsOf(requests);
     expect(prompt).not.toContain('REPOSITORY ACCESS:');
+    expect(requests[0]).not.toHaveProperty('workDir');
   });
 
   it('a direct call with a workspace renders it', async () => {
