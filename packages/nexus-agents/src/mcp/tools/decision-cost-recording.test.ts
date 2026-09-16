@@ -213,6 +213,22 @@ describe('recordDecisionCost', () => {
     expect(store.size).toBe(1);
   });
 
+  it('passes the undeclared-options verdict through to the persisted record (#5422)', () => {
+    const store = new DecisionCostStore({ filePath: join(dir, 'dc.jsonl'), dataDir: dir });
+    recordDecisionCost({
+      decisionId: 'd-verdict',
+      gate: 'consensus_vote',
+      votes: [vote({ role: 'architect' })],
+      store,
+      billingMode: 'plan',
+      undeclaredOptionsDetector: { fired: false, declaredOptionCount: 0 },
+    });
+    expect(store.all()[0]?.undeclaredOptionsDetector).toEqual({
+      fired: false,
+      declaredOptionCount: 0,
+    });
+  });
+
   it('a voter with adapter-provided tokens yields a MEASURED rollup (#3910)', () => {
     const store = new DecisionCostStore({ filePath: join(dir, 'dc.jsonl'), dataDir: dir });
     const summary = recordDecisionCost({

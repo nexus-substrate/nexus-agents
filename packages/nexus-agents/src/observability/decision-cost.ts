@@ -214,6 +214,39 @@ export interface DecisionCostSummary {
 }
 
 /**
+ * Width of the excerpt window the undeclared-options detector records around
+ * a match (#5422). One constant: the detector produces at most this many
+ * characters and {@link UndeclaredOptionsDetectorSchema} refuses more, so the
+ * two cannot drift apart.
+ */
+export const UNDECLARED_OPTIONS_EXCERPT_CHARS = 120;
+
+/**
+ * The undeclared-options detector's verdict on the vote this record belongs to
+ * (#5422). Recorded on EVERY `consensus_vote` row, fired or not, because the
+ * not-fired rows are the denominator the precision measurement needs; absent
+ * on `pr_review` rows and on rows written before the field existed, which is a
+ * different claim from "not fired".
+ *
+ * Lives on the decision-cost record rather than the audit vote record because
+ * this store is the durable per-decision record OUTSIDE the governor path
+ * (`src/audit/`), and it shares the audit record's `correlationId` as
+ * `decisionId`, so a fired row can be joined back to its ledger line. The
+ * excerpt is capped at {@link UNDECLARED_OPTIONS_EXCERPT_CHARS} so the store
+ * never carries a whole proposal.
+ */
+export const UndeclaredOptionsDetectorSchema = z.object({
+  fired: z.boolean(),
+  /** The matching regex as written, flags included; absent when not fired. */
+  pattern: z.string().min(1).max(200).optional(),
+  /** Window around the match from the FULL proposal; absent when not fired. */
+  excerpt: z.string().max(UNDECLARED_OPTIONS_EXCERPT_CHARS).optional(),
+  /** How many `options` the caller declared (0 when none). */
+  declaredOptionCount: z.number().int().nonnegative(),
+});
+export type UndeclaredOptionsDetectorRecord = z.infer<typeof UndeclaredOptionsDetectorSchema>;
+
+/**
  * Zod schema for {@link DecisionCostSummary} — the single source of truth for
  * the cost-rollup shape when it rides an MCP tool's `outputSchema`. `consensus_vote`
  * declares this in its `outputSchema`, so a spec-strict MCP client validates the

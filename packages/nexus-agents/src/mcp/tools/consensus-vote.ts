@@ -75,6 +75,7 @@ import {
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 import type { VoteRecordPrBinding } from '../../audit/vote-record.js';
 import { recordDecisionCost } from './decision-cost-recording.js';
+import { detectUndeclaredOptions } from './consensus-vote-option-detection.js';
 import { DecisionCostSummarySchema } from '../../observability/decision-cost.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
@@ -826,7 +827,20 @@ function recordVoteSideEffects(
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
   let costSummary: ReturnType<typeof recordDecisionCost> | undefined;
   try {
-    costSummary = recordDecisionCost({ decisionId, gate: 'consensus_vote', votes: result.votes });
+    costSummary = recordDecisionCost({
+      decisionId,
+      gate: 'consensus_vote',
+      votes: result.votes,
+      // #5422: the detector's verdict, recorded on EVERY vote so the not-fired
+      // rows are the denominator. Computed here, where the FULL proposal is in
+      // hand — the ledger keeps a 503-char preview, which is why precision
+      // cannot be measured there. Same patterns as the `panelWarning` in
+      // `buildResponse`, so the measured precision is the warning's precision.
+      undeclaredOptionsDetector: {
+        ...detectUndeclaredOptions(proposal, declared.options),
+        declaredOptionCount: declared.options?.length ?? 0,
+      },
+    });
   } catch (costError) {
     logger.warn('Per-decision cost rollup failed (non-fatal)', {
       error: getErrorMessage(costError),

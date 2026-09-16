@@ -252,3 +252,82 @@ describe('DecisionCostStore price-basis persistence (#4406)', () => {
     expect(store.all()[0]?.summary.priceBasis).toBeUndefined();
   });
 });
+
+describe('DecisionCostStore undeclared-options detector verdict (#5422)', () => {
+  let dir: string;
+  let file: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'decision-cost-store-detector-'));
+    file = join(dir, 'decision-costs.jsonl');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const base = { gate: 'consensus_vote' as const, voters: VOTERS, billingMode: 'plan' as const };
+
+  it('round-trips a FIRED verdict with its pattern and excerpt', () => {
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    const { persisted } = store.record({
+      ...base,
+      decisionId: 'fired',
+      timestamp: TS,
+      undeclaredOptionsDetector: {
+        fired: true,
+        pattern: '/\\bchoose between\\b/i',
+        excerpt: 'please choose between the two',
+        declaredOptionCount: 0,
+      },
+    });
+    expect(persisted).toBe(true);
+    const fresh = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(fresh.all()[0]?.undeclaredOptionsDetector).toEqual({
+      fired: true,
+      pattern: '/\\bchoose between\\b/i',
+      excerpt: 'please choose between the two',
+      declaredOptionCount: 0,
+    });
+  });
+
+  it('round-trips a NOT-FIRED verdict — the denominator row precision needs', () => {
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    store.record({
+      ...base,
+      decisionId: 'quiet',
+      timestamp: TS,
+      undeclaredOptionsDetector: { fired: false, declaredOptionCount: 2 },
+    });
+    const fresh = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(fresh.all()[0]?.undeclaredOptionsDetector).toEqual({
+      fired: false,
+      declaredOptionCount: 2,
+    });
+  });
+
+  it('leaves the field ABSENT when the caller recorded no verdict (pr_review rows, older writers)', () => {
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    store.record({ ...base, gate: 'pr_review', decisionId: 'no-verdict', timestamp: TS });
+    const line = readFileSync(file, 'utf-8').trim();
+    expect(line).not.toContain('undeclaredOptionsDetector');
+    const fresh = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect('undeclaredOptionsDetector' in (fresh.all()[0] ?? {})).toBe(false);
+  });
+
+  it('rejects an excerpt longer than the 120-char window rather than persisting an unbounded proposal', () => {
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    const { persisted } = store.record({
+      ...base,
+      decisionId: 'too-long',
+      timestamp: TS,
+      undeclaredOptionsDetector: {
+        fired: true,
+        pattern: 'p',
+        excerpt: 'x'.repeat(121),
+        declaredOptionCount: 0,
+      },
+    });
+    expect(persisted).toBe(false);
+  });
+});

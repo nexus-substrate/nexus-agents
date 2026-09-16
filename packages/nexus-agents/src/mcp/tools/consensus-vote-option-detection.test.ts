@@ -6,7 +6,11 @@
  * left undeclared. Positions were 3–3; the record said `APPROVED 83.3%`.
  */
 import { describe, it, expect } from 'vitest';
-import { checkUndeclaredOptions } from './consensus-vote-option-detection.js';
+import {
+  checkUndeclaredOptions,
+  detectUndeclaredOptions,
+  UNDECLARED_OPTION_PATTERNS,
+} from './consensus-vote-option-detection.js';
 import { buildResponse } from './consensus-vote-types.js';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
 
@@ -148,5 +152,108 @@ describe('the warning reaches the response (#5360 composition)', () => {
     );
 
     expect(response.panelWarning ?? '').not.toContain('#5360');
+  });
+});
+
+describe('detectUndeclaredOptions — the verdict the telemetry records (#5422)', () => {
+  /**
+   * The issue's own conclusion: precision cannot be measured over the ledger
+   * (proposals are stored as 503-char previews), so the verdict is recorded
+   * LIVE at the tool boundary, where the full proposal exists. These pin the
+   * two instances the issue hand-labelled, so the labelling can count them.
+   */
+  // The ledger preview of record 137, as stored. The issue's table quotes only
+  // its first clause; the hit is on `OPTION A` further in, not on "choose
+  // exactly one", which no pattern covers (pinned below, not widened here).
+  const RECORD_137 =
+    'VALIDATION VOTE for nexus-agents #4472/#4494 — please choose exactly one option.\n\n' +
+    'Context for your choice: the repo is deciding how a scheduled staleness detector ' +
+    'should report a pipeline that has silently stopped running.\n\nChoose ONE:\n\n' +
+    'OPTION A — Age-based alarm. Fail when the last successful run is older than a fixed threshold.';
+  const KNOWN_FALSE_POSITIVE = '#4362 (increment 1 of the unanimous Option C decision on #4351)';
+
+  it('fires on record 137 and names the pattern and the excerpt', () => {
+    const verdict = detectUndeclaredOptions(RECORD_137, undefined);
+    expect(verdict.fired).toBe(true);
+    expect(verdict.pattern).toBe(String(/\b(?:Option|OPTION) [A-Z0-9]\b/));
+    expect(verdict.excerpt).toContain('OPTION A');
+  });
+
+  it('does NOT fire on "choose exactly one" alone — a recall gap the measurement must not hide', () => {
+    // Record 137 is caught by its `OPTION A` heading, not by this phrase. The
+    // patterns cover `pick exactly one` and `vote for exactly one` but not
+    // `choose exactly one`; widening them is a pattern change, and this PR is
+    // the measurement, not the tuning. Pinned so a later widening is deliberate.
+    expect(detectUndeclaredOptions('please choose exactly one option.', undefined)).toEqual({
+      fired: false,
+    });
+  });
+
+  it('still fires on the #4362 mention — the KNOWN false positive, pinned so it is counted, not hidden', () => {
+    // Deliberately NOT fixed here: the whole point of the increment is to
+    // measure precision on real fired rows. Tightening the pattern before the
+    // measurement exists would move the number without a denominator.
+    const verdict = detectUndeclaredOptions(KNOWN_FALSE_POSITIVE, undefined);
+    expect(verdict.fired).toBe(true);
+    expect(verdict.pattern).toBe(String(/\b(?:Option|OPTION) [A-Z0-9]\b/));
+    expect(verdict.excerpt).toContain('Option C');
+  });
+
+  it('does not fire when options are declared, and then carries no pattern or excerpt', () => {
+    const verdict = detectUndeclaredOptions(RECORD_137, ['A', 'B']);
+    expect(verdict).toEqual({ fired: false });
+  });
+
+  it('does not fire on an ordinary proposal — the denominator row', () => {
+    expect(detectUndeclaredOptions('Ship the rate-limit fix?', undefined)).toEqual({
+      fired: false,
+    });
+  });
+
+  it('takes the excerpt from the FULL proposal, past where the ledger preview is cut', () => {
+    // The ledger stores a 503-char preview (#5422); the motivating instance's
+    // option prose sits past that cut. The excerpt must come from the text the
+    // preview drops, or it measures nothing the ledger did not already show.
+    const filler = 'x'.repeat(600);
+    const proposal = `${filler}\n\nOption A — keep it.\nOption B — migrate.`;
+    const verdict = detectUndeclaredOptions(proposal, undefined);
+    expect(verdict.fired).toBe(true);
+    expect(verdict.excerpt).toContain('Option A');
+    expect(verdict.excerpt?.length).toBeLessThanOrEqual(120);
+  });
+
+  it('caps the excerpt at 120 characters with the match inside the window', () => {
+    const before = 'b'.repeat(300);
+    const after = 'a'.repeat(300);
+    const verdict = detectUndeclaredOptions(`${before} choose between ${after}`, undefined);
+    expect(verdict.excerpt?.length).toBe(120);
+    expect(verdict.excerpt).toContain('choose between');
+  });
+
+  it('keeps a short proposal whole rather than padding it', () => {
+    const verdict = detectUndeclaredOptions('Pick exactly one.', undefined);
+    expect(verdict.excerpt).toBe('Pick exactly one.');
+  });
+
+  it('every pattern is bounded: no quantified group is itself quantified', () => {
+    // The promotion criteria (#5422) keep the patterns "bounded and anchored —
+    // no nested quantifiers". A `(x+)+` shape backtracks catastrophically on a
+    // long proposal, and the detector now runs on the FULL proposal, so this
+    // pin matters more than it did on a 503-char preview.
+    expect(UNDECLARED_OPTION_PATTERNS.length).toBeGreaterThan(0);
+    for (const pattern of UNDECLARED_OPTION_PATTERNS) {
+      // A group whose body carries a quantifier, followed by a quantifier.
+      expect(pattern.source, String(pattern)).not.toMatch(/\([^()]*[+*][^()]*\)[+*{]/);
+      // Or a quantifier applied directly to a group ending in a quantified atom.
+      expect(pattern.source, String(pattern)).not.toMatch(/[+*]\)[+*]/);
+    }
+  });
+
+  it('checkUndeclaredOptions and detectUndeclaredOptions agree — one pattern set, not two', () => {
+    for (const proposal of [RECORD_137, KNOWN_FALSE_POSITIVE, 'plain approve/reject', '']) {
+      expect(checkUndeclaredOptions(proposal, undefined).flagged).toBe(
+        detectUndeclaredOptions(proposal, undefined).fired
+      );
+    }
   });
 });
