@@ -34,7 +34,6 @@ import type {
   EvolutionResult,
   LinkSuggestion,
 } from './agentic-memory-primitives.js';
-import { EntityReferenceSchema } from './agentic-memory-primitives.js';
 
 // ============================================================================
 // Memory Attributes (Zettelkasten-style)
@@ -56,15 +55,6 @@ export interface MemoryAttributes {
   /** When attributes were last updated */
   readonly attributesUpdatedAt: Date;
 }
-
-/** Zod schema for MemoryAttributes validation. */
-export const MemoryAttributesSchema = z.object({
-  keywords: z.array(z.string().max(100)).max(50),
-  semanticTags: z.array(z.string().max(50)).max(20),
-  contextDescription: z.string().max(500),
-  entities: z.array(EntityReferenceSchema).max(30),
-  attributesUpdatedAt: z.date(),
-});
 
 // ============================================================================
 // Agentic Memory Entry
@@ -150,13 +140,6 @@ export interface LinkingOptions {
   /** Whether to create bidirectional links (default: true) */
   readonly bidirectional?: boolean;
 }
-
-/** Zod schema for LinkingOptions validation. */
-export const LinkingOptionsSchema = z.object({
-  threshold: z.number().min(0).max(1).optional(),
-  maxLinks: z.number().int().positive().optional(),
-  bidirectional: z.boolean().optional(),
-});
 
 // ============================================================================
 // Agentic Memory Interface

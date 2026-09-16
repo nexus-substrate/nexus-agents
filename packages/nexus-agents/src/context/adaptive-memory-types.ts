@@ -130,22 +130,6 @@ export interface ScoredMemoryEntry {
   readonly priority: PriorityScore;
 }
 
-/** Zod schema for ScoredMemoryEntry validation. */
-export const ScoredMemoryEntrySchema = z.object({
-  entry: z.object({
-    key: z.string(),
-    value: z.unknown(),
-    metadata: z.object({
-      importance: z.enum(['low', 'medium', 'high']),
-      tags: z.array(z.string()).optional(),
-      ttl: z.number().optional(),
-    }),
-    createdAt: z.date(),
-    accessedAt: z.date(),
-  }),
-  priority: PriorityScoreSchema,
-});
-
 // ============================================================================
 // Retrieval Options
 // ============================================================================
@@ -167,16 +151,6 @@ export interface PriorityRetrievalOptions {
   /** Filter by tags (entries must have at least one matching tag) */
   readonly tagFilter?: readonly string[];
 }
-
-/** Zod schema for PriorityRetrievalOptions validation. */
-export const PriorityRetrievalOptionsSchema = z.object({
-  query: z.string().optional(),
-  limit: z.number().int().positive().optional(),
-  minScore: z.number().min(0).optional(),
-  weights: PartialScoringWeightsSchema.optional(),
-  importanceFilter: z.array(z.enum(['low', 'medium', 'high'])).optional(),
-  tagFilter: z.array(z.string()).optional(),
-});
 
 // ============================================================================
 // Adaptive Memory Interface

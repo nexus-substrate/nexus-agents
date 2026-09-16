@@ -347,10 +347,3 @@ export class WorkflowEngine implements IWorkflowEngine {
     if (exec) exec.status = status;
   }
 }
-
-/** Create a workflow engine with default dependencies. */
-export function createWorkflowEngine(_config?: WorkflowEngineConfig): IWorkflowEngine {
-  throw new Error(
-    'createWorkflowEngine requires dependencies. Use WorkflowEngine constructor directly.'
-  );
-}

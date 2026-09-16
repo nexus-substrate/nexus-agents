@@ -22,15 +22,6 @@ export interface BudgetConstraint {
 }
 
 /**
- * Zod schema for budget constraint validation.
- */
-export const BudgetConstraintSchema = z.object({
-  maxTokens: z.number().int().positive().optional(),
-  maxCostUSD: z.number().positive().optional(),
-  maxLatencyMs: z.number().positive().optional(),
-});
-
-/**
  * Session budget tracking.
  */
 export interface SessionBudget {
@@ -47,18 +38,6 @@ export interface SessionBudget {
   /** Session ID */
   readonly sessionId: string;
 }
-
-/**
- * Zod schema for session budget validation.
- */
-export const SessionBudgetSchema = z.object({
-  totalTokens: z.number().int().positive(),
-  totalCostUSD: z.number().positive(),
-  usedTokens: z.number().int().min(0).default(0),
-  usedCostUSD: z.number().min(0).default(0),
-  startTime: z.number().int().positive(),
-  sessionId: z.string().min(1),
-});
 
 /**
  * Budget exhaustion warning level.

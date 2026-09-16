@@ -2,12 +2,10 @@
  * Type definitions for configuration defaults.
  *
  * Provides type safety for the centralized defaults system.
- * Includes Zod schemas for runtime validation at config boundaries.
  *
  * @module config/defaults-types
  */
 
-import { z } from 'zod';
 import type { CliNameLiteral } from './model-capabilities-types.js';
 
 // ============================================================================
@@ -131,97 +129,3 @@ export function isKnownCliName(cli: string): cli is KnownCliName {
     cli === 'default'
   );
 }
-
-// ============================================================================
-// Zod Schemas for Runtime Validation
-// ============================================================================
-
-/**
- * Positive integer validator.
- */
-const positiveInt = z.number().int().positive();
-
-/**
- * Non-negative integer validator.
- */
-const nonNegativeInt = z.number().int().nonnegative();
-
-/**
- * Positive duration in milliseconds validator.
- */
-const durationMs = z.number().int().positive().describe('Duration in milliseconds');
-
-/**
- * Schema for TimeoutProfile.
- */
-export const TimeoutProfileSchema = z.object({
-  simple: durationMs.describe('Timeout for simple tasks'),
-  standard: durationMs.describe('Timeout for standard tasks'),
-  complex: durationMs.describe('Timeout for complex tasks'),
-});
-
-/**
- * Schema for RetryDefaults.
- */
-export const RetryDefaultsSchema = z.object({
-  maxRetries: nonNegativeInt.max(10).describe('Maximum retry attempts'),
-  baseDelayMs: durationMs.describe('Base delay between retries'),
-  maxDelayMs: durationMs.describe('Maximum delay between retries'),
-  jitterFactor: z.number().min(0).max(1).describe('Jitter factor (0-1)'),
-});
-
-/**
- * Schema for RateLimitDefaults.
- */
-export const RateLimitDefaultsSchema = z.object({
-  requestsPerMinute: positiveInt.max(1000).describe('Max requests per minute'),
-  enabled: z.boolean().describe('Whether rate limiting is enabled'),
-  maxConcurrent: positiveInt.max(100).describe('Max concurrent requests'),
-  capacity: positiveInt.describe('Token bucket capacity'),
-  refillRate: positiveInt.describe('Token refill rate'),
-  refillIntervalMs: durationMs.describe('Token refill interval'),
-});
-
-/**
- * Schema for CircuitBreakerDefaults.
- */
-export const CircuitBreakerDefaultsSchema = z.object({
-  failureThreshold: z.number().int().min(1).max(100).describe('Failures before opening'),
-  resetTimeoutMs: durationMs.describe('Time before attempting reset'),
-  halfOpenSuccessThreshold: z.number().int().min(1).max(10).describe('Successes to close'),
-  countTimeoutsAsFailures: z.boolean().describe('Count timeouts as failures'),
-  countAuthFailuresAsFailures: z.boolean().describe('Count auth failures as failures'),
-  countRateLimitsAsFailures: z.boolean().describe('Count rate limit errors as failures'),
-  halfOpenMaxRequests: positiveInt.describe('Max requests in half-open state'),
-});
-
-/**
- * Schema for ToolRateLimitConfig.
- */
-export const ToolRateLimitConfigSchema = z.object({
-  capacity: positiveInt.describe('Token bucket capacity'),
-  refillRate: positiveInt.describe('Token refill rate'),
-  refillIntervalMs: durationMs.describe('Token refill interval'),
-});
-
-// WorkerDefaultsSchema removed in #2977 — see comment on the deleted
-// WorkerDefaults interface above.
-
-/**
- * Schema for TimeoutDefaults.
- */
-export const TimeoutDefaultsSchema = z.object({
-  cliMs: durationMs.describe('Default CLI timeout'),
-  // cliSimpleMs / cliComplexMs removed in #4180 — see config/defaults.ts.
-  apiMs: durationMs.describe('Default API timeout'),
-  apiMaxMs: durationMs.describe('Maximum API timeout'),
-  workflowMs: durationMs.describe('Default workflow timeout'),
-  workflowMaxMs: durationMs.describe('Maximum workflow timeout'),
-  stepMs: durationMs.describe('Default step timeout'),
-  mcpMs: durationMs.describe('Default MCP timeout'),
-  mcpMaxMs: durationMs.describe('Maximum MCP timeout'),
-  healthCheckMs: durationMs.describe('Health check timeout'),
-  testGlobalMs: durationMs.describe('Global test timeout'),
-  testTaskMs: durationMs.describe('Task test timeout'),
-  circuitBreakerResetMs: durationMs.describe('Circuit breaker reset timeout'),
-});

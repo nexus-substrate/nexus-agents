@@ -108,11 +108,6 @@ export function getCodePrSoakSink(): IRecordingCodePrSoakSink {
   return soakSingleton;
 }
 
-/** Test helper — drops the cached singleton so a fresh NEXUS_DATA_DIR is picked up. */
-export function _resetCodePrSoakSinkForTests(): void {
-  soakSingleton = undefined;
-}
-
 /** Build a green code-PR soak record from a clean dry-run plan. */
 export function greenCodePrSoakRecord(args: {
   runId: string;
