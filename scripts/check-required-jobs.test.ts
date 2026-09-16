@@ -231,25 +231,51 @@ describe('required-jobs CLI reporting', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it('reads the manifest from the POLICY checkout, never from the target under review', async () => {
+    const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+    const policyDir = mkdtempSync(join(tmpdir(), 'required-jobs-policy-'));
+    try {
+      mkdirSync(join(policyDir, 'governance'));
+      // Policy pins a job the target's ci-success does not carry: drift, even
+      // though the target's OWN manifest (which a PR could edit) says otherwise.
+      writeFileSync(
+        join(policyDir, 'governance/required-jobs.json'),
+        JSON.stringify({
+          ...manifest,
+          ci_success_needs: [...manifest.ci_success_needs, 'typecheck'],
+        })
+      );
+      expect(runRequiredJobsCheck(directory, policyDir)).toBe(1);
+      expect(output).toContain('::error::Missing ci-success.needs: typecheck');
+      // And the target's manifest being broken changes nothing when policy is sound.
+      writeFileSync(join(directory, 'governance/required-jobs.json'), 'not json');
+      writeFileSync(join(policyDir, 'governance/required-jobs.json'), JSON.stringify(manifest));
+      output.length = 0;
+      expect(runRequiredJobsCheck(directory, policyDir)).toBe(0);
+    } finally {
+      rmSync(policyDir, { recursive: true, force: true });
+    }
+  });
+
   it('changes when only the target package or target workflow changes', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
-    expect(runRequiredJobsCheck(directory)).toBe(0);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(0);
     writeFileSync(join(directory, 'package.json'), '{"pnpm":{"auditConfig":{}}}');
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     writeFileSync(join(directory, 'package.json'), '{}');
-    expect(runRequiredJobsCheck(directory)).toBe(0);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(0);
     const workflowPath = join(directory, '.github/workflows/ci.yml');
     writeFileSync(
       workflowPath,
       readFileSync(workflowPath, 'utf8').replace('CI Success', 'Renamed')
     );
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output.join('\n')).toContain('Required context without workflow job: CI Success');
   });
 
   it('prints ok and exits 0 for measured matching inputs', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
-    expect(runRequiredJobsCheck(directory)).toBe(0);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(0);
     expect(output).toEqual(['Required jobs: ok']);
   });
 
@@ -257,7 +283,7 @@ describe('required-jobs CLI reporting', () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     writeFileSync(join(directory, 'package.json'), '{"pnpm":{"auditConfig":{}}}');
     vi.mocked(execFileSync).mockReturnValue('{"contexts":[]}');
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output).toEqual([
       'Required jobs: drift',
       '::error::Forbidden package.json pnpm.auditConfig is present',
@@ -271,7 +297,7 @@ describe('required-jobs CLI reporting', () => {
     vi.mocked(execFileSync).mockImplementation(() => {
       throw new Error('API unavailable');
     });
-    expect(runRequiredJobsCheck(directory)).toBe(2);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(2);
     expect(output).toEqual([
       'Required jobs: unmeasured',
       '::warning::Required contexts: unmeasured (branch protection unreadable)',
@@ -288,7 +314,7 @@ describe('required-jobs CLI reporting', () => {
     vi.mocked(execFileSync).mockImplementation(() => {
       throw new Error('API unavailable');
     });
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output).toEqual([
       'Required jobs: drift',
       `::error::Required context without workflow job: ${name}`,
@@ -303,7 +329,7 @@ describe('required-jobs CLI reporting', () => {
       workflow,
       readFileSync(workflow, 'utf8').replace('name: CI Success', 'name: Renamed')
     );
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output).toEqual([
       'Required jobs: drift',
       '::error::Required context without workflow job: CI Success',
@@ -312,7 +338,7 @@ describe('required-jobs CLI reporting', () => {
 
   it('returns unmeasured and exits 2 when no tree can be read', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
-    expect(runRequiredJobsCheck(join(directory, 'absent'))).toBe(2);
+    expect(runRequiredJobsCheck(join(directory, 'absent'), directory)).toBe(2);
     expect(output).toEqual([
       'Required jobs: unmeasured',
       '::warning::Repository tree unreadable; no checks measured',
@@ -322,21 +348,21 @@ describe('required-jobs CLI reporting', () => {
   it('treats a missing required manifest in a readable tree as drift', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     rmSync(join(directory, 'governance/required-jobs.json'));
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output[0]).toBe('Required jobs: drift');
   });
 
   it('treats malformed manifest JSON as measured drift', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     writeFileSync(join(directory, 'governance/required-jobs.json'), '{invalid');
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output[0]).toBe('Required jobs: drift');
   });
 
   it('warns without inventing missing producers when the inventory is unreadable', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     writeFileSync(join(directory, '.github/workflows/broken.yml'), '[');
-    expect(runRequiredJobsCheck(directory)).toBe(2);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(2);
     expect(output).toEqual([
       'Required jobs: unmeasured',
       '::warning::Required contexts: unmeasured (workflow inventory unreadable)',
@@ -347,7 +373,7 @@ describe('required-jobs CLI reporting', () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     writeFileSync(join(directory, '.github/workflows/broken.yml'), '[');
     vi.mocked(execFileSync).mockReturnValue('{"contexts":[]}');
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output).toEqual([
       'Required jobs: drift',
       '::error::Missing required context: CI Success',
@@ -360,7 +386,7 @@ describe('required-jobs CLI reporting', () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     writeFileSync(join(directory, '.github/workflows/broken.yml'), '[');
     writeFileSync(join(directory, 'package.json'), '{"pnpm":{"auditConfig":{}}}');
-    expect(runRequiredJobsCheck(directory)).toBe(1);
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output).toContain('::error::Forbidden package.json pnpm.auditConfig is present');
     expect(output).toContain(
       '::warning::Required contexts: unmeasured (workflow inventory unreadable)'

@@ -1107,10 +1107,11 @@ describe('ledgerEvidenceFromEnv', () => {
     };
     const output = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
+      // The fixture CODEOWNERS is the POLICY here, so `dir` is also the policy root.
       writeFileSync(ledgerPath, ledgerText([record('v0', { sequence: 0 })]));
-      expect(runRatificationGate(env, dir)).toBe(0);
+      expect(runRatificationGate(env, dir, dir)).toBe(0);
       writeFileSync(ledgerPath, '');
-      expect(runRatificationGate(env, dir)).toBe(1);
+      expect(runRatificationGate(env, dir, dir)).toBe(1);
     } finally {
       output.mockRestore();
     }
@@ -2895,7 +2896,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       'a bound record at or past the cutover that is not `signed` is a refusal naming its code; the grandfathered range is named on the ratified line'
   );
 
-  it('resolves a relative allowed-signers override against target and changes when that file changes', () => {
+  it('resolves a relative allowed-signers override against the POLICY root (never the target) and changes when that file changes', () => {
     const path = join(dir, 'vote-records.jsonl');
     writeFileSync(path, ledgerText([signed(record('v0', { sequence: 0 }))]), 'utf8');
     const env = {
@@ -2903,13 +2904,17 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       PR_HEAD_SHA: HEAD,
       [ALLOWED_SIGNERS_PATH_ENV]: 'fixture-signers',
     };
-    writeFileSync(join(dir, 'fixture-signers'), readFileSync(allowedSignersPath, 'utf8'));
-    const trusted = ledgerEvidenceFromEnv(env, path, dir);
+    // A signers file under the TARGET is ignored: a PR cannot admit its own key.
+    writeFileSync(join(dir, 'fixture-signers'), '');
+    const policyDir = mkdtempSync(join(tmpdir(), 'gov-policy-'));
+    writeFileSync(join(policyDir, 'fixture-signers'), readFileSync(allowedSignersPath, 'utf8'));
+    const trusted = ledgerEvidenceFromEnv(env, path, dir, policyDir);
     expect(trusted.kind).toBe('ratified');
     if (trusted.kind !== 'ratified') throw new Error('unreachable');
     expect(trusted.signatures?.[0]?.verdict.code).toBe('signed');
-    writeFileSync(join(dir, 'fixture-signers'), '');
-    const unknown = ledgerEvidenceFromEnv(env, path, dir);
+    writeFileSync(join(policyDir, 'fixture-signers'), '');
+    const unknown = ledgerEvidenceFromEnv(env, path, dir, policyDir);
+    rmSync(policyDir, { recursive: true, force: true });
     expect(unknown.kind).toBe('ratified');
     if (unknown.kind !== 'ratified') throw new Error('unreachable');
     expect(unknown.signatures?.[0]?.verdict.code).toBe('unknown-signer');

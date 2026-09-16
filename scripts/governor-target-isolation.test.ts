@@ -21,12 +21,22 @@ describe('governor target checkout isolation', () => {
   const owners = (pattern: string): string =>
     `# @governor-section-start\n/${pattern} @fixture-owner\n# @governor-section-end\n`;
 
-  it('changes the ratification verdict when only the target CODEOWNERS changes', () => {
+  it('reads the governor set from the POLICY checkout, never from the target under review', () => {
+    // A PR that narrows the governor section of its own CODEOWNERS must be
+    // judged by the set it is narrowing (the base gate's), so the target's
+    // CODEOWNERS is ignored for policy: only the policy dir's file changes the verdict.
     const env = { CHANGED_FILES: 'fixture-only.txt' };
-    writeFileSync(join(targetDir, 'CODEOWNERS'), owners('another.txt'));
-    expect(runRatificationGate(env, targetDir)).toBe(0);
-    writeFileSync(join(targetDir, 'CODEOWNERS'), owners('fixture-only.txt'));
-    expect(runRatificationGate(env, targetDir)).toBe(1);
+    const policyDir = mkdtempSync(join(tmpdir(), 'governor-policy-'));
+    try {
+      writeFileSync(join(targetDir, 'CODEOWNERS'), owners('fixture-only.txt')); // head says: governor
+      writeFileSync(join(policyDir, 'CODEOWNERS'), owners('another.txt')); // base says: not governor
+      expect(runRatificationGate(env, targetDir, policyDir)).toBe(0);
+      writeFileSync(join(targetDir, 'CODEOWNERS'), owners('another.txt')); // head narrows itself out
+      writeFileSync(join(policyDir, 'CODEOWNERS'), owners('fixture-only.txt')); // base says: governor
+      expect(runRatificationGate(env, targetDir, policyDir)).toBe(1);
+    } finally {
+      rmSync(policyDir, { recursive: true, force: true });
+    }
   });
 
   it('names an empty target ledger and changes the verdict when its bytes change', () => {

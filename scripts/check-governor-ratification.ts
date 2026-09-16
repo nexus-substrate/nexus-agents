@@ -416,7 +416,27 @@ function parseGovernorPatternsOrReport(codeowners: string): string[] | null {
   }
 }
 
-export function runRatificationGate(env: NodeJS.ProcessEnv, targetDir: string): number {
+/**
+ * POLICY, not data: the governor set and the ratifier list come from the
+ * checkout this gate runs from (the base under the two-checkout job), so a
+ * PR narrowing the governor section is judged by the set it narrows.
+ * `undefined` (after reporting) when the file cannot be read.
+ */
+function readPolicyCodeowners(policyDir: string): string | undefined {
+  try {
+    return readFileSync(join(policyDir, 'CODEOWNERS'), 'utf-8');
+  } catch {
+    console.error(formatVerdict({ kind: 'indeterminate', reason: 'CODEOWNERS is unreadable' }));
+    return undefined;
+  }
+}
+
+/** `policyDir` defaults to this gate's checkout (the base under the two-checkout job); tests inject a fixture policy root. */
+export function runRatificationGate(
+  env: NodeJS.ProcessEnv,
+  targetDir: string,
+  policyDir: string = ROOT
+): number {
   // #5444: distinguish "no file list was supplied" from "the file list is
   // empty". The workflow always supplies CHANGED_FILES (governor-review.yml);
   // a local run does not. Absent, the gate has measured nothing — and it used
@@ -445,13 +465,8 @@ export function runRatificationGate(env: NodeJS.ProcessEnv, targetDir: string): 
     .map((l) => l.trim())
     .filter((l) => l !== '');
 
-  let codeowners = '';
-  try {
-    codeowners = readFileSync(join(targetDir, 'CODEOWNERS'), 'utf-8');
-  } catch {
-    console.error(formatVerdict({ kind: 'indeterminate', reason: 'CODEOWNERS is unreadable' }));
-    return 1;
-  }
+  const codeowners = readPolicyCodeowners(policyDir);
+  if (codeowners === undefined) return 1;
 
   const governorPatterns = parseGovernorPatternsOrReport(codeowners);
   if (governorPatterns === null) return 1;
@@ -474,7 +489,7 @@ export function runRatificationGate(env: NodeJS.ProcessEnv, targetDir: string): 
     ...labelEvidenceFromEnv(env),
   });
 
-  return exitCodeFor(verdict, env, targetDir);
+  return exitCodeFor(verdict, env, targetDir, policyDir);
 }
 
 /**
@@ -495,7 +510,8 @@ export function runRatificationGate(env: NodeJS.ProcessEnv, targetDir: string): 
 function exitCodeFor(
   verdict: RatificationVerdict,
   env: NodeJS.ProcessEnv,
-  targetDir: string
+  targetDir: string,
+  policyDir: string
 ): number {
   console.error(formatVerdict(verdict));
   switch (verdict.kind) {
@@ -504,10 +520,10 @@ function exitCodeFor(
     case 'indeterminate':
       return 1;
     case 'unratified':
-      reportLedgerEvidence(env, VOTE_RECORDS_REL_PATH, targetDir);
+      reportLedgerEvidence(env, VOTE_RECORDS_REL_PATH, targetDir, policyDir);
       return 1;
     case 'ratified':
-      return reportLedgerEvidence(env, VOTE_RECORDS_REL_PATH, targetDir) ? 0 : 1;
+      return reportLedgerEvidence(env, VOTE_RECORDS_REL_PATH, targetDir, policyDir) ? 0 : 1;
   }
 }
 

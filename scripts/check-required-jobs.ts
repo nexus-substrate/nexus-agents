@@ -234,12 +234,17 @@ function reportManifestFailure(directory: string, error: unknown): number {
 }
 
 /** Run local checks even when the workflow inventory or protection API is unavailable. */
-export function runRequiredJobsCheck(targetDir: string): number {
+const POLICY_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
+
+/** `policyDir` defaults to this gate's checkout; tests inject a fixture policy root. */
+export function runRequiredJobsCheck(targetDir: string, policyDir: string = POLICY_DIR): number {
   let manifest: unknown;
   try {
-    manifest = readJson(join(targetDir, 'governance/required-jobs.json'));
+    // POLICY from the gate checkout (this script's root), never from the tree
+    // under review — a PR editing the manifest is judged by the base manifest.
+    manifest = readJson(join(policyDir, 'governance/required-jobs.json'));
   } catch (error: unknown) {
-    return reportManifestFailure(targetDir, error);
+    return reportManifestFailure(policyDir, error);
   }
   let gate: JobGate;
   let packageJson: unknown;
@@ -247,6 +252,16 @@ export function runRequiredJobsCheck(targetDir: string): number {
     gate = loadCiSuccessGate(join(targetDir, '.github/workflows/ci.yml'));
     packageJson = readJson(join(targetDir, 'package.json'));
   } catch {
+    // A target tree that cannot be read at all is unmeasured; a readable tree
+    // whose wiring is missing or malformed is drift.
+    try {
+      readdirSync(targetDir);
+    } catch {
+      return report({
+        verdict: 'unmeasured',
+        problems: ['Repository tree unreadable; no checks measured'],
+      });
+    }
     return report({
       verdict: 'drift',
       problems: ['Required local CI wiring or package.json is missing or invalid'],
