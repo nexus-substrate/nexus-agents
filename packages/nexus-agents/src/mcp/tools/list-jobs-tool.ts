@@ -145,7 +145,8 @@ export function registerListJobsTool(server: McpServer, deps: ListJobsDeps): voi
 
   const description =
     'List async-mode jobs (cross-session discovery). Returns summaries — jobId, toolName, ' +
-    'status, timestamps — newest first. Filter by toolName / status / limit. Result payloads ' +
+    "status, timestamps, and lastProgressAt (the body's last heartbeat, when it sent one; " +
+    '#6162) — newest first. Filter by toolName / status / limit. Result payloads ' +
     'excluded; fetch via get_job_result(jobId). Stage 5 of epic #2631.';
 
   const secureHandler = createSecureHandler(listJobsHandler, {

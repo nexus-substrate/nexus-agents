@@ -57,6 +57,45 @@ const sampleWorkflow: WorkflowDefinition = {
   ],
 };
 
+describe('onPhaseComplete (#6162 heartbeat seam)', () => {
+  it('fires once per executed phase, after that phase settles', async () => {
+    const phases = [{ steps: [sampleWorkflow.steps[0]!] }, { steps: [sampleWorkflow.steps[1]!] }];
+    const seen: number[] = [];
+    let phasesRun = 0;
+    const deps = createMockDeps({
+      createExecutionPlan: vi
+        .fn()
+        .mockReturnValue(ok({ phases, totalSteps: 2, maxParallelism: 1 })),
+      executePhase: vi.fn().mockImplementation(() => {
+        phasesRun += 1;
+        return Promise.resolve(ok([{ stepId: `step${String(phasesRun)}`, status: 'completed' }]));
+      }),
+    });
+    const testEngine = new WorkflowEngine(deps);
+
+    const execution = await testEngine.execute(
+      sampleWorkflow,
+      { input1: 'test' },
+      {
+        onPhaseComplete: () => {
+          seen.push(phasesRun);
+        },
+      }
+    );
+
+    expect(execution.ok).toBe(true);
+    // Called after phase 1 and after phase 2 — not before either, not extra.
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it('empty case: a plan with no phases never fires it', async () => {
+    const onPhaseComplete = vi.fn();
+    const testEngine = new WorkflowEngine(createMockDeps());
+    await testEngine.execute(sampleWorkflow, { input1: 'test' }, { onPhaseComplete });
+    expect(onPhaseComplete).not.toHaveBeenCalled();
+  });
+});
+
 async function executeWithStepResults(stepResults: StepResult[]): Promise<ExecutionStatus> {
   const deps = createMockDeps({
     createExecutionPlan: vi.fn().mockReturnValue(ok({ phases: [{ steps: sampleWorkflow.steps }] })),

@@ -9,18 +9,26 @@ import { join } from 'node:path';
 
 import { runAsJob, runJobInBackground } from './run-as-job.js';
 import {
+  heartbeatJob,
   readJobResult,
   writeJobPending,
   writeJobCancelled,
   JOB_RECORD_RETENTION_MS,
 } from './job-result-store.js';
+import { stepBus } from '../../core/step-bus.js';
 import { abortJob } from './job-abort-registry.js';
 import { registerIdempotentJob, resolveIdempotency } from './job-idempotency.js';
-import { _resetForTests as resetConcurrency, getInFlight, getJobCap } from './job-concurrency.js';
+import {
+  _resetForTests as resetConcurrency,
+  getInFlight,
+  getJobCap,
+  tryAcquire,
+} from './job-concurrency.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
 import { VERSION } from '../../version.js';
 import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../../core/index.js';
 import { initTaskState, readTaskState } from '../../context/structured-task-state.js';
+import { emitStageCompleted } from '../../pipeline/pipeline-observability.js';
 
 interface DummyInput {
   readonly task: string;
@@ -351,7 +359,11 @@ describe('runAsJob', () => {
     it('fires the near-timeout WARN at 0.5 of a guard raised to the 2h ceiling (#5995)', async () => {
       // The exemption widens the guard; the WARN fraction is unchanged, so an
       // operator who opts into 2h is warned at 1h, not at the old fixed point.
+      // Past the standard ceiling the body must heartbeat (#6162) — a silent
+      // one is wedged at 3/8 of the guard and never reaches the WARN — so this
+      // body beats once per interval.
       const CEILING_MS = 7_200_000;
+      const INTERVAL_MS = CEILING_MS / 8;
       process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(CEILING_MS);
       vi.useFakeTimers();
       const warn = vi.fn();
@@ -362,20 +374,29 @@ describe('runAsJob', () => {
         debug: vi.fn(),
       } as unknown as import('../../core/index.js').ILogger;
       let finish: (value: { ok: true }) => void = () => {};
+      let heartbeat: () => void = () => {};
       const params = {
         toolName: 'orchestrate',
         input: { task: 'long' } as DummyInput,
         freshJobId: () => 'job-warn-raised-1',
-        run: () =>
+        run: (_jobId: string, _input: DummyInput, _signal: AbortSignal, progress: () => void) =>
           new Promise<{ ok: true }>((resolve) => {
+            heartbeat = progress;
             finish = resolve;
           }),
         logger,
       };
-      runAsJob<DummyInput, { ok: true }>({ ...params, run: () => new Promise(() => {}) });
+      // Acquire the slot + pending record by hand: a `runAsJob` dispatch would
+      // start a second, silent runner that the reaper fails at 3/8 of the guard.
+      tryAcquire('orchestrate');
+      writeJobPending('job-warn-raised-1', 'orchestrate');
       const bg = runJobInBackground('job-warn-raised-1', params);
 
-      await vi.advanceTimersByTimeAsync(CEILING_MS / 2 - 1);
+      for (let elapsed = 0; elapsed < CEILING_MS / 2 - INTERVAL_MS; elapsed += INTERVAL_MS) {
+        await vi.advanceTimersByTimeAsync(INTERVAL_MS);
+        heartbeat();
+      }
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS - 1);
       expect(warn).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(warn).toHaveBeenCalledWith(
@@ -386,6 +407,314 @@ describe('runAsJob', () => {
       finish({ ok: true });
       await bg;
       expect(readJobResult('job-warn-raised-1')?.status).toBe('complete');
+    });
+  });
+
+  // ==========================================================================
+  // liveness for a body allowed past the standard MCP ceiling (#6162 item 1)
+  // ==========================================================================
+
+  // #6159 let an operator raise the async-job-body guard past the 3.6M MCP
+  // ceiling, and the only signals over that extra hour were the start log and
+  // the 0.5 WARN — both say time passed, neither says the body is alive. A
+  // body that runs past the standard ceiling now has to prove progress via the
+  // `progress()` heartbeat `runAsJob` hands it; the reaper fails a silent body
+  // as wedged and releases its slot well before the guard fires.
+  describe('async-job-body liveness (#6162)', () => {
+    /** Above the 3.6M MCP ceiling, within the 7.2M class ceiling. */
+    const LONG_GUARD_MS = 4_000_000;
+    /** interval = guard / 8; wedged after 3 missed intervals = 3/8 of the guard. */
+    const INTERVAL_MS = LONG_GUARD_MS / 8;
+    const SILENCE_BUDGET_MS = 3 * INTERVAL_MS;
+    /** The standard ceiling itself — the largest guard that needs no heartbeat. */
+    const STANDARD_CEILING_MS = 3_600_000;
+
+    interface Driven {
+      readonly heartbeat: () => void;
+      readonly finish: (value: { ok: true }) => void;
+    }
+
+    /** Dispatch a job whose body exposes its heartbeat + resolver to the test. */
+    function dispatch(jobId: string): Driven {
+      let heartbeat: (() => void) | undefined;
+      let finish: ((value: { ok: true }) => void) | undefined;
+      runAsJob<DummyInput, { ok: true }>({
+        toolName: 'orchestrate',
+        input: { task: 'long' },
+        freshJobId: () => jobId,
+        run: (_jobId, _input, _signal, progress) =>
+          new Promise<{ ok: true }>((resolve) => {
+            heartbeat = progress;
+            finish = resolve;
+          }),
+      });
+      if (heartbeat === undefined || finish === undefined) {
+        throw new Error('run callback was not invoked synchronously with a progress() callback');
+      }
+      return { heartbeat, finish };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      delete process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'];
+      vi.useRealTimers();
+    });
+
+    it('keeps a long-guard job that heartbeats running past N missed-interval budgets', async () => {
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const { heartbeat, finish } = dispatch('job-live-1');
+
+      // Heartbeat every 0.8 interval for 2x the silence budget (3,000,000 ms,
+      // inside the 4,000,000 ms guard) — twice past the point a silent body
+      // would have been failed.
+      const step = INTERVAL_MS * 0.8;
+      for (let elapsed = 0; elapsed < SILENCE_BUDGET_MS * 2; elapsed += step) {
+        await vi.advanceTimersByTimeAsync(step);
+        heartbeat();
+      }
+      expect(readJobResult('job-live-1')?.status).toBe('pending');
+      expect(getInFlight('orchestrate')).toBe(1);
+
+      finish({ ok: true });
+      await vi.waitFor(() => {
+        expect(readJobResult('job-live-1')?.status).toBe('complete');
+      });
+      expect(getInFlight('orchestrate')).toBe(0);
+    });
+
+    it('fails a long-guard job that stops heartbeating as wedged and releases its slot before the guard', async () => {
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const { heartbeat } = dispatch('job-wedged-1');
+
+      // One heartbeat at 0.8 interval, then silence: the watchdog fires one
+      // silence budget after that heartbeat (1,900,000 ms).
+      const lastBeatAt = INTERVAL_MS * 0.8;
+      await vi.advanceTimersByTimeAsync(lastBeatAt);
+      heartbeat();
+      const wedgedAt = lastBeatAt + SILENCE_BUDGET_MS;
+      await vi.advanceTimersByTimeAsync(wedgedAt - lastBeatAt - 1);
+      expect(readJobResult('job-wedged-1')?.status).toBe('pending');
+      expect(getInFlight('orchestrate')).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-wedged-1')?.status).toBe('failed');
+      });
+      const record = readJobResult('job-wedged-1');
+      expect(record?.error).toBe(`wedged (no progress for ${String(wedgedAt - lastBeatAt)} ms)`);
+      // The slot is released at the wedge verdict — half the guard is still ahead.
+      expect(getInFlight('orchestrate')).toBe(0);
+      expect(wedgedAt).toBeLessThan(LONG_GUARD_MS);
+    });
+
+    it('is failed exactly one silence budget after the last heartbeat, wherever it landed (#6428)', async () => {
+      // A poller ticking every interval fires on the tick AFTER the budget is
+      // exceeded: a heartbeat landing just after a tick held the slot for up to
+      // four intervals while the contract says three. The reaper is a watchdog
+      // re-armed by every heartbeat, so the verdict lands at exactly
+      // lastHeartbeat + budget — here 500,001 + 1,500,000 — not at a tick.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const { heartbeat } = dispatch('job-watchdog-1');
+      const lastBeatAt = INTERVAL_MS + 1;
+      await vi.advanceTimersByTimeAsync(lastBeatAt);
+      heartbeat();
+
+      await vi.advanceTimersByTimeAsync(SILENCE_BUDGET_MS - 1);
+      expect(readJobResult('job-watchdog-1')?.status).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-watchdog-1')?.status).toBe('failed');
+      });
+      expect(readJobResult('job-watchdog-1')?.error).toBe(
+        `wedged (no progress for ${String(SILENCE_BUDGET_MS)} ms)`
+      );
+      expect(getInFlight('orchestrate')).toBe(0);
+    });
+
+    it('a heartbeat by jobId defers the watchdog like the callback does (#6428)', async () => {
+      // Arity-0/1 bodies heartbeat through `heartbeatJob(jobId)`; the watchdog
+      // measures from the record, so that path must count the same.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const { finish } = dispatch('job-byid-1');
+      const step = INTERVAL_MS * 0.8;
+      for (let elapsed = 0; elapsed < SILENCE_BUDGET_MS * 2; elapsed += step) {
+        await vi.advanceTimersByTimeAsync(step);
+        heartbeatJob('job-byid-1');
+      }
+      expect(readJobResult('job-byid-1')?.status).toBe('pending');
+      finish({ ok: true });
+      await vi.waitFor(() => {
+        expect(readJobResult('job-byid-1')?.status).toBe('complete');
+      });
+    });
+
+    it('leaves a job under the standard ceiling alone when it never heartbeats', async () => {
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(STANDARD_CEILING_MS);
+      dispatch('job-standard-1');
+
+      // Past every point a long guard would have called it wedged, up to the
+      // last ms before its own guard: still pending, still holding its slot.
+      await vi.advanceTimersByTimeAsync(STANDARD_CEILING_MS - 1);
+      expect(readJobResult('job-standard-1')?.status).toBe('pending');
+      expect(getInFlight('orchestrate')).toBe(1);
+
+      // The runaway guard itself is unchanged.
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-standard-1')?.status).toBe('failed');
+      });
+      expect(readJobResult('job-standard-1')?.error).toBe('runaway guard exceeded');
+    });
+
+    it('empty case: a body that never heartbeats is measured from job start', async () => {
+      // No heartbeat ever recorded → silence is counted from dispatch, so a
+      // long-guard body that never calls progress() is wedged by definition
+      // after exactly N intervals.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      dispatch('job-silent-1');
+
+      await vi.advanceTimersByTimeAsync(SILENCE_BUDGET_MS - 1);
+      expect(readJobResult('job-silent-1')?.status).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-silent-1')?.status).toBe('failed');
+      });
+      expect(readJobResult('job-silent-1')?.error).toBe(
+        `wedged (no progress for ${String(SILENCE_BUDGET_MS)} ms)`
+      );
+      expect(getInFlight('orchestrate')).toBe(0);
+    });
+
+    it('a pipeline body heartbeats through the stage events it already emits', async () => {
+      // Pipeline bodies never call progress() themselves: every stage event on
+      // the pipeline bus that is emitted INSIDE this job's async context is
+      // its heartbeat. One bridge in runAsJob, not one per pipeline tool.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      // Stages settle every 0.8 interval for 2x the silence budget. Each emit
+      // runs in an `await` continuation, i.e. in the body's async context — the
+      // same place a real stage registry emits from. (A fake-timer callback
+      // would not: sinon invokes it from the test's context, unlike a real
+      // Node timer, which propagates AsyncLocalStorage.)
+      const stageEvery = INTERVAL_MS * 0.8;
+      const stages = Math.ceil((SILENCE_BUDGET_MS * 2) / stageEvery);
+      runAsJob<DummyInput, { ok: true }>({
+        toolName: 'run_pipeline',
+        input: { task: 'staged' },
+        freshJobId: () => 'job-stages-1',
+        run: async () => {
+          for (let i = 0; i < stages; i++) {
+            await new Promise((resolve) => setTimeout(resolve, stageEvery));
+            emitStageCompleted({ executionId: 'rp-x', stageId: `s${String(i)}`, durationMs: 1 });
+          }
+          return { ok: true };
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(SILENCE_BUDGET_MS * 2 - 1);
+      expect(readJobResult('job-stages-1')?.status).toBe('pending');
+      expect(readJobResult('job-stages-1')?.lastProgressAt).toBeDefined();
+      expect(getInFlight('run_pipeline')).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(stageEvery);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-stages-1')?.status).toBe('complete');
+      });
+      expect(getInFlight('run_pipeline')).toBe(0);
+    });
+
+    it('a body whose agents emit step events heartbeats through them too (#6428)', async () => {
+      // orchestrate's main phase is the Orchestrator agent's model calls, which
+      // publish `withStep` events on `stepBus`, not on the pipeline bus. The
+      // bridge listens to both, with the same async-context attribution.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const stepEvery = INTERVAL_MS * 0.8;
+      const steps = Math.ceil((SILENCE_BUDGET_MS * 2) / stepEvery);
+      runAsJob<DummyInput, { ok: true }>({
+        toolName: 'orchestrate',
+        input: { task: 'agentic' },
+        freshJobId: () => 'job-steps-1',
+        run: async () => {
+          for (let i = 0; i < steps; i++) {
+            await new Promise((resolve) => setTimeout(resolve, stepEvery));
+            stepBus.emit('step', {
+              event: 'step.completed',
+              stepId: `s${String(i)}`,
+              name: 'orchestrator.analyze',
+              durationMs: 1,
+              status: 'ok',
+            });
+          }
+          return { ok: true };
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(SILENCE_BUDGET_MS * 2 - 1);
+      expect(readJobResult('job-steps-1')?.status).toBe('pending');
+      expect(readJobResult('job-steps-1')?.lastProgressAt).toBeDefined();
+      await vi.advanceTimersByTimeAsync(stepEvery);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-steps-1')?.status).toBe('complete');
+      });
+    });
+
+    it("another job's stage events are not this job's heartbeat", async () => {
+      // Attribution is by the async context the event is emitted from. A bus
+      // subscription without it would let any concurrent pipeline keep a
+      // wedged job alive — the misreport the heartbeat exists to prevent.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      dispatch('job-silent-neighbour');
+      // Emitted from OUTSIDE the job (the test's own context) every 0.8 interval.
+      const foreign = setInterval(() => {
+        emitStageCompleted({ executionId: 'other-job', stageId: 'impl', durationMs: 1 });
+      }, INTERVAL_MS * 0.8);
+      foreign.unref();
+
+      await vi.advanceTimersByTimeAsync(SILENCE_BUDGET_MS);
+      clearInterval(foreign);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-silent-neighbour')?.status).toBe('failed');
+      });
+      expect(readJobResult('job-silent-neighbour')?.error).toMatch(/^wedged/);
+      expect(readJobResult('job-silent-neighbour')).not.toHaveProperty('lastProgressAt');
+    });
+
+    it('stamps lastProgressAt on the pending record at each heartbeat', async () => {
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      vi.setSystemTime(new Date('2026-09-16T12:00:00.000Z'));
+      const { heartbeat, finish } = dispatch('job-stamp-1');
+      expect(readJobResult('job-stamp-1')).not.toHaveProperty('lastProgressAt');
+
+      await vi.advanceTimersByTimeAsync(90_000);
+      heartbeat();
+      expect(readJobResult('job-stamp-1')?.lastProgressAt).toBe('2026-09-16T12:01:30.000Z');
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      heartbeat();
+      expect(readJobResult('job-stamp-1')?.lastProgressAt).toBe('2026-09-16T12:02:30.000Z');
+      expect(readJobResult('job-stamp-1')?.status).toBe('pending');
+
+      finish({ ok: true });
+      await vi.waitFor(() => {
+        expect(readJobResult('job-stamp-1')?.status).toBe('complete');
+      });
+    });
+
+    it('stamps lastProgressAt under the standard ceiling too — the reaper is gated, the stamp is not', async () => {
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(STANDARD_CEILING_MS);
+      vi.setSystemTime(new Date('2026-09-16T13:00:00.000Z'));
+      const { heartbeat, finish } = dispatch('job-stamp-std');
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      heartbeat();
+      expect(readJobResult('job-stamp-std')?.lastProgressAt).toBe('2026-09-16T13:00:05.000Z');
+
+      finish({ ok: true });
+      await vi.waitFor(() => {
+        expect(readJobResult('job-stamp-std')?.status).toBe('complete');
+      });
     });
   });
 

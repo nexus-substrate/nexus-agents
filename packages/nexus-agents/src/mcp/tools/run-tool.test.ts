@@ -73,15 +73,20 @@ vi.mock('./pipeline-tool.js', () => ({
 
 // #4042: capture the gatewayAdapters threaded into the consensus executor. Keep
 // every other consensus-vote export real (run-tool only imports runConsensusForGoal).
-const runConsensusForGoalMock = vi.fn((_goal: string, _logger?: unknown, _gw?: unknown) =>
-  Promise.resolve({ result: { outcome: 'approved' } })
+const runConsensusForGoalMock = vi.fn(
+  (_goal: string, _logger?: unknown, _gw?: unknown, _onVoteCollected?: () => void) =>
+    Promise.resolve({ result: { outcome: 'approved' } })
 );
 vi.mock('./consensus-vote.js', async () => {
   const actual = await vi.importActual<typeof import('./consensus-vote.js')>('./consensus-vote.js');
   return {
     ...actual,
-    runConsensusForGoal: (goal: string, logger?: unknown, gw?: unknown) =>
-      runConsensusForGoalMock(goal, logger, gw),
+    runConsensusForGoal: (
+      goal: string,
+      logger?: unknown,
+      gw?: unknown,
+      onVoteCollected?: () => void
+    ) => runConsensusForGoalMock(goal, logger, gw, onVoteCollected),
   };
 });
 
@@ -298,7 +303,7 @@ describe('run-path trustTier threading (#3712) — the run→dev-pipeline hole',
       { gatewayAdapters: gw }
     );
     // executeGoal -> buildDefaultExecutors -> consensus executor -> runConsensusForGoal(goal, undefined, gw)
-    expect(runConsensusForGoalMock).toHaveBeenCalledWith('decide A or B', undefined, gw);
+    expect(runConsensusForGoalMock).toHaveBeenCalledWith('decide A or B', undefined, gw, undefined);
   });
 });
 
@@ -432,6 +437,32 @@ describe('run async dispatch (execute:true, #3732)', () => {
     resetNexusDataDirCache();
     resetJobConcurrency();
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('an async consensus run heartbeats per seat — the executor gets the job heartbeat (#6162)', async () => {
+    // `run` is deliberately arity-0 on `run` (no signal), so it cannot take the
+    // fourth `progress` parameter; it heartbeats by jobId instead. The seam:
+    // handler -> runAsJob -> executeRunBodyOrThrow -> executeGoal ->
+    // buildDefaultExecutors -> runConsensusForGoal(goal, _, gw, onVoteCollected).
+    runConsensusForGoalMock.mockClear();
+    runConsensusForGoalMock.mockImplementationOnce((_goal, _logger, _gw, onVoteCollected) => {
+      onVoteCollected?.();
+      return Promise.resolve({ result: { outcome: 'approved' } });
+    });
+    const handler = captureHandler();
+    const result = await handler({
+      goal: 'decide A or B',
+      forceStrategy: 'consensus',
+      execute: true,
+      dispatch: 'async',
+    });
+    const jobId = envelope(result)['jobId'] as string;
+    await vi.waitFor(() => {
+      expect(readJobResult(jobId)?.status).toBe('complete');
+    });
+    const heartbeat = runConsensusForGoalMock.mock.calls[0]?.[3];
+    expect(typeof heartbeat).toBe('function');
+    expect(readJobResult(jobId)?.lastProgressAt).toBeDefined();
   });
 
   it("returns { status: 'pending', jobId } and mints an rn-<uuid> id", async () => {

@@ -7,15 +7,17 @@ import { mkdtempSync, rmSync, writeFileSync, chmodSync, readdirSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ListJobsInputSchema } from './list-jobs-tool.js';
+import { ListJobsInputSchema, registerListJobsTool } from './list-jobs-tool.js';
 import {
   writeJobPending,
   writeJobComplete,
   writeJobFailed,
+  heartbeatJob,
   listJobs,
   listJobsWithDiagnostics,
 } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { RateLimiter } from '../middleware/rate-limiter.js';
 
 let tmpDir: string;
 const originalDataDir = process.env['NEXUS_DATA_DIR'];
@@ -205,5 +207,40 @@ describe('a listing that could not read everything says so (#6038)', () => {
     } finally {
       chmodSync(jobsDir(), 0o755);
     }
+  });
+});
+
+describe('list_jobs heartbeat disclosure (#6162)', () => {
+  type SdkCallback = (args: unknown) => Promise<{ content: readonly { text: string }[] }>;
+
+  /** Drive the callback the tool actually registers, through its wrappers. */
+  async function listEnvelope(): Promise<Record<string, unknown>> {
+    let registered: SdkCallback | undefined;
+    const server = {
+      registerTool: (_name: string, _config: unknown, callback: SdkCallback): void => {
+        registered = callback;
+      },
+    };
+    registerListJobsTool(server as never, {
+      rateLimiter: new RateLimiter({ capacity: 100, refillRate: 100 }),
+    });
+    if (registered === undefined) throw new Error('list_jobs registered no callback');
+    const result = await registered({});
+    return JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>;
+  }
+
+  it('each summary carries lastProgressAt when the record has one, and omits it otherwise', async () => {
+    writeJobPending('job-hb-yes', 'orchestrate');
+    heartbeatJob('job-hb-yes', '2026-09-16T12:34:56.000Z');
+    writeJobPending('job-hb-no', 'orchestrate');
+
+    const body = await listEnvelope();
+    const jobs = body['jobs'] as Array<Record<string, unknown>>;
+    const yes = jobs.find((j) => j['jobId'] === 'job-hb-yes');
+    const no = jobs.find((j) => j['jobId'] === 'job-hb-no');
+
+    expect(yes?.['lastProgressAt']).toBe('2026-09-16T12:34:56.000Z');
+    expect(no).toBeDefined();
+    expect(no).not.toHaveProperty('lastProgressAt');
   });
 });

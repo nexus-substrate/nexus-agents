@@ -40,7 +40,18 @@ export async function executeSpec(
   const compileResult = compileSpecToGraph(markdown, options);
   if (!compileResult.ok) return err({ message: compileResult.error.message, stage: 'compile' });
 
-  const execResult = await executeGraph(compileResult.value, { results: [] });
+  const onProgress = options?.onProgress;
+  const execResult = await executeGraph(
+    compileResult.value,
+    { results: [] },
+    onProgress === undefined
+      ? undefined
+      : {
+          onEvent: () => {
+            onProgress();
+          },
+        }
+  );
   if (!execResult.ok) return err({ message: execResult.error.message, stage: 'execute' });
 
   const outputs = extractOutputs(execResult.value.finalState);

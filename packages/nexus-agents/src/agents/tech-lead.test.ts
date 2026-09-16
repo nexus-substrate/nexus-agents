@@ -15,6 +15,7 @@ import type {
 import { ok, err, AgentError, ModelError } from '../core/index.js';
 
 import { Orchestrator, createOrchestrator, type ExecutionPlan } from './tech-lead.js';
+import { stepBus } from '../core/step-bus.js';
 
 import type { SubTask, TaskAnalysis } from './tech-lead-types.js';
 
@@ -112,6 +113,28 @@ function createTestTaskResult(taskId: string, output: unknown = 'Test output'): 
 }
 
 describe('Orchestrator', () => {
+  describe('step events (#6428 liveness)', () => {
+    it('publishes a step per model-backed phase so a watcher can tell the task is moving', async () => {
+      // The orchestrate job body's longest silent phase is this agent's
+      // sequential model calls. Each is wrapped in `withStep`, so the async-job
+      // heartbeat bridge (and the #4665 heartbeat monitor) see progress per
+      // call rather than one opaque await.
+      const names: string[] = [];
+      const listener = (event: { event: string; name: string }): void => {
+        if (event.event === 'step.completed') names.push(event.name);
+      };
+      stepBus.on('step', listener);
+      try {
+        const orchestrator = new Orchestrator({ adapter: createMockAdapter() });
+        const result = await orchestrator.execute(createTestTask());
+        expect(result.ok).toBe(true);
+      } finally {
+        stepBus.off('step', listener);
+      }
+      expect(names).toContain('orchestrator.analyze');
+    });
+  });
+
   describe('constructor', () => {
     it('should initialize with default options', () => {
       const orchestrator = new Orchestrator();

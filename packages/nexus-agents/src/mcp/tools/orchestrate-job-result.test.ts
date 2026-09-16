@@ -20,7 +20,7 @@ import {
 } from './orchestrate.js';
 import { NOOP_NOTIFIER } from '../mcp-notifier.js';
 import { resolveJobResult, readJobResultFromTaskState } from '../jobs/task-state-source.js';
-import { readJobResult } from '../jobs/job-result-store.js';
+import { readJobResult, writeJobPending } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import { createLogger } from '../../core/index.js';
 import { RateLimiter } from '../middleware/index.js';
@@ -103,6 +103,25 @@ describe('async orchestrate writer → task-state (#3091)', () => {
     // Dual-read resolves it, and the sidecar got the same terminal status.
     expect(resolveJobResult(jobId)?.status).toBe('complete');
     expect(readJobResult(jobId)?.status).toBe('complete');
+  });
+
+  it('heartbeats the job at each stage transition of its REAL body (#6162, #6428)', async () => {
+    // Worker dispatch is off (no agentPlan / adapter), so the only progress the
+    // body can prove is its own stage advance — routing → executing → result.
+    // The settled record must carry the stamp; a body that had none would be
+    // wedged under a guard just above the MCP ceiling while inside its
+    // deadline-bounded main phase.
+    const jobId = 'orch-itest-heartbeat';
+    // What `runAsJob` writes before it starts the runner: the record the
+    // heartbeat stamps. Without it there is nothing for the stamp to land on.
+    writeJobPending(jobId, 'orchestrate');
+    await runOrchestrateInBackground(
+      jobId,
+      bgParams(taskInput(COMPLEX_TASK), depsWith(createMockOrchestrator()))
+    );
+    const record = readJobResult(jobId);
+    expect(record?.status).toBe('complete');
+    expect(record?.lastProgressAt).toBeDefined();
   });
 
   it('records a terminal failed stage when the orchestrator fails', async () => {

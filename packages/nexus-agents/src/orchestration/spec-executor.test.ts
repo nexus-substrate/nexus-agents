@@ -39,6 +39,19 @@ Implement OAuth2 login for the app.
     expect(result.value.executed).toBe(false);
   });
 
+  it('reports graph progress through onProgress (#6162 heartbeat seam)', async () => {
+    // execute_spec's async body has no per-stage bus events, so the executor
+    // exposes the graph's own node/step events as a progress callback.
+    let progressCalls = 0;
+    const result = await executeSpec(FULL_SPEC, {
+      onProgress: () => {
+        progressCalls += 1;
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(progressCalls).toBeGreaterThan(0);
+  });
+
   it('returns DAG with correct spec title', async () => {
     const result = await executeSpec(FULL_SPEC);
     expect(result.ok).toBe(true);

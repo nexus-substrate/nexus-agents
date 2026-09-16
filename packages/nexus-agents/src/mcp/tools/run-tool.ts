@@ -72,6 +72,7 @@ import { runPipelineForGoal } from './pipeline-tool.js';
 import { runConsensusForGoal } from './consensus-vote.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
+import { heartbeatJob } from '../jobs/job-result-store.js';
 
 /** Input schema for the `run` tool. */
 export const RunInputSchema = z.object({
@@ -304,7 +305,13 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
 export function buildDefaultExecutors(
   trustTier?: string,
   gatewayAdapters?: readonly IModelAdapter[],
-  dryRun?: boolean
+  dryRun?: boolean,
+  /**
+   * Async-job heartbeat (#6162), threaded only to the consensus executor: the
+   * pipeline executors heartbeat through the stage events they emit on the
+   * pipeline bus, a vote body through each settled seat.
+   */
+  onProgress?: () => void
 ): StrategyExecutorMap {
   return {
     'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
@@ -319,7 +326,7 @@ export function buildDefaultExecutors(
     // named loop needs research-specific stages; until then research==pipeline.
     research: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
     consensus: (_decision, metaInput: MetaOrchestratorInput) =>
-      runConsensusForGoal(metaInput.goal, undefined, gatewayAdapters),
+      runConsensusForGoal(metaInput.goal, undefined, gatewayAdapters, onProgress),
   };
 }
 
@@ -386,6 +393,8 @@ export async function executeGoal(
     /** In-process gateway model adapters routed to consensus voters (#4042). */
     readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
     readonly classifyResult?: MetaResultClassifier | undefined;
+    /** Async-job heartbeat (#6162); see {@link buildDefaultExecutors}. */
+    readonly onProgress?: (() => void) | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
   // The authority-ladder guard fires inside `select` (#3920): an above-tier
@@ -400,7 +409,8 @@ export async function executeGoal(
   const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
     executors:
-      opts.executors ?? buildDefaultExecutors(opts.trustTier, opts.gatewayAdapters, input.dryRun),
+      opts.executors ??
+      buildDefaultExecutors(opts.trustTier, opts.gatewayAdapters, input.dryRun, opts.onProgress),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
@@ -457,7 +467,8 @@ async function executeRunBody(
   input: RunInput,
   logger: ILogger,
   trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  onProgress?: () => void
 ): Promise<ToolResult> {
   try {
     // #3712: thread the caller's real RequestContext.trustTier into the
@@ -467,6 +478,7 @@ async function executeRunBody(
       logger,
       ...(trustTier !== undefined ? { trustTier } : {}),
       ...(gatewayAdapters !== undefined ? { gatewayAdapters } : {}),
+      ...(onProgress !== undefined ? { onProgress } : {}),
     });
     logger.info('run: executed goal', {
       decisionId: exec.decisionId,
@@ -513,9 +525,10 @@ async function executeRunBodyOrThrow(
   input: RunInput,
   logger: ILogger,
   trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  onProgress?: () => void
 ): Promise<ToolResult> {
-  const result = await executeRunBody(input, logger, trustTier, gatewayAdapters);
+  const result = await executeRunBody(input, logger, trustTier, gatewayAdapters, onProgress);
   if (result.isError === true) {
     throw new Error(result.content[0]?.text ?? 'run failed');
   }
@@ -548,10 +561,15 @@ async function runHandler(
         toolName: 'run',
         input,
         freshJobId: () => `rn-${randomUUID()}`,
-        // #5393: deliberately arity-0 — `executeGoal`'s strategy executors take
+        // #5393: deliberately arity-1 — `executeGoal`'s strategy executors take
         // no AbortSignal, so taking the signal would flip `signalAccepted` to
         // true with nothing reading it. Executor-level gate first: #6305.
-        run: () => executeRunBodyOrThrow(input, logger, trustTier, gatewayAdapters),
+        // #6162: heartbeats by jobId (the pipeline strategies through their
+        // stage events, consensus through each settled seat).
+        run: (jobId) =>
+          executeRunBodyOrThrow(input, logger, trustTier, gatewayAdapters, () => {
+            heartbeatJob(jobId);
+          }),
         logger,
       });
     }

@@ -423,7 +423,9 @@ async function executeTradeoffPanelBody(
    * `cancel_job`'s signal (#5393): stops LAUNCHING seats not yet started; a
    * seat inside its adapter call settles. `undefined` in sync mode.
    */
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** `runAsJob`'s liveness heartbeat (#6162), fired per settled seat. Absent in sync mode. */
+  onVoteCollected?: () => void
 ): Promise<ToolResult> {
   const axes = input.axes ?? DEFAULT_AXES;
   const roles = input.quickMode ? QUICK_PANEL : FULL_PANEL;
@@ -439,6 +441,7 @@ async function executeTradeoffPanelBody(
     logger,
     project: project.name,
     signal,
+    onVoteCollected,
   });
 
   const votes = voteResults.map((r) => toPanelVote(r, axes));
@@ -491,9 +494,11 @@ async function tradeoffPanelHandler(args: unknown, ctx: HandlerContext): Promise
         toolName: 'supply_chain_tradeoff_panel',
         input,
         freshJobId: () => `sc-${randomUUID()}`,
-        // #5393: arity 3 — `runAsJob` derives `signalAccepted` from `run.length`.
-        // The signal reaches `collectRealVotes`, so a cancel stops the un-launched seats.
-        run: (_jobId, _input, signal) => executeTradeoffPanelBody(input, ctx.logger, signal),
+        // #5393: arity 4 — signal + #6162 progress. `runAsJob` derives
+        // `signalAccepted` from `run.length`. The signal reaches `collectRealVotes`,
+        // so a cancel stops the un-launched seats; `progress` heartbeats per seat.
+        run: (_jobId, _input, signal, progress) =>
+          executeTradeoffPanelBody(input, ctx.logger, signal, progress),
         logger: ctx.logger,
       });
     }

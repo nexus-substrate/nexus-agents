@@ -12,7 +12,10 @@ import {
   createSecurityStageWrapper,
   createDevStageRegistry,
   createParseSpecStageWrapper,
+  createAuditStageRegistry,
 } from './stage-wrappers.js';
+import { getPipelineEventBus } from './event-bus.js';
+import type { PipelineEvent } from './event-types.js';
 import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeline.js';
 import type { PipelineContext } from './stage-types.js';
 import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
@@ -25,6 +28,11 @@ const contextPrefixMock = vi.fn<() => Promise<string | undefined>>(() =>
 );
 vi.mock('../context/context-retriever.js', () => ({
   getContextPromptPrefix: (): Promise<string | undefined> => contextPrefixMock(),
+}));
+// #6162: the audit analyze stage reaches GitHub; fail it deterministically so
+// the stage.failed path is exercised without the network.
+vi.mock('../mcp/tools/repo-analyze.js', () => ({
+  analyzeGitHubRepo: (): Promise<never> => Promise.reject(new Error('offline fixture')),
 }));
 
 // ============================================================================
@@ -308,5 +316,46 @@ describe('createParseSpecStageWrapper', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('No title heading found (expected # or ## heading)');
+  });
+});
+
+// #6162: the audit template's stages emitted nothing on the pipeline bus, so
+// an async run_pipeline audit job had no heartbeat past `pipeline.started` and
+// a long guard would have called a live scan wedged. The dev stages already
+// emit per stage; the audit stages now do the same, under the `audit-` prefix.
+describe('audit stages emit stage events (#6162 heartbeat)', () => {
+  it('report stage emits stage.started then stage.completed under audit-<id>', async () => {
+    const seen: PipelineEvent[] = [];
+    const unsubscribe = getPipelineEventBus().subscribe({ executionId: 'audit-report' }, (e) => {
+      seen.push(e);
+    });
+    try {
+      const report = createAuditStageRegistry().get('report');
+      if (report === undefined) throw new Error('audit registry has no report stage');
+      const out = await report.execute(makeContext({ [K.FINDINGS]: 'none' }));
+      expect(out.success).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+    expect(seen.map((e) => e.type)).toEqual(['stage.started', 'stage.completed']);
+  });
+
+  it('a stage that fails emits stage.failed, not stage.completed', async () => {
+    const seen: PipelineEvent[] = [];
+    const unsubscribe = getPipelineEventBus().subscribe({ executionId: 'audit-analyze' }, (e) => {
+      seen.push(e);
+    });
+    try {
+      const analyze = createAuditStageRegistry().get('analyze');
+      if (analyze === undefined) throw new Error('audit registry has no analyze stage');
+      // repo_analyze is mocked to reject; the wrapper reports the failure
+      // rather than throwing.
+      const out = await analyze.execute({ ...makeContext(), task: 'audit owner/repo' });
+      expect(out.success).toBe(false);
+      expect(out.error).toContain('offline fixture');
+    } finally {
+      unsubscribe();
+    }
+    expect(seen.map((e) => e.type)).toEqual(['stage.started', 'stage.failed']);
   });
 });

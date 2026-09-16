@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerGetJobResultTool } from './get-job-result-tool.js';
-import { writeJobPending, writeJobComplete } from '../jobs/job-result-store.js';
+import { writeJobPending, writeJobComplete, heartbeatJob } from '../jobs/job-result-store.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import { initTaskState, updateStage, appendResult } from '../../context/structured-task-state.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
@@ -198,5 +198,71 @@ describe('get_job_result producer-version disclosure (#5008)', () => {
     expect(body['found']).toBe(false);
     expect(body).not.toHaveProperty('producerVersionMeasured');
     expect(body).not.toHaveProperty('producerVersionSource');
+  });
+});
+
+describe('get_job_result heartbeat disclosure (#6162)', () => {
+  // A poller reading `pending` cannot tell slow from stuck. `runAsJob` hands
+  // the body a `progress()` heartbeat that stamps `lastProgressAt` on the
+  // pending record; the tool has to surface it from BOTH result sources, or a
+  // `NEXUS_JOB_RESULT_SOURCE=task_state` reader would see the stamp vanish.
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  const originalSource = process.env['NEXUS_JOB_RESULT_SOURCE'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-gjr-heartbeat-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    delete process.env['NEXUS_JOB_RESULT_SOURCE'];
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    if (originalSource === undefined) delete process.env['NEXUS_JOB_RESULT_SOURCE'];
+    else process.env['NEXUS_JOB_RESULT_SOURCE'] = originalSource;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('surfaces lastProgressAt from the sidecar source', async () => {
+    writeJobPending('job-hb-sidecar', 'orchestrate');
+    heartbeatJob('job-hb-sidecar', '2026-09-16T12:34:56.000Z');
+
+    const body = await envelope('job-hb-sidecar');
+    const record = body['record'] as Record<string, unknown>;
+
+    expect(body['producerVersionSource']).toBe('sidecar');
+    expect(record['status']).toBe('pending');
+    expect(record['lastProgressAt']).toBe('2026-09-16T12:34:56.000Z');
+  });
+
+  it('surfaces lastProgressAt from the task_state source, which itself records no heartbeat', async () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    initTaskState({
+      taskId: 'orch-hb-ts',
+      stage: 'executing',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'run' },
+      dispatch: 'async',
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    writeJobPending('orch-hb-ts', 'orchestrate');
+    heartbeatJob('orch-hb-ts', '2026-05-01T00:07:00.000Z');
+
+    const body = await envelope('orch-hb-ts');
+    const record = body['record'] as Record<string, unknown>;
+
+    expect(body['producerVersionSource']).toBe('task_state');
+    expect(record['status']).toBe('pending');
+    expect(record['lastProgressAt']).toBe('2026-05-01T00:07:00.000Z');
+  });
+
+  it('empty case: a pending job that never heartbeat has no lastProgressAt — absence is not a stamp', async () => {
+    writeJobPending('job-hb-none', 'orchestrate');
+    const body = await envelope('job-hb-none');
+    expect(body['record']).not.toHaveProperty('lastProgressAt');
   });
 });

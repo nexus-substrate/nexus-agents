@@ -4,7 +4,7 @@
  * Helper functions for Orchestrator task analysis, decomposition, and synthesis.
  */
 
-import type { Task, TaskResult } from '../core/index.js';
+import type { AgentCapability, Task, TaskResult } from '../core/index.js';
 import type {
   SubTask,
   TaskAnalysis,
@@ -12,6 +12,14 @@ import type {
   ResultSummary,
   OrchestratorOptions,
 } from './tech-lead-types.js';
+
+/** Capabilities an Orchestrator declares unless the caller overrides them. */
+export const DEFAULT_ORCHESTRATOR_CAPABILITIES: readonly AgentCapability[] = [
+  'task_execution',
+  'delegation',
+  'collaboration',
+  'research',
+];
 
 /**
  * Infer task type from description keywords.
