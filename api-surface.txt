@@ -55,7 +55,7 @@ InterfaceDeclaration ActionStep
   readonly parameters: Record<string, unknown>
   readonly success: boolean
 TypeAliasDeclaration ActionValidation
-  = { readonly corroboratingSources: readonly SourceCitation[]; readonly evaluated: true; readonly missing: readonly string[]; readonly policyMode: FirewallPolicyMode; readonly satisfied: boolean; readonly wouldRefuse: boolean; } | { readonly evaluated: false; readonly policyMode: FirewallPolicyMode; readonly reason: 'corroboration-stage-disabled'; }
+  = { readonly clearedOnlyByUnverifiedSources: boolean; readonly corroboratingSources: readonly SourceCitation[]; readonly evaluated: true; readonly missing: readonly string[]; readonly policyMode: FirewallPolicyMode; readonly satisfied: boolean; readonly wouldRefuse: boolean; } | { readonly evaluated: false; readonly policyMode: FirewallPolicyMode; readonly reason: 'corroboration-stage-disabled'; }
 TypeAliasDeclaration ActionValidationResult
   = { error: string; ok: false; } | { ok: true; value: AgentAction; }
 InterfaceDeclaration ActivationOptions
@@ -3863,6 +3863,7 @@ InterfaceDeclaration FirewallConfig
 InterfaceDeclaration FirewallError
   readonly code: FirewallErrorCode
   readonly message: string
+  readonly missing?: readonly string[] | undefined
   readonly stage: string
   readonly violations?: readonly { message: string; rule: string; severity: "block" | "warn"; }[] | undefined
 TypeAliasDeclaration FirewallErrorCode

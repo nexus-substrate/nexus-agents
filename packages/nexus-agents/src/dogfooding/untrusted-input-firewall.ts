@@ -23,6 +23,9 @@
  *   (#5380) and hands back the decision from `FirewallResult.policy`. Neither
  *   caller calls `evaluatePolicy` itself any more (#5383): the #4992 panel let
  *   them keep it only because the firewall had no action-shaped entry then.
+ *   `validateActionCorroboration` is the third entry (#6309): the per-action
+ *   corroboration check, run by the firewall's `corroboration` stage — which
+ *   this instance enables — rather than composed beside it by the callers.
  * - The callers still measure reputation themselves, with metadata the
  *   firewall cannot see (account age, comment history), and pass that
  *   measurement per call; the firewall runs the ONE reputation gate, so the
@@ -47,7 +50,7 @@ import type { FirewallError, FirewallProcessOptions } from '../security/firewall
 import type { FirewallPolicyMode } from '../security/firewall/firewall-policy-mode.js';
 import { createGitHubAdapter } from '../security/firewall/github-adapter.js';
 import type { GitHubInput } from '../security/firewall/github-adapter.js';
-import type { AgentAction } from '../security/action-schema.js';
+import type { AgentAction, SourceCitation } from '../security/action-schema.js';
 import type { Violation } from '../security/policy-gate.js';
 import type { TrustTier } from '../security/trust-types.js';
 
@@ -88,13 +91,18 @@ export function configureUntrustedInputFirewall(deps: { auditLogger?: IAuditLogg
  * withheld so the recorded `trustTier` is unchanged under `off`.
  *
  * The reputation stage stays off: the callers assess reputation themselves
- * with metadata the firewall never sees. `policyMode` is resolved from
- * `NEXUS_FIREWALL_POLICY` once, at construction.
+ * with metadata the firewall never sees. The corroboration stage is ON
+ * (#6309, panel option R): it defaults to off because the firewall is a
+ * published API, but the live paths validate corroboration per action and
+ * that check runs here, through `validateActionCorroboration`, not beside the
+ * firewall. `policyMode` is resolved from `NEXUS_FIREWALL_POLICY` once, at
+ * construction.
  */
 export function getUntrustedInputFirewall(): HostileInputFirewall {
   singleton ??= new HostileInputFirewall({
     adapter: createGitHubAdapter(),
     contentDowngrade: false,
+    stages: { corroboration: true },
     ...(configuredAuditLogger !== undefined ? { auditLogger: configuredAuditLogger } : {}),
   });
   return singleton;
@@ -224,7 +232,95 @@ export function evaluateActionThroughFirewall(
   });
 }
 
-/** One `process()` call site for both entries, so the log lines cannot drift. */
+/**
+ * The firewall's corroboration verdict on ONE action (#6309), read from
+ * `HostileInputFirewall.validateAction` — the same `validateCorroboration`
+ * result the callers used to compute beside the firewall, now computed by its
+ * corroboration stage under the one `NEXUS_FIREWALL_POLICY` mode.
+ *
+ * The same two shapes as {@link FirewallActionDecision}, for the same reason:
+ *
+ * - `refused: false` — under `off` and `audit` the firewall returns the
+ *   validator's verdict and the CALLER records it (`corroborated`,
+ *   `INSUFFICIENT_CORROBORATION`), exactly as it did with the direct call.
+ *   `wouldRefuse` is `audit`'s telemetry; `missing` names the unmet
+ *   requirements it would refuse on, so a soak can measure the refusal rate.
+ * - `refused: true` — under `enforce` the firewall refused the action itself
+ *   (`POLICY_REFUSED` at stage `corroboration`). `missing` is what it refused
+ *   on, so the caller's record can still name it.
+ */
+export type FirewallCorroborationDecision =
+  | {
+      readonly refused: false;
+      readonly satisfied: boolean;
+      readonly missing: readonly string[];
+      readonly corroboratingSources: readonly SourceCitation[];
+      readonly clearedOnlyByUnverifiedSources: boolean;
+      readonly policyMode: FirewallPolicyMode;
+      readonly wouldRefuse: boolean;
+    }
+  | {
+      readonly refused: true;
+      readonly satisfied: false;
+      readonly stage: 'corroboration';
+      readonly missing: readonly string[];
+      readonly policyMode: 'enforce';
+    };
+
+/**
+ * Runs one action through the shared firewall's corroboration stage.
+ *
+ * Fails closed — an `Error`, not a verdict — where no verdict exists. The
+ * named empty case is `evaluated: false`: the stage did not run, so neither
+ * `corroborated: true` nor `corroborated: false` is an honest record of it;
+ * `satisfied` is never read off it. The shared instance enables the stage, so
+ * on the live paths this is reachable only through a replaced instance, and it
+ * fails the same way an unevaluated policy stage does. A refusal that names
+ * nothing missing is likewise an error, not a corroboration decision.
+ */
+export function validateActionCorroboration(
+  action: AgentAction
+): Result<FirewallCorroborationDecision, Error> {
+  const result = getUntrustedInputFirewall().validateAction(action);
+  if (!result.ok) {
+    const { code, stage, missing } = result.error;
+    if (code !== 'POLICY_REFUSED' || stage !== 'corroboration') return err(asError(result.error));
+    if (missing === undefined || missing.length === 0) return err(asError(result.error));
+    logger.warn('Untrusted-input firewall refused an uncorroborated action (enforce mode)', {
+      actionType: action.type,
+      stage,
+      missing,
+    });
+    return ok({ refused: true, satisfied: false, stage, missing, policyMode: 'enforce' });
+  }
+  const validation = result.value;
+  if (!validation.evaluated) {
+    return err(
+      new Error(
+        `Untrusted-input firewall did not evaluate corroboration for action ${action.type} ` +
+          `(${validation.reason})`
+      )
+    );
+  }
+  if (validation.wouldRefuse) {
+    logger.warn('Untrusted-input firewall would refuse under enforce (audit mode)', {
+      actionType: action.type,
+      stage: 'corroboration',
+      missing: validation.missing,
+    });
+  }
+  return ok({
+    refused: false,
+    satisfied: validation.satisfied,
+    missing: validation.missing,
+    corroboratingSources: validation.corroboratingSources,
+    clearedOnlyByUnverifiedSources: validation.clearedOnlyByUnverifiedSources,
+    policyMode: validation.policyMode,
+    wouldRefuse: validation.wouldRefuse,
+  });
+}
+
+/** One `process()` call site for both input entries, so the log lines cannot drift. */
 function processAndLog(
   input: GitHubInput,
   options: FirewallProcessOptions

@@ -346,6 +346,29 @@ function requiresCitation(type: string): boolean {
 }
 ```
 
+### Where the checks run on the live paths
+
+The pseudocode above composes the checks in one function for exposition. On the
+two live untrusted-input paths (`issue_triage`, `pr_review`) every check runs
+inside the shared `HostileInputFirewall` (`dogfooding/untrusted-input-firewall.ts`),
+under the one `NEXUS_FIREWALL_POLICY` mode:
+
+- **Policy** (`evaluatePolicy`: citation, trust, Rule of Two, labels) runs in
+  the firewall's policy stage, once per action (#5383).
+- **Corroboration** (`validateCorroboration`) runs in the firewall's
+  `corroboration` stage, once per action, through `validateAction` (#6309). The
+  stage defaults to off on the published firewall and is enabled on the shared
+  instance; a stage that did not run fails the call closed — an unevaluated
+  result is never read as satisfied.
+
+What the mode does with a corroboration failure (#6309 panel, option R):
+
+| Mode            | Uncorroborated action                                                                                                                                                                                                                                                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `off` (default) | Recorded — `corroborated: false` on the triage record, `INSUFFICIENT_CORROBORATION` on the review-posting verdict — exactly as the direct call recorded it.                                                                                                                                                                                        |
+| `audit`         | Same record, plus a `wouldRefuse` log line naming the missing requirements, so a soak can measure the refusal rate before the flip.                                                                                                                                                                                                                |
+| `enforce`       | **Refused** by the firewall (`POLICY_REFUSED` at stage `corroboration`) and not executed. The action is not dropped: it stays on the typed action list as refused (`policyApproved: false`, `refusedAtStage: 'corroboration'`, the missing requirements named) and renders like a policy refusal; the review post is blocked with the same reason. |
+
 ---
 
 ## Threat Model

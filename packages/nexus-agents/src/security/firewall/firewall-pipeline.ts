@@ -181,6 +181,12 @@ export type ActionValidation =
       /** Unmet corroboration requirements; empty when satisfied. */
       readonly missing: readonly string[];
       readonly corroboratingSources: readonly SourceCitation[];
+      /**
+       * The validator's #5796 marker: the floor was cleared, and only by
+       * `repoFile` citations the producer found absent from the base ref.
+       * Carried so a consumer can report it without re-deriving the rule.
+       */
+      readonly clearedOnlyByUnverifiedSources: boolean;
       readonly policyMode: FirewallPolicyMode;
       /** Whether `enforce` would have refused this action (see FirewallResult). */
       readonly wouldRefuse: boolean;
@@ -431,6 +437,7 @@ export class HostileInputFirewall {
           `Refused by firewall policy: ${corroboration.actionType} lacks required ` +
           `corroboration — ${corroboration.missing.join('; ')}`,
         stage: 'corroboration',
+        missing: corroboration.missing,
       });
     }
 
@@ -439,6 +446,7 @@ export class HostileInputFirewall {
       satisfied: corroboration.satisfied,
       missing: corroboration.missing,
       corroboratingSources: corroboration.corroboratingSources,
+      clearedOnlyByUnverifiedSources: corroboration.clearedOnlyByUnverifiedSources,
       policyMode: this.policyMode,
       wouldRefuse: !corroboration.satisfied && this.policyMode === 'audit',
     });

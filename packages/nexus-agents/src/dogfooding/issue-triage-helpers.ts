@@ -11,13 +11,15 @@
 
 import type { Result } from '../core/index.js';
 import { ok } from '../core/index.js';
-import type { CorroborationResult } from '../security/corroboration-validator.js';
-import { validateCorroboration } from '../security/corroboration-validator.js';
 import type { AgentAction } from '../security/action-schema.js';
 import type { GitHubInput } from '../security/firewall/github-adapter.js';
 import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 import type { TrustTier } from '../security/trust-types.js';
-import { evaluateActionThroughFirewall } from './untrusted-input-firewall.js';
+import type { FirewallCorroborationDecision } from './untrusted-input-firewall.js';
+import {
+  evaluateActionThroughFirewall,
+  validateActionCorroboration,
+} from './untrusted-input-firewall.js';
 import type { ScmCommentDetail } from '../scm/types.js';
 import type {
   IssueCategory,
@@ -155,35 +157,60 @@ export function describeAction(action: AgentAction): string {
   }
 }
 
-/** Builds details object for a proposed action. */
+/**
+ * Builds details object for a proposed action.
+ *
+ * A corroboration refusal (`enforce`, #6309) is recorded where a policy
+ * refusal is: its rule joins `policyViolations`, and `refusedAtStage` names
+ * the stage so the record cannot be read as a trust-tier block. Under `off`
+ * and `audit` the check is recorded, never refused; `corroborationWouldRefuse`
+ * is `audit`'s telemetry and is `false` under `off` by construction.
+ */
 export function buildActionDetails(
   action: AgentAction,
   policy: { allowed: boolean; violations: readonly { rule: string; message: string }[] },
-  corrob: CorroborationResult
+  corrob: FirewallCorroborationDecision
 ): Record<string, unknown> {
+  const policyRules = policy.violations.map((violation) => violation.rule);
   return {
-    policyViolations: policy.violations.map((violation) => violation.rule),
-    missingCorroboration: corrob.missing,
+    ...(corrob.refused
+      ? {
+          policyViolations: [...policyRules, 'INSUFFICIENT_CORROBORATION'],
+          missingCorroboration: corrob.missing,
+          refusedAtStage: corrob.stage,
+        }
+      : {
+          policyViolations: policyRules,
+          missingCorroboration: corrob.missing,
+          corroborationWouldRefuse: corrob.wouldRefuse,
+        }),
     ...(action.type === 'ClassifyIssue' && { category: action.category }),
     ...(action.type === 'ProposeLabels' && { labels: action.labels }),
   };
 }
 
 /**
- * Validates every action through the firewall's policy gate and the
- * corroboration validator (originally Issue #828; #5383 moved the policy
- * evaluation inside the firewall so this path has ONE composition).
+ * Validates every action through the firewall's policy gate and its
+ * corroboration stage (originally Issue #828; #5383 moved the policy
+ * evaluation inside the firewall and #6309 the corroboration check, so this
+ * path has ONE composition).
  *
- * Each action is one firewall run with `action` and the repository label set.
- * The decision is read from `FirewallResult.policy` and enforced HERE as
- * `policyApproved`, whatever `NEXUS_FIREWALL_POLICY` is — the mode only
- * decides whether the firewall refuses on its own (`enforce`), and such a
- * refusal lands on the record as `policyApproved: false` with its rules,
- * exactly where the direct `evaluatePolicy` verdict used to land.
+ * Each action is one firewall run with `action` and the repository label set,
+ * then one `validateActionCorroboration` call. The policy decision is read
+ * from `FirewallResult.policy` and enforced HERE as `policyApproved`, whatever
+ * `NEXUS_FIREWALL_POLICY` is — the mode only decides whether the firewall
+ * refuses on its own (`enforce`), and such a refusal lands on the record as
+ * `policyApproved: false` with its rules, exactly where the direct
+ * `evaluatePolicy` verdict used to land. A corroboration refusal lands the
+ * same way (#6309 panel, option R): the action stays on the list, refused,
+ * with `refusedAtStage: 'corroboration'` and what was missing — never
+ * dropped. Under `off` and `audit` corroboration is recorded as
+ * `corroborated`, as the direct `validateCorroboration` call recorded it.
  *
  * `gate.enforcedTier` is the classification run's (the reputation gate's under
  * the #3122 rollout mode); a per-action run that enforces a different tier
- * fails the whole call closed, because the citations were stamped with it.
+ * fails the whole call closed, because the citations were stamped with it. A
+ * corroboration stage that did not run fails the call the same way.
  */
 export function validateActionsThroughFirewall(
   input: GitHubInput,
@@ -200,13 +227,14 @@ export function validateActionsThroughFirewall(
   for (const action of actions) {
     const decision = evaluateActionThroughFirewall(input, { ...gate, ...labels, action });
     if (!decision.ok) return decision;
-    const corrobResult = validateCorroboration(action);
+    const corroboration = validateActionCorroboration(action);
+    if (!corroboration.ok) return corroboration;
     proposed.push({
       type: action.type,
       description: describeAction(action),
-      policyApproved: decision.value.allowed,
-      corroborated: corrobResult.satisfied,
-      details: buildActionDetails(action, decision.value, corrobResult),
+      policyApproved: decision.value.allowed && !corroboration.value.refused,
+      corroborated: corroboration.value.satisfied,
+      details: buildActionDetails(action, decision.value, corroboration.value),
     });
   }
   return ok(proposed);
