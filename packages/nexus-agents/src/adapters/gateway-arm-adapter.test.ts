@@ -7,7 +7,7 @@
  * rate-limit exemption `ResilientAdapter.recordBreakerFailure` applies.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   ErrorCode,
   ModelError,
@@ -18,8 +18,15 @@ import {
   type IModelAdapter,
 } from '../core/index.js';
 import { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
+import { DEFAULT_CIRCUIT_BREAKER_CONFIG } from '../cli-adapters/circuit-breaker-types.js';
 import { createUnifiedRegistry } from './unified-registry.js';
 import { createGatewayArmAdapter } from './gateway-arm-adapter.js';
+import { clearRateLimitEvents, getRateLimitStats } from './rate-limit-detector.js';
+import {
+  _resetGatewayCatalogs,
+  getGatewayCatalog,
+  setGatewayCatalog,
+} from './sdk/gateway-catalog.js';
 
 const ARM = 'api:openai-compat' as const;
 
@@ -245,6 +252,31 @@ describe('createGatewayArmAdapter (#4392 inc 2 step 2)', () => {
       expect(breakers.getArmBreaker(ARM).getSnapshot().failureCount).toBe(1);
     });
 
+    // Review of #6403: a DURABLE cap is rate-limit-shaped, and
+    // `ResilientAdapter.complete` records the telemetry event for EVERY
+    // rate-limit-like error before the breaker branch. Recording it only for
+    // the transient case under-counted the gateway in `getRateLimitStats()`.
+    it('records the rate-limit telemetry event for a durable cap too', async () => {
+      clearRateLimitEvents();
+      const models = makeModels(1);
+      const arm = createGatewayArmAdapter(ARM, models, {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+      models[0]?.complete.mockResolvedValue(
+        err(
+          new ModelError('Key limit exceeded (total limit)', {
+            code: ErrorCode.MODEL_RATE_LIMITED,
+          })
+        )
+      );
+
+      await arm.complete({ messages: [] });
+
+      expect(getRateLimitStats().find((s) => s.provider === 'openai')?.totalHits).toBe(1);
+      clearRateLimitEvents();
+    });
+
     it('reports degraded health once the arm breaker is open', () => {
       const models = makeModels(1);
       const arm = createGatewayArmAdapter(ARM, models, {
@@ -256,5 +288,105 @@ describe('createGatewayArmAdapter (#4392 inc 2 step 2)', () => {
       expect(breaker.getSnapshot().state).toBe('open');
       expect(arm.getHealth()?.state).toBe('degraded');
     });
+  });
+});
+
+// Review of #6403 (Important): without the success half the arm's failure
+// count is a LIFETIME counter — the threshold stops meaning "consecutive" —
+// and after the reset window the breaker sits half-open forever, where one
+// error re-opens it. `base-adapter.ts` records the success for CLI slots on
+// the same shared registry; the arm must too.
+describe('breaker success recording (#6403 review)', () => {
+  let breakers: CircuitBreakerRegistry;
+  let logger: ReturnType<typeof makeLogger>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    breakers = new CircuitBreakerRegistry();
+    logger = makeLogger();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function failing(models: MockModel[]): void {
+    models[0]?.complete.mockResolvedValueOnce(
+      err(new ModelError('gateway down', { code: ErrorCode.MODEL_UNAVAILABLE }))
+    );
+  }
+
+  it('N failures separated by successes stay closed (threshold means consecutive)', async () => {
+    const models = makeModels(1);
+    const arm = createGatewayArmAdapter(ARM, models, { circuitBreakerRegistry: breakers, logger });
+    const breaker = breakers.getArmBreaker(ARM);
+
+    for (let i = 0; i < DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold + 2; i++) {
+      failing(models);
+      await arm.complete({ messages: [] });
+      await arm.complete({ messages: [] }); // the success in between
+    }
+
+    expect(breaker.getState()).toBe('closed');
+    expect(breaker.getSnapshot().failureCount).toBe(0);
+  });
+
+  it('successes in half-open close the breaker again', async () => {
+    const models = makeModels(1);
+    const arm = createGatewayArmAdapter(ARM, models, { circuitBreakerRegistry: breakers, logger });
+    const breaker = breakers.getArmBreaker(ARM);
+
+    for (let i = 0; i < DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold; i++) {
+      failing(models);
+      await arm.complete({ messages: [] });
+    }
+    expect(breaker.getState()).toBe('open');
+    vi.advanceTimersByTime(DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeoutMs + 1);
+    expect(breaker.getState()).toBe('half-open');
+
+    for (let i = 0; i < DEFAULT_CIRCUIT_BREAKER_CONFIG.halfOpenSuccessThreshold; i++) {
+      await arm.complete({ messages: [] });
+    }
+
+    expect(breaker.getState()).toBe('closed');
+    expect(arm.getHealth()?.state).toBe('healthy');
+  });
+});
+
+// Review of #6403: `UnifiedAdapterRegistry.dispose()` (and a re-registration
+// of the same arm) disposes the arm adapter; the catalogue must not outlive it.
+describe('catalogue lifetime follows the arm (#6403 review)', () => {
+  beforeEach(() => {
+    _resetGatewayCatalogs();
+  });
+
+  it('dispose() clears the catalogue entry for its arm only', () => {
+    const arm = createGatewayArmAdapter(ARM, makeModels(2), {
+      circuitBreakerRegistry: new CircuitBreakerRegistry(),
+      logger: makeLogger(),
+    });
+    setGatewayCatalog(ARM, ['m-0', 'm-1']);
+    setGatewayCatalog('api:corp-proxy', ['other']);
+
+    arm.dispose();
+
+    expect(getGatewayCatalog(ARM)).toBeUndefined();
+    expect(getGatewayCatalog('api:corp-proxy')).toEqual(['other']);
+  });
+
+  it('registry.dispose() takes the catalogue with the arm', () => {
+    const logger = makeLogger();
+    const registry = createUnifiedRegistry({ logger });
+    const arm = createGatewayArmAdapter(ARM, makeModels(2), {
+      circuitBreakerRegistry: new CircuitBreakerRegistry(),
+      logger,
+    });
+    registry.registerApiArm(ARM, arm);
+    setGatewayCatalog(ARM, ['m-0', 'm-1']);
+
+    registry.dispose();
+
+    expect(registry.getSnapshot().cachedArms).toEqual([]);
+    expect(getGatewayCatalog(ARM)).toBeUndefined();
   });
 });

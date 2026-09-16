@@ -43,6 +43,7 @@ import {
   toRateLimitError,
 } from './rate-limit-detector.js';
 import type { AdapterHealthInfo, IResilientAdapter } from './resilient-adapter-types.js';
+import { clearGatewayCatalog } from './sdk/gateway-catalog.js';
 
 /** What the arm needs from its host: the SHARED breaker registry and a logger. */
 export interface GatewayArmDeps {
@@ -97,9 +98,22 @@ class GatewayArmAdapter implements IResilientAdapter {
     return this.delegate.capabilities;
   }
 
+  /**
+   * Both halves of the breaker contract, as `base-adapter.ts` records them
+   * for the CLI slots on the same shared registry. The success half matters
+   * (#6403 review): in the closed state `recordSuccess` zeroes the failure
+   * count, which is what makes the threshold mean CONSECUTIVE failures, and
+   * in half-open it is what closes the circuit again. Without it a long-lived
+   * process counted scattered blips for its whole lifetime and, once open,
+   * sat half-open forever with any single error re-opening it.
+   */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
     const result = await this.delegate.complete(request);
-    if (!result.ok) this.recordFailure(result.error);
+    if (result.ok) {
+      this.deps.circuitBreakerRegistry.getArmBreaker(this.armId).recordSuccess();
+    } else {
+      this.recordFailure(result.error);
+    }
     return result;
   }
 
@@ -154,8 +168,16 @@ class GatewayArmAdapter implements IResilientAdapter {
     return this.deps.circuitBreakerRegistry;
   }
 
+  /**
+   * No listeners or timers are held; the breaker outlives the arm on purpose
+   * (a re-registered gateway keeps its failure history). The catalogue does
+   * not: it describes THIS arm's models, so it goes when the arm goes
+   * (`UnifiedAdapterRegistry.dispose()`, or the re-registration that disposes
+   * the earlier adapter). The re-registering caller therefore sets the new
+   * catalogue AFTER `registerApiArm`, never before.
+   */
   dispose(): void {
-    // No listeners or timers are held; the breaker outlives the arm on purpose.
+    clearGatewayCatalog(this.armId);
   }
 
   // --- Private ---
@@ -166,10 +188,16 @@ class GatewayArmAdapter implements IResilientAdapter {
    * the breaker (it would double-count, and open a breaker on a condition that
    * clears within the minute); a DURABLE capacity cap is counted even though it
    * is rate-limit-shaped, because it never clears; everything else counts.
+   * Every rate-limit-shaped failure, durable or not, is a telemetry event.
    */
   private recordFailure(error: ModelError): void {
     const breaker = this.deps.circuitBreakerRegistry.getArmBreaker(this.armId);
     const category = mapModelErrorToCategory(error);
+    // Telemetry first, for EVERY rate-limit-like error — durable caps included
+    // — exactly as `ResilientAdapter.complete` does before its breaker branch;
+    // otherwise `getRateLimitStats()` under-counts the gateway (#6403 review).
+    const rateLimitLike = category === 'rate_limit' || isRateLimitLikeError(error);
+    if (rateLimitLike) this.recordRateLimit(error);
     if (isDurableCapacityError(error)) {
       breaker.recordFailure(category);
       this.deps.logger.warn('Durable capacity cap recorded to gateway arm breaker', {
@@ -179,10 +207,7 @@ class GatewayArmAdapter implements IResilientAdapter {
       });
       return;
     }
-    if (category === 'rate_limit' || isRateLimitLikeError(error)) {
-      this.recordRateLimit(error);
-      return;
-    }
+    if (rateLimitLike) return;
     breaker.recordFailure(category);
     this.deps.logger.warn('Gateway arm failure recorded to circuit breaker', {
       arm: this.armId,

@@ -25,6 +25,7 @@ import {
   _resetCliSubprocessFallbackNotice,
 } from './cli-server-gateway.js';
 import { _resetGatewayCatalogs, getGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import { createUnifiedRegistry } from './adapters/unified-registry.js';
 import type { EndpointArmId } from './cli-adapters/types.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
 
@@ -364,6 +365,20 @@ describe('registerGatewayArm (#4392 inc 2 step 2)', () => {
     const registry = makeRegistry();
     registerGatewayArm([makeMockAdapter('gw-a'), makeMockAdapter('gw-b')], 'corp-proxy', registry);
     expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-a', 'gw-b']);
+  });
+
+  it('re-registering the same arm keeps the NEW catalogue (the old arm is disposed first)', () => {
+    // Uses the real registry: registerApiArm disposes the earlier adapter,
+    // whose dispose() clears the catalogue — so the set must come after.
+    const registry = createUnifiedRegistry({ logger: makeMockLogger() });
+    registerGatewayArm([makeMockAdapter('gw-a')], 'openai-compat', registry);
+    registerGatewayArm(
+      [makeMockAdapter('gw-b'), makeMockAdapter('gw-c')],
+      'openai-compat',
+      registry
+    );
+    expect(getGatewayCatalog('api:openai-compat')).toEqual(['gw-b', 'gw-c']);
+    registry.dispose();
   });
 
   it('registers nothing when no gateway is configured (undefined or empty)', () => {

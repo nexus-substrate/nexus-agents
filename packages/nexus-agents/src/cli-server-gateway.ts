@@ -168,16 +168,18 @@ export function registerGatewayArm(
     logger.warn('Gateway endpoint is not a valid endpoint id; no api: arm registered');
     return undefined;
   }
-  setGatewayCatalog(
-    armId,
-    adapters.map((a) => a.modelId)
-  );
   registry.registerApiArm(
     armId,
     createGatewayArmAdapter(armId, adapters, {
       circuitBreakerRegistry: getDefaultCliCircuitBreakerRegistry(),
       logger,
     })
+  );
+  // AFTER registerApiArm: a re-registration disposes the earlier arm, and its
+  // dispose() clears the catalogue — set first, the new catalogue would go too.
+  setGatewayCatalog(
+    armId,
+    adapters.map((a) => a.modelId)
   );
   logger.info('Gateway registered as one api: arm', { arm: armId, modelCount: adapters.length });
   return armId;

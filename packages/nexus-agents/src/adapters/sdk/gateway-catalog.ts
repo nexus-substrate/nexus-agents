@@ -12,8 +12,9 @@
  *
  * Process-wide by design, like the adapter registry that holds the arm: set
  * once at server bootstrap (`cli-server-gateway.ts` `registerGatewayArm`),
- * read by the cost estimators. Absent is a real value — "no catalogue" keeps
- * the display-slot path — so a missing entry is never synthesised.
+ * read by the cost estimators, cleared when the arm is disposed. Absent is a
+ * real value — "no catalogue" keeps the display-slot path — so a missing
+ * entry is never synthesised.
  *
  * @module adapters/sdk/gateway-catalog
  */
@@ -41,6 +42,15 @@ export function setGatewayCatalog(arm: EndpointArmId, modelIds: readonly string[
 /** The model ids `arm` fronts, or `undefined` when no catalogue was set for it. */
 export function getGatewayCatalog(arm: EndpointArmId): readonly string[] | undefined {
   return catalogs.get(arm);
+}
+
+/**
+ * Forget `arm`'s catalogue. Called by the arm adapter's `dispose()`, so the
+ * catalogue lives exactly as long as the arm it describes (#6403 review).
+ * Absent is already a real value here, so clearing an unknown arm is a no-op.
+ */
+export function clearGatewayCatalog(arm: EndpointArmId): void {
+  catalogs.delete(arm);
 }
 
 /** Test-only: forget every catalogue so suites do not leak into each other. */
