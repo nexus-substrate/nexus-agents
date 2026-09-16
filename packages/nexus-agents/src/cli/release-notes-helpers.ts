@@ -7,8 +7,6 @@
  * (Source: Issue #639 - Automated release notes generator)
  */
 
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/prefer-nullish-coalescing -- suppressed file-wide when the release suite landed (#637) instead of written to the strict baseline; 13 sites, migration tracked in #6331 */
-
 import { execFileSync } from 'node:child_process';
 import {
   type CategorizedCommit,
@@ -133,7 +131,7 @@ export function parseConventionalCommit(hash: string, message: string): Categori
 export function extractIssueNumbers(message: string): string[] {
   const issueRegex = /#(\d+)/g;
   const matches = message.matchAll(issueRegex);
-  return Array.from(matches, (m) => `#${m[1]}`);
+  return Array.from(matches, (m) => `#${m[1] ?? ''}`);
 }
 
 /**
@@ -143,7 +141,7 @@ export function extractIssueNumbers(message: string): string[] {
  * @returns Keep a Changelog category
  */
 export function mapTypeToCategory(type: string): string {
-  return COMMIT_TYPE_TO_CATEGORY[type.toLowerCase()] || 'Maintenance';
+  return COMMIT_TYPE_TO_CATEGORY[type.toLowerCase()] ?? 'Maintenance';
 }
 
 /**
@@ -188,7 +186,9 @@ export function groupCommitsByCategory(commits: CategorizedCommit[]): ReleaseNot
  * @returns Formatted changelog line
  */
 export function formatCommitEntry(commit: CategorizedCommit): string {
-  const scopePart = commit.scope ? `**${commit.scope}**: ` : '';
+  // An empty scope renders the same as no scope: `****: ` is never a useful prefix.
+  const scopePart =
+    commit.scope !== undefined && commit.scope.length > 0 ? `**${commit.scope}**: ` : '';
   const issuesPart = commit.issues.length > 0 ? ` (${commit.issues.join(', ')})` : '';
   const breakingPrefix = commit.breaking ? '**BREAKING**: ' : '';
 
@@ -282,9 +282,9 @@ export function generateMarkdownFormat(
 
   lines.push('## Highlights');
   lines.push('');
-  lines.push(`This release includes **${totalCount}** changes:`);
-  if (featCount > 0) lines.push(`- ${featCount} new features`);
-  if (fixCount > 0) lines.push(`- ${fixCount} bug fixes`);
+  lines.push(`This release includes **${String(totalCount)}** changes:`);
+  if (featCount > 0) lines.push(`- ${String(featCount)} new features`);
+  if (fixCount > 0) lines.push(`- ${String(fixCount)} bug fixes`);
   lines.push('');
 
   // Add categories
@@ -318,15 +318,15 @@ export function suggestNextVersion(currentVersion: string, commits: CategorizedC
   // Check for breaking changes
   const hasBreaking = commits.some((c) => c.breaking);
   if (hasBreaking) {
-    return `${major + 1}.0.0`;
+    return `${String(major + 1)}.0.0`;
   }
 
   // Check for features
   const hasFeatures = commits.some((c) => c.type === 'feat');
   if (hasFeatures) {
-    return `${major}.${minor + 1}.0`;
+    return `${String(major)}.${String(minor + 1)}.0`;
   }
 
   // Patch version for fixes and other changes
-  return `${major}.${minor}.${patch + 1}`;
+  return `${String(major)}.${String(minor)}.${String(patch + 1)}`;
 }

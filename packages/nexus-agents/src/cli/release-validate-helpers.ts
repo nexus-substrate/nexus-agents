@@ -8,8 +8,6 @@
  * (Source: Issue #669 - Extract from release-validate-command.ts)
  */
 
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/require-await, @typescript-eslint/no-unused-vars, max-lines-per-function -- suppressed file-wide when the validators were extracted (#669) instead of written to the strict baseline; 11 sites, migration tracked in #6331 */
-
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
@@ -100,8 +98,12 @@ function runNpmAudit(): ValidationFinding | undefined {
   }
 }
 
+// The four validators below are typed as promise producers because the command
+// runs them through `Promise.all`; each one only runs local, synchronous checks
+// today, so the result is resolved rather than awaited.
+
 /** Checks for vulnerabilities, dependency issues, and security patterns. */
-export async function validateSecurity(options: ValidatorOptions): Promise<ExpertValidationResult> {
+export function validateSecurity(_options: ValidatorOptions): Promise<ExpertValidationResult> {
   const startTime = Date.now();
   const findings: ValidationFinding[] = [];
 
@@ -140,7 +142,7 @@ export async function validateSecurity(options: ValidatorOptions): Promise<Exper
     });
   }
 
-  return {
+  return Promise.resolve({
     expert: 'security',
     // whenEmpty = false: an empty list genuinely means "scanned, nothing
     // found" — every check above records a finding when it cannot run, which
@@ -149,16 +151,45 @@ export async function validateSecurity(options: ValidatorOptions): Promise<Exper
     confidence: 0.85,
     findings,
     durationMs: Date.now() - startTime,
+  });
+}
+
+/** The score finding: an error below the release threshold, otherwise an info line. */
+function fitnessScoreFinding(fitnessScore: number): ValidationFinding {
+  if (fitnessScore < 90) {
+    return {
+      severity: 'error',
+      category: 'architecture',
+      title: `Fitness score below threshold: ${String(fitnessScore)}/100`,
+      description: 'Release gate requires fitness score >= 90.',
+      remediation: 'Address fitness audit findings before release.',
+    };
+  }
+  return {
+    severity: 'info',
+    category: 'architecture',
+    title: `Fitness score: ${String(fitnessScore)}/100`,
+    description: 'Fitness score meets release threshold.',
   };
+}
+
+/** One info finding per dimension entry in the audit's `findings` array. */
+function fitnessDimensionFindings(audit: Record<string, unknown>): ValidationFinding[] {
+  const auditFindings = audit['findings'];
+  if (!Array.isArray(auditFindings)) return [];
+  return (auditFindings as Array<Record<string, unknown>>).map((finding) => ({
+    severity: 'info',
+    category: 'architecture',
+    title: typeof finding['message'] === 'string' ? finding['message'] : 'Fitness finding',
+    description: typeof finding['suggestion'] === 'string' ? finding['suggestion'] : '',
+  }));
 }
 
 /**
  * Architecture expert validator.
  * Validates fitness score and architectural quality.
  */
-export async function validateArchitecture(
-  options: ValidatorOptions
-): Promise<ExpertValidationResult> {
+export function validateArchitecture(_options: ValidatorOptions): Promise<ExpertValidationResult> {
   const startTime = Date.now();
   const findings: ValidationFinding[] = [];
 
@@ -171,36 +202,7 @@ export async function validateArchitecture(
     });
     const audit = JSON.parse(result) as Record<string, unknown>;
     const fitnessScore = typeof audit['score'] === 'number' ? audit['score'] : 0;
-
-    if (fitnessScore < 90) {
-      findings.push({
-        severity: 'error',
-        category: 'architecture',
-        title: `Fitness score below threshold: ${fitnessScore}/100`,
-        description: 'Release gate requires fitness score >= 90.',
-        remediation: 'Address fitness audit findings before release.',
-      });
-    } else {
-      findings.push({
-        severity: 'info',
-        category: 'architecture',
-        title: `Fitness score: ${fitnessScore}/100`,
-        description: 'Fitness score meets release threshold.',
-      });
-    }
-
-    // Add individual dimension findings
-    const auditFindings = audit['findings'];
-    if (Array.isArray(auditFindings)) {
-      for (const finding of auditFindings as Array<Record<string, unknown>>) {
-        findings.push({
-          severity: 'info',
-          category: 'architecture',
-          title: typeof finding['message'] === 'string' ? finding['message'] : 'Fitness finding',
-          description: typeof finding['suggestion'] === 'string' ? finding['suggestion'] : '',
-        });
-      }
-    }
+    findings.push(fitnessScoreFinding(fitnessScore), ...fitnessDimensionFindings(audit));
   } catch {
     findings.push({
       severity: 'warning',
@@ -213,22 +215,20 @@ export async function validateArchitecture(
 
   const hasErrors = findings.some((f) => f.severity === 'error');
 
-  return {
+  return Promise.resolve({
     expert: 'architecture',
     passed: !hasErrors,
     confidence: 0.9,
     findings,
     durationMs: Date.now() - startTime,
-  };
+  });
 }
 
 /**
  * Documentation expert validator.
  * Checks for stale or missing documentation.
  */
-export async function validateDocumentation(
-  options: ValidatorOptions
-): Promise<ExpertValidationResult> {
+export function validateDocumentation(options: ValidatorOptions): Promise<ExpertValidationResult> {
   const startTime = Date.now();
   const findings: ValidationFinding[] = [];
 
@@ -287,99 +287,88 @@ export async function validateDocumentation(
 
   const hasErrors = findings.some((f) => f.severity === 'error');
 
-  return {
+  return Promise.resolve({
     expert: 'documentation',
     passed: !hasErrors,
     confidence: 0.85,
     findings,
     durationMs: Date.now() - startTime,
-  };
+  });
+}
+
+/** One CI gate the release runs locally: the command, its guard timeout, and how to report it. */
+interface CiGate {
+  readonly command: string;
+  readonly timeoutMs: number;
+  readonly name: string;
+  readonly script: string;
+  readonly remediation: string;
+}
+
+const CI_GATES: readonly CiGate[] = [
+  {
+    command: 'pnpm build 2>/dev/null',
+    timeoutMs: CLI_SUBPROCESS_TIMEOUTS.releaseValidateMs,
+    name: 'Build',
+    script: 'pnpm build',
+    remediation: 'Fix build errors before release.',
+  },
+  {
+    command: 'pnpm lint 2>/dev/null',
+    timeoutMs: CLI_SUBPROCESS_TIMEOUTS.releaseBuildMs,
+    name: 'Lint',
+    script: 'pnpm lint',
+    remediation: 'Fix lint errors before release.',
+  },
+  {
+    command: 'pnpm typecheck 2>/dev/null',
+    timeoutMs: CLI_SUBPROCESS_TIMEOUTS.releaseValidateMs,
+    name: 'Type check',
+    script: 'pnpm typecheck',
+    remediation: 'Fix type errors before release.',
+  },
+];
+
+/** Runs one gate and reports it as an info finding on success, an error finding on failure. */
+function runCiGate(gate: CiGate): ValidationFinding {
+  try {
+    execSync(gate.command, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: gate.timeoutMs,
+    });
+    return {
+      severity: 'info',
+      category: 'ci',
+      title: `${gate.name} passes`,
+      description: `${gate.script} completed successfully.`,
+    };
+  } catch {
+    return {
+      severity: 'error',
+      category: 'ci',
+      title: `${gate.name} failed`,
+      description: `${gate.script} failed.`,
+      remediation: gate.remediation,
+    };
+  }
 }
 
 /**
  * DevOps expert validator.
  * Verifies CI/CD gates and build status.
  */
-export async function validateDevOps(options: ValidatorOptions): Promise<ExpertValidationResult> {
+export function validateDevOps(_options: ValidatorOptions): Promise<ExpertValidationResult> {
   const startTime = Date.now();
-  const findings: ValidationFinding[] = [];
-
-  // Check if build passes
-  try {
-    execSync('pnpm build 2>/dev/null', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: CLI_SUBPROCESS_TIMEOUTS.releaseValidateMs,
-    });
-    findings.push({
-      severity: 'info',
-      category: 'ci',
-      title: 'Build passes',
-      description: 'pnpm build completed successfully.',
-    });
-  } catch {
-    findings.push({
-      severity: 'error',
-      category: 'ci',
-      title: 'Build failed',
-      description: 'pnpm build failed.',
-      remediation: 'Fix build errors before release.',
-    });
-  }
-
-  // Check if lint passes
-  try {
-    execSync('pnpm lint 2>/dev/null', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: CLI_SUBPROCESS_TIMEOUTS.releaseBuildMs,
-    });
-    findings.push({
-      severity: 'info',
-      category: 'ci',
-      title: 'Lint passes',
-      description: 'pnpm lint completed successfully.',
-    });
-  } catch {
-    findings.push({
-      severity: 'error',
-      category: 'ci',
-      title: 'Lint failed',
-      description: 'pnpm lint failed.',
-      remediation: 'Fix lint errors before release.',
-    });
-  }
-
-  // Check if typecheck passes
-  try {
-    execSync('pnpm typecheck 2>/dev/null', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: CLI_SUBPROCESS_TIMEOUTS.releaseValidateMs,
-    });
-    findings.push({
-      severity: 'info',
-      category: 'ci',
-      title: 'Type check passes',
-      description: 'pnpm typecheck completed successfully.',
-    });
-  } catch {
-    findings.push({
-      severity: 'error',
-      category: 'ci',
-      title: 'Type check failed',
-      description: 'pnpm typecheck failed.',
-      remediation: 'Fix type errors before release.',
-    });
-  }
+  const findings: ValidationFinding[] = CI_GATES.map(runCiGate);
 
   const hasErrors = findings.some((f) => f.severity === 'error');
 
-  return {
+  return Promise.resolve({
     expert: 'devops',
     passed: !hasErrors,
     confidence: 0.95,
     findings,
     durationMs: Date.now() - startTime,
-  };
+  });
 }

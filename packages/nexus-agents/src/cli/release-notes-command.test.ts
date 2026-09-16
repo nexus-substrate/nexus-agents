@@ -261,6 +261,18 @@ describe('releaseNotesCommand', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
+  it('prints the failure content on an invalid ref, not "Error: undefined"', async () => {
+    vi.mocked(tryGetCommitsBetween).mockReturnValue({ kind: 'invalid_ref', ref: 'bad ref' });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const code = await releaseNotesCommand({ positionals: [], options: { from: 'bad ref' } });
+
+    const output = errorSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(code).toBe(1);
+    expect(output).toContain('Invalid git ref: "bad ref"');
+    expect(output).not.toContain('undefined');
+  });
+
   it('should return 0 on success', async () => {
     const exitCode = await releaseNotesCommand({
       positionals: ['release-notes'],
