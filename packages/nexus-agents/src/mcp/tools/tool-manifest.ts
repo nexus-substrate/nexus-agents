@@ -482,12 +482,20 @@ export const TOOL_MANIFEST = [
     name: 'registry_import',
     annotations: {
       title: 'Registry Import',
-      readOnlyHint: false,
+      // #6295: the entry said readOnlyHint: false while its own basis said
+      // "never persists" — both cannot be true. The tool derives a draft from
+      // its input and the in-memory registry and writes nothing.
+      readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
     },
-    sideEffects: [{ category: 'explicit', description: 'Generates draft model registry entry' }],
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Derives a draft registry entry in memory; never persists',
+      },
+    ],
     idempotencyBasis:
       'Never persists — the tool returns a draft ModelCapability entry for human ' +
       'review, so a repeat produces the same draft and no state (#5504).',

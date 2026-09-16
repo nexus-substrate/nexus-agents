@@ -240,7 +240,7 @@ Per the MCP spec these are **hints**, not enforcement primitives — clients sho
 | `extract_symbols`             |    ✅    |     ❌      |     ✅     |    ❌     | Reads source files                                       |
 | `search_codebase`             |    ✅    |     ❌      |     ✅     |    ❌     | Reads source files                                       |
 | `issue_triage`                |    ❌    |     ❌      |     ❌     |    ✅     | May write GitHub labels/comments when authorized         |
-| `registry_import`             |    ✅    |     ❌      |     ✅     |    ✅     | Generates draft registry entry; validates against vendor |
+| `registry_import`             |    ✅    |     ❌      |     ✅     |    ❌     | Derives a draft registry entry in memory; never persists |
 
 ### Why no tool is `destructiveHint: true`
 
