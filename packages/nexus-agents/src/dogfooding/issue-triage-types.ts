@@ -145,9 +145,17 @@ export interface ProposedAction {
   readonly type: string;
   /** Human-readable description of the proposed action */
   readonly description: string;
-  /** Whether this action was approved by the policy gate */
+  /**
+   * Whether this action was approved by the policy gate. Also `false` when the
+   * firewall REFUSED the action under `NEXUS_FIREWALL_POLICY=enforce` — at the
+   * policy stage (#5383) or the corroboration stage (#6309); `details` names
+   * the rules and, for the latter, `refusedAtStage: 'corroboration'`.
+   */
   readonly policyApproved: boolean;
-  /** Whether corroboration requirements were satisfied */
+  /**
+   * Whether corroboration requirements were satisfied — the validator's own
+   * verdict under every mode; `enforce` additionally refuses on `false`.
+   */
   readonly corroborated: boolean;
   /** Details specific to the action type */
   readonly details: Record<string, unknown>;

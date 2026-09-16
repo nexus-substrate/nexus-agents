@@ -11,13 +11,15 @@
 
 import type { Result } from '../core/index.js';
 import { ok } from '../core/index.js';
-import type { CorroborationResult } from '../security/corroboration-validator.js';
-import { validateCorroboration } from '../security/corroboration-validator.js';
 import type { AgentAction } from '../security/action-schema.js';
 import type { GitHubInput } from '../security/firewall/github-adapter.js';
 import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 import type { TrustTier } from '../security/trust-types.js';
-import { evaluateActionThroughFirewall } from './untrusted-input-firewall.js';
+import type { FirewallCorroborationDecision } from './untrusted-input-firewall.js';
+import {
+  evaluateActionThroughFirewall,
+  validateActionCorroboration,
+} from './untrusted-input-firewall.js';
 import type { ScmCommentDetail } from '../scm/types.js';
 import type {
   IssueCategory,
@@ -155,35 +157,60 @@ export function describeAction(action: AgentAction): string {
   }
 }
 
-/** Builds details object for a proposed action. */
+/**
+ * Builds details object for a proposed action.
+ *
+ * A corroboration refusal (`enforce`, #6309) is recorded where a policy
+ * refusal is: its rule joins `policyViolations`, and `refusedAtStage` names
+ * the stage so the record cannot be read as a trust-tier block. Under `off`
+ * and `audit` the check is recorded, never refused; `corroborationWouldRefuse`
+ * is `audit`'s telemetry and is `false` under `off` by construction.
+ */
 export function buildActionDetails(
   action: AgentAction,
   policy: { allowed: boolean; violations: readonly { rule: string; message: string }[] },
-  corrob: CorroborationResult
+  corrob: FirewallCorroborationDecision
 ): Record<string, unknown> {
+  const policyRules = policy.violations.map((violation) => violation.rule);
   return {
-    policyViolations: policy.violations.map((violation) => violation.rule),
-    missingCorroboration: corrob.missing,
+    ...(corrob.refused
+      ? {
+          policyViolations: [...policyRules, 'INSUFFICIENT_CORROBORATION'],
+          missingCorroboration: corrob.missing,
+          refusedAtStage: corrob.stage,
+        }
+      : {
+          policyViolations: policyRules,
+          missingCorroboration: corrob.missing,
+          corroborationWouldRefuse: corrob.wouldRefuse,
+        }),
     ...(action.type === 'ClassifyIssue' && { category: action.category }),
     ...(action.type === 'ProposeLabels' && { labels: action.labels }),
   };
 }
 
 /**
- * Validates every action through the firewall's policy gate and the
- * corroboration validator (originally Issue #828; #5383 moved the policy
- * evaluation inside the firewall so this path has ONE composition).
+ * Validates every action through the firewall's policy gate and its
+ * corroboration stage (originally Issue #828; #5383 moved the policy
+ * evaluation inside the firewall and #6309 the corroboration check, so this
+ * path has ONE composition).
  *
- * Each action is one firewall run with `action` and the repository label set.
- * The decision is read from `FirewallResult.policy` and enforced HERE as
- * `policyApproved`, whatever `NEXUS_FIREWALL_POLICY` is — the mode only
- * decides whether the firewall refuses on its own (`enforce`), and such a
- * refusal lands on the record as `policyApproved: false` with its rules,
- * exactly where the direct `evaluatePolicy` verdict used to land.
+ * Each action is one firewall run with `action` and the repository label set,
+ * then one `validateActionCorroboration` call. The policy decision is read
+ * from `FirewallResult.policy` and enforced HERE as `policyApproved`, whatever
+ * `NEXUS_FIREWALL_POLICY` is — the mode only decides whether the firewall
+ * refuses on its own (`enforce`), and such a refusal lands on the record as
+ * `policyApproved: false` with its rules, exactly where the direct
+ * `evaluatePolicy` verdict used to land. A corroboration refusal lands the
+ * same way (#6309 panel, option R): the action stays on the list, refused,
+ * with `refusedAtStage: 'corroboration'` and what was missing — never
+ * dropped. Under `off` and `audit` corroboration is recorded as
+ * `corroborated`, as the direct `validateCorroboration` call recorded it.
  *
  * `gate.enforcedTier` is the classification run's (the reputation gate's under
  * the #3122 rollout mode); a per-action run that enforces a different tier
- * fails the whole call closed, because the citations were stamped with it.
+ * fails the whole call closed, because the citations were stamped with it. A
+ * corroboration stage that did not run fails the call the same way.
  */
 export function validateActionsThroughFirewall(
   input: GitHubInput,
@@ -200,13 +227,14 @@ export function validateActionsThroughFirewall(
   for (const action of actions) {
     const decision = evaluateActionThroughFirewall(input, { ...gate, ...labels, action });
     if (!decision.ok) return decision;
-    const corrobResult = validateCorroboration(action);
+    const corroboration = validateActionCorroboration(action);
+    if (!corroboration.ok) return corroboration;
     proposed.push({
       type: action.type,
       description: describeAction(action),
-      policyApproved: decision.value.allowed,
-      corroborated: corrobResult.satisfied,
-      details: buildActionDetails(action, decision.value, corrobResult),
+      policyApproved: decision.value.allowed && !corroboration.value.refused,
+      corroborated: corroboration.value.satisfied,
+      details: buildActionDetails(action, decision.value, corroboration.value),
     });
   }
   return ok(proposed);
@@ -254,7 +282,9 @@ export function formatTriageComment(result: IssueTriageResult): string {
     lines.push('');
     for (const action of result.proposedActions) {
       const status = formatActionStatus(action);
-      lines.push(`- ${status} **${action.type}**: ${action.description}`);
+      lines.push(
+        `- ${status} **${action.type}**: ${action.description}${formatRefusalReason(action)}`
+      );
     }
   }
 
@@ -272,4 +302,48 @@ function formatActionStatus(action: ProposedAction): string {
   if (action.policyApproved && action.corroborated) return ':white_check_mark:';
   if (action.policyApproved && !action.corroborated) return ':yellow_circle:';
   return ':no_entry:';
+}
+
+/** The refusal-bearing subset of `ProposedAction.details`, read with guards. */
+interface ActionRefusalDetails {
+  readonly policyViolations: readonly string[];
+  readonly missingCorroboration: readonly string[];
+  readonly refusedAtStage?: 'corroboration';
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+/**
+ * Reads WHY an action was refused (or left uncorroborated) off its `details`
+ * (#6309 review): `details` is untyped on the record, so this is the one
+ * place the keys `buildActionDetails` writes are read back. A key that is
+ * absent or malformed reads as empty, never as a rule.
+ */
+export function readActionRefusal(action: ProposedAction): ActionRefusalDetails {
+  const { policyViolations, missingCorroboration, refusedAtStage } = action.details;
+  return {
+    policyViolations: isStringArray(policyViolations) ? policyViolations : [],
+    missingCorroboration: isStringArray(missingCorroboration) ? missingCorroboration : [],
+    ...(refusedAtStage === 'corroboration' ? { refusedAtStage } : {}),
+  };
+}
+
+/**
+ * The parenthetical after a refused action's line, so a corroboration refusal
+ * is distinguishable from a policy refusal where a reader sees it (#6309
+ * review). Empty for an action that was not refused.
+ */
+function formatRefusalReason(action: ProposedAction): string {
+  if (action.policyApproved) return '';
+  const refusal = readActionRefusal(action);
+  const policyRules = refusal.policyViolations.filter((r) => r !== 'INSUFFICIENT_CORROBORATION');
+  const parts: string[] = [];
+  if (policyRules.length > 0) parts.push(`policy: ${policyRules.join(', ')}`);
+  if (refusal.refusedAtStage !== undefined) {
+    parts.push(`refused at ${refusal.refusedAtStage}: ${refusal.missingCorroboration.join('; ')}`);
+  }
+  // A refusal that names nothing is still a refusal; say so rather than print nothing.
+  return ` (${parts.length > 0 ? parts.join('; ') : 'refused: no rule recorded'})`;
 }

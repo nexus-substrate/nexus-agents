@@ -902,11 +902,13 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     return { logger, log };
   }
 
+  /** Mirrors the shared instance's stage set: the corroboration stage is on (#6309). */
   function firewallWith(overrides: Partial<FirewallConfig> = {}): HostileInputFirewall {
     return new HostileInputFirewall({
       adapter: createGitHubAdapter(),
       contentDowngrade: false,
       ...overrides,
+      stages: { corroboration: true, ...overrides.stages },
     });
   }
 
@@ -1123,7 +1125,10 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       // does not trip, so the triage reaches the per-action stage. There the
       // tier-3 ProposeLabels is a blocking violation, which `enforce` REFUSES
       // — and the refusal lands on the action record exactly where the direct
-      // `evaluatePolicy` call used to put `allowed: false`.
+      // `evaluatePolicy` call used to put `allowed: false`. Since #6309 the
+      // corroboration stage refuses it too (a tier-3 issue body clears no
+      // ProposeLabels floor), and that refusal is recorded on the same list,
+      // naming its stage — the action is not dropped.
       const fw = firewallWith({ policyMode: 'enforce' });
       _setUntrustedInputFirewallForTests(fw);
 
@@ -1131,11 +1136,16 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
 
       const proposeLabels = v.proposedActions.find((a) => a.type === 'ProposeLabels');
       expect(proposeLabels?.policyApproved).toBe(false);
+      expect(proposeLabels?.corroborated).toBe(false);
       expect(proposeLabels?.details['policyViolations']).toEqual([
         'INSUFFICIENT_TRUST',
         'UNTRUSTED_INFLUENCE',
+        'INSUFFICIENT_CORROBORATION',
       ]);
-      expect(v.proposedActions.find((a) => a.type === 'ClassifyIssue')?.policyApproved).toBe(true);
+      expect(proposeLabels?.details['refusedAtStage']).toBe('corroboration');
+      const classify = v.proposedActions.find((a) => a.type === 'ClassifyIssue');
+      expect(classify?.policyApproved).toBe(true);
+      expect(classify?.corroborated).toBe(true);
     });
 
     it('fails closed when the policy stage did not run: an unevaluated action is neither approved nor denied', async () => {

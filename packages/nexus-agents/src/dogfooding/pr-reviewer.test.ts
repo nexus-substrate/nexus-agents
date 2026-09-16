@@ -841,11 +841,13 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     return { logger, log };
   }
 
+  /** Mirrors the shared instance's stage set: the corroboration stage is on (#6309). */
   function firewallWith(overrides: Partial<FirewallConfig> = {}): HostileInputFirewall {
     return new HostileInputFirewall({
       adapter: createGitHubAdapter(),
       contentDowngrade: false,
       ...overrides,
+      stages: { corroboration: true, ...overrides.stages },
     });
   }
 

@@ -68,7 +68,10 @@ export function buildReviewCitations(files: readonly PRFileChange[], limit = 20)
  * reach no reader.
  */
 export function reportUnverifiedCorroboration(
-  corroboration: CorroborationResult,
+  corroboration: Pick<
+    CorroborationResult,
+    'clearedOnlyByUnverifiedSources' | 'corroboratingSources'
+  >,
   log: Pick<ILogger, 'warn'>
 ): void {
   if (!corroboration.clearedOnlyByUnverifiedSources) return;
