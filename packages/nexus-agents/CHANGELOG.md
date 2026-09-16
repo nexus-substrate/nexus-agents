@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.80.1
+
+### Patch Changes
+
+- [#6429](https://github.com/nexus-substrate/nexus-agents/pull/6429) [`1476bb6`](https://github.com/nexus-substrate/nexus-agents/commit/1476bb68c0a17fe840bb5defb8f818296d85f9d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Internal cleanup ([#6425](https://github.com/nexus-substrate/nexus-agents/issues/6425)): delete 30 exported functions, constants and Zod schemas that had zero references anywhere in the tree — no production importer, no test, no docs, and none on the published API surface (`api-surface.txt` is unchanged). Among them: the `createWorkflowEngine` stub that only threw, the never-called `compactCorrelationData` (the correlation-persistence module doc now says the legacy `correlations.json` is read on every load and left in place), the `executeSearch`/`getAllMemories` scaffold leftovers, and twenty `*Schema` constants nothing parsed with or inferred from. Nothing published is removed and no behaviour changes.
+
 ## 8.80.0
 
 ### Minor Changes
