@@ -50,6 +50,8 @@
 /governance/required-jobs.json @williamzujkowski
 /scripts/check-required-jobs.ts @williamzujkowski
 /scripts/check-required-jobs.test.ts @williamzujkowski
+# #6387 — the one accepted aggregator shape (workflow root, job, step, env).
+/scripts/aggregator-shape.ts @williamzujkowski
 # #5130 step 2 — the committed-ledger half of the ratification gate; decides
 # what counts as a panel record that ratifies a PR.
 /scripts/governor-ledger-evidence.ts @williamzujkowski

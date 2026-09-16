@@ -439,9 +439,26 @@ unchanged. Hop 2: the strict checker and the new workflow together, judged by
 the hop-1 checker. Do not admin-merge past the red gate; it is the mechanism.
 
 The governor-owned `required-jobs.json` manifest (#6343) pins every
-`ci-success.needs` job ID, its corresponding `needs.<id>.result` check, the
-required contexts `CI Success` and `Governor-path ratification gate`, and the
-absence of `pnpm.auditConfig`. `scripts/check-required-jobs.ts` runs inside
+`ci-success.needs` job ID, the jobs that may legitimately `skipped`
+(`skip_allowed`), the required contexts `CI Success` and
+`Governor-path ratification gate`, and the absence of `pnpm.auditConfig`.
+Since #6382 the aggregator reads `NEEDS_JSON: ${{ toJSON(needs) }}` and runs
+`AGGREGATOR_RUN`, a run body that is POLICY in `scripts/check-required-jobs.ts`
+and must match byte for byte — there is no per-job line to comment out. The
+`ci-success` job is held to ONE accepted shape rather than a denylist (#6387,
+`scripts/aggregator-shape.ts`): workflow root keys exactly
+`name, on, permissions, concurrency, jobs` (a root `defaults.run.shell` or
+`env` reaches the step, which the lock forbids from overriding it); job keys exactly `name, needs, runs-on, timeout-minutes, if, steps` with
+`if: always()`, exactly one step of keys `name, env, run`, env keys exactly
+`NEEDS_JSON, SKIP_ALLOWED`. Any other key (`shell:`, `continue-on-error`,
+`container:`, an env `PATH`), a sibling step, or a missing `if:` is drift —
+each was a way the pinned script could run, or not run, without deciding
+the job. A NEEDED job carrying `continue-on-error` (job or step) is drift
+too: GitHub reports its result as `success` after it fails; so is a need
+that calls a reusable workflow (`uses:` hides the same knob), and a
+`skip_allowed` need whose `if:` is anything but
+`github.event_name == 'pull_request'` (the one licensed reason to skip), or
+that `needs:` another job (a skipped dependency skips it on every PR). `scripts/check-required-jobs.ts` runs inside
 `Governor-path ratification gate` on every PR, so weakening CI wiring is
 checked by a governor-owned job. Measured drift fails the job (exit 1);
 unreadable branch protection leaves only protection membership `unmeasured`;

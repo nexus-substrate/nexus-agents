@@ -949,29 +949,23 @@ jobs:
     if: always()
     steps:
       - name: Check required jobs
+        env:
+          # Same shape and the same run body as ci-success (#6382): the needed
+          # jobs and their results are the one input, so there is no per-job
+          # line to comment out. Every documentation gate may skip (path
+          # filters), so SKIP_ALLOWED is "*": a job that RAN must have succeeded.
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          SKIP_ALLOWED: '"*"'
         run: |
-          # A skipped job counts as a pass: the push trigger is path-filtered, so
-          # jobs legitimately skip on unrelated changes.
-          if [[ "${{ needs.typedoc-check.result }}" != "success" && "${{ needs.typedoc-check.result }}" != "skipped" ]] || \
-             [[ "${{ needs.schema-fanout.result }}" != "success" && "${{ needs.schema-fanout.result }}" != "skipped" ]] || \
-             [[ "${{ needs.secrets-scan.result }}" != "success" && "${{ needs.secrets-scan.result }}" != "skipped" ]] || \
-             [[ "${{ needs.repo-index.result }}" != "success" && "${{ needs.repo-index.result }}" != "skipped" ]] || \
-             [[ "${{ needs.tool-reference-drift.result }}" != "success" && "${{ needs.tool-reference-drift.result }}" != "skipped" ]] || \
-             [[ "${{ needs.strategy-reference-drift.result }}" != "success" && "${{ needs.strategy-reference-drift.result }}" != "skipped" ]] || \
-             [[ "${{ needs.research-index-drift.result }}" != "success" && "${{ needs.research-index-drift.result }}" != "skipped" ]] || \
-             [[ "${{ needs.docops-skill-sync.result }}" != "success" && "${{ needs.docops-skill-sync.result }}" != "skipped" ]] || \
-             [[ "${{ needs.registry-coverage.result }}" != "success" && "${{ needs.registry-coverage.result }}" != "skipped" ]] || \
-             [[ "${{ needs.mcp-description-drift.result }}" != "success" && "${{ needs.mcp-description-drift.result }}" != "skipped" ]] || \
-             [[ "${{ needs.orphan-detection.result }}" != "success" && "${{ needs.orphan-detection.result }}" != "skipped" ]] || \
-             [[ "${{ needs.canonical-index.result }}" != "success" && "${{ needs.canonical-index.result }}" != "skipped" ]] || \
-             [[ "${{ needs.harness-alignment.result }}" != "success" && "${{ needs.harness-alignment.result }}" != "skipped" ]] || \
-             [[ "${{ needs.markdown-lint.result }}" != "success" && "${{ needs.markdown-lint.result }}" != "skipped" ]] || \
-             [[ "${{ needs.docs-content-drift.result }}" != "success" && "${{ needs.docs-content-drift.result }}" != "skipped" ]] || \
-             [[ "${{ needs.skills-index-check.result }}" != "success" && "${{ needs.skills-index-check.result }}" != "skipped" ]] || \
-             [[ "${{ needs.agents-index-check.result }}" != "success" && "${{ needs.agents-index-check.result }}" != "skipped" ]] || \
-             [[ "${{ needs.governance-drift.result }}" != "success" && "${{ needs.governance-drift.result }}" != "skipped" ]] || \
-             [[ "${{ needs.claims-check.result }}" != "success" && "${{ needs.claims-check.result }}" != "skipped" ]]; then
-            echo "::error::One or more documentation gates failed."
+          failing=$(jq -r --argjson ok "$SKIP_ALLOWED" '
+            if (. | length) == 0 then "NO_NEEDS"
+            else to_entries
+              | map(.key as $k | select(.value.result != "success"
+                           and ((.value.result != "skipped") or ($ok != "*" and (($ok | index($k)) == null)))))
+              | map("\(.key)=\(.value.result)") | join(" ")
+            end' <<< "$NEEDS_JSON")
+          if [ -n "$failing" ]; then
+            echo "::error::One or more required jobs failed: $failing"
             exit 1
           fi
-          echo "All documentation gates passed."
+          echo "All required jobs passed."

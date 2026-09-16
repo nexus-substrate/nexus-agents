@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { type AggregatorShape, type JobGate, extractWorkflowGate } from './aggregator-shape.js';
 export const EXPECTED_REQUIRED_CONTEXTS = [
   'CI Success',
   'Governor-path ratification gate',
@@ -84,6 +85,8 @@ const ManifestSchema = z.object({
   description: z.string().min(1),
   version: z.literal('1.0.0'),
   ci_success_needs: z.array(z.string().min(1)),
+  /** Jobs the aggregator may accept as `skipped` (push-only skips); every other need must be `success`. */
+  skip_allowed: z.array(z.string().min(1)),
   required_contexts: z.array(z.string().min(1)),
   audit_config_forbidden: z.boolean(),
 });
@@ -91,7 +94,8 @@ const ManifestSchema = z.object({
 interface RequiredJobsInput {
   readonly manifest: unknown;
   readonly ciSuccessNeeds: readonly string[];
-  readonly ciSuccessResultChecks: readonly string[];
+  /** The aggregator's verification shape (#6382), as extracted from its step. */
+  readonly ciSuccessGate: AggregatorShape;
   readonly packageJson: unknown;
   readonly requiredContexts: readonly string[] | 'unmeasured';
   readonly workflowJobNames: readonly string[] | 'unmeasured';
@@ -120,10 +124,8 @@ export function checkRequiredJobs(input: RequiredJobsInput): RequiredJobsResult 
   if (manifest.required_contexts.length === 0) problems.push('Manifest required_contexts is empty');
   for (const job of manifest.ci_success_needs) {
     if (!input.ciSuccessNeeds.includes(job)) problems.push(`Missing ci-success.needs: ${job}`);
-    if (!input.ciSuccessResultChecks.includes(job)) {
-      problems.push(`Missing ci-success result check: ${job} (missing or commented out)`);
-    }
   }
+  problems.push(...aggregatorProblems(input.ciSuccessGate, manifest.skip_allowed));
   problems.push(...packageProblems(input.packageJson, manifest.audit_config_forbidden));
   problems.push(...contextProblems(input, manifest.required_contexts));
   const unmeasured = unmeasuredProblems(input);
@@ -158,165 +160,42 @@ function contextProblems(input: RequiredJobsInput, expected: readonly string[]):
   return problems;
 }
 
-const JobSchema = z.object({
-  needs: z.union([z.string(), z.array(z.string())]).optional(),
-  steps: z
-    .array(
-      z.object({
-        if: z.union([z.string(), z.boolean()]).optional(),
-        run: z.string().optional(),
-        env: z.record(z.string(), z.unknown()).optional(),
-      })
-    )
-    .optional(),
-});
-
-/**
- * TRANSITIONAL acceptance of the #6382 aggregator shape (hop 1 of 2). The
- * ratification gate judges a PR's ci.yml with the BASE ref's checker
- * (#6381), so a PR that changes the checker AND the workflow together can
- * never pass: the base checker does not know the new shape. This hop
- * teaches main's checker to accept a step that reads
- * `NEEDS_JSON: ${{ toJSON(needs) }}` and runs exactly this script — the
- * same text #6387 pins as policy — as verifying every need. Hop 2 (#6387)
- * replaces this checker and the per-job result lines together. The
- * per-job lines stay accepted until then; nothing is loosened.
- */
-export const AGGREGATOR_RUN = String.raw`failing=$(jq -r --argjson ok "$SKIP_ALLOWED" '
-  if (. | length) == 0 then "NO_NEEDS"
-  else to_entries
-    | map(.key as $k | select(.value.result != "success"
-                 and ((.value.result != "skipped") or ($ok != "*" and (($ok | index($k)) == null)))))
-    | map("\(.key)=\(.value.result)") | join(" ")
-  end' <<< "$NEEDS_JSON")
-if [ -n "$failing" ]; then
-  echo "::error::One or more required jobs failed: $failing"
-  exit 1
-fi
-echo "All required jobs passed."
-`;
-
-const NEEDS_JSON_EXPRESSION = /^\$\{\{\s*toJSON\(needs\)\s*\}\}$/;
-
-/** Byte equality up to trailing whitespace per line and at the end. */
-function sameScript(a: string, b: string): boolean {
-  const norm = (t: string): string =>
-    t
-      .split('\n')
-      .map((l) => l.replace(/\s+$/, ''))
-      .join('\n')
-      .replace(/\n+$/, '');
-  return norm(a) === norm(b);
-}
-
-/** True when a step reads toJSON(needs) into NEEDS_JSON and runs the pinned script. */
-function runsPinnedAggregator(steps: z.infer<typeof JobSchema>['steps']): boolean {
-  return (steps ?? []).some((step) => {
-    const needsJson = step.env?.['NEEDS_JSON'];
-    return (
-      typeof needsJson === 'string' &&
-      NEEDS_JSON_EXPRESSION.test(needsJson.trim()) &&
-      typeof step.run === 'string' &&
-      sameScript(step.run, AGGREGATOR_RUN)
+/** The manifest's `skip_allowed` must equal the step's SKIP_ALLOWED as a set; the step must exist. */
+function aggregatorProblems(gate: AggregatorShape, skipAllowed: readonly string[]): string[] {
+  if (!gate.verifiesEveryNeed) {
+    return [
+      'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} and runs the pinned AGGREGATOR_RUN (#6382)',
+    ];
+  }
+  if (gate.neutralized.length > 0) {
+    return [
+      `ci-success aggregator departs from the one accepted shape: ${gate.neutralized.join(', ')} (#6387)`,
+    ];
+  }
+  // A wildcard skip list is never acceptable for CI Success: `security` and
+  // its peers must have RUN.
+  if (gate.skipAllowed === '*') return ['ci-success SKIP_ALLOWED is "*"; every need may skip'];
+  // Absent or malformed is drift, never "none declared" (#6387 panel 9): a
+  // manifest with an empty skip list would otherwise read a default as a match.
+  if (gate.skipAllowed === undefined)
+    return ['ci-success SKIP_ALLOWED is missing or not a JSON array of job ids'];
+  const declared = new Set(gate.skipAllowed);
+  const pinned = new Set(skipAllowed);
+  const extra = [...declared].filter((j) => !pinned.has(j));
+  const missing = [...pinned].filter((j) => !declared.has(j));
+  const problems: string[] = [];
+  if (extra.length > 0)
+    problems.push(`ci-success SKIP_ALLOWED names jobs the manifest does not: ${extra.join(', ')}`);
+  if (missing.length > 0)
+    problems.push(
+      `ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: ${missing.join(', ')}`
     );
-  });
+  return problems;
 }
 
-interface JobGate {
-  needs: string[];
-  gateScript: string;
-  resultChecks: string[];
-}
-
-/** Skip an Actions expression without treating its string literals as shell quotes. */
-function expressionEnd(text: string, start: number): number {
-  let quote = '';
-  for (let index = start + 3; index < text.length; index++) {
-    const char = text[index];
-    if (quote !== '') {
-      if (char === quote) quote = '';
-    } else if (char === "'" || char === '"') {
-      quote = char;
-    } else if (text.startsWith('}}', index)) {
-      return index + 2;
-    }
-  }
-  // An incomplete expression is preserved; guessing its shell syntax is unsafe.
-  return text.length;
-}
-
-/** A `#` opens a shell comment only outside quotes and only at a word start. */
-/**
- * Bash opens a comment when `#` BEGINS A WORD: at the start of the text,
- * after whitespace, or after an unquoted metacharacter (`; & | ( ) < >` and
- * a backquote). `echo ok;# hidden` runs only `echo ok` (#6378 panel: the
- * whitespace-only rule let `;# needs.security.result` read as a live check).
- */
-const WORD_START_BEFORE_HASH = /[\s;&|()<>`]/;
-
-function startsComment(text: string, index: number, quote: string): boolean {
-  return (
-    quote === '' && text[index] === '#' && WORD_START_BEFORE_HASH.test(text[index - 1] ?? '\n')
-  );
-}
-
-/** Index just past the token that begins at `index`: an expression, an escape, or one char. */
-function tokenEnd(text: string, index: number, quote: string): number {
-  if (text.startsWith('${{', index)) return expressionEnd(text, index);
-  if (text[index] === '\\' && quote !== "'") return index + 2;
-  return index + 1;
-}
-
-/** The quote state after consuming one plain character. */
-function nextQuote(char: string, quote: string): string {
-  if (quote !== '') return char === quote ? '' : quote;
-  return char === "'" || char === '"' ? char : '';
-}
-
-/** Strip unquoted shell comments, preserving quoted hashes and Actions expressions. */
-export function stripShellComments(text: string): string {
-  let quote = '';
-  let live = '';
-  let index = 0;
-  while (index < text.length) {
-    if (startsComment(text, index, quote)) {
-      const newline = text.indexOf('\n', index);
-      index = newline === -1 ? text.length : newline;
-      continue;
-    }
-    const end = tokenEnd(text, index, quote);
-    const token = text.slice(index, end);
-    if (end === index + 1) quote = nextQuote(token, quote);
-    live += token;
-    index = end;
-  }
-  // Empty or comments-only text yields no result references, never evidence of health.
-  return live;
-}
-
-/** Shared with ci-required-jobs.test.ts: collect live run text and unchanged step ifs. */
-export function extractJobGate(value: unknown): JobGate {
-  const job = JobSchema.parse(value ?? {});
-  const needs = typeof job.needs === 'string' ? [job.needs] : (job.needs ?? []);
-  const gateScript = (job.steps ?? [])
-    .map((step) =>
-      [typeof step.if === 'string' ? step.if : '', stripShellComments(step.run ?? '')].join('\n')
-    )
-    .join('\n');
-  const resultChecks = [...gateScript.matchAll(/\bneeds\.([\w-]+)\.result\b/g)]
-    .map((match) => match[1])
-    .filter((id): id is string => id !== undefined);
-  // The pinned aggregator verifies every need because it is listed (#6382).
-  if (runsPinnedAggregator(job.steps)) return { needs, gateScript, resultChecks: [...needs] };
-  return { needs, gateScript, resultChecks: [...new Set(resultChecks)] };
-}
-
-/** Parse the real workflow before extracting the ci-success job's wiring. */
+/** Parse the real workflow and judge the ci-success job with its document root. */
 export function loadCiSuccessGate(path = '.github/workflows/ci.yml'): JobGate {
-  const workflow = z
-    .object({ jobs: z.record(z.string(), z.unknown()) })
-    .parse(parseYaml(readFileSync(path, 'utf8')));
-  return extractJobGate(workflow.jobs['ci-success']);
+  return extractWorkflowGate(parseYaml(readFileSync(path, 'utf8')), 'ci-success');
 }
 
 function readJson(path: string): unknown {
@@ -398,7 +277,7 @@ export function runRequiredJobsCheck(targetDir: string, policyDir: string = POLI
   const result = checkRequiredJobs({
     manifest,
     ciSuccessNeeds: gate.needs,
-    ciSuccessResultChecks: gate.resultChecks,
+    ciSuccessGate: gate.gate,
     packageJson,
     requiredContexts: loadRequiredContexts(),
     workflowJobNames,
