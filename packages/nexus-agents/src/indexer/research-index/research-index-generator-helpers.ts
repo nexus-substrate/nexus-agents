@@ -120,7 +120,7 @@ export function generateTechniqueRow(technique: ResearchTechniqueWithId): string
 /**
  * Generate P1 techniques table.
  */
-export function generateP1Table(index: ResearchIndex): string {
+function generateP1Table(index: ResearchIndex): string {
   const p1Techniques = getTechniquesByPriority(index, 'P1');
 
   if (p1Techniques.length === 0) {
@@ -143,7 +143,7 @@ ${rows.join('\n')}`;
 /**
  * Generate P2 techniques table.
  */
-export function generateP2Table(index: ResearchIndex): string {
+function generateP2Table(index: ResearchIndex): string {
   const p2Techniques = getTechniquesByPriority(index, 'P2');
 
   if (p2Techniques.length === 0) {
@@ -344,7 +344,7 @@ _Generated from YAML registries. Last updated: ${dateStr} (ET)_`;
 /**
  * Add a non-empty section to the sections array.
  */
-export function addSection(sections: string[], section: string): void {
+function addSection(sections: string[], section: string): void {
   if (section !== '') {
     sections.push(section);
   }

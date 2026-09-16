@@ -203,7 +203,7 @@ export function createImplementStageWrapper(stages: DevPipelineStages): IPipelin
 }
 
 /** QA stage — QA expert reviews implementations. */
-export function createQaStageWrapper(stages: DevPipelineStages): IPipelineStage {
+function createQaStageWrapper(stages: DevPipelineStages): IPipelineStage {
   return {
     id: 'qa',
     name: 'QA Review',
@@ -253,7 +253,7 @@ export function createSecurityStageWrapper(stages: DevPipelineStages): IPipeline
 }
 
 /** Scaffold stage — generates project structure from approved plan. */
-export function createScaffoldStageWrapper(): IPipelineStage {
+function createScaffoldStageWrapper(): IPipelineStage {
   return {
     id: 'scaffold',
     name: 'Scaffold',
@@ -359,7 +359,7 @@ export function createGreenfieldStageRegistry(
 // ============================================================================
 
 /** Analyze stage — detect repo tech stack via repo_analyze. */
-export function createAnalyzeStageWrapper(): IPipelineStage {
+function createAnalyzeStageWrapper(): IPipelineStage {
   return {
     id: 'analyze',
     name: 'Analyze Repository',
@@ -388,7 +388,7 @@ export function createAnalyzeStageWrapper(): IPipelineStage {
 }
 
 /** Scan stage — run security scan with recommendations from repo_security_plan. */
-export function createScanStageWrapper(): IPipelineStage {
+function createScanStageWrapper(): IPipelineStage {
   return {
     id: 'scan',
     name: 'Security Scan',
@@ -414,7 +414,7 @@ export function createScanStageWrapper(): IPipelineStage {
 }
 
 /** Report stage — summarize analysis + scan findings. */
-export function createReportStageWrapper(): IPipelineStage {
+function createReportStageWrapper(): IPipelineStage {
   return {
     id: 'report',
     name: 'Security Report',

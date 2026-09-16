@@ -61,7 +61,7 @@ export function calculateHealthScore(r: SystemReviewResult): number {
 }
 
 /** Print Phase 1: Registry Reconciliation results. */
-export function printPhase1(t: TechniqueStats): void {
+function printPhase1(t: TechniqueStats): void {
   writeLine(`${colors.cyan}Phase 1: Registry Reconciliation${colors.reset}\n`);
   const tot = t.implemented + t.planned + t.notStarted + t.rejected;
   writeLine(`  Implemented: ${colors.green}${String(t.implemented)}${colors.reset}`);
@@ -72,7 +72,7 @@ export function printPhase1(t: TechniqueStats): void {
 }
 
 /** Print Phase 2: Documentation Sync results. */
-export function printPhase2(docs: DocFreshness[]): void {
+function printPhase2(docs: DocFreshness[]): void {
   writeLine(`${colors.cyan}Phase 2: Documentation Sync${colors.reset}\n`);
   for (const d of docs) {
     const s =
@@ -93,7 +93,7 @@ export function printPhase2(docs: DocFreshness[]): void {
 }
 
 /** Print Phase 3: Issue Health results. */
-export function printPhase3(i: IssueHealth): void {
+function printPhase3(i: IssueHealth): void {
   writeLine(`${colors.cyan}Phase 3: Issue Health${colors.reset}\n`);
   writeLine(`  Open:  ${String(i.openCount)}`);
   writeLine(
@@ -125,7 +125,7 @@ export function printPhase4(s: SecurityAudit): void {
 }
 
 /** Print Phase 5: Code Quality results. */
-export function printPhase5(q: CodeQuality): void {
+function printPhase5(q: CodeQuality): void {
   writeLine(`${colors.cyan}Phase 5: Code Quality${colors.reset}\n`);
   writeLine(`  ${formatStatus(q.typecheckPass ? 'pass' : 'fail')} TypeScript`);
   writeLine(`  ${formatStatus(q.lintPass ? 'pass' : 'fail')} ESLint`);

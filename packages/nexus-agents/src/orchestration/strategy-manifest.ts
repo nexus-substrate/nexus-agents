@@ -286,7 +286,7 @@ export type CostProfile = z.infer<typeof CostProfileSchema>;
  * self-containment reason as {@link StrategyNameSchema}; a divergence is caught
  * by the registry test, which routes every live pattern through the matcher.
  */
-export const WorkflowPatternSchema = z.enum([
+const WorkflowPatternSchema = z.enum([
   'sequential',
   'wave',
   'graph',
@@ -300,14 +300,14 @@ export const WorkflowPatternSchema = z.enum([
  * `pipeline/adaptive-orchestrator.ts`). Self-contained here for the same reason
  * as {@link WorkflowPatternSchema}.
  */
-export const PipelineTypeSchema = z.enum(['dev', 'research', 'audit', 'greenfield', 'general']);
+const PipelineTypeSchema = z.enum(['dev', 'research', 'audit', 'greenfield', 'general']);
 
 /**
  * Task-complexity tiers (mirrors `TaskAnalysisResult.complexity`). Used by a
  * selection rule's complexity gate so the sequential default can split between a
  * single-shot and a pipeline strategy purely from manifest data.
  */
-export const ComplexityTierSchema = z.enum(['simple', 'moderate', 'complex', 'expert']);
+const ComplexityTierSchema = z.enum(['simple', 'moderate', 'complex', 'expert']);
 
 /**
  * One declarative selection rule (#3836). A rule MATCHES when every predicate it
@@ -321,7 +321,7 @@ export const ComplexityTierSchema = z.enum(['simple', 'moderate', 'complex', 'ex
  * unexpectedly. At least one predicate must be present (a rule that matches every
  * signal would shadow the whole table) — enforced by {@link SelectionRuleSchema}.
  */
-export const SelectionRuleSchema = z
+const SelectionRuleSchema = z
   .object({
     /** Higher wins. Distinctive templates outrank the structural-pattern fallback. */
     priority: z.number().int(),

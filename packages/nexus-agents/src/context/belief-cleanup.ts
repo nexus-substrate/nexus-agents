@@ -30,7 +30,7 @@ const POLLUTED_PATTERNS: readonly RegExp[] = [
 ];
 
 /** Marker file name used to skip re-runs of a successful cleanup. */
-export const BELIEF_CLEANUP_MARKER = '.belief-cleanup-done';
+const BELIEF_CLEANUP_MARKER = '.belief-cleanup-done';
 
 /** Decision for a single belief: keep or drop. */
 export interface BeliefCleanupDecision {

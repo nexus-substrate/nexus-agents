@@ -291,13 +291,13 @@ function selectTopsisRouter(
 // ---------------------------------------------------------------------------
 
 /** Minimum observed success rate before quality penalty applies. */
-export const PERFORMANCE_FLOOR_THRESHOLD = 0.5;
+const PERFORMANCE_FLOOR_THRESHOLD = 0.5;
 
 /** Minimum sample count required before the floor gate activates. */
-export const PERFORMANCE_FLOOR_MIN_SAMPLES = 20;
+const PERFORMANCE_FLOOR_MIN_SAMPLES = 20;
 
 /** Quality score penalty applied to underperforming CLI+category pairs. */
-export const PERFORMANCE_FLOOR_PENALTY = 3.0;
+const PERFORMANCE_FLOOR_PENALTY = 3.0;
 
 /**
  * Performance data for a CLI on a specific task category.

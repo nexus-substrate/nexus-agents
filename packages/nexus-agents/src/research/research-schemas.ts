@@ -228,7 +228,7 @@ export type ResearchPaper = z.infer<typeof ResearchPaperSchema>;
 /**
  * Integration file entry with type information.
  */
-export const IntegrationFileObjectSchema = z.object({
+const IntegrationFileObjectSchema = z.object({
   path: z.string(),
   type: z.enum(['primary', 'test', 'types', 'helpers']).optional(),
   required: z.boolean().default(true),

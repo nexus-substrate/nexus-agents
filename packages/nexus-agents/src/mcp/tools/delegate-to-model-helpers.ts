@@ -271,7 +271,7 @@ function buildModalityFilter(requirements: TaskRequirements): {
  * Filters models by modality requirements using the capabilities matrix (Issue #685).
  * Returns model IDs that satisfy all detected modality needs, or null if no filtering needed.
  */
-export function filterByModality(requirements: TaskRequirements): Set<string> | null {
+function filterByModality(requirements: TaskRequirements): Set<string> | null {
   const modalReqs = buildModalityFilter(requirements);
   if (modalReqs === null) return null;
 

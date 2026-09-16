@@ -41,7 +41,7 @@ export interface OutcomeStoreConfig {
  * broadens to family-level data. Tuned so cold-start siblings inherit
  * their family's signal until they accumulate ~5 of their own outcomes.
  */
-export const DEFAULT_FAMILY_FALLBACK_THRESHOLD = 5;
+const DEFAULT_FAMILY_FALLBACK_THRESHOLD = 5;
 
 /**
  * Auto-classifies failed outcomes that are missing a failureCategory.
@@ -293,9 +293,8 @@ async function attachOutcomeStoreToRegistry(store: OutcomeStore): Promise<void> 
   try {
     const { getMemoryRegistry } = await import('nexus-memory');
     const { OutcomeStoreAdapter } = await import('./outcome-store-adapter.js');
-    const { ensureSharedMemoryRegistry } = await import(
-      '../../mcp/tools/tool-memory-registry-adapters.js'
-    );
+    const { ensureSharedMemoryRegistry } =
+      await import('../../mcp/tools/tool-memory-registry-adapters.js');
     // #3995: inject the canonical nexusDataPath-resolved DB path before the
     // first registry touch. No-op once a registry exists.
     ensureSharedMemoryRegistry();

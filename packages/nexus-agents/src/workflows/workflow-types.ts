@@ -65,7 +65,7 @@ export type AgentRoleType = z.infer<typeof AgentRoleSchema>;
 /**
  * Schema for partial context budget (allows overriding specific fields).
  */
-export const PartialContextBudgetSchema = z
+const PartialContextBudgetSchema = z
   .object({
     system: z.number().min(0).max(1).optional(),
     task: z.number().min(0).max(1).optional(),

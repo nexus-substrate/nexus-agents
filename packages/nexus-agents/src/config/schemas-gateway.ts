@@ -23,7 +23,7 @@ const ALLOWED_COMMANDS = ['node', 'npx', 'python', 'python3', 'uvx', 'docker'] a
  * Upstream MCP server configuration (#1498).
  * Defines an external MCP server to connect to via stdio transport.
  */
-export const UpstreamServerSchema = z.object({
+const UpstreamServerSchema = z.object({
   /** Unique name for this upstream server (used as tool prefix). */
   name: z
     .string()
@@ -45,7 +45,7 @@ export const UpstreamServerSchema = z.object({
 export type UpstreamServerConfig = z.infer<typeof UpstreamServerSchema>;
 
 /** Maximum number of upstream servers (resource limit). */
-export const MAX_UPSTREAM_SERVERS = 5;
+const MAX_UPSTREAM_SERVERS = 5;
 
 /**
  * Gateway middleware configuration schema.
