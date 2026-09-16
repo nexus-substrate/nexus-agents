@@ -72,3 +72,19 @@ export const CUSTOM_API_ALLOW_PRIVATE_ENV = 'NEXUS_CUSTOM_API_ALLOW_PRIVATE';
  * warns. Parsed by `adapters/sdk/gateway-cost.ts`.
  */
 export const GATEWAY_COST_ENV = 'NEXUS_GATEWAY_COST';
+
+/**
+ * Endpoint identity of the OpenAI-compatible voter gateway (#4392 increment
+ * 2, step 2): the `<endpoint>` in the `api:<endpoint>` arm the gateway
+ * registers as, and the key a scoped `NEXUS_GATEWAY_COST` entry names it by.
+ * An endpoint id (`isEndpointArmId('api:' + value)`), never the URL.
+ * Defaults to {@link DEFAULT_OPENAI_COMPAT_ENDPOINT}.
+ */
+export const OPENAI_COMPAT_ENDPOINT_ENV = 'NEXUS_OPENAI_COMPAT_ENDPOINT';
+
+/**
+ * The default endpoint identity: the `providers.openai-compat` key the
+ * opencode.json bridge reads the same gateway from (#2503), so an operator
+ * who declares `openai-compat=free` names the arm the gateway registers as.
+ */
+export const DEFAULT_OPENAI_COMPAT_ENDPOINT = 'openai-compat';

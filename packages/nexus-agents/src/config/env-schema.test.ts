@@ -1083,3 +1083,38 @@ describe('NEXUS_GATEWAY_COST is registered with its grammar (#4392 inc 2)', () =
     }
   );
 });
+
+// =============================================================================
+// NEXUS_OPENAI_COMPAT_ENDPOINT (#4392 increment 2, step 2)
+// =============================================================================
+
+describe('NEXUS_OPENAI_COMPAT_ENDPOINT is registered as an endpoint id (#4392 inc 2 step 2)', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is a known variable', () => {
+    expect(getKnownNexusVarNames()).toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
+  });
+
+  it.each(['openai-compat', 'corp-proxy', 'gw_1.2'])('accepts %j', (value) => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_ENDPOINT', value);
+    const result = validateNexusEnv();
+    expect(result.unknownVars.map((v) => v.name)).not.toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
+    expect(result.invalidVars.map((v) => v.name)).not.toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
+  });
+
+  it.each(['Corp-Proxy', 'a b', 'https://user:pw@host/v1', ''])(
+    'reports %j as invalid, not unknown, without echoing the value',
+    (value) => {
+      vi.stubEnv('NEXUS_OPENAI_COMPAT_ENDPOINT', value);
+      const result = validateNexusEnv();
+      expect(result.unknownVars.map((v) => v.name)).not.toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
+      const invalid = result.invalidVars.find((v) => v.name === 'NEXUS_OPENAI_COMPAT_ENDPOINT');
+      expect(invalid).toBeDefined();
+      // A URL pasted here can carry a credential; the value never reaches the log.
+      expect(JSON.stringify(invalid)).not.toContain('user:pw');
+      expect(invalid?.value).toBe('<redacted>');
+    }
+  );
+});

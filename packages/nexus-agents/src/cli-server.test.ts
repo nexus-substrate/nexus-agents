@@ -48,6 +48,9 @@ vi.mock('./cli-server-gateway.js', () => ({
   tryWireGatewayAdapter: vi.fn(() => Promise.resolve(undefined)),
   // #4040: cli-server now also imports these from the gateway module.
   tryWireGatewayAdapters: vi.fn(() => Promise.resolve(undefined)),
+  // #4392 inc 2 step 2: cli-server now enters through wireGateway (discovery
+  // + api:<endpoint> arm registration in one call).
+  wireGateway: vi.fn(() => Promise.resolve(undefined)),
   resolveDefaultModelAdapter: vi.fn(() => undefined),
 }));
 

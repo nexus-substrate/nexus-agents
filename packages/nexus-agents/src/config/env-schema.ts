@@ -15,6 +15,7 @@ import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
 import { parseGatewayCostEnv } from '../adapters/sdk/gateway-cost.js';
+import { isEndpointArmId } from '../cli-adapters/types-core.js';
 import {
   describeClassGuard,
   MCP_TIMEOUTS,
@@ -233,6 +234,18 @@ const NexusEnvSchema = z.object({
     })
     .optional(),
   NEXUS_MODEL_REGISTRY_OVERLAY: z.string().optional(),
+  // #4392 increment 2 step 2: the `<endpoint>` of the `api:<endpoint>` arm the
+  // voter gateway registers as (OPENAI_COMPAT_ENDPOINT_ENV; spelled out for
+  // the coverage script). Same shape rule as a scoped NEXUS_GATEWAY_COST key,
+  // so a URL — or a credential inside one — can never become an arm id. An
+  // invalid value is reported here and the runtime reader falls back to the
+  // default endpoint (`openai-compat`).
+  NEXUS_OPENAI_COMPAT_ENDPOINT: z
+    .string()
+    .refine((v) => isEndpointArmId(`api:${v.trim()}`), {
+      message: 'must be an endpoint id: lowercase alphanumerics plus . _ -, 1-64 chars',
+    })
+    .optional(),
   NEXUS_OPENAI_COMPAT_KEY: z.string().optional(),
   NEXUS_OPENAI_COMPAT_URL: z.string().optional(),
   NEXUS_OPENCODE_CONFIG: z.string().optional(),
@@ -310,9 +323,13 @@ const KNOWN_NAMES: readonly string[] = Object.keys(NexusEnvSchema.shape);
  * `NEXUS_GATEWAY_COST` entry key is operator-typed free text before the
  * parser rejects it — `ghp_TOKEN=free` or `https://user:pw@host=free` would
  * otherwise land on the startup warn line, which is exactly what the parser's
- * own "never echo the key" errors avoid.
+ * own "never echo the key" errors avoid. `NEXUS_OPENAI_COMPAT_ENDPOINT` is
+ * the same shape: the likely mistake is pasting the gateway URL into it.
  */
-const REDACTED_VALUE_VARS: ReadonlySet<string> = new Set(['NEXUS_GATEWAY_COST']);
+const REDACTED_VALUE_VARS: ReadonlySet<string> = new Set([
+  'NEXUS_GATEWAY_COST',
+  'NEXUS_OPENAI_COMPAT_ENDPOINT',
+]);
 const REDACTED_VALUE = '<redacted>';
 
 // ============================================================================

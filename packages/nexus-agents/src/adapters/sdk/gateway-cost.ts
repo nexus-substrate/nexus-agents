@@ -27,7 +27,11 @@
 
 import { z } from 'zod';
 import { ConfigError, err, ok, type ILogger, type Result } from '../../core/index.js';
-import { ApiArmIdSchema, isEndpointArmId } from '../../cli-adapters/types-core.js';
+import {
+  ApiArmIdSchema,
+  isEndpointArmId,
+  type EndpointArmId,
+} from '../../cli-adapters/types-core.js';
 import type { TokenRates } from '../../learning/token-cost-core.js';
 import { GATEWAY_COST_ENV } from './types.js';
 
@@ -145,9 +149,11 @@ export function parseGatewayCostEnv(raw: string): Result<GatewayCostMap, ConfigE
 /**
  * True iff `arm` is a GATEWAY arm: a valid endpoint arm id that is not one
  * of the three vendor arms (`api:anthropic|openai|google`). `api:custom-openai`
- * is a gateway. Decided on the arm id only — never on a URL.
+ * is a gateway. Decided on the arm id only — never on a URL. A type guard
+ * (#4392 step 2) so a caller can hand a confirmed gateway arm to the
+ * `EndpointArmId`-typed catalogue without a cast.
  */
-export function isGatewayArmId(arm: string): boolean {
+export function isGatewayArmId(arm: string): arm is EndpointArmId {
   if (!isEndpointArmId(arm)) return false;
   return arm === 'api:custom-openai' || !ApiArmIdSchema.safeParse(arm).success;
 }
