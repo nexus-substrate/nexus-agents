@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.75.0
+
+### Minor Changes
+
+- [#6403](https://github.com/nexus-substrate/nexus-agents/pull/6403) [`c110123`](https://github.com/nexus-substrate/nexus-agents/commit/c1101239e0aace6cc762407c91b502fa5084dc5c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The OpenAI-compatible voter gateway now registers as one `api:<endpoint>` arm in the adapter registry, in every billing mode ([#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392) increment 2, step 2). Every model the gateway lists is fronted by that single arm — 256 discovered models are one registry entry and one circuit breaker, not 256 of each — and a failure on the gateway is recorded against the arm's breaker under the same rate-limit exemption the resilient adapter applies (transient throttles are telemetry only; durable capacity caps count). The endpoint identity comes from the new `NEXUS_OPENAI_COMPAT_ENDPOINT` variable (validated as an endpoint id, never a URL; default `openai-compat`, the `providers.openai-compat` key of `opencode.json`), so a scoped `NEXUS_GATEWAY_COST` entry such as `openai-compat=free` now applies to the voter gateway and `doctor` reports it as declared instead of "no bare default". Bare `priced` prices the gateway at the registry rate of the first model in its catalogue (or an explicit model id) rather than at the opencode display slot, and a model the registry cannot price stays fail-closed (`undefined`), with the unpriced model named in the reason. Discovery drops model ids that carry whitespace or control characters and logs only how many were dropped, never the id.
+
 ## 8.74.2
 
 ### Patch Changes
