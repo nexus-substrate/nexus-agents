@@ -26,6 +26,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { IssueTriage } from '../../dogfooding/issue-triage.js';
 import type { IssueTriageResult } from '../../dogfooding/issue-triage-types.js';
+import { readActionRefusal } from '../../dogfooding/issue-triage-helpers.js';
 import { getToolMemory } from './tool-memory.js';
 import {
   getOutcomeStore,
@@ -71,6 +72,12 @@ export interface IssueTriageResponse {
     readonly description: string;
     readonly policyApproved: boolean;
     readonly corroborated: boolean;
+    /** Present when refused: the rules the policy gate (or a corroboration refusal) recorded (#6309). */
+    readonly policyViolations?: readonly string[];
+    /** Present when refused or uncorroborated: the unmet corroboration requirements. */
+    readonly missingCorroboration?: readonly string[];
+    /** Present when the firewall refused the action at its corroboration stage under `enforce`. */
+    readonly refusedAtStage?: 'corroboration';
   }>;
   readonly durationMs: number;
 }
@@ -78,6 +85,23 @@ export interface IssueTriageResponse {
 // ============================================================================
 // Handler
 // ============================================================================
+
+/**
+ * WHY an action was refused, for the caller (#6309 review): before this the
+ * response carried two booleans and dropped `details`, so a corroboration
+ * refusal and a policy refusal were indistinguishable to an MCP consumer.
+ * Absent on an approved, corroborated action.
+ */
+function refusalFields(
+  action: IssueTriageResult['proposedActions'][number]
+): Pick<
+  IssueTriageResponse['proposedActions'][number],
+  'policyViolations' | 'missingCorroboration' | 'refusedAtStage'
+> {
+  const refusal = readActionRefusal(action);
+  if (!action.policyApproved) return refusal;
+  return action.corroborated ? {} : { missingCorroboration: refusal.missingCorroboration };
+}
 
 /** Builds the structured triage response from raw triage result. */
 function buildTriageResponse(value: IssueTriageResult): IssueTriageResponse {
@@ -98,6 +122,7 @@ function buildTriageResponse(value: IssueTriageResult): IssueTriageResponse {
       description: a.description,
       policyApproved: a.policyApproved,
       corroborated: a.corroborated,
+      ...refusalFields(a),
     })),
     durationMs: value.totalDurationMs,
   };

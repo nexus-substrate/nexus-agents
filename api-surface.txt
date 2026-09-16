@@ -5221,7 +5221,7 @@ InterfaceDeclaration IssueTriageResponse
   readonly categoryConfidence: number
   readonly durationMs: number
   readonly issueNumber: number
-  readonly proposedActions: readonly { readonly corroborated: boolean; readonly description: string; readonly policyApproved: boolean; readonly type: string; }[]
+  readonly proposedActions: readonly { readonly corroborated: boolean; readonly description: string; readonly missingCorroboration?: readonly string[]; readonly policyApproved: boolean; readonly policyViolations?: readonly string[]; readonly refusedAtStage?: "corroboration"; readonly type: string; }[]
   readonly repository: string
   readonly trustAssessment: { readonly isSuspicious: boolean; readonly reputationScore?: number | undefined; readonly suspiciousSignals: readonly string[]; readonly trustTier: string; readonly userRole: string; }
 InterfaceDeclaration ISwarmObserver

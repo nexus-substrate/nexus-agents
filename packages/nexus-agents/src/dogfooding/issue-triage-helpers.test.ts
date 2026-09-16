@@ -386,8 +386,47 @@ describe('validateActionsThroughFirewall — corroboration runs inside the firew
       timestamp: '2026-09-16T00:00:00.000Z',
     });
 
-    expect(comment).toContain(':no_entry: **SummarizeIssue**');
+    expect(comment).toContain(
+      ':no_entry: **SummarizeIssue**: A summary (refused at corroboration: At least one Tier 1/2 source)'
+    );
     expect(comment).not.toContain(':yellow_circle:');
+  });
+
+  it('a policy refusal names its rules on the rendered line, so the two refusals are distinguishable', () => {
+    const comment = formatTriageComment({
+      issueNumber: 1,
+      repository: 'o/r',
+      category: 'bug',
+      categoryConfidence: 0.5,
+      trustAssessment: {
+        trustTier: '3',
+        userRole: 'none',
+        auditSink: 'none',
+        isSuspicious: false,
+        suspiciousSignals: [],
+      },
+      proposedActions: [
+        {
+          type: 'ProposeLabels',
+          description: 'Suggest labels: bug',
+          policyApproved: false,
+          corroborated: true,
+          details: {
+            policyViolations: ['INSUFFICIENT_TRUST', 'UNTRUSTED_INFLUENCE'],
+            missingCorroboration: [],
+            corroborationWouldRefuse: false,
+            labels: ['bug'],
+          },
+        },
+      ],
+      totalDurationMs: 1,
+      timestamp: '2026-09-16T00:00:00.000Z',
+    });
+
+    expect(comment).toContain(
+      ':no_entry: **ProposeLabels**: Suggest labels: bug (policy: INSUFFICIENT_TRUST, UNTRUSTED_INFLUENCE)'
+    );
+    expect(comment).not.toContain('refused at corroboration');
   });
 
   it('fails closed when the corroboration stage did not run: an unevaluated action is neither corroborated nor not', () => {

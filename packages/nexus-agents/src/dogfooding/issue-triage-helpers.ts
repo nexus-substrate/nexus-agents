@@ -282,7 +282,9 @@ export function formatTriageComment(result: IssueTriageResult): string {
     lines.push('');
     for (const action of result.proposedActions) {
       const status = formatActionStatus(action);
-      lines.push(`- ${status} **${action.type}**: ${action.description}`);
+      lines.push(
+        `- ${status} **${action.type}**: ${action.description}${formatRefusalReason(action)}`
+      );
     }
   }
 
@@ -300,4 +302,48 @@ function formatActionStatus(action: ProposedAction): string {
   if (action.policyApproved && action.corroborated) return ':white_check_mark:';
   if (action.policyApproved && !action.corroborated) return ':yellow_circle:';
   return ':no_entry:';
+}
+
+/** The refusal-bearing subset of `ProposedAction.details`, read with guards. */
+export interface ActionRefusalDetails {
+  readonly policyViolations: readonly string[];
+  readonly missingCorroboration: readonly string[];
+  readonly refusedAtStage?: 'corroboration';
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+/**
+ * Reads WHY an action was refused (or left uncorroborated) off its `details`
+ * (#6309 review): `details` is untyped on the record, so this is the one
+ * place the keys `buildActionDetails` writes are read back. A key that is
+ * absent or malformed reads as empty, never as a rule.
+ */
+export function readActionRefusal(action: ProposedAction): ActionRefusalDetails {
+  const { policyViolations, missingCorroboration, refusedAtStage } = action.details;
+  return {
+    policyViolations: isStringArray(policyViolations) ? policyViolations : [],
+    missingCorroboration: isStringArray(missingCorroboration) ? missingCorroboration : [],
+    ...(refusedAtStage === 'corroboration' ? { refusedAtStage } : {}),
+  };
+}
+
+/**
+ * The parenthetical after a refused action's line, so a corroboration refusal
+ * is distinguishable from a policy refusal where a reader sees it (#6309
+ * review). Empty for an action that was not refused.
+ */
+function formatRefusalReason(action: ProposedAction): string {
+  if (action.policyApproved) return '';
+  const refusal = readActionRefusal(action);
+  const policyRules = refusal.policyViolations.filter((r) => r !== 'INSUFFICIENT_CORROBORATION');
+  const parts: string[] = [];
+  if (policyRules.length > 0) parts.push(`policy: ${policyRules.join(', ')}`);
+  if (refusal.refusedAtStage !== undefined) {
+    parts.push(`refused at ${refusal.refusedAtStage}: ${refusal.missingCorroboration.join('; ')}`);
+  }
+  // A refusal that names nothing is still a refusal; say so rather than print nothing.
+  return ` (${parts.length > 0 ? parts.join('; ') : 'refused: no rule recorded'})`;
 }
