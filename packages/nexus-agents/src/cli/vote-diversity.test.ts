@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import { panelDiversityOf, singleModelPanelWarning } from './vote-diversity.js';
-import { modelsLine, seatTimingLine } from './vote-summary-lines.js';
+import { modelsLine, panelShapeLines } from './vote-summary-lines.js';
 
 const SEVEN: readonly VoterRole[] = [
   'architect',
@@ -150,7 +150,9 @@ describe('modelsLine (#6115)', () => {
   });
 });
 
-describe('seatTimingLine (#6103)', () => {
+describe('seat timing line (#6103) — the third panel-shape line', () => {
+  const seatTimingLine = (votes: readonly AgentVoteResult[]): string =>
+    panelShapeLines(undefined, votes)[2] ?? '';
   it("attributes each seat's wall-clock to queueing versus running, per attempt, and totals the queue wait", () => {
     const panel = [
       seat('architect', {

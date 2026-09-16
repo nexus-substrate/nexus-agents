@@ -169,7 +169,7 @@ function seconds(ms: number): string {
  * without timing says `unmeasured`, one refused before any attempt says `no
  * attempt` — neither is rendered as a zero that could read as measured.
  */
-export function seatTimingLine(votes: readonly AgentVoteResult[]): string {
+function seatTimingLine(votes: readonly AgentVoteResult[]): string {
   if (votes.length === 0) return 'Seat timing (queued→ran): no seats';
   let queuedTotal = 0;
   const parts = votes.map((v) => {

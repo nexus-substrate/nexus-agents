@@ -147,11 +147,6 @@ export interface SeatAttemptTiming {
   readonly fallback: boolean;
 }
 
-/** A seat's attempts in launch order (#6103). */
-export interface SeatTiming {
-  readonly attempts: readonly SeatAttemptTiming[];
-}
-
 /**
  * What a recovered seat was retried FROM (#6246).
  *
@@ -272,7 +267,7 @@ export interface AgentVoteResult {
    * panel wall-clock can be attributed to queueing versus model time before
    * a fallback lane is designed; never folded into the vote record.
    */
-  readonly timing?: SeatTiming | undefined;
+  readonly timing?: { readonly attempts: readonly SeatAttemptTiming[] } | undefined;
   /**
    * Input tokens the adapter reported for this voter's LLM call, when known
    * (#3910). Propagated from `CompletionResponse.usage` so per-decision cost
