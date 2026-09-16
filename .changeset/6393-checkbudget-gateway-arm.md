@@ -1,5 +1,0 @@
----
-'nexus-agents': patch
----
-
-`checkBudget` no longer admits an undeclared gateway arm under `maxCostUsd` at opencode's default model rate. The per-task budget filter now prices a gateway arm (`api:custom-openai`, or any operator-named endpoint arm) by its `NEXUS_GATEWAY_COST` declaration, the same way the task-class cost ceiling already did: `free`/`local` is $0, `priced:<in>,<out>` is that flat rate, bare `priced` uses the display slot's registry rate, and an undeclared, invalid, or registry-unpriceable gateway is not within budget at all — it is skipped, never given a number. `BudgetRoutingResult` gains an optional `unpricedArms` field listing each skipped arm with its reason (`gateway cost unset`, `gateway cost invalid (…)`, …); it is absent when every candidate could be priced. CLI slots and vendor arms (`api:anthropic|openai|google`) keep their previous conservative registry-fallback numbers. The registration-time warning, `doctor`, and `CONFIGURATION.md` now name both consequences of an undeclared gateway.
