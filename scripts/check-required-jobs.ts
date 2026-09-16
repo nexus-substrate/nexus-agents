@@ -194,8 +194,18 @@ function expressionEnd(text: string, start: number): number {
 }
 
 /** A `#` opens a shell comment only outside quotes and only at a word start. */
+/**
+ * Bash opens a comment when `#` BEGINS A WORD: at the start of the text,
+ * after whitespace, or after an unquoted metacharacter (`; & | ( ) < >` and
+ * a backquote). `echo ok;# hidden` runs only `echo ok` (#6378 panel: the
+ * whitespace-only rule let `;# needs.security.result` read as a live check).
+ */
+const WORD_START_BEFORE_HASH = /[\s;&|()<>`]/;
+
 function startsComment(text: string, index: number, quote: string): boolean {
-  return quote === '' && text[index] === '#' && /\s/.test(text[index - 1] ?? '\n');
+  return (
+    quote === '' && text[index] === '#' && WORD_START_BEFORE_HASH.test(text[index - 1] ?? '\n')
+  );
 }
 
 /** Index just past the token that begins at `index`: an expression, an escape, or one char. */

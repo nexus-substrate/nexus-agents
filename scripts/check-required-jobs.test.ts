@@ -174,6 +174,13 @@ describe('shared job gate extraction', () => {
     "echo ok # needs.security.result != 'success'",
     "echo ok\t# needs.security.result != 'success'",
     "# unmatched quote ' needs.security.result",
+    // #6378 panel: `#` begins a word after an unquoted metacharacter too —
+    // bash runs none of these (`bash -c 'echo ok;# echo HIDDEN'` prints ok).
+    "echo ok;# needs.security.result != 'success'",
+    "true &&# needs.security.result != 'success'",
+    "true ||# needs.security.result != 'success'",
+    "(echo ok;# needs.security.result != 'success'\n)",
+    'echo ok >/dev/null<# needs.security.result',
   ])('rejects a commented-out result check: %s', async (comment) => {
     const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
     const gate = extractJobGate({
