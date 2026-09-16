@@ -516,7 +516,7 @@ describe('the gate itself fails closed on an unreadable ledger', () => {
     const dir = mkdtempSync(join(tmpdir(), 'gov-ledger-'));
     const file = join(dir, 'pr-review-records.jsonl');
     writeFileSync(file, contents, 'utf8');
-    return runGovernorReviewGate([], file);
+    return runGovernorReviewGate([], { targetDir: REPO_ROOT, ledgerFile: file });
   }
 
   it('exits 1 when a ledger line cannot be validated', () => {
@@ -1016,6 +1016,34 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
       const actions = steps.filter((step) => step.uses !== undefined);
       expect(actions.length).toBeGreaterThan(0);
       for (const action of actions) expect(action.uses).not.toMatch(/^\.\//);
+    });
+
+    it('every job that runs on a pull_request uses the two-checkout layout: no ./ action, scripts only via the base dispatcher (#6377)', () => {
+      // The backstop runs on push to main (main judging main) and is the one
+      // job allowed to use the tree it checks out at the workspace root.
+      const pullRequestJobs = Object.entries(jobs).filter(
+        ([name]) => name !== 'governor-ratification-backstop'
+      );
+      expect(pullRequestJobs.map(([name]) => name).sort()).toEqual([
+        'codeowners-errors',
+        'governor-ratification',
+        'governor-review',
+      ]);
+      for (const [name, job] of pullRequestJobs) {
+        const jobSteps = job?.steps ?? [];
+        const checkouts = jobSteps.filter(
+          (step) => step.uses?.startsWith('actions/checkout@') === true
+        );
+        expect(checkouts.map((step) => step.with?.['path']).sort(), name).toEqual(['gate', 'head']);
+        for (const step of jobSteps) {
+          if (step.uses !== undefined) expect(step.uses, name).not.toMatch(/^\.\//);
+          const run = typeof step.run === 'string' ? step.run : '';
+          if (run.includes('pnpm exec tsx')) {
+            expect(run, name).toContain('scripts/governor-gate.ts ');
+            expect(step['working-directory'], name).toBe('gate');
+          }
+        }
+      }
     });
 
     it('pins upstream setup actions and uses the base package manager and lockfile', () => {
