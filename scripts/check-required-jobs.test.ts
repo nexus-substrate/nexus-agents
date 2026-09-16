@@ -1,6 +1,6 @@
 /** Governor-owned required-job wiring contract (#6343). */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,21 +11,40 @@ import { AGGREGATOR_RUN } from './aggregator-shape.js';
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const contexts = ['CI Success', 'Governor-path ratification gate'];
+// Each required context is bound to the ONE job that may produce it (#6390).
+const requiredContexts = {
+  'CI Success': { workflow: 'ci.yml', job: 'ci-success' },
+  'Governor-path ratification gate': { workflow: 'ci.yml', job: 'governor' },
+};
 const manifest = {
   description: 'Required CI wiring',
-  version: '1.0.0',
+  version: '2.0.0',
   ci_success_needs: ['lint', 'security'],
   skip_allowed: ['lint'],
-  required_contexts: contexts,
+  required_contexts: requiredContexts,
   audit_config_forbidden: true,
 };
+const ciJob = { workflow: 'ci.yml', id: 'ci-success', context: 'CI Success' };
+const governorJob = {
+  workflow: 'ci.yml',
+  id: 'governor',
+  context: 'Governor-path ratification gate',
+};
+/** A fully-parsed inventory: every workflow read, nothing unparseable. */
+const inv = (
+  jobs: readonly (typeof ciJob)[]
+): { jobs: readonly (typeof ciJob)[]; unparseable: string[] } => ({
+  jobs,
+  unparseable: [],
+});
+const workflowJobs = inv([ciJob, governorJob]);
 const input = {
   manifest,
   ciSuccessNeeds: ['lint', 'security'],
   ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint'], neutralized: [] },
   packageJson: {},
   requiredContexts: contexts,
-  workflowJobNames: contexts,
+  workflowJobs,
 };
 
 // Dynamic imports let RED report each missing behavior, not just a collection error.
@@ -160,25 +179,46 @@ describe('checkRequiredJobs', () => {
 
   it('folds in required contexts without producers', async () => {
     const { checkRequiredJobs } = await import('./check-required-jobs.js');
-    const result = checkRequiredJobs({ ...input, workflowJobNames: ['CI Success'] });
+    const result = checkRequiredJobs({ ...input, workflowJobs: inv([ciJob]) });
     expect(result.verdict).toBe('drift');
     expect(result.problems).toContain(
       'Required context without workflow job: Governor-path ratification gate'
     );
   });
 
-  it('names the empty workflow inventory', async () => {
+  it('names the empty workflow inventory: unproduced, empty, and every pinned producer absent', async () => {
     const { checkRequiredJobs } = await import('./check-required-jobs.js');
-    const result = checkRequiredJobs({ ...input, workflowJobNames: [] });
-    expect(result.verdict).toBe('drift');
-    expect(result.problems).toContain('No workflow job names were found');
+    expect(checkRequiredJobs({ ...input, workflowJobs: inv([]) })).toEqual({
+      verdict: 'drift',
+      problems: [
+        'Required context without workflow job: CI Success',
+        'Required context without workflow job: Governor-path ratification gate',
+        'No workflow job names were found',
+        'Required context producer missing: CI Success (ci.yml job ci-success)',
+        'Required context producer missing: Governor-path ratification gate (ci.yml job governor)',
+      ],
+    });
+  });
+
+  it('reports only the inventory as unmeasured, inventing no producer drift', async () => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    expect(checkRequiredJobs({ ...input, workflowJobs: 'unmeasured' })).toEqual({
+      verdict: 'unmeasured',
+      problems: ['Required contexts: unmeasured (workflow inventory unreadable)'],
+    });
   });
 
   it('enforces contexts added to the manifest', async () => {
     const { checkRequiredJobs } = await import('./check-required-jobs.js');
     const result = checkRequiredJobs({
       ...input,
-      manifest: { ...manifest, required_contexts: [...contexts, 'Extra Gate'] },
+      manifest: {
+        ...manifest,
+        required_contexts: {
+          ...requiredContexts,
+          'Extra Gate': { workflow: 'extra.yml', job: 'extra' },
+        },
+      },
     });
     expect(result.verdict).toBe('drift');
     expect(result.problems).toContain('Missing required context: Extra Gate');
@@ -189,15 +229,125 @@ describe('checkRequiredJobs', () => {
     const result = checkRequiredJobs({
       ...input,
       requiredContexts: 'unmeasured',
-      manifest: { ...manifest, required_contexts: [...contexts, 'Extra Gate'] },
+      manifest: {
+        ...manifest,
+        required_contexts: {
+          ...requiredContexts,
+          'Extra Gate': { workflow: 'extra.yml', job: 'extra' },
+        },
+      },
     });
     expect(result.verdict).toBe('drift');
     expect(result.problems).toContain('Required context without workflow job: Extra Gate');
+    expect(result.problems).toContain(
+      'Required context producer missing: Extra Gate (extra.yml job extra)'
+    );
   });
 
   it('rejects a malformed manifest', async () => {
     const { checkRequiredJobs } = await import('./check-required-jobs.js');
     expect(checkRequiredJobs({ ...input, manifest: {} }).verdict).toBe('drift');
+  });
+
+  it.each([
+    { version: '1.0.0' },
+    { required_contexts: contexts },
+    { version: '1.0.0', required_contexts: contexts },
+    { required_contexts: { 'CI Success': { workflow: 'ci.yml' } } },
+    { required_contexts: { 'CI Success': { workflow: 'ci', job: 'ci-success' } } },
+    { required_contexts: { 'CI Success': { workflow: 'ci.yml', job: 'ci-success', extra: 1 } } },
+  ])('rejects the pre-#6390 manifest form and unbound producers: %j', async (override) => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    expect(checkRequiredJobs({ ...input, manifest: { ...manifest, ...override } })).toEqual({
+      verdict: 'drift',
+      problems: ['Invalid required-jobs manifest'],
+    });
+  });
+
+  it('names an empty required_contexts record and a built-in context the manifest does not pin', async () => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    const empty = checkRequiredJobs({ ...input, manifest: { ...manifest, required_contexts: {} } });
+    expect(empty.verdict).toBe('drift');
+    expect(empty.problems).toContain('Manifest required_contexts is empty');
+    expect(empty.problems).toContain('Manifest pins no producer for required context: CI Success');
+    expect(empty.problems).toContain(
+      'Manifest pins no producer for required context: Governor-path ratification gate'
+    );
+    const one = checkRequiredJobs({
+      ...input,
+      manifest: {
+        ...manifest,
+        required_contexts: { 'CI Success': requiredContexts['CI Success'] },
+      },
+    });
+    expect(one.verdict).toBe('drift');
+    expect(one.problems).toEqual([
+      'Manifest pins no producer for required context: Governor-path ratification gate',
+    ]);
+  });
+
+  // #6390: branch protection requires the context by job NAME, the shape lock
+  // finds the aggregator by job ID. Bind the two, or a trivial twin satisfies
+  // protection while the real aggregator is renamed out of the way.
+  it.each([
+    {
+      case: 'a second job in the same workflow carries the required name',
+      jobs: [
+        ...workflowJobs.jobs,
+        { workflow: 'ci.yml', id: 'ci-success-2', context: 'CI Success' },
+      ],
+      expected: [
+        'Required context produced by an unpinned job: CI Success (ci.yml job ci-success-2)',
+      ],
+    },
+    {
+      case: 'a job in another workflow carries the required name',
+      jobs: [...workflowJobs.jobs, { workflow: 'zz.yml', id: 'green', context: 'CI Success' }],
+      expected: ['Required context produced by an unpinned job: CI Success (zz.yml job green)'],
+    },
+    {
+      case: 'an unnamed job whose ID equals a required context',
+      jobs: [...workflowJobs.jobs, { workflow: 'zz.yml', id: 'CI Success', context: 'CI Success' }],
+      expected: [
+        'Required context produced by an unpinned job: CI Success (zz.yml job CI Success)',
+      ],
+    },
+    {
+      case: 'the aggregator is renamed and a trivial twin takes its name',
+      jobs: [
+        { ...ciJob, context: 'CI Success (real)' },
+        governorJob,
+        { workflow: 'ci.yml', id: 'green', context: 'CI Success' },
+      ],
+      expected: [
+        'Required context producer renamed: CI Success is ci.yml job ci-success, whose name is "CI Success (real)"',
+        'Required context produced by an unpinned job: CI Success (ci.yml job green)',
+      ],
+    },
+    {
+      case: 'the pinned producer is absent',
+      jobs: [governorJob],
+      expected: [
+        'Required context without workflow job: CI Success',
+        'Required context producer missing: CI Success (ci.yml job ci-success)',
+      ],
+    },
+    {
+      case: 'the pinned producer lives in the wrong workflow',
+      jobs: [{ ...ciJob, workflow: 'other.yml' }, governorJob],
+      // The same ID in another file is a different job: pinned absent AND unpinned present.
+      expected: [
+        'Required context producer missing: CI Success (ci.yml job ci-success)',
+        'Required context produced by an unpinned job: CI Success (other.yml job ci-success)',
+      ],
+    },
+  ])('binds each required context to its pinned producer: $case', async ({ jobs, expected }) => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    // Protection is satisfied in every row: the drift is in WHICH job reports.
+    expect(checkRequiredJobs({ ...input, workflowJobs: inv(jobs) })).toEqual({
+      verdict: 'drift',
+      problems: expected,
+    });
   });
 });
 
@@ -580,7 +730,7 @@ describe('shared job gate extraction (#6382)', () => {
   it('matches the manifest to the REAL ci-success.needs exactly and checks the tree', async () => {
     const { checkRequiredJobs, loadCiSuccessGate } = await import('./check-required-jobs.js');
     const { extractWorkflowGate } = await import('./aggregator-shape.js');
-    const { loadWorkflowJobNames } = await import('./check-required-jobs.js');
+    const { loadWorkflowJobs } = await import('./check-required-jobs.js');
     const actualManifest: unknown = JSON.parse(
       readFileSync('governance/required-jobs.json', 'utf8')
     );
@@ -589,6 +739,16 @@ describe('shared job gate extraction (#6382)', () => {
     };
     const gate = extractWorkflowGate(ci, 'ci-success');
     expect(actualManifest).toMatchObject({ ci_success_needs: gate.needs });
+    // The shape lock judges jobs['ci-success']; protection requires "CI Success".
+    // The manifest binds the two (#6390), and the real tree has one producer each.
+    expect(actualManifest).toMatchObject({
+      required_contexts: { 'CI Success': { workflow: 'ci.yml', job: 'ci-success' } },
+    });
+    const jobs = loadWorkflowJobs('.github/workflows');
+    expect(jobs.unparseable).toEqual([]);
+    for (const context of contexts) {
+      expect(jobs.jobs.filter((job) => job.context === context)).toHaveLength(1);
+    }
     expect(loadCiSuccessGate()).toEqual(gate);
     expect(
       checkRequiredJobs({
@@ -597,7 +757,7 @@ describe('shared job gate extraction (#6382)', () => {
         ciSuccessGate: gate.gate,
         packageJson: JSON.parse(readFileSync('package.json', 'utf8')) as unknown,
         requiredContexts: contexts,
-        workflowJobNames: loadWorkflowJobNames(),
+        workflowJobs: jobs,
       })
     ).toEqual({ verdict: 'ok', problems: [] });
   });
@@ -646,6 +806,12 @@ ${AGGREGATOR_RUN.split('\n')
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    // A 0o311 workflows dir (unlistable-inventory tests) must be restored before rmSync.
+    try {
+      chmodSync(join(directory, '.github/workflows'), 0o755);
+    } catch {
+      // the directory may already be gone
+    }
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -689,6 +855,29 @@ ${AGGREGATOR_RUN.split('\n')
     );
     expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output.join('\n')).toContain('Required context without workflow job: CI Success');
+    expect(output).toContain(
+      '::error::Required context producer renamed: CI Success is ci.yml job ci-success, whose name is "Renamed"'
+    );
+  });
+
+  it('a trivial twin carrying the required name next to the real aggregator is drift (#6390)', async () => {
+    const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+    const workflowPath = join(directory, '.github/workflows/ci.yml');
+    writeFileSync(
+      workflowPath,
+      readFileSync(workflowPath, 'utf8') +
+        `  ci-success-2:
+    name: CI Success
+    runs-on: x
+    steps:
+      - run: 'true'
+`
+    );
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
+    expect(output).toEqual([
+      'Required jobs: drift',
+      '::error::Required context produced by an unpinned job: CI Success (ci.yml job ci-success-2)',
+    ]);
   });
 
   it('a workflow-level defaults.run.shell in the target ci.yml is drift the live checker names (#6387 panel 4)', async () => {
@@ -746,9 +935,11 @@ ${AGGREGATOR_RUN.split('\n')
       throw new Error('API unavailable');
     });
     expect(runRequiredJobsCheck(directory, directory)).toBe(1);
+    const pinned = requiredContexts[name as keyof typeof requiredContexts];
     expect(output).toEqual([
       'Required jobs: drift',
       `::error::Required context without workflow job: ${name}`,
+      `::error::Required context producer renamed: ${name} is ${pinned.workflow} job ${pinned.job}, whose name is "Renamed"`,
       '::warning::Required contexts: unmeasured (branch protection unreadable)',
     ]);
   });
@@ -764,6 +955,7 @@ ${AGGREGATOR_RUN.split('\n')
     expect(output).toEqual([
       'Required jobs: drift',
       '::error::Required context without workflow job: CI Success',
+      '::error::Required context producer renamed: CI Success is ci.yml job ci-success, whose name is "Renamed"',
     ]);
   });
 
@@ -792,7 +984,10 @@ ${AGGREGATOR_RUN.split('\n')
 
   it('warns without inventing missing producers when the inventory is unreadable', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
-    writeFileSync(join(directory, '.github/workflows/broken.yml'), '[');
+    // Only the DIRECTORY being unlistable is unmeasured (#6401): mode 0o311 lets ci.yml be
+    // read by path while readdirSync fails. Root ignores modes, so the case is skipped there.
+    if (process.getuid?.() === 0) return;
+    chmodSync(join(directory, '.github/workflows'), 0o311);
     expect(runRequiredJobsCheck(directory, directory)).toBe(2);
     expect(output).toEqual([
       'Required jobs: unmeasured',
@@ -802,7 +997,8 @@ ${AGGREGATOR_RUN.split('\n')
 
   it('still measures protection drift when the workflow inventory is unreadable', async () => {
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
-    writeFileSync(join(directory, '.github/workflows/broken.yml'), '[');
+    if (process.getuid?.() === 0) return;
+    chmodSync(join(directory, '.github/workflows'), 0o311);
     vi.mocked(execFileSync).mockReturnValue('{"contexts":[]}');
     expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output).toEqual([
@@ -813,16 +1009,49 @@ ${AGGREGATOR_RUN.split('\n')
     ]);
   });
 
-  it('preserves local drift when a sibling workflow cannot be parsed', async () => {
+  it('an unparseable sibling workflow is DRIFT, never a downgrade to unmeasured (#6401 panel)', async () => {
+    // Panel vector: rename the aggregator + add a twin + drop a junk `zz.yml` — the old
+    // exit-2 path let the whole inventory read as unmeasured and the gate warn-and-pass.
     const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
     writeFileSync(join(directory, '.github/workflows/broken.yml'), '[');
-    writeFileSync(join(directory, 'package.json'), '{"pnpm":{"auditConfig":{}}}');
     expect(runRequiredJobsCheck(directory, directory)).toBe(1);
-    expect(output).toContain('::error::Forbidden package.json pnpm.auditConfig is present');
+    expect(output).toContain('::error::Unparseable workflow: broken.yml');
+    expect(output).not.toContain('unmeasured (workflow inventory unreadable)');
+  });
+
+  it('a job whose name is an expression is drift: GitHub evaluates it at runtime (#6401 panel)', async () => {
+    const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+    writeFileSync(
+      join(directory, '.github/workflows/zz.yml'),
+      "jobs:\n  twin:\n    name: \"${{ 'CI Success' }}\"\n    runs-on: x\n    steps: [{ run: 'true' }]\n"
+    );
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
+    // A bare expression could evaluate to ANY required name; every reachable one is named.
     expect(output).toContain(
-      '::warning::Required contexts: unmeasured (workflow inventory unreadable)'
+      '::error::Workflow job name is an expression that could report CI Success, Governor-path ratification gate: zz.yml job twin'
     );
   });
+
+  it.each([
+    { name: "${{ 'CI Success' }}", drift: true },
+    { name: "${{ 'CI ' }}Success", drift: true },
+    { name: 'CI ${{ x }}', drift: true },
+    { name: '${{ a }}I Su${{ b }}ss', drift: true },
+    // Matrix jobs: the literal parts cannot be ordered inside any required name.
+    { name: 'Build (${{ matrix.os }})', drift: false },
+    { name: 'Test (${{ matrix.os }})', drift: false },
+    { name: 'CI Success ${{ x }}', drift: false },
+  ])(
+    'an expression name is drift only when it COULD evaluate to a required context: $name',
+    async ({ name, drift }) => {
+      const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+      writeFileSync(
+        join(directory, '.github/workflows/zz.yml'),
+        `jobs:\n  j:\n    name: "${name}"\n    runs-on: x\n    steps: [{ run: 'true' }]\n`
+      );
+      expect(runRequiredJobsCheck(directory, directory)).toBe(drift ? 1 : 0);
+    }
+  );
 });
 
 // Context contract and loaders folded from the retired standalone gate.
@@ -951,8 +1180,8 @@ describe('required-context contract', () => {
     );
   });
 
-  describe('loadWorkflowJobNames', () => {
-    it('reads names from every workflow and falls back to unnamed job IDs', () => {
+  describe('loadWorkflowJobs', () => {
+    it('reads every workflow job with its file, ID and status context (name, else ID)', () => {
       writeFileSync(
         join(workflowDirectory, 'first.yml'),
         'jobs:\n  gate:\n    name: CI Success\n  unnamed:\n    runs-on: ubuntu-latest\n'
@@ -962,27 +1191,46 @@ describe('required-context contract', () => {
         'jobs:\n  governor:\n    name: Governor-path ratification gate\n'
       );
       writeFileSync(join(workflowDirectory, 'ignored.txt'), 'not yaml');
-      expect(subject.loadWorkflowJobNames(workflowDirectory).sort()).toEqual(
-        [...EXPECTED, 'unnamed'].sort()
+      // GitHub reads `.yaml` too: a twin hidden behind the other extension is still inventoried.
+      writeFileSync(
+        join(workflowDirectory, 'third.yaml'),
+        'jobs:\n  twin:\n    name: CI Success\n'
       );
+      expect(subject.loadWorkflowJobs(workflowDirectory)).toEqual({
+        jobs: [
+          { workflow: 'first.yml', id: 'gate', context: 'CI Success' },
+          { workflow: 'first.yml', id: 'unnamed', context: 'unnamed' },
+          { workflow: 'second.yml', id: 'governor', context: 'Governor-path ratification gate' },
+          { workflow: 'third.yaml', id: 'twin', context: 'CI Success' },
+        ],
+        unparseable: [],
+      });
     });
 
     it('returns no producers for an empty directory', () => {
-      expect(subject.loadWorkflowJobNames(workflowDirectory)).toEqual([]);
+      expect(subject.loadWorkflowJobs(workflowDirectory)).toEqual({ jobs: [], unparseable: [] });
     });
 
-    it('rejects a malformed workflow instead of claiming complete coverage', () => {
+    it('names a malformed workflow instead of collapsing the whole inventory to unmeasured (#6401 panel)', () => {
       writeFileSync(join(workflowDirectory, 'broken.yml'), 'jobs: [');
-      expect(() => subject.loadWorkflowJobNames(workflowDirectory)).toThrow();
+      writeFileSync(join(workflowDirectory, 'ok.yml'), 'jobs:\n  gate:\n    name: CI Success\n');
+      expect(subject.loadWorkflowJobs(workflowDirectory)).toEqual({
+        jobs: [{ workflow: 'ok.yml', id: 'gate', context: 'CI Success' }],
+        unparseable: ['broken.yml'],
+      });
     });
 
-    it('rejects invalid job names', () => {
+    it('a workflow whose job name is not a string is unparseable, not silently skipped', () => {
       writeFileSync(join(workflowDirectory, 'broken.yml'), 'jobs:\n  gate:\n    name: 42\n');
-      expect(() => subject.loadWorkflowJobNames(workflowDirectory)).toThrow();
+      expect(subject.loadWorkflowJobs(workflowDirectory).unparseable).toEqual(['broken.yml']);
+    });
+
+    it('only an unreadable DIRECTORY throws (the caller maps that to unmeasured)', () => {
+      expect(() => subject.loadWorkflowJobs(join(workflowDirectory, 'missing'))).toThrow();
     });
 
     it('finds both expected producers in the REAL repository workflows without an API call', () => {
-      const names = subject.loadWorkflowJobNames(REAL_WORKFLOWS);
+      const names = subject.loadWorkflowJobs(REAL_WORKFLOWS).jobs.map((job) => job.context);
       expect(names).toEqual(expect.arrayContaining(EXPECTED));
       expect(execFileSync).not.toHaveBeenCalled();
     });
