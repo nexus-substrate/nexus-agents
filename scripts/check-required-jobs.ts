@@ -159,19 +159,31 @@ function contextProblems(input: RequiredJobsInput, expected: readonly string[]):
   return problems;
 }
 
-const StepSchema = z.object({
-  if: z.union([z.string(), z.boolean()]).optional(),
-  run: z.string().optional(),
-  env: z.record(z.string(), z.unknown()).optional(),
-  'continue-on-error': z.union([z.string(), z.boolean()]).optional(),
-});
+/**
+ * The ONE accepted aggregator shape (#6387 panel 3): a positive lock, not a
+ * denylist. Three panels each found the next knob a non-governor workflow
+ * could turn (`continue-on-error`, `if:`, `shell:`, a sibling step shadowing
+ * `jq`, an extra env key); a denylist over an open key space cannot converge.
+ * Any other key, a second step, or a job `if:` other than `always()` is drift.
+ */
+const AGGREGATOR_JOB_KEYS = new Set(['name', 'needs', 'runs-on', 'timeout-minutes', 'if', 'steps']);
+const AGGREGATOR_STEP_KEYS = new Set(['name', 'env', 'run']);
+const AGGREGATOR_ENV_KEYS = new Set(['NEEDS_JSON', 'SKIP_ALLOWED']);
 
-const JobSchema = z.object({
-  needs: z.union([z.string(), z.array(z.string())]).optional(),
-  steps: z.array(StepSchema).optional(),
-  if: z.union([z.string(), z.boolean()]).optional(),
-  'continue-on-error': z.union([z.string(), z.boolean()]).optional(),
-});
+const StepSchema = z
+  .object({
+    run: z.string().optional(),
+    env: z.record(z.string(), z.unknown()).optional(),
+  })
+  .loose();
+
+const JobSchema = z
+  .object({
+    needs: z.union([z.string(), z.array(z.string())]).optional(),
+    steps: z.array(StepSchema).optional(),
+    if: z.union([z.string(), z.boolean()]).optional(),
+  })
+  .loose();
 
 /**
  * The ONE aggregator script (#6382): POLICY, owned here so that a workflow —
@@ -209,10 +221,9 @@ export interface AggregatorShape {
   /** The parsed SKIP_ALLOWED: a job list, `'*'`, or `undefined` when absent or malformed. */
   readonly skipAllowed: readonly string[] | '*' | undefined;
   /**
-   * Ways the step or its job could run the script and still not decide the
-   * job (#6387 panel 2): `continue-on-error` on the step or the job, an `if:`
-   * on the step, or a job-level `if:` other than `always()` (which the
-   * aggregator needs so it runs after a failed need). Empty when none.
+   * Every departure from the one accepted shape (#6387): a job, step or env
+   * key outside the allowlist, a step count other than one, or a job `if:`
+   * missing or other than `always()`. Empty when the shape is exact.
    */
   readonly neutralized: readonly string[];
 }
@@ -251,18 +262,27 @@ function aggregatorShapeOf(job: z.infer<typeof JobSchema>): AggregatorShape {
   return { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] };
 }
 
-/** `continue-on-error` or an `if:` that could let the script's exit not decide the job. */
+/** Keys of `record` outside `allowed`, rendered as `<what> key "k"`. */
+function unexpectedKeys(what: string, record: object, allowed: ReadonlySet<string>): string[] {
+  return Object.keys(record)
+    .filter((key) => !allowed.has(key))
+    .map((key) => `${what} key "${key}"`);
+}
+
+/** Every departure from the one accepted job + step + env shape. */
 function neutralizations(
   job: z.infer<typeof JobSchema>,
   step: z.infer<typeof StepSchema>
 ): string[] {
-  const found: string[] = [];
-  if (step['continue-on-error'] !== undefined) found.push('step continue-on-error');
-  if (step.if !== undefined) found.push('step if');
-  if (job['continue-on-error'] !== undefined) found.push('job continue-on-error');
+  const found = unexpectedKeys('job', job, AGGREGATOR_JOB_KEYS);
   const jobIf =
     typeof job.if === 'string' ? job.if.replace(/^\$\{\{\s*|\s*\}\}$/g, '').trim() : job.if;
-  if (jobIf !== undefined && jobIf !== 'always()') found.push('job if');
+  if (jobIf === undefined) found.push('job if missing (always() required)');
+  else if (jobIf !== 'always()') found.push(`job if "${String(jobIf)}" (always() required)`);
+  const stepCount = job.steps?.length ?? 0;
+  if (stepCount !== 1) found.push(`${String(stepCount)} steps (exactly one accepted)`);
+  found.push(...unexpectedKeys('step', step, AGGREGATOR_STEP_KEYS));
+  found.push(...unexpectedKeys('env', step.env ?? {}, AGGREGATOR_ENV_KEYS));
   return found;
 }
 
@@ -289,7 +309,7 @@ function aggregatorProblems(gate: AggregatorShape, skipAllowed: readonly string[
   }
   if (gate.neutralized.length > 0) {
     return [
-      `ci-success aggregator step can run without deciding the job: ${gate.neutralized.join(', ')} (#6387)`,
+      `ci-success aggregator departs from the one accepted shape: ${gate.neutralized.join(', ')} (#6387)`,
     ];
   }
   // A wildcard skip list is never acceptable for CI Success: `security` and

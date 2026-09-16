@@ -431,9 +431,19 @@ and are skipped otherwise. The `paths:` blocks were a second, hand-maintained
 copy of the governor set; nothing is copied now.
 
 The governor-owned `required-jobs.json` manifest (#6343) pins every
-`ci-success.needs` job ID, its corresponding `needs.<id>.result` check, the
-required contexts `CI Success` and `Governor-path ratification gate`, and the
-absence of `pnpm.auditConfig`. `scripts/check-required-jobs.ts` runs inside
+`ci-success.needs` job ID, the jobs that may legitimately `skipped`
+(`skip_allowed`), the required contexts `CI Success` and
+`Governor-path ratification gate`, and the absence of `pnpm.auditConfig`.
+Since #6382 the aggregator reads `NEEDS_JSON: ${{ toJSON(needs) }}` and runs
+`AGGREGATOR_RUN`, a run body that is POLICY in `scripts/check-required-jobs.ts`
+and must match byte for byte — there is no per-job line to comment out. The
+`ci-success` job is held to ONE accepted shape rather than a denylist (#6387):
+job keys exactly `name, needs, runs-on, timeout-minutes, if, steps` with
+`if: always()`, exactly one step of keys `name, env, run`, env keys exactly
+`NEEDS_JSON, SKIP_ALLOWED`. Any other key (`shell:`, `continue-on-error`,
+`container:`, an env `PATH`), a sibling step, or a missing `if:` is drift —
+each was a way the pinned script could run, or not run, without deciding
+the job. `scripts/check-required-jobs.ts` runs inside
 `Governor-path ratification gate` on every PR, so weakening CI wiring is
 checked by a governor-owned job. Measured drift fails the job (exit 1);
 unreadable branch protection leaves only protection membership `unmeasured`;

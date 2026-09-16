@@ -204,6 +204,7 @@ describe('shared job gate extraction (#6382)', () => {
     const { extractJobGate } = await import('./check-required-jobs.js');
     const gate = extractJobGate({
       needs: ['lint', 'security'],
+      if: 'always()',
       steps: [
         {
           env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]' },
@@ -248,28 +249,79 @@ describe('shared job gate extraction (#6382)', () => {
       .map((l) => l + '  ')
       .join('\n');
     expect(
-      extractJobGate({ steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '"*"' }, run: padded }] })
-        .gate
+      extractJobGate({
+        if: 'always()',
+        steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '"*"' }, run: padded }],
+      }).gate
     ).toEqual({ verifiesEveryNeed: true, skipAllowed: '*', neutralized: [] });
   });
 
   it.each([
     { job: { if: 'always()' }, step: {}, expected: [] },
     { job: { if: '${{ always() }}' }, step: {}, expected: [] },
-    { job: {}, step: { 'continue-on-error': true }, expected: ['step continue-on-error'] },
-    { job: {}, step: { if: 'false' }, expected: ['step if'] },
-    { job: { 'continue-on-error': true }, step: {}, expected: ['job continue-on-error'] },
-    { job: { if: 'false' }, step: {}, expected: ['job if'] },
-    { job: { if: "github.event_name == 'push'" }, step: {}, expected: ['job if'] },
+    {
+      job: { if: 'always()', name: 'CI Success', 'runs-on': 'x', 'timeout-minutes': 5 },
+      step: { name: 'Check' },
+      expected: [],
+    },
+    // Panel 2: the script runs, its exit does not decide the job.
+    {
+      job: { if: 'always()' },
+      step: { 'continue-on-error': true },
+      expected: ['step key "continue-on-error"'],
+    },
+    { job: { if: 'always()' }, step: { if: 'false' }, expected: ['step key "if"'] },
+    {
+      job: { if: 'always()', 'continue-on-error': true },
+      step: {},
+      expected: ['job key "continue-on-error"'],
+    },
+    { job: { if: 'false' }, step: {}, expected: ['job if "false" (always() required)'] },
+    {
+      job: { if: "github.event_name == 'push'" },
+      step: {},
+      expected: ['job if "github.event_name == \'push\'" (always() required)'],
+    },
+    // Panel 3: without `if: always()` GitHub skips the aggregator after a failed need — grey, not red.
+    { job: {}, step: {}, expected: ['job if missing (always() required)'] },
+    // Panel 3: a custom shell template never executes the pinned body (`bash -c true {0}`).
+    {
+      job: { if: 'always()' },
+      step: { shell: 'bash -c true {0}' },
+      expected: ['step key "shell"'],
+    },
+    {
+      job: { if: 'always()', defaults: { run: { shell: 'true {0}' } } },
+      step: {},
+      expected: ['job key "defaults"'],
+    },
+    { job: { if: 'always()', container: 'alpine' }, step: {}, expected: ['job key "container"'] },
+    // Panel 3: an env key can shadow `jq` (PATH) or source a file first (BASH_ENV).
+    { job: { if: 'always()' }, step: { env: { PATH: '/fake' } }, expected: ['env key "PATH"'] },
+    {
+      job: { if: 'always()' },
+      step: { env: { BASH_ENV: '/tmp/x' } },
+      expected: ['env key "BASH_ENV"'],
+    },
+    {
+      job: { if: 'always()' },
+      step: { 'working-directory': '/tmp' },
+      expected: ['step key "working-directory"'],
+    },
   ])(
-    'names the ways the pinned step could run without deciding the job (#6387 panel 2): %j',
+    'names every departure from the one accepted shape (#6387): %j',
     async ({ job, step, expected }) => {
       const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
+      const { env: extraEnv, ...stepRest } = step as { env?: Record<string, string> };
       const gate = extractJobGate({
         ...job,
         needs: ['lint', 'security'],
         steps: [
-          { ...step, env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]' }, run: AGGREGATOR_RUN },
+          {
+            ...stepRest,
+            env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]', ...extraEnv },
+            run: AGGREGATOR_RUN,
+          },
         ],
       }).gate;
       expect(gate.neutralized).toEqual(expected);
@@ -278,11 +330,38 @@ describe('shared job gate extraction (#6382)', () => {
       else {
         expect(result.verdict).toBe('drift');
         expect(result.problems).toEqual([
-          `ci-success aggregator step can run without deciding the job: ${expected.join(', ')} (#6387)`,
+          `ci-success aggregator departs from the one accepted shape: ${expected.join(', ')} (#6387)`,
         ]);
       }
     }
   );
+
+  it('a sibling step before the pinned one (it could shadow jq via $GITHUB_PATH) is drift (#6387 panel 3)', async () => {
+    const { extractJobGate } = await import('./check-required-jobs.js');
+    const pinned = { env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN };
+    const gate = extractJobGate({
+      if: 'always()',
+      steps: [{ run: 'echo /tmp/b >> "$GITHUB_PATH"' }, pinned],
+    }).gate;
+    expect(gate.verifiesEveryNeed).toBe(true);
+    expect(gate.neutralized).toEqual(['2 steps (exactly one accepted)']);
+  });
+
+  it('the shape is a lock, not a list: an unknown key at every level is named', async () => {
+    const { extractJobGate } = await import('./check-required-jobs.js');
+    const gate = extractJobGate({
+      if: 'always()',
+      services: {},
+      steps: [
+        {
+          uses: 'x/y@v1',
+          env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]', NOVEL: '1' },
+          run: AGGREGATOR_RUN,
+        },
+      ],
+    }).gate;
+    expect(gate.neutralized).toEqual(['job key "services"', 'step key "uses"', 'env key "NOVEL"']);
+  });
 
   it('the pinned script is what the real ci.yml and docs-check.yml steps run', async () => {
     const { loadCiSuccessGate } = await import('./check-required-jobs.js');
@@ -294,6 +373,7 @@ describe('shared job gate extraction (#6382)', () => {
     async (raw) => {
       const { extractJobGate } = await import('./check-required-jobs.js');
       const gate = extractJobGate({
+        if: 'always()',
         steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: raw }, run: AGGREGATOR_RUN }],
       });
       expect(gate.gate).toEqual({
@@ -353,6 +433,7 @@ describe('required-jobs CLI reporting', () => {
   ci-success:
     name: CI Success
     needs: [lint, security]
+    if: always()
     steps:
       - env:
           NEEDS_JSON: \${{ toJSON(needs) }}
