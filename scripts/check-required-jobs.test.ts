@@ -155,6 +155,33 @@ describe('checkRequiredJobs', () => {
 });
 
 describe('shared job gate extraction', () => {
+  const NEEDS = '${{ toJSON(needs) }}';
+
+  it('accepts the #6382 aggregator shape as verifying every need (transitional hop 1)', async () => {
+    const { extractJobGate, AGGREGATOR_RUN } = await import('./check-required-jobs.js');
+    const gate = extractJobGate({
+      needs: ['lint', 'security'],
+      steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN }],
+    });
+    expect(gate.resultChecks).toEqual(['lint', 'security']);
+  });
+
+  it.each([
+    { env: { NEEDS_JSON: '${{ toJSON(needs.lint) }}' }, run: 'AGGREGATOR' },
+    { env: { NEEDS_JSON: NEEDS }, run: 'echo NEEDS_JSON' },
+    { env: { NEEDS_JSON: NEEDS }, run: 'AGGREGATOR_MINUS_EXIT' },
+    { env: {}, run: 'AGGREGATOR' },
+  ])('a partial, mention-only or altered aggregator verifies nothing: %j', async (step) => {
+    const { extractJobGate, AGGREGATOR_RUN } = await import('./check-required-jobs.js');
+    const run =
+      step.run === 'AGGREGATOR'
+        ? AGGREGATOR_RUN
+        : step.run === 'AGGREGATOR_MINUS_EXIT'
+          ? AGGREGATOR_RUN.replace('  exit 1\n', '')
+          : step.run;
+    expect(extractJobGate({ needs: ['lint'], steps: [{ ...step, run }] }).resultChecks).toEqual([]);
+  });
+
   it('reads needs and result references from step if and run text', async () => {
     const { extractJobGate } = await import('./check-required-jobs.js');
     const gate = extractJobGate({
