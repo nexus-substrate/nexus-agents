@@ -67,7 +67,7 @@ export const LOOP_TIER_SCHEMA_VERSION = 1 as const;
  *
  * `.strict()` so a typo'd bound fails validation rather than passing silently.
  */
-export const LoopBoundedEnvelopeSchema = z
+const LoopBoundedEnvelopeSchema = z
   .object({
     /**
      * Human description of WHAT the loop may do and the hard limit on it — the
@@ -102,7 +102,7 @@ export type LoopBoundedEnvelope = z.infer<typeof LoopBoundedEnvelopeSchema>;
  * validation rather than being silently ignored (same discipline as the strategy
  * manifest + claims registry).
  */
-export const LoopTierManifestSchema = z
+const LoopTierManifestSchema = z
   .object({
     /** Stable kebab-case loop id; never reused (matches the loop's tool/stage id). */
     id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'id must be kebab-case'),

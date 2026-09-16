@@ -124,7 +124,7 @@ export function getPolicyValues(config?: AppConfig): {
 }
 
 /** Gets rate limit values from config. */
-export function getRateLimitValues(config?: AppConfig): { enabled: boolean; rpm: number } {
+function getRateLimitValues(config?: AppConfig): { enabled: boolean; rpm: number } {
   const rl = config?.security?.rateLimit;
   return { enabled: rl?.enabled ?? true, rpm: rl?.requestsPerMinute ?? 60 };
 }

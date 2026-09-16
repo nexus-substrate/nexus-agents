@@ -67,7 +67,7 @@ type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'failed';
 /**
  * Manages a single upstream MCP server connection.
  */
-export class UpstreamClient {
+class UpstreamClient {
   readonly name: string;
   private readonly config: UpstreamServerConfig;
   private readonly log: ILogger;

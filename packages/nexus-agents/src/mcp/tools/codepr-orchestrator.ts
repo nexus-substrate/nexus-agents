@@ -59,7 +59,7 @@ import type { IAuditLogger } from '../../audit/audit-types.js';
 // ============================================================================
 
 /** Zod schema for a single proposed change (a relative path + its new content). */
-export const ProposedChangeSchema = z
+const ProposedChangeSchema = z
   .object({
     /** Repo-relative path the change would write. */
     relPath: z.string().min(1),
@@ -70,7 +70,7 @@ export const ProposedChangeSchema = z
 export type ProposedChange = z.infer<typeof ProposedChangeSchema>;
 
 /** Zod schema for {@link planCodePrRun}'s input. */
-export const CodePrRunInputSchema = z
+const CodePrRunInputSchema = z
   .object({
     /** Correlates all audit events for this run. */
     runId: z.string().min(1),

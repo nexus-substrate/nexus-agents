@@ -71,7 +71,7 @@ function resolveMaxWorkerCalls(option?: number): number {
 // ============================================================================
 
 /** Default maximum model calls per orchestrate invocation (#1321). */
-export const DEFAULT_MAX_WORKER_CALLS = 6;
+const DEFAULT_MAX_WORKER_CALLS = 6;
 
 /** Default exit triggers: skip refinement when all workers done + no retriable errors (#1509). */
 const DEFAULT_EXIT_TRIGGERS: ExitTriggerConfig = {

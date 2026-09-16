@@ -32,7 +32,7 @@ export interface SeverityConsensusConfig {
   readonly maxFindings: number;
 }
 
-export const DEFAULT_SEVERITY_CONSENSUS_CONFIG: SeverityConsensusConfig = {
+const DEFAULT_SEVERITY_CONSENSUS_CONFIG: SeverityConsensusConfig = {
   maxFindings: 5,
 };
 

@@ -21,7 +21,7 @@ import { toolStructuredError, type ToolResult } from './tool-result.js';
 const WARNED = new Set<string>();
 
 /** Explicit opt-in env var permitting simulated votes outside test runners (#4170). */
-export const ALLOW_SIMULATE_ENV = 'NEXUS_ALLOW_SIMULATE';
+const ALLOW_SIMULATE_ENV = 'NEXUS_ALLOW_SIMULATE';
 
 /** Returns true when running under vitest or another test runner. */
 export function isTestRunner(): boolean {

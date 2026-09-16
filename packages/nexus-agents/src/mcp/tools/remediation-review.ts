@@ -60,7 +60,7 @@ export type ReviewRecord = z.infer<typeof ReviewRecordSchema>;
  * Retention cap for the durable review store. Matches the soak cap so every
  * soak selection can have a corresponding review without eviction skew (#3762).
  */
-export const REVIEW_MAX_RECORDS = 10_000;
+const REVIEW_MAX_RECORDS = 10_000;
 
 /** JSONL file under NEXUS_DATA_DIR holding the durable soundness-review verdicts. */
 export function getRemediationReviewFile(): string {

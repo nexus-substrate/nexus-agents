@@ -31,7 +31,7 @@ export const TaskStageSchema = z.enum([
 export type TaskStage = z.infer<typeof TaskStageSchema>;
 
 /** A single recorded decision in the task evolution. */
-export const TaskDecisionSchema = z.object({
+const TaskDecisionSchema = z.object({
   ts: z.iso.datetime(),
   decision: z.string().min(1),
   rationale: z.string().min(1),
@@ -39,7 +39,7 @@ export const TaskDecisionSchema = z.object({
 export type TaskDecision = z.infer<typeof TaskDecisionSchema>;
 
 /** A blocker that stopped forward progress (optionally later resolved). */
-export const TaskBlockerSchema = z.object({
+const TaskBlockerSchema = z.object({
   ts: z.iso.datetime(),
   blocker: z.string().min(1),
   resolved: z.iso.datetime().optional(),
@@ -47,7 +47,7 @@ export const TaskBlockerSchema = z.object({
 export type TaskBlocker = z.infer<typeof TaskBlockerSchema>;
 
 /** Where the task currently is in its execution. */
-export const TaskPositionSchema = z.object({
+const TaskPositionSchema = z.object({
   currentStep: z.string().min(1),
   nextStep: z.string().optional(),
 });
@@ -65,7 +65,7 @@ export type TaskPosition = z.infer<typeof TaskPositionSchema>;
  * Reference: microsoft.github.io/autogen — Magentic-One Task Ledger / Progress
  * Ledger pattern.
  */
-export const TaskLedgerSchema = z.object({
+const TaskLedgerSchema = z.object({
   /** Verifiable observations: what we have observed/measured/confirmed. */
   facts: z.array(z.string()),
   /** Working assumptions: useful guesses we proceed under, marked separately. */
@@ -84,15 +84,10 @@ export type TaskLedger = z.infer<typeof TaskLedgerSchema>;
  * whether we are stuck, and what to do next. Append-only; the most recent entry's
  * `suggestedAction` is what `Orchestrator.reflect()` returns.
  */
-export const ReflectActionSchema = z.enum([
-  'continue',
-  'revise_plan',
-  'escalate_to_human',
-  'abort',
-]);
+const ReflectActionSchema = z.enum(['continue', 'revise_plan', 'escalate_to_human', 'abort']);
 export type ReflectAction = z.infer<typeof ReflectActionSchema>;
 
-export const ProgressLedgerEntrySchema = z.object({
+const ProgressLedgerEntrySchema = z.object({
   ts: z.iso.datetime(),
   /** What just happened (the step we are reflecting on). */
   step: z.string().min(1),
@@ -114,7 +109,7 @@ export type ProgressLedgerEntry = z.infer<typeof ProgressLedgerEntrySchema>;
  * cleared. `cancel_job` writes this; the task's run loop checks it at
  * safe-point boundaries to abort cleanly.
  */
-export const TaskCancellationSchema = z.object({
+const TaskCancellationSchema = z.object({
   requestedAt: z.iso.datetime(),
   /** Optional human-readable note carried back to the caller. */
   reason: z.string().max(1000).optional(),

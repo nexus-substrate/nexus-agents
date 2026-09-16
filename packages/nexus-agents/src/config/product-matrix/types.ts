@@ -37,7 +37,7 @@ export type ProductType = (typeof PRODUCT_TYPES)[number];
 /**
  * Schema for a valid product type identifier.
  */
-export const ProductTypeSchema = z.enum(PRODUCT_TYPES, {
+const ProductTypeSchema = z.enum(PRODUCT_TYPES, {
   error: `Invalid product type. Valid options: ${PRODUCT_TYPES.join(', ')}`,
 });
 
@@ -54,7 +54,7 @@ export const SkillBundleEntrySchema = z.object({
 /**
  * Schema for expert role weighting within a product type.
  */
-export const ExpertWeightSchema = z.object({
+const ExpertWeightSchema = z.object({
   /** Expert role identifier (e.g. code_expert, security_expert) */
   role: z.string().min(1, 'Expert role is required'),
   /** Importance weight for this expert in the product context (0-1) */
@@ -64,7 +64,7 @@ export const ExpertWeightSchema = z.object({
 /**
  * Schema for a single product type configuration.
  */
-export const ProductConfigSchema = z.object({
+const ProductConfigSchema = z.object({
   /** Product type identifier */
   type: ProductTypeSchema,
   /** Human-readable description of this product type */

@@ -65,7 +65,7 @@ export async function generateSummary(
 /**
  * Add a summary item to the context manager.
  */
-export async function addSummaryItem(
+async function addSummaryItem(
   summary: string,
   category: keyof Omit<ContextBudget, 'reserved'>,
   manager: IContextManagerOperations

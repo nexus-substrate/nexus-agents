@@ -25,7 +25,7 @@ import type { ModelId } from '../../config/model-capabilities-types.js';
 export const DEFAULT_CONTEXT_WARN_THRESHOLD = 0.85;
 
 /** Env-var name for overriding the default threshold. */
-export const CONTEXT_WARN_THRESHOLD_ENV = 'NEXUS_CONTEXT_WARN_THRESHOLD';
+const CONTEXT_WARN_THRESHOLD_ENV = 'NEXUS_CONTEXT_WARN_THRESHOLD';
 
 /**
  * Resolve the utilization threshold from environment or default.

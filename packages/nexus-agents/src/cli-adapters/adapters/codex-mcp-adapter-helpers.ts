@@ -47,7 +47,7 @@ export const NEXUS_MCP_DEPTH_ENV = 'NEXUS_MCP_DEPTH';
  * means only the top-level nexus process spawns it; any deeper attempt is the
  * recursive codex↔nexus loop and is refused.
  */
-export const MAX_CODEX_MCP_SPAWN_DEPTH = 0;
+const MAX_CODEX_MCP_SPAWN_DEPTH = 0;
 
 /** Read the current nesting depth from an env bag; clamps missing/junk to 0. */
 export function readMcpDepth(env: NodeJS.ProcessEnv = process.env): number {

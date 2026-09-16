@@ -70,7 +70,7 @@ const ModelTierSchema = z.enum(['fast', 'balanced', 'powerful']);
  * One persisted shadow comparison, validated at the persistence boundary.
  * Sanitized by construction — no free-text fields beyond bounded model ids.
  */
-export const ModelSelectionShadowRecordSchema = z.object({
+const ModelSelectionShadowRecordSchema = z.object({
   schema: z.literal(MODEL_SELECTION_SHADOW_SCHEMA_VERSION),
   /** ISO timestamp of the outcome join. */
   timestamp: z.string().min(1),

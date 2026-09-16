@@ -40,7 +40,7 @@ const TUNE_ENFORCE_DEMOTION = 0.15;
 const AUDIT_REASON_MAX = 512;
 
 /** Signal event types the TuneStage reacts to. */
-export const TUNE_SIGNAL_TYPES = [
+const TUNE_SIGNAL_TYPES = [
   'signal.fitness_declined',
   'signal.swarm_unhealthy',
   'signal.vote_rejected',

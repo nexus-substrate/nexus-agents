@@ -170,7 +170,7 @@ export interface ISkillLoader {
 /**
  * Zod schema for SkillCategory (mirrors skill-types.ts).
  */
-export const SkillCategorySchema = z.enum([
+const SkillCategorySchema = z.enum([
   'file-operations',
   'code-generation',
   'code-analysis',
@@ -194,7 +194,7 @@ export const SkillCategorySchema = z.enum([
 /**
  * Zod schema for AgentRole.
  */
-export const AgentRoleLoaderSchema = z.enum([
+const AgentRoleLoaderSchema = z.enum([
   'orchestrator',
   'code_expert',
   'architecture_expert',
@@ -211,12 +211,12 @@ export const AgentRoleLoaderSchema = z.enum([
 /**
  * Zod schema for FallbackBehavior.
  */
-export const FallbackBehaviorSchema = z.enum(['error', 'partial', 'empty']);
+const FallbackBehaviorSchema = z.enum(['error', 'partial', 'empty']);
 
 /**
  * Zod schema for RoleSkillMapping.
  */
-export const RoleSkillMappingSchema = z.object({
+const RoleSkillMappingSchema = z.object({
   role: AgentRoleLoaderSchema,
   requiredCategories: z.array(SkillCategorySchema).min(1).readonly(),
   optionalCategories: z.array(SkillCategorySchema).readonly().optional(),
@@ -249,7 +249,7 @@ export const LoadedSkillSetSchema = z.object({
 /**
  * Zod schema for SkillLoaderErrorCode.
  */
-export const SkillLoaderErrorCodeSchema = z.enum([
+const SkillLoaderErrorCodeSchema = z.enum([
   'ROLE_NOT_MAPPED',
   'REQUIRED_CATEGORY_MISSING',
   'RBAC_DENIED',

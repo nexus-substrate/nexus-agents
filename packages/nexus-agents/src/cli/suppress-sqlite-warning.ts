@@ -40,7 +40,7 @@ const SQLITE_WARNING_FRAGMENT = 'SQLite is an experimental feature';
  * Install a one-time filter that drops only the `node:sqlite`
  * ExperimentalWarning. Idempotent: calling it twice does not stack wrappers.
  */
-export function suppressSqliteExperimentalWarning(): void {
+function suppressSqliteExperimentalWarning(): void {
   const proc = process as NodeJS.Process & { __nexusSqliteWarningFiltered?: boolean };
   if (proc.__nexusSqliteWarningFiltered === true) return;
   proc.__nexusSqliteWarningFiltered = true;
