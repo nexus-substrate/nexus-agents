@@ -202,8 +202,12 @@ function swallowedNeed(
   value: unknown,
   skipAllowed: AggregatorShape['skipAllowed']
 ): string[] {
+  // Fail CLOSED (#6387 panel 7): a need the workflow does not define, or one
+  // whose shape the schema cannot read (`if: 1` is truthy to GitHub), is
+  // drift — never a clean default.
+  if (value === undefined) return [`need "${need}" is not a job in this workflow`];
   const parsed = NeedJobSchema.safeParse(value);
-  if (!parsed.success) return [];
+  if (!parsed.success) return [`need "${need}" has an unreadable shape`];
   const job = parsed.data;
   const found: string[] = [];
   if (job['continue-on-error'] !== undefined) found.push(`need "${need}" job continue-on-error`);

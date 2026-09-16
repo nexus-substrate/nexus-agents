@@ -383,6 +383,7 @@ describe('shared job gate extraction (#6382)', () => {
         {
           ...root,
           jobs: {
+            lint: { steps: [{ run: 'pnpm lint' }] },
             'ci-success': {
               if: 'always()',
               needs: ['lint'],
@@ -414,7 +415,14 @@ describe('shared job gate extraction (#6382)', () => {
       expected: ['need "security" job continue-on-error', 'need "security" step continue-on-error'],
     },
     { need: { steps: [{ run: 'pnpm audit' }] }, expected: [] },
-    { need: undefined, expected: [] },
+    // GitHub refuses a workflow whose needs name no job; the checker says so instead of reading clean.
+    { need: undefined, expected: ['need "security" is not a job in this workflow'] },
+    // A shape the schema cannot read fails CLOSED: `if: 1` is truthy to GitHub, and the job ran advisory.
+    {
+      need: { if: 1, 'continue-on-error': true },
+      expected: ['need "security" has an unreadable shape'],
+    },
+    { need: { steps: 'not a list' }, expected: ['need "security" has an unreadable shape'] },
     // A reusable workflow's jobs can carry the knob where this checker cannot see (V1).
     {
       need: { uses: './.github/workflows/audit.yml' },
@@ -591,6 +599,13 @@ describe('required-jobs CLI reporting', () => {
 ${AGGREGATOR_RUN.split('\n')
   .map((l) => '          ' + l)
   .join('\n')}
+  lint:
+    if: github.event_name == 'pull_request'
+    steps:
+      - run: pnpm lint
+  security:
+    steps:
+      - run: pnpm audit
   governor:
     name: Governor-path ratification gate
 `
