@@ -11,6 +11,8 @@ import { z } from 'zod';
  * could turn (`continue-on-error`, `if:`, `shell:`, a sibling step shadowing
  * `jq`, an extra env key); a denylist over an open key space cannot converge.
  * Any other key, a second step, or a job `if:` other than `always()` is drift.
+ * `runs-on` stays free-form: a self-hosted runner is infrastructure a text
+ * checker cannot judge (#6387 panel 4, non-blocking note).
  */
 const WORKFLOW_KEYS = new Set(['name', 'on', 'permissions', 'concurrency', 'jobs']);
 const AGGREGATOR_JOB_KEYS = new Set(['name', 'needs', 'runs-on', 'timeout-minutes', 'if', 'steps']);
