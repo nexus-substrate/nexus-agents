@@ -84,6 +84,8 @@ const ManifestSchema = z.object({
   description: z.string().min(1),
   version: z.literal('1.0.0'),
   ci_success_needs: z.array(z.string().min(1)),
+  /** Jobs the aggregator may accept as `skipped` (push-only skips); every other need must be `success`. */
+  skip_allowed: z.array(z.string().min(1)),
   required_contexts: z.array(z.string().min(1)),
   audit_config_forbidden: z.boolean(),
 });
@@ -91,7 +93,8 @@ const ManifestSchema = z.object({
 interface RequiredJobsInput {
   readonly manifest: unknown;
   readonly ciSuccessNeeds: readonly string[];
-  readonly ciSuccessResultChecks: readonly string[];
+  /** The aggregator's verification shape (#6382), as extracted from its step. */
+  readonly ciSuccessGate: AggregatorShape;
   readonly packageJson: unknown;
   readonly requiredContexts: readonly string[] | 'unmeasured';
   readonly workflowJobNames: readonly string[] | 'unmeasured';
@@ -120,10 +123,8 @@ export function checkRequiredJobs(input: RequiredJobsInput): RequiredJobsResult 
   if (manifest.required_contexts.length === 0) problems.push('Manifest required_contexts is empty');
   for (const job of manifest.ci_success_needs) {
     if (!input.ciSuccessNeeds.includes(job)) problems.push(`Missing ci-success.needs: ${job}`);
-    if (!input.ciSuccessResultChecks.includes(job)) {
-      problems.push(`Missing ci-success result check: ${job} (missing or commented out)`);
-    }
   }
+  problems.push(...aggregatorProblems(input.ciSuccessGate, manifest.skip_allowed));
   problems.push(...packageProblems(input.packageJson, manifest.audit_config_forbidden));
   problems.push(...contextProblems(input, manifest.required_contexts));
   const unmeasured = unmeasuredProblems(input);
@@ -158,103 +159,91 @@ function contextProblems(input: RequiredJobsInput, expected: readonly string[]):
   return problems;
 }
 
+const StepSchema = z.object({
+  if: z.union([z.string(), z.boolean()]).optional(),
+  run: z.string().optional(),
+  env: z.record(z.string(), z.unknown()).optional(),
+});
+
 const JobSchema = z.object({
   needs: z.union([z.string(), z.array(z.string())]).optional(),
-  steps: z
-    .array(
-      z.object({
-        if: z.union([z.string(), z.boolean()]).optional(),
-        run: z.string().optional(),
-      })
-    )
-    .optional(),
+  steps: z.array(StepSchema).optional(),
 });
+
+/**
+ * How an aggregator job verifies the jobs it waits for (#6382). The one
+ * accepted shape: a step whose env carries `NEEDS_JSON: ${{ toJSON(needs) }}`
+ * and whose `run` consumes it — every listed need is then verified because
+ * it is listed, and there is no per-job line a PR could comment out. The
+ * step's `SKIP_ALLOWED` env is the JSON list of needs that may be `skipped`
+ * (push-only jobs); absent means none may.
+ */
+export interface AggregatorShape {
+  /** True when a step reads `toJSON(needs)` into NEEDS_JSON and consumes it in `run`. */
+  readonly verifiesEveryNeed: boolean;
+  /** The parsed SKIP_ALLOWED list; `undefined` when the step declares none or it does not parse. */
+  readonly skipAllowed: readonly string[] | undefined;
+}
 
 interface JobGate {
   needs: string[];
-  gateScript: string;
-  resultChecks: string[];
+  gate: AggregatorShape;
 }
 
-/** Skip an Actions expression without treating its string literals as shell quotes. */
-function expressionEnd(text: string, start: number): number {
-  let quote = '';
-  for (let index = start + 3; index < text.length; index++) {
-    const char = text[index];
-    if (quote !== '') {
-      if (char === quote) quote = '';
-    } else if (char === "'" || char === '"') {
-      quote = char;
-    } else if (text.startsWith('}}', index)) {
-      return index + 2;
-    }
+const NEEDS_JSON_EXPRESSION = /^\$\{\{\s*toJSON\(needs\)\s*\}\}$/;
+
+/** The aggregator shape of one job's steps; a job with no such step verifies nothing. */
+function aggregatorShapeOf(steps: readonly z.infer<typeof StepSchema>[]): AggregatorShape {
+  for (const step of steps) {
+    const env = step.env ?? {};
+    const needsJson = env['NEEDS_JSON'];
+    if (typeof needsJson !== 'string' || !NEEDS_JSON_EXPRESSION.test(needsJson.trim())) continue;
+    if (typeof step.run !== 'string' || !step.run.includes('NEEDS_JSON')) continue;
+    const raw = env['SKIP_ALLOWED'];
+    return { verifiesEveryNeed: true, skipAllowed: parseSkipAllowed(raw) };
   }
-  // An incomplete expression is preserved; guessing its shell syntax is unsafe.
-  return text.length;
+  return { verifiesEveryNeed: false, skipAllowed: undefined };
 }
 
-/** A `#` opens a shell comment only outside quotes and only at a word start. */
-/**
- * Bash opens a comment when `#` BEGINS A WORD: at the start of the text,
- * after whitespace, or after an unquoted metacharacter (`; & | ( ) < >` and
- * a backquote). `echo ok;# hidden` runs only `echo ok` (#6378 panel: the
- * whitespace-only rule let `;# needs.security.result` read as a live check).
- */
-const WORD_START_BEFORE_HASH = /[\s;&|()<>`]/;
-
-function startsComment(text: string, index: number, quote: string): boolean {
-  return (
-    quote === '' && text[index] === '#' && WORD_START_BEFORE_HASH.test(text[index - 1] ?? '\n')
-  );
-}
-
-/** Index just past the token that begins at `index`: an expression, an escape, or one char. */
-function tokenEnd(text: string, index: number, quote: string): number {
-  if (text.startsWith('${{', index)) return expressionEnd(text, index);
-  if (text[index] === '\\' && quote !== "'") return index + 2;
-  return index + 1;
-}
-
-/** The quote state after consuming one plain character. */
-function nextQuote(char: string, quote: string): string {
-  if (quote !== '') return char === quote ? '' : quote;
-  return char === "'" || char === '"' ? char : '';
-}
-
-/** Strip unquoted shell comments, preserving quoted hashes and Actions expressions. */
-export function stripShellComments(text: string): string {
-  let quote = '';
-  let live = '';
-  let index = 0;
-  while (index < text.length) {
-    if (startsComment(text, index, quote)) {
-      const newline = text.indexOf('\n', index);
-      index = newline === -1 ? text.length : newline;
-      continue;
-    }
-    const end = tokenEnd(text, index, quote);
-    const token = text.slice(index, end);
-    if (end === index + 1) quote = nextQuote(token, quote);
-    live += token;
-    index = end;
+/** `SKIP_ALLOWED` must be a JSON array of job ids; anything else is "none declared". */
+function parseSkipAllowed(raw: unknown): readonly string[] | undefined {
+  if (typeof raw !== 'string') return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((x): x is string => typeof x === 'string')
+      ? parsed
+      : undefined;
+  } catch {
+    return undefined;
   }
-  // Empty or comments-only text yields no result references, never evidence of health.
-  return live;
 }
 
-/** Shared with ci-required-jobs.test.ts: collect live run text and unchanged step ifs. */
+/** The manifest's `skip_allowed` must equal the step's SKIP_ALLOWED as a set; the step must exist. */
+function aggregatorProblems(gate: AggregatorShape, skipAllowed: readonly string[]): string[] {
+  if (!gate.verifiesEveryNeed) {
+    return [
+      'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} (#6382)',
+    ];
+  }
+  const declared = new Set(gate.skipAllowed ?? []);
+  const pinned = new Set(skipAllowed);
+  const extra = [...declared].filter((j) => !pinned.has(j));
+  const missing = [...pinned].filter((j) => !declared.has(j));
+  const problems: string[] = [];
+  if (extra.length > 0)
+    problems.push(`ci-success SKIP_ALLOWED names jobs the manifest does not: ${extra.join(', ')}`);
+  if (missing.length > 0)
+    problems.push(
+      `ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: ${missing.join(', ')}`
+    );
+  return problems;
+}
+
+/** Shared with ci-required-jobs.test.ts: the needs list and the aggregator shape. */
 export function extractJobGate(value: unknown): JobGate {
   const job = JobSchema.parse(value ?? {});
   const needs = typeof job.needs === 'string' ? [job.needs] : (job.needs ?? []);
-  const gateScript = (job.steps ?? [])
-    .map((step) =>
-      [typeof step.if === 'string' ? step.if : '', stripShellComments(step.run ?? '')].join('\n')
-    )
-    .join('\n');
-  const resultChecks = [...gateScript.matchAll(/\bneeds\.([\w-]+)\.result\b/g)]
-    .map((match) => match[1])
-    .filter((id): id is string => id !== undefined);
-  return { needs, gateScript, resultChecks: [...new Set(resultChecks)] };
+  return { needs, gate: aggregatorShapeOf(job.steps ?? []) };
 }
 
 /** Parse the real workflow before extracting the ci-success job's wiring. */
@@ -344,7 +333,7 @@ export function runRequiredJobsCheck(targetDir: string, policyDir: string = POLI
   const result = checkRequiredJobs({
     manifest,
     ciSuccessNeeds: gate.needs,
-    ciSuccessResultChecks: gate.resultChecks,
+    ciSuccessGate: gate.gate,
     packageJson,
     requiredContexts: loadRequiredContexts(),
     workflowJobNames,

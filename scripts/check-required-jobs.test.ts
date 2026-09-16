@@ -14,13 +14,14 @@ const manifest = {
   description: 'Required CI wiring',
   version: '1.0.0',
   ci_success_needs: ['lint', 'security'],
+  skip_allowed: ['lint'],
   required_contexts: contexts,
   audit_config_forbidden: true,
 };
 const input = {
   manifest,
   ciSuccessNeeds: ['lint', 'security'],
-  ciSuccessResultChecks: ['lint', 'security'],
+  ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint'] },
   packageJson: {},
   requiredContexts: contexts,
   workflowJobNames: contexts,
@@ -41,12 +42,40 @@ describe('checkRequiredJobs', () => {
     });
   });
 
-  it('detects a dropped result check', async () => {
+  it('detects an aggregator that does not verify every need (#6382)', async () => {
     const { checkRequiredJobs } = await import('./check-required-jobs.js');
-    expect(checkRequiredJobs({ ...input, ciSuccessResultChecks: ['lint'] })).toEqual({
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: false, skipAllowed: undefined },
+      })
+    ).toEqual({
       verdict: 'drift',
-      problems: ['Missing ci-success result check: security (missing or commented out)'],
+      problems: [
+        'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} (#6382)',
+      ],
     });
+  });
+
+  it('detects SKIP_ALLOWED drifting from the manifest in either direction', async () => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint', 'security'] },
+      }).problems
+    ).toEqual(['ci-success SKIP_ALLOWED names jobs the manifest does not: security']);
+    expect(
+      checkRequiredJobs({ ...input, ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: [] } })
+        .problems
+    ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
+    // No SKIP_ALLOWED declared reads as none, and the manifest's pinned skip is then missing.
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: undefined },
+      }).problems
+    ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
   });
 
   it.each([{}, null, { ignoreCves: [] }])(
@@ -154,96 +183,56 @@ describe('checkRequiredJobs', () => {
   });
 });
 
-describe('shared job gate extraction', () => {
-  it('reads needs and result references from step if and run text', async () => {
+describe('shared job gate extraction (#6382)', () => {
+  const NEEDS = '${{ toJSON(needs) }}';
+
+  it('recognizes the one accepted aggregator shape: NEEDS_JSON from toJSON(needs), consumed by run', async () => {
     const { extractJobGate } = await import('./check-required-jobs.js');
     const gate = extractJobGate({
       needs: ['lint', 'security'],
       steps: [
-        { if: "needs.lint.result == 'success'", run: 'echo ok' },
-        { run: 'test "${{ needs.security.result }}" = success' },
+        {
+          env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]' },
+          run: 'failing=$(jq -r ... <<< "$NEEDS_JSON")',
+        },
       ],
     });
-    expect(gate.needs).toEqual(['lint', 'security']);
-    expect(gate.resultChecks).toEqual(['lint', 'security']);
+    expect(gate).toEqual({
+      needs: ['lint', 'security'],
+      gate: { verifiesEveryNeed: true, skipAllowed: ['lint'] },
+    });
   });
 
   it.each([
-    "# needs.security.result != 'success'",
-    "  # needs.security.result != 'success'",
-    "echo ok # needs.security.result != 'success'",
-    "echo ok\t# needs.security.result != 'success'",
-    "# unmatched quote ' needs.security.result",
-    // #6378 panel: `#` begins a word after an unquoted metacharacter too —
-    // bash runs none of these (`bash -c 'echo ok;# echo HIDDEN'` prints ok).
-    "echo ok;# needs.security.result != 'success'",
-    "true &&# needs.security.result != 'success'",
-    "true ||# needs.security.result != 'success'",
-    "(echo ok;# needs.security.result != 'success'\n)",
-    'echo ok >/dev/null<# needs.security.result',
-  ])('rejects a commented-out result check: %s', async (comment) => {
-    const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
-    const gate = extractJobGate({
-      needs: input.ciSuccessNeeds,
-      steps: [{ run: 'test "${{ needs.lint.result }}" = success\n' + comment }],
-    });
-    const result = checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks });
-    expect(result.verdict).toBe('drift');
-    expect(result.problems).toContain(
-      'Missing ci-success result check: security (missing or commented out)'
-    );
-    expect(gate.gateScript).not.toContain('needs.security.result');
-  });
-
-  it.each([
-    'test "${{ needs.security.result }}" = success',
-    'echo \'#\'; test "${{ needs.security.result }}" = success',
-    'echo "#"; test "${{ needs.security.result }}" = success',
-    'echo word#suffix; test "${{ needs.security.result }}" = success',
-    'echo \\#; test "${{ needs.security.result }}" = success',
-    'echo "escaped \\" #"; test "${{ needs.security.result }}" = success',
-    "echo '${{ contains(' #', '#') }}'; test \"${{ needs.security.result }}\" = success",
-    'echo "${{ contains(\' }} #\', \'#\') }}"; test "${{ needs.security.result }}" = success',
-  ])('accepts a live check with quoted or literal hashes: %s', async (run) => {
-    const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
-    const gate = extractJobGate({
-      needs: input.ciSuccessNeeds,
-      steps: [{ if: "needs.lint.result == 'success'", run }],
-    });
-    expect(checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks })).toEqual({
-      verdict: 'ok',
-      problems: [],
-    });
-  });
-
-  it('preserves if expressions as-is, with no shell comment syntax', async () => {
+    { env: { NEEDS_JSON: '${{ toJSON(needs.lint) }}' }, run: 'echo "$NEEDS_JSON"' },
+    { env: { NEEDS_JSON: NEEDS }, run: 'echo unrelated' },
+    { env: {}, run: 'test "${{ needs.security.result }}" = success' },
+    { run: '# NEEDS_JSON: ${{ toJSON(needs) }}' },
+  ])('does not accept a per-job, partial or unconsumed shape: %j', async (step) => {
     const { extractJobGate } = await import('./check-required-jobs.js');
-    const expression = "contains(' #', '#') && needs.security.result == 'success'";
-    const gate = extractJobGate({ steps: [{ if: expression }] });
-    expect(gate.gateScript).toContain(expression);
-    expect(gate.resultChecks).toEqual(['security']);
+    expect(extractJobGate({ needs: ['lint'], steps: [step] }).gate).toEqual({
+      verifiesEveryNeed: false,
+      skipAllowed: undefined,
+    });
   });
 
-  it.each(['', '# needs.lint.result\n  # needs.security.result'])(
-    'names empty live wiring as drift for every manifest id: %j',
-    async (run) => {
-      const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
-      const gate = extractJobGate({ needs: input.ciSuccessNeeds, steps: [{ run }] });
-      const result = checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks });
-      expect(result.verdict).toBe('drift');
-      expect(result.problems).toEqual(
-        manifest.ci_success_needs.map(
-          (id) => `Missing ci-success result check: ${id} (missing or commented out)`
-        )
-      );
-      expect(gate.resultChecks).toEqual([]);
-      expect(gate.gateScript.trim()).toBe('');
+  it.each(['not json', '{"a":1}', '["ok", 1]'])(
+    'a SKIP_ALLOWED that is not a JSON array of ids reads as none declared: %s',
+    async (raw) => {
+      const { extractJobGate } = await import('./check-required-jobs.js');
+      const gate = extractJobGate({
+        steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: raw }, run: 'jq <<< "$NEEDS_JSON"' }],
+      });
+      expect(gate.gate).toEqual({ verifiesEveryNeed: true, skipAllowed: undefined });
     }
   );
 
-  it('names a missing gate as empty wiring', async () => {
+  it('names a missing gate as verifying nothing', async () => {
     const { extractJobGate } = await import('./check-required-jobs.js');
-    expect(extractJobGate(undefined)).toEqual({ needs: [], gateScript: '', resultChecks: [] });
+    expect(extractJobGate(undefined)).toEqual({
+      needs: [],
+      gate: { verifiesEveryNeed: false, skipAllowed: undefined },
+    });
   });
 
   it('matches the manifest to the REAL ci-success.needs exactly and checks the tree', async () => {
@@ -263,7 +252,7 @@ describe('shared job gate extraction', () => {
       checkRequiredJobs({
         manifest: actualManifest,
         ciSuccessNeeds: gate.needs,
-        ciSuccessResultChecks: gate.resultChecks,
+        ciSuccessGate: gate.gate,
         packageJson: JSON.parse(readFileSync('package.json', 'utf8')) as unknown,
         requiredContexts: contexts,
         workflowJobNames: loadWorkflowJobNames(),
@@ -288,7 +277,10 @@ describe('required-jobs CLI reporting', () => {
     name: CI Success
     needs: [lint, security]
     steps:
-      - run: needs.lint.result needs.security.result
+      - env:
+          NEEDS_JSON: \${{ toJSON(needs) }}
+          SKIP_ALLOWED: '["lint"]'
+        run: jq <<< "$NEEDS_JSON"
   governor:
     name: Governor-path ratification gate
 `
