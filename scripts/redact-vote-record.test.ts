@@ -136,6 +136,14 @@ describe('redactVoteRecord', () => {
         baseLedgerText: base,
         pr: 6265,
         head: { sha: SHA, commitFiles: ['scripts/redact-vote-record.ts'] },
+        // #6279: the append-only property is what this test measures; the
+        // fixture is not grandfathered, so the signature is stubbed as holding.
+        signatureVerifier: () => ({
+          code: 'signed',
+          keyId: 'nexus-agent@fixture',
+          principal: 'nexus-agent@fixture',
+          signerKind: 'agent',
+        }),
       })
     ).toMatchObject({
       kind: 'ratified',

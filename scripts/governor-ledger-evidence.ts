@@ -311,8 +311,15 @@ import type {
   RedactedRecordReport,
   RedactionRecord,
 } from '../packages/nexus-agents/src/audit/redaction-record.js';
-import type { VoteRecordSignatureVerdict } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
 import { appendOnlyVerdict } from './governor-ledger-append-only.js';
+import {
+  GRANDFATHERED_RECORD_HASHES,
+  SIGNATURE_CUTOVER_SEQUENCE,
+  signatureRequiredFailures,
+  type SignatureRequiredFailure,
+} from './governor-ledger-signature-policy.js';
+
+export { GRANDFATHERED_RECORD_HASHES, SIGNATURE_CUTOVER_SEQUENCE };
 import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
@@ -424,30 +431,13 @@ export type BoundRecordFailure =
       readonly record: VoteRecord;
       readonly coverage: VoteRecordPanelCoverage;
     }
-  | {
-      /**
-       * Phase 3 (#3927 item 4, #6279): the record's sequence is at or past
-       * {@link SIGNATURE_CUTOVER_SEQUENCE} and its signature verdict is not
-       * `signed` — unsigned, an unknown key, a signature that does not hold,
-       * or a verifier that could not run (or was not supplied). Fail-closed:
-       * absence is not measured as signed.
-       */
-      readonly kind: 'signature-required';
-      readonly record: VoteRecord;
-      readonly verdict: VoteRecordSignatureVerdict;
-    };
-
-/**
- * Phase 3 of #3927 item 4 (#6279): the COMMITTED cutover. A bound record
- * whose `sequence` is at or past this constant must verify `signed` under
- * the gate checkout's `allowed_signers` (#6381: policy from the base ref)
- * or the PR is refused. Measured on main 2026-09-16 before choosing it:
- * sequences 0–14 are unsigned (committed before #6355 gave the loop a key),
- * every record from 15 on is signed by `nexus-agent@framework`. A constant,
- * not an env knob, so the grandfathered range is a fact of the file and
- * cannot be widened by the environment of a gate run.
- */
-export const SIGNATURE_CUTOVER_SEQUENCE = 15;
+  /**
+   * Phase 3 (#3927 item 4, #6279): a bound record outside the committed
+   * grandfather set whose signature verdict is not `signed` — unsigned, an
+   * unknown key, a signature that does not hold, or a verifier that could not
+   * run (or was not supplied). Fail-closed: absence is not measured as signed.
+   */
+  | SignatureRequiredFailure;
 
 /**
  * A refusal over the bound records: the precedence-first failure, plus EVERY
@@ -660,30 +650,6 @@ const BOUND_RECORD_CHECKS: readonly ((record: VoteRecord) => BoundRecordFailure 
       : { kind: 'wrong-strategy', record, strategy: record.strategy },
   panelVerdict,
 ];
-
-/**
- * Phase 3 (#6279): every bound record at or past {@link SIGNATURE_CUTOVER_SEQUENCE}
- * whose signature verdict is not `signed`. No verifier supplied counts as
- * `signature-not-measured` for those records — a caller that cannot verify
- * cannot pass them. Records before the cutover are grandfathered and produce
- * nothing here; an empty bound set produces nothing (there is nothing to sign).
- */
-function signatureRequiredFailures(
-  bound: readonly VoteRecord[],
-  signatures: readonly RecordSignatureReport[] | undefined
-): BoundRecordFailure[] {
-  const failures: BoundRecordFailure[] = [];
-  for (const record of bound) {
-    if (record.sequence < SIGNATURE_CUTOVER_SEQUENCE) continue;
-    const verdict: VoteRecordSignatureVerdict = signatures?.find((s) => s.recordId === record.id)
-      ?.verdict ?? {
-      code: 'signature-not-measured',
-      reason: 'no verifier supplied; a record past the signature cutover cannot pass unverified',
-    };
-    if (verdict.code !== 'signed') failures.push({ kind: 'signature-required', record, verdict });
-  }
-  return failures;
-}
 
 /**
  * Report order (#6219 panel note): the misconfiguration kinds first, in

@@ -54,6 +54,7 @@
 # what counts as a panel record that ratifies a PR.
 /scripts/governor-ledger-evidence.ts @williamzujkowski
 /scripts/governor-ledger-append-only.ts @williamzujkowski
+/scripts/governor-ledger-signature-policy.ts @williamzujkowski
 # #6256 — the same gate's env reader, git probe and printed line: what the
 # moved-head rule measures in the checkout, and the verdict the log reports.
 /scripts/governor-ledger-report.ts @williamzujkowski
