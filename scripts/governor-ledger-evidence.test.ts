@@ -40,6 +40,7 @@ import {
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 
 import {
+  SIGNATURE_CUTOVER_SEQUENCE,
   acceptedHeadShas,
   evaluateLedgerEvidence,
   isLedgerOnlyTip,
@@ -2226,7 +2227,7 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
         },
       },
     ]);
-    expect(formatLedgerEvidence(e)).toContain('signature: signed:owner by rebased@test.');
+    expect(formatLedgerEvidence(e)).toContain('signature: signed:owner by rebased@test');
   });
 
   it('(b) rebase onto main: the ratified sha is orphaned but was a head of THIS PR, the patch is unchanged → ratified-rebased, prior-head', () => {
@@ -2943,7 +2944,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     );
   });
 
-  it('INFORMATIONAL THIS PHASE: unsigned-record and bad-signature leave the verdict `ratified`', () => {
+  it('GRANDFATHERED (sequence < SIGNATURE_CUTOVER_SEQUENCE): unsigned-record and bad-signature leave the verdict `ratified`', () => {
     for (const verdict of [
       { code: 'unsigned-record' } as const,
       { code: 'bad-signature', keyId: OPERATOR, reason: 'incorrect signature' } as const,
@@ -2960,10 +2961,96 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     }
   });
 
-  it.todo(
-    'phase 3 (#3927 item 4): enforce for sequence >= SIGNATURE_CUTOVER_SEQUENCE — a committed constant, not an env knob; ' +
-      'a bound record at or past the cutover that is not `signed` is a refusal naming its code; the grandfathered range is named on the ratified line'
-  );
+  describe('phase 3 (#3927 item 4, #6279): enforced from SIGNATURE_CUTOVER_SEQUENCE', () => {
+    /** A contiguous ledger 0..n whose LAST record (sequence n) is the one bound to the PR. */
+    function ledgerThrough(n: number, last: Omit<RecordOpts, 'sequence'> = {}): string {
+      const fillers = Array.from({ length: n }, (_, i) =>
+        record(`fill-${String(i)}`, { sequence: i, bound: false })
+      );
+      return ledgerText([...fillers, record('v0', { ...last, sequence: n })]);
+    }
+
+    it('the cutover is the committed constant 15 — measured 2026-09-16: sequences 0–14 unsigned, 15+ signed by the agent key', () => {
+      expect(SIGNATURE_CUTOVER_SEQUENCE).toBe(15);
+    });
+
+    it.each([
+      { code: 'unsigned-record' } as const,
+      { code: 'bad-signature', keyId: OPERATOR, reason: 'incorrect signature' } as const,
+      { code: 'unknown-signer', keyId: 'mallory@else', reason: 'No principal matched.' } as const,
+      { code: 'signature-not-measured', reason: 'spawn ssh-keygen ENOENT' } as const,
+    ])(
+      'a bound record at or past the cutover that is not `signed` is `signature-required` naming $code',
+      (verdict) => {
+        const e = evaluateLedgerEvidence({
+          ledgerText: ledgerThrough(SIGNATURE_CUTOVER_SEQUENCE),
+          pr: PR,
+          head: AT_HEAD,
+          signatureVerifier: constant(verdict),
+        });
+        expect(e.kind).toBe('signature-required');
+        if (e.kind !== 'signature-required') throw new Error('unreachable');
+        expect(e.verdict).toEqual(verdict);
+        expect(e.record.sequence).toBe(SIGNATURE_CUTOVER_SEQUENCE);
+        expect(formatLedgerEvidence(e)).toContain(`signature-required`);
+        expect(formatLedgerEvidence(e)).toContain(verdict.code);
+      }
+    );
+
+    it('a signed bound record at or past the cutover ratifies, and the line names the grandfathered range', () => {
+      const e = evaluateLedgerEvidence({
+        ledgerText: ledgerThrough(SIGNATURE_CUTOVER_SEQUENCE + 3),
+        pr: PR,
+        head: AT_HEAD,
+        signatureVerifier: constant({
+          code: 'signed',
+          keyId: AGENT,
+          principal: AGENT,
+          signerKind: 'agent',
+        }),
+      });
+      expect(e.kind).toBe('ratified');
+      expect(formatLedgerEvidence(e)).toContain(
+        `enforced from sequence ${String(SIGNATURE_CUTOVER_SEQUENCE)} (0–${String(SIGNATURE_CUTOVER_SEQUENCE - 1)} grandfathered)`
+      );
+    });
+
+    it('no verifier supplied at or past the cutover is a refusal, never a pass — absence is not measured as signed', () => {
+      const e = evaluateLedgerEvidence({
+        ledgerText: ledgerThrough(SIGNATURE_CUTOVER_SEQUENCE),
+        pr: PR,
+        head: AT_HEAD,
+      });
+      expect(e.kind).toBe('signature-required');
+      if (e.kind !== 'signature-required') throw new Error('unreachable');
+      expect(e.verdict.code).toBe('signature-not-measured');
+    });
+
+    it('the last unsigned sequence before the cutover still ratifies (boundary)', () => {
+      const e = evaluateLedgerEvidence({
+        ledgerText: ledgerThrough(SIGNATURE_CUTOVER_SEQUENCE - 1),
+        pr: PR,
+        head: AT_HEAD,
+        signatureVerifier: constant({ code: 'unsigned-record' }),
+      });
+      expect(e.kind).toBe('ratified');
+    });
+
+    it('signature-required outranks not-approved in the printed line but a rejected record is still listed', () => {
+      const e = evaluateLedgerEvidence({
+        ledgerText: ledgerThrough(SIGNATURE_CUTOVER_SEQUENCE, { decision: 'rejected' }),
+        pr: PR,
+        head: AT_HEAD,
+        signatureVerifier: constant({ code: 'unsigned-record' }),
+      });
+      expect(e.kind).toBe('not-approved');
+      if (e.kind === 'ratified' || e.kind === 'ratified-rebased') throw new Error('unreachable');
+      expect('failures' in e && e.failures.map((f) => f.kind)).toEqual([
+        'signature-required',
+        'not-approved',
+      ]);
+    });
+  });
 
   it('resolves a relative allowed-signers override against the POLICY root (never the target) and changes when that file changes', () => {
     const path = join(dir, 'vote-records.jsonl');

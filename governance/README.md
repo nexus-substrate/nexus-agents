@@ -331,15 +331,19 @@ never collapsed:
 - `signature-not-measured` — the verifier could not run: `ssh-keygen`
   missing, or `allowed_signers` unreadable (the path is named).
 
-This phase the exit code does NOT depend on the signature: the records
-committed before phase 2 are unsigned, and refusing them would refuse every
-governor PR. Phase 3 lands a committed cutover constant
-(`SIGNATURE_CUTOVER_SEQUENCE`, not an env knob) once the count of unsigned
-records is measured; a bound record at or past it that is not `signed`
-becomes a refusal, and the grandfathered range is named on the line. A local
-call of the pure function that supplies no verifier prints `signature:
-unmeasured (no verifier supplied)` — absence is not reported as
-`unsigned-record`.
+**Phase 3 is live (#6279).** The exit code depends on the signature from
+`SIGNATURE_CUTOVER_SEQUENCE` = 15 on — a committed constant in
+`scripts/governor-ledger-evidence.ts`, not an env knob, chosen after
+measuring the ledger on 2026-09-16 (sequences 0–14 unsigned, every record
+from 15 signed by `nexus-agent@framework`). A bound record at or past the
+cutover whose verdict is not `signed` is refused as `signature-required`,
+naming the verdict's code and ssh-keygen's reason; sequences 0–14 are
+grandfathered and the ratified line says so. The signature is verified
+against the GATE checkout's `allowed_signers` (#6381), so a PR that lists a
+new key must carry a record signed under the previous file. A local call of
+the pure function that supplies no verifier prints `signature: unmeasured
+(no verifier supplied)` for a grandfathered record and refuses a record past
+the cutover — absence is not measured as signed.
 
 An unreadable ledger (a directory at the path, a permissions error) prints
 `unmeasured` naming the error instead of crashing the gate (#6213); so does a
