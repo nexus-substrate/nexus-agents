@@ -19,10 +19,9 @@
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { resolveVoterModelOverrides } from './voter-model-overrides.js';
 import { VOTER_ROLES } from './voter-roles.js';
-import type { VoteOutcome } from './voter-execution.js';
-import type { IModelAdapter, ILogger } from '../core/index.js';
-import { createLogger, getTimeProvider } from '../core/index.js';
+import { createLogger, getTimeProvider, type IModelAdapter, type ILogger } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
+import { isGatewayModelAdapter } from '../adapters/openai-compat-adapter.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
 import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
@@ -86,6 +85,7 @@ import {
   createSimulationVoteResult,
   createSimulatedVotes,
   executeWithRetries,
+  type VoteOutcome,
 } from './voter-execution.js';
 import { resolveVoteTimeout, VOTE_TIMEOUTS, getMcpSafeDeadlineMs } from '../config/timeouts.js';
 import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
@@ -160,6 +160,9 @@ function buildLlmVoteResult(
     source: 'llm',
     cli: adapter.providerId,
     model: adapter.modelId,
+    // #4392 step 4: which gateway arm served the seat, so the cost rollup
+    // prices it by the arm's declaration and not the model id's list price.
+    ...(isGatewayModelAdapter(adapter) ? { gatewayArm: adapter.gatewayArm } : {}),
     // #6115: the CLI answered on another model of its family (#6120) — a
     // capacity fallback by construction, disclosed on the seat.
     ...(fallbackFrom !== undefined
@@ -342,9 +345,7 @@ function assignUniformAdapter(
 function createCliAdapterMap(clis: readonly CliName[]): Map<CliName, IModelAdapter> {
   const registry = getGlobalRegistry();
   const result = new Map<CliName, IModelAdapter>();
-  for (const cli of clis) {
-    result.set(cli, registry.getAdapterForCli(cli));
-  }
+  for (const cli of clis) result.set(cli, registry.getAdapterForCli(cli));
   return result;
 }
 

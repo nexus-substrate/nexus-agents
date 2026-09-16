@@ -6,12 +6,14 @@
  * are fail-CLOSED: `undefined` means "cannot price", and the ceiling filter
  * excludes such a candidate rather than guessing. The budget estimator keeps
  * the conservative non-$0 fallback for CLI slots and vendor arms, and is
- * fail-closed for gateway arms only.
+ * fail-closed for gateway arms only. {@link gatewayCostDetail} is the same
+ * declaration read in the ledger's shape, for the telemetry writers (step 4).
  *
  * @module cli-adapters/budget-arm-cost
  */
 
-import { computeTokenCost } from '../learning/token-cost-core.js';
+import { computeTokenCost, roundToMicroUsd } from '../learning/token-cost-core.js';
+import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
 import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
 import { estimateCost } from './budget-utils.js';
@@ -164,4 +166,39 @@ export function describeUnpricedArm(
   const model = isGatewayArmId(arm) ? gatewayPricingModel(arm, modelId) : undefined;
   const subject = model ?? observedArmDisplaySlot(arm);
   return `gateway cost priced at registry rates, but ${subject} has no registry pricing`;
+}
+
+/**
+ * The cost a TELEMETRY WRITER records for one call a gateway served (#4392
+ * increment 2, step 4) — the usage log (`withUsageRecording`) and the
+ * per-decision vote rollup (`votesToCostInputs`). Both used to price the
+ * MODEL id alone via {@link computeCostDetail}, so a `claude-*` id answered by
+ * an undeclared gateway recorded Anthropic's list price as `priced: true`: a
+ * measurement of nothing, and exactly the row a billing spot-check trusts.
+ *
+ * Priced by the arm's `NEXUS_GATEWAY_COST` declaration, mirroring
+ * {@link estimateArmCostUsd} but in the ledger's `CostDetail` shape:
+ *
+ * - UNDECLARED (unset, invalid, no entry for this arm — or an endpoint that is
+ *   not a gateway arm at all) → `{ costUsd: 0, priced: false }`, the documented
+ *   UNMEASURED sentinel (`priceBasisOf` → `'unknown'`), never $0-as-measured.
+ * - `free` / `local` → a MEASURED $0; `priced:<in>,<out>` → the flat rate,
+ *   micro-USD rounded like every ledger figure. `resolvedId` is the ARM: the
+ *   declaration, not a registry entry, is what supplied the number.
+ * - bare `priced` → {@link computeCostDetail} on the model that answered; a
+ *   model the registry cannot price stays unpriced, as it always did.
+ */
+export function gatewayCostDetail(
+  arm: EndpointArmId,
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+  env: NodeJS.ProcessEnv = process.env
+): CostDetail {
+  const declaration = resolveGatewayCostDeclaration(arm, env);
+  if (declaration === undefined) return { costUsd: 0, priced: false, resolvedId: modelId };
+  const rates = gatewayCostRates(declaration);
+  if (rates === 'registry') return computeCostDetail(modelId, inputTokens, outputTokens);
+  const { costUsd } = computeTokenCost({ input: inputTokens, output: outputTokens }, rates);
+  return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId: arm };
 }

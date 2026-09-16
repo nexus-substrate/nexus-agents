@@ -22,7 +22,8 @@
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { createLogger, getTimeProvider, type ILogger } from '../../core/index.js';
-import { computeCostDetail, priceBasisOf } from '../../learning/usage-log.js';
+import { gatewayCostDetail } from '../../cli-adapters/budget-arm-cost.js';
+import { computeCostDetail, priceBasisOf, type CostDetail } from '../../learning/usage-log.js';
 import { DecisionCostStore, type DecisionGate } from '../../observability/decision-cost-store.js';
 import type {
   DecisionBillingMode,
@@ -42,7 +43,9 @@ export function resolveBillingMode(): DecisionBillingMode {
  * it, token counts. When tokens are present we derive the api-mode cost via the
  * same registry-backed {@link computeCostDetail} the per-call usage log uses, so
  * a per-decision rollup and the per-call usage log price identically. When no
- * usage was reported the voter is left with no tokens/cost ⇒ unmeasured.
+ * usage was reported the voter is left with no tokens/cost ⇒ unmeasured. A
+ * seat carrying `gatewayArm` is priced by the gateway's declaration instead
+ * ({@link voteCostDetail}, #4392 step 4).
  *
  * When the model resolves WITHOUT pricing anywhere in the registry chain
  * (#4165), `costUsd` is OMITTED — tokens are kept — so the rollup counts the
@@ -72,13 +75,25 @@ function reportedTokenFields(v: AgentVoteResult): Partial<VoterCostInput> {
   };
 }
 
+/**
+ * The seat's cost detail, or `undefined` when nothing was looked up (no usage
+ * reported, or no model). A seat that answered through a gateway (#4392 step
+ * 4, `gatewayArm`) is priced by the arm's `NEXUS_GATEWAY_COST` declaration —
+ * UNKNOWN when undeclared — never by the model id alone: a `claude-*` id a
+ * gateway served used to roll up at Anthropic's list price as `'list'`.
+ */
+function voteCostDetail(v: AgentVoteResult): CostDetail | undefined {
+  const hasTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
+  if (!hasTokens || v.model === undefined) return undefined;
+  const input = v.inputTokens ?? 0;
+  const output = v.outputTokens ?? 0;
+  if (v.gatewayArm !== undefined) return gatewayCostDetail(v.gatewayArm, v.model, input, output);
+  return computeCostDetail(v.model, input, output);
+}
+
 export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostInput[] {
   return votes.map((v) => {
-    const hasTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
-    const detail =
-      hasTokens && v.model !== undefined
-        ? computeCostDetail(v.model, v.inputTokens ?? 0, v.outputTokens ?? 0)
-        : undefined;
+    const detail = voteCostDetail(v);
     const input: VoterCostInput = {
       role: v.role,
       model: v.model,

@@ -9,9 +9,11 @@ import {
   discoverModels,
   buildOpenAICompatAdapters,
   createOpenAICompatAdapter,
+  isGatewayModelAdapter,
   type OpenAICompatConfig,
 } from './openai-compat-adapter.js';
 import { ConfigError, ErrorCode, type ILogger } from '../core/index.js';
+import type { UsageEvent } from '../learning/usage-log.js';
 
 // Mock the OpenAI SDK so tests don't make real HTTP calls. `mockChatCreate` is
 // hoisted so the #4606 delegation test can drive a 429 through the inner
@@ -48,6 +50,17 @@ vi.mock('./sdk/custom-api-validation.js', () => ({
 vi.mock('../config/opencode-bridge.js', () => ({
   readOpencodeGateway: mockReadOpencodeGateway,
 }));
+
+// #4392 inc 2 step 4: capture the usage-log line the wrapper writes instead of
+// appending to the data dir. Everything else in the module (the pricing chain
+// `computeCostDetail`) stays real — the test is about what gets RECORDED.
+const { mockRecordUsageEvent } = vi.hoisted(() => ({
+  mockRecordUsageEvent: vi.fn<(event: UsageEvent) => void>(),
+}));
+vi.mock('../learning/usage-log.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../learning/usage-log.js')>();
+  return { ...actual, recordUsageEvent: mockRecordUsageEvent };
+});
 
 describe('readOpenAICompatEnv (#2468 + #2503)', () => {
   beforeEach(() => {
@@ -396,6 +409,88 @@ describe('createOpenAICompatAdapter (#2468)', () => {
     expect(adapter).toBeDefined();
     // BaseAdapter.providerId is 'openai' by construction; modelId is what we passed.
     expect(adapter.modelId).toBe('any-model');
+  });
+});
+
+// #4392 increment 2, step 4: the per-model adapter is the telemetry writer,
+// so it carries the arm it belongs to, and the usage line it writes prices by
+// the arm's `NEXUS_GATEWAY_COST` declaration — never by the model id alone.
+// Before this, a `claude-*` id served by an undeclared gateway recorded
+// Anthropic's list price as `priced: true`: a measurement of nothing.
+describe('gateway cost in the usage log (#4392 inc 2 step 4)', () => {
+  const gateway: OpenAICompatConfig = { baseUrl: 'https://gateway.example/v1', apiKey: 'sk-test' };
+
+  function completion(prompt: number, output: number): unknown {
+    return {
+      choices: [{ message: { content: 'ok', role: 'assistant' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: prompt, completion_tokens: output, total_tokens: prompt + output },
+      model: 'claude-sonnet-4-6',
+    };
+  }
+
+  async function recordedEvent(): Promise<UsageEvent> {
+    const adapter = createOpenAICompatAdapter('claude-sonnet-4-6', gateway);
+    mockChatCreate.mockResolvedValueOnce(completion(1000, 200));
+    const result = await adapter.complete({ messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.ok).toBe(true);
+    expect(mockRecordUsageEvent).toHaveBeenCalledTimes(1);
+    const event = mockRecordUsageEvent.mock.calls[0]?.[0];
+    if (event === undefined) throw new Error('no usage event recorded');
+    return event;
+  }
+
+  beforeEach(() => {
+    mockChatCreate.mockReset();
+    mockRecordUsageEvent.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('marks the adapter with the arm it registers under, defaulting the endpoint', () => {
+    const defaulted = createOpenAICompatAdapter('any-model', gateway);
+    expect(isGatewayModelAdapter(defaulted)).toBe(true);
+    if (!isGatewayModelAdapter(defaulted)) return;
+    expect(defaulted.gatewayArm).toBe('api:openai-compat');
+    // `providerId` is unchanged: `inFamilyFallback` and `authRemediation` key on it.
+    expect(defaulted.providerId).toBe('openai');
+
+    const named = createOpenAICompatAdapter('any-model', { ...gateway, endpoint: 'corp-proxy' });
+    expect(isGatewayModelAdapter(named) && named.gatewayArm).toBe('api:corp-proxy');
+  });
+
+  it('is not confused by an adapter that merely has a gatewayArm-shaped field', () => {
+    const impostor = { ...createOpenAICompatAdapter('m', gateway), gatewayArm: 'not-an-arm' };
+    expect(isGatewayModelAdapter(impostor)).toBe(false);
+  });
+
+  it('records UNKNOWN for an undeclared gateway — not the vendor list price (the #4392 misreport)', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    const event = await recordedEvent();
+    expect(event.modelId).toBe('claude-sonnet-4-6');
+    expect(event.inputTokens).toBe(1000);
+    expect(event.outputTokens).toBe(200);
+    expect(event.priced).toBe(false);
+    expect(event.usdCost).toBe(0);
+    expect(event).not.toHaveProperty('priceSource');
+  });
+
+  it('records a MEASURED $0 when the gateway is declared free, sourced to the arm', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'openai-compat=free');
+    const event = await recordedEvent();
+    expect(event.priced).toBe(true);
+    expect(event.usdCost).toBe(0);
+    expect(event.priceSource).toBe('api:openai-compat');
+  });
+
+  it('records the flat rate when the gateway is declared priced:<in>,<out>', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+    const event = await recordedEvent();
+    expect(event.priced).toBe(true);
+    // 1000 in @ $2/1M + 200 out @ $10/1M
+    expect(event.usdCost).toBeCloseTo(0.004, 9);
+    expect(event.priceSource).toBe('api:openai-compat');
   });
 });
 

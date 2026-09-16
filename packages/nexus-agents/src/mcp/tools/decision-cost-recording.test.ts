@@ -8,13 +8,14 @@
  * @module mcp/tools/decision-cost-recording.test
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { ILogger } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
+import { computeCostDetail } from '../../learning/usage-log.js';
 import { DecisionCostStore } from '../../observability/decision-cost-store.js';
 import {
   votesToCostInputs,
@@ -97,6 +98,72 @@ describe('votesToCostInputs', () => {
     // We never consulted the registry for this voter, so we have nothing to
     // say about its price basis — absent, not 'unknown'.
     const inputs = votesToCostInputs([vote({ role: 'architect', model: 'claude-sonnet' })]);
+    expect(Object.keys(inputs[0] ?? {})).not.toContain('priceBasis');
+  });
+});
+
+// #4392 increment 2, step 4: a seat that answered through a gateway carries the
+// arm it answered on, and its cost is what the arm's `NEXUS_GATEWAY_COST`
+// declaration says — never the model id's vendor list price. Before this a
+// `claude-*` id served by an undeclared gateway rolled up at Anthropic's rate
+// with `priceBasis: 'list'`: a measurement of nothing, and exactly the row a
+// billing spot-check would trust.
+describe('votesToCostInputs for a gateway seat (#4392 inc 2 step 4)', () => {
+  const gatewayVote = (over: Partial<AgentVoteResult> = {}): AgentVoteResult =>
+    vote({
+      role: 'ai_ml',
+      cli: 'openai',
+      model: 'claude-sonnet-4-6',
+      gatewayArm: 'api:openai-compat',
+      inputTokens: 1000,
+      outputTokens: 200,
+      ...over,
+    });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('records UNKNOWN (costUsd absent) for an undeclared gateway, keeping the tokens', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    // The premise: the model id alone WOULD price.
+    expect(computeCostDetail('claude-sonnet-4-6', 1000, 200).priced).toBe(true);
+
+    const inputs = votesToCostInputs([gatewayVote()]);
+    expect(inputs[0]?.inputTokens).toBe(1000);
+    expect(inputs[0]?.outputTokens).toBe(200);
+    expect(Object.keys(inputs[0] ?? {})).not.toContain('costUsd');
+    expect(inputs[0]?.priceBasis).toBe('unknown');
+  });
+
+  it('records a MEASURED $0 when the gateway is declared free', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'openai-compat=free');
+    const inputs = votesToCostInputs([gatewayVote()]);
+    expect(inputs[0]?.costUsd).toBe(0);
+    expect(inputs[0]?.priceBasis).toBe('list');
+  });
+
+  it('prices a flat-rate declaration, not the model id', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+    const inputs = votesToCostInputs([gatewayVote()]);
+    // 1000 in @ $2/1M + 200 out @ $10/1M — not Sonnet's $0.006.
+    expect(inputs[0]?.costUsd).toBeCloseTo(0.004, 9);
+  });
+
+  it('leaves a seat WITHOUT gatewayArm exactly as before (vendor list price)', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    const inputs = votesToCostInputs([gatewayVote({ gatewayArm: undefined, cli: 'anthropic' })]);
+    expect(inputs[0]?.costUsd).toBe(computeCostDetail('claude-sonnet-4-6', 1000, 200).costUsd);
+    expect(inputs[0]?.costUsd).toBe(0.006);
+    expect(inputs[0]?.priceBasis).toBe('list');
+  });
+
+  it('stays unmeasured with no basis when the gateway seat reported no usage', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const inputs = votesToCostInputs([
+      gatewayVote({ inputTokens: undefined, outputTokens: undefined }),
+    ]);
+    expect(Object.keys(inputs[0] ?? {})).not.toContain('costUsd');
     expect(Object.keys(inputs[0] ?? {})).not.toContain('priceBasis');
   });
 });

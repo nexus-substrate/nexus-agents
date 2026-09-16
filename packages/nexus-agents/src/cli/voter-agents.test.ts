@@ -353,6 +353,45 @@ That's my vote.`;
       expect(result.error).toBeUndefined();
     });
 
+    // #4392 inc 2 step 4: the seat carries the gateway arm it answered on, so
+    // the cost rollup prices it by the arm's declaration. Without this the
+    // rollup falls back to the model id's vendor list price — the misreport.
+    describe('a gateway seat carries its arm (#4392 inc 2 step 4)', () => {
+      const approve = {
+        ok: true as const,
+        value: {
+          content: JSON.stringify({
+            decision: 'approve',
+            reasoning: 'Good technical design that follows patterns.',
+            confidence: 0.9,
+          }) as unknown as CompletionResponse['content'],
+          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+          stopReason: 'end_turn' as const,
+          model: 'test',
+        },
+      };
+
+      it('attaches gatewayArm from a gateway model adapter', async () => {
+        const adapter = { ...createMockAdapter({ response: approve }), gatewayArm: 'api:x' };
+        const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
+          timeoutMs: 5000,
+          maxRetries: 0,
+        });
+        expect(result.source).toBe('llm');
+        expect(result.gatewayArm).toBe('api:x');
+      });
+
+      it('leaves gatewayArm absent on a vendor adapter', async () => {
+        const adapter = createMockAdapter({ response: approve });
+        const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
+          timeoutMs: 5000,
+          maxRetries: 0,
+        });
+        expect(result.source).toBe('llm');
+        expect(Object.keys(result)).not.toContain('gatewayArm');
+      });
+    });
+
     describe('a seat that could not read the artifact is unverifiable (#6094)', () => {
       // A spy logger: the discarded decision must be LOGGED, and the shared
       // silent logger above cannot assert that.

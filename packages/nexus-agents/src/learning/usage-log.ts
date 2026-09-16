@@ -75,7 +75,10 @@ export interface UsageEvent {
   /**
    * Pricing provenance: the canonical registry id whose pricing was applied
    * (the entry's `resolvedFrom` when the #4164 fuzzy tier matched a decorated
-   * id, else the caller's model id). Present only when `priced` is true.
+   * id, else the caller's model id) — or, for a call a gateway served under a
+   * `free`/`local`/`priced:<in>,<out>` declaration, the gateway's
+   * `api:<endpoint>` arm, since the declaration and not a registry entry
+   * supplied the number (#4392 step 4). Present only when `priced` is true.
    */
   readonly priceSource?: string;
 }
@@ -143,7 +146,7 @@ export function computeCostDetail(
  *
  * WHAT THE `'list'` VALUE ASSERTS. Only that a rate was resolved, and that it
  * should be read as an assumed published rate. It is NOT a guarantee that the
- * number is a vendor's advertised public rate — at least two paths put
+ * number is a vendor's advertised public rate — at least three paths put
  * something else behind the label, and one puts a real published rate behind
  * `'unknown'`:
  *
@@ -153,6 +156,10 @@ export function computeCostDetail(
  *    contract may differ over the contract rate.
  *  - The normalized/fuzzy identity tier lets a decorated gateway id inherit a
  *    DIFFERENT canonical entry's rate.
+ *  - A gateway's `NEXUS_GATEWAY_COST` declaration (`free`, `local`,
+ *    `priced:<in>,<out>`) is the operator's own statement, not a published
+ *    rate at all; `gatewayCostDetail` (#4392 step 4) reports it `priced: true`
+ *    with the arm as `resolvedId`, so it reads `'list'` here too.
  *  - `config/models-generated-loader.ts` discards a published $0/$0 rate unless
  *    the id ends `:free`, so `'unknown'` does not mean no price exists.
  *
