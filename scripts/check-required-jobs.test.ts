@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
+import { AGGREGATOR_RUN } from './aggregator-shape.js';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
@@ -14,13 +15,14 @@ const manifest = {
   description: 'Required CI wiring',
   version: '1.0.0',
   ci_success_needs: ['lint', 'security'],
+  skip_allowed: ['lint'],
   required_contexts: contexts,
   audit_config_forbidden: true,
 };
 const input = {
   manifest,
   ciSuccessNeeds: ['lint', 'security'],
-  ciSuccessResultChecks: ['lint', 'security'],
+  ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint'], neutralized: [] },
   packageJson: {},
   requiredContexts: contexts,
   workflowJobNames: contexts,
@@ -41,12 +43,57 @@ describe('checkRequiredJobs', () => {
     });
   });
 
-  it('detects a dropped result check', async () => {
+  it('detects an aggregator that does not verify every need (#6382)', async () => {
     const { checkRequiredJobs } = await import('./check-required-jobs.js');
-    expect(checkRequiredJobs({ ...input, ciSuccessResultChecks: ['lint'] })).toEqual({
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] },
+      })
+    ).toEqual({
       verdict: 'drift',
-      problems: ['Missing ci-success result check: security (missing or commented out)'],
+      problems: [
+        'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} and runs the pinned AGGREGATOR_RUN (#6382)',
+      ],
     });
+  });
+
+  it('detects SKIP_ALLOWED drifting from the manifest in either direction', async () => {
+    const { checkRequiredJobs } = await import('./check-required-jobs.js');
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: {
+          verifiesEveryNeed: true,
+          skipAllowed: ['lint', 'security'],
+          neutralized: [],
+        },
+      }).problems
+    ).toEqual(['ci-success SKIP_ALLOWED names jobs the manifest does not: security']);
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: [], neutralized: [] },
+      }).problems
+    ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
+    // A wildcard is never acceptable for CI Success.
+    expect(
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: '*', neutralized: [] },
+      }).problems
+    ).toEqual(['ci-success SKIP_ALLOWED is "*"; every need may skip']);
+    // No / malformed SKIP_ALLOWED is drift in its own right — even against an
+    // empty manifest list, where "none declared" would otherwise read as a match.
+    for (const skipAllowed of [[], ['lint']]) {
+      expect(
+        checkRequiredJobs({
+          ...input,
+          manifest: { ...manifest, skip_allowed: skipAllowed },
+          ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: undefined, neutralized: [] },
+        }).problems
+      ).toEqual(['ci-success SKIP_ALLOWED is missing or not a JSON array of job ids']);
+    }
   });
 
   it.each([{}, null, { ignoreCves: [] }])(
@@ -154,128 +201,385 @@ describe('checkRequiredJobs', () => {
   });
 });
 
-describe('shared job gate extraction', () => {
+describe('shared job gate extraction (#6382)', () => {
   const NEEDS = '${{ toJSON(needs) }}';
 
-  it('accepts the #6382 aggregator shape as verifying every need (transitional hop 1)', async () => {
-    const { extractJobGate, AGGREGATOR_RUN } = await import('./check-required-jobs.js');
+  it('recognizes the one accepted aggregator shape: NEEDS_JSON from toJSON(needs), consumed by run', async () => {
+    const { extractJobGate } = await import('./aggregator-shape.js');
     const gate = extractJobGate({
       needs: ['lint', 'security'],
-      steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN }],
+      if: 'always()',
+      steps: [
+        {
+          env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]' },
+          run: AGGREGATOR_RUN,
+        },
+      ],
     });
-    expect(gate.resultChecks).toEqual(['lint', 'security']);
+    expect(gate).toEqual({
+      needs: ['lint', 'security'],
+      gate: { verifiesEveryNeed: true, skipAllowed: ['lint'], neutralized: [] },
+    });
   });
 
   it.each([
     { env: { NEEDS_JSON: '${{ toJSON(needs.lint) }}' }, run: 'AGGREGATOR' },
+    { env: { NEEDS_JSON: NEEDS }, run: 'echo unrelated' },
+    // The #6387 panel's bypass: mentioning the variable is not running the script.
     { env: { NEEDS_JSON: NEEDS }, run: 'echo NEEDS_JSON' },
+    { env: { NEEDS_JSON: NEEDS }, run: '# NEEDS_JSON\necho ok' },
+    // One byte off the pinned script — a relaxed exit, a dropped check — is not the script.
     { env: { NEEDS_JSON: NEEDS }, run: 'AGGREGATOR_MINUS_EXIT' },
-    { env: {}, run: 'AGGREGATOR' },
-  ])('a partial, mention-only or altered aggregator verifies nothing: %j', async (step) => {
-    const { extractJobGate, AGGREGATOR_RUN } = await import('./check-required-jobs.js');
+    { env: {}, run: 'test "${{ needs.security.result }}" = success' },
+    { run: '# NEEDS_JSON: ${{ toJSON(needs) }}' },
+  ])('does not accept a per-job, partial, mention-only or altered shape: %j', async (step) => {
+    const { extractJobGate } = await import('./aggregator-shape.js');
     const run =
       step.run === 'AGGREGATOR'
         ? AGGREGATOR_RUN
         : step.run === 'AGGREGATOR_MINUS_EXIT'
           ? AGGREGATOR_RUN.replace('  exit 1\n', '')
           : step.run;
-    expect(extractJobGate({ needs: ['lint'], steps: [{ ...step, run }] }).resultChecks).toEqual([]);
+    expect(extractJobGate({ needs: ['lint'], steps: [{ ...step, run }] }).gate).toEqual({
+      verifiesEveryNeed: false,
+      skipAllowed: undefined,
+      neutralized: [],
+    });
   });
 
-  it('reads needs and result references from step if and run text', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
-    const gate = extractJobGate({
-      needs: ['lint', 'security'],
-      steps: [
-        { if: "needs.lint.result == 'success'", run: 'echo ok' },
-        { run: 'test "${{ needs.security.result }}" = success' },
-      ],
-    });
-    expect(gate.needs).toEqual(['lint', 'security']);
-    expect(gate.resultChecks).toEqual(['lint', 'security']);
+  it('accepts the pinned script with trailing-whitespace differences only, and a "*" skip list', async () => {
+    const { extractJobGate } = await import('./aggregator-shape.js');
+    const padded = AGGREGATOR_RUN.split('\n')
+      .map((l) => l + '  ')
+      .join('\n');
+    expect(
+      extractJobGate({
+        if: 'always()',
+        steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '"*"' }, run: padded }],
+      }).gate
+    ).toEqual({ verifiesEveryNeed: true, skipAllowed: '*', neutralized: [] });
   });
 
   it.each([
-    "# needs.security.result != 'success'",
-    "  # needs.security.result != 'success'",
-    "echo ok # needs.security.result != 'success'",
-    "echo ok\t# needs.security.result != 'success'",
-    "# unmatched quote ' needs.security.result",
-    // #6378 panel: `#` begins a word after an unquoted metacharacter too —
-    // bash runs none of these (`bash -c 'echo ok;# echo HIDDEN'` prints ok).
-    "echo ok;# needs.security.result != 'success'",
-    "true &&# needs.security.result != 'success'",
-    "true ||# needs.security.result != 'success'",
-    "(echo ok;# needs.security.result != 'success'\n)",
-    'echo ok >/dev/null<# needs.security.result',
-  ])('rejects a commented-out result check: %s', async (comment) => {
-    const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
-    const gate = extractJobGate({
-      needs: input.ciSuccessNeeds,
-      steps: [{ run: 'test "${{ needs.lint.result }}" = success\n' + comment }],
-    });
-    const result = checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks });
-    expect(result.verdict).toBe('drift');
-    expect(result.problems).toContain(
-      'Missing ci-success result check: security (missing or commented out)'
-    );
-    expect(gate.gateScript).not.toContain('needs.security.result');
-  });
-
-  it.each([
-    'test "${{ needs.security.result }}" = success',
-    'echo \'#\'; test "${{ needs.security.result }}" = success',
-    'echo "#"; test "${{ needs.security.result }}" = success',
-    'echo word#suffix; test "${{ needs.security.result }}" = success',
-    'echo \\#; test "${{ needs.security.result }}" = success',
-    'echo "escaped \\" #"; test "${{ needs.security.result }}" = success',
-    "echo '${{ contains(' #', '#') }}'; test \"${{ needs.security.result }}\" = success",
-    'echo "${{ contains(\' }} #\', \'#\') }}"; test "${{ needs.security.result }}" = success',
-  ])('accepts a live check with quoted or literal hashes: %s', async (run) => {
-    const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
-    const gate = extractJobGate({
-      needs: input.ciSuccessNeeds,
-      steps: [{ if: "needs.lint.result == 'success'", run }],
-    });
-    expect(checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks })).toEqual({
-      verdict: 'ok',
-      problems: [],
-    });
-  });
-
-  it('preserves if expressions as-is, with no shell comment syntax', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
-    const expression = "contains(' #', '#') && needs.security.result == 'success'";
-    const gate = extractJobGate({ steps: [{ if: expression }] });
-    expect(gate.gateScript).toContain(expression);
-    expect(gate.resultChecks).toEqual(['security']);
-  });
-
-  it.each(['', '# needs.lint.result\n  # needs.security.result'])(
-    'names empty live wiring as drift for every manifest id: %j',
-    async (run) => {
-      const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
-      const gate = extractJobGate({ needs: input.ciSuccessNeeds, steps: [{ run }] });
-      const result = checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks });
-      expect(result.verdict).toBe('drift');
-      expect(result.problems).toEqual(
-        manifest.ci_success_needs.map(
-          (id) => `Missing ci-success result check: ${id} (missing or commented out)`
-        )
-      );
-      expect(gate.resultChecks).toEqual([]);
-      expect(gate.gateScript.trim()).toBe('');
+    { job: { if: 'always()' }, step: {}, expected: [] },
+    { job: { if: '${{ always() }}' }, step: {}, expected: [] },
+    {
+      job: { if: 'always()', name: 'CI Success', 'runs-on': 'x', 'timeout-minutes': 5 },
+      step: { name: 'Check' },
+      expected: [],
+    },
+    // Panel 2: the script runs, its exit does not decide the job.
+    {
+      job: { if: 'always()' },
+      step: { 'continue-on-error': true },
+      expected: ['step key "continue-on-error"'],
+    },
+    { job: { if: 'always()' }, step: { if: 'false' }, expected: ['step key "if"'] },
+    {
+      job: { if: 'always()', 'continue-on-error': true },
+      step: {},
+      expected: ['job key "continue-on-error"'],
+    },
+    { job: { if: 'false' }, step: {}, expected: ['job if "false" (always() required)'] },
+    {
+      job: { if: "github.event_name == 'push'" },
+      step: {},
+      expected: ['job if "github.event_name == \'push\'" (always() required)'],
+    },
+    // Panel 3: without `if: always()` GitHub skips the aggregator after a failed need — grey, not red.
+    { job: {}, step: {}, expected: ['job if missing (always() required)'] },
+    // Panel 3: a custom shell template never executes the pinned body (`bash -c true {0}`).
+    {
+      job: { if: 'always()' },
+      step: { shell: 'bash -c true {0}' },
+      expected: ['step key "shell"'],
+    },
+    {
+      job: { if: 'always()', defaults: { run: { shell: 'true {0}' } } },
+      step: {},
+      expected: ['job key "defaults"'],
+    },
+    { job: { if: 'always()', container: 'alpine' }, step: {}, expected: ['job key "container"'] },
+    // Panel 3: an env key can shadow `jq` (PATH) or source a file first (BASH_ENV).
+    { job: { if: 'always()' }, step: { env: { PATH: '/fake' } }, expected: ['env key "PATH"'] },
+    {
+      job: { if: 'always()' },
+      step: { env: { BASH_ENV: '/tmp/x' } },
+      expected: ['env key "BASH_ENV"'],
+    },
+    {
+      job: { if: 'always()' },
+      step: { 'working-directory': '/tmp' },
+      expected: ['step key "working-directory"'],
+    },
+  ])(
+    'names every departure from the one accepted shape (#6387): %j',
+    async ({ job, step, expected }) => {
+      const { extractJobGate } = await import('./aggregator-shape.js');
+      const { checkRequiredJobs } = await import('./check-required-jobs.js');
+      const { env: extraEnv, ...stepRest } = step as { env?: Record<string, string> };
+      const gate = extractJobGate({
+        ...job,
+        needs: ['lint', 'security'],
+        steps: [
+          {
+            ...stepRest,
+            env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]', ...extraEnv },
+            run: AGGREGATOR_RUN,
+          },
+        ],
+      }).gate;
+      expect(gate.neutralized).toEqual(expected);
+      const result = checkRequiredJobs({ ...input, ciSuccessGate: gate });
+      if (expected.length === 0) expect(result.verdict).toBe('ok');
+      else {
+        expect(result.verdict).toBe('drift');
+        expect(result.problems).toEqual([
+          `ci-success aggregator departs from the one accepted shape: ${expected.join(', ')} (#6387)`,
+        ]);
+      }
     }
   );
 
-  it('names a missing gate as empty wiring', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
-    expect(extractJobGate(undefined)).toEqual({ needs: [], gateScript: '', resultChecks: [] });
+  it('a sibling step before the pinned one (it could shadow jq via $GITHUB_PATH) is drift (#6387 panel 3)', async () => {
+    const { extractJobGate } = await import('./aggregator-shape.js');
+    const pinned = { env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN };
+    const gate = extractJobGate({
+      if: 'always()',
+      steps: [{ run: 'echo /tmp/b >> "$GITHUB_PATH"' }, pinned],
+    }).gate;
+    expect(gate.verifiesEveryNeed).toBe(true);
+    expect(gate.neutralized).toEqual(['2 steps (exactly one accepted)']);
+  });
+
+  it('the shape is a lock, not a list: an unknown key at every level is named', async () => {
+    const { extractJobGate } = await import('./aggregator-shape.js');
+    const gate = extractJobGate({
+      if: 'always()',
+      services: {},
+      steps: [
+        {
+          uses: 'x/y@v1',
+          env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]', NOVEL: '1' },
+          run: AGGREGATOR_RUN,
+        },
+      ],
+    }).gate;
+    expect(gate.neutralized).toEqual(['job key "services"', 'step key "uses"', 'env key "NOVEL"']);
+  });
+
+  it.each([
+    {
+      root: { defaults: { run: { shell: 'bash -c true {0}' } } },
+      expected: ['workflow key "defaults"'],
+    },
+    { root: { env: { BASH_ENV: '/tmp/x.sh' } }, expected: ['workflow key "env"'] },
+    {
+      root: { defaults: {}, env: {} },
+      expected: ['workflow key "defaults"', 'workflow key "env"'],
+    },
+    { root: { name: 'CI', on: 'push', permissions: {}, concurrency: {} }, expected: [] },
+  ])(
+    'the workflow root is held to the same lock: a top-level defaults/env reaches the step the job may not override (#6387 panel 4): %j',
+    async ({ root, expected }) => {
+      const { extractWorkflowGate } = await import('./aggregator-shape.js');
+      const gate = extractWorkflowGate(
+        {
+          ...root,
+          jobs: {
+            lint: { steps: [{ run: 'pnpm lint' }] },
+            'ci-success': {
+              if: 'always()',
+              needs: ['lint'],
+              steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN }],
+            },
+          },
+        },
+        'ci-success'
+      );
+      expect(gate).toEqual({
+        needs: ['lint'],
+        gate: { verifiesEveryNeed: true, skipAllowed: [], neutralized: expected },
+      });
+    }
+  );
+
+  it.each([
+    { need: { 'continue-on-error': true }, expected: ['need "security" job continue-on-error'] },
+    {
+      need: { 'continue-on-error': '${{ true }}' },
+      expected: ['need "security" job continue-on-error'],
+    },
+    {
+      need: { steps: [{ run: 'pnpm audit', 'continue-on-error': true }] },
+      expected: ['need "security" step continue-on-error'],
+    },
+    {
+      need: { 'continue-on-error': false, steps: [{ 'continue-on-error': false }] },
+      expected: ['need "security" job continue-on-error', 'need "security" step continue-on-error'],
+    },
+    { need: { steps: [{ run: 'pnpm audit' }] }, expected: [] },
+    // GitHub refuses a workflow whose needs name no job; the checker says so instead of reading clean.
+    { need: undefined, expected: ['need "security" is not a job in this workflow'] },
+    // A shape the schema cannot read fails CLOSED: `if: 1` is truthy to GitHub, and the job ran advisory.
+    {
+      need: { if: 1, 'continue-on-error': true },
+      expected: ['need "security" has an unreadable shape'],
+    },
+    { need: { steps: 'not a list' }, expected: ['need "security" has an unreadable shape'] },
+    // A reusable workflow's jobs can carry the knob where this checker cannot see (V1).
+    {
+      need: { uses: './.github/workflows/audit.yml' },
+      expected: ['need "security" calls a reusable workflow (uses)'],
+    },
+    // security is not skip_allowed, so any if: is its own business: false skips → jq reddens.
+    { need: { if: 'false', steps: [] }, expected: [] },
+  ])(
+    'a NEEDED job that swallows its own failure with continue-on-error is drift (#6387): %j',
+    async ({ need, expected }) => {
+      const { extractWorkflowGate } = await import('./aggregator-shape.js');
+      const gate = extractWorkflowGate(
+        {
+          jobs: {
+            security: need,
+            'ci-success': {
+              if: 'always()',
+              needs: ['security'],
+              steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN }],
+            },
+          },
+        },
+        'ci-success'
+      ).gate;
+      expect(gate.neutralized).toEqual(expected);
+    }
+  );
+
+  it.each([
+    { cond: "github.event_name == 'pull_request'", expected: [] },
+    { cond: "${{ github.event_name == 'pull_request' }}", expected: [] },
+    // A skip_allowed need that skips for any other reason is a gate disabled forever (V2).
+    {
+      cond: "github.event_name == 'never'",
+      expected: ['need "commitlint" may skip only under if: github.event_name == \'pull_request\''],
+    },
+    {
+      cond: undefined,
+      expected: ['need "commitlint" may skip only under if: github.event_name == \'pull_request\''],
+    },
+    {
+      cond: false,
+      expected: ['need "commitlint" may skip only under if: github.event_name == \'pull_request\''],
+    },
+    // Panel 8: `needs: [phantom]` with `phantom: { if: false }` skips the gate on every PR
+    // (GitHub skips a job whose dependency skipped), and SKIP_ALLOWED licenses the skip.
+    {
+      cond: "github.event_name == 'pull_request'",
+      needs: ['phantom'],
+      expected: ['need "commitlint" may not depend on other jobs (needs) while skip_allowed'],
+    },
+    {
+      cond: undefined,
+      needs: 'phantom',
+      expected: [
+        'need "commitlint" may skip only under if: github.event_name == \'pull_request\'',
+        'need "commitlint" may not depend on other jobs (needs) while skip_allowed',
+      ],
+    },
+  ])(
+    'a skip_allowed need may skip only because the event is not a PR (#6387): %j',
+    async ({
+      cond,
+      needs,
+      expected,
+    }: {
+      cond?: string | boolean | undefined;
+      needs?: unknown;
+      expected: string[];
+    }) => {
+      const { extractWorkflowGate } = await import('./aggregator-shape.js');
+      const gate = extractWorkflowGate(
+        {
+          jobs: {
+            phantom: { if: false, steps: [] },
+            commitlint: { if: cond, needs, steps: [{ run: 'x' }] },
+            'ci-success': {
+              if: 'always()',
+              needs: ['commitlint'],
+              steps: [
+                { env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["commitlint"]' }, run: AGGREGATOR_RUN },
+              ],
+            },
+          },
+        },
+        'ci-success'
+      ).gate;
+      expect(gate.neutralized).toEqual(expected);
+    }
+  );
+
+  it('a "*" skip list (docs-success) pins no if: on its needs — they path-filter', async () => {
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
+    const gate = extractWorkflowGate(
+      {
+        jobs: {
+          lintdocs: { if: "contains(github.event.head_commit.modified, 'docs/')", steps: [] },
+          'docs-success': {
+            if: 'always()',
+            needs: ['lintdocs'],
+            steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '"*"' }, run: AGGREGATOR_RUN }],
+          },
+        },
+      },
+      'docs-success'
+    ).gate;
+    expect(gate.neutralized).toEqual([]);
+  });
+
+  it('workflow-root drift and job drift are both named, root first', async () => {
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
+    const gate = extractWorkflowGate(
+      {
+        env: {},
+        jobs: { 'ci-success': { steps: [{ env: { NEEDS_JSON: NEEDS }, run: AGGREGATOR_RUN }] } },
+      },
+      'ci-success'
+    ).gate;
+    expect(gate.neutralized).toEqual(['workflow key "env"', 'job if missing (always() required)']);
+  });
+
+  it('the pinned script is what the real ci.yml and docs-check.yml steps run', async () => {
+    const { loadCiSuccessGate } = await import('./check-required-jobs.js');
+    expect(loadCiSuccessGate().gate.verifiesEveryNeed).toBe(true);
+  });
+
+  it.each(['not json', '{"a":1}', '["ok", 1]'])(
+    'a SKIP_ALLOWED that is not a JSON array of ids reads as none declared: %s',
+    async (raw) => {
+      const { extractJobGate } = await import('./aggregator-shape.js');
+      const gate = extractJobGate({
+        if: 'always()',
+        steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: raw }, run: AGGREGATOR_RUN }],
+      });
+      expect(gate.gate).toEqual({
+        verifiesEveryNeed: true,
+        skipAllowed: undefined,
+        neutralized: [],
+      });
+    }
+  );
+
+  it('names a missing gate as verifying nothing', async () => {
+    const { extractJobGate } = await import('./aggregator-shape.js');
+    expect(extractJobGate(undefined)).toEqual({
+      needs: [],
+      gate: { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] },
+    });
   });
 
   it('matches the manifest to the REAL ci-success.needs exactly and checks the tree', async () => {
-    const { checkRequiredJobs, extractJobGate, loadCiSuccessGate } =
-      await import('./check-required-jobs.js');
+    const { checkRequiredJobs, loadCiSuccessGate } = await import('./check-required-jobs.js');
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
     const { loadWorkflowJobNames } = await import('./check-required-jobs.js');
     const actualManifest: unknown = JSON.parse(
       readFileSync('governance/required-jobs.json', 'utf8')
@@ -283,14 +587,14 @@ describe('shared job gate extraction', () => {
     const ci = parse(readFileSync('.github/workflows/ci.yml', 'utf8')) as {
       jobs: Record<string, unknown>;
     };
-    const gate = extractJobGate(ci.jobs['ci-success']);
+    const gate = extractWorkflowGate(ci, 'ci-success');
     expect(actualManifest).toMatchObject({ ci_success_needs: gate.needs });
     expect(loadCiSuccessGate()).toEqual(gate);
     expect(
       checkRequiredJobs({
         manifest: actualManifest,
         ciSuccessNeeds: gate.needs,
-        ciSuccessResultChecks: gate.resultChecks,
+        ciSuccessGate: gate.gate,
         packageJson: JSON.parse(readFileSync('package.json', 'utf8')) as unknown,
         requiredContexts: contexts,
         workflowJobNames: loadWorkflowJobNames(),
@@ -314,8 +618,22 @@ describe('required-jobs CLI reporting', () => {
   ci-success:
     name: CI Success
     needs: [lint, security]
+    if: always()
     steps:
-      - run: needs.lint.result needs.security.result
+      - env:
+          NEEDS_JSON: \${{ toJSON(needs) }}
+          SKIP_ALLOWED: '["lint"]'
+        run: |
+${AGGREGATOR_RUN.split('\n')
+  .map((l) => '          ' + l)
+  .join('\n')}
+  lint:
+    if: github.event_name == 'pull_request'
+    steps:
+      - run: pnpm lint
+  security:
+    steps:
+      - run: pnpm audit
   governor:
     name: Governor-path ratification gate
 `
@@ -371,6 +689,19 @@ describe('required-jobs CLI reporting', () => {
     );
     expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output.join('\n')).toContain('Required context without workflow job: CI Success');
+  });
+
+  it('a workflow-level defaults.run.shell in the target ci.yml is drift the live checker names (#6387 panel 4)', async () => {
+    const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+    const workflowPath = join(directory, '.github/workflows/ci.yml');
+    writeFileSync(
+      workflowPath,
+      'defaults:\n  run:\n    shell: bash -c true {0}\n' + readFileSync(workflowPath, 'utf8')
+    );
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
+    expect(output).toContain(
+      '::error::ci-success aggregator departs from the one accepted shape: workflow key "defaults" (#6387)'
+    );
   });
 
   it('prints ok and exits 0 for measured matching inputs', async () => {

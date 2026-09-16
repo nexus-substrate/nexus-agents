@@ -98,6 +98,13 @@ export function buildDefaultPermissionBlock(): Record<string, unknown> {
 /**
  * Build the canonical nexus-agents MCP block. Mirrors what
  * `Dockerfile.sandbox` writes today plus the env vars from #2501 + #2503.
+ *
+ * `NEXUS_GATEWAY_COST` (#4392): the gateway this file configures is the
+ * `providers.openai-compat` block, so its arm is declared `free` under
+ * that endpoint key. Scoped, never bare — a bare `free` would also declare
+ * any second gateway the operator adds later. `free`, not `local` — init
+ * cannot know whether the proxy is on-box. A hand-edited value survives a
+ * re-run: `mergeNexusBlock` spreads the existing environment over this one.
  */
 export function buildNexusMcpBlock(opts: {
   readonly cliPath: string;
@@ -107,6 +114,7 @@ export function buildNexusMcpBlock(opts: {
   const env: Record<string, string> = {
     NEXUS_DATA_DIR: '{env:NEXUS_DATA_DIR}',
     NEXUS_OPENCODE_CONFIG: opts.opencodeConfigPath,
+    NEXUS_GATEWAY_COST: 'openai-compat=free',
   };
   if (opts.sandboxFlavor !== undefined && opts.sandboxFlavor !== '') {
     env['NEXUS_SANDBOX'] = opts.sandboxFlavor;

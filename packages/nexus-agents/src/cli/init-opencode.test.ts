@@ -56,6 +56,16 @@ describe('buildNexusMcpBlock', () => {
     );
   });
 
+  it('declares the OpenCode gateway free, scoped to openai-compat (#4392 inc 2 step 3)', () => {
+    const block = buildNexusMcpBlock({
+      cliPath: '/x/cli.js',
+      opencodeConfigPath: '/x/oc.json',
+    });
+    // Scoped, never bare: a bare `free` would also declare any second gateway
+    // the operator adds; `free`, not `local`: init cannot know the topology.
+    expect(block.environment['NEXUS_GATEWAY_COST']).toBe('openai-compat=free');
+  });
+
   it('omits NEXUS_SANDBOX when sandboxFlavor is undefined', () => {
     const block = buildNexusMcpBlock({
       cliPath: '/x/cli.js',
@@ -112,6 +122,68 @@ describe('runInitOpencode', () => {
     expect((parsed['mcp'] as Record<string, unknown>)['nexus-agents']).toBeDefined();
     // #2658 — a new file gets the default permission block.
     expect(parsed['permission']).toEqual(buildDefaultPermissionBlock());
+  });
+
+  it('writes NEXUS_GATEWAY_COST=openai-compat=free into a fresh file (#4392)', () => {
+    mockExistsSync.mockReturnValue(false);
+    runInitOpencode({ path: '/projects/opencode.json', cliPath: '/opt/nexus-agents/dist/cli.js' });
+    const written = JSON.parse(mockWriteFileSync.mock.calls[0]?.[1] as string) as Record<
+      string,
+      unknown
+    >;
+    const block = (written['mcp'] as Record<string, unknown>)['nexus-agents'] as Record<
+      string,
+      unknown
+    >;
+    const env = block['environment'] as Record<string, string>;
+    expect(env['NEXUS_GATEWAY_COST']).toBe('openai-compat=free');
+  });
+
+  it('keeps a hand-edited NEXUS_GATEWAY_COST on update instead of resetting it (#4392)', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({
+        mcp: {
+          'nexus-agents': {
+            type: 'local',
+            command: ['old'],
+            enabled: true,
+            environment: { NEXUS_GATEWAY_COST: 'priced:1,2' },
+          },
+        },
+      })
+    );
+    const result = runInitOpencode({
+      path: '/projects/opencode.json',
+      cliPath: '/opt/nexus-agents/dist/cli.js',
+    });
+    expect(result.action).toBe('updated');
+    const written = JSON.parse(mockWriteFileSync.mock.calls[0]?.[1] as string) as Record<
+      string,
+      unknown
+    >;
+    const block = (written['mcp'] as Record<string, unknown>)['nexus-agents'] as Record<
+      string,
+      unknown
+    >;
+    const env = block['environment'] as Record<string, string>;
+    expect(env['NEXUS_GATEWAY_COST']).toBe('priced:1,2');
+    // The update still lands the other defaults around the preserved value.
+    expect(env['NEXUS_DATA_DIR']).toBe('{env:NEXUS_DATA_DIR}');
+  });
+
+  it('--dry-run shows the NEXUS_GATEWAY_COST line it would add (#4392)', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(JSON.stringify({ mcp: {} }));
+    const result = runInitOpencode({
+      path: '/projects/opencode.json',
+      cliPath: '/opt/cli.js',
+      dryRun: true,
+    });
+    expect(result.action).toBe('dry-run');
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    // An added (`+`-prefixed) line, whatever the JSON nesting indent.
+    expect(result.diff).toMatch(/^\+\s+"NEXUS_GATEWAY_COST": "openai-compat=free"$/m);
   });
 
   it('adds the default permission block to an existing file that lacks one (#2658)', () => {
