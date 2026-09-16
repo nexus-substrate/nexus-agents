@@ -163,11 +163,14 @@ const StepSchema = z.object({
   if: z.union([z.string(), z.boolean()]).optional(),
   run: z.string().optional(),
   env: z.record(z.string(), z.unknown()).optional(),
+  'continue-on-error': z.union([z.string(), z.boolean()]).optional(),
 });
 
 const JobSchema = z.object({
   needs: z.union([z.string(), z.array(z.string())]).optional(),
   steps: z.array(StepSchema).optional(),
+  if: z.union([z.string(), z.boolean()]).optional(),
+  'continue-on-error': z.union([z.string(), z.boolean()]).optional(),
 });
 
 /**
@@ -205,6 +208,13 @@ export interface AggregatorShape {
   readonly verifiesEveryNeed: boolean;
   /** The parsed SKIP_ALLOWED: a job list, `'*'`, or `undefined` when absent or malformed. */
   readonly skipAllowed: readonly string[] | '*' | undefined;
+  /**
+   * Ways the step or its job could run the script and still not decide the
+   * job (#6387 panel 2): `continue-on-error` on the step or the job, an `if:`
+   * on the step, or a job-level `if:` other than `always()` (which the
+   * aggregator needs so it runs after a failed need). Empty when none.
+   */
+  readonly neutralized: readonly string[];
 }
 
 interface JobGate {
@@ -225,16 +235,35 @@ function sameScript(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
-/** The aggregator shape of one job's steps; a job with no such step verifies nothing. */
-function aggregatorShapeOf(steps: readonly z.infer<typeof StepSchema>[]): AggregatorShape {
-  for (const step of steps) {
+/** The aggregator shape of a job; a job with no such step verifies nothing. */
+function aggregatorShapeOf(job: z.infer<typeof JobSchema>): AggregatorShape {
+  for (const step of job.steps ?? []) {
     const env = step.env ?? {};
     const needsJson = env['NEEDS_JSON'];
     if (typeof needsJson !== 'string' || !NEEDS_JSON_EXPRESSION.test(needsJson.trim())) continue;
     if (typeof step.run !== 'string' || !sameScript(step.run, AGGREGATOR_RUN)) continue;
-    return { verifiesEveryNeed: true, skipAllowed: parseSkipAllowed(env['SKIP_ALLOWED']) };
+    return {
+      verifiesEveryNeed: true,
+      skipAllowed: parseSkipAllowed(env['SKIP_ALLOWED']),
+      neutralized: neutralizations(job, step),
+    };
   }
-  return { verifiesEveryNeed: false, skipAllowed: undefined };
+  return { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] };
+}
+
+/** `continue-on-error` or an `if:` that could let the script's exit not decide the job. */
+function neutralizations(
+  job: z.infer<typeof JobSchema>,
+  step: z.infer<typeof StepSchema>
+): string[] {
+  const found: string[] = [];
+  if (step['continue-on-error'] !== undefined) found.push('step continue-on-error');
+  if (step.if !== undefined) found.push('step if');
+  if (job['continue-on-error'] !== undefined) found.push('job continue-on-error');
+  const jobIf =
+    typeof job.if === 'string' ? job.if.replace(/^\$\{\{\s*|\s*\}\}$/g, '').trim() : job.if;
+  if (jobIf !== undefined && jobIf !== 'always()') found.push('job if');
+  return found;
 }
 
 /** `SKIP_ALLOWED` must be a JSON array of job ids; anything else is "none declared". */
@@ -258,6 +287,11 @@ function aggregatorProblems(gate: AggregatorShape, skipAllowed: readonly string[
       'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} and runs the pinned AGGREGATOR_RUN (#6382)',
     ];
   }
+  if (gate.neutralized.length > 0) {
+    return [
+      `ci-success aggregator step can run without deciding the job: ${gate.neutralized.join(', ')} (#6387)`,
+    ];
+  }
   // A wildcard skip list is never acceptable for CI Success: `security` and
   // its peers must have RUN.
   if (gate.skipAllowed === '*') return ['ci-success SKIP_ALLOWED is "*"; every need may skip'];
@@ -279,7 +313,7 @@ function aggregatorProblems(gate: AggregatorShape, skipAllowed: readonly string[
 export function extractJobGate(value: unknown): JobGate {
   const job = JobSchema.parse(value ?? {});
   const needs = typeof job.needs === 'string' ? [job.needs] : (job.needs ?? []);
-  return { needs, gate: aggregatorShapeOf(job.steps ?? []) };
+  return { needs, gate: aggregatorShapeOf(job) };
 }
 
 /** Parse the real workflow before extracting the ci-success job's wiring. */

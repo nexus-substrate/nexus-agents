@@ -22,7 +22,7 @@ const manifest = {
 const input = {
   manifest,
   ciSuccessNeeds: ['lint', 'security'],
-  ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint'] },
+  ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint'], neutralized: [] },
   packageJson: {},
   requiredContexts: contexts,
   workflowJobNames: contexts,
@@ -48,7 +48,7 @@ describe('checkRequiredJobs', () => {
     expect(
       checkRequiredJobs({
         ...input,
-        ciSuccessGate: { verifiesEveryNeed: false, skipAllowed: undefined },
+        ciSuccessGate: { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] },
       })
     ).toEqual({
       verdict: 'drift',
@@ -63,23 +63,31 @@ describe('checkRequiredJobs', () => {
     expect(
       checkRequiredJobs({
         ...input,
-        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: ['lint', 'security'] },
+        ciSuccessGate: {
+          verifiesEveryNeed: true,
+          skipAllowed: ['lint', 'security'],
+          neutralized: [],
+        },
       }).problems
     ).toEqual(['ci-success SKIP_ALLOWED names jobs the manifest does not: security']);
     expect(
-      checkRequiredJobs({ ...input, ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: [] } })
-        .problems
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: [], neutralized: [] },
+      }).problems
     ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
     // A wildcard is never acceptable for CI Success.
     expect(
-      checkRequiredJobs({ ...input, ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: '*' } })
-        .problems
+      checkRequiredJobs({
+        ...input,
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: '*', neutralized: [] },
+      }).problems
     ).toEqual(['ci-success SKIP_ALLOWED is "*"; every need may skip']);
     // No SKIP_ALLOWED declared reads as none, and the manifest's pinned skip is then missing.
     expect(
       checkRequiredJobs({
         ...input,
-        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: undefined },
+        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: undefined, neutralized: [] },
       }).problems
     ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
   });
@@ -205,7 +213,7 @@ describe('shared job gate extraction (#6382)', () => {
     });
     expect(gate).toEqual({
       needs: ['lint', 'security'],
-      gate: { verifiesEveryNeed: true, skipAllowed: ['lint'] },
+      gate: { verifiesEveryNeed: true, skipAllowed: ['lint'], neutralized: [] },
     });
   });
 
@@ -230,6 +238,7 @@ describe('shared job gate extraction (#6382)', () => {
     expect(extractJobGate({ needs: ['lint'], steps: [{ ...step, run }] }).gate).toEqual({
       verifiesEveryNeed: false,
       skipAllowed: undefined,
+      neutralized: [],
     });
   });
 
@@ -241,8 +250,39 @@ describe('shared job gate extraction (#6382)', () => {
     expect(
       extractJobGate({ steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '"*"' }, run: padded }] })
         .gate
-    ).toEqual({ verifiesEveryNeed: true, skipAllowed: '*' });
+    ).toEqual({ verifiesEveryNeed: true, skipAllowed: '*', neutralized: [] });
   });
+
+  it.each([
+    { job: { if: 'always()' }, step: {}, expected: [] },
+    { job: { if: '${{ always() }}' }, step: {}, expected: [] },
+    { job: {}, step: { 'continue-on-error': true }, expected: ['step continue-on-error'] },
+    { job: {}, step: { if: 'false' }, expected: ['step if'] },
+    { job: { 'continue-on-error': true }, step: {}, expected: ['job continue-on-error'] },
+    { job: { if: 'false' }, step: {}, expected: ['job if'] },
+    { job: { if: "github.event_name == 'push'" }, step: {}, expected: ['job if'] },
+  ])(
+    'names the ways the pinned step could run without deciding the job (#6387 panel 2): %j',
+    async ({ job, step, expected }) => {
+      const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
+      const gate = extractJobGate({
+        ...job,
+        needs: ['lint', 'security'],
+        steps: [
+          { ...step, env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]' }, run: AGGREGATOR_RUN },
+        ],
+      }).gate;
+      expect(gate.neutralized).toEqual(expected);
+      const result = checkRequiredJobs({ ...input, ciSuccessGate: gate });
+      if (expected.length === 0) expect(result.verdict).toBe('ok');
+      else {
+        expect(result.verdict).toBe('drift');
+        expect(result.problems).toEqual([
+          `ci-success aggregator step can run without deciding the job: ${expected.join(', ')} (#6387)`,
+        ]);
+      }
+    }
+  );
 
   it('the pinned script is what the real ci.yml and docs-check.yml steps run', async () => {
     const { loadCiSuccessGate } = await import('./check-required-jobs.js');
@@ -256,7 +296,11 @@ describe('shared job gate extraction (#6382)', () => {
       const gate = extractJobGate({
         steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: raw }, run: AGGREGATOR_RUN }],
       });
-      expect(gate.gate).toEqual({ verifiesEveryNeed: true, skipAllowed: undefined });
+      expect(gate.gate).toEqual({
+        verifiesEveryNeed: true,
+        skipAllowed: undefined,
+        neutralized: [],
+      });
     }
   );
 
@@ -264,7 +308,7 @@ describe('shared job gate extraction (#6382)', () => {
     const { extractJobGate } = await import('./check-required-jobs.js');
     expect(extractJobGate(undefined)).toEqual({
       needs: [],
-      gate: { verifiesEveryNeed: false, skipAllowed: undefined },
+      gate: { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] },
     });
   });
 
