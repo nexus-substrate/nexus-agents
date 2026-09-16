@@ -370,7 +370,8 @@ export function writeJobFailed(
  * adopters, which cannot declare the fourth `run` parameter without also
  * claiming the third (`signalAccepted` is derived from `run.length`, #4972) —
  * calls it directly. Either way a poller reading `pending` can tell slow from
- * stuck, and the reaper measures silence from the same stamp.
+ * stuck, and the liveness watchdog in `run-as-job.ts` measures silence from
+ * the same stamp — the record is the one source of truth for "last progress".
  *
  * A no-op unless the record exists AND is `pending`. A heartbeat that lands
  * after `cancel_job`, after the runaway guard, or after the body settled must

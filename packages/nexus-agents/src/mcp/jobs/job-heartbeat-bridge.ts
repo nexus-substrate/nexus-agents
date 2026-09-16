@@ -15,7 +15,7 @@
  * inherits, and the bus invokes handlers synchronously inside `emit`; so the
  * store read in the handler names the job whose body emitted the event.
  *
- * Empty case: a body that emits nothing on the bus and never calls
+ * Empty case: a body that emits nothing on either bus and never calls
  * `progress()` gets no heartbeat from this bridge — under a long guard it is
  * wedged by definition, which is the point.
  *
@@ -23,16 +23,28 @@
  */
 
 import { currentAsyncDispatchJobId } from '../../context/structured-task-state.js';
+import { stepBus } from '../../core/step-bus.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import type { Unsubscribe } from '../../pipeline/event-types.js';
 
 /**
- * Subscribe `progress` to every pipeline-bus event emitted from inside
- * `jobId`'s async context. Returns the unsubscribe; `runJobInBackground` calls
- * it in its `finally` so a settled job stops listening.
+ * Subscribe `progress` to every pipeline-bus event AND every `stepBus` step
+ * event emitted from inside `jobId`'s async context. The step bus carries
+ * `withStep` activity — agent model calls, expert executions — which is how
+ * `orchestrate`'s main phase (the Orchestrator agent's sequential model calls,
+ * #6428) proves it is moving; `agents/heartbeat-monitor.ts` reads the same
+ * signal for its session-health report. Returns the unsubscribe;
+ * `runJobInBackground` calls it in its `finally` so a settled job stops
+ * listening.
  */
 export function bridgePipelineEventsToHeartbeat(jobId: string, progress: () => void): Unsubscribe {
-  return getPipelineEventBus().subscribe({}, () => {
+  const onOwnEvent = (): void => {
     if (currentAsyncDispatchJobId() === jobId) progress();
-  });
+  };
+  const unsubscribePipeline = getPipelineEventBus().subscribe({}, onOwnEvent);
+  stepBus.on('step', onOwnEvent);
+  return () => {
+    unsubscribePipeline();
+    stepBus.off('step', onOwnEvent);
+  };
 }

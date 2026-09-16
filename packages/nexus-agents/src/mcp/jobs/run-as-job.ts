@@ -77,11 +77,16 @@ const ASYNC_JOB_BODY_RUNAWAY_MESSAGE = 'runaway guard exceeded';
  * 7.2M class ceiling, and the only signals over the extra hour were the start
  * log and the 0.5 WARN — both say time passed, neither says the body is alive.
  * So a guard ABOVE the standard ceiling requires the body to prove progress:
- * `runAsJob` hands it a `progress()` heartbeat, and a reaper ticking once per
- * heartbeat interval fails the job as wedged — releasing its concurrency slot
- * and recording `failed` — once the silence reaches N intervals, well before
- * the guard would. A guard at or under the standard ceiling is not watched:
- * those bodies never opted into anything and keep their pre-#6162 behaviour.
+ * `runAsJob` hands it a `progress()` heartbeat, and a watchdog fails the job as
+ * wedged exactly one silence budget after its last heartbeat — releasing its
+ * concurrency slot and recording `failed`, well before the guard would. The
+ * watchdog is lazy: a timer armed for one budget that, on firing, measures the
+ * silence from the record and re-arms for the exact remainder, so the verdict
+ * lands at `lastHeartbeat + budget` wherever the heartbeat fell (#6428: a
+ * poller ticking per interval held the slot for up to four intervals when the
+ * heartbeat landed just after a tick). A guard at or under the standard
+ * ceiling is not watched: those bodies never opted into anything and keep
+ * their pre-#6162 behaviour.
  *
  * Interval = guard / {@link ASYNC_JOB_BODY_HEARTBEAT_INTERVAL_DIVISOR}; wedged
  * after {@link ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS} intervals of silence,
@@ -98,6 +103,13 @@ const ASYNC_JOB_BODY_RUNAWAY_MESSAGE = 'runaway guard exceeded';
  * DEFINITION — that is the point: opting into a longer guard is not opting into
  * a longer hang. The empty case (no heartbeat ever recorded) is measured from
  * job start, so such a body fails at exactly N intervals after dispatch.
+ *
+ * Not the same instrument as `agents/heartbeat-monitor.ts`: that monitor is
+ * in-memory and reporting-only — it classifies an agent SESSION as healthy /
+ * stalled / unmeasured for logs and the dashboard, and acts on nothing. This
+ * watchdog is per JOB, durable through the job record, and its verdict frees a
+ * concurrency slot and settles a record a poller reads. Both consume the same
+ * `stepBus` progress signal; they answer different questions.
  */
 const ASYNC_JOB_BODY_HEARTBEAT_INTERVAL_DIVISOR = 8;
 
@@ -106,20 +118,25 @@ const ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS = 3;
 
 /** Heartbeat handle for one job body: the callback plus its watch's teardown. */
 interface LivenessWatch {
-  /** The body's heartbeat — stamps the record and resets the silence clock. */
+  /** The body's heartbeat — stamps the record and re-arms the watchdog. */
   readonly progress: () => void;
-  /** Stops the reaper tick (no-op when the guard was not watched). */
+  /** Disarms the watchdog (no-op when the guard was not watched). */
   readonly clear: () => void;
 }
 
 /**
  * Build the heartbeat for one body and, when `guardMs` exceeds the standard
- * MCP ceiling, the reaper that enforces it. The stamp is written under every
- * guard — a poller wants slow-vs-stuck regardless — only the reaper is gated.
- * `onWedged` receives the failure the job is recorded with. The reaper reads
- * the stamp back from the record once per interval (a file read every
- * guard / 8 ≥ 450 s), so what it enforces is exactly what `get_job_result`
- * shows.
+ * MCP ceiling, the watchdog that enforces it. The stamp is written under every
+ * guard — a poller wants slow-vs-stuck regardless — only the watchdog is
+ * gated. `onWedged` receives the failure the job is recorded with.
+ *
+ * Every heartbeat — the callback, `heartbeatJob(jobId)`, a bridged bus event —
+ * goes through `heartbeatJob`, which stamps the record; nothing else is kept in
+ * memory. When the timer fires it measures the silence from the record (empty
+ * case: from job start): under budget, it re-arms for exactly the remainder;
+ * otherwise the verdict quotes what `get_job_result` shows. So a body that
+ * keeps heartbeating costs one file read per silence budget, and a body that
+ * stops is failed at `lastHeartbeat + budget`, not at the next poll tick.
  */
 function makeLivenessWatch(
   jobId: string,
@@ -127,10 +144,6 @@ function makeLivenessWatch(
   onWedged: (err: Error) => void
 ): LivenessWatch {
   const startedAtMs = getTimeProvider().now();
-  // The record is the single source of truth for "last progress": the
-  // heartbeat writes it, the reaper reads it back, and so does every poller.
-  // A body that holds its jobId can therefore heartbeat via `heartbeatJob`
-  // without this callback and be measured identically.
   const progress = (): void => {
     heartbeatJob(jobId);
   };
@@ -138,19 +151,25 @@ function makeLivenessWatch(
 
   const intervalMs = Math.floor(guardMs / ASYNC_JOB_BODY_HEARTBEAT_INTERVAL_DIVISOR);
   const silenceBudgetMs = intervalMs * ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS;
-  const tick = setInterval(() => {
-    // Empty case: no heartbeat recorded → silence is measured from job start.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (ms: number): void => {
+    timer = setTimeout(onFire, ms);
+    // Like the guard timers: never keep the event loop alive for the watchdog.
+    timer.unref();
+  };
+  const onFire = (): void => {
     const silentMs = getTimeProvider().now() - (readLastProgressMs(jobId) ?? startedAtMs);
-    if (silentMs < silenceBudgetMs) return;
-    clearInterval(tick);
+    if (silentMs < silenceBudgetMs) {
+      arm(silenceBudgetMs - silentMs);
+      return;
+    }
     onWedged(new Error(`wedged (no progress for ${String(silentMs)} ms)`));
-  }, intervalMs);
-  // Like the guard timers: never keep the event loop alive for the reaper.
-  tick.unref();
+  };
+  arm(silenceBudgetMs);
   return {
     progress,
     clear: () => {
-      clearInterval(tick);
+      clearTimeout(timer);
     },
   };
 }

@@ -9,11 +9,13 @@ import { join } from 'node:path';
 
 import { runAsJob, runJobInBackground } from './run-as-job.js';
 import {
+  heartbeatJob,
   readJobResult,
   writeJobPending,
   writeJobCancelled,
   JOB_RECORD_RETENTION_MS,
 } from './job-result-store.js';
+import { stepBus } from '../../core/step-bus.js';
 import { abortJob } from './job-abort-registry.js';
 import { registerIdempotentJob, resolveIdempotency } from './job-idempotency.js';
 import {
@@ -487,13 +489,12 @@ describe('runAsJob', () => {
       process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
       const { heartbeat } = dispatch('job-wedged-1');
 
-      // One heartbeat at 0.8 interval, then silence. The reaper ticks once per
-      // interval, so the first tick at which the silence reaches the budget is
-      // tick 4 (2,000,000 ms): 1,600,000 ms without progress.
+      // One heartbeat at 0.8 interval, then silence: the watchdog fires one
+      // silence budget after that heartbeat (1,900,000 ms).
       const lastBeatAt = INTERVAL_MS * 0.8;
       await vi.advanceTimersByTimeAsync(lastBeatAt);
       heartbeat();
-      const wedgedAt = 4 * INTERVAL_MS;
+      const wedgedAt = lastBeatAt + SILENCE_BUDGET_MS;
       await vi.advanceTimersByTimeAsync(wedgedAt - lastBeatAt - 1);
       expect(readJobResult('job-wedged-1')?.status).toBe('pending');
       expect(getInFlight('orchestrate')).toBe(1);
@@ -507,6 +508,47 @@ describe('runAsJob', () => {
       // The slot is released at the wedge verdict — half the guard is still ahead.
       expect(getInFlight('orchestrate')).toBe(0);
       expect(wedgedAt).toBeLessThan(LONG_GUARD_MS);
+    });
+
+    it('is failed exactly one silence budget after the last heartbeat, wherever it landed (#6428)', async () => {
+      // A poller ticking every interval fires on the tick AFTER the budget is
+      // exceeded: a heartbeat landing just after a tick held the slot for up to
+      // four intervals while the contract says three. The reaper is a watchdog
+      // re-armed by every heartbeat, so the verdict lands at exactly
+      // lastHeartbeat + budget — here 500,001 + 1,500,000 — not at a tick.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const { heartbeat } = dispatch('job-watchdog-1');
+      const lastBeatAt = INTERVAL_MS + 1;
+      await vi.advanceTimersByTimeAsync(lastBeatAt);
+      heartbeat();
+
+      await vi.advanceTimersByTimeAsync(SILENCE_BUDGET_MS - 1);
+      expect(readJobResult('job-watchdog-1')?.status).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-watchdog-1')?.status).toBe('failed');
+      });
+      expect(readJobResult('job-watchdog-1')?.error).toBe(
+        `wedged (no progress for ${String(SILENCE_BUDGET_MS)} ms)`
+      );
+      expect(getInFlight('orchestrate')).toBe(0);
+    });
+
+    it('a heartbeat by jobId defers the watchdog like the callback does (#6428)', async () => {
+      // Arity-0/1 bodies heartbeat through `heartbeatJob(jobId)`; the watchdog
+      // measures from the record, so that path must count the same.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const { finish } = dispatch('job-byid-1');
+      const step = INTERVAL_MS * 0.8;
+      for (let elapsed = 0; elapsed < SILENCE_BUDGET_MS * 2; elapsed += step) {
+        await vi.advanceTimersByTimeAsync(step);
+        heartbeatJob('job-byid-1');
+      }
+      expect(readJobResult('job-byid-1')?.status).toBe('pending');
+      finish({ ok: true });
+      await vi.waitFor(() => {
+        expect(readJobResult('job-byid-1')?.status).toBe('complete');
+      });
     });
 
     it('leaves a job under the standard ceiling alone when it never heartbeats', async () => {
@@ -581,6 +623,41 @@ describe('runAsJob', () => {
         expect(readJobResult('job-stages-1')?.status).toBe('complete');
       });
       expect(getInFlight('run_pipeline')).toBe(0);
+    });
+
+    it('a body whose agents emit step events heartbeats through them too (#6428)', async () => {
+      // orchestrate's main phase is the Orchestrator agent's model calls, which
+      // publish `withStep` events on `stepBus`, not on the pipeline bus. The
+      // bridge listens to both, with the same async-context attribution.
+      process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+      const stepEvery = INTERVAL_MS * 0.8;
+      const steps = Math.ceil((SILENCE_BUDGET_MS * 2) / stepEvery);
+      runAsJob<DummyInput, { ok: true }>({
+        toolName: 'orchestrate',
+        input: { task: 'agentic' },
+        freshJobId: () => 'job-steps-1',
+        run: async () => {
+          for (let i = 0; i < steps; i++) {
+            await new Promise((resolve) => setTimeout(resolve, stepEvery));
+            stepBus.emit('step', {
+              event: 'step.completed',
+              stepId: `s${String(i)}`,
+              name: 'orchestrator.analyze',
+              durationMs: 1,
+              status: 'ok',
+            });
+          }
+          return { ok: true };
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(SILENCE_BUDGET_MS * 2 - 1);
+      expect(readJobResult('job-steps-1')?.status).toBe('pending');
+      expect(readJobResult('job-steps-1')?.lastProgressAt).toBeDefined();
+      await vi.advanceTimersByTimeAsync(stepEvery);
+      await vi.waitFor(() => {
+        expect(readJobResult('job-steps-1')?.status).toBe('complete');
+      });
     });
 
     it("another job's stage events are not this job's heartbeat", async () => {
