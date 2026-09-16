@@ -100,11 +100,16 @@ records are refused with “redaction here is a history rewrite; not performed.�
 The proposed ledger must verify with the target reported as `redacted` and other
 records' states unchanged before a temporary file replaces the ledger atomically.
 
-The appended redaction record is **UNSIGNED**: the current strict redaction
-schema and shared vote signing helper do not support redaction signatures.
-`--signing-key <path>` and `--as-owner` are accepted for CLI parity but cannot
-sign this record kind or record an owner attestation; the command says so.
-The `by` field is operator-supplied attribution, not authenticated identity.
+The appended redaction record is **signed the way a ratification record is**
+(#6372): `--signing-key <path>`, else `NEXUS_VOTE_SIGNING_KEY`, else the agent
+key at `<dataDir>/auth/vote-record-signing.key`; an owner-principal signature
+needs `--as-owner` and `--as-owner` refuses the agent key, exactly as
+`append-ratification-record.ts`. The signature sits outside the redaction's
+hash (a signed and an unsigned redaction hash the same) and is verified at the
+record's `at`; the gate reports it beside the target record's own line
+(`signed:agent by …` / `unsigned-record`). With no key configured the record
+is appended UNSIGNED and the command says so. The `by` field is
+operator-supplied attribution; the signature is the authenticated identity.
 
 Review and commit the ledger diff in a PR. **The PR carrying the redaction is
 a governor-path PR and needs its own panel and owner ratification.** Purging

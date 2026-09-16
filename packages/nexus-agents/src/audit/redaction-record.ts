@@ -39,6 +39,7 @@ import * as crypto from 'node:crypto';
 import { z } from 'zod';
 
 import type { ReasoningCommitmentFields } from './reasoning-commitment.js';
+import { VoteRecordSignatureSchema } from './record-signature-schema.js';
 
 /**
  * One redaction. `kind` is the ledger-line discriminator: a vote record has
@@ -67,12 +68,18 @@ export const RedactionRecordSchema = z
     reason: z.string().min(1).max(2000),
     /** SHA-256 over every field above. */
     hash: z.string().length(64),
+    /**
+     * Optional SSH signature over `hash`, OUTSIDE the hash (#6372) — the same
+     * envelope a vote record carries, verified by `vote-record-signature.ts`
+     * at the record's `at`. A signed and an unsigned redaction hash the same.
+     */
+    signature: VoteRecordSignatureSchema.optional(),
   })
   .strict();
 export type RedactionRecord = z.infer<typeof RedactionRecordSchema>;
 
-/** The payload fields (everything except `hash`) — the self-hash projection. */
-export type RedactionRecordPayload = Omit<RedactionRecord, 'hash'>;
+/** The payload fields (everything except `hash` and `signature`) — the self-hash projection. */
+export type RedactionRecordPayload = Omit<RedactionRecord, 'hash' | 'signature'>;
 
 /**
  * SHA-256 over the canonical projection, built field-by-field in schema order
