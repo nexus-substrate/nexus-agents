@@ -54,7 +54,7 @@ export function validateCustomApiBaseUrl(
   if (raw === undefined || raw.trim() === '') {
     return err(
       new ConfigError(
-        'Custom API base URL is required but missing. Set NEXUS_CUSTOM_API_BASE_URL or pass `baseUrl` in config.'
+        'Custom API base URL is required but missing. Set NEXUS_OPENAI_COMPAT_URL or pass `baseUrl` in config.'
       )
     );
   }
@@ -63,12 +63,14 @@ export function validateCustomApiBaseUrl(
   try {
     url = new URL(raw);
   } catch {
-    return err(new ConfigError(`Custom API base URL is not a valid URL: ${raw}`));
+    // Not echoed: these messages reach the resilient-adapter warn line, and
+    // the raw string can carry userinfo (#4392 inc 3).
+    return err(new ConfigError('Custom API base URL is not a valid URL'));
   }
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return err(
-      new ConfigError(`Custom API base URL must use http or https, got "${url.protocol}" in ${raw}`)
+      new ConfigError(`Custom API base URL must use http or https, got "${url.protocol}"`)
     );
   }
 

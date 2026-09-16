@@ -20,6 +20,7 @@ import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js
 import { createClaudeAdapter } from './claude-adapter.js';
 import { SdkAdapter } from './sdk/index.js';
 import { warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
+import { hostnameOf, readGatewayEnv } from './sdk/gateway-env.js';
 import type { CliName, ICliAdapter, ApiVendor, ApiArmId } from '../cli-adapters/types.js';
 import { apiArmId } from '../cli-adapters/types.js';
 import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
@@ -214,32 +215,37 @@ function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelec
 }
 
 /**
- * Tries the custom-openai SDK adapter if `NEXUS_CUSTOM_API_KEY` and
- * `NEXUS_CUSTOM_API_BASE_URL` are both set. The adapter constructor
- * runs the base URL through an SSRF guard (see
+ * Tries the custom-openai SDK adapter if the gateway URL and key are both
+ * set: `NEXUS_OPENAI_COMPAT_URL` / `NEXUS_OPENAI_COMPAT_KEY`, or their
+ * deprecated aliases `NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY`
+ * (#4392 increment 3; the resolver warns once when an alias is in use). The
+ * adapter constructor runs the base URL through an SSRF guard (see
  * adapters/sdk/custom-api-validation.ts). Epic #2119.
+ *
+ * Only the hostname reaches the log and the reason string: a base URL can
+ * carry userinfo.
  */
 function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
-  const customKey = resolveApiKeyFromEnv(undefined, 'NEXUS_CUSTOM_API_KEY');
-  const customBaseUrl = process.env['NEXUS_CUSTOM_API_BASE_URL'];
-  if (customKey === undefined || customBaseUrl === undefined || customBaseUrl === '') {
-    return null;
-  }
+  const { baseUrl: customBaseUrl, apiKey: customKey } = readGatewayEnv(process.env, logger);
+  if (customKey === undefined || customBaseUrl === undefined) return null;
   const customModelId = process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL;
-  logger.info('Using custom-openai SDK adapter', {
-    model: customModelId,
-    baseUrl: customBaseUrl,
-  });
+  const host = hostnameOf(customBaseUrl);
+  logger.info('Using custom-openai SDK adapter', { model: customModelId, host });
   return {
-    adapter: new SdkAdapter({
-      providerId: 'custom-openai',
-      modelId: customModelId,
-      apiKey: customKey,
-      baseUrl: customBaseUrl,
-    }),
+    // The caller's logger reaches the adapter, so what it logs on a failed
+    // call is observable where the selection was made (#4392 inc 3 review).
+    adapter: new SdkAdapter(
+      {
+        providerId: 'custom-openai',
+        modelId: customModelId,
+        apiKey: customKey,
+        baseUrl: customBaseUrl,
+      },
+      logger
+    ),
     source: 'api',
     name: 'custom-openai',
-    reason: `Using custom OpenAI-compatible gateway at ${customBaseUrl} (model: ${customModelId})`,
+    reason: `Using custom OpenAI-compatible gateway at ${host} (model: ${customModelId})`,
   };
 }
 

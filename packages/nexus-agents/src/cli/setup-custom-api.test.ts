@@ -3,17 +3,22 @@ import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import { configureCustomApi, type HttpFetcher } from './setup-custom-api.js';
 
 describe('configureCustomApi (#2124)', () => {
-  const originalKey = process.env['NEXUS_CUSTOM_API_KEY'];
+  // #4392 inc 3: the key resolves `NEXUS_OPENAI_COMPAT_KEY ?? NEXUS_CUSTOM_API_KEY`.
+  const KEY_NAMES = ['NEXUS_OPENAI_COMPAT_KEY', 'NEXUS_CUSTOM_API_KEY'] as const;
+  const originalKeys = new Map<string, string | undefined>();
 
   beforeEach(() => {
-    Reflect.deleteProperty(process.env, 'NEXUS_CUSTOM_API_KEY');
+    for (const name of KEY_NAMES) {
+      originalKeys.set(name, process.env[name]);
+      Reflect.deleteProperty(process.env, name);
+    }
   });
 
   afterEach(() => {
-    if (originalKey !== undefined) {
-      process.env['NEXUS_CUSTOM_API_KEY'] = originalKey;
-    } else {
-      Reflect.deleteProperty(process.env, 'NEXUS_CUSTOM_API_KEY');
+    for (const name of KEY_NAMES) {
+      const prev = originalKeys.get(name);
+      if (prev !== undefined) process.env[name] = prev;
+      else Reflect.deleteProperty(process.env, name);
     }
   });
 
@@ -58,9 +63,14 @@ describe('configureCustomApi (#2124)', () => {
       const result = await configureCustomApi(minimalInput());
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.value.shellFragment).toContain('export NEXUS_CUSTOM_API_BASE_URL=');
-      expect(result.value.shellFragment).toContain('export NEXUS_CUSTOM_API_KEY=');
+      // #4392 inc 3: the fragment writes the NEW names (previously the
+      // deprecated NEXUS_CUSTOM_API_* pair), which also opts the operator into
+      // the gateway path. NEXUS_CUSTOM_MODEL is not deprecated.
+      expect(result.value.shellFragment).toContain('export NEXUS_OPENAI_COMPAT_URL=');
+      expect(result.value.shellFragment).toContain('export NEXUS_OPENAI_COMPAT_KEY=');
       expect(result.value.shellFragment).toContain('export NEXUS_CUSTOM_MODEL=');
+      expect(result.value.shellFragment).not.toContain('NEXUS_CUSTOM_API_BASE_URL');
+      expect(result.value.shellFragment).not.toContain('NEXUS_CUSTOM_API_KEY');
       expect(result.value.shellFragment).toContain('test-key');
       expect(result.value.shellFragment).toContain('gateway.example.com');
     });
@@ -102,13 +112,41 @@ describe('configureCustomApi (#2124)', () => {
       expect(result.value.shellFragment).toContain('explicit-key');
     });
 
-    it('falls back to NEXUS_CUSTOM_API_KEY env var', async () => {
+    it('falls back to the NEXUS_OPENAI_COMPAT_KEY env var (#4392 inc 3)', async () => {
+      process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'from-new-env';
+      const { apiKey: _apiKey, ...rest } = minimalInput();
+      const result = await configureCustomApi(rest);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.shellFragment).toContain('from-new-env');
+    });
+
+    it('still falls back to the deprecated NEXUS_CUSTOM_API_KEY env var', async () => {
       process.env['NEXUS_CUSTOM_API_KEY'] = 'from-env';
       const { apiKey: _apiKey, ...rest } = minimalInput();
       const result = await configureCustomApi(rest);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.value.shellFragment).toContain('from-env');
+    });
+
+    it('prefers the new key name over the deprecated one when both are set', async () => {
+      process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'from-new-env';
+      process.env['NEXUS_CUSTOM_API_KEY'] = 'from-old-env';
+      const { apiKey: _apiKey, ...rest } = minimalInput();
+      const result = await configureCustomApi(rest);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.shellFragment).toContain('from-new-env');
+      expect(result.value.shellFragment).not.toContain('from-old-env');
+    });
+
+    it('names the NEW variable in the non-interactive missing-key error', async () => {
+      const { apiKey: _apiKey, ...rest } = minimalInput();
+      const result = await configureCustomApi(rest);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('NEXUS_OPENAI_COMPAT_KEY');
     });
 
     it('fails cleanly in non-interactive mode when no key is available', async () => {
@@ -139,6 +177,20 @@ describe('configureCustomApi (#2124)', () => {
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.error.message).toMatch(/probe failed/i);
+    });
+
+    it('names the host, not the userinfo URL, in the probe-failed message (#4392 inc 3 review)', async () => {
+      const result = await configureCustomApi(
+        minimalInput({
+          baseUrl: 'https://u:ZQ9pw@gateway.example.com/v1',
+          fetcher: unauthorizedFetcher,
+        })
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/probe failed/i);
+      expect(result.error.message).toContain('gateway.example.com');
+      expect(result.error.message).not.toContain('ZQ9pw');
     });
 
     it('skips the probe entirely when skipProbe is true', async () => {

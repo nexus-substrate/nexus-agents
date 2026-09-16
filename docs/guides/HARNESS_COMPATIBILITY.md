@@ -23,9 +23,11 @@ For environments without Claude CLI, also set at least one model API key:
 export ANTHROPIC_API_KEY=...   # or
 export OPENAI_API_KEY=...      # or
 export GOOGLE_AI_API_KEY=...   # or — for custom gateway:
-export NEXUS_CUSTOM_API_BASE_URL=https://your-gateway.example.com/v1
-export NEXUS_CUSTOM_API_KEY=...
+export NEXUS_OPENAI_COMPAT_URL=https://your-gateway.example.com/v1
+export NEXUS_OPENAI_COMPAT_KEY=...
 ```
+
+(`NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY` still work as deprecated aliases for the single-model path — #4392 increment 3, dropped in the next major — but only the names above also enable the gateway path.)
 
 See [CUSTOM_ENDPOINT_SETUP.md](./CUSTOM_ENDPOINT_SETUP.md) for the custom-gateway path in depth.
 
@@ -253,8 +255,8 @@ If you symlinked or copied `.rules/*.md` into a harness-specific location, the `
 Set env vars **before** starting the harness (MCP servers inherit the harness's environment):
 
 ```bash
-export NEXUS_CUSTOM_API_BASE_URL=...
-export NEXUS_CUSTOM_API_KEY=...
+export NEXUS_OPENAI_COMPAT_URL=...
+export NEXUS_OPENAI_COMPAT_KEY=...
 # Now start OpenCode/Codex/Cursor/etc.
 ```
 

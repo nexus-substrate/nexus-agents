@@ -4,9 +4,10 @@
  * (Source: Issue #1123)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SdkAdapter, extractAiSdkFunctions } from './sdk-adapter.js';
-import type { CompletionRequest, ModelError } from '../../core/index.js';
+import type { CompletionRequest, ILogger, ModelError } from '../../core/index.js';
+import { createAutoAdapter } from '../auto-adapter.js';
 import { ErrorCode } from '../../core/index.js';
 import { createModelToCliAdapter } from '../../cli-adapters/model-to-cli-adapter.js';
 import { assessCapacity } from '../../cli-adapters/routing/stages/capacity-stage.js';
@@ -745,5 +746,169 @@ describe('SdkAdapter retry-after capture (#4606)', () => {
     const silentCapacity = await silent.getCapacity();
     expect(silentCapacity.quotaExhausted).toBe(false);
     expect(assessCapacity(silentCapacity)).toBe('unmeasured');
+  });
+});
+
+describe('custom-openai env aliases (#4392 inc 3)', () => {
+  const NAMES = [
+    'NEXUS_OPENAI_COMPAT_URL',
+    'NEXUS_OPENAI_COMPAT_KEY',
+    'NEXUS_CUSTOM_API_BASE_URL',
+    'NEXUS_CUSTOM_API_KEY',
+  ] as const;
+  const saved = new Map<string, string | undefined>();
+
+  beforeEach(() => {
+    dnsLookupMock.mockReset();
+    dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    for (const name of NAMES) {
+      saved.set(name, process.env[name]);
+      Reflect.deleteProperty(process.env, name);
+    }
+  });
+
+  afterEach(() => {
+    for (const name of NAMES) {
+      const prev = saved.get(name);
+      if (prev === undefined) Reflect.deleteProperty(process.env, name);
+      else process.env[name] = prev;
+    }
+  });
+
+  it('hands the provider factory the key and base URL from the NEW names alone', async () => {
+    process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
+    process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-new-NOT-REAL-0000';
+    const { generateText } = await import('ai');
+    vi.mocked(generateText).mockResolvedValueOnce({
+      text: 'ok',
+      finishReason: 'stop',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      response: { id: 'r', timestamp: new Date(), modelId: 'gpt-5.5' },
+    } as unknown as Awaited<ReturnType<typeof generateText>>);
+    const { createOpenAI } = await import('@ai-sdk/openai');
+    vi.mocked(createOpenAI).mockClear();
+
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' });
+    const result = await adapter.complete(TEST_REQUEST);
+
+    expect(result.ok).toBe(true);
+    expect(createOpenAI).toHaveBeenCalledWith({
+      apiKey: 'sk-TESTFAKE-new-NOT-REAL-0000',
+      baseURL: 'https://gateway.example.com/v1',
+    });
+  });
+
+  it('prefers the NEW key over the deprecated one when both are set', async () => {
+    process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
+    process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-new-NOT-REAL-0000';
+    process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-old-NOT-REAL-0000';
+    const { generateText } = await import('ai');
+    vi.mocked(generateText).mockResolvedValueOnce({
+      text: 'ok',
+      finishReason: 'stop',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      response: { id: 'r', timestamp: new Date(), modelId: 'gpt-5.5' },
+    } as unknown as Awaited<ReturnType<typeof generateText>>);
+    const { createOpenAI } = await import('@ai-sdk/openai');
+    vi.mocked(createOpenAI).mockClear();
+
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' });
+    await adapter.complete(TEST_REQUEST);
+
+    expect(createOpenAI).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'sk-TESTFAKE-new-NOT-REAL-0000' })
+    );
+  });
+});
+
+// #4392 inc 3 security review: a gateway's 401 body can echo the key it
+// rejected. A key of arbitrary shape matches no sanitizer prefix, so the
+// exact-match redaction with the RESOLVED key is what keeps it out of the
+// log line and the returned ModelError.
+describe('toErrorResult redacts the resolved key (#4392 inc 3 review, MEDIUM 1)', () => {
+  const KEY = 'ZQ9-plainkey-77';
+  const NAMES = [
+    'NEXUS_OPENAI_COMPAT_URL',
+    'NEXUS_OPENAI_COMPAT_KEY',
+    'NEXUS_CUSTOM_API_BASE_URL',
+    'NEXUS_CUSTOM_API_KEY',
+    'ANTHROPIC_API_KEY',
+    'OPENAI_API_KEY',
+    'GOOGLE_AI_API_KEY',
+  ] as const;
+  const saved = new Map<string, string | undefined>();
+
+  function makeLogger(): ILogger &
+    Record<'debug' | 'info' | 'warn' | 'error', ReturnType<typeof vi.fn>> {
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    return logger as unknown as ILogger &
+      Record<'debug' | 'info' | 'warn' | 'error', ReturnType<typeof vi.fn>>;
+  }
+
+  beforeEach(() => {
+    dnsLookupMock.mockReset();
+    dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    for (const name of NAMES) {
+      saved.set(name, process.env[name]);
+      Reflect.deleteProperty(process.env, name);
+    }
+    process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
+    process.env['NEXUS_OPENAI_COMPAT_KEY'] = KEY;
+  });
+
+  afterEach(() => {
+    for (const name of NAMES) {
+      const prev = saved.get(name);
+      if (prev === undefined) Reflect.deleteProperty(process.env, name);
+      else process.env[name] = prev;
+    }
+  });
+
+  it('keeps a 401 body that echoes the key out of both the log and the ModelError, via createAutoAdapter(api-only)', async () => {
+    const { generateText } = await import('ai');
+    vi.mocked(generateText).mockRejectedValueOnce(
+      Object.assign(
+        new Error(`401 Unauthorized: {"error":{"message":"invalid key ${KEY} rejected"}}`),
+        { statusCode: 401 }
+      )
+    );
+    const logger = makeLogger();
+
+    const selection = await createAutoAdapter({ priority: 'api-only', logger, enableCache: false });
+    expect(selection.name).toBe('custom-openai');
+    const result = await selection.adapter.complete(TEST_REQUEST);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('401 Unauthorized');
+    expect(result.error.message).not.toContain(KEY);
+    const flat = JSON.stringify(
+      [logger.debug, logger.info, logger.warn, logger.error].flatMap((fn) =>
+        fn.mock.calls.map((call: unknown[]) =>
+          call.map((arg) =>
+            arg instanceof Error ? { name: arg.name, message: arg.message, stack: arg.stack } : arg
+          )
+        )
+      )
+    );
+    expect(flat).toContain('SDK adapter error');
+    expect(flat).not.toContain(KEY);
+  });
+
+  it('keeps the original error name on the logged error', async () => {
+    const { generateText } = await import('ai');
+    class GatewayAuthError extends Error {
+      override readonly name = 'GatewayAuthError';
+    }
+    vi.mocked(generateText).mockRejectedValueOnce(new GatewayAuthError(`denied ${KEY}`));
+    const logger = makeLogger();
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' }, logger);
+
+    await adapter.complete(TEST_REQUEST);
+
+    const logged = logger.error.mock.calls[0]?.[1] as Error | undefined;
+    expect(logged?.name).toBe('GatewayAuthError');
+    expect(logged?.message).not.toContain(KEY);
+    expect(logged?.stack ?? '').not.toContain(KEY);
   });
 });

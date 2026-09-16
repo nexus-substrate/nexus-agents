@@ -1118,3 +1118,62 @@ describe('NEXUS_OPENAI_COMPAT_ENDPOINT is registered as an endpoint id (#4392 in
     }
   );
 });
+
+// =============================================================================
+// Deprecated gateway env aliases (#4392 increment 3)
+// =============================================================================
+
+describe('deprecated gateway env aliases (#4392 inc 3)', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', undefined);
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', undefined);
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', undefined);
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', undefined);
+  });
+
+  it('still accepts both legacy names as known — an alias is not a typo', () => {
+    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-TESTFAKE-NOT-REAL-0000');
+    const result = validateNexusEnv();
+    expect(result.unknownVars).toHaveLength(0);
+    expect(result.invalidVars).toHaveLength(0);
+  });
+
+  it('reports each set legacy name with its replacement and whether the new name shadows it', () => {
+    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-TESTFAKE-NOT-REAL-0000');
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-TESTFAKE-new-NOT-REAL-0000');
+    const result = validateNexusEnv();
+    expect(result.deprecatedVars).toEqual([
+      {
+        name: 'NEXUS_CUSTOM_API_BASE_URL',
+        replacement: 'NEXUS_OPENAI_COMPAT_URL',
+        shadowed: false,
+      },
+      { name: 'NEXUS_CUSTOM_API_KEY', replacement: 'NEXUS_OPENAI_COMPAT_KEY', shadowed: true },
+    ]);
+  });
+
+  it('reports an empty list when no legacy name is set', () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://gateway.example/v1');
+    expect(validateNexusEnv().deprecatedVars).toEqual([]);
+  });
+
+  it('does not log the deprecation here — the gateway-env resolver warns once', () => {
+    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-TESTFAKE-NOT-REAL-0000');
+    const warnings: string[] = [];
+    const logger = {
+      warn: (msg: string) => warnings.push(msg),
+      info: vi.fn(),
+      debug: vi.fn(),
+      error: vi.fn(),
+    } as unknown as import('../core/index.js').ILogger;
+
+    const result = validateNexusEnv(logger);
+
+    expect(result.deprecatedVars).toHaveLength(2);
+    expect(warnings.some((w) => w.includes('NEXUS_CUSTOM_API'))).toBe(false);
+  });
+});

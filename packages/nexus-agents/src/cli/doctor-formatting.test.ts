@@ -729,6 +729,52 @@ describe('doctor-formatting', () => {
       expect(getCalls().some((call) => call.includes('Gateway cost'))).toBe(false);
     });
 
+    it('warns per deprecated gateway alias, naming the replacement and the alias horizon (#4392 inc 3)', () => {
+      const result = createDoctorResult({
+        voterTransport: {
+          configured: false,
+          deprecatedEnv: [
+            {
+              name: 'NEXUS_CUSTOM_API_BASE_URL',
+              replacement: 'NEXUS_OPENAI_COMPAT_URL',
+              shadowed: false,
+            },
+            {
+              name: 'NEXUS_CUSTOM_API_KEY',
+              replacement: 'NEXUS_OPENAI_COMPAT_KEY',
+              shadowed: true,
+            },
+          ],
+        },
+      });
+      printDoctorResults(result);
+      const calls = getCalls();
+      const urlLine = calls.find((call) => call.includes('NEXUS_CUSTOM_API_BASE_URL'));
+      expect(urlLine).toBeDefined();
+      expect(urlLine).toContain('deprecated');
+      expect(urlLine).toContain('use NEXUS_OPENAI_COMPAT_URL');
+      expect(urlLine).toContain('(alias until the next major, #6291)');
+      expect(urlLine).not.toContain('ignored');
+      const keyLine = calls.find((call) => call.includes('NEXUS_CUSTOM_API_KEY'));
+      expect(keyLine).toBeDefined();
+      expect(keyLine).toContain('ignored');
+      expect(keyLine).toContain('NEXUS_OPENAI_COMPAT_KEY is set');
+      // Option C: renaming is what opts into the gateway path.
+      expect(
+        calls.some(
+          (call) => call.includes('opts into the gateway path') && call.includes('model discovery')
+        )
+      ).toBe(true);
+      // A warning, not a failure: the summary is the fixture's value, untouched.
+      expect(calls.some((call) => call.includes('Status: Ready'))).toBe(true);
+    });
+
+    it('prints no deprecation line when no legacy alias is set (#4392 inc 3)', () => {
+      const result = createDoctorResult({ voterTransport: { configured: true, cost: 'unset' } });
+      printDoctorResults(result);
+      expect(getCalls().some((call) => call.includes('deprecated'))).toBe(false);
+    });
+
     it('renders the pinned claude model line from the probe, not from CLI presence (#6120)', () => {
       const result: DoctorResult = {
         ...createDoctorResult({

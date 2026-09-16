@@ -13,6 +13,27 @@ vi.mock('node:fs', () => ({
 }));
 
 import { readOpencodeGateway } from './opencode-bridge.js';
+import type { ILogger } from '../core/index.js';
+
+type MockLogger = ILogger & Record<'debug' | 'info' | 'warn' | 'error', ReturnType<typeof vi.fn>>;
+
+function makeLogger(): MockLogger {
+  return {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as unknown as MockLogger;
+}
+
+function allCalls(logger: MockLogger): string {
+  return JSON.stringify([
+    ...logger.debug.mock.calls,
+    ...logger.info.mock.calls,
+    ...logger.warn.mock.calls,
+    ...logger.error.mock.calls,
+  ]);
+}
 
 describe('readOpencodeGateway', () => {
   let savedProxyKey: string | undefined;
@@ -156,5 +177,48 @@ describe('readOpencodeGateway', () => {
       })
     );
     expect(readOpencodeGateway('/literal-curly.json')?.apiKey).toBe('sk-literal-{not-an-env-ref}');
+  });
+
+  // #4392 inc 3, no-logging parity (increment-2 item 5): the parse-error
+  // message on Node 22 embeds a snippet of the SOURCE, so a hand-edited file
+  // with an unquoted key leaked it into the warn line.
+  describe('never logs the file contents or the key (#4392 inc 3)', () => {
+    // Deliberately matches no sanitizer pattern: the test is about what the
+    // bridge puts on the line, not about what a downstream scrubber removes.
+    const UNQUOTED_KEY = 'zq7TESTFAKEunquotedNOTREAL0000';
+
+    it('logs only the error name — not the message — when the file is not valid JSON', () => {
+      mockReadFileSync.mockReturnValue(
+        `{"providers": {"openai-compat": {"options": {"apiKey": ${UNQUOTED_KEY}}}}}`
+      );
+      const logger = makeLogger();
+      expect(readOpencodeGateway('/unquoted.json', logger)).toBeNull();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(allCalls(logger)).not.toContain(UNQUOTED_KEY);
+      expect(allCalls(logger)).toContain('SyntaxError');
+    });
+
+    it('logs the gateway hostname only on success — never the full URL (userinfo-capable)', () => {
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          providers: {
+            'openai-compat': {
+              options: {
+                baseURL: 'https://u:pw-TESTFAKE@gateway.example/v1',
+                apiKey: 'sk-TESTFAKE-literal-NOT-REAL-0000',
+              },
+            },
+          },
+        })
+      );
+      const logger = makeLogger();
+      expect(readOpencodeGateway('/userinfo.json', logger)?.baseURL).toBe(
+        'https://u:pw-TESTFAKE@gateway.example/v1'
+      );
+      const flat = allCalls(logger);
+      expect(flat).toContain('gateway.example');
+      expect(flat).not.toContain('pw-TESTFAKE');
+      expect(flat).not.toContain('sk-TESTFAKE-literal');
+    });
   });
 });
