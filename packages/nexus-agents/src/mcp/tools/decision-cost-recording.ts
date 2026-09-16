@@ -28,6 +28,7 @@ import { DecisionCostStore, type DecisionGate } from '../../observability/decisi
 import type {
   DecisionBillingMode,
   DecisionCostSummary,
+  UndeclaredOptionsDetectorRecord,
   VoterCostInput,
 } from '../../observability/decision-cost.js';
 
@@ -123,6 +124,12 @@ export interface RecordDecisionCostOptions {
   readonly billingMode?: DecisionBillingMode;
   /** Override the logger (testing); defaults to a module logger. */
   readonly logger?: ILogger;
+  /**
+   * The undeclared-options detector's verdict on this vote (#5422). Passed
+   * through to the store on every `consensus_vote`, fired or not; omitted by
+   * `pr_review`, which runs no such detector.
+   */
+  readonly undeclaredOptionsDetector?: UndeclaredOptionsDetectorRecord;
 }
 
 const defaultLogger = createLogger({ component: 'decision-cost-recording' });
@@ -228,6 +235,9 @@ export function recordDecisionCost(options: RecordDecisionCostOptions): Decision
     voters,
     billingMode,
     timestamp,
+    ...(options.undeclaredOptionsDetector !== undefined
+      ? { undeclaredOptionsDetector: options.undeclaredOptionsDetector }
+      : {}),
   });
   if (!persisted) {
     // Count EVERY drop (stays exact); rate-limit only the warn so an unwritable

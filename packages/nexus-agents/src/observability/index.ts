@@ -62,13 +62,19 @@ export {
 export type { SwarmHealthSignalsOptions } from './swarm-health-signals.js';
 
 // Per-decision cost aggregation (#3855, epic #3854)
-export { rollupDecisionCost, UNKNOWN_MODEL } from './decision-cost.js';
+export {
+  rollupDecisionCost,
+  UNKNOWN_MODEL,
+  UndeclaredOptionsDetectorSchema,
+  UNDECLARED_OPTIONS_EXCERPT_CHARS,
+} from './decision-cost.js';
 export type {
   DecisionBillingMode,
   VoterCostInput,
   VoterCostBreakdown,
   ModelCostBreakdown,
   DecisionCostSummary,
+  UndeclaredOptionsDetectorRecord,
 } from './decision-cost.js';
 export {
   DecisionCostStore,

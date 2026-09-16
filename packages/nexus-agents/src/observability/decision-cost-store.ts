@@ -23,8 +23,13 @@ import { z } from 'zod';
 import { JsonlStore } from '../config/jsonl-store.js';
 import { ensureLearningDir, getDecisionCostFile } from '../config/learning-persistence.js';
 import { PriceBasisSchema } from '../core/price-basis.js';
-import { rollupDecisionCost } from './decision-cost.js';
-import type { DecisionBillingMode, DecisionCostSummary, VoterCostInput } from './decision-cost.js';
+import { rollupDecisionCost, UndeclaredOptionsDetectorSchema } from './decision-cost.js';
+import type {
+  DecisionBillingMode,
+  DecisionCostSummary,
+  UndeclaredOptionsDetectorRecord,
+  VoterCostInput,
+} from './decision-cost.js';
 
 /** Decision surface that incurred the cost — the gate type (#3854). */
 export const DecisionGateSchema = z.enum(['consensus_vote', 'pr_review']);
@@ -82,6 +87,8 @@ export const DecisionCostRecordSchema = z.object({
   timestamp: z.string().min(1).max(40),
   /** The rolled-up cost summary. */
   summary: DecisionCostSummarySchema,
+  /** #5422 — optional: absent means no verdict was recorded, not "not fired". */
+  undeclaredOptionsDetector: UndeclaredOptionsDetectorSchema.optional(),
 });
 export type DecisionCostRecord = z.infer<typeof DecisionCostRecordSchema>;
 
@@ -104,6 +111,8 @@ export interface RecordDecisionCostInput {
   readonly billingMode: DecisionBillingMode;
   /** ISO timestamp; the caller supplies the clock (keeps the store deterministic). */
   readonly timestamp: string;
+  /** The detector verdict for this vote (#5422); omit when none was computed. */
+  readonly undeclaredOptionsDetector?: UndeclaredOptionsDetectorRecord;
 }
 
 /**
@@ -149,6 +158,10 @@ export class DecisionCostStore {
       gate: input.gate,
       timestamp: input.timestamp,
       summary,
+      // Spread conditionally so an absent verdict stays absent on disk (#5422).
+      ...(input.undeclaredOptionsDetector !== undefined
+        ? { undeclaredOptionsDetector: input.undeclaredOptionsDetector }
+        : {}),
     };
     const persisted = this.store.append(record);
     return { record, persisted };
