@@ -36,7 +36,13 @@ import { recordUsageEvent } from '../learning/usage-log.js';
 import { gatewayCostDetail } from '../cli-adapters/budget-arm-cost.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
 import { isEndpointArmId, type EndpointArmId } from '../cli-adapters/types-core.js';
-import { DEFAULT_OPENAI_COMPAT_ENDPOINT, OPENAI_COMPAT_ENDPOINT_ENV } from './sdk/types.js';
+import {
+  DEFAULT_OPENAI_COMPAT_ENDPOINT,
+  OPENAI_COMPAT_ENDPOINT_ENV,
+  OPENAI_COMPAT_KEY_ENV,
+  OPENAI_COMPAT_URL_ENV,
+} from './sdk/types.js';
+import { hostnameOf } from './sdk/gateway-env.js';
 
 export interface OpenAICompatConfig {
   /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
@@ -103,9 +109,16 @@ export function readOpenAICompatEnv(): OpenAICompatConfig | null {
   return readGatewayFromOpencode();
 }
 
+/**
+ * Reads the NEW names only. The deprecated `NEXUS_CUSTOM_API_*` pair is an
+ * alias for the single-model `custom-openai` reader (`sdk/gateway-env.ts`)
+ * and deliberately not for this one (#4392 increment 3, panel option C):
+ * renaming is what opts an operator into discovery, in-process voters and
+ * the `api:<endpoint>` arm, so the legacy pair alone must leave this null.
+ */
 function readGatewayFromEnv(): OpenAICompatConfig | null {
-  const envUrl = process.env['NEXUS_OPENAI_COMPAT_URL']?.trim();
-  const envKey = process.env['NEXUS_OPENAI_COMPAT_KEY']?.trim();
+  const envUrl = process.env[OPENAI_COMPAT_URL_ENV]?.trim();
+  const envKey = process.env[OPENAI_COMPAT_KEY_ENV]?.trim();
   if (envUrl === undefined || envUrl === '') return null;
   if (envKey === undefined || envKey === '') return null;
   return { baseUrl: envUrl, apiKey: envKey, endpoint: readOpenAICompatEndpoint() };
@@ -181,15 +194,6 @@ function keepValidModelIds(
   return kept;
 }
 
-/** Hostname of a base URL, or the raw string when it will not parse. */
-function hostnameOf(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).hostname;
-  } catch {
-    return baseUrl;
-  }
-}
-
 /**
  * Discover available models by calling `GET {baseUrl}/v1/models`. Uses the
  * official `openai` SDK's `client.models.list()` so we benefit from its
@@ -224,7 +228,7 @@ export async function discoverModels(
     if (list.data.length > MAX_DISCOVERED_MODELS) {
       return err(
         new ConfigError(
-          `Gateway ${config.baseUrl} listed ${String(list.data.length)} models, above the ` +
+          `Gateway ${hostnameOf(config.baseUrl)} listed ${String(list.data.length)} models, above the ` +
             `${String(MAX_DISCOVERED_MODELS)} cap. Refusing to build an adapter per model.`
         )
       );
@@ -236,13 +240,22 @@ export async function discoverModels(
     }));
     return ok(keepValidModelIds(models, logger));
   } catch (e: unknown) {
+    // This message lands on cli-server-gateway's probe-failed warn line, so it
+    // names the host (a base URL can carry userinfo) and never the key: a
+    // gateway's 401 body may echo the bearer it rejected (#4392 increment 3).
     return err(
       new ConfigError(
-        `Failed to discover models from ${config.baseUrl}: ${getErrorMessage(e)}. ` +
-          `Verify NEXUS_OPENAI_COMPAT_URL and NEXUS_OPENAI_COMPAT_KEY, then retry.`
+        `Failed to discover models from ${hostnameOf(config.baseUrl)}: ` +
+          `${redactApiKey(getErrorMessage(e), config.apiKey)}. ` +
+          `Verify ${OPENAI_COMPAT_URL_ENV} and ${OPENAI_COMPAT_KEY_ENV}, then retry.`
       )
     );
   }
+}
+
+/** Every exact occurrence of the key replaced; an empty key matches nothing. */
+function redactApiKey(message: string, apiKey: string): string {
+  return apiKey === '' ? message : message.replaceAll(apiKey, '<redacted>');
 }
 
 /**

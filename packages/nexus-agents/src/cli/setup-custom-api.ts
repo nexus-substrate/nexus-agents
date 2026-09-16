@@ -17,7 +17,12 @@
 
 import { createInterface } from 'node:readline';
 import { validateCustomApiBaseUrl } from '../adapters/sdk/custom-api-validation.js';
-import { CUSTOM_API_BASE_URL_ENV, CUSTOM_API_ALLOW_PRIVATE_ENV } from '../adapters/sdk/types.js';
+import {
+  CUSTOM_API_ALLOW_PRIVATE_ENV,
+  OPENAI_COMPAT_KEY_ENV,
+  OPENAI_COMPAT_URL_ENV,
+} from '../adapters/sdk/types.js';
+import { readGatewayEnv } from '../adapters/sdk/gateway-env.js';
 import { CUSTOM_API_DEFAULT_MODEL as DEFAULT_MODEL } from '../config/defaults.js';
 import { ok, err, type Result } from '../core/index.js';
 
@@ -143,17 +148,19 @@ const defaultFetcher: HttpFetcher = async (url, init) => {
 };
 
 /**
- * Resolves the API key in priority order: input → env var → TTY prompt
- * (unless non-interactive, in which case the absence is a fail).
+ * Resolves the API key in priority order: input → env var (the gateway-env
+ * resolver: `NEXUS_OPENAI_COMPAT_KEY`, or its deprecated alias
+ * `NEXUS_CUSTOM_API_KEY`, #4392 increment 3) → TTY prompt (unless
+ * non-interactive, in which case the absence is a fail).
  */
 async function resolveApiKey(input: CustomApiSetupInput): Promise<Result<string, Error>> {
   if (input.apiKey !== undefined && input.apiKey !== '') return ok(input.apiKey);
-  const envKey = process.env['NEXUS_CUSTOM_API_KEY'];
-  if (envKey !== undefined && envKey !== '') return ok(envKey);
+  const envKey = readGatewayEnv().apiKey;
+  if (envKey !== undefined) return ok(envKey);
   if (input.nonInteractive === true) {
     return err(
       new Error(
-        'Custom API key required but not provided. Pass --custom-api-key or set NEXUS_CUSTOM_API_KEY.'
+        `Custom API key required but not provided. Pass --custom-api-key or set ${OPENAI_COMPAT_KEY_ENV}.`
       )
     );
   }
@@ -181,6 +188,11 @@ async function promptForApiKey(out: NodeJS.WritableStream): Promise<string> {
 /**
  * Formats the shell fragment the user should paste into their shell rc.
  * Designed to be POSIX-portable; fish users can adapt `export` to `set -gx`.
+ *
+ * Writes the current names (#4392 increment 3): `NEXUS_OPENAI_COMPAT_URL` /
+ * `NEXUS_OPENAI_COMPAT_KEY`, which configure both the single-model
+ * `custom-openai` path this command sets up and the discovery/voter gateway
+ * path. `NEXUS_CUSTOM_MODEL` is not deprecated — it pins the single model.
  */
 function buildShellFragment(params: {
   readonly baseUrl: string;
@@ -191,8 +203,8 @@ function buildShellFragment(params: {
   const { baseUrl, apiKey, model, allowPrivate } = params;
   const lines: string[] = [
     '# nexus-agents custom-openai gateway (nexus-agents setup --custom-api)',
-    `export ${CUSTOM_API_BASE_URL_ENV}="${baseUrl}"`,
-    `export NEXUS_CUSTOM_API_KEY="${apiKey}"`,
+    `export ${OPENAI_COMPAT_URL_ENV}="${baseUrl}"`,
+    `export ${OPENAI_COMPAT_KEY_ENV}="${apiKey}"`,
     `export NEXUS_CUSTOM_MODEL="${model}"`,
   ];
   if (allowPrivate === true) {

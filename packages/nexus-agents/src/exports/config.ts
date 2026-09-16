@@ -33,6 +33,7 @@ export {
   type UnknownVar,
   type IneffectiveVar,
   type InvalidVar,
+  type DeprecatedVar,
 } from '../config/index.js';
 
 // Model Availability — probes & fallback chains (Issue #869)

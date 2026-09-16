@@ -46,6 +46,7 @@ import {
   readOpenAICompatEndpoint,
   readOpenAICompatEnv,
 } from '../adapters/openai-compat-adapter.js';
+import { resolveGatewayEnv, type DeprecatedGatewayEnvUse } from '../adapters/sdk/gateway-env.js';
 import {
   gatewayCostStatus,
   resolveGatewayCostDeclaration,
@@ -266,6 +267,15 @@ export interface VoterTransportCheck {
    * per-task budget exclude it (#6393).
    */
   readonly cost?: GatewayCostDeclaration | 'unset' | 'invalid' | 'no-default';
+  /**
+   * Deprecated gateway env aliases in use (#4392 increment 3): the
+   * `NEXUS_CUSTOM_API_*` pair, each with its replacement and whether the
+   * replacement shadows it. Present only when at least one is set. A warning,
+   * not a failure — and, per panel option C, the legacy pair configures only
+   * the single-model `custom-openai` path, so it never makes `configured`
+   * true; renaming does.
+   */
+  readonly deprecatedEnv?: readonly DeprecatedGatewayEnvUse[];
 }
 
 /**
@@ -857,10 +867,14 @@ function collectEnvironmentChecks(): {
 
 export function checkVoterTransport(): VoterTransportCheck {
   const gateway = readOpenAICompatEnv();
-  if (gateway === null) return { configured: false };
+  // Read, never warned from here: doctor prints its own line for these.
+  const { deprecated } = resolveGatewayEnv();
+  const deprecatedEnv = deprecated.length > 0 ? { deprecatedEnv: deprecated } : {};
+  if (gateway === null) return { configured: false, ...deprecatedEnv };
   return {
     configured: true,
     cost: voterGatewayCostDeclaration(gateway.endpoint ?? readOpenAICompatEndpoint()),
+    ...deprecatedEnv,
   };
 }
 

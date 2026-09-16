@@ -122,10 +122,12 @@ describe('tryWireGatewayAdapter', () => {
       const logger = makeMockLogger();
       const result = await tryWireGatewayAdapter(logger);
       expect(result).toBe(adapters[0]);
+      // Previously pinned `baseUrl: 'https://gateway.example/v1'`; the line
+      // carries the host only since #4392 inc 3 (a base URL can carry userinfo).
       expect(logger.info).toHaveBeenCalledWith(
         'OpenAI-compatible gateway wired',
         expect.objectContaining({
-          baseUrl: 'https://gateway.example/v1',
+          host: 'gateway.example',
           modelCount: 2,
         })
       );
@@ -215,6 +217,79 @@ describe('tryWireGatewayAdapter', () => {
       ];
       const flat = JSON.stringify(allLogCalls);
       expect(flat).not.toContain('sk-secret-key-should-not-leak');
+    });
+
+    it('logs the gateway hostname only — never the full base URL (#4392 inc 3)', async () => {
+      readOpenAICompatEnvMock.mockReturnValue({
+        baseUrl: 'https://u:pw-TESTFAKE@gateway.example/v1',
+        apiKey: 'sk-TESTFAKE-NOT-REAL-0000',
+      });
+      buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('m1')]));
+      const logger = makeMockLogger();
+      await tryWireGatewayAdapter(logger);
+      const flat = JSON.stringify([...logger.info.mock.calls, ...logger.warn.mock.calls]);
+      expect(flat).toContain('gateway.example');
+      expect(flat).not.toContain('pw-TESTFAKE');
+      expect(flat).not.toContain('https://u:');
+    });
+  });
+
+  // #4392 inc 3, panel option C: the deprecated NEXUS_CUSTOM_API_* pair is an
+  // alias for the single-model `custom-openai` reader only. Driven through the
+  // REAL env reader (not the file-level mock) so the pin covers the seam.
+  describe('legacy NEXUS_CUSTOM_API_* pair alone does not wire the gateway (#4392 inc 3)', () => {
+    const NAMES = [
+      'NEXUS_CUSTOM_API_BASE_URL',
+      'NEXUS_CUSTOM_API_KEY',
+      'NEXUS_OPENAI_COMPAT_URL',
+      'NEXUS_OPENAI_COMPAT_KEY',
+      'NEXUS_OPENCODE_CONFIG',
+    ] as const;
+    const saved = new Map<string, string | undefined>();
+
+    beforeEach(async () => {
+      for (const name of NAMES) {
+        saved.set(name, process.env[name]);
+        Reflect.deleteProperty(process.env, name);
+      }
+      const actual = await vi.importActual<typeof import('./adapters/openai-compat-adapter.js')>(
+        './adapters/openai-compat-adapter.js'
+      );
+      readOpenAICompatEnvMock.mockImplementation(() => actual.readOpenAICompatEnv());
+      _resetCliSubprocessFallbackNotice();
+    });
+
+    afterEach(() => {
+      for (const name of NAMES) {
+        const prev = saved.get(name);
+        if (prev === undefined) Reflect.deleteProperty(process.env, name);
+        else process.env[name] = prev;
+      }
+    });
+
+    it('returns undefined, never probes, and tells the operator which names opt in', async () => {
+      process.env['NEXUS_CUSTOM_API_BASE_URL'] = 'https://legacy.example/v1';
+      process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-legacy-NOT-REAL-0000';
+      const logger = makeMockLogger();
+
+      const result = await tryWireGatewayAdapters(logger);
+
+      expect(result).toBeUndefined();
+      expect(buildOpenAICompatAdaptersMock).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.stringContaining('NEXUS_OPENAI_COMPAT_URL') as unknown
+      );
+    });
+
+    it('control: the same values under the NEW names do reach the probe', async () => {
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://legacy.example/v1';
+      process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-legacy-NOT-REAL-0000';
+      buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('m1')]));
+
+      const result = await tryWireGatewayAdapters(makeMockLogger());
+
+      expect(result).toHaveLength(1);
+      expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(1);
     });
   });
 });

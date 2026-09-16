@@ -10,18 +10,63 @@
  * SdkAdapterConfig + env-var fallback.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { SdkAdapter } from './sdk-adapter.js';
 import { ConfigError } from '../../core/index.js';
-import { CUSTOM_API_BASE_URL_ENV, CUSTOM_API_ALLOW_PRIVATE_ENV } from './types.js';
+import {
+  CUSTOM_API_ALLOW_PRIVATE_ENV,
+  OPENAI_COMPAT_KEY_ENV,
+  OPENAI_COMPAT_URL_ENV,
+} from './types.js';
+
+// The deprecated spellings (#4392 inc 3), spelled out: the `@deprecated`
+// constants must not be read, and the test is about these exact names.
+const CUSTOM_API_BASE_URL_ENV = 'NEXUS_CUSTOM_API_BASE_URL';
+const CUSTOM_API_KEY_ENV = 'NEXUS_CUSTOM_API_KEY';
 
 describe('SdkAdapter custom-openai provider (#2120)', () => {
   const origBaseUrl = process.env[CUSTOM_API_BASE_URL_ENV];
   const origAllowPrivate = process.env[CUSTOM_API_ALLOW_PRIVATE_ENV];
+  const origNewUrl = process.env[OPENAI_COMPAT_URL_ENV];
+  const origNewKey = process.env[OPENAI_COMPAT_KEY_ENV];
+  const origOldKey = process.env[CUSTOM_API_KEY_ENV];
+
+  beforeEach(() => {
+    // #4392 inc 3: the base URL resolves `new ?? old`, so a host env carrying
+    // the new name would satisfy "no base URL anywhere" below.
+    Reflect.deleteProperty(process.env, OPENAI_COMPAT_URL_ENV);
+    Reflect.deleteProperty(process.env, OPENAI_COMPAT_KEY_ENV);
+    Reflect.deleteProperty(process.env, CUSTOM_API_KEY_ENV);
+  });
 
   afterEach(() => {
     restore(CUSTOM_API_BASE_URL_ENV, origBaseUrl);
     restore(CUSTOM_API_ALLOW_PRIVATE_ENV, origAllowPrivate);
+    restore(OPENAI_COMPAT_URL_ENV, origNewUrl);
+    restore(OPENAI_COMPAT_KEY_ENV, origNewKey);
+    restore(CUSTOM_API_KEY_ENV, origOldKey);
+  });
+
+  describe('env aliases (#4392 inc 3)', () => {
+    it('constructs from the NEW names alone (URL and key both from env)', () => {
+      process.env[OPENAI_COMPAT_URL_ENV] = 'https://gateway.example.com/v1';
+      process.env[OPENAI_COMPAT_KEY_ENV] = 'sk-TESTFAKE-new-NOT-REAL-0000';
+      Reflect.deleteProperty(process.env, CUSTOM_API_BASE_URL_ENV);
+      expect(
+        () => new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' })
+      ).not.toThrow();
+    });
+
+    it('prefers the NEW base URL over the deprecated one when both are set', () => {
+      // The old spelling points at a rejected (loopback) host; if it were
+      // honoured over the new one, construction would throw.
+      process.env[OPENAI_COMPAT_URL_ENV] = 'https://gateway.example.com/v1';
+      process.env[CUSTOM_API_BASE_URL_ENV] = 'http://localhost:4000/v1';
+      expect(
+        () =>
+          new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5', apiKey: 'test-key' })
+      ).not.toThrow();
+    });
   });
 
   describe('construction-time base URL resolution', () => {

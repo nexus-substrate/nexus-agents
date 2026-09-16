@@ -34,7 +34,8 @@ import {
 } from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
-import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
+import { PROVIDER_ENV_KEYS } from './types.js';
+import { readGatewayEnv } from './gateway-env.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import {
   validateCustomApiBaseUrl,
@@ -182,25 +183,27 @@ function isGenerateObjectResult(value: unknown): value is GenerateObjectResult {
 
 /**
  * Resolves the API key for a given provider.
- * Priority: explicit config > environment variable.
+ * Priority: explicit config > environment variable. The `custom-openai`
+ * key goes through the gateway-env resolver, which honours the deprecated
+ * `NEXUS_CUSTOM_API_KEY` alias (#4392 increment 3).
  */
 function resolveApiKey(providerId: SdkProviderId, configKey?: string): string | undefined {
   if (configKey !== undefined) return configKey;
-  const envVar = PROVIDER_ENV_KEYS[providerId];
-  return process.env[envVar];
+  if (providerId === 'custom-openai') return readGatewayEnv().apiKey;
+  return process.env[PROVIDER_ENV_KEYS[providerId]];
 }
 
 /**
  * For the `custom-openai` provider only: resolve the base URL (config >
- * env) and run it through the SSRF guard. Returns `undefined` for every
- * other provider (the AI SDK's built-in factories handle their own
- * endpoints). Throws `ConfigError` at construction time for invalid
- * custom-openai setups — catching misconfiguration immediately rather
- * than on the first request.
+ * env, the env side via the gateway-env resolver) and run it through the
+ * SSRF guard. Returns `undefined` for every other provider (the AI SDK's
+ * built-in factories handle their own endpoints). Throws `ConfigError` at
+ * construction time for invalid custom-openai setups — catching
+ * misconfiguration immediately rather than on the first request.
  */
 function resolveAndValidateCustomBaseUrl(config: SdkAdapterConfig): string | undefined {
   if (config.providerId !== 'custom-openai') return undefined;
-  const raw = config.baseUrl ?? process.env[CUSTOM_API_BASE_URL_ENV];
+  const raw = config.baseUrl ?? readGatewayEnv().baseUrl;
   const validated = validateCustomApiBaseUrl(raw);
   if (!validated.ok) throw validated.error;
   return validated.value.toString();

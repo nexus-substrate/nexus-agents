@@ -54,7 +54,7 @@ export function validateCustomApiBaseUrl(
   if (raw === undefined || raw.trim() === '') {
     return err(
       new ConfigError(
-        'Custom API base URL is required but missing. Set NEXUS_CUSTOM_API_BASE_URL or pass `baseUrl` in config.'
+        'Custom API base URL is required but missing. Set NEXUS_OPENAI_COMPAT_URL or pass `baseUrl` in config.'
       )
     );
   }

@@ -7,7 +7,9 @@
  * + `NEXUS_OPENAI_COMPAT_KEY` are set, we discover the gateway's models
  * and produce a single `IModelAdapter` that orchestrator/expert tools can
  * use directly. In sandbox mode (#2501), we fail-fast on misconfiguration
- * because there's no human at a CLI prompt to recover.
+ * because there's no human at a CLI prompt to recover. The deprecated
+ * `NEXUS_CUSTOM_API_*` pair does NOT reach this path (#4392 increment 3,
+ * panel option C): it aliases the single-model `custom-openai` reader only.
  *
  * @module cli-server-gateway
  */
@@ -20,6 +22,7 @@ import {
 } from './adapters/openai-compat-adapter.js';
 import { createGatewayArmAdapter } from './adapters/gateway-arm-adapter.js';
 import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import { hostnameOf, warnDeprecatedGatewayEnvOnce } from './adapters/sdk/gateway-env.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-adapters/cli-circuit-breaker.js';
 import { isEndpointArmId, type EndpointArmId } from './cli-adapters/types-core.js';
@@ -55,6 +58,10 @@ import { EXIT_CODES } from './cli-types.js';
 export async function tryWireGatewayAdapters(
   logger: ILogger
 ): Promise<readonly IModelAdapter[] | undefined> {
+  // #4392 increment 3: the ONE deprecated-alias warn, at startup, from the
+  // gateway bootstrap — the operator who set the legacy pair expecting this
+  // path is told here that the rename is what opts in (option C).
+  warnDeprecatedGatewayEnvOnce(process.env, logger);
   const sandboxActive = detectSandbox().active;
   const env = readOpenAICompatEnv();
   if (env === null) {
@@ -82,9 +89,10 @@ export async function tryWireGatewayAdapters(
 
   // Log the discovered model IDs at info level — operators want to confirm
   // the gateway's catalog matches what they configured upstream. The API
-  // key never reaches logs (env-only read).
+  // key never reaches logs (env-only read), and neither does the full base
+  // URL — it can carry userinfo — only its host (#4392 increment 3).
   logger.info('OpenAI-compatible gateway wired', {
-    baseUrl: env.baseUrl,
+    host: hostnameOf(env.baseUrl),
     modelCount: result.value.length,
     models: result.value.map((a) => a.modelId),
   });

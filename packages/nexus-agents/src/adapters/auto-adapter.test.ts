@@ -455,8 +455,12 @@ describe('collectApiRoutingArms — gateway cost declaration (#4392 inc 2)', () 
     vi.stubEnv('OPENAI_API_KEY', undefined);
     vi.stubEnv('GOOGLE_AI_API_KEY', undefined);
     vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
-    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'test-key');
-    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', undefined);
+    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', undefined);
+    // #4392 inc 3: the fixture uses the NEW names; the legacy pair now also
+    // produces the deprecation warn, which would double the count below.
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'test-key');
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://gateway.example/v1');
   });
 
   afterEach(() => {
@@ -478,5 +482,84 @@ describe('collectApiRoutingArms — gateway cost declaration (#4392 inc 2)', () 
 
     expect(arms.map((a) => a.armId)).toEqual(['api:custom-openai']);
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('custom-openai arm env aliases (#4392 inc 3)', () => {
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as unknown as ILogger;
+
+  function allLogCalls(): string {
+    const l = vi.mocked(logger);
+    return JSON.stringify([
+      ...l.debug.mock.calls,
+      ...l.info.mock.calls,
+      ...l.warn.mock.calls,
+      ...l.error.mock.calls,
+    ]);
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+    vi.stubEnv('OPENAI_API_KEY', undefined);
+    vi.stubEnv('GOOGLE_AI_API_KEY', undefined);
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    for (const name of [
+      'NEXUS_CUSTOM_API_KEY',
+      'NEXUS_CUSTOM_API_BASE_URL',
+      'NEXUS_OPENAI_COMPAT_KEY',
+      'NEXUS_OPENAI_COMPAT_URL',
+    ]) {
+      vi.stubEnv(name, undefined);
+    }
+    const { _resetDeprecatedGatewayEnvWarning } = await import('./sdk/gateway-env.js');
+    _resetDeprecatedGatewayEnvWarning();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('mints api:custom-openai from the NEW pair alone, with no deprecation warn', () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-TESTFAKE-new-NOT-REAL-0000');
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://gateway.example/v1');
+
+    const arms = collectApiRoutingArms(logger);
+
+    expect(arms.map((a) => a.armId)).toEqual(['api:custom-openai']);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('still mints api:custom-openai from the legacy pair alone, warning once by name only', () => {
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-TESTFAKE-legacy-NOT-REAL-0000');
+    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://legacy.gateway.example/v1');
+
+    const arms = collectApiRoutingArms(logger);
+
+    expect(arms.map((a) => a.armId)).toEqual(['api:custom-openai']);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    const line = String(vi.mocked(logger.warn).mock.calls[0]?.[0]);
+    expect(line).toContain('NEXUS_CUSTOM_API_KEY');
+    expect(line).toContain('NEXUS_OPENAI_COMPAT_KEY');
+    expect(allLogCalls()).not.toContain('sk-TESTFAKE-legacy-NOT-REAL-0000');
+  });
+
+  it('logs the gateway hostname only — never the full base URL (userinfo-capable)', () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-TESTFAKE-new-NOT-REAL-0000');
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://u:pw-TESTFAKE@gateway.example/v1');
+
+    const arms = collectApiRoutingArms(logger);
+
+    expect(arms.map((a) => a.armId)).toEqual(['api:custom-openai']);
+    const flat = allLogCalls();
+    expect(flat).toContain('gateway.example');
+    expect(flat).not.toContain('pw-TESTFAKE');
+    expect(flat).not.toContain('https://u:');
   });
 });

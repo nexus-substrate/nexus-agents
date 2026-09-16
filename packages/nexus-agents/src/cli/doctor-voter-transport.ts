@@ -11,6 +11,8 @@ import {
   DEFAULT_OPENAI_COMPAT_ENDPOINT,
   GATEWAY_COST_ENV,
   OPENAI_COMPAT_ENDPOINT_ENV,
+  OPENAI_COMPAT_KEY_ENV,
+  OPENAI_COMPAT_URL_ENV,
 } from '../adapters/sdk/types.js';
 import type { VoterTransportCheck } from './doctor.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
@@ -28,11 +30,34 @@ export function printVoterTransportCheck(check: VoterTransportCheck): void {
   if (check.configured) {
     writeLine(`${CHECK} Voter transport: In-process gateway`);
     printGatewayCostLine(check.cost);
+    printDeprecatedEnvLines(check.deprecatedEnv);
     return;
   }
   writeLine(`${CHECK} Voter transport: ${colors.dim}CLI subprocess${colors.reset}`);
   writeLine(
-    `  ${colors.dim}Set NEXUS_OPENAI_COMPAT_URL and NEXUS_OPENAI_COMPAT_KEY for faster in-process voting${colors.reset}`
+    `  ${colors.dim}Set ${OPENAI_COMPAT_URL_ENV} and ${OPENAI_COMPAT_KEY_ENV} for faster in-process voting${colors.reset}`
+  );
+  printDeprecatedEnvLines(check.deprecatedEnv);
+}
+
+/**
+ * One warning per deprecated gateway alias in use (#4392 increment 3),
+ * naming the replacement and whether the alias is honoured or ignored, then
+ * the option-C consequence once: renaming is the opt-in to the gateway path.
+ * Warnings only; `allHealthy` is untouched. No line when none is set.
+ */
+function printDeprecatedEnvLines(deprecatedEnv: VoterTransportCheck['deprecatedEnv']): void {
+  if (deprecatedEnv === undefined || deprecatedEnv.length === 0) return;
+  for (const d of deprecatedEnv) {
+    const status = d.shadowed ? `ignored because ${d.replacement} is set` : 'honoured';
+    writeLine(
+      `${WARN} ${d.name} is deprecated — use ${d.replacement} (alias until the next major, #6291); ${status}`
+    );
+  }
+  writeLine(
+    `  ${colors.dim}The legacy names configure only the single-model custom-openai path; renaming to ` +
+      `NEXUS_OPENAI_COMPAT_* opts into the gateway path (model discovery, in-process voter ` +
+      `transport, api:<endpoint> arm)${colors.reset}`
   );
 }
 

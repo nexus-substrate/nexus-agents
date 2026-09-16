@@ -153,6 +153,43 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     expect(result?.apiKey).toBe('sk-test');
   });
 
+  // #4392 inc 3, panel option C: the deprecated NEXUS_CUSTOM_API_* pair is an
+  // alias for the single-model `custom-openai` reader ONLY. This reader — the
+  // gateway path (discovery, in-process voters, the api:<endpoint> arm) — is
+  // reached through its own names, so renaming is what opts an operator in.
+  describe('legacy NEXUS_CUSTOM_API_* pair does not feed this reader (#4392 inc 3, option C)', () => {
+    const LEGACY = ['NEXUS_CUSTOM_API_BASE_URL', 'NEXUS_CUSTOM_API_KEY'] as const;
+    const saved = new Map<string, string | undefined>();
+
+    beforeEach(() => {
+      for (const name of LEGACY) {
+        saved.set(name, process.env[name]);
+        Reflect.deleteProperty(process.env, name);
+      }
+    });
+
+    afterEach(() => {
+      for (const name of LEGACY) {
+        const prev = saved.get(name);
+        if (prev === undefined) Reflect.deleteProperty(process.env, name);
+        else process.env[name] = prev;
+      }
+    });
+
+    it('returns null when only the legacy pair is set', () => {
+      process.env['NEXUS_CUSTOM_API_BASE_URL'] = 'https://legacy.example/v1';
+      process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-legacy-NOT-REAL-0000';
+      expect(readOpenAICompatEnv()).toBeNull();
+      expect(mockReadOpencodeGateway).not.toHaveBeenCalled();
+    });
+
+    it('does not complete a half-set new pair from the legacy spelling', () => {
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
+      process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-legacy-NOT-REAL-0000';
+      expect(readOpenAICompatEnv()).toBeNull();
+    });
+  });
+
   // #2503: precedence — env > opencode.json > unconfigured
   describe('opencode.json precedence (#2503)', () => {
     it('env vars win over opencode.json when both are configured', () => {
@@ -265,9 +302,53 @@ describe('discoverModels (#2468)', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toBeInstanceOf(ConfigError);
-    expect(result.error.message).toContain('https://gateway.example/v1');
+    // Previously asserted the full URL; the message now names the host only
+    // (#4392 inc 3) because it lands on a warn line and a URL can carry userinfo.
+    expect(result.error.message).toContain('gateway.example');
     expect(result.error.message).toContain('NEXUS_OPENAI_COMPAT_URL');
     expect(result.error.message).toContain('connect ECONNREFUSED');
+  });
+
+  // #4392 inc 3, no-logging parity: the failure message is what
+  // `cli-server-gateway` puts on its probe-failed warn line.
+  describe('failure message carries neither the key nor the full URL (#4392 inc 3)', () => {
+    const secretConfig: OpenAICompatConfig = {
+      baseUrl: 'https://u:pw-TESTFAKE@gateway.example/v1',
+      apiKey: 'sk-TESTFAKE-bearer-NOT-REAL-0000',
+    };
+
+    it('redacts a 401 body that echoes the bearer', async () => {
+      mockList.mockRejectedValue(
+        new Error(
+          `401 Unauthorized: invalid api key "Bearer ${secretConfig.apiKey}" (${secretConfig.apiKey})`
+        )
+      );
+      const result = await discoverModels(secretConfig);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).not.toContain(secretConfig.apiKey);
+      expect(result.error.message).toContain('401 Unauthorized');
+      expect(result.error.message).toContain('<redacted>');
+    });
+
+    it('names the host, not the URL with userinfo', async () => {
+      mockList.mockRejectedValue(new Error('connect ECONNREFUSED'));
+      const result = await discoverModels(secretConfig);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('gateway.example');
+      expect(result.error.message).not.toContain('pw-TESTFAKE');
+    });
+
+    it('names the host, not the URL, when the catalogue is over the cap', async () => {
+      mockList.mockResolvedValue({
+        data: Array.from({ length: 257 }, (_, i) => ({ id: `m${String(i)}` })),
+      });
+      const result = await discoverModels(secretConfig);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).not.toContain('pw-TESTFAKE');
+    });
   });
 
   it('handles 401 / auth failures with the same actionable message', async () => {

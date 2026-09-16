@@ -22,17 +22,21 @@
  *   2. `NEXUS_OPENCODE_CONFIG` → `opencode.json` → `providers.openai-compat`
  *   3. Unconfigured → `null`, no adapter registered
  *
- * Sanitised logging: never log the resolved apiKey. Only the baseURL is
- * logged on success.
+ * Sanitised logging (#4392 increment 3 tightened it): never log the resolved
+ * apiKey, never log file contents — Node's JSON parse error embeds a source
+ * snippet, so only the error NAME is logged — and log the gateway's hostname
+ * rather than the baseURL, which can carry userinfo.
  *
  * @module config/opencode-bridge
  */
 
 import { readFileSync } from 'node:fs';
 
+import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
+import { hostnameOf } from '../adapters/sdk/gateway-env.js';
 
-const logger = createLogger({ component: 'opencode-bridge' });
+const defaultLogger = createLogger({ component: 'opencode-bridge' });
 
 export interface OpencodeGatewayConfig {
   readonly baseURL: string;
@@ -44,11 +48,14 @@ export interface OpencodeGatewayConfig {
  * opencode.json path. Returns `null` on any failure — the caller falls
  * back to env-var precedence.
  */
-export function readOpencodeGateway(path: string): OpencodeGatewayConfig | null {
-  const raw = readFileOrNull(path);
+export function readOpencodeGateway(
+  path: string,
+  logger: ILogger = defaultLogger
+): OpencodeGatewayConfig | null {
+  const raw = readFileOrNull(path, logger);
   if (raw === null) return null;
 
-  const parsed = parseJsonOrNull(raw, path);
+  const parsed = parseJsonOrNull(raw, path, logger);
   if (parsed === null) return null;
 
   const options = extractOpenAICompatOptions(parsed);
@@ -73,11 +80,11 @@ export function readOpencodeGateway(path: string): OpencodeGatewayConfig | null 
     return null;
   }
 
-  logger.info('Gateway config sourced from opencode.json', { baseURL, path });
+  logger.info('Gateway config sourced from opencode.json', { host: hostnameOf(baseURL), path });
   return { baseURL, apiKey };
 }
 
-function readFileOrNull(path: string): string | null {
+function readFileOrNull(path: string, logger: ILogger): string | null {
   try {
     return readFileSync(path, 'utf8');
   } catch (err: unknown) {
@@ -87,12 +94,17 @@ function readFileOrNull(path: string): string | null {
   }
 }
 
-function parseJsonOrNull(raw: string, path: string): unknown {
+/**
+ * Logs the error NAME only. On Node 22 a `SyntaxError` from `JSON.parse`
+ * quotes the offending source (`... "{"apiKey": sk-..." is not valid JSON`),
+ * so the message is a channel for the file's contents (#4392 increment 3).
+ */
+function parseJsonOrNull(raw: string, path: string, logger: ILogger): unknown {
   try {
     return JSON.parse(raw);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn('opencode.json is not valid JSON; ignoring', { path, error: msg });
+    const name = err instanceof Error ? err.name : 'unknown error';
+    logger.warn('opencode.json is not valid JSON; ignoring', { path, error: name });
     return null;
   }
 }
