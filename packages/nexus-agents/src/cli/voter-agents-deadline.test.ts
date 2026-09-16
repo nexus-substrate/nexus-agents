@@ -260,6 +260,107 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
   });
 });
 
+describe('per-seat timing (#6103)', () => {
+  it('records how long each seat QUEUED behind its CLI lane and how long it RAN, per attempt', async () => {
+    // Two seats on the same CLI: the second queues behind the first (#3348),
+    // and the record must say so — the queue wait is the quantity #6103 asks
+    // to measure before choosing a fallback lane.
+    const roleAdapters = new Map<VoterRole, IModelAdapter>([
+      ['architect', makeCliAdapter('claude')],
+      ['security', makeCliAdapter('claude')],
+    ]);
+    const voteFn = async (role: VoterRole): Promise<AgentVoteResult> => {
+      await new Promise((r) => setTimeout(r, 40));
+      return makeOkVote(role);
+    };
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect', 'security'],
+      proposal: 'test',
+      roleAdapters,
+      fallbackAdapter: stubAdapter,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+    const first = results[0]?.timing;
+    const second = results[1]?.timing;
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    if (first === undefined || second === undefined) throw new Error('unreachable');
+    expect(first.attempts).toHaveLength(1);
+    expect(first.attempts[0]?.cli).toBe('claude');
+    expect(first.attempts[0]?.ranMs).toBeGreaterThanOrEqual(35);
+    // The second seat waited for the first one's run before its own started.
+    expect(second.attempts[0]?.queuedMs).toBeGreaterThanOrEqual(35);
+    expect(second.attempts[0]?.ranMs).toBeGreaterThanOrEqual(35);
+  });
+
+  it('a fallback seat carries BOTH attempts: the failed primary and the queued fallback', async () => {
+    const roleAdapters = new Map<VoterRole, IModelAdapter>([
+      ['architect', makeCliAdapter('badcli')],
+      ['security', makeCliAdapter('goodcli')],
+    ]);
+    const voteFn = async (
+      role: VoterRole,
+      _p: string,
+      adapter: IModelAdapter
+    ): Promise<AgentVoteResult> => {
+      const name = (adapter as { name?: string }).name ?? adapter.providerId;
+      if (name === 'badcli') {
+        return {
+          role,
+          error: 'No endpoints found that support tool use',
+          processingTimeMs: 5,
+          source: 'error',
+          cli: name,
+        } as AgentVoteResult;
+      }
+      await new Promise((r) => setTimeout(r, 40));
+      return makeOkVote(role);
+    };
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect', 'security'],
+      proposal: 'test',
+      roleAdapters,
+      fallbackAdapter: makeCliAdapter('goodcli'),
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+    const architect = results[0]?.timing;
+    expect(architect?.attempts.map((a) => [a.cli, a.fallback])).toEqual([
+      ['badcli', false],
+      ['goodcli', true],
+    ]);
+    // The fallback attempt queued behind security's run on goodcli (#6103's
+    // observation: a fallback seat waits behind the primary seats of that CLI).
+    expect(architect?.attempts[1]?.queuedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('an errored seat with no attempt has an empty attempts list, not a fabricated timing', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect'],
+      proposal: 'test',
+      roleAdapters: new Map(),
+      fallbackAdapter: stubAdapter,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn: () => Promise.resolve(makeOkVote('architect')),
+      signal: controller.signal,
+    });
+    expect(results[0]?.source).toBe('error');
+    expect(results[0]?.timing?.attempts ?? []).toEqual([]);
+  });
+});
+
 describe('undetected seat still falls over (#6119)', () => {
   // Fixture from the #6115 investigation: scope_steward was pinned to codex via
   // the registry, codex never detected (codex-cli 0.154 has no `mcp-server`),

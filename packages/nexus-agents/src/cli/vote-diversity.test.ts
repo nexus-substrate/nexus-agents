@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import { panelDiversityOf, singleModelPanelWarning } from './vote-diversity.js';
-import { modelsLine } from './vote-summary-lines.js';
+import { modelsLine, seatTimingLine } from './vote-summary-lines.js';
 
 const SEVEN: readonly VoterRole[] = [
   'architect',
@@ -147,5 +147,39 @@ describe('modelsLine (#6115)', () => {
   it('renders explicit zeros for a clean panel and for a panel nobody answered', () => {
     expect(modelsLine(diversePanel())).toBe('Models: 3 distinct, 0 fallbacks');
     expect(modelsLine([])).toBe('Models: 0 distinct, 0 fallbacks');
+  });
+});
+
+describe('seatTimingLine (#6103)', () => {
+  it("attributes each seat's wall-clock to queueing versus running, per attempt, and totals the queue wait", () => {
+    const panel = [
+      seat('architect', {
+        timing: { attempts: [{ cli: 'claude', queuedMs: 0, ranMs: 118_000, fallback: false }] },
+      }),
+      seat('security', {
+        timing: {
+          attempts: [{ cli: 'claude', queuedMs: 118_400, ranMs: 95_000, fallback: false }],
+        },
+      }),
+      seat('devex', {
+        timing: {
+          attempts: [
+            { cli: 'gemini', queuedMs: 0, ranMs: 2_000, fallback: false },
+            { cli: 'claude', queuedMs: 213_000, ranMs: 40_000, fallback: true },
+          ],
+        },
+      }),
+    ];
+    expect(seatTimingLine(panel)).toBe(
+      'Seat timing (queued→ran): architect claude 0s→118s; security claude 118s→95s; ' +
+        'devex gemini 0s→2s, fallback claude 213s→40s; queued total 331s'
+    );
+  });
+
+  it('names a seat with no recorded timing and a panel with none, never a zero that reads as measured', () => {
+    expect(
+      seatTimingLine([seat('architect'), seat('security', { timing: { attempts: [] } })])
+    ).toBe('Seat timing (queued→ran): architect unmeasured; security no attempt; queued total 0s');
+    expect(seatTimingLine([])).toBe('Seat timing (queued→ran): no seats');
   });
 });

@@ -135,6 +135,23 @@ export interface SeatFallback {
   readonly reason: FallbackReason;
 }
 
+/** One attempt's timing on one CLI lane (#6103). */
+export interface SeatAttemptTiming {
+  /** The CLI key the attempt was serialized on (`adapterCliKey`). */
+  readonly cli: string;
+  /** Milliseconds between enqueueing on that CLI's lane and the attempt actually starting. */
+  readonly queuedMs: number;
+  /** Milliseconds the attempt ran once started, until it settled (answer, error or deadline). */
+  readonly ranMs: number;
+  /** True for the cross-CLI fallback attempt (#3587); false for the primary. */
+  readonly fallback: boolean;
+}
+
+/** A seat's attempts in launch order (#6103). */
+export interface SeatTiming {
+  readonly attempts: readonly SeatAttemptTiming[];
+}
+
 /**
  * What a recovered seat was retried FROM (#6246).
  *
@@ -245,6 +262,17 @@ export interface AgentVoteResult {
    * independence claim than the assignment, and the tally read identically.
    */
   readonly fallback?: SeatFallback | undefined;
+  /**
+   * Per-attempt timing of this seat (#6103): how long each attempt QUEUED
+   * behind its CLI's serialized lane (#3348) and how long it RAN, in launch
+   * order — the primary attempt first, then the cross-CLI fallback (#3587)
+   * when one was made. Absent on a seat that never reached the launcher
+   * (simulation, a direct `executeAgentVote`); an empty `attempts` list on a
+   * seat the launcher refused before any attempt (cancelled). Recorded so the
+   * panel wall-clock can be attributed to queueing versus model time before
+   * a fallback lane is designed; never folded into the vote record.
+   */
+  readonly timing?: SeatTiming | undefined;
   /**
    * Input tokens the adapter reported for this voter's LLM call, when known
    * (#3910). Propagated from `CompletionResponse.usage` so per-decision cost
