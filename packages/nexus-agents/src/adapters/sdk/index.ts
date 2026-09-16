@@ -10,4 +10,13 @@
 
 export { SdkAdapter } from './sdk-adapter.js';
 export type { SdkAdapterConfig, SdkProviderId } from './types.js';
-export { PROVIDER_ENV_KEYS } from './types.js';
+export { PROVIDER_ENV_KEYS, GATEWAY_COST_ENV } from './types.js';
+export type { GatewayCostDeclaration, GatewayCostMap } from './gateway-cost.js';
+export {
+  describeGatewayCostDeclaration,
+  gatewayCostRates,
+  isGatewayArmId,
+  parseGatewayCostEnv,
+  resolveGatewayCostDeclaration,
+  warnIfGatewayCostUndeclared,
+} from './gateway-cost.js';

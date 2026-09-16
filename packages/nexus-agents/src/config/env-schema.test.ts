@@ -1017,3 +1017,36 @@ describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => 
     });
   });
 });
+
+// =============================================================================
+// NEXUS_GATEWAY_COST (#4392 increment 2, step 1)
+// =============================================================================
+
+describe('NEXUS_GATEWAY_COST is registered with its grammar (#4392 inc 2)', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is a known variable', () => {
+    expect(getKnownNexusVarNames()).toContain('NEXUS_GATEWAY_COST');
+  });
+
+  it.each(['free', 'local', 'priced', 'priced:2,10', 'corp-proxy=free;priced:2,10'])(
+    'accepts %j',
+    (value) => {
+      vi.stubEnv('NEXUS_GATEWAY_COST', value);
+      const result = validateNexusEnv();
+      expect(result.unknownVars.map((v) => v.name)).not.toContain('NEXUS_GATEWAY_COST');
+      expect(result.invalidVars.map((v) => v.name)).not.toContain('NEXUS_GATEWAY_COST');
+    }
+  );
+
+  it.each(['priced:1', 'cheap', 'free;local'])('reports %j as invalid, not unknown', (value) => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', value);
+    const result = validateNexusEnv();
+    expect(result.unknownVars.map((v) => v.name)).not.toContain('NEXUS_GATEWAY_COST');
+    const invalid = result.invalidVars.find((v) => v.name === 'NEXUS_GATEWAY_COST');
+    expect(invalid).toBeDefined();
+    expect(invalid?.error).toMatch(/free|local|priced/);
+  });
+});

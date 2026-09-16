@@ -6,11 +6,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AutoAdapterConfig, AdapterSelection } from './auto-adapter.js';
 import {
+  collectApiRoutingArms,
   createAutoAdapter,
   getAvailableAdapters,
   wrapApiSelectionForRouter,
 } from './auto-adapter.js';
-import { ok, type IModelAdapter } from '../core/index.js';
+import { ok, type ILogger, type IModelAdapter } from '../core/index.js';
 
 // ============================================================================
 // Mocks
@@ -436,5 +437,46 @@ describe('wrapApiSelectionForRouter (#3422)', () => {
 
   it('returns null for an unrecognized vendor', () => {
     expect(wrapApiSelectionForRouter(apiSelection('mystery-vendor'))).toBeNull();
+  });
+});
+
+describe('collectApiRoutingArms — gateway cost declaration (#4392 inc 2)', () => {
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as unknown as ILogger;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+    vi.stubEnv('OPENAI_API_KEY', undefined);
+    vi.stubEnv('GOOGLE_AI_API_KEY', undefined);
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'test-key');
+    vi.stubEnv('NEXUS_CUSTOM_API_BASE_URL', 'https://gateway.example/v1');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('warns, naming NEXUS_GATEWAY_COST, when the custom-openai arm is collected undeclared', () => {
+    const arms = collectApiRoutingArms(logger);
+
+    expect(arms.map((a) => a.armId)).toEqual(['api:custom-openai']);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(logger.warn).mock.calls[0]?.[0])).toContain('NEXUS_GATEWAY_COST');
+  });
+
+  it('is silent when the gateway cost is declared', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+
+    const arms = collectApiRoutingArms(logger);
+
+    expect(arms.map((a) => a.armId)).toEqual(['api:custom-openai']);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

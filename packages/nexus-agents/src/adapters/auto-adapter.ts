@@ -19,6 +19,7 @@ import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js
 import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
 import { SdkAdapter } from './sdk/index.js';
+import { warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
 import type { CliName, ICliAdapter, ApiVendor, ApiArmId } from '../cli-adapters/types.js';
 import { apiArmId } from '../cli-adapters/types.js';
 import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
@@ -356,7 +357,11 @@ export function collectApiRoutingArms(
     const selection = buildApiSelectionForVendor(vendor, logger);
     if (selection === null) continue;
     const wrapped = wrapApiSelectionForRouter(selection);
-    if (wrapped !== null) arms.push(wrapped);
+    if (wrapped === null) continue;
+    arms.push(wrapped);
+    // Only the custom-openai (gateway) arm can be undeclared; the helper is
+    // silent for the three vendor arms (#4392 increment 2).
+    warnIfGatewayCostUndeclared(wrapped.armId, logger);
   }
   return arms;
 }

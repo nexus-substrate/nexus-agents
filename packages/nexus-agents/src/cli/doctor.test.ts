@@ -1388,13 +1388,59 @@ describe('Doctor Command', () => {
       process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
       process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';
       const { checkVoterTransport } = await import('./doctor.js');
-      expect(checkVoterTransport()).toEqual({ configured: true });
+      // Previously `toEqual({ configured: true })`; a configured gateway now
+      // also carries `cost` (#4392 inc 2), asserted in the describe below.
+      expect(checkVoterTransport()).toMatchObject({ configured: true });
     });
 
     it('reports not configured when only one of the two env vars is set', async () => {
       process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
       const { checkVoterTransport } = await import('./doctor.js');
       expect(checkVoterTransport()).toEqual({ configured: false });
+    });
+
+    describe('gateway cost declaration (#4392 inc 2)', () => {
+      let originalCost: string | undefined;
+
+      beforeEach(() => {
+        originalCost = process.env['NEXUS_GATEWAY_COST'];
+        delete process.env['NEXUS_GATEWAY_COST'];
+        process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
+        process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';
+      });
+
+      afterEach(() => {
+        if (originalCost === undefined) delete process.env['NEXUS_GATEWAY_COST'];
+        else process.env['NEXUS_GATEWAY_COST'] = originalCost;
+      });
+
+      it('reports cost UNDECLARED when the gateway is configured and the variable is unset', async () => {
+        const { checkVoterTransport } = await import('./doctor.js');
+        expect(checkVoterTransport()).toEqual({ configured: true, cost: 'undeclared' });
+      });
+
+      it('reports the bare declaration when set', async () => {
+        process.env['NEXUS_GATEWAY_COST'] = 'priced:2,10';
+        const { checkVoterTransport } = await import('./doctor.js');
+        expect(checkVoterTransport()).toEqual({
+          configured: true,
+          cost: { kind: 'priced', inputPer1M: 2, outputPer1M: 10 },
+        });
+      });
+
+      it('reports UNDECLARED for an unparsable value rather than guessing', async () => {
+        process.env['NEXUS_GATEWAY_COST'] = 'priced:1';
+        const { checkVoterTransport } = await import('./doctor.js');
+        expect(checkVoterTransport()).toEqual({ configured: true, cost: 'undeclared' });
+      });
+
+      it('carries no cost field when no gateway is configured', async () => {
+        delete process.env['NEXUS_OPENAI_COMPAT_URL'];
+        process.env['NEXUS_GATEWAY_COST'] = 'free';
+        const { checkVoterTransport } = await import('./doctor.js');
+        expect(checkVoterTransport()).toEqual({ configured: false });
+        expect('cost' in checkVoterTransport()).toBe(false);
+      });
     });
   });
 });

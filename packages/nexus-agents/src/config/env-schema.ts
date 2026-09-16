@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
+import { parseGatewayCostEnv } from '../adapters/sdk/gateway-cost.js';
 import {
   describeClassGuard,
   MCP_TIMEOUTS,
@@ -216,6 +217,19 @@ const NexusEnvSchema = z.object({
   NEXUS_CUSTOM_API_BASE_URL: z.string().optional(),
   NEXUS_CUSTOM_API_KEY: z.string().optional(),
   NEXUS_CUSTOM_MODEL: z.string().optional(),
+  // #4392 increment 2: what a gateway arm costs (GATEWAY_COST_ENV; spelled
+  // out because scripts/check-env-schema-coverage.ts reads keys by regex).
+  // Validated by the same parser every runtime reader uses, so "invalid" here
+  // means UNDECLARED there — cost-weighted routing excludes the gateway and
+  // `doctor` warns.
+  NEXUS_GATEWAY_COST: z
+    .string()
+    .refine((v) => parseGatewayCostEnv(v).ok, {
+      message:
+        'Must be free | local | priced | priced:<inputPer1M>,<outputPer1M>, ' +
+        'optionally endpoint-scoped as endpoint=decl[;endpoint=decl] with at most one bare declaration',
+    })
+    .optional(),
   NEXUS_MODEL_REGISTRY_OVERLAY: z.string().optional(),
   NEXUS_OPENAI_COMPAT_KEY: z.string().optional(),
   NEXUS_OPENAI_COMPAT_URL: z.string().optional(),

@@ -1,0 +1,5 @@
+---
+'nexus-agents': minor
+---
+
+New `NEXUS_GATEWAY_COST` declares what an OpenAI-compatible gateway arm costs (#4392 increment 2, step 1). Grammar: `free` | `local` | `priced` | `priced:<inputPer1M>,<outputPer1M>`, optionally endpoint-scoped as `endpoint=decl[;endpoint=decl]` with at most one bare declaration that applies to every gateway arm without its own entry. `free` and `local` price every token at $0, bare `priced` uses registry rates, and `priced:<in>,<out>` is a flat per-1M rate for the endpoint. Unset (or unparsable) means UNDECLARED: the per-task-class cost ceiling now excludes an undeclared gateway arm (`api:custom-openai`) instead of silently pricing it as opencode's default model, the adapter registry warns once when such an arm is registered, and `nexus-agents doctor` prints a `Gateway cost: UNDECLARED` warning under a configured voter gateway without changing its overall verdict. Vendor arms (`api:anthropic|openai|google`) and CLI slots are unaffected. `VoterTransportCheck` gains an optional `cost` field; nothing is removed or renamed.

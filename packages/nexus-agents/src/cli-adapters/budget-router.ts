@@ -10,7 +10,6 @@
  */
 
 import type { Result } from '../core/index.js';
-import { computeTokenCost } from '../learning/token-cost-core.js';
 import { getTimeProvider } from '../core/index.js';
 import { createLogger } from '../core/logger.js';
 import type {
@@ -35,7 +34,12 @@ import { DEFAULT_COST_MODELS } from './budget-router-types.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
-import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
+import { isGatewayArmId } from '../adapters/sdk/gateway-cost.js';
+import { estimateArmCostUsd } from './budget-arm-cost.js';
+
+// The registry estimator moved to a sibling for the file cap (#4392 inc 2);
+// re-exported so `budget-router` keeps its published surface.
+export { estimateRegistryCostUsd } from './budget-arm-cost.js';
 
 const logger = createLogger({ component: 'budget-router' });
 
@@ -63,36 +67,6 @@ const DEFAULT_OPTIONS: Required<BudgetRouterOptions> = {
   taskClassCostCeilings: {},
 };
 
-/**
- * Estimate the USD cost of a task on a CLI slot using CANONICAL registry
- * pricing (#4165 path: `ModelEntry.pricing` of the slot's default model).
- * Returns `undefined` when the registry has no pricing for the model, so the
- * caller can fail CLOSED on a configured ceiling (#4196 BINDING condition).
- * This deliberately differs from `resolveCliCostPer1M` (#4168), which returns
- * a conservative non-$0 fallback for budget FILTERING — here an unknown price
- * must stay `undefined` to preserve the ceiling's fail-CLOSED guarantee.
- */
-export function estimateRegistryCostUsd(
-  slot: CliName,
-  inputTokens: number,
-  outputTokens: number
-): number | undefined {
-  const pricing = getModelPricing(getDefaultModelForCli(slot));
-  // Fail-CLOSED, and deliberately different from `resolveCliCostPer1M`'s
-  // conservative fallback (#4168 vs #4196). Both policies are named at their
-  // own call site precisely so neither can be swapped for the other by
-  // accident; only the arithmetic is shared (#5122).
-  if (pricing === undefined) return undefined;
-  return computeTokenCost(
-    { input: inputTokens, output: outputTokens },
-    { inputPer1M: pricing.inputPer1M, outputPer1M: pricing.outputPer1M }
-  ).costUsd;
-}
-
-/**
- * Budget-constrained task router.
- * Implements budget-aware routing with session tracking and enforcement.
- */
 /**
  * Profile latency for a routing slot, or `undefined` when the slot has no cost
  * model (#4907).
@@ -294,11 +268,21 @@ export class BudgetRouter implements IBudgetRouter {
     const inputTokens = estimateTokens(task.content);
     const outputTokens = task.maxTokens ?? inputTokens * 2;
     return candidates.filter((arm) => {
-      // Pricing is slot-level; an api:* arm is priced by its display slot's
-      // default model (#3422).
-      const cost = estimateRegistryCostUsd(routingArmDisplaySlot(arm), inputTokens, outputTokens);
+      // A vendor arm is priced by its display slot's default model (#3422); a
+      // gateway arm by its NEXUS_GATEWAY_COST declaration (#4392 inc 2).
+      const cost = estimateArmCostUsd(arm, inputTokens, outputTokens);
       if (cost === undefined) {
-        logger.debug('Cost ceiling: missing registry pricing — failing closed', { arm, ceiling });
+        if (isGatewayArmId(arm)) {
+          logger.warn('Cost ceiling: gateway cost UNDECLARED — excluding (fail-closed)', {
+            arm,
+            ceiling,
+          });
+        } else {
+          logger.debug('Cost ceiling: missing registry pricing — failing closed', {
+            arm,
+            ceiling,
+          });
+        }
         return false;
       }
       const within = cost <= ceiling;

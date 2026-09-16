@@ -61,3 +61,14 @@ export const CUSTOM_API_BASE_URL_ENV = 'NEXUS_CUSTOM_API_BASE_URL';
  * trusted internal host and you accept the risk.
  */
 export const CUSTOM_API_ALLOW_PRIVATE_ENV = 'NEXUS_CUSTOM_API_ALLOW_PRIVATE';
+
+/**
+ * Operator's declaration of what a gateway arm costs (#4392 increment 2).
+ * Grammar: `free | local | priced | priced:<inputPer1M>,<outputPer1M>`,
+ * optionally endpoint-scoped as `endpoint=decl[;endpoint=decl]`, with at
+ * most one bare declaration that applies to every gateway arm without its
+ * own entry. Unset means UNDECLARED: cost-weighted routing excludes the
+ * gateway (fail-closed) and `doctor` warns. Parsed by
+ * `adapters/sdk/gateway-cost.ts`.
+ */
+export const GATEWAY_COST_ENV = 'NEXUS_GATEWAY_COST';

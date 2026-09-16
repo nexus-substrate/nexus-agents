@@ -43,6 +43,8 @@ import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/type
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
 import { readOpenAICompatEnv } from '../adapters/openai-compat-adapter.js';
+import { parseGatewayCostEnv, type GatewayCostDeclaration } from '../adapters/sdk/gateway-cost.js';
+import { GATEWAY_COST_ENV } from '../adapters/sdk/types.js';
 import { printDoctorResults } from './doctor-formatting.js';
 import { probeCli } from './cli-auth-probe.js';
 import { probeClaudePinnedModel, type ClaudeModelProbe } from './doctor-claude-model.js';
@@ -244,6 +246,15 @@ export interface SandboxCheck {
  */
 export interface VoterTransportCheck {
   readonly configured: boolean;
+  /**
+   * The gateway's `NEXUS_GATEWAY_COST` declaration (#4392 increment 2),
+   * present only when a gateway is configured. `'undeclared'` when the
+   * variable is unset, unparsable, or carries only endpoint-scoped entries —
+   * the voter gateway has no arm identity yet (step 2), so only the bare
+   * declaration can apply to it. UNDECLARED is a warning, not a failure: the
+   * gateway still serves voters; cost-weighted routing excludes it.
+   */
+  readonly cost?: GatewayCostDeclaration | 'undeclared';
 }
 
 /**
@@ -834,7 +845,17 @@ function collectEnvironmentChecks(): {
 }
 
 export function checkVoterTransport(): VoterTransportCheck {
-  return { configured: readOpenAICompatEnv() !== null };
+  if (readOpenAICompatEnv() === null) return { configured: false };
+  return { configured: true, cost: voterGatewayCostDeclaration() };
+}
+
+/** The bare `NEXUS_GATEWAY_COST` declaration, or `'undeclared'` (see {@link VoterTransportCheck.cost}). */
+function voterGatewayCostDeclaration(): GatewayCostDeclaration | 'undeclared' {
+  const raw = process.env[GATEWAY_COST_ENV];
+  if (raw === undefined) return 'undeclared';
+  const parsed = parseGatewayCostEnv(raw);
+  if (!parsed.ok) return 'undeclared';
+  return parsed.value.default ?? 'undeclared';
 }
 
 /** The inputs the overall verdict is computed from. */
