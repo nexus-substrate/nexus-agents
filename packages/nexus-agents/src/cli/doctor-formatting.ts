@@ -11,6 +11,7 @@ import { DEFAULT_CAPABILITIES, type CapacityStatus } from '../cli-adapters/types
 import { CODEX_MCP_SERVER_UNAVAILABLE_REASON } from '../cli-adapters/codex-mcp-server-probe.js';
 import { formatScratchFilesystems } from './doctor-scratch-space.js';
 import { formatClaudeModelLine } from './doctor-claude-model.js';
+import { printVoterTransportCheck } from './doctor-voter-transport.js';
 import type {
   CliCheckResult,
   NodeVersionCheck,
@@ -396,22 +397,6 @@ function printDoctorSummary(result: DoctorResult): void {
     ? `${colors.green}${colors.bold}Status: Ready${colors.reset}${freshnessNote}`
     : `${colors.yellow}${colors.bold}Summary: ${String(terms.length)} issue(s) found${named}${colors.reset}${freshnessNote}`;
   writeLine(`${summary}\n`);
-}
-
-/**
- * Prints which transport voter/consensus calls will use (#4255): an
- * in-process OpenAI-compatible gateway when configured, else the CLI
- * subprocess round-robin fallback.
- */
-function printVoterTransportCheck(check: DoctorResult['voterTransport']): void {
-  if (check.configured) {
-    writeLine(`${formatStatus(true)} Voter transport: In-process gateway`);
-    return;
-  }
-  writeLine(`${formatStatus(true)} Voter transport: ${colors.dim}CLI subprocess${colors.reset}`);
-  writeLine(
-    `  ${colors.dim}Set NEXUS_OPENAI_COMPAT_URL and NEXUS_OPENAI_COMPAT_KEY for faster in-process voting${colors.reset}`
-  );
 }
 
 const MCP_CLIENT_UNAVAILABLE = `unavailable — ${CODEX_MCP_SERVER_UNAVAILABLE_REASON}; using codex exec`;

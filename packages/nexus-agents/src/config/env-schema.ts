@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
+import { parseGatewayCostEnv } from '../adapters/sdk/gateway-cost.js';
 import {
   describeClassGuard,
   MCP_TIMEOUTS,
@@ -216,6 +217,21 @@ const NexusEnvSchema = z.object({
   NEXUS_CUSTOM_API_BASE_URL: z.string().optional(),
   NEXUS_CUSTOM_API_KEY: z.string().optional(),
   NEXUS_CUSTOM_MODEL: z.string().optional(),
+  // #4392 increment 2: what a gateway arm costs (GATEWAY_COST_ENV; spelled
+  // out because scripts/check-env-schema-coverage.ts reads keys by regex).
+  // Validated by the same parser every runtime reader uses, so "invalid" here
+  // means UNDECLARED there — the task-class cost ceiling excludes the gateway and
+  // `doctor` warns.
+  // The parser's own reason is forwarded (superRefine, not a fixed message):
+  // "duplicate endpoint key" and "more than one bare declaration" are different
+  // fixes, and a grammar reminder names neither.
+  NEXUS_GATEWAY_COST: z
+    .string()
+    .superRefine((v, ctx) => {
+      const parsed = parseGatewayCostEnv(v);
+      if (!parsed.ok) ctx.addIssue({ code: 'custom', message: parsed.error.message });
+    })
+    .optional(),
   NEXUS_MODEL_REGISTRY_OVERLAY: z.string().optional(),
   NEXUS_OPENAI_COMPAT_KEY: z.string().optional(),
   NEXUS_OPENAI_COMPAT_URL: z.string().optional(),
@@ -287,6 +303,17 @@ const NexusEnvSchema = z.object({
 // ============================================================================
 
 const KNOWN_NAMES: readonly string[] = Object.keys(NexusEnvSchema.shape);
+
+/**
+ * Variables whose grammar can carry a key or a URL, so an invalid value is
+ * recorded and logged as {@link REDACTED_VALUE} rather than verbatim. A
+ * `NEXUS_GATEWAY_COST` entry key is operator-typed free text before the
+ * parser rejects it — `ghp_TOKEN=free` or `https://user:pw@host=free` would
+ * otherwise land on the startup warn line, which is exactly what the parser's
+ * own "never echo the key" errors avoid.
+ */
+const REDACTED_VALUE_VARS: ReadonlySet<string> = new Set(['NEXUS_GATEWAY_COST']);
+const REDACTED_VALUE = '<redacted>';
 
 // ============================================================================
 // Dynamic variable families (#5142)
@@ -444,7 +471,8 @@ function logValidationWarnings(
     logger.warn(`Unknown environment variable: ${u.name}${hint}`);
   }
   for (const inv of invalidVars) {
-    logger.warn(`Invalid environment variable ${inv.name}="${inv.value}": ${inv.error}`);
+    const shown = inv.value === REDACTED_VALUE ? REDACTED_VALUE : `"${inv.value}"`;
+    logger.warn(`Invalid environment variable ${inv.name}=${shown}: ${inv.error}`);
   }
   for (const ineff of ineffectiveVars) {
     logger.warn(
@@ -535,7 +563,9 @@ export function validateNexusEnv(logger?: ILogger): EnvValidationResult {
       const varName = String(issue.path[0]);
       invalidVars.push({
         name: varName,
-        value: knownRecord[varName] ?? '',
+        // Redacted at the record, not only at the log line: the record is
+        // returned to callers, and a copy is one more place a key can leak.
+        value: REDACTED_VALUE_VARS.has(varName) ? REDACTED_VALUE : (knownRecord[varName] ?? ''),
         error: issue.message,
       });
     }
