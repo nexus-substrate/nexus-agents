@@ -181,12 +181,15 @@ function boundRecordBody(evidence: BoundRecordFailure): string {
     case 'signature-required':
       // Phase 3 (#6279): the verdict's own code and ssh-keygen's reason, so an
       // unlisted key reads differently from a signature that does not hold.
+      // By hash, so the text says so: a forged record stamped with a
+      // grandfathered sequence is refused for not BEING one of them, and the
+      // line must not claim it is past the cutover (#6384 panel 2).
       return (
-        `${id} (sequence ${String(evidence.record.sequence)}) is at or past the signature cutover ` +
-        `(${String(SIGNATURE_CUTOVER_SEQUENCE)}) and its signature verdict is '${evidence.verdict.code}'` +
-        `${'reason' in evidence.verdict ? ` (${evidence.verdict.reason})` : ''} — a governor ratification ` +
-        "record must be 'signed' by a key the gate checkout's allowed_signers lists; 0–" +
-        `${String(SIGNATURE_CUTOVER_SEQUENCE - 1)} are grandfathered`
+        `${id} (sequence ${String(evidence.record.sequence)}) is not one of the ` +
+        `${String(SIGNATURE_CUTOVER_SEQUENCE)} grandfathered records (matched by hash, not by the ` +
+        `sequence it claims) and its signature verdict is '${evidence.verdict.code}'` +
+        `${'reason' in evidence.verdict ? ` (${evidence.verdict.reason})` : ''} — every other governor ` +
+        "ratification record must be 'signed' by a key the gate checkout's allowed_signers lists"
       );
   }
 }

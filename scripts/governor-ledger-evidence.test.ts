@@ -3173,6 +3173,11 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
         signatureVerifier: constant({ code: 'unsigned-record' }),
       });
       expect(e.kind).toBe('signature-required');
+      // The line names the real reason — not a contradictory "past the cutover" (#6384 panel 2).
+      const line = formatLedgerEvidence(e);
+      expect(line).toContain('(sequence 14) is not one of the 15 grandfathered records');
+      expect(line).toContain('matched by hash, not by the sequence it claims');
+      expect(line).not.toContain('at or past');
     });
 
     it('signature-required outranks not-approved in the printed line but a rejected record is still listed', () => {

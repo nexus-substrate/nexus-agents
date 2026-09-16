@@ -76,7 +76,7 @@ export function signatureRequiredFailures(
     const verdict: VoteRecordSignatureVerdict = signatures?.find((s) => s.recordId === record.id)
       ?.verdict ?? {
       code: 'signature-not-measured',
-      reason: 'no verifier supplied; a record past the signature cutover cannot pass unverified',
+      reason: 'no verifier supplied; a record outside the grandfather set cannot pass unverified',
     };
     if (verdict.code !== 'signed') failures.push({ kind: 'signature-required', record, verdict });
   }
