@@ -326,10 +326,39 @@ describe('handleSetupCommandAsync', () => {
         model: 'm',
       });
       expect(setupCommandAsync).not.toHaveBeenCalled();
-      expect(stdoutText()).toContain('Gateway validated: https://gw.example/v1');
+      // Previously pinned the full URL; host only since #4392 inc 3 (a base
+      // URL can carry userinfo, and the fragment below carries it anyway).
+      expect(stdoutText()).toContain('Gateway validated: gw.example');
+      expect(stdoutText()).not.toContain('Gateway validated: https://');
       expect(stdoutText()).toContain('Probe succeeded');
       expect(stdoutText()).toContain('export X=1');
       expect(result.exitCode).toBe(EXIT_CODES.SUCCESS);
+    });
+
+    it('prints the host, never userinfo, on the validated line (#4392 inc 3 review)', async () => {
+      vi.mocked(configureCustomApi).mockResolvedValueOnce({
+        ok: true,
+        value: {
+          baseUrl: 'https://u:ZQ9pw@gw.example/v1',
+          model: 'm',
+          probeSucceeded: true,
+          shellFragment: 'export NEXUS_OPENAI_COMPAT_URL="https://u:ZQ9pw@gw.example/v1"\n',
+        },
+      });
+
+      await handleSetupCommandAsync(
+        createMockArgs('setup', {
+          customApi: 'https://u:ZQ9pw@gw.example/v1',
+          nonInteractive: true,
+        })
+      );
+
+      const validated = stdoutText()
+        .split('\n')
+        .find((line) => line.includes('Gateway validated'));
+      expect(validated).toBeDefined();
+      expect(validated).toContain('gw.example');
+      expect(validated).not.toContain('ZQ9pw');
     });
 
     it('omits apiKey and model keys when those flags are absent', async () => {

@@ -34,7 +34,8 @@ import {
 } from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
-import { PROVIDER_ENV_KEYS, CUSTOM_API_BASE_URL_ENV } from './types.js';
+import { PROVIDER_ENV_KEYS } from './types.js';
+import { readGatewayEnv, redactApiKey } from './gateway-env.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import {
   validateCustomApiBaseUrl,
@@ -182,25 +183,27 @@ function isGenerateObjectResult(value: unknown): value is GenerateObjectResult {
 
 /**
  * Resolves the API key for a given provider.
- * Priority: explicit config > environment variable.
+ * Priority: explicit config > environment variable. The `custom-openai`
+ * key goes through the gateway-env resolver, which honours the deprecated
+ * `NEXUS_CUSTOM_API_KEY` alias (#4392 increment 3).
  */
 function resolveApiKey(providerId: SdkProviderId, configKey?: string): string | undefined {
   if (configKey !== undefined) return configKey;
-  const envVar = PROVIDER_ENV_KEYS[providerId];
-  return process.env[envVar];
+  if (providerId === 'custom-openai') return readGatewayEnv().apiKey;
+  return process.env[PROVIDER_ENV_KEYS[providerId]];
 }
 
 /**
  * For the `custom-openai` provider only: resolve the base URL (config >
- * env) and run it through the SSRF guard. Returns `undefined` for every
- * other provider (the AI SDK's built-in factories handle their own
- * endpoints). Throws `ConfigError` at construction time for invalid
- * custom-openai setups — catching misconfiguration immediately rather
- * than on the first request.
+ * env, the env side via the gateway-env resolver) and run it through the
+ * SSRF guard. Returns `undefined` for every other provider (the AI SDK's
+ * built-in factories handle their own endpoints). Throws `ConfigError` at
+ * construction time for invalid custom-openai setups — catching
+ * misconfiguration immediately rather than on the first request.
  */
 function resolveAndValidateCustomBaseUrl(config: SdkAdapterConfig): string | undefined {
   if (config.providerId !== 'custom-openai') return undefined;
-  const raw = config.baseUrl ?? process.env[CUSTOM_API_BASE_URL_ENV];
+  const raw = config.baseUrl ?? readGatewayEnv().baseUrl;
   const validated = validateCustomApiBaseUrl(raw);
   if (!validated.ok) throw validated.error;
   return validated.value.toString();
@@ -572,12 +575,17 @@ export class SdkAdapter extends BaseAdapter {
    * Converts a caught error into a Result error with categorized ErrorCode.
    */
   private toErrorResult(error: unknown, code: ErrorCode): Result<CompletionResponse, ModelError> {
-    const message = getErrorMessage(error);
     // Scrub API keys + bearer tokens out of upstream SDK error messages
     // before they hit logs or the surfaced ModelError. Parity with the
-    // subprocess-adapter path. Audit #2824.
-    const safeMessage = sanitizeOutput(message);
-    const errorObj = error instanceof Error ? error : new Error(safeMessage);
+    // subprocess-adapter path. Audit #2824. The RESOLVED key is redacted by
+    // exact match first (#4392 inc 3): a gateway key has no vendor shape the
+    // pattern sanitizer knows, and a 401 body may echo the key it rejected.
+    const apiKey = resolveApiKey(this.sdkProviderId, this.sdkConfig.apiKey);
+    const safeMessage = sanitizeOutput(redactApiKey(getErrorMessage(error), apiKey));
+    // Never the original object: its message AND its stack's first line carry
+    // the raw text. The name is kept so the log still says what was thrown.
+    const errorObj = new Error(safeMessage);
+    if (error instanceof Error) errorObj.name = error.name;
     this.logger.error(`SDK adapter error (${this.sdkProviderId})`, errorObj);
     // #4606: this path builds the ModelError itself rather than going through
     // `BaseAdapter.transformError`, so it has to capture the horizon too. The

@@ -112,8 +112,8 @@ model_list:
 
 ```bash
 # 2. Point nexus-agents at the proxy
-export NEXUS_CUSTOM_API_BASE_URL="http://localhost:4000/v1"
-export NEXUS_CUSTOM_API_KEY="anything"   # LiteLLM master key (or 'sk-1234' if no auth)
+export NEXUS_OPENAI_COMPAT_URL="http://localhost:4000/v1"
+export NEXUS_OPENAI_COMPAT_KEY="anything"   # LiteLLM master key (or 'sk-1234' if no auth)
 export NEXUS_CUSTOM_MODEL="claude-bedrock"   # or gemini-vertex, gpt4-azure
 
 # 3. Run a task — flows through LiteLLM → Bedrock/Vertex/Azure
@@ -145,10 +145,12 @@ If you already run an OpenAI-compatible gateway (Portkey, Helicone, Langfuse Gat
 ### Setup
 
 ```bash
-export NEXUS_CUSTOM_API_BASE_URL="https://your-gateway.example.com/v1"
-export NEXUS_CUSTOM_API_KEY="your-gateway-key"
+export NEXUS_OPENAI_COMPAT_URL="https://your-gateway.example.com/v1"
+export NEXUS_OPENAI_COMPAT_KEY="your-gateway-key"
 export NEXUS_CUSTOM_MODEL="claude-sonnet-4-5"   # whatever model id your gateway exposes
 ```
+
+`NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY` are deprecated aliases of the first two (#4392 increment 3): still read for the single-model path when the replacement is unset, dropped in the next major (#6291), and — unlike the names above — they do not opt into the gateway path (model discovery, in-process voters, the `api:<endpoint>` arm). See [CONFIGURATION.md](../getting-started/CONFIGURATION.md#deprecated-4392-increment-3).
 
 ### Pros / cons
 
