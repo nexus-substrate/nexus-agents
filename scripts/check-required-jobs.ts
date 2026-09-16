@@ -165,10 +165,62 @@ const JobSchema = z.object({
       z.object({
         if: z.union([z.string(), z.boolean()]).optional(),
         run: z.string().optional(),
+        env: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .optional(),
 });
+
+/**
+ * TRANSITIONAL acceptance of the #6382 aggregator shape (hop 1 of 2). The
+ * ratification gate judges a PR's ci.yml with the BASE ref's checker
+ * (#6381), so a PR that changes the checker AND the workflow together can
+ * never pass: the base checker does not know the new shape. This hop
+ * teaches main's checker to accept a step that reads
+ * `NEEDS_JSON: ${{ toJSON(needs) }}` and runs exactly this script — the
+ * same text #6387 pins as policy — as verifying every need. Hop 2 (#6387)
+ * replaces this checker and the per-job result lines together. The
+ * per-job lines stay accepted until then; nothing is loosened.
+ */
+export const AGGREGATOR_RUN = String.raw`failing=$(jq -r --argjson ok "$SKIP_ALLOWED" '
+  if (. | length) == 0 then "NO_NEEDS"
+  else to_entries
+    | map(.key as $k | select(.value.result != "success"
+                 and ((.value.result != "skipped") or ($ok != "*" and (($ok | index($k)) == null)))))
+    | map("\(.key)=\(.value.result)") | join(" ")
+  end' <<< "$NEEDS_JSON")
+if [ -n "$failing" ]; then
+  echo "::error::One or more required jobs failed: $failing"
+  exit 1
+fi
+echo "All required jobs passed."
+`;
+
+const NEEDS_JSON_EXPRESSION = /^\$\{\{\s*toJSON\(needs\)\s*\}\}$/;
+
+/** Byte equality up to trailing whitespace per line and at the end. */
+function sameScript(a: string, b: string): boolean {
+  const norm = (t: string): string =>
+    t
+      .split('\n')
+      .map((l) => l.replace(/\s+$/, ''))
+      .join('\n')
+      .replace(/\n+$/, '');
+  return norm(a) === norm(b);
+}
+
+/** True when a step reads toJSON(needs) into NEEDS_JSON and runs the pinned script. */
+function runsPinnedAggregator(steps: z.infer<typeof JobSchema>['steps']): boolean {
+  return (steps ?? []).some((step) => {
+    const needsJson = step.env?.['NEEDS_JSON'];
+    return (
+      typeof needsJson === 'string' &&
+      NEEDS_JSON_EXPRESSION.test(needsJson.trim()) &&
+      typeof step.run === 'string' &&
+      sameScript(step.run, AGGREGATOR_RUN)
+    );
+  });
+}
 
 interface JobGate {
   needs: string[];
@@ -254,6 +306,8 @@ export function extractJobGate(value: unknown): JobGate {
   const resultChecks = [...gateScript.matchAll(/\bneeds\.([\w-]+)\.result\b/g)]
     .map((match) => match[1])
     .filter((id): id is string => id !== undefined);
+  // The pinned aggregator verifies every need because it is listed (#6382).
+  if (runsPinnedAggregator(job.steps)) return { needs, gateScript, resultChecks: [...needs] };
   return { needs, gateScript, resultChecks: [...new Set(resultChecks)] };
 }
 
