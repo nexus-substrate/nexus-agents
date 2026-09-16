@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.72.0
+
+### Minor Changes
+
+- [#6379](https://github.com/nexus-substrate/nexus-agents/pull/6379) [`03db030`](https://github.com/nexus-substrate/nexus-agents/commit/03db03035e0572903f3953fd7023c48fb797f451) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Redaction records in the committed vote ledger can now carry the same SSH `signature` envelope as ratification records, outside their hash ([#6372](https://github.com/nexus-substrate/nexus-agents/issues/6372)). `verifyVoteRecordSignature` and `signVoteRecordHash` accept either record kind — the window is anchored at `recordedAt` for a vote record and `at` for a redaction — and the new `record-signature-schema` module holds the shared envelope. `scripts/redact-vote-record.ts` signs by default with the same key resolution and owner/agent attestation rules as `append-ratification-record.ts`, and the governor ledger gate reports a redaction's signature beside its target. Also corrects the `PrReviewBindingBoundsSchema` doc comments to describe the raw-bytes measurement in place since [#6177](https://github.com/nexus-substrate/nexus-agents/issues/6177) ([#6226](https://github.com/nexus-substrate/nexus-agents/issues/6226)).
+
 ## 8.71.0
 
 ### Minor Changes
