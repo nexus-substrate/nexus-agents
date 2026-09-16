@@ -91,6 +91,8 @@ describe('tool-annotations', () => {
       'issue_triage',
       'query_trace',
       'research_discover',
+      // #6295: derives a draft entry in memory; its basis says "never persists".
+      'registry_import',
     ];
 
     it('marks read-only tools correctly', () => {
@@ -114,7 +116,7 @@ describe('tool-annotations', () => {
       'research_catalog_review',
       'run_graph_workflow',
       'execute_spec',
-      'registry_import',
+      // registry_import left this list in #6295: it derives a draft in memory and never persists.
     ];
 
     it('marks state-mutating tools correctly', () => {
