@@ -12,6 +12,7 @@ import {
   estimateArmCostUsd,
   estimateBudgetArmCostUsd,
   estimateRegistryCostUsd,
+  gatewayCostDetail,
 } from './budget-arm-cost.js';
 import { estimateCost } from './budget-utils.js';
 import {
@@ -21,6 +22,7 @@ import {
 } from '../adapters/sdk/gateway-catalog.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
+import { computeCostDetail, priceBasisOf } from '../learning/usage-log.js';
 
 describe('estimateBudgetArmCostUsd (#6393)', () => {
   afterEach(() => {
@@ -165,5 +167,76 @@ describe('gateway catalogue store (#4392 inc 2 step 2)', () => {
       setGatewayCatalog('api:openai-compat', []);
     }).toThrow(/empty/);
     expect(getGatewayCatalog('api:openai-compat')).toEqual(['a', 'b']);
+  });
+});
+
+// =============================================================================
+// #4392 increment 2, step 4: the telemetry writers' cost detail for a gateway.
+// A `claude-*` id served by an UNDECLARED gateway must record as UNKNOWN —
+// never Anthropic's list price, never a measured $0.
+// =============================================================================
+
+describe('gatewayCostDetail (#4392 inc 2 step 4)', () => {
+  const ARM = 'api:openai-compat' as const;
+  // Priced in the registry, so the misreport is reachable: `computeCostDetail`
+  // alone would report Anthropic's list price for a call the gateway served.
+  const MODEL = 'claude-sonnet-4-6';
+
+  beforeEach(() => {
+    _resetGatewayCatalogs();
+  });
+
+  it('records UNKNOWN for an undeclared gateway — not the vendor list price, not a measured $0', () => {
+    const listPrice = computeCostDetail(MODEL, 1_000, 200);
+    expect(listPrice.priced).toBe(true);
+    expect(listPrice.costUsd).toBeGreaterThan(0);
+
+    const detail = gatewayCostDetail(ARM, MODEL, 1_000, 200, {});
+    expect(detail).toEqual({ costUsd: 0, priced: false, resolvedId: MODEL });
+    expect(priceBasisOf(detail)).toBe('unknown');
+  });
+
+  it.each(['unset', 'invalid', 'scoped-elsewhere'])(
+    'treats every declaration gap (%s) as UNKNOWN',
+    (gap) => {
+      const env =
+        gap === 'unset'
+          ? {}
+          : gap === 'invalid'
+            ? { NEXUS_GATEWAY_COST: 'metered' }
+            : { NEXUS_GATEWAY_COST: 'corp-proxy=free' };
+      expect(gatewayCostDetail(ARM, MODEL, 1_000, 200, env).priced).toBe(false);
+    }
+  );
+
+  it('is a MEASURED $0 for free and local, sourced to the arm', () => {
+    for (const decl of ['free', 'local', 'openai-compat=free']) {
+      const detail = gatewayCostDetail(ARM, MODEL, 1_000, 200, { NEXUS_GATEWAY_COST: decl });
+      expect(detail).toEqual({ costUsd: 0, priced: true, resolvedId: ARM });
+      expect(priceBasisOf(detail)).toBe('list');
+    }
+  });
+
+  it('computes the flat rate for priced:<in>,<out>, rounded like the ledger', () => {
+    const detail = gatewayCostDetail(ARM, MODEL, 1_000_000, 500_000, {
+      NEXUS_GATEWAY_COST: 'priced:2,10',
+    });
+    expect(detail).toEqual({ costUsd: 7, priced: true, resolvedId: ARM });
+    // Sub-micro-USD noise is rounded away (ledger requirement, not a cost one).
+    const tiny = gatewayCostDetail(ARM, MODEL, 1, 1, { NEXUS_GATEWAY_COST: 'priced:0.3333333,0' });
+    expect(tiny.costUsd).toBe(0);
+    expect(tiny.priced).toBe(true);
+  });
+
+  it('defers bare priced to the registry entry of the MODEL that answered', () => {
+    const detail = gatewayCostDetail(ARM, MODEL, 1_000, 200, { NEXUS_GATEWAY_COST: 'priced' });
+    expect(detail).toEqual(computeCostDetail(MODEL, 1_000, 200));
+    expect(detail.priced).toBe(true);
+    // Bare priced on a model the registry cannot price stays UNKNOWN.
+    const unpriced = gatewayCostDetail(ARM, 'mystery-model-xyz', 1_000, 200, {
+      NEXUS_GATEWAY_COST: 'priced',
+    });
+    expect(unpriced.priced).toBe(false);
+    expect(unpriced.costUsd).toBe(0);
   });
 });

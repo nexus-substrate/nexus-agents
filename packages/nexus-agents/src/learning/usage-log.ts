@@ -75,7 +75,10 @@ export interface UsageEvent {
   /**
    * Pricing provenance: the canonical registry id whose pricing was applied
    * (the entry's `resolvedFrom` when the #4164 fuzzy tier matched a decorated
-   * id, else the caller's model id). Present only when `priced` is true.
+   * id, else the caller's model id) — or, for a call a gateway served under a
+   * `free`/`local`/`priced:<in>,<out>` declaration, the gateway's
+   * `api:<endpoint>` arm, since the declaration and not a registry entry
+   * supplied the number (#4392 step 4). Present only when `priced` is true.
    */
   readonly priceSource?: string;
 }

@@ -32,9 +32,10 @@ import type {
 } from '../core/index.js';
 import { ok, err, ConfigError, getErrorMessage, getTimeProvider } from '../core/index.js';
 import { OpenAIAdapter } from './openai-adapter.js';
-import { recordUsageEvent, computeCostDetail } from '../learning/usage-log.js';
+import { recordUsageEvent } from '../learning/usage-log.js';
+import { gatewayCostDetail } from '../cli-adapters/budget-arm-cost.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
-import { isEndpointArmId } from '../cli-adapters/types-core.js';
+import { isEndpointArmId, type EndpointArmId } from '../cli-adapters/types-core.js';
 import { DEFAULT_OPENAI_COMPAT_ENDPOINT, OPENAI_COMPAT_ENDPOINT_ENV } from './sdk/types.js';
 
 export interface OpenAICompatConfig {
@@ -50,6 +51,31 @@ export interface OpenAICompatConfig {
    * registration. Never the URL.
    */
   readonly endpoint?: string;
+}
+
+/**
+ * A per-model gateway adapter, marked with the `api:<endpoint>` arm it
+ * registers under (#4392 increment 2, step 4). The telemetry writers key on
+ * this — the usage log here, the vote rollup in `decision-cost-recording` —
+ * to price a call by the arm's `NEXUS_GATEWAY_COST` declaration instead of
+ * by the model id alone. `providerId` stays `'openai'` on purpose:
+ * `inFamilyFallback` and `authRemediation` take their inputs from it.
+ * Reached through {@link isGatewayModelAdapter} (narrowing) and
+ * {@link createOpenAICompatAdapter} (construction); not exported by name
+ * because nothing outside this module needs to spell it.
+ */
+interface GatewayModelAdapter extends IModelAdapter {
+  readonly gatewayArm: EndpointArmId;
+}
+
+/**
+ * True iff `adapter` carries a valid gateway arm id. Checked by shape, not
+ * by construction site: a hand-built config can name an endpoint that is not
+ * an endpoint id, and a marker that fails the id rule is no marker.
+ */
+export function isGatewayModelAdapter(adapter: IModelAdapter): adapter is GatewayModelAdapter {
+  const arm: unknown = (adapter as Partial<GatewayModelAdapter>).gatewayArm;
+  return typeof arm === 'string' && isEndpointArmId(arm);
 }
 
 export interface DiscoveredModel {
@@ -225,8 +251,10 @@ export async function discoverModels(
  * to the JSONL log consumed by `nexus-agents usage`.
  *
  * The wrapper is transparent — same IModelAdapter contract, same fields,
- * same error handling. Recording is best-effort (telemetry never fails
- * the user's call).
+ * same error handling — plus the {@link GatewayModelAdapter} arm marker,
+ * `api:<config.endpoint>` (the default endpoint when a hand-built config
+ * omits it, matching registration). Recording is best-effort (telemetry
+ * never fails the user's call).
  *
  * When invoked via MCP, the host harness's model identifier is passed
  * through verbatim — nexus-agents doesn't second-guess what the host is
@@ -235,22 +263,26 @@ export async function discoverModels(
 export function createOpenAICompatAdapter(
   modelId: string,
   config: OpenAICompatConfig
-): IModelAdapter {
+): GatewayModelAdapter {
   const inner = new OpenAIAdapter({ modelId, apiKey: config.apiKey, baseUrl: config.baseUrl });
-  return withUsageRecording(inner);
+  return withUsageRecording(inner, `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`);
 }
 
 /**
- * Wrap any IModelAdapter so that successful + failed `complete()` calls
- * append a UsageEvent to the on-disk usage log. Stream calls aren't yet
- * instrumented (a future PR can add streaming-aware recording).
+ * Wrap a gateway model adapter so that successful + failed `complete()`
+ * calls append a UsageEvent to the on-disk usage log. Stream calls aren't
+ * yet instrumented (a future PR can add streaming-aware recording).
  *
  * The returned object preserves the IModelAdapter contract identically;
  * downstream code can't tell the difference except that one extra JSONL
- * line gets written per call.
+ * line gets written per call. The line is priced by `gatewayArm`'s
+ * `NEXUS_GATEWAY_COST` declaration ({@link gatewayCostDetail}, #4392 step 4):
+ * an undeclared gateway records `priced: false`, never the model id's vendor
+ * list price.
  */
-function withUsageRecording(inner: IModelAdapter): IModelAdapter {
-  const wrapped: IModelAdapter = {
+function withUsageRecording(inner: IModelAdapter, gatewayArm: EndpointArmId): GatewayModelAdapter {
+  const wrapped: GatewayModelAdapter = {
+    gatewayArm,
     providerId: inner.providerId,
     modelId: inner.modelId,
     capabilities: inner.capabilities,
@@ -269,9 +301,9 @@ function withUsageRecording(inner: IModelAdapter): IModelAdapter {
           // #4439 exists to remove — a lost latency datapoint is the cheaper
           // loss than a false token count.
           if (u === undefined) return result;
-          // Full-registry pricing with provenance (#4165): `priced: false`
-          // marks the $0 as UNPRICED (unmeasured), not a real $0.
-          const cost = computeCostDetail(inner.modelId, u.inputTokens, u.outputTokens);
+          // Declaration-first pricing with provenance (#4165, #4392 step 4):
+          // `priced: false` marks the $0 as UNPRICED (unmeasured), not a real $0.
+          const cost = gatewayCostDetail(gatewayArm, inner.modelId, u.inputTokens, u.outputTokens);
           recordUsageEvent({
             timestamp: new Date().toISOString(),
             modelId: inner.modelId,
@@ -285,17 +317,7 @@ function withUsageRecording(inner: IModelAdapter): IModelAdapter {
             ...(cost.priced ? { priceSource: cost.resolvedId } : {}),
           });
         } else {
-          recordUsageEvent({
-            timestamp: new Date().toISOString(),
-            modelId: inner.modelId,
-            providerId: inner.providerId,
-            inputTokens: 0,
-            outputTokens: 0,
-            usdCost: 0,
-            latencyMs,
-            success: false,
-            errorCode: result.error.code,
-          });
+          recordFailedCall(inner, latencyMs, result.error.code);
         }
       } catch {
         // Telemetry must not break user calls.
@@ -305,6 +327,21 @@ function withUsageRecording(inner: IModelAdapter): IModelAdapter {
   };
   attachListModels(wrapped, inner);
   return wrapped;
+}
+
+/** The usage line for a failed call: no tokens, no cost — the error code is the datum. */
+function recordFailedCall(inner: IModelAdapter, latencyMs: number, errorCode: string): void {
+  recordUsageEvent({
+    timestamp: new Date().toISOString(),
+    modelId: inner.modelId,
+    providerId: inner.providerId,
+    inputTokens: 0,
+    outputTokens: 0,
+    usdCost: 0,
+    latencyMs,
+    success: false,
+    errorCode,
+  });
 }
 
 /**

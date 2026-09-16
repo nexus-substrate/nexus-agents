@@ -13,6 +13,7 @@ import type {
   VotingStrategy,
 } from '../mcp/tools/consensus-vote-types.js';
 import type { VoteRecordPrBinding } from '../audit/vote-record.js';
+import type { EndpointArmId } from '../cli-adapters/types-core.js';
 import type { VoterRole } from './voter-roles.js';
 
 /**
@@ -249,6 +250,17 @@ export interface AgentVoteResult {
    * outside the panel launcher (simulation, direct `executeAgentVote` calls).
    */
   readonly assignedCli?: string | undefined;
+  /**
+   * The `api:<endpoint>` gateway arm this seat answered through, when it
+   * answered through an in-process gateway adapter (#4392 increment 2, step
+   * 4). Absent on a CLI-subprocess seat and on results built outside the
+   * panel launcher. The decision-cost rollup keys on it: a gateway seat is
+   * priced by the arm's `NEXUS_GATEWAY_COST` declaration — UNKNOWN when
+   * undeclared — never by the model id's vendor list price, which is what a
+   * `claude-*` id served by a gateway used to record. `cli` stays the
+   * adapter's `providerId` (`openai`), which cannot say this.
+   */
+  readonly gatewayArm?: EndpointArmId | undefined;
   /**
    * Present only when the seat answered on a different CLI or model than
    * assigned (#6115). Three consecutive 7-seat panels ran every seat on one

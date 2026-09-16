@@ -390,6 +390,7 @@ InterfaceDeclaration AgentVoteResult
   readonly cli?: string | undefined
   readonly error?: string | undefined
   readonly fallback?: SeatFallback | undefined
+  readonly gatewayArm?: `api:${ string; }` | undefined
   readonly inputTokens?: number | undefined
   readonly model?: string | undefined
   readonly outputTokens?: number | undefined
