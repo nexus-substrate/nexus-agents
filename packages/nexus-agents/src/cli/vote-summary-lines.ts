@@ -155,3 +155,40 @@ export function tallySummaryLine(result: VotingResult): string {
     ')'
   );
 }
+
+/** `118s` — whole seconds; sub-second attempts read as `0s`, which is the truth for a stub. */
+function seconds(ms: number): string {
+  return `${String(Math.round(ms / 1000))}s`;
+}
+
+/**
+ * The one-line attribution of the panel's wall-clock (#6103) —
+ * `Seat timing (queued→ran): architect claude 0s→118s; devex gemini 0s→2s,
+ * fallback claude 213s→40s; queued total 331s`. Queue time is the wait behind
+ * the CLI's serialized lane (#3348); a fallback attempt is labelled. A seat
+ * without timing says `unmeasured`, one refused before any attempt says `no
+ * attempt` — neither is rendered as a zero that could read as measured.
+ */
+function seatTimingLine(votes: readonly AgentVoteResult[]): string {
+  if (votes.length === 0) return 'Seat timing (queued→ran): no seats';
+  let queuedTotal = 0;
+  const parts = votes.map((v) => {
+    const attempts = v.timing?.attempts;
+    if (attempts === undefined) return `${v.role} unmeasured`;
+    if (attempts.length === 0) return `${v.role} no attempt`;
+    const rendered = attempts.map((a) => {
+      queuedTotal += a.queuedMs;
+      return `${a.fallback ? 'fallback ' : ''}${a.cli} ${seconds(a.queuedMs)}→${seconds(a.ranMs)}`;
+    });
+    return `${v.role} ${rendered.join(', ')}`;
+  });
+  return `Seat timing (queued→ran): ${parts.join('; ')}; queued total ${seconds(queuedTotal)}`;
+}
+
+/** The three always-printed panel-shape lines, in summary order: project (#6110), models (#6115), seat timing (#6103). */
+export function panelShapeLines(
+  project: ResolvedVoterProject | undefined,
+  votes: readonly AgentVoteResult[]
+): readonly string[] {
+  return [projectLine(project), modelsLine(votes), seatTimingLine(votes)];
+}

@@ -47,6 +47,7 @@ import {
   contrarianCheckLine,
   contrarianCheckSummaryLine,
   modelsLine,
+  panelShapeLines,
   projectLine,
   retriedFromLabel,
   tallySummaryLine,
@@ -181,14 +182,12 @@ function printSummary(ctx: SummaryContext): void {
     `  ${unverifiable > 0 ? colors.yellow : ''}Unverifiable: ${String(unverifiable)} (of the abstentions; could not read the artifact)${colors.reset}`
   );
   if (errored > 0) writeLine(`  ${colors.red}Errored:  ${String(errored)}${colors.reset}`);
-  // #6111: always printed, `ok` included — the check is not a seat, so no
-  // count above can carry it.
+  // #6111: always printed, `ok` included — the check is not a seat, so no count above carries it.
   writeLine(contrarianCheckSummaryLine(ctx.contrarianCheck));
   writeLine(`  Approval: ${approvalPercentage.toFixed(1)}%`);
   writeLine(`  Threshold: ${threshold}`);
-  writeLine(`  ${projectLine(ctx.project)}`);
-  // #6115: always printed, zeros included — a collapsed panel read as diverse without it.
-  writeLine(`  ${modelsLine(votes)}`);
+  // Project, #6115 models (zeros included) and #6103 seat timing: always printed.
+  for (const l of panelShapeLines(ctx.project, votes)) writeLine(`  ${l}`);
 
   // Yellow for a void: it is neither an approval nor the panel rejecting, and
   // the colour is the first thing a human reads.
