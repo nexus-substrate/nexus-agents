@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
+import { AGGREGATOR_RUN } from './check-required-jobs.js';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
@@ -52,7 +53,7 @@ describe('checkRequiredJobs', () => {
     ).toEqual({
       verdict: 'drift',
       problems: [
-        'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} (#6382)',
+        'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} and runs the pinned AGGREGATOR_RUN (#6382)',
       ],
     });
   });
@@ -69,6 +70,11 @@ describe('checkRequiredJobs', () => {
       checkRequiredJobs({ ...input, ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: [] } })
         .problems
     ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
+    // A wildcard is never acceptable for CI Success.
+    expect(
+      checkRequiredJobs({ ...input, ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: '*' } })
+        .problems
+    ).toEqual(['ci-success SKIP_ALLOWED is "*"; every need may skip']);
     // No SKIP_ALLOWED declared reads as none, and the manifest's pinned skip is then missing.
     expect(
       checkRequiredJobs({
@@ -193,7 +199,7 @@ describe('shared job gate extraction (#6382)', () => {
       steps: [
         {
           env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["lint"]' },
-          run: 'failing=$(jq -r ... <<< "$NEEDS_JSON")',
+          run: AGGREGATOR_RUN,
         },
       ],
     });
@@ -204,16 +210,43 @@ describe('shared job gate extraction (#6382)', () => {
   });
 
   it.each([
-    { env: { NEEDS_JSON: '${{ toJSON(needs.lint) }}' }, run: 'echo "$NEEDS_JSON"' },
+    { env: { NEEDS_JSON: '${{ toJSON(needs.lint) }}' }, run: 'AGGREGATOR' },
     { env: { NEEDS_JSON: NEEDS }, run: 'echo unrelated' },
+    // The #6387 panel's bypass: mentioning the variable is not running the script.
+    { env: { NEEDS_JSON: NEEDS }, run: 'echo NEEDS_JSON' },
+    { env: { NEEDS_JSON: NEEDS }, run: '# NEEDS_JSON\necho ok' },
+    // One byte off the pinned script — a relaxed exit, a dropped check — is not the script.
+    { env: { NEEDS_JSON: NEEDS }, run: 'AGGREGATOR_MINUS_EXIT' },
     { env: {}, run: 'test "${{ needs.security.result }}" = success' },
     { run: '# NEEDS_JSON: ${{ toJSON(needs) }}' },
-  ])('does not accept a per-job, partial or unconsumed shape: %j', async (step) => {
+  ])('does not accept a per-job, partial, mention-only or altered shape: %j', async (step) => {
     const { extractJobGate } = await import('./check-required-jobs.js');
-    expect(extractJobGate({ needs: ['lint'], steps: [step] }).gate).toEqual({
+    const run =
+      step.run === 'AGGREGATOR'
+        ? AGGREGATOR_RUN
+        : step.run === 'AGGREGATOR_MINUS_EXIT'
+          ? AGGREGATOR_RUN.replace('  exit 1\n', '')
+          : step.run;
+    expect(extractJobGate({ needs: ['lint'], steps: [{ ...step, run }] }).gate).toEqual({
       verifiesEveryNeed: false,
       skipAllowed: undefined,
     });
+  });
+
+  it('accepts the pinned script with trailing-whitespace differences only, and a "*" skip list', async () => {
+    const { extractJobGate } = await import('./check-required-jobs.js');
+    const padded = AGGREGATOR_RUN.split('\n')
+      .map((l) => l + '  ')
+      .join('\n');
+    expect(
+      extractJobGate({ steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '"*"' }, run: padded }] })
+        .gate
+    ).toEqual({ verifiesEveryNeed: true, skipAllowed: '*' });
+  });
+
+  it('the pinned script is what the real ci.yml and docs-check.yml steps run', async () => {
+    const { loadCiSuccessGate } = await import('./check-required-jobs.js');
+    expect(loadCiSuccessGate().gate.verifiesEveryNeed).toBe(true);
   });
 
   it.each(['not json', '{"a":1}', '["ok", 1]'])(
@@ -221,7 +254,7 @@ describe('shared job gate extraction (#6382)', () => {
     async (raw) => {
       const { extractJobGate } = await import('./check-required-jobs.js');
       const gate = extractJobGate({
-        steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: raw }, run: 'jq <<< "$NEEDS_JSON"' }],
+        steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: raw }, run: AGGREGATOR_RUN }],
       });
       expect(gate.gate).toEqual({ verifiesEveryNeed: true, skipAllowed: undefined });
     }
@@ -280,7 +313,10 @@ describe('required-jobs CLI reporting', () => {
       - env:
           NEEDS_JSON: \${{ toJSON(needs) }}
           SKIP_ALLOWED: '["lint"]'
-        run: jq <<< "$NEEDS_JSON"
+        run: |
+${AGGREGATOR_RUN.split('\n')
+  .map((l) => '          ' + l)
+  .join('\n')}
   governor:
     name: Governor-path ratification gate
 `

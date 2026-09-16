@@ -171,18 +171,40 @@ const JobSchema = z.object({
 });
 
 /**
+ * The ONE aggregator script (#6382): POLICY, owned here so that a workflow —
+ * which is not a governor path — cannot weaken it. A `ci-success` /
+ * `docs-success` step must carry this text as its `run:` byte for byte
+ * (trailing whitespace aside), with `NEEDS_JSON: ${{ toJSON(needs) }}` and a
+ * `SKIP_ALLOWED` env: a JSON array of the needs that may be `skipped`, or
+ * `"*"` when every need may (path-filtered gates). Executed against ok /
+ * failing / empty / null / skipped-required / cancelled inputs before it was
+ * pinned. The #6387 panel refused a substring test for "consumes the
+ * variable": `echo NEEDS_JSON` would have passed it.
+ */
+export const AGGREGATOR_RUN = String.raw`failing=$(jq -r --argjson ok "$SKIP_ALLOWED" '
+  if (. | length) == 0 then "NO_NEEDS"
+  else to_entries
+    | map(.key as $k | select(.value.result != "success"
+                 and ((.value.result != "skipped") or ($ok != "*" and (($ok | index($k)) == null)))))
+    | map("\(.key)=\(.value.result)") | join(" ")
+  end' <<< "$NEEDS_JSON")
+if [ -n "$failing" ]; then
+  echo "::error::One or more required jobs failed: $failing"
+  exit 1
+fi
+echo "All required jobs passed."
+`;
+
+/**
  * How an aggregator job verifies the jobs it waits for (#6382). The one
  * accepted shape: a step whose env carries `NEEDS_JSON: ${{ toJSON(needs) }}`
- * and whose `run` consumes it — every listed need is then verified because
- * it is listed, and there is no per-job line a PR could comment out. The
- * step's `SKIP_ALLOWED` env is the JSON list of needs that may be `skipped`
- * (push-only jobs); absent means none may.
+ * and whose `run` IS {@link AGGREGATOR_RUN}.
  */
 export interface AggregatorShape {
-  /** True when a step reads `toJSON(needs)` into NEEDS_JSON and consumes it in `run`. */
+  /** True when a step reads `toJSON(needs)` into NEEDS_JSON and runs the pinned script. */
   readonly verifiesEveryNeed: boolean;
-  /** The parsed SKIP_ALLOWED list; `undefined` when the step declares none or it does not parse. */
-  readonly skipAllowed: readonly string[] | undefined;
+  /** The parsed SKIP_ALLOWED: a job list, `'*'`, or `undefined` when absent or malformed. */
+  readonly skipAllowed: readonly string[] | '*' | undefined;
 }
 
 interface JobGate {
@@ -192,24 +214,35 @@ interface JobGate {
 
 const NEEDS_JSON_EXPRESSION = /^\$\{\{\s*toJSON\(needs\)\s*\}\}$/;
 
+/** Byte equality up to trailing whitespace per line and at the end. */
+function sameScript(a: string, b: string): boolean {
+  const norm = (t: string): string =>
+    t
+      .split('\n')
+      .map((l) => l.replace(/\s+$/, ''))
+      .join('\n')
+      .replace(/\n+$/, '');
+  return norm(a) === norm(b);
+}
+
 /** The aggregator shape of one job's steps; a job with no such step verifies nothing. */
 function aggregatorShapeOf(steps: readonly z.infer<typeof StepSchema>[]): AggregatorShape {
   for (const step of steps) {
     const env = step.env ?? {};
     const needsJson = env['NEEDS_JSON'];
     if (typeof needsJson !== 'string' || !NEEDS_JSON_EXPRESSION.test(needsJson.trim())) continue;
-    if (typeof step.run !== 'string' || !step.run.includes('NEEDS_JSON')) continue;
-    const raw = env['SKIP_ALLOWED'];
-    return { verifiesEveryNeed: true, skipAllowed: parseSkipAllowed(raw) };
+    if (typeof step.run !== 'string' || !sameScript(step.run, AGGREGATOR_RUN)) continue;
+    return { verifiesEveryNeed: true, skipAllowed: parseSkipAllowed(env['SKIP_ALLOWED']) };
   }
   return { verifiesEveryNeed: false, skipAllowed: undefined };
 }
 
 /** `SKIP_ALLOWED` must be a JSON array of job ids; anything else is "none declared". */
-function parseSkipAllowed(raw: unknown): readonly string[] | undefined {
+function parseSkipAllowed(raw: unknown): readonly string[] | '*' | undefined {
   if (typeof raw !== 'string') return undefined;
   try {
     const parsed: unknown = JSON.parse(raw);
+    if (parsed === '*') return '*';
     return Array.isArray(parsed) && parsed.every((x): x is string => typeof x === 'string')
       ? parsed
       : undefined;
@@ -222,9 +255,12 @@ function parseSkipAllowed(raw: unknown): readonly string[] | undefined {
 function aggregatorProblems(gate: AggregatorShape, skipAllowed: readonly string[]): string[] {
   if (!gate.verifiesEveryNeed) {
     return [
-      'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} (#6382)',
+      'ci-success does not verify every need: no step reads NEEDS_JSON: ${{ toJSON(needs) }} and runs the pinned AGGREGATOR_RUN (#6382)',
     ];
   }
+  // A wildcard skip list is never acceptable for CI Success: `security` and
+  // its peers must have RUN.
+  if (gate.skipAllowed === '*') return ['ci-success SKIP_ALLOWED is "*"; every need may skip'];
   const declared = new Set(gate.skipAllowed ?? []);
   const pinned = new Set(skipAllowed);
   const extra = [...declared].filter((j) => !pinned.has(j));

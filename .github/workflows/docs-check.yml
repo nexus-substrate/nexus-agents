@@ -950,20 +950,22 @@ jobs:
     steps:
       - name: Check required jobs
         env:
-          # Same shape as ci-success (#6382): the needed jobs and their
-          # results are the one input, so there is no per-job line to comment
-          # out. Every documentation gate may skip (path filters), so a
-          # skipped job passes here; a job that RAN must have succeeded.
+          # Same shape and the same run body as ci-success (#6382): the needed
+          # jobs and their results are the one input, so there is no per-job
+          # line to comment out. Every documentation gate may skip (path
+          # filters), so SKIP_ALLOWED is "*": a job that RAN must have succeeded.
           NEEDS_JSON: ${{ toJSON(needs) }}
+          SKIP_ALLOWED: '"*"'
         run: |
-          failing=$(jq -r '
+          failing=$(jq -r --argjson ok "$SKIP_ALLOWED" '
             if (. | length) == 0 then "NO_NEEDS"
             else to_entries
-              | map(select(.value.result != "success" and .value.result != "skipped"))
+              | map(.key as $k | select(.value.result != "success"
+                           and ((.value.result != "skipped") or ($ok != "*" and (($ok | index($k)) == null)))))
               | map("\(.key)=\(.value.result)") | join(" ")
             end' <<< "$NEEDS_JSON")
           if [ -n "$failing" ]; then
-            echo "::error::One or more documentation gates failed: $failing"
+            echo "::error::One or more required jobs failed: $failing"
             exit 1
           fi
-          echo "All documentation gates passed."
+          echo "All required jobs passed."
