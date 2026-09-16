@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.76.2
+
+### Patch Changes
+
+- [#6414](https://github.com/nexus-substrate/nexus-agents/pull/6414) [`e448214`](https://github.com/nexus-substrate/nexus-agents/commit/e448214ec3906151c060bd273cbe9b78f5334655) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `registry_import` MCP tool is now annotated `readOnlyHint: true`. Its manifest entry declared `readOnlyHint: false` while its own idempotency basis said the tool never persists — both could not be true ([#6295](https://github.com/nexus-substrate/nexus-agents/issues/6295)). The tool derives a draft `ModelCapability` entry from its input and the in-memory registry and writes nothing, so the policy firewall's mutation rule (which reads `readOnlyHint` since [#5114](https://github.com/nexus-substrate/nexus-agents/issues/5114)) no longer classifies it as a mutation, and the MCP_PROTOCOL annotations table no longer claims it reaches a vendor (`openWorldHint` is false).
+
 ## 8.76.1
 
 ### Patch Changes
