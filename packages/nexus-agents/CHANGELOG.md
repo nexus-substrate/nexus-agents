@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.75.1
+
+### Patch Changes
+
+- [#6407](https://github.com/nexus-substrate/nexus-agents/pull/6407) [`81d7071`](https://github.com/nexus-substrate/nexus-agents/commit/81d70712e7d86891879692a2b93638619c08f140) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The MCP server no longer loads a TypeScript compiler until a tool needs one ([#6405](https://github.com/nexus-substrate/nexus-agents/issues/6405)). `typescript` and `ts-morph` (with its own bundled compiler in `@ts-morph/common`) were imported statically on the server entry path by the symbol extractor, the entrypoint/project extractors and the constitutional AST fixer, so an idle `--mode=server` process held both copies before its first request. They are now loaded on first call through one helper, `indexer/lazy-compiler.ts`, and the raw compiler API is taken from ts-morph's copy, so the standalone `typescript` package is never loaded at runtime at all. Every extractor keeps its synchronous signature. Measured on the built `dist/cli.js` at idle, three runs each: RSS 255–264 MB → 178–186 MB, heapUsed after GC 106 MB → 53.6 MB. A new CI gate, `scripts/check-dist-idle-compilers.ts`, starts the built server and fails if either compiler is resident, since a source-level check cannot see tsup hoisting a dynamic import into a statically imported chunk.
+
 ## 8.75.0
 
 ### Minor Changes
