@@ -84,6 +84,15 @@ class GatewayArmAdapter implements IResilientAdapter {
     private readonly deps: GatewayArmDeps
   ) {}
 
+  /**
+   * The gateway-arm marker (#4392 step 4, `isGatewayModelAdapter`): a
+   * telemetry writer that is handed this wrapper prices its calls by the
+   * arm's `NEXUS_GATEWAY_COST` declaration, never the delegate's list price.
+   */
+  get gatewayArm(): EndpointArmId {
+    return this.armId;
+  }
+
   // --- IModelAdapter (forwarded to the delegate) ---
 
   get providerId(): string {

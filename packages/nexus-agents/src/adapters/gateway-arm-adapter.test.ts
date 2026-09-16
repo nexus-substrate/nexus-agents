@@ -21,6 +21,7 @@ import { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
 import { DEFAULT_CIRCUIT_BREAKER_CONFIG } from '../cli-adapters/circuit-breaker-types.js';
 import { createUnifiedRegistry } from './unified-registry.js';
 import { createGatewayArmAdapter } from './gateway-arm-adapter.js';
+import { isGatewayModelAdapter } from './openai-compat-adapter.js';
 import { clearRateLimitEvents, getRateLimitStats } from './rate-limit-detector.js';
 import {
   _resetGatewayCatalogs,
@@ -141,6 +142,15 @@ describe('createGatewayArmAdapter (#4392 inc 2 step 2)', () => {
       expect(models[1]?.complete).not.toHaveBeenCalled();
       expect(await arm.countTokens('x')).toBe(7);
       expect(arm.validateConfig().ok).toBe(true);
+    });
+
+    it('carries the gateway-arm marker, so a telemetry writer cannot price it at list (#4392 step 4)', () => {
+      const arm = createGatewayArmAdapter(ARM, makeModels(2), {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+      expect(isGatewayModelAdapter(arm)).toBe(true);
+      expect(isGatewayModelAdapter(arm) && arm.gatewayArm).toBe(ARM);
     });
 
     it('lists the whole catalogue, not just the delegate', async () => {
