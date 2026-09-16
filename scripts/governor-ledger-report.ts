@@ -53,6 +53,7 @@ import type {
 import {
   GOVERNOR_STRATEGIES,
   REQUIRED_ERROR_POLICY,
+  SIGNATURE_CUTOVER_SEQUENCE,
   evaluateLedgerEvidence,
   isRatifiedKind,
 } from './governor-ledger-evidence.js';
@@ -137,7 +138,8 @@ function formatRatified(evidence: RatifiedEvidence): string {
   return (
     `::notice::${TAG} ${evidence.kind}: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
     `${sha}, decision ${evidence.record.decision}, strategy: ${evidence.record.strategy}, ` +
-    `${panel}, ${policy}, ${appendOnly}, ${formatSignatures(evidence.signatures)}.${redacted}`
+    `${panel}, ${policy}, ${appendOnly}, ${formatSignatures(evidence.signatures)} — enforced from sequence ` +
+    `${String(SIGNATURE_CUTOVER_SEQUENCE)} (0–${String(SIGNATURE_CUTOVER_SEQUENCE - 1)} grandfathered).${redacted}`
   );
 }
 
@@ -175,6 +177,19 @@ function boundRecordBody(evidence: BoundRecordFailure): string {
         `${id} was approved with ${String(evidence.coverage.errored)} of ` +
         `${String(evidence.coverage.requested)} seat(s) errored (${evidence.coverage.erroredRoles.join(', ')}) ` +
         '— a governor ratification must run whole under absolute_quorum'
+      );
+    case 'signature-required':
+      // Phase 3 (#6279): the verdict's own code and ssh-keygen's reason, so an
+      // unlisted key reads differently from a signature that does not hold.
+      // By hash, so the text says so: a forged record stamped with a
+      // grandfathered sequence is refused for not BEING one of them, and the
+      // line must not claim it is past the cutover (#6384 panel 2).
+      return (
+        `${id} (sequence ${String(evidence.record.sequence)}) is not one of the ` +
+        `${String(SIGNATURE_CUTOVER_SEQUENCE)} grandfathered records (matched by hash, not by the ` +
+        `sequence it claims) and its signature verdict is '${evidence.verdict.code}'` +
+        `${'reason' in evidence.verdict ? ` (${evidence.verdict.reason})` : ''} — every other governor ` +
+        "ratification record must be 'signed' by a key the gate checkout's allowed_signers lists"
       );
   }
 }

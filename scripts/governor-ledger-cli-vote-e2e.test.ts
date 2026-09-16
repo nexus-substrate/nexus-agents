@@ -32,6 +32,7 @@ import {
 } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 import { resetNexusDataDirCache } from '../packages/nexus-agents/src/config/nexus-data-dir.js';
 import { evaluateLedgerEvidence, type LedgerEvidence } from './governor-ledger-evidence.js';
+import type { VoteRecordSignatureVerdict } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
 
 const collectRealVotesMock =
   vi.fn<(opts: { roles: readonly VoterRole[] }) => Promise<readonly AgentVoteResult[]>>();
@@ -207,11 +208,22 @@ describe('e2e: nexus-agents vote --ratifies-pr → append script → the ledger 
     // 4. The real gate, over the committed bytes, with an empty base ledger so
     // append-only is checked too.
     const ledgerText = readFileSync(ledgerPath, 'utf-8');
+    // #6279: the append here runs with no signing key (unsigned by
+    // construction, see `append`), and the record is not grandfathered, so
+    // the signature check is stubbed as holding — the binding and append-only
+    // properties are what this test measures.
+    const signedStub = (): VoteRecordSignatureVerdict => ({
+      code: 'signed',
+      keyId: 'nexus-agent@fixture',
+      principal: 'nexus-agent@fixture',
+      signerKind: 'agent',
+    });
     const ratified: LedgerEvidence = evaluateLedgerEvidence({
       ledgerText,
       pr: PR,
       head: { sha: tipSha, parentSha: reviewedSha, commitFiles: tipFiles },
       baseLedgerText: '',
+      signatureVerifier: signedStub,
     });
     expect(ratified.kind).toBe('ratified');
     if (ratified.kind !== 'ratified') throw new Error('unreachable');
@@ -225,6 +237,7 @@ describe('e2e: nexus-agents vote --ratifies-pr → append script → the ledger 
       ledgerText,
       pr: PR,
       head: { sha: OTHER, parentSha: undefined, commitFiles: ['src/a.ts'] },
+      signatureVerifier: signedStub,
     });
     expect(mismatch).toEqual({
       kind: 'sha-mismatch',
