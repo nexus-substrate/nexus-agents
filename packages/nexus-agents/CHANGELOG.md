@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.79.0
+
+### Minor Changes
+
+- [#6422](https://github.com/nexus-substrate/nexus-agents/pull/6422) [`8bf5387`](https://github.com/nexus-substrate/nexus-agents/commit/8bf53876c741c9969f8ce53a9adc0844f0350dfd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The two per-call `TokenUsage` types — the CLI parser output in `cli-adapters/types-core` (published as `CliTokenUsage`) and the adapter response contract in `core/types/model` (published as `TokenUsage`) — stay two types, and every crossing between them now goes through one conversion ([#4440](https://github.com/nexus-substrate/nexus-agents/issues/4440), the reconciliation deferred from [#4439](https://github.com/nexus-substrate/nexus-agents/issues/4439)). They cannot be one definition without a breaking change: `totalTokens` is optional on the CLI side and required on the contract side, and the contract carries `inputTokensMeasured` ([#4835](https://github.com/nexus-substrate/nexus-agents/issues/4835)), which no CLI parser emits. The two bridges that connect the layers (`CliToModelAdapter`, `ModelToCliAdapter`) each copied the fields by hand; the model→CLI copy carried the cache counters but silently dropped `inputTokensMeasured`, so a direct-API response whose prompt count was a placeholder `0` arrived on the CLI side looking measured. Both bridges now call the shared `toModelTokenUsage` / `toCliTokenUsage` conversion, which carries every field the target has and leaves an unreported field absent rather than zero-filling it (a `0` reads as a measurement downstream). The CLI-side `CliTokenUsage` gains an optional `inputTokensMeasured` so that flag survives the crossing; no existing field changed. The session aggregate in `agents/observability` was renamed `SessionTokenTotals` in [#4444](https://github.com/nexus-substrate/nexus-agents/issues/4444) and keeps its published name `ObserverTokenUsage`.
+
 ## 8.78.1
 
 ### Patch Changes
