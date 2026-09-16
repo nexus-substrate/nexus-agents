@@ -16,8 +16,17 @@ import { DEFAULT_EXECUTION_MODE } from '../../config/schemas-security.js';
 import { parseBoolValue } from '../../config/defaults-env.js';
 import type { ExecutionMode, IPolicyFirewall } from './policy-types.js';
 
+/**
+ * The mode the registry holds before registration sets one and after a reset —
+ * one helper for both so the initial value and the reset cannot drift apart
+ * (#6431 review).
+ */
+function defaultMode(): ExecutionMode {
+  return DEFAULT_EXECUTION_MODE;
+}
+
 let globalPolicyFirewall: IPolicyFirewall | undefined;
-let globalExecutionMode: ExecutionMode = DEFAULT_EXECUTION_MODE;
+let globalExecutionMode: ExecutionMode = defaultMode();
 
 /**
  * The firewall every secure handler consults when its own config omits one.
@@ -60,7 +69,7 @@ export function setGlobalExecutionMode(mode: ExecutionMode): void {
  */
 export function resetGlobalPolicyFirewall(): void {
   globalPolicyFirewall = undefined;
-  globalExecutionMode = DEFAULT_EXECUTION_MODE;
+  globalExecutionMode = defaultMode();
 }
 
 /** The mode the firewall will run in, and what decided it. */

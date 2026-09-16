@@ -886,6 +886,13 @@ export const TOOL_MANIFEST = [
     },
     sideEffects: [
       { category: 'implicit', description: 'Records a routing decision for observability' },
+      {
+        category: 'coupling',
+        description:
+          'With execute: true, dispatches the selected strategy engine directly; the call is ' +
+          "policy-checked as that strategy's entrypoint tool (run_dev_pipeline, run_pipeline, " +
+          'consensus_vote, …), not as run (#6431). readOnlyHint covers the routing path only.',
+      },
     ],
   },
 ] as const;

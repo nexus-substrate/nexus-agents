@@ -233,6 +233,37 @@ describe('global policy firewall registry (#4888)', () => {
       expect(handlerRan).toBe(false);
     });
 
+    it('resolves the mode at CALL time, not at handler creation (#6431 review)', async () => {
+      // Handlers are created at registration, before `registerMcpTools` sets
+      // the operator's mode; a mode captured in the closure would be the
+      // pre-registration default for the life of the process.
+      setGlobalPolicyFirewall(createDefaultPolicyFirewall({ mode: 'enforce' }));
+      let handlerRan = false;
+      const handler = createSecureHandler(
+        () => {
+          handlerRan = true;
+          return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+        },
+        { toolName: 'memory_write' }
+      );
+
+      setGlobalExecutionMode('read-only');
+      const result = await handler({});
+
+      expect(result.isError).toBe(true);
+      expect(handlerRan).toBe(false);
+    });
+
+    it('starts at the schema default before any reset has run (#6431 review)', async () => {
+      // The initial literal and the reset value come from one helper; this
+      // reads the module-initial value on a fresh module instance, which no
+      // `resetGlobalPolicyFirewall()` has touched.
+      vi.resetModules();
+      const fresh = await import('./policy-registry.js');
+      const { DEFAULT_EXECUTION_MODE } = await import('../../config/schemas-security.js');
+      expect(fresh.getGlobalExecutionMode()).toBe(DEFAULT_EXECUTION_MODE);
+    });
+
     it('resets to the default alongside the firewall', () => {
       setGlobalExecutionMode('read-only');
       resetGlobalPolicyFirewall();

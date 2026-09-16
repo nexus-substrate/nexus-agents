@@ -298,6 +298,16 @@ export function evaluatePolicy(
  * @param options - Additional context options
  * @returns A PolicyContext object
  */
+/**
+ * The mode a context built with no granted mode is evaluated under.
+ *
+ * Deliberately NOT `DEFAULT_EXECUTION_MODE` (`read-write`, #6431): that is the
+ * OPERATOR'S default, carried to every secure handler by the policy registry.
+ * A caller that reaches this helper without saying which mode it was granted
+ * has not been granted one, and a rule input that is absent must fail closed.
+ */
+const FAIL_CLOSED_MODE: ExecutionMode = 'read-only';
+
 export function createPolicyContext(
   toolName: string,
   args: unknown,
@@ -312,7 +322,7 @@ export function createPolicyContext(
   const base = {
     toolName,
     args,
-    mode: options?.mode ?? 'read-only',
+    mode: options?.mode ?? FAIL_CLOSED_MODE,
   };
 
   // Use Object.assign to build result, only adding optional properties

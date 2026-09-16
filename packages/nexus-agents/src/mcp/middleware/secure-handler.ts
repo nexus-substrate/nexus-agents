@@ -20,7 +20,7 @@ import {
   type CallerInfo,
   getCurrentRequestContext,
 } from './request-context.js';
-import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
+import type { IPolicyFirewall, ExecutionMode } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
 import { checkRateLimit, emitRateLimitAudit } from './secure-handler-rate-limit.js';
 import {
@@ -28,12 +28,12 @@ import {
   emitSecurityTierAudit,
   type SecurityTier,
 } from './secure-handler-tier.js';
-import type { IAuditLogger, PolicyAuditDecision, AuditOutcome } from '../../audit/audit-types.js';
+import type { IAuditLogger, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
-import { getGlobalPolicyFirewall, getGlobalExecutionMode } from './policy-registry.js';
-import { recordPolicyVerdict } from './policy-audit-emit.js';
+import { getGlobalExecutionMode } from './policy-registry.js';
+import { runPolicyCheck, getRegisteredAuditLogger } from './policy-check.js';
 
 export type { ToolResult };
 
@@ -80,13 +80,11 @@ export interface SecureHandlerConfig {
   auditLogger?: IAuditLogger;
 }
 
-const registrationAuditLoggers = new WeakMap<ILogger, IAuditLogger>();
-
-/** Sets or clears the audit logger used while secure handlers are registered. */
-export function setSecureHandlerAuditLogger(logger: ILogger, auditLogger?: IAuditLogger): void {
-  if (auditLogger === undefined) registrationAuditLoggers.delete(logger);
-  else registrationAuditLoggers.set(logger, auditLogger);
-}
+// The registration audit-logger map and the policy check moved to
+// policy-check.ts (#6431 review) so `run { execute: true }` can evaluate the
+// firewall for its selected strategy tool with the SAME check. Re-exported so
+// the registration seam's import path is unchanged.
+export { setSecureHandlerAuditLogger } from './policy-check.js';
 
 /**
  * Extended handler context passed to the wrapped handler.
@@ -176,17 +174,6 @@ export interface HandlerContext {
 export type ContextAwareHandler = (args: unknown, ctx: HandlerContext) => Promise<ToolResult>;
 
 /**
- * Creates a policy denial error response — an access-control denial,
- * categorized `permission` (#2649).
- */
-function policyDeniedError(reason: string, requestId: string): ToolResult {
-  return toolStructuredError({
-    errorCategory: 'permission',
-    message: `Policy denied: ${reason} (request: ${requestId})`,
-  });
-}
-
-/**
  * Creates an internal error response (#2649).
  */
 function internalError(message: string, requestId: string): ToolResult {
@@ -260,124 +247,6 @@ function checkInputSize(args: unknown, logger: ILogger, requestId: string): Tool
     return internalError('Input too large', requestId);
   }
   return null;
-}
-
-/**
- * Checks rate limiter and returns error if exceeded.
- */
-/** Options for policy check */
-interface PolicyCheckOptions {
-  firewall: IPolicyFirewall;
-  toolName: string;
-  args: unknown;
-  mode: ExecutionMode;
-  allowedPaths?: readonly string[] | undefined;
-  logger: ILogger;
-  requestId: string;
-}
-
-/**
- * What the policy evaluation produced: the denial result to return (if any),
- * and the verdict to record on the chain.
- *
- * The verdict is returned separately because it is NOT derivable from the
- * result (#4991). In warn mode a rule fires and the firewall allows anyway, so
- * `result` is null exactly as it is for an ordinary allow — the two are
- * indistinguishable downstream unless the decision travels with it.
- */
-interface PolicyCheckOutcome {
-  readonly result: ToolResult | null;
-  /** `null` when no rule fired — an ordinary allow, which is not recorded. */
-  readonly verdict: PolicyAuditDecision | null;
-  /**
-   * The rule that fired, when one did. Carried out so the near-miss sampler can
-   * key on `{tool, rule}` — sampling on the tool alone would let one noisy rule
-   * suppress a different rule's first occurrence on the same tool.
-   */
-  readonly ruleName?: string | undefined;
-}
-
-/**
- * Evaluates policy firewall and returns error if denied.
- */
-function checkPolicy(opts: PolicyCheckOptions): PolicyCheckOutcome {
-  const ctxOpts = {
-    mode: opts.mode,
-    ...(opts.allowedPaths && { allowedPaths: opts.allowedPaths }),
-  };
-  const decision = opts.firewall.evaluate(createPolicyContext(opts.toolName, opts.args, ctxOpts));
-
-  if (!decision.allowed) {
-    opts.logger.warn('Policy denied tool execution', {
-      reason: decision.reason,
-      ruleName: decision.ruleName,
-    });
-    return {
-      result: policyDeniedError(decision.reason, opts.requestId),
-      verdict: 'deny',
-      ruleName: decision.ruleName,
-    };
-  }
-
-  // Warn mode: the evaluator sets `overriddenByWarnMode` when a rule denied and
-  // the mode allowed anyway. Read that flag and nothing else — not the '[WARN
-  // MODE]' reason prefix (display copy, breaks on a reword), and not the
-  // presence of `ruleName` on an allowed decision. The latter was the first
-  // implementation and a panel rejected it: naming the rule that PERMITTED an
-  // action is ordinary practice, so that inference would start reporting
-  // authorized calls as near-misses the day an allow rule sets `ruleName`.
-  if (decision.overriddenByWarnMode === true) {
-    opts.logger.debug('Policy would have denied (warn mode)', {
-      reason: decision.reason,
-      ruleName: decision.ruleName,
-    });
-    return { result: null, verdict: 'would_deny', ruleName: decision.ruleName };
-  }
-
-  opts.logger.debug('Policy check passed', { reason: decision.reason });
-  return { result: null, verdict: null };
-}
-
-/**
- * Evaluates the policy firewall for this call, or returns `null` when none is
- * configured.
- *
- * #4888: the firewall falls back to the process-wide registry. Nothing ever
- * supplied `config.policyFirewall`, so before that fallback this check was
- * unreachable for every registered tool.
- */
-function runPolicyCheck(
-  config: SecureHandlerConfig,
-  sanitizedArgs: unknown,
-  mode: ExecutionMode,
-  logger: ILogger,
-  requestContext: RequestContext
-): { error: ToolResult | null; nearMiss: boolean } {
-  const firewall = config.policyFirewall ?? getGlobalPolicyFirewall();
-  if (!firewall) return { error: null, nearMiss: false };
-
-  const { result, verdict, ruleName } = checkPolicy({
-    firewall,
-    toolName: config.toolName,
-    args: sanitizedArgs,
-    mode,
-    allowedPaths: config.allowedPaths,
-    logger,
-    requestId: requestContext.requestId,
-  });
-
-  // Emitted for a real denial AND for a warn-mode near-miss (#4991). An
-  // ordinary allow (verdict null) is not recorded: emitting every permitted
-  // call would bury the soak signal it exists to surface.
-  if (verdict !== null && config.auditLogger) {
-    recordPolicyVerdict(config, requestContext, verdict, ruleName);
-  }
-  // #5228 review: the near-miss travels on regardless of whether the policy
-  // record above was sampled out. A `would_deny` lets the call EXECUTE, so its
-  // invocation record must not be indistinguishable from one where no rule
-  // fired — otherwise sampling, which exists to bound growth, would restore the
-  // silent-allow inference this change is meant to break.
-  return { error: result, nearMiss: verdict === 'would_deny' };
 }
 
 /**
@@ -581,13 +450,17 @@ export function createSecureHandler(
   handler: ToolHandler | ContextAwareHandler,
   config: SecureHandlerConfig
 ): ToolHandler {
-  const registeredAuditLogger = config.logger && registrationAuditLoggers.get(config.logger);
+  const registeredAuditLogger = config.logger && getRegisteredAuditLogger(config.logger);
   if (config.auditLogger === undefined && registeredAuditLogger !== undefined)
     config = { ...config, auditLogger: registeredAuditLogger };
   const logger = config.logger ?? createLogger({ tool: config.toolName });
-  const mode = config.executionMode ?? getGlobalExecutionMode();
 
   return async (args: unknown): Promise<ToolResult> => {
+    // Resolved per call, like the firewall (#6431 review): handlers are created
+    // at registration, before the operator's mode reaches the registry, so a
+    // mode captured here would be the pre-registration default for the life of
+    // the process.
+    const mode = config.executionMode ?? getGlobalExecutionMode();
     const ctxOpts = {
       toolName: config.toolName,
       ...(config.callerInfo && { caller: config.callerInfo }),

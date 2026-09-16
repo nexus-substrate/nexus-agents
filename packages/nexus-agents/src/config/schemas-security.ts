@@ -15,8 +15,10 @@ import { z } from 'zod';
  * `'read-write'` because the `deny-mutations-without-mode` rule fires on every
  * manifest-classified mutation tool under `'read-only'`, and nothing on the
  * MCP path sets the mode per call — so a `'read-only'` default would deny all
- * 22 mutation tools for every operator the day enforcement defaults on (panel
- * option A, 6-0). `'read-only'` remains an operator opt-in lock.
+ * 20 mutation tools (the manifest's `readOnlyHint: false` entries) for every
+ * operator the day enforcement defaults on (panel option A, 6-0).
+ * `'read-only'` remains an operator opt-in lock, and `run { execute: true }`
+ * is checked under it as the tool its selected strategy runs.
  */
 export const DEFAULT_EXECUTION_MODE = 'read-write' as const;
 
@@ -26,7 +28,8 @@ export const DEFAULT_EXECUTION_MODE = 'read-write' as const;
  * Controls authorization behavior for tool operations.
  * - defaultMode: the execution mode every MCP tool call is evaluated under.
  *   `'read-write'` (default) allows manifest-classified mutation tools;
- *   `'read-only'` is an operator lock that forbids every one of them once the
+ *   `'read-only'` is an operator lock that forbids every one of them — and
+ *   `run { execute: true }` as its selected strategy's tool — once the
  *   firewall enforces (`NEXUS_MCP_POLICY_ENFORCE`), and is logged as a
  *   would-be denial in warn mode.
  * - policyMode: Whether to enforce denials or just warn (for migration). Not

@@ -32,6 +32,8 @@ import { assertDryRunSupported, classifyDispatchError } from './run-tool-dry-run
 import { describeIncompletePipeline } from './run-tool-incomplete.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import type { RequestContext } from '../middleware/request-context.js';
+import { assertExecutePolicy, RunPolicyDeniedError } from './run-tool-policy.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -386,6 +388,12 @@ export async function executeGoal(
     /** In-process gateway model adapters routed to consensus voters (#4042). */
     readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
     readonly classifyResult?: MetaResultClassifier | undefined;
+    /**
+     * The caller's request context (#6431 review): the policy check for the
+     * selected strategy tool records under it. A direct caller with none gets
+     * a fresh `run` context — the check itself is not optional.
+     */
+    readonly requestContext?: RequestContext | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
   // The authority-ladder guard fires inside `select` (#3920): an above-tier
@@ -397,6 +405,9 @@ export async function executeGoal(
   // the request is impossible and ignoring it would act against an explicit
   // instruction not to.
   assertDryRunSupported(input.dryRun, decision.strategy);
+  // #6431 review: the read-only lock and the path rules see this call as the
+  // strategy tool it is about to run, BEFORE any executor runs.
+  assertExecutePolicy(decision.strategy, input, opts.logger, opts.requestContext);
   const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
     executors:
@@ -457,7 +468,8 @@ async function executeRunBody(
   input: RunInput,
   logger: ILogger,
   trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  requestContext?: RequestContext
 ): Promise<ToolResult> {
   try {
     // #3712: thread the caller's real RequestContext.trustTier into the
@@ -467,6 +479,7 @@ async function executeRunBody(
       logger,
       ...(trustTier !== undefined ? { trustTier } : {}),
       ...(gatewayAdapters !== undefined ? { gatewayAdapters } : {}),
+      ...(requestContext !== undefined ? { requestContext } : {}),
     });
     logger.info('run: executed goal', {
       decisionId: exec.decisionId,
@@ -492,6 +505,8 @@ async function executeRunBody(
     }
     return toolSuccess(JSON.stringify(exec, null, 2));
   } catch (err) {
+    // The policy denial is already the envelope the target tool would return.
+    if (err instanceof RunPolicyDeniedError) return err.toolResult;
     return toolStructuredError({
       errorCategory: classifyDispatchError(err),
       message: err instanceof Error ? err.message : String(err),
@@ -513,9 +528,10 @@ async function executeRunBodyOrThrow(
   input: RunInput,
   logger: ILogger,
   trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  requestContext?: RequestContext
 ): Promise<ToolResult> {
-  const result = await executeRunBody(input, logger, trustTier, gatewayAdapters);
+  const result = await executeRunBody(input, logger, trustTier, gatewayAdapters, requestContext);
   if (result.isError === true) {
     throw new Error(result.content[0]?.text ?? 'run failed');
   }
@@ -526,7 +542,8 @@ async function runHandler(
   args: unknown,
   logger: ILogger,
   trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  requestContext?: RequestContext
 ): Promise<ToolResult> {
   const parsed = RunInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -551,11 +568,11 @@ async function runHandler(
         // #5393: deliberately arity-0 — `executeGoal`'s strategy executors take
         // no AbortSignal, so taking the signal would flip `signalAccepted` to
         // true with nothing reading it. Executor-level gate first: #6305.
-        run: () => executeRunBodyOrThrow(input, logger, trustTier, gatewayAdapters),
+        run: () => executeRunBodyOrThrow(input, logger, trustTier, gatewayAdapters, requestContext),
         logger,
       });
     }
-    return executeRunBody(input, logger, trustTier, gatewayAdapters);
+    return executeRunBody(input, logger, trustTier, gatewayAdapters, requestContext);
   }
 
   const response = routeGoal(parsed.data, logger);
@@ -592,7 +609,13 @@ export function registerRunTool(server: McpServer, deps: RunToolDeps): void {
   // where a possibly-untrusted goal ran a real research stage with no tier.
   const secureHandler = createSecureHandler(
     (args: unknown, ctx: HandlerContext) =>
-      runHandler(args, logger, ctx.requestContext.trustTier, deps.gatewayAdapters),
+      runHandler(
+        args,
+        logger,
+        ctx.requestContext.trustTier,
+        deps.gatewayAdapters,
+        ctx.requestContext
+      ),
     {
       toolName: 'run',
       rateLimiter: deps.rateLimiter,
