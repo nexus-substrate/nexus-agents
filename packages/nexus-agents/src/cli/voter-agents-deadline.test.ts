@@ -260,6 +260,84 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
   });
 });
 
+describe('per-CLI lane width (#6103)', () => {
+  const laneTest = async (
+    cliName: string,
+    roles: readonly VoterRole[]
+  ): Promise<{ max: number; results: readonly AgentVoteResult[] }> => {
+    const roleAdapters = new Map<VoterRole, IModelAdapter>(
+      roles.map((r) => [r, makeCliAdapter(cliName)] as const)
+    );
+    let inFlight = 0;
+    let max = 0;
+    const voteFn = async (role: VoterRole): Promise<AgentVoteResult> => {
+      inFlight += 1;
+      max = Math.max(max, inFlight);
+      await new Promise((r) => setTimeout(r, 30));
+      inFlight -= 1;
+      return makeOkVote(role);
+    };
+    const results = await launchVotesWithOverallDeadline({
+      roles,
+      proposal: 'test',
+      roleAdapters,
+      fallbackAdapter: stubAdapter,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+    return { max, results };
+  };
+
+  it('the claude lane admits two seats at once — the measured #6103 queue was all claude, and the #3348 race did not reproduce under a 3-way probe', async () => {
+    const { max, results } = await laneTest('cli-claude', ['architect', 'security', 'devex', 'pm']);
+    expect(results.every((r) => r.source === 'llm')).toBe(true);
+    expect(max).toBe(2);
+  });
+
+  it('every other CLI keeps a lane of one (the #3348 serialization)', async () => {
+    for (const cli of ['gemini', 'codex', 'cli-opencode']) {
+      const { max } = await laneTest(cli, ['architect', 'security', 'devex']);
+      expect(max, cli).toBe(1);
+    }
+  });
+
+  it('a lane never exceeds its width even when a seat rejects', async () => {
+    const roleAdapters = new Map<VoterRole, IModelAdapter>(
+      (['architect', 'security', 'devex', 'pm'] as const).map(
+        (r) => [r, makeCliAdapter('cli-claude')] as const
+      )
+    );
+    let inFlight = 0;
+    let max = 0;
+    let n = 0;
+    const voteFn = async (role: VoterRole): Promise<AgentVoteResult> => {
+      inFlight += 1;
+      max = Math.max(max, inFlight);
+      await new Promise((r) => setTimeout(r, 20));
+      inFlight -= 1;
+      n += 1;
+      if (n % 2 === 0) throw new Error('seat blew up');
+      return makeOkVote(role);
+    };
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect', 'security', 'devex', 'pm'],
+      proposal: 'test',
+      roleAdapters,
+      fallbackAdapter: stubAdapter,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    }).catch(() => []);
+    expect(max).toBeLessThanOrEqual(2);
+    expect(results.length === 0 || results.length === 4).toBe(true);
+  });
+});
+
 describe('per-seat timing (#6103)', () => {
   it('records how long each seat QUEUED behind its CLI lane and how long it RAN, per attempt', async () => {
     // Two seats on the same CLI: the second queues behind the first (#3348),

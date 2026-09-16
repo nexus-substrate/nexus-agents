@@ -106,32 +106,57 @@ function withAssignment(
 }
 
 /**
- * Per-key serializer (#3348). Returns a `run(key, fn)` that chains each fn
- * behind the previous fn for the same key, so at most one runs per key at a
- * time. Different keys run concurrently.
+ * How many same-CLI seats may run at once (#6103). The default is one — the
+ * #3348 serialization: concurrent subprocesses of one CLI each triggered its
+ * OAuth access-token refresh, and with refresh-token rotation the first call
+ * rotated the token and the rest failed "refresh token already used".
  *
- * Why: when several voter roles round-robin onto the SAME CLI, concurrent
- * subprocesses each trigger that CLI's OAuth access-token refresh. With
- * refresh-token rotation the first call rotates the token and the rest fail
- * with "refresh token already used". Serializing per CLI lets the cold-start
- * refresh complete before the next same-CLI call begins. Cross-CLI parallelism
- * is preserved (claude/gemini/codex still overlap).
+ * `cli-claude` is widened to two on measurement: the first `Seat timing`
+ * readout (#6387 panel, 2026-09-16) put 871 s of a ~12-minute panel in the
+ * claude lane's queue — fallback seats waited 244–398 s behind three primary
+ * claude runs — and a probe of 15 concurrent `claude -p` calls (2- and
+ * 3-way) produced no refresh error. A collision at an actual refresh is
+ * still possible; it surfaces as a retried attempt (`voter-retry.ts`) and
+ * as a second attempt on the seat's timing line, which is the signal to
+ * narrow this again. Cross-CLI parallelism is unchanged.
+ */
+const CLI_LANE_WIDTH: Readonly<Record<string, number>> = { 'cli-claude': 2 };
+const DEFAULT_LANE_WIDTH = 1;
+
+/** The lane width for a CLI key: the table's entry, else one. */
+function laneWidthOf(key: string): number {
+  return Object.hasOwn(CLI_LANE_WIDTH, key)
+    ? (CLI_LANE_WIDTH[key] ?? DEFAULT_LANE_WIDTH)
+    : DEFAULT_LANE_WIDTH;
+}
+
+/**
+ * Per-key lane (#3348, widened per key by {@link CLI_LANE_WIDTH} in #6103).
+ * Returns a `run(key, fn)` that admits at most `laneWidthOf(key)` fns per
+ * key at a time, in FIFO order; a rejected fn frees its slot like a resolved
+ * one so one failure cannot wedge the lane. Different keys run concurrently.
  */
 function createKeyedSerializer(): <T>(key: string, fn: () => Promise<T>) => Promise<T> {
-  const tails = new Map<string, Promise<unknown>>();
-  return <T>(key: string, fn: () => Promise<T>): Promise<T> => {
-    const prev = tails.get(key) ?? Promise.resolve();
-    // Run fn whether the previous same-key call resolved or rejected.
-    const run = prev.then(fn, fn);
-    // Chain on a never-rejecting tail so one failure can't break ordering.
-    tails.set(
-      key,
-      run.then(
-        () => undefined,
-        () => undefined
-      )
-    );
-    return run;
+  const lanes = new Map<string, { active: number; waiting: (() => void)[] }>();
+  const laneFor = (key: string): { active: number; waiting: (() => void)[] } => {
+    const existing = lanes.get(key);
+    if (existing !== undefined) return existing;
+    const created = { active: 0, waiting: [] };
+    lanes.set(key, created);
+    return created;
+  };
+  return async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const lane = laneFor(key);
+    if (lane.active >= laneWidthOf(key)) {
+      await new Promise<void>((resolve) => lane.waiting.push(resolve));
+    }
+    lane.active += 1;
+    try {
+      return await fn();
+    } finally {
+      lane.active -= 1;
+      lane.waiting.shift()?.();
+    }
   };
 }
 
