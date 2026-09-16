@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.73.0
+
+### Minor Changes
+
+- [#6385](https://github.com/nexus-substrate/nexus-agents/pull/6385) [`267dc9f`](https://github.com/nexus-substrate/nexus-agents/commit/267dc9f31cd0ecb0532412d1dc549e520c31e9f8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Every consensus seat now carries `timing.attempts` ([#6103](https://github.com/nexus-substrate/nexus-agents/issues/6103)): per attempt, the CLI lane it ran on, how long it queued behind that lane's serialized calls, how long it ran, and whether it was the cross-CLI fallback. The `vote` summary prints `Seat timing (queued→ran): …; queued total Ns` beside the models line, so a slow panel can be attributed to lane queueing or to model time before a fallback lane is designed. Additive; the vote record is unchanged.
+
 ## 8.72.0
 
 ### Minor Changes
