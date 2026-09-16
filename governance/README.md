@@ -448,7 +448,12 @@ Each required context is bound to the ONE job that may report it
 lock below judges a job by _ID_, so without the binding a renamed aggregator
 plus a trivial twin named `CI Success` satisfied both. The checker now fails
 when the pinned job is absent or carries another name, and when any other job
-in any workflow reports a required context.
+in any workflow reports a required context. Two more are drift, not a
+downgrade to `unmeasured` (#6401 panel): a workflow file that does not parse
+(author-controlled tree state — the twin's junk sibling), and a job whose
+`name` is an expression whose literal parts could evaluate to a required
+context (`${{ 'CI ' }}Success`; `Build (${{ matrix.os }})` cannot). Only an
+unlistable workflows directory is unmeasured.
 Since #6382 the aggregator reads `NEEDS_JSON: ${{ toJSON(needs) }}` and runs
 `AGGREGATOR_RUN`, a run body that is POLICY in `scripts/check-required-jobs.ts`
 and must match byte for byte — there is no per-job line to comment out. The

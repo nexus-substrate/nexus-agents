@@ -64,20 +64,42 @@ export interface WorkflowJob {
   readonly context: string;
 }
 
+/**
+ * Every workflow job GitHub would see, plus the files it could not read
+ * (#6401 panel): a workflow that fails to parse is AUTHOR-CONTROLLED tree
+ * state, so it is drift — never a reason to mark the inventory unmeasured
+ * and let a twin through. Only an unreadable directory is unmeasured.
+ */
+export interface WorkflowInventory {
+  readonly jobs: readonly WorkflowJob[];
+  readonly unparseable: readonly string[];
+}
+
 /** Read every workflow GitHub would (`.yml` AND `.yaml`); an unnamed job's context is its ID. */
-export function loadWorkflowJobs(directory = '.github/workflows'): WorkflowJob[] {
-  return readdirSync(directory)
-    .filter((file) => /\.ya?ml$/.test(file))
-    .sort()
-    .flatMap((file) => {
-      const parsed: unknown = parseYaml(readFileSync(join(directory, file), 'utf-8'));
-      const workflow = WorkflowSchema.parse(parsed);
-      return Object.entries(workflow.jobs).map(([id, job]) => ({
-        workflow: file,
-        id,
-        context: job.name ?? id,
-      }));
-    });
+export function loadWorkflowJobs(directory = '.github/workflows'): WorkflowInventory {
+  const jobs: WorkflowJob[] = [];
+  const unparseable: string[] = [];
+  for (const file of readdirSync(directory)
+    .filter((f) => /\.ya?ml$/.test(f))
+    .sort()) {
+    const parsed = WorkflowSchema.safeParse(parseWorkflowOrNull(join(directory, file)));
+    if (!parsed.success) {
+      unparseable.push(file);
+      continue;
+    }
+    for (const [id, job] of Object.entries(parsed.data.jobs)) {
+      jobs.push({ workflow: file, id, context: job.name ?? id });
+    }
+  }
+  return { jobs, unparseable };
+}
+
+function parseWorkflowOrNull(path: string): unknown {
+  try {
+    return parseYaml(readFileSync(path, 'utf-8'));
+  } catch {
+    return null;
+  }
 }
 
 /** Failed access or invalid API data leaves branch protection unmeasured. */
@@ -123,7 +145,7 @@ interface RequiredJobsInput {
   readonly ciSuccessGate: AggregatorShape;
   readonly packageJson: unknown;
   readonly requiredContexts: readonly string[] | 'unmeasured';
-  readonly workflowJobs: readonly WorkflowJob[] | 'unmeasured';
+  readonly workflowJobs: WorkflowInventory | 'unmeasured';
 }
 
 const PROTECTION_UNMEASURED = 'Required contexts: unmeasured (branch protection unreadable)';
@@ -151,6 +173,7 @@ export function checkRequiredJobs(input: RequiredJobsInput): RequiredJobsResult 
   problems.push(...aggregatorProblems(input.ciSuccessGate, manifest.skip_allowed));
   problems.push(...packageProblems(input.packageJson, manifest.audit_config_forbidden));
   problems.push(...contextProblems(input, Object.keys(required)));
+  problems.push(...inventoryProblems(input.workflowJobs, Object.keys(required)));
   problems.push(...pinnedProducerProblems(input.workflowJobs, required));
   problems.push(...unpinnedProducerProblems(input.workflowJobs, required));
   const unmeasured = unmeasuredProblems(input);
@@ -191,7 +214,7 @@ function packageProblems(packageJson: unknown, auditConfigForbidden: boolean): s
 function contextProblems(input: RequiredJobsInput, expected: readonly string[]): string[] {
   const { workflowJobs } = input;
   const workflowJobNames =
-    workflowJobs === 'unmeasured' ? workflowJobs : workflowJobs.map((job) => job.context);
+    workflowJobs === 'unmeasured' ? workflowJobs : workflowJobs.jobs.map((job) => job.context);
   const result = checkRequiredContexts({ ...input, workflowJobNames, expectedContexts: expected });
   const problems = result.missing.map((name) => `Missing required context: ${name}`);
   problems.push(
@@ -201,12 +224,52 @@ function contextProblems(input: RequiredJobsInput, expected: readonly string[]):
   return problems;
 }
 
+/**
+ * An unparseable workflow is drift; so is a job whose `name` carries an
+ * expression that COULD evaluate to a required context (#6401 panel): GitHub
+ * evaluates `${{ … }}` at runtime, so `${{ 'CI Success' }}` or
+ * `${{ 'CI ' }}Success` reports the context while the literal never matches
+ * a string compare. `Build (${{ matrix.os }})` cannot: its literal parts
+ * must appear in order, and "Build (" is not a prefix of any required name.
+ */
+function inventoryProblems(
+  inventory: WorkflowInventory | 'unmeasured',
+  required: readonly string[]
+): string[] {
+  if (inventory === 'unmeasured') return [];
+  const problems = inventory.unparseable.map((file) => `Unparseable workflow: ${file}`);
+  for (const job of inventory.jobs) {
+    if (!job.context.includes('${{')) continue;
+    const reachable = required.filter((context) => couldEvaluateTo(job.context, context));
+    if (reachable.length > 0)
+      problems.push(
+        `Workflow job name is an expression that could report ${reachable.join(', ')}: ${job.workflow} job ${job.id}`
+      );
+  }
+  return problems;
+}
+
+/** The literal segments around `${{ … }}` must appear in order, first as prefix, last as suffix. */
+function couldEvaluateTo(name: string, context: string): boolean {
+  const literals = name.split(/\$\{\{[\s\S]*?\}\}/);
+  if (!context.startsWith(literals[0] ?? '')) return false;
+  let at = (literals[0] ?? '').length;
+  for (const literal of literals.slice(1, -1)) {
+    const next = context.indexOf(literal, at);
+    if (next === -1) return false;
+    at = next + literal.length;
+  }
+  const last = literals.length > 1 ? (literals[literals.length - 1] ?? '') : '';
+  return literals.length === 1 || (context.endsWith(last) && context.length - last.length >= at);
+}
+
 /** The pinned `{workflow, job}` must exist and report exactly the required context (#6390). */
 function pinnedProducerProblems(
-  jobs: readonly WorkflowJob[] | 'unmeasured',
+  inventory: WorkflowInventory | 'unmeasured',
   required: Readonly<Record<string, Producer>>
 ): string[] {
-  if (jobs === 'unmeasured') return [];
+  if (inventory === 'unmeasured') return [];
+  const jobs = inventory.jobs;
   const problems: string[] = [];
   for (const [context, pin] of Object.entries(required)) {
     const producer = jobs.find((job) => job.workflow === pin.workflow && job.id === pin.job);
@@ -224,12 +287,12 @@ function pinnedProducerProblems(
 
 /** No job in ANY workflow other than the pinned one may report a required context (#6390). */
 function unpinnedProducerProblems(
-  jobs: readonly WorkflowJob[] | 'unmeasured',
+  inventory: WorkflowInventory | 'unmeasured',
   required: Readonly<Record<string, Producer>>
 ): string[] {
-  if (jobs === 'unmeasured') return [];
+  if (inventory === 'unmeasured') return [];
   const problems: string[] = [];
-  for (const job of jobs) {
+  for (const job of inventory.jobs) {
     const pin = Object.hasOwn(required, job.context) ? required[job.context] : undefined;
     if (pin === undefined || (pin.workflow === job.workflow && pin.job === job.id)) continue;
     problems.push(
@@ -347,7 +410,7 @@ export function runRequiredJobsCheck(targetDir: string, policyDir: string = POLI
       problems: ['Required local CI wiring or package.json is missing or invalid'],
     });
   }
-  let workflowJobs: readonly WorkflowJob[] | 'unmeasured';
+  let workflowJobs: WorkflowInventory | 'unmeasured';
   try {
     workflowJobs = loadWorkflowJobs(join(targetDir, '.github/workflows'));
   } catch {
