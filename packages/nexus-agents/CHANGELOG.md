@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.76.0
+
+### Minor Changes
+
+- [#6408](https://github.com/nexus-substrate/nexus-agents/pull/6408) [`8404c0b`](https://github.com/nexus-substrate/nexus-agents/commit/8404c0b45fa67e1c10f026002d23f3937a84858e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Routing and vote telemetry now record a gateway-served call's cost by the gateway's `NEXUS_GATEWAY_COST` declaration, never by the model id alone ([#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392) increment 2, step 4). Before this, a `claude-*` model answered through an undeclared OpenAI-compatible gateway was written to the usage log and the per-decision vote rollup at Anthropic's list price as a priced figure — a measurement of nothing. Undeclared now records as UNKNOWN (`priced: false` / `usdCost: 0` in the usage log; `costUsd` absent with `priceBasis: 'unknown'` on the voter row, so the rollup counts the seat as unmeasured); `free`/`local` records a measured $0; `priced:<in>,<out>` records the flat rate; bare `priced` defers to the registry entry of the model that answered. Each per-model gateway adapter now carries the `api:<endpoint>` arm it registers under (`isGatewayModelAdapter`), and `AgentVoteResult` gains an optional `gatewayArm` so a gateway seat is priced correctly in the rollup. Seats and calls that did not go through a gateway are priced exactly as before.
+
 ## 8.75.1
 
 ### Patch Changes
