@@ -69,7 +69,7 @@ const TIER_2 = new Set([
 ]);
 
 /** A missing, null or empty string all mean "not recorded". */
-function isBlank(value: string | null | undefined): boolean {
+function isBlank(value: string | null | undefined): value is null | undefined | '' {
   return value === undefined || value === null || value === '';
 }
 
@@ -79,7 +79,7 @@ function isBlank(value: string | null | undefined): boolean {
  * despite the `number | undefined` type; without the null arm it would read as
  * "has citations" and switch the low-tier note off.
  */
-function hasNoCitations(count: number | null | undefined): boolean {
+function hasNoCitations(count: number | null | undefined): count is null | undefined {
   return count === undefined || count === null || count === 0 || Number.isNaN(count);
 }
 
@@ -92,7 +92,7 @@ function classifyVenue(venue: string | null | undefined): number {
   return 0;
 }
 
-function citationScore(count: number | undefined): number {
+function citationScore(count: number | null | undefined): number {
   if (hasNoCitations(count)) return 0;
   if (count < 10) return 1;
   if (count < 100) return 2;
