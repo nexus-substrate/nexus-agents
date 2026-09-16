@@ -112,7 +112,7 @@ describe('StatsOnlyAdapter', () => {
       },
     });
     const result = await adapter.query({
-      where: { text: 'find this' } as unknown as Partial<unknown>,
+      where: { text: 'find this' },
       limit: 7,
     });
     expect(seen).toEqual([{ query: 'find this', limit: 7 }]);
@@ -128,7 +128,7 @@ describe('StatsOnlyAdapter', () => {
         return Promise.resolve([]);
       },
     });
-    await adapter.query({ where: { text: 'q' } as unknown as Partial<unknown> });
+    await adapter.query({ where: { text: 'q' } });
     expect(seenLimit).toBe(10);
   });
 
@@ -138,7 +138,7 @@ describe('StatsOnlyAdapter', () => {
       search: () => Promise.reject(new Error('backend exploded')),
     });
     const result = await adapter.query({
-      where: { text: 'anything' } as unknown as Partial<unknown>,
+      where: { text: 'anything' },
     });
     expect(result).toEqual([]);
   });
@@ -205,7 +205,7 @@ describe('registry-level fan-out (#2792 Phase 1)', () => {
       fanOut.push(
         backend
           .query({
-            where: { text: 'task' } as unknown as Partial<unknown>,
+            where: { text: 'task' },
             limit: 3,
           })
           .then((rows) => ({ domain, rows }))

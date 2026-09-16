@@ -71,7 +71,7 @@ export interface GuardDenial {
  * `ok: false` carries an enumerated {@link GuardDenialReason} plus a value-free
  * human detail. Guards NEVER throw for an expected denial — a denial is a value.
  */
-export type GuardResult<TOk = Record<never, never>> = ({ readonly ok: true } & TOk) | GuardDenial;
+export type GuardResult<TOk = unknown> = ({ readonly ok: true } & TOk) | GuardDenial;
 
 /** Construct a denial result (the single fail-closed exit shape). */
 function deny(reason: GuardDenialReason, detail: string): GuardDenial {
