@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/strict-boolean-expressions, @typescript-eslint/restrict-template-expressions, max-lines-per-function, complexity -- suppressed file-wide when the backfill landed (#1572) instead of written to the strict baseline; 23 sites, migration tracked in #6331 */
 /**
  * backfill-research-quality.ts — Enrich existing papers with quality scores.
  *
@@ -69,8 +68,18 @@ const TIER_2 = new Set([
   'issta',
 ]);
 
+/** A missing, null or empty string all mean "not recorded". */
+function isBlank(value: string | null | undefined): boolean {
+  return value === undefined || value === null || value === '';
+}
+
+/** A missing, zero or NaN citation count all mean "no citations found". */
+function hasNoCitations(count: number | undefined): boolean {
+  return count === undefined || count === 0 || Number.isNaN(count);
+}
+
 function classifyVenue(venue: string | null | undefined): number {
-  if (!venue) return 0;
+  if (isBlank(venue)) return 0;
   const n = venue.toLowerCase().replace(/[^a-z]/g, '');
   if (TIER_3.has(n)) return 3;
   if (TIER_2.has(n)) return 2;
@@ -79,14 +88,14 @@ function classifyVenue(venue: string | null | undefined): number {
 }
 
 function citationScore(count: number | undefined): number {
-  if (!count) return 0;
+  if (hasNoCitations(count)) return 0;
   if (count < 10) return 1;
   if (count < 100) return 2;
   return 3;
 }
 
 function recencyBoost(pubDate: string | undefined): number {
-  if (!pubDate) return 0;
+  if (isBlank(pubDate)) return 0;
   const months = (Date.now() - new Date(pubDate).getTime()) / (30 * 24 * 60 * 60 * 1000);
   if (months < 6) return 2;
   if (months < 12) return 1;
@@ -98,7 +107,7 @@ function computeScore(p: PaperEntry): number {
     10,
     citationScore(p.citation_count) +
       (p.venue_tier ?? classifyVenue(p.venue)) +
-      (p.has_code ? 2 : 0) +
+      (p.has_code === true ? 2 : 0) +
       recencyBoost(p.publication_date)
   );
 }
@@ -146,11 +155,103 @@ function isOlderThanDays(dateStr: string | undefined, days: number): boolean {
   return diffMs > days * 24 * 60 * 60 * 1000;
 }
 
+interface BackfillArgs {
+  dryRun: boolean;
+  limit: number;
+}
+
+function parseArgs(argv: readonly string[]): BackfillArgs {
+  const dryRun = argv.includes('--dry-run');
+  const limitArg = argv.find((a) => a.startsWith('--limit'));
+  const limit = limitArg !== undefined ? parseInt(limitArg.split('=')[1] ?? '999', 10) : 999;
+  return { dryRun, limit };
+}
+
+/**
+ * Skip papers already enriched with a non-zero score. A paper scored 0 is
+ * re-scored once its last check is more than 30 days old, so new Semantic
+ * Scholar data can lift it.
+ */
+function isAlreadyEnriched(paper: PaperEntry): boolean {
+  const isEnriched = paper.quality_score !== undefined && paper.citation_count !== undefined;
+  const lastCheck =
+    typeof paper.last_quality_check === 'string' ? paper.last_quality_check : undefined;
+  const isStaleZero = paper.quality_score === 0 && isOlderThanDays(lastCheck, 30);
+  return isEnriched && !isStaleZero;
+}
+
+/** Fetches citations for a paper that has an arXiv id and no count yet. Returns false on an API error. */
+async function fillCitations(paper: PaperEntry): Promise<boolean> {
+  if (isBlank(paper.arxiv_id) || paper.citation_count !== undefined) return true;
+  const result = await fetchCitations(paper.arxiv_id);
+  if (result !== null) {
+    paper.citation_count = result.citations;
+    if (!isBlank(result.venue) && isBlank(paper.venue)) {
+      paper.venue = result.venue;
+    }
+  }
+  await sleep(RATE_LIMIT_MS);
+  return result !== null;
+}
+
+/** Auto-detects rigor tags from the paper's code and venue evidence. */
+function detectRigorTags(paper: PaperEntry, venueTier: number): string[] {
+  const tags: string[] = [...(paper.rigor_tags ?? [])];
+  if (paper.has_code === true && !tags.includes('has-code')) tags.push('has-code');
+  if (venueTier >= 1 && !tags.includes('peer-reviewed')) tags.push('peer-reviewed');
+  return tags;
+}
+
+/** Why a paper landed in the low tier, for the audit trail. */
+function lowTierReasons(paper: PaperEntry): string {
+  const reasons: string[] = [];
+  if (hasNoCitations(paper.citation_count)) reasons.push('no citations found');
+  if (paper.venue_tier === 0) reasons.push('arXiv preprint (not peer-reviewed)');
+  if (paper.has_code !== true) reasons.push('no code repository');
+  return reasons.join('; ');
+}
+
+interface ScoredPaper {
+  quality_score: number;
+  evidence_tier: 'high' | 'medium' | 'low';
+}
+
+/** Computes venue tier, rigor tags, score, evidence tier and the audit trail in place. */
+function scorePaper(paper: PaperEntry): ScoredPaper {
+  paper.venue_tier = classifyVenue(paper.venue);
+
+  const tags = detectRigorTags(paper, paper.venue_tier);
+  if (tags.length > 0) {
+    paper.rigor_tags = tags;
+  }
+
+  // Compute quality score and evidence tier
+  paper.quality_score = computeScore(paper);
+  paper.evidence_tier = computeTier(paper);
+
+  // Add quality audit trail — enables future re-review
+  paper.last_quality_check = new Date().toISOString().slice(0, 10);
+  const hasNotes = typeof paper.quality_notes === 'string' && paper.quality_notes !== '';
+  if (paper.evidence_tier === 'low' && !hasNotes) {
+    paper.quality_notes = lowTierReasons(paper);
+  }
+  return { quality_score: paper.quality_score, evidence_tier: paper.evidence_tier };
+}
+
+function formatProgress(
+  i: number,
+  total: number,
+  id: string,
+  paper: PaperEntry,
+  scored: ScoredPaper
+): string {
+  const tier = scored.evidence_tier.toUpperCase().padEnd(6);
+  const citations = paper.citation_count === undefined ? '?' : String(paper.citation_count);
+  return `[${String(i).padStart(3)}/${String(total)}] ${tier} score=${String(scored.quality_score)} citations=${citations} ${id}`;
+}
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
-  const limitArg = args.find((a) => a.startsWith('--limit'));
-  const limit = limitArg ? parseInt(limitArg.split('=')[1] ?? '999', 10) : 999;
+  const { dryRun, limit } = parseArgs(process.argv.slice(2));
 
   const content = readFileSync(PAPERS_PATH, 'utf-8');
   const data = yaml.parse(content) as {
@@ -161,7 +262,7 @@ async function main(): Promise<void> {
   const total = Object.keys(papers).length;
 
   console.log(`Research Quality Backfill`);
-  console.log(`Papers: ${total}, Limit: ${limit}, Dry run: ${dryRun}`);
+  console.log(`Papers: ${String(total)}, Limit: ${String(limit)}, Dry run: ${String(dryRun)}`);
   console.log('');
 
   let enriched = 0;
@@ -173,66 +274,23 @@ async function main(): Promise<void> {
     if (i >= limit) break;
     i++;
 
-    // Skip if already enriched with non-zero score
-    // Re-score papers with quality_score=0 if last check was >30 days ago
-    // (allows re-enrichment when Semantic Scholar has new data)
-    const isEnriched = paper.quality_score !== undefined && paper.citation_count !== undefined;
-    const lastCheck =
-      typeof paper.last_quality_check === 'string' ? paper.last_quality_check : undefined;
-    const isStaleZero = paper.quality_score === 0 && isOlderThanDays(lastCheck, 30);
-    if (isEnriched && !isStaleZero) {
+    if (isAlreadyEnriched(paper)) {
       skipped++;
       continue;
     }
 
-    // Fetch citations from Semantic Scholar
-    if (paper.arxiv_id && paper.citation_count === undefined) {
-      const result = await fetchCitations(paper.arxiv_id);
-      if (result !== null) {
-        paper.citation_count = result.citations;
-        if (result.venue && !paper.venue) {
-          paper.venue = result.venue;
-        }
-      } else {
-        errors++;
-      }
-      await sleep(RATE_LIMIT_MS);
-    }
-
-    // Compute venue tier
-    paper.venue_tier = classifyVenue(paper.venue);
-
-    // Auto-detect rigor tags
-    const tags: string[] = [...(paper.rigor_tags ?? [])];
-    if (paper.has_code && !tags.includes('has-code')) tags.push('has-code');
-    if (paper.venue_tier >= 1 && !tags.includes('peer-reviewed')) tags.push('peer-reviewed');
-    if (tags.length > 0) {
-      paper.rigor_tags = tags;
-    }
-
-    // Compute quality score and evidence tier
-    paper.quality_score = computeScore(paper);
-    paper.evidence_tier = computeTier(paper);
-
-    // Add quality audit trail — enables future re-review
-    paper.last_quality_check = new Date().toISOString().slice(0, 10);
-    if (paper.evidence_tier === 'low' && !paper.quality_notes) {
-      const reasons: string[] = [];
-      if (!paper.citation_count) reasons.push('no citations found');
-      if (paper.venue_tier === 0) reasons.push('arXiv preprint (not peer-reviewed)');
-      if (!paper.has_code) reasons.push('no code repository');
-      paper.quality_notes = reasons.join('; ');
-    }
+    const fetched = await fillCitations(paper);
+    if (!fetched) errors++;
+    const scored = scorePaper(paper);
 
     enriched++;
-    const tier = paper.evidence_tier.toUpperCase().padEnd(6);
-    console.log(
-      `[${String(i).padStart(3)}/${total}] ${tier} score=${paper.quality_score} citations=${paper.citation_count ?? '?'} ${id}`
-    );
+    console.log(formatProgress(i, total, id, paper, scored));
   }
 
   console.log('');
-  console.log(`Enriched: ${enriched}, Skipped: ${skipped}, API errors: ${errors}`);
+  console.log(
+    `Enriched: ${String(enriched)}, Skipped: ${String(skipped)}, API errors: ${String(errors)}`
+  );
 
   if (!dryRun && enriched > 0) {
     // Write back with yaml.stringify to preserve structure

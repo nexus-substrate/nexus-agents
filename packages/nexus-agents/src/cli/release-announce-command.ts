@@ -9,7 +9,6 @@
  */
 
 /* eslint-disable no-console -- stdout is this command's user-facing output; the logger writes to stderr */
-/* eslint-disable @typescript-eslint/restrict-template-expressions, @typescript-eslint/strict-boolean-expressions, @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/require-await, max-lines-per-function, complexity -- suppressed file-wide when the release suite landed (#637) instead of written to the strict baseline; 38 sites, migration tracked in #6331 */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { colors } from './ansi-output.js';
@@ -39,6 +38,16 @@ const DEFAULT_OPTIONS: Partial<ReleaseAnnounceOptions> = {
   verbose: false,
 };
 
+/** An optional CLI/config string given as the empty string is treated as not given. */
+function isNonEmpty(value: string | undefined): value is string {
+  return value !== undefined && value !== '';
+}
+
+/** Today's date as YYYY-MM-DD, from the ISO timestamp. */
+function isoDateToday(): string {
+  return new Date().toISOString().split('T')[0] ?? new Date().toISOString().slice(0, 10);
+}
+
 /**
  * Extracts highlights from CHANGELOG.md for a version.
  *
@@ -55,10 +64,12 @@ function extractHighlightsFromChangelog(version: string): string[] {
 
   if (!match) return [];
 
-  // Extract first 5 bullet points from Added section
+  // Extract first 5 bullet points from Added section. The capture group
+  // requires at least one bullet, so a matched group is never empty.
   const addedMatch = match[0].match(/### Added\n((?:- .+\n)+)/);
-  if (addedMatch?.[1]) {
-    return addedMatch[1]
+  const added = addedMatch?.[1];
+  if (added !== undefined) {
+    return added
       .split('\n')
       .filter((l) => l.startsWith('- '))
       .slice(0, 5)
@@ -73,23 +84,37 @@ function extractHighlightsFromChangelog(version: string): string[] {
   return [];
 }
 
-/**
- * Generates blog post content following the blog template.
- *
- * @param options - Announcement options
- * @returns Blog post markdown content
- */
-function generateBlogPost(options: ReleaseAnnounceOptions): string {
-  const highlights = options.highlights || extractHighlightsFromChangelog(options.version);
-  const today = new Date().toISOString().split('T')[0] ?? new Date().toISOString().slice(0, 10);
+/** Explicit highlights win; an explicit empty list is kept as-is (nothing to announce). */
+function resolveHighlights(options: ReleaseAnnounceOptions): string[] {
+  return options.highlights ?? extractHighlightsFromChangelog(options.version);
+}
 
-  // Get commit stats. Closes #2980 (announce-command path): if git fails or
-  // the ref is bad, fall back to an empty stat panel rather than silently
-  // generating a blog post claiming "0 new features." The blog post still
-  // generates because the announce-command's main purpose (creating a
-  // template the operator hand-edits) doesn't depend on commit stats being
-  // populated — but we leave a comment trail so they notice.
-  const fromRef = getLatestTag() || 'HEAD~50';
+/** An explicit release URL wins; an empty one is unusable and falls back to the tag URL. */
+function resolveReleaseUrl(options: ReleaseAnnounceOptions): string {
+  return isNonEmpty(options.releaseUrl)
+    ? options.releaseUrl
+    : `https://github.com/nexus-substrate/nexus-agents/releases/tag/v${options.version}`;
+}
+
+/** Commit statistics for the blog post's "By the Numbers" panel. */
+interface BlogCommitStats {
+  totalCommits: number;
+  featCount: number;
+  fixCount: number;
+  refactorCount: number;
+  categories: ReturnType<typeof groupCommitsByCategory>;
+}
+
+/**
+ * Collects commit stats since the latest tag. Closes #2980 (announce-command
+ * path): if git fails or the ref is bad, fall back to an empty stat panel
+ * rather than silently generating a blog post claiming "0 new features." The
+ * blog post still generates because the announce-command's main purpose
+ * (creating a template the operator hand-edits) doesn't depend on commit
+ * stats being populated — but we leave a comment trail so they notice.
+ */
+function collectBlogCommitStats(): BlogCommitStats {
+  const fromRef = getLatestTag() ?? 'HEAD~50';
   const commitsResult = tryGetCommitsBetween(fromRef, 'HEAD');
   const commits = commitsResult.kind === 'ok' ? commitsResult.commits : [];
   if (commitsResult.kind !== 'ok') {
@@ -106,32 +131,46 @@ function generateBlogPost(options: ReleaseAnnounceOptions): string {
     return parseConventionalCommit(line.substring(0, spaceIndex), line.substring(spaceIndex + 1));
   });
   const categories = groupCommitsByCategory(parsedCommits);
+  const countOf = (name: string): number =>
+    categories.find((c) => c.name === name)?.commits.length ?? 0;
 
-  const featCount = categories.find((c) => c.name === 'Added')?.commits.length ?? 0;
-  const fixCount = categories.find((c) => c.name === 'Fixed')?.commits.length ?? 0;
-  const refactorCount = categories.find((c) => c.name === 'Changed')?.commits.length ?? 0;
-
-  const frontmatter: BlogPostMetadata = {
-    title: `nexus-agents v${options.version} Released: Multi-Agent Orchestration Improvements`,
-    date: today,
-    description: `Announcing nexus-agents v${options.version} with ${featCount} new features, ${fixCount} bug fixes, and improved multi-agent orchestration capabilities.`,
-    tags: ['nexus-agents', 'release', 'mcp', 'ai', 'multi-agent'],
-    author: 'William Zujkowski',
+  return {
+    totalCommits: commits.length,
+    featCount: countOf('Added'),
+    fixCount: countOf('Fixed'),
+    refactorCount: countOf('Changed'),
+    categories,
   };
+}
 
-  const content = `---
+/** Lists up to five commits of one category, or a pointer to the CHANGELOG when there are none. */
+function renderTopCommits(categories: BlogCommitStats['categories'], name: string): string {
+  const commits = categories.find((c) => c.name === name)?.commits.slice(0, 5) ?? [];
+  if (commits.length === 0) return 'See CHANGELOG.md for details.';
+  // An empty scope renders the same as no scope.
+  return commits
+    .map((c) => `- ${isNonEmpty(c.scope) ? `**${c.scope}**: ` : ''}${c.subject}`)
+    .join('\n');
+}
+
+function renderBlogFrontmatter(frontmatter: BlogPostMetadata): string {
+  return `---
 title: "${frontmatter.title}"
 date: ${frontmatter.date}
 description: "${frontmatter.description}"
 tags: [${frontmatter.tags.map((t) => `"${t}"`).join(', ')}]
 author: "${frontmatter.author}"
 ---
+`;
+}
 
-# nexus-agents v${options.version} Released
+function renderBlogSummary(version: string, stats: BlogCommitStats, highlights: string[]): string {
+  return `
+# nexus-agents v${version} Released
 
 **BLUF (Bottom Line Up Front):**
 
-I've released nexus-agents v${options.version} with ${commits.length} changes including ${featCount} new features and ${fixCount} bug fixes. This release focuses on improved multi-agent orchestration, better developer experience, and enhanced reliability.
+I've released nexus-agents v${version} with ${String(stats.totalCommits)} changes including ${String(stats.featCount)} new features and ${String(stats.fixCount)} bug fixes. This release focuses on improved multi-agent orchestration, better developer experience, and enhanced reliability.
 
 **Why it matters:** Multi-agent AI orchestration is becoming essential for complex software development tasks. This release makes it easier to leverage multiple AI models effectively.
 
@@ -147,41 +186,37 @@ ${highlights.map((h) => `- **${h}**`).join('\n')}
 
 I analyzed the changes in this release:
 
-- **Total commits:** ${commits.length}
-- **New features:** ${featCount}
-- **Bug fixes:** ${fixCount}
-- **Refactoring:** ${refactorCount}
+- **Total commits:** ${String(stats.totalCommits)}
+- **New features:** ${String(stats.featCount)}
+- **Bug fixes:** ${String(stats.fixCount)}
+- **Refactoring:** ${String(stats.refactorCount)}
 
 ---
+`;
+}
 
+function renderBlogChanges(categories: BlogCommitStats['categories']): string {
+  return `
 ## Key Changes
 
 ### New Features
 
-${
-  categories
-    .find((c) => c.name === 'Added')
-    ?.commits.slice(0, 5)
-    .map((c) => `- ${c.scope ? `**${c.scope}**: ` : ''}${c.subject}`)
-    .join('\n') || 'See CHANGELOG.md for details.'
-}
+${renderTopCommits(categories, 'Added')}
 
 ### Bug Fixes
 
-${
-  categories
-    .find((c) => c.name === 'Fixed')
-    ?.commits.slice(0, 5)
-    .map((c) => `- ${c.scope ? `**${c.scope}**: ` : ''}${c.subject}`)
-    .join('\n') || 'See CHANGELOG.md for details.'
-}
+${renderTopCommits(categories, 'Fixed')}
 
 ---
+`;
+}
 
+function renderBlogFooter(version: string, releaseUrl: string): string {
+  return `
 ## Installation
 
 \`\`\`bash
-npm install -g nexus-agents@${options.version}
+npm install -g nexus-agents@${version}
 nexus-agents doctor  # Verify installation
 \`\`\`
 
@@ -198,7 +233,7 @@ nexus-agents doctor  # Verify installation
 ## Further Reading
 
 ### Official Resources
-- [GitHub Release](${options.releaseUrl || `https://github.com/nexus-substrate/nexus-agents/releases/tag/v${options.version}`})
+- [GitHub Release](${releaseUrl})
 - [Full Changelog](https://github.com/nexus-substrate/nexus-agents/blob/main/CHANGELOG.md)
 - [Documentation](https://github.com/nexus-substrate/nexus-agents)
 
@@ -206,8 +241,32 @@ nexus-agents doctor  # Verify installation
 
 *Released via multi-agent orchestration*
 `;
+}
 
-  return content;
+/**
+ * Generates blog post content following the blog template.
+ *
+ * @param options - Announcement options
+ * @returns Blog post markdown content
+ */
+function generateBlogPost(options: ReleaseAnnounceOptions): string {
+  const highlights = resolveHighlights(options);
+  const stats = collectBlogCommitStats();
+
+  const frontmatter: BlogPostMetadata = {
+    title: `nexus-agents v${options.version} Released: Multi-Agent Orchestration Improvements`,
+    date: isoDateToday(),
+    description: `Announcing nexus-agents v${options.version} with ${String(stats.featCount)} new features, ${String(stats.fixCount)} bug fixes, and improved multi-agent orchestration capabilities.`,
+    tags: ['nexus-agents', 'release', 'mcp', 'ai', 'multi-agent'],
+    author: 'William Zujkowski',
+  };
+
+  return (
+    renderBlogFrontmatter(frontmatter) +
+    renderBlogSummary(options.version, stats, highlights) +
+    renderBlogChanges(stats.categories) +
+    renderBlogFooter(options.version, resolveReleaseUrl(options))
+  );
 }
 
 /**
@@ -217,12 +276,12 @@ nexus-agents doctor  # Verify installation
  * @returns Bluesky post content (within character limit)
  */
 function generateBlueskyPost(options: ReleaseAnnounceOptions): string {
-  const highlights = options.highlights || extractHighlightsFromChangelog(options.version);
-  const highlight = highlights[0] || 'new features and improvements';
+  const highlights = resolveHighlights(options);
+  // A blank first highlight is nothing to announce, the same as none.
+  const firstHighlight = highlights[0];
+  const highlight = isNonEmpty(firstHighlight) ? firstHighlight : 'new features and improvements';
 
-  const releaseUrl =
-    options.releaseUrl ||
-    `https://github.com/nexus-substrate/nexus-agents/releases/tag/v${options.version}`;
+  const releaseUrl = resolveReleaseUrl(options);
 
   // Build post within character limit
   let post = `🚀 nexus-agents v${options.version} released!\n\n`;
@@ -240,14 +299,15 @@ function generateBlueskyPost(options: ReleaseAnnounceOptions): string {
 }
 
 /**
- * Announces to blog channel.
+ * Announces to blog channel. Synchronous: it only renders the post; publishing
+ * is a manual step (see below).
  *
  * @param options - Announcement options
  * @returns Channel result
  */
-async function announceToBlog(options: ReleaseAnnounceOptions): Promise<ChannelAnnouncementResult> {
+function announceToBlog(options: ReleaseAnnounceOptions): ChannelAnnouncementResult {
   const content = generateBlogPost(options);
-  const filename = `${new Date().toISOString().split('T')[0]}-nexus-agents-v${options.version.replace(/\./g, '-')}-release.md`;
+  const filename = `${isoDateToday()}-nexus-agents-v${options.version.replace(/\./g, '-')}-release.md`;
 
   if (options.dryRun) {
     return {
@@ -353,7 +413,7 @@ export async function runReleaseAnnounce(
     let result: ChannelAnnouncementResult;
     switch (channel) {
       case 'blog':
-        result = await announceToBlog(opts);
+        result = announceToBlog(opts);
         break;
       case 'bluesky':
         result = await announceToBluesky(opts);
@@ -363,7 +423,7 @@ export async function runReleaseAnnounce(
           channel,
           success: false,
           content: '',
-          error: `Unknown channel: ${channel}`,
+          error: `Unknown channel: ${String(channel)}`,
         };
     }
     results.push(result);
@@ -392,7 +452,7 @@ export function printReleaseAnnounceResult(result: ReleaseAnnounceResult, verbos
   console.log(`${colors.cyan}${colors.bold}Release Announcement Report${colors.reset}`);
   console.log(`${colors.dim}${'═'.repeat(50)}${colors.reset}`);
   console.log(`${colors.dim}Version:${colors.reset} ${result.version}`);
-  console.log(`${colors.dim}Duration:${colors.reset} ${result.durationMs}ms`);
+  console.log(`${colors.dim}Duration:${colors.reset} ${String(result.durationMs)}ms`);
   console.log('');
 
   for (const channel of result.channels) {
@@ -401,10 +461,10 @@ export function printReleaseAnnounceResult(result: ReleaseAnnounceResult, verbos
       : `${colors.red}✗${colors.reset}`;
     console.log(`${status} ${colors.bold}${channel.channel.toUpperCase()}${colors.reset}`);
 
-    if (channel.url) {
+    if (isNonEmpty(channel.url)) {
       console.log(`  ${colors.dim}URL:${colors.reset} ${channel.url}`);
     }
-    if (channel.error) {
+    if (isNonEmpty(channel.error)) {
       console.log(`  ${colors.red}Error:${colors.reset} ${channel.error}`);
     }
 
@@ -426,6 +486,20 @@ export function printReleaseAnnounceResult(result: ReleaseAnnounceResult, verbos
 }
 
 /**
+ * Resolves the version to announce: an explicit non-empty `--version`, else
+ * the `version` field of ./package.json. Returns undefined when neither yields one.
+ */
+function resolveAnnounceVersion(explicit: string | undefined): string | undefined {
+  if (isNonEmpty(explicit)) return explicit;
+  try {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf-8')) as { version?: string };
+    return isNonEmpty(pkg.version) ? pkg.version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * CLI command handler for release-announce.
  *
  * @param args - Command arguments
@@ -441,26 +515,14 @@ export async function releaseAnnounceCommand(args: {
     releaseUrl?: string;
   };
 }): Promise<number> {
-  // Determine version
-  let version: string;
-  if (args.options.version) {
-    version = args.options.version;
-  } else {
-    try {
-      const pkg = JSON.parse(readFileSync('package.json', 'utf-8')) as { version?: string };
-      if (!pkg.version) {
-        console.error(`${colors.red}Error: Could not determine version${colors.reset}`);
-        return 1;
-      }
-      version = pkg.version;
-    } catch {
-      console.error(`${colors.red}Error: Could not determine version${colors.reset}`);
-      return 1;
-    }
+  const version = resolveAnnounceVersion(args.options.version);
+  if (version === undefined) {
+    console.error(`${colors.red}Error: Could not determine version${colors.reset}`);
+    return 1;
   }
 
   // Parse channels
-  const channelList = args.options.channels?.split(',') || ['blog', 'bluesky'];
+  const channelList = args.options.channels?.split(',') ?? ['blog', 'bluesky'];
   const channels = channelList.filter(
     (c): c is AnnouncementChannel => c === 'blog' || c === 'bluesky'
   );
