@@ -9678,6 +9678,7 @@ InterfaceDeclaration TokenUsage @cli-adapters/types-core
   readonly cacheCreationInputTokens?: number | undefined
   readonly cachedInputTokens?: number | undefined
   readonly inputTokens: number
+  readonly inputTokensMeasured?: boolean | undefined
   readonly outputTokens: number
   readonly totalTokens?: number | undefined
 InterfaceDeclaration TokenUsage @core/types/model

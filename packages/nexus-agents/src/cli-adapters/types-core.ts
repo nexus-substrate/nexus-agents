@@ -171,7 +171,14 @@ export function observedArmDisplaySlot(armId: ObservedArmId): CliName {
 export type CliTransport = 'mcp' | 'subprocess';
 
 /**
- * Token usage information from CLI response.
+ * Token usage information from CLI response — ONE call's usage as the CLI
+ * parsers emit it.
+ *
+ * This is deliberately a separate type from the adapter response contract's
+ * `TokenUsage` in `core/types/model.ts` (#4440): here `totalTokens` is
+ * optional because not every CLI prints one, there it is required. The two
+ * cross only in the two adapter bridges, and every crossing goes through
+ * `token-usage-bridge.ts` so no field is narrowed silently.
  */
 export interface TokenUsage {
   /** Input tokens consumed */
@@ -190,6 +197,15 @@ export interface TokenUsage {
   readonly cacheCreationInputTokens?: number;
   /** Total tokens (input + output) */
   readonly totalTokens?: number;
+  /**
+   * Whether `inputTokens` is a measurement (#4835); `false` means it is a
+   * placeholder `0` and `totalTokens` a lower bound. Absent means measured.
+   *
+   * No CLI parser sets this. It exists so the model→CLI bridge
+   * (`toCliTokenUsage`, #4440) can carry a direct-API adapter's flag instead of
+   * dropping it, which turned a placeholder count into a measured zero.
+   */
+  readonly inputTokensMeasured?: boolean;
 }
 
 /**
