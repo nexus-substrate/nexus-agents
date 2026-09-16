@@ -139,11 +139,18 @@ export function governorPathsTouchedReport(
   };
 }
 
-/** Run the detector against the head checkout supplied by the base gate. */
-export function runGovernorPathsTouched(targetDir: string): number {
+/**
+ * Run the detector. The governor path SET is POLICY and is parsed from the
+ * CODEOWNERS of the checkout this script runs from — the gate (base) checkout
+ * under the two-checkout job (#6369), the repo itself for a local run — never
+ * from the tree under review: a PR that narrows the governor section must be
+ * judged by the set it is narrowing, not by its own (#6377 finding). The
+ * changed-file list is DATA and arrives in the environment.
+ */
+export function runGovernorPathsTouched(policyDir: string): number {
   let codeowners: string;
   try {
-    codeowners = readFileSync(join(targetDir, 'CODEOWNERS'), 'utf-8');
+    codeowners = readFileSync(join(policyDir, 'CODEOWNERS'), 'utf-8');
   } catch {
     console.error('[governor-paths-touched] CODEOWNERS is unreadable; nothing is reported.');
     return 1;

@@ -41,12 +41,14 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type {
   BoundRecordFailure,
   HeadBinding,
   LedgerEvidence,
+  LedgerEvidenceInputs,
 } from './governor-ledger-evidence.js';
 import {
   GOVERNOR_STRATEGIES,
@@ -56,6 +58,9 @@ import {
 } from './governor-ledger-evidence.js';
 import { formatSignatures, signatureVerifierFromEnv } from './governor-ledger-signature.js';
 import { gitMovedHeadProbe, isFullSha, type MovedHeadProbe } from './governor-patch-identity.js';
+
+/** The checkout this gate runs from — where policy files (allowed_signers) are read. */
+const POLICY_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /** Overrides the committed ledger path; for tests that drive the real gate over a temp ledger. */
 export const LEDGER_PATH_ENV = 'RATIFICATION_LEDGER_PATH';
@@ -299,10 +304,19 @@ function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): Re
  * beside the ledger); an unreadable file is `signature-not-measured` on the
  * line, not `unmeasured`.
  */
+/** The report when the workflow supplied no head to bind a record to. */
+const NO_HEAD_SUPPLIED: LedgerEvidenceReport = {
+  kind: 'unmeasured',
+  reason:
+    'PR_HEAD_SHA is not set; a record cannot be bound to a head that was not supplied ' +
+    "(the backstop must resolve the merged PR's pre-squash head, #6249)",
+};
+
 export function ledgerEvidenceFromEnv(
   env: NodeJS.ProcessEnv,
   defaultLedgerPath: string,
-  targetDir: string
+  targetDir: string,
+  policyDir: string = POLICY_DIR
 ): LedgerEvidenceReport {
   const pr = prNumberFromEnv(env);
   if (typeof pr !== 'number') return pr;
@@ -315,23 +329,29 @@ export function ledgerEvidenceFromEnv(
   if (base !== undefined && !base.ok) return { kind: 'unmeasured', reason: base.reason };
 
   const head = headFromEnv(env);
-  if (head === undefined) {
-    return {
-      kind: 'unmeasured',
-      reason:
-        'PR_HEAD_SHA is not set; a record cannot be bound to a head that was not supplied ' +
-        "(the backstop must resolve the merged PR's pre-squash head, #6249)",
-    };
-  }
-  const probe = movedHeadProbeFromEnv(env, head.sha, targetDir);
+  if (head === undefined) return NO_HEAD_SUPPLIED;
   return evaluateLedgerEvidence({
     ledgerText: ledger.text,
     pr,
     head,
+    ...optionalInputs(env, head.sha, targetDir, base),
+    // allowed_signers is policy: from this gate's own checkout, not the target.
+    signatureVerifier: signatureVerifierFromEnv(env, ledgerPath, policyDir),
+  });
+}
+
+/** The base-ledger text and the moved-head probe, each present only when the workflow supplied it. */
+function optionalInputs(
+  env: NodeJS.ProcessEnv,
+  headSha: string,
+  targetDir: string,
+  base: { readonly ok: true; readonly text: string } | undefined
+): Pick<LedgerEvidenceInputs, 'baseLedgerText' | 'movedHead'> {
+  const probe = movedHeadProbeFromEnv(env, headSha, targetDir);
+  return {
     ...(base !== undefined ? { baseLedgerText: base.text } : {}),
     ...(probe !== undefined ? { movedHead: probe } : {}),
-    signatureVerifier: signatureVerifierFromEnv(env, ledgerPath, targetDir),
-  });
+  };
 }
 
 /**
@@ -407,9 +427,10 @@ function baseLedgerFromEnv(env: NodeJS.ProcessEnv, targetDir: string): ReadResul
 export function reportLedgerEvidence(
   env: NodeJS.ProcessEnv,
   defaultLedgerPath: string,
-  targetDir: string
+  targetDir: string,
+  policyDir: string = POLICY_DIR
 ): boolean {
-  const report = ledgerEvidenceFromEnv(env, defaultLedgerPath, targetDir);
+  const report = ledgerEvidenceFromEnv(env, defaultLedgerPath, targetDir, policyDir);
   if (report.kind === 'unmeasured') {
     console.error(
       `::error::${TAG} unmeasured: ${report.reason} — the gate fails closed on evidence it cannot read. ${FAIL_NOTE}`

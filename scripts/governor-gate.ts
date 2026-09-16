@@ -1,15 +1,25 @@
 /**
  * Stable base-ref entrypoint for governor-review.yml (#6369).
- * The base checkout supplies code and dependencies; --target supplies head data.
+ * The base checkout supplies code, dependencies AND POLICY — the CODEOWNERS
+ * governor section, governance/required-jobs.json, governance/allowed_signers,
+ * the genesis allowlist; --target supplies head DATA — the changed files, the
+ * ledger, workflows, package.json, git history. A PR may change what is
+ * checked, never what checks it or the rules it is checked against.
  * Add checks behind this interface. Ledger formats ship reader-first on main.
  *
  * Usage: governor-gate.ts <step> --target <dir> [--ref <sha>]
  * @module scripts/governor-gate
  */
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { runGovernorPathsTouched } from './governor-paths-touched.js';
 import { runRequiredJobsCheck } from './check-required-jobs.js';
 import { runRatificationGate } from './check-governor-ratification.js';
 import { runCodeownersErrors } from './check-codeowners-errors.js';
+
+/** The gate checkout — this script's own repository root — where policy is read from. */
+const POLICY_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /** Missing or empty target is a usage error, never an implicit cwd selection. */
 function readTarget(
@@ -41,7 +51,8 @@ export async function runGovernorGate(argv: readonly string[]): Promise<number> 
   const { targetDir, forwarded } = target;
   switch (step) {
     case 'touched':
-      return runGovernorPathsTouched(targetDir);
+      // Changed files come from the environment; the governor set is policy.
+      return runGovernorPathsTouched(POLICY_DIR);
     case 'required-jobs':
       return runRequiredJobsCheck(targetDir);
     case 'ratification':

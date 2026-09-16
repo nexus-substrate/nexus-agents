@@ -28,7 +28,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import type {
   SignableLedgerRecord,
@@ -55,6 +55,13 @@ export interface RecordSignatureReport {
 /** The verifier the evidence runs over each bound record and each redaction that names one (#6372). */
 export type SignatureVerifier = (record: SignableLedgerRecord) => VoteRecordSignatureVerdict;
 
+/** The ledger's path relative to the policy root when it lies inside it; otherwise the repo-relative default. */
+function relativeLedgerPath(ledgerPath: string, policyDir: string): string {
+  if (!isAbsolute(ledgerPath)) return ledgerPath;
+  const rel = relative(policyDir, ledgerPath);
+  return rel.startsWith('..') ? 'governance/vote-records.jsonl' : rel;
+}
+
 /**
  * The verifier for the workflow's environment: the real one over the
  * allowed_signers file, or — when that file cannot be read — one that
@@ -63,11 +70,19 @@ export type SignatureVerifier = (record: SignableLedgerRecord) => VoteRecordSign
 export function signatureVerifierFromEnv(
   env: NodeJS.ProcessEnv,
   ledgerPath: string,
-  targetDir: string
+  policyDir: string
 ): SignatureVerifier {
+  // The allowed_signers is POLICY: it is read from the gate checkout (the
+  // base under the two-checkout job), never from the tree under review — a
+  // PR that lists a new key cannot verify its own record with that key; the
+  // key is admitted by a record signed under the previous file (#6377
+  // finding). `ALLOWED_SIGNERS_PATH_ENV` (tests) resolves against the same
+  // policy root; the ledger path only names the default file's location
+  // relative to that root.
   const path = resolve(
-    targetDir,
-    (env[ALLOWED_SIGNERS_PATH_ENV] ?? '').trim() || join(dirname(ledgerPath), ALLOWED_SIGNERS_FILE)
+    policyDir,
+    (env[ALLOWED_SIGNERS_PATH_ENV] ?? '').trim() ||
+      join(dirname(relativeLedgerPath(ledgerPath, policyDir)), ALLOWED_SIGNERS_FILE)
   );
   let allowedSigners: string;
   try {

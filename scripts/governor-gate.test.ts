@@ -1,4 +1,6 @@
 /** Stable base-ref dispatcher contract (#6369). */
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runGovernorGate } from './governor-gate.js';
 import { runGovernorPathsTouched } from './governor-paths-touched.js';
@@ -15,8 +17,11 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('governor-gate', () => {
   const targetDir = '/tmp/head checkout';
+  // The governor set is policy: `touched` reads it from the gate's own checkout
+  // (this repository), not from --target.
+  const policyDir = dirname(dirname(fileURLToPath(import.meta.url)));
   const cases = [
-    { step: 'touched', run: runGovernorPathsTouched, args: [targetDir] },
+    { step: 'touched', run: runGovernorPathsTouched, args: [policyDir] },
     { step: 'required-jobs', run: runRequiredJobsCheck, args: [targetDir] },
     { step: 'ratification', run: runRatificationGate, args: [process.env, targetDir] },
     { step: 'codeowners-errors', run: runCodeownersErrors, args: [targetDir, []] },

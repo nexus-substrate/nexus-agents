@@ -385,16 +385,21 @@ that case; its `failures` list carries the full set. Since #6348 `ledger-rewritt
 
 ### How the gate becomes a required status context (#4802)
 
-The #6369 rollout has two increments. Step 1 adds the stable
-`scripts/governor-gate.ts` dispatcher and requires an explicit target directory
-through every gate script, including ledger, git, CODEOWNERS, and stamp reads.
-The current workflow remains unchanged. Step 2 activates base-ref scripts and
-toolchain against PR-head data using sibling `gate` and `head` checkouts; it
-must merge after step 1 makes the dispatcher available on main. Gate changes
-then take effect after merging. Ledger formats evolve reader-first in one
+The #6369 rollout landed in two increments (#6373, #6375). The stable
+`scripts/governor-gate.ts` dispatcher runs from a `gate` checkout of the BASE
+ref with the base's toolchain, and takes the PR head as a sibling `head`
+checkout through `--target`. The rule that decides which checkout a read comes
+from is **policy from the gate, data from the target**: the CODEOWNERS governor
+section and ratifier list, `governance/required-jobs.json`,
+`governance/allowed_signers` and the genesis allowlist are POLICY and are read
+from the gate's own tree, so a PR that narrows the governor section, edits the
+manifest or lists a new signing key is judged by the base's copy — a new key is
+admitted by a record signed under the previous file, a governor-section change
+by the set it changes; the changed-file list, the vote ledger, workflows,
+`package.json` and git history are DATA and come from `--target`. Gate changes
+take effect after they merge. Ledger formats evolve reader-first in one
 ratified PR, writer-second in another, so main accepts every format a head may
-carry; there is no bypass for an unreadable format. This dispatcher increment
-makes no reader-incompatible ledger change.
+carry; there is no bypass for an unreadable format.
 
 Branch protection on `main` requires `CI Success` and
 `Governor-path ratification gate` (#4802). Making the gate required took two
