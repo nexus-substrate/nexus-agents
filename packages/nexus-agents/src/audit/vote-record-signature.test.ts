@@ -19,6 +19,14 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  type RedactionRecord,
+  buildRedactionRecord,
+  computeRedactionRecordHash,
+  RedactionRecordSchema,
+} from './redaction-record.js';
+import { computeReasoningDigest } from './reasoning-commitment.js';
+import { parseVoteRecordsText } from './vote-record-store.js';
 import type { VoteRecord, VoteRecordSignature } from './vote-record.js';
 import {
   VOTE_RECORD_SIGNATURE_NAMESPACE,
@@ -645,5 +653,104 @@ describe('signerKindOf', () => {
 
   it('the bare prefix with no host is still agent — the kind is about the prefix, not the host', () => {
     expect(signerKindOf(AGENT_PRINCIPAL_PREFIX)).toBe('agent');
+  });
+});
+
+describe('redaction signatures (#6372)', () => {
+  function redaction(at = OLD_RECORDED_AT): RedactionRecord {
+    return buildRedactionRecord({
+      id: 'redaction-1',
+      sequence: 1,
+      targetId: 'vote-sig-1',
+      targetVoterRoles: ['architect'],
+      at,
+      by: 'test',
+      reason: 'remove private reasoning',
+    });
+  }
+
+  it('round-trips a signed redaction with unchanged hashes and a redacted target', () => {
+    const nonce = '0f'.repeat(32);
+    const payload = {
+      ...unsignedRecord(),
+      version: '1.13' as const,
+      voters: [
+        {
+          role: 'architect',
+          decision: 'approve' as const,
+          confidence: 0.9,
+          reasoningDigest: computeReasoningDigest(nonce, 'private reasoning'),
+        },
+      ],
+    };
+    const target = { ...payload, hash: computeVoteRecordHash(payload) };
+    const r = redaction();
+    const out = signVoteRecordHash({ ...r, keyPath: agentKey, allowedSigners });
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error(out.reason);
+    const signed = { ...r, signature: out.signature };
+    expect(RedactionRecordSchema.safeParse(signed).success).toBe(true);
+    expect(computeRedactionRecordHash(signed)).toBe(r.hash);
+    const parsed = parseVoteRecordsText([target, signed].map((v) => JSON.stringify(v)).join('\n'));
+    expect(parsed.invalidLines).toEqual([]);
+    expect(verifyVoteRecordSet(parsed.records, parsed.redactions)).toMatchObject({
+      ok: true,
+      recordCount: 2,
+      redacted: [{ recordId: target.id, voterRoles: ['architect'], redactionIds: [r.id] }],
+    });
+    expect(verifyVoteRecordSignature({ record: parsed.redactions[0]!, allowedSigners })).toEqual({
+      code: 'signed',
+      keyId: AGENT,
+      principal: AGENT,
+      signerKind: 'agent',
+    });
+  });
+
+  it('reports an unsigned redaction even with an empty allowed_signers', () => {
+    expect(verifyVoteRecordSignature({ record: redaction(), allowedSigners: '' })).toEqual({
+      code: 'unsigned-record',
+    });
+  });
+
+  it('reports an unknown key even when it claims the listed agent principal', () => {
+    const r = redaction();
+    const record = {
+      ...r,
+      signature: {
+        keyId: AGENT,
+        namespace: VOTE_RECORD_SIGNATURE_NAMESPACE as typeof VOTE_RECORD_SIGNATURE_NAMESPACE,
+        sig: rawSign(r.hash, strangerKey, VOTE_RECORD_SIGNATURE_NAMESPACE),
+      },
+    };
+    expect(verifyVoteRecordSignature({ record, allowedSigners }).code).toBe('unknown-signer');
+  });
+
+  it('uses at for key rotation windows and rejects a changed signed hash', () => {
+    const r = redaction();
+    const out = signVoteRecordHash({ ...r, keyPath: rotatedKey, allowedSigners });
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error(out.reason);
+    const record = { ...r, signature: out.signature };
+    expect(verifyVoteRecordSignature({ record, allowedSigners }).code).toBe('signed');
+    expect(
+      verifyVoteRecordSignature({ record: { ...record, hash: 'b'.repeat(64) }, allowedSigners })
+        .code
+    ).toBe('bad-signature');
+    expect(
+      verifyVoteRecordSignature({
+        record: { ...record, at: '2026-09-15T00:00:00Z' },
+        allowedSigners,
+      }).code
+    ).toBe('unknown-signer');
+  });
+
+  it('keeps the redaction and signature schemas strict', () => {
+    const r = redaction();
+    const signature = { keyId: AGENT, namespace: VOTE_RECORD_SIGNATURE_NAMESPACE, sig: 'fixture' };
+    expect(RedactionRecordSchema.safeParse({ ...r, signature }).success).toBe(true);
+    expect(RedactionRecordSchema.safeParse({ ...r, signature, extra: true }).success).toBe(false);
+    expect(
+      RedactionRecordSchema.safeParse({ ...r, signature: { ...signature, extra: true } }).success
+    ).toBe(false);
   });
 });

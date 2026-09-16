@@ -281,17 +281,24 @@ export type PrReviewPanelCoverage = z.infer<typeof PrReviewPanelCoverageSchema>;
  * second copy inside another hash-covered field would be one more place for
  * the two to disagree. This field only says how far that hash reaches.
  *
- * KNOWN, PRE-EXISTING, NOT WIDENED (#6177): the producer measures `kind` and
- * `boundBytes` over the diff it was handed, which on the MCP path is the
- * middleware-SANITIZED text, while `reviewedDiffHash` covers the raw bytes.
- * The summary stamp had exactly this window before the field existed; the
- * field carries the same measurement in a structured place, no stronger.
+ * Measured over the bytes the hash covers (#6177, closing the #6226 window):
+ * the producer decides `kind` and `boundBytes` from the RAW measurement the
+ * middleware carries (`rawFieldBytes`), the same bytes `reviewedDiffHash`
+ * hashes. When an older middleware hashed but did not measure, the producer
+ * falls back to the sanitized text and DISCLOSES it — the summary stamp
+ * carries `sanitized-fallback` — so a bound that could differ from the hash
+ * by whatever the sanitizer stripped is never presented as a raw one.
  */
 export const PrReviewBindingBoundsSchema = z
   .object({
     /** `'full'` — the hash covers every byte; `'prefix'` — only the first `boundBytes`. */
     kind: z.enum(['full', 'prefix']),
-    /** UTF-8 bytes the hash binds: `min(totalBytes, MAX_REVIEWED_DIFF_BYTES)`. */
+    /**
+     * UTF-8 bytes the hash binds: `min(<raw bytes the hash covers>, MAX_REVIEWED_DIFF_BYTES)`.
+     * Not `coverage.totalBytes`, which is the panel-read denominator (the
+     * sanitized text on the MCP path) and differs by whatever the sanitizer
+     * stripped (#6226).
+     */
     boundBytes: z.number().int().nonnegative(),
   })
   .strict();
