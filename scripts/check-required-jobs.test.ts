@@ -415,6 +415,13 @@ describe('shared job gate extraction (#6382)', () => {
     },
     { need: { steps: [{ run: 'pnpm audit' }] }, expected: [] },
     { need: undefined, expected: [] },
+    // A reusable workflow's jobs can carry the knob where this checker cannot see (V1).
+    {
+      need: { uses: './.github/workflows/audit.yml' },
+      expected: ['need "security" calls a reusable workflow (uses)'],
+    },
+    // security is not skip_allowed, so any if: is its own business: false skips → jq reddens.
+    { need: { if: 'false', steps: [] }, expected: [] },
   ])(
     'a NEEDED job that swallows its own failure with continue-on-error is drift (#6387): %j',
     async ({ need, expected }) => {
@@ -435,6 +442,63 @@ describe('shared job gate extraction (#6382)', () => {
       expect(gate.neutralized).toEqual(expected);
     }
   );
+
+  it.each([
+    { cond: "github.event_name == 'pull_request'", expected: [] },
+    { cond: "${{ github.event_name == 'pull_request' }}", expected: [] },
+    // A skip_allowed need that skips for any other reason is a gate disabled forever (V2).
+    {
+      cond: "github.event_name == 'never'",
+      expected: ['need "commitlint" may skip only under if: github.event_name == \'pull_request\''],
+    },
+    {
+      cond: undefined,
+      expected: ['need "commitlint" may skip only under if: github.event_name == \'pull_request\''],
+    },
+    {
+      cond: false,
+      expected: ['need "commitlint" may skip only under if: github.event_name == \'pull_request\''],
+    },
+  ])(
+    'a skip_allowed need may skip only because the event is not a PR (#6387): %j',
+    async ({ cond, expected }) => {
+      const { extractWorkflowGate } = await import('./aggregator-shape.js');
+      const gate = extractWorkflowGate(
+        {
+          jobs: {
+            commitlint: { if: cond, steps: [{ run: 'x' }] },
+            'ci-success': {
+              if: 'always()',
+              needs: ['commitlint'],
+              steps: [
+                { env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '["commitlint"]' }, run: AGGREGATOR_RUN },
+              ],
+            },
+          },
+        },
+        'ci-success'
+      ).gate;
+      expect(gate.neutralized).toEqual(expected);
+    }
+  );
+
+  it('a "*" skip list (docs-success) pins no if: on its needs — they path-filter', async () => {
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
+    const gate = extractWorkflowGate(
+      {
+        jobs: {
+          lintdocs: { if: "contains(github.event.head_commit.modified, 'docs/')", steps: [] },
+          'docs-success': {
+            if: 'always()',
+            needs: ['lintdocs'],
+            steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '"*"' }, run: AGGREGATOR_RUN }],
+          },
+        },
+      },
+      'docs-success'
+    ).gate;
+    expect(gate.neutralized).toEqual([]);
+  });
 
   it('workflow-root drift and job drift are both named, root first', async () => {
     const { extractWorkflowGate } = await import('./aggregator-shape.js');

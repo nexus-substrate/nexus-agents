@@ -21,13 +21,18 @@ const AGGREGATOR_ENV_KEYS = new Set(['NEEDS_JSON', 'SKIP_ALLOWED']);
 
 const WorkflowRootSchema = z.object({ jobs: z.record(z.string(), z.unknown()) }).loose();
 
-/** What the lock reads off a NEEDED job: the one knob that turns its failure into `success`. */
+/** What the lock reads off a NEEDED job: the knobs that turn its failure into `success` or a licensed skip. */
 const NeedJobSchema = z
   .object({
     'continue-on-error': z.unknown().optional(),
+    uses: z.unknown().optional(),
+    if: z.union([z.string(), z.boolean()]).optional(),
     steps: z.array(z.object({ 'continue-on-error': z.unknown().optional() }).loose()).optional(),
   })
   .loose();
+
+/** The one condition under which a `skip_allowed` need may skip: the job is pull_request-only. */
+const SKIP_ALLOWED_IF = "github.event_name == 'pull_request'";
 
 const StepSchema = z
   .object({
@@ -134,8 +139,7 @@ function neutralizations(
   step: z.infer<typeof StepSchema>
 ): string[] {
   const found = unexpectedKeys('job', job, AGGREGATOR_JOB_KEYS);
-  const jobIf =
-    typeof job.if === 'string' ? job.if.replace(/^\$\{\{\s*|\s*\}\}$/g, '').trim() : job.if;
+  const jobIf = unbraced(job.if);
   if (jobIf === undefined) found.push('job if missing (always() required)');
   else if (jobIf !== 'always()') found.push(`job if "${String(jobIf)}" (always() required)`);
   const stepCount = job.steps?.length ?? 0;
@@ -178,7 +182,7 @@ export function extractWorkflowGate(workflow: unknown, jobId: string): JobGate {
   const neutralized = [
     ...unexpectedKeys('workflow', root, WORKFLOW_KEYS),
     ...gate.neutralized,
-    ...needs.flatMap((need) => swallowedNeed(need, root.jobs[need])),
+    ...needs.flatMap((need) => swallowedNeed(need, root.jobs[need], gate.skipAllowed)),
   ];
   return { needs, gate: { ...gate, neutralized } };
 }
@@ -186,16 +190,38 @@ export function extractWorkflowGate(workflow: unknown, jobId: string): JobGate {
 /**
  * A needed job with `continue-on-error` — on the job or on any step — reports
  * `needs.<id>.result == 'success'` after it fails, so the aggregator sees a
- * pass it should not (#6387 panel 5 rework; how `security` was advisory
- * before #4794). Any value counts: `true`, or an expression that could be.
+ * pass it should not (how `security` was advisory before #4794). Any value
+ * counts. A job-level `uses:` calls a reusable workflow whose own jobs can
+ * carry the same knob out of this checker's sight, so a need may not be one.
+ * A `skip_allowed` need may skip only because the event is not a PR: its
+ * `if:` must be exactly {@link SKIP_ALLOWED_IF}, or a non-governor edit could
+ * skip the gate forever (#6387 self-review, executed vectors V1/V2).
  */
-function swallowedNeed(need: string, value: unknown): string[] {
+function swallowedNeed(
+  need: string,
+  value: unknown,
+  skipAllowed: AggregatorShape['skipAllowed']
+): string[] {
   const parsed = NeedJobSchema.safeParse(value);
   if (!parsed.success) return [];
+  const job = parsed.data;
   const found: string[] = [];
-  if (parsed.data['continue-on-error'] !== undefined)
-    found.push(`need "${need}" job continue-on-error`);
-  if ((parsed.data.steps ?? []).some((step) => step['continue-on-error'] !== undefined))
+  if (job['continue-on-error'] !== undefined) found.push(`need "${need}" job continue-on-error`);
+  if ((job.steps ?? []).some((step) => step['continue-on-error'] !== undefined))
     found.push(`need "${need}" step continue-on-error`);
+  if (job.uses !== undefined) found.push(`need "${need}" calls a reusable workflow (uses)`);
+  if (
+    Array.isArray(skipAllowed) &&
+    skipAllowed.includes(need) &&
+    unbraced(job.if) !== SKIP_ALLOWED_IF
+  )
+    found.push(`need "${need}" may skip only under if: ${SKIP_ALLOWED_IF}`);
   return found;
+}
+
+/** `${{ expr }}` and `expr` are the same condition to GitHub. */
+function unbraced(condition: string | boolean | undefined): string | boolean | undefined {
+  return typeof condition === 'string'
+    ? condition.replace(/^\$\{\{\s*|\s*\}\}$/g, '').trim()
+    : condition;
 }
