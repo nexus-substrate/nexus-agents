@@ -250,6 +250,12 @@ describe('hostnameOf (#4392 inc 3 — no-logging parity)', () => {
     expect(hostnameOf('https://u:pw@gateway.example:8443/v1')).toBe('gateway.example');
   });
 
+  it('returns a placeholder for a scheme-only string with no host (a pasted key@host parses as a scheme)', () => {
+    // WHATWG reads `u:` as the scheme, so this PARSES, with an empty hostname
+    // — the raw string, or an empty host, must not be what reaches the log.
+    expect(hostnameOf('u:ZQ9pw@host/v1')).toBe('<no host>');
+  });
+
   it('returns a placeholder rather than the raw string when the URL does not parse', () => {
     // The raw string is exactly what a pasted `key@host` mistake would leak.
     expect(hostnameOf('not a url')).toBe('<unparseable url>');

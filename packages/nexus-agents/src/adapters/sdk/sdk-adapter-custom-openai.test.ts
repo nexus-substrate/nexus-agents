@@ -107,6 +107,23 @@ describe('SdkAdapter custom-openai provider (#2120)', () => {
     });
   });
 
+  describe('rejection messages carry no userinfo (#4392 inc 3 review)', () => {
+    it.each(['u:ZQ9pw@gw.example/v1', 'ftp://u:ZQ9pw@gw.example/v1'])(
+      'throws for %j without the credential in the message',
+      (raw) => {
+        process.env[CUSTOM_API_BASE_URL_ENV] = raw;
+        let thrown: unknown;
+        try {
+          new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5', apiKey: 'test-key' });
+        } catch (e: unknown) {
+          thrown = e;
+        }
+        expect(thrown).toBeInstanceOf(ConfigError);
+        expect((thrown as Error).message).not.toContain('ZQ9pw');
+      }
+    );
+  });
+
   describe('SSRF guard applied at construction', () => {
     it('throws ConfigError for http://localhost', () => {
       expect(

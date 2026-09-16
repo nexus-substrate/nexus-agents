@@ -35,7 +35,7 @@ import {
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS } from './types.js';
-import { readGatewayEnv } from './gateway-env.js';
+import { readGatewayEnv, redactApiKey } from './gateway-env.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import {
   validateCustomApiBaseUrl,
@@ -575,12 +575,17 @@ export class SdkAdapter extends BaseAdapter {
    * Converts a caught error into a Result error with categorized ErrorCode.
    */
   private toErrorResult(error: unknown, code: ErrorCode): Result<CompletionResponse, ModelError> {
-    const message = getErrorMessage(error);
     // Scrub API keys + bearer tokens out of upstream SDK error messages
     // before they hit logs or the surfaced ModelError. Parity with the
-    // subprocess-adapter path. Audit #2824.
-    const safeMessage = sanitizeOutput(message);
-    const errorObj = error instanceof Error ? error : new Error(safeMessage);
+    // subprocess-adapter path. Audit #2824. The RESOLVED key is redacted by
+    // exact match first (#4392 inc 3): a gateway key has no vendor shape the
+    // pattern sanitizer knows, and a 401 body may echo the key it rejected.
+    const apiKey = resolveApiKey(this.sdkProviderId, this.sdkConfig.apiKey);
+    const safeMessage = sanitizeOutput(redactApiKey(getErrorMessage(error), apiKey));
+    // Never the original object: its message AND its stack's first line carry
+    // the raw text. The name is kept so the log still says what was thrown.
+    const errorObj = new Error(safeMessage);
+    if (error instanceof Error) errorObj.name = error.name;
     this.logger.error(`SDK adapter error (${this.sdkProviderId})`, errorObj);
     // #4606: this path builds the ModelError itself rather than going through
     // `BaseAdapter.transformError`, so it has to capture the horizon too. The

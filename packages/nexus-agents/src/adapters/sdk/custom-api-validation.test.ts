@@ -87,6 +87,20 @@ describe('validateCustomApiBaseUrl', () => {
       const result = validateCustomApiBaseUrl('ftp://example.com/');
       expect(result.ok).toBe(false);
     });
+
+    // #4392 inc 3 security review (MEDIUM 2): these messages surface on
+    // resilient-adapter's warn line, and a base URL can carry userinfo.
+    it.each([
+      ['u:ZQ9pw@gw.example/v1', /http or https/i],
+      ['ftp://u:ZQ9pw@gw.example/v1', /http or https/i],
+      ['http://u:ZQ9pw@[bad/v1', /not a valid URL/i],
+    ])('never echoes userinfo from %j into the rejection message', (raw, expected) => {
+      const result = validateCustomApiBaseUrl(raw);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(expected);
+      expect(result.error.message).not.toContain('ZQ9pw');
+    });
   });
 
   describe('SSRF guard (default: deny private/loopback)', () => {

@@ -42,7 +42,7 @@ import {
   OPENAI_COMPAT_KEY_ENV,
   OPENAI_COMPAT_URL_ENV,
 } from './sdk/types.js';
-import { hostnameOf } from './sdk/gateway-env.js';
+import { hostnameOf, redactApiKey } from './sdk/gateway-env.js';
 
 export interface OpenAICompatConfig {
   /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
@@ -251,11 +251,6 @@ export async function discoverModels(
       )
     );
   }
-}
-
-/** Every exact occurrence of the key replaced; an empty key matches nothing. */
-function redactApiKey(message: string, apiKey: string): string {
-  return apiKey === '' ? message : message.replaceAll(apiKey, '<redacted>');
 }
 
 /**

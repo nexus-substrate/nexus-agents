@@ -232,12 +232,17 @@ function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
   const host = hostnameOf(customBaseUrl);
   logger.info('Using custom-openai SDK adapter', { model: customModelId, host });
   return {
-    adapter: new SdkAdapter({
-      providerId: 'custom-openai',
-      modelId: customModelId,
-      apiKey: customKey,
-      baseUrl: customBaseUrl,
-    }),
+    // The caller's logger reaches the adapter, so what it logs on a failed
+    // call is observable where the selection was made (#4392 inc 3 review).
+    adapter: new SdkAdapter(
+      {
+        providerId: 'custom-openai',
+        modelId: customModelId,
+        apiKey: customKey,
+        baseUrl: customBaseUrl,
+      },
+      logger
+    ),
     source: 'api',
     name: 'custom-openai',
     reason: `Using custom OpenAI-compatible gateway at ${host} (model: ${customModelId})`,

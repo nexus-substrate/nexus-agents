@@ -22,7 +22,7 @@ import {
   OPENAI_COMPAT_KEY_ENV,
   OPENAI_COMPAT_URL_ENV,
 } from '../adapters/sdk/types.js';
-import { readGatewayEnv } from '../adapters/sdk/gateway-env.js';
+import { hostnameOf, readGatewayEnv } from '../adapters/sdk/gateway-env.js';
 import { CUSTOM_API_DEFAULT_MODEL as DEFAULT_MODEL } from '../config/defaults.js';
 import { ok, err, type Result } from '../core/index.js';
 
@@ -101,7 +101,7 @@ export async function configureCustomApi(
   if (input.skipProbe !== true && !probeSucceeded) {
     return err(
       new Error(
-        `Gateway probe failed: GET ${stripTrailingSlash(baseUrl)}/models did not return 2xx. ` +
+        `Gateway probe failed: GET /models on ${hostnameOf(baseUrl)} did not return 2xx. ` +
           `Check that the URL is the chat-completions base (typically ends with /v1) and the API key has /models read scope.`
       )
     );

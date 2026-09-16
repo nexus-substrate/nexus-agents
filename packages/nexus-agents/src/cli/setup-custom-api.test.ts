@@ -179,6 +179,20 @@ describe('configureCustomApi (#2124)', () => {
       expect(result.error.message).toMatch(/probe failed/i);
     });
 
+    it('names the host, not the userinfo URL, in the probe-failed message (#4392 inc 3 review)', async () => {
+      const result = await configureCustomApi(
+        minimalInput({
+          baseUrl: 'https://u:ZQ9pw@gateway.example.com/v1',
+          fetcher: unauthorizedFetcher,
+        })
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toMatch(/probe failed/i);
+      expect(result.error.message).toContain('gateway.example.com');
+      expect(result.error.message).not.toContain('ZQ9pw');
+    });
+
     it('skips the probe entirely when skipProbe is true', async () => {
       const result = await configureCustomApi(
         minimalInput({ skipProbe: true, fetcher: throwsFetcher })

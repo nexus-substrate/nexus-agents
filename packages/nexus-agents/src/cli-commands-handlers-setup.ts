@@ -18,6 +18,7 @@ import {
   type CliExitResult,
   type ParsedCliArgs,
 } from './cli-types.js';
+import { hostnameOf } from './adapters/sdk/gateway-env.js';
 
 /**
  * Validates init flag combinations. Returns a failing {@link CliExitResult}
@@ -205,7 +206,9 @@ async function runCustomApiSetup(args: ParsedCliArgs): Promise<number> {
     return EXIT_CODES.SERVER_START_FAILED;
   }
   const { baseUrl: canonical, model, probeSucceeded, shellFragment } = result.value;
-  process.stdout.write(`✓ Gateway validated: ${canonical}\n`);
+  // Host only (#4392 inc 3): the canonical URL can carry userinfo, and the
+  // shell fragment below is the one place that has to carry it.
+  process.stdout.write(`✓ Gateway validated: ${hostnameOf(canonical)}\n`);
   process.stdout.write(`✓ Model: ${model}\n`);
   if (probeSucceeded) process.stdout.write(`✓ Probe succeeded (GET /models → 2xx)\n`);
   process.stdout.write('\nAdd the following to your shell rc (~/.bashrc, ~/.zshrc, etc.):\n\n');

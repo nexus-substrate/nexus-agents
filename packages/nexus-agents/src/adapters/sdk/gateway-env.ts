@@ -158,13 +158,26 @@ export function readGatewayEnv(
 /**
  * The host of a gateway base URL, for log lines and error messages. A base
  * URL can carry userinfo (`https://user:key@host/v1`), so the full string
- * must never reach a log; an unparseable one is replaced rather than echoed,
- * since a pasted `key@host` mistake is exactly what fails to parse.
+ * must never reach a log. Two failure shapes, both replaced rather than
+ * echoed: a string that does not parse at all, and a scheme-less paste such
+ * as `key@host/v1`, which WHATWG parses with `key:` as the SCHEME and an
+ * empty hostname (measured: `new URL('u:pw@host/v1').hostname === ''`).
  */
 export function hostnameOf(baseUrl: string): string {
   try {
-    return new URL(baseUrl).hostname;
+    const host = new URL(baseUrl).hostname;
+    return host === '' ? '<no host>' : host;
   } catch {
     return '<unparseable url>';
   }
+}
+
+/**
+ * Every exact occurrence of `apiKey` in `message` replaced with `<redacted>`.
+ * The pattern-based sanitizer only knows vendor key shapes; a gateway key can
+ * be any string, and a 401 body may echo the one it rejected. An empty key
+ * matches nothing (`replaceAll('')` would interleave the marker).
+ */
+export function redactApiKey(message: string, apiKey: string | undefined): string {
+  return apiKey === undefined || apiKey === '' ? message : message.replaceAll(apiKey, '<redacted>');
 }
