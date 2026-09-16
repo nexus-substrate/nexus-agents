@@ -399,6 +399,43 @@ describe('shared job gate extraction (#6382)', () => {
     }
   );
 
+  it.each([
+    { need: { 'continue-on-error': true }, expected: ['need "security" job continue-on-error'] },
+    {
+      need: { 'continue-on-error': '${{ true }}' },
+      expected: ['need "security" job continue-on-error'],
+    },
+    {
+      need: { steps: [{ run: 'pnpm audit', 'continue-on-error': true }] },
+      expected: ['need "security" step continue-on-error'],
+    },
+    {
+      need: { 'continue-on-error': false, steps: [{ 'continue-on-error': false }] },
+      expected: ['need "security" job continue-on-error', 'need "security" step continue-on-error'],
+    },
+    { need: { steps: [{ run: 'pnpm audit' }] }, expected: [] },
+    { need: undefined, expected: [] },
+  ])(
+    'a NEEDED job that swallows its own failure with continue-on-error is drift (#6387): %j',
+    async ({ need, expected }) => {
+      const { extractWorkflowGate } = await import('./aggregator-shape.js');
+      const gate = extractWorkflowGate(
+        {
+          jobs: {
+            security: need,
+            'ci-success': {
+              if: 'always()',
+              needs: ['security'],
+              steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN }],
+            },
+          },
+        },
+        'ci-success'
+      ).gate;
+      expect(gate.neutralized).toEqual(expected);
+    }
+  );
+
   it('workflow-root drift and job drift are both named, root first', async () => {
     const { extractWorkflowGate } = await import('./aggregator-shape.js');
     const gate = extractWorkflowGate(

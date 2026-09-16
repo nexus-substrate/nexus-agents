@@ -445,7 +445,8 @@ and must match byte for byte — there is no per-job line to comment out. The
 `NEEDS_JSON, SKIP_ALLOWED`. Any other key (`shell:`, `continue-on-error`,
 `container:`, an env `PATH`), a sibling step, or a missing `if:` is drift —
 each was a way the pinned script could run, or not run, without deciding
-the job. `scripts/check-required-jobs.ts` runs inside
+the job. A NEEDED job carrying `continue-on-error` (job or step) is drift
+too: GitHub reports its result as `success` after it fails. `scripts/check-required-jobs.ts` runs inside
 `Governor-path ratification gate` on every PR, so weakening CI wiring is
 checked by a governor-owned job. Measured drift fails the job (exit 1);
 unreadable branch protection leaves only protection membership `unmeasured`;

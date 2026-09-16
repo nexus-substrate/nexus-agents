@@ -70,6 +70,7 @@ describe('CI required-job wiring', () => {
     // Guard the guard: a renamed job would make every assertion below vacuous.
     expect(required.size).toBeGreaterThan(0);
     expect(ciGate.gate.verifiesEveryNeed).toBe(true);
+    expect(ciGate.gate.neutralized).toEqual([]);
   });
 
   it('classifies every job in ci.yml as either required or explicitly advisory', () => {

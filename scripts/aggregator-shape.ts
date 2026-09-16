@@ -21,6 +21,14 @@ const AGGREGATOR_ENV_KEYS = new Set(['NEEDS_JSON', 'SKIP_ALLOWED']);
 
 const WorkflowRootSchema = z.object({ jobs: z.record(z.string(), z.unknown()) }).loose();
 
+/** What the lock reads off a NEEDED job: the one knob that turns its failure into `success`. */
+const NeedJobSchema = z
+  .object({
+    'continue-on-error': z.unknown().optional(),
+    steps: z.array(z.object({ 'continue-on-error': z.unknown().optional() }).loose()).optional(),
+  })
+  .loose();
+
 const StepSchema = z
   .object({
     run: z.string().optional(),
@@ -167,6 +175,27 @@ export function extractJobGate(value: unknown): JobGate {
 export function extractWorkflowGate(workflow: unknown, jobId: string): JobGate {
   const root = WorkflowRootSchema.parse(workflow);
   const { needs, gate } = extractJobGate(root.jobs[jobId]);
-  const neutralized = [...unexpectedKeys('workflow', root, WORKFLOW_KEYS), ...gate.neutralized];
+  const neutralized = [
+    ...unexpectedKeys('workflow', root, WORKFLOW_KEYS),
+    ...gate.neutralized,
+    ...needs.flatMap((need) => swallowedNeed(need, root.jobs[need])),
+  ];
   return { needs, gate: { ...gate, neutralized } };
+}
+
+/**
+ * A needed job with `continue-on-error` — on the job or on any step — reports
+ * `needs.<id>.result == 'success'` after it fails, so the aggregator sees a
+ * pass it should not (#6387 panel 5 rework; how `security` was advisory
+ * before #4794). Any value counts: `true`, or an expression that could be.
+ */
+function swallowedNeed(need: string, value: unknown): string[] {
+  const parsed = NeedJobSchema.safeParse(value);
+  if (!parsed.success) return [];
+  const found: string[] = [];
+  if (parsed.data['continue-on-error'] !== undefined)
+    found.push(`need "${need}" job continue-on-error`);
+  if ((parsed.data.steps ?? []).some((step) => step['continue-on-error'] !== undefined))
+    found.push(`need "${need}" step continue-on-error`);
+  return found;
 }
