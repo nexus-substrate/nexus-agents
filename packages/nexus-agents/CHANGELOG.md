@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.76.1
+
+### Patch Changes
+
+- [#6411](https://github.com/nexus-substrate/nexus-agents/pull/6411) [`e46989a`](https://github.com/nexus-substrate/nexus-agents/commit/e46989a6e86a3bceb9076b786e8277790515af3e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removes the file-wide `eslint-disable` directives from `cli/release-announce-command.ts`, `cli/release-notes-command.ts`, `cli/release-notes-helpers.ts`, `cli/release-validate-helpers.ts`, `pipeline/agent-executor.ts` and `scripts/backfill-research-quality.ts`, fixing every site the strict baseline reports instead of suppressing it ([#6331](https://github.com/nexus-substrate/nexus-agents/issues/6331)). No behaviour change is intended: numbers interpolated into output go through `String()`, git/gh/CLI strings that were treated as absent when empty now say so explicitly, `||` defaults became `??` only where the left side could not be an empty string, and the four release validators and `runReleaseNotes` keep their `Promise` return types without a vacuous `async` — which means an exception inside one now throws synchronously at the call instead of rejecting its promise, so on that path `runReleaseValidate` rejects before the later validators are invoked rather than after `Promise.all` has started them all. `pipeline/agent-executor.ts` was over the file-size ceiling and is now a thin `createAgentStages` over sibling modules (`agent-executor-core`, `-vote`, `-stages`, `-memory`, `-context`, `-parsers`); every name it exported is still exported from it. The unwired `scripts/sync-model-pricing.ts` is deleted now that [#5490](https://github.com/nexus-substrate/nexus-agents/issues/5490) has merged ([#5512](https://github.com/nexus-substrate/nexus-agents/issues/5512)).
+
 ## 8.76.0
 
 ### Minor Changes
