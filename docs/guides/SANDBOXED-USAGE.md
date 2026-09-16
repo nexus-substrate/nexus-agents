@@ -254,7 +254,8 @@ docker run --rm -it \
         "NEXUS_DATA_DIR": "{env:NEXUS_DATA_DIR}",
         "NEXUS_OPENAI_COMPAT_URL": "{env:NEXUS_OPENAI_COMPAT_URL}",
         "NEXUS_OPENAI_COMPAT_KEY": "{env:NEXUS_OPENAI_COMPAT_KEY}",
-        "NEXUS_OPENCODE_CONFIG": "/home/agent/.config/opencode/opencode.json"
+        "NEXUS_OPENCODE_CONFIG": "/home/agent/.config/opencode/opencode.json",
+        "NEXUS_GATEWAY_COST": "openai-compat=free"
       }
     }
   }
@@ -264,6 +265,8 @@ docker run --rm -it \
 `{env:VAR}` is OpenCode's interpolation syntax — substitution happens when OpenCode reads the file, so values flow through to the MCP environment block at spawn time.
 
 `NEXUS_OPENCODE_CONFIG` is the bridge that lets nexus-agents read the gateway config from `opencode.json` directly ([#2503](https://github.com/nexus-substrate/nexus-agents/issues/2503)). Precedence: `NEXUS_OPENAI_COMPAT_URL/KEY` env vars > opencode.json > unconfigured.
+
+`NEXUS_GATEWAY_COST=openai-compat=free` declares what the `providers.openai-compat` gateway costs ([#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392)); without a declaration the budget gates exclude the gateway and `doctor` warns. `init --opencode` writes this line, scoped to `openai-compat=` rather than a bare `free` so a second gateway you add later is not silently declared with it. If the proxy meters usage, change the value to `openai-compat=priced:<inputPer1M>,<outputPer1M>`; a re-run of `init --opencode` keeps whatever you set.
 
 ### Fail-fast behaviour
 
