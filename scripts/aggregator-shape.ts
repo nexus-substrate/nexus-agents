@@ -26,6 +26,7 @@ const NeedJobSchema = z
   .object({
     'continue-on-error': z.unknown().optional(),
     uses: z.unknown().optional(),
+    needs: z.unknown().optional(),
     if: z.union([z.string(), z.boolean()]).optional(),
     steps: z.array(z.object({ 'continue-on-error': z.unknown().optional() }).loose()).optional(),
   })
@@ -214,12 +215,23 @@ function swallowedNeed(
   if ((job.steps ?? []).some((step) => step['continue-on-error'] !== undefined))
     found.push(`need "${need}" step continue-on-error`);
   if (job.uses !== undefined) found.push(`need "${need}" calls a reusable workflow (uses)`);
-  if (
-    Array.isArray(skipAllowed) &&
-    skipAllowed.includes(need) &&
-    unbraced(job.if) !== SKIP_ALLOWED_IF
-  )
+  if (Array.isArray(skipAllowed) && skipAllowed.includes(need))
+    found.push(...skipLicence(need, job));
+  return found;
+}
+
+/**
+ * A `skip_allowed` need may skip for ONE reason — the event is not a PR — so
+ * its `if:` is pinned, and it may not `needs:` another job: GitHub skips a
+ * job whose dependency skipped or failed, so `needs: [phantom]` with
+ * `phantom: { if: false }` would skip the gate on every PR (#6387 panel 8).
+ */
+function skipLicence(need: string, job: z.infer<typeof NeedJobSchema>): string[] {
+  const found: string[] = [];
+  if (unbraced(job.if) !== SKIP_ALLOWED_IF)
     found.push(`need "${need}" may skip only under if: ${SKIP_ALLOWED_IF}`);
+  if (job.needs !== undefined)
+    found.push(`need "${need}" may not depend on other jobs (needs) while skip_allowed`);
   return found;
 }
 

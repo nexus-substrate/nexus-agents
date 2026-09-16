@@ -467,14 +467,38 @@ describe('shared job gate extraction (#6382)', () => {
       cond: false,
       expected: ['need "commitlint" may skip only under if: github.event_name == \'pull_request\''],
     },
+    // Panel 8: `needs: [phantom]` with `phantom: { if: false }` skips the gate on every PR
+    // (GitHub skips a job whose dependency skipped), and SKIP_ALLOWED licenses the skip.
+    {
+      cond: "github.event_name == 'pull_request'",
+      needs: ['phantom'],
+      expected: ['need "commitlint" may not depend on other jobs (needs) while skip_allowed'],
+    },
+    {
+      cond: undefined,
+      needs: 'phantom',
+      expected: [
+        'need "commitlint" may skip only under if: github.event_name == \'pull_request\'',
+        'need "commitlint" may not depend on other jobs (needs) while skip_allowed',
+      ],
+    },
   ])(
     'a skip_allowed need may skip only because the event is not a PR (#6387): %j',
-    async ({ cond, expected }) => {
+    async ({
+      cond,
+      needs,
+      expected,
+    }: {
+      cond?: string | boolean | undefined;
+      needs?: unknown;
+      expected: string[];
+    }) => {
       const { extractWorkflowGate } = await import('./aggregator-shape.js');
       const gate = extractWorkflowGate(
         {
           jobs: {
-            commitlint: { if: cond, steps: [{ run: 'x' }] },
+            phantom: { if: false, steps: [] },
+            commitlint: { if: cond, needs, steps: [{ run: 'x' }] },
             'ci-success': {
               if: 'always()',
               needs: ['commitlint'],

@@ -449,7 +449,8 @@ the job. A NEEDED job carrying `continue-on-error` (job or step) is drift
 too: GitHub reports its result as `success` after it fails; so is a need
 that calls a reusable workflow (`uses:` hides the same knob), and a
 `skip_allowed` need whose `if:` is anything but
-`github.event_name == 'pull_request'` (the one licensed reason to skip). `scripts/check-required-jobs.ts` runs inside
+`github.event_name == 'pull_request'` (the one licensed reason to skip), or
+that `needs:` another job (a skipped dependency skips it on every PR). `scripts/check-required-jobs.ts` runs inside
 `Governor-path ratification gate` on every PR, so weakening CI wiring is
 checked by a governor-owned job. Measured drift fails the job (exit 1);
 unreadable branch protection leaves only protection membership `unmeasured`;
