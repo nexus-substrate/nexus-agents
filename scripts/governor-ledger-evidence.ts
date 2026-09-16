@@ -276,15 +276,16 @@
  * reason where there is one. An unreadable allowed_signers is
  * `signature-not-measured` naming the path, on the line, not a crash.
  *
- * THIS PHASE THE EXIT CODE DOES NOT DEPEND ON IT. The two records committed
- * before phase 2 are unsigned and the append script signs only when a key is
- * configured; enforcing now would refuse every governor PR. Phase 3 lands a
- * COMMITTED cutover constant (`SIGNATURE_CUTOVER_SEQUENCE`, not an env knob)
- * once the count of unsigned records is measured: a bound record at or past
- * it that is not `signed` becomes a refusal, and the grandfathered range is
- * named. A caller of the pure function that supplies no `signatureVerifier`
- * gets no `signatures` field and a line that says `unmeasured (no verifier
- * supplied)` — absence is not reported as `unsigned-record`.
+ * PHASE 3 (#6279): the exit code DOES depend on it from
+ * {@link SIGNATURE_CUTOVER_SEQUENCE} on. A bound record at or past the
+ * cutover whose verdict is not `signed` is the refusal `signature-required`,
+ * naming the verdict's code and reason; records before it are grandfathered
+ * and the ratified line names the range. The verifier runs against the
+ * GATE checkout's `allowed_signers` (#6381), never the head's. A caller of
+ * the pure function that supplies no `signatureVerifier` gets no
+ * `signatures` field and a line that says `unmeasured (no verifier
+ * supplied)` for grandfathered records — and `signature-required` for a
+ * record past the cutover, because absence is not measured as signed.
  *
  * ## Residual trust (disclosed)
  *
@@ -311,6 +312,14 @@ import type {
   RedactionRecord,
 } from '../packages/nexus-agents/src/audit/redaction-record.js';
 import { appendOnlyVerdict } from './governor-ledger-append-only.js';
+import {
+  GRANDFATHERED_RECORD_HASHES,
+  SIGNATURE_CUTOVER_SEQUENCE,
+  signatureRequiredFailures,
+  type SignatureRequiredFailure,
+} from './governor-ledger-signature-policy.js';
+
+export { GRANDFATHERED_RECORD_HASHES, SIGNATURE_CUTOVER_SEQUENCE };
 import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
@@ -421,7 +430,14 @@ export type BoundRecordFailure =
       readonly kind: 'degraded-panel';
       readonly record: VoteRecord;
       readonly coverage: VoteRecordPanelCoverage;
-    };
+    }
+  /**
+   * Phase 3 (#3927 item 4, #6279): a bound record outside the committed
+   * grandfather set whose signature verdict is not `signed` — unsigned, an
+   * unknown key, a signature that does not hold, or a verifier that could not
+   * run (or was not supplied). Fail-closed: absence is not measured as signed.
+   */
+  | SignatureRequiredFailure;
 
 /**
  * A refusal over the bound records: the precedence-first failure, plus EVERY
@@ -683,6 +699,10 @@ function verdictOverBound(
           })),
         }
       : {};
+  // Phase 3 (#6279): at or past the cutover the signature IS consulted for
+  // `kind`. Precedence: after the panel checks (a misconfigured run names
+  // its cause first), before `not-approved` (report order below).
+  failures.push(...signatureRequiredFailures(bound, signatures.signatures));
   const first = failures[0];
   if (first !== undefined) return { ...first, failures: inReportOrder(failures), ...signatures };
   // `bound` is non-empty by the caller's construction; the reduce needs no seed.
