@@ -26,6 +26,7 @@ import {
   retryAfterMsFromContext,
 } from '../adapters/rate-limit-detector.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
+import { toCliTokenUsage } from './token-usage-bridge.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -129,22 +130,11 @@ export class ModelToCliAdapter implements ICliAdapter {
     return {
       text: this.toText(response),
       // Omit rather than zero-fill (#4439): a synthesised 0/0/0 is
-      // indistinguishable from a real zero-token call downstream.
-      ...(usage !== undefined
-        ? {
-            usage: {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              totalTokens: usage.totalTokens,
-              ...(usage.cachedInputTokens !== undefined
-                ? { cachedInputTokens: usage.cachedInputTokens }
-                : {}),
-              ...(usage.cacheCreationInputTokens !== undefined
-                ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
-                : {}),
-            },
-          }
-        : {}),
+      // indistinguishable from a real zero-token call downstream. A present
+      // usage crosses the type boundary through the one conversion (#4440),
+      // which — unlike the hand copy this replaced — carries
+      // `inputTokensMeasured` (#4835) instead of dropping it.
+      ...(usage !== undefined ? { usage: toCliTokenUsage(usage) } : {}),
       model: response.model,
     };
   }

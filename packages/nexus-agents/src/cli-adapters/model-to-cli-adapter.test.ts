@@ -58,6 +58,40 @@ describe('ModelToCliAdapter (#3422)', () => {
     }
   });
 
+  it('carries every response-contract usage field onto the CliResponse (#4440)', async () => {
+    // This crossing used to copy the cache fields but silently drop
+    // `inputTokensMeasured` (#4835): a placeholder-0 prompt count arrived on
+    // the CLI side looking measured. Pin the whole field set.
+    const complete = vi.fn().mockResolvedValue(
+      ok({
+        ...COMPLETION,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 80,
+          totalTokens: 80,
+          cachedInputTokens: 3980,
+          cacheCreationInputTokens: 500,
+          inputTokensMeasured: false,
+        },
+      } satisfies CompletionResponse)
+    );
+    const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'claude' });
+
+    const result = await adapter.execute({ content: 'hi' });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.usage).toEqual({
+        inputTokens: 0,
+        outputTokens: 80,
+        totalTokens: 80,
+        cachedInputTokens: 3980,
+        cacheCreationInputTokens: 500,
+        inputTokensMeasured: false,
+      });
+    }
+  });
+
   it('forwards systemPrompt, maxTokens, and a per-call timeout into the request', async () => {
     const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
     const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'codex' });

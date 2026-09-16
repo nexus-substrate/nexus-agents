@@ -1,5 +1,33 @@
 # nexus-agents
 
+## 8.80.1
+
+### Patch Changes
+
+- [#6429](https://github.com/nexus-substrate/nexus-agents/pull/6429) [`1476bb6`](https://github.com/nexus-substrate/nexus-agents/commit/1476bb68c0a17fe840bb5defb8f818296d85f9d3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Internal cleanup ([#6425](https://github.com/nexus-substrate/nexus-agents/issues/6425)): delete 30 exported functions, constants and Zod schemas that had zero references anywhere in the tree — no production importer, no test, no docs, and none on the published API surface (`api-surface.txt` is unchanged). Among them: the `createWorkflowEngine` stub that only threw, the never-called `compactCorrelationData` (the correlation-persistence module doc now says the legacy `correlations.json` is read on every load and left in place), the `executeSearch`/`getAllMemories` scaffold leftovers, and twenty `*Schema` constants nothing parsed with or inferred from. Nothing published is removed and no behaviour changes.
+
+## 8.80.0
+
+### Minor Changes
+
+- [#6426](https://github.com/nexus-substrate/nexus-agents/pull/6426) [`9e6d146`](https://github.com/nexus-substrate/nexus-agents/commit/9e6d146dc897191c975d94fba39e125838bd4eb3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `consensus_vote` now records the undeclared-options detector's verdict on every vote ([#5422](https://github.com/nexus-substrate/nexus-agents/issues/5422)). The warning that fires when a proposal names alternatives in prose without declared `options` ([#5360](https://github.com/nexus-substrate/nexus-agents/issues/5360)) could not have its precision measured over the vote ledger, which stores a 503-char proposal preview, so the verdict is recorded live at the tool boundary instead: the decision-cost record (`<dataDir>/learning/decision-costs.jsonl`) carries an optional `undeclaredOptionsDetector` field with `fired`, the matching `pattern`, a `excerpt` of at most 120 characters from the full proposal, and `declaredOptionCount`. Not-fired votes are recorded too; they are the denominator. Rows written by `pr_review` or before this release have no field, which is distinct from not-fired.
+
+  New pure `detectUndeclaredOptions(proposal, declaredOptions)` returns that verdict; the existing `checkUndeclaredOptions` warning now derives from it, so the two cannot disagree. `UNDECLARED_OPTION_PATTERNS` is exported unchanged and a test pins that no pattern nests a quantifier. The `[#4362](https://github.com/nexus-substrate/nexus-agents/issues/4362)` mention that the issue hand-labelled as a false positive still fires and is pinned as such, so the measurement counts it rather than a pattern change hiding it.
+
+  `scripts/undeclared-options-precision.ts` (manual-only) lists the fired rows for hand-labelling, prints `fired / total`, and given a `<decisionId>,<tp|fp>` labels file prints precision with `n` against the promotion bar. With no fired rows it prints `unmeasured (0 fired rows)` and exits 2 — never a precision of 1.
+
+## 8.79.0
+
+### Minor Changes
+
+- [#6422](https://github.com/nexus-substrate/nexus-agents/pull/6422) [`8bf5387`](https://github.com/nexus-substrate/nexus-agents/commit/8bf53876c741c9969f8ce53a9adc0844f0350dfd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The two per-call `TokenUsage` types — the CLI parser output in `cli-adapters/types-core` (published as `CliTokenUsage`) and the adapter response contract in `core/types/model` (published as `TokenUsage`) — stay two types, and every crossing between them now goes through one conversion ([#4440](https://github.com/nexus-substrate/nexus-agents/issues/4440), the reconciliation deferred from [#4439](https://github.com/nexus-substrate/nexus-agents/issues/4439)). They cannot be one definition without a breaking change: `totalTokens` is optional on the CLI side and required on the contract side, and the contract carries `inputTokensMeasured` ([#4835](https://github.com/nexus-substrate/nexus-agents/issues/4835)), which no CLI parser emits. The two bridges that connect the layers (`CliToModelAdapter`, `ModelToCliAdapter`) each copied the fields by hand; the model→CLI copy carried the cache counters but silently dropped `inputTokensMeasured`, so a direct-API response whose prompt count was a placeholder `0` arrived on the CLI side looking measured. Both bridges now call the shared `toModelTokenUsage` / `toCliTokenUsage` conversion, which carries every field the target has and leaves an unreported field absent rather than zero-filling it (a `0` reads as a measurement downstream). The CLI-side `CliTokenUsage` gains an optional `inputTokensMeasured` so that flag survives the crossing; no existing field changed. The session aggregate in `agents/observability` was renamed `SessionTokenTotals` in [#4444](https://github.com/nexus-substrate/nexus-agents/issues/4444) and keeps its published name `ObserverTokenUsage`.
+
+## 8.78.1
+
+### Patch Changes
+
+- [#6420](https://github.com/nexus-substrate/nexus-agents/pull/6420) [`9e8974a`](https://github.com/nexus-substrate/nexus-agents/commit/9e8974a108cf65b5afd33828fdc29ceb7ced79e4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Production-dependency ranges move (re-land of the [#6268](https://github.com/nexus-substrate/nexus-agents/issues/6268) group bump, reverted in [#6272](https://github.com/nexus-substrate/nexus-agents/issues/6272)): `zod` `^4.5.4` → `^4.6.2` (resolves 4.6.5; adds `ZodType.validate`/`validateAsync` to the API surface, additive), `@anthropic-ai/sdk` `^0.123.0` → `^0.125.0`, `@google/genai` `^2.21.0` → `^2.22.0`, `@ai-sdk/anthropic` `^3.0.116` → `^3.0.117`, `@ai-sdk/google` `^3.0.121` → `^3.0.122`, `@ai-sdk/openai` `^3.0.107` → `^3.0.112`, `ai` `^6.0.276` → `^6.0.280`, `@atproto/api` `^0.20.42` → `^0.20.44`, `fast-check` `^4.9.0` → `^4.10.0`, `typedoc-plugin-frontmatter` `1.3.1` → `1.3.2`. Dev tooling in the same group: `typescript-eslint` 8.70.0 (its new `no-generated-empty-object-type` rule is satisfied — `GuardResult`'s default payload type is now `unknown` instead of `Record<never, never>`, which resolves to the same `{ readonly ok: true }` for payload-free guards), `@types/node` ^25.9.6, `cspell` ^10.3.0, `eslint-plugin-jsdoc` ^64.3.9, `knip` ^6.35.1, `lint-staged` ^17.5.1.
+
 ## 8.78.0
 
 ### Minor Changes

@@ -18,6 +18,7 @@ import { ModelCapability as MC, ok, err, ModelError, ConfigError } from '../core
 import { estimateTokens } from '../core/token-estimator.js';
 import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } from './types.js';
 import type { StreamChunk } from '../core/types/model.js';
+import { toModelTokenUsage } from './token-usage-bridge.js';
 
 /** Configuration for CliToModelAdapter. */
 export interface CliToModelAdapterConfig {
@@ -123,22 +124,9 @@ export class CliToModelAdapter implements IModelAdapter {
       // reported nothing" into a present 0/0/0 — indistinguishable downstream
       // from a real zero-token call. That single coercion defeated the
       // measured-voter gate (#4436) on every live vote and dropped the cache
-      // fields (#4438) that #4435 needs. Absence stays absent.
-      ...(u !== undefined
-        ? {
-            usage: {
-              inputTokens: u.inputTokens,
-              outputTokens: u.outputTokens,
-              totalTokens: u.totalTokens ?? u.inputTokens + u.outputTokens,
-              ...(u.cachedInputTokens !== undefined
-                ? { cachedInputTokens: u.cachedInputTokens }
-                : {}),
-              ...(u.cacheCreationInputTokens !== undefined
-                ? { cacheCreationInputTokens: u.cacheCreationInputTokens }
-                : {}),
-            },
-          }
-        : {}),
+      // fields (#4438) that #4435 needs. Absence stays absent; a present
+      // usage crosses the type boundary through the one conversion (#4440).
+      ...(u !== undefined ? { usage: toModelTokenUsage(u) } : {}),
       stopReason: 'end_turn',
       model: response.model ?? this.modelId,
       // #6094: carry the transport's captured stderr up to the model boundary

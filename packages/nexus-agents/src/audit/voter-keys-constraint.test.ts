@@ -97,19 +97,19 @@ describe('CompleteKeys (#6092)', () => {
     // Mirror of `projectSeatFallback`'s destructure. `noUnprojectedKeys` in
     // vote-record.ts is the binding check (a schema key the destructure does
     // not name fails `tsc` at the projection); this probe pins that the
-    // remainder type is exactly empty, so a TypeScript release that widened
+    // remainder key set is exactly empty, so a TypeScript release that widened
     // rest-object inference would fail here rather than silently pass there.
-    expectTypeOf<Omit<VoterSummaryFallback, 'fromCli' | 'fromModel' | 'reason'>>().toEqualTypeOf<
-      Record<never, never>
-    >();
+    expectTypeOf<
+      Exclude<keyof VoterSummaryFallback, 'fromCli' | 'fromModel' | 'reason'>
+    >().toBeNever();
     expectTypeOf<keyof VoterSummaryFallback>().toEqualTypeOf<'fromCli' | 'fromModel' | 'reason'>();
   });
 
   it('the nested retriedFrom projection is exhaustive: nothing is left after its three keys (#6246)', () => {
     // Mirror of `projectRetriedFrom`'s destructure, on the #6179 rule above.
     expectTypeOf<
-      Omit<VoterSummaryRetriedFrom, 'source' | 'error' | 'errorTruncated'>
-    >().toEqualTypeOf<Record<never, never>>();
+      Exclude<keyof VoterSummaryRetriedFrom, 'source' | 'error' | 'errorTruncated'>
+    >().toBeNever();
     expectTypeOf<keyof VoterSummaryRetriedFrom>().toEqualTypeOf<
       'source' | 'error' | 'errorTruncated'
     >();

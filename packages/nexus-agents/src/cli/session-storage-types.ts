@@ -259,11 +259,4 @@ export const SessionStorageConfigSchema = z.object({
   maxSessions: z.number().positive().optional(),
 });
 
-/**
- * Default configuration values.
- */
-export const DEFAULT_SESSION_STORAGE_CONFIG = {
-  maxSessions: 1000,
-} as const;
-
 // SQLite types imported from core/types/database-types.ts

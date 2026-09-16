@@ -248,15 +248,6 @@ export function shutdownToolMemory(): void {
   pendingOptions = {};
 }
 
-/**
- * Reinitialize SQLite-based memory backends that failed during startup.
- * Useful after upgrading Node to enable full memory functionality.
- * @returns Status of each backend after reinitialization
- */
-export async function reinitializeMemoryBackends(): Promise<MemoryBackendStatus> {
-  return getToolMemory().reinitializeSqliteBackends();
-}
-
 // ============================================================================
 // ToolMemoryManager
 // ============================================================================

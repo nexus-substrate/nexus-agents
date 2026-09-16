@@ -79,16 +79,6 @@ export interface GraphEdge {
   readonly metadata?: Record<string, unknown>;
 }
 
-/** Zod schema for GraphEdge validation. */
-export const GraphEdgeSchema = z.object({
-  from: z.string().min(1),
-  to: z.string().min(1),
-  type: RelationTypeSchema,
-  weight: z.number().min(0).max(1),
-  createdAt: z.date(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
 /**
  * A memory node with its relationships.
  */
@@ -116,16 +106,6 @@ export interface TraversalOptions {
   /** Direction: outgoing, incoming, or both */
   readonly direction?: 'outgoing' | 'incoming' | 'both';
 }
-
-/** Zod schema for TraversalOptions validation. */
-export const TraversalOptionsSchema = z.object({
-  maxDepth: z.number().int().positive().optional(),
-  relationTypes: z.array(RelationTypeSchema).optional(),
-  minWeight: z.number().min(0).max(1).optional(),
-  limit: z.number().int().positive().optional(),
-  includeStart: z.boolean().optional(),
-  direction: z.enum(['outgoing', 'incoming', 'both']).optional(),
-});
 
 /**
  * Result of a graph traversal with path information.

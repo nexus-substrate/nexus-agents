@@ -96,61 +96,6 @@ export function cleanupExpiredEntries(
 }
 
 /**
- * Executes a search query against FTS5.
- */
-export function executeSearch(
-  database: ISQLiteDatabase,
-  sanitizedQuery: string,
-  limit: number,
-  autoExpire: boolean,
-  logger: ILogger
-): Result<MemoryEntry[], MemoryError> {
-  try {
-    const stmt = database.prepare<MemoryRow>(`
-      SELECT m.key, m.value, m.metadata, m.created_at, m.accessed_at, m.expires_at
-      FROM memories m
-      INNER JOIN memories_fts fts ON m.rowid = fts.rowid
-      WHERE memories_fts MATCH ?
-      ORDER BY rank
-      LIMIT ?
-    `);
-
-    const rows = stmt.all(sanitizedQuery, limit);
-    const { entries } = cleanupExpiredEntries(rows, database, autoExpire, logger);
-
-    return ok(entries);
-  } catch (error) {
-    const causeError = error instanceof Error ? error : new Error(String(error));
-    return err(new MemoryError('Failed to execute search', { cause: causeError }));
-  }
-}
-
-/**
- * Retrieves all memories with pagination.
- */
-export function getAllMemories(
-  database: ISQLiteDatabase,
-  limit: number,
-  autoExpire: boolean,
-  logger: ILogger
-): Result<MemoryEntry[], MemoryError> {
-  try {
-    const stmt = database.prepare<MemoryRow>(`
-      SELECT key, value, metadata, created_at, accessed_at, expires_at
-      FROM memories ORDER BY accessed_at DESC LIMIT ?
-    `);
-
-    const rows = stmt.all(limit);
-    const { entries } = cleanupExpiredEntries(rows, database, autoExpire, logger);
-
-    return ok(entries);
-  } catch (error) {
-    const causeError = error instanceof Error ? error : new Error(String(error));
-    return err(new MemoryError('Failed to get all memories', { cause: causeError }));
-  }
-}
-
-/**
  * Counts total memories in the database.
  */
 export function countMemories(database: ISQLiteDatabase): Result<number, MemoryError> {

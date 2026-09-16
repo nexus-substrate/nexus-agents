@@ -15,9 +15,10 @@
  *
  * Reads dedupe by `proposalId` (last write wins) and apply FIFO eviction
  * past `maxProposals`. A legacy `correlations.json` is read alongside the
- * JSONL on first load (its entries are surfaced like any other history) and
- * is removed by `compactCorrelationData()` after consolidation. New writes
- * always go to the JSONL.
+ * JSONL on every load (its entries are surfaced like any other history) and
+ * is left in place: nothing consolidates or removes it (the compaction
+ * routine #2992 shipped for that was never called and was deleted in #6425).
+ * New writes always go to the JSONL.
  *
  * @module consensus/correlation-persistence
  * (Source: Issue #514; #2973 for the JSONL switch)
@@ -306,58 +307,6 @@ export function loadCorrelationData(
     proposals,
     savedAt: new Date().toISOString(),
   });
-}
-
-// ============================================================================
-// Compaction (consolidate JSONL + delete legacy json)
-// ============================================================================
-
-/**
- * Rewrites the JSONL store as a deduplicated, sorted snapshot and removes
- * the legacy `correlations.json` (if present). Safe to call periodically
- * (e.g., on session shutdown) to bound the JSONL's size.
- *
- * Within-process: this is the only operation that's NOT race-free across
- * processes. Two processes both running compaction simultaneously could
- * lose appends made between the read and the rename. Callers should
- * serialize compaction — invoke from one process per data dir, or guard
- * with a lockfile.
- */
-export function compactCorrelationData(
-  config: HigherOrderVotingConfig = DEFAULT_HIGHER_ORDER_CONFIG
-): Result<{ before: number; after: number }, Error> {
-  const dirResult = ensureVotingDirectory();
-  if (!dirResult.ok) return dirResult;
-
-  const legacy = loadLegacyJsonProposals();
-  const jsonl = loadJsonlProposals();
-  const proposals = consolidate(legacy, jsonl, config.maxProposals);
-  const before = legacy.length + jsonl.length;
-
-  const jsonlPath = getCorrelationJsonlPath();
-  const tempPath = `${jsonlPath}.tmp.${String(process.pid)}`;
-  const body =
-    proposals.map((p) => JSON.stringify(p)).join('\n') + (proposals.length > 0 ? '\n' : '');
-
-  try {
-    fs.writeFileSync(tempPath, body, { encoding: 'utf-8', mode: FILE_MODE });
-    fs.renameSync(tempPath, jsonlPath);
-    if (fs.existsSync(getCorrelationDataPath())) {
-      fs.unlinkSync(getCorrelationDataPath());
-    }
-    return ok({ before, after: proposals.length });
-  } catch (cause: unknown) {
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch (cleanupErr: unknown) {
-      logger.debug('Failed to clean up temp file during compaction', {
-        path: tempPath,
-        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-      });
-    }
-    const error = cause instanceof Error ? cause : new Error(String(cause));
-    return err(new Error(`Failed to compact correlation data: ${error.message}`));
-  }
 }
 
 /**

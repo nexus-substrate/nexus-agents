@@ -114,11 +114,3 @@ export class KnowledgeRegistry {
     return Array.from(this.modules.values());
   }
 }
-
-/**
- * Singleton knowledge registry instance.
- *
- * All knowledge modules should be registered against this instance
- * to ensure consistent access across the application.
- */
-export const knowledgeRegistry = new KnowledgeRegistry();

@@ -108,6 +108,12 @@ export const MANUAL_ONLY: Readonly<Record<string, string>> = {
   // runbook in its header; logic covered by analyze-timeout-mismatch.test.ts
   // (#2703, surfaced as unwired by #5458).
   'analyze-timeout-mismatch.ts': 'reads local MCP telemetry a CI runner never has; operator-run',
+  // Reads the detector verdicts `consensus_vote` records on the local
+  // decision-cost store and needs an operator's hand-labels to print a
+  // precision; a CI runner has no store and would report `unmeasured` on
+  // every run (#5422).
+  'undeclared-options-precision.ts':
+    'reads the local decision-cost store and operator hand-labels; a CI runner has neither (#5422)',
   // The pr_review eval-set curation CLI (validate|stats|add). Runs by hand when
   // the dataset changes; the assembled dataset, not this script, is what CI
   // consumes (#3847, surfaced by #5458).

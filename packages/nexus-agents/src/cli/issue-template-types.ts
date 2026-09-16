@@ -6,7 +6,6 @@
  * (Source: Issue #229, Epic #225)
  */
 
-import { z } from 'zod';
 import type { CommandResult } from '../core/index.js';
 
 /**
@@ -89,17 +88,6 @@ export interface IssueCommandOptions {
   /** Whether to auto-fix issues */
   readonly fix?: boolean;
 }
-
-/**
- * Zod schema for IssueCommandOptions.
- */
-export const IssueCommandOptionsSchema = z.object({
-  subcommand: z.enum(['validate', 'create']),
-  issueNumber: z.number().int().positive().optional(),
-  type: z.enum(['feat', 'bug', 'task', 'refactor', 'docs', 'unknown']).optional(),
-  format: z.enum(['text', 'json']).optional().default('text'),
-  fix: z.boolean().optional().default(false),
-});
 
 /**
  * GitHub issue data structure.

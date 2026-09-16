@@ -299,6 +299,42 @@ describe('CliToModelAdapter.complete', () => {
     }
   });
 
+  it('carries the parser cache fields across to the response contract (#4440)', async () => {
+    // The parser output (cli-adapters TokenUsage) and the response contract
+    // (core TokenUsage) are different types; this crossing used to narrow to
+    // the three base counters. Pin the full carry so a rewrite cannot drop
+    // the fields #4435 prices on.
+    const cli = makeMockCliAdapter();
+    (cli.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      value: {
+        text: 'response',
+        usage: {
+          inputTokens: 2,
+          outputTokens: 20,
+          cachedInputTokens: 3980,
+          cacheCreationInputTokens: 500,
+        },
+      } satisfies CliResponse,
+    });
+    const adapter = new CliToModelAdapter(cli);
+
+    const result = await adapter.complete({
+      messages: [{ role: 'user', content: 'Hello' }],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.usage).toEqual({
+        inputTokens: 2,
+        outputTokens: 20,
+        totalTokens: 22,
+        cachedInputTokens: 3980,
+        cacheCreationInputTokens: 500,
+      });
+    }
+  });
+
   it('omits usage when the CLI response has none (#4439)', async () => {
     // Previously asserted zeros. Absence must stay absent so the decision-cost
     // rollup can tell "zero tokens" from "we do not know".
