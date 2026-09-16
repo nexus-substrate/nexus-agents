@@ -1041,12 +1041,45 @@ describe('NEXUS_GATEWAY_COST is registered with its grammar (#4392 inc 2)', () =
     }
   );
 
-  it.each(['priced:1', 'cheap', 'free;local'])('reports %j as invalid, not unknown', (value) => {
+  it.each([
+    ['priced:1', /both values/],
+    ['cheap', /not one of free \| local \| priced/],
+    ['free;local', /more than one bare declaration/],
+    ['corp=free;corp=local', /duplicate endpoint key/],
+    ['priced:-1,2', /non-negative/],
+  ])("reports %j as invalid, not unknown, with the parser's own reason", (value, reason) => {
     vi.stubEnv('NEXUS_GATEWAY_COST', value);
     const result = validateNexusEnv();
     expect(result.unknownVars.map((v) => v.name)).not.toContain('NEXUS_GATEWAY_COST');
     const invalid = result.invalidVars.find((v) => v.name === 'NEXUS_GATEWAY_COST');
     expect(invalid).toBeDefined();
-    expect(invalid?.error).toMatch(/free|local|priced/);
+    // The reason reaches the operator, not a fixed grammar reminder.
+    expect(invalid?.error).toMatch(reason);
   });
+
+  it.each(['ghp_SECRET=free', 'https://user:pw@host=free'])(
+    'never echoes the raw value %j into the record or the warn line — it can carry a key',
+    (value) => {
+      vi.stubEnv('NEXUS_GATEWAY_COST', value);
+      const warnings: string[] = [];
+      const logger = {
+        warn: (msg: string) => warnings.push(msg),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+      } as unknown as import('../core/index.js').ILogger;
+
+      const result = validateNexusEnv(logger);
+
+      const invalid = result.invalidVars.find((v) => v.name === 'NEXUS_GATEWAY_COST');
+      expect(invalid).toBeDefined();
+      expect(invalid?.value).not.toContain('ghp_SECRET');
+      expect(invalid?.value).not.toContain('pw@');
+      const line = warnings.find((w) => w.includes('NEXUS_GATEWAY_COST'));
+      expect(line).toBeDefined();
+      expect(line).not.toContain('ghp_SECRET');
+      expect(line).not.toContain('pw@');
+      expect(line).toContain('<redacted>');
+    }
+  );
 });

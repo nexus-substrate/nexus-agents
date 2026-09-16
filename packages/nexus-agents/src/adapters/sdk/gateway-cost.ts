@@ -7,7 +7,9 @@
  * Before this module an undeclared gateway was silently priced as opencode's
  * default model inside the task-class cost ceiling — a number that measured
  * nothing. `NEXUS_GATEWAY_COST` is the operator's statement, and its absence
- * is a real value: UNDECLARED, which cost-weighted routing fails closed on.
+ * is a real value: UNDECLARED, which the task-class cost ceiling fails closed
+ * on (the budget filter in `checkBudget` still prices the arm by its display
+ * slot — a tracked follow-up, not this module's claim).
  *
  * Grammar (whitespace-tolerant, kind case-insensitive):
  *
@@ -131,8 +133,9 @@ export function parseGatewayCostEnv(raw: string): Result<GatewayCostMap, ConfigE
         new ConfigError(`${GATEWAY_COST_ENV}: an endpoint key is not a valid endpoint id`)
       );
     }
+    // Not echoed either: a token can satisfy the endpoint-id shape.
     if (byEndpoint.has(endpoint)) {
-      return err(new ConfigError(`${GATEWAY_COST_ENV}: duplicate endpoint "${endpoint}"`));
+      return err(new ConfigError(`${GATEWAY_COST_ENV}: duplicate endpoint key`));
     }
     byEndpoint.set(endpoint, decl.value);
   }
@@ -150,20 +153,57 @@ export function isGatewayArmId(arm: string): boolean {
 }
 
 /**
+ * The variable's state, telling unset apart from set-but-invalid (a set
+ * value the operator meant to work is a different fix from a missing one).
+ * `declared` carries the parsed map; whether it names a given arm is
+ * {@link resolveGatewayCostDeclaration}'s question.
+ */
+export type GatewayCostStatus =
+  | { readonly kind: 'unset' }
+  | { readonly kind: 'invalid'; readonly reason: string }
+  | { readonly kind: 'declared'; readonly map: GatewayCostMap };
+
+export function gatewayCostStatus(env: NodeJS.ProcessEnv = process.env): GatewayCostStatus {
+  const raw = env[GATEWAY_COST_ENV];
+  if (raw === undefined) return { kind: 'unset' };
+  const parsed = parseGatewayCostEnv(raw);
+  if (!parsed.ok) return { kind: 'invalid', reason: parsed.error.message };
+  return { kind: 'declared', map: parsed.value };
+}
+
+/**
  * The declaration that applies to `arm`, or `undefined` for UNDECLARED —
  * unset, unparsable, no bare default and no scoped entry, or not a gateway
  * arm at all (a vendor arm is registry-priced and never declared here).
+ * One sentinel for every gap on purpose: it is the fail-closed input to cost
+ * estimation. {@link gatewayCostGap} names which gap it was.
  */
 export function resolveGatewayCostDeclaration(
   arm: string,
   env: NodeJS.ProcessEnv = process.env
 ): GatewayCostDeclaration | undefined {
   if (!isGatewayArmId(arm)) return undefined;
-  const raw = env[GATEWAY_COST_ENV];
-  if (raw === undefined) return undefined;
-  const parsed = parseGatewayCostEnv(raw);
-  if (!parsed.ok) return undefined;
-  return parsed.value.byEndpoint.get(arm.slice('api:'.length)) ?? parsed.value.default;
+  const status = gatewayCostStatus(env);
+  if (status.kind !== 'declared') return undefined;
+  return status.map.byEndpoint.get(arm.slice('api:'.length)) ?? status.map.default;
+}
+
+/**
+ * Why `arm` has no declaration, as a short phrase for a log line —
+ * `unset`, `invalid (<reason>)`, or `undeclared for <arm> (…)` when the value
+ * is valid but names neither the arm nor a default. `undefined` when the arm
+ * is declared, or is not a gateway arm.
+ */
+export function gatewayCostGap(
+  arm: string,
+  env: NodeJS.ProcessEnv = process.env
+): string | undefined {
+  if (!isGatewayArmId(arm)) return undefined;
+  if (resolveGatewayCostDeclaration(arm, env) !== undefined) return undefined;
+  const status = gatewayCostStatus(env);
+  if (status.kind === 'unset') return 'unset';
+  if (status.kind === 'invalid') return `invalid (${status.reason})`;
+  return `undeclared for ${arm} (no bare declaration and no ${arm.slice('api:'.length)}= entry)`;
 }
 
 /**
@@ -186,21 +226,22 @@ export function describeGatewayCostDeclaration(decl: GatewayCostDeclaration): st
 }
 
 /**
- * Registration-time loudness: warn once per registration when a gateway arm
- * has no declaration. Silent for vendor arms and for declared gateways. The
- * routing consequence (exclusion from cost-weighted gates) is named in the
- * message so the log entry is actionable on its own.
+ * Registration-time loudness: warn at each registration of a gateway arm that
+ * has no declaration (no per-process dedupe — a re-registration is a new
+ * fact). Silent for vendor arms and for declared gateways. The message names
+ * the gap (unset / invalid / undeclared for this arm) and the one consequence
+ * this step wires — the task-class cost ceiling — so the entry is actionable.
  */
 export function warnIfGatewayCostUndeclared(
   arm: string,
   logger: ILogger,
   env: NodeJS.ProcessEnv = process.env
 ): void {
-  if (!isGatewayArmId(arm)) return;
-  if (resolveGatewayCostDeclaration(arm, env) !== undefined) return;
+  const gap = gatewayCostGap(arm, env);
+  if (gap === undefined) return;
   logger.warn(
-    `Gateway cost UNDECLARED for ${arm}: set ${GATEWAY_COST_ENV}=free|local|priced[:<in>,<out>] ` +
-      `(or ${arm.slice('api:'.length)}=<decl>); cost-weighted routing excludes this gateway until declared`,
-    { arm, env: GATEWAY_COST_ENV }
+    `Gateway cost for ${arm} is ${gap}: set ${GATEWAY_COST_ENV}=free|local|priced[:<in>,<out>] ` +
+      `(or ${arm.slice('api:'.length)}=<decl>); the task-class cost ceiling excludes this gateway until declared`,
+    { arm, env: GATEWAY_COST_ENV, gap }
   );
 }

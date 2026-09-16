@@ -2,7 +2,7 @@
  * Tests for the gateway cost declaration (#4392 increment 2, step 1).
  *
  * `NEXUS_GATEWAY_COST` is the operator's statement of what a gateway arm
- * costs. Undeclared is a real value (fail-closed for cost-weighted routing),
+ * costs. Undeclared is a real value (the task-class cost ceiling fails closed),
  * so the tests pin both the grammar and the "unset means undefined" contract.
  */
 
@@ -10,7 +10,9 @@ import { describe, it, expect, vi } from 'vitest';
 import type { ILogger } from '../../core/index.js';
 import {
   describeGatewayCostDeclaration,
+  gatewayCostGap,
   gatewayCostRates,
+  gatewayCostStatus,
   isGatewayArmId,
   parseGatewayCostEnv,
   resolveGatewayCostDeclaration,
@@ -80,11 +82,12 @@ describe('parseGatewayCostEnv — grammar', () => {
     expect(parsed.error.message).toMatch(/one bare|more than one/i);
   });
 
-  it('rejects a duplicate endpoint', () => {
-    const parsed = parseGatewayCostEnv('corp=free;corp=local');
+  it('rejects a duplicate endpoint without echoing the key (a token can pass the shape)', () => {
+    const parsed = parseGatewayCostEnv('ghp_secret1=free;ghp_secret1=local');
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.error.message).toMatch(/duplicate/i);
+    expect(parsed.error.message).toMatch(/duplicate endpoint key/i);
+    expect(parsed.error.message).not.toContain('ghp_secret1');
   });
 
   it('rejects an endpoint key that is not a valid endpoint identity (a URL, for one)', () => {
@@ -158,6 +161,50 @@ describe('resolveGatewayCostDeclaration', () => {
   });
 });
 
+describe('gatewayCostStatus — unset vs invalid vs declared (#4392 review item 4)', () => {
+  it('is unset when the variable is absent', () => {
+    expect(gatewayCostStatus({})).toEqual({ kind: 'unset' });
+  });
+
+  it('is invalid, carrying the parser reason, when the value does not parse', () => {
+    const status = gatewayCostStatus({ [GATEWAY_COST_ENV]: 'free;local' });
+    expect(status.kind).toBe('invalid');
+    if (status.kind !== 'invalid') return;
+    expect(status.reason).toMatch(/more than one bare declaration/);
+  });
+
+  it('is declared, carrying the map, when the value parses', () => {
+    const status = gatewayCostStatus({ [GATEWAY_COST_ENV]: 'corp=free' });
+    expect(status.kind).toBe('declared');
+    if (status.kind !== 'declared') return;
+    expect(status.map.byEndpoint.get('corp')).toEqual({ kind: 'free' });
+    expect(status.map.default).toBeUndefined();
+  });
+});
+
+describe('gatewayCostGap — why an arm has no declaration', () => {
+  it('is undefined for a declared gateway arm and for a vendor arm', () => {
+    expect(gatewayCostGap('api:corp', { [GATEWAY_COST_ENV]: 'free' })).toBeUndefined();
+    expect(gatewayCostGap('api:anthropic', {})).toBeUndefined();
+  });
+
+  it('says unset when the variable is absent', () => {
+    expect(gatewayCostGap('api:corp', {})).toBe('unset');
+  });
+
+  it('says invalid with the reason when the value does not parse', () => {
+    expect(gatewayCostGap('api:corp', { [GATEWAY_COST_ENV]: 'priced:1' })).toMatch(
+      /^invalid \(.*both values/
+    );
+  });
+
+  it('says undeclared for the arm when the value is valid but names neither it nor a default', () => {
+    expect(gatewayCostGap('api:corp', { [GATEWAY_COST_ENV]: 'other=free' })).toMatch(
+      /^undeclared for api:corp/
+    );
+  });
+});
+
 describe('gatewayCostRates', () => {
   it('free and local are $0 for every token', () => {
     expect(gatewayCostRates({ kind: 'free' })).toEqual({ inputPer1M: 0, outputPer1M: 0 });
@@ -188,13 +235,26 @@ describe('describeGatewayCostDeclaration', () => {
 });
 
 describe('warnIfGatewayCostUndeclared', () => {
-  it('warns once, naming the variable, when a gateway arm is undeclared', () => {
+  it('warns at the registration, naming the variable and UNSET, when the variable is absent', () => {
     const logger = mockLogger();
     warnIfGatewayCostUndeclared('api:corp-proxy', logger, {});
     expect(logger.warn).toHaveBeenCalledTimes(1);
     const [message, meta] = vi.mocked(logger.warn).mock.calls[0] ?? [];
     expect(String(message)).toContain(GATEWAY_COST_ENV);
+    expect(String(message)).toContain('unset');
+    // Only the ceiling filter excludes it; the budget filter still prices the arm.
+    expect(String(message)).toContain('task-class cost ceiling excludes this gateway');
+    expect(String(message)).not.toContain('cost-weighted routing');
     expect(meta).toMatchObject({ arm: 'api:corp-proxy' });
+  });
+
+  it('warns INVALID with the parser reason when the value does not parse', () => {
+    const logger = mockLogger();
+    warnIfGatewayCostUndeclared('api:corp-proxy', logger, { [GATEWAY_COST_ENV]: 'free;local' });
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    const message = String(vi.mocked(logger.warn).mock.calls[0]?.[0]);
+    expect(message).toContain('invalid');
+    expect(message).toContain('more than one bare declaration');
   });
 
   it('is silent when the gateway arm is declared', () => {

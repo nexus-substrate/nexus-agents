@@ -43,8 +43,7 @@ import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/type
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
 import { readOpenAICompatEnv } from '../adapters/openai-compat-adapter.js';
-import { parseGatewayCostEnv, type GatewayCostDeclaration } from '../adapters/sdk/gateway-cost.js';
-import { GATEWAY_COST_ENV } from '../adapters/sdk/types.js';
+import { gatewayCostStatus, type GatewayCostDeclaration } from '../adapters/sdk/gateway-cost.js';
 import { printDoctorResults } from './doctor-formatting.js';
 import { probeCli } from './cli-auth-probe.js';
 import { probeClaudePinnedModel, type ClaudeModelProbe } from './doctor-claude-model.js';
@@ -248,13 +247,15 @@ export interface VoterTransportCheck {
   readonly configured: boolean;
   /**
    * The gateway's `NEXUS_GATEWAY_COST` declaration (#4392 increment 2),
-   * present only when a gateway is configured. `'undeclared'` when the
-   * variable is unset, unparsable, or carries only endpoint-scoped entries —
-   * the voter gateway has no arm identity yet (step 2), so only the bare
-   * declaration can apply to it. UNDECLARED is a warning, not a failure: the
-   * gateway still serves voters; cost-weighted routing excludes it.
+   * present only when a gateway is configured. Three gaps are told apart
+   * because each is a different fix: `'unset'` (variable absent),
+   * `'invalid'` (set but does not parse — the startup env warning carries the
+   * reason), and `'no-default'` (valid, but only endpoint-scoped entries —
+   * the voter gateway has no arm identity yet (step 2), so only a bare
+   * declaration can apply to it). Every gap is a warning, not a failure: the
+   * gateway still serves voters; the task-class cost ceiling excludes it.
    */
-  readonly cost?: GatewayCostDeclaration | 'undeclared';
+  readonly cost?: GatewayCostDeclaration | 'unset' | 'invalid' | 'no-default';
 }
 
 /**
@@ -849,13 +850,11 @@ export function checkVoterTransport(): VoterTransportCheck {
   return { configured: true, cost: voterGatewayCostDeclaration() };
 }
 
-/** The bare `NEXUS_GATEWAY_COST` declaration, or `'undeclared'` (see {@link VoterTransportCheck.cost}). */
-function voterGatewayCostDeclaration(): GatewayCostDeclaration | 'undeclared' {
-  const raw = process.env[GATEWAY_COST_ENV];
-  if (raw === undefined) return 'undeclared';
-  const parsed = parseGatewayCostEnv(raw);
-  if (!parsed.ok) return 'undeclared';
-  return parsed.value.default ?? 'undeclared';
+/** The bare `NEXUS_GATEWAY_COST` declaration, or which gap (see {@link VoterTransportCheck.cost}). */
+function voterGatewayCostDeclaration(): NonNullable<VoterTransportCheck['cost']> {
+  const status = gatewayCostStatus();
+  if (status.kind !== 'declared') return status.kind;
+  return status.map.default ?? 'no-default';
 }
 
 /** The inputs the overall verdict is computed from. */

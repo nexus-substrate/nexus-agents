@@ -32,18 +32,24 @@ export function printVoterTransportCheck(check: VoterTransportCheck): void {
   );
 }
 
+const CEILING_CONSEQUENCE = 'the task-class cost ceiling excludes this gateway until declared';
+
+/** One warning per gap, each naming its own fix (see `VoterTransportCheck.cost`). */
+const GAP_LINES: Record<'unset' | 'invalid' | 'no-default', string> = {
+  unset: `Gateway cost: UNSET — set ${GATEWAY_COST_ENV}=free|local|priced[:<in>,<out>]; ${CEILING_CONSEQUENCE}`,
+  invalid: `Gateway cost: INVALID — ${GATEWAY_COST_ENV} does not parse (the startup env warning names the reason); ${CEILING_CONSEQUENCE}`,
+  'no-default': `Gateway cost: NOT DECLARED for the voter gateway — ${GATEWAY_COST_ENV} has only endpoint-scoped entries; add a bare declaration; ${CEILING_CONSEQUENCE}`,
+};
+
 /**
- * The gateway's cost declaration. UNDECLARED is a warning that names the fix
- * and the consequence; it does not touch `allHealthy`. No line at all when
- * no gateway is configured (`cost` absent).
+ * The gateway's cost declaration. Each gap is a warning that names its fix
+ * and the consequence; none touches `allHealthy`. No line at all when no
+ * gateway is configured (`cost` absent).
  */
 function printGatewayCostLine(cost: VoterTransportCheck['cost']): void {
   if (cost === undefined) return;
-  if (cost === 'undeclared') {
-    writeLine(
-      `${WARN} Gateway cost: UNDECLARED — set ${GATEWAY_COST_ENV}=free|local|priced[:<in>,<out>]; ` +
-        'cost-weighted routing excludes this gateway until declared'
-    );
+  if (typeof cost === 'string') {
+    writeLine(`${WARN} ${GAP_LINES[cost]}`);
     return;
   }
   writeLine(`${CHECK} Gateway cost: ${describeGatewayCostDeclaration(cost)}`);

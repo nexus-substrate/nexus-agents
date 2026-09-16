@@ -34,7 +34,7 @@ import { DEFAULT_COST_MODELS } from './budget-router-types.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
-import { isGatewayArmId } from '../adapters/sdk/gateway-cost.js';
+import { gatewayCostGap } from '../adapters/sdk/gateway-cost.js';
 import { estimateArmCostUsd } from './budget-arm-cost.js';
 
 // The registry estimator moved to a sibling for the file cap (#4392 inc 2);
@@ -272,8 +272,9 @@ export class BudgetRouter implements IBudgetRouter {
       // gateway arm by its NEXUS_GATEWAY_COST declaration (#4392 inc 2).
       const cost = estimateArmCostUsd(arm, inputTokens, outputTokens);
       if (cost === undefined) {
-        if (isGatewayArmId(arm)) {
-          logger.warn('Cost ceiling: gateway cost UNDECLARED — excluding (fail-closed)', {
+        const gap = gatewayCostGap(arm);
+        if (gap !== undefined) {
+          logger.warn(`Cost ceiling: gateway cost ${gap} — excluding (fail-closed)`, {
             arm,
             ceiling,
           });

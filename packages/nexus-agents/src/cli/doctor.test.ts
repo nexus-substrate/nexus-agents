@@ -1414,9 +1414,9 @@ describe('Doctor Command', () => {
         else process.env['NEXUS_GATEWAY_COST'] = originalCost;
       });
 
-      it('reports cost UNDECLARED when the gateway is configured and the variable is unset', async () => {
+      it('reports cost UNSET when the gateway is configured and the variable is absent', async () => {
         const { checkVoterTransport } = await import('./doctor.js');
-        expect(checkVoterTransport()).toEqual({ configured: true, cost: 'undeclared' });
+        expect(checkVoterTransport()).toEqual({ configured: true, cost: 'unset' });
       });
 
       it('reports the bare declaration when set', async () => {
@@ -1428,10 +1428,18 @@ describe('Doctor Command', () => {
         });
       });
 
-      it('reports UNDECLARED for an unparsable value rather than guessing', async () => {
+      it('reports INVALID, not unset, for an unparsable value', async () => {
         process.env['NEXUS_GATEWAY_COST'] = 'priced:1';
         const { checkVoterTransport } = await import('./doctor.js');
-        expect(checkVoterTransport()).toEqual({ configured: true, cost: 'undeclared' });
+        expect(checkVoterTransport()).toEqual({ configured: true, cost: 'invalid' });
+      });
+
+      it('reports no-default when the value is valid but carries only endpoint-scoped entries', async () => {
+        // The voter gateway has no arm identity yet (step 2), so only a bare
+        // declaration can apply to it; saying "unset" here would be false.
+        process.env['NEXUS_GATEWAY_COST'] = 'corp-proxy=free';
+        const { checkVoterTransport } = await import('./doctor.js');
+        expect(checkVoterTransport()).toEqual({ configured: true, cost: 'no-default' });
       });
 
       it('carries no cost field when no gateway is configured', async () => {

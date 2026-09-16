@@ -607,7 +607,7 @@ describe('UnifiedAdapterRegistry — gateway cost declaration at registration (#
     vi.unstubAllEnvs();
   });
 
-  it('warns once, naming NEXUS_GATEWAY_COST, when a gateway arm is registered undeclared', () => {
+  it('warns at the registration, naming NEXUS_GATEWAY_COST, when a gateway arm is registered with it unset', () => {
     vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
 
     registry.registerApiArm('api:gw-prod', stub);

@@ -676,18 +676,32 @@ describe('doctor-formatting', () => {
       }
     });
 
-    it('warns, without flipping the summary, when the gateway cost is UNDECLARED (#4392 inc 2)', () => {
+    it('warns, without flipping the summary, when the gateway cost is UNSET (#4392 inc 2)', () => {
       const result = createDoctorResult({
-        voterTransport: { configured: true, cost: 'undeclared' },
+        voterTransport: { configured: true, cost: 'unset' },
       });
       printDoctorResults(result);
       const calls = getCalls();
-      const line = calls.find((call) => call.includes('Gateway cost: UNDECLARED'));
+      const line = calls.find((call) => call.includes('Gateway cost: UNSET'));
       expect(line).toBeDefined();
       expect(line).toContain('NEXUS_GATEWAY_COST=free|local|priced[:<in>,<out>]');
-      expect(line).toContain('cost-weighted routing excludes this gateway until declared');
+      expect(line).toContain('the task-class cost ceiling excludes this gateway until declared');
+      expect(line).not.toContain('cost-weighted routing');
       // A warning, not a failure: allHealthy is the fixture's value, untouched.
       expect(calls.some((call) => call.includes('Status: Ready'))).toBe(true);
+    });
+
+    it.each([
+      ['invalid', 'Gateway cost: INVALID'],
+      ['no-default', 'Gateway cost: NOT DECLARED for the voter gateway'],
+    ] as const)('renders cost %j as its own warning, not as unset (#4392 inc 2)', (cost, text) => {
+      const result = createDoctorResult({ voterTransport: { configured: true, cost } });
+      printDoctorResults(result);
+      const calls = getCalls();
+      const line = calls.find((call) => call.includes(text));
+      expect(line).toBeDefined();
+      expect(line).toContain('the task-class cost ceiling excludes this gateway until declared');
+      expect(calls.some((call) => call.includes('Gateway cost: UNSET'))).toBe(false);
     });
 
     it('prints the declared gateway cost on its own line (#4392 inc 2)', () => {
@@ -702,7 +716,7 @@ describe('doctor-formatting', () => {
       expect(calls.some((call) => call.includes('Gateway cost: priced ($2/$10 per 1M)'))).toBe(
         true
       );
-      expect(calls.some((call) => call.includes('UNDECLARED'))).toBe(false);
+      expect(calls.some((call) => call.includes('UNSET'))).toBe(false);
     });
 
     it('prints no gateway cost line when no gateway is configured (#4392 inc 2)', () => {
