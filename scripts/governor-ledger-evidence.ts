@@ -305,12 +305,12 @@ import type {
   VoteRecord,
   VoteRecordPanelCoverage,
 } from '../packages/nexus-agents/src/audit/vote-record.js';
-import { isRecord } from '../packages/nexus-agents/src/utils/type-coercion.js';
 import { verifyVoteRecordSet } from '../packages/nexus-agents/src/audit/vote-record.js';
-import {
-  redactedRolesByTarget,
-  type RedactedRecordReport,
+import type {
+  RedactedRecordReport,
+  RedactionRecord,
 } from '../packages/nexus-agents/src/audit/redaction-record.js';
+import { appendOnlyVerdict } from './governor-ledger-append-only.js';
 import {
   VOTE_RECORDS_REL_PATH,
   parseVoteRecordsText,
@@ -384,6 +384,12 @@ export interface LedgerEvidenceInputs {
  */
 interface WithSignatures {
   readonly signatures?: readonly RecordSignatureReport[];
+}
+
+/** What the signature report needs: the verifier (if any) and the ledger's redactions (#6372). */
+interface SignatureReporting {
+  readonly signatureVerifier: LedgerEvidenceInputs['signatureVerifier'];
+  readonly redactions: readonly RedactionRecord[];
 }
 
 /** Why one recorded sha was not accepted under the moved-head rule (#6256). */
@@ -525,6 +531,8 @@ type Loaded =
       records: VoteRecord[];
       /** The verifier's per-record `redacted` answers, by record id (#6264). */
       redacted: ReadonlyMap<string, RedactedRecordReport>;
+      /** Every redaction record in the ledger, in file order (#6372: their signatures are reported beside their targets). */
+      redactions: readonly RedactionRecord[];
     }
   | { ok: false; verdict: LedgerEvidence };
 
@@ -564,79 +572,7 @@ function loadLedger(text: string): Loaded {
   if (ambiguous.size > 0) {
     return { ok: false, verdict: { kind: 'duplicate-id', ids: [...ambiguous].sort() } };
   }
-  return { ok: true, records: [...byId.values()], redacted };
-}
-
-/** The ledger's record lines: every non-blank line, bytes untouched. */
-function recordLines(text: string): string[] {
-  return text.split('\n').filter((line) => line.trim() !== '');
-}
-
-/** Stable key order at every object depth; array order and all raw values are retained. */
-function stableJson(value: unknown): string | undefined {
-  return JSON.stringify(value, (_key, entry: unknown) => {
-    if (!isRecord(entry)) return entry;
-    const keys = Object.keys(entry).sort();
-    return Object.fromEntries(keys.map((key) => [key, entry[key]] as const));
-  });
-}
-
-/** Byte-exact unless a newly appended redaction authorizes just the named openings. */
-function matchesLedgerLine(
-  baseLine: string,
-  headLine: string,
-  rolesByTarget: ReadonlyMap<string, ReadonlySet<string>>
-): boolean {
-  if (baseLine === headLine) return true;
-  try {
-    const base: unknown = JSON.parse(baseLine);
-    const head: unknown = JSON.parse(headLine);
-    if (!isRecord(base) || typeof base['id'] !== 'string') return false;
-    const roles = rolesByTarget.get(base['id']);
-    // No newly named roles (including an empty redaction set) means no rewrite exception.
-    if (roles === undefined || roles.size === 0 || !Array.isArray(base['voters'])) return false;
-    const voters = base['voters'].map((voter: unknown) => {
-      if (!isRecord(voter) || typeof voter['role'] !== 'string' || !roles.has(voter['role']))
-        return voter;
-      const { reasoning: _reasoning, reasoningNonce: _reasoningNonce, ...rest } = voter;
-      return rest;
-    });
-    return stableJson({ ...base, voters }) === stableJson(head);
-  } catch {
-    return false; // Neither malformed side can receive the redaction exception.
-  }
-}
-
-/**
- * Append-only against the base (#6213): the base's record lines must be an
- * ordered subsequence of the head's — a single forward scan, each base line
- * matched byte-for-byte, or canonically after removing only the openings a
- * newly appended redaction names (#6348), to an unconsumed head line. Returns the
- * verdict on the first base line that cannot be matched in order (missing,
- * changed, or moved before an earlier base line); `undefined` when every
- * base line is found (an empty base is a subsequence of everything).
- */
-function appendOnlyVerdict(
-  headText: string,
-  baseText: string
-): Extract<LedgerEvidence, { kind: 'ledger-rewritten' }> | undefined {
-  const base = recordLines(baseText);
-  const head = recordLines(headText);
-  if (base.length === 0) return undefined; // No historical lines to preserve.
-  const baseIds = new Set(parseVoteRecordsText(baseText).redactions.map((r) => r.id));
-  const appended = parseVoteRecordsText(headText).redactions.filter((r) => !baseIds.has(r.id));
-  const rolesByTarget = redactedRolesByTarget(appended);
-  const counts = { baseLineCount: base.length, headLineCount: head.length };
-  let cursor = 0;
-  for (const [i, baseLine] of base.entries()) {
-    let at = cursor;
-    while (at < head.length && !matchesLedgerLine(baseLine, head[at] ?? '', rolesByTarget)) at++;
-    if (at === head.length) {
-      return { kind: 'ledger-rewritten', ...counts, divergesAt: i + 1 };
-    }
-    cursor = at + 1;
-  }
-  return undefined;
+  return { ok: true, records: [...byId.values()], redacted, redactions };
 }
 
 /**
@@ -721,7 +657,8 @@ function inReportOrder(failures: readonly BoundRecordFailure[]): BoundRecordFail
 function verdictOverBound(
   bound: readonly VoteRecord[],
   checked: { readonly shaChecked: boolean; readonly appendOnlyChecked: boolean },
-  signatureVerifier: LedgerEvidenceInputs['signatureVerifier']
+  signatureVerifier: LedgerEvidenceInputs['signatureVerifier'],
+  redactions: readonly RedactionRecord[]
 ): LedgerEvidence {
   const failures: BoundRecordFailure[] = [];
   for (const check of BOUND_RECORD_CHECKS) {
@@ -732,9 +669,19 @@ function verdictOverBound(
   }
   // #3927 item 4: computed over every bound record, attached to whichever
   // verdict follows, never consulted for `kind` this phase.
+  // #6372: a redaction that names a bound record is reported beside it — the
+  // one sanctioned edit of the ledger is the record that most needs to say
+  // who appended it. Ledger order; an empty redaction list adds nothing.
+  const boundIds = new Set(bound.map((r) => r.id));
+  const naming = redactions.filter((r) => boundIds.has(r.targetId));
   const signatures: WithSignatures =
     signatureVerifier !== undefined
-      ? { signatures: bound.map((r) => ({ recordId: r.id, verdict: signatureVerifier(r) })) }
+      ? {
+          signatures: [...bound, ...naming].map((r) => ({
+            recordId: r.id,
+            verdict: signatureVerifier(r),
+          })),
+        }
       : {};
   const first = failures[0];
   if (first !== undefined) return { ...first, failures: inReportOrder(failures), ...signatures };
@@ -763,7 +710,7 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   const loaded = loadLedger(inputs.ledgerText);
   if (!loaded.ok) return loaded.verdict;
   return withRedaction(
-    verdictOverLoaded(inputs, loaded.records, appendOnlyChecked),
+    verdictOverLoaded(inputs, loaded.records, loaded.redactions, appendOnlyChecked),
     loaded.redacted
   );
 }
@@ -772,6 +719,7 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
 function verdictOverLoaded(
   inputs: LedgerEvidenceInputs,
   records: readonly VoteRecord[],
+  redactions: readonly RedactionRecord[],
   appendOnlyChecked: boolean
 ): LedgerEvidence {
   const forPr = records.filter((r) => r.ratifiesPr?.pr === inputs.pr);
@@ -781,16 +729,22 @@ function verdictOverLoaded(
     return verdictOverBound(
       forPr,
       { shaChecked: false, appendOnlyChecked },
-      inputs.signatureVerifier
+      inputs.signatureVerifier,
+      redactions
     );
   }
 
   const accepted = acceptedHeadShas(inputs.head);
   const bound = forPr.filter((r) => accepted.includes(r.ratifiesPr?.headSha ?? ''));
   if (bound.length === 0) {
-    return movedHeadVerdict(forPr, accepted, inputs, appendOnlyChecked);
+    return movedHeadVerdict(forPr, accepted, inputs, appendOnlyChecked, redactions);
   }
-  return verdictOverBound(bound, { shaChecked: true, appendOnlyChecked }, inputs.signatureVerifier);
+  return verdictOverBound(
+    bound,
+    { shaChecked: true, appendOnlyChecked },
+    inputs.signatureVerifier,
+    redactions
+  );
 }
 
 /**
@@ -871,13 +825,14 @@ function rebasedVerdict(
   passing: ReadonlyMap<string, Measured>,
   headSha: string,
   appendOnlyChecked: boolean,
-  signatureVerifier: LedgerEvidenceInputs['signatureVerifier']
+  reporting: SignatureReporting
 ): LedgerEvidence {
   const rebasedBound = forPr.filter((r) => passing.has(r.ratifiesPr?.headSha ?? ''));
   const verdict = verdictOverBound(
     rebasedBound,
     { shaChecked: true, appendOnlyChecked },
-    signatureVerifier
+    reporting.signatureVerifier,
+    reporting.redactions
   );
   if (verdict.kind !== 'ratified') return verdict;
   const ratifiedSha = verdict.record.ratifiesPr?.headSha ?? '';
@@ -912,7 +867,8 @@ function movedHeadVerdict(
   forPr: readonly VoteRecord[],
   accepted: readonly string[],
   inputs: LedgerEvidenceInputs,
-  appendOnlyChecked: boolean
+  appendOnlyChecked: boolean,
+  redactions: readonly RedactionRecord[]
 ): LedgerEvidence {
   const found = [...new Set(forPr.map((r) => r.ratifiesPr?.headSha ?? ''))];
   const mismatch = (reasonFor: (sha: string) => string): LedgerEvidence => ({
@@ -938,5 +894,8 @@ function movedHeadVerdict(
     else passing.set(sha, outcome.measured);
   }
   if (passing.size === 0) return mismatch((sha) => refused.get(sha) ?? 'not judged');
-  return rebasedVerdict(forPr, passing, headSha, appendOnlyChecked, inputs.signatureVerifier);
+  return rebasedVerdict(forPr, passing, headSha, appendOnlyChecked, {
+    signatureVerifier: inputs.signatureVerifier,
+    redactions,
+  });
 }

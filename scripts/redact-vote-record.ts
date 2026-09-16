@@ -28,6 +28,14 @@ import {
 import { serializeValidatedRecord } from '../packages/nexus-agents/src/audit/ledger-append.js';
 import { assertNotSourceCheckoutWrite } from '../packages/nexus-agents/src/audit/source-checkout-guard.js';
 import { parseRedactArgs } from './redact-vote-record-args.js';
+import {
+  VOTE_SIGNING_KEY_ENV,
+  resolveSigning,
+  signCommitted,
+  signingNotice,
+  type SigningOptions,
+  type SigningState,
+} from './append-ratification-signing.js';
 
 export interface RedactVoteRecordOptions {
   readonly ledgerPath: string;
@@ -35,12 +43,14 @@ export interface RedactVoteRecordOptions {
   readonly roles: readonly string[];
   readonly by: string;
   readonly reason: string;
+  /** Resolved by the CLI (`--signing-key` → env → agent key); `undefined` appends unsigned (#6372). */
+  readonly signing?: SigningOptions | undefined;
 }
 export type RedactOutcome =
   | {
       readonly kind: 'redacted';
       readonly record: RedactionRecord;
-      readonly signing: 'unsigned-unsupported';
+      readonly signing: SigningState;
     }
   | { readonly kind: 'refused'; readonly detail: string };
 type Verified = Extract<VoteRecordVerification, { ok: true }>;
@@ -169,12 +179,18 @@ export function redactVoteRecord(opts: RedactVoteRecordOptions): RedactOutcome {
       by: opts.by,
       reason: opts.reason,
     });
-    const appended = serializeValidatedRecord(RedactionRecordSchema, record, 'redaction');
+    // #6372: sign the redaction's hash the way a vote record is signed — the
+    // same key resolution and the same owner/agent attestation rule. A
+    // signing failure is a refusal before any write.
+    const signStep = signCommitted(record, opts.signing);
+    if (!signStep.ok) throw new Error(signStep.detail);
+    const signed = signStep.record;
+    const appended = serializeValidatedRecord(RedactionRecordSchema, signed, 'redaction');
     const rewritten = rewriteTarget(original, target.id, new Set(opts.roles));
     const candidate = rewritten + (rewritten.endsWith('\n') ? '' : '\n') + appended;
     verifyCandidate(candidate, before, target.id);
     replaceAtomically(opts.ledgerPath, bytes, candidate);
-    return { kind: 'redacted', record, signing: 'unsigned-unsupported' };
+    return { kind: 'redacted', record: signed, signing: signStep.signing };
   } catch (error: unknown) {
     return { kind: 'refused', detail: error instanceof Error ? error.message : String(error) };
   }
@@ -188,16 +204,24 @@ function fail(message: string): never {
 function main(): void {
   const args = parseRedactArgs(process.argv.slice(2));
   if (!args.ok) fail(args.error);
-  const outcome = redactVoteRecord(args);
+  const signing = resolveSigning(args.signingKeyPath, process.env, args.ledgerPath, {
+    asOwner: args.asOwner,
+  });
+  if (signing === undefined && args.asOwner) {
+    // The attestation would be recorded nowhere (#6257): an unsigned record
+    // says nothing about who ran the redaction.
+    fail(
+      `--as-owner was passed but no signing key is configured (no --signing-key, no ` +
+        `${VOTE_SIGNING_KEY_ENV}); an unsigned record cannot carry the owner attestation.`
+    );
+  }
+  const outcome = redactVoteRecord({ ...args, signing });
   if (outcome.kind === 'refused') fail(outcome.detail);
-  // Do not cast a redaction to VoteRecord to call signCommitted: the strict
-  // redaction schema has no signature slot. The requested flags cannot attest
-  // an owner or sign this kind until the audit signature contract is extended.
   console.log(
     `[redact-vote-record] redacted '${args.recordId}'; appended '${outcome.record.id}' ` +
-      `at sequence ${String(outcome.record.sequence)}. UNSIGNED: redaction signing is unsupported; ` +
-      '--signing-key and --as-owner cannot sign or attest this record kind.'
+      `at sequence ${String(outcome.record.sequence)}.`
   );
+  console.log(signingNotice(outcome.signing, outcome.record, 'redact-vote-record'));
 }
 
 if (process.argv[1]?.endsWith('redact-vote-record.ts') === true) main();

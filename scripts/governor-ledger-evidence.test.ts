@@ -2193,7 +2193,7 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
     const e = evaluateLedgerEvidence({
       ...inputs,
       signatureVerifier: (r) => {
-        seen.push(r.ratifiesPr?.headSha ?? '');
+        seen.push('ratifiesPr' in r ? (r.ratifiesPr?.headSha ?? '') : '');
         return {
           code: 'signed',
           keyId: 'rebased@test',
@@ -2763,9 +2763,78 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
   }
 
   const constant =
-    (verdict: VoteRecordSignatureVerdict): ((r: VoteRecord) => VoteRecordSignatureVerdict) =>
+    (
+      verdict: VoteRecordSignatureVerdict
+    ): ((r: VoteRecord | RedactionRecord) => VoteRecordSignatureVerdict) =>
     () =>
       verdict;
+
+  /** Sign a redaction's hash with the key of the given kind, or leave it unsigned. */
+  function signedRedaction(
+    red: RedactionRecord,
+    kind: 'unsigned' | 'agent' | 'owner'
+  ): RedactionRecord {
+    if (kind === 'unsigned') return red;
+    const signing = signVoteRecordHash({
+      hash: red.hash,
+      at: red.at,
+      keyPath: kind === 'agent' ? agentKeyPath : keyPath,
+      allowedSigners: readFileSync(allowedSignersPath, 'utf-8'),
+    });
+    if (!signing.ok) throw new Error(signing.reason);
+    return { ...red, signature: signing.signature };
+  }
+
+  /** The verdict and the printed form the gate is expected to give a redaction of `kind`. */
+  function expectedFor(kind: 'unsigned' | 'agent' | 'owner'): {
+    verdict: VoteRecordSignatureVerdict;
+    printed: string;
+  } {
+    if (kind === 'unsigned')
+      return { verdict: { code: 'unsigned-record' }, printed: 'unsigned-record' };
+    const principal = kind === 'agent' ? AGENT : OPERATOR;
+    return { verdict: signedAs(principal), printed: `signed:${kind} by ${principal}` };
+  }
+
+  it.each(['unsigned', 'agent', 'owner'] as const)(
+    'reports a %s redaction beside its target using the real verifier; the gate still ratifies (#6372)',
+    (kind) => {
+      const r = record('v0', { sequence: 0 });
+      const after = { ...r, voters: redactVoterOpenings(r.voters, new Set(['security'])) };
+      const red = buildRedactionRecord({
+        id: 'red-0',
+        sequence: 1,
+        targetId: r.id,
+        targetVoterRoles: ['security'],
+        at: '2026-09-15T00:00:00.000Z',
+        by: 'claimed-owner',
+        reason: 'private quotation',
+      });
+      const entry = signedRedaction(red, kind);
+      const path = join(dir, 'vote-records.jsonl');
+      writeFileSync(path, ledgerText([after]) + JSON.stringify(entry) + '\n');
+      const env = {
+        PR_NUMBER: String(PR),
+        PR_HEAD_SHA: HEAD,
+        [ALLOWED_SIGNERS_PATH_ENV]: allowedSignersPath,
+      };
+      const evidence = ledgerEvidenceFromEnv(env, path, dir);
+      expect(evidence.kind).toBe('ratified');
+      if (evidence.kind !== 'ratified') throw new Error('expected ratification');
+      const expected = expectedFor(kind);
+      expect(evidence.signatures).toEqual([
+        { recordId: r.id, verdict: { code: 'unsigned-record' } },
+        { recordId: red.id, verdict: expected.verdict },
+      ]);
+      expect(formatLedgerEvidence(evidence)).toContain(`'red-0' ${expected.printed}`);
+      const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        expect(reportLedgerEvidence(env, path, dir)).toBe(true);
+      } finally {
+        output.mockRestore();
+      }
+    }
+  );
 
   it('no verifier supplied → the verdict carries no `signatures` key, and the line says unmeasured', () => {
     const e = evaluateLedgerEvidence({
