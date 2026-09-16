@@ -86,6 +86,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { RedactionRecord } from './redaction-record.js';
 import type { VoteRecord, VoteRecordSignature } from './vote-record.js';
 import { VOTE_RECORD_SIGNATURE_NAMESPACE } from './vote-record.js';
 
@@ -308,8 +309,20 @@ export type VoteRecordSignatureVerdict =
   | { readonly code: 'bad-signature'; readonly keyId: string; readonly reason: string }
   | { readonly code: 'signature-not-measured'; readonly reason: string };
 
+/**
+ * Either committed record kind (#6372): the signed message is the record's
+ * `hash` and the verify time is the record's own timestamp — `recordedAt` on
+ * a vote record, `at` on a redaction record.
+ */
+export type SignableLedgerRecord = VoteRecord | RedactionRecord;
+
+/** The timestamp a record's signature window is evaluated at. */
+function recordVerifyTimestamp(record: SignableLedgerRecord): string {
+  return 'recordedAt' in record ? record.recordedAt : record.at;
+}
+
 export interface VerifyVoteRecordSignatureInput {
-  readonly record: VoteRecord;
+  readonly record: SignableLedgerRecord;
   /** The `governance/allowed_signers` CONTENT — the caller reads the file and maps a read failure to `signature-not-measured`. */
   readonly allowedSigners: string;
 }
@@ -399,7 +412,7 @@ export function verifyVoteRecordSignature(
   if (!listedPrincipals(allowedSigners).has(keyId)) {
     return { code: 'unknown-signer', keyId, reason: `no allowed_signers entry names '${keyId}'` };
   }
-  const anchored = sshKeygenVerifyTime(record.recordedAt);
+  const anchored = sshKeygenVerifyTime(recordVerifyTimestamp(record));
   if (!anchored.ok) return { code: 'signature-not-measured', reason: anchored.reason };
 
   const principals = principalsFor(allowedSigners, signature.sig, anchored.verifyTime, runner);
@@ -422,7 +435,7 @@ export function verifyVoteRecordSignature(
 
 /** The last rung: `ssh-keygen -Y verify` over the hash, for a key already known to be the claimed identity's. */
 function verifyHolds(
-  record: VoteRecord & { readonly signature: VoteRecordSignature },
+  record: SignableLedgerRecord & { readonly signature: VoteRecordSignature },
   allowedSigners: string,
   verifyTime: string,
   runner: SshKeygenRunner
@@ -447,8 +460,10 @@ function verifyHolds(
 export interface SignVoteRecordHashInput {
   /** The COMMITTED hash — after re-sequencing, after re-hashing. Signing an earlier hash signs nothing the ledger carries. */
   readonly hash: string;
-  /** The record's `recordedAt`: the key must be in window THEN, since that is when the gate will evaluate it. */
-  readonly recordedAt: string;
+  /** The record's `recordedAt` (vote record): the key must be in window THEN, since that is when the gate will evaluate it. */
+  readonly recordedAt?: string | undefined;
+  /** The record's `at` (redaction record, #6372) — the same anchor under the other kind's name. Exactly one of `recordedAt`/`at` is required. */
+  readonly at?: string | undefined;
   /** Private key path (or its `.pub` when the private half is in ssh-agent). Named, never read, by this module. */
   readonly keyPath: string;
   /** The `governance/allowed_signers` CONTENT the signature will be verified against; it supplies `keyId`. */
@@ -480,7 +495,14 @@ export function signVoteRecordHash(
   if (outcome.status !== 0 || !ARMORED_SIGNATURE.test(outcome.stdout)) {
     return { ok: false, reason: `ssh-keygen -Y sign failed: ${reasonFrom(outcome)}` };
   }
-  const anchored = sshKeygenVerifyTime(input.recordedAt);
+  const timestamp = input.recordedAt ?? input.at;
+  if (timestamp === undefined) {
+    return {
+      ok: false,
+      reason: 'no recordedAt or at on the record; the signature window cannot be anchored',
+    };
+  }
+  const anchored = sshKeygenVerifyTime(timestamp);
   if (!anchored.ok) return { ok: false, reason: anchored.reason };
   const principals = principalsFor(
     input.allowedSigners,

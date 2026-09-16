@@ -1,7 +1,7 @@
 /** Operator redaction: real ledger fixtures and the governor's admission gate (#6265). */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentVoteResult } from '../packages/nexus-agents/src/cli/vote-types.js';
@@ -14,6 +14,11 @@ import {
 import { evaluateLedgerEvidence } from './governor-ledger-evidence.js';
 import { parseRedactArgs } from './redact-vote-record-args.js';
 import { redactVoteRecord, type RedactOutcome } from './redact-vote-record.js';
+import {
+  AGENT_PRINCIPAL_PREFIX,
+  verifyVoteRecordSignature,
+} from '../packages/nexus-agents/src/audit/vote-record-signature.js';
+import { VOTE_RECORD_SIGNATURE_NAMESPACE } from '../packages/nexus-agents/src/audit/vote-record.js';
 
 const SHA = 'a'.repeat(40);
 const AT = '2026-09-15T00:00:00.000Z';
@@ -99,7 +104,7 @@ describe('redactVoteRecord', () => {
     const base = line + '\n\n' + other; // Preserve blank lines and handle a missing final newline.
     writeFileSync(ledgerPath, base);
     const outcome = run(['architect', 'security']);
-    expect(outcome).toMatchObject({ kind: 'redacted', signing: 'unsigned-unsupported' });
+    expect(outcome).toMatchObject({ kind: 'redacted', signing: 'unsigned-no-key' });
     const head = readFileSync(ledgerPath, 'utf8');
     const expected: VoteRecord = JSON.parse(line) as VoteRecord;
     for (const v of expected.voters) {
@@ -260,7 +265,68 @@ describe('redactVoteRecord', () => {
     ).toBe('refused');
     expect(readFileSync(ledgerPath, 'utf8')).toBe(before);
   });
-  it('CLI reports unsigned support and refuses bad input with exit 1 and one line', () => {
+  it('signs the redaction with the configured key and reports the agent principal (#6372)', () => {
+    // Ephemeral ed25519 key, listed under the agent principal in an
+    // allowed_signers beside the ledger — the real ssh-keygen path.
+    const keyPath = join(dir, 'agent.key');
+    execFileSync(
+      'ssh-keygen',
+      ['-q', '-t', 'ed25519', '-N', '', '-C', 'ephemeral', '-f', keyPath],
+      {
+        stdio: 'ignore',
+      }
+    );
+    const agent = `${AGENT_PRINCIPAL_PREFIX}test`;
+    const allowedSignersPath = join(dir, 'allowed_signers');
+    const allowedSigners = `${agent} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${keyPath}.pub`, 'utf8')}`;
+    writeFileSync(allowedSignersPath, allowedSigners);
+    const outcome = redactVoteRecord({
+      ledgerPath,
+      recordId: 'target',
+      roles: ['architect'],
+      by: 'operator',
+      reason: 'remove private context',
+      signing: { keyPath, allowedSignersPath, source: 'flag', asOwner: false },
+    });
+    expect(outcome).toMatchObject({ kind: 'redacted', signing: 'signed' });
+    if (outcome.kind !== 'redacted') throw new Error('unreachable');
+    expect(outcome.record.signature?.keyId).toBe(agent);
+    const persisted = parseVoteRecordsText(readFileSync(ledgerPath, 'utf8'));
+    expect(persisted.invalidLines).toEqual([]);
+    const redaction = persisted.redactions[0];
+    if (redaction === undefined) throw new Error('no redaction persisted');
+    expect(verifyVoteRecordSignature({ record: redaction, allowedSigners })).toMatchObject({
+      code: 'signed',
+      principal: agent,
+      signerKind: 'agent',
+    });
+    // The hash is the same with and without the signature: the target still verifies as redacted.
+    expect(audit.verifyVoteRecordSet(persisted.records, persisted.redactions)).toMatchObject({
+      ok: true,
+      redacted: [{ recordId: 'target' }],
+    });
+  });
+
+  it('refuses to write when the configured key cannot sign — nothing changes on disk', () => {
+    const before = readFileSync(ledgerPath, 'utf8');
+    const outcome = redactVoteRecord({
+      ledgerPath,
+      recordId: 'target',
+      roles: ['architect'],
+      by: 'operator',
+      reason: 'remove private context',
+      signing: {
+        keyPath: join(dir, 'missing.key'),
+        allowedSignersPath: join(dir, 'allowed_signers'),
+        source: 'flag',
+        asOwner: false,
+      },
+    });
+    expect(outcome.kind).toBe('refused');
+    expect(readFileSync(ledgerPath, 'utf8')).toBe(before);
+  });
+
+  it('CLI appends unsigned when no key is configured, and refuses bad input with exit 1 and one line', () => {
     const args = [
       '--ledger',
       ledgerPath,
@@ -271,19 +337,27 @@ describe('redactVoteRecord', () => {
       '--reason',
       'private',
     ];
+    // Pin the data dir so the operator's real agent key is never picked up,
+    // and drop any inherited signing key (append-ratification-record.test.ts does the same).
+    const env: NodeJS.ProcessEnv = { ...process.env, NEXUS_DATA_DIR: join(dir, 'runtime') };
+    delete env['NEXUS_VOTE_SIGNING_KEY'];
+    mkdirSync(join(dir, 'runtime'), { recursive: true });
     const invoke = (extra: string[]): SpawnSyncReturns<string> =>
       spawnSync(
         process.execPath,
         ['--import', 'tsx', 'scripts/redact-vote-record.ts', ...args, ...extra],
-        { encoding: 'utf8', timeout: 30000 }
+        { encoding: 'utf8', timeout: 30000, env }
       );
     const bad = invoke([]);
     expect(bad.status).toBe(1);
     expect(bad.stderr.trim().split('\n')).toHaveLength(1);
-    const good = invoke(['--role', 'architect', '--signing-key', '/unused/key', '--as-owner']);
+    const asOwnerNoKey = invoke(['--role', 'architect', '--as-owner']);
+    expect(asOwnerNoKey.status).toBe(1);
+    expect(asOwnerNoKey.stderr).toContain('--as-owner');
+    const good = invoke(['--role', 'architect']);
     expect(good.status).toBe(0);
     expect(good.stdout).toContain('UNSIGNED');
-    expect(good.stdout).toContain('redaction');
+    expect(good.stdout).toContain("redacted 'target'");
   });
 });
 

@@ -46,7 +46,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
+import type { SignableLedgerRecord } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
 import {
   ALLOWED_SIGNERS_FILE,
   signVoteRecordHash,
@@ -91,8 +91,8 @@ export interface SigningOptions {
 /** Whether the committed record was signed, and why not when it was not. */
 export type SigningState = 'signed' | 'unsigned-no-key';
 
-export type SignStep =
-  | { readonly ok: true; readonly record: VoteRecord; readonly signing: SigningState }
+export type SignStep<R extends SignableLedgerRecord = SignableLedgerRecord> =
+  | { readonly ok: true; readonly record: R; readonly signing: SigningState }
   /** `detail` is the `signing-failed` refusal text; nothing has been written. */
   | { readonly ok: false; readonly detail: string };
 
@@ -105,7 +105,10 @@ export type SignStep =
  * from a run that did not pass `--as-owner`, or `--as-owner` on a run whose
  * key the file lists as the agent.
  */
-export function signCommitted(record: VoteRecord, signing: SigningOptions | undefined): SignStep {
+export function signCommitted<R extends SignableLedgerRecord>(
+  record: R,
+  signing: SigningOptions | undefined
+): SignStep<R> {
   if (signing === undefined) return { ok: true, record, signing: 'unsigned-no-key' };
   let allowedSigners: string;
   try {
@@ -119,9 +122,11 @@ export function signCommitted(record: VoteRecord, signing: SigningOptions | unde
         'a signature that cannot be verified against the committed file is not written.',
     };
   }
+  // #6372: a vote record anchors its signature window at `recordedAt`, a
+  // redaction record at `at`; the signed message is the hash either way.
   const signed = signVoteRecordHash({
     hash: record.hash,
-    recordedAt: record.recordedAt,
+    ...('recordedAt' in record ? { recordedAt: record.recordedAt } : { at: record.at }),
     keyPath: signing.keyPath,
     allowedSigners,
   });
@@ -215,16 +220,20 @@ export function resolveSigning(
  * kind (never the key), or the fact that no key was configured and the
  * three ways to configure one.
  */
-export function signingNotice(signing: SigningState, record: VoteRecord): string {
+export function signingNotice(
+  signing: SigningState,
+  record: SignableLedgerRecord,
+  tool = 'append-ratification-record'
+): string {
   if (signing === 'signed') {
     const principal = record.signature?.keyId ?? '(unknown)';
     return (
-      `[append-ratification-record] signed by ${principal} (${signerKindOf(principal)}; ` +
+      `[${tool}] signed by ${principal} (${signerKindOf(principal)}; ` +
       `ssh-keygen -Y sign, namespace ${record.signature?.namespace ?? '?'}).`
     );
   }
   return (
-    '[append-ratification-record] appended UNSIGNED: no signing key configured ' +
+    `[${tool}] appended UNSIGNED: no signing key configured ` +
     `(pass --signing-key <path>, set ${VOTE_SIGNING_KEY_ENV}, or generate the agent key with ` +
     `scripts/vote-record-keygen.ts at ${agentSigningKeyPath()}); the gate reports ` +
     'unsigned-record informationally until the #3927 phase-3 cutover.'

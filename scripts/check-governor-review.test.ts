@@ -1600,6 +1600,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/check-required-jobs.ts',
     '/scripts/check-required-jobs.test.ts',
     '/scripts/governor-ledger-evidence.ts',
+    '/scripts/governor-ledger-append-only.ts',
     '/scripts/governor-ledger-report.ts',
     '/scripts/governor-patch-identity.ts',
     '/scripts/governor-ledger-signature.ts',
@@ -1645,7 +1646,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (37 entries)', () => {
+  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (38 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1672,7 +1673,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/governance/required-jobs.json');
     expect(set).toContain('/scripts/check-required-jobs.ts');
     expect(set).toContain('/scripts/check-required-jobs.test.ts');
-    expect(set).toHaveLength(37);
+    expect(set).toHaveLength(38);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

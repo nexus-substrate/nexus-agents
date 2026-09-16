@@ -30,8 +30,10 @@
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
-import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
-import type { VoteRecordSignatureVerdict } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
+import type {
+  SignableLedgerRecord,
+  VoteRecordSignatureVerdict,
+} from '../packages/nexus-agents/src/audit/vote-record-signature.js';
 import {
   ALLOWED_SIGNERS_FILE,
   verifyVoteRecordSignature,
@@ -50,8 +52,8 @@ export interface RecordSignatureReport {
   readonly verdict: VoteRecordSignatureVerdict;
 }
 
-/** The verifier the evidence runs over each bound record. */
-export type SignatureVerifier = (record: VoteRecord) => VoteRecordSignatureVerdict;
+/** The verifier the evidence runs over each bound record and each redaction that names one (#6372). */
+export type SignatureVerifier = (record: SignableLedgerRecord) => VoteRecordSignatureVerdict;
 
 /** The ledger's path relative to the policy root when it lies inside it; otherwise the repo-relative default. */
 function relativeLedgerPath(ledgerPath: string, policyDir: string): string {
