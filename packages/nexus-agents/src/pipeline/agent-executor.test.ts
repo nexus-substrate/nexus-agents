@@ -381,6 +381,29 @@ describe('createAgentStages — central workflow hub', () => {
     });
   });
 
+  describe('implement stage failure marker (#6331)', () => {
+    it('names an unknown error rather than interpolating undefined', async () => {
+      mockExecuteExpert.mockResolvedValue({
+        success: false,
+        text: '',
+        durationMs: 5,
+        expertType: 'code',
+        error: undefined,
+      });
+
+      const result = await createAgentStages().implement({
+        id: 't1',
+        title: 'Task',
+        description: 'Desc',
+        assignedTo: 'coder',
+        status: 'pending',
+      });
+
+      expect(result).toContain('[Implementation failed: unknown error]');
+      expect(result).not.toContain('undefined');
+    });
+  });
+
   describe('memory write-back on QA outcomes (#1716)', () => {
     it('records learning on QA pass', async () => {
       mockExecuteExpert.mockResolvedValue({

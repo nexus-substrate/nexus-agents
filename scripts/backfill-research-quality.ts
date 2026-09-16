@@ -73,9 +73,14 @@ function isBlank(value: string | null | undefined): boolean {
   return value === undefined || value === null || value === '';
 }
 
-/** A missing, zero or NaN citation count all mean "no citations found". */
-function hasNoCitations(count: number | undefined): boolean {
-  return count === undefined || count === 0 || Number.isNaN(count);
+/**
+ * A missing, null, zero or NaN citation count all mean "no citations found".
+ * The registry YAML is unvalidated, so `citation_count: null` reaches here
+ * despite the `number | undefined` type; without the null arm it would read as
+ * "has citations" and switch the low-tier note off.
+ */
+function hasNoCitations(count: number | null | undefined): boolean {
+  return count === undefined || count === null || count === 0 || Number.isNaN(count);
 }
 
 function classifyVenue(venue: string | null | undefined): number {
