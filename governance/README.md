@@ -430,6 +430,14 @@ audit gate and the CODEOWNERS parse do not run on an ordinary PR: they read a
 and are skipped otherwise. The `paths:` blocks were a second, hand-maintained
 copy of the governor set; nothing is copied now.
 
+**Coordinated checker + workflow changes take two hops (#6395).** Because the
+gate judges the head's workflow with the BASE checker, a PR that changes a
+checker and the workflow it reads together can never pass — main's checker
+does not know the new shape. Hop 1: teach main's checker to accept the new
+shape as well (loosen nothing; the old shape stays accepted), workflow
+unchanged. Hop 2: the strict checker and the new workflow together, judged by
+the hop-1 checker. Do not admin-merge past the red gate; it is the mechanism.
+
 The governor-owned `required-jobs.json` manifest (#6343) pins every
 `ci-success.needs` job ID, the jobs that may legitimately `skipped`
 (`skip_allowed`), the required contexts `CI Success` and

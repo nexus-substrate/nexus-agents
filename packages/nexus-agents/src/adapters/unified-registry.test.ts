@@ -579,3 +579,56 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
     expect(registry.getSnapshot().cachedAdapters).toEqual([]);
   });
 });
+
+describe('UnifiedAdapterRegistry — gateway cost declaration at registration (#4392 inc 2)', () => {
+  let registry: UnifiedAdapterRegistry;
+  const stub = {
+    providerId: 'stub',
+    modelId: 'gw',
+    capabilities: [],
+    complete: vi.fn(),
+    stream: vi.fn(),
+    getHealth: vi.fn(() => undefined),
+    refresh: vi.fn(() => Promise.resolve()),
+    setPreferredCli: vi.fn(),
+    onFailover: vi.fn(() => () => undefined),
+    dispose: vi.fn(),
+  } as unknown as IResilientAdapter;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    resetGlobalRegistry();
+    registry = createUnifiedRegistry({ logger: mockLogger });
+  });
+
+  afterEach(() => {
+    registry.dispose();
+    vi.unstubAllEnvs();
+  });
+
+  it('warns at the registration, naming NEXUS_GATEWAY_COST, when a gateway arm is registered with it unset', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+
+    registry.registerApiArm('api:gw-prod', stub);
+
+    expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+    expect(String(mockLogger.warn.mock.calls[0]?.[0])).toContain('NEXUS_GATEWAY_COST');
+  });
+
+  it('is silent when the gateway arm is declared', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'gw-prod=free');
+
+    registry.registerApiArm('api:gw-prod', stub);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it('is silent for a vendor arm (api:anthropic is registry-priced, never a gateway)', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+
+    registry.registerApiArm('api:anthropic', stub);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+});

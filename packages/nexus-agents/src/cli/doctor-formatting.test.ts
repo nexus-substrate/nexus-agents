@@ -165,7 +165,7 @@ describe('doctor-formatting', () => {
       clis?: CliCheckResult[];
       mcpServerReady?: boolean;
       mcpClientReady?: boolean;
-      voterTransport?: { configured: boolean };
+      voterTransport?: DoctorResult['voterTransport'];
       scratchSpace?: DoctorResult['scratchSpace'];
       installFreshness?: DoctorResult['installFreshness'];
     } = {}
@@ -674,6 +674,59 @@ describe('doctor-formatting', () => {
           expect(calls.some((call) => call.includes('NEXUS_OPENAI_COMPAT_URL'))).toBe(true);
         }
       }
+    });
+
+    it('warns, without flipping the summary, when the gateway cost is UNSET (#4392 inc 2)', () => {
+      const result = createDoctorResult({
+        voterTransport: { configured: true, cost: 'unset' },
+      });
+      printDoctorResults(result);
+      const calls = getCalls();
+      const line = calls.find((call) => call.includes('Gateway cost: UNSET'));
+      expect(line).toBeDefined();
+      expect(line).toContain('NEXUS_GATEWAY_COST=free|local|priced[:<in>,<out>]');
+      expect(line).toContain(
+        'the task-class cost ceiling and the per-task budget exclude this gateway until declared'
+      );
+      expect(line).not.toContain('cost-weighted routing');
+      // A warning, not a failure: allHealthy is the fixture's value, untouched.
+      expect(calls.some((call) => call.includes('Status: Ready'))).toBe(true);
+    });
+
+    it.each([
+      ['invalid', 'Gateway cost: INVALID'],
+      ['no-default', 'Gateway cost: NOT DECLARED for the voter gateway'],
+    ] as const)('renders cost %j as its own warning, not as unset (#4392 inc 2)', (cost, text) => {
+      const result = createDoctorResult({ voterTransport: { configured: true, cost } });
+      printDoctorResults(result);
+      const calls = getCalls();
+      const line = calls.find((call) => call.includes(text));
+      expect(line).toBeDefined();
+      expect(line).toContain(
+        'the task-class cost ceiling and the per-task budget exclude this gateway until declared'
+      );
+      expect(calls.some((call) => call.includes('Gateway cost: UNSET'))).toBe(false);
+    });
+
+    it('prints the declared gateway cost on its own line (#4392 inc 2)', () => {
+      const result = createDoctorResult({
+        voterTransport: {
+          configured: true,
+          cost: { kind: 'priced', inputPer1M: 2, outputPer1M: 10 },
+        },
+      });
+      printDoctorResults(result);
+      const calls = getCalls();
+      expect(calls.some((call) => call.includes('Gateway cost: priced ($2/$10 per 1M)'))).toBe(
+        true
+      );
+      expect(calls.some((call) => call.includes('UNSET'))).toBe(false);
+    });
+
+    it('prints no gateway cost line when no gateway is configured (#4392 inc 2)', () => {
+      const result = createDoctorResult({ voterTransport: { configured: false } });
+      printDoctorResults(result);
+      expect(getCalls().some((call) => call.includes('Gateway cost'))).toBe(false);
     });
 
     it('renders the pinned claude model line from the probe, not from CLI presence (#6120)', () => {

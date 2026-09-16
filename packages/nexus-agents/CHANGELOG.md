@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.74.1
+
+### Patch Changes
+
+- [#6397](https://github.com/nexus-substrate/nexus-agents/pull/6397) [`9416cc3`](https://github.com/nexus-substrate/nexus-agents/commit/9416cc3793a443923ca378fde092f4b57419831e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `checkBudget` no longer admits an undeclared gateway arm under `maxCostUsd` at opencode's default model rate. The per-task budget filter now prices a gateway arm (`api:custom-openai`, or any operator-named endpoint arm) by its `NEXUS_GATEWAY_COST` declaration, the same way the task-class cost ceiling already did: `free`/`local` is $0, `priced:<in>,<out>` is that flat rate, bare `priced` uses the display slot's registry rate, and an undeclared, invalid, or registry-unpriceable gateway is not within budget at all — it is skipped, never given a number. `BudgetRoutingResult` gains an optional `unpricedArms` field listing each skipped arm with its reason (`gateway cost unset`, `gateway cost invalid (…)`, …); it is absent when every candidate could be priced. CLI slots and vendor arms (`api:anthropic|openai|google`) keep their previous conservative registry-fallback numbers. The registration-time warning, `doctor`, and `CONFIGURATION.md` now name both consequences of an undeclared gateway.
+
+## 8.74.0
+
+### Minor Changes
+
+- [#6392](https://github.com/nexus-substrate/nexus-agents/pull/6392) [`0c1ebb1`](https://github.com/nexus-substrate/nexus-agents/commit/0c1ebb1db34ae85feeaf67202eb9d600f81c6b67) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - New `NEXUS_GATEWAY_COST` declares what an OpenAI-compatible gateway arm costs ([#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392) increment 2, step 1). Grammar: `free` | `local` | `priced` | `priced:<inputPer1M>,<outputPer1M>`, optionally endpoint-scoped as `endpoint=decl[;endpoint=decl]` with at most one bare declaration that applies to every gateway arm without its own entry. `free` and `local` price every token at $0, bare `priced` uses registry rates, and `priced:<in>,<out>` is a flat per-1M rate for the endpoint. Unset or invalid means UNDECLARED: the per-task-class cost ceiling now excludes an undeclared gateway arm (`api:custom-openai`) instead of silently pricing it as opencode's default model (the session budget filter still prices it by display slot), the adapter registry warns at each registration of such an arm, naming whether the variable is unset, invalid (with the parser's reason) or names neither the arm nor a default, and `nexus-agents doctor` prints a `Gateway cost: UNSET` / `INVALID` / `NOT DECLARED` warning under a configured voter gateway without changing its overall verdict. An invalid value is reported at startup with the parser's reason and its raw value redacted, since an entry key can carry a token or URL. Vendor arms (`api:anthropic|openai|google`) and CLI slots are unaffected. `VoterTransportCheck` gains an optional `cost` field; nothing is removed or renamed.
+
 ## 8.73.1
 
 ### Patch Changes

@@ -22,6 +22,7 @@ import { ConfigError } from '../core/errors.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
+import { warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
 import type { CliName, EndpointArmId, ObservedArmId } from '../cli-adapters/types.js';
 import { isCliName, isEndpointArmId } from '../cli-adapters/types.js';
@@ -195,7 +196,9 @@ export class UnifiedAdapterRegistry {
    * Registering an id twice replaces (and disposes) the earlier adapter.
    * CLI-slot behaviour is untouched. A registered endpoint arm is observable
    * here and in the breaker registry but is NOT a `RoutingArmId`: it cannot
-   * enter outcome records until #6291.
+   * enter outcome records until #6291. A gateway arm registered without a
+   * `NEXUS_GATEWAY_COST` declaration is warned about here, once, at the
+   * moment it becomes routable (#4392 increment 2).
    */
   registerApiArm(arm: EndpointArmId, adapter: IResilientAdapter): void {
     if (!isEndpointArmId(arm)) {
@@ -204,6 +207,7 @@ export class UnifiedAdapterRegistry {
     this.cliAdapters.get(arm)?.dispose();
     this.cliAdapters.set(arm, adapter);
     this.logger.info('Registered api arm adapter', { arm });
+    warnIfGatewayCostUndeclared(arm, this.logger);
   }
 
   /**

@@ -4,7 +4,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { BudgetRouter, createBudgetRouter } from './budget-router.js';
+import { BudgetRouter, createBudgetRouter, estimateRegistryCostUsd } from './budget-router.js';
+import { estimateArmCostUsd } from './budget-arm-cost.js';
+import { estimateCost, estimateTokens } from './budget-utils.js';
+import { computeTokenCost } from '../learning/token-cost-core.js';
+import { routingArmDisplaySlot } from './types.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -15,6 +19,7 @@ import type {
   CapacityStatus,
   ModelInfo,
   BudgetRouterOptions,
+  RoutingArmId,
 } from './types.js';
 
 // Mock adapter factory
@@ -468,4 +473,249 @@ describe('BudgetRouter task-class cost ceiling (#4196)', () => {
     expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual([]);
     r.dispose();
   });
+});
+
+// ============================================================================
+// Gateway arms under the task-class ceiling (#4392 increment 2, step 1)
+// ============================================================================
+
+describe('BudgetRouter task-class cost ceiling — gateway arms (#4392 inc 2)', () => {
+  // Same task as the #4196 suite: code_generation, ~10k output tokens.
+  // gemini (gemini-3-pro, $2/$12) ≈ $0.12 sits under a 0.2 ceiling; claude
+  // (claude-fable-5, $10/$50) ≈ $0.50 sits over it. The gateway arm is the
+  // subject; the vendor arms are the control that must not move.
+  const ceilingTask: CliTask = { content: 'implement a function', maxTokens: 10_000 };
+  const candidates: RoutingArmId[] = ['claude', 'gemini', 'api:custom-openai'];
+
+  function makeRouter(): BudgetRouter {
+    return new BudgetRouter(new Map<RoutingArmId, ICliAdapter>(), {
+      taskClassCostCeilings: { code_generation: 0.2 },
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('excludes an UNDECLARED gateway arm (fail-closed) and leaves vendor arms unchanged', () => {
+    const r = makeRouter();
+    // Before this step api:custom-openai was silently priced as opencode's
+    // default model ($3/$15 ≈ $0.15) and slipped under the ceiling.
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['gemini']);
+    r.dispose();
+  });
+
+  it('admits a gateway declared free', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const r = makeRouter();
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual([
+      'gemini',
+      'api:custom-openai',
+    ]);
+    r.dispose();
+  });
+
+  it('prices a gateway declared priced:<in>,<out> at that flat rate', () => {
+    // $2/$10 per 1M with ~10k output → ≈ $0.10: under the 0.2 ceiling.
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+    const cheap = makeRouter();
+    expect(cheap.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual([
+      'gemini',
+      'api:custom-openai',
+    ]);
+    cheap.dispose();
+
+    // $50/$50 per 1M with ~10k output → ≈ $0.50: over the 0.2 ceiling.
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:50,50');
+    const dear = makeRouter();
+    expect(dear.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['gemini']);
+    dear.dispose();
+  });
+
+  it('a scoped declaration for another endpoint leaves this gateway undeclared', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'corp-proxy=free');
+    const r = makeRouter();
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['gemini']);
+    r.dispose();
+  });
+});
+
+describe('estimateArmCostUsd (#4392 inc 2)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is undefined for an undeclared gateway arm, never 0', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    expect(estimateArmCostUsd('api:custom-openai', 1_000, 1_000)).toBeUndefined();
+  });
+
+  it('is 0 for a gateway declared local', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'local');
+    expect(estimateArmCostUsd('api:custom-openai', 1_000, 1_000)).toBe(0);
+  });
+
+  it('is the flat rate for priced:<in>,<out>', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+    // 1M input at $2 + 1M output at $10.
+    expect(estimateArmCostUsd('api:custom-openai', 1_000_000, 1_000_000)).toBeCloseTo(12, 6);
+  });
+
+  it('a vendor arm is priced by the registry regardless of the declaration', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const viaArm = estimateArmCostUsd('api:google', 1_000, 1_000);
+    const viaSlot = estimateRegistryCostUsd('gemini', 1_000, 1_000);
+    expect(viaArm).toBe(viaSlot);
+    expect(viaArm).toBeGreaterThan(0);
+  });
+
+  it('accepts an explicit env so callers need not mutate process.env', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    expect(
+      estimateArmCostUsd('api:custom-openai', 1_000, 1_000, { NEXUS_GATEWAY_COST: 'free' })
+    ).toBe(0);
+  });
+});
+
+// ============================================================================
+// checkBudget / selectAdapterWithinBudget — gateway arms (#6393, #4392 inc 2)
+// ============================================================================
+
+describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
+  // The #6392 review ran this exact shape with NEXUS_GATEWAY_COST unset and
+  // saw `withinBudget: true` at estimatedCostUsd ≈ 0.15 — opencode's default
+  // model rate, because a gateway adapter's display `name` is its slot and
+  // `checkBudget` priced `adapter.name` instead of the arm.
+  const task: CliTask = { content: 'implement a function', maxTokens: 10_000 };
+  const inputTokens = estimateTokens(task.content);
+  const outputTokens = 10_000;
+  const budget = { maxCostUsd: 1 };
+
+  function makeRouter(arms: readonly RoutingArmId[]): BudgetRouter {
+    const adapters = new Map<RoutingArmId, ICliAdapter>(
+      arms.map((arm) => [arm, createMockAdapter(routingArmDisplaySlot(arm))])
+    );
+    return new BudgetRouter(adapters, {
+      sessionBudget: { tokenBudget: 1_000_000, costBudgetUsd: 100, resetIntervalMs: 0 },
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    const helpers = await import('../config/model-config-helpers.js');
+    const actual = await vi.importActual<typeof import('../config/model-config-helpers.js')>(
+      '../config/model-config-helpers.js'
+    );
+    vi.mocked(helpers.getModelPricing).mockImplementation(actual.getModelPricing);
+  });
+
+  it('an UNDECLARED gateway is not within budget and no cost is fabricated for it', async () => {
+    const r = makeRouter(['api:custom-openai']);
+    const result = r.checkBudget(task, budget);
+    expect(result.withinBudget).toBe(false);
+    expect(result.adapter).toBeNull();
+    // Named empty case: nothing selectable → the existing "nothing would run"
+    // $0, never opencode's ≈$0.15; the reason travels on the record instead.
+    expect(result.estimatedCostUsd).toBe(0);
+    expect(result.unpricedArms).toEqual([
+      { arm: 'api:custom-openai', reason: 'gateway cost unset' },
+    ]);
+    const routed = await r.routeWithBudget(task, budget);
+    expect(routed.ok).toBe(false);
+    r.dispose();
+  });
+
+  it('names an INVALID declaration as the reason', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'metered');
+    const r = makeRouter(['api:custom-openai']);
+    const result = r.checkBudget(task, budget);
+    expect(result.withinBudget).toBe(false);
+    expect(result.unpricedArms?.[0]?.reason).toMatch(/^gateway cost invalid \(/);
+    r.dispose();
+  });
+
+  it('a gateway declared free is within budget at $0', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const r = makeRouter(['api:custom-openai']);
+    const result = r.checkBudget(task, budget);
+    expect(result.withinBudget).toBe(true);
+    expect(result.adapter).not.toBeNull();
+    expect(result.estimatedCostUsd).toBe(0);
+    // Absent, not empty: every candidate could be priced.
+    expect(result.unpricedArms).toBeUndefined();
+    r.dispose();
+  });
+
+  it('a gateway declared priced:<in>,<out> is priced by computeTokenCost at that flat rate', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+    const r = makeRouter(['api:custom-openai']);
+    const result = r.checkBudget(task, budget);
+    const expected = computeTokenCost(
+      { input: inputTokens, output: outputTokens },
+      { inputPer1M: 2, outputPer1M: 10 }
+    ).costUsd;
+    expect(result.withinBudget).toBe(true);
+    expect(result.estimatedCostUsd).toBeCloseTo(expected, 12);
+    expect(result.estimatedCostUsd).toBeGreaterThan(0);
+    r.dispose();
+
+    // The same flat rate binds: $50/$50 with ~10k output ≈ $0.50 > 0.4.
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:50,50');
+    const dear = makeRouter(['api:custom-openai']);
+    expect(dear.checkBudget(task, { maxCostUsd: 0.4 }).withinBudget).toBe(false);
+    dear.dispose();
+  });
+
+  it('bare priced on a slot with no registry pricing stays fail-closed, with the gap named', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced');
+    const helpers = await import('../config/model-config-helpers.js');
+    vi.mocked(helpers.getModelPricing).mockReturnValue(undefined);
+    const r = makeRouter(['api:custom-openai']);
+    const result = r.checkBudget(task, budget);
+    expect(result.withinBudget).toBe(false);
+    expect(result.unpricedArms?.[0]?.reason).toMatch(/no registry pricing/);
+    r.dispose();
+  });
+
+  it('skips the undeclared gateway but still selects a priceable vendor arm, and says so', () => {
+    const r = makeRouter(['api:custom-openai', 'gemini']);
+    const result = r.checkBudget(task, budget);
+    expect(result.withinBudget).toBe(true);
+    expect(result.adapter?.name).toBe('gemini');
+    expect(result.estimatedCostUsd).toBeCloseTo(
+      estimateCost('gemini', inputTokens, outputTokens),
+      12
+    );
+    expect(result.unpricedArms).toEqual([
+      { arm: 'api:custom-openai', reason: 'gateway cost unset' },
+    ]);
+    r.dispose();
+  });
+
+  it.each<RoutingArmId>(['claude', 'gemini', 'codex', 'api:google'])(
+    'pins the conservative resolveCliCostPer1M number for CLI slot / vendor arm %s',
+    (arm) => {
+      // Control: the pre-#6393 formula, `estimateCost(displaySlot, in, out)`,
+      // must survive for every non-gateway arm — declared or not.
+      const before = estimateCost(routingArmDisplaySlot(arm), inputTokens, outputTokens);
+      expect(before).toBeGreaterThan(0);
+      for (const decl of [undefined, 'free']) {
+        vi.stubEnv('NEXUS_GATEWAY_COST', decl);
+        const r = makeRouter([arm]);
+        const result = r.checkBudget(task, budget);
+        expect(result.withinBudget).toBe(true);
+        expect(result.estimatedCostUsd).toBeCloseTo(before, 12);
+        expect(result.unpricedArms).toBeUndefined();
+        r.dispose();
+      }
+    }
+  );
 });
