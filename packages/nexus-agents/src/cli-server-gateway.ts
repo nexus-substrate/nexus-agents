@@ -14,9 +14,15 @@
 
 import type { ILogger, IModelAdapter } from './core/index.js';
 import {
+  readOpenAICompatEndpoint,
   readOpenAICompatEnv,
   buildOpenAICompatAdapters,
 } from './adapters/openai-compat-adapter.js';
+import { createGatewayArmAdapter } from './adapters/gateway-arm-adapter.js';
+import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
+import { getDefaultCliCircuitBreakerRegistry } from './cli-adapters/cli-circuit-breaker.js';
+import { isEndpointArmId, type EndpointArmId } from './cli-adapters/types-core.js';
 import { detectSandbox } from './config/sandbox-detection.js';
 import { EXIT_CODES } from './cli-types.js';
 
@@ -57,7 +63,7 @@ export async function tryWireGatewayAdapters(
     return undefined;
   }
 
-  const result = await buildOpenAICompatAdapters();
+  const result = await buildOpenAICompatAdapters(logger);
   if (result === null) {
     // env-was-set guard; build contract allows it
     noticeCliSubprocessFallback(logger);
@@ -128,6 +134,71 @@ export function resolveDefaultModelAdapter(
   adapterRegistry: { getDefault(): IModelAdapter }
 ): IModelAdapter {
   return gatewayAdapters?.[0] ?? adapterRegistry.getDefault();
+}
+
+/**
+ * Register the discovered gateway models as ONE `api:<endpoint>` arm in the
+ * adapter registry (#4392 increment 2, step 2), in EVERY billing mode — the
+ * arm is what the shared breaker, the `NEXUS_GATEWAY_COST` declaration and
+ * (once #6291 widens the routing ids) routing key on. `registerApiArm` warns
+ * when the arm's cost is undeclared. The per-model adapters keep flowing to
+ * the voter tools unchanged; this adds the arm beside them.
+ *
+ * Returns the arm id, or `undefined` when nothing was registered: no gateway
+ * (`adapters` undefined or empty — the named empty case, logged at debug), or
+ * an `endpoint` that is not a valid endpoint id (the env schema already
+ * reported it; a garbage arm id is never minted from it).
+ */
+export function registerGatewayArm(
+  adapters: readonly IModelAdapter[] | undefined,
+  endpoint: string,
+  registry: {
+    registerApiArm(arm: EndpointArmId, adapter: IResilientAdapter): void;
+    getLogger(): ILogger;
+  }
+): EndpointArmId | undefined {
+  const logger = registry.getLogger();
+  if (adapters === undefined || adapters.length === 0) {
+    logger.debug('No gateway adapters discovered; no api: arm registered');
+    return undefined;
+  }
+  const armId = `api:${endpoint}`;
+  if (!isEndpointArmId(armId)) {
+    // Not echoed: the likely mistake is a pasted URL, which can carry a key.
+    logger.warn('Gateway endpoint is not a valid endpoint id; no api: arm registered');
+    return undefined;
+  }
+  registry.registerApiArm(
+    armId,
+    createGatewayArmAdapter(armId, adapters, {
+      circuitBreakerRegistry: getDefaultCliCircuitBreakerRegistry(),
+      logger,
+    })
+  );
+  // AFTER registerApiArm: a re-registration disposes the earlier arm, and its
+  // dispose() clears the catalogue — set first, the new catalogue would go too.
+  setGatewayCatalog(
+    armId,
+    adapters.map((a) => a.modelId)
+  );
+  logger.info('Gateway registered as one api: arm', { arm: armId, modelCount: adapters.length });
+  return armId;
+}
+
+/**
+ * The bootstrap entry (#4392 inc 2 step 2): discover the gateway
+ * ({@link tryWireGatewayAdapters}), register its `api:<endpoint>` arm
+ * ({@link registerGatewayArm}) under the operator's endpoint id, and hand the
+ * per-model adapters back for the tools. One call, so `cli-server.ts` cannot
+ * wire the adapters without the arm.
+ */
+export async function wireGateway(
+  logger: ILogger,
+  registry: Parameters<typeof registerGatewayArm>[2]
+): Promise<readonly IModelAdapter[] | undefined> {
+  const adapters = await tryWireGatewayAdapters(logger);
+  registerGatewayArm(adapters, readOpenAICompatEndpoint(), registry);
+  return adapters;
 }
 
 function handleMissingEnv(logger: ILogger, sandboxActive: boolean): void {

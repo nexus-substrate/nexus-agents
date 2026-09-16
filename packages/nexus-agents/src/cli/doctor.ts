@@ -42,8 +42,15 @@ import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
-import { readOpenAICompatEnv } from '../adapters/openai-compat-adapter.js';
-import { gatewayCostStatus, type GatewayCostDeclaration } from '../adapters/sdk/gateway-cost.js';
+import {
+  readOpenAICompatEndpoint,
+  readOpenAICompatEnv,
+} from '../adapters/openai-compat-adapter.js';
+import {
+  gatewayCostStatus,
+  resolveGatewayCostDeclaration,
+  type GatewayCostDeclaration,
+} from '../adapters/sdk/gateway-cost.js';
 import { printDoctorResults } from './doctor-formatting.js';
 import { probeCli } from './cli-auth-probe.js';
 import { probeClaudePinnedModel, type ClaudeModelProbe } from './doctor-claude-model.js';
@@ -250,9 +257,11 @@ export interface VoterTransportCheck {
    * present only when a gateway is configured. Three gaps are told apart
    * because each is a different fix: `'unset'` (variable absent),
    * `'invalid'` (set but does not parse — the startup env warning carries the
-   * reason), and `'no-default'` (valid, but only endpoint-scoped entries —
-   * the voter gateway has no arm identity yet (step 2), so only a bare
-   * declaration can apply to it). Every gap is a warning, not a failure: the
+   * reason), and `'no-default'` (valid, but names neither a bare declaration
+   * nor this gateway's `<endpoint>=` entry — the gateway registers as
+   * `api:<endpoint>`, `NEXUS_OPENAI_COMPAT_ENDPOINT` or `openai-compat`, and a
+   * scoped entry for it counts since step 2). Every gap is a warning, not a
+   * failure: the
    * gateway still serves voters; the task-class cost ceiling and the
    * per-task budget exclude it (#6393).
    */
@@ -847,15 +856,24 @@ function collectEnvironmentChecks(): {
 }
 
 export function checkVoterTransport(): VoterTransportCheck {
-  if (readOpenAICompatEnv() === null) return { configured: false };
-  return { configured: true, cost: voterGatewayCostDeclaration() };
+  const gateway = readOpenAICompatEnv();
+  if (gateway === null) return { configured: false };
+  return {
+    configured: true,
+    cost: voterGatewayCostDeclaration(gateway.endpoint ?? readOpenAICompatEndpoint()),
+  };
 }
 
-/** The bare `NEXUS_GATEWAY_COST` declaration, or which gap (see {@link VoterTransportCheck.cost}). */
-function voterGatewayCostDeclaration(): NonNullable<VoterTransportCheck['cost']> {
+/**
+ * The declaration that applies to the voter gateway's arm — a scoped
+ * `<endpoint>=` entry or the bare default, resolved exactly as the cost
+ * estimators resolve it (#4392 step 2) — or which gap (see
+ * {@link VoterTransportCheck.cost}).
+ */
+function voterGatewayCostDeclaration(endpoint: string): NonNullable<VoterTransportCheck['cost']> {
   const status = gatewayCostStatus();
   if (status.kind !== 'declared') return status.kind;
-  return status.map.default ?? 'no-default';
+  return resolveGatewayCostDeclaration(`api:${endpoint}`) ?? 'no-default';
 }
 
 /** The inputs the overall verdict is computed from. */

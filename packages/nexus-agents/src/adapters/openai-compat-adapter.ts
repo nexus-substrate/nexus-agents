@@ -25,6 +25,7 @@ import type {
   Result,
   CompletionRequest,
   CompletionResponse,
+  ILogger,
   ModelError,
   ModelMetadata,
   IModelAdapter,
@@ -33,12 +34,22 @@ import { ok, err, ConfigError, getErrorMessage, getTimeProvider } from '../core/
 import { OpenAIAdapter } from './openai-adapter.js';
 import { recordUsageEvent, computeCostDetail } from '../learning/usage-log.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
+import { isEndpointArmId } from '../cli-adapters/types-core.js';
+import { DEFAULT_OPENAI_COMPAT_ENDPOINT, OPENAI_COMPAT_ENDPOINT_ENV } from './sdk/types.js';
 
 export interface OpenAICompatConfig {
   /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
   readonly baseUrl: string;
   /** API key the gateway expects. */
   readonly apiKey: string;
+  /**
+   * Endpoint identity the gateway registers as — the `<endpoint>` of its
+   * `api:<endpoint>` arm (#4392 increment 2, step 2). Always set by
+   * {@link readOpenAICompatEnv}; optional on the type so a hand-built config
+   * (tests, embedders) keeps working, with the default applying at
+   * registration. Never the URL.
+   */
+  readonly endpoint?: string;
 }
 
 export interface DiscoveredModel {
@@ -71,7 +82,7 @@ function readGatewayFromEnv(): OpenAICompatConfig | null {
   const envKey = process.env['NEXUS_OPENAI_COMPAT_KEY']?.trim();
   if (envUrl === undefined || envUrl === '') return null;
   if (envKey === undefined || envKey === '') return null;
-  return { baseUrl: envUrl, apiKey: envKey };
+  return { baseUrl: envUrl, apiKey: envKey, endpoint: readOpenAICompatEndpoint() };
 }
 
 function readGatewayFromOpencode(): OpenAICompatConfig | null {
@@ -79,7 +90,25 @@ function readGatewayFromOpencode(): OpenAICompatConfig | null {
   if (opencodePath === undefined || opencodePath === '') return null;
   const fromFile = readOpencodeGateway(opencodePath);
   if (fromFile === null) return null;
-  return { baseUrl: fromFile.baseURL, apiKey: fromFile.apiKey };
+  return {
+    baseUrl: fromFile.baseURL,
+    apiKey: fromFile.apiKey,
+    endpoint: readOpenAICompatEndpoint(),
+  };
+}
+
+/**
+ * The gateway's endpoint identity (#4392 increment 2, step 2):
+ * `NEXUS_OPENAI_COMPAT_ENDPOINT` when it is a valid endpoint id, else
+ * {@link DEFAULT_OPENAI_COMPAT_ENDPOINT}. The fallback is deliberate: the env
+ * schema reports an invalid value at startup, and this reader must never turn
+ * a pasted URL — or a credential inside one — into an arm id, telemetry key
+ * or display string. Both config paths (env, opencode.json) share it.
+ */
+export function readOpenAICompatEndpoint(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env[OPENAI_COMPAT_ENDPOINT_ENV]?.trim();
+  if (raw === undefined || raw === '') return DEFAULT_OPENAI_COMPAT_ENDPOINT;
+  return isEndpointArmId(`api:${raw}`) ? raw : DEFAULT_OPENAI_COMPAT_ENDPOINT;
 }
 
 /**
@@ -95,6 +124,36 @@ const MAX_DISCOVERED_MODELS = 256;
 
 /** Bound on the discovery call. Bootstrap must not hang on a dead gateway. */
 const MODEL_DISCOVERY_TIMEOUT_MS = 10_000;
+
+/**
+ * Shape of a model id this adapter will dispatch to (#4392 increment 2, step
+ * 2). A discovered id becomes a request field, a usage-log key and — through
+ * the gateway catalogue — a pricing key, so whitespace and control characters
+ * are refused; `/`, `:`, `.` and `_` are kept because aggregators use them
+ * (`org/model:tag`). Length is capped at 128.
+ */
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+
+/**
+ * Keep the ids that satisfy {@link MODEL_ID_PATTERN}. Warns with the dropped
+ * COUNT only — an offending id is exactly the string that must not reach a
+ * log line, and the count is what tells an operator the gateway's listing
+ * needs a look.
+ */
+function keepValidModelIds(
+  models: readonly DiscoveredModel[],
+  logger: ILogger | undefined
+): readonly DiscoveredModel[] {
+  const kept = models.filter((m) => MODEL_ID_PATTERN.test(m.id));
+  const dropped = models.length - kept.length;
+  if (dropped > 0) {
+    logger?.warn(
+      `Dropped ${String(dropped)} gateway model id(s) that are not a valid model id shape (whitespace, control characters, or over 128 chars)`,
+      { dropped, kept: kept.length }
+    );
+  }
+  return kept;
+}
 
 /** Hostname of a base URL, or the raw string when it will not parse. */
 function hostnameOf(baseUrl: string): string {
@@ -113,7 +172,8 @@ function hostnameOf(baseUrl: string): string {
  * expose.
  */
 export async function discoverModels(
-  config: OpenAICompatConfig
+  config: OpenAICompatConfig,
+  logger?: ILogger
 ): Promise<Result<readonly DiscoveredModel[], ConfigError>> {
   // Reuse the SDK path's DNS-resolve-time SSRF guard (#3426) rather than
   // growing a second one. This path needs it at least as much: it can read its
@@ -148,7 +208,7 @@ export async function discoverModels(
       created: m.created,
       ownedBy: m.owned_by,
     }));
-    return ok(models);
+    return ok(keepValidModelIds(models, logger));
   } catch (e: unknown) {
     return err(
       new ConfigError(
@@ -269,13 +329,12 @@ function attachListModels(wrapped: IModelAdapter, inner: IModelAdapter): void {
  * dispatch target alongside the existing claude/codex/gemini/opencode
  * adapter slots.
  */
-export async function buildOpenAICompatAdapters(): Promise<Result<
-  readonly IModelAdapter[],
-  ConfigError
-> | null> {
+export async function buildOpenAICompatAdapters(
+  logger?: ILogger
+): Promise<Result<readonly IModelAdapter[], ConfigError> | null> {
   const config = readOpenAICompatEnv();
   if (config === null) return null;
-  const discovered = await discoverModels(config);
+  const discovered = await discoverModels(config, logger);
   if (!discovered.ok) return discovered;
   return ok(discovered.value.map((m) => createOpenAICompatAdapter(m.id, config)));
 }

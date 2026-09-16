@@ -50,7 +50,7 @@ import {
   type AppConfig,
 } from './config/index.js';
 import { initializeExperts } from './cli-server-experts.js';
-import { tryWireGatewayAdapters, resolveDefaultModelAdapter } from './cli-server-gateway.js';
+import { wireGateway, resolveDefaultModelAdapter } from './cli-server-gateway.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
@@ -406,9 +406,13 @@ async function initializeAndRegisterTools(
   // #2502 (epic #2500 child 2): when the OpenAI-compat gateway is configured,
   // it becomes the default model adapter. In sandbox mode the gateway is the
   // only available channel to LLMs, so a missing or unreachable gateway is a
-  // hard startup failure (see tryWireGatewayAdapter for the matrix). Outside
+  // hard startup failure (see tryWireGatewayAdapters for the matrix). Outside
   // sandbox mode it's optional — falls through to the CLI-based default.
-  const gatewayAdapters = await tryWireGatewayAdapters(logger);
+  // #4392 inc 2 step 2: the same models are also registered once as the
+  // gateway's `api:<endpoint>` arm in `adapterRegistry` (breaker, cost
+  // declaration, later routing) — in any billing mode. The per-model adapters
+  // still go to the tools below.
+  const gatewayAdapters = await wireGateway(logger, adapterRegistry);
   const modelAdapter = resolveDefaultModelAdapter(gatewayAdapters, adapterRegistry);
   const policyVals = getPolicyValues(config);
   const allowedPaths = config.security?.allowedPaths;

@@ -7,7 +7,11 @@
  */
 
 import { describeGatewayCostDeclaration } from '../adapters/sdk/gateway-cost.js';
-import { GATEWAY_COST_ENV } from '../adapters/sdk/types.js';
+import {
+  DEFAULT_OPENAI_COMPAT_ENDPOINT,
+  GATEWAY_COST_ENV,
+  OPENAI_COMPAT_ENDPOINT_ENV,
+} from '../adapters/sdk/types.js';
 import type { VoterTransportCheck } from './doctor.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 
@@ -39,7 +43,7 @@ const CEILING_CONSEQUENCE =
 const GAP_LINES: Record<'unset' | 'invalid' | 'no-default', string> = {
   unset: `Gateway cost: UNSET — set ${GATEWAY_COST_ENV}=free|local|priced[:<in>,<out>]; ${CEILING_CONSEQUENCE}`,
   invalid: `Gateway cost: INVALID — ${GATEWAY_COST_ENV} does not parse (the startup env warning names the reason); ${CEILING_CONSEQUENCE}`,
-  'no-default': `Gateway cost: NOT DECLARED for the voter gateway — ${GATEWAY_COST_ENV} has only endpoint-scoped entries; add a bare declaration; ${CEILING_CONSEQUENCE}`,
+  'no-default': `Gateway cost: NOT DECLARED for the voter gateway — ${GATEWAY_COST_ENV} names neither a bare declaration nor this gateway's endpoint (${OPENAI_COMPAT_ENDPOINT_ENV}, default ${DEFAULT_OPENAI_COMPAT_ENDPOINT}); add a bare or <endpoint>= entry; ${CEILING_CONSEQUENCE}`,
 };
 
 /**

@@ -1434,12 +1434,38 @@ describe('Doctor Command', () => {
         expect(checkVoterTransport()).toEqual({ configured: true, cost: 'invalid' });
       });
 
-      it('reports no-default when the value is valid but carries only endpoint-scoped entries', async () => {
-        // The voter gateway has no arm identity yet (step 2), so only a bare
-        // declaration can apply to it; saying "unset" here would be false.
+      it('reports no-default when the value names neither a bare declaration nor this gateway', async () => {
+        // Since step 2 the voter gateway IS an arm (`api:openai-compat` by
+        // default); an entry for some OTHER endpoint still leaves it undeclared.
         process.env['NEXUS_GATEWAY_COST'] = 'corp-proxy=free';
         const { checkVoterTransport } = await import('./doctor.js');
         expect(checkVoterTransport()).toEqual({ configured: true, cost: 'no-default' });
+      });
+
+      it("reads an entry scoped to the gateway's default endpoint as declared (#4392 step 2)", async () => {
+        process.env['NEXUS_GATEWAY_COST'] = 'openai-compat=free';
+        const { checkVoterTransport } = await import('./doctor.js');
+        expect(checkVoterTransport()).toEqual({ configured: true, cost: { kind: 'free' } });
+      });
+
+      it('resolves the scoped entry through NEXUS_OPENAI_COMPAT_ENDPOINT', async () => {
+        process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'] = 'corp-proxy';
+        process.env['NEXUS_GATEWAY_COST'] = 'corp-proxy=priced:2,10';
+        try {
+          const { checkVoterTransport } = await import('./doctor.js');
+          expect(checkVoterTransport()).toEqual({
+            configured: true,
+            cost: { kind: 'priced', inputPer1M: 2, outputPer1M: 10 },
+          });
+        } finally {
+          delete process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'];
+        }
+      });
+
+      it('prefers the scoped entry over the bare default', async () => {
+        process.env['NEXUS_GATEWAY_COST'] = 'priced;openai-compat=local';
+        const { checkVoterTransport } = await import('./doctor.js');
+        expect(checkVoterTransport()).toEqual({ configured: true, cost: { kind: 'local' } });
       });
 
       it('carries no cost field when no gateway is configured', async () => {

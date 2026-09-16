@@ -7,19 +7,27 @@ import { ok, err, ConfigError, type IModelAdapter, type ILogger } from './core/i
 
 const buildOpenAICompatAdaptersMock = vi.fn();
 const readOpenAICompatEnvMock = vi.fn();
+const readOpenAICompatEndpointMock = vi.fn(() => 'openai-compat');
 
 vi.mock('./adapters/openai-compat-adapter.js', () => ({
   buildOpenAICompatAdapters: (...args: unknown[]) =>
     buildOpenAICompatAdaptersMock(...args) as unknown,
   readOpenAICompatEnv: (...args: unknown[]) => readOpenAICompatEnvMock(...args) as unknown,
+  readOpenAICompatEndpoint: () => readOpenAICompatEndpointMock(),
 }));
 
 import {
   tryWireGatewayAdapter,
   tryWireGatewayAdapters,
   resolveDefaultModelAdapter,
+  registerGatewayArm,
+  wireGateway,
   _resetCliSubprocessFallbackNotice,
 } from './cli-server-gateway.js';
+import { _resetGatewayCatalogs, getGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import { createUnifiedRegistry } from './adapters/unified-registry.js';
+import type { EndpointArmId } from './cli-adapters/types.js';
+import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
 
 function makeMockAdapter(modelId: string): IModelAdapter {
   return {
@@ -307,5 +315,122 @@ describe('resolveDefaultModelAdapter (#4040)', () => {
   it('falls back to the registry default when no gateway adapters', () => {
     expect(resolveDefaultModelAdapter(undefined, registry)).toBe(registryDefault);
     expect(resolveDefaultModelAdapter([], registry)).toBe(registryDefault);
+  });
+});
+
+// #4392 increment 2 step 2: the discovered models become ONE `api:<endpoint>`
+// arm in the adapter registry, in EVERY billing mode — the arm is what the
+// breaker, the cost declaration and (later) routing key on.
+describe('registerGatewayArm (#4392 inc 2 step 2)', () => {
+  let savedBilling: string | undefined;
+
+  function makeRegistry(): {
+    registerApiArm: ReturnType<
+      typeof vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>
+    >;
+    getLogger: () => ILogger;
+  } {
+    return {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+  }
+
+  beforeEach(() => {
+    savedBilling = process.env['NEXUS_BILLING_MODE'];
+    _resetGatewayCatalogs();
+  });
+
+  afterEach(() => {
+    if (savedBilling === undefined) delete process.env['NEXUS_BILLING_MODE'];
+    else process.env['NEXUS_BILLING_MODE'] = savedBilling;
+  });
+
+  it.each(['plan', 'api'])('registers one api:<endpoint> arm in billing mode %s', (mode) => {
+    process.env['NEXUS_BILLING_MODE'] = mode;
+    const registry = makeRegistry();
+    const adapters = [makeMockAdapter('gw-a'), makeMockAdapter('gw-b')];
+
+    const arm = registerGatewayArm(adapters, 'openai-compat', registry);
+
+    expect(arm).toBe('api:openai-compat');
+    expect(registry.registerApiArm).toHaveBeenCalledTimes(1);
+    const [registeredId, registered] = registry.registerApiArm.mock.calls[0] ?? [];
+    expect(registeredId).toBe('api:openai-compat');
+    expect(registered?.modelId).toBe('gw-a');
+    expect(registered?.getHealth()?.source).toBe('api');
+  });
+
+  it('publishes the catalogue under the arm so bare priced can price per model', () => {
+    const registry = makeRegistry();
+    registerGatewayArm([makeMockAdapter('gw-a'), makeMockAdapter('gw-b')], 'corp-proxy', registry);
+    expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-a', 'gw-b']);
+  });
+
+  it('re-registering the same arm keeps the NEW catalogue (the old arm is disposed first)', () => {
+    // Uses the real registry: registerApiArm disposes the earlier adapter,
+    // whose dispose() clears the catalogue — so the set must come after.
+    const registry = createUnifiedRegistry({ logger: makeMockLogger() });
+    registerGatewayArm([makeMockAdapter('gw-a')], 'openai-compat', registry);
+    registerGatewayArm(
+      [makeMockAdapter('gw-b'), makeMockAdapter('gw-c')],
+      'openai-compat',
+      registry
+    );
+    expect(getGatewayCatalog('api:openai-compat')).toEqual(['gw-b', 'gw-c']);
+    registry.dispose();
+  });
+
+  it('registers nothing when no gateway is configured (undefined or empty)', () => {
+    const registry = makeRegistry();
+    expect(registerGatewayArm(undefined, 'openai-compat', registry)).toBeUndefined();
+    expect(registerGatewayArm([], 'openai-compat', registry)).toBeUndefined();
+    expect(registry.registerApiArm).not.toHaveBeenCalled();
+    expect(getGatewayCatalog('api:openai-compat')).toBeUndefined();
+  });
+
+  it('refuses an endpoint that is not a valid endpoint id rather than minting a garbage arm', () => {
+    const registry = makeRegistry();
+    expect(registerGatewayArm([makeMockAdapter('gw-a')], 'https://x', registry)).toBeUndefined();
+    expect(registry.registerApiArm).not.toHaveBeenCalled();
+  });
+});
+
+describe('wireGateway (#4392 inc 2 step 2 — discovery + arm in one call)', () => {
+  beforeEach(() => {
+    delete process.env['NEXUS_SANDBOX'];
+    buildOpenAICompatAdaptersMock.mockReset();
+    readOpenAICompatEnvMock.mockReset();
+    readOpenAICompatEndpointMock.mockReset();
+    readOpenAICompatEndpointMock.mockReturnValue('corp-proxy');
+    _resetGatewayCatalogs();
+  });
+
+  it('registers the discovered models as api:<endpoint> and returns them for the tools', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw/v1', apiKey: 'sk' });
+    const adapters = [makeMockAdapter('gw-a'), makeMockAdapter('gw-b')];
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+
+    const returned = await wireGateway(makeMockLogger(), registry);
+
+    expect(returned).toBe(adapters);
+    expect(registry.registerApiArm).toHaveBeenCalledTimes(1);
+    expect(registry.registerApiArm.mock.calls[0]?.[0]).toBe('api:corp-proxy');
+    expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-a', 'gw-b']);
+  });
+
+  it('registers nothing and returns undefined when no gateway is configured', async () => {
+    readOpenAICompatEnvMock.mockReturnValue(null);
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+
+    expect(await wireGateway(makeMockLogger(), registry)).toBeUndefined();
+    expect(registry.registerApiArm).not.toHaveBeenCalled();
   });
 });

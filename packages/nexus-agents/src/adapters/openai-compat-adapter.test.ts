@@ -11,7 +11,7 @@ import {
   createOpenAICompatAdapter,
   type OpenAICompatConfig,
 } from './openai-compat-adapter.js';
-import { ConfigError, ErrorCode } from '../core/index.js';
+import { ConfigError, ErrorCode, type ILogger } from '../core/index.js';
 
 // Mock the OpenAI SDK so tests don't make real HTTP calls. `mockChatCreate` is
 // hoisted so the #4606 delegation test can drive a 429 through the inner
@@ -54,6 +54,7 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     delete process.env['NEXUS_OPENAI_COMPAT_URL'];
     delete process.env['NEXUS_OPENAI_COMPAT_KEY'];
     delete process.env['NEXUS_OPENCODE_CONFIG'];
+    delete process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'];
     mockReadOpencodeGateway.mockReset();
     mockReadOpencodeGateway.mockReturnValue(null);
   });
@@ -82,7 +83,53 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';
     const result = readOpenAICompatEnv();
-    expect(result).toEqual({ baseUrl: 'https://gateway.example/v1', apiKey: 'sk-test' });
+    // Previously `{ baseUrl, apiKey }` only; the config now carries the arm's
+    // endpoint identity (#4392 inc 2 step 2), defaulted below.
+    expect(result).toEqual({
+      baseUrl: 'https://gateway.example/v1',
+      apiKey: 'sk-test',
+      endpoint: 'openai-compat',
+    });
+  });
+
+  // #4392 increment 2 step 2: the gateway registers as ONE `api:<endpoint>`
+  // arm. The identity is an operator-named endpoint id, never the URL.
+  describe('endpoint identity (#4392 inc 2 step 2)', () => {
+    beforeEach(() => {
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
+      process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';
+    });
+
+    it('defaults the endpoint to openai-compat (the opencode.json providers key)', () => {
+      expect(readOpenAICompatEnv()?.endpoint).toBe('openai-compat');
+    });
+
+    it('takes NEXUS_OPENAI_COMPAT_ENDPOINT when it is a valid endpoint id', () => {
+      process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'] = ' corp-proxy ';
+      expect(readOpenAICompatEnv()?.endpoint).toBe('corp-proxy');
+    });
+
+    it.each(['Corp-Proxy', 'https://gateway.example/v1', 'a b', ''])(
+      'falls back to the default when the override %j is not a valid endpoint id',
+      (value) => {
+        // The env schema reports the value as invalid at startup; the runtime
+        // reader must never turn a URL (or a credential inside one) into an arm id.
+        process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'] = value;
+        expect(readOpenAICompatEnv()?.endpoint).toBe('openai-compat');
+      }
+    );
+
+    it('applies the same endpoint to the opencode.json path', () => {
+      delete process.env['NEXUS_OPENAI_COMPAT_URL'];
+      delete process.env['NEXUS_OPENAI_COMPAT_KEY'];
+      process.env['NEXUS_OPENCODE_CONFIG'] = '/tmp/opencode.json';
+      process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'] = 'corp-proxy';
+      mockReadOpencodeGateway.mockReturnValue({
+        baseURL: 'https://file-gateway/v1',
+        apiKey: 'sk-from-file',
+      });
+      expect(readOpenAICompatEnv()?.endpoint).toBe('corp-proxy');
+    });
   });
 
   it('trims whitespace from env vars', () => {
@@ -216,6 +263,71 @@ describe('discoverModels (#2468)', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.message).toContain('NEXUS_OPENAI_COMPAT_KEY');
+  });
+
+  // #4392 inc 2 step 2: a discovered id becomes a dispatch target, a usage-log
+  // key and (through the catalogue) a pricing key. Whitespace and control
+  // characters have no place in any of those.
+  describe('model-id validation (#4392 inc 2 step 2)', () => {
+    function makeLogger(): ILogger & { warn: ReturnType<typeof vi.fn> } {
+      const logger = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        setLevel: vi.fn(),
+        getLevel: vi.fn(),
+        setFormat: vi.fn(),
+        setDestination: vi.fn(),
+        child: vi.fn(),
+      };
+      logger.child.mockReturnValue(logger);
+      return logger;
+    }
+
+    it('drops ids carrying whitespace or control characters and keeps the rest', async () => {
+      mockList.mockResolvedValue({
+        data: [
+          { id: 'gpt-4o' },
+          { id: 'bad id' },
+          { id: 'bad\u0000id' },
+          { id: 'bad\nid' },
+          { id: 'org/model:tag_v1.2' },
+        ],
+      });
+      const result = await discoverModels(config, makeLogger());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.map((m) => m.id)).toEqual(['gpt-4o', 'org/model:tag_v1.2']);
+    });
+
+    it('warns with the dropped COUNT only — never an offending id', async () => {
+      mockList.mockResolvedValue({
+        data: [{ id: 'gpt-4o' }, { id: 'sk-SECRET leaked' }, { id: '\u0007bell' }],
+      });
+      const logger = makeLogger();
+      await discoverModels(config, logger);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      const call = JSON.stringify(logger.warn.mock.calls[0]);
+      expect(call).toContain('2');
+      expect(call).not.toContain('sk-SECRET');
+      expect(call).not.toContain('bell');
+    });
+
+    it('does not warn when every id is valid', async () => {
+      mockList.mockResolvedValue({ data: [{ id: 'gpt-4o' }] });
+      const logger = makeLogger();
+      await discoverModels(config, logger);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('rejects an id longer than 128 characters', async () => {
+      mockList.mockResolvedValue({ data: [{ id: 'a'.repeat(129) }, { id: 'a'.repeat(128) }] });
+      const result = await discoverModels(config, makeLogger());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value).toHaveLength(1);
+    });
   });
 
   // #4392: this path can take its base URL from a FILE
