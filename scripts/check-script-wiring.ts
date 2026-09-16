@@ -75,6 +75,10 @@ export const SELF = 'check-script-wiring.ts';
 export const MANUAL_ONLY: Readonly<Record<string, string>> = {
   'check-required-jobs.ts':
     'invoked through governor-gate.ts (#6369 step 2): the gate job runs the base-ref dispatcher, never the per-check script',
+  'check-governor-review.ts':
+    'invoked through governor-gate.ts pr-review-audit (#6377): the audit job runs the base-ref dispatcher',
+  'check-codeowners-errors.ts':
+    'invoked through governor-gate.ts codeowners-errors (#6377): the job runs the base-ref dispatcher',
   'security-ledger.ts':
     'operator-only report and resolution of a private, gitignored ledger (#4887)',
   'redact-vote-record.ts':

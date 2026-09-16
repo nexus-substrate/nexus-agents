@@ -13,7 +13,7 @@
  * stays deterministic.
  */
 import type { IModelAdapter, ILogger } from '../core/index.js';
-import type { AgentVoteResult, VoterRole } from './vote-types.js';
+import type { AgentVoteResult, SeatAttemptTiming, VoterRole } from './vote-types.js';
 import { createErrorVoteResult, delay } from './voter-execution.js';
 import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
 
@@ -161,7 +161,24 @@ function cancelled(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
-type VoteOnAdapter = (role: VoterRole, adapter: IModelAdapter) => Promise<AgentVoteResult>;
+/** Both attempts travel with a recovered seat (#6103): the failed primary's timing first. */
+function withPrimaryAttempts(
+  primary: AgentVoteResult,
+  recovered: AgentVoteResult
+): AgentVoteResult {
+  return {
+    ...recovered,
+    timing: {
+      attempts: [...(primary.timing?.attempts ?? []), ...(recovered.timing?.attempts ?? [])],
+    },
+  };
+}
+
+type VoteOnAdapter = (
+  role: VoterRole,
+  adapter: IModelAdapter,
+  fallback: boolean
+) => Promise<AgentVoteResult>;
 
 async function launchRoleVote(
   role: VoterRole,
@@ -176,9 +193,13 @@ async function launchRoleVote(
   const stamp = (r: AgentVoteResult): AgentVoteResult =>
     withAssignment(r, pinnedModel, assignedKey);
   if (cancelled(input.signal)) {
-    return stamp(createErrorVoteResult(role, CANCELLED_MESSAGE, 0));
+    // Refused before any attempt: the timing says so with an empty list.
+    return stamp({
+      ...createErrorVoteResult(role, CANCELLED_MESSAGE, 0),
+      timing: { attempts: [] },
+    });
   }
-  const primary = await voteOnAdapter(role, adapter);
+  const primary = await voteOnAdapter(role, adapter, false);
   if (!shouldRetryOnFallback(primary, adapter, input.fallbackAdapter)) return stamp(primary);
   if (cancelled(input.signal)) return stamp(primary);
   input.logger.warn('Voter failed on diverse adapter; retrying on fallback (#3587)', {
@@ -187,7 +208,10 @@ async function launchRoleVote(
     fallbackCli: adapterCliKey(input.fallbackAdapter),
     error: primary.error,
   });
-  const recovered = await voteOnAdapter(role, input.fallbackAdapter);
+  const recovered = withPrimaryAttempts(
+    primary,
+    await voteOnAdapter(role, input.fallbackAdapter, true)
+  );
   if (recovered.source === 'error') return stamp(recovered);
   // #6115: the seat ANSWERED somewhere other than where it was assigned. Say
   // where it was meant to answer and which error class moved it, so a panel
@@ -207,18 +231,36 @@ export async function launchVotesWithOverallDeadline(
   const serialize = createKeyedSerializer();
 
   // One serialized, deadline-bounded vote attempt on a specific adapter.
-  const voteOnAdapter = (role: VoterRole, adapter: IModelAdapter): Promise<AgentVoteResult> =>
+  // #6103: the attempt's timing rides on the result — queued (enqueue → start)
+  // and ran (start → settle) — so a slow panel can be attributed to the lane
+  // or to the model. The caller folds attempts into the seat's `timing`.
+  const voteOnAdapter = (
+    role: VoterRole,
+    adapter: IModelAdapter,
+    fallback: boolean
+  ): Promise<AgentVoteResult> => {
+    const cli = adapterCliKey(adapter);
+    const enqueuedAt = Date.now();
     // Serialize per CLI so concurrent same-CLI calls don't race that CLI's
     // OAuth refresh (#3348). The deadline is measured when the vote actually
     // starts, so a queued role still gets a correct remaining budget.
-    serialize(adapterCliKey(adapter), () => {
-      const remaining = Math.max(1, overallDeadlineMs - (Date.now() - startedAt));
-      return raceWithDeadline(
+    return serialize(cli, async () => {
+      const runStartedAt = Date.now();
+      const remaining = Math.max(1, overallDeadlineMs - (runStartedAt - startedAt));
+      const result = await raceWithDeadline(
         voteFn(role, proposal, adapter, logger, voteOptions),
         role,
         remaining
       );
+      const attempt: SeatAttemptTiming = {
+        cli,
+        queuedMs: runStartedAt - enqueuedAt,
+        ranMs: Date.now() - runStartedAt,
+        fallback,
+      };
+      return { ...result, timing: { attempts: [...(result.timing?.attempts ?? []), attempt] } };
     });
+  };
 
   const wrapped = roles.map((role, index) => launchRoleVote(role, index, input, voteOnAdapter));
 

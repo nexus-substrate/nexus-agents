@@ -90,13 +90,36 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      # #6377: the same two-checkout layout as the ratification gate — the PR
+      # head is DATA under `head`, this job's scripts, toolchain and policy
+      # come from the base ref under `gate`. No `./` action from the head.
       - name: Checkout PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          path: head
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: ./.github/actions/setup-node
+      - name: Checkout base gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.base_ref }}
+          path: gate
+          fetch-depth: 1
+
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+        with:
+          package_json_file: gate/package.json
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: gate/pnpm-lock.yaml
+
+      - name: Install gate dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: gate
 
       - name: Compute changed files (base..head)
         id: changed
@@ -104,12 +127,12 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          BASE_SHA=$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
+          BASE_SHA=$(git -C head merge-base "origin/${BASE_REF}" "${HEAD_SHA}" || true)
           if [ -z "${BASE_SHA}" ]; then
             echo "::error::could not compute merge-base of origin/${BASE_REF} and ${HEAD_SHA}"
             exit 1
           fi
-          FILES=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          FILES=$(git -C head diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
           {
             echo "base=${BASE_SHA}"
             echo 'files<<FILES_EOF'
@@ -118,6 +141,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Run governor-review gate (warn-first; integrity fail-closed)
+        working-directory: gate
         env:
           # The gate needs BOTH base and head sha: sha-binding (condition 1) AND
           # the Option-C diff-binding recompute `git diff base..head` (#3831).
@@ -130,7 +154,7 @@ jobs:
         # No continue-on-error: the script encodes warn (exit 0) vs fail-closed
         # integrity break (exit 1) in its exit code. A non-zero exit here is a
         # tampered ledger and SHOULD surface as a job failure.
-        run: pnpm exec tsx scripts/check-governor-review.ts
+        run: pnpm exec tsx scripts/governor-gate.ts pr-review-audit --target "${GITHUB_WORKSPACE}/head"
 
   # ---------------------------------------------------------------------------
   # RATIFICATION gate (#4635).
@@ -757,18 +781,44 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout
+      # #6377: two-checkout layout. The tree under review is DATA under `head`
+      # (the shadow-CODEOWNERS probe only asks whether files exist there); the
+      # script and toolchain come from the base ref under `gate`
+      # (`github.base_ref` on a PR; the pushed ref itself after a merge).
+      - name: Checkout tree under review
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # PR head for pull_request; the pushed sha for push (the default).
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: head
+          fetch-depth: 1
 
-      - uses: ./.github/actions/setup-node
+      - name: Checkout base gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.base_ref || github.ref }}
+          path: gate
+          fetch-depth: 1
+
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+        with:
+          package_json_file: gate/package.json
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: gate/pnpm-lock.yaml
+
+      - name: Install gate dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: gate
 
       - name: Ask GitHub to parse CODEOWNERS at the sha under review
+        working-directory: gate
         env:
           GITHUB_TOKEN: ${{ github.token }}
           # GITHUB_REPOSITORY and GITHUB_API_URL come from the runner environment.
           REF: ${{ github.event.pull_request.head.sha || github.sha }}
         # The script's exit code is the verdict: 0 only for `{ errors: [] }`.
-        run: pnpm exec tsx scripts/check-codeowners-errors.ts --ref "${REF}"
+        run: pnpm exec tsx scripts/governor-gate.ts codeowners-errors --target "${GITHUB_WORKSPACE}/head" --ref "${REF}"

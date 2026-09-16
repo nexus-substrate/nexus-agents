@@ -40,6 +40,14 @@ describe('governor-gate', () => {
     });
   });
 
+  it.each(['constructor', '__proto__', 'toString'])(
+    'a step named like an Object prototype member is unknown (exit 2), never a runner: %s',
+    async (step) => {
+      expect(await runGovernorGate([step, '--target', targetDir])).toBe(2);
+      for (const { run } of cases) expect(run).not.toHaveBeenCalled();
+    }
+  );
+
   it('forwards CODEOWNERS ref arguments', async () => {
     vi.mocked(runCodeownersErrors).mockResolvedValue(0);
     expect(

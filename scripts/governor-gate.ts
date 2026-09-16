@@ -8,6 +8,7 @@
  * Add checks behind this interface. Ledger formats ship reader-first on main.
  *
  * Usage: governor-gate.ts <step> --target <dir> [--ref <sha>]
+ * Steps: touched | required-jobs | ratification | codeowners-errors | pr-review-audit
  * @module scripts/governor-gate
  */
 import { dirname } from 'node:path';
@@ -17,6 +18,7 @@ import { runGovernorPathsTouched } from './governor-paths-touched.js';
 import { runRequiredJobsCheck } from './check-required-jobs.js';
 import { runRatificationGate } from './check-governor-ratification.js';
 import { runCodeownersErrors } from './check-codeowners-errors.js';
+import { runGovernorReviewGate } from './check-governor-review.js';
 
 /** The gate checkout — this script's own repository root — where policy is read from. */
 const POLICY_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -34,10 +36,26 @@ function readTarget(
   };
 }
 
+/** The steps the workflow may name, each bound to its runner. Adding a check = adding a row here, on main. */
+const STEPS: Readonly<
+  Record<string, (targetDir: string, forwarded: readonly string[]) => number | Promise<number>>
+> = {
+  // Changed files come from the environment; the governor set is policy.
+  touched: () => runGovernorPathsTouched(POLICY_DIR),
+  'required-jobs': (targetDir) => runRequiredJobsCheck(targetDir),
+  ratification: (targetDir) => runRatificationGate(process.env, targetDir),
+  'codeowners-errors': (targetDir, forwarded) => runCodeownersErrors(targetDir, forwarded),
+  // #6377: the pr_review audit gate — ledger and git diff from the target,
+  // CODEOWNERS and the genesis allowlist from this checkout.
+  'pr-review-audit': (targetDir, forwarded) => runGovernorReviewGate(forwarded, { targetDir }),
+};
+
 /** Dispatch one measured step, preserving its exit status without reinterpretation. */
 export async function runGovernorGate(argv: readonly string[]): Promise<number> {
   const [step, ...args] = argv;
-  if (!['touched', 'required-jobs', 'ratification', 'codeowners-errors'].includes(step ?? '')) {
+  // Own keys only: a step named like an Object prototype member is unknown, not a runner.
+  const runner = step !== undefined && Object.hasOwn(STEPS, step) ? STEPS[step] : undefined;
+  if (runner === undefined) {
     console.error(
       `[governor-gate] unknown step: ${step === undefined || step === '' ? '(empty)' : step}`
     );
@@ -48,20 +66,7 @@ export async function runGovernorGate(argv: readonly string[]): Promise<number> 
     console.error('[governor-gate] --target <dir> is required; no checkout was selected.');
     return 2;
   }
-  const { targetDir, forwarded } = target;
-  switch (step) {
-    case 'touched':
-      // Changed files come from the environment; the governor set is policy.
-      return runGovernorPathsTouched(POLICY_DIR);
-    case 'required-jobs':
-      return runRequiredJobsCheck(targetDir);
-    case 'ratification':
-      return runRatificationGate(process.env, targetDir);
-    case 'codeowners-errors':
-      return runCodeownersErrors(targetDir, forwarded);
-    default:
-      return 2;
-  }
+  return runner(target.targetDir, target.forwarded);
 }
 
 if (process.argv[1]?.endsWith('governor-gate.ts') === true) {
