@@ -220,8 +220,8 @@ const NexusEnvSchema = z.object({
   // #4392 increment 2: what a gateway arm costs (GATEWAY_COST_ENV; spelled
   // out because scripts/check-env-schema-coverage.ts reads keys by regex).
   // Validated by the same parser every runtime reader uses, so "invalid" here
-  // means UNDECLARED there — the task-class cost ceiling excludes the gateway and
-  // `doctor` warns.
+  // means UNDECLARED there — the task-class cost ceiling and the per-task
+  // budget exclude the gateway (#6393) and `doctor` warns.
   // The parser's own reason is forwarded (superRefine, not a fixed message):
   // "duplicate endpoint key" and "more than one bare declaration" are different
   // fixes, and a grammar reminder names neither.

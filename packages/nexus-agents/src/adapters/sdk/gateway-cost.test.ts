@@ -242,8 +242,11 @@ describe('warnIfGatewayCostUndeclared', () => {
     const [message, meta] = vi.mocked(logger.warn).mock.calls[0] ?? [];
     expect(String(message)).toContain(GATEWAY_COST_ENV);
     expect(String(message)).toContain('unset');
-    // Only the ceiling filter excludes it; the budget filter still prices the arm.
-    expect(String(message)).toContain('task-class cost ceiling excludes this gateway');
+    // Both cost filters exclude it since #6393; before that the budget filter
+    // still priced the arm, and this line pinned 'ceiling excludes this gateway'.
+    expect(String(message)).toContain(
+      'task-class cost ceiling and the per-task budget exclude this gateway'
+    );
     expect(String(message)).not.toContain('cost-weighted routing');
     expect(meta).toMatchObject({ arm: 'api:corp-proxy' });
   });

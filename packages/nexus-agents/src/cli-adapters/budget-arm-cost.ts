@@ -1,9 +1,12 @@
 /**
- * Per-arm cost estimation for the task-class cost ceiling (#4196, #4392).
+ * Per-arm cost estimation for the task-class cost ceiling (#4196, #4392) and
+ * the per-task budget filter (#6393).
  *
- * Extracted from `budget-router.ts` for the file cap. Both estimators are
- * fail-CLOSED: `undefined` means "cannot price", and the ceiling filter
- * excludes such a candidate rather than guessing.
+ * Extracted from `budget-router.ts` for the file cap. The ceiling estimators
+ * are fail-CLOSED: `undefined` means "cannot price", and the ceiling filter
+ * excludes such a candidate rather than guessing. The budget estimator keeps
+ * the conservative non-$0 fallback for CLI slots and vendor arms, and is
+ * fail-closed for gateway arms only.
  *
  * @module cli-adapters/budget-arm-cost
  */
@@ -11,8 +14,10 @@
 import { computeTokenCost } from '../learning/token-cost-core.js';
 import type { CliName, RoutingArmId } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
+import { estimateCost } from './budget-utils.js';
 import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
 import {
+  gatewayCostGap,
   gatewayCostRates,
   isGatewayArmId,
   resolveGatewayCostDeclaration,
@@ -72,4 +77,47 @@ export function estimateArmCostUsd(
     return estimateRegistryCostUsd(routingArmDisplaySlot(arm), inputTokens, outputTokens);
   }
   return computeTokenCost({ input: inputTokens, output: outputTokens }, rates).costUsd;
+}
+
+/**
+ * Estimate the USD cost of a task on a routing ARM for the per-task budget
+ * filter (`checkBudget`, #6393). Two policies, deliberately named here so
+ * neither can be swapped for the other by accident (#5122):
+ *
+ * - A CLI slot or vendor arm keeps `estimateCost`'s CONSERVATIVE non-$0
+ *   fallback (#4168): a number is always returned, and the numbers are the
+ *   ones the budget filter reported before this function existed.
+ * - A GATEWAY arm is priced by its `NEXUS_GATEWAY_COST` declaration exactly
+ *   as {@link estimateArmCostUsd} prices it, so UNDECLARED is `undefined`
+ *   and the caller must treat it as NOT within budget. Before this the
+ *   gateway took the first branch — a gateway adapter's display `name` is its
+ *   slot — and an undeclared `api:custom-openai` was admitted under
+ *   `maxCostUsd` at opencode's default model rate, a number that measured
+ *   nothing.
+ */
+export function estimateBudgetArmCostUsd(
+  arm: RoutingArmId,
+  inputTokens: number,
+  outputTokens: number,
+  env: NodeJS.ProcessEnv = process.env
+): number | undefined {
+  if (isGatewayArmId(arm)) return estimateArmCostUsd(arm, inputTokens, outputTokens, env);
+  return estimateCost(routingArmDisplaySlot(arm), inputTokens, outputTokens);
+}
+
+/**
+ * Why {@link estimateBudgetArmCostUsd} returned `undefined` for `arm`, as the
+ * reason carried on `BudgetRoutingResult.unpricedArms` and the log line.
+ * Only a gateway arm can be unpriced there (the conservative fallback always
+ * prices the rest), and only in two ways: no usable declaration (`unset`,
+ * `invalid (…)`, `undeclared for …` — {@link gatewayCostGap}), or bare
+ * `priced` on a display slot the registry cannot price.
+ */
+export function describeUnpricedArm(
+  arm: RoutingArmId,
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  const gap = gatewayCostGap(arm, env);
+  if (gap !== undefined) return `gateway cost ${gap}`;
+  return `gateway cost priced at registry rates, but ${routingArmDisplaySlot(arm)} has no registry pricing`;
 }

@@ -9,7 +9,7 @@
 
 import type { Result } from '../core/index.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
-import type { CliName, CliResponse, CliError } from './types-core.js';
+import type { CliName, CliResponse, CliError, RoutingArmId } from './types-core.js';
 import type { CliTask, ICliAdapter } from './types-capability.js';
 
 // ============================================================================
@@ -195,6 +195,17 @@ export interface BudgetRoutingResult {
    * run, not an aggregate over candidates.
    */
   readonly estimatedLatencyMs?: number | undefined;
+  /**
+   * Candidate arms the budget filter could not price and therefore did not
+   * admit (#6393), each with the reason — today only a gateway arm whose
+   * `NEXUS_GATEWAY_COST` declaration is missing, invalid, or defers to a
+   * registry price that does not exist.
+   *
+   * Absent when every candidate could be priced, so a reader can tell "all
+   * priced" from "nothing checked". A skipped arm is not a fabricated `$0`:
+   * `estimatedCostUsd` is the SELECTED arm's estimate, and `0` when none was.
+   */
+  readonly unpricedArms?: readonly { readonly arm: RoutingArmId; readonly reason: string }[];
   /** Any budget warnings */
   readonly warnings: readonly BudgetWarning[];
   /** Budget after this task (if executed) */

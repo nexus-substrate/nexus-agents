@@ -29,13 +29,17 @@ import type {
 import { DEFAULT_CAPABILITIES, routingArmDisplaySlot } from './types.js';
 import type { CliName } from './types.js';
 import type { BudgetCoverage } from './types-routing.js';
-import { estimateTokens, estimateCost } from './budget-utils.js';
+import { estimateTokens } from './budget-utils.js';
 import { DEFAULT_COST_MODELS } from './budget-router-types.js';
 import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { gatewayCostGap } from '../adapters/sdk/gateway-cost.js';
-import { estimateArmCostUsd } from './budget-arm-cost.js';
+import {
+  describeUnpricedArm,
+  estimateArmCostUsd,
+  estimateBudgetArmCostUsd,
+} from './budget-arm-cost.js';
 
 // The registry estimator moved to a sibling for the file cap (#4392 inc 2);
 // re-exported so `budget-router` keeps its published surface.
@@ -77,6 +81,19 @@ const DEFAULT_OPTIONS: Required<BudgetRouterOptions> = {
  */
 function latencyOf(slot: CliName): number | undefined {
   return DEFAULT_COST_MODELS[slot]?.avgLatencyMs;
+}
+
+type UnpricedArm = NonNullable<BudgetRoutingResult['unpricedArms']>[number];
+
+/**
+ * What `selectAdapterWithinBudget` found (#6393): the first admissible arm
+ * with its adapter, or `null`; plus every arm it could not price. The ARM id
+ * travels with the adapter because a gateway adapter's display `name` is its
+ * slot, and pricing the name is exactly the misreport this fixes.
+ */
+interface BudgetSelection {
+  readonly selected: { readonly arm: RoutingArmId; readonly adapter: ICliAdapter } | null;
+  readonly unpricedArms: readonly UnpricedArm[];
 }
 
 export class BudgetRouter implements IBudgetRouter {
@@ -212,18 +229,28 @@ export class BudgetRouter implements IBudgetRouter {
     const estimatedTokens = estimatedInputTokens + estimatedOutputTokens;
 
     // Find the best adapter within budget
-    const adapter = this.selectAdapterWithinBudget(budget, estimatedTokens);
-    const estimatedCostUsd = adapter
-      ? estimateCost(adapter.name, estimatedInputTokens, estimatedOutputTokens)
-      : 0;
+    const { selected, unpricedArms } = this.selectAdapterWithinBudget(budget, estimatedTokens);
+    const adapter = selected === null ? null : selected.adapter;
+    // Priced by ARM, not `adapter.name` (#6393). A selected arm was priceable
+    // at selection time with the same env, so `undefined` here is unreachable;
+    // it is still handled as NOT within budget rather than as a number.
+    const armCostUsd =
+      selected === null
+        ? undefined
+        : estimateBudgetArmCostUsd(selected.arm, estimatedInputTokens, estimatedOutputTokens);
+    // Named empty case: with nothing selectable there is no cost to report,
+    // and `0` is the existing "nothing would run" value. It is never a
+    // gateway's fabricated rate — that arm was skipped and is listed in
+    // `unpricedArms`.
+    const estimatedCostUsd = armCostUsd ?? 0;
 
     const estimatedLatencyMs =
-      adapter === null ? undefined : latencyOf(routingArmDisplaySlot(adapter.name));
+      selected === null ? undefined : latencyOf(routingArmDisplaySlot(selected.arm));
 
     // Check budget constraints
     const currentBudget = this.getSessionBudget();
     const withinBudget =
-      adapter !== null && this.checkConstraints(budget, estimatedTokens, estimatedCostUsd);
+      armCostUsd !== undefined && this.checkConstraints(budget, estimatedTokens, estimatedCostUsd);
 
     // Generate warnings
     const warnings = generateBudgetWarnings(
@@ -242,6 +269,7 @@ export class BudgetRouter implements IBudgetRouter {
       estimatedCostUsd,
       estimatedTokens,
       ...(estimatedLatencyMs !== undefined ? { estimatedLatencyMs } : {}),
+      ...(unpricedArms.length > 0 ? { unpricedArms } : {}),
       warnings,
       projectedBudget,
     };
@@ -448,7 +476,7 @@ export class BudgetRouter implements IBudgetRouter {
   private selectAdapterWithinBudget(
     budget: BudgetConstraint,
     estimatedTokens: number
-  ): ICliAdapter | null {
+  ): BudgetSelection {
     // Sort adapters by cost efficiency (higher = cheaper). Capabilities and
     // pricing are slot-level (DEFAULT_CAPABILITIES keyed by CliName); an api:*
     // arm uses its display slot's profile (#3422).
@@ -457,33 +485,49 @@ export class BudgetRouter implements IBudgetRouter {
       const capB = DEFAULT_CAPABILITIES[routingArmDisplaySlot(b[0])];
       return capB.cost - capA.cost; // Prefer cheaper models
     });
+    const unpricedArms: UnpricedArm[] = [];
 
-    for (const [name, adapter] of sortedAdapters) {
-      const slot = routingArmDisplaySlot(name);
-      const estimatedCost = estimateCost(slot, estimatedTokens / 2, estimatedTokens / 2);
-      const caps = DEFAULT_CAPABILITIES[slot];
-
-      // Check if adapter can handle the task within budget
-      const withinTokenBudget =
-        budget.maxTokens === undefined || estimatedTokens <= budget.maxTokens;
-      const withinCostBudget =
-        budget.maxCostUsd === undefined || estimatedCost <= budget.maxCostUsd;
-      const withinContextWindow = estimatedTokens <= caps.contextWindow;
-      // #4907: the third declared budget. `maxLatencyMs` was validated,
-      // defaulted and plumbed from routing YAML, but read by nothing, so the
-      // `'latency'` violation kind had no producer and no input could make the
-      // constraint bind.
-      const withinLatencyBudget =
-        budget.maxLatencyMs === undefined ||
-        latencyOf(slot) === undefined ||
-        (latencyOf(slot) as number) <= budget.maxLatencyMs;
-
-      if (withinTokenBudget && withinCostBudget && withinContextWindow && withinLatencyBudget) {
-        return adapter;
+    for (const [arm, adapter] of sortedAdapters) {
+      // A CLI slot or vendor arm keeps the conservative fallback; a gateway
+      // arm is priced by its declaration and is `undefined` when it has none
+      // (#6393). Unknown is NOT within budget: skip it and say why.
+      const estimatedCost = estimateBudgetArmCostUsd(arm, estimatedTokens / 2, estimatedTokens / 2);
+      if (estimatedCost === undefined) {
+        const reason = describeUnpricedArm(arm);
+        logger.warn(`Budget: ${reason} — not admitting ${arm} (fail-closed)`, { arm, reason });
+        unpricedArms.push({ arm, reason });
+        continue;
+      }
+      if (
+        this.admitsCandidate(budget, estimatedTokens, routingArmDisplaySlot(arm), estimatedCost)
+      ) {
+        return { selected: { arm, adapter }, unpricedArms };
       }
     }
 
-    return null;
+    return { selected: null, unpricedArms };
+  }
+
+  /** The four per-candidate admission checks of `selectAdapterWithinBudget`. */
+  private admitsCandidate(
+    budget: BudgetConstraint,
+    estimatedTokens: number,
+    slot: CliName,
+    estimatedCost: number
+  ): boolean {
+    const caps = DEFAULT_CAPABILITIES[slot];
+    const withinTokenBudget = budget.maxTokens === undefined || estimatedTokens <= budget.maxTokens;
+    const withinCostBudget = budget.maxCostUsd === undefined || estimatedCost <= budget.maxCostUsd;
+    const withinContextWindow = estimatedTokens <= caps.contextWindow;
+    // #4907: the third declared budget. `maxLatencyMs` was validated,
+    // defaulted and plumbed from routing YAML, but read by nothing, so the
+    // `'latency'` violation kind had no producer and no input could make the
+    // constraint bind.
+    const withinLatencyBudget =
+      budget.maxLatencyMs === undefined ||
+      latencyOf(slot) === undefined ||
+      (latencyOf(slot) as number) <= budget.maxLatencyMs;
+    return withinTokenBudget && withinCostBudget && withinContextWindow && withinLatencyBudget;
   }
 
   private checkConstraints(

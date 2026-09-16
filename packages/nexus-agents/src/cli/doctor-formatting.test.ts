@@ -685,7 +685,9 @@ describe('doctor-formatting', () => {
       const line = calls.find((call) => call.includes('Gateway cost: UNSET'));
       expect(line).toBeDefined();
       expect(line).toContain('NEXUS_GATEWAY_COST=free|local|priced[:<in>,<out>]');
-      expect(line).toContain('the task-class cost ceiling excludes this gateway until declared');
+      expect(line).toContain(
+        'the task-class cost ceiling and the per-task budget exclude this gateway until declared'
+      );
       expect(line).not.toContain('cost-weighted routing');
       // A warning, not a failure: allHealthy is the fixture's value, untouched.
       expect(calls.some((call) => call.includes('Status: Ready'))).toBe(true);
@@ -700,7 +702,9 @@ describe('doctor-formatting', () => {
       const calls = getCalls();
       const line = calls.find((call) => call.includes(text));
       expect(line).toBeDefined();
-      expect(line).toContain('the task-class cost ceiling excludes this gateway until declared');
+      expect(line).toContain(
+        'the task-class cost ceiling and the per-task budget exclude this gateway until declared'
+      );
       expect(calls.some((call) => call.includes('Gateway cost: UNSET'))).toBe(false);
     });
 

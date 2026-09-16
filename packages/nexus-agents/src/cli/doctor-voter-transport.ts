@@ -32,7 +32,8 @@ export function printVoterTransportCheck(check: VoterTransportCheck): void {
   );
 }
 
-const CEILING_CONSEQUENCE = 'the task-class cost ceiling excludes this gateway until declared';
+const CEILING_CONSEQUENCE =
+  'the task-class cost ceiling and the per-task budget exclude this gateway until declared';
 
 /** One warning per gap, each naming its own fix (see `VoterTransportCheck.cost`). */
 const GAP_LINES: Record<'unset' | 'invalid' | 'no-default', string> = {
