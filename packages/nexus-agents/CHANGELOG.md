@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.81.2
+
+### Patch Changes
+
+- [#6436](https://github.com/nexus-substrate/nexus-agents/pull/6436) [`44268a3`](https://github.com/nexus-substrate/nexus-agents/commit/44268a3322aa1349e11fa42c54b3ecc9a83da5ca) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Three gateway-cost follow-ups from the [#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392) increment-2 reviews. Bare `NEXUS_GATEWAY_COST=priced` on a gateway with no model catalogue no longer prices the arm at its display slot (opencode's default model rate): `api:custom-openai` is priced at the registry rate of `NEXUS_CUSTOM_MODEL` when that names a priced model, and otherwise the estimate is `undefined`, so the task-class ceiling and per-task budget exclude the arm with the reason `priced without a catalogue or model: declare priced:<in>,<out> or set NEXUS_CUSTOM_MODEL` ([#6404](https://github.com/nexus-substrate/nexus-agents/issues/6404)). `NEXUS_OPENAI_COMPAT_ENDPOINT` refuses the built-in vendor segments (`anthropic`, `openai`, `google`) at the env schema and in the runtime reader, which falls back to `openai-compat` with a warning naming the reason and never the value — a gateway registered as `api:openai` was a vendor arm whose cost declaration could not be reached ([#6409](https://github.com/nexus-substrate/nexus-agents/issues/6409)). The routing observer gains `recordArmTokenUsage(sessionId, arm, tokens)` for any observed arm (`recordTokenUsage` keeps its CLI-slot signature and delegates to it) and prices a gateway arm by its declaration through `gatewayCostDetail`: `free`/`local` sum as a measured $0, `priced:<in>,<out>` as the flat rate, and an undeclared gateway (or bare `priced`, since the observer holds no model id) increments the new `CostMetrics.unpricedCalls` counter instead of adding a fabricated or silent $0 to `totalCostUsd`. Two additive fields on the produced `CostMetrics`: `costPerArm` (keyed by observed arm; gateway and vendor arms land only here) and `unpricedCalls`; `costPerModel` keeps its published CLI-slot key, so readers are unaffected, and CLI slots are priced as before ([#6399](https://github.com/nexus-substrate/nexus-agents/issues/6399)).
+
 ## 8.81.1
 
 ### Patch Changes
