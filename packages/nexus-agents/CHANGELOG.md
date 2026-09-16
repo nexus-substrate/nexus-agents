@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.74.2
+
+### Patch Changes
+
+- [#6400](https://github.com/nexus-substrate/nexus-agents/pull/6400) [`0a5da4e`](https://github.com/nexus-substrate/nexus-agents/commit/0a5da4e0bc554841459ecbb2611dfad0d7d1d24d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents init --opencode` now writes `NEXUS_GATEWAY_COST=openai-compat=free` into the `mcp.nexus-agents.environment` block it generates, so the OpenCode gateway it configures is a declared arm from the first run instead of an undeclared one that the cost ceiling and per-task budget exclude and `doctor` warns about ([#4392](https://github.com/nexus-substrate/nexus-agents/issues/4392)). The declaration is scoped to the `openai-compat` endpoint (the `providers.openai-compat` block the bridge reads), never a bare `free`, and `free` rather than `local` because init cannot know whether the proxy is on-box. A value you hand-edit in that block — `openai-compat=priced:<in>,<out>` for a metered proxy — survives a re-run, and `--dry-run` shows the line before anything is written.
+
 ## 8.74.1
 
 ### Patch Changes
