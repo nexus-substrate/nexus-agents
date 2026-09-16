@@ -88,11 +88,11 @@ describe('CI required-job wiring', () => {
     // The inverse can't-fail shape: listing a job in `needs` only makes
     // ci-success WAIT for it. Without a `needs.<job>.result` test in the gate
     // script, a red job still yields a green CI Success.
-    const unchecked = [...required].filter((job) => !gateScript.includes(`needs.${job}.result`));
+    const unchecked = [...required].filter((job) => !ciGate.resultChecks.includes(job));
 
     expect(
       unchecked,
-      `In ci-success.needs but never checked in the gate script, so a failure is awaited and then ignored: ${unchecked.join(', ')}`
+      `In ci-success.needs but result check missing or commented out, so a failure is awaited and then ignored: ${unchecked.join(', ')}`
     ).toEqual([]);
   });
 

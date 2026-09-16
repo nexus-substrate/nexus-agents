@@ -121,7 +121,7 @@ export function checkRequiredJobs(input: RequiredJobsInput): RequiredJobsResult 
   for (const job of manifest.ci_success_needs) {
     if (!input.ciSuccessNeeds.includes(job)) problems.push(`Missing ci-success.needs: ${job}`);
     if (!input.ciSuccessResultChecks.includes(job)) {
-      problems.push(`Missing ci-success result check: ${job}`);
+      problems.push(`Missing ci-success result check: ${job} (missing or commented out)`);
     }
   }
   problems.push(...packageProblems(input.packageJson, manifest.audit_config_forbidden));
@@ -176,12 +176,70 @@ interface JobGate {
   resultChecks: string[];
 }
 
-/** Shared with ci-required-jobs.test.ts: collect step if/run text exactly once. */
+/** Skip an Actions expression without treating its string literals as shell quotes. */
+function expressionEnd(text: string, start: number): number {
+  let quote = '';
+  for (let index = start + 3; index < text.length; index++) {
+    const char = text[index];
+    if (quote !== '') {
+      if (char === quote) quote = '';
+    } else if (char === "'" || char === '"') {
+      quote = char;
+    } else if (text.startsWith('}}', index)) {
+      return index + 2;
+    }
+  }
+  // An incomplete expression is preserved; guessing its shell syntax is unsafe.
+  return text.length;
+}
+
+/** A `#` opens a shell comment only outside quotes and only at a word start. */
+function startsComment(text: string, index: number, quote: string): boolean {
+  return quote === '' && text[index] === '#' && /\s/.test(text[index - 1] ?? '\n');
+}
+
+/** Index just past the token that begins at `index`: an expression, an escape, or one char. */
+function tokenEnd(text: string, index: number, quote: string): number {
+  if (text.startsWith('${{', index)) return expressionEnd(text, index);
+  if (text[index] === '\\' && quote !== "'") return index + 2;
+  return index + 1;
+}
+
+/** The quote state after consuming one plain character. */
+function nextQuote(char: string, quote: string): string {
+  if (quote !== '') return char === quote ? '' : quote;
+  return char === "'" || char === '"' ? char : '';
+}
+
+/** Strip unquoted shell comments, preserving quoted hashes and Actions expressions. */
+export function stripShellComments(text: string): string {
+  let quote = '';
+  let live = '';
+  let index = 0;
+  while (index < text.length) {
+    if (startsComment(text, index, quote)) {
+      const newline = text.indexOf('\n', index);
+      index = newline === -1 ? text.length : newline;
+      continue;
+    }
+    const end = tokenEnd(text, index, quote);
+    const token = text.slice(index, end);
+    if (end === index + 1) quote = nextQuote(token, quote);
+    live += token;
+    index = end;
+  }
+  // Empty or comments-only text yields no result references, never evidence of health.
+  return live;
+}
+
+/** Shared with ci-required-jobs.test.ts: collect live run text and unchanged step ifs. */
 export function extractJobGate(value: unknown): JobGate {
   const job = JobSchema.parse(value ?? {});
   const needs = typeof job.needs === 'string' ? [job.needs] : (job.needs ?? []);
   const gateScript = (job.steps ?? [])
-    .map((step) => [typeof step.if === 'string' ? step.if : '', step.run ?? ''].join('\n'))
+    .map((step) =>
+      [typeof step.if === 'string' ? step.if : '', stripShellComments(step.run ?? '')].join('\n')
+    )
     .join('\n');
   const resultChecks = [...gateScript.matchAll(/\bneeds\.([\w-]+)\.result\b/g)]
     .map((match) => match[1])
