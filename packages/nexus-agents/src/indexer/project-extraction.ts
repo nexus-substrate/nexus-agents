@@ -6,11 +6,12 @@
  * (Source: Issue #240)
  */
 
-import { Project, type SourceFile } from 'ts-morph';
+import type { Project, SourceFile } from 'ts-morph';
 import * as path from 'node:path';
 import { getTimeProvider } from '../core/index.js';
 import type { FileEntry, ExtractorOptions } from './types.js';
 import { DEFAULT_EXTRACTOR_OPTIONS } from './types.js';
+import { getTsMorph } from './lazy-compiler.js';
 import { detectFileCategory } from './category-detection.js';
 import { extractExports } from './export-extraction.js';
 import { extractDependencies } from './dependency-extraction.js';
@@ -94,6 +95,7 @@ export function extractProject(options: Partial<ExtractorOptions> = {}): Extract
   const opts: ExtractorOptions = { ...DEFAULT_EXTRACTOR_OPTIONS, ...options };
   const startTime = getTimeProvider().now();
 
+  const { Project } = getTsMorph();
   const project = new Project({
     skipAddingFilesFromTsConfig: true,
     skipFileDependencyResolution: true,

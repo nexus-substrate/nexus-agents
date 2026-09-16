@@ -6,9 +6,10 @@
  * (Source: Epic #261 - Automated Documentation System)
  */
 
-import { SyntaxKind, type Project, type Node } from 'ts-morph';
+import type { Project, Node } from 'ts-morph';
 import * as path from 'node:path';
 import type { McpToolSpec, ParameterSpec } from './entrypoint-types.js';
+import { getTsMorph } from './lazy-compiler.js';
 
 // ============================================================================
 // Zod Parameter Extraction
@@ -33,6 +34,7 @@ function inferZodType(zodExpr: string): string {
  */
 // eslint-disable-next-line complexity -- AST traversal requires nested conditions
 function extractZodParameters(schemaObj: Node): ParameterSpec[] {
+  const { SyntaxKind } = getTsMorph();
   const params: ParameterSpec[] = [];
 
   const objLiteral = schemaObj.asKind(SyntaxKind.ObjectLiteralExpression);
@@ -133,6 +135,7 @@ function extractToolsFromFile(
   relativePath: string,
   warnings?: string[]
 ): McpToolSpec[] {
+  const { SyntaxKind } = getTsMorph();
   const tools: McpToolSpec[] = [];
   if (sourceFile === undefined) return tools;
 
@@ -217,6 +220,7 @@ function maybeWarnEmptyTool(tool: McpToolSpec, warnings?: string[]): void {
  * resolved them and shipped empty metadata (#2153).
  */
 function resolveIdentifierInitializer(symbol: ReturnType<Node['getSymbol']>): Node | undefined {
+  const { SyntaxKind } = getTsMorph();
   for (const decl of symbol?.getDeclarations() ?? []) {
     const varDecl = decl.asKind(SyntaxKind.VariableDeclaration);
     const init = varDecl?.getInitializer();
@@ -232,6 +236,7 @@ function resolveIdentifierInitializer(symbol: ReturnType<Node['getSymbol']>): No
  * are resolved to their declaration's initializer from the enclosing scope.
  */
 function resolvePropertyValue(prop: Node): Node | undefined {
+  const { SyntaxKind } = getTsMorph();
   const propAssign = prop.asKind(SyntaxKind.PropertyAssignment);
   if (propAssign !== undefined) {
     const init = propAssign.getInitializer();
@@ -254,6 +259,7 @@ function resolvePropertyValue(prop: Node): Node | undefined {
  * shape). Returns '' for anything the extractor cannot resolve statically.
  */
 function extractStringValue(node: Node | undefined): string {
+  const { SyntaxKind } = getTsMorph();
   if (node === undefined) return '';
   const kind = node.getKind();
   if (kind === SyntaxKind.StringLiteral || kind === SyntaxKind.NoSubstitutionTemplateLiteral) {
@@ -295,6 +301,7 @@ function extractRegisterToolMeta(configArg: Node | undefined): {
   description: string;
   schemaArg: Node | undefined;
 } {
+  const { SyntaxKind } = getTsMorph();
   const configObj = configArg?.asKind(SyntaxKind.ObjectLiteralExpression);
   if (configObj === undefined) return { description: '', schemaArg: undefined };
 
@@ -312,6 +319,7 @@ function extractRegisterToolMeta(configArg: Node | undefined): {
  * Extracts parameters from a schema argument.
  */
 function extractParametersFromSchema(schemaArg: Node): ParameterSpec[] {
+  const { SyntaxKind } = getTsMorph();
   // Handle both inline objects and variable references
   if (schemaArg.getKind() === SyntaxKind.ObjectLiteralExpression) {
     return extractZodParameters(schemaArg);

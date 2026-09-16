@@ -17,10 +17,11 @@
  * (Source: Epic #261 - Automated Documentation System)
  */
 
-import { SyntaxKind, type Project, type SourceFile } from 'ts-morph';
+import type { Project, SourceFile } from 'ts-morph';
 import * as path from 'node:path';
 import type { CliCommandSpec, OptionSpec } from './entrypoint-types.js';
 import { catalogForExtractors } from '../cli-command-catalog.js';
+import { getTsMorph } from './lazy-compiler.js';
 
 // ============================================================================
 // Options Extraction
@@ -31,6 +32,7 @@ import { catalogForExtractors } from '../cli-command-catalog.js';
  */
 // eslint-disable-next-line complexity -- AST traversal requires nested conditions
 function extractCliOptions(sourceFile: SourceFile): Map<string, OptionSpec> {
+  const { SyntaxKind } = getTsMorph();
   const options = new Map<string, OptionSpec>();
 
   // Find PARSE_ARGS_CONFIG variable declaration
@@ -77,6 +79,7 @@ function extractCliOptions(sourceFile: SourceFile): Map<string, OptionSpec> {
  * Extracts the type from an option object.
  */
 function extractOptionType(optValue: unknown, spec: OptionSpec): void {
+  const { SyntaxKind } = getTsMorph();
   const obj = optValue as {
     getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
   };
@@ -84,8 +87,7 @@ function extractOptionType(optValue: unknown, spec: OptionSpec): void {
   if (typeProp === undefined) return;
 
   const propAssign = typeProp.asKind(SyntaxKind.PropertyAssignment) as
-    | { getInitializer(): { getText(): string } | undefined }
-    | undefined;
+    { getInitializer(): { getText(): string } | undefined } | undefined;
   if (propAssign === undefined) return;
 
   const init = propAssign.getInitializer();
@@ -102,6 +104,7 @@ function extractOptionType(optValue: unknown, spec: OptionSpec): void {
  * Extracts the short alias from an option object.
  */
 function extractOptionShort(optValue: unknown, spec: OptionSpec): void {
+  const { SyntaxKind } = getTsMorph();
   const obj = optValue as {
     getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
   };
@@ -109,8 +112,7 @@ function extractOptionShort(optValue: unknown, spec: OptionSpec): void {
   if (shortProp === undefined) return;
 
   const propAssign = shortProp.asKind(SyntaxKind.PropertyAssignment) as
-    | { getInitializer(): { getText(): string } | undefined }
-    | undefined;
+    { getInitializer(): { getText(): string } | undefined } | undefined;
   if (propAssign === undefined) return;
 
   const init = propAssign.getInitializer();
@@ -126,6 +128,7 @@ function extractOptionShort(optValue: unknown, spec: OptionSpec): void {
  * Extracts the default value from an option object.
  */
 function extractOptionDefault(optValue: unknown, spec: OptionSpec): void {
+  const { SyntaxKind } = getTsMorph();
   const obj = optValue as {
     getProperty(name: string): { asKind(kind: unknown): unknown } | undefined;
   };
@@ -133,8 +136,7 @@ function extractOptionDefault(optValue: unknown, spec: OptionSpec): void {
   if (defaultProp === undefined) return;
 
   const propAssign = defaultProp.asKind(SyntaxKind.PropertyAssignment) as
-    | { getInitializer(): { getText(): string } | undefined }
-    | undefined;
+    { getInitializer(): { getText(): string } | undefined } | undefined;
   if (propAssign === undefined) return;
 
   const init = propAssign.getInitializer();

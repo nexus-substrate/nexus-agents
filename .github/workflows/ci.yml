@@ -272,6 +272,14 @@ jobs:
       - name: Verify runtime assets reached dist
         run: pnpm exec tsx scripts/check-dist-assets.ts
 
+      # Runs the BUILT server and asserts neither TypeScript compiler copy
+      # (`typescript`, `ts-morph`) is resident before the first tool call —
+      # together they held −120 MB RSS at idle (#6405). Must run on the
+      # artifact: tsup hoists a `src/` dynamic import into a statically
+      # imported chunk, so a source-level check cannot see the regression.
+      - name: Verify dist server loads no compiler at idle
+        run: pnpm exec tsx scripts/check-dist-idle-compilers.ts
+
       - name: Upload build output
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
