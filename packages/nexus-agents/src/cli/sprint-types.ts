@@ -7,7 +7,6 @@
  * (Source: Issue #584 - CommandResult consolidation)
  */
 
-import { z } from 'zod';
 import type { CommandResult } from '../core/index.js';
 
 /**
@@ -105,19 +104,6 @@ export interface SprintCommandOptions {
   /** Sprint duration hint (e.g., "1 week", "2 weeks") */
   readonly duration?: string;
 }
-
-/**
- * Zod schema for SprintCommandOptions.
- */
-export const SprintCommandOptionsSchema = z.object({
-  subcommand: z.enum(['plan', 'list']),
-  vote: z.boolean().optional().default(false),
-  createIssue: z.boolean().optional().default(false),
-  format: z.enum(['text', 'json']).optional().default('text'),
-  dryRun: z.boolean().optional().default(false),
-  maxPerPriority: z.number().int().positive().optional().default(5),
-  duration: z.string().optional().default('1 week'),
-});
 
 /**
  * Raw GitHub issue from API.

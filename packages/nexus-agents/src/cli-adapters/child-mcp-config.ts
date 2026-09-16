@@ -128,10 +128,3 @@ export async function generateMcpConfig(options?: McpConfigOptions): Promise<Gen
 
   return { configPath, cleanup, allowedTools: tools };
 }
-
-/**
- * Gets the default allowed tools for SWE-bench MCP sessions.
- */
-export function getDefaultAllowedTools(): readonly string[] {
-  return DEFAULT_ALLOWED_TOOLS;
-}

@@ -71,11 +71,6 @@ export function isValidAuthSubcommand(value: string | undefined): value is AuthS
   );
 }
 
-/** Subcommands that need async I/O — handled outside `runAuthCommand`. */
-export function isAsyncAuthSubcommand(value: AuthSubcommand): value is 'status' {
-  return value === 'status';
-}
-
 /**
  * Gets file permissions as octal string.
  */

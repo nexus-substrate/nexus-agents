@@ -255,25 +255,3 @@ export const RuleBasedPolicyConfigSchema = z.object({
   repetitionPenalty: z.number().min(0).max(1).optional(),
   minProbability: z.number().min(0).max(1).optional(),
 });
-
-/** Schema for LearnablePolicyConfig. */
-export const LearnablePolicyConfigSchema = RuleBasedPolicyConfigSchema.extend({
-  learningRate: z.number().positive().max(1).optional(),
-  baselineDecay: z.number().min(0).max(1).optional(),
-  gradientClip: z.number().positive().optional(),
-  minLearningRate: z.number().positive().max(1).optional(),
-  learningRateDecay: z.number().min(0).max(1).optional(),
-  discountFactor: z.number().min(0).max(1).optional(),
-  warmupUpdates: z.number().int().nonnegative().optional(),
-});
-
-/** Schema for LearnablePolicyStats. */
-export const LearnablePolicyStatsSchema = z.object({
-  updateCount: z.number().int().nonnegative(),
-  currentLearningRate: z.number().nonnegative(),
-  baseline: z.number(),
-  lastGradientNorm: z.number().nonnegative(),
-  totalEpisodes: z.number().int().nonnegative(),
-  avgEpisodeLength: z.number().nonnegative(),
-  avgFinalReward: z.number(),
-});

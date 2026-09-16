@@ -53,6 +53,3 @@ export interface QualityGateResult {
   /** Which iteration this was (1-based). */
   readonly iteration: number;
 }
-
-/** Maximum iterations before escalating to human. */
-export const MAX_GATE_ITERATIONS = 3;
