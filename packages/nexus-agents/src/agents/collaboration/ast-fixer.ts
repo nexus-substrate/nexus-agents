@@ -18,8 +18,9 @@
  * @see Issue #4249 - epic: replace ast-fixer's broken regex transforms
  */
 
-import { Project, SyntaxKind, SourceFile, Node } from 'ts-morph';
+import type { Project, SourceFile, Node } from 'ts-morph';
 import type { Violation } from './constitutional-types.js';
+import { getTsMorph } from '../../indexer/lazy-compiler.js';
 import { appendCatchToUnhandledThen, neutralizeEvalCalls } from './ast-rewrites.js';
 
 /**
@@ -46,6 +47,7 @@ export class AstFixer {
   private readonly project: Project;
 
   constructor() {
+    const { Project } = getTsMorph();
     this.project = new Project({
       useInMemoryFileSystem: true,
       compilerOptions: {
@@ -97,6 +99,7 @@ export class AstFixer {
    * Fixes hardcoded secrets by replacing with environment variable references.
    */
   private fixNoSecrets(sourceFile: SourceFile, violation: Violation): AstFixResult {
+    const { SyntaxKind } = getTsMorph();
     const lineNum = this.getLineNumber(violation);
     if (lineNum === null) {
       return this.applyCommentFix(sourceFile.getFullText(), violation);
@@ -134,6 +137,7 @@ export class AstFixer {
    * Checks if expression is a console method call.
    */
   private isConsoleCall(expression: Node): boolean {
+    const { Node } = getTsMorph();
     if (!Node.isPropertyAccessExpression(expression)) {
       return false;
     }
@@ -146,6 +150,7 @@ export class AstFixer {
    * Fixes console.log/warn/error statements by commenting them out.
    */
   private fixNoConsole(sourceFile: SourceFile, violation: Violation): AstFixResult {
+    const { SyntaxKind } = getTsMorph();
     const lineNum = this.getLineNumber(violation);
     let modified = false;
 
@@ -209,6 +214,7 @@ export class AstFixer {
    * Fixes type safety issues by replacing 'any' with 'unknown'.
    */
   private fixTypeSafety(sourceFile: SourceFile, violation: Violation): AstFixResult {
+    const { SyntaxKind } = getTsMorph();
     const lineNum = this.getLineNumber(violation);
     let modified = false;
 
@@ -266,6 +272,7 @@ export class AstFixer {
    * Checks if expression is a JSON.parse call.
    */
   private isJsonParse(expression: Node): boolean {
+    const { Node } = getTsMorph();
     if (!Node.isPropertyAccessExpression(expression)) {
       return false;
     }
@@ -276,6 +283,7 @@ export class AstFixer {
    * Fixes input validation by wrapping JSON.parse in try-catch.
    */
   private fixInputValidation(sourceFile: SourceFile, violation: Violation): AstFixResult {
+    const { SyntaxKind } = getTsMorph();
     const lineNum = this.getLineNumber(violation);
     let modified = false;
 

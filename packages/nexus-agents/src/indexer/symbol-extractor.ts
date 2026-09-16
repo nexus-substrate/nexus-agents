@@ -5,14 +5,17 @@
  * interface, and type definitions from source files.
  *
  * Token savings: ~80-99% vs reading full files.
- * No additional dependencies — uses TypeScript (already a project dep).
+ * The compiler is ts-morph's bundled copy, loaded on first call through
+ * `indexer/lazy-compiler.ts` (#6405) — never at import, and never the
+ * standalone `typescript` package (a second 76 MB copy).
  *
  * @module indexer/symbol-extractor
  */
 
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import ts from 'typescript';
+import type { ts } from 'ts-morph';
+import { getTypescript } from './lazy-compiler.js';
 
 /** A symbol extracted from source code. */
 export interface CodeSymbol {
@@ -60,6 +63,7 @@ export interface SymbolExtractionResult {
 }
 
 function getKind(node: ts.Node): CodeSymbol['kind'] | null {
+  const ts = getTypescript();
   if (ts.isFunctionDeclaration(node)) return 'function';
   if (ts.isClassDeclaration(node)) return 'class';
   if (ts.isInterfaceDeclaration(node)) return 'interface';
@@ -71,6 +75,7 @@ function getKind(node: ts.Node): CodeSymbol['kind'] | null {
 }
 
 function getName(node: ts.Node): string {
+  const ts = getTypescript();
   if (
     ts.isFunctionDeclaration(node) ||
     ts.isClassDeclaration(node) ||
@@ -93,6 +98,7 @@ function getName(node: ts.Node): string {
 }
 
 function isExported(node: ts.Node): boolean {
+  const ts = getTypescript();
   const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
   if (modifiers) {
     return modifiers.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
@@ -101,6 +107,7 @@ function isExported(node: ts.Node): boolean {
 }
 
 function visitNode(node: ts.Node, sourceFile: ts.SourceFile, symbols: CodeSymbol[]): void {
+  const ts = getTypescript();
   const kind = getKind(node);
   if (kind !== null) {
     const name = getName(node);
@@ -131,6 +138,7 @@ function visitClassMembers(
   sourceFile: ts.SourceFile,
   symbols: CodeSymbol[]
 ): void {
+  const ts = getTypescript();
   for (const member of node.members) {
     if (ts.isMethodDeclaration(member) || ts.isPropertyDeclaration(member)) {
       const memberName = member.name.getText();
@@ -171,6 +179,7 @@ export async function extractSymbols(filePath: string): Promise<SymbolExtraction
     };
   }
 
+  const ts = getTypescript();
   const source = await readFile(filePath, 'utf-8');
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
   const symbols: CodeSymbol[] = [];

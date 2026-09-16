@@ -7,7 +7,7 @@
  * (Source: Epic #261 - Automated Documentation System)
  */
 
-import { Project } from 'ts-morph';
+import type { Project } from 'ts-morph';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
 import { getErrorMessage, getTimeProvider } from '../core/index.js';
@@ -29,6 +29,7 @@ export { extractMcpTools } from './entrypoint-mcp-extractor.js';
 import { sanitizeCommand, sanitizeTool } from './entrypoint-sanitizer.js';
 import { extractCliCommands } from './entrypoint-cli-extractor.js';
 import { extractMcpTools } from './entrypoint-mcp-extractor.js';
+import { getTsMorph } from './lazy-compiler.js';
 
 // ============================================================================
 // Main Extraction Function
@@ -54,6 +55,7 @@ function generateTimestamp(): string {
  * Creates a ts-morph project and adds source files.
  */
 function createProject(opts: EntrypointExtractorOptions): Project {
+  const { Project } = getTsMorph();
   const project = new Project({
     tsConfigFilePath: path.join(opts.packageRoot, 'tsconfig.json'),
     skipAddingFilesFromTsConfig: true,
