@@ -32,7 +32,7 @@ import type { IAuditLogger, PolicyAuditDecision, AuditOutcome } from '../../audi
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
-import { getGlobalPolicyFirewall } from './policy-registry.js';
+import { getGlobalPolicyFirewall, getGlobalExecutionMode } from './policy-registry.js';
 import { recordPolicyVerdict } from './policy-audit-emit.js';
 
 export type { ToolResult };
@@ -585,7 +585,7 @@ export function createSecureHandler(
   if (config.auditLogger === undefined && registeredAuditLogger !== undefined)
     config = { ...config, auditLogger: registeredAuditLogger };
   const logger = config.logger ?? createLogger({ tool: config.toolName });
-  const mode = config.executionMode ?? 'read-only';
+  const mode = config.executionMode ?? getGlobalExecutionMode();
 
   return async (args: unknown): Promise<ToolResult> => {
     const ctxOpts = {

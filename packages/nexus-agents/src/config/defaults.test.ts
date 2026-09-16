@@ -70,7 +70,7 @@ describe('DEFAULTS', () => {
 
     it('should have valid security values', () => {
       expect(DEFAULTS.SECURITY_DEFAULTS.maxSystemPromptLength).toBe(4_000);
-      expect(DEFAULTS.SECURITY_DEFAULTS.policyDefaultMode).toBe('read-only');
+      expect(DEFAULTS.SECURITY_DEFAULTS.policyDefaultMode).toBe('read-write');
       expect(DEFAULTS.SECURITY_DEFAULTS.sandboxMode).toBe('policy');
     });
   });

@@ -23,6 +23,7 @@ import { withMiddleware } from './middleware-chain.js';
 import { wrapToolWithTimeout } from './tool-wrapper.js';
 import { getCurrentRequestContext, measuredTrustTier } from './request-context.js';
 import { createDefaultPolicyFirewall } from './policy.js';
+import { setGlobalExecutionMode, resetGlobalPolicyFirewall } from './policy-registry.js';
 import { RateLimiter, type RateLimiterState } from './rate-limiter.js';
 import { FAKE_OPENAI_KEY } from '../../testing/test-secrets.js';
 
@@ -293,7 +294,10 @@ describe('SecureHandler', () => {
       expect(mockLogger.child).toHaveBeenCalled();
     });
 
-    it('should use default execution mode of read-only', async () => {
+    it('should use the registry execution mode, read-write by default (#6431)', async () => {
+      // This test pinned a literal 'read-only' as the default — the value under
+      // which an enforcing firewall denies every mutation tool. The default is
+      // now the operator's `policy.defaultMode`, carried by the policy registry.
       const policyFirewall = createMockPolicyFirewall(true);
 
       const secureHandler = createSecureHandler(mockSuccessHandler, {
@@ -303,12 +307,30 @@ describe('SecureHandler', () => {
 
       await secureHandler({});
 
-      // Verify policy was evaluated with read-only mode
       expect(policyFirewall.evaluate).toHaveBeenCalledWith(
         expect.objectContaining({
-          mode: 'read-only',
+          mode: 'read-write',
         })
       );
+    });
+
+    it('should evaluate under read-only once the registry carries the operator lock (#6431)', async () => {
+      const policyFirewall = createMockPolicyFirewall(true);
+      setGlobalExecutionMode('read-only');
+      try {
+        const secureHandler = createSecureHandler(mockSuccessHandler, {
+          toolName: 'locked_mode_tool',
+          policyFirewall,
+        });
+
+        await secureHandler({});
+
+        expect(policyFirewall.evaluate).toHaveBeenCalledWith(
+          expect.objectContaining({ mode: 'read-only' })
+        );
+      } finally {
+        resetGlobalPolicyFirewall();
+      }
     });
 
     it('should use provided execution mode', async () => {

@@ -17,15 +17,29 @@ import {
   type SecurityConfig,
   type AuthConfig,
   type ToolCategory,
+  DEFAULT_EXECUTION_MODE,
 } from './schemas-security.js';
 
 describe('PolicyConfigSchema', () => {
   it('parses valid policy config with defaults', () => {
     const result = PolicyConfigSchema.parse({});
     expect(result).toEqual({
-      defaultMode: 'read-only',
+      defaultMode: 'read-write',
       policyMode: 'enforce',
     });
+  });
+
+  it('defaults defaultMode to read-write, so read-only is an operator opt-in lock (#6431)', () => {
+    // Under 'read-only' the `deny-mutations-without-mode` rule fires on every
+    // manifest-classified mutation tool, and nothing on the MCP path sets the
+    // mode otherwise — so the day enforcement defaults on, a default install
+    // would lose every mutation tool (panel option A, 6-0). The constant is
+    // the ONE default; the schema, `DEFAULTS`, `getPolicyValues` and the
+    // policy registry all read it rather than each keeping a literal.
+    expect(DEFAULT_EXECUTION_MODE).toBe('read-write');
+    expect(PolicyConfigSchema.parse({}).defaultMode).toBe(DEFAULT_EXECUTION_MODE);
+    // The lock is still expressible.
+    expect(PolicyConfigSchema.parse({ defaultMode: 'read-only' }).defaultMode).toBe('read-only');
   });
 
   it('parses valid policy config with explicit values', () => {

@@ -63,6 +63,7 @@ export {
 export { parseIntEnv, parseFloatEnv, parseBoolEnv } from './defaults-env.js';
 
 import { createGetToolRateLimit } from './defaults-env.js';
+import { DEFAULT_EXECUTION_MODE } from './schemas-security.js';
 import {
   API_TIMEOUTS as _API,
   WORKFLOW_TIMEOUTS as _WF,
@@ -305,8 +306,8 @@ export const DEFAULTS = {
   SECURITY_DEFAULTS: {
     /** Maximum system prompt length in characters. */
     maxSystemPromptLength: 4_000,
-    /** Default policy execution mode. */
-    policyDefaultMode: 'read-only' as const,
+    /** Default policy execution mode — the schema's constant (#6431). */
+    policyDefaultMode: DEFAULT_EXECUTION_MODE,
     /** Default policy mode. */
     policyMode: 'enforce' as const,
     /** Default sandbox mode. */

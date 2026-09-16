@@ -28,6 +28,7 @@ import { validateToolInput } from './validation.js';
 import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import { TimeoutGuard, type TimeoutGuardConfig } from './timeout-guard.js';
+import { getGlobalExecutionMode } from './policy-registry.js';
 import { MCP_TIMEOUTS } from '../../config/timeouts.js';
 import {
   createRequestContext,
@@ -90,7 +91,7 @@ export interface MiddlewareChainConfig {
   schema?: z.ZodType;
   /** Policy firewall instance (optional) */
   policyFirewall?: IPolicyFirewall | undefined;
-  /** Execution mode for policy evaluation */
+  /** Execution mode for policy evaluation (default: the registry's process-wide mode, #6431) */
   executionMode?: ExecutionMode | undefined;
   /** Allowed paths for file operations */
   allowedPaths?: readonly string[] | undefined;
@@ -351,7 +352,7 @@ function addPolicyMiddleware(
   skip: MiddlewareSkipConfig
 ): void {
   if (skip.policy !== true && config.policyFirewall !== undefined) {
-    const mode = config.executionMode ?? 'read-only';
+    const mode = config.executionMode ?? getGlobalExecutionMode();
     stages.push({
       name: 'policy',
       middleware: createPolicyMiddleware(

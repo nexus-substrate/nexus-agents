@@ -106,7 +106,9 @@ describe('PolicyConfigSchema', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.defaultMode).toBe('read-only');
+      // #6431: read-write by default; read-only is the operator's opt-in lock.
+      // Same default as config/schemas-security.ts — one constant, not two.
+      expect(result.data.defaultMode).toBe('read-write');
       expect(result.data.policyMode).toBe('enforce');
     }
   });
@@ -613,7 +615,10 @@ describe('createDefaultPolicyFirewall', () => {
     expect(firewall.getMode()).toBe('warn');
   });
 
-  it('should deny mutations without read-write mode by default', () => {
+  it('should deny mutations when the context carries no granted mode (createPolicyContext fails closed)', () => {
+    // Not the operator default (#6431: that is read-write). `createPolicyContext`
+    // with no `mode` builds a read-only context, and this asserts the rule
+    // denies a write against it.
     const firewall = createDefaultPolicyFirewall();
     const ctx = createPolicyContext('write_file', { path: './test.txt' });
 

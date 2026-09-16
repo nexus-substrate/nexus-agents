@@ -118,6 +118,8 @@ import {
 // the real registry rather than a mock that would report whatever it was told.
 import {
   setGlobalPolicyFirewall,
+  setGlobalExecutionMode,
+  getGlobalExecutionMode,
   stagePolicyFirewallForRollout,
 } from './mcp/middleware/policy-registry.js';
 import { setSecureHandlerAuditLogger } from './mcp/middleware/secure-handler.js';
@@ -612,7 +614,6 @@ function logToolRegistration(
     builtInTemplates: Map<string, unknown>;
     modelAdapter: unknown;
     policyFirewall: { getMode(): string } | undefined;
-    executionMode: string | undefined;
   }
 ): void {
   const activeTools = allowlist
@@ -632,14 +633,17 @@ function logToolRegistration(
     builtInTemplateCount: info.builtInTemplates.size,
     realWorkflowExecution: info.modelAdapter !== undefined,
     realTechLead: info.modelAdapter !== undefined,
-    executionMode: info.executionMode ?? 'read-only',
+    // The mode every secure handler evaluates under — read off the registry
+    // after registration set it, so an unset option reports the real default.
+    executionMode: getGlobalExecutionMode(),
   });
 
   // #4888: the firewall now reaches every secure handler through the policy
   // registry, so this reports the mode it will actually apply — read off the
   // firewall after `stagePolicyFirewallForRollout` has staged it, not a
-  // constant. The staging call logs the configured-vs-effective pair and the
-  // opt-in; this line exists so the registration record names the mode too.
+  // constant. The staging call logs the effective mode and why (warn by
+  // default; `NEXUS_MCP_POLICY_ENFORCE=1` opts in, #6431); this line exists so
+  // the registration record names the mode too.
   if (info.policyFirewall !== undefined) {
     const mode = info.policyFirewall.getMode();
     // Not "all tools": upstream MCP proxies are registered with a raw handler
@@ -908,6 +912,31 @@ function initV2PipelineSubsystems(
   });
 }
 
+/**
+ * Wires the process-wide policy registry the secure handlers read.
+ *
+ * #6431 / #6294: the operator's `security.policy.defaultMode` used to stop at
+ * the registration log line; every secure handler resolved its own literal
+ * 'read-only'. The registry carries it now, so the mode the log names is the
+ * mode the handlers apply.
+ *
+ * #4888: the firewall reached only a startup log line before this — no tool's
+ * deps carried it, so no policy rule was ever evaluated. Staged into warn mode
+ * unless the operator opts in; see `stagePolicyFirewallForRollout`.
+ */
+function wirePolicyRegistry(
+  policyFirewall: RegisterMcpToolsOptions['policyFirewall'],
+  executionMode: RegisterMcpToolsOptions['executionMode'],
+  logger: ILogger
+): void {
+  if (executionMode !== undefined) {
+    setGlobalExecutionMode(executionMode);
+  }
+  if (policyFirewall !== undefined) {
+    setGlobalPolicyFirewall(stagePolicyFirewallForRollout(policyFirewall, logger));
+  }
+}
+
 export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   const {
     server,
@@ -937,12 +966,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
 
-  // #4888: the firewall reached only a startup log line before this — no tool's
-  // deps carried it, so no policy rule was ever evaluated. Staged into warn
-  // mode unless the operator opts in; see `stagePolicyFirewallForRollout`.
-  if (policyFirewall !== undefined) {
-    setGlobalPolicyFirewall(stagePolicyFirewallForRollout(policyFirewall, logger));
-  }
+  wirePolicyRegistry(policyFirewall, executionMode, logger);
 
   initV2PipelineSubsystems(logger, options.auditLogger);
 
@@ -971,7 +995,6 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     builtInTemplates,
     modelAdapter,
     policyFirewall,
-    executionMode,
   });
 
   maybeRunStpaAnalysis(options, logger);

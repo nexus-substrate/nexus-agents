@@ -106,7 +106,7 @@ export interface ToolFactoryConfig {
  * Per-tool configuration options.
  */
 export interface ToolWrapperOptions {
-  /** Execution mode for policy evaluation (default: 'read-only') */
+  /** Execution mode for policy evaluation (default: the registry's process-wide mode, #6431) */
   executionMode?: ExecutionMode | undefined;
   /** Custom timeout in ms (overrides default) */
   timeoutMs?: number | undefined;
@@ -169,7 +169,8 @@ export function createToolFactory(
     const chainConfig: Omit<MiddlewareChainConfig, 'toolName'> = {
       logger,
       policyFirewall,
-      executionMode: options?.executionMode ?? 'read-only',
+      // Unset falls through to the registry's process-wide mode (#6431).
+      executionMode: options?.executionMode,
       allowedPaths,
       rateLimiter,
       timeout: skip.timeout === true ? undefined : getTimeoutConfig(security, options?.timeoutMs),

@@ -1019,6 +1019,40 @@ describe('parseBoolEnv consumers are registered as boolLooseStr (#5155)', () => 
 });
 
 // =============================================================================
+// NEXUS_MCP_POLICY_ENFORCE (#6431)
+// =============================================================================
+
+describe('NEXUS_MCP_POLICY_ENFORCE is registered as a parseBoolEnv flag (#6431)', () => {
+  // #4987/#4988 described this as the per-operator enforce opt-in; it had no
+  // reader, no schema entry and no docs. The #5155 ratchet above now finds the
+  // reader; this pins the registration on its own so the name is greppable.
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is a known variable', () => {
+    expect(getKnownNexusVarNames()).toContain('NEXUS_MCP_POLICY_ENFORCE');
+  });
+
+  it.each(['1', 'true', '0', 'false'])('accepts %j', (value) => {
+    vi.stubEnv('NEXUS_MCP_POLICY_ENFORCE', value);
+    const result = validateNexusEnv();
+    expect(result.unknownVars.map((v) => v.name)).not.toContain('NEXUS_MCP_POLICY_ENFORCE');
+    expect(result.invalidVars.map((v) => v.name)).not.toContain('NEXUS_MCP_POLICY_ENFORCE');
+  });
+
+  it.each(['yes', 'on', 'enforce'])(
+    'reports %j as invalid, so the warn fallback is not silent',
+    (value) => {
+      vi.stubEnv('NEXUS_MCP_POLICY_ENFORCE', value);
+      expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain(
+        'NEXUS_MCP_POLICY_ENFORCE'
+      );
+    }
+  );
+});
+
+// =============================================================================
 // NEXUS_GATEWAY_COST (#4392 increment 2, step 1)
 // =============================================================================
 

@@ -7,17 +7,37 @@
 import { z } from 'zod';
 
 /**
+ * The ONE default for `security.policy.defaultMode` (#6431). `DEFAULTS`,
+ * `getPolicyValues`, the middleware `PolicyConfigSchema` and the policy
+ * registry all read this constant; a second literal is how the config default
+ * and the `?? 'read-only'` fallbacks drifted apart.
+ *
+ * `'read-write'` because the `deny-mutations-without-mode` rule fires on every
+ * manifest-classified mutation tool under `'read-only'`, and nothing on the
+ * MCP path sets the mode per call — so a `'read-only'` default would deny all
+ * 22 mutation tools for every operator the day enforcement defaults on (panel
+ * option A, 6-0). `'read-only'` remains an operator opt-in lock.
+ */
+export const DEFAULT_EXECUTION_MODE = 'read-write' as const;
+
+/**
  * Policy configuration schema.
  *
  * Controls authorization behavior for tool operations.
- * - defaultMode: Whether operations default to read-only or read-write
- * - policyMode: Whether to enforce denials or just warn (for migration)
+ * - defaultMode: the execution mode every MCP tool call is evaluated under.
+ *   `'read-write'` (default) allows manifest-classified mutation tools;
+ *   `'read-only'` is an operator lock that forbids every one of them once the
+ *   firewall enforces (`NEXUS_MCP_POLICY_ENFORCE`), and is logged as a
+ *   would-be denial in warn mode.
+ * - policyMode: Whether to enforce denials or just warn (for migration). Not
+ *   read for the effective firewall mode today — see
+ *   `stagePolicyFirewallForRollout` (#4888, #4988).
  *
  * (Source: OWASP ASVS 4.0, Authorization Controls)
  */
 export const PolicyConfigSchema = z.object({
-  /** Default execution mode for tool operations (default: 'read-only') */
-  defaultMode: z.enum(['read-only', 'read-write']).default('read-only'),
+  /** Execution mode for tool operations (default: 'read-write'; 'read-only' is the opt-in lock, #6431) */
+  defaultMode: z.enum(['read-only', 'read-write']).default(DEFAULT_EXECUTION_MODE),
   /** Policy enforcement mode (default: 'enforce') */
   policyMode: z.enum(['enforce', 'warn']).default('enforce'),
 });

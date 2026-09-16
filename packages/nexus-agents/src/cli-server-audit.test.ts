@@ -10,12 +10,14 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  getPolicyValues,
   initializeAuditLogger,
   logSecurityConfig,
   recordStartupComplete,
   recordStartupFailure,
 } from './cli-server-audit.js';
 import type { ILogger } from './core/index.js';
+import { PolicyConfigSchema } from './config/schemas-security.js';
 
 function createMockLogger(): ILogger {
   const mock: ILogger = {
@@ -271,23 +273,65 @@ describe('recordStartupFailure / recordStartupComplete (#5577)', () => {
   });
 });
 
+describe('getPolicyValues', () => {
+  it('falls back to the schema default when no config was loaded (#6431)', () => {
+    // Two defaults for one setting is how the old `?? 'read-only'` drifted from
+    // what the schema said: with a parsed config the schema wins, without one
+    // the literal did. Both paths must answer the same, and the answer is the
+    // schema's — read-write, so the mutation rule is an opt-in lock.
+    const fromSchema = PolicyConfigSchema.parse({}).defaultMode;
+    expect(fromSchema).toBe('read-write');
+    expect(getPolicyValues(undefined).defaultExec).toBe(fromSchema);
+  });
+
+  it('honours an explicit read-only lock', () => {
+    const config = { security: { policy: { defaultMode: 'read-only', policyMode: 'enforce' } } };
+    expect(getPolicyValues(config as never).defaultExec).toBe('read-only');
+  });
+});
+
 describe('logSecurityConfig', () => {
-  it('names the policy mode as configured, not as applied (#4888)', () => {
-    // This runs at startup, before `stagePolicyFirewallForRollout` picks the
-    // mode that actually applies — `warn` unless the operator opted in. A field
-    // called `policyMode` reading `enforce` here would claim an enforcement the
-    // staged rollout does not perform, which is the same false claim the
-    // tool-registration line had to drop.
-    const logger = createMockLogger();
-
-    logSecurityConfig(logger);
-
+  function securityLine(logger: ILogger): Record<string, unknown> {
     const line = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find(
       (call: unknown[]) => call[0] === 'Security configuration'
     );
     expect(line).toBeDefined();
-    expect((line as unknown[])[1]).toHaveProperty('configuredPolicyMode');
-    expect((line as unknown[])[1]).not.toHaveProperty('policyMode');
+    return (line as unknown[])[1] as Record<string, unknown>;
+  }
+
+  it('names the EFFECTIVE policy mode and why, not the configured value (#4888, #6431)', () => {
+    // This runs at startup, before `stagePolicyFirewallForRollout` stages the
+    // firewall. It used to report `configuredPolicyMode: 'enforce'` — the
+    // config value the staging then ignored — which is a field a spot-check
+    // trusts and an enforcement that did not happen. It now resolves the mode
+    // the same way the staging will and says what decided it.
+    vi.stubEnv('NEXUS_MCP_POLICY_ENFORCE', '');
+    try {
+      const logger = createMockLogger();
+      logSecurityConfig(logger);
+      const ctx = securityLine(logger);
+      expect(ctx['policyMode']).toBe('warn (rollout default)');
+      expect(ctx).not.toHaveProperty('configuredPolicyMode');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('reports enforce when NEXUS_MCP_POLICY_ENFORCE opts in (#6431)', () => {
+    vi.stubEnv('NEXUS_MCP_POLICY_ENFORCE', '1');
+    try {
+      const logger = createMockLogger();
+      logSecurityConfig(logger);
+      expect(securityLine(logger)['policyMode']).toBe('enforce (NEXUS_MCP_POLICY_ENFORCE)');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('reports the default execution mode the handlers will apply (#6431)', () => {
+    const logger = createMockLogger();
+    logSecurityConfig(logger);
+    expect(securityLine(logger)['defaultExecutionMode']).toBe('read-write');
   });
 
   it('reports whether audit logging is on, alongside the other controls (#4990)', () => {

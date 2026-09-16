@@ -9,6 +9,7 @@
 import { z } from 'zod';
 
 import { SecurityError, type ILogger } from '../../core/index.js';
+import { DEFAULT_EXECUTION_MODE } from '../../config/schemas-security.js';
 
 // =============================================================================
 // Core Types
@@ -27,8 +28,9 @@ export interface Artifact<T = unknown> {
 
 /**
  * Execution mode for tool operations.
- * - 'read-only': Only read operations allowed (default)
- * - 'read-write': Both read and write operations allowed
+ * - 'read-only': Only read operations allowed — the operator's opt-in lock
+ * - 'read-write': Both read and write operations allowed (default since #6431;
+ *   `DEFAULT_EXECUTION_MODE` in config/schemas-security.ts)
  */
 export type ExecutionMode = 'read-only' | 'read-write';
 
@@ -138,10 +140,11 @@ export class PolicyError extends SecurityError {
 // =============================================================================
 
 /**
- * Schema for policy configuration.
+ * Schema for policy configuration. Same default as
+ * `config/schemas-security.ts` — one constant, not two (#6431).
  */
 export const PolicyConfigSchema = z.object({
-  defaultMode: z.enum(['read-only', 'read-write']).default('read-only'),
+  defaultMode: z.enum(['read-only', 'read-write']).default(DEFAULT_EXECUTION_MODE),
   policyMode: z.enum(['enforce', 'warn']).default('enforce'),
   allowedPaths: z.array(z.string()).default(['./']),
 });

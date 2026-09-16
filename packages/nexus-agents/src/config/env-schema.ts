@@ -294,6 +294,11 @@ const NexusEnvSchema = z.object({
   NEXUS_DYNAMIC_MODELS: boolLooseStr.optional(),
   NEXUS_GITIGNORE_AUTO: boolLooseStr.optional(),
   NEXUS_SUBPROCESS_ENV_ALLOWLIST: boolLooseStr.optional(),
+  // #6431: the per-operator opt-in that runs the MCP PolicyFirewall in
+  // enforce (mcp/middleware/policy-registry.ts). Default off = warn: rules
+  // evaluate and log would-be denials, none is applied. #4987/#4988 described
+  // this flag before it had a reader.
+  NEXUS_MCP_POLICY_ENFORCE: boolLooseStr.optional(),
 
   // Lowercased before parsing, so mixed case is genuinely accepted.
   NEXUS_REPUTATION_GATING: z

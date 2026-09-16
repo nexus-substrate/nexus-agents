@@ -14,7 +14,9 @@ import {
   safePathsRule,
 } from './policy-rules.js';
 import type { PolicyContext } from './policy-types.js';
-import { TOOL_MANIFEST } from '../tools/tool-manifest.js';
+import { TOOL_MANIFEST, classifyRegisteredTool } from '../tools/tool-manifest.js';
+import { createDefaultPolicyFirewall } from './policy.js';
+import { DEFAULT_EXECUTION_MODE } from '../../config/schemas-security.js';
 
 // ============================================================================
 // Helpers
@@ -190,6 +192,55 @@ describe('denyMutationsWithoutModeRule', () => {
       }
     );
   });
+});
+
+// ============================================================================
+// The benign population under the DEFAULT config (#6431)
+// ============================================================================
+
+describe('the default rule set under the default config allows every registered tool (#6431)', () => {
+  // The population that matters when enforcement turns on is the ordinary
+  // caller, not the attacker: flipping NEXUS_AUTO_REMEDIATE to enforce broke
+  // three legitimate paths because only the attack was tested. Under the old
+  // 'read-only' default this rule would have denied every manifest-classified
+  // mutation tool for every operator on enforcement day. So: an ENFORCING
+  // firewall, the shipped rules, the shipped default mode, every registered
+  // tool — allowed. The empty case is named: a manifest with no mutation tools
+  // would make this suite prove nothing, so the count is asserted first.
+  const mutationTools = TOOL_MANIFEST.map((t) => t.name).filter(
+    (name) => classifyRegisteredTool(name) === 'mutation'
+  );
+  const readOnlyTools = TOOL_MANIFEST.map((t) => t.name).filter(
+    (name) => classifyRegisteredTool(name) === 'read-only'
+  );
+  const enforcing = createDefaultPolicyFirewall({ mode: 'enforce' });
+
+  it('has a non-empty population on each side', () => {
+    expect(mutationTools.length).toBeGreaterThan(0);
+    expect(readOnlyTools.length).toBeGreaterThan(0);
+    expect(mutationTools.length + readOnlyTools.length).toBe(TOOL_MANIFEST.length);
+  });
+
+  it.each(mutationTools)('mutation tool %s is allowed under the default mode', (name) => {
+    const decision = enforcing.evaluate({ toolName: name, args: {}, mode: DEFAULT_EXECUTION_MODE });
+    expect(decision.allowed).toBe(true);
+  });
+
+  it.each(readOnlyTools)('read-only tool %s is allowed under the default mode', (name) => {
+    const decision = enforcing.evaluate({ toolName: name, args: {}, mode: DEFAULT_EXECUTION_MODE });
+    expect(decision.allowed).toBe(true);
+  });
+
+  it.each(mutationTools)(
+    'mutation tool %s is still denied under an explicit read-only lock',
+    (name) => {
+      // The lock the panel kept the rule for: command-shaped tools never reach
+      // the path rules, so this is the only guard on that class.
+      const decision = enforcing.evaluate({ toolName: name, args: {}, mode: 'read-only' });
+      expect(decision.allowed).toBe(false);
+      expect(decision.ruleName).toBe('deny-mutations-without-mode');
+    }
+  );
 });
 
 // ============================================================================
