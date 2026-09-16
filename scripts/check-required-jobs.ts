@@ -175,7 +175,11 @@ function aggregatorProblems(gate: AggregatorShape, skipAllowed: readonly string[
   // A wildcard skip list is never acceptable for CI Success: `security` and
   // its peers must have RUN.
   if (gate.skipAllowed === '*') return ['ci-success SKIP_ALLOWED is "*"; every need may skip'];
-  const declared = new Set(gate.skipAllowed ?? []);
+  // Absent or malformed is drift, never "none declared" (#6387 panel 9): a
+  // manifest with an empty skip list would otherwise read a default as a match.
+  if (gate.skipAllowed === undefined)
+    return ['ci-success SKIP_ALLOWED is missing or not a JSON array of job ids'];
+  const declared = new Set(gate.skipAllowed);
   const pinned = new Set(skipAllowed);
   const extra = [...declared].filter((j) => !pinned.has(j));
   const missing = [...pinned].filter((j) => !declared.has(j));

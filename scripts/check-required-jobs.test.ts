@@ -83,13 +83,17 @@ describe('checkRequiredJobs', () => {
         ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: '*', neutralized: [] },
       }).problems
     ).toEqual(['ci-success SKIP_ALLOWED is "*"; every need may skip']);
-    // No SKIP_ALLOWED declared reads as none, and the manifest's pinned skip is then missing.
-    expect(
-      checkRequiredJobs({
-        ...input,
-        ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: undefined, neutralized: [] },
-      }).problems
-    ).toEqual(['ci-success SKIP_ALLOWED lacks manifest skip_allowed jobs: lint']);
+    // No / malformed SKIP_ALLOWED is drift in its own right — even against an
+    // empty manifest list, where "none declared" would otherwise read as a match.
+    for (const skipAllowed of [[], ['lint']]) {
+      expect(
+        checkRequiredJobs({
+          ...input,
+          manifest: { ...manifest, skip_allowed: skipAllowed },
+          ciSuccessGate: { verifiesEveryNeed: true, skipAllowed: undefined, neutralized: [] },
+        }).problems
+      ).toEqual(['ci-success SKIP_ALLOWED is missing or not a JSON array of job ids']);
+    }
   });
 
   it.each([{}, null, { ignoreCves: [] }])(
