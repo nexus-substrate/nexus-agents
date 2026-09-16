@@ -62,7 +62,7 @@ import {
 } from '../packages/nexus-agents/src/audit/reviewed-diff-hash.js';
 
 const CODEOWNERS_FILE = join(ROOT, 'CODEOWNERS');
-const PR_REVIEW_RECORDS_FILE = join(ROOT, 'governance/pr-review-records.jsonl');
+const PR_REVIEW_RECORDS_REL = 'governance/pr-review-records.jsonl';
 const GENESIS_FILE = join(ROOT, 'governance/governor-review-genesis.txt');
 
 /**
@@ -501,11 +501,12 @@ export function resolvePrContext(argv: readonly string[]): {
  */
 function recomputeReviewedDiff(
   baseSha: string,
-  headSha: string
+  headSha: string,
+  repoDir: string
 ): { hash: string; truncated: boolean } | undefined {
   try {
     const diff = execFileSync('git', canonicalGitDiffArgs(baseSha, headSha), {
-      cwd: ROOT,
+      cwd: repoDir,
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -563,7 +564,8 @@ function tamperExitCode(records: readonly PrReviewRecord[]): number | null {
  */
 function resolveGateContext(
   argv: readonly string[],
-  records: readonly PrReviewRecord[]
+  records: readonly PrReviewRecord[],
+  targetDir: string
 ):
   | {
       prNumber: number;
@@ -587,7 +589,7 @@ function resolveGateContext(
   }
 
   // Option-C (#3831): recompute the canonical reviewed-diff hash from base..head.
-  const reviewedDiff = recomputeReviewedDiff(baseSha, headSha);
+  const reviewedDiff = recomputeReviewedDiff(baseSha, headSha, targetDir);
   if (reviewedDiff === undefined) {
     const code = tamperExitCode(records); // fail-closed even when git can't diff
     if (code !== null) return { exit: code };
@@ -627,13 +629,24 @@ function parseGovernorPatternsOrFail(codeownersText: string): string[] | null {
   }
 }
 
+/** How the gate is pointed at a tree: DATA (the pr-review ledger, git history) from `targetDir`; policy (CODEOWNERS, genesis) from this checkout. */
+export interface GovernorReviewGateOptions {
+  /** The checkout under review — the PR head under the two-checkout job (#6377), this repo for a local run. */
+  readonly targetDir: string;
+  /**
+   * A parameter, not an env var: the ledger path must not be steerable by the
+   * environment of a gate whose whole job is tamper-evidence. Tests supply a
+   * fixture; production takes the target's committed ledger.
+   */
+  readonly ledgerFile?: string;
+}
+
 export function runGovernorReviewGate(
   argv: readonly string[],
-  // A parameter, not an env var: the ledger path must not be steerable by the
-  // environment of a gate whose whole job is tamper-evidence. Tests supply a
-  // fixture; production takes the default and never passes this.
-  ledgerFile: string = PR_REVIEW_RECORDS_FILE
+  options: GovernorReviewGateOptions = { targetDir: ROOT }
 ): number {
+  const ledgerFile = options.ledgerFile ?? join(options.targetDir, PR_REVIEW_RECORDS_REL);
+  // POLICY from this checkout (the gate under the two-checkout job), never the target.
   const codeownersText = existsSync(CODEOWNERS_FILE) ? readFileSync(CODEOWNERS_FILE, 'utf-8') : '';
   const governorPatterns = parseGovernorPatternsOrFail(codeownersText);
   if (governorPatterns === null) return 1;
@@ -648,7 +661,7 @@ export function runGovernorReviewGate(
     return 1;
   }
 
-  const ctx = resolveGateContext(argv, records);
+  const ctx = resolveGateContext(argv, records, options.targetDir);
   if ('exit' in ctx) return ctx.exit;
 
   const outcome = analyzeGovernorReview({
