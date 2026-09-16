@@ -34,7 +34,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { extractJobGate } from './check-required-jobs.js';
+import { extractWorkflowGate } from './aggregator-shape.js';
 
 /**
  * Jobs deliberately left out of `ci-success.needs`.
@@ -62,7 +62,7 @@ interface CiWorkflow {
 const ci = parse(
   readFileSync(join(process.cwd(), '.github', 'workflows', 'ci.yml'), 'utf8')
 ) as CiWorkflow;
-const ciGate = extractJobGate(ci.jobs['ci-success']);
+const ciGate = extractWorkflowGate(ci, 'ci-success');
 const required = new Set(ciGate.needs);
 
 describe('CI required-job wiring', () => {
@@ -213,7 +213,7 @@ const DOCS_ADVISORY_JOBS = new Set(['docs-coverage', 'spell-check']);
 const docs = parse(
   readFileSync(join(process.cwd(), '.github', 'workflows', 'docs-check.yml'), 'utf8')
 ) as CiWorkflow;
-const docsGate = extractJobGate(docs.jobs['docs-success']);
+const docsGate = extractWorkflowGate(docs, 'docs-success');
 const docsRequired = new Set(docsGate.needs);
 
 describe('Documentation Gate required-job wiring (#4809)', () => {
@@ -228,9 +228,10 @@ describe('Documentation Gate required-job wiring (#4809)', () => {
   // today is that the aggregator stays COMPLETE, so the context is correct
   // whenever protection starts requiring it.
 
-  it('finds the docs-success job and its aggregator step', () => {
+  it('finds the docs-success job and its aggregator step, in the one accepted shape (#6387)', () => {
     expect(docsRequired.size).toBeGreaterThan(0);
     expect(docsGate.gate.verifiesEveryNeed).toBe(true);
+    expect(docsGate.gate.neutralized).toEqual([]);
   });
 
   it('classifies every job in docs-check.yml as required or explicitly advisory', () => {

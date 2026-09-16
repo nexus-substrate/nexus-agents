@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
-import { AGGREGATOR_RUN } from './check-required-jobs.js';
+import { AGGREGATOR_RUN } from './aggregator-shape.js';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
@@ -201,7 +201,7 @@ describe('shared job gate extraction (#6382)', () => {
   const NEEDS = '${{ toJSON(needs) }}';
 
   it('recognizes the one accepted aggregator shape: NEEDS_JSON from toJSON(needs), consumed by run', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
+    const { extractJobGate } = await import('./aggregator-shape.js');
     const gate = extractJobGate({
       needs: ['lint', 'security'],
       if: 'always()',
@@ -229,7 +229,7 @@ describe('shared job gate extraction (#6382)', () => {
     { env: {}, run: 'test "${{ needs.security.result }}" = success' },
     { run: '# NEEDS_JSON: ${{ toJSON(needs) }}' },
   ])('does not accept a per-job, partial, mention-only or altered shape: %j', async (step) => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
+    const { extractJobGate } = await import('./aggregator-shape.js');
     const run =
       step.run === 'AGGREGATOR'
         ? AGGREGATOR_RUN
@@ -244,7 +244,7 @@ describe('shared job gate extraction (#6382)', () => {
   });
 
   it('accepts the pinned script with trailing-whitespace differences only, and a "*" skip list', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
+    const { extractJobGate } = await import('./aggregator-shape.js');
     const padded = AGGREGATOR_RUN.split('\n')
       .map((l) => l + '  ')
       .join('\n');
@@ -311,7 +311,8 @@ describe('shared job gate extraction (#6382)', () => {
   ])(
     'names every departure from the one accepted shape (#6387): %j',
     async ({ job, step, expected }) => {
-      const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
+      const { extractJobGate } = await import('./aggregator-shape.js');
+      const { checkRequiredJobs } = await import('./check-required-jobs.js');
       const { env: extraEnv, ...stepRest } = step as { env?: Record<string, string> };
       const gate = extractJobGate({
         ...job,
@@ -337,7 +338,7 @@ describe('shared job gate extraction (#6382)', () => {
   );
 
   it('a sibling step before the pinned one (it could shadow jq via $GITHUB_PATH) is drift (#6387 panel 3)', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
+    const { extractJobGate } = await import('./aggregator-shape.js');
     const pinned = { env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN };
     const gate = extractJobGate({
       if: 'always()',
@@ -348,7 +349,7 @@ describe('shared job gate extraction (#6382)', () => {
   });
 
   it('the shape is a lock, not a list: an unknown key at every level is named', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
+    const { extractJobGate } = await import('./aggregator-shape.js');
     const gate = extractJobGate({
       if: 'always()',
       services: {},
@@ -363,6 +364,53 @@ describe('shared job gate extraction (#6382)', () => {
     expect(gate.neutralized).toEqual(['job key "services"', 'step key "uses"', 'env key "NOVEL"']);
   });
 
+  it.each([
+    {
+      root: { defaults: { run: { shell: 'bash -c true {0}' } } },
+      expected: ['workflow key "defaults"'],
+    },
+    { root: { env: { BASH_ENV: '/tmp/x.sh' } }, expected: ['workflow key "env"'] },
+    {
+      root: { defaults: {}, env: {} },
+      expected: ['workflow key "defaults"', 'workflow key "env"'],
+    },
+    { root: { name: 'CI', on: 'push', permissions: {}, concurrency: {} }, expected: [] },
+  ])(
+    'the workflow root is held to the same lock: a top-level defaults/env reaches the step the job may not override (#6387 panel 4): %j',
+    async ({ root, expected }) => {
+      const { extractWorkflowGate } = await import('./aggregator-shape.js');
+      const gate = extractWorkflowGate(
+        {
+          ...root,
+          jobs: {
+            'ci-success': {
+              if: 'always()',
+              needs: ['lint'],
+              steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: '[]' }, run: AGGREGATOR_RUN }],
+            },
+          },
+        },
+        'ci-success'
+      );
+      expect(gate).toEqual({
+        needs: ['lint'],
+        gate: { verifiesEveryNeed: true, skipAllowed: [], neutralized: expected },
+      });
+    }
+  );
+
+  it('workflow-root drift and job drift are both named, root first', async () => {
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
+    const gate = extractWorkflowGate(
+      {
+        env: {},
+        jobs: { 'ci-success': { steps: [{ env: { NEEDS_JSON: NEEDS }, run: AGGREGATOR_RUN }] } },
+      },
+      'ci-success'
+    ).gate;
+    expect(gate.neutralized).toEqual(['workflow key "env"', 'job if missing (always() required)']);
+  });
+
   it('the pinned script is what the real ci.yml and docs-check.yml steps run', async () => {
     const { loadCiSuccessGate } = await import('./check-required-jobs.js');
     expect(loadCiSuccessGate().gate.verifiesEveryNeed).toBe(true);
@@ -371,7 +419,7 @@ describe('shared job gate extraction (#6382)', () => {
   it.each(['not json', '{"a":1}', '["ok", 1]'])(
     'a SKIP_ALLOWED that is not a JSON array of ids reads as none declared: %s',
     async (raw) => {
-      const { extractJobGate } = await import('./check-required-jobs.js');
+      const { extractJobGate } = await import('./aggregator-shape.js');
       const gate = extractJobGate({
         if: 'always()',
         steps: [{ env: { NEEDS_JSON: NEEDS, SKIP_ALLOWED: raw }, run: AGGREGATOR_RUN }],
@@ -385,7 +433,7 @@ describe('shared job gate extraction (#6382)', () => {
   );
 
   it('names a missing gate as verifying nothing', async () => {
-    const { extractJobGate } = await import('./check-required-jobs.js');
+    const { extractJobGate } = await import('./aggregator-shape.js');
     expect(extractJobGate(undefined)).toEqual({
       needs: [],
       gate: { verifiesEveryNeed: false, skipAllowed: undefined, neutralized: [] },
@@ -393,8 +441,8 @@ describe('shared job gate extraction (#6382)', () => {
   });
 
   it('matches the manifest to the REAL ci-success.needs exactly and checks the tree', async () => {
-    const { checkRequiredJobs, extractJobGate, loadCiSuccessGate } =
-      await import('./check-required-jobs.js');
+    const { checkRequiredJobs, loadCiSuccessGate } = await import('./check-required-jobs.js');
+    const { extractWorkflowGate } = await import('./aggregator-shape.js');
     const { loadWorkflowJobNames } = await import('./check-required-jobs.js');
     const actualManifest: unknown = JSON.parse(
       readFileSync('governance/required-jobs.json', 'utf8')
@@ -402,7 +450,7 @@ describe('shared job gate extraction (#6382)', () => {
     const ci = parse(readFileSync('.github/workflows/ci.yml', 'utf8')) as {
       jobs: Record<string, unknown>;
     };
-    const gate = extractJobGate(ci.jobs['ci-success']);
+    const gate = extractWorkflowGate(ci, 'ci-success');
     expect(actualManifest).toMatchObject({ ci_success_needs: gate.needs });
     expect(loadCiSuccessGate()).toEqual(gate);
     expect(
@@ -497,6 +545,19 @@ ${AGGREGATOR_RUN.split('\n')
     );
     expect(runRequiredJobsCheck(directory, directory)).toBe(1);
     expect(output.join('\n')).toContain('Required context without workflow job: CI Success');
+  });
+
+  it('a workflow-level defaults.run.shell in the target ci.yml is drift the live checker names (#6387 panel 4)', async () => {
+    const { runRequiredJobsCheck } = await import('./check-required-jobs.js');
+    const workflowPath = join(directory, '.github/workflows/ci.yml');
+    writeFileSync(
+      workflowPath,
+      'defaults:\n  run:\n    shell: bash -c true {0}\n' + readFileSync(workflowPath, 'utf8')
+    );
+    expect(runRequiredJobsCheck(directory, directory)).toBe(1);
+    expect(output).toContain(
+      '::error::ci-success aggregator departs from the one accepted shape: workflow key "defaults" (#6387)'
+    );
   });
 
   it('prints ok and exits 0 for measured matching inputs', async () => {
