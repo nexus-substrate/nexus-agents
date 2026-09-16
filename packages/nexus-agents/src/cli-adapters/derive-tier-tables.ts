@@ -187,7 +187,7 @@ export function buildTierToClis(
  * strongest model); `simpleScore` tracks speed (easy tasks want the fastest).
  * Both are 0-1. An unscored default gets the conservative floor 0 on quality.
  */
-export function buildConfidenceProfiles(
+function buildConfidenceProfiles(
   data: Record<CliNameLiteral, CliModelData>
 ): Record<CliNameLiteral, { simpleScore: number; complexScore: number }> {
   const out = {} as Record<CliNameLiteral, { simpleScore: number; complexScore: number }>;

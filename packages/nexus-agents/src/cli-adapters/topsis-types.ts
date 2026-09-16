@@ -163,10 +163,10 @@ export const TASK_CATEGORY_PLAN_CRITERIA: Readonly<Record<string, readonly Topsi
  * The high threshold matches the existing ×1.2 quality-boost threshold in
  * composite-router-helpers.ts `adjustProfileForTask`.
  */
-export const DIFFICULTY_QUALITY_HEAVY_THRESHOLD = 7;
+const DIFFICULTY_QUALITY_HEAVY_THRESHOLD = 7;
 
 /** Below this complexity the task is considered easy → cost-heavy weights (#4196). */
-export const DIFFICULTY_COST_HEAVY_THRESHOLD = 4;
+const DIFFICULTY_COST_HEAVY_THRESHOLD = 4;
 
 /**
  * Weight mass shifted between quality and cost by difficulty conditioning
@@ -174,7 +174,7 @@ export const DIFFICULTY_COST_HEAVY_THRESHOLD = 4;
  * tasks and 0.35/0.45/0.2 for easy tasks; latency is never touched and the
  * weight sum stays 1.0.
  */
-export const DIFFICULTY_WEIGHT_SHIFT = 0.15;
+const DIFFICULTY_WEIGHT_SHIFT = 0.15;
 
 /**
  * Applies difficulty-conditional quality/cost weighting (#4196).

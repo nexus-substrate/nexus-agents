@@ -65,7 +65,7 @@ export function detectConformity(
 /**
  * Checks if a single agent conformed to majority.
  */
-export function checkAgentConformity(
+function checkAgentConformity(
   agentTrajectory: AgentTrajectory,
   snapshot: RoundSnapshot,
   prevSnapshot: RoundSnapshot,

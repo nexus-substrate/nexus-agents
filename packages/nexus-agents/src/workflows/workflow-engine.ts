@@ -74,7 +74,7 @@ export class WorkflowEngine implements IWorkflowEngine {
   async execute(
     workflow: WorkflowDefinition,
     inputs: Record<string, unknown>,
-    options?: { phaseTimeoutMs?: number }
+    options?: { phaseTimeoutMs?: number; onPhaseComplete?: () => void }
   ): Promise<Result<WorkflowResult, WorkflowError>> {
     // Validate inputs and create execution plan
     const inputValidation = this.validateInputs(workflow, inputs);
@@ -109,6 +109,9 @@ export class WorkflowEngine implements IWorkflowEngine {
         ...(options?.phaseTimeoutMs !== undefined
           ? { phaseTimeoutMs: options.phaseTimeoutMs }
           : {}),
+        ...(options?.onPhaseComplete !== undefined
+          ? { onPhaseComplete: options.onPhaseComplete }
+          : {}),
       });
     } catch (error) {
       return this.handleExecutionError(error, initResult.executionId, workflow.name);
@@ -122,9 +125,17 @@ export class WorkflowEngine implements IWorkflowEngine {
     executionId: string;
     startTime: number;
     phaseTimeoutMs?: number;
+    /** #6162: async-job heartbeat, fired after each phase settles. */
+    onPhaseComplete?: () => void;
   }): Promise<Result<WorkflowResult, WorkflowError>> {
     const { workflow, plan, context, executionId, startTime, phaseTimeoutMs } = args;
-    const stepResults = await this.executePhases(plan, context, workflow, phaseTimeoutMs);
+    const stepResults = await this.executePhases(
+      plan,
+      context,
+      workflow,
+      phaseTimeoutMs,
+      args.onPhaseComplete
+    );
     if (!stepResults.ok) {
       this.updateExecutionStatus(executionId, {
         state: 'failed',
@@ -296,7 +307,8 @@ export class WorkflowEngine implements IWorkflowEngine {
     plan: ExecutionPlan,
     context: ExecutionContext,
     workflow: WorkflowDefinition,
-    phaseTimeoutMs?: number
+    phaseTimeoutMs?: number,
+    onPhaseComplete?: () => void
   ): Promise<Result<StepResult[], WorkflowError>> {
     const allResults: StepResult[] = [];
     const totalSteps = plan.phases.reduce((sum, p) => sum + p.steps.length, 0);
@@ -338,6 +350,9 @@ export class WorkflowEngine implements IWorkflowEngine {
         allResults.push(result);
       }
       completedSteps += phase.steps.length;
+      // #6162: one heartbeat per settled phase — the unit of progress an
+      // async run_workflow job can prove.
+      onPhaseComplete?.();
     }
     return ok(allResults);
   }

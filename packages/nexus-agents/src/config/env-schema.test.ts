@@ -9,6 +9,8 @@ import { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 import { VOTER_ROLES } from '../cli/vote-types.js';
+import { ApiArmIdSchema } from '../cli-adapters/types-core.js';
+import { isGatewayArmId } from '../adapters/sdk/gateway-cost.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1151,6 +1153,42 @@ describe('NEXUS_OPENAI_COMPAT_ENDPOINT is registered as an endpoint id (#4392 in
       expect(invalid?.value).toBe('<redacted>');
     }
   );
+
+  // #6409: a vendor segment passes the endpoint-id shape but makes the
+  // gateway register as a VENDOR arm (`api:openai`), where its
+  // NEXUS_GATEWAY_COST declaration is unreachable and the ceiling prices it
+  // as the vendor. The list is read from the vendor arm ids, not retyped.
+  const vendorSegments = ApiArmIdSchema.options
+    .filter((arm): boolean => !isGatewayArmId(arm))
+    .map((arm) => arm.slice('api:'.length));
+
+  it('reads the vendor segments from the vendor arm ids', () => {
+    expect(vendorSegments.sort()).toEqual(['anthropic', 'google', 'openai']);
+  });
+
+  it.each(['anthropic', 'google', 'openai'])(
+    'reports vendor segment %j as invalid, naming the collision (#6409)',
+    (value) => {
+      vi.stubEnv('NEXUS_OPENAI_COMPAT_ENDPOINT', value);
+      const result = validateNexusEnv();
+      const invalid = result.invalidVars.find((v) => v.name === 'NEXUS_OPENAI_COMPAT_ENDPOINT');
+      expect(invalid).toBeDefined();
+      expect(invalid?.error).toMatch(/vendor/);
+      expect(invalid?.error).toContain(value);
+      expect(invalid?.value).toBe('<redacted>');
+    }
+  );
+
+  it('still accepts custom-openai and a vendor-prefixed name that is not the vendor segment', () => {
+    for (const value of ['openai-compat', 'openai2', 'my-anthropic']) {
+      vi.stubEnv('NEXUS_OPENAI_COMPAT_ENDPOINT', value);
+      const result = validateNexusEnv();
+      expect(
+        result.invalidVars.map((v) => v.name),
+        value
+      ).not.toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
+    }
+  });
 });
 
 // =============================================================================

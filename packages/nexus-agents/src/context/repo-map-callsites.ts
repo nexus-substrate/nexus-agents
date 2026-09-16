@@ -36,7 +36,7 @@ export const CALLSITE_TOP_N_MODULES = 25;
 /** Hard cap on the total number of probe symbols scanned per repo-map build. */
 export const MAX_PROBE_SYMBOLS = 60;
 /** Hard cap on files parsed per repo-map build, to bound worst-case latency. */
-export const MAX_CALLSITE_FILES = 4000;
+const MAX_CALLSITE_FILES = 4000;
 
 /** Options for {@link computeCallSiteCounts}. */
 export interface CallSiteCountOptions {

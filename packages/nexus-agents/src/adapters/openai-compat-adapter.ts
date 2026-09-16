@@ -30,12 +30,20 @@ import type {
   ModelMetadata,
   IModelAdapter,
 } from '../core/index.js';
-import { ok, err, ConfigError, getErrorMessage, getTimeProvider } from '../core/index.js';
+import {
+  ok,
+  err,
+  ConfigError,
+  createLogger,
+  getErrorMessage,
+  getTimeProvider,
+} from '../core/index.js';
 import { OpenAIAdapter } from './openai-adapter.js';
 import { recordUsageEvent } from '../learning/usage-log.js';
 import { gatewayCostDetail } from '../cli-adapters/budget-arm-cost.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
 import { isEndpointArmId, type EndpointArmId } from '../cli-adapters/types-core.js';
+import { gatewayEndpointRejection } from './sdk/gateway-cost.js';
 import {
   DEFAULT_OPENAI_COMPAT_ENDPOINT,
   OPENAI_COMPAT_ENDPOINT_ENV,
@@ -136,18 +144,32 @@ function readGatewayFromOpencode(): OpenAICompatConfig | null {
   };
 }
 
+const endpointLogger = createLogger({ component: 'openai-compat-adapter' });
+
 /**
  * The gateway's endpoint identity (#4392 increment 2, step 2):
- * `NEXUS_OPENAI_COMPAT_ENDPOINT` when it is a valid endpoint id, else
+ * `NEXUS_OPENAI_COMPAT_ENDPOINT` when `api:<value>` is a GATEWAY arm id, else
  * {@link DEFAULT_OPENAI_COMPAT_ENDPOINT}. The fallback is deliberate: the env
  * schema reports an invalid value at startup, and this reader must never turn
  * a pasted URL — or a credential inside one — into an arm id, telemetry key
- * or display string. Both config paths (env, opencode.json) share it.
+ * or display string, nor register the gateway as a VENDOR arm (`api:openai`),
+ * where its cost declaration is unreachable (#6409). The same rule decides
+ * both (`gatewayEndpointRejection`), and the fallback is warned with the
+ * reason, never the value. Both config paths (env, opencode.json) share it.
  */
-export function readOpenAICompatEndpoint(env: NodeJS.ProcessEnv = process.env): string {
+export function readOpenAICompatEndpoint(
+  env: NodeJS.ProcessEnv = process.env,
+  logger: ILogger = endpointLogger
+): string {
   const raw = env[OPENAI_COMPAT_ENDPOINT_ENV]?.trim();
   if (raw === undefined || raw === '') return DEFAULT_OPENAI_COMPAT_ENDPOINT;
-  return isEndpointArmId(`api:${raw}`) ? raw : DEFAULT_OPENAI_COMPAT_ENDPOINT;
+  const reason = gatewayEndpointRejection(raw);
+  if (reason === undefined) return raw;
+  logger.warn(
+    `${OPENAI_COMPAT_ENDPOINT_ENV} ignored (${reason}); the gateway registers as api:${DEFAULT_OPENAI_COMPAT_ENDPOINT}`,
+    { env: OPENAI_COMPAT_ENDPOINT_ENV, reason, value: '<redacted>' }
+  );
+  return DEFAULT_OPENAI_COMPAT_ENDPOINT;
 }
 
 /**

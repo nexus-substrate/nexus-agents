@@ -39,6 +39,7 @@ import {
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
+import { heartbeatJob } from '../jobs/job-result-store.js';
 
 // ============================================================================
 // Types & Schema
@@ -93,9 +94,17 @@ function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolRes
   return toolSuccess(JSON.stringify(output, null, 2));
 }
 
-async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Promise<ToolResult> {
+async function createFullResponse(
+  input: ExecuteSpecInput,
+  logger: ILogger,
+  /** Async-job heartbeat (#6162), fired per graph event. Absent in sync mode. */
+  onProgress?: () => void
+): Promise<ToolResult> {
   const startMs = Date.now();
-  const result = await executeSpec(input.spec);
+  const result = await executeSpec(
+    input.spec,
+    onProgress === undefined ? undefined : { onProgress }
+  );
   const durationMs = Date.now() - startMs;
 
   if (!result.ok) {
@@ -170,10 +179,14 @@ function createExecuteSpecHandler(
         toolName: 'execute_spec',
         input,
         freshJobId: () => `es-${randomUUID()}`,
-        // #5393: deliberately arity-0 — `executeSpec` has no AbortSignal option,
+        // #5393: deliberately arity-1 — `executeSpec` has no AbortSignal option,
         // so taking the signal would flip `signalAccepted` to true with nothing
         // reading it. Step-boundary gate first: #6305.
-        run: () => createFullResponse(input, logger),
+        // #6162: heartbeats by jobId on every graph event.
+        run: (jobId) =>
+          createFullResponse(input, logger, () => {
+            heartbeatJob(jobId);
+          }),
         logger,
       });
     }

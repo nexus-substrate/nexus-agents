@@ -8,6 +8,9 @@
  */
 
 import type { CliName } from '../../cli-adapters/types.js';
+import { ApiArmIdSchema, routingArmDisplaySlot } from '../../cli-adapters/types-core.js';
+import { gatewayCostDetail } from '../../cli-adapters/budget-arm-cost.js';
+import { isGatewayArmId } from '../../adapters/sdk/gateway-cost.js';
 import { computeTokenCost } from '../../learning/token-cost-core.js';
 import { getDefaultRegistry } from '../../config/model-registry.js';
 import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
@@ -141,6 +144,8 @@ export function createInitialCostMetrics(): CostMetrics {
   return {
     totalCostUsd: 0,
     costPerModel: new Map(),
+    costPerArm: new Map(),
+    unpricedCalls: 0,
   };
 }
 
@@ -356,4 +361,31 @@ export function registryCostForModel(tokens: SessionTokenTotals, model: string):
     { input: tokens.inputTokens, output: tokens.outputTokens },
     { inputPer1M: pricing.inputPer1M, outputPer1M: pricing.outputPer1M }
   ).costUsd;
+}
+
+/**
+ * Cost of one recorded call on an observed ARM, for the session counter
+ * (#6399). A CLI slot or vendor arm is {@link registryCostForModel} on its
+ * display slot, unchanged. A GATEWAY arm is priced by its `NEXUS_GATEWAY_COST`
+ * declaration through {@link gatewayCostDetail}, the same read the ledger
+ * writers use: `free`/`local` → a measured $0, `priced:<in>,<out>` → the flat
+ * rate, and everything else — undeclared, or bare `priced` with no model id
+ * to look up (the observer holds only the arm) — `undefined`, UNMEASURED.
+ * The caller counts that rather than summing a $0 that reads as free. Before
+ * this a gateway could only reach the counter as its display slot, priced at
+ * opencode's default model: a number that measured nothing about the gateway.
+ */
+export function observedArmCostUsd(
+  tokens: SessionTokenTotals,
+  arm: string,
+  env: NodeJS.ProcessEnv = process.env
+): number | undefined {
+  if (!isGatewayArmId(arm)) {
+    // A vendor arm collapses to its display slot; a CLI slot is its own; any
+    // other string is left to registryCostForModel's fail-soft 0.
+    const vendor = ApiArmIdSchema.safeParse(arm);
+    return registryCostForModel(tokens, vendor.success ? routingArmDisplaySlot(vendor.data) : arm);
+  }
+  const detail = gatewayCostDetail(arm, undefined, tokens.inputTokens, tokens.outputTokens, env);
+  return detail.priced ? detail.costUsd : undefined;
 }

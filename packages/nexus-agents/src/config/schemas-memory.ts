@@ -23,7 +23,7 @@ import { z } from 'zod';
 const unitInterval = z.number().min(0).max(1);
 
 /** Smallest accepted `decayIntervalMs` — sweeps are not re-entrant (see field JSDoc). */
-export const MIN_DECAY_INTERVAL_MS = 1000;
+const MIN_DECAY_INTERVAL_MS = 1000;
 
 /**
  * Coordinated memory decay configuration.

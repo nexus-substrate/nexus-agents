@@ -1789,6 +1789,7 @@ InterfaceDeclaration CollectRealVotesOptions
   readonly declaredOptions?: readonly string[] | undefined
   readonly erroredRoleBackoffMs?: number | undefined
   readonly gatewayAdapters?: readonly IModelAdapter[] | undefined
+  readonly onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined
   readonly project?: string | undefined
   readonly proposal: string
   readonly roleAdapters?: ReadonlyMap<VoterRole, IModelAdapter> | undefined
@@ -3359,7 +3360,7 @@ FunctionDeclaration executeParallel
 TypeAliasDeclaration ExecuteResult
   = { readonly error: string; readonly ok: false; } | { readonly ok: true; readonly value: PipelineResult; }
 FunctionDeclaration executeSpec
-  : (markdown: string, options?: import("src/index").CompileOptions | undefined) => Promise<Result<SpecExecutionResult, SpecExecutionError>>
+  : (markdown: string, options?: SpecExecutionOptions | undefined) => Promise<Result<SpecExecutionResult, SpecExecutionError>>
 TypeAliasDeclaration ExecuteSpecDeps
   = BaseMcpToolDeps
 TypeAliasDeclaration ExecuteSpecInput
@@ -4194,7 +4195,7 @@ InterfaceDeclaration GetJobResultResponse
   readonly jobId: string
   readonly producerVersionMeasured?: boolean | undefined
   readonly producerVersionSource?: JobResultSource | undefined
-  readonly record?: undefined | { completedAt?: string | undefined; createdAt: string; error?: string | undefined; errorKind?: "abandoned" | undefined; jobId: string; producerVersion?: string | undefined; result?: unknown; signalAccepted?: boolean | undefined; status: "cancelled" | "complete" | "failed" | "pending"; toolName: string; v: 1; }
+  readonly record?: undefined | { completedAt?: string | undefined; createdAt: string; error?: string | undefined; errorKind?: "abandoned" | undefined; jobId: string; lastProgressAt?: string | undefined; producerVersion?: string | undefined; result?: unknown; signalAccepted?: boolean | undefined; status: "cancelled" | "complete" | "failed" | "pending"; toolName: string; v: 1; }
 FunctionDeclaration getKnownNexusVarNames
   : () => readonly string[]
 FunctionDeclaration getOutcomeStore
@@ -4975,6 +4976,7 @@ InterfaceDeclaration IOrchestrationObserver
   getSessionMetrics(sessionId?: string) => readonly SessionMetrics[]
   getStats() => OrchestrationStats
   isActive() => boolean
+  recordArmTokenUsage(sessionId: string, arm: ObservedArmId, tokens: SessionTokenTotals) => void
   recordRoutingDecision(decision: RoutingDecision) => void
   recordTokenUsage(sessionId: string, model: CliName, tokens: SessionTokenTotals) => void
   removeEventListener(listener: OrchestrationObserverListener) => void
@@ -5325,7 +5327,7 @@ InterfaceDeclaration IWeightedVoting
   weightedConsensus(votes: ReadonlyMap<string, Vote>) => WeightedConsensusResult
 InterfaceDeclaration IWorkflowEngine
   cancel(executionId: string) => Promise<Result<void, WorkflowError>>
-  execute(workflow: WorkflowDefinition, inputs: Record<string, unknown>, options?: { phaseTimeoutMs?: number; }) => Promise<Result<WorkflowResult, WorkflowError>>
+  execute(workflow: WorkflowDefinition, inputs: Record<string, unknown>, options?: { onPhaseComplete?: () => void; phaseTimeoutMs?: number; }) => Promise<Result<WorkflowResult, WorkflowError>>
   getStatus(executionId: string) => ExecutionStatus
   getTemplateByName(name: string) => Promise<WorkflowDefinition | undefined>
   listTemplates() => Promise<WorkflowTemplate[]>
@@ -5351,6 +5353,7 @@ InterfaceDeclaration JobSummary
   readonly createdAt: string
   readonly hasError: boolean
   readonly jobId: string
+  readonly lastProgressAt?: string | undefined
   readonly status: "cancelled" | "complete" | "failed" | "pending"
   readonly toolName: string
 ClassDeclaration JsonDashboardRenderer
@@ -6061,8 +6064,10 @@ TypeAliasDeclaration ObservedArmId
 TypeAliasDeclaration ObserverAgentState
   = z.infer<typeof AgentStateSchema>
 InterfaceDeclaration ObserverCostMetrics
+  costPerArm: Map<ObservedArmId, number>
   costPerModel: Map<"claude" | "codex" | "gemini" | "opencode", number>
   totalCostUsd: number
+  unpricedCalls: number
 InterfaceDeclaration ObserverSessionMetrics
   completedAt?: string | undefined
   costMetrics: CostMetrics
@@ -8822,7 +8827,7 @@ InterfaceDeclaration SpecExecutionError
   readonly message: string
   readonly stage: ExecutionStage
 TypeAliasDeclaration SpecExecutionOptions
-  = CompileOptions
+  = CompileOptions & { readonly onProgress?: (() => void) | undefined; }
 InterfaceDeclaration SpecExecutionResult
   readonly dag: { edges: { from: string; to: string; }[]; nodes: { capabilities: string[]; complexity: "complex" | "expert" | "moderate" | "simple"; dependsOn: string[]; description: string; id: string; sourceRequirement?: string | undefined; type: "code" | "config" | "docs" | "refactor" | "test"; }[]; roots: string[]; specTitle: string; totalComplexity: "complex" | "expert" | "moderate" | "simple"; }
   readonly durationMs: number
@@ -8953,6 +8958,7 @@ InterfaceDeclaration StaggeredVoteInput
   readonly fallbackAdapter: IModelAdapter
   readonly interDelay: number
   readonly logger: ILogger
+  readonly onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined
   readonly proposal: string
   readonly roleAdapters: Map<VoterRole, IModelAdapter>
   readonly roles: readonly VoterRole[]

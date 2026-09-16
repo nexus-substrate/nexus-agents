@@ -20,6 +20,7 @@
 import type { ILogger, IModelAdapter } from '../../core/index.js';
 import { boundArtifactForReview, type BoundedArtifact } from '../../utils/bounded-artifact.js';
 import type { ResolvedVoterProject } from '../../cli/voter-project.js';
+import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { buildWorkspaceBlock } from '../../cli/voter-response.js';
 import { shouldEscalateLowPosterior } from './consensus-vote-types.js';
 import type {
@@ -39,6 +40,8 @@ interface RevoteOpts {
   project?: ResolvedVoterProject | undefined;
   workspace?: string | undefined;
   workspaceSha?: string | undefined;
+  /** #6162: per-seat heartbeat, retained through the re-vote. */
+  onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
 }
 
 /**

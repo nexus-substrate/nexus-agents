@@ -43,7 +43,7 @@ export interface FixGeneratorConfig {
   readonly maxAttempts: number;
 }
 
-export const DEFAULT_FIX_CONFIG: FixGeneratorConfig = {
+const DEFAULT_FIX_CONFIG: FixGeneratorConfig = {
   contextLines: 10,
   maxAttempts: 1,
 };

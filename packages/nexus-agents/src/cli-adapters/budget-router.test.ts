@@ -542,6 +542,37 @@ describe('BudgetRouter task-class cost ceiling — gateway arms (#4392 inc 2)', 
     expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['gemini']);
     r.dispose();
   });
+
+  it('excludes bare priced with no catalogue and no NEXUS_CUSTOM_MODEL (#6404)', () => {
+    // api:custom-openai never gets a catalogue. Before #6404 bare `priced`
+    // fell back to the display slot (opencode's default model, ≈ $0.15) and
+    // slipped under the 0.2 ceiling — the same number the undeclared case
+    // used to invent.
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced');
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', undefined);
+    const r = makeRouter();
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['gemini']);
+    r.dispose();
+  });
+
+  it('prices bare priced at NEXUS_CUSTOM_MODEL when that model is registry-priced (#6404)', () => {
+    // gpt-4o ($2.5/$10) with ~10k output ≈ $0.10: under the 0.2 ceiling.
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced');
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', 'gpt-4o');
+    const r = makeRouter();
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual([
+      'gemini',
+      'api:custom-openai',
+    ]);
+    r.dispose();
+
+    // claude-fable-5 ($10/$50) ≈ $0.50: over the ceiling. The display-slot
+    // fallback would have admitted it at ≈ $0.15.
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', 'claude-fable-5');
+    const dear = makeRouter();
+    expect(dear.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['gemini']);
+    dear.dispose();
+  });
 });
 
 describe('estimateArmCostUsd (#4392 inc 2)', () => {
@@ -674,14 +705,30 @@ describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
     dear.dispose();
   });
 
-  it('bare priced on a slot with no registry pricing stays fail-closed, with the gap named', async () => {
+  it('bare priced on a model with no registry pricing stays fail-closed, with the gap named', () => {
+    // Previously pinned the display SLOT's missing pricing (a mocked
+    // getModelPricing): since #6404 bare priced never consults the slot, so
+    // the unpriced subject is the model NEXUS_CUSTOM_MODEL pins.
     vi.stubEnv('NEXUS_GATEWAY_COST', 'priced');
-    const helpers = await import('../config/model-config-helpers.js');
-    vi.mocked(helpers.getModelPricing).mockReturnValue(undefined);
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', 'mystery-gateway-model');
     const r = makeRouter(['api:custom-openai']);
     const result = r.checkBudget(task, budget);
     expect(result.withinBudget).toBe(false);
-    expect(result.unpricedArms?.[0]?.reason).toMatch(/no registry pricing/);
+    expect(result.unpricedArms?.[0]?.reason).toMatch(
+      /mystery-gateway-model has no registry pricing/
+    );
+    r.dispose();
+  });
+
+  it('bare priced with no catalogue and no NEXUS_CUSTOM_MODEL is fail-closed, naming the fix (#6404)', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced');
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', undefined);
+    const r = makeRouter(['api:custom-openai']);
+    const result = r.checkBudget(task, budget);
+    expect(result.withinBudget).toBe(false);
+    expect(result.unpricedArms?.[0]?.reason).toBe(
+      'gateway cost priced without a catalogue or model: declare priced:<in>,<out> or set NEXUS_CUSTOM_MODEL'
+    );
     r.dispose();
   });
 

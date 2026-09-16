@@ -113,7 +113,7 @@ export function calculateUncertaintyFactor(responseText: string): number {
 /**
  * Calculate all confidence factors for a response.
  */
-export function calculateFactors(task: CliTask, response: CliResponse): ConfidenceFactors {
+function calculateFactors(task: CliTask, response: CliResponse): ConfidenceFactors {
   const responseText = response.text;
   const wordCount = responseText.split(/\s+/).length;
   const complexity = estimateTaskComplexity(task);

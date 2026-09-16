@@ -159,6 +159,33 @@ export function isGatewayArmId(arm: string): arm is EndpointArmId {
 }
 
 /**
+ * The `<vendor>` segments of the built-in vendor arms (`api:anthropic|openai|google`),
+ * read from the vendor arm ids rather than retyped, so this list cannot drift
+ * from `ApiArmIdSchema` (#6409).
+ */
+const VENDOR_ENDPOINT_SEGMENTS: readonly string[] = ApiArmIdSchema.options
+  .filter((arm): boolean => !isGatewayArmId(arm))
+  .map((arm) => arm.slice('api:'.length));
+
+/**
+ * Why `endpoint` cannot name a GATEWAY arm, or `undefined` when `api:<endpoint>`
+ * is one (#6409). The single rule behind `NEXUS_OPENAI_COMPAT_ENDPOINT`'s env
+ * schema and its runtime reader, so the two cannot disagree. Two refusals:
+ * the endpoint-id shape (a URL, or a credential inside one, must never become
+ * an arm id), and a built-in vendor segment — `api:openai` is a VENDOR arm,
+ * where a gateway's `NEXUS_GATEWAY_COST` declaration is unreachable and the
+ * cost ceiling prices it as the vendor. Neither message echoes the value.
+ */
+export function gatewayEndpointRejection(endpoint: string): string | undefined {
+  const arm = `api:${endpoint}`;
+  if (!isEndpointArmId(arm)) {
+    return 'must be an endpoint id: lowercase alphanumerics plus . _ -, 1-64 chars';
+  }
+  if (isGatewayArmId(arm)) return undefined;
+  return `must not be a built-in vendor segment (${VENDOR_ENDPOINT_SEGMENTS.join(', ')}): api:<value> would collide with that vendor's arm id`;
+}
+
+/**
  * The variable's state, telling unset apart from set-but-invalid (a set
  * value the operator meant to work is a different fix from a missing one).
  * `declared` carries the parsed map; whether it names a given arm is

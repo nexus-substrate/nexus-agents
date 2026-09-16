@@ -85,7 +85,7 @@ export function formatResultSummary(result: AggregatedResult): string {
 /**
  * Format a single result for verbose mode.
  */
-export function formatResultVerbose(result: AggregatedResult): string {
+function formatResultVerbose(result: AggregatedResult): string {
   const aggregator = createAggregator();
   const options: OutputOptions = { verbose: true, includeAuditTrail: true };
   return aggregator.format([result], options);

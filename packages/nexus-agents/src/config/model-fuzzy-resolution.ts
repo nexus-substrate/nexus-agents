@@ -81,7 +81,7 @@ function entryVersion(entry: ModelEntry): string | undefined {
  * participate in identity matching: version is REQUIRED on both sides, and
  * the `unknown` vendor/family sentinels never match anything.
  */
-export function identityKeyFor(
+function identityKeyFor(
   identity: Pick<ResolvedModelIdentity, 'vendor' | 'family' | 'version'>
 ): string | undefined {
   if (identity.vendor === 'unknown' || identity.family === 'unknown') return undefined;
@@ -156,7 +156,7 @@ function uniqueCandidate(candidates: readonly ModelEntry[]): ModelEntry | undefi
  * are collapsed before ambiguity is declared; if more than one distinct
  * candidate survives, fail closed (no match) rather than guess.
  */
-export function selectIdentityCandidate(
+function selectIdentityCandidate(
   candidates: readonly ModelEntry[] | undefined
 ): ModelEntry | undefined {
   if (candidates === undefined) return undefined;

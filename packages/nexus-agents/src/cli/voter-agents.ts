@@ -316,6 +316,12 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
    */
   readonly signal?: AbortSignal | undefined;
   /**
+   * Per-seat progress callback (#6162): invoked with each seat's result as it
+   * settles, on every pass (first, fallback, retry). The async-job heartbeat
+   * for vote bodies; absent changes nothing.
+   */
+  readonly onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
+  /**
    * Delay before the per-role retry of errored voters (#5578). Defaults to
    * {@link DEFAULT_ERRORED_ROLE_BACKOFF_MS}; 0 disables the wait, which is what
    * tests want. The retry itself is not optional — the panel applies it under
@@ -526,6 +532,8 @@ interface StaggeredVoteInput {
   readonly interDelay: number;
   /** Cancellation for the un-launched remainder of the panel (#5393). */
   readonly signal?: AbortSignal | undefined;
+  /** Per-seat heartbeat (#6162), forwarded to the deadline launcher. */
+  readonly onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
 }
 
 /**
@@ -535,7 +543,7 @@ interface StaggeredVoteInput {
 async function launchStaggeredVotes(
   input: StaggeredVoteInput
 ): Promise<readonly AgentVoteResult[]> {
-  const { roles, proposal, roleAdapters, fallbackAdapter, logger, voteOptions, interDelay } = input;
+  const { roles, logger, voteOptions, interDelay } = input;
   // Raw "worst legitimate completion" estimate — retained unchanged so the
   // formula still answers "how long could this vote take in principle?".
   const computedDeadlineMs = computeOverallConsensusDeadlineMs(
@@ -556,18 +564,10 @@ async function launchStaggeredVotes(
       overallDeadlineMs,
     });
   }
-  return launchVotesWithOverallDeadline({
-    roles,
-    proposal,
-    roleAdapters,
-    fallbackAdapter,
-    logger,
-    voteOptions,
-    interDelay,
-    overallDeadlineMs,
-    voteFn: executeAgentVote,
-    signal: input.signal,
-  });
+  // `StaggeredVoteInput` is `LaunchVotesInput` minus the deadline and the
+  // launcher, so the input passes through whole — including `signal` (#5393)
+  // and `onVoteCollected` (#6162).
+  return launchVotesWithOverallDeadline({ ...input, overallDeadlineMs, voteFn: executeAgentVote });
 }
 
 /**
@@ -632,6 +632,7 @@ export async function collectRealVotes(
     voteOptions,
     interDelay,
     signal: options.signal,
+    onVoteCollected: options.onVoteCollected,
   };
   const firstPass = await launchStaggeredVotes(launchInput);
   // #5578: recover an errored seat with one extra call rather than losing it

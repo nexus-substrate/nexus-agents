@@ -81,9 +81,9 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   query_task_state:
     'Read the structured task-state log for a task ID and return the current snapshot. Requires NEXUS_TASK_STATE_ENABLED=1 during the originating orchestrate call.',
   get_job_result:
-    'Read the result of an async-mode tool invocation by jobId (#3042 / epic #2631). Returns the structured record (status, result | error, timestamps). Poll until status !== "pending". Stage 1 of the async-mode pattern — Stage 2 will fold this into query_task_state once StructuredTaskState gains the result field.',
+    'Read the result of an async-mode tool invocation by jobId (#3042 / epic #2631). Returns the structured record (status, result | error, timestamps, and on a pending record lastProgressAt — the job body\'s last heartbeat, so slow can be told from stuck; #6162). Poll until status !== "pending". Stage 1 of the async-mode pattern — Stage 2 will fold this into query_task_state once StructuredTaskState gains the result field.',
   list_jobs:
-    'List async-mode jobs across all tools (#3046 / epic #2631 Stage 5). Cross-session discovery — returns summaries (jobId/toolName/status/timestamps) sorted newest-first. Optional filters: toolName (exact match), status (pending|complete|failed|cancelled), limit (1-200). Result payloads excluded — fetch full records via get_job_result(jobId).',
+    'List async-mode jobs across all tools (#3046 / epic #2631 Stage 5). Cross-session discovery — returns summaries (jobId/toolName/status/timestamps, plus lastProgressAt when the body has heartbeat; #6162) sorted newest-first. Optional filters: toolName (exact match), status (pending|complete|failed|cancelled), limit (1-200). Result payloads excluded — fetch full records via get_job_result(jobId).',
   cancel_job:
     'Mark an async-mode job as cancelled (#3042 Stage 1b / epic #2631). Same-process dispatcher unwinds via AbortSignal (#3035/#3038); cross-process workers observe via get_job_result. Idempotent — cancel-after-complete is a no-op (preserves the terminal record); second cancel returns already_cancelled. Returns outcome envelope discriminating cancelled / already_complete / already_cancelled / unknown_job.',
   ci_health_check:

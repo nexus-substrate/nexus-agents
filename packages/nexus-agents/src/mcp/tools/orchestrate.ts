@@ -108,6 +108,7 @@ import {
   defaultPendingEnvelope,
   defaultBusyEnvelope,
 } from '../jobs/run-as-job.js';
+import { heartbeatJob } from '../jobs/job-result-store.js';
 
 // Re-export types and values for consumers
 export {
@@ -825,6 +826,12 @@ function recordTaskStateStage(
   stage: StructuredTaskState['stage'],
   logger: ILogger
 ): void {
+  // #6162/#6428: a stage advance is the body's own progress. In async mode
+  // `taskId === jobId` (#3091), so this stamps the job record and re-arms the
+  // liveness watchdog; in sync mode there is no record and it is a no-op. The
+  // main phase between `executing` and the terminal stage heartbeats through
+  // the Orchestrator agent's `withStep` model calls (`stepBus` → bridge).
+  heartbeatJob(taskId);
   if (!isTaskStateEnabled()) return;
   const result = updateStage(taskId, stage, getTimeProvider().nowIso());
   if (!result.ok) {

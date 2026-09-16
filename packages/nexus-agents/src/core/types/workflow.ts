@@ -189,13 +189,14 @@ export interface IWorkflowEngine {
    * @param options - Optional execution overrides. `phaseTimeoutMs` (#3017)
    *   overrides the per-phase execution timeout for this run only — wins
    *   over both `workflow.timeout` (set in the template YAML) and the
-   *   engine's `defaultTimeoutMs`.
+   *   engine's `defaultTimeoutMs`. `onPhaseComplete` (#6162) is called after
+   *   each phase settles — the async-job liveness heartbeat for `run_workflow`.
    * @returns Result with WorkflowResult or WorkflowError
    */
   execute(
     workflow: WorkflowDefinition,
     inputs: Record<string, unknown>,
-    options?: { phaseTimeoutMs?: number }
+    options?: { phaseTimeoutMs?: number; onPhaseComplete?: () => void }
   ): Promise<Result<WorkflowResult, WorkflowError>>;
 
   /**

@@ -34,7 +34,7 @@ import type { ReadinessCriterion, ReadinessVerdict } from './readiness-verdict.j
  * defaults: enabling an autonomous push path is high-stakes, so the soak bar is
  * non-trivial and both the vote ref and owner sign-off are required.
  */
-export const CodePrEnableReadinessConfigSchema = z
+const CodePrEnableReadinessConfigSchema = z
   .object({
     /**
      * Minimum number of CONSECUTIVE dry-run plans observed with ZERO guard
@@ -59,7 +59,7 @@ export const DEFAULT_CODEPR_ENABLE_READINESS_CONFIG: Readonly<CodePrEnableReadin
  * field is model-derived; every value is a realized operational fact the caller
  * supplies. Zod-validated so a malformed evidence object fails closed.
  */
-export const CodePrEnableReadinessEvidenceSchema = z
+const CodePrEnableReadinessEvidenceSchema = z
   .object({
     /**
      * The explicit OFF→on flag. Passed in as a boolean (NOT read from env here —

@@ -12,8 +12,17 @@ import type { ExecutionStrategy } from '../../orchestration/meta-orchestrator.js
 import { entrypointToolFor } from '../../orchestration/strategy-manifest-registry.js';
 import { checkPolicyForDispatchedTool } from '../middleware/policy-check.js';
 import { createRequestContext, type RequestContext } from '../middleware/request-context.js';
+import type { IModelAdapter } from '../../core/index.js';
 import type { ToolResult } from './tool-result.js';
 import type { RunInput } from './run-tool.js';
+
+/** What a `run { execute: true }` body needs beyond its input and logger. */
+export interface RunBodyOptions {
+  readonly trustTier?: string | undefined;
+  readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
+  readonly requestContext?: RequestContext | undefined;
+  readonly onProgress?: (() => void) | undefined;
+}
 
 /**
  * `run { execute: true }` was refused by the policy firewall for the tool its

@@ -35,7 +35,7 @@ export type FileReference = z.infer<typeof FileReferenceSchema>;
 /**
  * Technology stack inferred or specified for a specification.
  */
-export const TechStackSchema = z.object({
+const TechStackSchema = z.object({
   /** Programming language */
   language: z.string().optional(),
   /** Framework or library */

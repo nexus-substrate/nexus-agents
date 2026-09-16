@@ -145,9 +145,10 @@ export function registerGetJobResultTool(server: McpServer, deps: GetJobResultDe
     'plus producerVersionMeasured — false when the producer was a dev build or the ' +
     'record predates the field, so its version must not be compared to this ' +
     "server's _meta build stamp — and producerVersionSource (sidecar | task_state; " +
-    'a task_state record never carries a version). Poll until ' +
-    'status !== "pending". Stage-1 of epic #2631 — Stage 2 will fold this ' +
-    'into query_task_state once StructuredTaskState gains the result field.';
+    'a task_state record never carries a version). A pending record may carry ' +
+    "lastProgressAt, the job body's last heartbeat, so slow can be told from stuck " +
+    '(#6162). Poll until status !== "pending". Stage-1 of epic #2631 — Stage 2 will ' +
+    'fold this into query_task_state once StructuredTaskState gains the result field.';
 
   const secureHandler = createSecureHandler(getJobResultHandler, {
     toolName: 'get_job_result',

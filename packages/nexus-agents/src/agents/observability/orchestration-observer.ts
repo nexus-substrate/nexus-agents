@@ -7,7 +7,7 @@
 import type { ILogger } from '../../core/logger.js';
 import { createLogger } from '../../core/logger.js';
 import { getTimeProvider } from '../../core/index.js';
-import type { CliName } from '../../cli-adapters/types.js';
+import { isCliName, type CliName, type ObservedArmId } from '../../cli-adapters/types.js';
 import type {
   ICollaborationEventBus,
   DomainEvent,
@@ -42,7 +42,7 @@ import {
   findActiveSession,
   identifySessionsToRemove,
   resolveModelCost,
-  registryCostForModel,
+  observedArmCostUsd,
 } from './orchestration-observer-helpers.js';
 
 /**
@@ -432,6 +432,10 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 
   recordTokenUsage(sessionId: string, model: CliName, tokens: SessionTokenTotals): void {
+    this.recordArmTokenUsage(sessionId, model, tokens);
+  }
+
+  recordArmTokenUsage(sessionId: string, arm: ObservedArmId, tokens: SessionTokenTotals): void {
     const metrics = this.sessionMetrics.get(sessionId);
     if (metrics === undefined) return;
 
@@ -441,14 +445,22 @@ export class OrchestrationObserver implements IOrchestrationObserver {
 
     // #5180: an override wins; otherwise the canonical registry supplies SPLIT
     // rates. The previous `?? 0.01` blended fallback understated output-heavy
-    // runs ~3x while this method held the split two lines above.
+    // runs ~3x while this method held the split two lines above. #6399: a
+    // gateway arm is priced by its declaration, and an UNMEASURED call is
+    // counted, never summed as $0.
     const cost =
-      resolveModelCost(tokens, this.config.tokenCostRates[model]) ??
-      registryCostForModel(tokens, model);
-    metrics.costMetrics.totalCostUsd += cost;
-
-    const currentModelCost = metrics.costMetrics.costPerModel.get(model) ?? 0;
-    metrics.costMetrics.costPerModel.set(model, currentModelCost + cost);
+      resolveModelCost(tokens, this.config.tokenCostRates[arm]) ?? observedArmCostUsd(tokens, arm);
+    if (cost === undefined) {
+      metrics.costMetrics.unpricedCalls += 1;
+      return;
+    }
+    const { costMetrics } = metrics;
+    costMetrics.totalCostUsd += cost;
+    costMetrics.costPerArm.set(arm, (costMetrics.costPerArm.get(arm) ?? 0) + cost);
+    // The published per-slot map keeps its CLI-slot key; a gateway or vendor
+    // arm is reported under its own arm only.
+    if (isCliName(arm))
+      costMetrics.costPerModel.set(arm, (costMetrics.costPerModel.get(arm) ?? 0) + cost);
   }
 
   addEventListener(listener: OrchestrationObserverListener): void {

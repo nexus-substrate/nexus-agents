@@ -53,7 +53,7 @@ export function lockRef(key: string): string {
 }
 
 /** Default `gh` runner: no-shell execFile, never throws (captures exit code). */
-export const defaultGhRunner: GhRunner = async (args) => {
+const defaultGhRunner: GhRunner = async (args) => {
   try {
     const { stdout, stderr } = await execFileAsync('gh', [...args]);
     return { exitCode: 0, stdout, stderr };

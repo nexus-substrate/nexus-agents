@@ -88,7 +88,7 @@ export type ModelTier = 'fast' | 'balanced' | 'powerful';
 /**
  * Mapping from difficulty level to recommended model tier.
  */
-export const DEFAULT_DIFFICULTY_TO_TIER: Record<DifficultyLevel, ModelTier> = {
+const DEFAULT_DIFFICULTY_TO_TIER: Record<DifficultyLevel, ModelTier> = {
   easy: 'fast',
   medium: 'balanced',
   hard: 'powerful',
@@ -109,7 +109,7 @@ export const DEFAULT_TIER_TO_CLIS: Record<ModelTier, CliName[]> = deriveTierToCl
 /**
  * Weight configuration for difficulty aggregation.
  */
-export const DifficultyWeightsSchema = z.object({
+const DifficultyWeightsSchema = z.object({
   reasoning: z.number().min(0).max(1),
   knowledge: z.number().min(0).max(1),
   creativity: z.number().min(0).max(1),

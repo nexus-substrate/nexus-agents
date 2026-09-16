@@ -120,7 +120,7 @@ function evictExcessTasks(): void {
  * Call during server shutdown. Safe to call multiple times.
  * @internal
  */
-export function shutdownTaskStore(): void {
+function shutdownTaskStore(): void {
   if (cleanupTimer !== undefined) {
     clearInterval(cleanupTimer);
     cleanupTimer = undefined;

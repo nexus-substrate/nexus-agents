@@ -7,8 +7,9 @@
  * a claim that it does not. Either is fine; what is not fine is a runner whose
  * arity nobody chose — "not cancellable" and "not got to yet" read the same in
  * the job record. So each site must carry a `#5393` note within the six lines
- * above its `run` property, saying `arity 3` (and the closure must then
- * actually take three parameters) or `deliberately arity-N` with the reason.
+ * above its `run` property, saying `arity 3` — or `arity 4` once it also takes
+ * the #6162 `progress` heartbeat — (and the closure must then actually take
+ * that many parameters) or `deliberately arity-N` with the reason.
  *
  * Source-scanning by design: the classification is a comment, and nothing else
  * can see a comment.
@@ -73,13 +74,16 @@ describe('every runAsJob call site classifies its cancel-signal arity (#5393)', 
     '%s carries a #5393 note that matches its runner arity',
     (_label, site) => {
       expect(site.note, `no #5393 note above: ${site.runLine}`).toContain('#5393');
-      const threaded = /arity 3/.test(site.note);
+      const threaded = /arity [34]/.test(site.note);
       const deliberate = /deliberately arity-[0-2]/.test(site.note);
       expect(threaded !== deliberate, `note must say one of the two: ${site.note}`).toBe(true);
       if (threaded) {
-        expect(site.runLine, 'an "arity 3" note on a runner that does not take 3').toMatch(
-          /^run:\s*\(\s*\w+\s*,\s*\w+\s*,\s*\w+\s*\)/
-        );
+        const declared = /arity 4/.test(site.note) ? 4 : 3;
+        const params = [/\w+/, /\w+/, /\w+/, /\w+/].slice(0, declared).map((p) => p.source);
+        expect(
+          site.runLine,
+          `an "arity ${String(declared)}" note on a runner that does not take ${String(declared)}`
+        ).toMatch(new RegExp(`^run:\\s*\\(\\s*${params.join('\\s*,\\s*')}\\s*\\)`));
       } else {
         expect(site.runLine, 'a "deliberately arity" note on a 3-parameter runner').not.toMatch(
           /^run:\s*\(\s*\w+\s*,\s*\w+\s*,\s*\w+/
@@ -89,7 +93,7 @@ describe('every runAsJob call site classifies its cancel-signal arity (#5393)', 
   );
 
   it('the signal-taking set is exactly the panel + graph tools', () => {
-    const threaded = sites.filter((s) => /arity 3/.test(s.note)).map((s) => s.file);
+    const threaded = sites.filter((s) => /arity [34]/.test(s.note)).map((s) => s.file);
     expect([...new Set(threaded)].sort()).toEqual([
       'consensus-vote.ts',
       'pr-review-tool.ts',

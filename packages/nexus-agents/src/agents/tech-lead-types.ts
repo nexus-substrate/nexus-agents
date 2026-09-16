@@ -297,7 +297,7 @@ export const ExpertAssignmentSchema = z.object({
 /**
  * Zod schema for ResultSummary.
  */
-export const ResultSummarySchema = z.object({
+const ResultSummarySchema = z.object({
   subtaskId: z.string().min(1),
   summary: z.string().min(1),
   quality: z.number().min(0).max(1),
@@ -307,7 +307,7 @@ export const ResultSummarySchema = z.object({
 /**
  * Zod schema for Conflict.
  */
-export const ConflictSchema = z.object({
+const ConflictSchema = z.object({
   subtaskId1: z.string().min(1),
   subtaskId2: z.string().min(1),
   description: z.string().min(1),
@@ -317,7 +317,7 @@ export const ConflictSchema = z.object({
 /**
  * Zod schema for CollaborationMetadata (Issue #488).
  */
-export const CollaborationMetadataSchema = z.object({
+const CollaborationMetadataSchema = z.object({
   sessionId: z.string(),
   pattern: z.string(),
   participantCount: z.number(),

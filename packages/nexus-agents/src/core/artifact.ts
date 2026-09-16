@@ -144,7 +144,7 @@ export function createArtifactSchema<T extends z.ZodType>(
 /**
  * Base artifact schema with unknown data (for type guards).
  */
-export const BaseArtifactSchema = createArtifactSchema(z.unknown());
+const BaseArtifactSchema = createArtifactSchema(z.unknown());
 
 /**
  * Input for creating an artifact (without auto-generated fields).

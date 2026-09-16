@@ -82,6 +82,33 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
     expect(stuck?.error ?? '').toMatch(/deadline/i);
   });
 
+  it('reports each seat as it settles via onVoteCollected (#6162 heartbeat seam)', async () => {
+    // The async-job liveness reaper measures silence between heartbeats; a
+    // vote body's unit of progress is one seat settling. The launcher is the
+    // one place every seat — first pass, fallback, retry — passes through.
+    const roles: readonly VoterRole[] = ['architect', 'security', 'pm'];
+    const voteFn = (role: VoterRole): Promise<AgentVoteResult> => Promise.resolve(makeOkVote(role));
+    const collected: VoterRole[] = [];
+
+    const results = await launchVotesWithOverallDeadline({
+      roles,
+      proposal: 'test',
+      roleAdapters: new Map(),
+      fallbackAdapter: stubAdapter,
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+      onVoteCollected: (vote) => {
+        collected.push(vote.role);
+      },
+    });
+
+    expect(results).toHaveLength(3);
+    expect([...collected].sort()).toEqual([...roles].sort());
+  });
+
   it('returns all real results when every role settles before the deadline', async () => {
     const roles: readonly VoterRole[] = ['architect', 'pm'];
     const voteFn = (role: VoterRole): Promise<AgentVoteResult> => Promise.resolve(makeOkVote(role));

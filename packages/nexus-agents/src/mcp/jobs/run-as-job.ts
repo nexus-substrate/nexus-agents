@@ -26,11 +26,14 @@ import {
   writeJobComplete,
   writeJobFailed,
   writeJobPending,
+  heartbeatJob,
+  readLastProgressMs,
 } from './job-result-store.js';
 import { registerJobAbort, unregisterJobAbort } from './job-abort-registry.js';
+import { bridgePipelineEventsToHeartbeat } from './job-heartbeat-bridge.js';
 import { registerIdempotentJob, shortCircuitOrFreshJobId } from './job-idempotency.js';
 import { release, suggestRetryAfterMs, tryAcquire } from './job-concurrency.js';
-import { resolveClassGuardMs } from '../../config/timeouts.js';
+import { MCP_TIMEOUTS, resolveClassGuardMs } from '../../config/timeouts.js';
 import { withAsyncTaskStateDispatch } from '../../context/structured-task-state.js';
 
 /**
@@ -44,9 +47,12 @@ import { withAsyncTaskStateDispatch } from '../../context/structured-task-state.
  * `NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS` raise it up to the class override
  * ceiling (7200000ms); a value past that is clamped and reported at startup by
  * `findIneffectiveVars`. The default is unchanged — the extra hour is opt-in,
- * and it costs something: a wedged job holds its concurrency slot for the whole
- * guard. The guard a job actually runs under is logged once at job start so
- * real job durations can be judged against it.
+ * and it costs something: a job holds its concurrency slot for as long as it
+ * runs. Past the standard ceiling that cost is bounded by liveness (#6162): the
+ * body must heartbeat via `progress()` or be failed as wedged at
+ * {@link ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS} missed intervals. The guard a
+ * job actually runs under is logged once at job start so real job durations
+ * can be judged against it.
  *
  * On expiry the job is recorded as failed with `runaway guard exceeded` and the
  * slot is released by the existing `finally`. This is a runaway-guard, not an
@@ -64,16 +70,129 @@ export const ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD = 0.5;
 /** Sentinel rejection used to distinguish a guard expiry from a body failure. */
 const ASYNC_JOB_BODY_RUNAWAY_MESSAGE = 'runaway guard exceeded';
 
-interface GuardHandles {
-  /** Resolves only when the guard window elapses (never resolves on clear). */
-  readonly expired: Promise<never>;
-  /** Cancels the guard + near-timeout timers. */
+/**
+ * Liveness for a body allowed past the standard MCP ceiling (#6162 item 1).
+ *
+ * #6159 let an operator raise the guard from `MCP_TIMEOUTS.maxMs` (3.6M) to the
+ * 7.2M class ceiling, and the only signals over the extra hour were the start
+ * log and the 0.5 WARN — both say time passed, neither says the body is alive.
+ * So a guard ABOVE the standard ceiling requires the body to prove progress:
+ * `runAsJob` hands it a `progress()` heartbeat, and a watchdog fails the job as
+ * wedged exactly one silence budget after its last heartbeat — releasing its
+ * concurrency slot and recording `failed`, well before the guard would. The
+ * watchdog is lazy: a timer armed for one budget that, on firing, measures the
+ * silence from the record and re-arms for the exact remainder, so the verdict
+ * lands at `lastHeartbeat + budget` wherever the heartbeat fell (#6428: a
+ * poller ticking per interval held the slot for up to four intervals when the
+ * heartbeat landed just after a tick). A guard at or under the standard
+ * ceiling is not watched: those bodies never opted into anything and keep
+ * their pre-#6162 behaviour.
+ *
+ * Interval = guard / {@link ASYNC_JOB_BODY_HEARTBEAT_INTERVAL_DIVISOR}; wedged
+ * after {@link ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS} intervals of silence,
+ * i.e. 3/8 of the guard — under the 0.5 near-timeout WARN fraction, so a silent
+ * body is released before the WARN that used to be its only signal. On the
+ * smallest watched guard (just over 3.6M) that is ~22.5 min of silence; on the
+ * 7.2M ceiling, 45 min. Both exceed the `multi-llm-panel` class guard (15 min),
+ * the longest single unit a body composes, so a body that heartbeats between
+ * units is never wedged by one slow-but-alive unit; only a unit hung past its
+ * own guard is. Module-private constants, not env vars: nothing reads a knob,
+ * and the tests pin the numbers.
+ *
+ * A body that never calls `progress()` under a watched guard is wedged BY
+ * DEFINITION — that is the point: opting into a longer guard is not opting into
+ * a longer hang. The empty case (no heartbeat ever recorded) is measured from
+ * job start, so such a body fails at exactly N intervals after dispatch.
+ *
+ * Not the same instrument as `agents/heartbeat-monitor.ts`: that monitor is
+ * in-memory and reporting-only — it classifies an agent SESSION as healthy /
+ * stalled / unmeasured for logs and the dashboard, and acts on nothing. This
+ * watchdog is per JOB, durable through the job record, and its verdict frees a
+ * concurrency slot and settles a record a poller reads. Both consume the same
+ * `stepBus` progress signal; they answer different questions.
+ */
+const ASYNC_JOB_BODY_HEARTBEAT_INTERVAL_DIVISOR = 8;
+
+/** Missed heartbeat intervals after which a watched body is failed as wedged. */
+const ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS = 3;
+
+/** Heartbeat handle for one job body: the callback plus its watch's teardown. */
+interface LivenessWatch {
+  /** The body's heartbeat — stamps the record and re-arms the watchdog. */
+  readonly progress: () => void;
+  /** Disarms the watchdog (no-op when the guard was not watched). */
   readonly clear: () => void;
 }
 
 /**
- * Builds a guard that rejects with the runaway sentinel after `guardMs`, and
- * emits a one-shot near-timeout WARN at {@link ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD}.
+ * Build the heartbeat for one body and, when `guardMs` exceeds the standard
+ * MCP ceiling, the watchdog that enforces it. The stamp is written under every
+ * guard — a poller wants slow-vs-stuck regardless — only the watchdog is
+ * gated. `onWedged` receives the failure the job is recorded with.
+ *
+ * Every heartbeat — the callback, `heartbeatJob(jobId)`, a bridged bus event —
+ * goes through `heartbeatJob`, which stamps the record; nothing else is kept in
+ * memory. When the timer fires it measures the silence from the record (empty
+ * case: from job start): under budget, it re-arms for exactly the remainder;
+ * otherwise the verdict quotes what `get_job_result` shows. So a body that
+ * keeps heartbeating costs one file read per silence budget, and a body that
+ * stops is failed at `lastHeartbeat + budget`, not at the next poll tick.
+ */
+function makeLivenessWatch(
+  jobId: string,
+  guardMs: number,
+  onWedged: (err: Error) => void
+): LivenessWatch {
+  const startedAtMs = getTimeProvider().now();
+  const progress = (): void => {
+    heartbeatJob(jobId);
+  };
+  if (guardMs <= MCP_TIMEOUTS.maxMs) return { progress, clear: () => {} };
+
+  const intervalMs = Math.floor(guardMs / ASYNC_JOB_BODY_HEARTBEAT_INTERVAL_DIVISOR);
+  const silenceBudgetMs = intervalMs * ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (ms: number): void => {
+    timer = setTimeout(onFire, ms);
+    // Like the guard timers: never keep the event loop alive for the watchdog.
+    timer.unref();
+  };
+  const onFire = (): void => {
+    const silentMs = getTimeProvider().now() - (readLastProgressMs(jobId) ?? startedAtMs);
+    if (silentMs < silenceBudgetMs) {
+      arm(silenceBudgetMs - silentMs);
+      return;
+    }
+    onWedged(new Error(`wedged (no progress for ${String(silentMs)} ms)`));
+  };
+  arm(silenceBudgetMs);
+  return {
+    progress,
+    clear: () => {
+      clearTimeout(timer);
+    },
+  };
+}
+
+interface GuardHandles {
+  /**
+   * Rejects when the guard window elapses, or — under a guard past the
+   * standard MCP ceiling — when the body goes
+   * {@link ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS} intervals without a
+   * heartbeat (#6162). Never settles on clear.
+   */
+  readonly expired: Promise<never>;
+  /** The body's heartbeat (#6162). */
+  readonly progress: () => void;
+  /** Cancels the guard, near-timeout and liveness timers. */
+  readonly clear: () => void;
+}
+
+/**
+ * Builds a guard that rejects with the runaway sentinel after `guardMs`, emits
+ * a one-shot near-timeout WARN at {@link ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD},
+ * and — past the standard MCP ceiling — rejects earlier with the wedged
+ * failure when the body stops heartbeating ({@link makeLivenessWatch}).
  */
 function makeAsyncBodyGuard(
   jobId: string,
@@ -81,31 +200,38 @@ function makeAsyncBodyGuard(
   guardMs: number,
   logger: ILogger | undefined
 ): GuardHandles {
-  let guardTimer: ReturnType<typeof setTimeout> | undefined;
-  let warnTimer: ReturnType<typeof setTimeout> | undefined;
-  const expired = new Promise<never>((_resolve, reject) => {
-    warnTimer = setTimeout(
-      () => {
-        logger?.warn(`Async ${toolName} job approaching runaway guard`, {
-          jobId,
-          guardMs,
-          thresholdFraction: ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD,
-        });
-      },
-      Math.floor(guardMs * ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD)
-    );
-    guardTimer = setTimeout(() => {
-      reject(new Error(ASYNC_JOB_BODY_RUNAWAY_MESSAGE));
-    }, guardMs);
-    // Don't keep the event loop alive solely for these timers.
-    guardTimer.unref();
-    warnTimer.unref();
+  // The executor runs synchronously, so `reject` is the promise's own by the
+  // time any timer below can fire.
+  let reject: (err: Error) => void = () => {};
+  const expired = new Promise<never>((_resolve, rej) => {
+    reject = rej;
+  });
+  const warnTimer = setTimeout(
+    () => {
+      logger?.warn(`Async ${toolName} job approaching runaway guard`, {
+        jobId,
+        guardMs,
+        thresholdFraction: ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD,
+      });
+    },
+    Math.floor(guardMs * ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD)
+  );
+  const guardTimer = setTimeout(() => {
+    reject(new Error(ASYNC_JOB_BODY_RUNAWAY_MESSAGE));
+  }, guardMs);
+  // Don't keep the event loop alive solely for these timers.
+  guardTimer.unref();
+  warnTimer.unref();
+  const liveness = makeLivenessWatch(jobId, guardMs, (err) => {
+    reject(err);
   });
   return {
     expired,
+    progress: liveness.progress,
     clear: () => {
-      if (guardTimer !== undefined) clearTimeout(guardTimer);
-      if (warnTimer !== undefined) clearTimeout(warnTimer);
+      clearTimeout(guardTimer);
+      clearTimeout(warnTimer);
+      liveness.clear();
     },
   };
 }
@@ -203,11 +329,18 @@ export interface RunAsJobParams<I, R, E = ToolResult> {
    * runner can thread it into a task-state log), the `input`, and an
    * `AbortSignal` (#4086) that fires when `cancel_job` cancels this job —
    * thread it into awaited operations to make cancellation actually stop the
-   * work. Existing 2-arg callbacks remain valid (the trailing param is
-   * ignored). Its resolved value is recorded as the job's `complete` result;
-   * a rejection is recorded as `failed`.
+   * work. The fourth argument is the body's heartbeat (#6162): call
+   * `progress()` after each unit of work (a seat, a stage, a fetch) to stamp
+   * `lastProgressAt` on the pending record. Under a guard past the standard
+   * MCP ceiling (`MCP_TIMEOUTS.maxMs`) the heartbeat is REQUIRED — a body that
+   * goes {@link ASYNC_JOB_BODY_WEDGED_MISSED_HEARTBEATS} intervals without one
+   * is failed as wedged and its slot released; a body that never calls it is
+   * wedged by definition. Each call is a synchronous sidecar write, so call it
+   * per unit of work, not per token. Existing 2- and 3-arg callbacks remain
+   * valid (trailing params are ignored). Its resolved value is recorded as the
+   * job's `complete` result; a rejection is recorded as `failed`.
    */
-  readonly run: (jobId: string, input: I, signal: AbortSignal) => Promise<R>;
+  readonly run: (jobId: string, input: I, signal: AbortSignal, progress: () => void) => Promise<R>;
   /** Per-tool envelope builders. Defaults to the {@link ToolResult} set. */
   readonly toEnvelope?: JobEnvelopeBuilders<E>;
   /** Optional logger for the background failure path. */
@@ -380,12 +513,15 @@ export async function runJobInBackground<I, R, E>(
   // signal is threaded into params.run; abort → run rejects → writeJobFailed, which
   // no-ops against the already-written `cancelled` record (#4022), preserving it.
   const controller = registerJobAbort(jobId);
+  // #6162: pipeline bodies heartbeat through the stage events they already
+  // emit; attributed to this job by the async context the body runs under.
+  const unbridge = bridgePipelineEventsToHeartbeat(jobId, guard.progress);
   try {
     // Race the body against the runaway-guard. On guard expiry the guard
     // rejects with the sentinel → recorded as failed below. On body settle the
     // guard is cleared so it can never fire afterward.
     const body = withAsyncTaskStateDispatch(jobId, () =>
-      params.run(jobId, params.input, controller.signal)
+      params.run(jobId, params.input, controller.signal, guard.progress)
     );
     const result = await Promise.race([body, guard.expired]);
     // #4363: `writeJobComplete` used to fire on ANY resolved value, so a
@@ -410,6 +546,7 @@ export async function runJobInBackground<I, R, E>(
     params.logger?.error(`Async ${params.toolName} dispatch failed`, errObj, { jobId });
     writeJobFailed(jobId, params.toolName, errObj.message, params.producerVersion);
   } finally {
+    unbridge();
     guard.clear();
     unregisterJobAbort(jobId);
     release(params.toolName);

@@ -28,7 +28,14 @@ export interface SpecExecutionError {
  * Options for spec execution.
  * (Source: Issue #857 — Pluggable node execution)
  */
-export type SpecExecutionOptions = CompileOptions;
+export type SpecExecutionOptions = CompileOptions & {
+  /**
+   * Called on every graph event the compiled spec's execution emits (node
+   * started, step completed, …) — the async-job liveness heartbeat for
+   * `execute_spec` (#6162), whose body emits nothing on the pipeline bus.
+   */
+  readonly onProgress?: (() => void) | undefined;
+};
 
 /**
  * Result of executing a spec end-to-end.

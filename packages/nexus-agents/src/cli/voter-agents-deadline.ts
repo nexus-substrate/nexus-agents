@@ -43,6 +43,13 @@ export interface LaunchVotesInput {
   /** Vote launcher (injected by caller — typically executeAgentVote). */
   readonly voteFn: VoteFn;
   /**
+   * Called as each seat settles — first pass, fallback and retry alike — with
+   * that seat's result (#6162). The async-job liveness heartbeat: a vote body
+   * running past the standard MCP ceiling reports progress per seat through
+   * this, so a panel whose seats keep landing is never failed as wedged.
+   */
+  readonly onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
+  /**
    * Cancellation for in-flight panels (#5393).
    *
    * Checked after each stagger delay, so a cancel stops LAUNCHING the voters
@@ -287,7 +294,12 @@ export async function launchVotesWithOverallDeadline(
     });
   };
 
-  const wrapped = roles.map((role, index) => launchRoleVote(role, index, input, voteOnAdapter));
+  const wrapped = roles.map((role, index) =>
+    launchRoleVote(role, index, input, voteOnAdapter).then((result) => {
+      input.onVoteCollected?.(result);
+      return result;
+    })
+  );
 
   const results = await Promise.all(wrapped);
 

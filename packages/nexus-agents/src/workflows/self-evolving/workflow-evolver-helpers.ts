@@ -77,7 +77,7 @@ export function areWorkflowsCompatible(
  * Create a child step by combining two parent steps.
  * Randomly selects timeout, retries, and parallel from either parent.
  */
-export function createCrossoverStep(step1: WorkflowStep, step2: WorkflowStep): WorkflowStep {
+function createCrossoverStep(step1: WorkflowStep, step2: WorkflowStep): WorkflowStep {
   const random = getRandomProvider();
   const selectedTimeout = random.random() < 0.5 ? step1.timeout : step2.timeout;
   const selectedRetries = random.random() < 0.5 ? step1.retries : step2.retries;
@@ -103,7 +103,7 @@ export function createCrossoverStep(step1: WorkflowStep, step2: WorkflowStep): W
 /**
  * Create child version from crossover.
  */
-export function createChildVersion(
+function createChildVersion(
   betterParent: WorkflowVersion,
   childSteps: WorkflowStep[]
 ): WorkflowVersion {

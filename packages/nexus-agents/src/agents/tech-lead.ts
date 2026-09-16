@@ -23,6 +23,7 @@ import type {
   IAgent,
 } from '../core/index.js';
 import { getErrorMessage, ok, err, AgentError, getTimeProvider } from '../core/index.js';
+import { withStep } from '../core/with-step.js';
 import { BaseAgent, type BaseAgentOptions } from './base-agent.js';
 import type {
   SubTask,
@@ -33,6 +34,7 @@ import type {
 } from './tech-lead-types.js';
 import { TaskAnalysisSchema, SubTaskSchema, SynthesizedResultSchema } from './tech-lead-types.js';
 import {
+  DEFAULT_ORCHESTRATOR_CAPABILITIES,
   heuristicAnalysis,
   heuristicSynthesis,
   createSingleResultSynthesis,
@@ -210,12 +212,7 @@ export class Orchestrator extends BaseAgent {
     const baseOptions: BaseAgentOptions = {
       id: options.id ?? 'orchestrator',
       role: 'orchestrator',
-      capabilities: options.capabilities ?? [
-        'task_execution',
-        'delegation',
-        'collaboration',
-        'research',
-      ],
+      capabilities: options.capabilities ?? DEFAULT_ORCHESTRATOR_CAPABILITIES,
       temperature: options.temperature ?? 0.3,
       maxTokens: options.maxTokens ?? 4096,
     };
@@ -249,7 +246,12 @@ export class Orchestrator extends BaseAgent {
     const startTime = getTimeProvider().now();
     const usage = { tokensUsed: 0, tokensMeasured: false };
 
-    const analysisResult = await this.analyzeTaskWithUsage(task, usage);
+    // #6428: each model-backed phase is a `withStep` so `stepBus` carries the
+    // agent's progress — the async-job liveness bridge and the #4665 heartbeat
+    // monitor both read it; without it this whole method is one opaque await.
+    const analysisResult = await withStep({ name: 'orchestrator.analyze' }, () =>
+      this.analyzeTaskWithUsage(task, usage)
+    );
     if (!analysisResult.ok) return err(analysisResult.error);
     const analysis = analysisResult.value;
 
@@ -264,7 +266,9 @@ export class Orchestrator extends BaseAgent {
 
     let subtasks: SubTask[] = [];
     if (analysis.needsDecomposition) {
-      const decomposeResult = await this.decomposeTaskWithUsage(task, analysis, usage);
+      const decomposeResult = await withStep({ name: 'orchestrator.decompose' }, () =>
+        this.decomposeTaskWithUsage(task, analysis, usage)
+      );
       if (!decomposeResult.ok) return err(decomposeResult.error);
       subtasks = decomposeResult.value;
     }

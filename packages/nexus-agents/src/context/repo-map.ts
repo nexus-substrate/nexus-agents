@@ -203,11 +203,7 @@ export interface RepoMapEntry {
 const CALL_SITE_WEIGHT = 2;
 
 /** Blend import centrality with a normalized call-site count into the sort score (#4268). */
-export function blendRankScore(
-  centrality: number,
-  callSites: number,
-  maxCallSites: number
-): number {
+function blendRankScore(centrality: number, callSites: number, maxCallSites: number): number {
   if (maxCallSites <= 0) return centrality;
   return centrality * (1 + CALL_SITE_WEIGHT * (callSites / maxCallSites));
 }

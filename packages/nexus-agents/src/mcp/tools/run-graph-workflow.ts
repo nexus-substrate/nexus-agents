@@ -190,12 +190,35 @@ function nodeStatusOf(nodeResults: readonly { status: string }[]): 'failed' | 'c
 }
 
 /** Executes a named graph workflow with full integration. */
+/** What an async dispatch hands the body; absent in sync mode. */
+interface JobControls {
+  /** `cancel_job`'s signal (#5393): the executor gates every super-step on it. */
+  readonly signal?: AbortSignal | undefined;
+  /** `runAsJob`'s liveness heartbeat (#6162), fired on every graph event. */
+  readonly onProgress?: (() => void) | undefined;
+}
+
+/**
+ * Every graph event is also the async job's heartbeat (#6162): the executor
+ * emits per node start and per settled super-step, so a running graph proves
+ * liveness at node granularity. Identity when no heartbeat was supplied.
+ */
+function withHeartbeat(
+  collect: (event: GraphEvent) => void,
+  onProgress: (() => void) | undefined
+): (event: GraphEvent) => void {
+  if (onProgress === undefined) return collect;
+  return (event: GraphEvent): void => {
+    onProgress();
+    collect(event);
+  };
+}
+
 async function handleRunGraphWorkflow(
   input: RunGraphWorkflowInput,
   logger: ILogger,
   auditLogger?: IAuditLogger,
-  /** `cancel_job`'s signal (#5393): the executor gates every super-step on it. */
-  signal?: AbortSignal
+  job?: JobControls
 ): Promise<RunGraphWorkflowResponse> {
   const startTime = getTimeProvider().now();
   const resolved = resolveGraph(input.workflow, startTime);
@@ -203,7 +226,7 @@ async function handleRunGraphWorkflow(
 
   const events: GraphEventSummary[] = [];
   const checkpointStore = input.enableCheckpointing ? createCheckpointStore() : undefined;
-  const onEvent = createEventCollector(events, input.enableAuditTrail, logger, auditLogger);
+  const collect = createEventCollector(events, input.enableAuditTrail, logger, auditLogger);
   const executionId = `graph-${input.workflow}-${String(Date.now())}`;
 
   logger.info('Executing graph workflow', {
@@ -216,9 +239,9 @@ async function handleRunGraphWorkflow(
   const result = await executeGraph(resolved.graph, input.inputs, {
     ...(checkpointStore !== undefined ? { checkpointStore } : {}),
     executionId,
-    onEvent,
+    onEvent: withHeartbeat(collect, job?.onProgress),
     timeout: CLI_SUBPROCESS_TIMEOUTS.graphWorkflowMs,
-    ...(signal !== undefined ? { signal } : {}),
+    ...(job?.signal !== undefined ? { signal: job.signal } : {}),
   });
 
   const durationMs = getTimeProvider().now() - startTime;
@@ -279,9 +302,9 @@ async function executeGraphWorkflowBody(
   logger: ILogger,
   notifier: IMcpNotifier,
   auditLogger?: IAuditLogger,
-  signal?: AbortSignal
+  job?: JobControls
 ): Promise<ToolResult> {
-  const result = await handleRunGraphWorkflow(input, logger, auditLogger, signal);
+  const result = await handleRunGraphWorkflow(input, logger, auditLogger, job);
   const succeeded = result.status === 'completed';
   notifier.info('run_graph_workflow', {
     event: succeeded ? 'graph_workflow_complete' : 'graph_workflow_failed',
@@ -334,10 +357,14 @@ function createGraphWorkflowHandler(
         toolName: 'run_graph_workflow',
         input,
         freshJobId: () => `gw-${randomUUID()}`,
-        // #5393: arity 3 — `runAsJob` derives `signalAccepted` from `run.length`.
-        // The signal reaches `executeGraph`, which gates every super-step on it.
-        run: (_jobId, _input, signal) =>
-          executeGraphWorkflowBody(input, logger, notifier, auditLogger, signal),
+        // #5393: arity 4 — signal + #6162 progress. `runAsJob` derives
+        // `signalAccepted` from `run.length`. The signal reaches `executeGraph`,
+        // which gates every super-step on it; `progress` fires per graph event.
+        run: (_jobId, _input, signal, progress) =>
+          executeGraphWorkflowBody(input, logger, notifier, auditLogger, {
+            signal,
+            onProgress: progress,
+          }),
         logger,
       });
     }

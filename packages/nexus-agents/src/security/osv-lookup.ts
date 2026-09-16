@@ -46,7 +46,7 @@ export interface OsvLookupConfig {
   readonly timeoutMs: number;
 }
 
-export const DEFAULT_OSV_CONFIG: OsvLookupConfig = {
+const DEFAULT_OSV_CONFIG: OsvLookupConfig = {
   timeoutMs: DEFAULT_TIMEOUT_MS,
 };
 

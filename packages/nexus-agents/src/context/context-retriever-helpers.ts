@@ -190,7 +190,7 @@ interface ContextSlice {
  * token-budget half is triggered by default-on context injection (#2795).
  * Every item is estimated once; dropped estimates are summed from that record.
  */
-export function sliceContextLines(
+function sliceContextLines(
   lines: readonly string[],
   counter: { readonly estimate: (text: string) => number }
 ): ContextSlice {
@@ -208,7 +208,7 @@ export function sliceContextLines(
 }
 
 /** Format a section heading with its fixed-slice disclosure. */
-export function disclosedHeading(label: string, slice: ContextSlice): string {
+function disclosedHeading(label: string, slice: ContextSlice): string {
   return `${label} (${String(slice.included)} included, ${String(slice.dropped)} dropped, ${String(slice.droppedTokens)} dropped tokens)`;
 }
 
