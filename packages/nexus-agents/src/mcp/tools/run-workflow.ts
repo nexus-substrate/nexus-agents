@@ -49,6 +49,7 @@ import { getToolAnnotations } from '../tool-annotations.js';
 // #3044 / epic #2631 Stage 3 — async-mode dispatch via the shared `runAsJob`
 // helper (#3729).
 import { runAsJob } from '../jobs/run-as-job.js';
+import { heartbeatJob } from '../jobs/job-result-store.js';
 import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
 
@@ -119,17 +120,43 @@ function resolveExecutionEngineOrError(
  * @param inputs - Workflow inputs
  * @returns Tool result
  */
+/** Per-run engine overrides: the phase timeout (#3017) and the heartbeat (#6162). */
+interface EngineRunOptions {
+  readonly phaseTimeoutMs?: number;
+  readonly onPhaseComplete?: () => void;
+}
+
+/**
+ * Run the engine, passing the third arg only when an option is set — keeps the
+ * `(workflow, inputs)` call shape for existing tests that
+ * toHaveBeenCalledWith exactly two args (vitest treats explicit `undefined`
+ * as a third arg).
+ */
+function runEngine(
+  engine: IWorkflowEngine,
+  workflow: WorkflowDefinition,
+  inputs: Record<string, unknown>,
+  options: EngineRunOptions | undefined
+): ReturnType<IWorkflowEngine['execute']> {
+  const engineOptions = {
+    ...(options?.phaseTimeoutMs !== undefined ? { phaseTimeoutMs: options.phaseTimeoutMs } : {}),
+    ...(options?.onPhaseComplete !== undefined ? { onPhaseComplete: options.onPhaseComplete } : {}),
+  };
+  return Object.keys(engineOptions).length > 0
+    ? engine.execute(workflow, inputs, engineOptions)
+    : engine.execute(workflow, inputs);
+}
+
 async function executeWorkflow(
   deps: RunWorkflowDeps,
   workflow: WorkflowDefinition,
   inputs: Record<string, unknown>,
-  options?: { phaseTimeoutMs?: number }
+  options?: EngineRunOptions
 ): Promise<Result<WorkflowToolResult, WorkflowError>> {
   const { logger } = deps;
 
   const engineOrError = resolveExecutionEngineOrError(deps, workflow.name);
   if (!engineOrError.ok) return engineOrError;
-  const executionEngine = engineOrError.value;
 
   logger?.info('Executing workflow', {
     workflowName: workflow.name,
@@ -138,14 +165,7 @@ async function executeWorkflow(
   });
 
   const startTime = getTimeProvider().now();
-  // Pass the third arg only when phaseTimeoutMs is set — keeps the
-  // `(workflow, inputs)` call shape for existing tests that
-  // toHaveBeenCalledWith exactly two args (vitest treats explicit
-  // `undefined` as a third arg).
-  const result =
-    options?.phaseTimeoutMs !== undefined
-      ? await executionEngine.execute(workflow, inputs, { phaseTimeoutMs: options.phaseTimeoutMs })
-      : await executionEngine.execute(workflow, inputs);
+  const result = await runEngine(engineOrError.value, workflow, inputs, options);
 
   if (!result.ok) {
     logger?.error('Workflow execution failed', result.error, {
@@ -269,7 +289,9 @@ function buildFailureEnvelope(
  */
 async function handleRunWorkflow(
   deps: RunWorkflowDeps,
-  args: RunWorkflowInput
+  args: RunWorkflowInput,
+  /** Async-job heartbeat (#6162), fired per settled phase. Absent in sync mode. */
+  onPhaseComplete?: () => void
 ): Promise<ToolResponse> {
   const { template, inputs, dryRun, timeoutMs } = args;
   deps.logger?.debug('run_workflow called', {
@@ -298,12 +320,10 @@ async function handleRunWorkflow(
   // #3017: thread the caller-supplied timeoutMs (if any) through to the
   // workflow engine. Wins over both `workflow.timeout` and the engine's
   // `defaultTimeoutMs` for known-long templates.
-  const executeResult = await executeWorkflow(
-    deps,
-    workflow,
-    inputs,
-    timeoutMs !== undefined ? { phaseTimeoutMs: timeoutMs } : undefined
-  );
+  const executeResult = await executeWorkflow(deps, workflow, inputs, {
+    ...(timeoutMs !== undefined ? { phaseTimeoutMs: timeoutMs } : {}),
+    ...(onPhaseComplete !== undefined ? { onPhaseComplete } : {}),
+  });
   if (!executeResult.ok) {
     recordWorkflowError(template, executeResult.error.message);
     return buildFailureEnvelope(workflow.name, executeResult.error);
@@ -369,7 +389,11 @@ function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput)
     // `executionEngine.execute`, which has no AbortSignal option, so taking the
     // signal here would flip `signalAccepted` to true with nothing reading it.
     // Threading it needs a phase-boundary gate in the engine first: #6305.
-    run: (_jobId, input) => handleRunWorkflow(deps, input),
+    // #6162: heartbeats by jobId after each settled phase.
+    run: (jobId, input) =>
+      handleRunWorkflow(deps, input, () => {
+        heartbeatJob(jobId);
+      }),
     toEnvelope: {
       pending: (jobId) =>
         successResponse({

@@ -569,8 +569,8 @@ function ineffectiveReason(r: ClassGuardResolution): string {
     return (
       `The '${r.cls}' class guard is capped at the class override ceiling ` +
       `(${String(r.ceilingMs)}ms), so values above it are discarded. A backgrounded ` +
-      `job holds its concurrency slot for the whole guard, so a longer guard means a ` +
-      `wedged job starves the pool for longer.`
+      `job holds its concurrency slot for as long as it runs; past the MCP ceiling a ` +
+      `body that stops heartbeating is failed as wedged at 3/8 of the guard (#6162).`
     );
   }
   return (

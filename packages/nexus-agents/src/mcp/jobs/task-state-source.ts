@@ -174,10 +174,30 @@ function resolvedJobResult(
 }
 
 /**
+ * Carry the sidecar's heartbeat onto the record or summary that won a read
+ * (#6162). The `progress()` stamp is written ONLY to the sidecar — the record
+ * `runAsJob` owns — and the task-state log has no heartbeat event, so a
+ * pending task-state record that wins a dual read would silently drop it.
+ * A stamp the preferred record already carries is left alone; without a
+ * sidecar stamp nothing is added — absence stays "no heartbeat recorded".
+ */
+function withSidecarHeartbeat<T extends { readonly lastProgressAt?: string | undefined }>(
+  preferred: T,
+  sidecar: { readonly lastProgressAt?: string | undefined } | null | undefined
+): T {
+  if (preferred.lastProgressAt !== undefined || sidecar?.lastProgressAt === undefined) {
+    return preferred;
+  }
+  return { ...preferred, lastProgressAt: sidecar.lastProgressAt };
+}
+
+/**
  * Resolve an async job's result with dual-read semantics, naming the source:
  * - source toggle ON  → read both stores. A terminal task-state record stands;
  *   otherwise a terminal sidecar outranks a non-terminal task-state record.
- *   When neither is terminal, prefer task state and fall back to sidecar.
+ *   When neither is terminal, prefer task state and fall back to sidecar —
+ *   carrying the sidecar's `lastProgressAt` across (#6162), since the heartbeat
+ *   is only ever written there.
  * - source toggle OFF → sidecar only (current behavior, unchanged).
  *
  * The source matters to a reader of `producerVersion` (#5008): a task-state
@@ -205,7 +225,9 @@ export function resolveJobResultWithSource(
   if (fromSidecar !== null && fromSidecar.status !== 'pending') {
     return resolvedJobResult(jobId, fromSidecar, 'sidecar');
   }
-  if (fromState !== null) return resolvedJobResult(jobId, fromState, 'task_state');
+  if (fromState !== null) {
+    return resolvedJobResult(jobId, withSidecarHeartbeat(fromState, fromSidecar), 'task_state');
+  }
   return fromSidecar === null ? null : resolvedJobResult(jobId, fromSidecar, 'sidecar');
 }
 
@@ -251,7 +273,9 @@ export function resolveJobListing(customDir?: string): JobListing {
   if (!isTaskStateJobSource()) return sidecar;
   const byId = new Map<string, JobSummary>();
   for (const summary of sidecar.jobs) byId.set(summary.jobId, summary);
-  for (const summary of listJobsFromTaskState(customDir)) byId.set(summary.jobId, summary);
+  for (const summary of listJobsFromTaskState(customDir)) {
+    byId.set(summary.jobId, withSidecarHeartbeat(summary, byId.get(summary.jobId)));
+  }
   return {
     jobs: [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     diagnostics: sidecar.diagnostics,

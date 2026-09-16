@@ -18,6 +18,7 @@ import { getContextPromptPrefix } from '../context/context-retriever.js';
 import { runConsensusGate } from '../orchestration/graph/consensus-node.js';
 import type { ConsensusVoter } from '../orchestration/graph/consensus-node.js';
 import { allOf } from '../utils/verdict-aggregation.js';
+import { emitPipelineStageEvent } from './pipeline-observability.js';
 
 // ============================================================================
 // Helper
@@ -427,11 +428,33 @@ export function createReportStageWrapper(): IPipelineStage {
   };
 }
 
+/**
+ * Emit `stage.started` / `stage.completed` / `stage.failed` around a stage's
+ * execute under `<prefix>-<id>` (#6162). The dev stages emit their own
+ * (`agent-executor.ts`); the audit stages did not, so an async audit job had
+ * no heartbeat after `pipeline.started` and a long guard would have called a
+ * live scan wedged. Same bus, same shape, so `runAsJob`'s bridge sees both.
+ */
+function withStageEvents(prefix: string, stage: IPipelineStage): IPipelineStage {
+  return {
+    ...stage,
+    async execute(ctx: PipelineContext): Promise<StageOutput> {
+      emitPipelineStageEvent(prefix, stage.id, 'started');
+      const out = await stage.execute(ctx);
+      emitPipelineStageEvent(prefix, stage.id, out.success ? 'completed' : 'failed', {
+        durationMs: out.durationMs,
+        ...(out.error !== undefined ? { error: out.error } : {}),
+      });
+      return out;
+    },
+  };
+}
+
 /** Create a stage registry for the audit pipeline template. */
 export function createAuditStageRegistry(): Map<string, IPipelineStage> {
-  return new Map([
-    ['analyze', createAnalyzeStageWrapper()],
-    ['scan', createScanStageWrapper()],
-    ['report', createReportStageWrapper()],
-  ]);
+  return new Map(
+    [createAnalyzeStageWrapper(), createScanStageWrapper(), createReportStageWrapper()].map(
+      (stage) => [stage.id, withStageEvents('audit', stage)]
+    )
+  );
 }

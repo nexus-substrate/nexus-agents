@@ -529,24 +529,17 @@ async function executePrReviewBody(
      * call settles (its cost is incurred either way). Absent in sync mode.
      */
     signal?: AbortSignal | undefined;
+    /** `runAsJob`'s liveness heartbeat (#6162), fired per settled seat. Absent in sync mode. */
+    onVoteCollected?: (() => void) | undefined;
   } = {}
 ): Promise<ToolResult> {
   const start = Date.now();
-  const { gatewayAdapters: adapters, sanitization, signal } = opts;
+  const { sanitization } = opts;
   // #6003: seats resolved ONCE, budgeted, then handed to the vote below.
   const panel = await preparePanelForReview(input, PR_REVIEW_ROLES, opts, logger);
   // #6123: resolved ONCE per review; every seat's system prompt names it.
   const project = resolveAndLogVoterProject(input.project, logger);
-  const voteResults = await collectRealVotes({
-    roles: PR_REVIEW_ROLES,
-    proposal: panel.proposal,
-    simulate: input.simulate,
-    logger,
-    project: project.name,
-    ...(adapters !== undefined && { gatewayAdapters: adapters }),
-    ...(panel.seats?.ok === true && { roleAdapters: panel.seats.seats }),
-    signal,
-  });
+  const voteResults = await collectReviewVotes(input, panel, project.name, logger, opts);
 
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
@@ -585,6 +578,31 @@ async function executePrReviewBody(
     ...(panel.coverage !== undefined ? { coverage: panel.coverage } : {}),
   };
   return toolSuccess(JSON.stringify(response, null, 2));
+}
+
+/** The review panel's vote, over the seats `preparePanelForReview` resolved. */
+function collectReviewVotes(
+  input: PrReviewInput,
+  panel: Awaited<ReturnType<typeof preparePanelForReview>>,
+  project: string,
+  logger: ILogger,
+  opts: {
+    gatewayAdapters?: readonly IModelAdapter[];
+    signal?: AbortSignal | undefined;
+    onVoteCollected?: (() => void) | undefined;
+  }
+): Promise<readonly AgentVoteResult[]> {
+  return collectRealVotes({
+    roles: PR_REVIEW_ROLES,
+    proposal: panel.proposal,
+    simulate: input.simulate,
+    logger,
+    project,
+    ...(opts.gatewayAdapters !== undefined && { gatewayAdapters: opts.gatewayAdapters }),
+    ...(panel.seats?.ok === true && { roleAdapters: panel.seats.seats }),
+    signal: opts.signal,
+    onVoteCollected: opts.onVoteCollected,
+  });
 }
 
 /**
@@ -626,15 +644,17 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
           toolName: 'pr_review',
           input,
           freshJobId: () => `pr-${randomUUID()}`,
-          // #5393: arity 3. `runAsJob` derives `signalAccepted` from `run.length`,
-          // so taking the signal is what makes the job record say cancellation
+          // #5393: arity 4 — signal + #6162 progress (heartbeat per settled
+          // seat). `runAsJob` derives `signalAccepted` from `run.length`, so
+          // taking the signal is what makes the job record say cancellation
           // works — the claim follows the capability. The signal reaches
           // `collectRealVotes`, so `cancel_job` stops the seats not yet launched.
-          run: (_jobId, _input, signal) =>
+          run: (_jobId, _input, signal, progress) =>
             executePrReviewBody(input, ctx.logger, {
               ...adapterOpt,
               sanitization: sanitizationViewOf(ctx),
               signal,
+              onVoteCollected: progress,
             }),
           logger: ctx.logger,
         });

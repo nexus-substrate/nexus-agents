@@ -277,8 +277,10 @@ const CLASS_OVERRIDE_MAX_MS = 7_200_000;
  * MCP request at all — bounding it by a request ceiling made the documented
  * override range `(3.6M, 7.2M]` unreachable and every multiplier ≥ 1 a no-op
  * for that class (#5995, panel option 1). Raising it is opt-in: the declared
- * default is unchanged, and a wedged job holds its concurrency slot for the
- * whole guard, so a 2h guard doubles pool-starvation exposure.
+ * default is unchanged, and a job holds its concurrency slot for as long as it
+ * runs — bounded past the MCP ceiling by the heartbeat reaper in
+ * `mcp/jobs/run-as-job.ts` (#6162), which fails a silent body as wedged at 3/8
+ * of the guard.
  */
 const REQUEST_CEILING_EXEMPT_CLASS: OperationClassName = 'async-job-body';
 

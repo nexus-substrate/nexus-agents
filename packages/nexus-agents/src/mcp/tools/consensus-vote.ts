@@ -496,6 +496,11 @@ export async function executeVoting(
     signal?: AbortSignal | undefined;
     /** #6110: set only by the escalation re-vote, which reuses the outer resolution. */
     project?: ResolvedVoterProject | undefined;
+    /**
+     * Per-seat progress callback (#6162): the async-job heartbeat, fired as
+     * each seat settles. Retained through the escalation re-vote.
+     */
+    onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
   }
 ): Promise<ExtendedVotingResult> {
   // #6110: resolve the target project ONCE per vote (the escalation re-vote
@@ -586,6 +591,8 @@ async function executeVotingInner(
     signal?: AbortSignal | undefined;
     /** #6110: the target project, resolved once by `executeVoting`. */
     project: ResolvedVoterProject;
+    /** #6162: per-seat heartbeat, forwarded to `collectRealVotes`. */
+    onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
   }
 ): Promise<ExtendedVotingResult> {
   const strategy = resolveStrategy(input);
@@ -612,6 +619,7 @@ async function executeVotingInner(
     workspace: opts.workspace,
     workspaceSha: opts.workspaceSha,
     signal: opts.signal,
+    onVoteCollected: opts.onVoteCollected,
   });
 
   // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
@@ -702,7 +710,9 @@ function applyContrarianDegrade(
 export async function runConsensusForGoal(
   goal: string,
   logger: ILogger = createLogger({ tool: 'consensus_vote' }),
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  /** #6162: per-seat heartbeat when the caller is an async job body. */
+  onVoteCollected?: (vote: AgentVoteResult) => void
 ): Promise<ExtendedVotingResult> {
   // Parse through the schema so defaults (quickMode, simulateVotes:false) apply.
   // #4042: thread the in-process gateway adapters so the run/MetaOrchestrator
@@ -710,6 +720,7 @@ export async function runConsensusForGoal(
   // not the CLI subprocess.
   return executeVoting(ConsensusVoteInputSchema.parse({ proposal: goal }), logger, {
     ...(gatewayAdapters !== undefined && { gatewayAdapters }),
+    onVoteCollected,
   });
 }
 
@@ -845,28 +856,41 @@ function declaredByCaller(args: ConsensusVoteInput): DeclaredByCaller {
   };
 }
 
+/**
+ * Detect all-error votes and return the structured error message instead of a
+ * fake "rejected" (#1552); `null` when at least one seat answered. Empty case:
+ * a panel with no votes at all is not "all failed" — it is `null` here and the
+ * missing decision is caught by the caller.
+ */
+function allVotersFailedError(
+  votes: readonly AgentVoteResult[],
+  proposal: string,
+  logger: ILogger
+): string | null {
+  const errorVotes = votes.filter((v) => v.source === 'error');
+  if (errorVotes.length !== votes.length || votes.length === 0) return null;
+  const failures = errorVotes.map((v) => `${v.role}: ${v.error ?? 'unknown error'}`).join('; ');
+  logger.warn('All voters failed', { failureCount: errorVotes.length, failures });
+  recordVoteError(proposal, `All ${String(errorVotes.length)} voters failed: ${failures}`);
+  return `All ${String(errorVotes.length)} voters failed. Failures: ${failures}`;
+}
+
 async function handleConsensusVote(
   deps: ConsensusVoteDeps,
   args: ConsensusVoteInput,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** #6162: `runAsJob`'s heartbeat, fired per settled seat. Absent in sync mode. */
+  onVoteCollected?: (vote: AgentVoteResult) => void
 ): Promise<{ ok: true; value: ConsensusVoteResponse } | { ok: false; error: string }> {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
   try {
     const result = await executeVoting(args, logger, {
       ...(deps.gatewayAdapters !== undefined && { gatewayAdapters: deps.gatewayAdapters }),
       signal,
+      onVoteCollected,
     });
-    // Detect all-error votes: return structured error instead of fake "rejected" (#1552)
-    const errorVotes = result.votes.filter((v) => v.source === 'error');
-    if (errorVotes.length === result.votes.length && result.votes.length > 0) {
-      const failures = errorVotes.map((v) => `${v.role}: ${v.error ?? 'unknown error'}`).join('; ');
-      logger.warn('All voters failed', { failureCount: errorVotes.length, failures });
-      recordVoteError(args.proposal, `All ${String(errorVotes.length)} voters failed: ${failures}`);
-      return {
-        ok: false,
-        error: `All ${String(errorVotes.length)} voters failed. Failures: ${failures}`,
-      };
-    }
+    const allFailed = allVotersFailedError(result.votes, args.proposal, logger);
+    if (allFailed !== null) return { ok: false, error: allFailed };
 
     if (result.decision === undefined) {
       throw new Error('Consensus vote completed without a resolved decision');
@@ -963,10 +987,14 @@ function dispatchAsyncConsensusVote(
     // callback RESOLVES — so a dead voter panel produced a job a caller polling
     // `get_job_result` read as a success. Reject instead, mirroring the sync
     // sibling's `toolStructuredError` on the same condition.
-    // #5393: arity 3. `runAsJob` derives `signalAccepted` from `run.length`, so
-    // taking the signal is what makes the job record say cancellation works —
-    // the claim follows the capability instead of being asserted separately.
-    run: (_jobId, input, signal) => unwrapVoteOrThrow(handleConsensusVote(deps, input, signal)),
+    // #5393: arity 4 — signal + #6162 progress. `runAsJob` derives
+    // `signalAccepted` from `run.length`, so taking the signal is what makes the
+    // job record say cancellation works — the claim follows the capability.
+    // `progress` is the liveness heartbeat, fired as each seat settles, so a
+    // panel allowed past the standard MCP ceiling is never called wedged while
+    // its seats keep landing.
+    run: (_jobId, input, signal, progress) =>
+      unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress)),
     ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });
 }

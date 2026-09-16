@@ -51,6 +51,16 @@ export function withAsyncTaskStateDispatch<T>(jobId: string, operation: () => T)
   return asyncTaskStateJob.run(jobId, operation);
 }
 
+/**
+ * The jobId of the async dispatch the current async context belongs to, or
+ * `undefined` outside any (#6162). The heartbeat bridge in `mcp/jobs` uses it
+ * to attribute a pipeline-bus event to the job whose body emitted it.
+ * @internal
+ */
+export function currentAsyncDispatchJobId(): string | undefined {
+  return asyncTaskStateJob.getStore();
+}
+
 function getTasksDir(customDir?: string): string {
   if (customDir !== undefined) return path.resolve(customDir);
   return nexusDataPath(TASKS_SUBDIR);

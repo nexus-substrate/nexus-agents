@@ -38,7 +38,7 @@ import {
 
 import { z } from 'zod';
 
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
 import { resolveClassGuardMs, type OperationClassName } from '../../config/timeouts.js';
 import { VERSION } from '../../version.js';
@@ -121,6 +121,18 @@ export const JobResultSchema = z.object({
    * before treating two stamps as comparable.
    */
   producerVersion: z.string().optional(),
+  /**
+   * When the job body last heartbeat — `runAsJob`'s `progress()` callback,
+   * `heartbeatJob`, or a pipeline-bus event the body emitted (#6162). Present
+   * once the body has heartbeat at least once and carried onto the terminal
+   * record, so a settled job still says when it last moved (a wedged `failed`
+   * record: the last progress before the silence). Absence means "no heartbeat
+   * recorded", never "no progress" — a body that predates the callback, or one
+   * that never adopted it, leaves the field off. On a long guard the reaper in
+   * `run-as-job.ts` fails a body that stops heartbeating as wedged, measuring
+   * silence from this stamp (or from job start when there is none).
+   */
+  lastProgressAt: z.iso.datetime().optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;
 
@@ -232,6 +244,11 @@ function persistJobRecord(path: string, record: JobResult): void {
   chmodSync(path, 0o600);
 }
 
+/** The heartbeat a terminal writer carries forward from the record it replaces (#6162). */
+function carriedProgress(existing: JobResult | null): Pick<JobResult, 'lastProgressAt'> {
+  return existing?.lastProgressAt !== undefined ? { lastProgressAt: existing.lastProgressAt } : {};
+}
+
 /**
  * Every writer below takes a trailing `producerVersion` defaulting to the
  * running server's `VERSION` (#5008). The parameter is the DI seam: a test
@@ -305,6 +322,7 @@ export function writeJobComplete(
     completedAt: new Date().toISOString(),
     result,
     producerVersion,
+    ...carriedProgress(existing),
   };
   persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote complete job record', { jobId, toolName });
@@ -338,9 +356,60 @@ export function writeJobFailed(
     completedAt: new Date().toISOString(),
     error,
     producerVersion,
+    ...carriedProgress(existing),
   };
   persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote failed job record', { jobId, toolName, error });
+}
+
+/**
+ * Heartbeat `jobId` (#6162): stamp `lastProgressAt` on its `pending` record,
+ * at `at` (an ISO instant; defaults to the time provider's now). The heartbeat
+ * half of the liveness contract: `runAsJob`'s `progress()` callback is this,
+ * and a job body that holds its `jobId` but not the callback — the arity-0/1
+ * adopters, which cannot declare the fourth `run` parameter without also
+ * claiming the third (`signalAccepted` is derived from `run.length`, #4972) —
+ * calls it directly. Either way a poller reading `pending` can tell slow from
+ * stuck, and the reaper measures silence from the same stamp.
+ *
+ * A no-op unless the record exists AND is `pending`. A heartbeat that lands
+ * after `cancel_job`, after the runaway guard, or after the body settled must
+ * not resurrect a terminal record; and an unknown jobId is not created — the
+ * stamp decorates a dispatch, it does not constitute one. Every other field of
+ * the record is carried verbatim, including the producer's version.
+ */
+export function heartbeatJob(
+  jobId: string,
+  at: string = new Date(getTimeProvider().now()).toISOString()
+): void {
+  persistProgressStamp(jobId, at);
+}
+
+/**
+ * Epoch ms of the recorded heartbeat, or `undefined` when the record has none
+ * or cannot be read (#6162). The liveness reaper measures silence from this —
+ * the record is the single source of truth for "last progress", for the
+ * reaper and for every reader alike — falling back to job start on
+ * `undefined`. An unparseable stamp is `undefined`, not `NaN`: a silence that
+ * cannot be measured must not read as any particular length.
+ */
+export function readLastProgressMs(jobId: string): number | undefined {
+  const at = readJobResult(jobId)?.lastProgressAt;
+  if (at === undefined) return undefined;
+  const ms = Date.parse(at);
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
+function persistProgressStamp(jobId: string, at: string): void {
+  const existing = readJobResult(jobId);
+  if (existing?.status !== 'pending') {
+    logger.debug('Skipping progress stamp — job is not pending', {
+      jobId,
+      status: existing?.status ?? 'unknown',
+    });
+    return;
+  }
+  persistJobRecord(jobResultPath(jobId), { ...existing, lastProgressAt: at });
 }
 
 /**
@@ -363,15 +432,17 @@ export function writeJobCancelled(
   reason?: string,
   producerVersion: string = VERSION
 ): void {
+  const existing = readJobResult(jobId);
   const record: JobResult = {
     v: 1,
     jobId,
     toolName,
     status: 'cancelled',
-    createdAt: readJobResult(jobId)?.createdAt ?? new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
     ...(reason !== undefined ? { error: reason } : {}),
     producerVersion,
+    ...carriedProgress(existing),
   };
   persistJobRecord(jobResultPath(jobId), record);
   logger.debug('Wrote cancelled job record', { jobId, toolName, reason });
@@ -431,6 +502,8 @@ export interface JobSummary {
   readonly completedAt?: string;
   /** True iff the record carries an error message (status === 'failed'). */
   readonly hasError: boolean;
+  /** Last heartbeat from the job body (#6162); absent when none was recorded. */
+  readonly lastProgressAt?: string;
 }
 
 /** Project a full {@link JobResult} down to its {@link JobSummary} — shared by
@@ -443,6 +516,7 @@ export function toJobSummary(record: JobResult): JobSummary {
     createdAt: record.createdAt,
     hasError: record.error !== undefined,
     ...(record.completedAt !== undefined ? { completedAt: record.completedAt } : {}),
+    ...(record.lastProgressAt !== undefined ? { lastProgressAt: record.lastProgressAt } : {}),
   };
 }
 

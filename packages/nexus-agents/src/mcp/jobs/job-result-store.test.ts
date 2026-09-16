@@ -17,6 +17,8 @@ import {
   isMeasuredBuildVersion,
   pruneJobRecords,
   pruneJobRecordsIfDue,
+  toJobSummary,
+  heartbeatJob,
   JOB_RECORD_RETENTION_MS,
   type JobResult,
 } from './job-result-store.js';
@@ -673,6 +675,108 @@ describe('producerVersion (#5008)', () => {
     expect(record?.status).toBe('complete');
     expect(record?.producerVersion).toBeUndefined();
     expect(isMeasuredBuildVersion(record?.producerVersion)).toBe(false);
+  });
+});
+
+describe('heartbeatJob — the heartbeat stamp (#6162)', () => {
+  // `runAsJob` hands the job body a `progress()` callback; each call stamps
+  // `lastProgressAt` on the PENDING record so a poller can tell slow from
+  // stuck. A terminal record is never touched: a heartbeat that lands after a
+  // cancel or after the guard would otherwise resurrect a settled job.
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-jobs-progress-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('stamps lastProgressAt on a pending record and keeps every other field', () => {
+    writeJobPending('hb-pending', 'orchestrate', true, '9.9.9-fixture');
+    const before = readJobResult('hb-pending');
+
+    heartbeatJob('hb-pending', '2026-09-16T12:34:56.000Z');
+
+    const after = readJobResult('hb-pending');
+    expect(after?.lastProgressAt).toBe('2026-09-16T12:34:56.000Z');
+    expect(after).toEqual({ ...before, lastProgressAt: '2026-09-16T12:34:56.000Z' });
+  });
+
+  it('a later stamp replaces the earlier one', () => {
+    writeJobPending('hb-twice', 'orchestrate');
+    heartbeatJob('hb-twice', '2026-09-16T12:00:00.000Z');
+    heartbeatJob('hb-twice', '2026-09-16T12:05:00.000Z');
+    expect(readJobResult('hb-twice')?.lastProgressAt).toBe('2026-09-16T12:05:00.000Z');
+  });
+
+  it('is a no-op on a terminal record — a late heartbeat cannot resurrect a settled job', () => {
+    writeJobPending('hb-cancelled', 'orchestrate');
+    writeJobCancelled('hb-cancelled', 'orchestrate', 'operator cancelled');
+    const settled = readJobResult('hb-cancelled');
+
+    heartbeatJob('hb-cancelled', '2026-09-16T12:34:56.000Z');
+
+    expect(readJobResult('hb-cancelled')).toEqual(settled);
+    expect(readJobResult('hb-cancelled')).not.toHaveProperty('lastProgressAt');
+  });
+
+  it('is a no-op for an unknown jobId — it stamps a record, it never creates one', () => {
+    heartbeatJob('hb-missing', '2026-09-16T12:34:56.000Z');
+    expect(readJobResult('hb-missing')).toBeNull();
+    expect(existsSync(nexusDataPath('jobs', 'result-hb-missing.json'))).toBe(false);
+  });
+
+  it('the terminal writers carry the stamp — a settled record still says when the body last moved', () => {
+    const settlers: ReadonlyArray<readonly [string, () => void]> = [
+      [
+        'hb-done',
+        () => {
+          writeJobComplete('hb-done', 'orchestrate', { ok: true });
+        },
+      ],
+      [
+        'hb-failed',
+        () => {
+          writeJobFailed('hb-failed', 'orchestrate', 'wedged (no progress)');
+        },
+      ],
+      [
+        'hb-gone',
+        () => {
+          writeJobCancelled('hb-gone', 'orchestrate', 'stop');
+        },
+      ],
+    ];
+    for (const [jobId, settle] of settlers) {
+      writeJobPending(jobId, 'orchestrate');
+      heartbeatJob(jobId, '2026-09-16T12:34:56.000Z');
+      settle();
+      expect(readJobResult(jobId)?.lastProgressAt).toBe('2026-09-16T12:34:56.000Z');
+    }
+    // And a record that never heartbeat settles without the field.
+    writeJobPending('hb-never', 'orchestrate');
+    writeJobComplete('hb-never', 'orchestrate', { ok: true });
+    expect(readJobResult('hb-never')).not.toHaveProperty('lastProgressAt');
+  });
+
+  it('toJobSummary carries lastProgressAt when present and omits it when absent', () => {
+    writeJobPending('hb-summary', 'orchestrate');
+    const silent = readJobResult('hb-summary');
+    if (silent === null) throw new Error('record missing');
+    expect(toJobSummary(silent)).not.toHaveProperty('lastProgressAt');
+
+    heartbeatJob('hb-summary', '2026-09-16T12:34:56.000Z');
+    const beating = readJobResult('hb-summary');
+    if (beating === null) throw new Error('record missing');
+    expect(toJobSummary(beating).lastProgressAt).toBe('2026-09-16T12:34:56.000Z');
   });
 });
 

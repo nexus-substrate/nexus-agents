@@ -19,7 +19,12 @@ import {
   listJobsFromTaskState,
   resolveJobList,
 } from './task-state-source.js';
-import { writeJobCancelled, writeJobComplete, writeJobPending } from './job-result-store.js';
+import {
+  writeJobCancelled,
+  writeJobComplete,
+  writeJobPending,
+  heartbeatJob,
+} from './job-result-store.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import {
   initTaskState,
@@ -353,5 +358,66 @@ describe('readJobResultFromTaskState + resolveJobResult (filesystem)', () => {
     // Newest-first ordering preserved (like listJobs()).
     const createdDesc = summaries.map((s) => s.createdAt);
     expect([...createdDesc].sort((a, b) => b.localeCompare(a))).toEqual(createdDesc);
+  });
+
+  // #6162: the heartbeat lives on the sidecar (the record `runAsJob` owns).
+  // Under the task_state source a pending task-state record wins the read and
+  // would silently drop it, so both readers carry the sidecar's stamp across.
+  it('resolveJobResultWithSource: a pending task-state record carries the sidecar heartbeat', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    initTaskState({
+      taskId: 'orch-hb-pending',
+      stage: 'executing',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'run' },
+      dispatch: 'async',
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    writeJobPending('orch-hb-pending', 'orchestrate');
+    heartbeatJob('orch-hb-pending', '2026-05-01T00:07:00.000Z');
+
+    const resolved = resolveJobResultWithSource('orch-hb-pending');
+
+    expect(resolved?.source).toBe('task_state');
+    expect(resolved?.record.status).toBe('pending');
+    expect(resolved?.record.lastProgressAt).toBe('2026-05-01T00:07:00.000Z');
+  });
+
+  it('resolveJobResultWithSource: a pending task-state record without a sidecar stamp has none', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    initTaskState({
+      taskId: 'orch-hb-none',
+      stage: 'executing',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'run' },
+      dispatch: 'async',
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    writeJobPending('orch-hb-none', 'orchestrate');
+
+    const resolved = resolveJobResultWithSource('orch-hb-none');
+    expect(resolved?.source).toBe('task_state');
+    expect(resolved?.record).not.toHaveProperty('lastProgressAt');
+  });
+
+  it('resolveJobList: the task-state summary that wins a collision carries the sidecar heartbeat', () => {
+    process.env['NEXUS_JOB_RESULT_SOURCE'] = 'task_state';
+    initTaskState({
+      taskId: 'orch-hb-list',
+      stage: 'executing',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'run' },
+      dispatch: 'async',
+      updatedAt: '2026-05-01T00:00:00Z',
+    });
+    writeJobPending('orch-hb-list', 'orchestrate');
+    heartbeatJob('orch-hb-list', '2026-05-01T00:07:00.000Z');
+
+    const summaries = resolveJobList().filter((s) => s.jobId === 'orch-hb-list');
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.lastProgressAt).toBe('2026-05-01T00:07:00.000Z');
   });
 });

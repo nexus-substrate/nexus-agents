@@ -384,6 +384,20 @@ describe('run_graph_workflow async dispatch (#3732)', () => {
     expect(envelope(response)['status']).toBe('completed');
   });
 
+  it('heartbeats per graph event — the settled record carries lastProgressAt (#6162)', async () => {
+    const handler = registerAndGetHandler();
+    const response = await handler({
+      workflow: 'echo',
+      inputs: { input: 'hi' },
+      dispatch: 'async',
+    });
+    const jobId = envelope(response)['jobId'] as string;
+    await new Promise((r) => setImmediate(r));
+    const record = readJobResult(jobId);
+    expect(record?.status).toBe('complete');
+    expect(record?.lastProgressAt).toBeDefined();
+  });
+
   it('records the result to the sidecar when the background run completes', async () => {
     const handler = registerAndGetHandler();
     const response = await handler({
