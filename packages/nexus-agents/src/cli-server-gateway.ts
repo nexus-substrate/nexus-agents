@@ -205,7 +205,7 @@ export async function wireGateway(
   registry: Parameters<typeof registerGatewayArm>[2]
 ): Promise<readonly IModelAdapter[] | undefined> {
   const adapters = await tryWireGatewayAdapters(logger);
-  registerGatewayArm(adapters, readOpenAICompatEndpoint(), registry);
+  registerGatewayArm(adapters, readOpenAICompatEndpoint(process.env, logger), registry);
   return adapters;
 }
 

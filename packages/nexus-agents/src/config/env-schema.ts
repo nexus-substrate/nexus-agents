@@ -14,9 +14,8 @@ import { z } from 'zod';
 import type { ILogger } from '../core/index.js';
 import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
-import { parseGatewayCostEnv } from '../adapters/sdk/gateway-cost.js';
+import { gatewayEndpointRejection, parseGatewayCostEnv } from '../adapters/sdk/gateway-cost.js';
 import { resolveGatewayEnv, type DeprecatedGatewayEnvUse } from '../adapters/sdk/gateway-env.js';
-import { isEndpointArmId } from '../cli-adapters/types-core.js';
 import {
   describeClassGuard,
   MCP_TIMEOUTS,
@@ -242,13 +241,16 @@ const NexusEnvSchema = z.object({
   // #4392 increment 2 step 2: the `<endpoint>` of the `api:<endpoint>` arm the
   // voter gateway registers as (OPENAI_COMPAT_ENDPOINT_ENV; spelled out for
   // the coverage script). Same shape rule as a scoped NEXUS_GATEWAY_COST key,
-  // so a URL — or a credential inside one — can never become an arm id. An
-  // invalid value is reported here and the runtime reader falls back to the
-  // default endpoint (`openai-compat`).
+  // so a URL — or a credential inside one — can never become an arm id, and
+  // never a built-in vendor segment, which would make the gateway a VENDOR
+  // arm (#6409). The rule is `gatewayEndpointRejection`, shared with the
+  // runtime reader; an invalid value is reported here and that reader falls
+  // back to the default endpoint (`openai-compat`).
   NEXUS_OPENAI_COMPAT_ENDPOINT: z
     .string()
-    .refine((v) => isEndpointArmId(`api:${v.trim()}`), {
-      message: 'must be an endpoint id: lowercase alphanumerics plus . _ -, 1-64 chars',
+    .superRefine((v, ctx) => {
+      const reason = gatewayEndpointRejection(v.trim());
+      if (reason !== undefined) ctx.addIssue({ code: 'custom', message: reason });
     })
     .optional(),
   NEXUS_OPENAI_COMPAT_KEY: z.string().optional(),
