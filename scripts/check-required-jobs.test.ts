@@ -45,7 +45,7 @@ describe('checkRequiredJobs', () => {
     const { checkRequiredJobs } = await import('./check-required-jobs.js');
     expect(checkRequiredJobs({ ...input, ciSuccessResultChecks: ['lint'] })).toEqual({
       verdict: 'drift',
-      problems: ['Missing ci-success result check: security'],
+      problems: ['Missing ci-success result check: security (missing or commented out)'],
     });
   });
 
@@ -167,6 +167,79 @@ describe('shared job gate extraction', () => {
     expect(gate.needs).toEqual(['lint', 'security']);
     expect(gate.resultChecks).toEqual(['lint', 'security']);
   });
+
+  it.each([
+    "# needs.security.result != 'success'",
+    "  # needs.security.result != 'success'",
+    "echo ok # needs.security.result != 'success'",
+    "echo ok\t# needs.security.result != 'success'",
+    "# unmatched quote ' needs.security.result",
+    // #6378 panel: `#` begins a word after an unquoted metacharacter too —
+    // bash runs none of these (`bash -c 'echo ok;# echo HIDDEN'` prints ok).
+    "echo ok;# needs.security.result != 'success'",
+    "true &&# needs.security.result != 'success'",
+    "true ||# needs.security.result != 'success'",
+    "(echo ok;# needs.security.result != 'success'\n)",
+    'echo ok >/dev/null<# needs.security.result',
+  ])('rejects a commented-out result check: %s', async (comment) => {
+    const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
+    const gate = extractJobGate({
+      needs: input.ciSuccessNeeds,
+      steps: [{ run: 'test "${{ needs.lint.result }}" = success\n' + comment }],
+    });
+    const result = checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks });
+    expect(result.verdict).toBe('drift');
+    expect(result.problems).toContain(
+      'Missing ci-success result check: security (missing or commented out)'
+    );
+    expect(gate.gateScript).not.toContain('needs.security.result');
+  });
+
+  it.each([
+    'test "${{ needs.security.result }}" = success',
+    'echo \'#\'; test "${{ needs.security.result }}" = success',
+    'echo "#"; test "${{ needs.security.result }}" = success',
+    'echo word#suffix; test "${{ needs.security.result }}" = success',
+    'echo \\#; test "${{ needs.security.result }}" = success',
+    'echo "escaped \\" #"; test "${{ needs.security.result }}" = success',
+    "echo '${{ contains(' #', '#') }}'; test \"${{ needs.security.result }}\" = success",
+    'echo "${{ contains(\' }} #\', \'#\') }}"; test "${{ needs.security.result }}" = success',
+  ])('accepts a live check with quoted or literal hashes: %s', async (run) => {
+    const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
+    const gate = extractJobGate({
+      needs: input.ciSuccessNeeds,
+      steps: [{ if: "needs.lint.result == 'success'", run }],
+    });
+    expect(checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks })).toEqual({
+      verdict: 'ok',
+      problems: [],
+    });
+  });
+
+  it('preserves if expressions as-is, with no shell comment syntax', async () => {
+    const { extractJobGate } = await import('./check-required-jobs.js');
+    const expression = "contains(' #', '#') && needs.security.result == 'success'";
+    const gate = extractJobGate({ steps: [{ if: expression }] });
+    expect(gate.gateScript).toContain(expression);
+    expect(gate.resultChecks).toEqual(['security']);
+  });
+
+  it.each(['', '# needs.lint.result\n  # needs.security.result'])(
+    'names empty live wiring as drift for every manifest id: %j',
+    async (run) => {
+      const { extractJobGate, checkRequiredJobs } = await import('./check-required-jobs.js');
+      const gate = extractJobGate({ needs: input.ciSuccessNeeds, steps: [{ run }] });
+      const result = checkRequiredJobs({ ...input, ciSuccessResultChecks: gate.resultChecks });
+      expect(result.verdict).toBe('drift');
+      expect(result.problems).toEqual(
+        manifest.ci_success_needs.map(
+          (id) => `Missing ci-success result check: ${id} (missing or commented out)`
+        )
+      );
+      expect(gate.resultChecks).toEqual([]);
+      expect(gate.gateScript.trim()).toBe('');
+    }
+  );
 
   it('names a missing gate as empty wiring', async () => {
     const { extractJobGate } = await import('./check-required-jobs.js');
