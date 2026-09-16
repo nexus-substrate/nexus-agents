@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -953,6 +953,8 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
     uses?: string;
     run?: string;
     env?: Record<string, string>;
+    with?: Record<string, unknown>;
+    'working-directory'?: string;
   }
   interface Job {
     name?: string;
@@ -989,6 +991,213 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
     expect(job?.needs).toBeUndefined();
   });
 
+  describe("the gate judges head data using the base's scripts and toolchain (#6369)", () => {
+    const steps = jobs['governor-ratification']?.steps ?? [];
+
+    it('checks out the PR head first and the base ref second into gate', () => {
+      expect(
+        steps.filter((step) => step.uses?.startsWith('actions/checkout@') === true)
+      ).toHaveLength(2);
+      expect(steps[0]?.name).toBe('Checkout PR head');
+      expect(steps[0]?.with).toEqual({
+        'fetch-depth': 0,
+        path: 'head',
+        ref: '${{ github.event.pull_request.head.sha }}',
+      });
+      expect(steps[1]?.uses).toBe(steps[0]?.uses);
+      expect(steps[1]?.with).toEqual({
+        ref: '${{ github.base_ref }}',
+        path: 'gate',
+        'fetch-depth': 1,
+      });
+    });
+
+    it('the gate job references no head-relative action', () => {
+      const actions = steps.filter((step) => step.uses !== undefined);
+      expect(actions.length).toBeGreaterThan(0);
+      for (const action of actions) expect(action.uses).not.toMatch(/^\.\//);
+    });
+
+    it('pins upstream setup actions and uses the base package manager and lockfile', () => {
+      const composite = parseYaml(
+        readFileSync(join(REPO_ROOT, '.github/actions/setup-node/action.yml'), 'utf-8')
+      ) as { runs: { steps: Step[] } };
+      const pnpm = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@') === true);
+      const node = steps.find((step) => step.uses?.startsWith('actions/setup-node@') === true);
+      expect(pnpm?.uses).toBe(composite.runs.steps[0]?.uses);
+      expect(pnpm?.with?.['package_json_file']).toBe('gate/package.json');
+      expect(node?.uses).toBe(composite.runs.steps[1]?.uses);
+    });
+
+    it('caches and installs the base dependencies in gate', () => {
+      const node = steps.find((step) => step.uses?.startsWith('actions/setup-node@') === true);
+      expect(node?.with?.['node-version']).toBe('22');
+      expect(node?.with?.['cache']).toBe('pnpm');
+      expect(node?.with?.['cache-dependency-path']).toBe('gate/pnpm-lock.yaml');
+      const install = steps.find((step) => step.run === 'pnpm install --frozen-lockfile');
+      expect(install?.['working-directory']).toBe('gate');
+    });
+
+    it('skips registry auth setup and version-file lookup', () => {
+      const node = steps.find((step) => step.uses?.startsWith('actions/setup-node@') === true);
+      expect(node?.with?.['registry-url']).toBeUndefined();
+      expect(node?.with?.['node-version-file']).toBeUndefined();
+    });
+
+    it('every script step calls only the stable dispatcher from gate with head as target', () => {
+      const scripts = steps.filter((step) => /scripts\//.test(step.run ?? ''));
+      expect(scripts).toHaveLength(3);
+      for (const step of scripts) {
+        expect(step['working-directory']).toBe('gate');
+        expect(step.run).toMatch(
+          /pnpm exec tsx scripts\/governor-gate\.ts (touched|required-jobs|ratification) --target "\$\{GITHUB_WORKSPACE\}\/head"/
+        );
+        expect(step.run?.match(/scripts\/[\w-]+\.ts/g)).toEqual(['scripts/governor-gate.ts']);
+      }
+    });
+
+    it('keeps tooling in gate and git data reads in head', () => {
+      const runs = steps.filter((step) => step.run !== undefined);
+      expect(runs.length).toBeGreaterThan(0);
+      for (const step of runs) {
+        expect(step['working-directory']).not.toBe('head');
+        if (step.id === 'changed') {
+          expect(step.run).toContain('git -C head merge-base');
+          expect(step.run).toContain('git -C head diff');
+        } else {
+          expect(step['working-directory']).toBe('gate');
+        }
+      }
+      const evidence = steps.find((step) => step.id === 'evidence');
+      expect(evidence?.run).toContain('git -C "${GITHUB_WORKSPACE}/head" rev-parse');
+      expect(evidence?.run).toContain('git -C "${GITHUB_WORKSPACE}/head" show');
+    });
+
+    // Execute the actual YAML bodies under the runner's bash -e semantics.
+    // The pnpm boundary records cwd/argv and provides a controlled exit; a
+    // workspace containing spaces proves --target remains a single argument.
+    function executeStep(
+      step: Step | undefined,
+      exitCode: number,
+      stdout = ''
+    ): {
+      status: number | null;
+      output: string;
+      argv: string[];
+    } {
+      expect(step?.run).toBeDefined();
+      const root = mkdtempSync(join(tmpdir(), 'governor gate '));
+      mkdirSync(join(root, 'gate'));
+      mkdirSync(join(root, 'head'));
+      const output = join(root, 'output');
+      const args = join(root, 'args');
+      writeFileSync(output, '');
+      try {
+        const result = spawnSync(
+          'bash',
+          [
+            '-e',
+            '-c',
+            [
+              'pnpm() { printf "%s\\n" "$PWD" "$@" > "$ARGS_FILE"; printf "%s" "$CHECKER_STDOUT"; return "$CHECKER_EXIT"; }',
+              step?.run ?? 'exit 99',
+            ].join('\n'),
+          ],
+          {
+            cwd: join(root, step?.['working-directory'] ?? '.'),
+            encoding: 'utf-8',
+            env: {
+              ...process.env,
+              GITHUB_WORKSPACE: root,
+              GITHUB_OUTPUT: output,
+              ARGS_FILE: args,
+              CHECKER_EXIT: String(exitCode),
+              CHECKER_STDOUT: stdout,
+            },
+          }
+        );
+        expect(result.stderr).toBe('');
+        const argv = readFileSync(args, 'utf-8').trimEnd().split('\n');
+        expect(argv.shift()).toBe(join(root, 'gate'));
+        // Normalize only the dynamic fixture path after checking its identity.
+        if (argv.includes('--target')) {
+          expect(argv.pop()).toBe(join(root, 'head'));
+          argv.push('<head>');
+        }
+        return { status: result.status, output: readFileSync(output, 'utf-8'), argv };
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+
+    it.each([0, 1])('the install runs in gate and preserves exit %i', (exitCode) => {
+      const step = steps.find((candidate) => candidate.run === 'pnpm install --frozen-lockfile');
+      const result = executeStep(step, exitCode);
+      expect(result.status).toBe(exitCode);
+      expect(result.argv).toEqual(['install', '--frozen-lockfile']);
+    });
+
+    it.each([
+      [0, 'true', 'governor_touched=true\n'],
+      [0, 'false', 'governor_touched=false\n'],
+      [1, '', ''],
+      [2, '', ''],
+    ])(
+      'detector exit %i and stdout %s produce the measured output only',
+      (exitCode, stdout, output) => {
+        const result = executeStep(
+          steps.find((step) => step.id === 'touched'),
+          exitCode,
+          stdout
+        );
+        expect(result.status).toBe(exitCode);
+        expect(result.output).toBe(output);
+        expect(result.argv).toEqual([
+          'exec',
+          'tsx',
+          'scripts/governor-gate.ts',
+          'touched',
+          '--target',
+          '<head>',
+        ]);
+      }
+    );
+
+    it.each([0, 1, 2])('ratification preserves dispatcher exit %i', (exitCode) => {
+      const step = steps.find((candidate) => candidate.name === 'Run ratification gate');
+      const result = executeStep(step, exitCode);
+      expect(result.status).toBe(exitCode);
+      expect(result.argv).toEqual([
+        'exec',
+        'tsx',
+        'scripts/governor-gate.ts',
+        'ratification',
+        '--target',
+        '<head>',
+      ]);
+    });
+
+    it.each([
+      [0, 0],
+      [1, 1],
+      [2, 0],
+    ])('required-jobs runs the base dispatcher: %i becomes %i', (exitCode, expected) => {
+      const result = executeStep(
+        steps.find((step) => step.id === 'required-jobs'),
+        exitCode
+      );
+      expect(result.status).toBe(expected);
+      expect(result.argv).toEqual([
+        'exec',
+        'tsx',
+        'scripts/governor-gate.ts',
+        'required-jobs',
+        '--target',
+        '<head>',
+      ]);
+    });
+  });
+
   describe('the required-jobs check runs on every PR inside the governed job (#6343)', () => {
     const steps = jobs['governor-ratification']?.steps ?? [];
     const check = steps.find((step) => step.id === 'required-jobs');
@@ -996,7 +1205,9 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
     it('runs after the detector, before evidence, without a governor-path condition', () => {
       expect(check).toBeDefined();
       expect(check?.if).toBeUndefined();
-      expect(check?.run).toContain('pnpm exec tsx scripts/check-required-jobs.ts');
+      expect(check?.run).toContain(
+        'pnpm exec tsx scripts/governor-gate.ts required-jobs --target "${GITHUB_WORKSPACE}/head"'
+      );
       expect(check?.env?.['GH_TOKEN']).toBe('${{ secrets.GITHUB_TOKEN }}');
       const checkAt = steps.indexOf(check as Step);
       expect(checkAt).toBeGreaterThan(steps.findIndex((step) => step.id === 'touched'));
@@ -1033,7 +1244,9 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
       // failed assignment, so an unmeasured detector writes no line at all.
       expect(detector?.run, id).toBe(
         [
-          'TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)',
+          id === 'governor-ratification'
+            ? 'TOUCHED=$(pnpm exec tsx scripts/governor-gate.ts touched --target "${GITHUB_WORKSPACE}/head")'
+            : 'TOUCHED=$(pnpm exec tsx scripts/governor-paths-touched.ts)',
           `echo "${GOVERNOR_TOUCHED_OUTPUT_KEY}=\${TOUCHED}" >> "\${GITHUB_OUTPUT}"`,
           '',
         ].join('\n')
@@ -1075,7 +1288,7 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
     });
 
     it('the gate step is gated the same way and reads the diff from the changed-files step', () => {
-      const gate = steps.find((s) => s.run?.includes('check-governor-ratification.ts') === true);
+      const gate = steps.find((s) => s.run?.includes('governor-gate.ts ratification') === true);
       expect(gate).toBeDefined();
       expect(steps.indexOf(gate as Step)).toBeGreaterThan(at('evidence'));
       expect(gate?.if).toBe(gatedOnDetector);
@@ -1222,7 +1435,7 @@ describe('both ratification jobs are handed a base sha (#6029)', () => {
     // branch diverged, so an unrelated PR touching a governed file could revoke
     // this PR's exemption. The merge-base makes the diff the PR's own changes.
     const body = jobBody('governor-ratification');
-    expect(body).toContain('git merge-base');
+    expect(body).toContain('git -C head merge-base');
     expect(body).not.toContain('pull_request.base.sha');
   });
 

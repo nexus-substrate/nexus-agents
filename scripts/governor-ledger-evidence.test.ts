@@ -1247,9 +1247,18 @@ describe('the workflow wires the base ledger (#6213)', () => {
   );
 
   it('both jobs read the ledger at the base by the module path constant, guarded by a commit-exists check', () => {
+    // Since #6369 step 2 the pre-merge job reads PR history from the sibling
+    // `head` checkout (`git -C "${GITHUB_WORKSPACE}/head"`); the post-merge
+    // backstop still runs at the workspace root. One of each.
     const show = `git show "\${LEDGER_BASE_SHA}:${VOTE_RECORDS_REL_PATH}" > "\${BASE_LEDGER_PATH}"`;
-    expect(workflow.split(show).length - 1).toBe(2);
-    expect(workflow.split('git cat-file -e "${LEDGER_BASE_SHA}^{commit}"').length - 1).toBe(2);
+    const showFromHead = `git -C "\${GITHUB_WORKSPACE}/head" show "\${LEDGER_BASE_SHA}:${VOTE_RECORDS_REL_PATH}" > "\${BASE_LEDGER_PATH}"`;
+    expect(workflow.split(showFromHead).length - 1).toBe(1);
+    expect(workflow.split(show).length - 1).toBe(1);
+    expect(
+      workflow.split('git -C "${GITHUB_WORKSPACE}/head" cat-file -e "${LEDGER_BASE_SHA}^{commit}"')
+        .length - 1
+    ).toBe(1);
+    expect(workflow.split('git cat-file -e "${LEDGER_BASE_SHA}^{commit}"').length - 1).toBe(1);
   });
 
   it('the push job bases append-only on github.event.before, falling back to SHA~1 only for the null sha', () => {
