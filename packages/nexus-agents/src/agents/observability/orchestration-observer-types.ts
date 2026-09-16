@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import type { CliName } from '../../cli-adapters/types.js';
+import type { CliName, ObservedArmId } from '../../cli-adapters/types.js';
 import type { ILogger } from '../../core/logger.js';
 
 // ============================================================================
@@ -82,10 +82,22 @@ export interface SessionTokenTotals {
 
 /**
  * Cost tracking per session.
+ *
+ * `totalCostUsd` sums only MEASURED calls. A call whose arm cannot be priced
+ * — a gateway arm with no usable `NEXUS_GATEWAY_COST` declaration (#6399) —
+ * adds nothing to it and increments `unpricedCalls` instead, so a total over
+ * unmeasured traffic reads as partial rather than as $0. `costPerModel` keeps
+ * its published CLI-slot key; `costPerArm` is keyed by the observed ARM, so a
+ * gateway's cost is never folded into its display slot.
  */
 export interface CostMetrics {
   totalCostUsd: number;
+  /** Per CLI slot, as published. A gateway arm never lands here. */
   costPerModel: Map<CliName, number>;
+  /** Per observed arm (#6399): CLI slots, vendor arms and gateway arms. */
+  costPerArm: Map<ObservedArmId, number>;
+  /** Calls `totalCostUsd` does NOT cover. Zero means every call was priced. */
+  unpricedCalls: number;
 }
 
 /**
@@ -263,8 +275,16 @@ export interface IOrchestrationObserver {
   /** Record a routing decision manually (for non-event-bus integrations) */
   recordRoutingDecision(decision: RoutingDecision): void;
 
-  /** Record token usage for a session */
+  /** Record token usage for a session on a CLI slot. */
   recordTokenUsage(sessionId: string, model: CliName, tokens: SessionTokenTotals): void;
+
+  /**
+   * Record token usage for a session on any observed ARM (#6399): a CLI
+   * slot, a vendor arm, or a gateway arm. A gateway must come through here,
+   * not as its display slot — `recordTokenUsage('opencode', …)` would price
+   * it as that slot's default model.
+   */
+  recordArmTokenUsage(sessionId: string, arm: ObservedArmId, tokens: SessionTokenTotals): void;
 
   /** Check if observer is active */
   isActive(): boolean;

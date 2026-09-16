@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   readOpenAICompatEnv,
+  readOpenAICompatEndpoint,
   discoverModels,
   buildOpenAICompatAdapters,
   createOpenAICompatAdapter,
@@ -131,6 +132,47 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
         expect(readOpenAICompatEnv()?.endpoint).toBe('openai-compat');
       }
     );
+
+    it.each(['openai', 'anthropic', 'google'])(
+      'falls back to the default when the override is the vendor segment %j (#6409)',
+      (value) => {
+        // `api:openai` is a VENDOR arm id: a gateway registered there has an
+        // unreachable NEXUS_GATEWAY_COST declaration and is priced as the
+        // vendor. Refused here as well as at the env schema.
+        process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'] = value;
+        expect(readOpenAICompatEnv()?.endpoint).toBe('openai-compat');
+      }
+    );
+
+    it('warns WHY it fell back, without echoing the value (#6409)', () => {
+      const warn = vi.fn();
+      const logger = { warn } as unknown as ILogger;
+      expect(readOpenAICompatEndpoint({ NEXUS_OPENAI_COMPAT_ENDPOINT: 'openai' }, logger)).toBe(
+        'openai-compat'
+      );
+      expect(warn).toHaveBeenCalledTimes(1);
+      const [message, context] = warn.mock.calls[0] as [string, Record<string, unknown>];
+      expect(message).toMatch(/vendor/);
+      expect(message).toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
+      expect(JSON.stringify(context)).not.toContain('"openai"');
+
+      warn.mockClear();
+      const url = 'https://user:pw@gateway.example/v1';
+      expect(readOpenAICompatEndpoint({ NEXUS_OPENAI_COMPAT_ENDPOINT: url }, logger)).toBe(
+        'openai-compat'
+      );
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(warn.mock.calls[0])).not.toContain('user:pw');
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(/endpoint id/);
+
+      // A valid override and an unset one are silent.
+      warn.mockClear();
+      expect(readOpenAICompatEndpoint({ NEXUS_OPENAI_COMPAT_ENDPOINT: 'corp-proxy' }, logger)).toBe(
+        'corp-proxy'
+      );
+      expect(readOpenAICompatEndpoint({}, logger)).toBe('openai-compat');
+      expect(warn).not.toHaveBeenCalled();
+    });
 
     it('applies the same endpoint to the opencode.json path', () => {
       delete process.env['NEXUS_OPENAI_COMPAT_URL'];

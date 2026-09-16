@@ -5,7 +5,7 @@
  * (Renamed from SwarmObserver in Issue #251)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CollaborationEventBus } from '../collaboration/event-bus.js';
 import { createEvent } from '../collaboration/event-bus.js';
 import { OrchestrationObserver, createOrchestrationObserver } from './orchestration-observer.js';
@@ -26,6 +26,7 @@ describe('OrchestrationObserver', () => {
 
   afterEach(() => {
     observer.stop();
+    vi.unstubAllEnvs();
   });
 
   describe('lifecycle', () => {
@@ -348,6 +349,74 @@ describe('OrchestrationObserver', () => {
 
       // Claude is more expensive per token
       expect(claudeCost).toBeGreaterThan(geminiCost);
+    });
+
+    it('counts an undeclared gateway arm as UNPRICED instead of summing a fabricated USD (#6399)', () => {
+      vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+      eventBus.emit(
+        createEvent('session.created', { sessionId: 'sess-gw', pattern: 'parallel', experts: [] })
+      );
+      observer.recordArmTokenUsage('sess-gw', 'api:custom-openai', {
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      });
+      const metrics = observer.getSessionMetrics('sess-gw')[0];
+      expect(metrics?.tokenUsage.totalTokens).toBe(2_000_000);
+      // Before #6399 a gateway could only be recorded as its display slot
+      // (`opencode`), which priced these tokens at that slot's default model.
+      expect(metrics?.costMetrics.totalCostUsd).toBe(0);
+      expect(metrics?.costMetrics.costPerArm.has('api:custom-openai')).toBe(false);
+      expect(metrics?.costMetrics.costPerModel.has('opencode')).toBe(false);
+      expect(metrics?.costMetrics.unpricedCalls).toBe(1);
+      expect(observer.getStats().totalCostUsd).toBe(0);
+    });
+
+    it('sums a declared gateway arm as measured cost under its own arm (#6399)', () => {
+      vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+      eventBus.emit(
+        createEvent('session.created', { sessionId: 'sess-gw2', pattern: 'parallel', experts: [] })
+      );
+      observer.recordArmTokenUsage('sess-gw2', 'api:custom-openai', {
+        inputTokens: 1_000_000,
+        outputTokens: 500_000,
+        totalTokens: 1_500_000,
+      });
+      const metrics = observer.getSessionMetrics('sess-gw2')[0];
+      expect(metrics?.costMetrics.totalCostUsd).toBe(7);
+      expect(metrics?.costMetrics.costPerArm.get('api:custom-openai')).toBe(7);
+      // The published per-slot map never carries a gateway, not even as its
+      // display slot.
+      expect(metrics?.costMetrics.costPerModel.size).toBe(0);
+      expect(metrics?.costMetrics.unpricedCalls).toBe(0);
+    });
+
+    it('records a CLI slot through both maps — recordTokenUsage is the same implementation (#6399)', () => {
+      eventBus.emit(
+        createEvent('session.created', { sessionId: 'sess-slot', pattern: 'parallel', experts: [] })
+      );
+      observer.recordTokenUsage('sess-slot', 'claude', {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      });
+      const metrics = observer.getSessionMetrics('sess-slot')[0];
+      const perModel = metrics?.costMetrics.costPerModel.get('claude');
+      expect(perModel).toBeGreaterThan(0);
+      expect(metrics?.costMetrics.costPerArm.get('claude')).toBe(perModel);
+      expect(metrics?.costMetrics.totalCostUsd).toBe(perModel);
+      expect(metrics?.costMetrics.unpricedCalls).toBe(0);
+    });
+
+    it('names the empty case: a session with no calls has zero unpriced calls', () => {
+      eventBus.emit(
+        createEvent('session.created', {
+          sessionId: 'sess-empty',
+          pattern: 'parallel',
+          experts: [],
+        })
+      );
+      expect(observer.getSessionMetrics('sess-empty')[0]?.costMetrics.unpricedCalls).toBe(0);
     });
   });
 

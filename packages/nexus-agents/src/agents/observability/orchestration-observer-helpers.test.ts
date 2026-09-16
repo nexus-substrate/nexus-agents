@@ -13,6 +13,7 @@ import type {
 import {
   resolveModelCost,
   registryCostForModel,
+  observedArmCostUsd,
   extractStringField,
   extractNumberField,
   extractBooleanField,
@@ -51,7 +52,12 @@ function makeSessionMetrics(overrides: Partial<SessionMetrics> = {}): SessionMet
     successCount: 0,
     failureCount: 0,
     tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-    costMetrics: { totalCostUsd: 0, costPerModel: new Map() },
+    costMetrics: {
+      totalCostUsd: 0,
+      costPerModel: new Map(),
+      costPerArm: new Map(),
+      unpricedCalls: 0,
+    },
     routingDecisions: 0,
     eventsProcessed: 0,
     ...overrides,
@@ -207,12 +213,22 @@ describe('calculateMetricsTotals', () => {
     const metrics = [
       makeSessionMetrics({
         tokenUsage: { inputTokens: 10, outputTokens: 20, totalTokens: 100 },
-        costMetrics: { totalCostUsd: 0.5, costPerModel: new Map() },
+        costMetrics: {
+          totalCostUsd: 0.5,
+          costPerModel: new Map(),
+          costPerArm: new Map(),
+          unpricedCalls: 0,
+        },
       }),
       makeSessionMetrics({
         sessionId: 's2',
         tokenUsage: { inputTokens: 5, outputTokens: 10, totalTokens: 50 },
-        costMetrics: { totalCostUsd: 0.3, costPerModel: new Map() },
+        costMetrics: {
+          totalCostUsd: 0.3,
+          costPerModel: new Map(),
+          costPerArm: new Map(),
+          unpricedCalls: 0,
+        },
       }),
     ];
     const totals = calculateMetricsTotals(metrics);
@@ -363,6 +379,57 @@ describe('cost resolution reads split rates from the registry (#5180)', () => {
 
     it('names the empty case: zero tokens is zero, not an error', () => {
       expect(registryCostForModel(t(0, 0), 'claude')).toBe(0);
+    });
+  });
+
+  describe('observedArmCostUsd prices a gateway arm by its declaration (#6399)', () => {
+    it.each([
+      ['claude', 'claude'],
+      ['gemini', 'gemini'],
+      ['codex', 'codex'],
+      ['opencode', 'opencode'],
+      ['api:anthropic', 'claude'],
+      ['api:openai', 'codex'],
+      ['api:google', 'gemini'],
+    ] as const)(
+      'keeps the slot path for %s (display slot %s) — unchanged by the gateway declaration',
+      (arm, slot) => {
+        const expected = registryCostForModel(t(1000, 1000), slot);
+        expect(expected).toBeGreaterThan(0);
+        expect(observedArmCostUsd(t(1000, 1000), arm, {})).toBe(expected);
+        expect(observedArmCostUsd(t(1000, 1000), arm, { NEXUS_GATEWAY_COST: 'free' })).toBe(
+          expected
+        );
+      }
+    );
+
+    it('is undefined (UNMEASURED) for an undeclared gateway — not $0, not the opencode slot', () => {
+      for (const arm of ['api:custom-openai', 'api:openai-compat']) {
+        expect(observedArmCostUsd(t(1000, 1000), arm, {}), arm).toBeUndefined();
+        expect(
+          observedArmCostUsd(t(1000, 1000), arm, { NEXUS_GATEWAY_COST: 'corp-proxy=free' }),
+          arm
+        ).toBeUndefined();
+      }
+    });
+
+    it('is a measured $0 for free/local and the flat rate for priced:<in>,<out>', () => {
+      expect(
+        observedArmCostUsd(t(1000, 1000), 'api:custom-openai', { NEXUS_GATEWAY_COST: 'free' })
+      ).toBe(0);
+      expect(
+        observedArmCostUsd(t(1_000_000, 500_000), 'api:openai-compat', {
+          NEXUS_GATEWAY_COST: 'priced:2,10',
+        })
+      ).toBe(7);
+    });
+
+    it('is undefined for bare priced when the observer knows no model to price', () => {
+      // The observer holds an arm and token counts, not the model that
+      // answered; bare `priced` has nothing to look up in the registry.
+      expect(
+        observedArmCostUsd(t(1000, 1000), 'api:openai-compat', { NEXUS_GATEWAY_COST: 'priced' })
+      ).toBeUndefined();
     });
   });
 

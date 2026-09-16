@@ -4976,6 +4976,7 @@ InterfaceDeclaration IOrchestrationObserver
   getSessionMetrics(sessionId?: string) => readonly SessionMetrics[]
   getStats() => OrchestrationStats
   isActive() => boolean
+  recordArmTokenUsage(sessionId: string, arm: ObservedArmId, tokens: SessionTokenTotals) => void
   recordRoutingDecision(decision: RoutingDecision) => void
   recordTokenUsage(sessionId: string, model: CliName, tokens: SessionTokenTotals) => void
   removeEventListener(listener: OrchestrationObserverListener) => void
@@ -6063,8 +6064,10 @@ TypeAliasDeclaration ObservedArmId
 TypeAliasDeclaration ObserverAgentState
   = z.infer<typeof AgentStateSchema>
 InterfaceDeclaration ObserverCostMetrics
+  costPerArm: Map<ObservedArmId, number>
   costPerModel: Map<"claude" | "codex" | "gemini" | "opencode", number>
   totalCostUsd: number
+  unpricedCalls: number
 InterfaceDeclaration ObserverSessionMetrics
   completedAt?: string | undefined
   costMetrics: CostMetrics
