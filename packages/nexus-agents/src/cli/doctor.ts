@@ -253,7 +253,8 @@ export interface VoterTransportCheck {
    * reason), and `'no-default'` (valid, but only endpoint-scoped entries —
    * the voter gateway has no arm identity yet (step 2), so only a bare
    * declaration can apply to it). Every gap is a warning, not a failure: the
-   * gateway still serves voters; the task-class cost ceiling excludes it.
+   * gateway still serves voters; the task-class cost ceiling and the
+   * per-task budget exclude it (#6393).
    */
   readonly cost?: GatewayCostDeclaration | 'unset' | 'invalid' | 'no-default';
 }

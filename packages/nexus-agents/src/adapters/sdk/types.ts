@@ -67,8 +67,8 @@ export const CUSTOM_API_ALLOW_PRIVATE_ENV = 'NEXUS_CUSTOM_API_ALLOW_PRIVATE';
  * Grammar: `free | local | priced | priced:<inputPer1M>,<outputPer1M>`,
  * optionally endpoint-scoped as `endpoint=decl[;endpoint=decl]`, with at
  * most one bare declaration that applies to every gateway arm without its
- * own entry. Unset means UNDECLARED: the task-class cost ceiling excludes
- * the gateway (fail-closed) and `doctor` warns. Parsed by
- * `adapters/sdk/gateway-cost.ts`.
+ * own entry. Unset means UNDECLARED: the task-class cost ceiling and the
+ * per-task budget exclude the gateway (fail-closed, #6393) and `doctor`
+ * warns. Parsed by `adapters/sdk/gateway-cost.ts`.
  */
 export const GATEWAY_COST_ENV = 'NEXUS_GATEWAY_COST';

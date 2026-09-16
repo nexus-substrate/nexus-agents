@@ -7,9 +7,9 @@
  * Before this module an undeclared gateway was silently priced as opencode's
  * default model inside the task-class cost ceiling — a number that measured
  * nothing. `NEXUS_GATEWAY_COST` is the operator's statement, and its absence
- * is a real value: UNDECLARED, which the task-class cost ceiling fails closed
- * on (the budget filter in `checkBudget` still prices the arm by its display
- * slot — a tracked follow-up, not this module's claim).
+ * is a real value: UNDECLARED, which both cost filters fail closed on — the
+ * task-class cost ceiling (`filterByTaskClassCeiling`) and the per-task
+ * budget (`checkBudget`, #6393).
  *
  * Grammar (whitespace-tolerant, kind case-insensitive):
  *
@@ -229,8 +229,9 @@ export function describeGatewayCostDeclaration(decl: GatewayCostDeclaration): st
  * Registration-time loudness: warn at each registration of a gateway arm that
  * has no declaration (no per-process dedupe — a re-registration is a new
  * fact). Silent for vendor arms and for declared gateways. The message names
- * the gap (unset / invalid / undeclared for this arm) and the one consequence
- * this step wires — the task-class cost ceiling — so the entry is actionable.
+ * the gap (unset / invalid / undeclared for this arm) and the consequence —
+ * the task-class cost ceiling and the per-task budget both exclude the arm
+ * (#6393) — so the entry is actionable.
  */
 export function warnIfGatewayCostUndeclared(
   arm: string,
@@ -241,7 +242,7 @@ export function warnIfGatewayCostUndeclared(
   if (gap === undefined) return;
   logger.warn(
     `Gateway cost for ${arm} is ${gap}: set ${GATEWAY_COST_ENV}=free|local|priced[:<in>,<out>] ` +
-      `(or ${arm.slice('api:'.length)}=<decl>); the task-class cost ceiling excludes this gateway until declared`,
+      `(or ${arm.slice('api:'.length)}=<decl>); the task-class cost ceiling and the per-task budget exclude this gateway until declared`,
     { arm, env: GATEWAY_COST_ENV, gap }
   );
 }
