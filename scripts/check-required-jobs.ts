@@ -54,15 +54,29 @@ const WorkflowSchema = z.object({
 });
 const RequiredStatusChecksSchema = z.object({ contexts: z.array(z.string()) });
 
-/** Read every .yml workflow; an unnamed job produces its job ID as the context. */
-export function loadWorkflowJobNames(directory = '.github/workflows'): string[] {
+/** One workflow job and the status context it reports under (#6390). */
+export interface WorkflowJob {
+  /** Workflow file name, e.g. `ci.yml`. */
+  readonly workflow: string;
+  /** Job ID — the key under `jobs:`, what the shape lock looks up. */
+  readonly id: string;
+  /** GitHub's status-context rule: the job's `name`, else its ID. */
+  readonly context: string;
+}
+
+/** Read every workflow GitHub would (`.yml` AND `.yaml`); an unnamed job's context is its ID. */
+export function loadWorkflowJobs(directory = '.github/workflows'): WorkflowJob[] {
   return readdirSync(directory)
-    .filter((file) => file.endsWith('.yml'))
+    .filter((file) => /\.ya?ml$/.test(file))
     .sort()
     .flatMap((file) => {
       const parsed: unknown = parseYaml(readFileSync(join(directory, file), 'utf-8'));
       const workflow = WorkflowSchema.parse(parsed);
-      return Object.entries(workflow.jobs).map(([id, job]) => job.name ?? id);
+      return Object.entries(workflow.jobs).map(([id, job]) => ({
+        workflow: file,
+        id,
+        context: job.name ?? id,
+      }));
     });
 }
 
@@ -81,13 +95,24 @@ export function loadRequiredContexts(): readonly string[] | 'unmeasured' {
   }
 }
 
+/** The one job that may report a required context: `jobs[job]` in `workflow`. */
+const ProducerSchema = z
+  .object({ workflow: z.string().regex(/^[^/]+\.ya?ml$/), job: z.string().min(1) })
+  .strict();
+type Producer = z.infer<typeof ProducerSchema>;
+
 const ManifestSchema = z.object({
   description: z.string().min(1),
-  version: z.literal('1.0.0'),
+  version: z.literal('2.0.0'),
   ci_success_needs: z.array(z.string().min(1)),
   /** Jobs the aggregator may accept as `skipped` (push-only skips); every other need must be `success`. */
   skip_allowed: z.array(z.string().min(1)),
-  required_contexts: z.array(z.string().min(1)),
+  /**
+   * Required status context → its pinned producer (#6390). Branch protection
+   * requires a context by job NAME while the shape lock judges a job by ID;
+   * the binding is what stops a trivial twin from reporting the name.
+   */
+  required_contexts: z.record(z.string().min(1), ProducerSchema),
   audit_config_forbidden: z.boolean(),
 });
 
@@ -98,7 +123,7 @@ interface RequiredJobsInput {
   readonly ciSuccessGate: AggregatorShape;
   readonly packageJson: unknown;
   readonly requiredContexts: readonly string[] | 'unmeasured';
-  readonly workflowJobNames: readonly string[] | 'unmeasured';
+  readonly workflowJobs: readonly WorkflowJob[] | 'unmeasured';
 }
 
 const PROTECTION_UNMEASURED = 'Required contexts: unmeasured (branch protection unreadable)';
@@ -118,26 +143,39 @@ export function checkRequiredJobs(input: RequiredJobsInput): RequiredJobsResult 
   const parsed = ManifestSchema.safeParse(input.manifest);
   if (!parsed.success) return { verdict: 'drift', problems: ['Invalid required-jobs manifest'] };
   const manifest = parsed.data;
-  const problems: string[] = [];
-  // Explicitly reject absence: an empty policy would otherwise approve every tree.
-  if (manifest.ci_success_needs.length === 0) problems.push('Manifest ci_success_needs is empty');
-  if (manifest.required_contexts.length === 0) problems.push('Manifest required_contexts is empty');
+  const required = manifest.required_contexts;
+  const problems = manifestProblems(manifest);
   for (const job of manifest.ci_success_needs) {
     if (!input.ciSuccessNeeds.includes(job)) problems.push(`Missing ci-success.needs: ${job}`);
   }
   problems.push(...aggregatorProblems(input.ciSuccessGate, manifest.skip_allowed));
   problems.push(...packageProblems(input.packageJson, manifest.audit_config_forbidden));
-  problems.push(...contextProblems(input, manifest.required_contexts));
+  problems.push(...contextProblems(input, Object.keys(required)));
+  problems.push(...pinnedProducerProblems(input.workflowJobs, required));
+  problems.push(...unpinnedProducerProblems(input.workflowJobs, required));
   const unmeasured = unmeasuredProblems(input);
   let verdict: RequiredJobsResult['verdict'] = problems.length > 0 ? 'drift' : 'ok';
   if (problems.length === 0 && unmeasured.length > 0) verdict = 'unmeasured';
   return { verdict, problems: [...problems, ...unmeasured] };
 }
 
+/** Explicitly reject absence: an empty policy would otherwise approve every tree. */
+function manifestProblems(manifest: z.infer<typeof ManifestSchema>): string[] {
+  const problems: string[] = [];
+  if (manifest.ci_success_needs.length === 0) problems.push('Manifest ci_success_needs is empty');
+  const required = manifest.required_contexts;
+  if (Object.keys(required).length === 0) problems.push('Manifest required_contexts is empty');
+  for (const context of EXPECTED_REQUIRED_CONTEXTS) {
+    if (!Object.hasOwn(required, context))
+      problems.push(`Manifest pins no producer for required context: ${context}`);
+  }
+  return problems;
+}
+
 function unmeasuredProblems(input: RequiredJobsInput): string[] {
   const problems: string[] = [];
   if (input.requiredContexts === 'unmeasured') problems.push(PROTECTION_UNMEASURED);
-  if (input.workflowJobNames === 'unmeasured') problems.push(INVENTORY_UNMEASURED);
+  if (input.workflowJobs === 'unmeasured') problems.push(INVENTORY_UNMEASURED);
   return problems;
 }
 
@@ -151,12 +189,53 @@ function packageProblems(packageJson: unknown, auditConfigForbidden: boolean): s
 }
 
 function contextProblems(input: RequiredJobsInput, expected: readonly string[]): string[] {
-  const result = checkRequiredContexts({ ...input, expectedContexts: expected });
+  const { workflowJobs } = input;
+  const workflowJobNames =
+    workflowJobs === 'unmeasured' ? workflowJobs : workflowJobs.map((job) => job.context);
+  const result = checkRequiredContexts({ ...input, workflowJobNames, expectedContexts: expected });
   const problems = result.missing.map((name) => `Missing required context: ${name}`);
   problems.push(
     ...result.unproduced.map((name) => `Required context without workflow job: ${name}`)
   );
-  if (input.workflowJobNames.length === 0) problems.push('No workflow job names were found');
+  if (workflowJobNames.length === 0) problems.push('No workflow job names were found');
+  return problems;
+}
+
+/** The pinned `{workflow, job}` must exist and report exactly the required context (#6390). */
+function pinnedProducerProblems(
+  jobs: readonly WorkflowJob[] | 'unmeasured',
+  required: Readonly<Record<string, Producer>>
+): string[] {
+  if (jobs === 'unmeasured') return [];
+  const problems: string[] = [];
+  for (const [context, pin] of Object.entries(required)) {
+    const producer = jobs.find((job) => job.workflow === pin.workflow && job.id === pin.job);
+    const where = `${pin.workflow} job ${pin.job}`;
+    if (producer === undefined) {
+      problems.push(`Required context producer missing: ${context} (${where})`);
+    } else if (producer.context !== context) {
+      problems.push(
+        `Required context producer renamed: ${context} is ${where}, whose name is "${producer.context}"`
+      );
+    }
+  }
+  return problems;
+}
+
+/** No job in ANY workflow other than the pinned one may report a required context (#6390). */
+function unpinnedProducerProblems(
+  jobs: readonly WorkflowJob[] | 'unmeasured',
+  required: Readonly<Record<string, Producer>>
+): string[] {
+  if (jobs === 'unmeasured') return [];
+  const problems: string[] = [];
+  for (const job of jobs) {
+    const pin = Object.hasOwn(required, job.context) ? required[job.context] : undefined;
+    if (pin === undefined || (pin.workflow === job.workflow && pin.job === job.id)) continue;
+    problems.push(
+      `Required context produced by an unpinned job: ${job.context} (${job.workflow} job ${job.id})`
+    );
+  }
   return problems;
 }
 
@@ -268,11 +347,11 @@ export function runRequiredJobsCheck(targetDir: string, policyDir: string = POLI
       problems: ['Required local CI wiring or package.json is missing or invalid'],
     });
   }
-  let workflowJobNames: readonly string[] | 'unmeasured';
+  let workflowJobs: readonly WorkflowJob[] | 'unmeasured';
   try {
-    workflowJobNames = loadWorkflowJobNames(join(targetDir, '.github/workflows'));
+    workflowJobs = loadWorkflowJobs(join(targetDir, '.github/workflows'));
   } catch {
-    workflowJobNames = 'unmeasured';
+    workflowJobs = 'unmeasured';
   }
   const result = checkRequiredJobs({
     manifest,
@@ -280,7 +359,7 @@ export function runRequiredJobsCheck(targetDir: string, policyDir: string = POLI
     ciSuccessGate: gate.gate,
     packageJson,
     requiredContexts: loadRequiredContexts(),
-    workflowJobNames,
+    workflowJobs,
   });
 
   return report(result);
