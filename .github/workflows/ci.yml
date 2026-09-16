@@ -552,27 +552,28 @@ jobs:
     if: always()
     steps:
       - name: Check required jobs
+        env:
+          # Every job this aggregator waits for, with its result — the one
+          # input the check reads. There is no per-job line to comment out
+          # (#6382): a job listed in `needs` is verified because it is listed.
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          # Jobs that legitimately skip on push (not a PR). The governor-owned
+          # governance/required-jobs.json pins the same list (`skip_allowed`)
+          # and the ratification gate refuses a drift between the two.
+          SKIP_ALLOWED: '["commitlint","changeset-check","producer-consumer-check"]'
+        # The run body is POLICY: it must equal AGGREGATOR_RUN in the
+        # governor-owned scripts/check-required-jobs.ts byte for byte, or the
+        # ratification gate (which runs that checker from the base ref) refuses.
         run: |
-          # commitlint, changeset-check and producer-consumer-check are skipped on
-          # push (not a PR) — treat skipped as success.
-          #
-          # #4784: producer-consumer-check was absent from this list, so the
-          # #3024 wiring gate and the #4757 API-surface gate could both go red
-          # while the PR stayed mergeable. Branch protection requires only
-          # "CI Success", so a gate not wired in here cannot fail by construction.
-          if [[ "${{ needs.commitlint.result }}" != "success" && "${{ needs.commitlint.result }}" != "skipped" ]] || \
-             [[ "${{ needs.changeset-check.result }}" != "success" && "${{ needs.changeset-check.result }}" != "skipped" ]] || \
-             [[ "${{ needs.producer-consumer-check.result }}" != "success" && "${{ needs.producer-consumer-check.result }}" != "skipped" ]] || \
-             [[ "${{ needs.lint.result }}" != "success" ]] || \
-             [[ "${{ needs.typecheck.result }}" != "success" ]] || \
-             [[ "${{ needs.test.result }}" != "success" ]] || \
-             [[ "${{ needs.build.result }}" != "success" ]] || \
-             [[ "${{ needs.consolidation-test.result }}" != "success" ]] || \
-             [[ "${{ needs.fitness-audit.result }}" != "success" ]] || \
-             [[ "${{ needs.script-tests.result }}" != "success" ]] || \
-             [[ "${{ needs.model-string-drift.result }}" != "success" ]] || \
-             [[ "${{ needs.security.result }}" != "success" ]]; then
-            echo "One or more required jobs failed"
+          failing=$(jq -r --argjson ok "$SKIP_ALLOWED" '
+            if (. | length) == 0 then "NO_NEEDS"
+            else to_entries
+              | map(.key as $k | select(.value.result != "success"
+                           and ((.value.result != "skipped") or ($ok != "*" and (($ok | index($k)) == null)))))
+              | map("\(.key)=\(.value.result)") | join(" ")
+            end' <<< "$NEEDS_JSON")
+          if [ -n "$failing" ]; then
+            echo "::error::One or more required jobs failed: $failing"
             exit 1
           fi
-          echo "All required checks passed!"
+          echo "All required jobs passed."

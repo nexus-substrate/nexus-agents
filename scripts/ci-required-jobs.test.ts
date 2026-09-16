@@ -34,7 +34,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { extractJobGate } from './check-required-jobs.js';
+import { extractWorkflowGate } from './aggregator-shape.js';
 
 /**
  * Jobs deliberately left out of `ci-success.needs`.
@@ -62,15 +62,15 @@ interface CiWorkflow {
 const ci = parse(
   readFileSync(join(process.cwd(), '.github', 'workflows', 'ci.yml'), 'utf8')
 ) as CiWorkflow;
-const ciGate = extractJobGate(ci.jobs['ci-success']);
+const ciGate = extractWorkflowGate(ci, 'ci-success');
 const required = new Set(ciGate.needs);
-const gateScript = ciGate.gateScript;
 
 describe('CI required-job wiring', () => {
-  it('finds the ci-success job and its gate script', () => {
+  it('finds the ci-success job and its aggregator step', () => {
     // Guard the guard: a renamed job would make every assertion below vacuous.
     expect(required.size).toBeGreaterThan(0);
-    expect(gateScript).toContain('needs.');
+    expect(ciGate.gate.verifiesEveryNeed).toBe(true);
+    expect(ciGate.gate.neutralized).toEqual([]);
   });
 
   it('classifies every job in ci.yml as either required or explicitly advisory', () => {
@@ -84,16 +84,19 @@ describe('CI required-job wiring', () => {
     ).toEqual([]);
   });
 
-  it('checks the result of every job it depends on', () => {
+  it('verifies every job it depends on through toJSON(needs), with the skip list pinned by the governor manifest (#6382)', () => {
     // The inverse can't-fail shape: listing a job in `needs` only makes
-    // ci-success WAIT for it. Without a `needs.<job>.result` test in the gate
-    // script, a red job still yields a green CI Success.
-    const unchecked = [...required].filter((job) => !ciGate.resultChecks.includes(job));
-
-    expect(
-      unchecked,
-      `In ci-success.needs but result check missing or commented out, so a failure is awaited and then ignored: ${unchecked.join(', ')}`
-    ).toEqual([]);
+    // ci-success WAIT for it. The aggregator reads ALL of `needs` at once,
+    // so there is no per-job line that could be dropped or commented out;
+    // the only policy it carries — which jobs may be skipped — must equal the
+    // governor-owned manifest, which the ratification gate enforces from the
+    // base ref.
+    expect(ciGate.gate.verifiesEveryNeed).toBe(true);
+    const manifest = JSON.parse(
+      readFileSync(join(process.cwd(), 'governance', 'required-jobs.json'), 'utf8')
+    ) as { skip_allowed: string[]; ci_success_needs: string[] };
+    expect(new Set(ciGate.gate.skipAllowed)).toEqual(new Set(manifest.skip_allowed));
+    for (const job of manifest.skip_allowed) expect(required.has(job), job).toBe(true);
   });
 
   it('names the other PR workflows whose jobs this file does not govern', () => {
@@ -135,17 +138,16 @@ describe('CI required-job wiring', () => {
     // Named explicitly: #4784 is why this file exists, and a regression here
     // would silently un-gate the public API surface again.
     expect(required.has('producer-consumer-check')).toBe(true);
-    expect(gateScript).toContain('needs.producer-consumer-check.result');
+    expect(ciGate.gate.verifiesEveryNeed).toBe(true);
   });
 
-  it('treats a skipped pull-request-only job as success', () => {
+  it('treats a skipped pull-request-only job as success, and only those', () => {
     // These three are `if: github.event_name == 'pull_request'`, so on a push
-    // they are skipped. Without the skipped branch every push to main reddens.
-    for (const job of ['commitlint', 'changeset-check', 'producer-consumer-check']) {
-      expect(gateScript, `${job} must accept "skipped"`).toContain(
-        `needs.${job}.result }}" != "skipped"`
-      );
-    }
+    // they are skipped. Without the skip allowance every push to main reddens;
+    // with a wider one, a skipped required job would pass.
+    expect(new Set(ciGate.gate.skipAllowed)).toEqual(
+      new Set(['commitlint', 'changeset-check', 'producer-consumer-check'])
+    );
   });
 
   it('does not let a required job swallow its own failure with continue-on-error', () => {
@@ -185,9 +187,9 @@ describe('Security Audit is a required job (#4794 stage 2)', () => {
     expect((security?.steps ?? []).some((s) => s.run?.includes('pnpm audit') === true)).toBe(true);
   });
 
-  it('is in ci-success.needs and its result is checked', () => {
+  it('is in ci-success.needs and may not be skipped', () => {
     expect(required.has('security')).toBe(true);
-    expect(gateScript).toContain('needs.security.result');
+    expect(ciGate.gate.skipAllowed ?? []).not.toContain('security');
   });
 
   it('has no continue-on-error step, so a failing audit reddens CI Success', () => {
@@ -212,9 +214,8 @@ const DOCS_ADVISORY_JOBS = new Set(['docs-coverage', 'spell-check']);
 const docs = parse(
   readFileSync(join(process.cwd(), '.github', 'workflows', 'docs-check.yml'), 'utf8')
 ) as CiWorkflow;
-const docsGate = extractJobGate(docs.jobs['docs-success']);
+const docsGate = extractWorkflowGate(docs, 'docs-success');
 const docsRequired = new Set(docsGate.needs);
-const docsGateScript = docsGate.gateScript;
 
 describe('Documentation Gate required-job wiring (#4809)', () => {
   // `docs-check.yml` had twenty jobs and no aggregator, so not one of them
@@ -228,9 +229,10 @@ describe('Documentation Gate required-job wiring (#4809)', () => {
   // today is that the aggregator stays COMPLETE, so the context is correct
   // whenever protection starts requiring it.
 
-  it('finds the docs-success job and its gate script', () => {
+  it('finds the docs-success job and its aggregator step, in the one accepted shape (#6387)', () => {
     expect(docsRequired.size).toBeGreaterThan(0);
-    expect(docsGateScript).toContain('needs.');
+    expect(docsGate.gate.verifiesEveryNeed).toBe(true);
+    expect(docsGate.gate.neutralized).toEqual([]);
   });
 
   it('classifies every job in docs-check.yml as required or explicitly advisory', () => {
@@ -244,18 +246,12 @@ describe('Documentation Gate required-job wiring (#4809)', () => {
     ).toEqual([]);
   });
 
-  it('checks the result of every job it depends on', () => {
+  it('verifies every job it depends on through toJSON(needs) (#6382)', () => {
     // Same inverse shape as ci-success: `needs` only makes the aggregator
-    // WAIT. Without a `needs.<job>.result` test, a red job is awaited and
-    // then ignored.
-    const unchecked = [...docsRequired].filter(
-      (job) => !docsGateScript.includes(`needs.${job}.result`)
-    );
-
-    expect(
-      unchecked,
-      `Awaited but never checked, so a failure is silently tolerated: ${unchecked.join(', ')}`
-    ).toEqual([]);
+    // WAIT. The aggregator reads all of `needs` at once, so a red job that
+    // ran cannot be awaited and then ignored; every docs gate may skip (path
+    // filters), so no SKIP_ALLOWED list is declared and skipped is accepted.
+    expect(docsGate.gate.verifiesEveryNeed).toBe(true);
   });
 
   it('does not list an advisory job as required', () => {

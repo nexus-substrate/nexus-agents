@@ -15,6 +15,7 @@
     "model-string-drift",
     "security"
   ],
+  "skip_allowed": ["commitlint", "changeset-check", "producer-consumer-check"],
   "required_contexts": ["CI Success", "Governor-path ratification gate"],
   "audit_config_forbidden": true
 }
