@@ -305,7 +305,7 @@ function formatActionStatus(action: ProposedAction): string {
 }
 
 /** The refusal-bearing subset of `ProposedAction.details`, read with guards. */
-export interface ActionRefusalDetails {
+interface ActionRefusalDetails {
   readonly policyViolations: readonly string[];
   readonly missingCorroboration: readonly string[];
   readonly refusedAtStage?: 'corroboration';
