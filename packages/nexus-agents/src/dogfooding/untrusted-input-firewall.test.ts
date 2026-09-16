@@ -18,6 +18,7 @@ import {
   evaluateActionThroughFirewall,
   getUntrustedInputFirewall,
   runUntrustedInputFirewall,
+  validateActionCorroboration,
   _setUntrustedInputFirewallForTests,
 } from './untrusted-input-firewall.js';
 
@@ -480,5 +481,117 @@ describe('configureUntrustedInputFirewall — the durable sink (#4992 review)', 
     if (!result.ok) return;
     expect(result.value.effectiveTrustTier).toBe('4');
     expect(result.value.wouldRefuse).toBe(true);
+  });
+});
+
+describe('validateActionCorroboration (#6309)', () => {
+  /** DraftReply with no citation: the corroboration floor cannot be cleared. */
+  const uncorroborated: AgentAction = {
+    type: 'DraftReply',
+    body: 'Thanks for the report.',
+    requiresApproval: true,
+    sources: [],
+  };
+  const corroborated: AgentAction = {
+    ...uncorroborated,
+    sources: [{ type: 'repoFile', path: 'README.md' }],
+  };
+  const MISSING = ['At least one Tier 1 source citation'];
+
+  function firewall(policyMode: 'off' | 'audit' | 'enforce'): HostileInputFirewall {
+    return new HostileInputFirewall({
+      adapter: createGitHubAdapter(),
+      contentDowngrade: false,
+      stages: { corroboration: true },
+      policyMode,
+    });
+  }
+
+  afterEach(() => {
+    _setUntrustedInputFirewallForTests(undefined);
+    vi.unstubAllEnvs();
+  });
+
+  it('the shared instance runs the corroboration stage (the wiring test)', () => {
+    // Before #6309 the singleton left `stages.corroboration` at its `false`
+    // default, so every call here would have been the unevaluated case.
+    vi.stubEnv('NEXUS_FIREWALL_POLICY', 'off');
+    _setUntrustedInputFirewallForTests(undefined);
+    const result = validateActionCorroboration(uncorroborated);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.refused).toBe(false);
+    if (result.value.refused) return;
+    expect(result.value.satisfied).toBe(false);
+    expect(result.value.missing).toEqual(MISSING);
+  });
+
+  it('under off: the validator verdict, for the caller to record — nothing is refused', () => {
+    _setUntrustedInputFirewallForTests(firewall('off'));
+    const result = validateActionCorroboration(uncorroborated);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual({
+      refused: false,
+      satisfied: false,
+      missing: MISSING,
+      corroboratingSources: [],
+      clearedOnlyByUnverifiedSources: false,
+      policyMode: 'off',
+      wouldRefuse: false,
+    });
+  });
+
+  it('under audit: the same verdict, with wouldRefuse and the missing sources as the telemetry', () => {
+    _setUntrustedInputFirewallForTests(firewall('audit'));
+    const result = validateActionCorroboration(uncorroborated);
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.refused) return;
+    expect(result.value.satisfied).toBe(false);
+    expect(result.value.wouldRefuse).toBe(true);
+    expect(result.value.missing).toEqual(MISSING);
+  });
+
+  it('under enforce: the firewall refuses, and the refusal names the stage and what was missing', () => {
+    _setUntrustedInputFirewallForTests(firewall('enforce'));
+    const result = validateActionCorroboration(uncorroborated);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual({
+      refused: true,
+      satisfied: false,
+      stage: 'corroboration',
+      missing: MISSING,
+      policyMode: 'enforce',
+    });
+  });
+
+  it('under enforce: a corroborated action is not refused — the stage is not a kill switch', () => {
+    _setUntrustedInputFirewallForTests(firewall('enforce'));
+    const result = validateActionCorroboration(corroborated);
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.refused) return;
+    expect(result.value.satisfied).toBe(true);
+    expect(result.value.wouldRefuse).toBe(false);
+  });
+
+  it('an unevaluated result is the named empty case: an Error, never a satisfied verdict', () => {
+    // A firewall whose stage is off returns `evaluated: false`. Reading
+    // `satisfied` off it is structurally impossible; mapping it to either
+    // `corroborated` value would record a measurement that was never taken.
+    _setUntrustedInputFirewallForTests(
+      new HostileInputFirewall({
+        adapter: createGitHubAdapter(),
+        contentDowngrade: false,
+        stages: { corroboration: false },
+        policyMode: 'enforce',
+      })
+    );
+    const result = validateActionCorroboration(corroborated);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('did not evaluate corroboration');
+    expect(result.error.message).toContain('DraftReply');
+    expect(result.error.message).toContain('corroboration-stage-disabled');
   });
 });

@@ -140,6 +140,7 @@ describe('createIssueTriageHandler (#2953)', () => {
             description: 'add label "bug"',
             policyApproved: true,
             corroborated: true,
+            details: { policyViolations: [], missingCorroboration: [] },
           },
         ],
         totalDurationMs: 100,
@@ -153,6 +154,86 @@ describe('createIssueTriageHandler (#2953)', () => {
     expect(parsed.issueNumber).toBe(42);
     expect(parsed.category).toBe('bug');
     expect(mockTriageIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it('the response carries WHY an action was refused: stage and missing sources, or policy rules (#6309)', async () => {
+    // `details` used to be dropped here, so a corroboration refusal and a
+    // policy refusal reached the MCP caller as the same two booleans.
+    mockTriageIssue.mockResolvedValue({
+      ok: true,
+      value: {
+        issueNumber: 44,
+        repository: 'o/r',
+        category: 'bug',
+        categoryConfidence: 0.9,
+        trustAssessment: {
+          trustTier: '3',
+          userRole: 'none',
+          isSuspicious: false,
+          suspiciousSignals: [],
+        },
+        proposedActions: [
+          {
+            type: 'SummarizeIssue',
+            description: 'A summary',
+            policyApproved: false,
+            corroborated: false,
+            details: {
+              policyViolations: ['INSUFFICIENT_CORROBORATION'],
+              missingCorroboration: ['At least one Tier 1/2 source'],
+              refusedAtStage: 'corroboration',
+            },
+          },
+          {
+            type: 'ProposeLabels',
+            description: 'Suggest labels: bug',
+            policyApproved: false,
+            corroborated: true,
+            details: {
+              policyViolations: ['INSUFFICIENT_TRUST'],
+              missingCorroboration: [],
+              corroborationWouldRefuse: false,
+            },
+          },
+          {
+            type: 'ClassifyIssue',
+            description: 'Classified as bug',
+            policyApproved: true,
+            corroborated: true,
+            details: { policyViolations: [], missingCorroboration: [], category: 'bug' },
+          },
+        ],
+        totalDurationMs: 100,
+      },
+    });
+    const handler = _testing.createIssueTriageHandler(makeDeps());
+    const result = await handler({ issueUrl: 'https://github.com/o/r/issues/44' }, makeCtx());
+    const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+    const parsed = JSON.parse(text) as { proposedActions: Record<string, unknown>[] };
+    expect(parsed.proposedActions[0]).toEqual({
+      type: 'SummarizeIssue',
+      description: 'A summary',
+      policyApproved: false,
+      corroborated: false,
+      policyViolations: ['INSUFFICIENT_CORROBORATION'],
+      missingCorroboration: ['At least one Tier 1/2 source'],
+      refusedAtStage: 'corroboration',
+    });
+    expect(parsed.proposedActions[1]).toEqual({
+      type: 'ProposeLabels',
+      description: 'Suggest labels: bug',
+      policyApproved: false,
+      corroborated: true,
+      policyViolations: ['INSUFFICIENT_TRUST'],
+      missingCorroboration: [],
+    });
+    // An approved action carries no refusal fields — absence, not empty noise.
+    expect(parsed.proposedActions[2]).toEqual({
+      type: 'ClassifyIssue',
+      description: 'Classified as bug',
+      policyApproved: true,
+      corroborated: true,
+    });
   });
 
   it('records low and high measured classifier confidence in learnings', async () => {

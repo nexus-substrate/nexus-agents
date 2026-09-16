@@ -95,6 +95,32 @@ describe('validateAction — the corroboration stage becomes readable (#5382)', 
       expect(result.value.corroboratingSources).toContain(repoFile);
     });
 
+    it('carries the author-supplied marker (#5796) so a consumer need not recompute it (#6309)', () => {
+      // `reportUnverifiedCorroboration` reads this flag; without it on the
+      // evaluated result the pr-review path would have to re-derive it from
+      // `corroboratingSources`, duplicating the validator's rule.
+      const fw = createFirewall({ stages: { corroboration: true } });
+      const authorSupplied: SourceCitation = {
+        type: 'repoFile',
+        path: 'docs/new-in-this-pr.md',
+        existsOnBaseRef: false,
+      };
+      const cleared = fw.validateAction({
+        type: 'SummarizeIssue',
+        summary: 'Test summary',
+        sources: [authorSupplied],
+      });
+      const verified = fw.validateAction(corroborated());
+
+      expect(cleared.ok && verified.ok).toBe(true);
+      if (!cleared.ok || !verified.ok) return;
+      expect(cleared.value.evaluated).toBe(true);
+      expect(verified.value.evaluated).toBe(true);
+      if (!cleared.value.evaluated || !verified.value.evaluated) return;
+      expect(cleared.value.clearedOnlyByUnverifiedSources).toBe(true);
+      expect(verified.value.clearedOnlyByUnverifiedSources).toBe(false);
+    });
+
     it('reports unsatisfied, with what is missing, for an uncorroborated action', () => {
       // The control against a stage that evaluates but always passes.
       const fw = createFirewall({ stages: { corroboration: true } });
@@ -156,6 +182,20 @@ describe('validateAction — the corroboration stage becomes readable (#5382)', 
       expect(result.error.stage).toBe('corroboration');
       // The refusal must say what was missing, or a caller cannot act on it.
       expect(result.error.message.length).toBeGreaterThan(0);
+    });
+
+    it('enforce: the refusal carries the missing requirements as a list, not only prose (#6309)', () => {
+      // The consumers that record a refusal (#6309) list what was missing on
+      // their own record; parsing it back out of `message` would be a second
+      // representation of the validator's output. Mirrors `violations` on the
+      // policy stage's refusal (#5383).
+      const fw = createFirewall({ stages: { corroboration: true }, policyMode: 'enforce' });
+      const result = fw.validateAction(uncorroborated());
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.missing).toEqual(['At least one Tier 1/2 source']);
+      expect(result.error.message).toContain('At least one Tier 1/2 source');
     });
 
     it('enforce does NOT refuse a corroborated action — not a kill switch', () => {

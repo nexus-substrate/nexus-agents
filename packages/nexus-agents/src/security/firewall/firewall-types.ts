@@ -280,7 +280,14 @@ export interface FirewallError {
    * stage (#5383) — the structured form of the rules `message` names, so a
    * consumer that maps a refusal onto its own action record can list the rule
    * ids without parsing the message. Absent for every other code, and for the
-   * corroboration stage's refusal, which carries no `Violation` list.
+   * corroboration stage's refusal, which carries `missing` instead.
    */
   readonly violations?: readonly Violation[];
+  /**
+   * The unmet corroboration requirements behind a `POLICY_REFUSED` from the
+   * corroboration stage (#6309) — the structured form of what `message`
+   * names, so a consumer recording the refusal can list them without parsing
+   * prose. Absent for every other code and stage.
+   */
+  readonly missing?: readonly string[];
 }
