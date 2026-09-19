@@ -27,8 +27,23 @@ describe('buildChildEnv (#2865)', () => {
     'NEXUS_SUBPROCESS_ENV_ALLOWLIST',
     'NEXUS_SUBPROCESS_DEPTH',
     'NEXUS_SUBPROCESS_EXTRA_ENV',
+    'NEXUS_OPENAI_COMPAT_KEY',
+    'NEXUS_CUSTOM_API_KEY',
+    'NEXUS_SIGNING_KEY',
+    'NEXUS_VOTE_SIGNING_KEY',
+    'NEXUS_GITHUB_TOKEN',
+    'NEXUS_CODEPR_TOKEN',
+    'NEXUS_AUTH_TOKEN',
+    'NEXUS_API_SECRET',
+    'NEXUS_SECRET_ENDPOINT',
+    'NEXUS_ADMIN_PASSWORD',
+    'NEXUS_DB_PASSWD',
+    'NEXUS_AWS_CREDENTIALS',
+    'NEXUS_CONFIG_PATH',
+    'NEXUS_CLAUDE_TOKEN_LIMIT',
     'MY_GATEWAY_KEY',
     'npm_config_registry',
+    'npm_config__authToken',
     'SOME_RANDOM_UNLISTED_VAR',
   ];
 
@@ -114,6 +129,58 @@ describe('buildChildEnv (#2865)', () => {
     expect(env['LC_CUSTOMTEST']).toBe('en_US.UTF-8');
     expect(env['NEXUS_CUSTOMTEST']).toBe('cfg');
     expect(env['npm_config_registry']).toBe('https://registry.example');
+  });
+
+  it('drops NEXUS-prefixed secrets and credentials by default (keys, tokens, passwords)', () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-compat-secret');
+    vi.stubEnv('NEXUS_CUSTOM_API_KEY', 'sk-legacy-secret');
+    vi.stubEnv('NEXUS_SIGNING_KEY', 'signing-key-secret');
+    vi.stubEnv('NEXUS_VOTE_SIGNING_KEY', 'vote-key-secret');
+    vi.stubEnv('NEXUS_GITHUB_TOKEN', 'ghp_secret_token');
+    vi.stubEnv('NEXUS_CODEPR_TOKEN', 'ghp_codepr_token');
+    vi.stubEnv('NEXUS_AUTH_TOKEN', 'auth-token-secret');
+    vi.stubEnv('NEXUS_API_SECRET', 'top-secret');
+    vi.stubEnv('NEXUS_SECRET_ENDPOINT', 'secret-val');
+    vi.stubEnv('NEXUS_ADMIN_PASSWORD', 'admin-pass');
+    vi.stubEnv('NEXUS_DB_PASSWD', 'db-pass');
+    vi.stubEnv('NEXUS_AWS_CREDENTIALS', 'cred-val');
+    vi.stubEnv('npm_config__authToken', 'npm-token-val');
+    vi.stubEnv('NEXUS_CONFIG_PATH', '/etc/nexus.yaml');
+
+    const env = buildChildEnv('gemini');
+    expect(env['NEXUS_CONFIG_PATH']).toBe('/etc/nexus.yaml');
+    expect(env['NEXUS_OPENAI_COMPAT_KEY']).toBeUndefined();
+    expect(env['NEXUS_CUSTOM_API_KEY']).toBeUndefined();
+    expect(env['NEXUS_SIGNING_KEY']).toBeUndefined();
+    expect(env['NEXUS_VOTE_SIGNING_KEY']).toBeUndefined();
+    expect(env['NEXUS_GITHUB_TOKEN']).toBeUndefined();
+    expect(env['NEXUS_CODEPR_TOKEN']).toBeUndefined();
+    expect(env['NEXUS_AUTH_TOKEN']).toBeUndefined();
+    expect(env['NEXUS_API_SECRET']).toBeUndefined();
+    expect(env['NEXUS_SECRET_ENDPOINT']).toBeUndefined();
+    expect(env['NEXUS_ADMIN_PASSWORD']).toBeUndefined();
+    expect(env['NEXUS_DB_PASSWD']).toBeUndefined();
+    expect(env['NEXUS_AWS_CREDENTIALS']).toBeUndefined();
+    expect(env['npm_config__authToken']).toBeUndefined();
+  });
+
+  it('allows forwarding a NEXUS secret when explicitly named in NEXUS_SUBPROCESS_EXTRA_ENV', () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'sk-compat-secret');
+    vi.stubEnv('NEXUS_SIGNING_KEY', 'signing-key-secret');
+    vi.stubEnv(NEXUS_SUBPROCESS_EXTRA_ENV, 'NEXUS_OPENAI_COMPAT_KEY');
+
+    const env = buildChildEnv('codex');
+    expect(env['NEXUS_OPENAI_COMPAT_KEY']).toBe('sk-compat-secret');
+    expect(env['NEXUS_SIGNING_KEY']).toBeUndefined();
+  });
+
+  it('does not drop non-secret NEXUS configuration variables with token-like substrings', () => {
+    vi.stubEnv('NEXUS_CLAUDE_TOKEN_LIMIT', '100000');
+    vi.stubEnv('NEXUS_CONFIG_PATH', '/etc/nexus.yaml');
+
+    const env = buildChildEnv('claude');
+    expect(env['NEXUS_CLAUDE_TOKEN_LIMIT']).toBe('100000');
+    expect(env['NEXUS_CONFIG_PATH']).toBe('/etc/nexus.yaml');
   });
 
   it('escape hatch: NEXUS_SUBPROCESS_ENV_ALLOWLIST=0 restores full passthrough (minus CLAUDECODE)', () => {
