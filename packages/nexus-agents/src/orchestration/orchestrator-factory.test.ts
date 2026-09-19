@@ -54,7 +54,7 @@ function makeMockWorkflowEngine(overrides: Partial<IWorkflowEngine> = {}): IWork
     ),
     cancel: vi.fn().mockResolvedValue(ok(undefined)),
     getStatus: vi.fn().mockReturnValue({ state: 'pending' }),
-    listTemplates: vi.fn().mockResolvedValue(ok([])),
+    listTemplates: vi.fn().mockResolvedValue([]),
     ...overrides,
   } as unknown as IWorkflowEngine;
 }
@@ -80,6 +80,12 @@ describe('OrchestratorFactory', () => {
       expect(types).toContain('orchestrator');
       expect(types).toContain('puppeteer');
       expect(types).toHaveLength(3);
+    });
+
+    it('mock workflow engine listTemplates resolves to an array conforming to IWorkflowEngine (#5842)', async () => {
+      const templates = await mockEngine.listTemplates();
+      expect(Array.isArray(templates)).toBe(true);
+      expect(templates).not.toHaveProperty('ok');
     });
   });
 
