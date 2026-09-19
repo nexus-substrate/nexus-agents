@@ -17,7 +17,11 @@ import {
   FAKE_GITHUB_OAUTH,
 } from '../testing/test-secrets.js';
 
-import { sanitizeOutput, REDACTED_KEY_PLACEHOLDER } from './output-sanitizer.js';
+import {
+  sanitizeOutput,
+  sanitizeErrorDetails,
+  REDACTED_KEY_PLACEHOLDER,
+} from './output-sanitizer.js';
 
 describe('sanitizeOutput', () => {
   it('returns empty string unchanged', () => {
@@ -146,5 +150,61 @@ describe('sanitizeOutput', () => {
     expect(result).toContain('Error: API key ');
     expect(result).toContain(' is invalid, please check');
     expect(result).toContain(REDACTED_KEY_PLACEHOLDER);
+  });
+});
+
+describe('sanitizeErrorDetails', () => {
+  it('returns empty string unchanged', () => {
+    expect(sanitizeErrorDetails('')).toBe('');
+  });
+
+  it('redacts exact apiKey match when provided', () => {
+    const apiKey = 'custom-secret-key-12345';
+    const input = `Failed to authenticate using key ${apiKey}`;
+    const result = sanitizeErrorDetails(input, apiKey);
+    expect(result).not.toContain(apiKey);
+    expect(result).toContain(REDACTED_KEY_PLACEHOLDER);
+  });
+
+  it('redacts URL userinfo credentials', () => {
+    const input = 'Connection failed to https://admin:supersecret@gateway.internal/v1/chat';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('supersecret');
+    expect(result).not.toContain('admin:');
+    expect(result).toContain(`https://${REDACTED_KEY_PLACEHOLDER}@gateway.internal/v1/chat`);
+  });
+
+  it('redacts Authorization Bearer and Basic headers', () => {
+    const input =
+      'Headers: authorization: Bearer eyJhbGciOi... and authorization: Basic dXNlcjpwYXNz';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('eyJhbGciOi');
+    expect(result).not.toContain('dXNlcjpwYXNz');
+    expect(result).toContain(`authorization: Bearer ${REDACTED_KEY_PLACEHOLDER}`);
+    expect(result).toContain(`authorization: Basic ${REDACTED_KEY_PLACEHOLDER}`);
+  });
+
+  it('redacts standalone Bearer tokens', () => {
+    const input = 'Error: Bearer secret-auth-token-12345 was rejected';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('secret-auth-token-12345');
+    expect(result).toContain(`Bearer ${REDACTED_KEY_PLACEHOLDER}`);
+  });
+
+  it('redacts sensitive query parameters', () => {
+    const input = 'Request to https://proxy.local/v1?api_key=secret-param-val&foo=bar';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('secret-param-val');
+    expect(result).toContain(`api_key=${REDACTED_KEY_PLACEHOLDER}`);
+    expect(result).toContain('foo=bar');
+  });
+
+  it('redacts sensitive JSON keys in error bodies', () => {
+    const input = 'body={"error":{"message":"bad auth","token":"topsecret","api_key":"sk-999"}}';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('topsecret');
+    expect(result).not.toContain('sk-999');
+    expect(result).toContain(`"token": "${REDACTED_KEY_PLACEHOLDER}"`);
+    expect(result).toContain(`"api_key": "${REDACTED_KEY_PLACEHOLDER}"`);
   });
 });

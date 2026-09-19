@@ -42,6 +42,7 @@ import {
   mapResponseUsage,
   mapStreamChunk,
 } from './openai-mappers.js';
+import { sanitizeErrorDetails } from '../security/output-sanitizer.js';
 
 // Re-export types and constants for public API
 export { OPENAI_MODELS, OPENAI_MODEL_ALIASES, type OpenAIAdapterConfig } from './openai-types.js';
@@ -94,7 +95,7 @@ function kvTag(key: string, val: string | number | null | undefined): string {
   return val === null || val === undefined || val === '' ? '' : `${key}=${String(val)}`;
 }
 
-function describeOpenAIApiError(v: ApiErrorView): string {
+function describeOpenAIApiError(v: ApiErrorView, apiKey?: string): string {
   const tags = [
     `HTTP ${String(v.status ?? 'unknown')}`,
     kvTag('type', v.type),
@@ -111,7 +112,7 @@ function describeOpenAIApiError(v: ApiErrorView): string {
       body = ' body=<unserializable>';
     }
   }
-  return `${tags.join(' ')}: ${v.message ?? ''}${body}`;
+  return sanitizeErrorDetails(`${tags.join(' ')}: ${v.message ?? ''}${body}`, apiKey);
 }
 
 /** Cap the surfaced gateway error body so a huge response can't bloat logs/messages. */
@@ -120,6 +121,7 @@ const MAX_ERROR_BODY_CHARS = 600;
 export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
   private readonly resolvedModelId: string;
+  private readonly apiKey: string | undefined;
 
   /**
    * Creates a new OpenAIAdapter instance.
@@ -151,6 +153,7 @@ export class OpenAIAdapter extends BaseAdapter {
 
     super(baseConfig);
 
+    this.apiKey = config.apiKey;
     this.resolvedModelId = resolvedModelId;
 
     // Validate API key presence
@@ -245,10 +248,12 @@ export class OpenAIAdapter extends BaseAdapter {
       probe.cause = error;
       const classified = super.transformError(probe);
       // Surface the full diagnostic detail in the final message (code/cause kept).
-      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v)}`;
+      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v, this.apiKey)}`;
       return classified;
     }
-    return super.transformError(error);
+    const err = super.transformError(error);
+    err.message = sanitizeErrorDetails(err.message, this.apiKey);
+    return err;
   }
 
   /**
