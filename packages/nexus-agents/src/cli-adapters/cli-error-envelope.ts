@@ -20,6 +20,7 @@
 
 import type { CliErrorCode, CliName } from './types.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
+import { GEMINI_CLI_COMMAND } from './adapters/gemini-adapter.js';
 
 /**
  * Result of unwrapping a CLI's structured error envelope. `null` when the
@@ -69,13 +70,18 @@ function unwrapCodexEnvelope(parsed: unknown): string | null {
   return null;
 }
 
-/** Login hint matched against the parsed message text, per CLI. */
+/**
+ * Login hint matched against the parsed message text, per CLI.
+ * #6278: gemini arm reads GEMINI_CLI_COMMAND ('agy') rather than literal 'gemini'.
+ */
 const LOGIN_HINTS: Record<CliName, string> = {
   claude: 'claude /login',
   codex: 'codex login',
-  gemini: 'gemini',
+  gemini: GEMINI_CLI_COMMAND,
   opencode: 'opencode auth login',
 };
+
+const GEMINI_NON_INTERACTIVE_HINT = 'or set GEMINI_API_KEY / GOOGLE_AI_API_KEY';
 
 /**
  * The auth-failure vocabulary: the ONE list that says a CLI's credential is
@@ -159,6 +165,9 @@ export function authRemediation(message: string, cliName: string): string | null
   if (!classifyMessage(message).auth) return null;
   const cli = resolveCliName(cliName);
   if (cli === null) return null;
+  if (cli === 'gemini') {
+    return `Re-authenticate: run \`${LOGIN_HINTS[cli]}\` (the ${cli} CLI's stored OAuth token is stale), ${GEMINI_NON_INTERACTIVE_HINT}.`;
+  }
   return `Re-authenticate: run \`${LOGIN_HINTS[cli]}\` (the ${cli} CLI's stored OAuth token is stale).`;
 }
 
@@ -239,10 +248,14 @@ function buildParsedError(message: string, cliName: CliName): ParsedCliError {
   const firstLine = (message.split('\n')[0] ?? message).trim().slice(0, 240);
   const { code, auth } = classifyMessage(firstLine);
   if (auth) {
+    const hint =
+      cliName === 'gemini'
+        ? `Run \`${LOGIN_HINTS[cliName]}\` to authenticate, then retry (${GEMINI_NON_INTERACTIVE_HINT}).`
+        : `Run \`${LOGIN_HINTS[cliName]}\` to authenticate, then retry.`;
     return {
       message: firstLine,
       code,
-      hint: `Run \`${LOGIN_HINTS[cliName]}\` to authenticate, then retry.`,
+      hint,
     };
   }
   return { message: firstLine, code };

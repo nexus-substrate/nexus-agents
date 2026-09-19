@@ -40,11 +40,20 @@ describe('parseCliErrorEnvelope (#2440)', () => {
     expect(result?.hint).toContain('codex login');
   });
 
-  it('appends a per-CLI login hint for gemini', () => {
+  it('appends a per-CLI login hint for gemini naming agy and env vars (#6278)', () => {
     const geminiEnv = JSON.stringify({ error: 'invalid api key' });
     const result = parseCliErrorEnvelope(geminiEnv, 'gemini');
     expect(result?.code).toBe('NOT_AUTHENTICATED');
-    expect(result?.hint).toContain('gemini');
+    expect(result?.hint).toContain('agy');
+    expect(result?.hint).toContain('GEMINI_API_KEY');
+    expect(result?.hint).toContain('GOOGLE_AI_API_KEY');
+  });
+
+  it('provides auth remediation for gemini naming agy and env vars (#6278)', () => {
+    const remediation = authRemediation('Error authenticating: IneligibleTierError', 'gemini');
+    expect(remediation).toContain('agy');
+    expect(remediation).toContain('GEMINI_API_KEY');
+    expect(remediation).toContain('GOOGLE_AI_API_KEY');
   });
 
   it('classifies a non-auth error envelope as EXECUTION_ERROR (not retryable)', () => {

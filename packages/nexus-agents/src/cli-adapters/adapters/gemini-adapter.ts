@@ -83,6 +83,13 @@ const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConf
 };
 
 /**
+ * The executable name spawned by the Gemini CLI adapter (#4346, #6278).
+ * The standalone gemini CLI is EOL — it exits 55 with IneligibleTierError on
+ * every invocation.
+ */
+export const GEMINI_CLI_COMMAND = 'agy';
+
+/**
  * Gemini CLI adapter with reliability features.
  *
  * Includes tiered timeouts, resilient parsing, retry logic, and circuit breaker.
@@ -97,7 +104,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
    * every invocation.
    */
   override get binaryName(): string {
-    return 'agy';
+    return GEMINI_CLI_COMMAND;
   }
   protected readonly parser: ICliResponseParser;
 
