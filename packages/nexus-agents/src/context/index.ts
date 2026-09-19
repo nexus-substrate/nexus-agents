@@ -238,22 +238,6 @@ export type {
   CachedActionResult,
 } from './routing-memory.js';
 
-// Session Journal (Context Exhaustion Prevention)
-export {
-  createSessionJournal,
-  loadJournal,
-  summarizeJournal,
-  type SessionJournal,
-} from './session-journal.js';
-
-export {
-  JournalEventTypeSchema,
-  JournalEntrySchema,
-  type JournalEventType,
-  type JournalEntry,
-  type JournalSummary,
-} from './session-journal-types.js';
-
 // Context Pressure Monitor (Context Exhaustion Prevention)
 export {
   createContextPressureMonitor,
