@@ -91,6 +91,16 @@ describe('ScenarioRunner', () => {
       expect(result.stepResults).toHaveLength(2);
     });
 
+    it('should not pass a scenario that asserted nothing in dry-run mode (#6446)', async () => {
+      const emptyScenario: ScenarioFixture = { ...basicScenario, expectedOutputs: [] };
+      const config: Partial<E2ETestConfig> = { dryRun: true };
+
+      const result = await runner.run(emptyScenario, config);
+
+      expect(result.stepResults).toHaveLength(0);
+      expect(result.passed).toBe(false);
+    });
+
     it('should fail when step status does not match', async () => {
       const failingFactory: StubFactory = {
         createAgentStub: () => () =>

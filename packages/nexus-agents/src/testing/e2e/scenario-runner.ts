@@ -211,9 +211,13 @@ export class ScenarioRunner implements IScenarioRunner {
       failures: [],
     }));
 
+    // A scenario that asserted nothing did not pass (#4581, #6446): with no
+    // expectations `passed` would otherwise be vacuously true.
+    const passed = allOf(validations, (v) => v.passed, false);
+
     return {
       scenarioId: scenario.id,
-      passed: true,
+      passed,
       stepResults: validations,
       durationMs: getTimeProvider().now() - startTime,
       executedAt: getTimeProvider().nowIso(),
