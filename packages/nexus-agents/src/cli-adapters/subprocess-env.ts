@@ -10,7 +10,9 @@
  *
  * `buildChildEnv()` constructs a curated child environment instead:
  * base infrastructure vars that every CLI needs, plus ONLY the spawned
- * CLI's own vendor credential(s).
+ * CLI's own vendor credential(s). Sensitive credentials and secrets
+ * (including `NEXUS_*` keys, tokens, and secrets) are stripped by
+ * default unless explicitly allowed via {@link NEXUS_SUBPROCESS_EXTRA_ENV}.
  *
  * @module cli-adapters/subprocess-env
  */
@@ -113,6 +115,22 @@ function readExtraEnvNames(env: NodeJS.ProcessEnv): readonly string[] {
 }
 
 /**
+ * Pattern matching secret or credential environment variable names that must
+ * NEVER be implicitly forwarded to spawned CLI subprocesses by prefix match,
+ * even when matching `NEXUS_` or another infrastructure prefix.
+ *
+ * Specific vendor keys in `CLI_VENDOR_KEYS` or operator-explicit extra variables
+ * configured via {@link NEXUS_SUBPROCESS_EXTRA_ENV} are still honored.
+ */
+const BLOCKED_SECRET_PATTERN =
+  /(?:^NEXUS_SECRET_)|(?:(?:^|_|[a-z])(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDENTIALS)$)/i;
+
+/** True if `key` matches patterns designated for secrets/credentials. */
+function isBlockedSecretVar(key: string): boolean {
+  return BLOCKED_SECRET_PATTERN.test(key);
+}
+
+/**
  * True if `key` is permitted for a CLI whose vendor keys are `vendorKeys`, plus
  * any operator-allowlisted `extraEnv` names (#4037).
  */
@@ -124,6 +142,7 @@ function isAllowed(
   if (BASE_ENV_EXACT.includes(key)) return true;
   if (vendorKeys.includes(key)) return true;
   if (extraEnv.includes(key)) return true;
+  if (isBlockedSecretVar(key)) return false;
   return BASE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
