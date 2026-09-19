@@ -74,9 +74,9 @@ function isClosingQuote(char: string, state: ParserState): boolean {
   return state.inQuote && char === state.quoteChar;
 }
 
-/** Check if character is an unquoted space (token separator). */
+/** Check if character is an unquoted whitespace (token separator). */
 function isTokenSeparator(char: string, state: ParserState): boolean {
-  return !state.inQuote && char === ' ';
+  return !state.inQuote && (char === ' ' || char === '\t');
 }
 
 /**
@@ -135,6 +135,14 @@ export function validateCommandWithPolicy(
   commandString: string,
   options: SandboxExecOptions = {}
 ): PolicyViolation | null {
+  if (commandString.includes('\0')) {
+    return {
+      type: 'command',
+      denied: commandString,
+      reason: 'Command contains null byte',
+    };
+  }
+
   const { command, args } = parseCommand(commandString);
   const policy = options.policy ?? getPolicyForContext(options.context ?? 'read');
 

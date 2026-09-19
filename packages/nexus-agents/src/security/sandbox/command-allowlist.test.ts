@@ -214,6 +214,22 @@ describe('validateArgs', () => {
     expect(result).not.toBeNull();
   });
 
+  it('denies newlines (newline command injection)', () => {
+    const resultLf = validateArgs(['arg\nwhoami']);
+    expect(resultLf).not.toBeNull();
+    expect(resultLf?.reason).toContain('denied pattern');
+
+    const resultCrLf = validateArgs(['arg\r\nwhoami']);
+    expect(resultCrLf).not.toBeNull();
+    expect(resultCrLf?.reason).toContain('denied pattern');
+  });
+
+  it('denies null byte injection', () => {
+    const result = validateArgs(['arg\0whoami']);
+    expect(result).not.toBeNull();
+    expect(result?.reason).toContain('denied pattern');
+  });
+
   it('returns null for empty args', () => {
     expect(validateArgs([])).toBeNull();
   });

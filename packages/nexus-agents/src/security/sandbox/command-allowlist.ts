@@ -87,6 +87,10 @@ export const DENIED_COMMANDS: readonly string[] = [
 export const DENIED_ARG_PATTERNS: readonly RegExp[] = [
   // Prevent command chaining
   /[;&|`$()]/,
+  // Prevent newline command injection
+  /[\r\n]/,
+  // Prevent null byte injection
+  /\0/,
   // Prevent redirection
   /[<>]/,
   // Prevent backgrounding
@@ -123,6 +127,15 @@ export function validateCommand(
       type: 'command',
       denied: command,
       reason: 'Commands with path separators are not allowed',
+    };
+  }
+
+  // Check if command contains newlines or control characters
+  if (/[\r\n\0]/.test(command)) {
+    return {
+      type: 'command',
+      denied: command,
+      reason: 'Commands with control characters or newlines are not allowed',
     };
   }
 
