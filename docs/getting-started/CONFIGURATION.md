@@ -306,8 +306,8 @@ Files stored:
 **`NEXUS_REPUTATION_GATING` graduation path:** `off` bypasses entirely; `audit` logs every violation and blocks nothing; `enforce` blocks. Author-reputation tier demotion in `issue_triage` (epic #3118). (The `NEXUS_ACCESS_POLICY_MODE` ladder that used to sit here — `audit` → `confirm_risky` → `enforce` — was retired with the ClawGuard deriver in #5108; the secret-path control it fronted is the PolicyFirewall `secret-paths` rule, whose enforce rollout is #4988.)
 
 - `off` — reputation never affects the enforced trust tier
-- `audit` (default) — reputation is computed and the would-be demotion is logged + surfaced (`trustAssessment.effectiveTrustTier`/`gatingMode`), but the **classifier** tier is enforced. Collects telemetry on the demotion rate before enforcing
-- `enforce` — apply the reputation demotion at the policy gate (a suspicious author's tier-gated actions are blocked)
+- `audit` — reputation is computed and the would-be demotion is logged + surfaced (`trustAssessment.effectiveTrustTier`/`gatingMode`), but the **classifier** tier is enforced. Collects telemetry on the demotion rate before enforcing
+- `enforce` (default) — apply the reputation demotion at the policy gate (a suspicious author's tier-gated actions are blocked)
 
 **Escape hatch:** in every mode the maintainer allowlist (Tier 1) is authoritative — reputation can never demote an allowlisted/owner author. To clear a false-positive demotion for a specific user, add them to the allowlist; to disable gating fleet-wide, set `off`.
 
