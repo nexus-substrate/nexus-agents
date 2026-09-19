@@ -22,7 +22,7 @@ import { ConfigError } from '../core/errors.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
-import { warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
+import { isGatewayArmId, warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
 import type { CliName, EndpointArmId, ObservedArmId } from '../cli-adapters/types.js';
 import { isCliName, isEndpointArmId } from '../cli-adapters/types.js';
@@ -190,9 +190,11 @@ export class UnifiedAdapterRegistry {
 
   /**
    * Register an `api:*` arm's adapter under its endpoint identity (#4392).
-   * Accepts a built-in `ApiArmId` or a dynamic `EndpointArmId`; the id is
-   * re-validated at runtime because the `EndpointArmId` type admits any `api:`
-   * string, so a cast from an unvalidated name is exactly what this refuses.
+   * Refuses built-in vendor arms (`api:anthropic`, `api:openai`, `api:google`, `api:gemini`)
+   * to prevent hijacking or redirecting vendor traffic without authorization.
+   * Accepts a dynamic `EndpointArmId`; the id is re-validated at runtime
+   * because the `EndpointArmId` type admits any `api:` string, so a cast from an
+   * unvalidated name is exactly what this refuses.
    * Registering an id twice replaces (and disposes) the earlier adapter.
    * CLI-slot behaviour is untouched. A registered endpoint arm is observable
    * here and in the breaker registry but is NOT a `RoutingArmId`: it cannot
@@ -203,6 +205,9 @@ export class UnifiedAdapterRegistry {
   registerApiArm(arm: EndpointArmId, adapter: IResilientAdapter): void {
     if (!isEndpointArmId(arm)) {
       throw new Error(`Invalid api arm id: ${JSON.stringify(arm)} (expected api:<endpoint>)`);
+    }
+    if (!isGatewayArmId(arm) || arm === 'api:gemini') {
+      throw new Error(`Cannot overwrite built-in vendor arm: ${arm}`);
     }
     this.cliAdapters.get(arm)?.dispose();
     this.cliAdapters.set(arm, adapter);
