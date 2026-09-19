@@ -9,10 +9,15 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { ok, err } from '../core/result.js';
 import { OrchestratorError } from '../core/types/orchestrator.js';
-import type { OrchestratorDefinition } from '../core/types/orchestrator.js';
+import type { OrchestratorDefinition, OrchestratorStep } from '../core/types/orchestrator.js';
 import type { Task } from '../core/types/index.js';
 
-import { OrchestratorAdapter, PuppeteerAdapter, WorkflowAdapter } from './orchestrator-adapters.js';
+import {
+  OrchestratorAdapter,
+  PuppeteerAdapter,
+  WorkflowAdapter,
+  createResult,
+} from './orchestrator-adapters.js';
 
 // ============================================================================
 // Mock external modules
@@ -396,5 +401,55 @@ describe('unmeasured token counts are disclosed (#4829)', () => {
       expect(result.ok, `${name} should execute`).toBe(true);
       expect(result.value?.tokensMeasured, name).toBe(false);
     }
+  });
+
+  it('reports tokensMeasured: false on zero steps (#6439)', () => {
+    const result = createResult('exec-1', 'orchestrator', [], 'output', 10);
+    expect(result.tokensMeasured).toBe(false);
+  });
+
+  it('reports tokensMeasured: true only when all steps are measured (#6439)', () => {
+    const makeStepWithMeasured = (tokensMeasured?: boolean): OrchestratorStep => ({
+      id: 'step-1',
+      agentId: 'agent-1',
+      role: 'custom',
+      action: 'test',
+      output: null,
+      durationMs: 10,
+      tokensUsed: tokensMeasured === true ? 100 : 0,
+      ...(tokensMeasured !== undefined ? { tokensMeasured } : {}),
+      status: 'success',
+      error: undefined,
+    });
+
+    // All steps measured
+    const allMeasured = createResult(
+      'exec-1',
+      'orchestrator',
+      [makeStepWithMeasured(true), makeStepWithMeasured(true)],
+      'output',
+      10
+    );
+    expect(allMeasured.tokensMeasured).toBe(true);
+
+    // Some steps unmeasured (false)
+    const mixed = createResult(
+      'exec-2',
+      'orchestrator',
+      [makeStepWithMeasured(true), makeStepWithMeasured(false)],
+      'output',
+      10
+    );
+    expect(mixed.tokensMeasured).toBe(false);
+
+    // Absent tokensMeasured on a step
+    const absent = createResult(
+      'exec-3',
+      'orchestrator',
+      [makeStepWithMeasured(true), makeStepWithMeasured(undefined)],
+      'output',
+      10
+    );
+    expect(absent.tokensMeasured).toBe(false);
   });
 });
