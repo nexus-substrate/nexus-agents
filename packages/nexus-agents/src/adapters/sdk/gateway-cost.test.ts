@@ -13,6 +13,7 @@ import {
   gatewayCostGap,
   gatewayCostRates,
   gatewayCostStatus,
+  gatewayEndpointRejection,
   isGatewayArmId,
   parseGatewayCostEnv,
   resolveGatewayCostDeclaration,
@@ -98,6 +99,23 @@ describe('parseGatewayCostEnv — grammar', () => {
     // Never echo a credential-bearing key back in the error.
     expect(parsed.error.message).not.toContain('secret');
   });
+
+  it('rejects an endpoint key that is custom-openai (#6437)', () => {
+    const parsed = parseGatewayCostEnv('custom-openai=free');
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error.message).toContain('reserved for the single-model NEXUS_CUSTOM_API_* path');
+  });
+
+  it.each(['anthropic', 'openai', 'google'])(
+    'rejects vendor endpoint key %j in NEXUS_GATEWAY_COST',
+    (vendor) => {
+      const parsed = parseGatewayCostEnv(`${vendor}=free`);
+      expect(parsed.ok).toBe(false);
+      if (parsed.ok) return;
+      expect(parsed.error.message).toMatch(/vendor/);
+    }
+  );
 });
 
 describe('isGatewayArmId', () => {
@@ -270,5 +288,13 @@ describe('warnIfGatewayCostUndeclared', () => {
     const logger = mockLogger();
     warnIfGatewayCostUndeclared('api:anthropic', logger, {});
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('gatewayEndpointRejection', () => {
+  it('refuses custom-openai (#6437)', () => {
+    expect(gatewayEndpointRejection('custom-openai')).toBe(
+      'must not be custom-openai: reserved for the single-model NEXUS_CUSTOM_API_* path'
+    );
   });
 });

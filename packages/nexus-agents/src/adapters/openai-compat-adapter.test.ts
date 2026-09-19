@@ -165,6 +165,16 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
       expect(JSON.stringify(warn.mock.calls[0])).not.toContain('user:pw');
       expect(String(warn.mock.calls[0]?.[0])).toMatch(/endpoint id/);
 
+      warn.mockClear();
+      expect(
+        readOpenAICompatEndpoint({ NEXUS_OPENAI_COMPAT_ENDPOINT: 'custom-openai' }, logger)
+      ).toBe('openai-compat');
+      expect(warn).toHaveBeenCalledTimes(1);
+      const [customMsg, customCtx] = warn.mock.calls[0] as [string, Record<string, unknown>];
+      expect(customMsg).toContain('reserved for the single-model NEXUS_CUSTOM_API_* path');
+      expect(customMsg).toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
+      expect(JSON.stringify(customCtx)).not.toContain('"custom-openai"');
+
       // A valid override and an unset one are silent.
       warn.mockClear();
       expect(readOpenAICompatEndpoint({ NEXUS_OPENAI_COMPAT_ENDPOINT: 'corp-proxy' }, logger)).toBe(
