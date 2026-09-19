@@ -132,8 +132,12 @@ const TRIGGER_HEADING =
 const TRIGGER_BOLD =
   /^[ \t]*\*\*(?:the\s+)?(?:unblock\s+trigger|trigger(?:\s+to\s+pick\s+this\s+up)?):\*\*[ \t]*(.*)$/im;
 
-const CONNECTOR_WORDS =
-  /\b(?:once|after|lands?|merges?|merged|blocked|by|on|and|or|the|when|pick\s+up|before|this|landing|pr|prs|issue|issues|part|step|in|at|to)\b|[#\d\s,.:;!?'"()/\-–—\\]/gi;
+const CONNECTOR_WORD_PATTERN =
+  /^(?:once|after|lands?|merges?|merged|blocked|by|on|and|or|the|when|pick|up|before|this|landing|pr|prs|issue|issues|part|step|in|at|to|fix|fixes)$/iu;
+
+function isIssueShapedToken(token: string): boolean {
+  return /^#?\d+$/u.test(token) || CONNECTOR_WORD_PATTERN.test(token);
+}
 
 /**
  * Extract the first sentence of an issue's stated trigger (#6327).
@@ -182,8 +186,9 @@ export function extractTrigger(body: string): string | undefined {
  */
 export function classifyTrigger(trigger: string | undefined): TriggerKind {
   if (trigger === undefined || trigger.trim().length === 0) return 'none';
-  const stripped = trigger.replace(CONNECTOR_WORDS, '').trim();
-  return stripped.length === 0 ? 'issue-only' : 'unverified';
+  const tokens = trigger.match(/[a-z0-9#]+/giu) ?? [];
+  if (tokens.length === 0) return 'none';
+  return tokens.every(isIssueShapedToken) ? 'issue-only' : 'unverified';
 }
 
 /**
