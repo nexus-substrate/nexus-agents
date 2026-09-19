@@ -296,6 +296,40 @@ describe('safePathsRule', () => {
     expect(result.allowed).toBe(false);
   });
 
+  it('extracts path from planFile and specFile fields', () => {
+    expect(safePathsRule.check(makeCtx({ args: { planFile: '../secret.md' } })).allowed).toBe(
+      false
+    );
+    expect(safePathsRule.check(makeCtx({ args: { specFile: '../secret.md' } })).allowed).toBe(
+      false
+    );
+  });
+
+  it('validates all paths when multiple path arguments are provided', () => {
+    const result = safePathsRule.check(
+      makeCtx({
+        args: {
+          feedAPath: './safe-a.json',
+          feedBPath: '../../etc/passwd',
+        },
+      })
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('..');
+  });
+
+  it('denies when any path in an array of paths contains traversal', () => {
+    const result = safePathsRule.check(
+      makeCtx({
+        args: {
+          paths: ['./safe.ts', '../../etc/shadow'],
+        },
+      })
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('..');
+  });
+
   it('uses default allowed paths when none specified', () => {
     // Default allowed path is ['./'], relative paths within project should be allowed
     const result = safePathsRule.check(makeCtx({ args: { path: '/some/absolute/path' } }));

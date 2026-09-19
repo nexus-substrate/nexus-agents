@@ -9,7 +9,7 @@
 import type { PolicyContext, PolicyDecision, PolicyRule } from './policy-types.js';
 import {
   isPathSafe,
-  extractPathFromArgs,
+  extractPathsFromArgs,
   canonicalizeToolPath,
   findSecretPathPattern,
 } from './policy-helpers.js';
@@ -125,31 +125,32 @@ export const safePathsRule: PolicyRule = {
   name: 'safe-paths',
   description: 'Validates paths against allowed root directories',
   check(ctx: PolicyContext): PolicyDecision {
-    // Extract path from arguments
-    const targetPath = extractPathFromArgs(ctx.args);
+    // Extract paths from arguments
+    const targetPaths = extractPathsFromArgs(ctx.args);
 
     // If no path in args, allow (not a file operation)
-    if (targetPath === undefined) {
+    if (targetPaths.length === 0) {
       return { allowed: true, reason: 'No path argument found' };
     }
 
-    // Check for obvious path traversal attempts
-    if (targetPath.includes('..')) {
-      return {
-        allowed: false,
-        reason: `Path contains '..' which may indicate path traversal: ${targetPath}`,
-      };
-    }
-
-    // Get allowed paths from context or use default
     const allowedPaths = ctx.allowedPaths ?? ['./'];
 
-    // Validate path is within allowed roots
-    if (!isPathSafe(targetPath, allowedPaths)) {
-      return {
-        allowed: false,
-        reason: `Path '${targetPath}' is outside allowed directories: ${allowedPaths.join(', ')}`,
-      };
+    for (const targetPath of targetPaths) {
+      // Check for obvious path traversal attempts
+      if (targetPath.includes('..')) {
+        return {
+          allowed: false,
+          reason: `Path contains '..' which may indicate path traversal: ${targetPath}`,
+        };
+      }
+
+      // Validate path is within allowed roots
+      if (!isPathSafe(targetPath, allowedPaths)) {
+        return {
+          allowed: false,
+          reason: `Path '${targetPath}' is outside allowed directories: ${allowedPaths.join(', ')}`,
+        };
+      }
     }
 
     return { allowed: true, reason: 'Path is within allowed directories' };
@@ -175,18 +176,20 @@ export const secretPathsRule: PolicyRule = {
   name: 'secret-paths',
   description: 'Denies access to secret-bearing paths regardless of allowed roots',
   check(ctx: PolicyContext): PolicyDecision {
-    const targetPath = extractPathFromArgs(ctx.args);
-    if (targetPath === undefined) {
+    const targetPaths = extractPathsFromArgs(ctx.args);
+    if (targetPaths.length === 0) {
       return { allowed: true, reason: 'No path argument found' };
     }
 
-    const canonical = canonicalizeToolPath(targetPath);
-    const hit = findSecretPathPattern(canonical);
-    if (hit !== undefined) {
-      return {
-        allowed: false,
-        reason: `Path '${canonical}' matches secret-path pattern '${hit}'`,
-      };
+    for (const targetPath of targetPaths) {
+      const canonical = canonicalizeToolPath(targetPath);
+      const hit = findSecretPathPattern(canonical);
+      if (hit !== undefined) {
+        return {
+          allowed: false,
+          reason: `Path '${canonical}' matches secret-path pattern '${hit}'`,
+        };
+      }
     }
 
     return { allowed: true, reason: 'Path matches no secret-path pattern' };
