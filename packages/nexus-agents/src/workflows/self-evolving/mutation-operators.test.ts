@@ -531,8 +531,8 @@ describe('Mutation Operators', () => {
 
       const { mutations } = applyRandomMutation(workflow, config);
 
-      // Should have at least one mutation with 100% mutation rate
-      expect(mutations.length).toBeGreaterThanOrEqual(0); // May still be 0 if mutations don't produce change
+      // Should have at least one mutation with 100% mutation rate (#6447)
+      expect(mutations.length).toBeGreaterThan(0);
     });
 
     it('should respect zero mutation rate', () => {
