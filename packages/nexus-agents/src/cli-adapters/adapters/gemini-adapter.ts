@@ -42,6 +42,7 @@ import {
 } from '../circuit-breaker.js';
 import { GEMINI_LEGACY_DEFAULTS, createCircuitOpenError } from './gemini-adapter-helpers.js';
 import { executeCliRetryLoop } from '../cli-retry-loop.js';
+import { GEMINI_CLI_COMMAND } from '../cli-error-envelope.js';
 import {
   buildModelInfo,
   getCliModelName,
@@ -83,6 +84,13 @@ const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConf
 };
 
 /**
+ * The executable name spawned by the Gemini CLI adapter (#4346, #6278).
+ * The standalone gemini CLI is EOL — it exits 55 with IneligibleTierError on
+ * every invocation.
+ */
+export { GEMINI_CLI_COMMAND };
+
+/**
  * Gemini CLI adapter with reliability features.
  *
  * Includes tiered timeouts, resilient parsing, retry logic, and circuit breaker.
@@ -97,7 +105,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
    * every invocation.
    */
   override get binaryName(): string {
-    return 'agy';
+    return GEMINI_CLI_COMMAND;
   }
   protected readonly parser: ICliResponseParser;
 
