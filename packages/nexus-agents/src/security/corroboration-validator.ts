@@ -142,7 +142,7 @@ function hasSourceAtTier(sources: readonly SourceCitation[], maxTier: TrustTier)
  * Strict Tier 1 floor applied when an action type is unlisted or requires
  * strict Tier 1 corroboration (fail-closed floor per .rules/untrusted-input.md).
  */
-export const TIER_1_FLOOR_RULES: readonly CorroborationRule[] = Object.freeze([
+const TIER_1_FLOOR_RULES: readonly CorroborationRule[] = Object.freeze([
   {
     description: 'At least one Tier 1 source citation',
     isSatisfied: (s: readonly SourceCitation[]) =>
