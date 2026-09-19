@@ -296,9 +296,10 @@ describe('SkillLoader - RBAC Enforcement', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.skills.length).toBeGreaterThanOrEqual(0);
-      // Verify the skill was added to the library
-      expect(addedSkill.id).toBeDefined();
+      expect(result.value.skills.length).toBeGreaterThan(0);
+      // Verify our added skill is included
+      const skillIds = result.value.skills.map((s) => s.id);
+      expect(skillIds).toContain(addedSkill.id);
     }
   });
 });
@@ -423,7 +424,7 @@ describe('SkillLoader - Fallback Behavior', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.skills.length).toBeGreaterThanOrEqual(0);
+      expect(result.value.skills.length).toBeGreaterThan(0);
       expect(result.value.missingRequired.length).toBeGreaterThan(0);
     }
   });

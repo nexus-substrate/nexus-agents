@@ -475,23 +475,25 @@ describe('detectEvolution', () => {
   });
 
   it('should detect extension for memories with new concepts', () => {
-    const newAttrs = createMockAttributes([
-      'api',
-      'endpoint',
-      'graphql',
-      'mutation',
-      'subscription',
-    ]);
+    const entity: EntityReference = {
+      name: 'ApiService',
+      type: 'code',
+    };
+    const newAttrs = createMockAttributes(
+      ['api', 'endpoint', 'service', 'rest', 'graphql', 'mutation', 'subscription'],
+      [entity]
+    );
     const existingMemory = {
       key: 'existing1',
-      attrs: createMockAttributes(['api', 'endpoint']),
+      attrs: createMockAttributes(['api', 'endpoint', 'service', 'rest'], [entity]),
       createdAt: new Date(Date.now() - 10000),
     };
 
     const evolution = detectEvolution('new', newAttrs, new Date(), [existingMemory]);
 
-    // Should detect some evolution with moderate similarity
-    expect(evolution.length).toBeGreaterThanOrEqual(0);
+    // Should detect extension with moderate similarity and new concepts
+    expect(evolution.length).toBe(1);
+    expect(evolution[0]?.type).toBe('extension');
   });
 
   it('should skip low-similarity memories', () => {

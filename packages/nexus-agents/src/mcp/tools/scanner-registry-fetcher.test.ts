@@ -119,11 +119,38 @@ describe('clearRegistryCache', () => {
     }).not.toThrow();
   });
 
-  it('clears any cached data', () => {
-    // After clearing, getRegistryManifest should attempt a fresh fetch
-    clearRegistryCache();
-    // No way to assert internal state directly, but it shouldn't error
-    expect(true).toBe(true);
+  it('clears cached manifest so subsequent call triggers a fresh fetch', async () => {
+    let fetchCount = 0;
+    const runner: NonNullable<Parameters<typeof getRegistryManifestWithProvenance>[0]> = (
+      _file,
+      args
+    ) => {
+      fetchCount += 1;
+      if (args.includes('view')) return Promise.resolve({ stdout: 'v1.0.0\n', stderr: '' });
+      return Promise.resolve({ stdout: JSON.stringify(createManifest()), stderr: '' });
+    };
+
+    try {
+      // First call fetches from runner and caches it
+      const first = await getRegistryManifestWithProvenance(runner);
+      expect(first.manifest).not.toBeNull();
+      const countAfterFirst = fetchCount;
+      expect(countAfterFirst).toBeGreaterThan(0);
+
+      // Second call within TTL returns cached entry without calling runner
+      await getRegistryManifestWithProvenance(runner);
+      expect(fetchCount).toBe(countAfterFirst);
+
+      // Clear the cache
+      clearRegistryCache();
+
+      // After clearing, subsequent call must trigger a fresh fetch
+      const second = await getRegistryManifestWithProvenance(runner);
+      expect(second.manifest).not.toBeNull();
+      expect(fetchCount).toBeGreaterThan(countAfterFirst);
+    } finally {
+      clearRegistryCache();
+    }
   });
 });
 
