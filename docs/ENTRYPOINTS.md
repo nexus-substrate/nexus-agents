@@ -113,8 +113,6 @@ prints flags and examples for any of them.
 | `issue`              | Issue template validation and management                                                                                                                                                                          |
 | `validation`         | Learning validation dashboard                                                                                                                                                                                     |
 | `learning-metrics`   | Aggregated learning metrics dashboard                                                                                                                                                                             |
-| `swe-bench`          | [deprecated] Extracted to nexus-eval-swebench (#2515); shim until next minor.                                                                                                                                     |
-| `atbench`            | [deprecated] Extracted to nexus-eval-atbench (#2516); shim until next minor.                                                                                                                                      |
 | `visualize`          | Generate Mermaid diagrams and ASCII dashboards                                                                                                                                                                    |
 | `health`             | Swarm health metrics dashboard                                                                                                                                                                                    |
 | `release-notes`      | Generate release notes from git commits                                                                                                                                                                           |
@@ -133,7 +131,7 @@ prints flags and examples for any of them.
 | `scenario`         | Execute a named scenario from the testing framework   |
 | `warm-up`          | Warm the model/adapter caches before a run            |
 
-_Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 54 commands._
+_Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 52 commands._
 
 <!-- GOVERNANCE:ENTRYPOINTS_CLI:END -->
 

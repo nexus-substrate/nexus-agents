@@ -6,12 +6,6 @@
     "binary": "nexus-agents",
     "commands": [
       {
-        "name": "atbench",
-        "type": "async",
-        "handler": "handleAtbenchCommand",
-        "file": "src/cli-commands-handlers.ts"
-      },
-      {
         "name": "auth",
         "type": "async",
         "handler": "handleAuthCommand",
@@ -256,12 +250,6 @@
         "type": "sync",
         "handler": "handleStatusCommand",
         "file": "src/cli/status-command.ts"
-      },
-      {
-        "name": "swe-bench",
-        "type": "async",
-        "handler": "handleSweBenchCommand",
-        "file": "src/cli-commands-handlers.ts"
       },
       {
         "name": "system-review",
