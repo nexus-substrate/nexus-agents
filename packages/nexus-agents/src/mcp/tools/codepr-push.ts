@@ -68,6 +68,9 @@ import {
 } from './codepr-enable-readiness.js';
 import { readCodePrGuardsGreenSoak } from './codepr-soak-store.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
+import { hasStringProperty, redactCredentials } from './codepr-credentials.js';
+
+export { redactCredentials } from './codepr-credentials.js';
 
 // ============================================================================
 // Constants
@@ -194,12 +197,23 @@ function sha256(s: string): string {
   return createHash('sha256').update(s).digest('hex');
 }
 
-function git(cwd: string, args: readonly string[]): string {
-  return execFileSync('git', [...args], {
-    cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+function git(cwd: string, args: readonly string[], env?: Record<string, string>): string {
+  try {
+    return execFileSync('git', [...args], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: env !== undefined ? { ...process.env, ...env } : undefined,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      err.message = redactCredentials(err.message);
+      if (hasStringProperty(err, 'stderr')) {
+        err.stderr = redactCredentials(err.stderr);
+      }
+    }
+    throw err;
+  }
 }
 
 function pushDenied(reason: CodePrPushReason, detail: string): CodePrPushResult {
@@ -541,8 +555,9 @@ export function executeCodePrPush(input: CodePrPushInput, deps: CodePrPushDeps):
   // Steps 3–6 — wrapped so ANY throw becomes a fail-closed denial.
   try {
     return planRealizePush(input, deps, token);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (err: unknown) {
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    const message = redactCredentials(rawMessage, token);
     auditRefusal(deps.logger, input.run, 'push_failed', sha256(''));
     return pushDenied('push_failed', `code-PR push failed (fail-closed): ${message}`);
   }
@@ -552,23 +567,9 @@ export function executeCodePrPush(input: CodePrPushInput, deps: CodePrPushDeps):
 // Production seam implementations
 // ============================================================================
 
-/** Repo `origin` URL (used to build the per-push tokenized push URL). Throws on failure. */
+/** Repo `origin` URL (used to resolve the remote for push). Throws on failure. */
 function originUrl(worktreeRoot: string): string {
   return git(worktreeRoot, ['remote', 'get-url', 'origin']).trim();
-}
-
-/**
- * Build the tokenized HTTPS push URL for `origin` using the scoped token as the
- * `x-access-token` basic-auth user. Only `https://` origins are supported (an
- * ssh/`git@` origin is rejected fail-closed — there is no safe place to inject a
- * token). The token is embedded ONLY in the in-memory URL passed to `git push`
- * (never written to the repo config — see {@link defaultGitPush}).
- */
-function tokenizedPushUrl(origin: string, token: string): string {
-  if (!origin.startsWith('https://')) {
-    throw new Error('code-PR push requires an https origin (fail-closed)');
-  }
-  return `https://x-access-token:${token}@${origin.slice('https://'.length)}`;
 }
 
 /**
@@ -576,7 +577,8 @@ function tokenizedPushUrl(origin: string, token: string): string {
  * remote under the SAME (new) branch name — and ONLY a `nexus-codepr/<runId>`
  * branch (asserted fail-closed). It NEVER pushes to main, NEVER force-pushes,
  * NEVER merges, and NEVER alters branch protections. The scoped token is supplied
- * as an explicit per-invocation remote URL so it is not persisted in repo config.
+ * out-of-band via git config environment variables (`GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0`)
+ * so it is NEVER exposed in argv or process table listings (`ps` / `/proc`).
  *
  * `--no-verify` is intentionally NOT passed (hooks run); `:refs/heads/<branch>`
  * names the destination ref EXPLICITLY so the push can only create/update that one
@@ -589,9 +591,18 @@ export function defaultGitPush(branch: string, worktreeRoot: string, token: stri
   if (branch === 'main' || branch === 'master') {
     throw new Error('refusing to push to a default branch (fail-closed)');
   }
-  const url = tokenizedPushUrl(originUrl(worktreeRoot), token);
-  // Explicit src:dst refspec to the SAME feature branch — never main, no merge.
-  git(worktreeRoot, ['push', url, `refs/heads/${branch}:refs/heads/${branch}`]);
+  const origin = originUrl(worktreeRoot);
+  if (!origin.startsWith('https://')) {
+    throw new Error('code-PR push requires an https origin (fail-closed)');
+  }
+  const authHeader = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`;
+  // Token is supplied out-of-band via environment variable GIT_CONFIG_VALUE_0,
+  // NOT in argv / command-line URL, preventing exposure in /proc and ps (#6437).
+  git(worktreeRoot, ['push', origin, `refs/heads/${branch}:refs/heads/${branch}`], {
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'http.extraHeader',
+    GIT_CONFIG_VALUE_0: authHeader,
+  });
 }
 
 /**
@@ -599,21 +610,31 @@ export function defaultGitPush(branch: string, worktreeRoot: string, token: stri
  * `gh pr create` (subject to CI + CODEOWNERS). It does NOT pass `--merge`, does NOT
  * enable auto-merge, and does NOT merge — there is no merge surface here. Returns
  * the parsed PR number + URL. `GH_TOKEN` is set for the `gh` invocation from the
- * scoped token; it is never logged.
+ * scoped token; it is never logged or exposed in unscrubbed error envelopes.
  */
 export function defaultOpenPullRequest(args: OpenPullRequestArgs): OpenedPrRef {
-  const out = execFileSync(
-    'gh',
-    ['pr', 'create', '--head', args.branch, '--title', args.title, '--body', args.body],
-    { encoding: 'utf8', env: { ...process.env, GH_TOKEN: args.token } }
-  ).trim();
-  const url =
-    out
-      .split('\n')
-      .find((l) => l.startsWith('http'))
-      ?.trim() ?? out;
-  const num = url.match(/\/pull\/(\d+)/);
-  return { number: num?.[1] !== undefined ? Number.parseInt(num[1], 10) : 0, url };
+  try {
+    const out = execFileSync(
+      'gh',
+      ['pr', 'create', '--head', args.branch, '--title', args.title, '--body', args.body],
+      { encoding: 'utf8', env: { ...process.env, GH_TOKEN: args.token } }
+    ).trim();
+    const url =
+      out
+        .split('\n')
+        .find((l) => l.startsWith('http'))
+        ?.trim() ?? out;
+    const num = url.match(/\/pull\/(\d+)/);
+    return { number: num?.[1] !== undefined ? Number.parseInt(num[1], 10) : 0, url };
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      err.message = redactCredentials(err.message, args.token);
+      if (hasStringProperty(err, 'stderr')) {
+        err.stderr = redactCredentials(err.stderr, args.token);
+      }
+    }
+    throw err;
+  }
 }
 
 /**
