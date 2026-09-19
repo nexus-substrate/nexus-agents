@@ -10665,4 +10665,6 @@ InterfaceDeclaration ZodType
   toJSONSchema(params?: core.ToJSONSchemaParams) => core.ZodStandardJSONSchemaPayload<this>
   transform<NewOut>(transform: (arg: core.output<this>, ctx: core.$RefinementCtx<core.output<this>>) => NewOut | Promise<NewOut>) => ZodPipe<this, ZodTransform<Awaited<NewOut>, core.output<this>>>
   type: Internals["def"]["type"]
+  validate(data: unknown, params?: core.ParseContext<core.$ZodIssue>) => data is core.input<this>
+  validateAsync(data: unknown, params?: core.ParseContext<core.$ZodIssue>) => Promise<boolean>
   with(...checks: (core.$ZodCheck<core.output<this>> | core.CheckFn<core.output<this>>)[]) => this
