@@ -1,11 +1,4 @@
 {
   "intentional": {},
-  "debt": [
-    "NEXUS_BUDGET_TOLERANCE",
-    "NEXUS_CONSOLE",
-    "NEXUS_CONTEXT_WARN_THRESHOLD",
-    "NEXUS_CUSTOM_API_ALLOW_PRIVATE",
-    "NEXUS_PORTABLE_MODE",
-    "NEXUS_TASK_STATE_ENABLED"
-  ]
+  "debt": []
 }
