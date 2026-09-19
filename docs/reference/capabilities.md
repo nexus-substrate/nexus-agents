@@ -8,13 +8,12 @@
 
 ---
 
-## CLI Commands (53)
+## CLI Commands (51)
 
 Binary: `nexus-agents`
 
 | Command | Type | Handler | Source File |
 | --------- | ------ | --------- | ------------- |
-| `atbench` | async | `handleAtbenchCommand` | `src/cli-commands-handlers.ts` |
 | `auth` | async | `handleAuthCommand` | `src/cli-auth-handler.ts` |
 | `auto-remediate` | async | `handleAutoRemediateCommand` | `src/cli/auto-remediate-command.ts` |
 | `capabilities` | sync | `handleCapabilitiesCommand` | `src/cli/capabilities-command.ts` |
@@ -56,7 +55,6 @@ Binary: `nexus-agents`
 | `setup` | async | `handleSetupCommandAsync` | `src/cli-commands-handlers-setup.ts` |
 | `sprint` | async | `handleSprintCommand` | `src/cli-commands-handlers.ts` |
 | `status` | sync | `handleStatusCommand` | `src/cli/status-command.ts` |
-| `swe-bench` | async | `handleSweBenchCommand` | `src/cli-commands-handlers.ts` |
 | `system-review` | sync | `handleSystemReviewCommand` | `src/cli-commands-handlers.ts` |
 | `tour` | async | `handleTourCommand` | `src/cli-commands-handlers.ts` |
 | `usage` | async | `handleUsageCommand` | `src/cli/usage-command.ts` |

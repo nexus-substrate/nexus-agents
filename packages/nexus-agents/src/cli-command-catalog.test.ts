@@ -160,7 +160,7 @@ describe('cli-command-catalog (#2135)', () => {
       const commandsMatch = /COMMANDS:\n([\s\S]*?)\n\nOPTIONS:/.exec(tiered);
       expect(commandsMatch).not.toBeNull();
       const commandsBlock = commandsMatch?.[1] ?? '';
-      expect(commandsBlock).not.toMatch(/^ {4}swe-bench\b/m);
+      expect(commandsBlock).not.toMatch(/^ {4}learning-metrics\b/m);
       expect(commandsBlock).not.toMatch(/^ {4}release-validate\b/m);
       expect(commandsBlock).not.toMatch(/^ {4}fitness-audit\b/m);
     });
@@ -180,7 +180,7 @@ describe('cli-command-catalog (#2135)', () => {
     it('keeps the full view showing all commands when all=true', () => {
       const full = renderHelp({ all: true });
       // Sanity: maintainer-band commands come back when --all is set.
-      expect(full).toContain('swe-bench');
+      expect(full).toContain('learning-metrics');
       expect(full).toContain('fitness-audit');
       expect(full).toContain('release-notes');
     });

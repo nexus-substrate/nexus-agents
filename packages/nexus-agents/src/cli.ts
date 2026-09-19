@@ -138,21 +138,6 @@ interface ParsedValues {
   'on-no-quorum'?: string;
   /** #6110: the project the voter prompts name. */
   project?: string;
-  // SWE-bench options
-  variant?: string;
-  limit?: string;
-  instance?: string[];
-  resume: boolean;
-  concurrency?: string;
-  mcp: boolean;
-  predictions?: string;
-  'cache-level'?: string;
-  'max-workers'?: string;
-  'run-id'?: string;
-  'output-dir'?: string;
-  // ATBench options (#1981)
-  fixture?: string;
-  'llm-scoring': boolean;
   // Learning-metrics options
   period?: string;
   export?: string;
@@ -251,54 +236,6 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   };
 }
 
-/** Validates swe-bench variant option. */
-function parseSweBenchVariant(value: string | undefined): 'lite' | 'verified' | 'full' | undefined {
-  if (value === 'lite' || value === 'verified' || value === 'full') {
-    return value;
-  }
-  return undefined;
-}
-
-/** String value mappings from ParsedValues to swe-bench options: [sourceKey, targetKey] */
-const SWE_BENCH_STRING_MAPPINGS: [keyof ParsedValues, string][] = [
-  ['predictions', 'predictions'],
-  ['cache-level', 'cacheLevel'],
-  ['max-workers', 'maxWorkers'],
-  ['run-id', 'runId'],
-  ['output-dir', 'outputDir'],
-];
-
-/** Builds swe-bench-specific options. */
-function buildSweBenchOptions(values: ParsedValues): Record<string, unknown> & { resume: boolean } {
-  const variant = parseSweBenchVariant(values.variant);
-  const limit = parseNumericOption(values.limit);
-  const concurrency = parseNumericOption(values.concurrency);
-  const base: Record<string, unknown> & { resume: boolean } = { resume: values.resume };
-  if (variant !== undefined) base.variant = variant;
-  if (limit !== undefined) base.limit = limit;
-  if (concurrency !== undefined) base.concurrency = concurrency;
-  if (values.mcp) base.mcp = true;
-  for (const [src, tgt] of SWE_BENCH_STRING_MAPPINGS) {
-    const val = values[src];
-    if (val !== undefined) base[tgt] = val;
-  }
-  if (values.instance !== undefined && values.instance.length > 0) {
-    base.instance = values.instance;
-  }
-  return base;
-}
-
-/** Builds atbench-specific options (#1981). */
-function buildAtbenchOptions(values: ParsedValues): {
-  fixture?: string;
-  llmScoring?: boolean;
-} {
-  const result: { fixture?: string; llmScoring?: boolean } = {};
-  if (values.fixture !== undefined) result.fixture = values.fixture;
-  if (values['llm-scoring']) result.llmScoring = true;
-  return result;
-}
-
 /** Builds learning-metrics specific options. */
 function buildLearningMetricsOptions(values: ParsedValues): {
   period?: number;
@@ -391,8 +328,6 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...(values.input !== undefined && { input: values.input }),
     ...buildOrchestrateOptions(values),
     ...buildVoteOptions(values),
-    ...buildSweBenchOptions(values),
-    ...buildAtbenchOptions(values),
     ...buildLearningMetricsOptions(values),
     ...buildSetupOptions(values),
     ...buildInitOptions(values),

@@ -44,11 +44,7 @@ vi.mock('./cli-commands-usage.js', () => ({
   printOrchestrateUsage: vi.fn(),
 }));
 
-import {
-  handleConfigCommand,
-  handleOrchestrateCommand,
-  handleSweBenchCommand,
-} from './cli-commands-handlers-complex.js';
+import { handleConfigCommand, handleOrchestrateCommand } from './cli-commands-handlers-complex.js';
 
 import { configInitCommand, configCommand, orchestrateCommand } from './cli/index.js';
 
@@ -441,21 +437,6 @@ describe('cli-commands-handlers-complex', () => {
       const result = await handleOrchestrateCommand(args);
 
       expect(result).toEqual({ success: true, exitCode: 0 }); // EXIT_CODES.SUCCESS
-    });
-  });
-
-  describe('handleSweBenchCommand (deprecation shim, #2515)', () => {
-    it('returns INVALID_ARGS and prints migration message', async () => {
-      const args = createArgs({
-        command: 'swe-bench',
-        positionals: ['swe-bench'],
-      });
-      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-      const result = await handleSweBenchCommand(args);
-      expect(result).toEqual({ success: false, exitCode: 3 }); // EXIT_CODES.INVALID_ARGS
-      const written = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
-      expect(written).toContain('nexus-eval-swebench');
-      stderrSpy.mockRestore();
     });
   });
 });
