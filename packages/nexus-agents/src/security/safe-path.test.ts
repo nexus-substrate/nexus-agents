@@ -2,9 +2,11 @@
  * Tests for safe-path helpers (#1813, #1814).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { resolveInsideRoot } from './safe-path.js';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 describe('resolveInsideRoot', () => {
   const root = resolve(process.cwd());
@@ -42,5 +44,50 @@ describe('resolveInsideRoot', () => {
   it('accepts absolute path inside explicit root', () => {
     const tmpRoot = '/tmp/a';
     expect(resolveInsideRoot('/tmp/a/x', tmpRoot)).toBe('/tmp/a/x');
+  });
+
+  describe('symlink confinement', () => {
+    let baseDir: string;
+    let workspaceDir: string;
+    let secretFile: string;
+
+    beforeEach(() => {
+      baseDir = mkdtempSync(join(tmpdir(), 'safe-path-test-'));
+      workspaceDir = join(baseDir, 'workspace');
+      mkdirSync(workspaceDir);
+      secretFile = join(baseDir, 'secret.txt');
+      writeFileSync(secretFile, 'super-secret-data');
+    });
+
+    afterEach(() => {
+      rmSync(baseDir, { recursive: true, force: true });
+    });
+
+    it('rejects a symlink pointing outside root', () => {
+      const symlinkFile = join(workspaceDir, 'leak-link');
+      symlinkSync(secretFile, symlinkFile);
+
+      expect(resolveInsideRoot('leak-link', workspaceDir)).toBeNull();
+      expect(resolveInsideRoot(symlinkFile, workspaceDir)).toBeNull();
+    });
+
+    it('rejects a directory symlink pointing outside root', () => {
+      const symlinkDir = join(workspaceDir, 'external-dir');
+      symlinkSync(baseDir, symlinkDir);
+
+      expect(resolveInsideRoot('external-dir/secret.txt', workspaceDir)).toBeNull();
+      expect(resolveInsideRoot('external-dir/nonexistent.txt', workspaceDir)).toBeNull();
+    });
+
+    it('accepts a symlink pointing inside root', () => {
+      const insideTarget = join(workspaceDir, 'inside.txt');
+      writeFileSync(insideTarget, 'safe-content');
+      const insideLink = join(workspaceDir, 'inside-link');
+      symlinkSync(insideTarget, insideLink);
+
+      const result = resolveInsideRoot('inside-link', workspaceDir);
+      expect(result).not.toBeNull();
+      expect(result).toBe(realpathSync(insideTarget));
+    });
   });
 });
