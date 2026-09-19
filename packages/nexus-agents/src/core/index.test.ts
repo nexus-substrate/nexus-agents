@@ -78,10 +78,10 @@ describe('core/index re-exports (#5129 item 6)', () => {
     });
 
     it('exports OrchestratorError class', () => {
-      const err = new OrchestratorError('Orchestration failed', 'ORCHESTRATOR_STEP_FAILED');
+      const err = new OrchestratorError('Orchestration failed', 'STEP_FAILED');
       expect(err).toBeInstanceOf(Error);
       expect(err).toBeInstanceOf(OrchestratorError);
-      expect(err.code).toBe('ORCHESTRATOR_STEP_FAILED');
+      expect(err.code).toBe('STEP_FAILED');
     });
 
     it('exports isRegistryItem predicate', () => {
@@ -120,23 +120,29 @@ describe('core/index re-exports (#5129 item 6)', () => {
       const task: Task = {
         id: 'task-1',
         description: 'run a task',
+        context: {},
       };
       const result: TaskResult = {
         taskId: task.id,
-        success: true,
         output: 'done',
+        metadata: {
+          durationMs: 12,
+          tokensUsed: 42,
+          toolsUsed: [],
+          model: 'claude-3-7-sonnet',
+        },
       };
-      expect(result.success).toBe(true);
+      expect(result.output).toBe('done');
     });
 
     it('satisfies ExecutionStatus and PruneDecision shapes', () => {
-      const status: ExecutionStatus = 'completed';
+      const status: ExecutionStatus = { state: 'pending' };
       const decision: PruneDecision = {
         shouldPrune: true,
         reason: 'old',
         score: 0.1,
       };
-      expect(status).toBe('completed');
+      expect(status.state).toBe('pending');
       expect(decision.shouldPrune).toBe(true);
     });
   });
