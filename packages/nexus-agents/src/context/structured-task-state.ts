@@ -5,8 +5,7 @@
  * (overridable via `customDir` for tests). Replay reduces the log
  * forward to a current `StructuredTaskState` snapshot — suitable for
  * resume-after-restart and STATE.md-style inspection.
- *
- * Mirrors the session-journal pattern in `context/session-journal.ts`:
+ * Security and error-handling characteristics:
  * - Directory mode 0o700, file mode 0o600
  * - Path-traversal validation on taskId
  * - `Result<T, Error>` returns, no exceptions for expected failures
@@ -312,7 +311,7 @@ export function reflect(taskId: string, customDir?: string): Result<ReflectActio
  *
  * Returns `err` when the file doesn't exist or no `init` entry is
  * present. Malformed lines are skipped with a warning (log, don't
- * fail) — same policy as the session-journal replay.
+ * fail).
  */
 export function readTaskState(
   taskId: string,
