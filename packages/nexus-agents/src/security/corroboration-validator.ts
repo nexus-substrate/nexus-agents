@@ -139,6 +139,22 @@ function hasSourceAtTier(sources: readonly SourceCitation[], maxTier: TrustTier)
 // ============================================================================
 
 /**
+ * Strict Tier 1 floor applied when an action type is unlisted or requires
+ * strict Tier 1 corroboration (fail-closed floor per .rules/untrusted-input.md).
+ */
+const TIER_1_FLOOR_RULES: readonly CorroborationRule[] = Object.freeze([
+  {
+    description: 'At least one Tier 1 source citation',
+    isSatisfied: (s: readonly SourceCitation[]) =>
+      hasRepoFileRef(s) ||
+      hasCIPass(s) ||
+      hasMaintainerCommand(s) ||
+      hasPolicyDocRef(s) ||
+      hasTier1Comment(s),
+  },
+]);
+
+/**
  * Corroboration rules for each action type.
  * See CLAUDE.md "Corroboration Requirements" table.
  */
@@ -170,17 +186,7 @@ const ACTION_CORROBORATION_RULES: Readonly<Record<AgentActionType, readonly Corr
           hasPolicyDocRef(s),
       },
     ],
-    DraftReply: [
-      {
-        description: 'At least one Tier 1 source citation',
-        isSatisfied: (s) =>
-          hasRepoFileRef(s) ||
-          hasCIPass(s) ||
-          hasMaintainerCommand(s) ||
-          hasPolicyDocRef(s) ||
-          hasTier1Comment(s),
-      },
-    ],
+    DraftReply: TIER_1_FLOOR_RULES,
     GeneratePatchPlan: [
       {
         description: 'Failing test OR bug reproduction steps (code-level evidence)',
@@ -225,7 +231,9 @@ const ACTION_CORROBORATION_RULES: Readonly<Record<AgentActionType, readonly Corr
  * @returns CorroborationResult indicating whether requirements are met.
  */
 export function validateCorroboration(action: AgentAction): CorroborationResult {
-  const rules = ACTION_CORROBORATION_RULES[action.type];
+  const rules = Object.hasOwn(ACTION_CORROBORATION_RULES, action.type)
+    ? ACTION_CORROBORATION_RULES[action.type]
+    : TIER_1_FLOOR_RULES;
   const sources: readonly SourceCitation[] = 'sources' in action ? action.sources : [];
 
   if (rules.length === 0) {
@@ -268,7 +276,11 @@ export function validateCorroboration(action: AgentAction): CorroborationResult 
 /**
  * Get the corroboration rules for an action type.
  * Useful for displaying requirements to users.
+ * If the action type is unlisted, returns the strict Tier 1 floor rules.
  */
 export function getCorroborationRules(actionType: AgentActionType): readonly CorroborationRule[] {
-  return ACTION_CORROBORATION_RULES[actionType];
+  if (Object.hasOwn(ACTION_CORROBORATION_RULES, actionType)) {
+    return ACTION_CORROBORATION_RULES[actionType];
+  }
+  return TIER_1_FLOOR_RULES;
 }

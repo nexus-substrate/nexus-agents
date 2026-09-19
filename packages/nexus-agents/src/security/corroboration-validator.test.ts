@@ -259,6 +259,34 @@ describe('validateCorroboration', () => {
     });
   });
 
+  describe('unlisted action type (Tier 1 floor fallback per .rules/untrusted-input.md)', () => {
+    function makeUnlisted(sources: SourceCitation[]): AgentAction {
+      return {
+        type: 'UnlistedActionType',
+        sources,
+      } as unknown as AgentAction;
+    }
+
+    it('requires Tier 1 source citation when unlisted', () => {
+      const result = validateCorroboration(makeUnlisted([]));
+      expect(result.satisfied).toBe(false);
+      expect(result.missing).toContain('At least one Tier 1 source citation');
+    });
+
+    it('satisfied with Tier 1 source citation', () => {
+      const result = validateCorroboration(makeUnlisted([repoFile]));
+      expect(result.satisfied).toBe(true);
+      expect(result.missing).toHaveLength(0);
+      expect(result.corroboratingSources).toContain(repoFile);
+    });
+
+    it('not satisfied with only Tier 3 source citation', () => {
+      const result = validateCorroboration(makeUnlisted([tier3Comment]));
+      expect(result.satisfied).toBe(false);
+      expect(result.missing).toContain('At least one Tier 1 source citation');
+    });
+  });
+
   describe('corroboratingSources population', () => {
     it('includes all sources when requirements met', () => {
       const sources = [repoFile, ciPass, maintainerCmd];
@@ -308,6 +336,12 @@ describe('getCorroborationRules', () => {
   it('returns empty array for RefuseAction', () => {
     const rules = getCorroborationRules('RefuseAction');
     expect(rules).toHaveLength(0);
+  });
+
+  it('returns Tier 1 floor rule for unlisted action type', () => {
+    const rules = getCorroborationRules('UnlistedActionType' as AgentActionType);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]!.description).toBe('At least one Tier 1 source citation');
   });
 });
 
