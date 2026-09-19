@@ -27,12 +27,13 @@
  * place". These tests can. Do not delete this file to make a refactor green.
  *
  * WHY THE FIREWALL TEST ASSERTS EVALUATION, NOT DENIAL (#5114, #4988).
- * `stagePolicyFirewallForRollout` forces every wired firewall to `warn`, and
- * in warn mode a rule's denial is rewritten to an allow. Enforce stays closed
- * until #4988 decides the rollout. A test asserting a denial would fail today,
- * and the tempting repair would be to weaken it into something that passes. So
- * the assertion is that the real default rules RAN against the real call and
- * returned a decision. When #4988 reopens enforce, add the denial test beside
+ * `stagePolicyFirewallForRollout` stages every wired firewall to `warn` unless
+ * the operator sets `NEXUS_MCP_POLICY_ENFORCE=1` (#6431), and in warn mode a
+ * rule's denial is rewritten to an allow. Enforce by default is #4988's
+ * decision. A test asserting a denial would fail today, and the tempting
+ * repair would be to weaken it into something that passes. So the assertion is
+ * that the real default rules RAN against the real call and returned a
+ * decision. When #4988 makes enforce the default, add the denial test beside
  * this one; do not replace it. (`secret-paths-rule.test.ts` already covers the
  * enforce-mode denial against an injected firewall.)
  *
@@ -179,9 +180,10 @@ describe('PolicyFirewall evaluates a real registered tool call through the real 
       const decision = evaluate.mock.results[0]?.value as { allowed: boolean; reason: string };
       expect(decision.allowed).toBe(true);
       expect(decision.reason).toEqual(expect.any(String));
-      // `warn` is what `stagePolicyFirewallForRollout` forces; enforce is
-      // #4988's decision. Pinning it here keeps the "not denial" reasoning
-      // above honest: the day this reads `enforce`, the denial test is due.
+      // `warn` is what `stagePolicyFirewallForRollout` stages without the
+      // NEXUS_MCP_POLICY_ENFORCE opt-in (#6431); enforce by default is #4988's
+      // decision. Pinning it here keeps the "not denial" reasoning above
+      // honest: the day this reads `enforce`, the denial test is due.
       expect(firewall.getMode()).toBe('warn');
       expect(response.isError).not.toBe(true);
     } finally {

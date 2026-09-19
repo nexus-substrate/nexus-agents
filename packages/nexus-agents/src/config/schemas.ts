@@ -118,7 +118,7 @@ export type {
 // Import for local use in AppConfigSchema
 import { ModelConfigSchema, WorkflowConfigSchema, LoggingConfigSchema } from './schemas-core.js';
 import { ExpertConfigSchema } from './schemas-expert.js';
-import { SecurityConfigSchema } from './schemas-security.js';
+import { SecurityConfigSchema, DEFAULT_EXECUTION_MODE } from './schemas-security.js';
 import { ObservabilityConfigSchema } from './schemas-observability.js';
 import { RoutingConfigSchema } from './schemas-routing.js';
 import { SkillLibraryConfigSchema } from './schemas-skills.js';
@@ -182,7 +182,7 @@ export const defaultConfig: Partial<AppConfig> = {
       requestsPerMinute: 60,
     },
     policy: {
-      defaultMode: 'read-only',
+      defaultMode: DEFAULT_EXECUTION_MODE,
       policyMode: 'enforce',
     },
     timeout: {

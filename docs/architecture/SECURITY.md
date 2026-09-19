@@ -108,18 +108,18 @@ nexus-agents --mode=server
 
 Locally registered MCP tools are wrapped in a middleware pipeline by `createSecureHandler` (`src/mcp/middleware/secure-handler.ts`). Coverage is **per-tool opt-in**, not a transport chokepoint: each tool's registration calls `createSecureHandler` itself, and a registration that does not is not covered. Upstream MCP proxy tools — registered by `initUpstreamServers` (`src/cli-server-tools.ts`) with a raw passthrough handler when the gateway lists upstream servers — receive none of the layers below; the server logs this at startup as `upstreamProxiesUncovered: true`. The `registerTool()` interception proxies (`mcp/gateway/gateway-server-proxy.ts`, `mcp/tools/annotation-proxy.ts`, `mcp/tools/tool-observability-proxy.ts`) add annotations, gateway dispatch and metrics; they do not add security layers.
 
-| Layer               | Protection                                                                              | Default                                            |
-| ------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Input Validation    | Argument size cap (`MAX_INPUT_SIZE_BYTES`), conversation-tag stripping, Zod per handler | On for covered tools                               |
-| Policy Firewall     | Allowlist/denylist rules per tool; evaluated and logged, denials not applied            | Always `warn` — configured `enforce` is overridden |
-| Rate Limiting       | Token bucket per tool (configurable requests/min)                                       | On (60/min)                                        |
-| Output Sanitization | Secret pattern redaction (keys, tokens, passwords)                                      | On for covered tools                               |
-| Audit Logging       | SIEM-compatible JSON-L events for tool invocations                                      | **Off** until `security.audit.enabled: true`       |
-| Authentication      | Bearer-token `AuthHandler` with timing-safe compare                                     | **Not enforced** — no `authenticate()` call site   |
+| Layer               | Protection                                                                              | Default                                             |
+| ------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Input Validation    | Argument size cap (`MAX_INPUT_SIZE_BYTES`), conversation-tag stripping, Zod per handler | On for covered tools                                |
+| Policy Firewall     | Allowlist/denylist rules per tool; evaluated and logged, denials applied only on opt-in | `warn`; `NEXUS_MCP_POLICY_ENFORCE=1` runs `enforce` |
+| Rate Limiting       | Token bucket per tool (configurable requests/min)                                       | On (60/min)                                         |
+| Output Sanitization | Secret pattern redaction (keys, tokens, passwords)                                      | On for covered tools                                |
+| Audit Logging       | SIEM-compatible JSON-L events for tool invocations                                      | **Off** until `security.audit.enabled: true`        |
+| Authentication      | Bearer-token `AuthHandler` with timing-safe compare                                     | **Not enforced** — no `authenticate()` call site    |
 
 Three rows need qualification:
 
-- **Policy Firewall.** `defaultConfig.security.policy.policyMode` is `enforce`, but `stagePolicyFirewallForRollout` (`src/mcp/middleware/policy-registry.ts`), called from `cli-server-tools.ts` at startup, unconditionally sets the firewall to `warn`: every rule is evaluated and every would-be denial is logged, none is applied. The startup record names the config value `configuredPolicyMode` (`cli-server-audit.ts`) because it is not the effective mode. There is no operator switch to `enforce` today (#4888).
+- **Policy Firewall.** `defaultConfig.security.policy.policyMode` is `enforce`, but it is not read for the effective mode: `stagePolicyFirewallForRollout` (`src/mcp/middleware/policy-registry.ts`), called from `cli-server-tools.ts` at startup, sets the firewall to `warn` unless `NEXUS_MCP_POLICY_ENFORCE=1` (#6431), in which case it runs `enforce`. In `warn` every rule is evaluated and every would-be denial is logged, none is applied. The startup record (`cli-server-audit.ts`) names the effective mode and its reason — `policyMode: enforce (NEXUS_MCP_POLICY_ENFORCE)` or `warn (rollout default)` — rather than the config value. Whether `enforce` becomes the default is #4988. The execution mode every call is evaluated under is `security.policy.defaultMode`, `read-write` by default since #6431 (`read-only` is an operator lock that forbids every manifest-classified mutation tool); the policy registry carries it to every secure handler.
 
 - **Authentication.** `AuthHandler` is constructed at startup (`cli-server-auth.ts`) and can generate a token, but no server code path calls `AuthHandler.authenticate()` (`grep -rn "\.authenticate(" src --exclude=*.test.ts` returns nothing). On the stdio transport, process isolation is the access control (see Authentication & Access Control above); the token is never checked.
 - **Audit logging** is opt-in. `initializeAuditLogger` (`cli-server-audit.ts`) returns `null` unless `security.audit.enabled === true`, and `defaultConfig.security` (`config/schemas.ts`) has no `audit` key, so a default install writes no audit log. Startup reports the absence (#4996).
@@ -133,8 +133,8 @@ Values marked `default` are what ships; the `audit` block is absent by default a
 ```yaml
 security:
   policy:
-    policyMode: enforce # default, but overridden to warn at startup (see above); enforce | warn
-    defaultMode: read-only # default; read-only | read-write
+    policyMode: enforce # default, but not read: NEXUS_MCP_POLICY_ENFORCE decides (see above); enforce | warn
+    defaultMode: read-write # default; read-only is the operator's mutation lock (#6431)
 
   rateLimit:
     enabled: true # default
@@ -415,8 +415,8 @@ security:
   allowedPaths: [./] # Directory jail
 
   policy:
-    policyMode: enforce # enforce | warn
-    defaultMode: read-only # read-only | read-write
+    policyMode: enforce # enforce | warn (not read for the effective mode; NEXUS_MCP_POLICY_ENFORCE decides)
+    defaultMode: read-write # read-only | read-write (default read-write since #6431)
 
   rateLimit:
     enabled: true

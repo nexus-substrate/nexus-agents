@@ -32,6 +32,12 @@ import { assertDryRunSupported, classifyDispatchError } from './run-tool-dry-run
 import { describeIncompletePipeline } from './run-tool-incomplete.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import type { RequestContext } from '../middleware/request-context.js';
+import {
+  assertExecutePolicy,
+  RunPolicyDeniedError,
+  type RunBodyOptions,
+} from './run-tool-policy.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -393,6 +399,12 @@ export async function executeGoal(
     /** In-process gateway model adapters routed to consensus voters (#4042). */
     readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
     readonly classifyResult?: MetaResultClassifier | undefined;
+    /**
+     * The caller's request context (#6431 review): the policy check for the
+     * selected strategy tool records under it. A direct caller with none gets
+     * a fresh `run` context — the check itself is not optional.
+     */
+    readonly requestContext?: RequestContext | undefined;
     /** Async-job heartbeat (#6162); see {@link buildDefaultExecutors}. */
     readonly onProgress?: (() => void) | undefined;
   } = {}
@@ -406,6 +418,9 @@ export async function executeGoal(
   // the request is impossible and ignoring it would act against an explicit
   // instruction not to.
   assertDryRunSupported(input.dryRun, decision.strategy);
+  // #6431 review: the read-only lock and the path rules see this call as the
+  // strategy tool it is about to run, BEFORE any executor runs.
+  assertExecutePolicy(decision.strategy, input, opts.logger, opts.requestContext);
   const onOutcome = opts.onOutcome ?? buildShadowTrainObserver(opts.logger);
   const dispatcher = createMetaDispatcher({
     executors:
@@ -466,20 +481,13 @@ function detectEngineFailure(
 async function executeRunBody(
   input: RunInput,
   logger: ILogger,
-  trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[],
-  onProgress?: () => void
+  body: RunBodyOptions = {}
 ): Promise<ToolResult> {
   try {
     // #3712: thread the caller's real RequestContext.trustTier into the
     // dev-pipeline executor's consensus→execute seam. undefined ⇒ seam
     // fail-closes to untrusted (4); never infer trust from absence.
-    const exec = await executeGoal(input, {
-      logger,
-      ...(trustTier !== undefined ? { trustTier } : {}),
-      ...(gatewayAdapters !== undefined ? { gatewayAdapters } : {}),
-      ...(onProgress !== undefined ? { onProgress } : {}),
-    });
+    const exec = await executeGoal(input, { logger, ...body });
     logger.info('run: executed goal', {
       decisionId: exec.decisionId,
       strategy: exec.strategy,
@@ -504,6 +512,8 @@ async function executeRunBody(
     }
     return toolSuccess(JSON.stringify(exec, null, 2));
   } catch (err) {
+    // The policy denial is already the envelope the target tool would return.
+    if (err instanceof RunPolicyDeniedError) return err.toolResult;
     return toolStructuredError({
       errorCategory: classifyDispatchError(err),
       message: err instanceof Error ? err.message : String(err),
@@ -513,25 +523,17 @@ async function executeRunBody(
 
 /**
  * Async-path wrapper around {@link executeRunBody} that rejects on an error
- * envelope (#4362).
- *
- * `runAsJob` records `complete` whenever its `run` callback RESOLVES, so
- * returning a structured error would still land a `complete` job — the caller
- * would poll `get_job_result`, see success, and never look at the payload.
- * Rejecting routes it through `writeJobFailed`. Increment 2 (#4363) folds this
- * into `runAsJob` itself as the fail-closed default for every caller.
+ * envelope (#4362): `runAsJob` records `complete` whenever `run` RESOLVES, so
+ * a returned error envelope would land a `complete` job the caller never
+ * reads. Rejecting routes it through `writeJobFailed` (#4363 generalises).
  */
 async function executeRunBodyOrThrow(
   input: RunInput,
   logger: ILogger,
-  trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[],
-  onProgress?: () => void
+  body: RunBodyOptions = {}
 ): Promise<ToolResult> {
-  const result = await executeRunBody(input, logger, trustTier, gatewayAdapters, onProgress);
-  if (result.isError === true) {
-    throw new Error(result.content[0]?.text ?? 'run failed');
-  }
+  const result = await executeRunBody(input, logger, body);
+  if (result.isError === true) throw new Error(result.content[0]?.text ?? 'run failed');
   return result;
 }
 
@@ -539,7 +541,8 @@ async function runHandler(
   args: unknown,
   logger: ILogger,
   trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[]
+  gatewayAdapters?: readonly IModelAdapter[],
+  requestContext?: RequestContext
 ): Promise<ToolResult> {
   const parsed = RunInputSchema.safeParse(args);
   if (!parsed.success) {
@@ -551,29 +554,29 @@ async function runHandler(
 
   if (parsed.data.execute === true) {
     const input = parsed.data;
-    // #3732: async dispatch — `run` with execute:true routes to the heaviest
-    // engines (dev-pipeline/pipeline), which can exceed the MCP request timeout
-    // even with the 1800s class guard (#3734). `run` has no sessionId, so a
-    // fresh `rn-<uuid>` jobId is always minted (no idempotency surface).
-    // Returns `{ status: 'pending', jobId }` immediately.
+    const body: RunBodyOptions = { trustTier, gatewayAdapters, requestContext };
+    // #3732: async dispatch — execute:true routes to the heaviest engines,
+    // which can exceed the MCP request timeout even with the class guard
+    // (#3734). `run` has no sessionId: a fresh `rn-<uuid>` jobId is minted.
     if (input.dispatch === 'async') {
       return runAsJob<RunInput, ToolResult>({
         toolName: 'run',
         input,
         freshJobId: () => `rn-${randomUUID()}`,
-        // #5393: deliberately arity-1 — `executeGoal`'s strategy executors take
-        // no AbortSignal, so taking the signal would flip `signalAccepted` to
-        // true with nothing reading it. Executor-level gate first: #6305.
-        // #6162: heartbeats by jobId (the pipeline strategies through their
-        // stage events, consensus through each settled seat).
+        // #5393: deliberately arity-1 — the executors take no AbortSignal; taking
+        // it would flip `signalAccepted` with nothing reading it (#6305 first).
+        // #6162: heartbeats by jobId (stage events / settled seats).
         run: (jobId) =>
-          executeRunBodyOrThrow(input, logger, trustTier, gatewayAdapters, () => {
-            heartbeatJob(jobId);
+          executeRunBodyOrThrow(input, logger, {
+            ...body,
+            onProgress: () => {
+              heartbeatJob(jobId);
+            },
           }),
         logger,
       });
     }
-    return executeRunBody(input, logger, trustTier, gatewayAdapters);
+    return executeRunBody(input, logger, body);
   }
 
   const response = routeGoal(parsed.data, logger);
@@ -610,7 +613,13 @@ export function registerRunTool(server: McpServer, deps: RunToolDeps): void {
   // where a possibly-untrusted goal ran a real research stage with no tier.
   const secureHandler = createSecureHandler(
     (args: unknown, ctx: HandlerContext) =>
-      runHandler(args, logger, ctx.requestContext.trustTier, deps.gatewayAdapters),
+      runHandler(
+        args,
+        logger,
+        ctx.requestContext.trustTier,
+        deps.gatewayAdapters,
+        ctx.requestContext
+      ),
     {
       toolName: 'run',
       rateLimiter: deps.rateLimiter,

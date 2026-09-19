@@ -116,6 +116,7 @@ import {
   RunInputSchema,
   type RunResponse,
 } from './run-tool.js';
+import { RunPolicyDeniedError } from './run-tool-policy.js';
 import { entrypointToolFor } from '../../orchestration/strategy-manifest-registry.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -127,6 +128,13 @@ import {
   type StrategyExecutorMap,
 } from '../../orchestration/meta-dispatcher.js';
 import { getMetaOutcomesFile } from '../../config/learning-persistence.js';
+import {
+  resetGlobalPolicyFirewall,
+  setGlobalExecutionMode,
+  setGlobalPolicyFirewall,
+} from '../middleware/policy-registry.js';
+import { createDefaultPolicyFirewall } from '../middleware/policy.js';
+import { createRequestContext } from '../middleware/request-context.js';
 
 const ALL_STRATEGIES: ExecutionStrategy[] = [
   'single-shot',
@@ -250,6 +258,99 @@ describe('executeGoal (run increment B, #3575)', () => {
       }
     );
     expect(sink.getOutcomes()[0]?.failureReason).toContain('pipeline blew up');
+  });
+});
+
+describe('run { execute: true } is policy-checked as its selected strategy tool (#6431 review)', () => {
+  // `run` is readOnlyHint: true (routing is read-only), but with execute: true
+  // it dispatches the strategy ENGINE directly — never through the target tool's
+  // secure handler. Under enforce + the read-only lock, `run_dev_pipeline` was
+  // denied while `run { execute: true, forceStrategy: 'dev-pipeline' }` ran the
+  // same engine. The gate evaluates the wired firewall for the selected
+  // strategy's entrypoint tool before any executor runs.
+  const executed = vi.fn(() => Promise.resolve({ completed: true }));
+  const executors: StrategyExecutorMap = { 'dev-pipeline': () => executed() };
+  const input = {
+    goal: 'implement the feature',
+    forceStrategy: 'dev-pipeline',
+    execute: true,
+  } as const;
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as unknown as import('../../core/index.js').ILogger;
+
+  beforeEach(() => {
+    executed.mockClear();
+    (logger.debug as ReturnType<typeof vi.fn>).mockClear();
+    resetGlobalPolicyFirewall();
+  });
+  afterEach(() => {
+    resetGlobalPolicyFirewall();
+  });
+
+  it('enforce + read-only: denied, naming the strategy tool, and the engine never runs', async () => {
+    setGlobalPolicyFirewall(createDefaultPolicyFirewall({ mode: 'enforce' }));
+    setGlobalExecutionMode('read-only');
+
+    await executeGoal(input, {
+      executors,
+      logger,
+      requestContext: createRequestContext({ toolName: 'run' }),
+    }).then(
+      () => expect.fail('should have been denied'),
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(RunPolicyDeniedError);
+        const denied = err as RunPolicyDeniedError;
+        expect(denied.targetTool).toBe(entrypointToolFor('dev-pipeline'));
+        expect(denied.toolResult.isError).toBe(true);
+        // The same envelope the target tool's own secure handler returns.
+        expect(denied.toolResult.content[0]?.text).toContain('Policy denied');
+        expect(denied.toolResult.content[0]?.text).toContain(entrypointToolFor('dev-pipeline'));
+      }
+    );
+    expect(executed).not.toHaveBeenCalled();
+  });
+
+  it('enforce + read-write (the default): runs', async () => {
+    setGlobalPolicyFirewall(createDefaultPolicyFirewall({ mode: 'enforce' }));
+
+    const res = await executeGoal(input, {
+      executors,
+      logger,
+      requestContext: createRequestContext({ toolName: 'run' }),
+    });
+
+    expect(res.executed).toBe(true);
+    expect(executed).toHaveBeenCalledTimes(1);
+  });
+
+  it('warn + read-only: runs and logs the would-deny exactly as elsewhere', async () => {
+    setGlobalPolicyFirewall(createDefaultPolicyFirewall({ mode: 'warn' }));
+    setGlobalExecutionMode('read-only');
+
+    const res = await executeGoal(input, {
+      executors,
+      logger,
+      requestContext: createRequestContext({ toolName: 'run' }),
+    });
+
+    expect(res.executed).toBe(true);
+    expect(executed).toHaveBeenCalledTimes(1);
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Policy would have denied (warn mode)',
+      expect.objectContaining({ ruleName: 'deny-mutations-without-mode' })
+    );
+  });
+
+  it('no firewall wired: runs, as the target tool itself would (pre-#4888 behaviour)', async () => {
+    setGlobalExecutionMode('read-only');
+
+    const res = await executeGoal(input, { executors, logger });
+
+    expect(res.executed).toBe(true);
   });
 });
 

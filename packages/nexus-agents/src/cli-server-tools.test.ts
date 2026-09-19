@@ -18,6 +18,7 @@ import {
 import type { RegisterMcpToolsOptions } from './cli-server-tools.js';
 import {
   getGlobalPolicyFirewall,
+  getGlobalExecutionMode,
   resetGlobalPolicyFirewall,
 } from './mcp/middleware/policy-registry.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
@@ -827,6 +828,21 @@ describe('registerMcpTools - policy firewall', () => {
     expect(mockFirewall.getMode()).toBe('warn');
   });
 
+  it('keeps the wired firewall in enforce when NEXUS_MCP_POLICY_ENFORCE opts in (#6431)', () => {
+    vi.stubEnv('NEXUS_MCP_POLICY_ENFORCE', '1');
+    try {
+      const logger = makeMockLogger();
+      const mockFirewall = stageableFirewall('enforce');
+
+      registerMcpTools(makeDefaultOptions({ logger, policyFirewall: mockFirewall }));
+
+      expect(getGlobalPolicyFirewall()).toBe(mockFirewall);
+      expect(mockFirewall.getMode()).toBe('enforce');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('does not warn when no policy firewall was constructed', () => {
     // The pair: an unconditional warning would be noise on every start and
     // would stop being read, which is how the original claim survived.
@@ -840,7 +856,9 @@ describe('registerMcpTools - policy firewall', () => {
     expect(warn).toBeUndefined();
   });
 
-  it('should log executionMode as read-only when not provided', () => {
+  it('should log executionMode as read-write when not provided (#6431)', () => {
+    // This test used to pin 'read-only' as the default — the value under which
+    // every mutation tool would be denied on enforcement day.
     const logger = makeMockLogger();
     const options = makeDefaultOptions({ logger });
     registerMcpTools(options);
@@ -850,8 +868,19 @@ describe('registerMcpTools - policy firewall', () => {
     );
     expect(regCall).toBeDefined();
     expect((regCall as unknown[])[1]).toEqual(
-      expect.objectContaining({ executionMode: 'read-only' })
+      expect.objectContaining({ executionMode: 'read-write' })
     );
+    expect(getGlobalExecutionMode()).toBe('read-write');
+  });
+
+  it('carries an explicit read-only lock to the policy registry (#6431, #6294)', () => {
+    // The operator's mode used to terminate at the log line above; every
+    // secure handler resolved its own literal. The registration now sets the
+    // process-wide mode the handlers read.
+    const logger = makeMockLogger();
+    registerMcpTools(makeDefaultOptions({ logger, executionMode: 'read-only' }));
+
+    expect(getGlobalExecutionMode()).toBe('read-only');
   });
 });
 

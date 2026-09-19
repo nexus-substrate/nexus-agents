@@ -11,8 +11,13 @@ import { resolveAuthEnabled, resolveAuthMethod } from './cli-server-auth.js';
 import type { ILogger } from './core/index.js';
 import { createAuditLogger, type AuditLogger } from './audit/index.js';
 import type { SecurityConfig, AppConfig } from './config/index.js';
+import { DEFAULT_EXECUTION_MODE } from './config/schemas-security.js';
 import { nexusDataPath } from './config/nexus-data-dir.js';
 import { createDefaultPolicyFirewall } from './mcp/middleware/index.js';
+import {
+  resolvePolicyRolloutMode,
+  formatPolicyRolloutMode,
+} from './mcp/middleware/policy-registry.js';
 
 /** Default audit log directory under the resolved nexus data dir (#2302). */
 const DEFAULT_AUDIT_DIR = nexusDataPath('audit');
@@ -114,13 +119,20 @@ export async function recordStartupFailure<T>(
   }
 }
 
-/** Gets policy values from config. */
+/**
+ * Gets policy values from config. The fallback for a missing config is the
+ * schema's own default, not a second literal (#6431): the two used to disagree
+ * (`'read-only'` here, and the schema's default on a parsed config).
+ */
 export function getPolicyValues(config?: AppConfig): {
   mode: 'enforce' | 'warn';
   defaultExec: 'read-only' | 'read-write';
 } {
   const policy = config?.security?.policy;
-  return { mode: policy?.policyMode ?? 'enforce', defaultExec: policy?.defaultMode ?? 'read-only' };
+  return {
+    mode: policy?.policyMode ?? 'enforce',
+    defaultExec: policy?.defaultMode ?? DEFAULT_EXECUTION_MODE,
+  };
 }
 
 /** Gets rate limit values from config. */
@@ -184,11 +196,14 @@ export function logSecurityConfig(
   const auditEnabled = config?.security?.audit?.enabled === true;
 
   logger.info('Security configuration', {
-    // #4888: named `configuredPolicyMode`, not `policyMode`. This runs at
-    // startup, before `stagePolicyFirewallForRollout` forces the firewall to
-    // `warn` — the mode that actually applies. A field called `policyMode`
-    // reading `enforce` here would claim an enforcement that does not happen.
-    configuredPolicyMode: policyVals.mode,
+    // #4888 / #6431: the mode that will actually apply, resolved the same way
+    // `stagePolicyFirewallForRollout` resolves it, with the reason attached.
+    // This used to be `configuredPolicyMode: 'enforce'` — the config value the
+    // staging then overrode — which a spot-check reads as an enforcement that
+    // did not happen. `security.policy.policyMode` is not an input (#4988).
+    policyMode: formatPolicyRolloutMode(resolvePolicyRolloutMode()),
+    // The mode every secure handler evaluates under; the registry carries it
+    // (#6431, #6294). `read-only` is the operator's lock on mutation tools.
     defaultExecutionMode: policyVals.defaultExec,
     policyRuleCount: policyFirewall.getRules().length,
     authEnabled: authVals.enabled,
