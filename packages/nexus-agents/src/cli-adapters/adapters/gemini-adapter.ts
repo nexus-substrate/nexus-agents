@@ -42,6 +42,7 @@ import {
 } from '../circuit-breaker.js';
 import { GEMINI_LEGACY_DEFAULTS, createCircuitOpenError } from './gemini-adapter-helpers.js';
 import { executeCliRetryLoop } from '../cli-retry-loop.js';
+import { GEMINI_CLI_COMMAND } from '../cli-error-envelope.js';
 import {
   buildModelInfo,
   getCliModelName,
@@ -87,7 +88,7 @@ const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConf
  * The standalone gemini CLI is EOL — it exits 55 with IneligibleTierError on
  * every invocation.
  */
-export const GEMINI_CLI_COMMAND = 'agy';
+export { GEMINI_CLI_COMMAND };
 
 /**
  * Gemini CLI adapter with reliability features.

@@ -20,7 +20,12 @@
 
 import type { CliErrorCode, CliName } from './types.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
-import { GEMINI_CLI_COMMAND } from './adapters/gemini-adapter.js';
+
+/**
+ * Command name executed for the Gemini adapter seat (#6278).
+ * The seat executes Antigravity CLI binary `agy`.
+ */
+export const GEMINI_CLI_COMMAND = 'agy';
 
 /**
  * Result of unwrapping a CLI's structured error envelope. `null` when the
