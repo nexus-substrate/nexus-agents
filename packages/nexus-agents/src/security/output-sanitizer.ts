@@ -61,3 +61,50 @@ export function sanitizeOutput(text: string): string {
   }
   return result;
 }
+
+/**
+ * Redacts credentials (API keys, authorization headers, Bearer tokens, URL credentials,
+ * and sensitive JSON fields) from error messages and response bodies.
+ *
+ * Designed to be called on upstream API error representations before they are
+ * attached to error envelopes, logged, or returned to callers.
+ *
+ * @param text - Raw error message or serialized error body
+ * @param apiKey - Optional configured API key to redact by exact match
+ * @returns The sanitized text with credentials redacted
+ */
+export function sanitizeErrorDetails(text: string, apiKey?: string): string {
+  if (text === '') return '';
+
+  let result = text;
+  if (apiKey !== undefined && apiKey.trim() !== '') {
+    result = result.replaceAll(apiKey.trim(), REDACTED_KEY_PLACEHOLDER);
+  }
+
+  // Redact known key patterns
+  result = sanitizeOutput(result);
+
+  // Redact URL credentials like https://user:pass@host or https://token@host
+  result = result.replace(/https?:\/\/[^\s/@]+@[^\s/]+/g, (match) => {
+    return match.replace(/https?:\/\/[^\s/@]+@/, `https://${REDACTED_KEY_PLACEHOLDER}@`);
+  });
+
+  // Redact Authorization headers: Bearer and Basic tokens
+  result = result.replace(/(authorization:\s*bearer\s+)\S+/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
+  result = result.replace(/(authorization:\s*basic\s+)\S+/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
+  result = result.replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
+
+  // Redact sensitive query parameters in URLs or logs (?api_key=..., &token=...)
+  result = result.replace(
+    /([?&](?:api[_-]?key|token|access[_-]?token|secret|password)=)[^&\s]+/gi,
+    `$1${REDACTED_KEY_PLACEHOLDER}`
+  );
+
+  // Redact sensitive JSON keys: "api_key": "...", "token": "...", etc.
+  result = result.replace(
+    /"(api[_-]?key|access[_-]?token|token|secret|password)"\s*:\s*"[^"]+"/gi,
+    `"$1": "${REDACTED_KEY_PLACEHOLDER}"`
+  );
+
+  return result;
+}

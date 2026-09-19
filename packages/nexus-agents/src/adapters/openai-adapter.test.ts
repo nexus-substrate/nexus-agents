@@ -482,6 +482,33 @@ describe('OpenAIAdapter', () => {
       }
     });
 
+    it('redacts secrets, API keys, Bearer tokens, and URL credentials in APIError messages and bodies', async () => {
+      const apiError = new APIError(
+        401,
+        {
+          error: {
+            message: 'Invalid key: sk-proj-1234567890abcdef1234567890abcdef',
+            api_key: 'sk-proj-1234567890abcdef1234567890abcdef',
+            endpoint: 'https://user:secretpass@gateway.internal/v1',
+          },
+        },
+        'Authorization failed for Bearer secret-auth-token-xyz123',
+        undefined
+      );
+      mockCreate.mockRejectedValueOnce(apiError);
+
+      const adapter = new OpenAIAdapter(validConfig);
+      const result = await adapter.complete({ messages: [{ role: 'user', content: 'Hi!' }] });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).not.toContain('sk-proj-1234567890abcdef1234567890abcdef');
+        expect(result.error.message).not.toContain('secretpass');
+        expect(result.error.message).not.toContain('secret-auth-token-xyz123');
+        expect(result.error.message).toContain('[REDACTED_KEY]');
+      }
+    });
+
     it('preserves error-code classification through the APIError override (429 → rate-limited)', async () => {
       const apiError = new APIError(
         429,
@@ -650,7 +677,6 @@ describe('OpenAIAdapter', () => {
       const adapter = new OpenAIAdapter(validConfig);
 
       await expect(async () => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         for await (const _chunk of adapter.stream({
           messages: [{ role: 'user', content: 'Hi!' }],
         })) {
