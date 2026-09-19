@@ -144,10 +144,10 @@ describe('Agent Skill Library E2E Tests', () => {
 
     beforeEach(() => {
       library = createSkillLibrary();
-      composer = createSkillComposer(library);
+      composer = createSkillComposer(library, { minConfidence: 0.1 });
 
       // Add some skills with all required fields
-      library.addSkill({
+      const s1 = library.addSkill({
         name: 'read_file',
         description: 'Read file contents',
         code: 'cat ${file}',
@@ -159,7 +159,7 @@ describe('Agent Skill Library E2E Tests', () => {
         ],
       });
 
-      library.addSkill({
+      const s2 = library.addSkill({
         name: 'transform_data',
         description: 'Transform data',
         code: 'transform ${data}',
@@ -171,7 +171,7 @@ describe('Agent Skill Library E2E Tests', () => {
         ],
       });
 
-      library.addSkill({
+      const s3 = library.addSkill({
         name: 'write_file',
         description: 'Write to file',
         code: 'echo ${content} > ${file}',
@@ -183,6 +183,12 @@ describe('Agent Skill Library E2E Tests', () => {
           { name: 'file', type: 'string', required: true, description: 'Target file path' },
         ],
       });
+
+      for (let i = 0; i < 5; i++) {
+        library.recordExecution(s1.id, 'success', { file: 'test.txt' });
+        library.recordExecution(s2.id, 'success', { data: 'sample' });
+        library.recordExecution(s3.id, 'success', { content: 'sample', file: 'out.txt' });
+      }
     });
 
     it('should compose skills into workflow', () => {
@@ -193,12 +199,9 @@ describe('Agent Skill Library E2E Tests', () => {
         maxSkillCount: 3,
       });
 
-      // Composition may be null if no suitable skills found - that's valid behavior
-      // Test that the compose method works without throwing
-      expect(typeof composition === 'object' || composition === null).toBe(true);
-      if (composition !== null) {
-        expect(composition.steps.length).toBeGreaterThanOrEqual(0);
-      }
+      expect(composition).not.toBeNull();
+      expect(composition?.steps.length).toBeGreaterThan(0);
+      expect(composition?.confidence).toBeGreaterThan(0);
     });
 
     it('should validate skill compositions', () => {
@@ -208,11 +211,11 @@ describe('Agent Skill Library E2E Tests', () => {
         maxSkillCount: 1,
       });
 
-      // If we got a valid composition, validate it
+      expect(composition).not.toBeNull();
       if (composition !== null) {
         const validation = composer.validateComposition(composition);
-        // A properly composed composition should be valid
-        expect(typeof validation.valid).toBe('boolean');
+        expect(validation.valid).toBe(true);
+        expect(validation.errors).toHaveLength(0);
       }
     });
 
@@ -223,11 +226,12 @@ describe('Agent Skill Library E2E Tests', () => {
         maxSkillCount: 2,
       });
 
-      // Verify the composer produces valid structure
+      expect(composition).not.toBeNull();
       if (composition !== null) {
         const validation = composer.validateComposition(composition);
         expect(validation).toBeDefined();
-        expect(typeof validation.valid).toBe('boolean');
+        expect(validation.valid).toBe(true);
+        expect(validation.errors).toHaveLength(0);
       }
     });
   });

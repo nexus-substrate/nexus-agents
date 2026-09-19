@@ -228,8 +228,10 @@ export class ForestEngine {
       nodeToExpand: node,
     });
     const chk = checkEarlyTermination(config, res, bestScore);
-    trees.set(tree.id, markNodeCompleted(tree, node.id));
-    explState.set(tree.id, completeNodeInState(state, node.id));
+    const currentTree = trees.get(tree.id) ?? tree;
+    const currentState = explState.get(tree.id) ?? state;
+    trees.set(tree.id, markNodeCompleted(currentTree, node.id));
+    explState.set(tree.id, completeNodeInState(currentState, node.id));
     const base = { tokens: exp.tokensUsed, newBest: chk.newBestScore };
     return chk.reason !== null ? { ...base, done: chk.reason } : base;
   }

@@ -85,9 +85,9 @@ describe('Agent Expert System E2E Tests', () => {
       if (codeExpert.ok) registry.register(codeExpert.value);
       if (securityExpert.ok) registry.register(securityExpert.value);
 
-      // Query by a capability that code expert would have
+      // Query by a capability that code and security experts have
       const codeExperts = registry.getByCapability('code_review');
-      expect(codeExperts.length).toBeGreaterThanOrEqual(0);
+      expect(codeExperts.length).toBe(2);
     });
 
     it('should provide registry statistics', () => {

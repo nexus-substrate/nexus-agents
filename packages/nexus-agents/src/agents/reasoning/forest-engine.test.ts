@@ -285,7 +285,8 @@ describe('ForestEngine.execute - exploration', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.conclusions.length).toBeGreaterThanOrEqual(0);
+      expect(result.value.conclusions.length).toBeGreaterThan(0);
+      expect(result.value.conclusions[0]?.content).toContain('The answer is 42');
     }
   });
 
