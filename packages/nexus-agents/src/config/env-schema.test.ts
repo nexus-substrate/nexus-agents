@@ -1258,3 +1258,79 @@ describe('deprecated gateway env aliases (#4392 inc 3)', () => {
     expect(warnings.some((w) => w.includes('NEXUS_CUSTOM_API'))).toBe(false);
   });
 });
+
+describe('debt variables registered (#6457)', () => {
+  it('recognizes all 6 former debt variables as known', () => {
+    const known = new Set(getKnownNexusVarNames());
+    expect(known.has('NEXUS_BUDGET_TOLERANCE')).toBe(true);
+    expect(known.has('NEXUS_CONSOLE')).toBe(true);
+    expect(known.has('NEXUS_CONTEXT_WARN_THRESHOLD')).toBe(true);
+    expect(known.has('NEXUS_CUSTOM_API_ALLOW_PRIVATE')).toBe(true);
+    expect(known.has('NEXUS_PORTABLE_MODE')).toBe(true);
+    expect(known.has('NEXUS_TASK_STATE_ENABLED')).toBe(true);
+  });
+
+  it('validates NEXUS_BUDGET_TOLERANCE', () => {
+    vi.stubEnv('NEXUS_BUDGET_TOLERANCE', '1.5');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).not.toContain(
+      'NEXUS_BUDGET_TOLERANCE'
+    );
+    vi.stubEnv('NEXUS_BUDGET_TOLERANCE', 'not-a-number');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain('NEXUS_BUDGET_TOLERANCE');
+  });
+
+  it('validates NEXUS_CONSOLE', () => {
+    for (const val of ['0', '1', 'true', 'false', 'on', 'off', 'TRUE', 'OFF']) {
+      vi.stubEnv('NEXUS_CONSOLE', val);
+      expect(validateNexusEnv().invalidVars.map((v) => v.name)).not.toContain('NEXUS_CONSOLE');
+    }
+    vi.stubEnv('NEXUS_CONSOLE', 'invalid');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain('NEXUS_CONSOLE');
+  });
+
+  it('validates NEXUS_CONTEXT_WARN_THRESHOLD', () => {
+    vi.stubEnv('NEXUS_CONTEXT_WARN_THRESHOLD', '0.85');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).not.toContain(
+      'NEXUS_CONTEXT_WARN_THRESHOLD'
+    );
+    vi.stubEnv('NEXUS_CONTEXT_WARN_THRESHOLD', 'bad');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain(
+      'NEXUS_CONTEXT_WARN_THRESHOLD'
+    );
+  });
+
+  it('validates NEXUS_CUSTOM_API_ALLOW_PRIVATE', () => {
+    for (const val of ['1', '0', 'true', 'false', 'TRUE']) {
+      vi.stubEnv('NEXUS_CUSTOM_API_ALLOW_PRIVATE', val);
+      expect(validateNexusEnv().invalidVars.map((v) => v.name)).not.toContain(
+        'NEXUS_CUSTOM_API_ALLOW_PRIVATE'
+      );
+    }
+    vi.stubEnv('NEXUS_CUSTOM_API_ALLOW_PRIVATE', 'yes');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain(
+      'NEXUS_CUSTOM_API_ALLOW_PRIVATE'
+    );
+  });
+
+  it('validates NEXUS_PORTABLE_MODE', () => {
+    for (const val of ['1', '0', 'true', 'false']) {
+      vi.stubEnv('NEXUS_PORTABLE_MODE', val);
+      expect(validateNexusEnv().invalidVars.map((v) => v.name)).not.toContain(
+        'NEXUS_PORTABLE_MODE'
+      );
+    }
+    vi.stubEnv('NEXUS_PORTABLE_MODE', 'invalid');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain('NEXUS_PORTABLE_MODE');
+  });
+
+  it('validates NEXUS_TASK_STATE_ENABLED', () => {
+    for (const val of ['1', '0', 'true', 'false']) {
+      vi.stubEnv('NEXUS_TASK_STATE_ENABLED', val);
+      expect(validateNexusEnv().invalidVars.map((v) => v.name)).not.toContain(
+        'NEXUS_TASK_STATE_ENABLED'
+      );
+    }
+    vi.stubEnv('NEXUS_TASK_STATE_ENABLED', 'invalid');
+    expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain('NEXUS_TASK_STATE_ENABLED');
+  });
+});

@@ -50,6 +50,16 @@ const boolLooseStr = z
     message: 'Must be one of: true, false, 1, 0',
   });
 
+/**
+ * Console renderer setting (core/step-notifications.ts): `0|false|off` disables,
+ * `1|true|on` enables, case-insensitively.
+ */
+const consoleRendererStr = z
+  .string()
+  .refine((v) => ['true', '1', 'false', '0', 'on', 'off'].includes(v.toLowerCase()), {
+    message: 'Must be one of: true, false, 1, 0, on, off',
+  });
+
 // ============================================================================
 // Known NEXUS_* environment variables schema
 // ============================================================================
@@ -321,6 +331,14 @@ const NexusEnvSchema = z.object({
       message: 'Must be one of: off, audit, enforce',
     })
     .optional(),
+
+  // Former debt variables registered to burn down coverage baseline (#6457)
+  NEXUS_BUDGET_TOLERANCE: floatStr.optional(),
+  NEXUS_CONSOLE: consoleRendererStr.optional(),
+  NEXUS_CONTEXT_WARN_THRESHOLD: floatStr.optional(),
+  NEXUS_CUSTOM_API_ALLOW_PRIVATE: boolLooseStr.optional(),
+  NEXUS_PORTABLE_MODE: boolLooseStr.optional(),
+  NEXUS_TASK_STATE_ENABLED: boolLooseStr.optional(),
 });
 
 // ============================================================================
