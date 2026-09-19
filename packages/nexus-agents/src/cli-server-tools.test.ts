@@ -612,6 +612,14 @@ describe('registerMcpTools - tool allowlisting', () => {
     expect(mockRegisterMemoryQueryTool).toHaveBeenCalled();
   });
 
+  it('does not pass feedbackIntegration to delegate_to_model tool registration (#6323)', () => {
+    registerMcpTools(makeDefaultOptions());
+    expect(mockRegisterDelegateToModelTool).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ feedbackIntegration: expect.anything() })
+    );
+  });
+
   it('threads the audit logger to a standardHandler tool, not just run_dev_pipeline (#4991)', () => {
     // #4987 made the MCP PolicyFirewall evaluate rules on EVERY tool, and
     // `secure-handler.ts:261` emits the decision only `if (pResult &&
