@@ -27,14 +27,8 @@
  * @module mcp/jobs/job-result-store
  */
 
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  unlinkSync,
-  writeFileSync,
-  chmodSync,
-} from 'node:fs';
+import { existsSync, readdirSync, unlinkSync, writeFileSync, chmodSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 import { z } from 'zod';
 
@@ -43,6 +37,17 @@ import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.
 import { resolveClassGuardMs, type OperationClassName } from '../../config/timeouts.js';
 import { VERSION } from '../../version.js';
 import { readIndexEntry } from './job-idempotency.js';
+import {
+  candidateJobResultPaths,
+  readJobResultAcrossCandidates,
+  readJobResultFile,
+  syncAlternateCandidates,
+} from './job-result-candidates.js';
+
+export {
+  candidateJobResultPaths,
+  _setCandidatePathsResolverForTests,
+} from './job-result-candidates.js';
 
 const logger = createLogger({ component: 'job-result-store' });
 
@@ -227,10 +232,10 @@ function isAbandonedAt(record: JobResult, nowMs: number, abandonedAfter: number)
 
 /** Resolve the sidecar path for a given jobId. */
 function jobResultPath(jobId: string): string {
-  // `jobs/result-<id>.json` — single segment past `jobs/` so
-  // `nexusDataPathEnsure` makes the `jobs/` directory and returns
-  // the file path.
-  return nexusDataPathEnsure('jobs', `result-${jobId}.json`);
+  const primary =
+    candidateJobResultPaths(jobId)[0] ?? nexusDataPathEnsure('jobs', `result-${jobId}.json`);
+  mkdirSync(dirname(primary), { recursive: true });
+  return primary;
 }
 
 /**
@@ -271,7 +276,7 @@ export function writeJobPending(
   producerVersion: string = VERSION
 ): void {
   const path = jobResultPath(jobId);
-  if (existsSync(path)) {
+  if (existsSync(path) || readJobResult(jobId) !== null) {
     logger.debug('Job result file already exists — leaving in place', { jobId });
     return;
   }
@@ -324,7 +329,9 @@ export function writeJobComplete(
     producerVersion,
     ...carriedProgress(existing),
   };
-  persistJobRecord(jobResultPath(jobId), record);
+  const primaryPath = jobResultPath(jobId);
+  persistJobRecord(primaryPath, record);
+  syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
   logger.debug('Wrote complete job record', { jobId, toolName });
 }
 
@@ -358,7 +365,9 @@ export function writeJobFailed(
     producerVersion,
     ...carriedProgress(existing),
   };
-  persistJobRecord(jobResultPath(jobId), record);
+  const primaryPath = jobResultPath(jobId);
+  persistJobRecord(primaryPath, record);
+  syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
   logger.debug('Wrote failed job record', { jobId, toolName, error });
 }
 
@@ -410,7 +419,10 @@ function persistProgressStamp(jobId: string, at: string): void {
     });
     return;
   }
-  persistJobRecord(jobResultPath(jobId), { ...existing, lastProgressAt: at });
+  const updated: JobResult = { ...existing, lastProgressAt: at };
+  const primaryPath = jobResultPath(jobId);
+  persistJobRecord(primaryPath, updated);
+  syncAlternateCandidates(jobId, primaryPath, updated, logger, persistJobRecord);
 }
 
 /**
@@ -445,13 +457,20 @@ export function writeJobCancelled(
     producerVersion,
     ...carriedProgress(existing),
   };
-  persistJobRecord(jobResultPath(jobId), record);
+  const primaryPath = jobResultPath(jobId);
+  persistJobRecord(primaryPath, record);
+  syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
   logger.debug('Wrote cancelled job record', { jobId, toolName, reason });
 }
 
 /**
- * Read a job-result record. Returns `null` if the jobId is unknown
- * (file doesn't exist) or unreadable (corrupt JSON, schema mismatch).
+ * Read a job-result record across candidate data directories (#5472).
+ * Returns `null` if the jobId is unknown (no candidate file exists) or
+ * unreadable (corrupt JSON, schema mismatch).
+ *
+ * Checks all candidate paths (primary and shared). If multiple valid records
+ * exist, terminal status outranks pending, cancellations are preserved (#4017),
+ * and later timestamps break ties.
  *
  * Schema mismatch is treated as "not found" not "error" so a client
  * polling against a future-Stage record from an older nexus-agents
@@ -459,24 +478,7 @@ export function writeJobCancelled(
  * until the operator upgrades.
  */
 export function readJobResult(jobId: string): JobResult | null {
-  const path = nexusDataPath('jobs', `result-${jobId}.json`);
-  if (!existsSync(path)) return null;
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
-    const parsed = JobResultSchema.safeParse(raw);
-    if (!parsed.success) {
-      logger.warn('Job result file failed schema check', { jobId, path });
-      return null;
-    }
-    return parsed.data;
-  } catch (err) {
-    logger.warn('Job result file unreadable', {
-      jobId,
-      path,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
+  return readJobResultAcrossCandidates(jobId, logger);
 }
 
 /**
@@ -722,9 +724,10 @@ type RecordVerdict = 'deleted' | 'markedAbandoned' | 'kept' | 'unreadable';
 
 /** Apply the record rules to one `result-*.json` entry and report which fired. */
 function sweepRecord(jobId: string, entry: string, sweep: SweepContext): RecordVerdict {
-  const record = readJobResult(jobId);
-  if (record === null) return 'unreadable';
   const path = nexusDataPath('jobs', entry);
+  const fileRecord = readJobResultFile(path, jobId, logger);
+  if (fileRecord === null) return 'unreadable';
+  const record = readJobResult(jobId) ?? fileRecord;
   if (record.status === 'pending') {
     const pastGuard = isAbandonedAt(record, sweep.nowMs, sweep.abandonedAfter);
     const pastWindow = isOlderThan(record.createdAt, sweep.nowMs, sweep.retentionMs);
@@ -754,7 +757,7 @@ function sweepKeyEntry(
   if (!isOlderThan(indexEntry.createdAt, sweep.nowMs, sweep.retentionMs)) return null;
   const recordGone =
     removedJobIds.has(indexEntry.jobId) ||
-    !existsSync(nexusDataPath('jobs', `result-${indexEntry.jobId}.json`));
+    !candidateJobResultPaths(indexEntry.jobId).some((p) => existsSync(p));
   if (!recordGone) return null;
   if (!sweep.dryRun) unlinkSync(path);
   return 'deletedKeys';

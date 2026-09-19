@@ -3,7 +3,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,6 +28,7 @@ import {
   toJobSummary,
   heartbeatJob,
   JOB_RECORD_RETENTION_MS,
+  _setCandidatePathsResolverForTests,
   type JobResult,
 } from './job-result-store.js';
 import { VERSION } from '../../version.js';
@@ -795,5 +804,205 @@ describe('isMeasuredBuildVersion (#5008)', () => {
   it('treats a real version string as measured', () => {
     expect(isMeasuredBuildVersion('4.3.1')).toBe(true);
     expect(isMeasuredBuildVersion('9.9.9-fixture')).toBe(true);
+  });
+});
+
+describe('cross-data-directory split resolution (#5472)', () => {
+  let primaryDir: string;
+  let sharedDir: string;
+  let primaryJobsDir: string;
+  let sharedJobsDir: string;
+
+  beforeEach(() => {
+    primaryDir = mkdtempSync(join(tmpdir(), 'nexus-primary-split-'));
+    sharedDir = mkdtempSync(join(tmpdir(), 'nexus-shared-split-'));
+    primaryJobsDir = join(primaryDir, 'jobs');
+    sharedJobsDir = join(sharedDir, 'jobs');
+    mkdirSync(primaryJobsDir, { recursive: true });
+    mkdirSync(sharedJobsDir, { recursive: true });
+
+    _setCandidatePathsResolverForTests((jobId) => [
+      join(primaryJobsDir, `result-${jobId}.json`),
+      join(sharedJobsDir, `result-${jobId}.json`),
+    ]);
+  });
+
+  afterEach(() => {
+    _setCandidatePathsResolverForTests(undefined);
+    rmSync(primaryDir, { recursive: true, force: true });
+    rmSync(sharedDir, { recursive: true, force: true });
+  });
+
+  it('writeJobComplete syncs to alternate candidate file when pending existed in shared dir', () => {
+    const jobId = 'split-job-1';
+    const sharedPath = join(sharedJobsDir, `result-${jobId}.json`);
+    const primaryPath = join(primaryJobsDir, `result-${jobId}.json`);
+
+    // Simulate dispatch writing pending in shared directory before workspace activation
+    const pendingRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'consensus_vote',
+      status: 'pending',
+      createdAt: '2026-09-04T19:28:32.000Z',
+      producerVersion: '8.81.0',
+    };
+    writeFileSync(sharedPath, JSON.stringify(pendingRecord, null, 2));
+
+    // Now write complete from the process where primary is repo-local
+    writeJobComplete(jobId, 'consensus_vote', { verdict: 'approved' }, '8.81.0');
+
+    // Both files now have complete status
+    expect(existsSync(primaryPath)).toBe(true);
+    expect(existsSync(sharedPath)).toBe(true);
+
+    const primaryParsed = JSON.parse(readFileSync(primaryPath, 'utf8')) as JobResult;
+    const sharedParsed = JSON.parse(readFileSync(sharedPath, 'utf8')) as JobResult;
+    expect(primaryParsed.status).toBe('complete');
+    expect(sharedParsed.status).toBe('complete');
+    expect(primaryParsed.result).toEqual({ verdict: 'approved' });
+    expect(sharedParsed.result).toEqual({ verdict: 'approved' });
+    expect(primaryParsed.createdAt).toBe('2026-09-04T19:28:32.000Z');
+    expect(sharedParsed.createdAt).toBe('2026-09-04T19:28:32.000Z');
+
+    // readJobResult returns complete
+    const read = readJobResult(jobId);
+    expect(read?.status).toBe('complete');
+    expect(read?.result).toEqual({ verdict: 'approved' });
+  });
+
+  it('readJobResult prefers terminal record over stale pending across candidate paths', () => {
+    const jobId = 'split-job-2';
+    const sharedPath = join(sharedJobsDir, `result-${jobId}.json`);
+    const primaryPath = join(primaryJobsDir, `result-${jobId}.json`);
+
+    // Primary has stale pending (e.g. from an earlier dispatch)
+    const pendingRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'consensus_vote',
+      status: 'pending',
+      createdAt: '2026-09-04T19:28:32.000Z',
+      lastProgressAt: '2026-09-04T19:35:00.000Z',
+    };
+    writeFileSync(primaryPath, JSON.stringify(pendingRecord, null, 2));
+
+    // Alternate candidate has complete
+    const completeRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'consensus_vote',
+      status: 'complete',
+      createdAt: '2026-09-04T19:28:32.000Z',
+      completedAt: '2026-09-04T19:32:14.000Z',
+      result: { verdict: 'approved' },
+    };
+    writeFileSync(sharedPath, JSON.stringify(completeRecord, null, 2));
+
+    const read = readJobResult(jobId);
+    expect(read?.status).toBe('complete');
+    expect(read?.completedAt).toBe('2026-09-04T19:32:14.000Z');
+    expect(read?.lastProgressAt).toBe('2026-09-04T19:35:00.000Z');
+  });
+
+  it('preserves cancellation when one candidate is cancelled and other is complete', () => {
+    const jobId = 'split-job-3';
+    const sharedPath = join(sharedJobsDir, `result-${jobId}.json`);
+    const primaryPath = join(primaryJobsDir, `result-${jobId}.json`);
+
+    const cancelledRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'orchestrate',
+      status: 'cancelled',
+      createdAt: '2026-09-04T19:00:00.000Z',
+      completedAt: '2026-09-04T19:02:00.000Z',
+      error: 'operator cancelled',
+    };
+    const completeRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'orchestrate',
+      status: 'complete',
+      createdAt: '2026-09-04T19:00:00.000Z',
+      completedAt: '2026-09-04T19:05:00.000Z',
+    };
+    writeFileSync(primaryPath, JSON.stringify(completeRecord, null, 2));
+    writeFileSync(sharedPath, JSON.stringify(cancelledRecord, null, 2));
+
+    const read = readJobResult(jobId);
+    expect(read?.status).toBe('cancelled');
+    expect(read?.error).toBe('operator cancelled');
+  });
+
+  it('heartbeatJob updates both candidate paths when pending exists in both', () => {
+    const jobId = 'split-job-4';
+    const sharedPath = join(sharedJobsDir, `result-${jobId}.json`);
+    const primaryPath = join(primaryJobsDir, `result-${jobId}.json`);
+
+    const pendingRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'orchestrate',
+      status: 'pending',
+      createdAt: '2026-09-04T19:00:00.000Z',
+    };
+    writeFileSync(primaryPath, JSON.stringify(pendingRecord, null, 2));
+    writeFileSync(sharedPath, JSON.stringify(pendingRecord, null, 2));
+
+    heartbeatJob(jobId, '2026-09-04T19:05:00.000Z');
+
+    const primaryRead = JSON.parse(readFileSync(primaryPath, 'utf8')) as JobResult;
+    const sharedRead = JSON.parse(readFileSync(sharedPath, 'utf8')) as JobResult;
+    expect(primaryRead.lastProgressAt).toBe('2026-09-04T19:05:00.000Z');
+    expect(sharedRead.lastProgressAt).toBe('2026-09-04T19:05:00.000Z');
+  });
+
+  it('writeJobFailed syncs to existing alternate candidate path', () => {
+    const jobId = 'split-job-5';
+    const sharedPath = join(sharedJobsDir, `result-${jobId}.json`);
+    const primaryPath = join(primaryJobsDir, `result-${jobId}.json`);
+
+    const pendingRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'orchestrate',
+      status: 'pending',
+      createdAt: '2026-09-04T19:00:00.000Z',
+    };
+    writeFileSync(sharedPath, JSON.stringify(pendingRecord, null, 2));
+
+    writeJobFailed(jobId, 'orchestrate', 'fatal error');
+
+    const primaryRead = JSON.parse(readFileSync(primaryPath, 'utf8')) as JobResult;
+    const sharedRead = JSON.parse(readFileSync(sharedPath, 'utf8')) as JobResult;
+    expect(primaryRead.status).toBe('failed');
+    expect(sharedRead.status).toBe('failed');
+    expect(primaryRead.error).toBe('fatal error');
+    expect(sharedRead.error).toBe('fatal error');
+  });
+
+  it('writeJobCancelled syncs to existing alternate candidate path', () => {
+    const jobId = 'split-job-6';
+    const sharedPath = join(sharedJobsDir, `result-${jobId}.json`);
+    const primaryPath = join(primaryJobsDir, `result-${jobId}.json`);
+
+    const pendingRecord: JobResult = {
+      v: 1,
+      jobId,
+      toolName: 'orchestrate',
+      status: 'pending',
+      createdAt: '2026-09-04T19:00:00.000Z',
+    };
+    writeFileSync(sharedPath, JSON.stringify(pendingRecord, null, 2));
+
+    writeJobCancelled(jobId, 'orchestrate', 'user requested abort');
+
+    const primaryRead = JSON.parse(readFileSync(primaryPath, 'utf8')) as JobResult;
+    const sharedRead = JSON.parse(readFileSync(sharedPath, 'utf8')) as JobResult;
+    expect(primaryRead.status).toBe('cancelled');
+    expect(sharedRead.status).toBe('cancelled');
+    expect(primaryRead.error).toBe('user requested abort');
+    expect(sharedRead.error).toBe('user requested abort');
   });
 });
