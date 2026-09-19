@@ -37,6 +37,7 @@ import {
   CODEPR_TOKEN_ENV,
   CODEPR_PUSH_BRANCH_PREFIX,
   defaultGitPush,
+  redactCredentials,
   type CodePrPushInput,
   type CodePrPushDeps,
   type OpenedPrRef,
@@ -434,6 +435,59 @@ describe('executeCodePrPush — push seam throws (atomic cleanup)', () => {
     // Atomic discard held despite the throw.
     expect(linkedWorktrees(repo.repoRoot)).toEqual([]);
     expect(residualPushTempDirs().length).toBe(before);
+  });
+
+  it('gitPush throws with error containing token → token is redacted in push_failed detail', () => {
+    const secretToken = 'ghp_secretTokenWithHighEntropy123456';
+    vi.stubEnv(CODEPR_TOKEN_ENV, secretToken);
+    const m = makeMockDeps({
+      soak: 100,
+      gitPushImpl: () => {
+        throw new Error(
+          `fatal: unable to access 'https://x-access-token:${secretToken}@github.com/org/repo.git/': 403`
+        );
+      },
+    });
+    const result = executeCodePrPush(baseInput(), m.deps);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected denial');
+    expect(result.reason).toBe('push_failed');
+    expect(result.detail).not.toContain(secretToken);
+    expect(result.detail).toContain('[REDACTED]');
+  });
+});
+
+describe('redactCredentials', () => {
+  it('redacts explicit token and base64-encoded token', () => {
+    const token = 'ghp_mySecretPushToken999';
+    const base64 = Buffer.from(`x-access-token:${token}`).toString('base64');
+    const input = `Failed pushing with token ${token} or auth ${base64}`;
+    const scrubbed = redactCredentials(input, token);
+    expect(scrubbed).not.toContain(token);
+    expect(scrubbed).not.toContain(base64);
+    expect(scrubbed).toBe('Failed pushing with token [REDACTED] or auth [REDACTED]');
+  });
+
+  it('redacts userinfo from URLs even if token is not passed explicitly', () => {
+    const url = 'https://x-access-token:anotherSecretToken@github.com/org/repo.git';
+    const scrubbed = redactCredentials(`Error accessing ${url}`);
+    expect(scrubbed).not.toContain('anotherSecretToken');
+    expect(scrubbed).toContain('https://[REDACTED]@github.com/org/repo.git');
+  });
+
+  it('redacts Authorization headers', () => {
+    const input = 'Headers: Authorization: basic dXNlcjpwYXNz and authorization: bearer myJwtToken';
+    const scrubbed = redactCredentials(input);
+    expect(scrubbed).not.toContain('dXNlcjpwYXNz');
+    expect(scrubbed).not.toContain('myJwtToken');
+    expect(scrubbed).toBe(
+      'Headers: Authorization: basic [REDACTED] and authorization: bearer [REDACTED]'
+    );
+  });
+
+  it('handles empty strings and undefined token safely', () => {
+    expect(redactCredentials('')).toBe('');
+    expect(redactCredentials('regular safe error')).toBe('regular safe error');
   });
 });
 
