@@ -1179,7 +1179,7 @@ describe('NEXUS_OPENAI_COMPAT_ENDPOINT is registered as an endpoint id (#4392 in
     }
   );
 
-  it('still accepts custom-openai and a vendor-prefixed name that is not the vendor segment', () => {
+  it('still accepts a vendor-prefixed name that is not the vendor segment', () => {
     for (const value of ['openai-compat', 'openai2', 'my-anthropic']) {
       vi.stubEnv('NEXUS_OPENAI_COMPAT_ENDPOINT', value);
       const result = validateNexusEnv();
@@ -1188,6 +1188,15 @@ describe('NEXUS_OPENAI_COMPAT_ENDPOINT is registered as an endpoint id (#4392 in
         value
       ).not.toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
     }
+  });
+
+  it('reports custom-openai as invalid, naming the single-model reservation (#6437)', () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_ENDPOINT', 'custom-openai');
+    const result = validateNexusEnv();
+    const invalid = result.invalidVars.find((v) => v.name === 'NEXUS_OPENAI_COMPAT_ENDPOINT');
+    expect(invalid).toBeDefined();
+    expect(invalid?.error).toContain('reserved for the single-model NEXUS_CUSTOM_API_* path');
+    expect(invalid?.value).toBe('<redacted>');
   });
 });
 

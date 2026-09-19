@@ -132,10 +132,9 @@ export function parseGatewayCostEnv(raw: string): Result<GatewayCostMap, ConfigE
     }
     // Reject the key by shape without echoing it: a URL pasted here can carry
     // a credential, and the error line goes to the log.
-    if (!isEndpointArmId(`api:${endpoint}`)) {
-      return err(
-        new ConfigError(`${GATEWAY_COST_ENV}: an endpoint key is not a valid endpoint id`)
-      );
+    const rejection = gatewayEndpointRejection(endpoint);
+    if (rejection !== undefined) {
+      return err(new ConfigError(`${GATEWAY_COST_ENV}: ${rejection}`));
     }
     // Not echoed either: a token can satisfy the endpoint-id shape.
     if (byEndpoint.has(endpoint)) {
@@ -169,10 +168,11 @@ const VENDOR_ENDPOINT_SEGMENTS: readonly string[] = ApiArmIdSchema.options
 
 /**
  * Why `endpoint` cannot name a GATEWAY arm, or `undefined` when `api:<endpoint>`
- * is one (#6409). The single rule behind `NEXUS_OPENAI_COMPAT_ENDPOINT`'s env
- * schema and its runtime reader, so the two cannot disagree. Two refusals:
+ * is one (#6409, #6437). The single rule behind `NEXUS_OPENAI_COMPAT_ENDPOINT`'s env
+ * schema and its runtime reader, so the two cannot disagree. Three refusals:
  * the endpoint-id shape (a URL, or a credential inside one, must never become
- * an arm id), and a built-in vendor segment — `api:openai` is a VENDOR arm,
+ * an arm id), `custom-openai` (reserved for the single-model NEXUS_CUSTOM_API_* path),
+ * and a built-in vendor segment — `api:openai` is a VENDOR arm,
  * where a gateway's `NEXUS_GATEWAY_COST` declaration is unreachable and the
  * cost ceiling prices it as the vendor. Neither message echoes the value.
  */
@@ -180,6 +180,9 @@ export function gatewayEndpointRejection(endpoint: string): string | undefined {
   const arm = `api:${endpoint}`;
   if (!isEndpointArmId(arm)) {
     return 'must be an endpoint id: lowercase alphanumerics plus . _ -, 1-64 chars';
+  }
+  if (endpoint === 'custom-openai') {
+    return 'must not be custom-openai: reserved for the single-model NEXUS_CUSTOM_API_* path';
   }
   if (isGatewayArmId(arm)) return undefined;
   return `must not be a built-in vendor segment (${VENDOR_ENDPOINT_SEGMENTS.join(', ')}): api:<value> would collide with that vendor's arm id`;

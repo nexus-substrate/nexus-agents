@@ -22,6 +22,7 @@ import {
 } from './adapters/openai-compat-adapter.js';
 import { createGatewayArmAdapter } from './adapters/gateway-arm-adapter.js';
 import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import { gatewayEndpointRejection } from './adapters/sdk/gateway-cost.js';
 import { hostnameOf, warnDeprecatedGatewayEnvOnce } from './adapters/sdk/gateway-env.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-adapters/cli-circuit-breaker.js';
@@ -171,9 +172,12 @@ export function registerGatewayArm(
     return undefined;
   }
   const armId = `api:${endpoint}`;
-  if (!isEndpointArmId(armId)) {
+  const rejection = gatewayEndpointRejection(endpoint);
+  if (rejection !== undefined || !isEndpointArmId(armId)) {
     // Not echoed: the likely mistake is a pasted URL, which can carry a key.
-    logger.warn('Gateway endpoint is not a valid endpoint id; no api: arm registered');
+    logger.warn('Gateway endpoint is not a valid gateway endpoint; no api: arm registered', {
+      reason: rejection ?? 'not a valid endpoint id',
+    });
     return undefined;
   }
   registry.registerApiArm(
