@@ -154,9 +154,13 @@ export function isStepCompleted(context: WorkflowExecutionContext, stepId: strin
 /**
  * Checks if all specified steps are completed.
  *
+ * @remarks
+ * Vacuously returns `true` when `stepIds` is empty (representing no blocking dependencies).
+ * Callers requiring proof of completed work must explicitly check that `stepIds.length > 0`.
+ *
  * @param context - The execution context
  * @param stepIds - Array of step identifiers to check
- * @returns True if all specified steps are completed
+ * @returns True if all specified steps are completed (or if stepIds is empty)
  */
 export function areStepsCompleted(context: WorkflowExecutionContext, stepIds: string[]): boolean {
   return stepIds.every((stepId) => isStepCompleted(context, stepId));
