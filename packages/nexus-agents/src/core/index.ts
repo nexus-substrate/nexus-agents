@@ -272,5 +272,86 @@ export type {
 } from './routing/index.js';
 export { createCompositeRouter } from './routing/index.js';
 
-// Types
-export * from './types/index.js';
+// Canonical core types (#5129 item 6: explicit named re-exports prevent wildcard shadowing)
+export type {
+  // Model types
+  IModelAdapter,
+  CompletionRequest,
+  CompletionResponse,
+  Message,
+  MessageRole,
+  ContentBlock,
+  ToolDefinition,
+  ResponseFormat,
+  TokenUsage,
+  StopReason,
+  StreamChunk,
+  ModelMetadata,
+  // Agent types
+  IAgent,
+  Task,
+  TaskContext,
+  TaskConstraints,
+  TaskHistoryItem,
+  TaskResult,
+  ResultMetadata,
+  AgentMessage,
+  AgentMessageType,
+  AgentResponse,
+  AgentContext,
+  AgentConfig,
+  AgentState,
+  AgentRole,
+  OrchestratorRole,
+  // Workflow types
+  IWorkflowEngine,
+  WorkflowDefinition,
+  WorkflowStep,
+  WorkflowResult,
+  WorkflowTemplate,
+  InputDefinition,
+  StepResult,
+  ExecutionStatus,
+  ContextBudget,
+  PartialContextBudget,
+  // Tool types
+  ITool,
+  IToolRegistry,
+  ToolResult,
+  ToolContentBlock,
+  ToolInfo,
+  // Orchestrator types
+  IOrchestrator,
+  IOrchestratorFactory,
+  OrchestratorType,
+  OrchestratorDefinition,
+  OrchestratorExecuteOptions,
+  OrchestratorStep,
+  OrchestratorResult,
+  OrchestratorErrorCode,
+  // Pruning strategy types
+  IPruneStrategy,
+  IPruneStrategyFactory,
+  PruneContext,
+  PruneDecision,
+  PruneResult,
+  // Registry types
+  IRegistry,
+  ISingletonRegistry,
+  IRegistryItem,
+  IRegisterOptions,
+  IRegistryStats,
+  // Database types
+  ISQLiteDatabase,
+  ISQLiteStatement,
+  ISQLiteRunResult,
+} from './types/index.js';
+export {
+  ModelCapability,
+  AgentCapability,
+  ParseError,
+  ToolError,
+  OrchestratorError,
+  PruneStrategyName,
+  isRegistryItem,
+} from './types/index.js';
