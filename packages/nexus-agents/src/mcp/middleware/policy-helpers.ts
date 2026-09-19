@@ -39,27 +39,138 @@ export function isPathSafe(targetPath: string, allowedPaths: readonly string[]):
   return false;
 }
 
+// Common path field names in priority order
+const KNOWN_PATH_FIELDS: readonly string[] = [
+  'path',
+  'filePath',
+  'file_path',
+  'targetPath',
+  'target_path',
+  'targetFile',
+  'target_file',
+  'sourcePath',
+  'source_path',
+  'sourceFile',
+  'source_file',
+  'destinationPath',
+  'destination_path',
+  'destPath',
+  'dest_path',
+  'destFile',
+  'dest_file',
+  'outputPath',
+  'output_path',
+  'outputFile',
+  'output_file',
+  'outputDir',
+  'output_dir',
+  'inputPath',
+  'input_path',
+  'inputFile',
+  'input_file',
+  'inputDir',
+  'input_dir',
+  'planFile',
+  'plan_file',
+  'specFile',
+  'spec_file',
+  'feedAPath',
+  'feedBPath',
+  'projectDir',
+  'project_dir',
+  'workingDir',
+  'working_dir',
+  'workingDirectory',
+  'working_directory',
+  'baseDir',
+  'base_dir',
+  'rootDir',
+  'root_dir',
+  'relPath',
+  'rel_path',
+  'directory',
+  'dir',
+  'folder',
+  'file',
+  'filename',
+  'fileName',
+  'target',
+  'paths',
+  'files',
+  'targetFiles',
+];
+
+/** Non-filesystem keys that end with path/file/dir but represent data models or other concepts. */
+const NON_FS_PATH_KEYS = new Set([
+  'keyPath',
+  'key_path',
+  'urlPath',
+  'url_path',
+  'jsonPath',
+  'json_path',
+  'xpath',
+  'actionPath',
+  'action_path',
+]);
+
+/** Pattern matching argument keys that indicate filesystem paths. */
+const PATH_KEY_PATTERN = /(?:[pP]ath|[fF]ile|[dD]ir(?:ectory)?)$/;
+
+function appendPathsFromValue(value: unknown, result: string[], seen: Set<string>): void {
+  if (typeof value === 'string' && value.length > 0) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      result.push(value);
+    }
+  } else if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === 'string' && item.length > 0 && !seen.has(item)) {
+        seen.add(item);
+        result.push(item);
+      }
+    }
+  }
+}
+
 /**
- * Extracts path from tool arguments if present.
+ * Extracts all filesystem paths from tool arguments.
+ *
+ * Checks known path field names in priority order as well as any argument
+ * keys matching path/file/directory naming conventions.
  */
-export function extractPathFromArgs(args: unknown): string | undefined {
+export function extractPathsFromArgs(args: unknown): string[] {
   if (args === null || typeof args !== 'object') {
-    return undefined;
+    return [];
   }
 
   const argsObj = args as Record<string, unknown>;
+  const result: string[] = [];
+  const seen = new Set<string>();
 
-  // Common path field names
-  const pathFields = ['path', 'filePath', 'file_path', 'directory', 'dir', 'target'];
-
-  for (const field of pathFields) {
-    const value = argsObj[field];
-    if (typeof value === 'string') {
-      return value;
+  // Check known fields in priority order first
+  for (const field of KNOWN_PATH_FIELDS) {
+    if (field in argsObj) {
+      appendPathsFromValue(argsObj[field], result, seen);
     }
   }
 
-  return undefined;
+  // Also discover any additional path-like keys on the argument object
+  for (const key of Object.keys(argsObj)) {
+    if (!NON_FS_PATH_KEYS.has(key) && PATH_KEY_PATTERN.test(key)) {
+      appendPathsFromValue(argsObj[key], result, seen);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Extracts path from tool arguments if present.
+ * Returns the first extracted path in priority order, or undefined.
+ */
+export function extractPathFromArgs(args: unknown): string | undefined {
+  const paths = extractPathsFromArgs(args);
+  return paths.length > 0 ? paths[0] : undefined;
 }
 
 // =============================================================================

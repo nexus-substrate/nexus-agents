@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isPathSafe, extractPathFromArgs } from './policy-helpers.js';
+import { isPathSafe, extractPathFromArgs, extractPathsFromArgs } from './policy-helpers.js';
 
 // ============================================================================
 // isPathSafe
@@ -100,6 +100,32 @@ describe('extractPathFromArgs', () => {
     expect(extractPathFromArgs({ target: '/tmp/out' })).toBe('/tmp/out');
   });
 
+  it('extracts planFile field', () => {
+    expect(extractPathFromArgs({ planFile: '/tmp/plan.md' })).toBe('/tmp/plan.md');
+  });
+
+  it('extracts specFile field', () => {
+    expect(extractPathFromArgs({ specFile: '/tmp/spec.md' })).toBe('/tmp/spec.md');
+  });
+
+  it('extracts feedAPath and feedBPath fields', () => {
+    expect(extractPathFromArgs({ feedAPath: '/tmp/a.json' })).toBe('/tmp/a.json');
+    expect(extractPathFromArgs({ feedBPath: '/tmp/b.json' })).toBe('/tmp/b.json');
+  });
+
+  it('extracts projectDir field', () => {
+    expect(extractPathFromArgs({ projectDir: '/tmp/proj' })).toBe('/tmp/proj');
+  });
+
+  it('extracts targetFile, sourcePath, destinationPath, destPath, outputPath, workingDir fields', () => {
+    expect(extractPathFromArgs({ targetFile: '/tmp/target.ts' })).toBe('/tmp/target.ts');
+    expect(extractPathFromArgs({ sourcePath: '/tmp/source.ts' })).toBe('/tmp/source.ts');
+    expect(extractPathFromArgs({ destinationPath: '/tmp/dest.ts' })).toBe('/tmp/dest.ts');
+    expect(extractPathFromArgs({ destPath: '/tmp/dest.ts' })).toBe('/tmp/dest.ts');
+    expect(extractPathFromArgs({ outputPath: '/tmp/out.ts' })).toBe('/tmp/out.ts');
+    expect(extractPathFromArgs({ workingDir: '/tmp/work' })).toBe('/tmp/work');
+  });
+
   it('returns undefined for null', () => {
     expect(extractPathFromArgs(null)).toBeUndefined();
   });
@@ -121,5 +147,74 @@ describe('extractPathFromArgs', () => {
   it('prefers earlier fields in priority order', () => {
     // 'path' comes before 'filePath' in the fields array
     expect(extractPathFromArgs({ path: '/a', filePath: '/b' })).toBe('/a');
+  });
+});
+
+// ============================================================================
+// extractPathsFromArgs
+// ============================================================================
+
+describe('extractPathsFromArgs', () => {
+  it('returns empty array for non-objects or empty args', () => {
+    expect(extractPathsFromArgs(null)).toEqual([]);
+    expect(extractPathsFromArgs(undefined)).toEqual([]);
+    expect(extractPathsFromArgs(123)).toEqual([]);
+    expect(extractPathsFromArgs('path')).toEqual([]);
+    expect(extractPathsFromArgs({})).toEqual([]);
+  });
+
+  it('extracts multiple path fields in priority order', () => {
+    const paths = extractPathsFromArgs({
+      feedBPath: '/data/feed-b.json',
+      feedAPath: '/data/feed-a.json',
+    });
+    expect(paths).toEqual(['/data/feed-a.json', '/data/feed-b.json']);
+  });
+
+  it('extracts source and destination paths', () => {
+    const paths = extractPathsFromArgs({
+      sourcePath: '/src/file.ts',
+      destinationPath: '/dst/file.ts',
+    });
+    expect(paths).toEqual(['/src/file.ts', '/dst/file.ts']);
+  });
+
+  it('extracts paths from array fields like paths, files, targetFiles', () => {
+    expect(extractPathsFromArgs({ paths: ['/a/1.ts', '/a/2.ts'] })).toEqual(['/a/1.ts', '/a/2.ts']);
+    expect(extractPathsFromArgs({ targetFiles: ['/b/1.ts'] })).toEqual(['/b/1.ts']);
+    expect(extractPathsFromArgs({ files: ['/c/1.ts'] })).toEqual(['/c/1.ts']);
+  });
+
+  it('deduplicates identical paths across fields', () => {
+    const paths = extractPathsFromArgs({
+      path: '/common/file.ts',
+      target: '/common/file.ts',
+    });
+    expect(paths).toEqual(['/common/file.ts']);
+  });
+
+  it('ignores non-filesystem path keys like keyPath, urlPath, jsonPath', () => {
+    const paths = extractPathsFromArgs({
+      keyPath: 'user.id',
+      urlPath: '/api/v1/users',
+      feedAPath: '/feeds/a.json',
+    });
+    expect(paths).toEqual(['/feeds/a.json']);
+  });
+
+  it('discovers custom path-like fields ending in Path, File, or Dir', () => {
+    const paths = extractPathsFromArgs({
+      customPlanFile: '/custom/plan.md',
+      backupDir: '/custom/backup',
+    });
+    expect(paths).toEqual(['/custom/plan.md', '/custom/backup']);
+  });
+
+  it('ignores non-string array elements or non-string values', () => {
+    const paths = extractPathsFromArgs({
+      path: 999,
+      paths: [1, null, true, '/valid/path.ts'],
+    });
+    expect(paths).toEqual(['/valid/path.ts']);
   });
 });

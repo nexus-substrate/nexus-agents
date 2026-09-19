@@ -119,10 +119,46 @@ describe('secretPathsRule', () => {
     });
 
     it('reads the same argument fields the safe-paths extractor reads', () => {
-      for (const field of ['path', 'filePath', 'file_path', 'directory', 'dir', 'target']) {
+      for (const field of [
+        'path',
+        'filePath',
+        'file_path',
+        'directory',
+        'dir',
+        'target',
+        'planFile',
+        'specFile',
+        'feedAPath',
+        'feedBPath',
+        'projectDir',
+        'targetFile',
+        'sourcePath',
+        'destinationPath',
+      ]) {
         const decision = secretPathsRule.check(ctx({ [field]: '/etc/shadow' }));
         expect(decision.allowed, field).toBe(false);
       }
+    });
+
+    it('denies when any path in multi-path arguments matches a secret path', () => {
+      const decision = secretPathsRule.check(
+        ctx({
+          feedAPath: 'safe.json',
+          feedBPath: '.env',
+        })
+      );
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toMatch(/matches secret-path pattern/);
+    });
+
+    it('denies when a secret path is inside an array argument', () => {
+      const decision = secretPathsRule.check(
+        ctx({
+          paths: ['safe.ts', '.env'],
+        })
+      );
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toMatch(/matches secret-path pattern/);
     });
   });
 
