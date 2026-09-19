@@ -26,6 +26,7 @@ import { CliNameSchema } from '../config/model-capabilities-types.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 // Shared utilities per ADR-0013
 import { generateHyphenId } from '../utils/id-utils.js';
+import { allOf } from '../utils/verdict-aggregation.js';
 
 /**
  * Narrow shape of an agent that the OrchestratorAdapter (and the factory
@@ -85,7 +86,7 @@ function createStep(
   };
 }
 
-function createResult(
+export function createResult(
   execId: string,
   type: OrchestratorType,
   steps: OrchestratorStep[],
@@ -99,8 +100,9 @@ function createResult(
     output,
     totalDurationMs: durationMs,
     // Every step is unmeasured (see createStep), so the total is too (#4829).
+    // On zero steps, tokensMeasured is false rather than vacuously true (#6439).
     totalTokensUsed: 0,
-    tokensMeasured: steps.every((s) => s.tokensMeasured !== false),
+    tokensMeasured: allOf(steps, (s) => s.tokensMeasured === true, false),
     agentsUsed: steps.map((s) => s.agentId),
     executedCliSource: 'unknown',
   };
