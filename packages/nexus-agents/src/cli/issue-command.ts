@@ -6,7 +6,9 @@
  * (Source: Issue #229, Epic #225)
  */
 
+import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   IssueCommandOptions,
@@ -82,7 +84,7 @@ export function fetchGitHubIssue(issueNumber: number): GitHubIssue | null {
 }
 
 /**
- * Create a new issue using gh CLI.
+ * Create a new issue using gh CLI with safe argument arrays and stdin body.
  */
 export function createGitHubIssue(
   title: string,
@@ -90,18 +92,17 @@ export function createGitHubIssue(
   labels: readonly string[]
 ): number | null {
   try {
-    const labelArgs = labels.map((l) => `--label '${l.replace(/'/g, "'\\''")}'`).join(' ');
-    const escapedTitle = title.replace(/'/g, "'\\''");
-    const escapedBody = body.replace(/'/g, "'\\''");
-
-    const output = safeExecSandboxed(
-      `gh issue create --title '${escapedTitle}' --body '${escapedBody}' ${labelArgs}`,
-      { context: 'gh' }
-    );
-
-    if (output === null) {
-      return null;
+    const args = ['issue', 'create', '--title', title, '--body-file', '-'];
+    for (const label of labels) {
+      args.push('--label', label);
     }
+
+    const output = execFileSync('gh', args, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      input: body,
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
+    });
 
     // Extract issue number from URL
     const match = /\/issues\/(\d+)/.exec(output);

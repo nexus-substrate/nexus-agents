@@ -16,6 +16,11 @@ import {
   issueCommand,
 } from './issue-command.js';
 
+// Mock node:child_process
+vi.mock('node:child_process', () => ({
+  execFileSync: vi.fn(),
+}));
+
 // Mock sandbox-exec module
 vi.mock('./sandbox-exec.js', () => ({
   safeExecSandboxed: vi.fn(),
@@ -28,9 +33,11 @@ vi.mock('./issue-templates.js', () => ({
   getTemplate: vi.fn(),
 }));
 
+import { execFileSync } from 'node:child_process';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import { validateIssueBody, generateTemplateBody, getTemplate } from './issue-templates.js';
 
+const mockExecFileSync = vi.mocked(execFileSync);
 const mockExecSync = vi.mocked(safeExecSandboxed);
 const mockValidateIssueBody = vi.mocked(validateIssueBody);
 const mockGenerateTemplateBody = vi.mocked(generateTemplateBody);
@@ -105,16 +112,55 @@ describe('issue-command', () => {
   });
 
   describe('createGitHubIssue', () => {
-    it('should create issue and return issue number', () => {
-      mockExecSync.mockReturnValue('https://github.com/owner/repo/issues/456\n');
+    it('should create issue with argument array and return issue number', () => {
+      mockExecFileSync.mockReturnValue('https://github.com/owner/repo/issues/456\n');
 
-      const issueNumber = createGitHubIssue('feat: New feature', '## Description', ['enhancement']);
+      const issueNumber = createGitHubIssue(
+        'feat(cli): "New feature" & $special',
+        '## Description\n| Col | Val |\n|---|---|\n`code` (note)',
+        ['enhancement', 'area:cli']
+      );
 
       expect(issueNumber).toBe(456);
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'gh',
+        [
+          'issue',
+          'create',
+          '--title',
+          'feat(cli): "New feature" & $special',
+          '--body-file',
+          '-',
+          '--label',
+          'enhancement',
+          '--label',
+          'area:cli',
+        ],
+        expect.objectContaining({
+          encoding: 'utf-8',
+          input: '## Description\n| Col | Val |\n|---|---|\n`code` (note)',
+        })
+      );
+    });
+
+    it('should create issue without labels if labels array is empty', () => {
+      mockExecFileSync.mockReturnValue('https://github.com/owner/repo/issues/789\n');
+
+      const issueNumber = createGitHubIssue('simple title', 'body text', []);
+
+      expect(issueNumber).toBe(789);
+      expect(mockExecFileSync).toHaveBeenCalledWith(
+        'gh',
+        ['issue', 'create', '--title', 'simple title', '--body-file', '-'],
+        expect.objectContaining({
+          encoding: 'utf-8',
+          input: 'body text',
+        })
+      );
     });
 
     it('should return null on error', () => {
-      mockExecSync.mockImplementation(() => {
+      mockExecFileSync.mockImplementation(() => {
         throw new Error('gh: authentication failed');
       });
 
@@ -124,7 +170,7 @@ describe('issue-command', () => {
     });
 
     it('should return null if no issue number in output', () => {
-      mockExecSync.mockReturnValue('Created issue successfully');
+      mockExecFileSync.mockReturnValue('Created issue successfully');
 
       const issueNumber = createGitHubIssue('title', 'body', []);
 
