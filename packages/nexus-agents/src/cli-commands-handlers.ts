@@ -77,12 +77,7 @@ import { suggestCommand } from './cli-command-suggester.js';
 import { ResearchDiscoverInputSchema } from './mcp/tools/research-discover.js';
 
 // Re-export complex handlers for backward compatibility
-export {
-  handleConfigCommand,
-  handleOrchestrateCommand,
-  handleSweBenchCommand,
-  handleAtbenchCommand,
-} from './cli-commands-handlers-complex.js';
+export { handleConfigCommand, handleOrchestrateCommand } from './cli-commands-handlers-complex.js';
 
 /**
  * Handles unimplemented CLI subcommands. Writes to stderr (not stdout) so

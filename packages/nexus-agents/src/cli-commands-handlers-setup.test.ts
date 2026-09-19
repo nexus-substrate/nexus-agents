@@ -90,7 +90,6 @@ function createMockArgs(
       createIssue: false,
       fix: false,
       quick: false,
-      resume: false,
       nonInteractive: false,
       skipMcp: false,
       skipRules: false,

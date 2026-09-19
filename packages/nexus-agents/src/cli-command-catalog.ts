@@ -281,16 +281,6 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'maintainer',
   },
   {
-    command: 'swe-bench',
-    description: '[deprecated] Extracted to nexus-eval-swebench (#2515); shim until next minor.',
-    audience: 'maintainer',
-  },
-  {
-    command: 'atbench',
-    description: '[deprecated] Extracted to nexus-eval-atbench (#2516); shim until next minor.',
-    audience: 'maintainer',
-  },
-  {
     command: 'visualize',
     description: 'Generate Mermaid diagrams and ASCII dashboards',
     audience: 'maintainer',

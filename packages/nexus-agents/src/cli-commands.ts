@@ -37,8 +37,6 @@ export {
   handleResearchCommand,
   handleValidationCommand,
   handleLearningMetricsCommand,
-  handleSweBenchCommand,
-  handleAtbenchCommand,
   handleVerifyCommand,
   handleDoctorCommand,
   handleHelloCommand,
@@ -111,8 +109,6 @@ import {
   handleIndexCommand,
   handleRegistryCommand,
   handleResearchCommand,
-  handleSweBenchCommand,
-  handleAtbenchCommand,
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
@@ -300,8 +296,6 @@ const ASYNC_COMMAND_HANDLERS: Record<
   index: handleIndexCommand,
   research: handleResearchCommand,
   registry: handleRegistryCommand,
-  'swe-bench': handleSweBenchCommand,
-  atbench: handleAtbenchCommand,
   hooks: handleHooksCommand,
   setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
   // Issue #2447: nexus-agents login — async because it spawns codex/opencode for status probes.

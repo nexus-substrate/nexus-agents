@@ -35,8 +35,6 @@ vi.mock('./cli-commands-handlers.js', () => ({
   handleRegistryCommand: vi.fn(DELEGATED_ASYNC),
   handleValidationCommand: vi.fn(DELEGATED),
   handleLearningMetricsCommand: vi.fn(DELEGATED),
-  handleSweBenchCommand: vi.fn(DELEGATED_ASYNC),
-  handleAtbenchCommand: vi.fn(DELEGATED_ASYNC),
   handleVerifyCommand: vi.fn(DELEGATED_ASYNC),
   handleDoctorCommand: vi.fn(DELEGATED_ASYNC),
   handleHelloCommand: vi.fn(DELEGATED),
@@ -197,10 +195,10 @@ describe('cli-commands', () => {
       expect(handleReleaseNotesCommand).toHaveBeenCalled();
     });
 
-    it('should dispatch swe-bench command (async)', async () => {
-      const { handleSweBenchCommand } = await import('./cli-commands-handlers.js');
-      await dispatchCommand(createArgs('swe-bench'));
-      expect(handleSweBenchCommand).toHaveBeenCalled();
+    it('should dispatch hooks command (async)', async () => {
+      const { handleHooksCommand } = await import('./cli-commands-handlers.js');
+      await dispatchCommand(createArgs('hooks'));
+      expect(handleHooksCommand).toHaveBeenCalled();
     });
 
     it('should dispatch fitness-audit command (sync)', async () => {

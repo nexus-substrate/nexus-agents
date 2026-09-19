@@ -151,8 +151,6 @@ export type CliCommand =
   | 'research'
   | 'validation'
   | 'learning-metrics'
-  | 'swe-bench'
-  | 'atbench'
   | 'setup'
   | 'hooks'
   | 'demo'
@@ -242,22 +240,6 @@ export interface ParsedCliArgs {
     options?: string[];
     /** #6110 — `--project`, the project the panel judges (replaces `nexus-agents` in the prompts). */
     project?: string;
-    // SWE-bench command options
-    variant?: 'lite' | 'verified' | 'full';
-    limit?: number;
-    instance?: string[];
-    resume: boolean;
-    concurrency?: number;
-    mcp?: boolean;
-    // SWE-bench evaluate options
-    predictions?: string;
-    cacheLevel?: string;
-    maxWorkers?: string;
-    runId?: string;
-    outputDir?: string;
-    // ATBench command options (#1981)
-    fixture?: string;
-    llmScoring?: boolean;
     // Learning-metrics command options
     period?: number;
     export?: string;
@@ -470,61 +452,6 @@ export const PARSE_ARGS_CONFIG = {
     project: {
       type: 'string' as const,
     },
-    // SWE-bench command options
-    variant: {
-      type: 'string' as const,
-      default: 'lite',
-    },
-    limit: {
-      type: 'string' as const,
-    },
-    instance: {
-      type: 'string' as const,
-      multiple: true,
-    },
-    resume: {
-      type: 'boolean' as const,
-      default: false,
-    },
-    concurrency: {
-      type: 'string' as const,
-      default: '1',
-    },
-    mcp: {
-      type: 'boolean' as const,
-      default: false,
-    },
-    // SWE-bench evaluate options
-    predictions: {
-      type: 'string' as const,
-    },
-    'cache-level': {
-      type: 'string' as const,
-      default: 'env',
-    },
-    'max-workers': {
-      type: 'string' as const,
-      default: '4',
-    },
-    'run-id': {
-      type: 'string' as const,
-    },
-    'output-dir': {
-      type: 'string' as const,
-      // No default: the only consumer (handleSweBenchCommand) is a
-      // deprecation shim that ignores it. Live callers should pass an
-      // explicit path or resolve through getNexusDataDir() at use time.
-      // Removed the './logs/run_evaluation' default per epic #2872 to
-      // stop the parser from advertising a sprawl-creating fallback.
-    },
-    // ATBench command options (#1981)
-    fixture: {
-      type: 'string' as const,
-    },
-    'llm-scoring': {
-      type: 'boolean' as const,
-      default: false,
-    },
     // Learning-metrics command options
     // No `short` — `-p` is `proposal`, which was declared first and won. See
     // the note on `threshold`.
@@ -701,8 +628,6 @@ export const VALID_COMMANDS: readonly CliCommand[] = [
   'research',
   'validation',
   'learning-metrics',
-  'swe-bench',
-  'atbench',
   'setup',
   'hooks',
   'demo',
