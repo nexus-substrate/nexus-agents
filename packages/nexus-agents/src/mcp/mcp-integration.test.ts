@@ -50,9 +50,9 @@ async function setupMcpServer(): Promise<TestContext> {
   // Initialize shared tool infrastructure (logger, rate limiter)
   const infra = registerTools(server, { logger });
 
-  // Stub workflow engine that returns empty template list
+  // Stub workflow engine that returns empty template list matching IWorkflowEngine contract
   const stubEngine = {
-    listTemplates: () => Promise.resolve({ ok: true, value: [] }),
+    listTemplates: () => Promise.resolve([]),
   } as unknown as IWorkflowEngine;
 
   // Register lightweight tools that work without model adapters
@@ -191,17 +191,20 @@ describe('MCP Server Integration', () => {
   // Tool Invocation — list_workflows
   // --------------------------------------------------------------------------
 
-  it('list_workflows returns response', async () => {
+  it('list_workflows returns available workflow templates successfully', async () => {
     const result = await ctx.client.callTool({
       name: 'list_workflows',
       arguments: {},
     });
-    // Response may be success or error depending on engine availability
+    expect(result.isError).not.toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
     expect(content.length).toBeGreaterThan(0);
     const first = content[0];
     expect(first).toBeDefined();
     expect(first?.text.length).toBeGreaterThan(0);
+    const parsed = JSON.parse(first?.text ?? '') as Record<string, unknown>;
+    expect(parsed).toHaveProperty('workflows');
+    expect(parsed).toHaveProperty('count');
   });
 
   // --------------------------------------------------------------------------
