@@ -568,6 +568,17 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
     expect(registry.getAdapterForArm('api:https://user:secret@gw')).toBeUndefined();
   });
 
+  it.each(['api:openai', 'api:anthropic', 'api:google', 'api:gemini'] as const)(
+    'refuses to register or overwrite built-in vendor arm %s',
+    (arm) => {
+      const stub = stubResilientAdapter('vendor-override');
+      expect(() => {
+        registry.registerApiArm(arm, stub);
+      }).toThrow(/built-in vendor arm/i);
+      expect(registry.getAdapterForArm(arm)).toBeUndefined();
+    }
+  );
+
   it('dispose() disposes a registered api arm along with the CLI slots', () => {
     const stub = stubResilientAdapter('gw-prod');
     registry.registerApiArm('api:gw-prod', stub);
@@ -624,10 +635,12 @@ describe('UnifiedAdapterRegistry — gateway cost declaration at registration (#
     expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 
-  it('is silent for a vendor arm (api:anthropic is registry-priced, never a gateway)', () => {
+  it('refuses vendor arm registration before gateway cost warning can run', () => {
     vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
 
-    registry.registerApiArm('api:anthropic', stub);
+    expect(() => {
+      registry.registerApiArm('api:anthropic', stub);
+    }).toThrow(/built-in vendor arm/i);
 
     expect(mockLogger.warn).not.toHaveBeenCalled();
   });
