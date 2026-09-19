@@ -53,7 +53,6 @@ import { initializeExperts } from './cli-server-experts.js';
 import { wireGateway, resolveDefaultModelAdapter } from './cli-server-gateway.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
-import { initializeFeedbackIntegration } from './cli-server-feedback.js';
 import { initializeAuth } from './cli-server-auth.js';
 import { shutdownToolMemory, configureToolMemory } from './mcp/tools/tool-memory.js';
 import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
@@ -383,7 +382,7 @@ function buildGatewayConfig(config: AppConfig, logger: ILogger): GatewayConfig {
  * @param logger - Logger for registration messages
  * @param policyFirewall - Policy firewall for authorization
  * @param config - Application configuration
- * @param feedbackIntegration - Optional FeedbackIntegration for closed-loop learning (Issue #490)
+ * @param deps - Optional dependencies
  */
 async function initializeAndRegisterTools(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -391,12 +390,10 @@ async function initializeAndRegisterTools(
   policyFirewall: import('./mcp/middleware/index.js').IPolicyFirewall,
   config: import('./config/index.js').AppConfig,
   deps?: {
-    feedbackIntegration?:
-      import('./learning/feedback-integration.js').IFeedbackIntegration | undefined;
     auditLogger?: AuditLogger | null;
   }
 ): Promise<void> {
-  const { feedbackIntegration, auditLogger } = deps ?? {};
+  const { auditLogger } = deps ?? {};
   logger.info('Loading built-in workflow templates');
   const builtInTemplates = await initializeBuiltInTemplates();
   logger.info('Loaded built-in templates', { count: builtInTemplates.size });
@@ -432,7 +429,6 @@ async function initializeAndRegisterTools(
     ...(allowedPaths !== undefined && { allowedPaths }),
     ...(securityConfig !== undefined && { securityConfig }),
     ...(workflowConfig !== undefined && { workflowConfig }),
-    ...(feedbackIntegration !== undefined && { feedbackIntegration }),
     ...(auditLogger !== null && auditLogger !== undefined && { auditLogger }),
   };
   registerMcpTools(toolsOptions);
@@ -510,15 +506,6 @@ async function initializeSubsystems(
     reason: sicaResult.reason,
   });
 
-  // Initialize FeedbackIntegration (Issue #490). In-memory collector only: this
-  // process has no CompositeRouter to attach, so it does not close a routing
-  // loop — that happens inside CompositeRouter.executeTask (#4827).
-  const feedbackResult = initializeFeedbackIntegration({ logger });
-  logger.debug('FeedbackIntegration initialization', {
-    initialized: feedbackResult.initialized,
-    reason: feedbackResult.reason,
-  });
-
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
 
   // Wire observability config to SwarmObserver (Issue #493)
@@ -539,9 +526,7 @@ async function initializeSubsystems(
     // Initialize authentication handler (Issue #739). Side effects only —
     // auth state is wired into the request pipeline inside initializeAuth.
     initializeAuth(config, serverLogger);
-    // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
     await initializeAndRegisterTools(server, serverLogger, policyFirewall, config, {
-      feedbackIntegration: feedbackResult.feedbackIntegration,
       auditLogger,
     });
   });

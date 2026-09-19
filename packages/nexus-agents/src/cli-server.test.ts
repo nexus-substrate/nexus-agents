@@ -122,13 +122,6 @@ vi.mock('./cli-server-sica.js', () => ({
   initializeSica: vi.fn(() => ({ enabled: false, reason: 'no config' })),
 }));
 
-vi.mock('./cli-server-feedback.js', () => ({
-  initializeFeedbackIntegration: vi.fn(() => ({
-    initialized: false,
-    reason: 'test',
-  })),
-}));
-
 vi.mock('./mcp/tools/tool-memory.js', () => ({
   shutdownToolMemory: vi.fn(),
   configureToolMemory: vi.fn(() => ({ applied: true })),
