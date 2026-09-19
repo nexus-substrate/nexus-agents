@@ -5,7 +5,10 @@ import {
   selectUnblocked,
   formatReport,
   renderTitle,
+  renderTrigger,
   statusLine,
+  extractTrigger,
+  classifyTrigger,
 } from './check-unblocked.js';
 
 const issue = (
@@ -66,7 +69,9 @@ describe('selectUnblocked', () => {
   it('reports an issue whose every blocker closed', () => {
     const verdict = selectUnblocked([issue(1, 'blocked by #10')], closed);
 
-    expect(verdict.unblocked).toEqual([{ number: 1, title: 'issue 1', blockers: [10] }]);
+    expect(verdict.unblocked).toEqual([
+      { number: 1, title: 'issue 1', blockers: [10], triggerKind: 'none' },
+    ]);
     expect(verdict.tracked).toBe(1);
   });
 
@@ -239,5 +244,149 @@ describe('statusLine keeps control flow off the prose (#5088)', () => {
     // The phrase still appears in the body — which is exactly why the body is
     // no longer what the workflow reads.
     expect(formatReport(verdict)).toContain('still have an open blocker');
+  });
+});
+
+describe('extractTrigger (#6327)', () => {
+  it('extracts first sentence from ## Trigger', () => {
+    const body = 'Context\n\n## Trigger\n\nshadow data beats rules. Revisit when available.';
+    expect(extractTrigger(body)).toBe('shadow data beats rules.');
+  });
+
+  it('extracts from ## Unblock trigger', () => {
+    const body = '## Unblock trigger\nA caller wanting bounded workflow spend.';
+    expect(extractTrigger(body)).toBe('A caller wanting bounded workflow spend.');
+  });
+
+  it('extracts from ## Trigger to unblock', () => {
+    const body = '## Trigger to unblock\n\nA named consumer appears.';
+    expect(extractTrigger(body)).toBe('A named consumer appears.');
+  });
+
+  it('extracts from inline **Trigger:**', () => {
+    const body = '**Trigger:** scheduled for next sprint.';
+    expect(extractTrigger(body)).toBe('scheduled for next sprint.');
+  });
+
+  it('extracts from multiline **Trigger:**', () => {
+    const body = '**Trigger:**\nshadow data beats rules.';
+    expect(extractTrigger(body)).toBe('shadow data beats rules.');
+  });
+
+  it('extracts from **Trigger to pick this up:**', () => {
+    const body = '**Trigger to pick this up:** a second regular contributor.';
+    expect(extractTrigger(body)).toBe('a second regular contributor.');
+  });
+
+  it('extracts from ## Trigger — do not build before this', () => {
+    const body = '## Trigger — do not build before this\nOption coverage ships at schema 1.';
+    expect(extractTrigger(body)).toBe('Option coverage ships at schema 1.');
+  });
+
+  it('cleans leading markdown list bullets and checkboxes', () => {
+    const body = '## Trigger\n- [ ] Part 2 merged and live.';
+    expect(extractTrigger(body)).toBe('Part 2 merged and live.');
+  });
+
+  it('cleans bold markdown wrappers', () => {
+    const body = '## Trigger\n**Blocked by the next major release.** Pick up then.';
+    expect(extractTrigger(body)).toBe('Blocked by the next major release.');
+  });
+
+  it('returns undefined when no trigger section is present', () => {
+    expect(extractTrigger('An issue with no trigger heading.')).toBeUndefined();
+  });
+
+  it('returns undefined when trigger section is empty', () => {
+    expect(extractTrigger('## Trigger\n\n\n## Next Section\nfoo')).toBeUndefined();
+  });
+
+  it('ignores trigger heading quoted inside fenced code blocks', () => {
+    const body = '```\n## Trigger\nquoted trigger\n```\nNo trigger here.';
+    expect(extractTrigger(body)).toBeUndefined();
+  });
+});
+
+describe('classifyTrigger (#6327)', () => {
+  it('classifies issue-only dependencies as issue-only', () => {
+    expect(classifyTrigger('once #99 lands')).toBe('issue-only');
+    expect(classifyTrigger('after #1 and #2 merge')).toBe('issue-only');
+    expect(classifyTrigger('blocked by #10')).toBe('issue-only');
+    expect(classifyTrigger('pick up after #6254 lands')).toBe('issue-only');
+    expect(classifyTrigger('Blocked by #4888 / #4987.')).toBe('issue-only');
+  });
+
+  it('classifies prose conditions as unverified', () => {
+    expect(classifyTrigger('a caller wanting bounded workflow spend')).toBe('unverified');
+    expect(classifyTrigger('shadow data beats rules')).toBe('unverified');
+    expect(classifyTrigger('Decide at a tier-6 panel after #6387 merges')).toBe('unverified');
+    expect(classifyTrigger('The next major release.')).toBe('unverified');
+  });
+
+  it('classifies missing or empty trigger as none', () => {
+    expect(classifyTrigger(undefined)).toBe('none');
+    expect(classifyTrigger('')).toBe('none');
+  });
+});
+
+describe('renderTrigger (#5088, #6327)', () => {
+  it('renders none or undefined as (none)', () => {
+    expect(renderTrigger(undefined, 'none')).toBe('(none)');
+    expect(renderTrigger('', 'none')).toBe('(none)');
+  });
+
+  it('renders issue-only triggers wrapped in backticks', () => {
+    expect(renderTrigger('once #99 lands', 'issue-only')).toBe('`once #99 lands`');
+  });
+
+  it('renders unverified triggers with prefix and wrapped in backticks', () => {
+    expect(renderTrigger('shadow data beats rules', 'unverified')).toBe(
+      'trigger: unverified (`shadow data beats rules`)'
+    );
+  });
+
+  it('neutralises backticks, pipes, and newlines in unverified triggers', () => {
+    const rendered = renderTrigger('evil | `cmd` \n newline', 'unverified');
+    expect(rendered).toContain('evil cmd newline');
+    expect(rendered).not.toContain('|');
+    expect(rendered).not.toContain('\n');
+  });
+
+  it('caps triggers that exceed maximum length', () => {
+    expect(renderTrigger('x'.repeat(200), 'unverified').length).toBeLessThan(160);
+    expect(renderTrigger('x'.repeat(200), 'unverified')).toContain('…');
+  });
+});
+
+describe('trigger integration in report (#6327)', () => {
+  it('populates trigger and triggerKind for unblocked issues', () => {
+    const issues = [
+      issue(1, 'blocked by #10\n\n## Trigger\nshadow data beats rules.'),
+      issue(2, 'blocked by #10\n\n## Trigger\nonce #10 lands'),
+      issue(3, 'blocked by #10'),
+    ];
+    const verdict = selectUnblocked(issues, (b) => b === 10);
+    expect(verdict.unblocked[0]?.triggerKind).toBe('unverified');
+    expect(verdict.unblocked[0]?.trigger).toBe('shadow data beats rules.');
+    expect(verdict.unblocked[1]?.triggerKind).toBe('issue-only');
+    expect(verdict.unblocked[2]?.triggerKind).toBe('none');
+  });
+
+  it('renders a 4-column table with trigger column in formatReport', () => {
+    const unblocked = [
+      {
+        number: 4440,
+        title: 'Reconcile TokenUsage',
+        blockers: [4439],
+        trigger: 'shadow data beats rules',
+        triggerKind: 'unverified' as const,
+      },
+    ];
+    const body = formatReport({ unblocked, tracked: 12 });
+    expect(body).toContain(
+      '| issue | blockers (all closed) | title (copied verbatim from the issue) | trigger |'
+    );
+    expect(body).toContain('trigger: unverified (`shadow data beats rules`)');
+    expect(body).toContain('trigger: unverified');
   });
 });

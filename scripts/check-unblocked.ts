@@ -71,11 +71,16 @@ export interface IssueSummary {
   readonly labels?: readonly string[];
 }
 
+/** Classification of an issue's stated trigger (#6327). */
+export type TriggerKind = 'issue-only' | 'unverified' | 'none';
+
 /** An open issue every one of whose named blockers has closed. */
 export interface UnblockedIssue {
   readonly number: number;
   readonly title: string;
   readonly blockers: readonly number[];
+  readonly trigger?: string | undefined;
+  readonly triggerKind?: TriggerKind | undefined;
 }
 
 export interface UnblockedVerdict {
@@ -115,6 +120,95 @@ export function parseBlockers(body: string): number[] {
 }
 
 /**
+ * Headings that introduce an unblock trigger section in an issue body (#6327).
+ *
+ * Derived from a survey of open issues (#6327): `## Trigger`, `## Unblock trigger`,
+ * `## Trigger to unblock`, `**Trigger:**`, `## Trigger / unblock`, `## The trigger`,
+ * `**Unblock trigger:**`, `**Trigger to pick this up:**`, `## Trigger — do not build before this`.
+ */
+const TRIGGER_HEADING =
+  /^[ \t]*#{1,6}[ \t]*(?:the\s+)?(?:unblock\s+trigger|trigger)(?:[ \t]+(?:to\s+(?:unblock|pick\s+this\s+up)|\/|—|-|–|do\s+not\s+build\s+before\s+this).*)?[ \t]*$/im;
+
+const TRIGGER_BOLD =
+  /^[ \t]*\*\*(?:the\s+)?(?:unblock\s+trigger|trigger(?:\s+to\s+pick\s+this\s+up)?):\*\*[ \t]*(.*)$/im;
+
+const CONNECTOR_WORD_PATTERN =
+  /^(?:once|after|lands?|merges?|merged|blocked|by|on|and|or|the|when|pick|up|before|this|landing|pr|prs|issue|issues|part|step|in|at|to|fix|fixes)$/iu;
+
+function isIssueShapedToken(token: string): boolean {
+  return /^#?\d+$/u.test(token) || CONNECTOR_WORD_PATTERN.test(token);
+}
+
+/**
+ * Extract the first sentence of an issue's stated trigger (#6327).
+ * Quoted code is stripped first, and markdown lists/formatting are cleaned.
+ */
+function firstSectionLine(text: string): string {
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#')) break;
+    if (trimmed.length > 0) return trimmed;
+  }
+  return '';
+}
+
+function rawTriggerText(stated: string): string {
+  const headMatch = stated.match(TRIGGER_HEADING);
+  if (headMatch?.index !== undefined) {
+    return firstSectionLine(stated.slice(headMatch.index + headMatch[0].length));
+  }
+  const boldMatch = stated.match(TRIGGER_BOLD);
+  if (boldMatch?.index !== undefined) {
+    const inline = boldMatch[1]?.trim() ?? '';
+    return inline.length > 0
+      ? inline
+      : firstSectionLine(stated.slice(boldMatch.index + boldMatch[0].length));
+  }
+  return '';
+}
+
+/**
+ * Extract the first sentence of an issue's stated trigger (#6327).
+ * Quoted code is stripped first, and markdown lists/formatting are cleaned.
+ */
+export function extractTrigger(body: string): string | undefined {
+  const raw = rawTriggerText(body.replace(QUOTED_CODE, ' '));
+  if (raw.length === 0) return undefined;
+  const cleaned = raw.replace(/^[-*]\s+(\[[ x]\]\s*)?/, '').trim();
+  if (cleaned.length === 0) return undefined;
+  const sentenceMatch = cleaned.match(/^.*?[.?!][*`_]*(?:\s|$)/);
+  const sentence = (sentenceMatch ? sentenceMatch[0].trim() : cleaned).replace(/[*`_]/g, '').trim();
+  return sentence.length > 0 ? sentence : undefined;
+}
+
+/**
+ * Classify a trigger as issue-only, unverified prose, or none (#6327).
+ */
+export function classifyTrigger(trigger: string | undefined): TriggerKind {
+  if (trigger === undefined || trigger.trim().length === 0) return 'none';
+  const tokens = trigger.match(/[a-z0-9#]+/giu) ?? [];
+  if (tokens.length === 0) return 'none';
+  return tokens.every(isIssueShapedToken) ? 'issue-only' : 'unverified';
+}
+
+/**
+ * Render trigger text into a table cell (#5088, #6327).
+ */
+export function renderTrigger(trigger: string | undefined, kind: TriggerKind): string {
+  if (kind === 'none' || trigger === undefined || trigger.trim().length === 0) return '(none)';
+  const flattened = trigger
+    .replace(/[`|\r\n]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const capped = flattened.length > TITLE_MAX ? `${flattened.slice(0, TITLE_MAX)}…` : flattened;
+  const display = capped.length > 0 ? capped : '(empty)';
+  if (kind === 'unverified') {
+    return `trigger: unverified (\`${display}\`)`;
+  }
+  return `\`${display}\``;
+}
+
+/**
  * Open issues whose every named blocker is closed.
  *
  * `isClosed` is injected so the decision is testable without the network —
@@ -146,7 +240,15 @@ export function selectUnblocked(
     if (blockers.length === 0) continue;
     tracked += 1;
     if (blockers.every((b) => isClosed(b) === true)) {
-      unblocked.push({ number: issue.number, title: issue.title, blockers });
+      const trigger = extractTrigger(issue.body);
+      const triggerKind = classifyTrigger(trigger);
+      unblocked.push({
+        number: issue.number,
+        title: issue.title,
+        blockers,
+        trigger,
+        triggerKind,
+      });
     }
   }
 
@@ -212,7 +314,7 @@ export function formatReport(verdict: UnblockedVerdict): string {
   const rows = verdict.unblocked
     .map(
       (u) =>
-        `| #${String(u.number)} | ${u.blockers.map((b) => `#${String(b)}`).join(', ')} | ${renderTitle(u.title)} |`
+        `| #${String(u.number)} | ${u.blockers.map((b) => `#${String(b)}`).join(', ')} | ${renderTitle(u.title)} | ${renderTrigger(u.trigger, u.triggerKind ?? 'none')} |`
     )
     .join('\n');
   const excluded = verdict.excluded ?? [];
@@ -223,12 +325,13 @@ export function formatReport(verdict: UnblockedVerdict): string {
   return (
     `${String(verdict.unblocked.length)} of ${String(verdict.tracked)} blocked issue(s) ` +
     'now have **every** named blocker closed:\n\n' +
-    '| issue | blockers (all closed) | title (copied verbatim from the issue) |\n| --- | --- | --- |\n' +
+    '| issue | blockers (all closed) | title (copied verbatim from the issue) | trigger |\n' +
+    '| --- | --- | --- | --- |\n' +
     `${rows}\n\n` +
     exclusionNote +
-    'Each records an unblock trigger in its body — that is the handoff. Pick them up ' +
-    'or re-prioritise them explicitly; leaving one here is how #4440 sat ten days ' +
-    'after its blocker closed (#4617).\n'
+    'Each records an unblock trigger in its body — that is the handoff. ' +
+    'Rows marked `trigger: unverified` carry prose conditions that must be checked manually before picking up (#6327). ' +
+    'Leaving one here is how #4440 sat ten days after its blocker closed (#4617).\n'
   );
 }
 
