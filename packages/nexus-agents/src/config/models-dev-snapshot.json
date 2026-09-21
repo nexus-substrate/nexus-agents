@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-09-14",
+  "fetchedAt": "2026-09-21",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -48,6 +48,30 @@
       "pricing": {
         "inputPer1M": 1.4,
         "outputPer1M": 4.4
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "kimi-k3",
+      "vendor": "qwen",
+      "family": "kimi-k3",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-qwen",
+      "source": "models-dev",
+      "displayName": "Kimi K3",
+      "verifiedAt": "2026-07-16",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 1048576,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 3,
+        "outputPer1M": 15
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -4179,6 +4203,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "zai-org/glm-5.2-maas",
+      "vendor": "google",
+      "family": "glm",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "GLM-5.2",
+      "verifiedAt": "2026-06-13",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.4,
+        "outputPer1M": 4.4
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "muse-spark-1.1",
       "vendor": "meta",
       "family": "muse",
@@ -5093,6 +5141,30 @@
       "source": "models-dev",
       "displayName": "GLM-5.2",
       "verifiedAt": "2026-06-13",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 1.4,
+        "outputPer1M": 4.4
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "zai-glm-5-3",
+      "vendor": "mistral",
+      "family": "glm",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-mistral",
+      "source": "models-dev",
+      "displayName": "GLM-5.3",
+      "verifiedAt": "2026-08-14",
       "contextWindow": 1000000,
       "maxOutputTokens": 131072,
       "inputModalities": ["text"],
@@ -7534,9 +7606,33 @@
       "toolCapabilities": ["function-calling"]
     },
     {
-      "id": "z-ai/glm-5.3-flash",
+      "id": "z-ai/glm-5.3",
       "vendor": "nvidia",
       "family": "glm",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-nvidia",
+      "source": "models-dev",
+      "displayName": "GLM-5.3",
+      "verifiedAt": "2026-08-14",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0,
+        "outputPer1M": 0
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "z-ai/glm-5.3-flash",
+      "vendor": "nvidia",
+      "family": "glm-flash",
       "parallelToolCalls": false,
       "promptCaching": "none",
       "toolDefinitionFormat": "openai",
