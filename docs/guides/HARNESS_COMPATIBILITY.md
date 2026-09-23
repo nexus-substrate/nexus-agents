@@ -41,7 +41,10 @@ call per voter role. There are two ways nexus-agents can make those calls:
   [CONFIGURATION.md](../getting-started/CONFIGURATION.md)) and nexus-agents
   routes every voter through that gateway's HTTP API directly, in-process. No
   subprocess is spawned per vote, so it's lower-latency and doesn't depend on
-  any individual CLI's own auth/quota.
+  any individual CLI's own auth/quota. Seats are dealt across model families
+  (Anthropic, OpenAI, Google) first, then across models within a family,
+  whatever order the gateway lists them in; `NEXUS_VOTER_MODEL_<ROLE>` pins a
+  role to one model.
 - **CLI subprocess round-robin (default when no gateway is set)** — with
   neither env var set, voters shell out to whichever CLIs (claude/gemini/codex)
   are installed, round-robining roles across them. This works with no extra

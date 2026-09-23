@@ -27,6 +27,7 @@ import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { countDistinctModels } from '../config/model-equivalence.js';
 import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
+import { dealSeatsAcrossFamilies, warnIfSingleFamily } from './voter-family-dealing.js';
 import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
 import {
   NoAdapterError,
@@ -394,7 +395,8 @@ function assignRoundRobinAdapters(
  * Gateway path (#4040): assign roles across the in-process per-model gateway
  * adapters. A single model collapses to a uniform panel (warned). With multiple
  * models, per-role operator overrides (#4055) pin chosen roles to a known-good
- * model and the rest round-robin.
+ * model and the rest are dealt across model FAMILIES first, then across models
+ * within a family (#6606) — never in the gateway's listing order.
  */
 export function resolveGatewayRoleAdapters(
   roles: readonly VoterRole[],
@@ -415,13 +417,19 @@ export function resolveGatewayRoleAdapters(
     return assignUniformAdapter(roles, gatewayAdapters[0] ?? fallbackAdapter);
   }
   // #4055: per-role overrides (NEXUS_VOTER_MODEL_<ROLE>) pin a role to a known-good
-  // gateway model; the rest round-robin. An unknown override id warns + falls
-  // through to round-robin (handled in the resolver).
+  // gateway model; the rest are dealt. An unknown override id warns + falls
+  // through to dealing (handled in the resolver).
   const overrides = resolveVoterModelOverrides(roles, gatewayAdapters, logger);
-  const roundRobinRoles = roles.filter((r) => !overrides.has(r));
+  const dealtRoles = roles.filter((r) => !overrides.has(r));
+  // #6606: deal families first, balancing around the pinned seats. Round-robin
+  // over the listing order seated 5 OpenAI, 2 Anthropic and 0 Google models on
+  // a recorded three-family catalogue.
+  const dealt = dealSeatsAcrossFamilies(dealtRoles.length, gatewayAdapters, {
+    seated: [...overrides.values()].map((a) => a.modelId),
+  });
   const assigned = assignRoundRobinAdapters(
-    roundRobinRoles,
-    gatewayAdapters.map((a) => ({ label: a.modelId, adapter: a })),
+    dealtRoles,
+    dealt.map((a) => ({ label: a.modelId, adapter: a })),
     logger,
     'gateway'
   );
@@ -441,6 +449,7 @@ export function resolveGatewayRoleAdapters(
       { model: assignedModels[0], roleCount: roles.length }
     );
   }
+  warnIfSingleFamily(roles.length, assignedModels, logger);
   return assigned;
 }
 

@@ -27,6 +27,7 @@ import type {
 } from '../../cli/vote-types.js';
 import {
   panelDiversityOf,
+  singleFamilyPanelWarning,
   singleModelPanelWarning,
   type PanelDiversity,
 } from '../../cli/vote-diversity.js';
@@ -48,6 +49,7 @@ import {
 } from '../../consensus/types-core.js';
 import { checkUndeclaredOptions } from './consensus-vote-option-detection.js';
 import { resolveVoteDecision } from '../../consensus/decision/verdict.js';
+import { UNRESOLVED_MODEL_ID } from '../../config/model-equivalence.js';
 
 /** Maximum proposal length (memory bounds per Issue #435). */
 export const MAX_PROPOSAL_LENGTH = 4000;
@@ -336,7 +338,12 @@ export interface AgentVoteSummary {
   simulated: boolean;
   /** True when this vote was generated from an error (Issue #815). */
   error: boolean;
-  /** Model used for this agent's vote (Issue #817). */
+  /**
+   * Model this seat ran on (Issue #817). Populated since #6606 from the seat's
+   * resolved model; absent when the seat resolved none (an errored seat that
+   * never reached a model, or the lazy-detection placeholder). Clipped to
+   * {@link MODEL_USED_MAX_CHARS} to fit the advertised output schema.
+   */
   modelUsed?: string;
   /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
   rejectionCategories?: readonly string[];
@@ -698,6 +705,21 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     ...(result.fallback !== undefined ? { fallback: result.fallback } : {}),
     // #6246: and for what a recovered seat was retried from.
     ...(result.retriedFrom !== undefined ? { retriedFrom: result.retriedFrom } : {}),
+    // #6606: the per-seat model was only in `costSummary.perVoter`.
+    ...modelUsedOf(result),
+  };
+}
+
+/** The advertised `votes[].modelUsed` bound in the consensus_vote output schema. */
+const MODEL_USED_MAX_CHARS = 100;
+
+/** `{ modelUsed }` for a seat that resolved a model; the placeholder is not one. */
+function modelUsedOf(result: AgentVoteResult): { modelUsed?: string } {
+  const model = result.model;
+  if (model === undefined || model === '' || model === UNRESOLVED_MODEL_ID) return {};
+  return {
+    modelUsed:
+      model.length <= MODEL_USED_MAX_CHARS ? model : `${model.slice(0, MODEL_USED_MAX_CHARS - 1)}…`,
   };
 }
 
@@ -981,6 +1003,8 @@ function applyOptionalResponseFields(
   // #6115: a 3+ panel whose every answering seat ran on ONE model. Appended for
   // the same reason as the two above.
   appendPanelWarning(response, singleModelPanelWarning(result.votes));
+  // #6606: several models of ONE family — same rule, appended.
+  appendPanelWarning(response, singleFamilyPanelWarning(result.votes));
   // #5360: a proposal that names alternatives while `options` is undefined
   // records a split as uniform approval — every voter approves the ACT of
   // deciding, not a side. A 3-3 tie was recorded as `APPROVED 83.3%` that way.

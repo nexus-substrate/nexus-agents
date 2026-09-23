@@ -6,7 +6,11 @@
 import { describe, it, expect } from 'vitest';
 
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
-import { panelDiversityOf, singleModelPanelWarning } from './vote-diversity.js';
+import {
+  panelDiversityOf,
+  singleFamilyPanelWarning,
+  singleModelPanelWarning,
+} from './vote-diversity.js';
 import { modelsLine, panelShapeLines } from './vote-summary-lines.js';
 
 const SEVEN: readonly VoterRole[] = [
@@ -65,18 +69,89 @@ function diversePanel(): AgentVoteResult[] {
   ];
 }
 
+/** Three answering seats, three models, one vendor (#6606). */
+function anthropicPanel(): AgentVoteResult[] {
+  return [
+    seat('architect', { cli: 'cli-claude', model: 'claude-opus', assignedCli: 'claude' }),
+    seat('security', { cli: 'cli-claude', model: 'claude-sonnet', assignedCli: 'claude' }),
+    seat('scope_steward', { cli: 'cli-claude', model: 'claude-haiku', assignedCli: 'claude' }),
+  ];
+}
+
+describe('panelDiversityOf — families (#6606)', () => {
+  it('counts distinct vendor families over the answering seats', () => {
+    expect(panelDiversityOf(anthropicPanel())).toMatchObject({
+      distinctModels: 3,
+      distinctFamilies: 1,
+      unclassifiedSeats: 0,
+    });
+    const threeFamilies = [
+      ...anthropicPanel().slice(0, 1),
+      seat('devex', { model: 'openai/o3' }),
+      seat('pm'),
+    ];
+    expect(panelDiversityOf(threeFamilies).distinctFamilies).toBe(3);
+  });
+
+  it('an errored seat contributes no family, whatever it was assigned', () => {
+    const panel = [
+      ...anthropicPanel(),
+      seat('pm', { source: 'error', model: undefined, error: 'boom' }),
+      seat('devex', { source: 'error', model: 'openai/o3', error: 'boom' }),
+    ];
+    expect(panelDiversityOf(panel).distinctFamilies).toBe(1);
+  });
+});
+
+describe('singleFamilyPanelWarning (#6606)', () => {
+  it('fires when a 3+ panel answered on several models of one family', () => {
+    expect(singleFamilyPanelWarning(anthropicPanel())).toBe(
+      'All 3 answering seats ran anthropic models (3 distinct); independence is weaker than assigned.'
+    );
+  });
+
+  it('is silent on a multi-family panel, a single-model panel, a small panel and an empty one', () => {
+    expect(singleFamilyPanelWarning([...anthropicPanel(), seat('pm')])).toBeUndefined();
+    // One model: singleModelPanelWarning already names it.
+    expect(singleFamilyPanelWarning(collapsedPanel())).toBeUndefined();
+    expect(singleFamilyPanelWarning(anthropicPanel().slice(0, 2))).toBeUndefined();
+    expect(singleFamilyPanelWarning([])).toBeUndefined();
+  });
+
+  it('makes no claim when an answering seat is unclassified or unresolved', () => {
+    expect(
+      singleFamilyPanelWarning([...anthropicPanel(), seat('pm', { model: 'mystery-model' })])
+    ).toBeUndefined();
+    expect(
+      singleFamilyPanelWarning([...anthropicPanel(), seat('pm', { model: 'pending-detection' })])
+    ).toBeUndefined();
+  });
+});
+
 describe('panelDiversityOf (#6115)', () => {
   it('counts distinct models over the seats that answered, and seats that answered elsewhere', () => {
-    expect(panelDiversityOf(collapsedPanel())).toEqual({ distinctModels: 1, fallbacks: 5 });
-    expect(panelDiversityOf(diversePanel())).toEqual({ distinctModels: 3, fallbacks: 0 });
+    expect(panelDiversityOf(collapsedPanel())).toEqual({
+      distinctModels: 1,
+      distinctFamilies: 1,
+      unclassifiedSeats: 0,
+      fallbacks: 5,
+    });
+    // `codex-5.3` names no recognised vendor: counted as unclassified, never as a family.
+    expect(panelDiversityOf(diversePanel())).toEqual({
+      distinctModels: 3,
+      distinctFamilies: 2,
+      unclassifiedSeats: 1,
+      fallbacks: 0,
+    });
   });
 
   it('names the empty case: no seat answered → explicit zeros, never absent', () => {
     const errored = SEVEN.map((role) =>
       seat(role, { source: 'error', model: undefined, error: 'boom' })
     );
-    expect(panelDiversityOf(errored)).toEqual({ distinctModels: 0, fallbacks: 0 });
-    expect(panelDiversityOf([])).toEqual({ distinctModels: 0, fallbacks: 0 });
+    const zeros = { distinctModels: 0, distinctFamilies: 0, unclassifiedSeats: 0, fallbacks: 0 };
+    expect(panelDiversityOf(errored)).toEqual(zeros);
+    expect(panelDiversityOf([])).toEqual(zeros);
   });
 
   it('an errored seat is not an answering seat, whatever it was assigned', () => {
@@ -84,7 +159,12 @@ describe('panelDiversityOf (#6115)', () => {
       ...diversePanel(),
       seat('pm', { source: 'error', model: undefined, assignedCli: 'claude', error: 'boom' }),
     ];
-    expect(panelDiversityOf(panel)).toEqual({ distinctModels: 3, fallbacks: 0 });
+    expect(panelDiversityOf(panel)).toEqual({
+      distinctModels: 3,
+      distinctFamilies: 2,
+      unclassifiedSeats: 1,
+      fallbacks: 0,
+    });
   });
 
   it('the placeholder model id is not a model', () => {
@@ -140,13 +220,16 @@ describe('modelsLine (#6115)', () => {
       seat('security', { cli: 'cli-codex', model: 'codex-5.3', assignedCli: 'codex' }),
     ];
     expect(modelsLine(panel)).toBe(
-      'Models: 3 distinct, 2 fallbacks (devex: codex→gemini, capacity; pm: claude-fable-5→claude-opus, capacity)'
+      'Models: 3 distinct, 2 families (1 seat unclassified), 2 fallbacks (devex: codex→gemini, capacity; pm: claude-fable-5→claude-opus, capacity)'
     );
   });
 
   it('renders explicit zeros for a clean panel and for a panel nobody answered', () => {
-    expect(modelsLine(diversePanel())).toBe('Models: 3 distinct, 0 fallbacks');
-    expect(modelsLine([])).toBe('Models: 0 distinct, 0 fallbacks');
+    expect(modelsLine(diversePanel())).toBe(
+      'Models: 3 distinct, 2 families (1 seat unclassified), 0 fallbacks'
+    );
+    expect(modelsLine(anthropicPanel())).toBe('Models: 3 distinct, 1 family, 0 fallbacks');
+    expect(modelsLine([])).toBe('Models: 0 distinct, 0 families, 0 fallbacks');
   });
 });
 

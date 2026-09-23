@@ -16,6 +16,7 @@
 import { countDistinctModels, UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 import type { AgentVoteResult, SeatFallback } from './vote-types.js';
 import { bareCliName } from './voter-fallback.js';
+import { vendorFamilyOf } from './voter-family-dealing.js';
 
 /**
  * Always present on the response, explicit zeros included: an absent key
@@ -25,6 +26,14 @@ import { bareCliName } from './voter-fallback.js';
 export interface PanelDiversity {
   /** Distinct models (by canonical identity, #4390) among the seats that answered. */
   readonly distinctModels: number;
+  /**
+   * Distinct model families — vendors: anthropic, openai, google, ... (#6606) —
+   * among the seats that answered. A seat whose model names no recognised
+   * vendor is counted in {@link unclassifiedSeats}, never as a family.
+   */
+  readonly distinctFamilies: number;
+  /** Answering seats whose resolved model names no recognised vendor (#6606). */
+  readonly unclassifiedSeats: number;
   /** Seats that answered on a CLI or model other than the one assigned. */
   readonly fallbacks: number;
 }
@@ -74,8 +83,12 @@ export function panelDiversityOf(votes: readonly AgentVoteResult[]): PanelDivers
   const models = answeringSeats(votes)
     .map(resolvedModel)
     .filter((m): m is string => m !== undefined);
+  const families = models.map(vendorFamilyOf);
+  const classified = families.filter((f) => f !== 'unknown');
   return {
     distinctModels: countDistinctModels(models),
+    distinctFamilies: new Set(classified).size,
+    unclassifiedSeats: families.length - classified.length,
     fallbacks: seatFallbacks(votes).length,
   };
 }
@@ -102,5 +115,27 @@ export function singleModelPanelWarning(votes: readonly AgentVoteResult[]): stri
   return (
     `All ${String(answered.length)} seats answered on ${model}${missing}; ` +
     'independence is weaker than assigned.'
+  );
+}
+
+/**
+ * The warning for a 3+ panel whose answering seats ran SEVERAL models of ONE
+ * family (#6606): three Anthropic models are one vendor's judgement, however
+ * distinct their ids. Undefined when the panel spans families, runs a single
+ * model (the single-model warning names that one), is under 3 seats, or has
+ * nobody answering — and when any answering seat is unresolved or
+ * unclassified, because "all one family" is a claim that seat cannot support.
+ */
+export function singleFamilyPanelWarning(votes: readonly AgentVoteResult[]): string | undefined {
+  if (votes.length < MIN_PANEL_FOR_DIVERSITY_WARNING) return undefined;
+  const answered = answeringSeats(votes);
+  const models = answered.map(resolvedModel);
+  const model = models[0];
+  if (model === undefined || models.includes(undefined)) return undefined;
+  const { distinctModels, distinctFamilies, unclassifiedSeats } = panelDiversityOf(votes);
+  if (distinctFamilies !== 1 || unclassifiedSeats > 0 || distinctModels < 2) return undefined;
+  return (
+    `All ${String(answered.length)} answering seats ran ${vendorFamilyOf(model)} models ` +
+    `(${String(distinctModels)} distinct); independence is weaker than assigned.`
   );
 }
