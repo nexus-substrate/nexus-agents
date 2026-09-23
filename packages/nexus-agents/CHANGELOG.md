@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.88.1
+
+### Patch Changes
+
+- [#6543](https://github.com/nexus-substrate/nexus-agents/pull/6543) [`7211e64`](https://github.com/nexus-substrate/nexus-agents/commit/7211e64a95168b59edf1e0382af65ce50beb2b36) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - verify: treat absent codex and planned retirements honestly in Codex Models check ([#6535](https://github.com/nexus-substrate/nexus-agents/issues/6535))
+
+- [#6547](https://github.com/nexus-substrate/nexus-agents/pull/6547) [`e14ab68`](https://github.com/nexus-substrate/nexus-agents/commit/e14ab6851fcec9f88ce2c1003dc65b14025935b7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `PersistentOutcomeStore` keeps fields it does not recognise when it rewrites `outcomes.jsonl` on hydrate (the [#6538](https://github.com/nexus-substrate/nexus-agents/issues/6538) fix). This holds for reclassified rows as well as rows that survive a purge, and a store that needs no purge or reclassification is not rewritten at all. New tests pin all three behaviours.
+
+  Caveat: versions released before the [#6538](https://github.com/nexus-substrate/nexus-agents/issues/6538) fix still strip unknown fields whenever their hydrate rewrites the file. If any process sharing a data directory runs one of those versions, it can still delete fields such as `routedBy`, and they cannot be recovered. Preservation only holds once every process that reads the same data directory is on this version or later.
+
 ## 8.88.0
 
 ### Minor Changes
