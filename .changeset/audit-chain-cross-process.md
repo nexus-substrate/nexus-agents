@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 The `AuditLogger` hash chain now survives more than one process writing to the same log directory (#6546). Before this, each process started its chain from nothing. The first event written after a server restart, or by a second concurrent session, had no `previousHash`, and concurrent processes interleaved two separate chains in one file. `verify_audit_chain` reported `previous_hash_mismatch` for every such log, the same verdict it gives for a deleted event.
