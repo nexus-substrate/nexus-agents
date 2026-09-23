@@ -352,6 +352,7 @@ describe('routing-audit-format', () => {
           { name: 'codex', proportion: 0.118 },
         ],
       },
+      interceptFeatures: ['timePressure'],
     };
 
     it('should return empty array when no bandit stats', () => {
@@ -372,6 +373,37 @@ describe('routing-audit-format', () => {
       expect(output).toContain('Exploration');
       expect(output).toContain('Arm Distribution');
       expect(output).toContain('Feature Importance');
+    });
+
+    // #4875: timePressure is a constant 0.5 on every route, so its weight is
+    // the arm's intercept. A reader must not see it ranked as a signal.
+    it('labels timePressure as an intercept and explains it', () => {
+      const [firstArm] = mockBanditStats.detailedArms;
+      if (firstArm === undefined) throw new Error('fixture has no arms');
+      const output = formatBanditStats({
+        ...mockResult,
+        banditStats: {
+          ...mockBanditStats,
+          detailedArms: [
+            {
+              ...firstArm,
+              featureImportance: [
+                { feature: 'timePressure', importance: 0.6 },
+                { feature: 'taskComplexity', importance: 0.4 },
+              ],
+            },
+          ],
+        },
+      }).join('\n');
+
+      expect(output).toContain('timePressure (intercept)');
+      expect(output).toContain('#4875');
+    });
+
+    it('omits the intercept note when no intercept feature is shown', () => {
+      const output = formatBanditStats({ ...mockResult, banditStats: mockBanditStats }).join('\n');
+      expect(output).not.toContain('(intercept)');
+      expect(output).not.toContain('#4875');
     });
 
     it('should show exploration ratio', () => {
@@ -439,6 +471,7 @@ describe('routing-audit-format', () => {
             explorationRatio: 0.1,
             armDistribution: [{ name: 'claude', proportion: 1.0 }],
           },
+          interceptFeatures: ['timePressure'],
         },
       };
 

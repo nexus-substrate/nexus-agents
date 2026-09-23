@@ -3,16 +3,22 @@
  * until something computes one (#4875).
  *
  * Nothing in the tree produces a time-pressure measurement, so the feature is
- * a constant and its LinUCB coefficient is meaningless. That is documented and
- * accepted. What is NOT acceptable is different constants on different paths:
+ * a constant. `contextToFeatures` has no bias column, so that constant is the
+ * model's per-arm intercept: its coefficient is an arm-level bias, not a
+ * response to time pressure. The #4875 panel kept it on purpose (option C);
+ * renderers label it `(intercept)`. What is NOT acceptable is different
+ * constants on different paths:
  * `composite-router-helpers` used 0.3 while `LinUCBStage` and the
  * `warmStart`/`seedPriors` replay used 0.5. A constant carries no information;
  * two constants let the bandit use the value as a PATH INDICATOR, which is
  * accidental signal fitted against a dimension nobody measures.
  *
- * This test is why the constant cannot drift apart again. When a real producer
- * lands, it replaces the constant everywhere and this test should be rewritten
- * to assert the producer is wired, not deleted.
+ * This test is why the constant cannot drift apart again: two constants would
+ * also make the intercept path-dependent. Unblock trigger (#4875): a `route()`
+ * caller that carries a real, caller-supplied time budget, AND measured
+ * variance > 0 of the derived value across real routes. When that lands, the
+ * producer replaces the constant everywhere, a bias column replaces the
+ * intercept role, and this test is rewritten to assert the producer is wired.
  *
  * @module cli-adapters/time-pressure-agreement.test
  * (Source: Issue #4875)

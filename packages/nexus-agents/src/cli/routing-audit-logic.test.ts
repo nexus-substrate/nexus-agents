@@ -534,6 +534,12 @@ describe('routing-audit-logic', () => {
       expect(stats.detailedArms).toHaveLength(3); // bandit was created with 3 arms
     });
 
+    // #4875: sibling flag for --json consumers; featureImportance is unchanged.
+    it('flags timePressure as an intercept feature', () => {
+      const stats = computeBanditStats(new LinUCBBandit(['claude']));
+      expect(stats.interceptFeatures).toEqual(['timePressure']);
+    });
+
     it('should include feature importance', () => {
       const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
       const stats = computeBanditStats(bandit);

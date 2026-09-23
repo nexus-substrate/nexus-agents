@@ -64,8 +64,10 @@ export function adjustProfileForTask(
  * an unknown budget matches the context the weights were reconstructed
  * against.
  *
- * `timePressure` remains hardcoded — no producer computes one anywhere in the
- * tree, so there is nothing to thread. Tracked separately.
+ * `timePressure` stays the neutral constant by decision (#4875, option C): no
+ * producer computes a deadline, and with no bias column in `contextToFeatures`
+ * the constant is the bandit's per-arm intercept. See `contextToFeatures` for
+ * the unblock trigger.
  */
 export function taskProfileToBanditContext(
   profile: TaskProfile,
@@ -84,6 +86,8 @@ export function taskProfileToBanditContext(
     // information, but two DIFFERENT constants across live paths let the bandit
     // use the value as a path indicator — accidental signal rather than none.
     // Neutral, and equal to what the replay paths use, is the honest default.
+    // Being constant, it is the per-arm intercept (no bias column exists), so
+    // it must stay equal across builders (`time-pressure-agreement.test.ts`).
     timePressure: NEUTRAL_BANDIT_FEATURE,
   };
 }

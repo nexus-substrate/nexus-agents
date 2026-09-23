@@ -47,6 +47,7 @@ function makeResult(overrides?: Partial<LearningMetricsResult>) {
         { feature: 'taskComplexity', importance: 0.45, direction: 'positive' },
         { feature: 'contextLength', importance: 0.3, direction: 'negative' },
       ],
+      interceptFeatures: ['timePressure'],
     },
     rewardTrend: {
       current: 0.82,
@@ -144,6 +145,31 @@ describe('learning-metrics-format', () => {
       expect(output).not.toContain('Top Feature Importances:');
     });
 
+    // #4875: timePressure is constant, so its importance is an intercept weight.
+    it('labels timePressure as an intercept and explains it', () => {
+      const base = makeResult();
+      const output = formatAsciiOutput(
+        makeResult({
+          banditProgress: {
+            ...base.banditProgress,
+            topFeatures: [
+              { feature: 'timePressure', importance: 0.5, direction: 'positive' },
+              { feature: 'taskComplexity', importance: 0.3, direction: 'positive' },
+            ],
+          },
+        }),
+        makeOptions({ banditStats: true })
+      );
+      expect(output).toContain('timePressure (intercept)');
+      expect(output).toContain('#4875');
+    });
+
+    it('omits the intercept note when no intercept feature is shown', () => {
+      const output = formatAsciiOutput(makeResult(), makeOptions({ banditStats: true }));
+      expect(output).not.toContain('(intercept)');
+      expect(output).not.toContain('#4875');
+    });
+
     it('should show exploring status emoji', () => {
       const result = makeResult({
         summary: {
@@ -183,6 +209,7 @@ describe('learning-metrics-format', () => {
           explorationRatio: 0,
           armDistribution: [],
           topFeatures: [],
+          interceptFeatures: ['timePressure'],
         },
       });
       const output = formatAsciiOutput(result, makeOptions({ banditStats: true }));
@@ -197,6 +224,7 @@ describe('learning-metrics-format', () => {
           explorationRatio: 0.2,
           armDistribution: [],
           topFeatures: [],
+          interceptFeatures: ['timePressure'],
         },
       });
       const output = formatAsciiOutput(result, makeOptions({ banditStats: true }));
@@ -210,6 +238,7 @@ describe('learning-metrics-format', () => {
           explorationRatio: 0.2,
           armDistribution: [],
           topFeatures: [],
+          interceptFeatures: ['timePressure'],
         },
       });
       const output = formatAsciiOutput(result, makeOptions({ banditStats: true }));
@@ -223,6 +252,7 @@ describe('learning-metrics-format', () => {
           explorationRatio: 0.05,
           armDistribution: [],
           topFeatures: [],
+          interceptFeatures: ['timePressure'],
         },
       });
       const output = formatAsciiOutput(result, makeOptions({ banditStats: true }));

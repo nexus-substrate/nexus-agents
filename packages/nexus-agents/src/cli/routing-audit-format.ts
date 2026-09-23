@@ -9,6 +9,11 @@
 
 import { summarizeTaskProfile, formatPercentage } from '../core/index.js';
 import type { TopsisScore } from '../cli-adapters/topsis-types.js';
+import {
+  BANDIT_INTERCEPT_NOTE,
+  formatBanditFeatureLabel,
+  isBanditInterceptFeature,
+} from '../cli-adapters/linucb-math.js';
 import type {
   RoutingAuditOptions,
   RoutingAuditResult,
@@ -245,17 +250,23 @@ function formatFeatureImportanceSection(stats: BanditStats): string[] {
 
   lines.push(boxLine(color(' Feature Importance by Arm:', ANSI.bold), ANSI.yellow));
 
+  let showedIntercept = false;
   for (const arm of stats.detailedArms) {
     lines.push(boxLine(`   ${color(arm.cliName, ANSI.cyan)}:`, ANSI.yellow));
     const top3 = arm.featureImportance.slice(0, 3);
     for (const fi of top3) {
       const pct = formatPercentage(fi.importance, 1);
+      showedIntercept ||= isBanditInterceptFeature(fi.feature);
+      const label = formatBanditFeatureLabel(fi.feature);
       lines.push(
         color('│', ANSI.yellow) +
-          `     ${fi.feature.padEnd(18)} ${pct.padStart(6)}`.padEnd(BOX_WIDTH - 2) +
+          `     ${label.padEnd(18)} ${pct.padStart(6)}`.padEnd(BOX_WIDTH - 2) +
           color('│', ANSI.yellow)
       );
     }
+  }
+  if (showedIntercept) {
+    lines.push(boxLine(`   ${BANDIT_INTERCEPT_NOTE}`, ANSI.yellow));
   }
 
   lines.push(color('╰' + horizontalLine() + '╯', ANSI.yellow));

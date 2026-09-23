@@ -81,6 +81,18 @@ describe('gatherLearningMetrics', () => {
     expect(result.banditProgress.topFeatures).toEqual([]);
   });
 
+  // #4875: a sibling flag, so a --json consumer can tell the intercept weight
+  // from a signal without the existing `topFeatures` shape changing.
+  it('flags timePressure as an intercept feature for JSON consumers', () => {
+    const result = gatherLearningMetrics(undefined, undefined, undefined, {
+      period: 24,
+      format: 'json',
+      banditStats: false,
+      showTrends: true,
+    });
+    expect(result.banditProgress.interceptFeatures).toEqual(['timePressure']);
+  });
+
   it('computes correlation rate as 0 when no decisions', () => {
     const result = gatherLearningMetrics(undefined, undefined, undefined, {
       period: 24,

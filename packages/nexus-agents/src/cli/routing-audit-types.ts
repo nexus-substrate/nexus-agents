@@ -69,6 +69,12 @@ export interface ExplorationStats {
 export interface BanditStats {
   readonly detailedArms: readonly DetailedArmStats[];
   readonly exploration: ExplorationStats;
+  /**
+   * Features in `featureImportance` that are constant inputs, so their weight
+   * is the arm's intercept rather than a signal (#4875). A sibling flag, so
+   * `--json` consumers see the distinction without the importance shape changing.
+   */
+  readonly interceptFeatures: readonly string[];
 }
 
 /** Complete routing audit result. */
