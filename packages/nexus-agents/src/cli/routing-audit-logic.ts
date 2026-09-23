@@ -21,6 +21,7 @@ import { TopsisRouter } from '../cli-adapters/topsis-router.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
 import { DEFAULT_MODEL_PROFILES } from '../cli-adapters/topsis-types.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
+import { BANDIT_INTERCEPT_FEATURES } from '../cli-adapters/linucb-math.js';
 import { taskProfileToBanditContext } from '../cli-adapters/composite-router-helpers.js';
 import type { Task } from '../core/types/agent.js';
 import type {
@@ -176,6 +177,7 @@ export function computeBanditStats(bandit: LinUCBBandit): BanditStats {
   return {
     detailedArms,
     exploration: explorationStats,
+    interceptFeatures: BANDIT_INTERCEPT_FEATURES,
   };
 }
 

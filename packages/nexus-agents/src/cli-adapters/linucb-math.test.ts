@@ -17,7 +17,11 @@ import {
   matrixAdd,
   vectorAdd,
   vectorScale,
+  BANDIT_INTERCEPT_FEATURES,
+  BANDIT_INTERCEPT_NOTE,
+  formatBanditFeatureLabel,
 } from './linucb-math.js';
+import { LinUCBBandit } from './linucb-bandit.js';
 
 describe('linucb-math', () => {
   describe('createIdentityMatrix', () => {
@@ -184,5 +188,34 @@ describe('linucb-math', () => {
       expect(AInv[0]?.length).toBe(dim);
       expect(AInv.every((row) => row.every((val) => Number.isFinite(val)))).toBe(true);
     });
+  });
+});
+
+describe('intercept features (#4875)', () => {
+  it('labels timePressure as an intercept term, not a signal', () => {
+    expect(formatBanditFeatureLabel('timePressure')).toBe('timePressure (intercept)');
+  });
+
+  it('leaves measured features unlabelled', () => {
+    expect(formatBanditFeatureLabel('taskComplexity')).toBe('taskComplexity');
+    expect(formatBanditFeatureLabel('budgetUtilization')).toBe('budgetUtilization');
+  });
+
+  it('names a feature the bandit actually reports, so the label can fire', () => {
+    // The label keys on the string `getDetailedStats` emits. If either side is
+    // renamed, the label silently stops firing and the dashboard number reads
+    // as a signal again, so the two vocabularies must intersect.
+    const reported = new LinUCBBandit(['a'])
+      .getDetailedStats()[0]
+      ?.featureImportance.map((fi) => fi.feature);
+    expect(BANDIT_INTERCEPT_FEATURES.length).toBeGreaterThan(0);
+    for (const feature of BANDIT_INTERCEPT_FEATURES) {
+      expect(reported).toContain(feature);
+    }
+  });
+
+  it('the intercept note states the constant and the issue', () => {
+    expect(BANDIT_INTERCEPT_NOTE).toContain('0.5');
+    expect(BANDIT_INTERCEPT_NOTE).toContain('#4875');
   });
 });

@@ -307,6 +307,22 @@ describe('renderLearningProgress', () => {
     expect(result).toContain('task_complexity');
   });
 
+  // #4875: timePressure is constant, so its importance is an intercept weight.
+  it('labels timePressure as an intercept and explains it', () => {
+    const result = renderLearningProgress(
+      { ...progress, featureImportance: [{ feature: 'timePressure', importance: 0.7 }] },
+      { showFeatureImportance: true }
+    );
+    expect(result).toContain('timePressure (intercept)');
+    expect(result).toContain('#4875');
+  });
+
+  it('omits the intercept note when no intercept feature is shown', () => {
+    const result = renderLearningProgress(progress, { showFeatureImportance: true });
+    expect(result).not.toContain('(intercept)');
+    expect(result).not.toContain('#4875');
+  });
+
   it('hides feature importance when disabled', () => {
     const opts: DashboardRenderOptions = { showFeatureImportance: false };
     const result = renderLearningProgress(progress, opts);

@@ -167,6 +167,8 @@ export function toBanditContext(decision: MetaDecision): BanditContext {
     // at 0 also let the bandit tell shadow-selector origin from live-router
     // origin through the feature value alone: accidental signal, not none.
     budgetUtilization: NEUTRAL_BANDIT_FEATURE,
+    // Constant on every path by decision, so it is the per-arm intercept
+    // (`contextToFeatures` has no bias column; #4875 option C).
     timePressure: NEUTRAL_BANDIT_FEATURE,
   };
 }
