@@ -324,6 +324,35 @@ describe('security-scan input boundary', () => {
   });
 });
 
+// #6549: a workflow name with no category signal is a placeholder category.
+describe('graph workflow outcome category source', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('marks a security workflow as a detected category', async () => {
+    const appendOutcome = vi.spyOn(getOutcomeStore(), 'append');
+    const handler = registerAndGetHandler();
+
+    await handler({ workflow: 'security-scan', inputs: { code: 'const x = 1;' } });
+
+    expect(appendOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'security_review', categorySource: 'detected' })
+    );
+  });
+
+  it('marks a workflow with no category signal as defaulted', async () => {
+    const appendOutcome = vi.spyOn(getOutcomeStore(), 'append');
+    const handler = registerAndGetHandler();
+
+    await handler({ workflow: 'echo', inputs: { message: 'hi' } });
+
+    expect(appendOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ categorySource: 'defaulted' })
+    );
+  });
+});
+
 // ============================================================================
 // Async dispatch (#3732)
 // ============================================================================

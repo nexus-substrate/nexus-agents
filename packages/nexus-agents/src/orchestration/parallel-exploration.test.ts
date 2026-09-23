@@ -241,6 +241,29 @@ describe('executeParallelExploration', () => {
     expect(outcomes.map((o) => o.cli).sort()).toEqual(['claude', 'gemini']);
   });
 
+  // #6549: an undetected task passes the exploration gate on the fallback,
+  // so its rows must be marked as a defaulted category, not measured exploration.
+  it('marks rows for an undetected task as a defaulted category', async () => {
+    const adapters = buildAdapters(['gemini', createMockAdapter('gemini', 'G findings')]);
+
+    await executeParallelExploration('zqxj vbnm plok', adapters);
+
+    const outcomes = getOutcomeStore().query({});
+    expect(outcomes.length).toBe(1);
+    expect(outcomes[0]?.categorySource).toBe('defaulted');
+  });
+
+  it('marks rows for a detected exploration task as detected', async () => {
+    const adapters = buildAdapters(['gemini', createMockAdapter('gemini', 'G findings')]);
+
+    await executeParallelExploration('Explore the codebase and scan directories', adapters);
+
+    const outcomes = getOutcomeStore().query({});
+    expect(outcomes.length).toBe(1);
+    expect(outcomes[0]?.category).toBe('exploration');
+    expect(outcomes[0]?.categorySource).toBe('detected');
+  });
+
   it('includes model info in partition results', async () => {
     const adapters = buildAdapters(['gemini', createMockAdapter('gemini', 'findings')]);
 
