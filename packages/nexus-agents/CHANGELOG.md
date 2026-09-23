@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.86.3
+
+### Patch Changes
+
+- [#6537](https://github.com/nexus-substrate/nexus-agents/pull/6537) [`33e8897`](https://github.com/nexus-substrate/nexus-agents/commit/33e8897e2d99a55ca5166a6321a935b9bb6a4c9c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `recordWorkerOutcomes` in `orchestrate-dispatch` now normalizes `resolvedCli` by stripping any adapter `cli-` prefix and validating against `CliNameSchema`, falling back to `'unknown'` instead of casting unchecked adapter provider IDs like `'cli-codex'`.
+
+- [#6540](https://github.com/nexus-substrate/nexus-agents/pull/6540) [`bdc7720`](https://github.com/nexus-substrate/nexus-agents/commit/bdc77209e86713e475a8a6b169a573fadc8e9b00) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `PersistentOutcomeStore` now hydrates outcomes using `TaskOutcomeSchema.loose()`, preserving unknown forward-compatible fields across hydration and rewrite cycles rather than stripping them.
+
 ## 8.86.2
 
 ### Patch Changes
