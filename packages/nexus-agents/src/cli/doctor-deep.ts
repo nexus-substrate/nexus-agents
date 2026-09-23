@@ -11,6 +11,8 @@
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { TASK_CATEGORIES, type TaskCategory } from '../config/task-specialization-types.js';
 import { getAdaptiveBonus } from '../mcp/tools/weather-report.js';
+import { ApiArmIdSchema } from '../cli-adapters/types-core.js';
+import { allOf, verdictOver } from '../utils/verdict-aggregation.js';
 
 // ============================================================================
 // Types
@@ -43,9 +45,25 @@ export interface DataSufficiency {
   readonly coldStartThreshold: number;
 }
 
+/**
+ * One arm's success rate. An arm with no outcome rows is `unmeasured` — not a
+ * 0% rate, which would claim every attempt failed (#6557).
+ */
+export type ArmSuccessRate =
+  | { readonly status: 'measured'; readonly rate: number; readonly sampleCount: number }
+  | { readonly status: 'unmeasured' };
+
 export interface RoutingConvergence {
-  readonly avgSuccessRate: number;
-  readonly cliSuccessRates: ReadonlyMap<string, number>;
+  /**
+   * Mean success rate over MEASURED arms only. `'unmeasured'` when no arm has
+   * a row — the empty case, which is neither 0 nor NaN (#6557).
+   */
+  readonly avgSuccessRate: number | 'unmeasured';
+  /** Every routed arm (CLI slots and `api:*` arms), measured or not. */
+  readonly armSuccessRates: ReadonlyMap<string, ArmSuccessRate>;
+  /** Number of arms with at least one outcome row: the average's divisor. */
+  readonly measuredArmCount: number;
+  /** Every measured arm has cleared the cold-start threshold; false when none is measured. */
   readonly converged: boolean;
 }
 
@@ -55,6 +73,14 @@ export interface RoutingConvergence {
 
 const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
 const COLD_START_THRESHOLD = 3;
+
+/**
+ * CLI slots plus API arms: every `cli` an attributed outcome row can carry.
+ * Routed rows record the arm that ran (`api:anthropic`), not its slot, since
+ * #6554. `unknown` is deliberately absent: an unattributed row is no arm's
+ * measurement.
+ */
+const ROUTED_ARMS: readonly string[] = [...CLI_NAMES, ...ApiArmIdSchema.options];
 
 // ============================================================================
 // Diagnostics
@@ -107,33 +133,65 @@ function checkDataSufficiency(): DataSufficiency {
   return { cliStatus, missingCategories: missing, coldStartThreshold: COLD_START_THRESHOLD };
 }
 
-/** Check routing convergence from outcome success rates. */
-function checkConvergence(): RoutingConvergence {
-  const store = getOutcomeStore();
-  const rates = new Map<string, number>();
-  let totalRate = 0;
+/** Round a rate to three decimals for display-stable output. */
+function roundRate(rate: number): number {
+  return Math.round(rate * 1000) / 1000;
+}
 
-  for (const cli of CLI_NAMES) {
-    const outcomes = store.query({ cli });
-    if (outcomes.length > 0) {
-      const rate = outcomes.filter((o) => o.success).length / outcomes.length;
-      rates.set(cli, Math.round(rate * 1000) / 1000);
-      totalRate += rate;
-    } else {
-      rates.set(cli, 0);
+interface MeasuredArm {
+  readonly rate: number;
+  readonly sampleCount: number;
+}
+
+/** Tally rows per routed arm; rows carrying no routed arm (`unknown`) are skipped. */
+function tallyRowsByArm(): Map<string, { total: number; successes: number }> {
+  const byArm = new Map<string, { total: number; successes: number }>();
+  for (const o of getOutcomeStore().query()) {
+    if (!ROUTED_ARMS.includes(o.cli)) continue;
+    const tally = byArm.get(o.cli) ?? { total: 0, successes: 0 };
+    tally.total++;
+    if (o.success) tally.successes++;
+    byArm.set(o.cli, tally);
+  }
+  return byArm;
+}
+
+/**
+ * Check routing convergence from outcome success rates (#6557).
+ *
+ * Covers the arms rows actually carry, CLI and `api:*` alike. An arm with no
+ * rows is `unmeasured` and stays out of the average, whose divisor is the
+ * number of measured arms, never a fixed list.
+ */
+function checkConvergence(): RoutingConvergence {
+  const rowsByArm = tallyRowsByArm();
+  const measured: MeasuredArm[] = [];
+  const rates = new Map<string, ArmSuccessRate>();
+  for (const arm of ROUTED_ARMS) {
+    const tally = rowsByArm.get(arm);
+    if (tally === undefined) {
+      rates.set(arm, { status: 'unmeasured' });
+      continue;
     }
+    const rate = tally.successes / tally.total;
+    measured.push({ rate, sampleCount: tally.total });
+    rates.set(arm, { status: 'measured', rate: roundRate(rate), sampleCount: tally.total });
   }
 
-  const avgRate = totalRate / CLI_NAMES.length;
-  const allAboveThreshold = CLI_NAMES.every((cli) => {
-    const outcomes = store.query({ cli });
-    return outcomes.length >= COLD_START_THRESHOLD;
-  });
+  // Empty case named: with no measured arm there is no rate to average.
+  const avgSuccessRate = verdictOver<MeasuredArm, number | 'unmeasured'>(
+    measured,
+    (arms) => roundRate(arms.reduce((sum, a) => sum + a.rate, 0) / arms.length),
+    'unmeasured'
+  );
+  // Nothing measured has not converged on anything.
+  const converged = allOf(measured, (a) => a.sampleCount >= COLD_START_THRESHOLD, false);
 
   return {
-    avgSuccessRate: Math.round(avgRate * 1000) / 1000,
-    cliSuccessRates: rates,
-    converged: allAboveThreshold,
+    avgSuccessRate,
+    armSuccessRates: rates,
+    measuredArmCount: measured.length,
+    converged,
   };
 }
 
@@ -148,6 +206,25 @@ export function runDeepDiagnostics(): DeepDiagnostics {
     dataSufficiency: checkDataSufficiency(),
     routingConvergence: checkConvergence(),
   };
+}
+
+/** Render convergence rates, naming unmeasured arms rather than showing them as 0%. */
+function formatConvergenceRates(rc: RoutingConvergence): string[] {
+  const pct = (rate: number): string => `${(rate * 100).toFixed(1)}%`;
+  if (rc.avgSuccessRate === 'unmeasured') {
+    return ['  Avg success rate: unmeasured (no arm has outcome rows)'];
+  }
+  const noun = rc.measuredArmCount === 1 ? 'arm' : 'arms';
+  const lines = [
+    `  Avg success rate: ${pct(rc.avgSuccessRate)} over ${String(rc.measuredArmCount)} measured ${noun}`,
+  ];
+  const unmeasured: string[] = [];
+  for (const [arm, r] of rc.armSuccessRates) {
+    if (r.status === 'unmeasured') unmeasured.push(arm);
+    else lines.push(`    ${arm}: ${pct(r.rate)} (${String(r.sampleCount)} runs)`);
+  }
+  if (unmeasured.length > 0) lines.push(`    Unmeasured (no rows): ${unmeasured.join(', ')}`);
+  return lines;
 }
 
 /** Format deep diagnostics for CLI output. */
@@ -178,7 +255,7 @@ export function formatDeepDiagnostics(diag: DeepDiagnostics): string {
   // Routing Convergence
   const rc = diag.routingConvergence;
   lines.push('\nRouting Convergence:');
-  lines.push(`  Avg success rate: ${(rc.avgSuccessRate * 100).toFixed(1)}%`);
+  lines.push(...formatConvergenceRates(rc));
   lines.push(`  Converged: ${rc.converged ? 'yes' : 'no (still below cold-start threshold)'}`);
 
   return lines.join('\n');
