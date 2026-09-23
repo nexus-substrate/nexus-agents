@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 Reuse classified input for per-action policy evaluations to eliminate duplicate input-level audit events (#6310).
