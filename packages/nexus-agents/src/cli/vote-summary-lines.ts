@@ -21,7 +21,9 @@ import type {
 type OptionGateVerdictView = NonNullable<ExtendedVotingResult['optionGate']>;
 
 /** A CLI voting result plus the #6110 project disclosure `executeVoting` stamps on it. */
-export type VotingResultWithProject = VotingResult & { readonly project?: ResolvedVoterProject };
+export type VotingResultWithProject = VotingResult & {
+  readonly project?: ResolvedVoterProject | undefined;
+};
 
 /**
  * The one-line rendering of the project the panel judged and how the name was

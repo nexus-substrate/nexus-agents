@@ -341,6 +341,9 @@ function validateGitHubIssue(issueNumber: number): boolean {
   return safeExecSandboxed(command, { context: 'gh' }) !== null;
 }
 
+/** What the GitHub comment renders: the project stamp plus the option gate's tally (#6587). */
+type CommentVoteResult = VotingResultWithProject & Pick<CliVoteResult, 'optionGate'>;
+
 /**
  * Maps a decision to the markdown result label. `no_quorum` (#4135) renders
  * distinctly from a rejection — a quorum void is recoverable ("re-run the missing
@@ -363,11 +366,16 @@ function decisionResultLabel(decision: VoteDecisionStatus): { emoji: string; tex
  * `contrarianCheck` (#6111) is the quick-mode contrarian check. A caller that
  * formats a result without having run the vote never ran the check either, so
  * omission renders as `skipped` — the named empty case, not a default health.
+ *
+ * `declaredOptions` (#6587) renders the same `Options:` block as the terminal
+ * summary, from the same `optionSummaryLines` over `result.optionGate`. No
+ * options declared ⇒ no block, exactly as in the summary.
  */
 export function formatVoteComment(
-  result: VotingResultWithProject,
+  result: CommentVoteResult,
   decision?: VoteDecisionStatus,
-  contrarianCheck: ContrarianCheckStatus = 'skipped'
+  contrarianCheck: ContrarianCheckStatus = 'skipped',
+  declaredOptions?: readonly string[]
 ): string {
   const now = new Date(getTimeProvider().now()).toLocaleDateString('en-US', {
     timeZone: 'America/New_York',
@@ -379,6 +387,10 @@ export function formatVoteComment(
   const effectiveDecision = decision ?? mapOutcomeToDecision(result.result.outcome);
   const { emoji: outcomeEmoji, text: outcomeText } = decisionResultLabel(effectiveDecision);
   const voteRows = result.votes.map(commentVoteRow).join('\n');
+  const optionLines = optionSummaryLines(declaredOptions, result.optionGate);
+  // A fenced block keeps the summary's indentation; markdown would fold the lines.
+  const optionBlock =
+    optionLines.length === 0 ? '' : `\n\n\`\`\`text\n${optionLines.join('\n')}\n\`\`\``;
 
   return `## Consensus Vote Result
 
@@ -395,7 +407,7 @@ ${voteRows}
 
 **Summary:** ${tallySummaryLine(result)}
 **${contrarianCheckLine(contrarianCheck)}**
-**${modelsLine(result.votes)}**
+**${modelsLine(result.votes)}**${optionBlock}
 
 ---
 *Vote conducted per CLAUDE.md Consensus Voting Protocol*`;
@@ -414,11 +426,12 @@ ${voteRows}
  */
 export function recordVoteToGitHub(
   issueNumber: number,
-  result: VotingResultWithProject,
+  result: CommentVoteResult,
   decision?: VoteDecisionStatus,
-  contrarianCheck?: ContrarianCheckStatus
+  contrarianCheck?: ContrarianCheckStatus,
+  declaredOptions?: readonly string[]
 ): void {
-  const comment = formatVoteComment(result, decision, contrarianCheck);
+  const comment = formatVoteComment(result, decision, contrarianCheck, declaredOptions);
 
   const output = safeExecSandboxed(`gh issue comment ${String(issueNumber)} --body-file -`, {
     context: 'gh',
@@ -524,7 +537,7 @@ function validateIssueIfNeeded(issueNumber: number | undefined): boolean {
  */
 function handleRecording(
   options: VoteCommandOptions,
-  result: VotingResult,
+  result: CommentVoteResult,
   decision: VoteDecisionStatus,
   contrarianCheck: ContrarianCheckStatus
 ): void {
@@ -535,7 +548,7 @@ function handleRecording(
       `${colors.yellow}[DRY RUN]${colors.reset} Would record to issue #${String(options.issueNumber)}\n`
     );
   } else {
-    recordVoteToGitHub(options.issueNumber, result, decision, contrarianCheck);
+    recordVoteToGitHub(options.issueNumber, result, decision, contrarianCheck, options.options);
   }
 }
 

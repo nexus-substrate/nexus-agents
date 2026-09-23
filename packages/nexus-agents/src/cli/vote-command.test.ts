@@ -1469,3 +1469,85 @@ describe('voteCommand — declared-option block (#6585)', () => {
     expect(stdout.join('')).toContain('Workspace:');
   });
 });
+
+describe('voteCommand --record — declared-option block in the GitHub comment (#6587)', () => {
+  const GATE = {
+    tally: [
+      { option: 'Alpha', count: 3 },
+      { option: 'Beta', count: 1 },
+    ],
+    leadingOption: 'Alpha',
+    leadingCount: 3,
+    approverCount: 4,
+    selectedCount: 4,
+    unattributedApprovals: 0,
+    leadingShare: 0.75,
+    threshold: 'majority',
+    approved: true,
+  };
+
+  function extendedResult(optionGate?: typeof GATE): Record<string, unknown> {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult({ outcome: 'approved' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision: 'approved',
+      ...(optionGate === undefined ? {} : { optionGate }),
+    };
+  }
+
+  function recordedComment(): string | undefined {
+    return safeExecSandboxedMock.mock.calls
+      .map((call) => (call[1] as { stdin?: string } | undefined)?.stdin)
+      .filter((body): body is string => typeof body === 'string')
+      .find((body) => body.includes('## Consensus Vote Result'));
+  }
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    safeExecSandboxedMock.mockReset();
+    safeExecSandboxedMock.mockReturnValue('ok');
+    recordAuthenticVoteMock.mockReset();
+    recordAuthenticVoteMock.mockReturnValue(
+      persistedOutcome() as unknown as {
+        persisted: boolean;
+        record: { id: string; sequence: number };
+      }
+    );
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('records each declared option count, the winner and the coverage', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult(GATE));
+    await voteCommand({ proposal: 'p', options: ['Alpha', 'Beta', 'Gamma'], issueNumber: 42 });
+    const comment = recordedComment();
+    expect(comment).toContain('Options:');
+    expect(comment).toContain('  Alpha: 3');
+    expect(comment).toContain('  Beta: 1');
+    // A declared option nobody chose is a measured zero in the durable record too.
+    expect(comment).toContain('  Gamma: 0');
+    expect(comment).toContain(
+      '  Winner: "Alpha" (3 of 4 approvers; cleared the majority option bar)'
+    );
+    expect(comment).toContain(
+      '  Coverage: 4 of 4 approvers named a declared option (0 unattributed)'
+    );
+  });
+
+  it('records no Options block when no options were declared', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult());
+    await voteCommand({ proposal: 'p', issueNumber: 42 });
+    const comment = recordedComment();
+    // Positive control: a comment was recorded, so the absence is not vacuous.
+    expect(comment).toContain('## Consensus Vote Result');
+    expect(comment).not.toContain('Options:');
+  });
+});
