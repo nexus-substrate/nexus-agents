@@ -165,3 +165,46 @@ describe('probe failure reaches the caller (#5059)', () => {
     ).resolves.toEqual([]);
   });
 });
+
+describe('parseCatalog listing metadata (#6625)', () => {
+  it('keeps created, context_length and per-token pricing as per-1M USD', () => {
+    const models = parseCatalog(
+      JSON.stringify({
+        data: [
+          {
+            id: 'vendor/model-d',
+            created: 1_790_000_000,
+            context_length: 400_000,
+            pricing: { prompt: '0.000003', completion: '0.000015' },
+          },
+        ],
+      })
+    );
+    expect(models).toEqual([
+      {
+        id: 'vendor/model-d',
+        createdAt: 1_790_000_000,
+        contextLength: 400_000,
+        pricing: { inputPer1M: 3, outputPer1M: 15 },
+      },
+    ]);
+  });
+
+  it('keeps the record and drops only a malformed metadata field', () => {
+    const models = parseCatalog(
+      JSON.stringify({
+        data: [{ id: 'vendor/model-e', created: 'yesterday', pricing: { prompt: 'n/a' } }],
+      })
+    );
+    expect(models).toEqual([{ id: 'vendor/model-e' }]);
+  });
+
+  it('exposes the metadata through the cache source', async () => {
+    const source = createOpenRouterModelsSource({
+      fetchImpl: () =>
+        Promise.resolve(jsonResponse({ data: [{ id: 'vendor/model-f', created: 1_700_000_000 }] })),
+    });
+    const models = await source.listModels();
+    expect(models[0]?.createdAt).toBe(1_700_000_000);
+  });
+});

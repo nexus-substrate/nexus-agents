@@ -8,7 +8,7 @@
 
 ---
 
-## CLI Commands (51)
+## CLI Commands (52)
 
 Binary: `nexus-agents`
 
@@ -38,6 +38,7 @@ Binary: `nexus-agents`
 | `memory-eval` | sync | `handleMemoryEvalCommand` | `src/cli-commands-handlers.ts` |
 | `migrate` | async | `handleMigrateCommand` | `src/cli/migrate-command.ts` |
 | `mode` | sync | `handleModeCommand` | `src/cli/mode-command.ts` |
+| `model-drift` | async | `handleModelDriftCommand` | `src/cli/model-drift-command.ts` |
 | `orchestrate` | async | `handleOrchestrateCommand` | `src/cli-commands-handlers.ts` |
 | `registry` | async | `handleRegistryCommand` | `src/cli-commands-handlers.ts` |
 | `release-announce` | async | `handleReleaseAnnounceCommand` | `src/cli-release-handlers.ts` |

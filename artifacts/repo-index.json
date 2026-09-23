@@ -150,6 +150,12 @@
         "file": "src/cli/mode-command.ts"
       },
       {
+        "name": "model-drift",
+        "type": "async",
+        "handler": "handleModelDriftCommand",
+        "file": "src/cli/model-drift-command.ts"
+      },
+      {
         "name": "orchestrate",
         "type": "async",
         "handler": "handleOrchestrateCommand",

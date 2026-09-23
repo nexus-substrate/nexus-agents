@@ -160,6 +160,8 @@ interface ParsedValues {
   // Registry command options (#2179)
   json: boolean;
   source?: string;
+  // model-drift command option (#6625)
+  'file-issue': boolean;
   // init --portable command options (#2305 / #2308 / #2311)
   portable: boolean;
   gitignore: boolean;
@@ -322,6 +324,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     deep: values.deep,
     live: values.live,
     json: values.json,
+    fileIssue: values['file-issue'],
     // remediation-review command options (#3765)
     sound: values.sound,
     unsound: values.unsound,

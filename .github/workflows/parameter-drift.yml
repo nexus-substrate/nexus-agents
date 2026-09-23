@@ -115,3 +115,103 @@ jobs:
                 'Reconcile in `packages/nexus-agents/src/config/model-parameter-support.ts` and `src/config/in-tree-data.ts`.',
               ].join('\n'),
             });
+
+  # #6625 layer 3: new and retired models. Same weekly cadence and the same
+  # OpenRouter catalog as the parameter check above, so it lives here rather
+  # than in a new scheduled workflow. REPORT-ONLY by default: the JSON report
+  # is uploaded as an artifact, and nothing is filed unless the repo variable
+  # MODEL_DRIFT_FILE_ISSUES is 'true'. It never edits the registry or routing;
+  # promotion of a new model is owner-approved.
+  model-drift:
+    name: Report new and retired models
+    runs-on: ubuntu-latest
+    # The build dominates; the report itself is a handful of list calls.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      verdict: ${{ steps.report.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Build nexus-agents
+        run: pnpm build
+
+      - name: Run the model-drift report
+        id: report
+        working-directory: packages/nexus-agents
+        # An unset secret arrives empty, and the command reports that source as
+        # `unmeasured` with the reason. OpenRouter needs no key.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+        run: |
+          REPORT="$GITHUB_WORKSPACE/model-drift-report.json"
+          # The command exits non-zero only for an unmeasured report, so the
+          # exit code is captured, not fatal. The verdict comes from the JSON;
+          # a missing or unreadable report is unmeasured, never "no drift".
+          set +e
+          node dist/cli.js model-drift --json > "$REPORT"
+          CLI_EXIT=$?
+          set -e
+          VERDICT=$(jq -r '.verdict // empty' "$REPORT" 2>/dev/null)
+          VERDICT="${VERDICT:-unmeasured}"
+          if [ "$CLI_EXIT" -ne 0 ] && [ "$VERDICT" != "unmeasured" ]; then
+            echo "::warning::model-drift exited $CLI_EXIT with verdict '$VERDICT'; treating as unmeasured"
+            VERDICT=unmeasured
+          fi
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Model drift: \`$VERDICT\`"
+            echo ""
+            jq -r '.coverage[]? | "- \(.source): \(.status) \(.reason // "\(.modelCount) models")"' "$REPORT" 2>/dev/null || true
+            echo ""
+            echo "- New models: $(jq -r '.newModels | length' "$REPORT" 2>/dev/null || echo unknown)"
+            echo "- Possibly retired: $(jq -r '.possiblyRetired | length' "$REPORT" 2>/dev/null || echo unknown)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: model-drift-report
+          path: model-drift-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Red, and it says UNMEASURED, so it is read neither as drift nor as clean.
+      - name: Fail loudly when no source was measured
+        if: steps.report.outputs.verdict == 'unmeasured'
+        run: |
+          echo "::error::Model drift UNMEASURED — no discovery source could be asked (no credentials, or every probe failed). This is not 'up to date'."
+          exit 1
+
+  # Opt-in filing. It re-runs the command with --file-issue WITHOUT the vendor
+  # API secrets (Rule of Two: this job reads untrusted catalog data and can
+  # write issues, so it holds no model credentials); OpenRouter needs none.
+  # The command deduplicates by model id and files at most 5 issues per run.
+  model-drift-file-issues:
+    name: File new-model issues (opt-in)
+    needs: model-drift
+    if: vars.MODEL_DRIFT_FILE_ISSUES == 'true' && needs.model-drift.outputs.verdict == 'drift'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Build nexus-agents
+        run: pnpm build
+
+      - name: File issues for new models
+        working-directory: packages/nexus-agents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node dist/cli.js model-drift --file-issue

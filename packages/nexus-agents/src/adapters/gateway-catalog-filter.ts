@@ -148,9 +148,17 @@ const NON_CHAT_ID_PATTERNS: readonly RegExp[] = [
   /(?:^|[-_/.:])(?:tts|audio|image|speech|realtime)(?:[-_/.:]|$)/,
 ];
 
-function verdictFromId(id: string): ChatVerdict {
+/**
+ * Whether an id has a non-chat shape. Exported for the model-drift report
+ * (#6625), whose vendor list endpoints and catalogs are not pre-filtered.
+ */
+export function isNonChatModelId(id: string): boolean {
   const lower = id.toLowerCase();
-  return NON_CHAT_ID_PATTERNS.some((p) => p.test(lower)) ? 'non-chat' : 'chat';
+  return NON_CHAT_ID_PATTERNS.some((p) => p.test(lower));
+}
+
+function verdictFromId(id: string): ChatVerdict {
+  return isNonChatModelId(id) ? 'non-chat' : 'chat';
 }
 
 // ============================================================================

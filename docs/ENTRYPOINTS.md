@@ -101,6 +101,7 @@ prints flags and examples for any of them.
 | Command              | Description                                                                                                                                                                                                       |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `login`              | [deprecated alias] Soft alias of "auth status"; renamed in #2449                                                                                                                                                  |
+| `model-drift`        | Report models the registry does not know and registry models no source lists (#6625). --json; --file-issue opt-in.                                                                                                |
 | `auto-remediate`     | Run one auto-remediation cycle (#3540). OFF unless NEXUS_AUTO_REMEDIATE=audit\|enforce; never auto-merges.                                                                                                        |
 | `remediation-review` | Soundness-review audit-mode selections (#3765): list pending · mark --evaluator --sound\|--unsound · sign-off --owner · readiness (enforce-readiness verdict + harmful-rate + soak-store staleness alarm, #4279). |
 | `demo`               | API-free exploration mode (marketing/demo flow)                                                                                                                                                                   |
@@ -131,7 +132,7 @@ prints flags and examples for any of them.
 | `scenario`         | Execute a named scenario from the testing framework   |
 | `warm-up`          | Warm the model/adapter caches before a run            |
 
-_Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 52 commands._
+_Auto-generated from `COMMAND_CATALOG` (`packages/nexus-agents/src/cli-command-catalog.ts`) by `scripts/inject-governance.ts`. 53 commands._
 
 <!-- GOVERNANCE:ENTRYPOINTS_CLI:END -->
 

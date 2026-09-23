@@ -217,6 +217,12 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     audience: 'advanced',
   },
   {
+    command: 'model-drift',
+    description:
+      'Report models the registry does not know and registry models no source lists (#6625). --json; --file-issue opt-in.',
+    audience: 'maintainer',
+  },
+  {
     command: 'auto-remediate',
     description:
       'Run one auto-remediation cycle (#3540). OFF unless NEXUS_AUTO_REMEDIATE=audit|enforce; never auto-merges.',

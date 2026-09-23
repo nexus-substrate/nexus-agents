@@ -137,6 +137,7 @@ import { handleUsageCommand } from './cli/usage-command.js';
 // Issue #2444: nexus-agents improvement-review — observability-driven improvement loop CLI surface
 import { handleImprovementReviewCommand } from './cli/improvement-review-command.js';
 import { handleAutoRemediateCommand } from './cli/auto-remediate-command.js';
+import { handleModelDriftCommand } from './cli/model-drift-command.js';
 // #3765: nexus-agents remediation-review — human soundness-review surface (enforce gate evidence)
 import { handleRemediationReviewCommand } from './cli/remediation-review-command.js';
 // Issue #2879 / epic #2872: nexus-agents migrate — relocate homedir state per-repo
@@ -309,6 +310,8 @@ const ASYNC_COMMAND_HANDLERS: Record<
   'improvement-review': handleImprovementReviewCommand,
   // #3540 phase 3 / #3671: run one auto-remediation cycle (mode from NEXUS_AUTO_REMEDIATE).
   'auto-remediate': handleAutoRemediateCommand,
+  // #6625: model-drift report (detect and propose; never edits the registry).
+  'model-drift': handleModelDriftCommand,
   // #3765: human soundness-review surface — produces the enforce-gate readiness evidence.
   'remediation-review': handleRemediationReviewCommand,
   // Issue #2879 / epic #2872: migrate command (relocate homedir state per-repo)
