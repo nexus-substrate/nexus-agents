@@ -2,6 +2,7 @@
  * Tests for BudgetGuard — per-run token-budget enforcement (#3395).
  */
 import { describe, it, expect, afterEach } from 'vitest';
+import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../core/index.js';
 
 import {
   BudgetGuard,
@@ -29,6 +30,27 @@ describe('BudgetGuard (#3395)', () => {
 
     guard.record(15); // 95% >= 90% → opens
     expect(guard.isExhausted()).toBe(true);
+  });
+
+  // The breaker it wraps half-opens after `cooldownMs` (default 5 s). A model
+  // call routinely takes longer than that, so without a latch the guard
+  // reported "not exhausted" again by the time the NEXT call was checked —
+  // and a half-open breaker never re-opens on recordUsage, so the cap stopped
+  // at most one call (#4754).
+  it('stays exhausted after the breaker cooldown elapses (hard stop, not a pause)', () => {
+    const clock = new FixedTimeProvider(1_000_000);
+    setTimeProvider(clock);
+    try {
+      const guard = createBudgetGuard({ maxTokens: 100 });
+      guard.record(100);
+      expect(guard.isExhausted()).toBe(true);
+      clock.advance(60_000);
+      expect(guard.isExhausted()).toBe(true);
+      guard.record(10);
+      expect(guard.isExhausted()).toBe(true);
+    } finally {
+      resetTimeProvider();
+    }
   });
 
   it('stays closed while under the threshold', () => {

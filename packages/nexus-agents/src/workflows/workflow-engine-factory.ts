@@ -51,6 +51,7 @@ import {
 } from './execution-planner.js';
 import { getBuiltInTemplates } from './template-loader.js';
 import { executeParallel, type ExecutionContext as ParallelContext } from './parallel-executor.js';
+import { gateStepExecutor } from './workflow-budget.js';
 import type { IWorkflowEngine } from '../core/index.js';
 import { ExpertFactory } from '../agents/index.js';
 import { createStepExecutor, ExpertFactoryAdapter, type IExpertFactory } from './step-executor.js';
@@ -432,7 +433,14 @@ function createExecutePhase(
       parallelOptions.timeoutMs = executionOptions.timeoutMs;
     }
 
-    return executeParallel(coreSteps, parallelContext, stepExecutor, parallelOptions);
+    // #4754: check the run's token ceiling before each step is DISPATCHED, not
+    // only between phases — a step queued behind maxConcurrency is not started
+    // once an earlier step overspent. Steps already running are not halted.
+    const executor =
+      executionOptions.budget !== undefined
+        ? gateStepExecutor(stepExecutor, executionOptions.budget)
+        : stepExecutor;
+    return executeParallel(coreSteps, parallelContext, executor, parallelOptions);
   };
 }
 

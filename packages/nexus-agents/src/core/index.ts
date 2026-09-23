@@ -308,6 +308,7 @@ export type {
   WorkflowDefinition,
   WorkflowStep,
   WorkflowResult,
+  WorkflowBudgetOutcome,
   WorkflowTemplate,
   InputDefinition,
   StepResult,

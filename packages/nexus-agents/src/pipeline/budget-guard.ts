@@ -30,6 +30,13 @@ export interface AgentBudgetConfig {
 /** Per-run token-budget guard. A no-budget guard never reports exhaustion. */
 export class BudgetGuard {
   private readonly breaker: BudgetCircuitBreaker | undefined;
+  /**
+   * Latched once the breaker has opened (#4754). The breaker half-opens after
+   * its `cooldownMs` (default 5 s) and a half-open breaker never re-opens on
+   * `recordUsage`, so reading its state live let a run resume spending after
+   * one slow call. A spend cap is a hard stop for the rest of the run.
+   */
+  private exhausted = false;
 
   constructor(breaker?: BudgetCircuitBreaker) {
     this.breaker = breaker;
@@ -39,11 +46,12 @@ export class BudgetGuard {
   record(tokensUsed: number | undefined): void {
     if (this.breaker === undefined || tokensUsed === undefined || tokensUsed <= 0) return;
     this.breaker.recordUsage(tokensUsed);
+    if (this.breaker.getState() === 'open') this.exhausted = true;
   }
 
-  /** True once the budget circuit has opened — callers should stop spending. */
+  /** True once the budget circuit has opened — stays true for the rest of the run. */
   isExhausted(): boolean {
-    return this.breaker?.getState() === 'open';
+    return this.exhausted;
   }
 
   /** Whether a budget is actually being enforced (vs the no-op default). */

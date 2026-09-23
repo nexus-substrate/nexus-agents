@@ -77,6 +77,23 @@ export interface ExecutionOptions {
   maxConcurrency: number;
   failFast: boolean;
   timeoutMs?: number;
+  /**
+   * The run's token ceiling (#4754), shared by every phase of one execution.
+   * `executePhase` gates each step on it before dispatch. Absent → no cap.
+   */
+  budget?: StepBudgetGate;
+}
+
+/**
+ * Per-step dispatch gate for a run's token ceiling (#4754), implemented by
+ * `WorkflowBudgetTracker`. A narrow interface so the engine's phase options
+ * do not expose the tracker's internals.
+ */
+export interface StepBudgetGate {
+  /** `false` → do not dispatch this step; the ceiling is already reached. */
+  admit(stepId: string): boolean;
+  /** Record a settled step's token usage (idempotent per step id). */
+  record(result: StepResult): void;
 }
 
 // ============================================================================

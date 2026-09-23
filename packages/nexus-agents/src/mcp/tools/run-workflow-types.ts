@@ -11,7 +11,7 @@ import {
   DEPRECATED_MODE_ALIAS_INPUT,
   refineDispatchModeAgreement,
 } from './async-dispatch-input.js';
-import type { IWorkflowEngine } from '../../core/index.js';
+import type { IWorkflowEngine, WorkflowBudgetOutcome } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import type { BaseMcpToolDeps } from './tool-result.js';
 
@@ -43,6 +43,20 @@ export const RunWorkflowInputSchema = z
       .max(1_800_000)
       .optional()
       .describe('Per-phase execution timeout in ms (overrides workflow.timeout)'),
+    /**
+     * Token ceiling for the whole run (#4754). Honoured only when
+     * `NEXUS_BUDGET_ENFORCE` is on — the same gate as run_pipeline; with the
+     * flag on and this omitted, an estimate-relative ceiling applies. With the
+     * flag off the run is uncapped and the result says `not_enforced`.
+     */
+    maxTokens: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Token ceiling for the whole run; enforced only when NEXUS_BUDGET_ENFORCE is on. Checked before each phase and before each step is dispatched; steps already running are not halted.'
+      ),
     /**
      * Async-mode dispatch (#3044, Stage 3 of epic #2631). Default `sync` —
      * backward-compat invariant; existing callers see no behavior change.
@@ -99,7 +113,18 @@ export interface WorkflowToolResult {
   stepResults: StepResultSummary[];
   output: unknown;
   durationMs: number;
+  /** Token-budget report (#4754). Absent when no ceiling was requested or resolved. */
+  budget?: WorkflowBudgetReport;
 }
+
+/**
+ * What run_workflow tells the caller about the run's token ceiling (#4754):
+ * the engine's measured outcome, or — when a caller asked for `maxTokens` but
+ * `NEXUS_BUDGET_ENFORCE` is off — `not_enforced`, reported rather than
+ * silently ignored.
+ */
+export type WorkflowBudgetReport =
+  WorkflowBudgetOutcome | { status: 'not_enforced'; requestedMaxTokens: number; reason: string };
 
 /**
  * Simplified step result for tool output.

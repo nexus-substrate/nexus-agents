@@ -484,7 +484,7 @@ Sending both `dispatch` and `mode` with different values is a validation error n
 
 ### Operator diagnostic
 
-`toSdkCallbackWithBudgetCheck` (`packages/nexus-agents/src/mcp/middleware/tool-wrapper.ts`) emits a WARN at invocation time when a tool's configured budget exceeds the SDK default AND the request arrived without `_meta.progressToken`. The WARN names the tool, the configured budget, and the SDK default — operators can grep server logs to confirm whether a "tool timed out" failure is actually a client-config mismatch rather than a real CLI failure. (Source: audit on #2619 / #2631.)
+`toSdkCallbackWithTimeoutCheck` (`packages/nexus-agents/src/mcp/middleware/tool-wrapper.ts`) emits a WARN at invocation time when a tool's configured budget exceeds the SDK default AND the request arrived without `_meta.progressToken`. The WARN names the tool, the configured budget, and the SDK default — operators can grep server logs to confirm whether a "tool timed out" failure is actually a client-config mismatch rather than a real CLI failure. (Source: audit on #2619 / #2631.)
 
 ```
 [warn] MCP tool budget exceeds client default and no progressToken received — request likely to be killed by client before server-side deadline

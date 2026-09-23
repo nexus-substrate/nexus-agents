@@ -21,7 +21,7 @@ import {
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import {
   wrapToolWithTimeout,
-  toSdkCallbackWithBudgetCheck,
+  toSdkCallbackWithTimeoutCheck,
   getToolTimeout,
 } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -32,6 +32,7 @@ import type {
   RunWorkflowDeps,
 } from './run-workflow-types.js';
 import { RunWorkflowInputSchema } from './run-workflow-types.js';
+import { resolveWorkflowBudget, withBudgetNotice } from './run-workflow-budget.js';
 import {
   type ToolResponse,
   loadWorkflow,
@@ -120,10 +121,11 @@ function resolveExecutionEngineOrError(
  * @param inputs - Workflow inputs
  * @returns Tool result
  */
-/** Per-run engine overrides: the phase timeout (#3017) and the heartbeat (#6162). */
+/** Per-run engine overrides: phase timeout (#3017), heartbeat (#6162), token ceiling (#4754). */
 interface EngineRunOptions {
   readonly phaseTimeoutMs?: number;
   readonly onPhaseComplete?: () => void;
+  readonly budget?: { readonly maxTokens: number };
 }
 
 /**
@@ -141,6 +143,7 @@ function runEngine(
   const engineOptions = {
     ...(options?.phaseTimeoutMs !== undefined ? { phaseTimeoutMs: options.phaseTimeoutMs } : {}),
     ...(options?.onPhaseComplete !== undefined ? { onPhaseComplete: options.onPhaseComplete } : {}),
+    ...(options?.budget !== undefined ? { budget: options.budget } : {}),
   };
   return Object.keys(engineOptions).length > 0
     ? engine.execute(workflow, inputs, engineOptions)
@@ -200,6 +203,7 @@ async function executeWorkflow(
       stepResults,
       output: workflowResult.output,
       durationMs: workflowResult.totalDurationMs,
+      ...(workflowResult.budget !== undefined ? { budget: workflowResult.budget } : {}),
     },
   };
 }
@@ -274,9 +278,11 @@ function buildFailureEnvelope(
   const ctx = error.context;
   const executionId = typeof ctx?.['executionId'] === 'string' ? ctx['executionId'] : undefined;
   const durationMs = typeof ctx?.['durationMs'] === 'number' ? ctx['durationMs'] : undefined;
+  const budget = ctx?.['budget'];
   return createFailedResult(workflowName, error.message, {
     ...(executionId !== undefined ? { executionId } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(budget !== undefined ? { budget } : {}),
   });
 }
 
@@ -293,7 +299,7 @@ async function handleRunWorkflow(
   /** Async-job heartbeat (#6162), fired per settled phase. Absent in sync mode. */
   onPhaseComplete?: () => void
 ): Promise<ToolResponse> {
-  const { template, inputs, dryRun, timeoutMs } = args;
+  const { template, inputs, dryRun, timeoutMs, maxTokens } = args;
   deps.logger?.debug('run_workflow called', {
     template,
     dryRun,
@@ -320,9 +326,11 @@ async function handleRunWorkflow(
   // #3017: thread the caller-supplied timeoutMs (if any) through to the
   // workflow engine. Wins over both `workflow.timeout` and the engine's
   // `defaultTimeoutMs` for known-long templates.
+  const { budget, notice } = resolveWorkflowBudget(deps, workflow, inputs, maxTokens);
   const executeResult = await executeWorkflow(deps, workflow, inputs, {
     ...(timeoutMs !== undefined ? { phaseTimeoutMs: timeoutMs } : {}),
     ...(onPhaseComplete !== undefined ? { onPhaseComplete } : {}),
+    ...(budget !== undefined ? { budget } : {}),
   });
   if (!executeResult.ok) {
     recordWorkflowError(template, executeResult.error.message);
@@ -330,7 +338,7 @@ async function handleRunWorkflow(
   }
 
   recordWorkflowOutcome(template, executeResult.value);
-  return successResponse(executeResult.value);
+  return successResponse(withBudgetNotice(executeResult.value, notice));
 }
 
 /**
@@ -505,12 +513,12 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     'run_workflow',
     {
       description:
-        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs; `mode` is a deprecated alias) — returns a jobId immediately; poll get_job_result.",
+        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs; `mode` is a deprecated alias) — returns a jobId immediately; poll get_job_result. With NEXUS_BUDGET_ENFORCE on, total token spend is capped (`maxTokens`, else an estimate): checked before each phase and before each step is dispatched; steps already running when the ceiling is crossed are not halted, so spend can overshoot by what those in-flight steps consume. `budget.status` is `unmeasured` when any step reported no usage.",
       inputSchema: toolInputSchema,
 
       annotations: getToolAnnotations('run_workflow'),
     },
-    toSdkCallbackWithBudgetCheck(wrappedHandler, 'run_workflow', timeoutMs, logger)
+    toSdkCallbackWithTimeoutCheck(wrappedHandler, 'run_workflow', timeoutMs, logger)
   );
   logger.info('Registered run_workflow tool with secure handler and timeout protection');
 }

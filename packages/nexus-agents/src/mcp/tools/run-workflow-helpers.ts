@@ -397,7 +397,7 @@ export function errorResponse(message: string): ToolResponse {
 export function createFailedResult(
   workflowName: string,
   errorMessage: string,
-  opts: { executionId?: string; durationMs?: number } = {}
+  opts: { executionId?: string; durationMs?: number; budget?: unknown } = {}
 ): ToolResponse {
   const result = {
     executionId: opts.executionId ?? 'unknown',
@@ -407,6 +407,8 @@ export function createFailedResult(
     output: null,
     durationMs: opts.durationMs ?? 0,
     error: errorMessage,
+    // #4754: a budget halt names spent vs ceiling here, not only in the message.
+    ...(opts.budget !== undefined ? { budget: opts.budget } : {}),
   };
   return toolStructuredError({
     errorCategory: 'internal',

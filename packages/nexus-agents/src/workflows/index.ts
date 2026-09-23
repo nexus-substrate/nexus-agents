@@ -275,13 +275,7 @@ export {
   // Config schema
   BudgetCircuitBreakerConfigSchema,
   DEFAULT_BUDGET_CIRCUIT_CONFIG,
-  // Budget enforcement functions
-  applyBudgetEnforcement,
-  enforceBudgetForStep,
-  createWorkflowCircuitBreaker,
-  resolveStepBudget,
-  copyBudgetEvents,
-} from './budget-enforcement.js';
+} from './budget-circuit-breaker.js';
 
 export type {
   // Circuit breaker types
@@ -294,11 +288,7 @@ export type {
   BudgetUsageSnapshot,
   IBudgetCircuitBreaker,
   StepBudgetAllocation,
-  // Budget enforcement types
-  BudgetEnforcementEvent,
-  BudgetEnforcementConfig,
-  EnforceBudgetOptions,
-} from './budget-enforcement.js';
+} from './budget-circuit-breaker.js';
 
 // ============================================================================
 // Workflow Engine Factory (Issue #430)

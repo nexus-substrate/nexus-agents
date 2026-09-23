@@ -334,7 +334,7 @@ const BUILD_META_KEY = 'nexus-agents/build';
  *
  * Applied inside `runWithContexts` rather than in the result factories or in
  * either SDK adapter. There are TWO adapters — `toSdkCallback` and
- * `toSdkCallbackWithBudgetCheck`, the latter used by `consensus_vote`,
+ * `toSdkCallbackWithTimeoutCheck`, the latter used by `consensus_vote`,
  * `orchestrate` and `run_workflow` — and stamping in one of them left the other
  * three tools unstamped. `runWithContexts` is what both call, on the ordinary
  * and the budget-mismatch path alike, so it is the actual chokepoint. A tool
@@ -519,7 +519,7 @@ async function runMismatchedCall(ctx: MismatchCallContext): Promise<SdkToolResul
 
 /**
  * Like `toSdkCallback`, but emits a one-shot WARN at invocation start when
- * the configured per-tool budget exceeds the MCP SDK client default AND the
+ * the configured per-tool TIMEOUT exceeds the MCP SDK client default AND the
  * client did not send a `progressToken`. The call is almost certainly going
  * to die at the client default (~60s) regardless of server-side timeout
  * config or progress heartbeats — surface that at the moment of invocation
@@ -528,8 +528,12 @@ async function runMismatchedCall(ctx: MismatchCallContext): Promise<SdkToolResul
  *
  * Wrap a long-running tool (`orchestrate`, `consensus_vote`,
  * `execute_expert`, `run_workflow`) with this instead of plain
- * `toSdkCallback`. Tools whose budget already fits within
+ * `toSdkCallback`. Tools whose timeout already fits within
  * `MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS` should keep using `toSdkCallback`.
+ *
+ * This checks TIME only; it is not a token/spend budget. It was named
+ * `toSdkCallbackWithBudgetCheck`, which read as spend enforcement on
+ * `run_workflow` when no such enforcement existed (#4754).
  *
  * Each mismatch is **also recorded** to
  * `$NEXUS_DATA_DIR/mcp-telemetry/timeout-mismatch-events.jsonl` with a
@@ -541,7 +545,7 @@ async function runMismatchedCall(ctx: MismatchCallContext): Promise<SdkToolResul
  *
  * (Source: audit on #2619 / #2631 — observability for client-timeout mismatch)
  */
-export function toSdkCallbackWithBudgetCheck(
+export function toSdkCallbackWithTimeoutCheck(
   handler: ToolHandler,
   toolName: string,
   configuredTimeoutMs: number,
