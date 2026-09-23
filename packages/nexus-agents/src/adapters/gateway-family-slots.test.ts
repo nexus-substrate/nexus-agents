@@ -7,7 +7,6 @@ import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
 import {
   _resetGatewaySlotCatalog,
   createGatewaySlotAdapter,
-  rankFamilyModels,
   resolveGatewaySlot,
   setGatewaySlotCatalog,
 } from './gateway-family-slots.js';
@@ -48,6 +47,14 @@ describe('resolveGatewaySlot (#6604)', () => {
     expect(modelOf('claude')).toBe('anthropic/claude-sonnet-4-6');
     expect(modelOf('codex')).toBe('gpt-5.5');
     expect(modelOf('gemini')).toBe('gemini-2.5-pro');
+  });
+
+  it('ranks by the discovery created stamp the gateway models carry', () => {
+    setGatewaySlotCatalog([
+      fakeGatewayModel('gpt-5.6', undefined, 1_700_000_000),
+      fakeGatewayModel('gpt-5.5-pro', undefined, 1_800_000_000),
+    ]);
+    expect(modelOf('codex')).toBe('gpt-5.5-pro');
   });
 
   it('makes the slot of a missing family unavailable, never another family', () => {
@@ -94,26 +101,6 @@ describe('resolveGatewaySlot (#6604)', () => {
     const r = resolveGatewaySlot('claude', { NEXUS_GATEWAY_MODEL_ANTHROPIC: 'gpt-5.5' }, logger);
     expect(r.kind === 'resolved' && r.adapter.modelId).toBe('claude-opus');
     expect(logger.warn).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('rankFamilyModels (#6604)', () => {
-  it('puts registry-scored models first, best quality first', () => {
-    expect(rankFamilyModels(['claude-haiku', 'claude-sonnet', 'claude-opus'])).toEqual([
-      'claude-opus',
-      'claude-sonnet',
-      'claude-haiku',
-    ]);
-  });
-
-  it('ranks unscored models after scored ones, newest version first', () => {
-    expect(
-      rankFamilyModels(['anthropic/claude-opus-4-1', 'claude-haiku', 'anthropic/claude-opus-4-8'])
-    ).toEqual(['claude-haiku', 'anthropic/claude-opus-4-8', 'anthropic/claude-opus-4-1']);
-  });
-
-  it('is empty for an empty family', () => {
-    expect(rankFamilyModels([])).toEqual([]);
   });
 });
 

@@ -60,12 +60,18 @@ describe('family slots reach their family with no CLIs installed (#6604)', () =>
     _resetGatewaySlotCatalog();
     resetGlobalRegistry();
     emptyBin = mkdtempSync(join(tmpdir(), 'nexus-no-clis-'));
-    for (const k of ['PATH', 'NEXUS_DISABLED_CLIS']) saved[k] = process.env[k];
+    for (const k of ['PATH', 'NEXUS_DISABLED_CLIS', 'NEXUS_GATEWAY_COST'])
+      saved[k] = process.env[k];
     process.env['PATH'] = emptyBin;
+    // Gateway-served slot arms are priced by the gateway's declaration; an
+    // undeclared gateway is excluded by the budget filter (fail-closed).
+    process.env['NEXUS_GATEWAY_COST'] = 'free';
     // opencode is multi-vendor and has no family slot; without its binary it
     // is not a candidate the expert stage could succeed on.
     process.env['NEXUS_DISABLED_CLIS'] = 'opencode';
-    setGatewaySlotCatalog(Object.values(FAMILY_MODEL).map((id) => fakeGatewayModel(id)));
+    setGatewaySlotCatalog(
+      Object.values(FAMILY_MODEL).map((id) => fakeGatewayModel(id, 'api:openai-compat'))
+    );
   });
   afterEach(() => {
     _resetGatewaySlotCatalog();

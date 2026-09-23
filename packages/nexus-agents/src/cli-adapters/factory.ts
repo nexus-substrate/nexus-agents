@@ -19,14 +19,11 @@ import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 import type { ILogger } from '../core/index.js';
 import type { ICliDetectionCache } from './cli-detection-cache.js';
-import { CliDetectionCache } from './cli-detection-cache.js';
+import { CliDetectionCache, createCliDetectionCache } from './cli-detection-cache.js';
 import { probeCli } from '../cli/cli-auth-probe.js';
 import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
 import { isCliDisabled } from './disabled-clis.js';
-import { isCliBinaryOnPath } from './cli-binary-on-path.js';
-import { createModelToCliAdapter } from './model-to-cli-adapter.js';
-import { createGatewaySlotAdapter, resolveGatewaySlot } from '../adapters/gateway-family-slots.js';
-import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
+import { buildGatewaySlotRouterArm } from './gateway-slot-arm.js';
 import {
   codexMcpServerAvailable,
   CodexMcpServerUnavailableError,
@@ -134,9 +131,11 @@ function createCodexAdapter(
  *
  * The four CLI slots are registered under their slot key, except any disabled
  * by `NEXUS_DISABLED_CLIS` (#6590); every CLI disabled yields an empty map. In
- * gateway mode a vendor slot whose binary is not on PATH is served by a
- * gateway model of its family, and omitted when the gateway serves none of
- * that family (#6604); without a gateway catalogue the slots are unchanged. When
+ * gateway mode a vendor slot whose CLI is not available (`isCliAvailable`, the
+ * predicate `createAutoAdapter` uses) is served by a gateway model of its
+ * family, and a slot with neither a binary nor a family model is omitted
+ * (#6604, `gateway-slot-arm.ts`); without a gateway catalogue the slots are
+ * unchanged. When
  * `NEXUS_BILLING_MODE=api`, the direct-API adapters whose keys are present are
  * ALSO appended as distinct `api:<vendor>` routing arms (#3422) so the router /
  * bandit can score them separately from the CLI slots. DEFAULT (plan) mode
@@ -162,9 +161,10 @@ export function createAllAdapters(
   ];
   // #6590: an operator-disabled CLI is not an arm. Skipped before
   // construction, so a disabled codex is not even probed for its transport.
+  const isAvailable = sharedSlotAvailability();
   for (const [cli, create] of slots) {
     if (isCliDisabled(cli)) continue;
-    const arm = gatewaySlotArm(cli, logger);
+    const arm = buildGatewaySlotRouterArm(cli, create, isAvailable, logger);
     if (arm === 'unavailable') continue;
     adapters.set(cli, arm ?? create());
   }
@@ -180,22 +180,16 @@ export function createAllAdapters(
 }
 
 /**
- * The gateway-served arm for a slot whose binary is not installed (#6604).
- *
- * `undefined` keeps the subprocess arm: no gateway catalogue (the pre-#6604
- * path, unchanged), or the slot's binary is on PATH. In gateway mode a slot
- * with no binary is served by its family's gateway model under the SLOT key,
- * so outcomes keep slot keys; a slot whose family the gateway does not serve
- * is `'unavailable'` and gets no arm, exactly like a disabled CLI.
+ * The availability predicate the gateway-mode router arms of ONE
+ * `createAllAdapters` call share (#6604): `isCliAvailable`, the predicate
+ * `createAutoAdapter` uses, over one detection cache created on first use.
  */
-function gatewaySlotArm(cli: CliName, logger?: ILogger): ICliAdapter | 'unavailable' | undefined {
-  const slot = resolveGatewaySlot(cli, process.env, logger);
-  if (slot.kind === 'inactive' || isCliBinaryOnPath(cli)) return undefined;
-  if (slot.kind === 'unavailable') return 'unavailable';
-  return createModelToCliAdapter(createGatewaySlotAdapter(cli, slot.adapter), {
-    name: cli,
-    capabilities: buildCliCapabilityProfiles()[cli],
-  });
+function sharedSlotAvailability(): (cli: CliName) => Promise<boolean> {
+  let cache: ICliDetectionCache | undefined;
+  return (cli) => {
+    cache ??= createCliDetectionCache();
+    return isCliAvailable(cli, cache);
+  };
 }
 
 /**

@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createAutoAdapter } from './auto-adapter.js';
 import { _resetGatewaySlotCatalog, setGatewaySlotCatalog } from './gateway-family-slots.js';
 import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
-import { FAKE_OPENAI_KEY } from '../testing/test-secrets.js';
+import { FAKE_ANTHROPIC_KEY, FAKE_OPENAI_KEY } from '../testing/test-secrets.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
 import { createResilientAdapter } from './resilient-adapter.js';
 import { isGatewayModelAdapter } from './openai-compat-adapter.js';
@@ -34,7 +34,14 @@ vi.mock('../cli-adapters/cli-to-model-adapter.js', () => ({
   }),
 }));
 
-const GATEWAY_ENV = ['NEXUS_OPENAI_COMPAT_URL', 'NEXUS_OPENAI_COMPAT_KEY', 'NEXUS_CUSTOM_MODEL'];
+const GATEWAY_ENV = [
+  'NEXUS_OPENAI_COMPAT_URL',
+  'NEXUS_OPENAI_COMPAT_KEY',
+  'NEXUS_CUSTOM_MODEL',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'GOOGLE_AI_API_KEY',
+];
 
 describe('createAutoAdapter gateway family slots (#6604)', () => {
   const saved: Record<string, string | undefined> = {};
@@ -46,6 +53,9 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
     process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = FAKE_OPENAI_KEY;
     process.env['NEXUS_CUSTOM_MODEL'] = 'custom-fallback-model';
+    for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY']) {
+      Reflect.deleteProperty(process.env, k);
+    }
   });
   afterEach(() => {
     _resetGatewaySlotCatalog();
@@ -74,6 +84,23 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
 
   it('refuses a slot whose family the gateway lacks, rather than substituting', async () => {
     setGatewaySlotCatalog(['gpt-5.5', 'claude-sonnet-4-6'].map((id) => fakeGatewayModel(id)));
+    await expect(createAutoAdapter({ preferredCli: 'gemini', enableCache: false })).rejects.toThrow(
+      /gemini.*unavailable.*google/
+    );
+  });
+
+  it('lets a same-family API key serve a slot the gateway lacks', async () => {
+    setGatewaySlotCatalog([fakeGatewayModel('gpt-5.5')]);
+    process.env['ANTHROPIC_API_KEY'] = FAKE_ANTHROPIC_KEY;
+    const s = await createAutoAdapter({ preferredCli: 'claude', enableCache: false });
+    expect(s.source).toBe('api');
+    expect(s.name).toBe('anthropic');
+  });
+
+  it("never lets another family's API key serve the slot", async () => {
+    setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6')]);
+    process.env['OPENAI_API_KEY'] = FAKE_OPENAI_KEY;
+    process.env['ANTHROPIC_API_KEY'] = FAKE_ANTHROPIC_KEY;
     await expect(createAutoAdapter({ preferredCli: 'gemini', enableCache: false })).rejects.toThrow(
       /gemini.*unavailable.*google/
     );

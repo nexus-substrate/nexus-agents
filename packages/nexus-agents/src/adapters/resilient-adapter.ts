@@ -126,9 +126,10 @@ export class ResilientAdapter implements IResilientAdapter {
 
   /**
    * The gateway arm of the adapter currently serving this proxy, when a
-   * gateway model serves it (#6604 family slots); otherwise undefined. The
-   * voter path reads it (`isGatewayModelAdapter`) to price a seat by the
-   * gateway's `NEXUS_GATEWAY_COST` declaration instead of a list price.
+   * gateway model serves it (#6604 family slots); otherwise undefined. A
+   * telemetry writer handed this proxy reads it (`isGatewayModelAdapter`) to
+   * price the call by the gateway's `NEXUS_GATEWAY_COST` declaration instead
+   * of a list price.
    */
   get gatewayArm(): EndpointArmId | undefined {
     const arm: unknown = (this.currentAdapter as { gatewayArm?: unknown } | undefined)?.gatewayArm;

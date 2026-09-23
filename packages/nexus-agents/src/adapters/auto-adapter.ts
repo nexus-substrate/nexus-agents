@@ -16,7 +16,12 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
-import { createGatewaySlotAdapter, resolveGatewaySlot } from './gateway-family-slots.js';
+import {
+  clearSlotServedByGateway,
+  createGatewaySlotAdapter,
+  markSlotServedByGateway,
+  resolveGatewaySlot,
+} from './gateway-family-slots.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
 import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
@@ -116,26 +121,12 @@ async function tryCliAdapter(
   }
 
   // If preferred CLI specified, try that first
-  if (
-    preferredCli !== undefined &&
-    !isCliDisabled(preferredCli) &&
-    (await isCliAvailable(preferredCli, cache))
-  ) {
-    logger.info('Using preferred CLI', { cli: preferredCli });
-    const cliAdapter = createCliAdapter({ cli: preferredCli, logger });
-    await cliAdapter.initialize();
-    return {
-      adapter: createCliToModelAdapter(cliAdapter, bridgeConfig),
-      source: 'cli',
-      name: preferredCli,
-      reason: `Preferred CLI '${preferredCli}' is available (model selection handled by CLI)`,
-      cache,
-    };
-  }
+  const preferred = await tryPreferredCli(config, logger, cache);
+  if (preferred !== null) return preferred;
 
   // #6604: in gateway mode a pinned slot with no CLI is served by its
   // family's gateway model, or is unavailable — never another CLI's family.
-  const gatewaySlot = tryGatewaySlot(preferredCli, logger);
+  const gatewaySlot = tryGatewaySlot(config, logger);
   if (gatewaySlot !== undefined) return gatewaySlot;
 
   // Otherwise, get all available CLIs and use the first one found
@@ -166,27 +157,60 @@ async function tryCliAdapter(
   };
 }
 
+/** The pinned CLI's own adapter when it is enabled and available, else null. */
+async function tryPreferredCli(
+  config: AutoAdapterConfig,
+  logger: ILogger,
+  cache?: ICliDetectionCache
+): Promise<AdapterSelection | null> {
+  const preferredCli = config.preferredCli;
+  if (
+    preferredCli === undefined ||
+    isCliDisabled(preferredCli) ||
+    !(await isCliAvailable(preferredCli, cache))
+  ) {
+    return null;
+  }
+  logger.info('Using preferred CLI', { cli: preferredCli });
+  const cliAdapter = createCliAdapter({ cli: preferredCli, logger });
+  await cliAdapter.initialize();
+  clearSlotServedByGateway(preferredCli);
+  return {
+    adapter: createCliToModelAdapter(cliAdapter, cliBridgeConfig(config)),
+    source: 'cli',
+    name: preferredCli,
+    reason: `Preferred CLI '${preferredCli}' is available (model selection handled by CLI)`,
+    cache,
+  };
+}
+
 /**
  * The gateway selection for a pinned slot whose CLI is not available (#6604).
  * `undefined` keeps the pre-#6604 path: no pinned slot, a disabled one, or no
- * gateway catalogue. A slot whose family the gateway does not serve THROWS, so
+ * gateway catalogue. A slot whose family the gateway does not serve is served
+ * by a direct API key of the SAME family when one is set (#6604 review, item
+ * 4: before the gateway existed that key served it); otherwise it THROWS, so
  * the resilient adapter reports it unavailable instead of substituting the
- * first installed CLI or `NEXUS_CUSTOM_MODEL`.
+ * first installed CLI, another family's key or `NEXUS_CUSTOM_MODEL`.
  */
-function tryGatewaySlot(
-  preferredCli: CliName | undefined,
-  logger: ILogger
-): AdapterSelection | undefined {
+function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSelection | undefined {
+  const preferredCli = config.preferredCli;
   if (preferredCli === undefined || isCliDisabled(preferredCli)) return undefined;
   const slot = resolveGatewaySlot(preferredCli, process.env, logger);
   if (slot.kind === 'inactive') return undefined;
   if (slot.kind === 'unavailable') {
+    const sameFamily = buildApiSelectionForVendor(slot.family, logger, config);
+    if (sameFamily !== null) {
+      clearSlotServedByGateway(preferredCli);
+      return sameFamily;
+    }
     throw new Error(
-      `The '${preferredCli}' slot is unavailable: its CLI is not available and the gateway serves no ${slot.family} model`
+      `The '${preferredCli}' slot is unavailable: its CLI is not available, the gateway serves no ${slot.family} model, and no ${slot.family} API key is set`
     );
   }
   const modelId = slot.adapter.modelId;
   logger.info('Using gateway family model for CLI slot', { cli: preferredCli, model: modelId });
+  markSlotServedByGateway(preferredCli, slot.adapter);
   return {
     adapter: createGatewaySlotAdapter(preferredCli, slot.adapter),
     source: 'api',
@@ -345,10 +369,14 @@ export function wrapApiSelectionForRouter(
  * are present, else null. Reuses the same adapter constructors as
  * {@link tryApiAdapter} but is key-presence-only and never calls out (#3422).
  */
-function buildApiSelectionForVendor(vendor: ApiVendor, logger: ILogger): AdapterSelection | null {
+function buildApiSelectionForVendor(
+  vendor: ApiVendor,
+  logger: ILogger,
+  config: AutoAdapterConfig = {}
+): AdapterSelection | null {
   switch (vendor) {
     case 'anthropic': {
-      const key = resolveApiKeyFromEnv(undefined, 'ANTHROPIC_API_KEY');
+      const key = resolveApiKeyFromEnv(config.anthropicApiKey, 'ANTHROPIC_API_KEY');
       if (key === undefined) return null;
       const modelId = getCliModelName(getDefaultModelForCli('claude'));
       return {
@@ -359,7 +387,7 @@ function buildApiSelectionForVendor(vendor: ApiVendor, logger: ILogger): Adapter
       };
     }
     case 'openai': {
-      const key = resolveApiKeyFromEnv(undefined, 'OPENAI_API_KEY');
+      const key = resolveApiKeyFromEnv(config.openaiApiKey, 'OPENAI_API_KEY');
       if (key === undefined) return null;
       const modelId = getCliModelName(getDefaultModelForCli('codex'));
       return {
@@ -370,7 +398,7 @@ function buildApiSelectionForVendor(vendor: ApiVendor, logger: ILogger): Adapter
       };
     }
     case 'google': {
-      const key = resolveApiKeyFromEnv(undefined, 'GOOGLE_AI_API_KEY');
+      const key = resolveApiKeyFromEnv(config.googleApiKey, 'GOOGLE_AI_API_KEY');
       if (key === undefined) return null;
       const modelId = getCliModelName(getDefaultModelForCli('gemini'));
       return {

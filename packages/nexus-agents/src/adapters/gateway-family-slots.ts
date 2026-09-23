@@ -9,21 +9,32 @@
  *
  * This module is the ONE place slot → gateway-model resolution happens. The
  * two adapter-construction points consume it: `createAutoAdapter` (every
- * registry-pinned slot: orchestrate workers, execute_expert, voter seats) and
- * `createAllAdapters` (the router arm set: run_dev_pipeline's expert stage).
+ * registry-pinned slot: orchestrate workers and their alt adapters, and
+ * execute_expert) and `createAllAdapters` (the router arm set used by
+ * run_dev_pipeline's expert stage and the `orchestrate` CLI). Both decide
+ * "is the CLI available" with the same predicate, `isCliAvailable`.
+ *
+ * NOT covered here: server-mode voter seats. With a gateway wired, the voter
+ * path round-robins the raw gateway adapters (`cli/voter-agents.ts`) and never
+ * asks for a slot; dealing seats across families is #6606.
  *
  * Rules:
  * - Family comes from `resolveModelIdentitySync(id).vendor`.
- * - Within a family: models the registry has quality scores for come first,
- *   best first by `reasoning + codeGeneration`; the rest follow, newest
- *   version first; ties break on the id so the choice is deterministic.
+ * - Within a family the order is `rankFamilyModels`
+ *   (`gateway-family-ranking.ts`): generation, then tier, then the rest of
+ *   the version, with registry quality and date stamps as tie-breakers only.
  * - `NEXUS_GATEWAY_MODEL_<FAMILY>` pins the family's model. It must name a
  *   catalogue id that is not classified as a DIFFERENT family; otherwise it
  *   warns once and the preference order applies.
- * - A slot whose family has no gateway model is UNAVAILABLE. It is never
- *   given another family's model.
+ * - A slot whose family has no gateway model is UNAVAILABLE from the gateway.
+ *   It is never given another family's model; a same-family direct API key
+ *   may still serve it (`auto-adapter.ts`).
  * - No catalogue registered (no gateway, or discovery failed) is `inactive`:
  *   every caller keeps its pre-#6604 behaviour.
+ * - Which slots a gateway model is serving right now is recorded here
+ *   ({@link markSlotServedByGateway}), so the router's cost estimators price
+ *   a gateway-served slot arm by the gateway's `NEXUS_GATEWAY_COST`
+ *   declaration, not by the slot's vendor list price.
  *
  * @module adapters/gateway-family-slots
  */
@@ -32,8 +43,8 @@ import type { ILogger, IModelAdapter } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import type { CliName, EndpointArmId } from '../cli-adapters/types.js';
 import { isEndpointArmId } from '../cli-adapters/types.js';
-import { resolveModelIdentitySync, normaliseModelId } from '../config/model-identity.js';
-import { getDefaultRegistry } from '../config/model-registry.js';
+import { resolveModelIdentitySync } from '../config/model-identity.js';
+import { rankFamilyModels } from './gateway-family-ranking.js';
 
 /** A model family a CLI slot is tied to. */
 export type GatewayFamily = 'anthropic' | 'openai' | 'google';
@@ -74,6 +85,9 @@ let catalog: readonly IModelAdapter[] | undefined;
 /** Overrides already warned about, keyed `family=value`, so each warns once. */
 const warnedOverrides = new Set<string>();
 
+/** Slots a gateway model is serving right now, and the model serving each. */
+const servedByGateway = new Map<CliName, IModelAdapter>();
+
 /**
  * Register the discovered gateway models. An empty list clears the catalogue:
  * a gateway with no models is no gateway, and must not make every slot
@@ -81,12 +95,41 @@ const warnedOverrides = new Set<string>();
  */
 export function setGatewaySlotCatalog(models: readonly IModelAdapter[]): void {
   catalog = models.length === 0 ? undefined : [...models];
+  servedByGateway.clear();
 }
 
 /** Test-only: forget the catalogue and the warn-once memory. */
 export function _resetGatewaySlotCatalog(): void {
   catalog = undefined;
   warnedOverrides.clear();
+  servedByGateway.clear();
+}
+
+/** Record that `model` (a gateway model) now serves `cli`. */
+export function markSlotServedByGateway(cli: CliName, model: IModelAdapter): void {
+  servedByGateway.set(cli, model);
+}
+
+/** Record that no gateway model serves `cli` (its CLI, or a direct API key, does). */
+export function clearSlotServedByGateway(cli: CliName): void {
+  servedByGateway.delete(cli);
+}
+
+/**
+ * The gateway serving `cli`, for cost estimation: the model it runs and the
+ * gateway arm that model belongs to (`undefined` arm when the model carries
+ * no gateway-arm marker). `undefined` when no gateway model serves the slot.
+ */
+export function getGatewayServedSlot(
+  cli: CliName
+): { readonly modelId: string; readonly arm: EndpointArmId | undefined } | undefined {
+  const model = servedByGateway.get(cli);
+  if (model === undefined) return undefined;
+  const arm: unknown = (model as { gatewayArm?: unknown }).gatewayArm;
+  return {
+    modelId: model.modelId,
+    arm: typeof arm === 'string' && isEndpointArmId(arm) ? arm : undefined,
+  };
 }
 
 /** The family `modelId` belongs to, or undefined for any other vendor. */
@@ -96,46 +139,10 @@ function familyOf(modelId: string): GatewayFamily | 'other' | undefined {
   return vendor === 'unknown' ? undefined : 'other';
 }
 
-/** Registry quality (`reasoning + codeGeneration`), or undefined for a model it has no scores for. */
-function registryQuality(modelId: string): number | undefined {
-  const q = getDefaultRegistry().getEntry(modelId).qualityScores;
-  return q === undefined ? undefined : q.reasoning + q.codeGeneration;
-}
-
-/** Numeric version segments: the parsed identity version, else the first number run in the id. */
-function versionParts(modelId: string): readonly number[] {
-  const parsed = resolveModelIdentitySync(modelId).version;
-  const raw = parsed ?? /\d+(?:[.-]\d+)*/.exec(normaliseModelId(modelId))?.[0];
-  if (raw === undefined) return [];
-  return raw.split(/[.-]/).map((s) => Number.parseInt(s, 10));
-}
-
-/** Descending comparison of version segment lists; a missing segment sorts lower. */
-function compareVersionsDesc(a: readonly number[], b: readonly number[]): number {
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    const diff = (b[i] ?? -1) - (a[i] ?? -1);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-/**
- * Rank the ids of one family best-first: registry-scored models by quality,
- * then unscored models; within each, newest version first, then id.
- */
-export function rankFamilyModels(ids: readonly string[]): readonly string[] {
-  const keyed = ids.map((id) => ({ id, quality: registryQuality(id), version: versionParts(id) }));
-  return keyed
-    .sort((a, b) => {
-      if (a.quality !== undefined && b.quality === undefined) return -1;
-      if (a.quality === undefined && b.quality !== undefined) return 1;
-      const byQuality = (b.quality ?? 0) - (a.quality ?? 0);
-      if (byQuality !== 0) return byQuality;
-      const byVersion = compareVersionsDesc(a.version, b.version);
-      return byVersion !== 0 ? byVersion : a.id.localeCompare(b.id);
-    })
-    .map((k) => k.id);
+/** The discovery `created` stamp a gateway model adapter carries, if any. */
+function createdOf(model: IModelAdapter): number | undefined {
+  const created: unknown = (model as { created?: unknown }).created;
+  return typeof created === 'number' ? created : undefined;
 }
 
 /** The override's adapter when it is valid for `family`, else undefined (warned once). */
@@ -182,7 +189,7 @@ export function resolveGatewaySlot(
   const pinned = overrideAdapter(family, models, env, logger);
   if (pinned !== undefined) return { kind: 'resolved', family, adapter: pinned, via: 'override' };
   const inFamily = models.filter((m) => familyOf(m.modelId) === family);
-  const best = rankFamilyModels(inFamily.map((m) => m.modelId))[0];
+  const best = rankFamilyModels(inFamily.map((m) => ({ id: m.modelId, created: createdOf(m) })))[0];
   const adapter = inFamily.find((m) => m.modelId === best);
   if (adapter === undefined) return { kind: 'unavailable', family };
   return { kind: 'resolved', family, adapter, via: 'preference' };

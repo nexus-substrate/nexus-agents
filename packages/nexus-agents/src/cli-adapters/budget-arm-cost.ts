@@ -15,7 +15,8 @@
 import { computeTokenCost, roundToMicroUsd } from '../learning/token-cost-core.js';
 import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
-import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
+import { isCliName, observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
+import { getGatewayServedSlot } from '../adapters/gateway-family-slots.js';
 import { estimateCost } from './budget-utils.js';
 import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
@@ -101,6 +102,20 @@ function estimateGatewayModelCostUsd(
 }
 
 /**
+ * The gateway serving a CLI-slot arm right now (#6604 review, item 3), or
+ * `undefined` for an arm that is not a slot or a slot its CLI serves. A
+ * gateway-served slot is priced as its gateway is — by the `NEXUS_GATEWAY_COST`
+ * declaration for the model that runs — never at the slot vendor's list
+ * price; the arm is `undefined` when that model carries no gateway marker,
+ * and the slot is then unpriced.
+ */
+function gatewayServedTarget(
+  arm: ObservedArmId
+): { readonly arm: EndpointArmId | undefined; readonly modelId: string } | undefined {
+  return isCliName(arm) ? getGatewayServedSlot(arm) : undefined;
+}
+
+/**
  * Estimate the USD cost of a task on a routing ARM (#4392 increment 2). A
  * vendor arm or CLI slot is priced exactly as {@link estimateRegistryCostUsd}
  * prices its display slot. A GATEWAY arm is priced by its `NEXUS_GATEWAY_COST`
@@ -112,7 +127,8 @@ function estimateGatewayModelCostUsd(
  * the ceiling, and until #6404 bare `priced` with no catalogue did the same.
  *
  * `arm` is any observed arm: a published {@link RoutingArmId} or a dynamic
- * `api:<endpoint>` arm (the voter gateway registers as one since step 2).
+ * `api:<endpoint>` arm (the voter gateway registers as one since step 2). A
+ * CLI slot a gateway model serves is priced as that gateway (#6604).
  */
 export function estimateArmCostUsd(
   arm: ObservedArmId,
@@ -121,6 +137,12 @@ export function estimateArmCostUsd(
   env: NodeJS.ProcessEnv = process.env,
   modelId?: string
 ): number | undefined {
+  const served = gatewayServedTarget(arm);
+  if (served !== undefined) {
+    return served.arm === undefined
+      ? undefined
+      : estimateArmCostUsd(served.arm, inputTokens, outputTokens, env, served.modelId);
+  }
   if (!isGatewayArmId(arm)) {
     return estimateRegistryCostUsd(observedArmDisplaySlot(arm), inputTokens, outputTokens);
   }
@@ -160,7 +182,9 @@ export function estimateBudgetArmCostUsd(
   outputTokens: number,
   env: NodeJS.ProcessEnv = process.env
 ): number | undefined {
-  if (isGatewayArmId(arm)) return estimateArmCostUsd(arm, inputTokens, outputTokens, env);
+  if (isGatewayArmId(arm) || gatewayServedTarget(arm) !== undefined) {
+    return estimateArmCostUsd(arm, inputTokens, outputTokens, env);
+  }
   return estimateCost(routingArmDisplaySlot(arm), inputTokens, outputTokens);
 }
 
@@ -179,6 +203,12 @@ export function describeUnpricedArm(
   env: NodeJS.ProcessEnv = process.env,
   modelId?: string
 ): string {
+  const served = gatewayServedTarget(arm);
+  if (served !== undefined) {
+    return served.arm === undefined
+      ? `slot served by gateway model ${served.modelId}, which carries no gateway arm to price by`
+      : describeUnpricedArm(served.arm, env, served.modelId);
+  }
   const gap = gatewayCostGap(arm, env);
   if (gap !== undefined) return `gateway cost ${gap}`;
   const model = isGatewayArmId(arm) ? gatewayPricingModel(arm, modelId, env) : undefined;

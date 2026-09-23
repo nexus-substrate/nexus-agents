@@ -9,8 +9,15 @@
 import { vi } from 'vitest';
 import { ok, type IModelAdapter } from '../../core/index.js';
 
-/** Build a fake gateway model; `gatewayArm` marks it as a gateway-arm model. */
-export function fakeGatewayModel(modelId: string, gatewayArm?: string): IModelAdapter {
+/**
+ * Build a fake gateway model; `gatewayArm` marks it as a gateway-arm model and
+ * `created` is the discovery `/models` stamp it carries.
+ */
+export function fakeGatewayModel(
+  modelId: string,
+  gatewayArm?: string,
+  created?: number
+): IModelAdapter {
   return {
     providerId: 'openai',
     modelId,
@@ -29,5 +36,6 @@ export function fakeGatewayModel(modelId: string, gatewayArm?: string): IModelAd
     countTokens: vi.fn(() => Promise.resolve(1)),
     validateConfig: () => ok(undefined),
     ...(gatewayArm !== undefined && { gatewayArm }),
+    ...(created !== undefined && { created }),
   };
 }
