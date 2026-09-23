@@ -611,7 +611,7 @@ function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolic
  * printing a persistence line for a vote that never happened is its own small
  * misreport. Returns the exit code the persist outcome forces, if any (#6531).
  */
-function persistToAuditChain(
+async function persistToAuditChain(
   options: VoteCommandOptions,
   result: VotingResult & {
     readonly strategy: string;
@@ -623,9 +623,9 @@ function persistToAuditChain(
     /** #6211: the effective error policy, from the same stamp. */
     readonly errorPolicy?: ErrorPolicy | undefined;
   }
-): number | undefined {
+): Promise<number | undefined> {
   if (options.dryRun === true) return undefined;
-  const outcome = recordAuthenticVote({
+  const outcome = await recordAuthenticVote({
     proposal: result.proposal,
     strategy: result.strategy,
     result: result.result,
@@ -683,7 +683,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
       if (options.verbose === true) printHashes(result.votes);
       writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
-      const persistExit = persistToAuditChain(options, result);
+      const persistExit = await persistToAuditChain(options, result);
       handleRecording(options, result, result.decision, result.contrarianCheck);
 
       return persistExit ?? exitCodeForDecision(result.decision, onNoQuorum);

@@ -7,8 +7,8 @@
  * @module mcp/tools/consensus-vote-recording-readback.test
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -89,20 +89,57 @@ describe('recordAuthenticVote read-back (#6531)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('reports persisted, with the ledger path, when the record reads back', () => {
-    const outcome = record();
+  it('reports persisted, with the ledger path, when the record reads back', async () => {
+    const outcome = await record();
 
     expect(outcome.persisted).toBe(true);
     expect(outcome.persisted && outcome.path).toBe(ledger);
   });
 
-  it('reports read-back-missed when the store returned a record the ledger does not hold', () => {
+  it('reports read-back-missed when the store returned a record the ledger does not hold', async () => {
     storeMocks.writesToDisk = false;
 
-    const outcome = record();
+    const outcome = await record();
 
     expect(outcome.persisted).toBe(false);
     expect(!outcome.persisted && outcome.reason).toBe('read-back-missed');
     expect(!outcome.persisted && outcome.detail).toContain(ledger);
   });
+});
+
+describe('recordAuthenticVote waits for the ledger lock without blocking the event loop (#6548)', () => {
+  let dir: string;
+  let ledger: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vote-lock-wait-'));
+    ledger = join(dir, 'vote-records.jsonl');
+    vi.stubEnv(VOTE_RECORDS_PATH_ENV, ledger);
+    storeMocks.writesToDisk = true;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('lets other timers run while the lock is held elsewhere, then persists', async () => {
+    // A live holder on this host (this process), so the lock is never broken.
+    const lockPath = `${ledger}.lock`;
+    writeFileSync(lockPath, `${hostname()}:${String(process.pid)}:held`);
+    const events: string[] = [];
+    // On the MCP server this timer is every other request the server is
+    // serving. A blocking wait would run it only after the vote returned.
+    setTimeout(() => events.push('timer'), 20);
+    setTimeout(() => {
+      events.push('released');
+      rmSync(lockPath);
+    }, 150);
+
+    const outcome = await record();
+    events.push('recorded');
+
+    expect(events).toEqual(['timer', 'released', 'recorded']);
+    expect(outcome.persisted).toBe(true);
+  }, 30_000);
 });

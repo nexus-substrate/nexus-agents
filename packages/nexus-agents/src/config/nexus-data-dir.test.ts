@@ -834,14 +834,29 @@ describe('active workspace root (#3991 — MCP roots)', () => {
   // every other per-repo category stays worktree-local.
   it('routes governance from a linked worktree to the main checkout, other per-repo state stays local', async () => {
     const { setActiveWorkspaceRoot, nexusDataPath } = await import('./nexus-data-dir.js');
-    const { mkdirSync, writeFileSync, realpathSync } = await import('node:fs');
+    const { rmSync, realpathSync } = await import('node:fs');
+    const { execFileSync } = await import('node:child_process');
+    // A real repository and linked worktree: the main checkout is git's answer.
+    rmSync(join(repoDir, '.git'), { recursive: true });
+    const git = (cwd: string, ...args: string[]): void => {
+      execFileSync('git', args, {
+        cwd,
+        stdio: 'ignore',
+        env: {
+          PATH: process.env['PATH'] ?? '',
+          GIT_CONFIG_GLOBAL: '/dev/null',
+          GIT_CONFIG_NOSYSTEM: '1',
+          GIT_AUTHOR_NAME: 't',
+          GIT_AUTHOR_EMAIL: 't@example.com',
+          GIT_COMMITTER_NAME: 't',
+          GIT_COMMITTER_EMAIL: 't@example.com',
+        },
+      });
+    };
+    git(repoDir, 'init', '-q');
+    git(repoDir, 'commit', '-q', '--allow-empty', '-m', 'init');
     const wt = join(cwdOutsideRepo, 'wt');
-    const adminDir = join(repoDir, '.git', 'worktrees', 'wt');
-    mkdirSync(adminDir, { recursive: true });
-    mkdirSync(wt);
-    writeFileSync(join(wt, '.git'), `gitdir: ${adminDir}\n`);
-    writeFileSync(join(adminDir, 'gitdir'), `${join(wt, '.git')}\n`);
-    writeFileSync(join(adminDir, 'commondir'), '../..\n');
+    git(repoDir, 'worktree', 'add', '-q', wt);
 
     // Both entry points: the MCP-declared root and cwd detection.
     for (const viaActiveRoot of [true, false]) {

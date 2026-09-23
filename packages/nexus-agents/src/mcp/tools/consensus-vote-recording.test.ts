@@ -187,8 +187,8 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('reports all-simulated when every vote is simulated', () => {
-    const outcome = recordAuthenticVote({
+  it('reports all-simulated when every vote is simulated', async () => {
+    const outcome = await recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
       errorPolicy: undefined,
@@ -207,7 +207,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     }
   });
 
-  it('reports write-failed with an actionable note when the data dir is unwritable', () => {
+  it('reports write-failed with an actionable note when the data dir is unwritable', async () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined); // no override → nexusDataPath
     // Make the resolved path unwritable: put a regular FILE where a directory
     // component must be, so persistVoteRecord's mkdirSync throws ENOTDIR and the
@@ -219,7 +219,7 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     vi.mocked(getNexusDataDir).mockReturnValue(fileAsDir);
     vi.mocked(nexusDataPath).mockReturnValue(unwritable);
 
-    const outcome = recordAuthenticVote({
+    const outcome = await recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
       errorPolicy: undefined,
@@ -235,11 +235,11 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     }
   });
 
-  it('persists and returns the record when the env override path is set', () => {
+  it('persists and returns the record when the env override path is set', async () => {
     const filePath = join(dir, 'env', 'vote-records.jsonl');
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, filePath);
 
-    const outcome = recordAuthenticVote({
+    const outcome = await recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
       errorPolicy: undefined,
@@ -259,11 +259,11 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     expect(written.length).toBeGreaterThan(0);
   });
 
-  it('#4004: binds the ratifies subject into the persisted record', () => {
+  it('#4004: binds the ratifies subject into the persisted record', async () => {
     const filePath = join(dir, 'ratify', 'vote-records.jsonl');
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, filePath);
 
-    const outcome = recordAuthenticVote({
+    const outcome = await recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
       errorPolicy: undefined,
@@ -283,10 +283,10 @@ describe('recordAuthenticVote persistence outcome (#3991)', () => {
     }
   });
 
-  it('#3991: persists to the .nexus-agents/governance/ data-dir path when no override is set', () => {
+  it('#3991: persists to the .nexus-agents/governance/ data-dir path when no override is set', async () => {
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, undefined);
 
-    const outcome = recordAuthenticVote({
+    const outcome = await recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: undefined,
       errorPolicy: undefined,
@@ -323,8 +323,8 @@ describe('declared options reach the persisted record (#6049, the seam)', () => 
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('persists coverage when options were declared and no selection was parseable', () => {
-    const outcome = recordAuthenticVote({
+  it('persists coverage when options were declared and no selection was parseable', async () => {
+    const outcome = await recordAuthenticVote({
       declaredOptions: ['A - do it', 'B - do not'],
       resolvedDecision: 'rejected',
       errorPolicy: undefined,
@@ -344,8 +344,8 @@ describe('declared options reach the persisted record (#6049, the seam)', () => 
     expect(outcome.record.optionTally).toEqual([]);
   });
 
-  it('persists NEITHER field for an ordinary yes/no vote — the pair', () => {
-    const outcome = recordAuthenticVote({
+  it('persists NEITHER field for an ordinary yes/no vote — the pair', async () => {
+    const outcome = await recordAuthenticVote({
       declaredOptions: undefined,
       resolvedDecision: 'approved',
       errorPolicy: undefined,

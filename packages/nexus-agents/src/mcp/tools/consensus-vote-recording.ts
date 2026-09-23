@@ -24,6 +24,10 @@ import {
   resolveVoteRecordsPath,
   voteRecordWriteFailedMessage,
 } from '../../audit/vote-record-store.js';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+import { FileLockTimeoutError, withFileLock } from '../../utils/file-lock.js';
 import { getToolMemory } from './tool-memory.js';
 import {
   getOutcomeStore,
@@ -208,7 +212,9 @@ interface RecordAuthenticVoteArgs {
   errorPolicy: ErrorPolicy | undefined;
 }
 
-export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPersistOutcome {
+export async function recordAuthenticVote(
+  args: RecordAuthenticVoteArgs
+): Promise<VoteRecordPersistOutcome> {
   const allSimulated = args.votes.length > 0 && args.votes.every((v) => v.source === 'simulation');
   if (allSimulated) {
     logger.debug('Skipping authentic vote record — all votes simulated');
@@ -233,7 +239,34 @@ export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPe
     return { persisted: false, reason: 'write-failed', detail };
   }
   const id = `vote-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
-  const record = persistVoteRecord({
+  let record: VoteRecord | undefined;
+  try {
+    record = await underLedgerLock(resolvedPath, () =>
+      persistVoteRecord(storeInput(args, id, resolvedPath))
+    );
+  } catch (error: unknown) {
+    return lockFailure(resolvedPath, error);
+  }
+  if (record === undefined) {
+    // The path resolved but the append threw (data dir unwritable) —
+    // persistVoteRecord already WARNed with the underlying error + path. Surface
+    // the actionable unwritable-data-dir guidance with the concrete path.
+    return {
+      persisted: false,
+      reason: 'write-failed',
+      detail: voteRecordWriteFailedMessage(resolvedPath),
+    };
+  }
+  return confirmPersisted(record, resolvedPath);
+}
+
+/** The store input for one vote, written to `filePath`. */
+function storeInput(
+  args: RecordAuthenticVoteArgs,
+  id: string,
+  filePath: string
+): Parameters<typeof persistVoteRecord>[0] {
+  return {
     id,
     proposal: args.proposal,
     strategy: toRecordStrategy(args.strategy),
@@ -246,22 +279,40 @@ export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPe
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
     ...(args.errorPolicy !== undefined ? { errorPolicy: args.errorPolicy } : {}),
-    // #6531: write to the path resolved above, so the read-back below and the
+    // #6531: write to the path resolved by the caller, so the read-back and the
     // path the caller prints are the file the store wrote.
-    filePath: resolvedPath,
+    filePath,
     logger,
+  };
+}
+
+/**
+ * Run the store's append while holding the ledger's cross-process lock
+ * (#6531). The store reads the ledger tip and then appends, synchronously,
+ * so two PROCESSES appending at once took the same tip and wrote the same
+ * sequence. The lock is taken here rather than inside the store to keep the
+ * governor-path store unchanged; this recorder is the store's only production
+ * writer. The wait is async (#6548 review): a contended ledger must not stall
+ * the MCP server's event loop.
+ */
+async function underLedgerLock<T>(path: string, write: () => T): Promise<T> {
+  mkdirSync(dirname(path), { recursive: true });
+  return withFileLock(`${path}.lock`, write);
+}
+
+/** The outcome when the lock could not be taken (or its directory not created). */
+function lockFailure(path: string, error: unknown): VoteRecordPersistOutcome {
+  logger.warn('Failed to take the vote-record ledger lock', {
+    error: getErrorMessage(error),
+    path,
   });
-  if (record === undefined) {
-    // The path resolved but the append threw (data dir unwritable) —
-    // persistVoteRecord already WARNed with the underlying error + path. Surface
-    // the actionable unwritable-data-dir guidance with the concrete path.
-    return {
-      persisted: false,
-      reason: 'write-failed',
-      detail: voteRecordWriteFailedMessage(resolvedPath),
-    };
-  }
-  return confirmPersisted(record, resolvedPath);
+  const detail =
+    error instanceof FileLockTimeoutError
+      ? `Authentic vote record NOT persisted (${path}): timed out after ` +
+        `${String(error.timeoutMs)}ms waiting for the ledger lock ${error.lockPath}, ` +
+        'held by another live process.'
+      : voteRecordWriteFailedMessage(path);
+  return { persisted: false, reason: 'write-failed', detail };
 }
 
 /** The outcome for an append that returned `record`: persisted only if it reads back (#6531). */
