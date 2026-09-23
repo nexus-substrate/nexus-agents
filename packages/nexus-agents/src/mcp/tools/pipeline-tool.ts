@@ -270,14 +270,20 @@ export async function runPipelineForGoal(
 async function executePipelineBody(
   task: string,
   stages: ReturnType<typeof selectStageRegistry>,
-  templateId: string | undefined,
-  dryRun: boolean,
-  simulated: boolean
+  run: {
+    readonly templateId: string | undefined;
+    readonly dryRun: boolean;
+    readonly simulated: boolean;
+    /** `cancel_job`'s signal on the async path (#6305); absent on the sync path. */
+    readonly signal?: AbortSignal;
+  }
 ): Promise<ToolResult> {
+  const { templateId, dryRun, simulated, signal } = run;
   const result = await runAdaptiveOrchestrator(task, {
     stages,
     templateId,
     dryRun,
+    ...(signal !== undefined ? { signal } : {}),
   });
   const output = buildOutput(result, simulated);
   // #4363 caller audit: `toolSuccessStructured` nests the payload under
@@ -334,6 +340,7 @@ async function runPipelineHandler(
       budget: resolveRunBudget(task, input.template, logger),
     });
     const stages = selectStageRegistry(input.template, task, agentStages);
+    const body = { templateId: input.template, dryRun: input.dryRun, simulated };
 
     // #3730: async dispatch for real (non-dryRun) runs — a full adaptive
     // pipeline can exceed the 900s MCP request timeout. dryRun ALWAYS stays
@@ -345,15 +352,14 @@ async function runPipelineHandler(
         toolName: 'run_pipeline',
         input,
         freshJobId: () => `rp-${randomUUID()}`,
-        // #5393: deliberately arity-0 — `runAdaptiveOrchestrator` has no
-        // AbortSignal option, so taking the signal would flip `signalAccepted`
-        // to true with nothing reading it. Stage-boundary gate first: #6305.
-        run: () => executePipelineBody(task, stages, input.template, input.dryRun, simulated),
+        // #5393 / #6305: arity 3 — the graph executor checks the signal before every
+        // super-step, so a cancel stops the run at the next stage boundary.
+        run: (_jobId, _input, signal) => executePipelineBody(task, stages, { ...body, signal }),
         logger,
       });
     }
 
-    return await executePipelineBody(task, stages, input.template, input.dryRun, simulated);
+    return await executePipelineBody(task, stages, body);
   } catch (error: unknown) {
     // #3730 discoverability: a sync run that times out (or otherwise fails
     // mid-pipeline) should point the caller at async mode — the durable fix
