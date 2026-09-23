@@ -179,15 +179,17 @@ export function logFinalEventBusStats(logger: ILogger): void {
  * Upper bound on the graceful-shutdown cleanup before the process exits
  * anyway (#6560).
  *
- * Why 12 s: the slowest step the cleanup is expected to finish is the audit
- * logger's final flush. Once that flush appends under the cross-process audit
- * lock (#6546/#6559), a contended flush may legitimately wait the lock's 10 s
- * acquisition timeout (`utils/file-lock.ts`) before it fails loudly; 2 s on top
- * covers the append itself and the remaining in-process teardown. Anything
+ * Why 13 s: the slowest step the cleanup is expected to finish is the audit
+ * logger's final flush, and since #6573 it runs LAST, after the tool-call
+ * drain (`TOOL_CALL_DRAIN_TIMEOUT_MS`, 1 s) and the rest of the teardown. Once
+ * that flush appends under the cross-process audit lock (#6546/#6559), a
+ * contended flush may legitimately wait the lock's 10 s acquisition timeout
+ * (`utils/file-lock.ts`) before it fails loudly. 10 s + the 1 s drain + 2 s
+ * for the append, closing the transport and the remaining teardown. Anything
  * longer is a hang, and a hung cleanup must not keep an orphaned server alive —
  * not lingering is the whole point of {@link watchParentProcess}.
  */
-const SHUTDOWN_CLEANUP_TIMEOUT_MS = 12_000;
+const SHUTDOWN_CLEANUP_TIMEOUT_MS = 13_000;
 
 /** Options for {@link createGracefulShutdown}. */
 interface GracefulShutdownOptions {
@@ -277,5 +279,45 @@ export function watchParentProcess(
   monitor.onClose(() => {
     logger.warn('Parent process closed stdin, shutting down');
     return requestShutdown('parent-gone');
+  });
+}
+
+/** The part of `process.stderr` {@link routeStderrEpipeToShutdown} listens on. */
+type ErrorEventSource = Pick<NodeJS.EventEmitter, 'on'>;
+
+function isEpipe(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'EPIPE'
+  );
+}
+
+/**
+ * Makes an EPIPE on stderr a shutdown request instead of a crash (#6573).
+ *
+ * The server logs to stderr, usually a pipe to the host. When the host dies the
+ * pipe loses its reader, and the next log write — typically the "parent
+ * process closed stdin" warning at the start of shutdown — fails with EPIPE.
+ * With no `'error'` listener on the stream, that became an `uncaughtException`
+ * whose handler exited before the audit flush ran, so `system.shutdown.begin`
+ * was never written. A lost stderr reader is evidence the host is gone, so the
+ * error requests the same bounded, run-once shutdown as parent death (a no-op
+ * when that shutdown is already running). Any other stderr error is rethrown
+ * and stays fatal.
+ */
+export function routeStderrEpipeToShutdown(
+  requestShutdown: ShutdownRequest,
+  stream: ErrorEventSource = process.stderr
+): void {
+  stream.on('error', (error: unknown) => {
+    if (!isEpipe(error)) {
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+    // Nothing is logged here: stderr is the stream that just failed.
+    requestShutdown('stderr-closed').catch(() => {
+      process.exit(EXIT_CODES.SHUTDOWN_ERROR);
+    });
   });
 }

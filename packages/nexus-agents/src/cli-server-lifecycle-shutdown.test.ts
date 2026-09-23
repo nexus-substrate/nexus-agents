@@ -14,7 +14,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createGracefulShutdown, watchParentProcess } from './cli-server-lifecycle.js';
+import { EventEmitter } from 'node:events';
+
+import {
+  createGracefulShutdown,
+  routeStderrEpipeToShutdown,
+  watchParentProcess,
+} from './cli-server-lifecycle.js';
 import { shutdownAuditLogger } from './cli-server-audit.js';
 import { createAuditLogger, type AuditLogger } from './audit/index.js';
 import { EXIT_CODES } from './cli-types.js';
@@ -25,7 +31,7 @@ import type { ILogger } from './core/index.js';
  * Pinned here so changing how long an orphaned server may linger is a
  * deliberate, reviewed edit rather than a silent one.
  */
-const DEFAULT_SHUTDOWN_BOUND_MS = 12_000;
+const DEFAULT_SHUTDOWN_BOUND_MS = 13_000;
 
 function createMockLogger(): ILogger {
   return {
@@ -202,7 +208,7 @@ describe('createGracefulShutdown', () => {
     );
   });
 
-  it('defaults the bound to 12 s (SHUTDOWN_CLEANUP_TIMEOUT_MS)', async () => {
+  it('defaults the bound to 13 s (SHUTDOWN_CLEANUP_TIMEOUT_MS)', async () => {
     vi.useFakeTimers();
     const exit = vi.fn();
     const done = createGracefulShutdown({
@@ -256,5 +262,30 @@ describe('createGracefulShutdown', () => {
     expect(exit).toHaveBeenCalledOnce();
     expect(exit).toHaveBeenCalledWith(EXIT_CODES.SHUTDOWN_ERROR);
     expect(logger.error).toHaveBeenCalledWith('Error during shutdown', expect.any(Error));
+  });
+});
+
+describe('routeStderrEpipeToShutdown (#6573)', () => {
+  function errnoError(code: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`write ${code}`), { code });
+  }
+
+  it('turns an EPIPE on stderr into a shutdown request instead of a throw', () => {
+    const stream = new EventEmitter();
+    const requestShutdown = vi.fn(() => Promise.resolve());
+    routeStderrEpipeToShutdown(requestShutdown, stream);
+
+    expect(() => stream.emit('error', errnoError('EPIPE'))).not.toThrow();
+    expect(requestShutdown).toHaveBeenCalledOnce();
+    expect(requestShutdown).toHaveBeenCalledWith('stderr-closed');
+  });
+
+  it('rethrows any other stderr error, so it stays fatal', () => {
+    const stream = new EventEmitter();
+    const requestShutdown = vi.fn(() => Promise.resolve());
+    routeStderrEpipeToShutdown(requestShutdown, stream);
+
+    expect(() => stream.emit('error', errnoError('EIO'))).toThrow('write EIO');
+    expect(requestShutdown).not.toHaveBeenCalled();
   });
 });

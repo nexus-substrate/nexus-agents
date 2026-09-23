@@ -69,14 +69,15 @@ export function initializeAuditLogger(
  */
 export async function shutdownAuditLogger(
   auditLogger: AuditLogger | null,
-  logger: ILogger
+  logger: ILogger,
+  metadata?: Record<string, unknown>
 ): Promise<void> {
   if (auditLogger === null) return;
 
   try {
-    // Begin only: this logger is closed on the next line, before the rest of
-    // the teardown, so a completion record is not writable (#5577).
-    auditLogger.logSystemShutdownBegin();
+    // Begin only: this logger is closed on the next line, and nothing can be
+    // recorded after that, so a completion record is not writable (#5577).
+    auditLogger.logSystemShutdownBegin(metadata);
     await auditLogger.close();
     logger.info('Audit logger shutdown complete');
   } catch (error) {
