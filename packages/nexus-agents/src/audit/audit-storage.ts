@@ -335,6 +335,7 @@ export class FileAuditStorage implements IAuditStorage {
   ): Promise<void> {
     await withFileLock(path.join(this.logDir, `${this.filePrefix}.lock`), async () => {
       this.adoptLatestFile();
+      this.terminateTornLine();
       const tailHash = await readChainTailHash(this.logDir, this.getExistingLogFiles());
       for (const event of seal(tailHash)) await this.write(event);
       await this.flush();
@@ -360,6 +361,26 @@ export class FileAuditStorage implements IAuditStorage {
       this.openWriteStream();
     }
     this.currentFileSize = fs.statSync(latestPath).size;
+  }
+
+  /**
+   * Under the append lock: if a writer crashed mid-line, end that line before
+   * appending, or the next event would be glued onto it and lost with it. The
+   * torn line itself is left in place — the verifier still counts it as
+   * skipped — and the tail read links the new batch past it.
+   */
+  private terminateTornLine(): void {
+    if (this.currentFile === null || this.currentFileSize === 0) return;
+    const last = Buffer.alloc(1);
+    const fd = fs.openSync(this.currentFile, 'r');
+    try {
+      fs.readSync(fd, last, 0, 1, this.currentFileSize - 1);
+    } finally {
+      fs.closeSync(fd);
+    }
+    if (last[0] === 0x0a) return;
+    fs.appendFileSync(this.currentFile, '\n');
+    this.currentFileSize += 1;
   }
 
   async close(): Promise<void> {

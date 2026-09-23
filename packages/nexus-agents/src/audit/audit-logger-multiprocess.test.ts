@@ -109,12 +109,20 @@ function logFiles(logDir: string): string[] {
     .sort();
 }
 
-function readEvents(logDir: string): AuditEvent[] {
+function readEvents(logDir: string, opts: { skipUnparseable?: boolean } = {}): AuditEvent[] {
+  const parse = (l: string): AuditEvent[] => {
+    try {
+      return [JSON.parse(l) as AuditEvent];
+    } catch (error) {
+      if (opts.skipUnparseable === true) return [];
+      throw error;
+    }
+  };
   return logFiles(logDir).flatMap((f) =>
     readFileSync(join(logDir, f), 'utf-8')
       .split('\n')
       .filter((l) => l.length > 0)
-      .map((l) => JSON.parse(l) as AuditEvent)
+      .flatMap(parse)
   );
 }
 
@@ -303,6 +311,57 @@ describe('AuditLogger hash chain across processes (#6546)', () => {
       eventIndex: 3,
     });
   }, 60_000);
+
+  it('persists the event as it was at log(), not as the caller later mutated it', async () => {
+    const logger = createAuditLogger(config(logDir));
+    const actor = { type: 'agent' as const, id: 'original-agent' };
+    const metadata: Record<string, unknown> = { note: 'original', nested: { n: 1 } };
+    try {
+      logger.log({
+        category: 'system',
+        severity: 'info',
+        outcome: 'success',
+        action: 'test.append',
+        actor,
+        metadata,
+      });
+      // The caller owns these objects and may reuse them after log() returns.
+      actor.id = 'forged-agent';
+      metadata['note'] = 'forged';
+      (metadata['nested'] as { n: number }).n = 2;
+      await logger.flush();
+    } finally {
+      await logger.close();
+    }
+
+    const [event] = readEvents(logDir);
+    expect(event?.actor.id).toBe('original-agent');
+    expect(event?.metadata).toEqual({ note: 'original', nested: { n: 1 } });
+    const body = await verifyDir(logDir);
+    expect(body.verification.ok).toBe(true);
+  });
+
+  it('terminates a torn final line before appending, so no new event is lost', async () => {
+    await runToExit('A', 2);
+    const [file] = logFiles(logDir);
+    const path = join(logDir, file ?? '');
+    // A crash mid-write: a partial JSON line with no trailing newline.
+    writeFileSync(path, readFileSync(path, 'utf-8') + '{"id":"aud_torn","timest');
+
+    await runToExit('B', 2);
+
+    const lines = readFileSync(path, 'utf-8').split('\n');
+    expect(lines).toContain('{"id":"aud_torn","timest');
+    const body = await verifyDir(logDir);
+    // The torn line stays visible as a skipped line; it is not healed.
+    expect(body.skippedLines).toBe(1);
+    expect(body.eventCount).toBe(4);
+    expect(body.verification.ok).toBe(true);
+    const events = readEvents(logDir, { skipUnparseable: true });
+    expect(events.map((e) => e.actor.id)).toEqual(['A-0', 'A-1', 'B-0', 'B-1']);
+    // The new batch links past the torn line to the last valid event.
+    expect(events[2]?.previousHash).toBe(events[1]?.hash);
+  }, 60_000);
 });
 
 describe('AuditLogger batch requeue around appendChained (#6546)', () => {
@@ -356,6 +415,21 @@ describe('AuditLogger batch requeue around appendChained (#6546)', () => {
     await expect(logger.flush()).rejects.toThrow('write failed');
     await logger.flush();
     expect(written).toHaveLength(0);
+    await logger.close();
+  });
+
+  it('records an unserializable event as a persist failure without throwing from log()', async () => {
+    const { storage, written } = stubStorage([]);
+    const logger = createAuditLogger(config('/tmp/unused'), storage);
+    const circular: Record<string, unknown> = {};
+    circular['self'] = circular;
+    expect(() => {
+      logger.log({ ...input, metadata: circular });
+    }).not.toThrow();
+    logger.log(input);
+    await logger.flush();
+    expect(logger.getPersistFailureCount()).toBe(1);
+    expect(written).toHaveLength(1);
     await logger.close();
   });
 });

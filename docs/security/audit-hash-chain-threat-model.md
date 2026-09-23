@@ -83,7 +83,11 @@ Hash chaining is controlled by `enableHashChain`, which **defaults to `true`**
 (`audit-types.ts:305`).
 
 Events are linked when a queued batch is flushed, not when they are logged
-(`audit-logger.ts` `sealChain`, since #6546):
+(`audit-logger.ts` `sealChain`, since #6546). What gets hashed is still fixed
+at `log()`: `createEvent` stores a JSON snapshot of the event, so a caller that
+mutates its `actor` or `metadata` objects after `log()` returns cannot change
+the record that is later hashed and written. An event that cannot be
+serialized (e.g. circular metadata) is counted as a persist failure at `log()`.
 
 1. `event.previousHash` is set to the hash of the chain's current head. With
    `FileAuditStorage` that head is the last valid event **already on disk**,
@@ -195,13 +199,17 @@ advisory cross-process lock in `utils/file-lock.ts` (#6548), at
 1. switches to whichever `audit-*.jsonl` file is newest **now**, since another
    process may have rotated since this one last wrote — appending to an older
    file would place the batch before events it chains after;
-2. reads the head: the last line of the newest file that parses as an
+2. if that file does not end in a newline (a writer crashed mid-line), appends
+   one, so the next event is not glued onto the torn line. The torn line is
+   left in place: the verifier still skips it and counts it in `skippedLines`
+   / `coverage.skipped`, so it stays visible rather than healed;
+3. reads the head: the last line of the newest file that parses as an
    `AuditEvent`, walking back to older files past one that holds no event yet
    (a file another process rotated to but has not written). Lines the verifier
    would skip are skipped here too; chaining to one would itself be a break.
    No event anywhere, or an un-hashed last event, is the empty case: the batch
    starts a genesis event;
-3. links the batch onto that head, writes it and waits for the write to reach
+4. links the batch onto that head, writes it and waits for the write to reach
    the file, then releases the lock.
 
 The read and the append share the lock, so two processes cannot both link to

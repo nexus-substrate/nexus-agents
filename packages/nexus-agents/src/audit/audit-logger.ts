@@ -497,7 +497,10 @@ export class AuditLogger implements IAuditLogger {
     // load-bearing for integrity — it cannot be trusted to downgrade the hash.
     if (hasTierTransitionPayload(event)) event.hashVersion = AUDIT_HASH_VERSION_TIER_TRANSITION;
 
-    return event;
+    // Snapshot in the persisted (JSON) form NOW (#6546 review): hashing waits
+    // for the flush, so the queued event must not share `actor`, `metadata` or
+    // `resource` objects the caller can still mutate after log() returns.
+    return JSON.parse(JSON.stringify(event)) as AuditEvent;
   }
 
   /**
@@ -528,7 +531,14 @@ export class AuditLogger implements IAuditLogger {
 
     if (!this.shouldLog(input)) return;
 
-    const event = this.createEvent(input);
+    let event: AuditEvent;
+    try {
+      event = this.createEvent(input);
+    } catch (err: unknown) {
+      // Not serializable (e.g. circular metadata): it could never be written.
+      this.recordPersistFailure(err);
+      return;
+    }
     this.eventQueue.push(event);
 
     if (this.eventQueue.length > this.maxQueueDepth) {
