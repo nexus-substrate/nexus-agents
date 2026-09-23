@@ -21,6 +21,9 @@
 #   7 — SQLite unusable after a scripts-blocked install (#5388)
 #   8 — node:sqlite experimental warning leaked to users (#5392)
 #   9 — ast-grep native grammars unusable / polyglot scanner found nothing (#5427)
+#  10 — the package manager blocked, ignored or asked about a dependency install
+#        script (#6481): pnpm 12 in a terminal stalls on that prompt, npm 12 under
+#        strict-allow-scripts fails; the published tarball bundles those deps
 set -euo pipefail
 
 VERSION="${1:-latest}"
@@ -70,9 +73,23 @@ resolve_requested_version() {
 }
 
 case "$INSTALL_MODE" in
-  ignore-scripts | default | npm12 | update | pnpm) ;;
+  ignore-scripts | default | npm12 | npm12-strict | update | pnpm) ;;
   *) fail "unknown install mode: $INSTALL_MODE" 3 ;;
 esac
+
+# #6481. Output of the install step for the modes whose package manager gates
+# dependency install scripts. Any blocked/ignored/approval line means a real
+# user's install either stalled (pnpm 12 prompts in a terminal) or failed (npm
+# 12 strict-allow-scripts), so it is a failure here, not a warning.
+INSTALL_LOG=$(mktemp)
+assert_no_blocked_scripts() {
+  local hits
+  hits=$(grep -E 'install scripts blocked|install-scripts|ESTRICTALLOWSCRIPTS|not covered by allowScripts|Ignored build scripts|approve-builds' "$INSTALL_LOG" || true)
+  if [[ -n "$hits" ]]; then
+    printf '%s\n' "$hits" >&2
+    fail "INSTALL_MODE=$INSTALL_MODE: a dependency install script was blocked or awaits approval (#6481)" 10
+  fi
+}
 
 step "Phase 1: install nexus-agents@${VERSION}"
 # Detect tarball path vs version spec. Tarballs install by file path directly;
@@ -99,7 +116,7 @@ case "$INSTALL_MODE" in
       fail "npm install failed" 1
     fi
     ;;
-  npm12)
+  npm12 | npm12-strict)
     if ! npm install -g npm@12 2>&1; then
       fail "npm 12 install failed" 1
     fi
@@ -108,8 +125,15 @@ case "$INSTALL_MODE" in
     if [[ "$NPM_VERSION" != 12.* ]]; then
       fail "npm 12 activation failed: npm -v reported $NPM_VERSION" 1
     fi
-    if ! npm install -g "$INSTALL_SPEC" 2>&1; then
-      fail "npm install failed under npm 12" 1
+    if [[ "$INSTALL_MODE" == "npm12-strict" ]]; then
+      npm config set strict-allow-scripts=true --location=user
+    fi
+    INSTALL_STATUS=0
+    npm install -g "$INSTALL_SPEC" >"$INSTALL_LOG" 2>&1 || INSTALL_STATUS=$?
+    cat "$INSTALL_LOG"
+    assert_no_blocked_scripts
+    if [[ "$INSTALL_STATUS" -ne 0 ]]; then
+      fail "npm install failed under npm 12 ($INSTALL_MODE)" 1
     fi
     ;;
   update)
@@ -149,9 +173,15 @@ case "$INSTALL_MODE" in
     # silently ignored; `--config.minimum-release-age=0` is the form that
     # takes. Verified in a clean node:22-bookworm-slim container against
     # pnpm 12.3.4: camelCase installed 8.19.1, kebab installed 8.31.0.
-    if ! pnpm add -g "$INSTALL_SPEC" --config.minimum-release-age=0 2>&1; then
+    INSTALL_STATUS=0
+    pnpm add -g "$INSTALL_SPEC" --config.minimum-release-age=0 >"$INSTALL_LOG" 2>&1 || INSTALL_STATUS=$?
+    cat "$INSTALL_LOG"
+    if [[ "$INSTALL_STATUS" -ne 0 ]]; then
       fail "pnpm global install failed" 1
     fi
+    # Non-interactive here, so pnpm prints "Ignored build scripts" where a
+    # terminal install would stop at its approve-builds prompt — same list.
+    assert_no_blocked_scripts
     read_installed_version
     if [[ "$INSTALLED_VERSION" != "$REQUESTED_VERSION" ]]; then
       fail "pnpm-version mismatch: expected $REQUESTED_VERSION, got $INSTALLED_VERSION" 3

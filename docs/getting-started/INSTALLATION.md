@@ -327,47 +327,36 @@ Persistent memory (agentic, adaptive, typed, mobimem, decay) runs on **`node:sql
 
 The polyglot (Python/Go) security scanner does load native tree-sitter grammars, from `@ast-grep/lang-python` and `@ast-grep/lang-go`. Those ship **prebuilt** `.so` files inside their own npm tarballs for Linux, macOS (x64 + arm64) and Windows x64, so they neither download nor compile anything on a supported platform.
 
-Four production packages still declare an install script — `@ast-grep/lang-go`, `@ast-grep/lang-python`, `@google/genai` and `protobufjs` — and every one is inert for this package's purposes. That claim is enforced rather than trusted ([#5427](https://github.com/nexus-substrate/nexus-agents/issues/5427)):
+Four production packages declare an install script: `@ast-grep/lang-go`, `@ast-grep/lang-python`, `@google/genai` and `protobufjs`. Every one is inert for this package's purposes. Two verify a grammar that already ships in their tarball, one is literally `echo`, and `protobufjs` arrives through `@google/genai`. That claim is enforced rather than trusted ([#5427](https://github.com/nexus-substrate/nexus-agents/issues/5427)):
 
 - `scripts/check-install-scripts.ts` installs the packed tarball with npm and fails if any install script appears that is not in `scripts/install-script-allowlist.json`, if an allowlisted one changes what it runs, or if an allowlisted entry no longer exists.
-- `scripts/verify-npm-install.sh` installs with `--ignore-scripts` in a container with **no compiler present**, then proves the SQLite path and the polyglot scanner both still work — the scanner has to return two named findings from a fixture, so "found nothing" cannot pass for "clean".
+- `scripts/verify-npm-install.sh` installs with `--ignore-scripts` in a container with **no compiler present**, then proves the SQLite path and the polyglot scanner both still work. The scanner has to return two named findings from a fixture, so "found nothing" cannot pass for "clean".
 
-If you install with `--ignore-scripts` (or with pnpm 10, or with npm 12 — see below — both of which block dependency install scripts by default), that is a supported configuration and needs no follow-up step.
+Run `nexus-agents verify` to see both checks, `SQLite Storage` and `Native Grammars`, reported by name.
 
-Run `nexus-agents verify` to see both checks — `SQLite Storage` and `Native Grammars` — reported by name.
+#### These dependencies ship inside the nexus-agents tarball
 
-#### `npm warn install-scripts` on npm 12 — expected, no action needed
+A package cannot pre-approve its dependencies' install scripts. npm's `allowScripts` and pnpm's `approve-builds` are settings on _your_ side. So on releases up to and including 8.82.0, a consent-gated package manager asked you about those four packages, and in two configurations that blocked the install ([#6481](https://github.com/nexus-substrate/nexus-agents/issues/6481)):
 
-npm 12 blocks dependency install scripts by default and reports each one it blocked:
+| configuration                                                      | releases ≤ 8.82.0                                                                |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `pnpm add -g nexus-agents` in a terminal (pnpm 12)                 | stops at "Choose which packages to build"; nothing is installed until you answer |
+| `npm install -g nexus-agents` with `strict-allow-scripts` (npm 12) | exits `1` with `ESTRICTALLOWSCRIPTS`                                             |
+| npm 12 / pnpm, non-interactive                                     | exits `0`, prints a blocked-scripts warning                                      |
 
-```
-npm warn install-scripts 4 packages had install scripts blocked because they are not covered by allowScripts:
-npm warn install-scripts   @ast-grep/lang-go@0.0.6 (postinstall: node postinstall.js)
-npm warn install-scripts   @ast-grep/lang-python@0.0.6 (postinstall: node postinstall.js)
-npm warn install-scripts   @google/genai@2.21.0 (preinstall: echo 'preinstall: no-op')
-npm warn install-scripts   protobufjs@7.6.6 (postinstall: node scripts/postinstall)
-```
+Later releases list `@ast-grep/lang-go`, `@ast-grep/lang-python`, `@google/genai` and `@modelcontextprotocol/sdk` in `bundleDependencies`. They arrive inside the nexus-agents tarball rather than as separate installs. npm 12 (default and strict) and pnpm 12 (in a terminal or not) then install with no prompt, no warning and no script executed, and the grammars still load. npm 10 and 11 run a bundled package's script exactly as they ran it before.
 
-**This is a warning, not a failure — the install exits `0` and everything works.** Blocked is the state this package is gated against, so npm 12's default is the path CI proves on every run. Verified against `nexus-agents@8.6.0` with npm 12.0.2:
+`@modelcontextprotocol/sdk` has no install script. It is bundled because `@google/genai` declares it as an optional peer, and npm's installer treats a bundled package's peers as part of the bundle. Leave it out and a consumer install gets empty directories for about 90 packages, and the CLI cannot start. `scripts/stage-publish.ts` refuses to stage a tarball in that state.
 
-```
-✓ SQLite Storage: node:sqlite available (memory backends available)
-✓ Native Grammars: ast-grep python/go grammars parse (polyglot scanner available)
-Installation verified successfully!
-```
+The trade: a bundled package is fixed at the version resolved when nexus-agents was released. `npm audit` still reports it, but a fix reaches you through a nexus-agents release, not through `npm update` of the dependency.
 
-**You do not need to approve them.** None of the four scripts do anything nexus-agents requires: two verify a prebuilt grammar that already ships inside its own tarball, one is literally `echo`, and the fourth arrives transitively. Approving them is harmless but buys nothing.
+If you are stuck on 8.82.0 or earlier, either upgrade, or approve the four packages once:
 
-npm suggests different remediation depending on how you installed, so the command it prints at you varies:
-
-| install                                     | what npm suggests                                                                                                                         |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| into a project (`npm install nexus-agents`) | `npm install-scripts approve <pkg>`, which writes `allowScripts` into _your_ project's `package.json`                                     |
-| globally (`npm install -g nexus-agents`)    | `npm install -g --allow-scripts=<pkgs>` for one install, or `npm config set allow-scripts=<pkgs> --location=user` for all global installs |
-
-Both are consumer-side by design, which is why nexus-agents cannot pre-approve them on your behalf.
-
-The only way to remove the warning from nexus-agents' side is to stop depending on packages that declare install scripts at all, which is tracked in [#5435](https://github.com/nexus-substrate/nexus-agents/issues/5435) because it would trade away the Gemini adapter and the polyglot scanner from a default install.
+| install                                     | command                                                                                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| globally with npm                           | `npm install -g --allow-scripts=@ast-grep/lang-go,@ast-grep/lang-python,@google/genai,protobufjs nexus-agents`                                      |
+| globally with pnpm                          | `pnpm add -g nexus-agents --allow-build=@ast-grep/lang-go --allow-build=@ast-grep/lang-python --allow-build=@google/genai --allow-build=protobufjs` |
+| into a project (`npm install nexus-agents`) | `npm install-scripts approve <pkg>`, which writes `allowScripts` into your project's `package.json`                                                 |
 
 ## CI/CD Integration
 

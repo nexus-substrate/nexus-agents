@@ -114,7 +114,9 @@ jobs:
           SCRATCH="${RUNNER_TEMP}/sbom"
           rm -rf "$SCRATCH" && mkdir -p "$SCRATCH/pack" "$SCRATCH/tree"
 
-          (cd packages/nexus-agents && npm pack --pack-destination "$SCRATCH/pack")
+          # The STAGED package (#6481): the bytes `pnpm release` publishes, with
+          # the install-script dependencies bundled inside.
+          pnpm exec tsx scripts/stage-publish.ts --pack "$SCRATCH/pack"
           TARBALL=$(ls "$SCRATCH"/pack/*.tgz | head -1)
           echo "Packed: $(basename "$TARBALL")"
 
