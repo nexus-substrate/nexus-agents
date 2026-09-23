@@ -43,6 +43,7 @@ import {
   type RoutedOutcomeCounts,
 } from '../learning/distiller-eligibility.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
+import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
@@ -307,7 +308,14 @@ export interface VoterTransportCheck {
  * Complete doctor check results.
  */
 export interface DoctorResult {
+  /** CLIs that were probed: every CLI not disabled by `NEXUS_DISABLED_CLIS`. */
   readonly clis: CliCheckResult[];
+  /**
+   * CLIs taken out of service by `NEXUS_DISABLED_CLIS` (#6590), in slot order.
+   * Not probed and not counted toward the verdict: disabling a CLI is an
+   * operator decision, not a fault. Empty when the variable is unset.
+   */
+  readonly disabledClis: readonly CliName[];
   readonly nodeVersion: NodeVersionCheck;
   readonly apiKeys: ApiKeyCheck[];
   readonly configFile: ConfigFileCheck;
@@ -1009,12 +1017,11 @@ function probeClaudeModelFor(
 export async function runDoctor(
   deps: { readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe> } = {}
 ): Promise<DoctorResult> {
-  const clis = await Promise.all([
-    checkCli('claude'),
-    checkCli('gemini'),
-    checkCli('codex'),
-    checkCli('opencode'),
-  ]);
+  const allClis: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
+  const disabledClis = allClis.filter((cli) => isCliDisabled(cli));
+  const clis = await Promise.all(
+    allClis.filter((cli) => !isCliDisabled(cli)).map((cli) => checkCli(cli))
+  );
   const claudeModel = await probeClaudeModelFor(clis, deps.probeClaudeModel);
   const nodeVersion = checkNodeVersion();
   const apiKeys = checkApiKeys();
@@ -1044,6 +1051,7 @@ export async function runDoctor(
 
   return {
     clis,
+    disabledClis,
     nodeVersion,
     apiKeys,
     configFile,

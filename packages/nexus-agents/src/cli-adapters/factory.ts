@@ -22,6 +22,7 @@ import type { ICliDetectionCache } from './cli-detection-cache.js';
 import { CliDetectionCache } from './cli-detection-cache.js';
 import { probeCli } from '../cli/cli-auth-probe.js';
 import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
+import { isCliDisabled } from './disabled-clis.js';
 import {
   codexMcpServerAvailable,
   CodexMcpServerUnavailableError,
@@ -127,7 +128,8 @@ function createCodexAdapter(
  * Creates all available routing-arm adapters.
  * Codex transport is selected by probe unless one is passed (#6119).
  *
- * The four CLI slots are always registered under their slot key. When
+ * The four CLI slots are registered under their slot key, except any disabled
+ * by `NEXUS_DISABLED_CLIS` (#6590); every CLI disabled yields an empty map. When
  * `NEXUS_BILLING_MODE=api`, the direct-API adapters whose keys are present are
  * ALSO appended as distinct `api:<vendor>` routing arms (#3422) so the router /
  * bandit can score them separately from the CLI slots. DEFAULT (plan) mode
@@ -145,10 +147,17 @@ export function createAllAdapters(
   const adapters = new Map<RoutingArmId, ICliAdapter>();
   const options = logger !== undefined ? { logger } : undefined;
 
-  adapters.set('claude', new ClaudeCliAdapter(options));
-  adapters.set('gemini', new GeminiCliAdapter(options));
-  adapters.set('codex', createCodexAdapter(codexTransport, options ?? {}));
-  adapters.set('opencode', new OpenCodeCliAdapter(options));
+  const slots: ReadonlyArray<readonly [CliName, () => ICliAdapter]> = [
+    ['claude', () => new ClaudeCliAdapter(options)],
+    ['gemini', () => new GeminiCliAdapter(options)],
+    ['codex', () => createCodexAdapter(codexTransport, options ?? {})],
+    ['opencode', () => new OpenCodeCliAdapter(options)],
+  ];
+  // #6590: an operator-disabled CLI is not an arm. Skipped before
+  // construction, so a disabled codex is not even probed for its transport.
+  for (const [cli, create] of slots) {
+    if (!isCliDisabled(cli)) adapters.set(cli, create());
+  }
 
   // API arms enter the router only in explicit api billing mode (#3422).
   if (process.env['NEXUS_BILLING_MODE'] === 'api') {
@@ -245,13 +254,17 @@ function cacheHealthCheckFailure(
 
 /**
  * Gets all available CLIs by running health checks.
- * Uses cache if provided to avoid repeated subprocess calls.
+ * Uses cache if provided to avoid repeated subprocess calls. CLIs disabled by
+ * `NEXUS_DISABLED_CLIS` are excluded (#6590); disabling every CLI yields `[]`.
  *
  * @param cache - Optional cache to use
  * @returns Array of available CLI names
  */
 export async function getAvailableClis(cache?: ICliDetectionCache): Promise<CliName[]> {
-  const clis: CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
+  // #6590: disabled CLIs are dropped before probing, so none spends a probe.
+  const clis = (['claude', 'gemini', 'codex', 'opencode'] as const).filter(
+    (cli) => !isCliDisabled(cli)
+  );
 
   // Check all CLIs in parallel to avoid sequential timeout penalties
   const results = await Promise.allSettled(
