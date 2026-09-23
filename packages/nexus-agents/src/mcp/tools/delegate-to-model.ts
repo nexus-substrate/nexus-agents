@@ -84,9 +84,8 @@ export {
  * `recommendedMappings`, LinUCB, TOPSIS, fitness-audit). Audit of
  * `~/.nexus-agents/learning/outcomes.jsonl` found 3993 source-delegate
  * rows total — a large fraction were these synthetic positives. Recording
- * here was removed; the 9 OTHER `source: 'delegate'` writers (orchestrate,
- * agent-executor, parallel-exploration, …) which record real execution
- * outcomes are unchanged.
+ * here was removed; the OTHER `source: 'delegate'` writers (orchestrate,
+ * agent-executor, …) which record real execution outcomes are unchanged.
  */
 function recordDelegation(
   task: string,
