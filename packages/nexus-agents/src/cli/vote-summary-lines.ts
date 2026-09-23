@@ -185,10 +185,25 @@ function seatTimingLine(votes: readonly AgentVoteResult[]): string {
   return `Seat timing (queued→ran): ${parts.join('; ')}; queued total ${seconds(queuedTotal)}`;
 }
 
-/** The three always-printed panel-shape lines, in summary order: project (#6110), models (#6115), seat timing (#6103). */
+/**
+ * The directory the panel's seats were pointed at (#6258) —
+ * `Workspace: /path`. `executeVoting` stamps it on every live panel; absence
+ * means no live seat was handed one (a simulated panel), and the line says so
+ * rather than being omitted, so a missing stamp never reads as the cwd.
+ */
+function workspaceLine(workspace: string | undefined): string {
+  return `Workspace: ${workspace ?? 'none (no live seat was pointed at one)'}`;
+}
+
+/**
+ * The always-printed panel-shape lines, in summary order: project (#6110),
+ * models (#6115), seat timing (#6103), workspace (#6258). `workspace` is a
+ * required parameter so the compiler names every caller that must supply it.
+ */
 export function panelShapeLines(
   project: ResolvedVoterProject | undefined,
-  votes: readonly AgentVoteResult[]
+  votes: readonly AgentVoteResult[],
+  workspace: string | undefined
 ): readonly string[] {
-  return [projectLine(project), modelsLine(votes), seatTimingLine(votes)];
+  return [projectLine(project), modelsLine(votes), seatTimingLine(votes), workspaceLine(workspace)];
 }

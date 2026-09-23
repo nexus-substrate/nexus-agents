@@ -2152,6 +2152,7 @@ InterfaceDeclaration ConsensusVoteResponse
   voteRecordNote?: string | undefined
   voteRecordPersisted: boolean
   votes: AgentVoteSummary[]
+  workspace?: string | undefined
 InterfaceDeclaration ConsolidatedFinding
   agreementRatio: number
   category: "bug" | "design" | "documentation" | "other" | "performance" | "security" | "style"

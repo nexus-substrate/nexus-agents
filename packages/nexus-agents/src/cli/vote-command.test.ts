@@ -1253,6 +1253,56 @@ describe('voteCommand — target project (#6110)', () => {
   });
 });
 
+describe('voteCommand — panel working directory line (#6258)', () => {
+  function extendedResult(workspace?: string): Record<string, unknown> {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult({ outcome: 'approved' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision: 'approved',
+      ...(workspace === undefined ? {} : { workspace }),
+    };
+  }
+
+  let stdout: string[];
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    recordAuthenticVoteMock.mockReset();
+    recordAuthenticVoteMock.mockReturnValue(
+      persistedOutcome() as unknown as {
+        persisted: boolean;
+        record: { id: string; sequence: number };
+      }
+    );
+    stdout = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('prints the directory the seats were pointed at', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('/srv/stamped-panel-dir'));
+    await voteCommand({ proposal: 'p' });
+    expect(stdout.join('')).toContain('Workspace: /srv/stamped-panel-dir');
+  });
+
+  it('names an unstamped directory instead of omitting the line', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult());
+    await voteCommand({ proposal: 'p' });
+    expect(stdout.join('')).toContain('Workspace: none (no live seat was pointed at one)');
+  });
+});
+
 describe('voteCommand — panel model diversity line (#6115)', () => {
   /** A 3-seat panel where devex fell over from codex to gemini on a capacity error. */
   function panelWithFallover(): AgentVoteResult[] {

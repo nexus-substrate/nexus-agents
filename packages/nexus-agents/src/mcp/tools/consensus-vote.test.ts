@@ -1734,6 +1734,8 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     simulateVotes: false,
     // #6115: always present on the response; the key-parity guard covers it.
     panelDiversity: { distinctModels: 1, fallbacks: 1 },
+    // #6258: present on every live panel; the key-parity guard covers it.
+    workspace: '/srv/panel-cwd',
     higherOrderMetadata: {
       posteriorApproval: 0.8,
       posteriorRejection: 0.2,

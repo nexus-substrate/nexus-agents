@@ -41,6 +41,7 @@ import {
 } from '../../consensus/decision/strategy.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
+import { resolvePanelWorkspace } from '../../cli/panel-workspace.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
 import type {
@@ -507,8 +508,13 @@ export async function executeVoting(
   // #6110: resolve the target project ONCE per vote (the escalation re-vote
   // inherits it through opts) and stamp it on the result next to `decision`.
   const project = opts?.project ?? resolveAndLogVoterProject(input.project, logger);
-  const result = await executeVotingInner(input, logger, { ...opts, project });
+  // #6258: the directory every seat is handed, resolved once and stamped on the
+  // live result, so an `unverifiable` seat is diagnosable without stderr.
+  const panelWorkspace = resolvePanelWorkspace(opts?.workspace);
+  const result = await executeVotingInner(input, logger, { ...opts, project, panelWorkspace });
   result.project = project;
+  // A simulated panel pointed no seat at a directory, so it names none.
+  if (!input.simulateVotes) result.workspace = panelWorkspace;
   // An escalated full-panel result was finalized (and recorded) by its recursive
   // executeVoting call. Remember that state so this outer quick-mode frame does
   // not persist the same full-panel proposal twice.
@@ -592,6 +598,8 @@ async function executeVotingInner(
     signal?: AbortSignal | undefined;
     /** #6110: the target project, resolved once by `executeVoting`. */
     project: ResolvedVoterProject;
+    /** #6258: the directory the seats are handed — the value `executeVoting` stamps. */
+    panelWorkspace: string;
     /** #6162: per-seat heartbeat, forwarded to `collectRealVotes`. */
     onVoteCollected?: ((vote: AgentVoteResult) => void) | undefined;
   }
@@ -617,7 +625,7 @@ async function executeVotingInner(
     declaredOptions: input.options,
     // #6110: every seat's system prompt names the caller's project.
     project: opts.project.name,
-    workspace: opts.workspace,
+    workspace: opts.panelWorkspace,
     workspaceSha: opts.workspaceSha,
     signal: opts.signal,
     onVoteCollected: opts.onVoteCollected,
@@ -1218,6 +1226,9 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       source: z.enum(['input', 'derived', 'default']),
     })
     .optional(),
+  // #6258: the working directory the panel's seats were pointed at. Absent
+  // when no live seat ran (simulated panel) and on the async envelope.
+  workspace: z.string().max(4096).optional(),
   higherOrderMetadata: z
     .object({
       posteriorApproval: z.number(),
