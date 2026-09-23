@@ -151,6 +151,29 @@ describe('discovery of a three-family gateway catalogue (#6605)', () => {
     expect(NON_CHAT_IDS.filter((id) => kept.has(id))).toEqual([]);
   });
 
+  it('drops realtime, audio, transcription, TTS, image, live and video ids listed bare (#6604)', async () => {
+    const nonChat = [
+      'gpt-realtime',
+      'gpt-4o-realtime-preview',
+      'gpt-4o-audio-preview',
+      'gpt-image-1',
+      'gpt-4o-transcribe',
+      'gpt-4o-mini-tts',
+      'gemini-3-pro-image-preview',
+      'gemini-2.0-flash-live-001',
+      'sora-2',
+      'veo-3.0-generate-001',
+      'lyria-002',
+    ];
+    const chat = ['gpt-5.5', 'o4-mini', 'claude-sonnet-4-6', 'gemini-2.5-flash', 'gemini-3-pro'];
+    mockList.mockResolvedValue({
+      data: [...nonChat, ...chat].map((id) => ({ id, object: 'model', owned_by: 'x' })),
+    });
+    const result = await discoverModels(config, makeLogger());
+    if (!result.ok) throw new Error('discovery failed');
+    expect(result.value.map((m) => m.id)).toEqual(chat);
+  });
+
   it('lets listing metadata overrule the id heuristic in both directions', async () => {
     mockList.mockResolvedValue({
       data: [

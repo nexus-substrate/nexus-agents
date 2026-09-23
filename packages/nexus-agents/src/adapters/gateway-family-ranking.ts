@@ -5,16 +5,18 @@
  * 1. TIER, flagship first: flagship (opus, pro, ultra, and an unmarked id such
  *    as `gpt-5.5` or `o3`), then mid (sonnet, mini, flash), then small (haiku,
  *    nano, lite, including flash-lite). A newer mini never beats a flagship.
- * 2. A vendor `-latest` alias within the tier.
- * 3. Recency from discovery METADATA: the OpenAI-spec `/models` `created`
+ * 2. Recency from discovery METADATA: the OpenAI-spec `/models` `created`
  *    stamp. It is used only when EVERY model being ranked carries a positive
  *    one; comparing it for some pairs and not others would make the order
  *    depend on the input order.
- * 4. Fallback when `created` does not decide: the generation parsed from the
+ * 3. Fallback when `created` does not decide: the generation parsed from the
  *    id, newest first (`claude-opus-4-6` over `claude-opus-4-1`). A date stamp
  *    in the id (`20240307`, `2024-08-06`) is a snapshot label, never a
  *    generation: `claude-3-haiku-20240307` used to outrank `claude-opus-4-6`
  *    because `20240307 > 4`.
+ * 4. A vendor `-latest` alias, as a tie-break ONLY: `chatgpt-4o-latest` and
+ *    `claude-3-5-sonnet-latest` name old generations, and must not beat
+ *    `gpt-5` or `claude-sonnet-4-6`.
  * 5. Registry quality (`reasoning + codeGeneration`), looked up under the id
  *    and its dot/dash respelling (`claude-sonnet-4.6` / `claude-sonnet-4-6`).
  * 6. The id's date stamp, newest first; an undated id counts as oldest.
@@ -157,11 +159,11 @@ function compareTieBreakers(a: RankKey, b: RankKey): number {
 
 function compareKeys(a: RankKey, b: RankKey): number {
   if (a.tier !== b.tier) return b.tier - a.tier;
-  if (a.latest !== b.latest) return a.latest ? -1 : 1;
   const byCreated = compareCreatedDesc(a, b);
   if (byCreated !== 0) return byCreated;
   const byGeneration = compareSegmentsDesc(a.generation, b.generation);
   if (byGeneration !== 0) return byGeneration;
+  if (a.latest !== b.latest) return a.latest ? -1 : 1;
   return compareTieBreakers(a, b);
 }
 

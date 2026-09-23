@@ -124,11 +124,23 @@ describe('rankFamilyModels', () => {
     );
   });
 
-  it("prefers a vendor '-latest' alias within its tier", () => {
-    expectRanked(ids(['claude-opus-4-6', 'claude-3-opus-latest', 'claude-3-5-sonnet-latest']), [
-      'claude-3-opus-latest',
+  it("never lets an old generation's '-latest' alias beat a newer model", () => {
+    expectRanked(ids(['claude-opus-4-6', 'claude-3-opus-latest']), [
       'claude-opus-4-6',
+      'claude-3-opus-latest',
+    ]);
+    expectRanked(ids(['chatgpt-4o-latest', 'gpt-5']), ['gpt-5', 'chatgpt-4o-latest']);
+    expectRanked(ids(['claude-3-5-sonnet-latest', 'claude-sonnet-4-6']), [
+      'claude-sonnet-4-6',
       'claude-3-5-sonnet-latest',
+    ]);
+  });
+
+  it("uses '-latest' only to break a tie within one generation", () => {
+    // The dated snapshot would win the date tie-break; the alias wins first.
+    expectRanked(ids(['claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-latest']), [
+      'claude-3-5-sonnet-latest',
+      'claude-3-5-sonnet-20241022',
     ]);
   });
 

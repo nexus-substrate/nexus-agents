@@ -16,12 +16,7 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
-import {
-  clearSlotServedByGateway,
-  createGatewaySlotAdapter,
-  markSlotServedByGateway,
-  resolveGatewaySlot,
-} from './gateway-family-slots.js';
+import { createGatewaySlotAdapter, resolveGatewaySlot } from './gateway-family-slots.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
 import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
@@ -174,7 +169,6 @@ async function tryPreferredCli(
   logger.info('Using preferred CLI', { cli: preferredCli });
   const cliAdapter = createCliAdapter({ cli: preferredCli, logger });
   await cliAdapter.initialize();
-  clearSlotServedByGateway(preferredCli);
   return {
     adapter: createCliToModelAdapter(cliAdapter, cliBridgeConfig(config)),
     source: 'cli',
@@ -201,7 +195,6 @@ function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSele
   if (slot.kind === 'unavailable') {
     const sameFamily = buildApiSelectionForVendor(slot.family, logger, config);
     if (sameFamily !== null) {
-      clearSlotServedByGateway(preferredCli);
       return sameFamily;
     }
     throw new Error(
@@ -210,7 +203,6 @@ function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSele
   }
   const modelId = slot.adapter.modelId;
   logger.info('Using gateway family model for CLI slot', { cli: preferredCli, model: modelId });
-  markSlotServedByGateway(preferredCli, slot.adapter);
   return {
     adapter: createGatewaySlotAdapter(preferredCli, slot.adapter),
     source: 'api',

@@ -1,19 +1,27 @@
 /**
- * The router arm for a vendor slot in gateway mode whose CLI binary IS on
- * PATH (#6604 review, item 2).
+ * The router arm for a vendor slot in gateway mode (#6604).
  *
- * An installed binary is not an available CLI: `createAutoAdapter` asks
- * `isCliAvailable` (health AND auth), so a logged-out CLI is served from the
- * gateway on the registry path. The router factory is synchronous and cannot
- * ask that at construction, so this arm asks the SAME predicate on first use
- * and then commits: to the CLI's subprocess adapter when it is available,
- * otherwise to the gateway-served adapter. Without this the router kept a
- * dead subprocess arm for a slot the registry served from the gateway, and
- * both wrote outcomes under one slot key.
+ * The arm keeps the SLOT key and serves the slot from one of two targets: the
+ * CLI's subprocess adapter or the slot's family gateway model. Which one is
+ * decided by the predicate `createAutoAdapter` uses, `isCliAvailable` (health
+ * AND auth), so the router and the registry agree on a logged-out CLI.
  *
- * This is a one-time choice, not failover: the arm never switches after it
- * has resolved, so it does not nest a second failover layer inside the router
- * (#5191). Until it resolves it reports the CLI's identity.
+ * - No binary on PATH: the gateway target, outright. `isCliAvailable` runs
+ *   the binary, so it cannot be true.
+ * - Binary on PATH: the arm asks the predicate on first use and commits.
+ * - A committed CLI target that fails with an availability error
+ *   (`NOT_FOUND`, `NOT_AUTHENTICATED`, `UNSUPPORTED_VERSION`) drops the
+ *   commitment, and the NEXT call re-asks the predicate with a fresh probe.
+ *   The router caches its arms for the process (`expert-bridge.ts`), so
+ *   without this an expired login stranded the slot on a dead CLI.
+ *
+ * This is not failover: a failed call returns its own error, and no call is
+ * retried on the other target, so the router stays the only failover layer
+ * (#5191). A gateway commitment is not re-checked.
+ *
+ * Which target serves the arm is state of THIS arm instance
+ * ({@link gatewayServedSlotOf}); the budget router reads it to price a
+ * gateway-served slot by the gateway's declaration.
  *
  * @module cli-adapters/gateway-slot-arm
  */
@@ -22,69 +30,115 @@ import type {
   CapabilityProfile,
   CapacityStatus,
   CliError,
+  CliErrorCode,
   CliName,
   CliResponse,
   CliTask,
   CliTransport,
+  EndpointArmId,
   ExecutionOptions,
   HealthStatus,
   ICliAdapter,
   ModelInfo,
 } from './types.js';
+import { isEndpointArmId } from './types.js';
 import type { ILogger, IModelAdapter, Result } from '../core/index.js';
-import {
-  createGatewaySlotAdapter,
-  clearSlotServedByGateway,
-  markSlotServedByGateway,
-  resolveGatewaySlot,
-} from '../adapters/gateway-family-slots.js';
+import { createGatewaySlotAdapter, resolveGatewaySlot } from '../adapters/gateway-family-slots.js';
 import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import { isCliBinaryOnPath } from './cli-binary-on-path.js';
 import { createModelToCliAdapter } from './model-to-cli-adapter.js';
 
-/** What the arm needs: both candidate targets and the availability predicate. */
+/** The gateway serving an arm: the model that runs and the arm it is priced by. */
+export interface GatewayServedSlot {
+  readonly modelId: string;
+  /** Undefined when the model carries no gateway-arm marker; the slot is then unpriced. */
+  readonly arm: EndpointArmId | undefined;
+}
+
+/** Availability predicate; `fresh` asks it to bypass any cached answer. */
+type SlotAvailability = (cli: CliName, fresh: boolean) => Promise<boolean>;
+
+/** CLI failures that mean "the CLI is not available", not "this task failed". */
+const AVAILABILITY_ERRORS: ReadonlySet<CliErrorCode> = new Set([
+  'NOT_FOUND',
+  'NOT_AUTHENTICATED',
+  'UNSUPPORTED_VERSION',
+]);
+
 interface GatewaySlotArmDeps {
   readonly cli: CliName;
-  /** The CLI's subprocess adapter, built once. */
-  readonly cliAdapter: ICliAdapter;
-  /** Builds the gateway-served adapter; called only if the CLI is unavailable. */
-  readonly createGatewayAdapter: () => ICliAdapter;
-  /** The shared availability predicate (`isCliAvailable`). */
-  readonly isAvailable: (cli: CliName) => Promise<boolean>;
-  /** Told which target the arm committed to (`'gateway'` or `'cli'`). */
-  readonly onResolved: (served: 'gateway' | 'cli') => void;
+  /** The CLI's subprocess adapter; undefined when its binary is not on PATH. */
+  readonly cliAdapter: ICliAdapter | undefined;
+  /** The family gateway model serving the slot when the CLI does not. */
+  readonly gatewayModel: IModelAdapter;
+  readonly isAvailable: SlotAvailability;
 }
 
 class GatewaySlotArm implements ICliAdapter {
   readonly name: CliName;
+  private readonly gatewayAdapter: ICliAdapter;
   private resolved: ICliAdapter | undefined;
   private resolving: Promise<ICliAdapter> | undefined;
+  private freshProbe = false;
 
   constructor(private readonly deps: GatewaySlotArmDeps) {
     this.name = deps.cli;
+    this.gatewayAdapter = createModelToCliAdapter(
+      createGatewaySlotAdapter(deps.cli, deps.gatewayModel),
+      { name: deps.cli, capabilities: buildCliCapabilityProfiles()[deps.cli] }
+    );
+    if (deps.cliAdapter === undefined) this.resolved = this.gatewayAdapter;
+  }
+
+  /** What serves this arm now: the gateway, or `undefined` for the CLI or an undecided arm. */
+  get gatewayServedSlot(): GatewayServedSlot | undefined {
+    if (this.resolved !== this.gatewayAdapter) return undefined;
+    const arm: unknown = (this.deps.gatewayModel as { gatewayArm?: unknown }).gatewayArm;
+    return {
+      modelId: this.deps.gatewayModel.modelId,
+      arm: typeof arm === 'string' && isEndpointArmId(arm) ? arm : undefined,
+    };
+  }
+
+  private get current(): ICliAdapter {
+    return this.resolved ?? this.deps.cliAdapter ?? this.gatewayAdapter;
   }
 
   get transport(): CliTransport {
-    return (this.resolved ?? this.deps.cliAdapter).transport;
+    return this.current.transport;
   }
 
   get capabilities(): CapabilityProfile {
-    return (this.resolved ?? this.deps.cliAdapter).capabilities;
+    return this.current.capabilities;
   }
 
   private target(): Promise<ICliAdapter> {
     if (this.resolved !== undefined) return Promise.resolve(this.resolved);
-    this.resolving ??= this.deps.isAvailable(this.deps.cli).then((available) => {
-      const chosen = available ? this.deps.cliAdapter : this.deps.createGatewayAdapter();
-      this.resolved = chosen;
-      this.deps.onResolved(available ? 'cli' : 'gateway');
-      return chosen;
+    const cliAdapter = this.deps.cliAdapter;
+    if (cliAdapter === undefined) return Promise.resolve(this.gatewayAdapter);
+    const fresh = this.freshProbe;
+    this.resolving ??= this.deps.isAvailable(this.deps.cli, fresh).then((available) => {
+      this.resolved = available ? cliAdapter : this.gatewayAdapter;
+      this.resolving = undefined;
+      this.freshProbe = false;
+      return this.resolved;
     });
     return this.resolving;
   }
 
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
-    return (await this.target()).execute(task, options);
+    const target = await this.target();
+    const result = await target.execute(task, options);
+    if (
+      !result.ok &&
+      target === this.deps.cliAdapter &&
+      AVAILABILITY_ERRORS.has(result.error.code)
+    ) {
+      // Re-check on the NEXT call; this call keeps its own error (no failover).
+      this.resolved = undefined;
+      this.freshProbe = true;
+    }
+    return result;
   }
 
   async healthCheck(): Promise<HealthStatus> {
@@ -100,7 +154,7 @@ class GatewaySlotArm implements ICliAdapter {
   }
 
   getModelInfo(): ModelInfo {
-    return (this.resolved ?? this.deps.cliAdapter).getModelInfo();
+    return this.current.getModelInfo();
   }
 
   async initialize(): Promise<void> {
@@ -108,24 +162,17 @@ class GatewaySlotArm implements ICliAdapter {
   }
 
   async dispose(): Promise<void> {
-    await this.deps.cliAdapter.dispose();
-    if (this.resolved !== undefined && this.resolved !== this.deps.cliAdapter) {
-      await this.resolved.dispose();
-    }
+    await this.deps.cliAdapter?.dispose();
+    await this.gatewayAdapter.dispose();
   }
 }
 
-/** Build the arm; see the module doc. */
-function createGatewaySlotArm(deps: GatewaySlotArmDeps): ICliAdapter {
-  return new GatewaySlotArm(deps);
-}
-
-/** The gateway-served router arm for `cli`: its gateway model under the SLOT name. */
-function gatewayServedArm(cli: CliName, model: IModelAdapter): ICliAdapter {
-  return createModelToCliAdapter(createGatewaySlotAdapter(cli, model), {
-    name: cli,
-    capabilities: buildCliCapabilityProfiles()[cli],
-  });
+/**
+ * The gateway serving `adapter` when it is a gateway-mode slot arm that a
+ * gateway model serves right now; otherwise `undefined`.
+ */
+export function gatewayServedSlotOf(adapter: unknown): GatewayServedSlot | undefined {
+  return adapter instanceof GatewaySlotArm ? adapter.gatewayServedSlot : undefined;
 }
 
 /**
@@ -134,34 +181,21 @@ function gatewayServedArm(cli: CliName, model: IModelAdapter): ICliAdapter {
  * (the pre-#6604 path, unchanged), or a gateway without this family while the
  * binary is installed (the CLI may still serve it). `'unavailable'` is no arm:
  * no binary and no family model, exactly like a disabled CLI.
- *
- * With no binary on PATH, `isCliAvailable` cannot be true (its health check
- * runs the binary), so the gateway arm is chosen outright; with a binary, the
- * {@link createGatewaySlotArm} asks `isAvailable` on first use.
  */
 export function buildGatewaySlotRouterArm(
   cli: CliName,
   createCli: () => ICliAdapter,
-  isAvailable: (cli: CliName) => Promise<boolean>,
+  isAvailable: SlotAvailability,
   logger?: ILogger
 ): ICliAdapter | 'unavailable' | undefined {
   const slot = resolveGatewaySlot(cli, process.env, logger);
   if (slot.kind === 'inactive') return undefined;
   const onPath = isCliBinaryOnPath(cli);
   if (slot.kind === 'unavailable') return onPath ? undefined : 'unavailable';
-  const model = slot.adapter;
-  if (!onPath) {
-    markSlotServedByGateway(cli, model);
-    return gatewayServedArm(cli, model);
-  }
-  return createGatewaySlotArm({
+  return new GatewaySlotArm({
     cli,
-    cliAdapter: createCli(),
-    createGatewayAdapter: () => gatewayServedArm(cli, model),
+    cliAdapter: onPath ? createCli() : undefined,
+    gatewayModel: slot.adapter,
     isAvailable,
-    onResolved: (served) => {
-      if (served === 'gateway') markSlotServedByGateway(cli, model);
-      else clearSlotServedByGateway(cli);
-    },
   });
 }

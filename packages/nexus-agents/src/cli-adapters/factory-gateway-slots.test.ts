@@ -48,21 +48,30 @@ import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
-import { ModelToCliAdapter } from './model-to-cli-adapter.js';
 import {
   _resetGatewaySlotCatalog,
-  getGatewayServedSlot,
   setGatewaySlotCatalog,
 } from '../adapters/gateway-family-slots.js';
+import { gatewayServedSlotOf } from './gateway-slot-arm.js';
+import { BudgetRouter } from './budget-router.js';
 import {
   describeUnpricedArm,
   estimateArmCostUsd,
   estimateBudgetArmCostUsd,
+  ceilingCostOfArm,
+  unpricedReasonOfArm,
 } from './budget-arm-cost.js';
 import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
 
 const THREE_FAMILY = ['gpt-5.5', 'claude-sonnet-4-6', 'gemini-2.5-pro'];
 const HEALTHY = { healthy: true, version: '9.9.9', versionStatus: 'supported' as const };
+const AUTHENTICATED = { cli: 'claude', state: 'authenticated', via: 'env-var' } as const;
+const LOGGED_OUT = {
+  cli: 'claude',
+  state: 'needs-login',
+  reason: 'test: logged out',
+  fixCommand: 'claude login',
+} as const;
 
 describe('createAllAdapters gateway family slots (#6604)', () => {
   let emptyBin: string;
@@ -99,7 +108,7 @@ describe('createAllAdapters gateway family slots (#6604)', () => {
     const served: Record<string, string | undefined> = {};
     for (const cli of ['claude', 'codex', 'gemini'] as const) {
       const arm = arms.get(cli);
-      expect(arm).toBeInstanceOf(ModelToCliAdapter);
+      expect(gatewayServedSlotOf(arm)).toBeDefined();
       expect(arm?.name).toBe(cli);
       const res = await arm?.execute({ content: 'hi' });
       served[cli] = res?.ok === true ? res.value.model : undefined;
@@ -147,40 +156,145 @@ describe('createAllAdapters gateway family slots (#6604)', () => {
     const res = await arms.get('claude')?.execute({ content: 'hi' });
     expect(res?.ok === true ? res.value.model : undefined).toBe('claude-sonnet-4-6');
     expect(claudeExecuteMock).not.toHaveBeenCalled();
-    expect(getGatewayServedSlot('claude')?.modelId).toBe('claude-sonnet-4-6');
+    expect(gatewayServedSlotOf(arms.get('claude'))?.modelId).toBe('claude-sonnet-4-6');
   });
 
   it('keeps an installed, authenticated CLI on its own subprocess adapter', async () => {
     setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
     installFakeBinary('claude');
     claudeHealthMock.mockResolvedValue(HEALTHY);
-    probeCliMock.mockResolvedValue({ cli: 'claude', state: 'authenticated', via: 'env-var' });
+    probeCliMock.mockResolvedValue(AUTHENTICATED);
     claudeExecuteMock.mockResolvedValue({ ok: true, value: { text: 'cli', model: 'cli-model' } });
     const arms = createAllAdapters(undefined, 'subprocess');
 
     const res = await arms.get('claude')?.execute({ content: 'hi' });
     expect(res?.ok === true ? res.value.model : undefined).toBe('cli-model');
-    expect(getGatewayServedSlot('claude')).toBeUndefined();
-    expect(arms.get('codex')).toBeInstanceOf(ModelToCliAdapter);
+    expect(gatewayServedSlotOf(arms.get('claude'))).toBeUndefined();
+    expect(gatewayServedSlotOf(arms.get('codex'))?.modelId).toBe('gpt-5.5');
+  });
+
+  it('re-checks a CLI arm whose login expired, then serves the slot from the gateway', async () => {
+    setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+    installFakeBinary('claude');
+    claudeHealthMock.mockResolvedValue(HEALTHY);
+    probeCliMock.mockResolvedValue(AUTHENTICATED);
+    claudeExecuteMock.mockResolvedValue({ ok: true, value: { text: 'cli', model: 'cli-model' } });
+    const arm = createAllAdapters(undefined, 'subprocess').get('claude');
+
+    // Committed to the CLI: nothing is served by the gateway.
+    await arm?.execute({ content: 'one' });
+    expect(gatewayServedSlotOf(arm)).toBeUndefined();
+
+    // The login expires: this call keeps its own error (no failover) ...
+    claudeExecuteMock.mockResolvedValue({
+      ok: false,
+      error: { code: 'NOT_AUTHENTICATED', message: 'expired', cli: 'claude', retryable: false },
+    });
+    probeCliMock.mockResolvedValue(LOGGED_OUT);
+    const failed = await arm?.execute({ content: 'two' });
+    expect(failed?.ok).toBe(false);
+    expect(claudeExecuteMock).toHaveBeenCalledTimes(2);
+
+    // ... and the next call re-probes (the cached "available" is dropped).
+    const next = await arm?.execute({ content: 'three' });
+    expect(next?.ok === true ? next.value.model : undefined).toBe('claude-sonnet-4-6');
+    expect(claudeExecuteMock).toHaveBeenCalledTimes(2);
+    expect(gatewayServedSlotOf(arm)?.modelId).toBe('claude-sonnet-4-6');
+  });
+
+  it('does not re-check a CLI arm on an ordinary task failure', async () => {
+    setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+    installFakeBinary('claude');
+    claudeHealthMock.mockResolvedValue(HEALTHY);
+    probeCliMock.mockResolvedValue(AUTHENTICATED);
+    claudeExecuteMock.mockResolvedValue({
+      ok: false,
+      error: { code: 'EXECUTION_ERROR', message: 'bad task', cli: 'claude', retryable: false },
+    });
+    const arm = createAllAdapters(undefined, 'subprocess').get('claude');
+    await arm?.execute({ content: 'one' });
+    probeCliMock.mockResolvedValue(LOGGED_OUT);
+    await arm?.execute({ content: 'two' });
+    expect(claudeExecuteMock).toHaveBeenCalledTimes(2);
+    expect(gatewayServedSlotOf(arm)).toBeUndefined();
   });
 
   it('prices a gateway-served slot arm by the gateway declaration, not the vendor rate', () => {
     setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6', 'api:openai-compat')]);
-    createAllAdapters(undefined, 'subprocess');
+    const arm = createAllAdapters(undefined, 'subprocess').get('claude');
+    const served = gatewayServedSlotOf(arm);
+    expect(served).toEqual({ modelId: 'claude-sonnet-4-6', arm: 'api:openai-compat' });
 
     // Undeclared gateway: unknown, never the claude slot's list price.
-    expect(estimateArmCostUsd('claude', 1_000_000, 0, {})).toBeUndefined();
-    expect(estimateBudgetArmCostUsd('claude', 1_000_000, 0, {})).toBeUndefined();
-    expect(describeUnpricedArm('claude', {})).toContain('gateway cost');
+    expect(ceilingCostOfArm({ arm: 'claude', adapter: arm }, 1_000_000, 0, {})).toBeUndefined();
+    expect(estimateBudgetArmCostUsd('claude', 1_000_000, 0, {}, served)).toBeUndefined();
+    expect(describeUnpricedArm('claude', {}, undefined, served)).toContain('gateway cost');
     // Declared flat rate: that rate.
     const declared = { NEXUS_GATEWAY_COST: 'priced:1,2' };
-    expect(estimateArmCostUsd('claude', 1_000_000, 0, declared)).toBe(1);
-    expect(estimateBudgetArmCostUsd('claude', 1_000_000, 0, declared)).toBe(1);
+    expect(ceilingCostOfArm({ arm: 'claude', adapter: arm }, 1_000_000, 0, declared)).toBe(1);
+    expect(estimateBudgetArmCostUsd('claude', 1_000_000, 0, declared, served)).toBe(1);
+    // The same slot key without a gateway serving it keeps its vendor rate.
+    expect(estimateArmCostUsd('claude', 1_000_000, 0, {})).toBeGreaterThan(0);
+    expect(
+      ceilingCostOfArm({ arm: 'claude', adapter: undefined }, 1_000_000, 0, {})
+    ).toBeGreaterThan(0);
   });
 
-  it('prices a slot at its vendor rate again once no gateway serves it', () => {
-    expect(getGatewayServedSlot('claude')).toBeUndefined();
-    expect(estimateArmCostUsd('claude', 1_000_000, 0, {})).toBeGreaterThan(0);
+  it('leaves a slot unpriced when its gateway model carries no gateway-arm marker', () => {
+    setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6')]);
+    const arm = createAllAdapters(undefined, 'subprocess').get('claude');
+    const declared = { NEXUS_GATEWAY_COST: 'free' };
+    expect(
+      ceilingCostOfArm({ arm: 'claude', adapter: arm }, 1_000_000, 0, declared)
+    ).toBeUndefined();
+    expect(unpricedReasonOfArm({ arm: 'claude', adapter: arm }, declared)).toContain(
+      'carries no gateway arm'
+    );
+  });
+
+  it("the budget router prices each arm by that arm's own serving state", () => {
+    setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6', 'api:openai-compat')]);
+    const arms = createAllAdapters(undefined, 'subprocess');
+    const onlyClaude = new Map([['claude', arms.get('claude')]] as const) as Map<
+      'claude',
+      NonNullable<ReturnType<typeof arms.get>>
+    >;
+    const savedCost = process.env['NEXUS_GATEWAY_COST'];
+    const router = new BudgetRouter(onlyClaude);
+    try {
+      Reflect.deleteProperty(process.env, 'NEXUS_GATEWAY_COST');
+      const undeclared = router.checkBudget({ content: 'hi' });
+      expect(undeclared.adapter).toBeNull();
+      expect(undeclared.unpricedArms).toEqual([{ arm: 'claude', reason: 'gateway cost unset' }]);
+
+      process.env['NEXUS_GATEWAY_COST'] = 'free';
+      const declared = router.checkBudget({ content: 'hi' });
+      expect(declared.adapter).toBe(arms.get('claude'));
+      expect(declared.estimatedCostUsd).toBe(0);
+    } finally {
+      router.dispose();
+      if (savedCost === undefined) Reflect.deleteProperty(process.env, 'NEXUS_GATEWAY_COST');
+      else process.env['NEXUS_GATEWAY_COST'] = savedCost;
+    }
+  });
+
+  it('the task-class cost ceiling prices a gateway-served slot arm by the gateway', () => {
+    setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6', 'api:openai-compat')]);
+    const arms = createAllAdapters(undefined, 'subprocess');
+    const savedCost = process.env['NEXUS_GATEWAY_COST'];
+    // A generous ceiling the claude slot's vendor rate would pass.
+    const router = new BudgetRouter(arms, { taskClassCostCeilings: { code_generation: 1000 } });
+    const task = { content: 'implement a function', maxTokens: 10_000 };
+    try {
+      Reflect.deleteProperty(process.env, 'NEXUS_GATEWAY_COST');
+      expect(router.filterByTaskClassCeiling(task, ['claude'])).toEqual([]);
+      process.env['NEXUS_GATEWAY_COST'] = 'free';
+      expect(router.filterByTaskClassCeiling(task, ['claude'])).toEqual(['claude']);
+    } finally {
+      router.dispose();
+      if (savedCost === undefined) Reflect.deleteProperty(process.env, 'NEXUS_GATEWAY_COST');
+      else process.env['NEXUS_GATEWAY_COST'] = savedCost;
+    }
   });
 
   it('is unchanged with no gateway catalogue: every slot is its subprocess arm', () => {

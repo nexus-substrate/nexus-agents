@@ -19,22 +19,27 @@
  * asks for a slot; dealing seats across families is #6606.
  *
  * Rules:
- * - Family comes from `resolveModelIdentitySync(id).vendor`.
+ * - Family comes from `resolveModelIdentitySync(id).vendor`, and only chat
+ *   models count: the one chat-model filter (`isChatModelId`,
+ *   `gateway-catalog-filter.ts`) removes realtime, audio, transcription, TTS
+ *   and image ids that a gateway listed as chat.
  * - Within a family the order is `rankFamilyModels`
- *   (`gateway-family-ranking.ts`): generation, then tier, then the rest of
- *   the version, with registry quality and date stamps as tie-breakers only.
- * - `NEXUS_GATEWAY_MODEL_<FAMILY>` pins the family's model. It must name a
- *   catalogue id that is not classified as a DIFFERENT family; otherwise it
- *   warns once and the preference order applies.
+ *   (`gateway-family-ranking.ts`): TIER first, then `/models` `created`
+ *   recency, then the generation parsed from the id, with `-latest`, registry
+ *   quality and date stamps as tie-breakers only.
+ * - `NEXUS_GATEWAY_MODEL_<FAMILY>` pins the family's model. A model absent
+ *   from the catalogue, or classified as a DIFFERENT family, warns once and
+ *   the ranking applies. A model whose vendor cannot be classified warns once
+ *   and is honoured as the operator's explicit choice.
  * - A slot whose family has no gateway model is UNAVAILABLE from the gateway.
  *   It is never given another family's model; a same-family direct API key
  *   may still serve it (`auto-adapter.ts`).
  * - No catalogue registered (no gateway, or discovery failed) is `inactive`:
  *   every caller keeps its pre-#6604 behaviour.
- * - Which slots a gateway model is serving right now is recorded here
- *   ({@link markSlotServedByGateway}), so the router's cost estimators price
- *   a gateway-served slot arm by the gateway's `NEXUS_GATEWAY_COST`
- *   declaration, not by the slot's vendor list price.
+ * - Whether a gateway model is serving a router arm right now is state of
+ *   that arm (`cli-adapters/gateway-slot-arm.ts`), which the budget router
+ *   reads to price it by `NEXUS_GATEWAY_COST`. There is no process-wide
+ *   record: the registry and router paths decide independently.
  *
  * @module adapters/gateway-family-slots
  */
@@ -45,6 +50,7 @@ import type { CliName, EndpointArmId } from '../cli-adapters/types.js';
 import { isEndpointArmId } from '../cli-adapters/types.js';
 import { resolveModelIdentitySync } from '../config/model-identity.js';
 import { rankFamilyModels } from './gateway-family-ranking.js';
+import { isChatModelId } from './gateway-catalog-filter.js';
 
 /** A model family a CLI slot is tied to. */
 export type GatewayFamily = 'anthropic' | 'openai' | 'google';
@@ -85,9 +91,6 @@ let catalog: readonly IModelAdapter[] | undefined;
 /** Overrides already warned about, keyed `family=value`, so each warns once. */
 const warnedOverrides = new Set<string>();
 
-/** Slots a gateway model is serving right now, and the model serving each. */
-const servedByGateway = new Map<CliName, IModelAdapter>();
-
 /**
  * Register the discovered gateway models. An empty list clears the catalogue:
  * a gateway with no models is no gateway, and must not make every slot
@@ -95,41 +98,12 @@ const servedByGateway = new Map<CliName, IModelAdapter>();
  */
 export function setGatewaySlotCatalog(models: readonly IModelAdapter[]): void {
   catalog = models.length === 0 ? undefined : [...models];
-  servedByGateway.clear();
 }
 
 /** Test-only: forget the catalogue and the warn-once memory. */
 export function _resetGatewaySlotCatalog(): void {
   catalog = undefined;
   warnedOverrides.clear();
-  servedByGateway.clear();
-}
-
-/** Record that `model` (a gateway model) now serves `cli`. */
-export function markSlotServedByGateway(cli: CliName, model: IModelAdapter): void {
-  servedByGateway.set(cli, model);
-}
-
-/** Record that no gateway model serves `cli` (its CLI, or a direct API key, does). */
-export function clearSlotServedByGateway(cli: CliName): void {
-  servedByGateway.delete(cli);
-}
-
-/**
- * The gateway serving `cli`, for cost estimation: the model it runs and the
- * gateway arm that model belongs to (`undefined` arm when the model carries
- * no gateway-arm marker). `undefined` when no gateway model serves the slot.
- */
-export function getGatewayServedSlot(
-  cli: CliName
-): { readonly modelId: string; readonly arm: EndpointArmId | undefined } | undefined {
-  const model = servedByGateway.get(cli);
-  if (model === undefined) return undefined;
-  const arm: unknown = (model as { gatewayArm?: unknown }).gatewayArm;
-  return {
-    modelId: model.modelId,
-    arm: typeof arm === 'string' && isEndpointArmId(arm) ? arm : undefined,
-  };
 }
 
 /** The family `modelId` belongs to, or undefined for any other vendor. */
@@ -145,33 +119,61 @@ function createdOf(model: IModelAdapter): number | undefined {
   return typeof created === 'number' ? created : undefined;
 }
 
-/** The override's adapter when it is valid for `family`, else undefined (warned once). */
+/** Warn once per `family=value` about an override. */
+function warnOverrideOnce(
+  family: GatewayFamily,
+  value: string,
+  message: string,
+  logger: ILogger
+): void {
+  const key = `${family}=${value}`;
+  if (warnedOverrides.has(key)) return;
+  warnedOverrides.add(key);
+  logger.warn(`${GATEWAY_MODEL_OVERRIDE_ENV[family]}: ${message}`, { model: value });
+}
+
+/**
+ * The override's adapter when it may serve `family`, else undefined. Absent
+ * from the catalogue or classified as another family: warned, ignored. Vendor
+ * unknown: warned, honoured as the operator's explicit choice.
+ */
 function overrideAdapter(
   family: GatewayFamily,
   models: readonly IModelAdapter[],
   env: NodeJS.ProcessEnv,
   logger: ILogger
 ): IModelAdapter | undefined {
-  const envVar = GATEWAY_MODEL_OVERRIDE_ENV[family];
-  const value = env[envVar]?.trim();
+  const value = env[GATEWAY_MODEL_OVERRIDE_ENV[family]]?.trim();
   if (value === undefined || value === '') return undefined;
   const match = models.find((m) => m.modelId === value);
-  const classified = match === undefined ? undefined : familyOf(match.modelId);
-  const reason =
-    match === undefined
-      ? 'not in the gateway catalogue'
-      : classified !== undefined && classified !== family
-        ? `classified as ${classified}, not ${family}`
-        : undefined;
-  if (reason === undefined) return match;
-  const key = `${family}=${value}`;
-  if (!warnedOverrides.has(key)) {
-    warnedOverrides.add(key);
-    logger.warn(`${envVar} ignored: the model is ${reason}; using the family preference order`, {
-      model: value,
-    });
+  if (match === undefined) {
+    warnOverrideOnce(
+      family,
+      value,
+      'ignored: the model is not in the gateway catalogue; using the family ranking',
+      logger
+    );
+    return undefined;
   }
-  return undefined;
+  const classified = familyOf(match.modelId);
+  if (classified !== undefined && classified !== family) {
+    warnOverrideOnce(
+      family,
+      value,
+      `ignored: the model is classified as ${classified}, not ${family}; using the family ranking`,
+      logger
+    );
+    return undefined;
+  }
+  if (classified === undefined) {
+    warnOverrideOnce(
+      family,
+      value,
+      `honoured, but its vendor could not be classified; confirm it is a ${family} model`,
+      logger
+    );
+  }
+  return match;
 }
 
 /**
@@ -188,7 +190,7 @@ export function resolveGatewaySlot(
   const models = catalog;
   const pinned = overrideAdapter(family, models, env, logger);
   if (pinned !== undefined) return { kind: 'resolved', family, adapter: pinned, via: 'override' };
-  const inFamily = models.filter((m) => familyOf(m.modelId) === family);
+  const inFamily = models.filter((m) => isChatModelId(m.modelId) && familyOf(m.modelId) === family);
   const best = rankFamilyModels(inFamily.map((m) => ({ id: m.modelId, created: createdOf(m) })))[0];
   const adapter = inFamily.find((m) => m.modelId === best);
   if (adapter === undefined) return { kind: 'unavailable', family };

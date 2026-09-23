@@ -57,6 +57,36 @@ describe('resolveGatewaySlot (#6604)', () => {
     expect(modelOf('codex')).toBe('gpt-5.5-pro');
   });
 
+  it('never lets a non-chat model a gateway listed as chat serve a slot', () => {
+    // Newest by `created`, so it would win the ranking if it were a candidate.
+    setGatewaySlotCatalog([
+      fakeGatewayModel('gpt-realtime', undefined, 1_900_000_000),
+      fakeGatewayModel('gpt-image-1', undefined, 1_900_000_001),
+      fakeGatewayModel('gpt-4o-transcribe', undefined, 1_900_000_002),
+      fakeGatewayModel('gpt-5.5', undefined, 1_700_000_000),
+      fakeGatewayModel('gemini-3-pro-image-preview', undefined, 1_900_000_003),
+      fakeGatewayModel('gemini-2.5-pro', undefined, 1_700_000_000),
+    ]);
+    expect(modelOf('codex')).toBe('gpt-5.5');
+    expect(modelOf('gemini')).toBe('gemini-2.5-pro');
+  });
+
+  it('makes a slot unavailable when its family lists only non-chat models', () => {
+    setGatewaySlotCatalog(['gpt-realtime', 'claude-sonnet-4-6'].map((id) => fakeGatewayModel(id)));
+    expect(modelOf('codex')).toBe('unavailable');
+  });
+
+  it('warns once but honours an override whose vendor cannot be classified', () => {
+    setGatewaySlotCatalog(['claude-opus', 'corp-model-x'].map((id) => fakeGatewayModel(id)));
+    const logger = silentLogger();
+    const env = { NEXUS_GATEWAY_MODEL_ANTHROPIC: 'corp-model-x' };
+    const r = resolveGatewaySlot('claude', env, logger);
+    resolveGatewaySlot('claude', env, logger);
+    expect(r.kind === 'resolved' && r.adapter.modelId).toBe('corp-model-x');
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(String(logger.warn.mock.calls[0]?.[0])).toContain('could not be classified');
+  });
+
   it('makes the slot of a missing family unavailable, never another family', () => {
     setGatewaySlotCatalog(['gpt-5.5', 'claude-sonnet-4-6'].map((id) => fakeGatewayModel(id)));
     expect(resolveGatewaySlot('gemini', {}, silentLogger())).toEqual({
@@ -101,6 +131,7 @@ describe('resolveGatewaySlot (#6604)', () => {
     const r = resolveGatewaySlot('claude', { NEXUS_GATEWAY_MODEL_ANTHROPIC: 'gpt-5.5' }, logger);
     expect(r.kind === 'resolved' && r.adapter.modelId).toBe('claude-opus');
     expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(String(logger.warn.mock.calls[0]?.[0])).toContain('classified as openai');
   });
 });
 

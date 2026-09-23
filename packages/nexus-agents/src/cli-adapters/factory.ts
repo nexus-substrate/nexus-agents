@@ -182,12 +182,16 @@ export function createAllAdapters(
 /**
  * The availability predicate the gateway-mode router arms of ONE
  * `createAllAdapters` call share (#6604): `isCliAvailable`, the predicate
- * `createAutoAdapter` uses, over one detection cache created on first use.
+ * `createAutoAdapter` uses, over one detection cache created on first use;
+ * `fresh` invalidates the cached answer for that CLI first.
  */
-function sharedSlotAvailability(): (cli: CliName) => Promise<boolean> {
+function sharedSlotAvailability(): (cli: CliName, fresh: boolean) => Promise<boolean> {
   let cache: ICliDetectionCache | undefined;
-  return (cli) => {
+  return (cli, fresh) => {
     cache ??= createCliDetectionCache();
+    // A re-check after an availability failure must probe again, not read
+    // the cached "available" that committed the arm to the CLI.
+    if (fresh) cache.invalidate(cli);
     return isCliAvailable(cli, cache);
   };
 }
