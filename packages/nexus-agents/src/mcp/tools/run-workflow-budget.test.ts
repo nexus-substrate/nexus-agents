@@ -128,12 +128,70 @@ describe('run_workflow budget resolution (#4754)', () => {
     expect(JSON.parse(response.content[0]?.text ?? '{}').budget).toEqual(outcome);
   });
 
-  it('flag on, no maxTokens: an estimate-relative ceiling reaches the engine', async () => {
+  // The input-derived estimate is ~1.2k tokens/step against a real 2.6k (p25)
+  // to 10k (median), so an estimated ceiling would fail ordinary workflows
+  // after phase 1. Only a caller-supplied ceiling enforces on run_workflow.
+  it('flag on, no maxTokens: not capped, and says so', async () => {
     process.env[ENV] = '1';
     const { handler, execute } = setup(() => Promise.resolve({ ok: true, value: okResult }));
-    await handler({ template: 'wf', inputs: { target: 'review the login module thoroughly' } });
-    const budget = (execute.mock.calls[0]?.[2] as { budget?: { maxTokens: number } }).budget;
-    expect(budget?.maxTokens).toBeGreaterThan(0);
+    const response = await handler({
+      template: 'wf',
+      inputs: { target: 'review the login module thoroughly' },
+    });
+    expect(execute.mock.calls[0]).toHaveLength(2);
+    const budget = JSON.parse(response.content[0]?.text ?? '{}').budget;
+    expect(budget.status).toBe('not_enforced');
+    expect(budget.reason).toMatch(/maxTokens/);
+    expect(budget).not.toHaveProperty('requestedMaxTokens');
+  });
+
+  it('a requested ceiling the engine did not report on reads not_enforced, never silent', async () => {
+    process.env[ENV] = 'true';
+    const { handler } = setup(() => Promise.resolve({ ok: true, value: okResult }));
+    const response = await handler({ template: 'wf', inputs: {}, maxTokens: 50 });
+    expect(JSON.parse(response.content[0]?.text ?? '{}').budget).toEqual({
+      status: 'not_enforced',
+      requestedMaxTokens: 50,
+      reason: 'engine did not report budget',
+    });
+  });
+
+  it('a budget halt is a non-retryable business refusal carrying the completed steps', async () => {
+    process.env[ENV] = 'true';
+    const completedSteps = [
+      { stepId: 's1', output: 'x', durationMs: 4, status: 'success', tokensUsed: 900 },
+    ];
+    const { handler } = setup(() =>
+      Promise.resolve({
+        ok: false,
+        error: new WorkflowError('Workflow token budget exhausted', {
+          context: { budget: { status: 'exhausted' }, completedSteps, executionId: 'e' },
+        }),
+      })
+    );
+    const response = (await handler({ template: 'wf', inputs: {}, maxTokens: 50 })) as {
+      content: { text: string }[];
+      _meta?: Record<string, { errorCategory: string; isRetryable: boolean }>;
+    };
+    expect(response._meta?.['nexus-agents/error']).toMatchObject({
+      errorCategory: 'business',
+      isRetryable: false,
+    });
+    const body = JSON.parse(response.content[0]?.text ?? '{}');
+    expect(body.stepResults).toEqual([{ stepId: 's1', status: 'success', durationMs: 4 }]);
+  });
+
+  it('a non-budget failure keeps the internal category and empty stepResults', async () => {
+    process.env[ENV] = 'true';
+    const { handler } = setup(() =>
+      Promise.resolve({ ok: false, error: new WorkflowError('boom', { context: {} }) })
+    );
+    const response = (await handler({ template: 'wf', inputs: {} })) as {
+      content: { text: string }[];
+      _meta?: Record<string, { errorCategory: string }>;
+    };
+    expect(response._meta?.['nexus-agents/error']?.errorCategory).toBe('internal');
+    expect(JSON.parse(response.content[0]?.text ?? '{}').stepResults).toEqual([]);
   });
 
   it('a budget halt surfaces spent vs ceiling in the failure envelope', async () => {

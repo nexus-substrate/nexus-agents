@@ -74,6 +74,8 @@ describe('WorkflowEngine token ceiling (#4754)', () => {
       ceilingTokens: 100,
       spentTokens: 500,
     });
+    // The completed phase's results travel with the halt, for the caller.
+    expect(run.error.context?.['completedSteps']).toEqual([result('phase1-step', 500)]);
   });
 
   it('hands the same tracker to every phase so steps are gated at dispatch', async () => {

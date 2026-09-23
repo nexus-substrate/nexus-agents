@@ -32,7 +32,12 @@ import type {
   RunWorkflowDeps,
 } from './run-workflow-types.js';
 import { RunWorkflowInputSchema } from './run-workflow-types.js';
-import { resolveWorkflowBudget, withBudgetNotice } from './run-workflow-budget.js';
+import {
+  budgetHaltFailure,
+  reportedBudget,
+  resolveWorkflowBudget,
+  withBudgetNotice,
+} from './run-workflow-budget.js';
 import {
   type ToolResponse,
   loadWorkflow,
@@ -182,6 +187,7 @@ async function executeWorkflow(
   }
 
   const workflowResult = result.value;
+  const budget = reportedBudget(options?.budget, workflowResult.budget);
   const stepResults = workflowResult.stepResults.map(toStepResultSummary);
   const status = deriveWorkflowStatus(stepResults);
 
@@ -203,7 +209,7 @@ async function executeWorkflow(
       stepResults,
       output: workflowResult.output,
       durationMs: workflowResult.totalDurationMs,
-      ...(workflowResult.budget !== undefined ? { budget: workflowResult.budget } : {}),
+      ...(budget !== undefined ? { budget } : {}),
     },
   };
 }
@@ -278,11 +284,10 @@ function buildFailureEnvelope(
   const ctx = error.context;
   const executionId = typeof ctx?.['executionId'] === 'string' ? ctx['executionId'] : undefined;
   const durationMs = typeof ctx?.['durationMs'] === 'number' ? ctx['durationMs'] : undefined;
-  const budget = ctx?.['budget'];
   return createFailedResult(workflowName, error.message, {
     ...(executionId !== undefined ? { executionId } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
-    ...(budget !== undefined ? { budget } : {}),
+    ...budgetHaltFailure(ctx),
   });
 }
 
@@ -326,7 +331,7 @@ async function handleRunWorkflow(
   // #3017: thread the caller-supplied timeoutMs (if any) through to the
   // workflow engine. Wins over both `workflow.timeout` and the engine's
   // `defaultTimeoutMs` for known-long templates.
-  const { budget, notice } = resolveWorkflowBudget(deps, workflow, inputs, maxTokens);
+  const { budget, notice } = resolveWorkflowBudget(deps, workflow.name, maxTokens);
   const executeResult = await executeWorkflow(deps, workflow, inputs, {
     ...(timeoutMs !== undefined ? { phaseTimeoutMs: timeoutMs } : {}),
     ...(onPhaseComplete !== undefined ? { onPhaseComplete } : {}),
@@ -513,7 +518,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     'run_workflow',
     {
       description:
-        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs; `mode` is a deprecated alias) — returns a jobId immediately; poll get_job_result. With NEXUS_BUDGET_ENFORCE on, total token spend is capped (`maxTokens`, else an estimate): checked before each phase and before each step is dispatched; steps already running when the ceiling is crossed are not halted, so spend can overshoot by what those in-flight steps consume. `budget.status` is `unmeasured` when any step reported no usage.",
+        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs; `mode` is a deprecated alias) — returns a jobId immediately; poll get_job_result. With NEXUS_BUDGET_ENFORCE on AND `maxTokens` set, total token spend is capped (no estimated default; otherwise `budget.status` is `not_enforced`): checked before each phase and before each step is dispatched; steps already running when the ceiling is crossed are not halted, so spend can overshoot by what those in-flight steps consume. `budget.status` is `unmeasured` when any step reported no usage.",
       inputSchema: toolInputSchema,
 
       annotations: getToolAnnotations('run_workflow'),

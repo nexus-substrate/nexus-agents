@@ -15,6 +15,7 @@ import type { WorkflowDefinition, StepResult } from '../../core/index.js';
 import { WorkflowError, SecurityError } from '../../core/index.js';
 import { getBuiltInTemplatesPath } from '../../workflows/template-loader.js';
 import type { StepResultSummary, DryRunResult, RunWorkflowDeps } from './run-workflow-types.js';
+import type { ErrorCategory } from '../error-envelope.js';
 
 export { deriveWorkflowStatus } from '../../workflows/workflow-engine-helpers.js';
 
@@ -397,13 +398,21 @@ export function errorResponse(message: string): ToolResponse {
 export function createFailedResult(
   workflowName: string,
   errorMessage: string,
-  opts: { executionId?: string; durationMs?: number; budget?: unknown } = {}
+  opts: {
+    executionId?: string;
+    durationMs?: number;
+    budget?: unknown;
+    /** Steps that completed before the failure (a budget halt, #4754). */
+    stepResults?: StepResultSummary[];
+    /** Defaults to `internal`; a budget halt is a `business` refusal. */
+    errorCategory?: ErrorCategory;
+  } = {}
 ): ToolResponse {
   const result = {
     executionId: opts.executionId ?? 'unknown',
     workflowName,
     status: 'failed',
-    stepResults: [],
+    stepResults: opts.stepResults ?? [],
     output: null,
     durationMs: opts.durationMs ?? 0,
     error: errorMessage,
@@ -411,7 +420,8 @@ export function createFailedResult(
     ...(opts.budget !== undefined ? { budget: opts.budget } : {}),
   };
   return toolStructuredError({
-    errorCategory: 'internal',
+    errorCategory: opts.errorCategory ?? 'internal',
+    isRetryable: false,
     message: JSON.stringify(result, null, 2),
   });
 }

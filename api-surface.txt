@@ -10478,7 +10478,7 @@ InterfaceDeclaration WorkflowBudgetOutcome
   status: "exhausted" | "unmeasured" | "within_budget"
   unmeasuredSteps: number
 TypeAliasDeclaration WorkflowBudgetReport
-  = WorkflowBudgetOutcome | { reason: string; requestedMaxTokens: number; status: 'not_enforced'; }
+  = WorkflowBudgetOutcome | { reason: string; requestedMaxTokens?: number; status: 'not_enforced'; }
 TypeAliasDeclaration WorkflowConfig
   = z.infer<typeof WorkflowConfigSchema>
 VariableDeclaration WorkflowConfigSchema

@@ -64,7 +64,8 @@ describe('createWorkflowEngineDeps executePhase × budget (#4754)', () => {
     });
 
     expect(tracker.outcome().skippedStepIds).toEqual([]);
-    // The mock executor reports no usage, so the gate recorded both as unmeasured.
-    expect(tracker.outcome()).toMatchObject({ status: 'unmeasured', unmeasuredSteps: 2 });
+    // The mock executor runs nothing and reports `skipped`: the gate recorded
+    // both steps (measured zero), which proves it wrapped the executor.
+    expect(tracker.outcome()).toMatchObject({ measuredSteps: 2, spentTokens: 0 });
   });
 });

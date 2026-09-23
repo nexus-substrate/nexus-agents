@@ -148,9 +148,13 @@ export interface WorkflowBudgetOutcome {
   status: 'within_budget' | 'exhausted' | 'unmeasured';
   /** The token ceiling the run was held to. */
   ceilingTokens: number;
-  /** Sum of reported step usage; a lower bound when `unmeasuredSteps > 0`. */
+  /**
+   * Sum of reported step usage; a lower bound when `unmeasuredSteps > 0`.
+   * A retried step reports only its successful attempt's tokens, so retries
+   * are under-counted too (bounded in practice: `DEFAULT_RETRIES` is 0).
+   */
   spentTokens: number;
-  /** Executed steps that reported token usage. */
+  /** Settled steps with known usage (a `skipped` step with none counts as zero). */
   measuredSteps: number;
   /** Executed steps that reported none — not counted as zero. */
   unmeasuredSteps: number;

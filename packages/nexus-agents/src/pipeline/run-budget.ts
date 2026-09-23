@@ -1,10 +1,11 @@
 /**
  * Run-budget resolution behind `NEXUS_BUDGET_ENFORCE` (#3262, #4754).
  *
- * One place decides whether a run gets a token ceiling and what that ceiling
- * is, so the pipeline (`run_pipeline`) and the workflow engine (`run_workflow`)
- * cannot drift apart on flag semantics. Enforcement itself is
- * {@link createBudgetGuard}; this module only resolves the config.
+ * One place reads the `NEXUS_BUDGET_ENFORCE` gate, so `run_pipeline` and
+ * `run_workflow` cannot drift apart on flag semantics. The estimate-relative
+ * ceiling is run_pipeline's only: run_workflow caps on a caller `maxTokens`
+ * alone, because an input-derived estimate sits far below real workflow step
+ * spend (#4754). Enforcement itself is {@link createBudgetGuard}.
  *
  * @module pipeline/run-budget
  */
@@ -23,8 +24,6 @@ export interface RunBudgetRequest {
   readonly estimateText: string;
   /** Number of model calls the run is expected to make (stages or steps). */
   readonly callCount: number;
-  /** Caller-supplied ceiling; wins over the estimate when enforcement is on. */
-  readonly maxTokens?: number | undefined;
   readonly logger: ILogger;
   /** Extra fields for the enforcement log line (template, workflow, ...). */
   readonly logContext?: Record<string, unknown>;
@@ -37,22 +36,14 @@ export function isBudgetEnforcementEnabled(): boolean {
 
 /**
  * Resolve a run's token ceiling. Returns `undefined` (→ the no-op guard, so the
- * run is byte-for-byte unchanged) when enforcement is off. With it on, an
- * explicit `maxTokens` is used verbatim; otherwise the run is approximated as
- * `perCallTokens × callCount` and capped at `× NEXUS_BUDGET_TOLERANCE`.
+ * run is byte-for-byte unchanged) when enforcement is off. With it on, the run
+ * is approximated as `perCallTokens × callCount` and capped at `× NEXUS_BUDGET_TOLERANCE`.
  * Token-based — never dollars — so it holds under `NEXUS_BILLING_MODE=plan`.
  * A run with no usable estimate (including zero calls) fails OPEN, and says so.
  */
 export function resolveEnforcedRunBudget(req: RunBudgetRequest): AgentBudgetConfig | undefined {
   if (!isBudgetEnforcementEnabled()) return undefined;
   const { logger, logContext } = req;
-  if (req.maxTokens !== undefined) {
-    logger.info('Caller-supplied token budget enforced (#4754)', {
-      ...logContext,
-      maxTokens: req.maxTokens,
-    });
-    return { maxTokens: req.maxTokens };
-  }
   const perCall = Math.round(
     createSharedTaskAnalyzer().estimateTokens(req.estimateText) * (1 + OUTPUT_TOKEN_RATIO)
   );

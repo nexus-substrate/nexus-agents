@@ -25,32 +25,18 @@ afterEach(() => {
 });
 
 describe('resolveEnforcedRunBudget', () => {
-  it('returns undefined when the flag is off, even with an explicit ceiling', () => {
+  it('returns undefined when the flag is off', () => {
     delete process.env['NEXUS_BUDGET_ENFORCE'];
     expect(isBudgetEnforcementEnabled()).toBe(false);
     const budget = resolveEnforcedRunBudget({
       estimateText: 'build a thing',
       callCount: 3,
-      maxTokens: 500,
       logger: makeLogger(),
     });
     expect(budget).toBeUndefined();
   });
 
-  it('uses the explicit ceiling verbatim when the flag is on', () => {
-    process.env[ENV] = 'true';
-    const logger = makeLogger();
-    const budget = resolveEnforcedRunBudget({
-      estimateText: 'build a thing',
-      callCount: 3,
-      maxTokens: 4321,
-      logger,
-    });
-    expect(budget).toEqual({ maxTokens: 4321 });
-    expect(logger.info).toHaveBeenCalled();
-  });
-
-  it('scales the estimate by call count when no explicit ceiling is given', () => {
+  it('scales the estimate by call count', () => {
     process.env['NEXUS_BUDGET_ENFORCE'] = '1';
     const one = resolveEnforcedRunBudget({
       estimateText: 'Build a login form with validation and tests',

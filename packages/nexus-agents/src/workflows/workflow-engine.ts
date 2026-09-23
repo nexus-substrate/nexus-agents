@@ -356,7 +356,8 @@ export class WorkflowEngine implements IWorkflowEngine {
       // #4754: stop before the next phase dispatches anything once the ceiling
       // is crossed. Steps already running in THIS phase were not halted — see
       // workflows/workflow-budget.ts.
-      const halt = budget?.settlePhase(phaseResult.value, phaseIndex < plan.phases.length - 1);
+      const hasMorePhases = phaseIndex < plan.phases.length - 1;
+      const halt = budget?.settlePhase(phaseResult.value, hasMorePhases, allResults);
       if (halt !== undefined) return err(halt);
     }
     return ok(allResults);

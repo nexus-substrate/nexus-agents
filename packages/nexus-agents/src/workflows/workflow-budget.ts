@@ -54,17 +54,24 @@ export class WorkflowBudgetTracker implements StepBudgetGate {
     return false;
   }
 
-  /** Record one executed step's usage. Idempotent per step id. */
+  /**
+   * Record one settled step's usage. Idempotent per step id. A `skipped` step
+   * with no usage (a false `condition`, or the mock executor) made no model
+   * call, so it is measured ZERO. Any other step without usage is unmeasured.
+   * Budget-refused steps were recorded by {@link admit} and are ignored here;
+   * they stay in `skippedStepIds`, which is what forces {@link haltError}.
+   */
   record(result: StepResult): void {
     if (this.seen.has(result.stepId)) return;
     this.seen.add(result.stepId);
-    if (typeof result.tokensUsed !== 'number') {
+    const tokens = result.tokensUsed ?? (result.status === 'skipped' ? 0 : undefined);
+    if (tokens === undefined) {
       this.unmeasuredSteps += 1;
       return;
     }
     this.measuredSteps += 1;
-    this.spentTokens += result.tokensUsed;
-    this.guard.record(result.tokensUsed);
+    this.spentTokens += tokens;
+    this.guard.record(tokens);
   }
 
   /** Record a settled phase — steps the dispatch gate already saw are skipped. */
@@ -77,9 +84,19 @@ export class WorkflowBudgetTracker implements StepBudgetGate {
    * are already recorded; this catches an executePhase that bypasses the gate)
    * and return the error that stops the run, if any.
    */
-  settlePhase(results: readonly StepResult[], hasMorePhases: boolean): WorkflowError | undefined {
+  settlePhase(
+    results: readonly StepResult[],
+    hasMorePhases: boolean,
+    completedSteps: readonly StepResult[]
+  ): WorkflowError | undefined {
     this.recordAll(results);
-    return this.haltError(hasMorePhases);
+    const halt = this.haltError(hasMorePhases);
+    if (halt === undefined) return undefined;
+    // The results of every phase that ran travel with the halt, so the caller
+    // sees the work it paid for rather than an empty `stepResults`.
+    return new WorkflowError(halt.message, {
+      context: { ...halt.context, completedSteps: [...completedSteps] },
+    });
   }
 
   outcome(): WorkflowBudgetOutcome {
