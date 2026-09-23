@@ -86,6 +86,8 @@ function createMockArgs(overrides: Partial<ParsedCliArgs> = {}): ParsedCliArgs {
     mock: false,
     deep: false,
     live: false,
+    gateway: false,
+    probe: false,
   };
 
   return {

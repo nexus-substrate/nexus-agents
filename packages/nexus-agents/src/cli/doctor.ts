@@ -73,6 +73,13 @@ import {
 import { execFileSync } from 'node:child_process';
 import { VERSION, isNodeVersionSupported } from '../version.js';
 import { allOf } from '../utils/verdict-aggregation.js';
+import {
+  checkGatewayHealth,
+  cliFailsVerdict,
+  gatewayVerdict,
+  type GatewayHealth,
+  type GatewayVerdict,
+} from './doctor-gateway.js';
 
 /** API key environment variable names. */
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
@@ -348,6 +355,12 @@ export interface DoctorResult {
   readonly installFreshness: InstallFreshness;
   /** Voter transport: in-process gateway vs CLI subprocess fallback (#4255). */
   readonly voterTransport: VoterTransportCheck;
+  /**
+   * The gateway MEASURED (#6609): guard, `/models`, family census, slots,
+   * proxy and, with `--probe`, one completion per family. `not_configured`
+   * when no gateway is set; no network call is made then.
+   */
+  readonly gateway: GatewayHealth;
   /**
    * Whether the pinned claude voter model answers a one-line request (#6120).
    *
@@ -965,6 +978,11 @@ export interface HealthVerdictInput {
   readonly installFreshness: InstallFreshness;
   readonly scratchSpace: readonly ScratchSpaceCheck[];
   readonly clis: readonly CliCheckResult[];
+  /**
+   * The measured gateway (#6609). `fail` fails the verdict; `pass` makes a
+   * missing CLI acceptable, because its slot is served by the gateway.
+   */
+  readonly gateway: GatewayVerdict;
 }
 
 /**
@@ -982,17 +1000,15 @@ export interface HealthVerdictInput {
 
 export function isAllHealthy(input: HealthVerdictInput): boolean {
   return (
+    input.gateway !== 'fail' &&
     input.nodeSupported &&
     input.hasAuthMethod &&
     input.mcpServerReady &&
     installFreshnessIsHealthy(input.installFreshness) &&
     scratchSeverityIsAcceptable(worstSeverity(input.scratchSpace)) &&
-    // whenEmpty = false: zero detected CLIs is not a healthy install (#4581).
-    allOf(
-      input.clis,
-      (c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported',
-      false
-    )
+    // whenEmpty: zero detected CLIs is not a healthy install (#4581) — unless
+    // a passing gateway serves the slots (#6609), as on a gateway-only host.
+    allOf(input.clis, (c) => !cliFailsVerdict(c, input.gateway), input.gateway === 'pass')
   );
 }
 
@@ -1010,13 +1026,42 @@ function probeClaudeModelFor(
   return probe(claudeCheck?.installed === true);
 }
 
-/**
- * Runs the complete doctor check. `probeClaudeModel` is the pinned-model probe
- * seam (#6120), injectable so the suite spends no quota.
- */
-export async function runDoctor(
-  deps: { readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe> } = {}
-): Promise<DoctorResult> {
+/** At least one API key configured, one CLI authenticated, or a passing gateway (#6609). */
+function hasAnyAuthMethod(
+  apiKeys: readonly ApiKeyCheck[],
+  clis: readonly CliCheckResult[],
+  gateway: GatewayVerdict
+): boolean {
+  return (
+    apiKeys.some((k) => k.configured) ||
+    clis.some((c) => c.installed && c.authenticated) ||
+    gateway === 'pass'
+  );
+}
+
+/** The gateway measurement, through the seam when one is given. */
+function measureGateway(
+  check: GatewayCheck | undefined,
+  probe: boolean | undefined
+): Promise<GatewayHealth> {
+  return (check ?? checkGatewayHealth)({ probe: probe === true });
+}
+
+/** The gateway measurement seam (#6609); defaults to {@link checkGatewayHealth}. */
+type GatewayCheck = (options: { readonly probe: boolean }) => Promise<GatewayHealth>;
+
+/** Seams and switches for {@link runDoctor}. */
+interface RunDoctorDeps {
+  /** The pinned-model probe seam (#6120), injectable so the suite spends no quota. */
+  readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe>;
+  /** The gateway measurement seam (#6609). */
+  readonly checkGateway?: GatewayCheck;
+  /** Send one completion per gateway family (`--probe`). Spends tokens. */
+  readonly gatewayProbe?: boolean;
+}
+
+/** Runs the complete doctor check. */
+export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult> {
   const allClis: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
   const disabledClis = allClis.filter((cli) => isCliDisabled(cli));
   const clis = await Promise.all(
@@ -1035,18 +1080,17 @@ export async function runDoctor(
   const dataDirectory = checkDataDirectory();
   const sandbox = checkSandbox();
   const env = collectEnvironmentChecks();
-
-  // At least one API key configured or one CLI authenticated
-  const hasAuthMethod =
-    apiKeys.some((k) => k.configured) || clis.some((c) => c.installed && c.authenticated);
+  const gateway = await measureGateway(deps.checkGateway, deps.gatewayProbe);
+  const gatewayTerm = gatewayVerdict(gateway);
 
   const allHealthy = isAllHealthy({
     nodeSupported: nodeVersion.supported,
-    hasAuthMethod,
+    hasAuthMethod: hasAnyAuthMethod(apiKeys, clis, gatewayTerm),
     mcpServerReady,
     installFreshness: env.installFreshness,
     scratchSpace: env.scratchSpace,
     clis,
+    gateway: gatewayTerm,
   });
 
   return {
@@ -1063,6 +1107,7 @@ export async function runDoctor(
     dataDirectory,
     sandbox,
     ...env,
+    gateway,
     claudeModel,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
@@ -1073,6 +1118,10 @@ export async function runDoctor(
 export interface DoctorOptions {
   /** Auto-fix safe issues (run setup, generate config). */
   readonly fix?: boolean;
+  /** Print the gateway section: census, slots, guard, proxy (#6609). */
+  readonly gateway?: boolean;
+  /** Also send one completion per gateway family; implies `gateway`. Spends tokens. */
+  readonly probe?: boolean;
 }
 
 /**
@@ -1080,8 +1129,12 @@ export interface DoctorOptions {
  * Returns exit code (0 = healthy, 1 = issues found).
  */
 export async function doctorCommand(options: DoctorOptions = {}): Promise<number> {
-  const result = await runDoctor();
+  const result = await runDoctor({ gatewayProbe: options.probe === true });
   printDoctorResults(result);
+  if (options.gateway === true || options.probe === true) {
+    const { formatGatewayReport } = await import('./doctor-gateway-report.js');
+    for (const line of formatGatewayReport(result.gateway)) process.stdout.write(line + '\n');
+  }
 
   if (options.fix === true) {
     await runDoctorFix(result);

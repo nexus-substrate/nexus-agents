@@ -240,6 +240,7 @@ describe('doctor-formatting', () => {
         missingCount: 0,
       },
       voterTransport: options.voterTransport ?? { configured: false },
+      gateway: { state: 'not_configured' },
       claudeModel: { alias: 'fable', status: 'available', reason: null },
       scratchSpace: DEFAULT_SCRATCH_SPACE,
       timestamp: new Date('2024-01-01T00:00:00Z'),
