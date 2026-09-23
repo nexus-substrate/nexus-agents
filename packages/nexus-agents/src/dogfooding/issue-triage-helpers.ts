@@ -12,10 +12,12 @@
 import type { Result } from '../core/index.js';
 import { ok } from '../core/index.js';
 import type { AgentAction } from '../security/action-schema.js';
-import type { GitHubInput } from '../security/firewall/github-adapter.js';
 import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 import type { TrustTier } from '../security/trust-types.js';
-import type { FirewallCorroborationDecision } from './untrusted-input-firewall.js';
+import type {
+  FirewallActionInput,
+  FirewallCorroborationDecision,
+} from './untrusted-input-firewall.js';
 import {
   evaluateActionThroughFirewall,
   validateActionCorroboration,
@@ -213,7 +215,7 @@ export function buildActionDetails(
  * corroboration stage that did not run fails the call the same way.
  */
 export function validateActionsThroughFirewall(
-  input: GitHubInput,
+  input: FirewallActionInput,
   gate: Pick<FirewallProcessOptions, 'context' | 'reputation'> & {
     readonly enforcedTier: TrustTier;
   },

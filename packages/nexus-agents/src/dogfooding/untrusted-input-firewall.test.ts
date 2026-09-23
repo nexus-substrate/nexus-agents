@@ -406,6 +406,52 @@ describe('evaluateActionThroughFirewall (#5383)', () => {
     const events = getUntrustedInputFirewall().getAuditTrail().query({ type: 'policy_gate' });
     expect(events).toHaveLength(1);
   });
+
+  it('evaluates action directly when passed a FirewallResult and emits no extra trust events (#6310)', () => {
+    const fw = firewall('off');
+    _setUntrustedInputFirewallForTests(fw);
+    const processResult = runUntrustedInputFirewall(issue(), { context: READ_ONLY });
+    expect(processResult.ok).toBe(true);
+    if (!processResult.ok) return;
+
+    const initialTrustEvents = fw.getAuditTrail().query({ type: 'trust_classification' });
+    expect(initialTrustEvents).toHaveLength(1);
+
+    const actionResult = evaluateActionThroughFirewall(processResult.value, {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '3',
+    });
+    expect(actionResult.ok).toBe(true);
+    if (!actionResult.ok || actionResult.value.refused) return;
+    expect(actionResult.value.allowed).toBe(false);
+    expect(actionResult.value.effectiveTrustTier).toBe('3');
+
+    // No additional trust or sanitization events emitted
+    const finalTrustEvents = fw.getAuditTrail().query({ type: 'trust_classification' });
+    expect(finalTrustEvents).toHaveLength(1);
+    const policyEvents = fw.getAuditTrail().query({ type: 'policy_gate' });
+    expect(policyEvents).toHaveLength(1);
+  });
+
+  it('fails closed when FirewallResult enforced tier mismatches options.enforcedTier (#6310)', () => {
+    const fw = firewall('off');
+    _setUntrustedInputFirewallForTests(fw);
+    const processResult = runUntrustedInputFirewall(issue(), { context: READ_ONLY });
+    expect(processResult.ok).toBe(true);
+    if (!processResult.ok) return;
+
+    const actionResult = evaluateActionThroughFirewall(processResult.value, {
+      context: READ_ONLY,
+      action: draftReply,
+      enforcedTier: '1',
+    });
+    expect(actionResult.ok).toBe(false);
+    if (actionResult.ok) return;
+    expect(actionResult.error.message).toContain(
+      'enforced tier 3 for action DraftReply but tier 1 for the classification'
+    );
+  });
 });
 
 describe('configureUntrustedInputFirewall — the durable sink (#4992 review)', () => {
