@@ -30,7 +30,7 @@ const KEY_PATTERNS: readonly RegExp[] = [
   // Public keys: pk-...
   /pk-[A-Za-z0-9_-]{20,}/g,
   // AWS access key ID
-  /\b(AKIA[A-Z0-9]{16})\b/g,
+  /\bAKIA[A-Z0-9]{16}\b/g,
   // Google AI / Gemini: AIzaSy... (at least 30 chars total)
   /AIzaSy[A-Za-z0-9_-]{24,}/g,
   // GitHub PAT: ghp_...
@@ -43,8 +43,6 @@ const KEY_PATTERNS: readonly RegExp[] = [
   /npm_[A-Za-z0-9]{20,}/g,
   // PyPI token: pypi-...
   /pypi-[A-Za-z0-9_-]{20,}/g,
-  // Generic long hex secrets (40+ chars)
-  /\b[0-9a-f]{40,}\b/gi,
 ];
 
 /**
