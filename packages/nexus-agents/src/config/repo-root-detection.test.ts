@@ -8,11 +8,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 
-import { findRepoRoot, isRepoRoot } from './repo-root-detection.js';
+import { findRepoRoot, isRepoRoot, resolveMainCheckoutRoot } from './repo-root-detection.js';
 
 describe('repo-root-detection', () => {
   let root: string;
@@ -101,6 +101,85 @@ describe('repo-root-detection', () => {
       // We pass an absolute path here because cwd isn't necessarily under
       // `root`, but the resolve() call itself is exercised.
       expect(findRepoRoot(root)).toBe(root);
+    });
+  });
+
+  // #6531: a linked worktree's per-repo governance state must land in the MAIN
+  // checkout, or it is reaped with the worktree. Fixture mirrors what
+  // `git worktree add` lays out.
+  describe('resolveMainCheckoutRoot', () => {
+    function linkedWorktree(): { main: string; wt: string; adminDir: string } {
+      const main = join(root, 'main');
+      const wt = join(root, 'wt');
+      const adminDir = join(main, '.git', 'worktrees', 'wt1');
+      mkdirSync(adminDir, { recursive: true });
+      mkdirSync(wt);
+      writeFileSync(join(wt, '.git'), `gitdir: ${adminDir}\n`);
+      writeFileSync(join(adminDir, 'gitdir'), `${join(wt, '.git')}\n`);
+      writeFileSync(join(adminDir, 'commondir'), '../..\n');
+      return { main, wt, adminDir };
+    }
+
+    it('returns an ordinary checkout unchanged', () => {
+      mkdirSync(join(root, '.git'));
+      expect(resolveMainCheckoutRoot(root)).toBe(root);
+    });
+
+    it('maps a linked worktree to its main checkout', () => {
+      const { main, wt } = linkedWorktree();
+      expect(resolveMainCheckoutRoot(wt)).toBe(realpathSync(main));
+    });
+
+    it('follows a relative gitdir in the worktree marker file', () => {
+      const { main, wt } = linkedWorktree();
+      writeFileSync(join(wt, '.git'), 'gitdir: ../main/.git/worktrees/wt1\n');
+      expect(resolveMainCheckoutRoot(wt)).toBe(realpathSync(main));
+    });
+
+    it('refuses a forged marker whose gitdir does not point back at it', () => {
+      const { wt, adminDir } = linkedWorktree();
+      const elsewhere = join(root, 'elsewhere');
+      mkdirSync(elsewhere);
+      writeFileSync(join(adminDir, 'gitdir'), `${join(elsewhere, '.git')}\n`);
+      expect(resolveMainCheckoutRoot(wt)).toBe(wt);
+    });
+
+    it('refuses when the admin dir has no gitdir back-reference', () => {
+      const { wt, adminDir } = linkedWorktree();
+      rmSync(join(adminDir, 'gitdir'));
+      expect(resolveMainCheckoutRoot(wt)).toBe(wt);
+    });
+
+    it('refuses when the admin dir has no commondir', () => {
+      const { wt, adminDir } = linkedWorktree();
+      rmSync(join(adminDir, 'commondir'));
+      expect(resolveMainCheckoutRoot(wt)).toBe(wt);
+    });
+
+    it('refuses an admin dir that is not under <common>/worktrees/', () => {
+      const { main, wt } = linkedWorktree();
+      const stray = join(main, '.git', 'not-worktrees', 'wt1');
+      mkdirSync(stray, { recursive: true });
+      writeFileSync(join(stray, 'gitdir'), `${join(wt, '.git')}\n`);
+      writeFileSync(join(stray, 'commondir'), '../..\n');
+      writeFileSync(join(wt, '.git'), `gitdir: ${stray}\n`);
+      expect(resolveMainCheckoutRoot(wt)).toBe(wt);
+    });
+
+    it('keeps the worktree when the common dir is a bare repository', () => {
+      const bare = join(root, 'bare.git');
+      const adminDir = join(bare, 'worktrees', 'wt1');
+      const wt = join(root, 'wt');
+      mkdirSync(adminDir, { recursive: true });
+      mkdirSync(wt);
+      writeFileSync(join(wt, '.git'), `gitdir: ${adminDir}\n`);
+      writeFileSync(join(adminDir, 'gitdir'), `${join(wt, '.git')}\n`);
+      writeFileSync(join(adminDir, 'commondir'), '../..\n');
+      expect(resolveMainCheckoutRoot(wt)).toBe(wt);
+    });
+
+    it('returns a directory with no .git unchanged', () => {
+      expect(resolveMainCheckoutRoot(root)).toBe(root);
     });
   });
 });

@@ -47,6 +47,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ILogger } from '../core/index.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 import { serializeValidatedRecord } from './ledger-append.js';
+import { withFileLockSync } from '../utils/file-lock.js';
 import { assertNotSourceCheckoutWrite } from './source-checkout-guard.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
 import type { AgentVoteResult } from '../cli/vote-types.js';
@@ -726,17 +727,23 @@ export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | 
 
   try {
     mkdirSync(dirname(filePath), { recursive: true });
-    const { maxSequence, lastHash } = readLedgerTip(filePath, logger);
-    const record = buildVoteRecord({
-      ...opts,
-      sequence: maxSequence + 1,
-      previousHash: lastHash,
+    // #6531: the tip read and the append share one cross-process critical
+    // section. Without it two processes read the same tip and wrote the same
+    // sequence. A lock timeout throws into the catch below: not written.
+    const record = withFileLockSync(`${filePath}.lock`, () => {
+      const { maxSequence, lastHash } = readLedgerTip(filePath, logger);
+      const built = buildVoteRecord({
+        ...opts,
+        sequence: maxSequence + 1,
+        previousHash: lastHash,
+      });
+      // #6054: validate against the schema the READ path uses before anything is
+      // durable. A throw here lands in the catch below as warn + undefined — the
+      // contract a failed write already has — instead of an unreadable line the
+      // chain has moved past and no consumer of `invalidLines` will ever surface.
+      appendFileSync(filePath, serializeValidatedRecord(VoteRecordSchema, built, 'vote'), 'utf-8');
+      return built;
     });
-    // #6054: validate against the schema the READ path uses before anything is
-    // durable. A throw here lands in the catch below as warn + undefined — the
-    // contract a failed write already has — instead of an unreadable line the
-    // chain has moved past and no consumer of `invalidLines` will ever surface.
-    appendFileSync(filePath, serializeValidatedRecord(VoteRecordSchema, record, 'vote'), 'utf-8');
     logger.info('Persisted authentic vote record', {
       id: record.id,
       decision: record.decision,

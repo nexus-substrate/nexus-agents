@@ -827,4 +827,35 @@ describe('active workspace root (#3991 — MCP roots)', () => {
     process.env['NEXUS_DATA_DIR'] = '/tmp/explicit-wins';
     expect(getNexusRepoDir()).toBe(null);
   });
+
+  // #6531: a vote run from a linked worktree wrote its record into
+  // <worktree>/.nexus-agents/governance/, which is reaped with the worktree.
+  // Vote (quick panel, option B 2-1): governance routes to the main checkout;
+  // every other per-repo category stays worktree-local.
+  it('routes governance from a linked worktree to the main checkout, other per-repo state stays local', async () => {
+    const { setActiveWorkspaceRoot, nexusDataPath } = await import('./nexus-data-dir.js');
+    const { mkdirSync, writeFileSync, realpathSync } = await import('node:fs');
+    const wt = join(cwdOutsideRepo, 'wt');
+    const adminDir = join(repoDir, '.git', 'worktrees', 'wt');
+    mkdirSync(adminDir, { recursive: true });
+    mkdirSync(wt);
+    writeFileSync(join(wt, '.git'), `gitdir: ${adminDir}\n`);
+    writeFileSync(join(adminDir, 'gitdir'), `${join(wt, '.git')}\n`);
+    writeFileSync(join(adminDir, 'commondir'), '../..\n');
+
+    // Both entry points: the MCP-declared root and cwd detection.
+    for (const viaActiveRoot of [true, false]) {
+      if (viaActiveRoot) setActiveWorkspaceRoot(wt);
+      else {
+        setActiveWorkspaceRoot(null);
+        process.chdir(wt);
+      }
+      expect(nexusDataPath('governance', 'vote-records.jsonl')).toBe(
+        join(realpathSync(repoDir), '.nexus-agents', 'governance', 'vote-records.jsonl')
+      );
+      expect(nexusDataPath('sessions', 'x.db')).toBe(
+        join(realpathSync(wt), '.nexus-agents', 'sessions', 'x.db')
+      );
+    }
+  });
 });

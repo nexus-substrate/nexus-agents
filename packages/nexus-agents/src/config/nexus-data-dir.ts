@@ -64,7 +64,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 import { detectSandbox } from './sandbox-detection.js';
-import { findRepoRoot } from './repo-root-detection.js';
+import { findRepoRoot, resolveMainCheckoutRoot } from './repo-root-detection.js';
 import { ensureGitignored } from './portable-mode.js';
 import { parseBoolEnv } from './defaults-env.js';
 
@@ -115,6 +115,17 @@ const PER_REPO_SUBDIRS: ReadonlySet<string> = new Set([
   // explicit `NEXUS_VOTE_RECORDS_PATH` override (#3991).
   'governance',
 ]);
+
+/**
+ * Per-repo subdirs that belong to the MAIN checkout even when the caller runs
+ * inside a linked git worktree (#6531). A worktree is reaped when its work
+ * lands; a governance record written into `<worktree>/.nexus-agents/` went with
+ * it, while the CLI reported it written. Everything else per-repo stays
+ * worktree-local: a quick panel chose governance-only (option B, 2-1) over
+ * routing all per-repo state, to keep parallel worktrees' scratch, sessions and
+ * jobs isolated. Must be a subset of {@link PER_REPO_SUBDIRS}.
+ */
+const MAIN_CHECKOUT_SUBDIRS: ReadonlySet<string> = new Set(['governance']);
 
 /** Returns the absolute path to the nexus-agents data directory. */
 export function getNexusDataDir(): string {
@@ -215,18 +226,24 @@ export function _resetActiveWorkspaceRootForTests(): void {
  * `NEXUS_GITIGNORE_AUTO` set to `false`/`0` (e.g. on CI runners with a
  * frozen working tree).
  *
+ * `options.mainCheckout` (#6531): when the root found is a linked git
+ * worktree, return the `.nexus-agents/` of the MAIN checkout it belongs to
+ * (see `resolveMainCheckoutRoot`), so the state outlives the worktree.
+ *
  * Returns `null` when any precondition fails; callers fall back to
  * `getNexusDataDir()` (homedir).
  */
-export function getNexusRepoDir(): string | null {
+export function getNexusRepoDir(options: { readonly mainCheckout?: boolean } = {}): string | null {
   if (!parseBoolEnv('NEXUS_REPO_PREFERRED', true)) return null;
   const fromEnv = process.env['NEXUS_DATA_DIR']?.trim();
   if (fromEnv !== undefined && fromEnv !== '') return null;
   if (detectSandbox().active) return null;
   // Prefer the MCP-client-declared workspace root (#3991) when the server has
   // set it; fall back to walking up from cwd for CLI / in-repo callers.
-  const root = activeWorkspaceRoot ?? findRepoRoot(process.cwd());
-  if (root === null) return null;
+  const found = activeWorkspaceRoot ?? findRepoRoot(process.cwd());
+  if (found === null) return null;
+  // #6531: `mainCheckout` maps a linked worktree to the checkout it belongs to.
+  const root = options.mainCheckout === true ? resolveMainCheckoutRoot(found) : found;
   maybeAutoGitignore(root);
   return join(root, '.nexus-agents');
 }
@@ -319,7 +336,7 @@ export function nexusDataPath(...segments: string[]): string {
 
   // Tier 1: per-repo subdir + repo-preferred default.
   if (first !== undefined && PER_REPO_SUBDIRS.has(first)) {
-    const repoDir = getNexusRepoDir();
+    const repoDir = getNexusRepoDir({ mainCheckout: MAIN_CHECKOUT_SUBDIRS.has(first) });
     if (repoDir !== null) {
       return join(repoDir, ...segments);
     }

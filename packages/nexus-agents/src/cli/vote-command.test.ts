@@ -759,9 +759,11 @@ describe('voteCommand — the clamp message names the real bounds (#6242)', () =
 /** A minimal `persisted: true` outcome; only `id` and `sequence` are read. */
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function persistedOutcome() {
-  return { persisted: true, record: { id: 'vote-1', sequence: 7 } } as unknown as Parameters<
-    typeof auditLineFor
-  >[0];
+  return {
+    persisted: true,
+    record: { id: 'vote-1', sequence: 7 },
+    path: '/repo/.nexus-agents/governance/vote-records.jsonl',
+  } as unknown as Parameters<typeof auditLineFor>[0];
 }
 
 describe('voteCommand persists to the audit chain (#4924)', () => {
@@ -861,11 +863,53 @@ describe('voteCommand persists to the audit chain (#4924)', () => {
 
     expect(recordAuthenticVoteMock).not.toHaveBeenCalled();
   });
+
+  it('exits non-zero when the record did not read back (#6531)', async () => {
+    // An approved vote whose record is not on disk must not exit 0: the
+    // ratification flow keys on the id, and a caller that trusts the exit
+    // code would otherwise carry on with nothing behind it.
+    executeVotingMock.mockResolvedValue(extendedResult('approved'));
+    recordAuthenticVoteMock.mockReturnValue({
+      persisted: false,
+      reason: 'read-back-missed',
+      detail: 'record vote-9 is not in /x/vote-records.jsonl after the append',
+    } as unknown as { persisted: boolean; record: { id: string; sequence: number } });
+
+    const code = await voteCommand({ proposal: 'p' });
+
+    expect(code).not.toBe(0);
+  });
+
+  it('still exits 0 for an approved vote whose record read back', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult('approved'));
+
+    expect(await voteCommand({ proposal: 'p' })).toBe(0);
+  });
 });
 
 describe('auditLineFor (#4924)', () => {
   it('names the sequence when the record was written', () => {
     expect(auditLineFor(persistedOutcome())).toContain('7');
+  });
+
+  it('names the ledger the record was written to (#6531)', () => {
+    // A record written into a reaped worktree's ledger printed only its id;
+    // the operator could not see where it went.
+    expect(auditLineFor(persistedOutcome())).toContain(
+      'written (vote-1) to /repo/.nexus-agents/governance/vote-records.jsonl'
+    );
+  });
+
+  it('never says "written" when the read-back missed (#6531)', () => {
+    const line = auditLineFor({
+      persisted: false,
+      reason: 'read-back-missed',
+      detail: 'record vote-9 is not in /x/vote-records.jsonl after the append',
+    });
+
+    expect(line).not.toMatch(/\bwritten\b/);
+    expect(line).toMatch(/NOT recorded/i);
+    expect(line).toContain('vote-9');
   });
 
   it('says a write failure out loud rather than staying silent', () => {

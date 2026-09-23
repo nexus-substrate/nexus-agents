@@ -20,6 +20,7 @@ import type { VoteRecord, VoteRecordPrBinding } from '../../audit/vote-record.js
 import type { ErrorPolicy } from './consensus-vote-types.js';
 import {
   persistVoteRecord,
+  readVoteRecords,
   resolveVoteRecordsPath,
   voteRecordWriteFailedMessage,
 } from '../../audit/vote-record-store.js';
@@ -131,10 +132,19 @@ function toRecordStrategy(strategy: string): VoteRecord['strategy'] {
  * unwritable, or a fail-closed traversal rejection). Observability only.
  */
 export type VoteRecordPersistOutcome =
-  | { readonly persisted: true; readonly record: VoteRecord }
+  | {
+      readonly persisted: true;
+      readonly record: VoteRecord;
+      /** The ledger the record was written to AND read back from (#6531). */
+      readonly path: string;
+    }
   | {
       readonly persisted: false;
-      readonly reason: 'all-simulated' | 'write-failed';
+      /**
+       * `read-back-missed` (#6531): the append returned, but the record is not
+       * on the ledger under its id and hash. Never reported as written.
+       */
+      readonly reason: 'all-simulated' | 'write-failed' | 'read-back-missed';
       readonly detail: string;
     };
 
@@ -236,6 +246,9 @@ export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPe
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
     ...(args.errorPolicy !== undefined ? { errorPolicy: args.errorPolicy } : {}),
+    // #6531: write to the path resolved above, so the read-back below and the
+    // path the caller prints are the file the store wrote.
+    filePath: resolvedPath,
     logger,
   });
   if (record === undefined) {
@@ -248,7 +261,33 @@ export function recordAuthenticVote(args: RecordAuthenticVoteArgs): VoteRecordPe
       detail: voteRecordWriteFailedMessage(resolvedPath),
     };
   }
-  return { persisted: true, record };
+  return confirmPersisted(record, resolvedPath);
+}
+
+/** The outcome for an append that returned `record`: persisted only if it reads back (#6531). */
+function confirmPersisted(record: VoteRecord, path: string): VoteRecordPersistOutcome {
+  if (ledgerHolds(path, record)) return { persisted: true, record, path };
+  const detail =
+    `record ${record.id} (sequence ${String(record.sequence)}) is not in ${path} ` +
+    'after the append; it was NOT persisted';
+  logger.error(detail);
+  return { persisted: false, reason: 'read-back-missed', detail };
+}
+
+/**
+ * True when the ledger holds `record` under its id AND hash (#6531). Matching
+ * the hash too means a different record that happens to share the id does not
+ * count as this one. An unreadable ledger holds nothing.
+ */
+function ledgerHolds(path: string, record: VoteRecord): boolean {
+  try {
+    return readVoteRecords(path).records.some(
+      (onDisk) => onDisk.id === record.id && onDisk.hash === record.hash
+    );
+  } catch (error: unknown) {
+    logger.warn('Vote-record read-back failed', { error: getErrorMessage(error), path });
+    return false;
+  }
 }
 
 /** Records a failed consensus vote to session memory. Best-effort. */
