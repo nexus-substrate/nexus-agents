@@ -1264,6 +1264,10 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   panelDiversity: z
     .object({
       distinctModels: z.number().int().nonnegative(),
+      // #6606: distinct vendor families among the answering seats, and the
+      // answering seats whose model names no recognised vendor.
+      distinctFamilies: z.number().int().nonnegative(),
+      unclassifiedSeats: z.number().int().nonnegative(),
       fallbacks: z.number().int().nonnegative(),
     })
     .optional(),

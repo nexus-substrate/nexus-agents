@@ -10,8 +10,8 @@
  * present, so the chat/non-chat decision falls to the id heuristic, as it does
  * on most real gateways.
  *
- * Listing order is part of the recording: discovery preserves it, and the
- * voter panel round-robins over it.
+ * Listing order is part of the recording: discovery preserves it. The voter
+ * panel deals seats by family (#6606), so its assignment must not depend on it.
  *
  * @module testing/gateway/three-family-catalog
  */

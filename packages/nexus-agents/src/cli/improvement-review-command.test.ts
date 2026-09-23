@@ -20,6 +20,7 @@ vi.mock('../mcp/tools/improvement-review.js', async (importOriginal) => {
 });
 
 import { handleImprovementReviewCommand } from './improvement-review-command.js';
+import { parseCliArgs } from '../cli.js';
 
 function makeArgs(overrides: Record<string, unknown> = {}): ParsedCliArgs {
   return {
@@ -170,5 +171,26 @@ describe('handleImprovementReviewCommand', () => {
     await expect(
       handleImprovementReviewCommand(makeArgs({ 'lookback-days': '101' }))
     ).rejects.toThrow();
+  });
+
+  it('parses argv through parseCliArgs and forwards all flags to runImprovementReview (#6636)', async () => {
+    const parsed = parseCliArgs([
+      'improvement-review',
+      '--file-issues',
+      '--lookback-days',
+      '30',
+      '--min-sample-size',
+      '10',
+      '--fitness-floor',
+      '85',
+    ]);
+    await handleImprovementReviewCommand(parsed);
+
+    expect(runMock).toHaveBeenCalledOnce();
+    const call = runMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call['lookbackDays']).toBe(30);
+    expect(call['fileIssues']).toBe(true);
+    expect(call['minSampleSize']).toBe(10);
+    expect(call['fitnessFloor']).toBe(85);
   });
 });

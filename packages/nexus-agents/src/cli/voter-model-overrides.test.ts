@@ -7,6 +7,9 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { ILogger, IModelAdapter } from '../core/index.js';
 import { resolveVoterModelOverrides, voterModelOverrideEnvKey } from './voter-model-overrides.js';
 import { resolveGatewayRoleAdapters } from './voter-agents.js';
+import { vendorFamilyOf } from './voter-family-dealing.js';
+import type { VoterRole } from './vote-types.js';
+import { THREE_FAMILY_CHAT_IDS } from '../testing/gateway/three-family-catalog.js';
 
 /** Minimal adapter stub — the resolver only reads `modelId`. */
 function adapter(modelId: string): IModelAdapter {
@@ -142,9 +145,8 @@ describe('resolveGatewayRoleAdapters — override + round-robin integration (#40
   });
 
   it('does NOT warn collapse when diversity is preserved', () => {
-    // architect pinned to gemini-3-pro; security round-robins to entries[0] (gpt-4o)
-    // → 2 distinct models, no collapse. (If the override were gpt-4o it WOULD collapse,
-    // since the lone round-robin role also lands on entries[0] — verified above.)
+    // architect pinned to gemini-3-pro; security is dealt to the least-seated
+    // family (#6606), which is not google → 2 distinct models, no collapse.
     process.env['NEXUS_VOTER_MODEL_ARCHITECT'] = 'gemini-3-pro';
     const logger = fakeLogger();
     const assigned = resolveGatewayRoleAdapters(
@@ -158,5 +160,79 @@ describe('resolveGatewayRoleAdapters — override + round-robin integration (#40
       String(c[0]).includes('collapsed to a single gateway model via overrides')
     );
     expect(collapseWarn).toBeUndefined();
+  });
+});
+
+describe('resolveGatewayRoleAdapters — family-first dealing (#6606)', () => {
+  afterEach(() => {
+    for (const k of ENV_KEYS) Reflect.deleteProperty(process.env, k);
+  });
+
+  const SEVEN: readonly VoterRole[] = [
+    'architect',
+    'security',
+    'devex',
+    'ai_ml',
+    'pm',
+    'catfish',
+    'scope_steward',
+  ];
+  const CATALOG = THREE_FAMILY_CHAT_IDS.map(adapter);
+  const fallback = adapter('fallback-model');
+  const familiesOf = (assigned: Map<VoterRole, IModelAdapter>): string[] =>
+    SEVEN.map((r) => vendorFamilyOf(assigned.get(r)?.modelId ?? ''));
+
+  it('seats seven roles on all three families of a listing-skewed catalogue', () => {
+    const assigned = resolveGatewayRoleAdapters(SEVEN, CATALOG, fallback, fakeLogger());
+    expect(new Set(familiesOf(assigned))).toEqual(new Set(['anthropic', 'openai', 'google']));
+  });
+
+  it('assigns the same model to each role whatever the listing order', () => {
+    const listed = resolveGatewayRoleAdapters(SEVEN, CATALOG, fallback, fakeLogger());
+    const reversed = resolveGatewayRoleAdapters(
+      SEVEN,
+      [...CATALOG].reverse(),
+      fallback,
+      fakeLogger()
+    );
+    expect(SEVEN.map((r) => reversed.get(r)?.modelId)).toEqual(
+      SEVEN.map((r) => listed.get(r)?.modelId)
+    );
+  });
+
+  it('lets a pin win and deals the other roles around it', () => {
+    process.env['NEXUS_VOTER_MODEL_ARCHITECT'] = 'openai/o3';
+    process.env['NEXUS_VOTER_MODEL_SECURITY'] = 'gpt-5.2';
+    const assigned = resolveGatewayRoleAdapters(SEVEN, CATALOG, fallback, fakeLogger());
+    expect(assigned.get('architect')?.modelId).toBe('openai/o3');
+    expect(assigned.get('security')?.modelId).toBe('gpt-5.2');
+    // Two pinned OpenAI seats: the five dealt seats go to the other families first.
+    const families = familiesOf(assigned);
+    expect(families.filter((f) => f === 'openai')).toHaveLength(2);
+    expect(families.filter((f) => f === 'anthropic')).toHaveLength(3);
+    expect(families.filter((f) => f === 'google')).toHaveLength(2);
+  });
+
+  it('warns that a one-family catalogue collapsed the panel to one family', () => {
+    const logger = fakeLogger();
+    resolveGatewayRoleAdapters(
+      SEVEN,
+      [adapter('gpt-5.2'), adapter('openai/o3'), adapter('openai/gpt-4o')],
+      fallback,
+      logger
+    );
+    const warned = logger.warn.mock.calls.find((c) =>
+      String(c[0]).includes('collapsed to a single model family')
+    );
+    expect(warned).toBeDefined();
+  });
+
+  it('does not warn of a family collapse on a three-family catalogue', () => {
+    const logger = fakeLogger();
+    resolveGatewayRoleAdapters(SEVEN, CATALOG, fallback, logger);
+    const warned = logger.warn.mock.calls.find((c) =>
+      String(c[0]).includes('collapsed to a single model family')
+    );
+    expect(warned).toBeUndefined();
   });
 });

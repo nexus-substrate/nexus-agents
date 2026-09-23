@@ -510,3 +510,41 @@ describe('parseCliArgs carries --project through to vote options (#6110)', () =>
     expect(parsed.options).not.toHaveProperty('project');
   });
 });
+
+// =============================================================================
+// improvement-review flags reach options (#6636)
+// =============================================================================
+
+describe('parseCliArgs carries improvement-review flags through to options (#6636)', () => {
+  it('carries --file-issues and numeric flags through to options', () => {
+    const parsed = parseCliArgs([
+      'improvement-review',
+      '--file-issues',
+      '--lookback-days',
+      '30',
+      '--min-sample-size',
+      '10',
+      '--fitness-floor',
+      '85',
+    ]);
+
+    const opts = parsed.options as Record<string, unknown>;
+    expect(opts['file-issues']).toBe(true);
+    expect(opts['fileIssues']).toBe(true);
+    expect(opts['lookback-days']).toBe('30');
+    expect(opts['lookbackDays']).toBe('30');
+    expect(opts['min-sample-size']).toBe('10');
+    expect(opts['minSampleSize']).toBe('10');
+    expect(opts['fitness-floor']).toBe('85');
+    expect(opts['fitnessFloor']).toBe('85');
+  });
+
+  it('defaults file-issues to false when not provided', () => {
+    const parsed = parseCliArgs(['improvement-review']);
+    const opts = parsed.options as Record<string, unknown>;
+    expect(opts['file-issues']).toBe(false);
+    expect(opts['fileIssues']).toBe(false);
+    expect(opts['lookback-days']).toBeUndefined();
+    expect(opts['lookbackDays']).toBeUndefined();
+  });
+});

@@ -73,7 +73,7 @@ function fallbackLabel({ role, fallback, toCli, toModel }: SeatFallbackDetail): 
 
 /**
  * The one-line rendering of panel model diversity (#6115) —
- * `Models: 3 distinct, 2 fallbacks (devex: codex→gemini, capacity)`.
+ * `Models: 3 distinct, 2 families, 2 fallbacks (devex: codex→gemini, capacity)`.
  *
  * Always emitted, explicit zeros included: the three single-model panels
  * that motivated it read exactly like a three-model panel because nothing
@@ -81,10 +81,18 @@ function fallbackLabel({ role, fallback, toCli, toModel }: SeatFallbackDetail): 
  * comment bolds it.
  */
 export function modelsLine(votes: readonly AgentVoteResult[]): string {
-  const { distinctModels, fallbacks } = panelDiversityOf(votes);
+  const { distinctModels, distinctFamilies, unclassifiedSeats, fallbacks } =
+    panelDiversityOf(votes);
   const detail = seatFallbacks(votes).map(fallbackLabel).join('; ');
+  // #6606: the family count, and the seats it could not classify.
+  const families = `${String(distinctFamilies)} ${distinctFamilies === 1 ? 'family' : 'families'}`;
+  const unclassified =
+    unclassifiedSeats === 0
+      ? ''
+      : ` (${String(unclassifiedSeats)} ${unclassifiedSeats === 1 ? 'seat' : 'seats'} unclassified)`;
   return (
-    `Models: ${String(distinctModels)} distinct, ${String(fallbacks)} fallbacks` +
+    `Models: ${String(distinctModels)} distinct, ${families}${unclassified}, ` +
+    `${String(fallbacks)} fallbacks` +
     (detail === '' ? '' : ` (${detail})`)
   );
 }

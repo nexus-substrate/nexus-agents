@@ -6414,8 +6414,10 @@ VariableDeclaration PairwiseVotingHistorySchema
 TypeAliasDeclaration PanelBudgetSource
   = 'binding-cap-fallback' | 'registry'
 InterfaceDeclaration PanelDiversity
+  readonly distinctFamilies: number
   readonly distinctModels: number
   readonly fallbacks: number
+  readonly unclassifiedSeats: number
 InterfaceDeclaration ParallelOptions
   failFast?: boolean | undefined
   maxConcurrency?: number | undefined
