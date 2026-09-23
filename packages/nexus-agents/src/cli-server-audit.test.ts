@@ -17,6 +17,7 @@ import {
   recordStartupFailure,
 } from './cli-server-audit.js';
 import type { ILogger } from './core/index.js';
+import { VERSION } from './version.js';
 import { PolicyConfigSchema } from './config/schemas-security.js';
 
 function createMockLogger(): ILogger {
@@ -33,14 +34,23 @@ function createMockLogger(): ILogger {
 }
 
 /** Every recorded event under `dir`, parsed. */
-function readEvents(dir: string): { action?: string; outcome?: string }[] {
+function readEvents(
+  dir: string
+): { action?: string; outcome?: string; metadata?: Record<string, unknown> }[] {
   return readdirSync(dir)
     .filter((f) => f.endsWith('.jsonl'))
     .flatMap((f) =>
       readFileSync(join(dir, f), 'utf-8')
         .split('\n')
         .filter((line) => line.trim().length > 0)
-        .map((line) => JSON.parse(line) as { action?: string; outcome?: string })
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              action?: string;
+              outcome?: string;
+              metadata?: Record<string, unknown>;
+            }
+        )
     );
 }
 
@@ -427,5 +437,51 @@ describe('logSecurityConfig', () => {
       String(call[0]).includes('Audit logging is disabled')
     );
     expect(warned).toBe(false);
+  });
+});
+
+describe('startup records carry the package version (#6509)', () => {
+  it('stamps begin, completion and failure records with the running VERSION', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'nexus-audit-version-'));
+    try {
+      const auditLogger = initializeAuditLogger(
+        {
+          allowedPaths: ['./'],
+          blockedPatterns: [],
+          rateLimit: { enabled: true, requestsPerMinute: 60 },
+          audit: {
+            enabled: true,
+            logDir: tmpDir,
+            minSeverity: 'info' as const,
+            enableHashChain: false,
+            maxFileSizeBytes: 10 * 1024 * 1024,
+            maxFiles: 10,
+          },
+        },
+        createMockLogger()
+      );
+      recordStartupComplete(auditLogger, 'server');
+      await expect(
+        recordStartupFailure(auditLogger, 'subsystem_init', () => Promise.reject(new Error('x')))
+      ).rejects.toThrow('x');
+      await auditLogger?.flush();
+
+      const startup = readEvents(tmpDir).filter(
+        (e) => e.action?.startsWith('system.startup') === true
+      );
+      // begin + success + failure: an empty list must not pass vacuously.
+      expect(startup.map((e) => e.action)).toEqual([
+        'system.startup.begin',
+        'system.startup',
+        'system.startup',
+      ]);
+      for (const event of startup) {
+        expect(event.metadata?.['packageVersion']).toBe(VERSION);
+      }
+      expect(VERSION.length).toBeGreaterThan(0);
+      await auditLogger?.close();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
