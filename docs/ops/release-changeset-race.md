@@ -126,6 +126,8 @@ pnpm release       # runs `changeset publish` against current package.json
 
 `changeset publish` is idempotent — if a version already exists on npm, it errors gracefully without re-publishing or affecting other versions.
 
+**Staged-publish window (#6500).** npm stages a publish for up to ~17 minutes before `npm view` (and changesets' "not found in registry" check) can see it; a release run inside that window gets `E409 ... Cannot publish over previously staged version "X"`. `scripts/release-publish.ts` exits 0 with a `::warning::` when every failure is exactly that E409 for the local `package.json` version (any other failure stays red); that run creates no tag or GitHub Release, because the run that staged the version already did.
+
 After publishing, manually upload the SBOM and attest provenance if needed:
 
 ```bash
@@ -158,4 +160,4 @@ The race is rare. To minimize the chance of triggering it:
 - `.github/workflows/release.yml` — the actual workflow definition (skew-detection steps + `manual-publish` guard).
 - `.github/workflows/ci.yml` — the `Changeset Presence` required check.
 - `scripts/check-changeset.ts` — the changeset-presence gate.
-- `package.json` `release` script — runs `pnpm build`, then `scripts/stage-publish.ts` (which builds the staged package with bundled dependencies, #6481), then `changeset publish` under `npm_config_node_linker=hoisted`.
+- `package.json` `release` script — runs `pnpm build`, then `scripts/stage-publish.ts` (which builds the staged package with bundled dependencies, #6481), then `scripts/release-publish.ts`, which runs `changeset publish` under `npm_config_node_linker=hoisted` (#6500).

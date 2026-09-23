@@ -76,7 +76,7 @@
     "changeset": "changeset",
     "changeset:version": "pnpm exec tsx scripts/changeset-version-with-retry.ts && pnpm exec tsx scripts/sync-plugin-version.ts && pnpm governance:inject && pnpm exec tsx scripts/generate-repo-index.ts && pnpm exec tsx scripts/generate-docs-content.ts",
     "changeset:publish": "changeset publish",
-    "release": "pnpm build && pnpm exec tsx scripts/stage-publish.ts && npm_config_node_linker=hoisted changeset publish",
+    "release": "pnpm build && pnpm exec tsx scripts/stage-publish.ts && pnpm exec tsx scripts/release-publish.ts",
     "check:catalogue-drift": "pnpm exec tsx scripts/check-catalogue-drift.ts"
   },
   "devDependencies": {
