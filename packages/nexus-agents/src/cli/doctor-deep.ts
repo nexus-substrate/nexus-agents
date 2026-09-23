@@ -19,7 +19,7 @@ import { allOf, verdictOver } from '../utils/verdict-aggregation.js';
 // Types
 // ============================================================================
 
-/** Per-CLI data sufficiency snapshot. */
+/** Per-arm data sufficiency snapshot: a CLI slot or an `api:*` arm (#6574). */
 export interface CliDataStatus {
   readonly cli: string;
   readonly taskCount: number;
@@ -94,6 +94,8 @@ function checkLearningLoop(): LearningLoopHealth {
   const latestTimestamp =
     outcomes.length > 0 ? (outcomes[outcomes.length - 1]?.timestamp ?? null) : null;
 
+  // Bonuses are slot-keyed, because delegate_to_model routes by slot;
+  // getAdaptiveBonus folds each api:* arm's rows into its slot (#6574).
   let activeBonuses = 0;
   const totalPairs = CLI_NAMES.length * TASK_CATEGORIES.length;
   for (const cli of CLI_NAMES) {
@@ -110,19 +112,18 @@ function checkLearningLoop(): LearningLoopHealth {
   };
 }
 
-/** Check per-CLI data sufficiency against cold-start threshold. */
+/**
+ * Check per-arm data sufficiency against cold-start threshold. Every routed
+ * arm, `api:*` included (#6574); an arm with no rows reports `taskCount: 0`
+ * and is rendered as unmeasured, not as a measured count.
+ */
 function checkDataSufficiency(): DataSufficiency {
   const store = getOutcomeStore();
-  const cliStatus: CliDataStatus[] = [];
-
-  for (const cli of CLI_NAMES) {
-    const outcomes = store.query({ cli });
-    cliStatus.push({
-      cli,
-      taskCount: outcomes.length,
-      aboveThreshold: outcomes.length >= COLD_START_THRESHOLD,
-    });
-  }
+  const rowsByArm = tallyRowsByArm();
+  const cliStatus: CliDataStatus[] = ROUTED_ARMS.map((cli) => {
+    const taskCount = rowsByArm.get(cli)?.total ?? 0;
+    return { cli, taskCount, aboveThreshold: taskCount >= COLD_START_THRESHOLD };
+  });
 
   const categoriesWithData = new Set<TaskCategory>();
   const allOutcomes = store.query();
@@ -245,11 +246,17 @@ export function formatDeepDiagnostics(diag: DeepDiagnostics): string {
 
   // Data Sufficiency
   lines.push('\nData Sufficiency:');
+  const unmeasured: string[] = [];
   for (const cs of diag.dataSufficiency.cliStatus) {
+    if (cs.taskCount === 0) {
+      unmeasured.push(cs.cli);
+      continue;
+    }
     const icon = cs.aboveThreshold ? '+' : '!';
     const label = cs.aboveThreshold ? 'above threshold' : 'below threshold';
     lines.push(`  ${icon} ${cs.cli}: ${String(cs.taskCount)} tasks (${label})`);
   }
+  if (unmeasured.length > 0) lines.push(`  ! Unmeasured (no rows): ${unmeasured.join(', ')}`);
   if (diag.dataSufficiency.missingCategories.length > 0) {
     lines.push(`  Missing categories: ${diag.dataSufficiency.missingCategories.join(', ')}`);
   }

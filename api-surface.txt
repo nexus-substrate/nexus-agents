@@ -1970,7 +1970,7 @@ InterfaceDeclaration CompositionValidation
   readonly valid: boolean
   readonly warnings: readonly string[]
 FunctionDeclaration computeAdaptiveThresholds
-  : (store: OutcomeStore, cli: "claude" | "codex" | "gemini" | "opencode", category: "architecture" | "code_generation" | "code_review" | "devops" | "documentation" | "exploration" | "planning" | "research" | "security_review" | "testing") => AdaptiveThresholdResult
+  : (store: OutcomeStore, cli: RoutingArmId, category: "architecture" | "code_generation" | "code_review" | "devops" | "documentation" | "exploration" | "planning" | "research" | "security_review" | "testing") => AdaptiveThresholdResult
 InterfaceDeclaration ComputedReward
   readonly components: { readonly baseReward: number; readonly efficiencyBonus: number; readonly qualityBonus: number; readonly retryPenalty: number; readonly speedBonus: number; }
   readonly explanation: string

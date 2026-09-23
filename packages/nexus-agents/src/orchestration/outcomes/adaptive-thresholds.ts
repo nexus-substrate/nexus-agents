@@ -11,7 +11,7 @@
 import type { TaskOutcome } from './outcome-types.js';
 import type { OutcomeStore } from './outcome-store.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
-import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
+import type { RoutingArmId } from '../../cli-adapters/types-core.js';
 
 // ============================================================================
 // Types
@@ -54,7 +54,9 @@ const TREND_DELTA_THRESHOLD = 0.05;
 // ============================================================================
 
 /**
- * Computes adaptive thresholds for a CLI+category pair from outcome data.
+ * Computes adaptive thresholds for a routing arm + category pair from outcome
+ * data. `cli` is the arm the rows were recorded under: a CLI slot or, since
+ * #6554, an `api:*` arm — this reads that arm's rows only, never its slot's.
  *
  * Below cold start threshold: returns defaults with zero confidence.
  * Above threshold: adjusts baseline toward observed rate, scales max
@@ -62,7 +64,7 @@ const TREND_DELTA_THRESHOLD = 0.05;
  */
 export function computeAdaptiveThresholds(
   store: OutcomeStore,
-  cli: CliNameLiteral,
+  cli: RoutingArmId,
   category: TaskCategory
 ): AdaptiveThresholdResult {
   const outcomes = store.query({ cli, category });
