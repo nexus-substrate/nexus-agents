@@ -486,6 +486,67 @@ describe('createAgentStages — central workflow hub', () => {
       }
     });
 
+    it('records QA as the review call succeeding, with the verdict as a signal (#6521 I2)', async () => {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'REJECT: missing tests',
+        durationMs: 500,
+        routedDurationMs: 300,
+        expertType: 'qa',
+        cli: 'gemini',
+        routedBy: 'composite-router',
+      });
+
+      const stages = createAgentStages();
+      const review = await stages.qaReview(
+        { id: 'q1', title: 'x', description: 'y', assignedTo: 'coder', status: 'review' },
+        'impl'
+      );
+
+      expect(review.verdict).toBe('reject');
+      const row = findRecord(appendSpy, 'pipeline-q1-');
+      expect(row['success']).toBe(true);
+      expect(row['routedBy']).toBe('composite-router');
+      expect(row['category']).toBe('code_review');
+      expect(row['qualitySignals']).toEqual(['qa-verdict:reject']);
+      expect(row['durationMs']).toBe(300);
+    });
+
+    it('records a routed failure against its arm, classified, with the arm run time (#6521 I1)', async () => {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      mockExecuteExpert.mockResolvedValue({
+        success: false,
+        text: '',
+        durationMs: 900,
+        routedDurationMs: 120,
+        expertType: 'architecture',
+        cli: 'codex',
+        routedBy: 'composite-router',
+        error: 'Request timed out after 120000ms',
+      });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+
+      const row = findRecord(appendSpy, 'pipeline-plan-');
+      expect(row).toMatchObject({
+        success: false,
+        cli: 'codex',
+        routedBy: 'composite-router',
+        durationMs: 120,
+        failureCategory: 'timeout',
+      });
+    });
+
     it('leaves the marker off when the bridge result was not routed', async () => {
       const appendSpy = vi.fn();
       mockGetOutcomeStore.mockReturnValue({

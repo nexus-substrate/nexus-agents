@@ -19,6 +19,7 @@ import {
   emitStageEvent,
   postProgress,
   recordOutcome,
+  outcomeFieldsFromBridge,
   runExpert,
 } from './agent-executor-core.js';
 import {
@@ -123,10 +124,7 @@ export function createPlanStage({
     recordOutcome({
       taskId: 'plan',
       category: 'architecture',
-      cli: r.cli,
-      routedBy: r.routedBy,
-      success: r.success,
-      durationMs: r.durationMs,
+      ...outcomeFieldsFromBridge(r),
     });
     await postProgress(
       config,
@@ -162,10 +160,7 @@ export function createDecomposeStage({
     recordOutcome({
       taskId: 'decompose',
       category: 'planning',
-      cli: r.cli,
-      routedBy: r.routedBy,
-      success: r.success,
-      durationMs: r.durationMs,
+      ...outcomeFieldsFromBridge(r),
     });
     await postProgress(config, 'PM', `${String(tasks.length)} task(s)`);
     return tasks;
@@ -195,10 +190,7 @@ export function createImplementStage({
     recordOutcome({
       taskId: task.id,
       category: 'code_generation',
-      cli: r.cli,
-      routedBy: r.routedBy,
-      success: r.success,
-      durationMs: r.durationMs,
+      ...outcomeFieldsFromBridge(r),
     });
     recordRoutingExperience(
       'code_generation',
@@ -234,10 +226,10 @@ export function createQaReviewStage({
     recordOutcome({
       taskId: task.id,
       category: 'code_review',
-      cli: r.cli,
-      routedBy: r.routedBy,
-      success: review.verdict === 'pass',
-      durationMs: r.durationMs,
+      // #6521 I2: the row scores the reviewer's CALL; the verdict judges the
+      // implementation, so it rides as a signal, not as `success`.
+      ...outcomeFieldsFromBridge(r),
+      qualitySignals: [`qa-verdict:${review.verdict}`],
     });
     // Write-back: persist QA outcomes to memory (#1716)
     if (review.verdict === 'pass') {

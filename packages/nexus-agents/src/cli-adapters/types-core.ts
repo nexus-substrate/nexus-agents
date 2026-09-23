@@ -240,6 +240,11 @@ export interface CliResponse {
    * no `model`, so without this a caller cannot attribute a routed outcome.
    */
   readonly routedCli?: CliName;
+  /**
+   * Wall time of the routed arm's `execute` call alone, in ms (#6521). Set only
+   * by `CompositeRouter.executeTask`; excludes routing and caller overhead.
+   */
+  readonly routedDurationMs?: number;
   /** Raw response (for debugging) */
   readonly raw?: unknown;
   /**
@@ -289,6 +294,14 @@ export interface CliError {
    * than our guess.
    */
   readonly retryAfterMs?: number;
+  /**
+   * CLI slot of the arm `CompositeRouter.executeTask` selected, when that arm
+   * ran and failed (#6521). Set only by the router, so a caller can record
+   * the failure against the arm it routed to. Absent when routing itself failed.
+   */
+  readonly routedCli?: CliName;
+  /** Wall time of the failed arm's `execute` call alone, in ms (#6521). */
+  readonly routedDurationMs?: number;
 }
 
 /**

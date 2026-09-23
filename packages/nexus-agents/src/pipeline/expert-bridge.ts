@@ -51,11 +51,18 @@ export interface ExpertBridgeResult {
   readonly cli?: CliNameLiteral;
   /**
    * `'composite-router'` when `CompositeRouter.executeTask` selected the CLI
-   * that produced this result (#6521). Set where the router's decision and the
-   * execution meet (`adaptCompositeRouter`), so an outcome recorder copies it
-   * rather than asserting routing on its own. Undefined on every failure path.
+   * that produced this result, success or failure (#6521). Set where the
+   * router's decision and the execution meet (`adaptCompositeRouter`), so an
+   * outcome recorder copies it rather than asserting routing on its own.
+   * Undefined when no arm ran: routing failed, no adapters, circuit open.
    */
   readonly routedBy?: OutcomeRoutedBy;
+  /**
+   * Wall time of the routed arm's call alone (#6521), from the router. Unlike
+   * {@link durationMs} it excludes expert import, MCP-config setup and
+   * rate-limit backoff. Undefined when no arm ran.
+   */
+  readonly routedDurationMs?: number;
   /**
    * Total tokens (input + output) the underlying CLI/adapter reported for this
    * call, when available (#3396). Best-effort: `CliResponse.usage` is optional
@@ -81,21 +88,46 @@ export interface ExpertBridgeResult {
   readonly tokensOut?: number;
 }
 
+/** Attribution of a routed arm's run, on success and on failure (#6521). */
+interface RoutedAttribution {
+  cli?: CliNameLiteral;
+  routedBy?: OutcomeRoutedBy;
+  routedDurationMs?: number;
+}
+
 /** Minimal router interface for the bridge. */
 interface RouterLike {
   executeTask(task: { content: string; options?: Record<string, unknown> | undefined }): Promise<{
     ok: boolean;
-    value: {
+    value: RoutedAttribution & {
       text: string;
-      cli?: CliNameLiteral;
-      routedBy?: OutcomeRoutedBy;
       tokensUsed?: number;
       model?: string;
       tokensIn?: number;
       tokensOut?: number;
     };
-    error: { message: string };
+    error: RoutedAttribution & { message: string };
   }>;
+}
+
+/**
+ * The bridge's attribution for a router result (#6521). The router's own
+ * `routedCli` is authoritative: the model string can name another vendor's
+ * slot (an `api:custom-openai` arm shows as opencode while serving a GPT
+ * model). The model-derived CLI is the fallback only when no arm is named.
+ * No `routedCli` on a failure means routing failed before an arm ran, and
+ * then there is nothing to attribute.
+ */
+function routedAttribution(
+  routed: { routedCli?: CliNameLiteral; routedDurationMs?: number },
+  model: string | undefined
+): RoutedAttribution {
+  const cli = routed.routedCli ?? resolveCliFromModelString(model);
+  return {
+    ...(cli !== undefined && { cli }),
+    ...(routed.routedCli !== undefined && { routedBy: 'composite-router' as const }),
+    ...(routed.routedDurationMs !== undefined && { routedDurationMs: routed.routedDurationMs }),
+  };
 }
 
 // Cached router — lazily initialized, reused across calls within a session
@@ -209,16 +241,14 @@ function adaptCompositeRouter(
   return {
     async executeTask(task): Promise<{
       ok: boolean;
-      value: {
+      value: RoutedAttribution & {
         text: string;
-        cli?: CliNameLiteral;
-        routedBy?: OutcomeRoutedBy;
         tokensUsed?: number;
         model?: string;
         tokensIn?: number;
         tokensOut?: number;
       };
-      error: { message: string };
+      error: RoutedAttribution & { message: string };
     }> {
       const cliTask: import('../cli-adapters/types.js').CliTask = {
         content: task.content,
@@ -233,9 +263,8 @@ function adaptCompositeRouter(
         // adapter didn't set `model` or the model isn't in the registry,
         // cli stays undefined and downstream code can skip the record
         // rather than lie.
-        // #6521: CLI subprocess adapters report no model; the router's own
-        // record of the arm it ran is then the attribution.
-        const cli = resolveCliFromModelString(result.value.model) ?? result.value.routedCli;
+        // #6521: the arm the router ran is the attribution; see routedAttribution.
+        const attribution = routedAttribution(result.value, result.value.model);
         // #3396: surface token usage (best-effort) so budget enforcement,
         // attribution, and routing-experience metrics get real numbers instead
         // of zeros. `usage` is optional and `totalTokens` may be absent — fall
@@ -250,10 +279,7 @@ function adaptCompositeRouter(
           ok: true,
           value: {
             text: result.value.text,
-            // #6521: this router picked the arm that ran; the tag rides with
-            // the result so the outcome writer can say so.
-            routedBy: 'composite-router',
-            ...(cli !== undefined && { cli }),
+            ...attribution,
             ...(tokensUsed !== undefined && { tokensUsed }),
             ...(model !== undefined && { model }),
             ...(split !== undefined && { tokensIn: split.tokensIn, tokensOut: split.tokensOut }),
@@ -261,7 +287,14 @@ function adaptCompositeRouter(
           error: { message: '' },
         };
       }
-      return { ok: false, value: { text: '' }, error: { message: result.error.message } };
+      // #6521 I1: a routed failure keeps its arm, so it is recorded and the
+      // loop does not see only the arm's successes.
+      const routed = 'routedCli' in result.error ? result.error : {};
+      return {
+        ok: false,
+        value: { text: '' },
+        error: { message: result.error.message, ...routedAttribution(routed, undefined) },
+      };
     },
   };
 }
@@ -328,6 +361,15 @@ function checkCircuitHealth(): { healthy: boolean; message: string } {
   return { healthy: true, message: '' };
 }
 
+/** The attribution fields present on `source`; absent ones stay absent. */
+function attributionOf(source: RoutedAttribution): RoutedAttribution {
+  return {
+    ...(source.cli !== undefined && { cli: source.cli }),
+    ...(source.routedBy !== undefined && { routedBy: source.routedBy }),
+    ...(source.routedDurationMs !== undefined && { routedDurationMs: source.routedDurationMs }),
+  };
+}
+
 /** A successful router result as an {@link ExpertBridgeResult}; absent fields stay absent. */
 function toSuccessResult(
   value: Awaited<ReturnType<RouterLike['executeTask']>>['value'],
@@ -339,8 +381,7 @@ function toSuccessResult(
     text: value.text,
     expertType,
     durationMs,
-    ...(value.cli !== undefined && { cli: value.cli }),
-    ...(value.routedBy !== undefined && { routedBy: value.routedBy }),
+    ...attributionOf(value),
     ...(value.tokensUsed !== undefined && { tokensUsed: value.tokensUsed }),
     ...(value.model !== undefined && { model: value.model }),
     ...(value.tokensIn !== undefined && { tokensIn: value.tokensIn }),
@@ -377,8 +418,17 @@ async function dispatchWithRateLimitRetry(
       continue;
     }
 
+    // Only the final attempt is attributed: a rate-limited attempt that is
+    // retried is not recorded as a routed outcome of its own.
     logger.warn('Expert execution failed', { expertType, error: result.error.message });
-    return { success: false, text: '', expertType, durationMs, error: result.error.message };
+    return {
+      success: false,
+      text: '',
+      expertType,
+      durationMs,
+      error: result.error.message,
+      ...attributionOf(result.error),
+    };
   }
 
   return {

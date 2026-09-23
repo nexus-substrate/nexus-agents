@@ -1620,6 +1620,8 @@ InterfaceDeclaration CliError
   readonly message: string
   readonly retryAfterMs?: number | undefined
   readonly retryable: boolean
+  readonly routedCli?: "claude" | "codex" | "gemini" | "opencode" | undefined
+  readonly routedDurationMs?: number | undefined
 TypeAliasDeclaration CliErrorCode
   = 'BUDGET_EXCEEDED' | 'CONNECTION_ERROR' | 'EXECUTION_ERROR' | 'NOT_AUTHENTICATED' | 'NOT_FOUND' | 'PARSE_ERROR' | 'RATE_LIMITED' | 'TIMEOUT' | 'UNKNOWN' | 'UNSUPPORTED_VERSION'
 InterfaceDeclaration CliHealthResult
@@ -1644,6 +1646,7 @@ InterfaceDeclaration CliResponse
   readonly model?: string | undefined
   readonly raw?: unknown
   readonly routedCli?: "claude" | "codex" | "gemini" | "opencode" | undefined
+  readonly routedDurationMs?: number | undefined
   readonly sessionId?: string | undefined
   readonly stderr?: string | undefined
   readonly text: string
@@ -3564,6 +3567,7 @@ InterfaceDeclaration ExpertBridgeResult
   readonly expertType: BuiltInExpertType
   readonly model?: string | undefined
   readonly routedBy?: "composite-router" | undefined
+  readonly routedDurationMs?: number | undefined
   readonly success: boolean
   readonly text: string
   readonly tokensIn?: number | undefined

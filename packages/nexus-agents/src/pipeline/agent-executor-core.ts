@@ -15,6 +15,7 @@ import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import { categorizeOutcomeErrorMessage } from '../orchestration/outcomes/outcome-types.js';
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
@@ -67,8 +68,41 @@ interface RecordOutcomeArgs {
   routedBy: OutcomeRoutedBy | undefined;
   success: boolean;
   durationMs: number;
+  /** Failure message; classified into `failureCategory` on a failed row (#6521). */
+  error?: string | undefined;
+  /** Extra signals, e.g. the QA verdict, kept out of `success` (#6521 I2). */
+  qualitySignals?: readonly string[];
   routingStage?: string;
   retryCount?: number;
+}
+
+/**
+ * Outcome fields of an expert call, derived in one place (#6521).
+ *
+ * `success` is the CALL's success: whether the routed arm ran the task. A
+ * stage's own verdict (QA pass/reject) is a judgement of other work and goes
+ * in `qualitySignals`, not here. `durationMs` is the arm's own run time when
+ * the router reported it, else the bridge's wall time.
+ */
+export function outcomeFieldsFromBridge(
+  r: ExpertBridgeResult
+): Pick<RecordOutcomeArgs, 'cli' | 'routedBy' | 'success' | 'durationMs' | 'error'> {
+  return {
+    cli: r.cli,
+    routedBy: r.routedBy,
+    success: r.success,
+    durationMs: r.routedDurationMs ?? r.durationMs,
+    error: r.error,
+  };
+}
+
+/** Failure classification for a failed row, so no unclassified failure is written. */
+function failureFields(args: RecordOutcomeArgs): Record<string, string> {
+  if (args.success || args.error === undefined || args.error.length === 0) return {};
+  return {
+    failureCategory: categorizeOutcomeErrorMessage(args.error),
+    errorMessage: args.error.slice(0, 500),
+  };
 }
 
 /** Record a pipeline-stage outcome to the OutcomeStore. See {@link RecordOutcomeArgs}. */
@@ -97,6 +131,8 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
       routingStage: args.routingStage,
       retryCount: args.retryCount,
       ...(args.routedBy !== undefined && { routedBy: args.routedBy }),
+      ...(args.qualitySignals !== undefined && { qualitySignals: [...args.qualitySignals] }),
+      ...failureFields(args),
     });
   } catch (error) {
     logger.debug('Failed to record outcome', { taskId: args.taskId, error: String(error) });

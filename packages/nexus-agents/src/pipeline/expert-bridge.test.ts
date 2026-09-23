@@ -57,8 +57,11 @@ describe('executeExpert routed marker (#6521)', () => {
     executeTaskMock.mockReset();
   });
 
-  it('tags a CompositeRouter-executed result as routed', async () => {
-    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done', model: 'claude-opus' } });
+  it('tags a result the router names an arm for as routed', async () => {
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: { text: 'done', model: 'claude-opus', routedCli: 'claude' },
+    });
     const result = await executeExpert('code', 'write it');
     expect(result.success).toBe(true);
     expect(result.routedBy).toBe('composite-router');
@@ -73,20 +76,45 @@ describe('executeExpert routed marker (#6521)', () => {
     expect(result.routedBy).toBe('composite-router');
   });
 
-  it('keeps the model-derived CLI when the adapter reports one', async () => {
+  it('attributes the routed arm, not the model string, when they disagree (#6521 I3)', async () => {
+    // An api:custom-openai arm shows as the opencode slot while serving a GPT
+    // model, which the registry maps to codex. The arm that ran is authoritative.
     executeTaskMock.mockResolvedValue({
       ok: true,
-      value: { text: 'done', model: 'gemini-3-pro', routedCli: 'gemini' },
+      value: { text: 'done', model: 'gpt-5.5', routedCli: 'opencode', routedDurationMs: 40 },
     });
     const result = await executeExpert('code', 'write it');
-    expect(result.cli).toBe('gemini');
+    expect(result.cli).toBe('opencode');
+    expect(result.routedDurationMs).toBe(40);
   });
 
-  it('does not tag a failed execution', async () => {
+  it('derives the CLI from the model, untagged, when no routed arm is reported', async () => {
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done', model: 'gemini-3-pro' } });
+    const result = await executeExpert('code', 'write it');
+    expect(result.cli).toBe('gemini');
+    // Nothing shows the router picked this CLI, so the row is not routed.
+    expect(result.routedBy).toBeUndefined();
+  });
+
+  it('attributes a routed FAILURE to the arm that ran (#6521 I1)', async () => {
+    executeTaskMock.mockResolvedValue({
+      ok: false,
+      error: { message: 'adapter crashed', routedCli: 'codex', routedDurationMs: 25 },
+    });
+    const result = await executeExpert('code', 'write it');
+    expect(result.success).toBe(false);
+    expect(result.cli).toBe('codex');
+    expect(result.routedBy).toBe('composite-router');
+    expect(result.routedDurationMs).toBe(25);
+  });
+
+  it('does not tag a failure where routing chose no arm', async () => {
+    // CompositeRoutingError: routing failed before any arm ran.
     executeTaskMock.mockResolvedValue({ ok: false, error: { message: 'boom' } });
     const result = await executeExpert('code', 'write it');
     expect(result.success).toBe(false);
     expect(result.routedBy).toBeUndefined();
+    expect(result.cli).toBeUndefined();
   });
 });
 

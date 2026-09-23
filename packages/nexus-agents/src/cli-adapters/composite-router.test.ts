@@ -1134,6 +1134,35 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       expect(calibrate).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
     });
 
+    it('names the routed arm and its run time on a failed execution (#6521 I1)', async () => {
+      for (const adapter of adapters.values()) {
+        vi.mocked(adapter.execute).mockResolvedValueOnce({
+          ok: false,
+          error: {
+            code: 'EXECUTION_ERROR',
+            message: 'Failed',
+            cli: adapter.name,
+            retryable: false,
+          },
+        });
+      }
+      const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+      const result = await router.executeTask({ content: 'Failing task' });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      const error = result.error as { routedCli?: string; routedDurationMs?: number };
+      expect(error.routedCli).toBe(recordOutcomeSpy.mock.calls[0]?.[0]);
+      expect(typeof error.routedDurationMs).toBe('number');
+    });
+
+    it('times the arm call itself on a successful execution (#6521 S3)', async () => {
+      const result = await router.executeTask({ content: 'Test task' });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(typeof result.value.routedDurationMs).toBe('number');
+    });
+
     it('should auto-record feedback with reward 0 on failed execution', async () => {
       // Mock ALL adapters to fail — router may select any adapter
       for (const adapter of adapters.values()) {
