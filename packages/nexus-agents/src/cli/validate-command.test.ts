@@ -82,6 +82,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
       dirExists: true,
       dirWritable: true,
       outcomeCount: 0,
+      eligibleOutcomeCount: 0,
       ruleCount: 0,
       rulesLastSaved: null,
       error: null,

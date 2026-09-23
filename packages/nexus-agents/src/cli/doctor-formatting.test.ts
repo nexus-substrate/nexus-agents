@@ -191,6 +191,7 @@ describe('doctor-formatting', () => {
         dirExists: false,
         dirWritable: false,
         outcomeCount: 0,
+        eligibleOutcomeCount: 0,
         ruleCount: 0,
         rulesLastSaved: null,
         error: null,
@@ -241,6 +242,36 @@ describe('doctor-formatting', () => {
     });
     return withInstallFreshness(base, options.installFreshness);
   };
+
+  describe('distilled-rules line (#6512)', () => {
+    const enabled = {
+      enabled: true,
+      dirExists: true,
+      dirWritable: true,
+      outcomeCount: 3,
+      eligibleOutcomeCount: 0,
+      ruleCount: 0,
+      rulesLastSaved: '2026-09-23T12:00:00.000Z',
+      error: null,
+    };
+
+    it('renders the 0/0 snapshot with its timestamp, not "never"', () => {
+      printDoctorResults({ ...createDoctorResult(), learningPersistence: enabled });
+      expect(getCalls()).toContain(
+        '  Distilled rules: 0 (eligible outcomes: 0, last distill: 2026-09-23T12:00:00.000Z)'
+      );
+    });
+
+    it('renders "never" when no snapshot exists', () => {
+      printDoctorResults({
+        ...createDoctorResult(),
+        learningPersistence: { ...enabled, eligibleOutcomeCount: 7, rulesLastSaved: null },
+      });
+      expect(getCalls()).toContain(
+        '  Distilled rules: 0 (eligible outcomes: 7, last distill: never)'
+      );
+    });
+  });
 
   describe('printDoctorResults', () => {
     it('prints harness alignment as not applicable outside a project', () => {

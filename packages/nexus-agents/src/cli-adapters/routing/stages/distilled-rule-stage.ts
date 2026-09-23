@@ -62,6 +62,7 @@ export class DistilledRuleStage implements IRouterStage {
   private readonly config: DistilledRuleStageConfig;
   private readonly logger: ILogger;
   private rulesAppliedCount = 0;
+  private firstRunChecked = false;
 
   constructor(
     distiller: StrategyDistiller,
@@ -74,6 +75,7 @@ export class DistilledRuleStage implements IRouterStage {
   }
 
   canHandle(ctx: RoutingContext): boolean {
+    this.checkPersistedTriggerOnce();
     const candidates = getRemainingCandidates(ctx);
     if (candidates.length <= 1) return false;
     const activeRules = this.distiller.getRules('active');
@@ -81,7 +83,26 @@ export class DistilledRuleStage implements IRouterStage {
   }
 
   route(ctx: RoutingContext): Promise<Result<StageResult, StageError>> {
+    this.checkPersistedTriggerOnce();
     return Promise.resolve(this.routeSync(ctx));
+  }
+
+  /**
+   * The first time this stage runs, let the distiller distill from the
+   * persisted outcome store (#6512). Without it, rules only ever came from 50
+   * outcomes seen inside one process, which short-lived CLI processes never
+   * reach. A failure here is logged and routing continues without rules.
+   */
+  private checkPersistedTriggerOnce(): void {
+    if (this.firstRunChecked) return;
+    this.firstRunChecked = true;
+    try {
+      this.distiller.checkPersistedTrigger();
+    } catch (error: unknown) {
+      this.logger.warn('Persisted-store distill trigger failed; routing without new rules', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   recordOutcome(outcome: RoutingOutcome): void {

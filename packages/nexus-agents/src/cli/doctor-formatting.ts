@@ -256,10 +256,12 @@ function printLearningPersistence(check: LearningPersistenceCheck): void {
     : `${colors.yellow}not created yet${colors.reset}`;
   writeLine(`  Data directory: ${dirStatus}`);
   writeLine(`  Outcomes: ${String(check.outcomeCount)} recorded`);
-  writeLine(`  Distilled rules: ${String(check.ruleCount)} active`);
-  if (check.rulesLastSaved !== null) {
-    writeLine(`  Rules last saved: ${check.rulesLastSaved}`);
-  }
+  // #6512: informational, never a failure. `ruleCount` is every persisted rule,
+  // not only active ones, and "never" means no distill has written rules.json;
+  // a distill over zero eligible outcomes records a timestamp instead.
+  writeLine(
+    `  Distilled rules: ${String(check.ruleCount)} (eligible outcomes: ${String(check.eligibleOutcomeCount)}, last distill: ${check.rulesLastSaved ?? 'never'})`
+  );
 }
 
 /**

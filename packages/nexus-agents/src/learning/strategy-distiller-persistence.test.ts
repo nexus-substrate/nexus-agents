@@ -465,6 +465,120 @@ describe('PersistentStrategyDistiller', () => {
   // RulesSnapshotSchema validation
   // --------------------------------------------------------------------------
 
+  // --------------------------------------------------------------------------
+  // First-route trigger against the persisted store (#6512)
+  // --------------------------------------------------------------------------
+
+  describe('persisted-store trigger (#6512)', () => {
+    const config = { triggerThreshold: 5 };
+
+    function readSnapshot(): RulesSnapshot {
+      return RulesSnapshotSchema.parse(JSON.parse(readFileSync(filePath, 'utf-8')));
+    }
+
+    it('distills and writes rules.json when threshold eligible outcomes exist and no snapshot', () => {
+      const store = new OutcomeStore();
+      populateFailures(store, 5);
+      const d = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        config
+      );
+
+      expect(existsSync(filePath)).toBe(false);
+      expect(d.checkPersistedTrigger()).toBe(true);
+      const snap = readSnapshot();
+      expect(snap.rules.length).toBeGreaterThan(0);
+      expect(snap.eligibleOutcomes).toBe(5);
+    });
+
+    it('does not distill below threshold', () => {
+      const store = new OutcomeStore();
+      populateFailures(store, 4);
+      const d = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        config
+      );
+
+      expect(d.checkPersistedTrigger()).toBe(false);
+      expect(existsSync(filePath)).toBe(false);
+    });
+
+    it('does not distill when the snapshot is newer than every outcome', () => {
+      // Outcomes are stamped 2026-02-07; the snapshot is 2026-02-13.
+      writeFileSync(filePath, JSON.stringify(makeSnapshot([])));
+      const store = new OutcomeStore();
+      populateFailures(store, 20);
+      const d = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        config
+      );
+
+      expect(d.checkPersistedTrigger()).toBe(false);
+      expect(readSnapshot().savedAt).toBe('2026-02-13T10:00:00Z');
+    });
+
+    it('distills when threshold outcomes are newer than the snapshot', () => {
+      writeFileSync(filePath, JSON.stringify(makeSnapshot([])));
+      const store = new OutcomeStore();
+      for (let i = 0; i < 5; i++) {
+        store.append(makeOutcome({ id: `new-${String(i)}`, timestamp: '2026-02-14T00:00:00Z' }));
+      }
+      const d = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        config
+      );
+
+      expect(d.checkPersistedTrigger()).toBe(true);
+    });
+
+    it('the in-process counter still distills and saves', () => {
+      const store = new OutcomeStore();
+      populateFailures(store, 5);
+      const d = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        config
+      );
+
+      for (let i = 0; i < 5; i++) d.onOutcome();
+      expect(existsSync(filePath)).toBe(true);
+    });
+
+    it('names the empty case: zero eligible outcomes writes a 0/0 snapshot with a timestamp', () => {
+      const store = new OutcomeStore();
+      store.append(makeOutcome({ id: 'seat', source: 'consensus' }));
+      store.append(makeOutcome({ id: 'warm', source: 'manual' }));
+      const d = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        config
+      );
+
+      expect(d.checkPersistedTrigger()).toBe(true);
+      const snap = readSnapshot();
+      expect(snap.rules).toHaveLength(0);
+      expect(snap.eligibleOutcomes).toBe(0);
+      expect(Number.isNaN(Date.parse(snap.savedAt))).toBe(false);
+    });
+
+    it('restores the last-distill time from the snapshot', () => {
+      writeFileSync(filePath, JSON.stringify(makeSnapshot([])));
+      const d = new PersistentStrategyDistiller(new OutcomeStore(), { filePath, dataDir: tmpDir });
+
+      expect(d.getStats().lastDistillAt).toBe(Date.parse('2026-02-13T10:00:00Z'));
+    });
+  });
+
   describe('RulesSnapshotSchema', () => {
     it('accepts valid snapshot', () => {
       const result = RulesSnapshotSchema.safeParse(makeSnapshot([makeRule()]));

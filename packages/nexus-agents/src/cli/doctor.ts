@@ -37,6 +37,7 @@ import {
   getOutcomesFile,
   getRulesFile,
 } from '../config/learning-persistence.js';
+import { countEligibleOutcomesInFile } from '../learning/distiller-eligibility.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
@@ -153,7 +154,10 @@ export interface LearningPersistenceCheck {
   readonly dirExists: boolean;
   readonly dirWritable: boolean;
   readonly outcomeCount: number;
+  /** Outcomes the strategy distiller may train on (#6512); see `isDistillerEligible`. */
+  readonly eligibleOutcomeCount: number;
   readonly ruleCount: number;
+  /** `savedAt` of rules.json: the last distill time. Null means never distilled. */
   readonly rulesLastSaved: string | null;
   readonly error: string | null;
 }
@@ -683,6 +687,7 @@ const DISABLED_CHECK: LearningPersistenceCheck = {
   dirExists: false,
   dirWritable: false,
   outcomeCount: 0,
+  eligibleOutcomeCount: 0,
   ruleCount: 0,
   rulesLastSaved: null,
   error: null,
@@ -694,12 +699,14 @@ function checkLearningPersistence(): LearningPersistenceCheck {
   try {
     const { exists: dirExists, writable: dirWritable } = checkDirAccess(getLearningDir());
     const outcomeCount = countJsonlLines(getOutcomesFile());
+    const eligibleOutcomeCount = countEligibleOutcomesInFile(getOutcomesFile());
     const { count: ruleCount, savedAt: rulesLastSaved } = readRulesMetadata(getRulesFile());
     return {
       enabled: true,
       dirExists,
       dirWritable,
       outcomeCount,
+      eligibleOutcomeCount,
       ruleCount,
       rulesLastSaved,
       error: null,
@@ -710,6 +717,7 @@ function checkLearningPersistence(): LearningPersistenceCheck {
       dirExists: false,
       dirWritable: false,
       outcomeCount: 0,
+      eligibleOutcomeCount: 0,
       ruleCount: 0,
       rulesLastSaved: null,
       error: getErrorMessage(error),

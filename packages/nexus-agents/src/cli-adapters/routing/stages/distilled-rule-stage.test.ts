@@ -105,6 +105,7 @@ function createMockDistiller(rules: DistilledRule[] = []): StrategyDistiller {
       return rules.filter((r) => r.status === status);
     }),
     onOutcome: vi.fn(),
+    checkPersistedTrigger: vi.fn().mockReturnValue(false),
     distill: vi.fn(),
     getStats: vi.fn().mockReturnValue({
       ruleCountByStatus: { draft: 0, active: rules.length, promoted: 0, expired: 0 },
@@ -401,6 +402,53 @@ describe('DistilledRuleStage', () => {
       if (result.ok) {
         expect(result.value.continuesPipeline).toBe(true);
       }
+    });
+  });
+
+  describe('first-route persisted trigger (#6512)', () => {
+    it('distills persisted outcomes on the first route, so rules apply without 50 in-process outcomes', async () => {
+      const store = new OutcomeStore();
+      for (let i = 0; i < 60; i++) {
+        store.append({
+          id: `p-${String(i)}`,
+          cli: 'claude',
+          category: 'code_generation',
+          model: 'm',
+          success: false,
+          durationMs: 1000,
+          timestamp: '2026-09-04T00:00:00Z',
+          source: 'delegate',
+        });
+      }
+      const distiller = new StrategyDistiller(store);
+      const stage = new DistilledRuleStage(distiller);
+
+      const result = await stage.route(createContext('task', ['claude', 'gemini']));
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('route failed');
+      expect(distiller.getStats().lastDistillAt).toBeDefined();
+      expect(
+        result.value.context.signals.some((s) => s.startsWith('distilled-rule:applied='))
+      ).toBe(true);
+    });
+
+    it('checks once per stage, across canHandle and route', async () => {
+      const distiller = createMockDistiller();
+      const stage = new DistilledRuleStage(distiller);
+      stage.canHandle(createContext('t'));
+      await stage.route(createContext('t'));
+      await stage.route(createContext('t'));
+      expect(distiller.checkPersistedTrigger).toHaveBeenCalledTimes(1);
+    });
+
+    it('a throwing trigger does not fail routing', async () => {
+      const distiller = createMockDistiller();
+      vi.mocked(distiller.checkPersistedTrigger).mockImplementation(() => {
+        throw new Error('disk gone');
+      });
+      const stage = new DistilledRuleStage(distiller);
+      const result = await stage.route(createContext('t'));
+      expect(result.ok).toBe(true);
     });
   });
 

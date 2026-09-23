@@ -153,6 +153,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       dirExists: false,
       dirWritable: false,
       outcomeCount: 0,
+      eligibleOutcomeCount: 0,
       ruleCount: 0,
       rulesLastSaved: null,
       error: null,

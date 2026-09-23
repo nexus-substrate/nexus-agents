@@ -60,6 +60,11 @@ export const RulesSnapshotSchema = z.object({
   version: z.literal(1),
   savedAt: z.string(),
   rules: z.array(DistilledRuleSchema),
+  /**
+   * Eligible outcomes the distill that wrote this snapshot trained on (#6512).
+   * Optional: snapshots written before it do not carry the count.
+   */
+  eligibleOutcomes: z.number().int().nonnegative().optional(),
 });
 
 export type RulesSnapshot = z.infer<typeof RulesSnapshotSchema>;
@@ -181,6 +186,7 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
       }
 
       this.loadRules(hydrated.map((h) => h.rule));
+      this.restoreSnapshotTime(result.data);
       this.persistLogger.info('Hydrated distilled rules from disk', {
         ruleCount: hydrated.length,
         savedAt: result.data.savedAt,
@@ -195,12 +201,27 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
     }
   }
 
+  /**
+   * The snapshot's `savedAt` is the last distill time the first-route trigger
+   * compares outcomes against (#6512). An unparseable one restores nothing, so
+   * every eligible outcome counts, which errs toward distilling.
+   */
+  private restoreSnapshotTime(snapshot: RulesSnapshot): void {
+    const savedAtMs = Date.parse(snapshot.savedAt);
+    if (Number.isNaN(savedAtMs)) return;
+    this.restoreDistillState(savedAtMs, snapshot.eligibleOutcomes);
+  }
+
   private saveSnapshot(): void {
     const rules = this.getRules();
+    const stats = this.getStats();
     const snapshot: RulesSnapshot = {
       version: 1,
-      savedAt: new Date().toISOString(),
+      savedAt: new Date(stats.lastDistillAt ?? Date.now()).toISOString(),
       rules: rules as DistilledRule[],
+      ...(stats.eligibleOutcomesAtLastDistill === undefined
+        ? {}
+        : { eligibleOutcomes: stats.eligibleOutcomesAtLastDistill }),
     };
 
     // PID-suffixed temp path so two processes saving concurrently don't truncate each
