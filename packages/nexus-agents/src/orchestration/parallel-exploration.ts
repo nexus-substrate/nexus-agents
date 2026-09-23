@@ -32,6 +32,7 @@ import { resolveExecutionModelId } from '../cli-adapters/types.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore, categorizeOutcomeErrorMessage } from './outcomes/index.js';
+import { resolveOutcomeCategory, type OutcomeCategorySource } from './outcomes/outcome-types.js';
 import type {
   PartitionResult,
   ExplorationResult,
@@ -66,8 +67,7 @@ export async function executeParallelExploration(
   const config = { ...createDefaultConfig(), ...options?.config };
 
   // Detect task category
-  const match = detectTaskCategory(task);
-  const category: TaskCategory = match?.category ?? 'exploration';
+  const { category, categorySource } = resolveOutcomeCategory(detectTaskCategory(task)?.category);
 
   if (!isParallelEligible(category)) {
     return err(new Error(`Task category '${category}' not eligible for parallel exploration`));
@@ -97,7 +97,7 @@ export async function executeParallelExploration(
   const synthesized = synthesizeResults(partitions, category);
 
   // Record outcomes (best-effort)
-  recordOutcomes(partitions, category);
+  recordOutcomes(partitions, category, categorySource);
 
   const result: ExplorationResult = {
     partitions,
@@ -284,7 +284,11 @@ function synthesizeResults(partitions: readonly PartitionResult[], category: Tas
 }
 
 /** Records outcomes for each partition (best-effort). */
-function recordOutcomes(partitions: readonly PartitionResult[], category: TaskCategory): void {
+function recordOutcomes(
+  partitions: readonly PartitionResult[],
+  category: TaskCategory,
+  categorySource: OutcomeCategorySource
+): void {
   try {
     const store = getOutcomeStore();
     for (const p of partitions) {
@@ -292,6 +296,7 @@ function recordOutcomes(partitions: readonly PartitionResult[], category: TaskCa
         id: `pex-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
         cli: p.cli,
         category,
+        categorySource,
         model: p.model,
         success: p.success,
         durationMs: p.durationMs,

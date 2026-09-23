@@ -17,7 +17,10 @@ import type {
 } from '../../orchestration/outcomes/outcome-types.js';
 import { getRandomProvider } from '../../core/index.js';
 import { getOutcomeStore, type OutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
-import { categorizeOutcomeErrorMessage } from '../../orchestration/outcomes/outcome-types.js';
+import {
+  categorizeOutcomeErrorMessage,
+  hasMeasuredCategory,
+} from '../../orchestration/outcomes/outcome-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { TASK_CATEGORIES } from '../../config/task-specialization-types.js';
 import { getSpecialization } from '../../config/task-specialization.js';
@@ -378,7 +381,7 @@ function buildCliWeather(
     // Build per-category breakdown for this CLI
     const byCategory = new Map<string, GroupStats>();
     for (const cat of TASK_CATEGORIES) {
-      const catOutcomes = cliOutcomes.filter((o) => o.category === cat);
+      const catOutcomes = cliOutcomes.filter((o) => hasMeasuredCategory(o) && o.category === cat);
       if (catOutcomes.length > 0) {
         const sc = catOutcomes.filter((o) => o.success).length;
         const td = catOutcomes.reduce((s, o) => s + o.durationMs, 0);
@@ -621,7 +624,9 @@ function buildSwarmHealth(
   let analyzedCategories = 0;
 
   for (const category of TASK_CATEGORIES) {
-    const catOutcomes = allOutcomes.filter((o) => o.category === category);
+    const catOutcomes = allOutcomes.filter(
+      (o) => hasMeasuredCategory(o) && o.category === category
+    );
     if (catOutcomes.length < ROUTING_MIN_SAMPLES) continue;
     observedCategories++;
     const stats = analyzeCategoryRouting(catOutcomes);

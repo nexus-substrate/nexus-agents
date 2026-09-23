@@ -13,13 +13,13 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
-import { TaskOutcomeSchema } from '../orchestration/outcomes/outcome-types.js';
+import { TaskOutcomeSchema, hasMeasuredCategory } from '../orchestration/outcomes/outcome-types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
 /** The fields eligibility reads. */
 export type DistillerEligibilityInput = Pick<
   TaskOutcome,
-  'source' | 'cli' | 'routedBy' | 'durationMs'
+  'source' | 'cli' | 'routedBy' | 'durationMs' | 'categorySource'
 >;
 
 const ROUTABLE_CLIS: ReadonlySet<string> = new Set(CLI_NAMES);
@@ -44,11 +44,14 @@ const ROUTABLE_CLIS: ReadonlySet<string> = new Set(CLI_NAMES);
  * - `cli` must be in `CLI_NAMES`: `'unknown'` names no CLI, and an `api:*` arm
  *   id can never equal a candidate slot the stage matches against (and
  *   `RulesSnapshotSchema` rejects the whole rules file if one rule carries it).
+ * - `categorySource: 'defaulted'` is excluded (#6549): a rule is keyed on
+ *   cli×category, and a defaulted row names no category.
  */
 export function isDistillerEligible(outcome: DistillerEligibilityInput): boolean {
   if (outcome.routedBy !== 'composite-router') return false;
   if (outcome.source === 'consensus') return false;
   if (!(outcome.durationMs > 0)) return false;
+  if (!hasMeasuredCategory(outcome)) return false;
   return ROUTABLE_CLIS.has(outcome.cli);
 }
 
@@ -88,6 +91,7 @@ let fileFieldsSchema:
         routedBy: true;
         durationMs: true;
         timestamp: true;
+        categorySource: true;
       }>
     >
   | undefined;
@@ -99,6 +103,7 @@ function getFileFieldsSchema(): NonNullable<typeof fileFieldsSchema> {
     routedBy: true,
     durationMs: true,
     timestamp: true,
+    categorySource: true,
   });
   return fileFieldsSchema;
 }

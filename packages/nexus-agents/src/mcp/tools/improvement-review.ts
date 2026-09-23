@@ -34,6 +34,7 @@ import {
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
+import { hasMeasuredCategory } from '../../orchestration/outcomes/outcome-types.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import { createHash } from 'node:crypto';
 import {
@@ -253,6 +254,8 @@ function accumulateQualityBuckets(outcomes: readonly TaskOutcome[]): Map<string,
   for (const o of outcomes) {
     // Skip outcomes that can't attribute a real executing CLI (#3624).
     if (UNATTRIBUTED_VALUES.has(o.cli) || UNATTRIBUTED_VALUES.has(o.model)) continue;
+    // A defaulted category names no cli×category bucket (#6549).
+    if (!hasMeasuredCategory(o)) continue;
     const key = `${o.cli}::${o.category}`;
     const b = buckets.get(key) ?? { cli: o.cli, category: o.category, ok: 0, total: 0, infra: 0 };
     if (!o.success && INFRA_FAILURE_CATEGORIES.has(o.failureCategory ?? '')) {

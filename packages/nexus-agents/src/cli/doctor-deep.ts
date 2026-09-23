@@ -9,6 +9,7 @@
  */
 
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import { hasMeasuredCategory } from '../orchestration/outcomes/outcome-types.js';
 import { TASK_CATEGORIES, type TaskCategory } from '../config/task-specialization-types.js';
 import { getAdaptiveBonus } from '../mcp/tools/weather-report.js';
 import { ApiArmIdSchema } from '../cli-adapters/types-core.js';
@@ -126,7 +127,8 @@ function checkDataSufficiency(): DataSufficiency {
   const categoriesWithData = new Set<TaskCategory>();
   const allOutcomes = store.query();
   for (const o of allOutcomes) {
-    categoriesWithData.add(o.category);
+    // A defaulted category is not coverage of that category (#6549).
+    if (hasMeasuredCategory(o)) categoriesWithData.add(o.category);
   }
   const missing = TASK_CATEGORIES.filter((c) => !categoriesWithData.has(c));
 

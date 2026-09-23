@@ -49,6 +49,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
+import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
 import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
 
 // ============================================================================
@@ -627,7 +628,7 @@ export function recordWorkerOutcomes(
   try {
     const store = getOutcomeStore();
     const match = detectTaskCategory(taskDescription);
-    const category = match?.category ?? 'exploration';
+    const categoryFields = resolveOutcomeCategory(match?.category);
     // Fallback CLI from specialization — only used when worker has no resolvedCli
     const fallbackCli = match?.primaryCli ?? DEFAULT_CLI;
     const ts = new Date(getTimeProvider().now()).toISOString();
@@ -641,7 +642,7 @@ export function recordWorkerOutcomes(
       store.append({
         id: `worker-${r.role}-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 6)}`,
         cli,
-        category,
+        ...categoryFields,
         model: `worker-${r.role}`,
         success,
         durationMs: r.durationMs,

@@ -158,6 +158,20 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
     expect(recorded?.cliSource).toBe('category-default');
   });
 
+  it('marks an undetected category as defaulted, not measured exploration (#6549)', () => {
+    orchestrateMod.recordToOutcomeStore('zzqx flurb', true, 100);
+
+    const recorded = getOutcomeStore().query().at(-1);
+    expect(recorded?.categorySource).toBe('defaulted');
+  });
+
+  it('marks a detected category as detected (#6549)', () => {
+    orchestrateMod.recordToOutcomeStore('Implement a feature', true, 100);
+
+    const recorded = getOutcomeStore().query().at(-1);
+    expect(recorded?.categorySource).toBe('detected');
+  });
+
   it('keeps legacy outcomes without cliSource unmeasured (#5499)', () => {
     const parsed = TaskOutcomeSchema.safeParse({
       id: 'legacy-outcome',

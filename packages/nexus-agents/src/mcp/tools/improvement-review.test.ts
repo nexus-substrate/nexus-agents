@@ -140,6 +140,21 @@ describe('detectCliPerformanceFloor', () => {
     expect(signals[0]?.evidence.observedValue).toBeCloseTo(0.3, 5);
   });
 
+  it('does NOT fire on a cli×category bucket of defaulted-category rows (#6549)', () => {
+    const outcomes: TaskOutcome[] = [];
+    for (let i = 0; i < 10; i++) {
+      outcomes.push(
+        outcome({
+          cli: 'codex',
+          category: 'exploration',
+          categorySource: 'defaulted',
+          success: false,
+        })
+      );
+    }
+    expect(detectCliPerformanceFloor(outcomes, 5, '7d')).toHaveLength(0);
+  });
+
   it('does NOT fire when sample size below threshold', () => {
     const outcomes: TaskOutcome[] = [
       outcome({ cli: 'codex', category: 'security_review', success: false }),
