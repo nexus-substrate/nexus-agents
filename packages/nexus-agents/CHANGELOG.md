@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 8.92.0
+
+### Minor Changes
+
+- [#6576](https://github.com/nexus-substrate/nexus-agents/pull/6576) [`4afdc1e`](https://github.com/nexus-substrate/nexus-agents/commit/4afdc1e72048700aad8cd857408af653c0138201) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Outcome rows recorded under an API arm (`api:anthropic`, `api:openai`, `api:google`, `api:custom-openai`) count again in the weather report and `doctor --deep` ([#6574](https://github.com/nexus-substrate/nexus-agents/issues/6574)). Since 8.89 a routed API run records its arm instead of its CLI slot, and these readers only looked at CLI slots, so those runs counted toward nothing.
+
+  - Adaptive bonuses (`getAdaptiveBonus`, which `delegate_to_model` uses, and `adaptiveBonuses`) and `recommendedMappings` add each API arm's rows to its CLI slot. For example, `api:anthropic` rows count toward `claude`.
+  - `learningInsights`, the adaptation-speed metric and `doctor --deep` data sufficiency keep each API arm separate from its slot, the same way routing accuracy already does. `cliWeather` lists an API arm once it has rows. `doctor --deep` lists arms with no rows as unmeasured and no longer prints them as "0 tasks".
+  - `computeAdaptiveThresholds` now accepts any routing arm id (`RoutingArmId`), not just a CLI name. This widens the accepted input, so existing callers still work.
+
+### Patch Changes
+
+- [#6578](https://github.com/nexus-substrate/nexus-agents/pull/6578) [`ec287bd`](https://github.com/nexus-substrate/nexus-agents/commit/ec287bd45cd3aaf9726407425c196da19625a962) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Server-mode shutdown no longer loses audit records at the end of a session ([#6573](https://github.com/nexus-substrate/nexus-agents/issues/6573)).
+
+  - **Audit logger closes last.** Shutdown now closes the MCP server first, waits up to 1 s for running tool calls to finish, runs the rest of the teardown, and only then closes the audit logger. Before, the logger closed first, so a tool call that finished during shutdown lost its audit event ("Attempted to log after close"). `system.shutdown.begin` now carries `metadata.toolCallsStillRunning`, the number of calls still running when the logger closed, so a missing event is visible on the record. Task-based tools and async jobs are not waited for.
+  - **A closed stderr pipe no longer crashes shutdown.** When the host process dies, the server's first write to its stderr pipe fails with EPIPE. That error used to become an uncaught exception, and the process exited with code 1 before the audit flush, so `system.shutdown.begin` was never written. An EPIPE on stderr now requests the normal graceful shutdown. Other stderr errors still end the process.
+
 ## 8.91.0
 
 ### Minor Changes
