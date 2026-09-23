@@ -279,8 +279,10 @@ function inTreeProviderToVendor(provider: Provider): ModelVendor | undefined {
 }
 
 /**
- * Builds the map of in-tree model IDs, aliases, and CLI names to vendor (#6635).
+ * Builds the map of in-tree model IDs and aliases to vendor (#6635).
  * Consulted when the modelId string matches no vendor regex in VENDOR_PATTERNS.
+ * Bare CLI aliases (e.g. 'opus', 'sonnet') are intentionally excluded so they
+ * remain unresolvable per #4390 unless qualified.
  */
 function buildInTreeVendorMap(): ReadonlyMap<string, ModelVendor> {
   const map = new Map<string, ModelVendor>();
@@ -292,9 +294,6 @@ function buildInTreeVendorMap(): ReadonlyMap<string, ModelVendor> {
       for (const alias of model.aliases) {
         map.set(normaliseModelId(alias), vendor);
       }
-    }
-    if (model.cliAlias !== undefined) {
-      map.set(normaliseModelId(model.cliAlias), vendor);
     }
     if (model.cliModelName !== undefined) {
       map.set(normaliseModelId(model.cliModelName), vendor);

@@ -280,4 +280,9 @@ describe('in-tree alias vendor fallback (#6635)', () => {
     const parsed = parseModelId('codex-5.3');
     expect(parsed.vendor).toBe('openai');
   });
+
+  it('leaves bare CLI aliases unresolvable without vendor (#4390)', () => {
+    expect(resolveModelIdentitySync('sonnet').vendor).toBe('unknown');
+    expect(resolveModelIdentitySync('opus').vendor).toBe('unknown');
+  });
 });
