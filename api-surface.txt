@@ -4332,6 +4332,7 @@ VariableDeclaration GitHubUserRoleSchema
   : z.ZodEnum<{ collaborator: "collaborator"; contributor: "contributor"; maintainer: "maintainer"; member: "member"; owner: "owner"; unknown: "unknown"; }>
 ClassDeclaration GoogleGenAI
   get agents(): GeminiNextGenAgents
+  get credentials(): GeminiNextGenCredentials
   get environments(): GeminiNextGenEnvironments
   get interactions(): GeminiNextGenInteractions
   get triggers(): GeminiNextGenTriggers
