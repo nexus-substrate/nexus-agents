@@ -82,13 +82,24 @@ by `FileAuditStorage` (`audit-storage.ts:268` `write`, `:201` `generateFileName`
 Hash chaining is controlled by `enableHashChain`, which **defaults to `true`**
 (`audit-types.ts:305`).
 
-When an event is created (`audit-logger.ts:224` `createEvent`):
+Events are linked when a queued batch is flushed, not when they are logged
+(`audit-logger.ts` `sealChain`, since #6546):
 
-1. `event.previousHash` is set to the logger's running `this.lastHash`
-   (`audit-logger.ts:~346`). The very first event in a logger's lifetime has
-   `previousHash === undefined`.
-2. `event.hash = computeEventHash(event)` is computed and `this.lastHash` is
-   advanced to it (`audit-logger.ts:~356-357`).
+1. `event.previousHash` is set to the hash of the chain's current head. With
+   `FileAuditStorage` that head is the last valid event **already on disk**,
+   read under a cross-process lock (see [§1.5](#15-multiple-writer-processes-6546)),
+   so a restarted or concurrent process continues the one chain in `logDir`.
+   Only the first event in an **empty** log directory has
+   `previousHash === undefined` (a genesis event). A storage without
+   `appendChained` (e.g. `InMemoryAuditStorage`) chains from the logger's own
+   in-memory head, as before.
+2. `event.hash = computeEventHash(event)` is computed and the head advances to
+   it.
+
+Before #6546 the head was the logger's in-memory `lastHash`, which starts empty
+in every process. Every process start therefore wrote a new genesis event into
+the middle of an existing file, and every such seam verified as
+`previous_hash_mismatch` — indistinguishable from a deleted event.
 
 `computeEventHash` (`audit-logger.ts:~64`) is `SHA-256` over a JSON projection.
 Since **#3921 the projection is versioned** (`hashVersion`). For a normal event
@@ -131,7 +142,10 @@ for tier-transition events.
   normal operation** — see [T1](#t1-truncation-drop-tail-entries).
 - Under in-memory queue pressure the logger drops the **oldest** un-flushed
   events (`audit-logger.ts:269-285`, `maxQueueDepth` default `10_000` at
-  `audit-types.ts:191`). Dropped events never reach the chain at all.
+  `audit-types.ts:191`). Dropped events never reach the chain at all, and
+  since #6546 they leave no link break either: linking happens at flush, after
+  the drop. The loss is visible only through the logger's drop warning and
+  counter, not through `verify_audit_chain`.
 
 ### 1.4 What `verify_audit_chain` actually checks
 
@@ -170,6 +184,53 @@ parsed events, and runs `verifyChain` over the combined sequence (`:130-131`).
 Malformed or unreadable lines/files are **skipped with a warning**, not treated
 as failures (`:78`, `:89`, `:96`) — relevant to [T1](#t1-truncation-drop-tail-entries)
 and [T5](#t5-missing--selective-omission). The tool is read-only (`:9-14`).
+
+### 1.5 Multiple writer processes (#6546)
+
+One `logDir` routinely has several writers: every MCP server start, and every
+concurrent session. `FileAuditStorage.appendChained` serializes them with the
+advisory cross-process lock in `utils/file-lock.ts` (#6548), at
+`<logDir>/<filePrefix>.lock`. While the lock is held the storage:
+
+1. switches to whichever `audit-*.jsonl` file is newest **now**, since another
+   process may have rotated since this one last wrote — appending to an older
+   file would place the batch before events it chains after;
+2. reads the head: the last line of the newest file that parses as an
+   `AuditEvent`, walking back to older files past one that holds no event yet
+   (a file another process rotated to but has not written). Lines the verifier
+   would skip are skipped here too; chaining to one would itself be a break.
+   No event anywhere, or an un-hashed last event, is the empty case: the batch
+   starts a genesis event;
+3. links the batch onto that head, writes it and waits for the write to reach
+   the file, then releases the lock.
+
+The read and the append share the lock, so two processes cannot both link to
+the same head (a benign [fork](#t2-fork-divergent-chains)) or interleave lines.
+A batch whose lock acquisition times out was never linked, so it stays queued
+for the next flush rather than being lost.
+
+**Limits.** The lock is advisory. A writer that does not take it — an
+`AuditLogger` from a release before #6546, still running from a pinned global
+install, or anything else appending to the directory — still produces seams
+that verify as `previous_hash_mismatch`, and the breaks continue until every
+writer is upgraded. The lock's staleness rule for an owner on another host is
+age-based, so a `logDir` on a network filesystem shared across hosts is not
+covered by the same guarantee.
+
+**Breaks already on disk stay reported.** A log written before #6546 carries a
+`previous_hash_mismatch` at every former process restart. Those are real
+breaks in the record — the logger did write a genesis event into the middle of
+the chain — and the verifier cannot tell them apart from a deletion, so it
+keeps reporting them. There is deliberately **no "benign break" or "chain
+restart" marker**: the hash is keyless ([§2](#2-adversary-model)), so any
+marker the logger can write, a storage adversary can write too, and a marker
+that tells the verifier to accept a break is exactly what a
+[T5](#t5-missing--selective-omission) deletion would add to hide itself. The
+first post-fix event links to the last pre-fix event, so the old break stays in
+the directory until rotation prunes it. An operator who wants a clean verdict
+sooner moves the pre-#6546 files out of `logDir` into an archive; the verifier
+then reports the remaining chain with `unanchoredHead`, which is the honest
+statement: links verified, origin elsewhere ([T6](#t6-first-record-integrity-no-anchor)).
 
 ---
 
@@ -227,6 +288,11 @@ after a shared prefix — `verify_audit_chain` only ever sees one directory.
 external anchor of the head hash (see [Recommendations](#6-recommendations)), a
 fork is detectable: at most one branch can match the anchored head hash for a
 given point in time.
+
+This threat is an adversary's deliberate fork. Concurrent logger processes
+used to produce an accidental one — two chains interleaved in one file, each
+link failing — and since #6546 the append lock in
+[§1.5](#15-multiple-writer-processes-6546) prevents that.
 
 ### T3: Rewrite-and-rehash
 
@@ -293,9 +359,10 @@ omission is invisible — same root cause as T3.
 
 ### T6: First-record integrity (no anchor)
 
-**Vector.** The first event of a logger's lifetime has
-`previousHash === undefined` (`audit-logger.ts:247`); there is nothing before it
-to bind to. An adversary can substitute a fabricated "genesis" event, or splice
+**Vector.** The first event written to an empty log directory has
+`previousHash === undefined` (`audit-logger.ts` `sealChain`; before #6546, the
+first event of every logger process did); there is nothing before it to bind
+to. An adversary can substitute a fabricated "genesis" event, or splice
 a fabricated history before the real first event.
 
 **Detected?** **Partially, since #4703.** `verifyEvent` still skips the

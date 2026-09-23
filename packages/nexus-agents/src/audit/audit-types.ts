@@ -335,6 +335,18 @@ export interface IAuditStorage {
 
   /** Query events by criteria */
   query: (criteria: AuditQueryCriteria) => Promise<AuditEvent[]>;
+
+  /**
+   * Append a batch as one step of a chain that other PROCESSES may also be
+   * appending to (#6546). Under the storage's cross-process lock it reads the
+   * hash of the last event already persisted (`undefined` for an empty log),
+   * calls `seal` with it to link the batch, then writes and flushes the
+   * sealed events before releasing the lock.
+   *
+   * Optional: a storage without it is single-process, and the logger chains
+   * from its own in-memory head instead.
+   */
+  appendChained?: (seal: (tailHash: string | undefined) => readonly AuditEvent[]) => Promise<void>;
 }
 
 // ============================================================================
