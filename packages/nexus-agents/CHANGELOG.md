@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 8.91.0
+
+### Minor Changes
+
+- [#6575](https://github.com/nexus-substrate/nexus-agents/pull/6575) [`627880b`](https://github.com/nexus-substrate/nexus-agents/commit/627880b1c5557eebbc7956e97f492bf73f058b18) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` now stops an async `run_dev_pipeline` or `run_pipeline` job at the next stage boundary. Before this, cancelling either job marked the record `cancelled` while the pipeline kept calling stages, and so kept spending, until it finished.
+
+  - `DevPipelineOptions.signal` (new, optional): `runDevPipeline` checks the signal immediately before every stage call, including each plan/vote and implement/QA iteration. Once it has fired, the run rejects with `Dev pipeline cancelled before the <stage> stage` and no further stage runs.
+  - `GraphPipelineOptions.signal` (new, optional, and inherited by `AdaptiveOrchestratorOptions`): the signal is handed to the graph executor. The executor checks it before each super-step and fails the run with `Graph execution aborted`.
+
+  In both cases a stage that is already running finishes. Only the stages after it are skipped. The job record's `signalAccepted` is now `true` for both tools, and it reports only what the engines actually read. The four other `runAsJob` tools listed in [#6305](https://github.com/nexus-substrate/nexus-agents/issues/6305) still do not accept the signal.
+
 ## 8.90.0
 
 ### Minor Changes
