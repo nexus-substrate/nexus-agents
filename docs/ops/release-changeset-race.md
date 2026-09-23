@@ -128,6 +128,8 @@ pnpm release       # runs `changeset publish` against current package.json
 
 **Staged-publish window (#6500).** npm stages a publish for up to ~17 minutes before `npm view` (and changesets' "not found in registry" check) can see it; a release run inside that window gets `E409 ... Cannot publish over previously staged version "X"`. `scripts/release-publish.ts` exits 0 with a `::warning::` when every failure is exactly that E409 for the local `package.json` version (any other failure stays red); that run creates no tag or GitHub Release, because the run that staged the version already did.
 
+**Post-publish tarball availability measurement (#6525).** Following publish (including the staged-E409 forgiveness path), the release workflow runs `scripts/await-published-tarball.ts`. It polls the registry tarball URL (`https://registry.npmjs.org/nexus-agents/-/nexus-agents-<version>.tgz`) until HTTP 200 is returned (up to 30 minutes), writes the measured delay into the GitHub Actions Job Summary, and fails with `::error::` if the tarball fails to appear before timeout.
+
 After publishing, manually upload the SBOM and attest provenance if needed:
 
 ```bash

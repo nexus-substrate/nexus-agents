@@ -210,6 +210,105 @@ describe('FileAuditStorage.create()', () => {
 // FileAuditStorage constructor - Direct Instantiation
 // ============================================================================
 
+// #6515: the system-directory guard must not refuse the running user's own
+// home. Root's home is /root, and root is the Docker default user. os.homedir()
+// reads HOME on POSIX, so stubbing HOME drives the real code path.
+describe('FileAuditStorage.create() system-directory guard vs home (#6515)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function createWith(logDir: string): ReturnType<typeof FileAuditStorage.create> {
+    setupFsMocks();
+    return FileAuditStorage.create({ ...makeConfig(), logDir });
+  }
+
+  it('allows the default audit dir under /root when HOME=/root', () => {
+    vi.stubEnv('HOME', '/root');
+    const result = createWith('/root/.nexus-agents/audit');
+    expect(result.ok).toBe(true);
+  });
+
+  it('allows the default audit dir through the throwing constructor when HOME=/root', () => {
+    vi.stubEnv('HOME', '/root');
+    setupFsMocks();
+    expect(
+      () => new FileAuditStorage({ ...makeConfig(), logDir: '/root/.nexus-agents/audit' })
+    ).not.toThrow();
+  });
+
+  it('still refuses /etc when HOME=/root', () => {
+    vi.stubEnv('HOME', '/root');
+    const result = createWith('/etc/x');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('system directory');
+  });
+
+  it('refuses /root itself outside the home when HOME is /home/u', () => {
+    vi.stubEnv('HOME', '/home/u');
+    const result = createWith('/root/x');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('system directory');
+  });
+
+  it('refuses /root itself when HOME=/root/sub (home is inside /root, not /root)', () => {
+    vi.stubEnv('HOME', '/root/sub');
+    const result = createWith('/root/x');
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts a non-system sibling of the home on its own merits', () => {
+    // Sanity: a non-system sibling is accepted on its own merits.
+    vi.stubEnv('HOME', '/home/u');
+    expect(createWith('/home/u2/audit').ok).toBe(true);
+  });
+
+  it('does not let HOME=/ro open /root (containment is per path segment)', () => {
+    vi.stubEnv('HOME', '/ro');
+    const result = createWith('/root/x');
+    expect(result.ok).toBe(false);
+  });
+
+  it('does not treat /rootkit as under the /root system dir', () => {
+    vi.stubEnv('HOME', '/home/u');
+    expect(createWith('/rootkit/audit').ok).toBe(true);
+  });
+
+  it('refuses /var when HOME=/root (a home allowance does not open /var)', () => {
+    vi.stubEnv('HOME', '/root');
+    expect(createWith('/var/lib/nexus/audit').ok).toBe(false);
+  });
+
+  it('allows /var inside the home when the home is under /var', () => {
+    vi.stubEnv('HOME', '/var/lib/svc');
+    expect(createWith('/var/lib/svc/.nexus-agents/audit').ok).toBe(true);
+    expect(createWith('/var/lib/other/audit').ok).toBe(false);
+  });
+
+  it('allows a non-root user home dir', () => {
+    vi.stubEnv('HOME', '/home/u');
+    expect(createWith('/home/u/.nexus-agents/audit').ok).toBe(true);
+  });
+
+  it('does not let a HOME inside a hard system tree open that tree', () => {
+    vi.stubEnv('HOME', '/usr/sbin');
+    expect(createWith('/usr/sbin/audit').ok).toBe(false);
+  });
+
+  it('does not let HOME=/ open /root or /var', () => {
+    vi.stubEnv('HOME', '/');
+    expect(createWith('/root/x').ok).toBe(false);
+    expect(createWith('/var/x').ok).toBe(false);
+  });
+
+  it('still refuses traversal under the home', () => {
+    vi.stubEnv('HOME', '/root');
+    const result = createWith('/root/../etc/x');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('Path traversal detected');
+  });
+});
+
 describe('FileAuditStorage constructor', () => {
   it('creates log directory if it does not exist', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);

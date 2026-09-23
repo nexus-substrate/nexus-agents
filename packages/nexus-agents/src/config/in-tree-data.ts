@@ -242,6 +242,57 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     // ----- OpenAI Codex -----
     {
+      // #6516 (panel option A): the codex default since gpt-5.5 retires.
+      // ~/.codex/models_cache.json (codex-cli 0.155.1, read 2026-09-23) puts
+      // an `upgrade` record on the gpt-5.5 row: retirement_at
+      // 2026-10-14T19:00:00Z, upgrade.model gpt-5.6-sol. The id equals the
+      // served slug (the #5489 direction), so no alias layer is needed.
+      // SOURCES:
+      // - displayName, contextWindow, maxOutputTokens, pricing: models.dev
+      //   `gpt-5.6-sol` in the committed models-dev-snapshot.json (2026-09-21),
+      //   matching `openai/gpt-5.6-sol` in model-registry.generated.json
+      //   (2026-09-23): $4/$20 per 1M, 1.05M context, 128K output.
+      // - inputModalities (text/image/pdf): the same models.dev entry.
+      // - notes' description, reasoning levels and 272K default window: the
+      //   codex cache row (default_reasoning_level low; supported low, medium,
+      //   high, xhigh, max, ultra; context_window 272000).
+      // - qualityScores: CARRIED OVER from gpt-5.5, NOT measured. It is the
+      //   successor at the same tier position; `cost` stays 4 although the
+      //   price fell ($4/$20 vs $5/$30), so a rescore is a separate decision.
+      // - toolCapabilities, outputModalities, unsupportedParameters,
+      //   maxTokensParam: carried from gpt-5.5 (same family and CLI transport).
+      // Listed BEFORE gpt-5.5 so a scoring tie between the two resolves to the
+      // served successor, not the retiring slug.
+      id: 'gpt-5.6-sol',
+      displayName: 'GPT-5.6 Sol',
+      provider: 'openai',
+      contextWindow: 1_050_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'file_operations',
+        'structured_output',
+        'apply_patch',
+        'computer_use',
+      ],
+      specialFeatures: ['streaming'],
+      notes:
+        'GPT-5.6 Sol (models.dev 2026-09-21; codex catalog: "older coding model for complex work"); codex default and gpt-5.5 successor per the codex cache; served by codex-cli 0.155.1; reasoning low..ultra; 1.05M context (codex cache default window 272K)',
+      pricing: { inputPer1M: 4.0, outputPer1M: 20.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
+      maxOutputTokens: 128_000,
+      cliName: 'codex',
+      cliModelName: 'gpt-5.6-sol',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
+    },
+    {
+      // Retires in codex 2026-10-14 (codex cache upgrade record); no longer the
+      // codex default (#6516). Kept routable for configs that pin it; removal
+      // is tracked in #6526.
       id: 'gpt-5.5',
       displayName: 'GPT-5.5',
       provider: 'openai',
@@ -495,10 +546,12 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
  * Quality-first: each CLI routes to its strongest model by default.
  */
 export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
-  // #4176: fable/gpt-5.5 are strongest per CLI; gemini-3.5-flash is flash-tier, not default.
+  // #4176: fable/gpt-5.5 were strongest per CLI; gemini-3.5-flash is flash-tier, not default.
+  // #6516: codex moves to gpt-5.6-sol, the upgrade target the codex cache names
+  // for gpt-5.5 (retiring 2026-10-14).
   claude: 'claude-fable-5',
   gemini: 'gemini-3-pro',
-  codex: 'gpt-5.5',
+  codex: 'gpt-5.6-sol',
   opencode: 'opencode-default',
 };
 

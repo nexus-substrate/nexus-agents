@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { findInTreeByCli } from '../config/model-config-helpers.js';
 import {
   checkCodexModels,
+  codexModelsVerifyCheck,
   parseServedCodexSlugs,
   resolveCodexModelsCachePath,
 } from './doctor-codex-models.js';
@@ -48,6 +49,7 @@ describe('parseServedCodexSlugs', () => {
       listed: ['gpt-a', 'gpt-b'],
       rows: 3,
       withoutVisibility: 0,
+      retirements: [],
     });
   });
 
@@ -59,6 +61,7 @@ describe('parseServedCodexSlugs', () => {
       listed: ['gpt-b'],
       rows: 2,
       withoutVisibility: 1,
+      retirements: [],
     });
   });
 
@@ -193,6 +196,215 @@ describe('checkCodexModels', () => {
 
     expect(result.status).toBe('unmeasured');
     expect(result.reason).toContain('no codex entries');
+  });
+});
+
+describe('codex retirement warning (#6516)', () => {
+  // FIXTURE, not the live cache. The row shape mirrors the `upgrade` record
+  // ~/.codex/models_cache.json carried on the gpt-5.5 row on 2026-09-23
+  // (codex-cli 0.155.1); the slugs here are invented so the test does not
+  // depend on which models the registry names today.
+  const NOW = new Date('2026-09-23T12:00:00Z');
+  const ROWS = [
+    { id: 'fixture-old', cliModelName: 'fixture-old-slug' },
+    { id: 'fixture-new', cliModelName: 'fixture-new-slug' },
+  ];
+
+  function writeCache(models: readonly Record<string, unknown>[]): string {
+    const file = join(dir, 'models_cache.json');
+    writeFileSync(file, JSON.stringify({ models }));
+    return file;
+  }
+
+  const retiringRow = (
+    retirementAt: string,
+    upgrade: Record<string, unknown> = {}
+  ): Record<string, unknown> => ({
+    slug: 'fixture-old-slug',
+    visibility: 'list',
+    upgrade: { model: 'fixture-new-slug', retirement_at: retirementAt, ...upgrade },
+  });
+  const plainRow = { slug: 'fixture-new-slug', visibility: 'list', upgrade: null };
+
+  it('parses the retirement date and upgrade target from a row', () => {
+    const raw = JSON.stringify({ models: [retiringRow('2026-10-14T19:00:00Z'), plainRow] });
+    expect(parseServedCodexSlugs(raw)?.retirements).toEqual([
+      {
+        slug: 'fixture-old-slug',
+        retirementAt: '2026-10-14T19:00:00.000Z',
+        upgradeModel: 'fixture-new-slug',
+      },
+    ]);
+  });
+
+  it('warns, naming the date and upgrade model, when a slug retires within 30 days', () => {
+    const file = writeCache([retiringRow('2026-10-14T19:00:00Z'), plainRow]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.status).toBe('warn');
+    expect(result.missing).toEqual([]);
+    expect(result.served).toHaveLength(2);
+    expect(result.retiring).toEqual([
+      {
+        id: 'fixture-old',
+        cliModelName: 'fixture-old-slug',
+        retirementAt: '2026-10-14T19:00:00.000Z',
+        upgradeModel: 'fixture-new-slug',
+        daysLeft: 21,
+      },
+    ]);
+    expect(result.reason).toContain('fixture-old → fixture-old-slug retires 2026-10-14');
+    expect(result.reason).toContain('upgrade: fixture-new-slug');
+    expect(result.reason).not.toContain('not served');
+  });
+
+  it('does not warn when the retirement is further out than 30 days', () => {
+    const file = writeCache([retiringRow('2026-10-24T12:00:01Z'), plainRow]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.status).toBe('pass');
+    expect(result.retiring).toEqual([]);
+    expect(result.reason).toBeNull();
+  });
+
+  it('warns at exactly 30 days (inclusive boundary)', () => {
+    const file = writeCache([retiringRow('2026-10-23T12:00:00Z'), plainRow]);
+
+    expect(checkCodexModels(file, ROWS, NOW).retiring.map((r) => r.daysLeft)).toEqual([30]);
+  });
+
+  it('reports a retirement already in the past as retired, alongside the unserved slug', () => {
+    // After the date the row should also have left the served list; the
+    // retirement is still reported so the operator sees the upgrade target.
+    const file = writeCache([
+      { ...retiringRow('2026-09-20T12:00:00Z'), visibility: 'hide' },
+      plainRow,
+    ]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.status).toBe('warn');
+    expect(result.missing.map((m) => m.id)).toEqual(['fixture-old']);
+    expect(result.retiring.map((r) => r.daysLeft)).toEqual([-3]);
+    // Both causes render independently, not one hiding the other.
+    expect(result.reason).toContain('not served by the installed codex: fixture-old');
+    expect(result.reason).toContain('fixture-old → fixture-old-slug retired 2026-09-20');
+    expect(result.reason).toContain('upgrade: fixture-new-slug');
+  });
+
+  it('reports a retirement a few hours past as retired, never as "in 0 days"', () => {
+    const file = writeCache([retiringRow('2026-09-23T06:00:00Z'), plainRow]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.retiring.map((r) => r.daysLeft)).toEqual([-1]);
+    expect(result.reason).toContain('retired 2026-09-23');
+  });
+
+  it('reports a past retirement even when the row is still listed', () => {
+    const file = writeCache([retiringRow('2026-09-20T12:00:00Z'), plainRow]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.status).toBe('warn');
+    expect(result.missing).toEqual([]);
+    expect(result.reason).toContain('retired 2026-09-20');
+  });
+
+  it('does not warn when the row has no upgrade record (absent case)', () => {
+    const file = writeCache([
+      { slug: 'fixture-old-slug', visibility: 'list' },
+      { slug: 'fixture-new-slug', visibility: 'list', upgrade: null },
+    ]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.status).toBe('pass');
+    expect(result.retiring).toEqual([]);
+  });
+
+  it('names a missing upgrade target instead of inventing one', () => {
+    const file = writeCache([retiringRow('2026-10-14T19:00:00Z', { model: null }), plainRow]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.retiring[0]?.upgradeModel).toBeNull();
+    expect(result.reason).toContain('no upgrade model named');
+  });
+
+  it('ignores an upgrade record whose retirement_at is not a date', () => {
+    const file = writeCache([retiringRow('soon'), plainRow]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.status).toBe('pass');
+    expect(result.retiring).toEqual([]);
+  });
+
+  it('ignores retirements of slugs no registry entry names', () => {
+    const file = writeCache([
+      retiringRow('2026-10-14T19:00:00Z'),
+      plainRow,
+      { ...retiringRow('2026-10-01T00:00:00Z'), slug: 'unrelated-slug' },
+    ]);
+
+    const result = checkCodexModels(file, ROWS, NOW);
+
+    expect(result.retiring.map((r) => r.cliModelName)).toEqual(['fixture-old-slug']);
+  });
+});
+
+describe('codexModelsVerifyCheck', () => {
+  const served = [{ id: 'fixture-new', cliModelName: 'fixture-new-slug' }];
+  const retiring = [
+    {
+      id: 'fixture-old',
+      cliModelName: 'fixture-old-slug',
+      retirementAt: '2026-10-14T19:00:00.000Z',
+      upgradeModel: 'fixture-new-slug',
+      daysLeft: 21,
+    },
+  ];
+
+  it('passes and lists the served slugs', () => {
+    const check = codexModelsVerifyCheck({
+      status: 'pass',
+      served,
+      missing: [],
+      retiring: [],
+      reason: null,
+    });
+    expect(check.passed).toBe(true);
+    expect(check.message).toBe('1 codex registry slug(s) served: fixture-new-slug');
+  });
+
+  it('warns on a retirement while still listing what is served', () => {
+    const check = codexModelsVerifyCheck({
+      status: 'warn',
+      served,
+      missing: [],
+      retiring,
+      reason: 'retiring per the codex cache: fixture-old → fixture-old-slug retires 2026-10-14',
+    });
+    expect(check.passed).toBe(false);
+    expect(check.severity).toBe('warn');
+    expect(check.message).toContain('retires 2026-10-14');
+    expect(check.message).toContain('served: fixture-new-slug');
+    expect(check.fix).toContain('upgrade');
+  });
+
+  it('renders unmeasured as a warn that says so, never a pass', () => {
+    const check = codexModelsVerifyCheck({
+      status: 'unmeasured',
+      served: [],
+      missing: [],
+      retiring: [],
+      reason: 'no cache',
+    });
+    expect(check.passed).toBe(false);
+    expect(check.message).toBe('unmeasured: no cache');
   });
 });
 

@@ -60,7 +60,7 @@ describe('cliNameToModel', () => {
   });
 
   it('maps codex to default model from registry', () => {
-    expect(cliNameToModel('codex')).toBe('gpt-5.5');
+    expect(cliNameToModel('codex')).toBe('gpt-5.6-sol');
   });
 });
 
@@ -127,7 +127,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const output = mapCompositeDecisionToOutput(decision, 100);
 
     expect(output.alternatives[0]!.model).toBe('gemini-3-pro');
-    expect(output.alternatives[1]!.model).toBe('gpt-5.5');
+    expect(output.alternatives[1]!.model).toBe('gpt-5.6-sol');
   });
 
   // #5269: these three tests pinned the defect. Every alternative was given the

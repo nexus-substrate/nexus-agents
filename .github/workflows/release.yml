@@ -23,7 +23,7 @@ jobs:
     name: Release
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: write
       pull-requests: write
@@ -528,6 +528,12 @@ jobs:
         with:
           subject-path: ${{ runner.temp }}/sbom/sbom.cdx.json
 
+      # #6525: Poll for the published tarball on the registry until HTTP 200,
+      # measuring and logging the post-publish availability window.
+      - name: Await published tarball (#6525)
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
+        run: pnpm exec tsx scripts/await-published-tarball.ts
+
       # "Attest npm package" was removed here (#5429). It bound the digest of
       # `packages/nexus-agents/package.json`, and pnpm rewrites the workspace
       # protocol at pack time — source says `"nexus-memory": "workspace:*"`,
@@ -548,7 +554,7 @@ jobs:
     name: Manual Publish
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: read
       id-token: write
@@ -610,3 +616,9 @@ jobs:
         env:
           npm_config_node_linker: hoisted
           NPM_CONFIG_PROVENANCE: true
+
+      # #6525: Poll for the published tarball on the registry until HTTP 200,
+      # measuring and logging the post-publish availability window.
+      - name: Await published tarball (#6525)
+        if: ${{ inputs.dry_run != true }}
+        run: pnpm exec tsx scripts/await-published-tarball.ts

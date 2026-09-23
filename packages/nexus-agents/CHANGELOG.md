@@ -1,5 +1,44 @@
 # nexus-agents
 
+## 8.86.3
+
+### Patch Changes
+
+- [#6537](https://github.com/nexus-substrate/nexus-agents/pull/6537) [`33e8897`](https://github.com/nexus-substrate/nexus-agents/commit/33e8897e2d99a55ca5166a6321a935b9bb6a4c9c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `recordWorkerOutcomes` in `orchestrate-dispatch` now normalizes `resolvedCli` by stripping any adapter `cli-` prefix and validating against `CliNameSchema`, falling back to `'unknown'` instead of casting unchecked adapter provider IDs like `'cli-codex'`.
+
+- [#6540](https://github.com/nexus-substrate/nexus-agents/pull/6540) [`bdc7720`](https://github.com/nexus-substrate/nexus-agents/commit/bdc77209e86713e475a8a6b169a573fadc8e9b00) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `PersistentOutcomeStore` now hydrates outcomes using `TaskOutcomeSchema.loose()`, preserving unknown forward-compatible fields across hydration and rewrite cycles rather than stripping them.
+
+## 8.86.2
+
+### Patch Changes
+
+- [#6524](https://github.com/nexus-substrate/nexus-agents/pull/6524) [`8eb7f28`](https://github.com/nexus-substrate/nexus-agents/commit/8eb7f28c9b22d448b80c02e3bef8dedb8d2ef736) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Audit logging no longer stops the MCP server from starting when it runs as root. With `security.audit.enabled: true`, `nexus-agents --mode=server` exited at startup with `SecurityError: logDir cannot be a system directory` whenever the audit directory was under `/root`, which is the default for root (the Docker default user): the audit dir resolves to `/root/.nexus-agents/audit`. An audit `logDir` inside the running user's own home directory is now accepted, including a home under `/root` or `/var`. `/etc`, `/usr`, `/bin`, `/sbin`, `/proc` and `/sys` are still refused even when the home is inside them. `/root` and `/var` are still refused outside the user's home, and a home of `/` grants nothing. Path-traversal checks are unchanged. A service data directory under `/var` that is not inside the user's home, for example `NEXUS_DATA_DIR=/var/lib/nexus`, is still refused; point `security.audit.logDir` at another path in that case.
+
+## 8.86.1
+
+### Patch Changes
+
+- [#6530](https://github.com/nexus-substrate/nexus-agents/pull/6530) [`0413c3b`](https://github.com/nexus-substrate/nexus-agents/commit/0413c3b7d7b5f339a25bf8f832dc82dead21bf38) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Measure and alert on the post-publish tarball availability window on npm registry ([#6525](https://github.com/nexus-substrate/nexus-agents/issues/6525)).
+
+  - Adds `scripts/await-published-tarball.ts` to poll the registry tarball URL (`https://registry.npmjs.org/nexus-agents/-/nexus-agents-<version>.tgz`) with bounded timeout and exponential/fixed interval, recording the measured availability window into `$GITHUB_STEP_SUMMARY` and failing with `::error::` if the tarball fails to appear before timeout.
+  - Wires the tarball verification step into the `release` and `manual-publish` jobs of `.github/workflows/release.yml`, adjusting job timeouts to 35m to accommodate up to 30m of CDN propagation delay.
+  - Documents the post-publish tarball measurement in `docs/ops/release-changeset-race.md`.
+
+## 8.86.0
+
+### Minor Changes
+
+- [#6523](https://github.com/nexus-substrate/nexus-agents/pull/6523) [`f331c3a`](https://github.com/nexus-substrate/nexus-agents/commit/f331c3a46d00c3a6025c36b08eb9a61532a33e1d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The strategy distiller now runs from the persisted outcome store. It trains only on outcomes that show a CLI actually executed, and it has its own off switch.
+
+  Before this release, distillation fired only after 50 outcomes inside one process. Short-lived CLI processes never reach that, so on a typical install `rules.json` was never written and `DistilledRuleStage` had no rules to apply.
+
+  - **Trigger.** The first time the distilled-rule stage runs in a process, it first expires any rule past `ruleExpiryMs`, including rules hydrated from `rules.json`. It then distills if the outcome store holds at least `triggerThreshold` (default 50) eligible outcomes newer than the last snapshot. With no snapshot, every eligible outcome counts. The per-process counter still fires for long-running servers. The distiller constructor does not read the store. The new `StrategyDistiller.checkPersistedTrigger()` exposes this check.
+  - **Training population.** An outcome is eligible only if it has `source: 'delegate'`, `cliSource: 'executed'`, `durationMs > 0`, and a `cli` of `claude`, `gemini`, `codex` or `opencode`. Excluded are consensus voter seats, `manual` records (warm-up pings, e2e-eval runs, tool bookkeeping), `cli: 'unknown'`, `api:*` arm ids, and category-default attributions. Also excluded is any row without an executed marker, which includes legacy orchestrate rows whose CLI and category were defaults. Expect a very small eligible population until writers record a routed-origin tag.
+  - **Off switch.** `NEXUS_STRATEGY_DISTILLATION=false` (or `0`) disables distillation alone. No distiller is built, and no distilled rule is read or applied. Outcome persistence stays on. The switch defaults on, and it overrides a config that enables `strategyDistillation`.
+  - **Empty case.** With no snapshot and zero eligible outcomes, the distiller writes a snapshot with 0 rules and a timestamp. The state then reads as "distilled, nothing eligible" rather than "never ran".
+  - **Unreadable rules file.** If `rules.json` exists but fails to parse or validate, the first-route trigger logs a warning and does not overwrite the file.
+  - **Reporting.** `rules.json` gains an optional `eligibleOutcomes` count, and `DistillerStats` gains an optional `eligibleOutcomesAtLastDistill` field. `nexus-agents doctor` now prints `Distilled rules: N (A active; trained on E eligible outcomes; last distill: <time|never>)`, plus a separately labelled whole-file eligible count. Both lines are informational. They replace the old `Distilled rules: N active` line, which counted every persisted rule rather than only the active ones.
+
 ## 8.85.3
 
 ### Patch Changes

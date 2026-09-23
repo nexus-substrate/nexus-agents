@@ -137,7 +137,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(caps.contextWindow).toBe(1_050_000);
       expect(caps.codeGeneration).toBe(10);
       expect(caps.speed).toBe(7);
-      // gpt-5.5 (frontier codex default, #4176) is pricier than codex-5.3: cost 4.
+      // gpt-5.6-sol (codex default since #6516) carries gpt-5.5's cost score 4.
       expect(caps.cost).toBe(4);
     });
   });
@@ -146,7 +146,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
     it('should return correct model info for default model (from registry)', () => {
       const info = adapter.getModelInfo();
 
-      // Default model is derived from canonical registry (gpt-5.5 → 'gpt-5.5', #4176)
+      // Default model is derived from canonical registry (gpt-5.6-sol → 'gpt-5.6-sol', #6516)
       expect(info.id).toBe(EXPECTED_DEFAULT_ID);
       expect(info.contextWindow).toBe(1_050_000);
       expect(info.maxOutput).toBe(128_000);
@@ -155,9 +155,9 @@ describe('CodexCliAdapter (Subprocess)', () => {
     it('should return registry-derived cost info for default model', () => {
       const info = adapter.getModelInfo();
 
-      // Default gpt-5.5 in registry (#4176): pricing {5.0, 30.0}
-      expect(info.costPerMillionInput).toBe(5.0);
-      expect(info.costPerMillionOutput).toBe(30.0);
+      // Default gpt-5.6-sol in registry (#6516): models.dev pricing {4.0, 20.0}
+      expect(info.costPerMillionInput).toBe(4.0);
+      expect(info.costPerMillionOutput).toBe(20.0);
     });
 
     it('should return correct info for gpt-6-luna model (from registry)', () => {

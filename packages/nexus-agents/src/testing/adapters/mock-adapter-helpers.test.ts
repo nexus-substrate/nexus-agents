@@ -51,7 +51,7 @@ describe('MODEL_INFO_BY_NAME', () => {
   });
 
   it('contains info for codex', () => {
-    expect(MODEL_INFO_BY_NAME.codex.id).toBe('gpt-5.5');
+    expect(MODEL_INFO_BY_NAME.codex.id).toBe('gpt-5.6-sol');
   });
 });
 
