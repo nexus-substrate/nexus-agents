@@ -15,6 +15,8 @@ import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 import { getAvailabilityCache, resetAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
+import { computeCostDetail } from '../../learning/usage-log.js';
+import { CliToModelAdapter } from '../cli-to-model-adapter.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('opencode'));
@@ -192,7 +194,7 @@ describe('OpenCodeCliAdapter', () => {
       expect(mockProcess.stdin?.write).toHaveBeenCalledWith('Say hello');
     });
 
-    it('should omit --model when task model is not in available models (#1402)', async () => {
+    it('refuses a requested model that is not in available models (#1402 → #6599)', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
         JSON.stringify({ type: 'session.complete' }),
@@ -204,12 +206,12 @@ describe('OpenCodeCliAdapter', () => {
         content: 'Quick task',
         model: 'google/gemini-2.5-flash',
       };
-      await adapter.execute(task);
+      const res = await adapter.execute(task);
 
-      const calls = vi.mocked(spawn).mock.calls;
-      const args = calls[0]?.[1] as string[];
-      // Model not in probed list → omitted
-      expect(args).not.toContain('--model');
+      // #6599: the model used to be silently omitted, running opencode's
+      // default under the requested name. Now the request fails loudly.
+      expect(res.ok).toBe(false);
+      expect(vi.mocked(spawn)).not.toHaveBeenCalled();
     });
 
     it('should pass --model when task model IS in available models', async () => {
@@ -243,7 +245,7 @@ describe('OpenCodeCliAdapter', () => {
       expect(args).toContain('google/gemini-2.5-flash');
     });
 
-    it('does NOT substitute a stale model even with discovery on (#4408) — omits --model', async () => {
+    it('does NOT substitute a stale model even with discovery on (#4408) — refuses it (#6599)', async () => {
       process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
       try {
         vi.mocked(execFile).mockImplementation(
@@ -267,17 +269,19 @@ describe('OpenCodeCliAdapter', () => {
         // `:free` id; #4408 deleted that substitution — answering with a model
         // the caller did not request records the outcome under the requested
         // id. Drift is now caught at refresh time by the #4417 sweep instead.
-        await freshAdapter.execute({ content: 'x', model: 'qwen/qwen3-coder-480b-a35b:free' });
-        const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-        // No --model: opencode picks its own default, explicitly and logged.
-        expect(args).not.toContain('--model');
-        expect(args).not.toContain('qwen/qwen3-coder:free');
+        const res = await freshAdapter.execute({
+          content: 'x',
+          model: 'qwen/qwen3-coder-480b-a35b:free',
+        });
+        // No substitution and no silent default (#6599): an explicit error.
+        expect(res.ok).toBe(false);
+        expect(vi.mocked(spawn)).not.toHaveBeenCalled();
       } finally {
         delete process.env['NEXUS_DYNAMIC_MODELS'];
       }
     });
 
-    it('does NOT resolve a stale model when discovery is off (default) — omits --model', async () => {
+    it('does NOT resolve a stale model when discovery is off (default) — refuses it (#6599)', async () => {
       delete process.env['NEXUS_DYNAMIC_MODELS'];
       vi.mocked(execFile).mockImplementation(
         (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
@@ -296,12 +300,15 @@ describe('OpenCodeCliAdapter', () => {
           ].join('\n')
         )
       );
-      await freshAdapter.execute({ content: 'x', model: 'qwen/qwen3-coder-480b-a35b:free' });
-      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
-      expect(args).not.toContain('--model');
+      const res = await freshAdapter.execute({
+        content: 'x',
+        model: 'qwen/qwen3-coder-480b-a35b:free',
+      });
+      expect(res.ok).toBe(false);
+      expect(vi.mocked(spawn)).not.toHaveBeenCalled();
     });
 
-    it('still skips a model in rate-limit cooldown, without substituting (#3408/#4408)', async () => {
+    it('still refuses a model in rate-limit cooldown, without substituting (#3408/#4408/#6599)', async () => {
       process.env['NEXUS_DYNAMIC_MODELS'] = 'true';
       try {
         resetAvailabilityCache();
@@ -324,15 +331,14 @@ describe('OpenCodeCliAdapter', () => {
             ].join('\n')
           )
         );
-        await adapter.execute({ content: 'x', model: 'qwen/qwen3-coder:free' });
-        const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+        const res = await adapter.execute({ content: 'x', model: 'qwen/qwen3-coder:free' });
         // The #3408 intent survives #4408: a cooled model is NOT dispatched.
-        expect(args).not.toContain('qwen/qwen3-coder:free');
-        // What changed is the recovery. Previously the adapter picked a
-        // non-cooled sibling itself, which recorded that sibling's outcome
-        // under the requested id. Now it omits --model and lets opencode use
-        // its default — the caller is never told a different model answered.
-        expect(args).not.toContain('--model');
+        // Nor is opencode's default run in its place (#6599): that recorded
+        // the default's outcome under the requested id. The caller gets an
+        // explicit cooldown error instead.
+        expect(res.ok).toBe(false);
+        if (!res.ok) expect(res.error.message).toContain('cooldown');
+        expect(vi.mocked(spawn)).not.toHaveBeenCalled();
       } finally {
         delete process.env['NEXUS_DYNAMIC_MODELS'];
         resetAvailabilityCache();
@@ -819,5 +825,119 @@ describe('createOpenCodeAdapter', () => {
     const adapter = createOpenCodeAdapter({ model: 'google/gemini-2.5-pro' });
     const info = adapter.getModelInfo();
     expect(info.id).toBe('google/gemini-2.5-pro');
+  });
+});
+
+// ============================================================================
+// #6599: an explicitly requested model reaches opencode, or fails loudly
+// ============================================================================
+
+describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
+  /** A local `opencode models` listing: gateway ids carry a provider prefix. */
+  const INVENTORY = [
+    'custom/claude-sonnet-4-6',
+    'openrouter/qwen/qwen3-coder',
+    'openrouter/acme/mystery-model-zz9',
+    'opencode/big-pickle',
+  ];
+  const OK_STREAM = [
+    JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+    JSON.stringify({ type: 'session.complete' }),
+  ].join('\n');
+
+  async function adapterWithInventory(models: readonly string[]): Promise<OpenCodeCliAdapter> {
+    vi.mocked(execFile).mockImplementation(
+      (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+        (cb as ExecFileCallback)(null, `${models.join('\n')}\n`, '');
+        return undefined as unknown as ReturnType<typeof execFile>;
+      }
+    );
+    resetOpenCodeModelCache();
+    const a = new OpenCodeCliAdapter();
+    await a.initialize();
+    return a;
+  }
+
+  function spawnedArgs(): string[] {
+    return vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetAvailabilityCache();
+    vi.mocked(spawn).mockReturnValue(createMockProcess(OK_STREAM));
+  });
+
+  it('maps a registry id through its opencode cliModelName onto --model', async () => {
+    const a = await adapterWithInventory(INVENTORY);
+    const res = await a.execute({ content: 'x', model: 'opencode-custom-sonnet' });
+    expect(res.ok).toBe(true);
+    const args = spawnedArgs();
+    expect(args).toContain('--model');
+    expect(args[args.indexOf('--model') + 1]).toBe('custom/claude-sonnet-4-6');
+  });
+
+  it('resolves a bare provider/model to the openrouter/-prefixed id opencode lists', async () => {
+    const a = await adapterWithInventory(INVENTORY);
+    const res = await a.execute({ content: 'x', model: 'qwen/qwen3-coder' });
+    expect(res.ok).toBe(true);
+    const args = spawnedArgs();
+    expect(args).toContain('--model');
+    expect(args[args.indexOf('--model') + 1]).toBe('openrouter/qwen/qwen3-coder');
+  });
+
+  it('returns an explicit error, and never spawns, for an unresolvable requested model', async () => {
+    const a = await adapterWithInventory(INVENTORY);
+    const res = await a.execute({ content: 'x', model: 'acme/not-listed-anywhere' });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.message).toContain('acme/not-listed-anywhere');
+      expect(res.error.retryable).toBe(false);
+    }
+    expect(vi.mocked(spawn)).not.toHaveBeenCalled();
+  });
+
+  it('passes no --model when none was requested and the default is not listed (unchanged)', async () => {
+    const a = await adapterWithInventory(INVENTORY);
+    const res = await a.execute({ content: 'x' });
+    expect(res.ok).toBe(true);
+    expect(spawnedArgs()).not.toContain('--model');
+  });
+
+  it('reports the resolved model on the response, so cost prices the model that ran', async () => {
+    const a = await adapterWithInventory(INVENTORY);
+    const res = await a.execute({ content: 'x', model: 'qwen/qwen3-coder' });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // The canonical registry entry whose cliModelName is qwen/qwen3-coder.
+    expect(res.value.model).toBe('openrouter-qwen-coder');
+    const detail = computeCostDetail(res.value.model ?? '', 1_000_000, 1_000_000);
+    expect(detail.priced).toBe(true);
+    // 0.3 + 1.0 per 1M — not the opencode default's 3 + 15.
+    expect(detail.costUsd).toBeCloseTo(1.3, 6);
+  });
+
+  it('seam: a model-bridge request for opencode-custom-sonnet reaches the argv and the response', async () => {
+    const a = await adapterWithInventory(INVENTORY);
+    const bridge = new CliToModelAdapter(a);
+    const res = await bridge.complete({
+      messages: [{ role: 'user', content: 'x' }],
+      model: 'opencode-custom-sonnet',
+    });
+    expect(res.ok).toBe(true);
+    const args = spawnedArgs();
+    expect(args).toContain('--model');
+    expect(args[args.indexOf('--model') + 1]).toBe('custom/claude-sonnet-4-6');
+    if (res.ok) expect(res.value.model).toBe('opencode-custom-sonnet');
+  });
+
+  it('reports an unpriced resolved model as unknown, never at the default price', async () => {
+    const a = await adapterWithInventory(INVENTORY);
+    const res = await a.execute({ content: 'x', model: 'acme/mystery-model-zz9' });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.model).toBe('openrouter/acme/mystery-model-zz9');
+    const detail = computeCostDetail(res.value.model ?? '', 1_000_000, 1_000_000);
+    expect(detail.priced).toBe(false);
   });
 });

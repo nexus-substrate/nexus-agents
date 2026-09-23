@@ -14,11 +14,22 @@ import type {
   CompletionResponse,
   ModelCapability,
 } from '../core/index.js';
-import { ModelCapability as MC, ok, err, ModelError, ConfigError } from '../core/index.js';
+import {
+  ModelCapability as MC,
+  ok,
+  err,
+  ModelError,
+  ConfigError,
+  createLogger,
+} from '../core/index.js';
 import { estimateTokens } from '../core/token-estimator.js';
 import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } from './types.js';
 import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
+import { findCanonicalModel } from '../config/model-config-helpers.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
+
+const logger = createLogger({ component: 'cli-to-model-adapter' });
 
 /** Configuration for CliToModelAdapter. */
 export interface CliToModelAdapterConfig {
@@ -109,8 +120,34 @@ export class CliToModelAdapter implements IModelAdapter {
     if (request.maxTokens !== undefined) {
       (task as { maxTokens: number }).maxTokens = request.maxTokens;
     }
+    const model = this.forwardableModel(request.model);
+    if (model !== undefined) {
+      (task as { model: string }).model = model;
+    }
 
     return task;
+  }
+
+  /**
+   * The requested model, when this CLI may be handed it (#6599). A registry
+   * model that belongs ONLY to other CLIs is withheld: a failover can land a
+   * model-bound request on a different CLI, which cannot run it and then runs
+   * its own default — logged, and the response reports the model that ran.
+   * A name the registry does not know is forwarded; the CLI adapter resolves
+   * it or returns an error.
+   */
+  private forwardableModel(model: string | undefined): string | undefined {
+    if (model === undefined) return undefined;
+    const owners = CLI_NAMES.filter((cli) => findCanonicalModel(cli, model) !== undefined);
+    if (owners.length === 0 || (owners as readonly string[]).includes(this.cliAdapter.name)) {
+      return model;
+    }
+    logger.warn('Requested model belongs to another CLI; this CLI runs its default', {
+      model,
+      cli: this.cliAdapter.name,
+      owners,
+    });
+    return undefined;
   }
 
   /**

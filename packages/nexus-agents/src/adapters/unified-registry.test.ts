@@ -217,6 +217,28 @@ describe('UnifiedAdapterRegistry', () => {
       expect(snapshot.cachedAdapters).toContain('gemini');
     });
 
+    // #6599: the model used to be dropped here — the CLI slot adapter was
+    // returned bare, so execute_expert ran the CLI's default model.
+    it('binds the resolved registry id onto requests sent through the slot adapter', async () => {
+      const complete = vi.fn().mockResolvedValue({ ok: true, value: {} });
+      const slot = { complete } as unknown as IResilientAdapter;
+      const spy = vi.spyOn(registry, 'getAdapterForCli').mockReturnValue(slot);
+      // cliAlias in, canonical id out: the bound model is the registry id.
+      const adapter = registry.getAdapterForModel('custom-sonnet');
+      await adapter.complete({ messages: [{ role: 'user', content: 'hi' }] });
+      expect(spy).toHaveBeenCalledWith('opencode');
+      expect(complete.mock.calls[0]?.[0]).toMatchObject({ model: 'opencode-custom-sonnet' });
+    });
+
+    it('a request that names its own model keeps it', async () => {
+      const complete = vi.fn().mockResolvedValue({ ok: true, value: {} });
+      const slot = { complete } as unknown as IResilientAdapter;
+      vi.spyOn(registry, 'getAdapterForCli').mockReturnValue(slot);
+      const adapter = registry.getAdapterForModel('custom-sonnet');
+      await adapter.complete({ messages: [], model: 'opencode-custom-opus' });
+      expect(complete.mock.calls[0]?.[0]).toMatchObject({ model: 'opencode-custom-opus' });
+    });
+
     it('should fall back to default for unknown model', () => {
       const adapter = registry.getAdapterForModel('unknown-model-xyz');
       expect(adapter).toBeDefined();

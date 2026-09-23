@@ -80,6 +80,40 @@ describe('CliToModelAdapter', () => {
 // complete()
 // ============================================================================
 
+describe('CliToModelAdapter.complete — requested model (#6599)', () => {
+  function sentTask(cli: ICliAdapter): { model?: string } {
+    const execute = vi.mocked(cli.execute);
+    return execute.mock.calls[0]?.[0] as { model?: string };
+  }
+
+  it('threads request.model into the CliTask', async () => {
+    const cli = makeMockCliAdapter({ name: 'opencode' as const });
+    const adapter = new CliToModelAdapter(cli);
+    await adapter.complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      model: 'opencode-custom-sonnet',
+    });
+    expect(sentTask(cli).model).toBe('opencode-custom-sonnet');
+  });
+
+  it('sends no model key when the request names none', async () => {
+    const cli = makeMockCliAdapter({ name: 'opencode' as const });
+    await new CliToModelAdapter(cli).complete({ messages: [{ role: 'user', content: 'hi' }] });
+    expect('model' in sentTask(cli)).toBe(false);
+  });
+
+  it('does not hand one CLI a registry model that belongs to another CLI', async () => {
+    // A failover can land a model-bound request on a different CLI; claude
+    // cannot run an opencode gateway model, so it runs its own default.
+    const cli = makeMockCliAdapter({ name: 'claude' as const });
+    await new CliToModelAdapter(cli).complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      model: 'opencode-custom-sonnet',
+    });
+    expect('model' in sentTask(cli)).toBe(false);
+  });
+});
+
 describe('CliToModelAdapter.complete', () => {
   it('surfaces the CLI stderr on the completion when the transport captured one (#6094)', async () => {
     const cli = makeMockCliAdapter({
