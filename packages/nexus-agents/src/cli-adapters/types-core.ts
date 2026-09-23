@@ -224,6 +224,14 @@ export interface CliResponse {
   /** Model used for generation */
   readonly model?: string;
   /**
+   * The gateway arm that served this response, when a gateway model answered
+   * it (#6624). Set by the model-to-CLI bridge from the model adapter's
+   * gateway-arm marker. A telemetry writer prices the call by this arm's
+   * `NEXUS_GATEWAY_COST` declaration, never by `model`'s list rate. Absent for
+   * a CLI subprocess or a direct vendor API.
+   */
+  readonly gatewayArm?: EndpointArmId;
+  /**
    * The model the caller asked for, when the adapter answered with a
    * different one from the same CLI family (#6120). Present only on a
    * substituted response — the claude adapter sets it after an

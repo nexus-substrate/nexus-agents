@@ -568,6 +568,112 @@ describe('createAgentStages — central workflow hub', () => {
     });
   });
 
+  describe('served model and cost on stage records (#6624)', () => {
+    function planRecord(spy: ReturnType<typeof vi.fn>): Record<string, unknown> {
+      const call = spy.mock.calls.find(
+        (c: unknown[]) => (c[0] as { id?: string }).id?.startsWith('pipeline-plan-') === true
+      );
+      if (call === undefined) throw new Error('no pipeline-plan- record');
+      return call[0] as Record<string, unknown>;
+    }
+
+    function stubStore(): ReturnType<typeof vi.fn> {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      return appendSpy;
+    }
+
+    it('records the served model and its cost beside the pipeline marker', async () => {
+      const appendSpy = stubStore();
+      // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 200,
+        expertType: 'architecture',
+        cli: 'claude',
+        model: 'claude-sonnet',
+        tokensIn: 1_000,
+        tokensOut: 2_000,
+      });
+
+      await createAgentStages().plan('build feature A', '');
+
+      const record = planRecord(appendSpy);
+      expect(record['model']).toBe('pipeline');
+      expect(record['servedModel']).toBe('claude-sonnet');
+      expect(record['costUsd']).toBe(0.033);
+      expect(record['priceBasis']).toBe('list');
+    });
+
+    it('records an unpriced served model as an unknown cost, not $0', async () => {
+      const appendSpy = stubStore();
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 200,
+        expertType: 'architecture',
+        cli: 'claude',
+        model: 'acme-unpriced-model-xyz',
+        tokensIn: 1_000,
+        tokensOut: 2_000,
+      });
+
+      await createAgentStages().plan('build feature A', '');
+
+      const record = planRecord(appendSpy);
+      expect(record['servedModel']).toBe('acme-unpriced-model-xyz');
+      expect(record['priceBasis']).toBe('unknown');
+      expect('costUsd' in record).toBe(false);
+    });
+
+    it('prices a gateway-served model by the gateway, not its list rate', async () => {
+      vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+      const appendSpy = stubStore();
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 200,
+        expertType: 'architecture',
+        cli: 'claude',
+        model: 'claude-sonnet',
+        gatewayArm: 'api:custom-openai',
+        tokensIn: 1_000,
+        tokensOut: 2_000,
+      });
+
+      await createAgentStages().plan('build feature A', '');
+      vi.unstubAllEnvs();
+
+      // An undeclared gateway is unpriced; the list rate would read 0.033.
+      const record = planRecord(appendSpy);
+      expect(record['servedModel']).toBe('claude-sonnet');
+      expect(record['priceBasis']).toBe('unknown');
+      expect('costUsd' in record).toBe(false);
+    });
+
+    it('adds no served fields when the adapter reported no model', async () => {
+      const appendSpy = stubStore();
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 200,
+        expertType: 'architecture',
+        cli: 'codex',
+      });
+
+      await createAgentStages().plan('build feature A', '');
+
+      const record = planRecord(appendSpy);
+      for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
+        expect(key in record).toBe(false);
+      }
+    });
+  });
+
   describe('recordOutcome cli threading (#2823)', () => {
     it('writes the actual cli from executeExpert, never hardcoded claude', async () => {
       const appendSpy = vi.fn();
