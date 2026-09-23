@@ -35,7 +35,11 @@ import {
 } from '../../orchestration/aorchestra/result-synthesizer.js';
 import { getTimeProvider, getRandomProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
-import { DEFAULT_CLI, type CliNameLiteral } from '../../config/model-capabilities-types.js';
+import {
+  DEFAULT_CLI,
+  CliNameSchema,
+  type CliNameLiteral,
+} from '../../config/model-capabilities-types.js';
 import { resolveAdapterForRole, getExpertFallbackChain } from './create-expert-routing.js';
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
@@ -45,6 +49,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
+import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
 
 // ============================================================================
 // Constants
@@ -593,6 +598,25 @@ function buildOptionalFields(r: WorkerResult): Record<string, unknown> {
 }
 
 /**
+ * Normalizes a worker's resolved CLI identity to a valid OutcomeCli (#6529).
+ *
+ * Strips the adapter 'cli-' prefix if present, validates against CliNameSchema,
+ * and falls back to 'unknown' if invalid. When no resolved CLI is provided,
+ * falls back to the category's primary CLI.
+ */
+function resolveWorkerOutcomeCli(
+  resolvedCli: string | undefined,
+  fallbackCli: CliNameLiteral
+): OutcomeCli {
+  if (resolvedCli === undefined) {
+    return fallbackCli;
+  }
+  const bare = resolvedCli.startsWith('cli-') ? resolvedCli.slice('cli-'.length) : resolvedCli;
+  const parsed = CliNameSchema.safeParse(bare);
+  return parsed.success ? parsed.data : 'unknown';
+}
+
+/**
  * Records per-worker outcomes to OutcomeStore for closed-loop learning.
  * Best-effort: never throws. Each worker result becomes one OutcomeStore entry.
  */
@@ -612,8 +636,8 @@ export function recordWorkerOutcomes(
       // Skip intentional routing decisions — not real failures (#1528)
       if (r.status === 'skipped') continue;
       const success = r.status === 'success';
-      // Use actual CLI that executed (#1527), fall back to specialization recommendation
-      const cli = (r.resolvedCli ?? fallbackCli) as CliNameLiteral;
+      // Use actual CLI that executed (#1527), normalized and validated (#6529)
+      const cli = resolveWorkerOutcomeCli(r.resolvedCli, fallbackCli);
       store.append({
         id: `worker-${r.role}-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 6)}`,
         cli,
