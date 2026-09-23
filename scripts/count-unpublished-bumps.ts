@@ -85,13 +85,25 @@ export const PACKAGE_NAME = 'nexus-agents';
  */
 export const DEFAULT_MAX_COMMITS = 500;
 
+/** Default window (in seconds) during which a recent git tag indicates an npm staged publish (#6500). */
+export const DEFAULT_STAGED_WINDOW_SECONDS = 1800;
+
+export interface UnpublishedBumpsOptions {
+  readonly maxCommits?: number;
+  readonly stagedVersions?: readonly string[];
+  readonly stagedWindowSeconds?: number;
+  readonly nowSeconds?: number;
+}
+
 export type UnpublishedBumpsVerdict =
   | {
       readonly kind: 'measured';
-      /** After `publishedVersion` on the walk and not on npm, newest first. */
+      /** After `publishedVersion` on the walk and not on npm or staged, newest first. */
       readonly pending: readonly string[];
       /** After `publishedVersion` on the walk but on npm (rollback, revert), newest first. */
       readonly published: readonly string[];
+      /** After `publishedVersion` on the walk, tagged recently within npm's staging window, newest first. */
+      readonly staged: readonly string[];
       /**
        * Before `publishedVersion` on the walk, up to its published predecessor
        * (exclusive), and not on npm — superseded, will never publish. Newest first.
@@ -139,12 +151,54 @@ export function parseRegistryVersions(raw: string): readonly string[] {
  * `registryVersions` (every version npm has). See the module doc for the
  * three classes and the named empty cases.
  */
+/**
+ * Checks whether `version` was recently tagged in git within `windowSeconds` (#6500).
+ * If a tag `<packageName>@<version>` exists and its commit date is within `windowSeconds`
+ * of `nowSeconds`, the version is in npm's staged-publish window.
+ */
+export function isVersionStaged(
+  repoDir: string,
+  packageName: string,
+  version: string,
+  windowSeconds: number = DEFAULT_STAGED_WINDOW_SECONDS,
+  nowSeconds: number = Math.floor(Date.now() / 1000)
+): boolean {
+  if (version === '') return false;
+  try {
+    const tagName = `${packageName}@${version}`;
+    const tagExists = execFileSync('git', ['-C', repoDir, 'tag', '-l', tagName], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (tagExists !== tagName) return false;
+
+    const timestampStr = execFileSync(
+      'git',
+      ['-C', repoDir, 'log', '-1', '--format=%ct', `refs/tags/${tagName}`],
+      { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
+    ).trim();
+    if (timestampStr === '') return false;
+    const commitTime = Number(timestampStr);
+    if (!Number.isFinite(commitTime)) return false;
+    const age = nowSeconds - commitTime;
+    return age >= 0 && age <= windowSeconds;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Versions of `PACKAGE_JSON_PATH` on the first-parent line from `ref`,
+ * classified against `publishedVersion` (npm's `latest`) and
+ * `registryVersions` (every version npm has). See the module doc for the
+ * classes and the named empty cases.
+ */
 export function unpublishedBumpsAt(
   repoDir: string,
   ref: string,
   publishedVersion: string,
   registryVersions: readonly string[],
-  options: { readonly maxCommits?: number } = {}
+  options: UnpublishedBumpsOptions = {}
 ): UnpublishedBumpsVerdict {
   const onNpm = new Set(registryVersions);
   if (!onNpm.has(publishedVersion)) {
@@ -169,7 +223,7 @@ export function unpublishedBumpsAt(
     .map((line) => line.trim())
     .filter((line) => line !== '');
 
-  const verdict = classifyWalk(repoDir, shas, publishedVersion, onNpm);
+  const verdict = classifyWalk(repoDir, shas, publishedVersion, onNpm, options);
   if (verdict !== undefined) return verdict;
   return {
     kind: 'unmeasured',
@@ -183,6 +237,61 @@ function pushDistinct(bucket: string[], version: string): void {
   if (!bucket.includes(version)) bucket.push(version);
 }
 
+interface StagedContext {
+  readonly repoDir: string;
+  readonly stagedSet: ReadonlySet<string>;
+  readonly windowSec: number;
+  readonly nowSec: number;
+}
+
+interface WalkState {
+  latestSeen: boolean;
+  readonly pending: string[];
+  readonly published: string[];
+  readonly staged: string[];
+  readonly skipped: string[];
+}
+
+function classifyPendingOrStaged(
+  version: string,
+  onNpm: ReadonlySet<string>,
+  ctx: StagedContext
+): 'published' | 'staged' | 'pending' {
+  if (onNpm.has(version)) return 'published';
+  if (
+    ctx.stagedSet.has(version) ||
+    isVersionStaged(ctx.repoDir, PACKAGE_NAME, version, ctx.windowSec, ctx.nowSec)
+  ) {
+    return 'staged';
+  }
+  return 'pending';
+}
+
+function recordWalkVersion(
+  version: string,
+  publishedVersion: string,
+  onNpm: ReadonlySet<string>,
+  ctx: StagedContext,
+  state: WalkState
+): 'continue' | 'stop' {
+  if (version === publishedVersion) {
+    state.latestSeen = true;
+    return 'continue';
+  }
+  if (!state.latestSeen) {
+    const category = classifyPendingOrStaged(version, onNpm, ctx);
+    if (category === 'published') pushDistinct(state.published, version);
+    else if (category === 'staged') pushDistinct(state.staged, version);
+    else pushDistinct(state.pending, version);
+    return 'continue';
+  }
+  if (onNpm.has(version)) {
+    return 'stop';
+  }
+  pushDistinct(state.skipped, version);
+  return 'continue';
+}
+
 /**
  * Walks `shas` (newest first) and classifies the versions found. Returns
  * `undefined` when `publishedVersion` is never reached — the caller names that
@@ -193,30 +302,41 @@ function classifyWalk(
   repoDir: string,
   shas: readonly string[],
   publishedVersion: string,
-  onNpm: ReadonlySet<string>
+  onNpm: ReadonlySet<string>,
+  options: UnpublishedBumpsOptions = {}
 ): UnpublishedBumpsVerdict | undefined {
-  const pending: string[] = [];
-  const published: string[] = [];
-  const skipped: string[] = [];
-  let latestSeen = false;
+  const ctx: StagedContext = {
+    repoDir,
+    stagedSet: new Set(options.stagedVersions ?? []),
+    windowSec: options.stagedWindowSeconds ?? DEFAULT_STAGED_WINDOW_SECONDS,
+    nowSec: options.nowSeconds ?? Math.floor(Date.now() / 1000),
+  };
+  const state: WalkState = {
+    latestSeen: false,
+    pending: [],
+    published: [],
+    staged: [],
+    skipped: [],
+  };
+
   for (const sha of shas) {
     const version = versionAt(repoDir, sha);
     if (version === undefined) {
       return { kind: 'unmeasured', reason: `${PACKAGE_JSON_PATH} at ${sha} has no string version` };
     }
-    if (version === publishedVersion) {
-      latestSeen = true;
-    } else if (!latestSeen) {
-      pushDistinct(onNpm.has(version) ? published : pending, version);
-    } else if (onNpm.has(version)) {
-      // Past latest, at its published predecessor: the skipped walk ends here
-      // (history running out ends it too).
-      break;
-    } else {
-      pushDistinct(skipped, version);
-    }
+    const action = recordWalkVersion(version, publishedVersion, onNpm, ctx, state);
+    if (action === 'stop') break;
   }
-  return latestSeen ? { kind: 'measured', pending, published, skipped } : undefined;
+
+  return state.latestSeen
+    ? {
+        kind: 'measured',
+        pending: state.pending,
+        published: state.published,
+        staged: state.staged,
+        skipped: state.skipped,
+      }
+    : undefined;
 }
 
 /** Fetches every version npm has for `PACKAGE_NAME`. Network; CLI entry only. */
@@ -255,7 +375,8 @@ if (process.argv[1]?.endsWith('count-unpublished-bumps.ts') === true) {
     process.stderr.write(
       `count-unpublished-bumps: latest=${publishedVersion} pending=${String(verdict.pending.length)} ` +
         `(${csv(verdict.pending)}) published-after-latest=${String(verdict.published.length)} ` +
-        `(${csv(verdict.published)}) skipped=${String(verdict.skipped.length)} (${csv(verdict.skipped)})\n`
+        `(${csv(verdict.published)}) staged=${String(verdict.staged.length)} ` +
+        `(${csv(verdict.staged)}) skipped=${String(verdict.skipped.length)} (${csv(verdict.skipped)})\n`
     );
     // One PENDING version per line, nothing for zero: `grep -c .` over stdout
     // is the count the workflow's stall verdict reads, mirroring

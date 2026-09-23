@@ -323,6 +323,32 @@ jobs:
             exit 0
           fi
 
+          TAG="nexus-agents@$local_version"
+
+          # The commit the tag resolves to, on origin. `--tags` lists the peeled
+          # `^{}` line for an annotated tag; a lightweight tag has only the
+          # direct line, which already IS the commit. Empty when origin has no
+          # such tag — and also empty when ls-remote itself fails.
+          remote_tag_commit() {
+            git ls-remote --tags origin "refs/tags/$TAG" \
+              | awk -v t="refs/tags/$TAG" '$2 == t "^{}" { peeled = $1 } $2 == t { direct = $1 } END { print (peeled != "" ? peeled : direct) }'
+          }
+
+          # If local_version has a git tag created in the last 30 minutes, it
+          # was published and is currently in npm's staged-publish window (#6500).
+          # npm holds accepted packages in a staged state where `npm view` returns 404
+          # for up to ~17 minutes. It is already published, so stand down gracefully.
+          local_or_remote_tag_commit=$(git rev-parse -q --verify "refs/tags/$TAG" 2>/dev/null || remote_tag_commit || true)
+          if [ -n "$local_or_remote_tag_commit" ]; then
+            tag_time=$(git log -1 --format="%ct" "$local_or_remote_tag_commit" 2>/dev/null || echo 0)
+            now=$(date +%s)
+            age=$((now - tag_time))
+            if [ "$age" -ge 0 ] && [ "$age" -le 1800 ]; then
+              echo "Tag $TAG exists at $local_or_remote_tag_commit created $age seconds ago (within npm's 30-minute staged-publish window). $local_version is staged on npm, not yet visible in registry. No fallback publish needed (#6500)."
+              exit 0
+            fi
+          fi
+
           # Count NON-EMPTY changesets, matching changesets/action's own
           # `hasNonEmptyChangesets` predicate via the same @changesets/read
           # library (#4646). Counting FILES here was a real hole: an empty
@@ -376,21 +402,10 @@ jobs:
           # changesets/action's job — which this fallback bypasses. Without the
           # next block the tag + Release + SBOM trail is silently lost (#2696:
           # 2.68.0–2.76.0 reached npm with no git tag and no GitHub Release).
-          TAG="nexus-agents@$local_version"
           if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "::warning::changeset publish did not create tag $TAG — creating it now"
             git tag "$TAG" "$GITHUB_SHA"
           fi
-          # The commit the tag resolves to, on origin. `--tags` lists the peeled
-          # `^{}` line for an annotated tag; a lightweight tag has only the
-          # direct line, which already IS the commit. Empty when origin has no
-          # such tag — and also empty when ls-remote itself fails, so a dead
-          # origin lands in the explicit error branches below rather than in a
-          # bare `set -e` exit with no annotation.
-          remote_tag_commit() {
-            git ls-remote --tags origin "refs/tags/$TAG" \
-              | awk -v t="refs/tags/$TAG" '$2 == t "^{}" { peeled = $1 } $2 == t { direct = $1 } END { print (peeled != "" ? peeled : direct) }'
-          }
           local_tag_commit=$(git rev-list -n 1 "refs/tags/$TAG")
           # A push failure used to be `|| echo "::warning::tag already on origin"`
           # — every rejection, auth failure and network error read as benign, and

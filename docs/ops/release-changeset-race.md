@@ -124,7 +124,7 @@ pnpm build
 pnpm release       # runs `changeset publish` against current package.json
 ```
 
-`changeset publish` is idempotent — if a version already exists on npm, it errors gracefully without re-publishing or affecting other versions.
+`changeset publish` is wrapped by `scripts/publish-packages.ts` (#6500) to handle npm's staged-publish window: when a package is published with provenance/OIDC, npm holds it in a staged state (up to ~17 minutes) before it appears in `npm view`. If a subsequent release run (e.g. from a quick merge) runs during this window, npm rejects re-publishing with `E409: Cannot publish over previously staged version "<version>"`. `scripts/publish-packages.ts` catches this error, verifies that all failed packages are previously staged, logs `staged, not yet visible in registry`, and treats the release as published without failing the run.
 
 After publishing, manually upload the SBOM and attest provenance if needed:
 
@@ -148,14 +148,17 @@ The race is rare. To minimize the chance of triggering it:
 
 - **Never publish directly from inside `.publish-stage/` (`#6494`).** The stale-stage check (`scripts/check-publish-stage.ts`) is wired into the source manifest's `prepublishOnly` lifecycle hook at the package root (`packages/nexus-agents/`). The staged manifest deliberately strips `prepublishOnly` so consumer installs never execute it. Consequently, changing into `packages/nexus-agents/.publish-stage/` and running `npm publish` or `pnpm publish` bypasses the stale-stage verification and risks publishing stale bytes from a prior commit or interrupted build. Publishing must always be performed via `pnpm release` from the repository root or via the automated GitHub Actions `release` / `manual-publish` jobs, which re-stage at HEAD before publishing.
 - **Never `workflow_dispatch` a publish from a non-`main` ref.** The `manual-publish` job's `Guard — main only` step now fails this, but the discipline still matters.
-- **Watch for the symptom early**: after merging a release PR, if `npm view nexus-agents version` still shows the old version after ~5 minutes, check for the skew. The `Detect publish-race version skew` step auto-recovers `package.json`-ahead; the `Detect npm-ahead version skew` step fails loudly on the inverse.
+- **Watch for the symptom early**: after merging a release PR, if `npm view nexus-agents version` still shows the old version after ~5 minutes, check for the skew. The `Detect publish-race version skew` step auto-recovers `package.json`-ahead; the `Detect npm-ahead version skew` step fails loudly on the inverse. Note that npm's staged-publish window can keep `npm view` returning 404 or the previous version for up to ~17 minutes even after a successful publish (#6500); `scripts/count-unpublished-bumps.ts` and `Detect publish-race version skew` account for git tags created within 30 minutes to avoid false-alarm force-publishes during this window.
 
 ## See also
 
 - `#2382` — original ops issue documenting the race.
 - `PR #2383` — workflow fallback implementation.
 - `#2696` — the wrong-branch fallback variant: fallback published off `changeset-release/main`, skipping tags + Releases for 2.68.0–2.76.0.
+- `#6500` — npm staged-publish window causes double-publish and E409 failure.
 - `.github/workflows/release.yml` — the actual workflow definition (skew-detection steps + `manual-publish` guard).
 - `.github/workflows/ci.yml` — the `Changeset Presence` required check.
 - `scripts/check-changeset.ts` — the changeset-presence gate.
-- `package.json` `release` script — runs `pnpm build`, then `scripts/stage-publish.ts` (which builds the staged package with bundled dependencies, #6481), then `changeset publish` under `npm_config_node_linker=hoisted`.
+- `scripts/publish-packages.ts` — publish wrapper recovering staged-version E409 errors.
+- `scripts/count-unpublished-bumps.ts` — first-parent commit walk classifying published, pending, and staged versions.
+- `package.json` `release` script — runs `pnpm build`, then `scripts/stage-publish.ts` (which builds the staged package with bundled dependencies, #6481), then `scripts/publish-packages.ts` under `npm_config_node_linker=hoisted` (#6500).

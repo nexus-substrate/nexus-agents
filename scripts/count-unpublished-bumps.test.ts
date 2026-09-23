@@ -13,7 +13,10 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_STAGED_WINDOW_SECONDS,
+  isVersionStaged,
   PACKAGE_JSON_PATH,
+  PACKAGE_NAME,
   parseRegistryVersions,
   unpublishedBumpsAt,
 } from './count-unpublished-bumps.js';
@@ -145,6 +148,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: [],
       published: [],
+      staged: [],
       skipped: [],
     });
   });
@@ -155,6 +159,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: ['1.2.0'],
       published: [],
+      staged: [],
       skipped: [],
     });
   });
@@ -167,6 +172,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: ['1.2.0', '1.1.0'],
       published: [],
+      staged: [],
       skipped: [],
     });
   });
@@ -180,6 +186,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: [],
       published: ['1.2.0', '1.1.0'],
+      staged: [],
       skipped: [],
     });
   });
@@ -191,6 +198,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: ['1.3.0'],
       published: ['1.1.0'],
+      staged: [],
       skipped: [],
     });
   });
@@ -206,6 +214,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: [],
       published: [],
+      staged: [],
       skipped: ['1.1.0'],
     });
   });
@@ -219,6 +228,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: [],
       published: [],
+      staged: [],
       skipped: ['1.1.0', '1.2.0'],
     });
   });
@@ -232,6 +242,7 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: [],
       published: [],
+      staged: [],
       skipped: ['1.1.0', '1.0.0'],
     });
   });
@@ -273,8 +284,106 @@ describe('unpublishedBumpsAt', () => {
       kind: 'measured',
       pending: ['1.2.0', '1.1.0'],
       published: [],
+      staged: [],
       skipped: [],
     });
+  });
+
+  it('classifies versions in options.stagedVersions as staged, not pending (#6500)', () => {
+    const dir = repoWithBumps();
+    expect(
+      unpublishedBumpsAt(dir, 'HEAD', '1.1.0', ['1.0.0', '1.1.0'], {
+        stagedVersions: ['1.2.0'],
+      })
+    ).toEqual({
+      kind: 'measured',
+      pending: [],
+      published: [],
+      staged: ['1.2.0'],
+      skipped: [],
+    });
+  });
+
+  it('detects staged version when recent git tag exists within stagedWindowSeconds (#6500)', () => {
+    const dir = repoWithBumps();
+    execFileSync('git', ['-C', dir, 'tag', `${PACKAGE_NAME}@1.2.0`, 'HEAD']);
+    const tagTimestamp = Number(
+      execFileSync('git', ['-C', dir, 'log', '-1', '--format=%ct', 'HEAD'], {
+        encoding: 'utf-8',
+      }).trim()
+    );
+    expect(
+      unpublishedBumpsAt(dir, 'HEAD', '1.1.0', ['1.0.0', '1.1.0'], {
+        stagedWindowSeconds: 1800,
+        nowSeconds: tagTimestamp + 60,
+      })
+    ).toEqual({
+      kind: 'measured',
+      pending: [],
+      published: [],
+      staged: ['1.2.0'],
+      skipped: [],
+    });
+  });
+
+  it('treats version as pending when git tag is older than stagedWindowSeconds (#6500)', () => {
+    const dir = repoWithBumps();
+    execFileSync('git', ['-C', dir, 'tag', `${PACKAGE_NAME}@1.2.0`, 'HEAD']);
+    const tagTimestamp = Number(
+      execFileSync('git', ['-C', dir, 'log', '-1', '--format=%ct', 'HEAD'], {
+        encoding: 'utf-8',
+      }).trim()
+    );
+    expect(
+      unpublishedBumpsAt(dir, 'HEAD', '1.1.0', ['1.0.0', '1.1.0'], {
+        stagedWindowSeconds: 1800,
+        nowSeconds: tagTimestamp + 3600,
+      })
+    ).toEqual({
+      kind: 'measured',
+      pending: ['1.2.0'],
+      published: [],
+      staged: [],
+      skipped: [],
+    });
+  });
+});
+
+describe('isVersionStaged', () => {
+  it('returns true when git tag exists within windowSeconds', () => {
+    const dir = repoWithBumps();
+    execFileSync('git', ['-C', dir, 'tag', `${PACKAGE_NAME}@1.2.0`, 'HEAD']);
+    const tagTimestamp = Number(
+      execFileSync('git', ['-C', dir, 'log', '-1', '--format=%ct', 'HEAD'], {
+        encoding: 'utf-8',
+      }).trim()
+    );
+    expect(isVersionStaged(dir, PACKAGE_NAME, '1.2.0', 1800, tagTimestamp + 300)).toBe(true);
+  });
+
+  it('returns false when git tag is outside windowSeconds', () => {
+    const dir = repoWithBumps();
+    execFileSync('git', ['-C', dir, 'tag', `${PACKAGE_NAME}@1.2.0`, 'HEAD']);
+    const tagTimestamp = Number(
+      execFileSync('git', ['-C', dir, 'log', '-1', '--format=%ct', 'HEAD'], {
+        encoding: 'utf-8',
+      }).trim()
+    );
+    expect(isVersionStaged(dir, PACKAGE_NAME, '1.2.0', 1800, tagTimestamp + 2000)).toBe(false);
+  });
+
+  it('returns false when git tag does not exist', () => {
+    const dir = repoWithBumps();
+    expect(isVersionStaged(dir, PACKAGE_NAME, '9.9.9')).toBe(false);
+  });
+
+  it('returns false for empty version (named empty case)', () => {
+    const dir = repoWithBumps();
+    expect(isVersionStaged(dir, PACKAGE_NAME, '')).toBe(false);
+  });
+
+  it('exports DEFAULT_STAGED_WINDOW_SECONDS as 1800s (30m)', () => {
+    expect(DEFAULT_STAGED_WINDOW_SECONDS).toBe(1800);
   });
 });
 
