@@ -164,7 +164,6 @@ High-level workflow patterns and the AI software factory.
 - **WorkflowRouter** (`orchestration/workflow-router.ts`, Issue #844): Rule-based pattern selection (sequential, wave, graph, consensus, aflow, puppeteer)
 - **AI Software Factory** (`orchestration/spec/`, Epic #843): Full pipeline — `parseSpec` -> `decomposeSpec` -> `compileSpecToGraph` -> `executeGraph` -> `validateScenario` -> `analyzeFailures`
 - **OutcomeStore** (`orchestration/outcomes/`, Issue #861): Bounded append-only store for task outcome tracking
-- **Multi-CLI orchestration** (Issues #862-#866): `executeParallelExploration`, `executeTriangulatedReview`, `executeConsensusPlan`
 
 ### pipeline/
 
