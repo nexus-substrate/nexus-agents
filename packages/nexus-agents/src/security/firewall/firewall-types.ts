@@ -10,12 +10,21 @@
  */
 
 import { z } from 'zod';
+import type { Result } from '../../core/result.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
-import type { AgentAction } from '../action-schema.js';
+import type { AgentAction, SourceCitation } from '../action-schema.js';
 import type { Violation } from '../policy-gate.js';
+import type { ClassifyResult } from '../trust-classifier.js';
+import type { SanitizedInput, TrustTier } from '../trust-types.js';
 import type { FirewallPolicyMode } from './firewall-policy-mode.js';
 import type {
+  FirewallActionEvaluationOptions,
+  FirewallActionPolicyResult,
+  FirewallPolicyEvaluation,
+} from './firewall-policy-stage.js';
+import type {
   ReputationAssessment,
+  ReputationGateDecision,
   ReputationGatingMode,
   GitHubUserMetadata,
 } from '../reputation-model.js';
@@ -291,3 +300,136 @@ export interface FirewallError {
    */
   readonly missing?: readonly string[];
 }
+
+// ============================================================================
+// Firewall Result & Action Validation
+// ============================================================================
+
+/**
+ * Output of the firewall pipeline. Aggregates results from each stage.
+ */
+export interface FirewallResult {
+  readonly sanitized: SanitizedInput;
+  readonly trust: ClassifyResult;
+  /**
+   * Whether the author is on the maintainer allowlist — present ONLY when an
+   * allowlist was consulted (#4992), i.e. one was supplied at construction or
+   * per call. `trust.isAllowlisted` is the classifier's published always-boolean
+   * field and reads `false` whether the list was empty or never supplied; this
+   * field is the one to record, because absence here means "not measured"
+   * rather than "measured false" — the same treatment `reputationGate` gets.
+   */
+  readonly isAllowlisted?: boolean;
+  readonly reputation?: ReputationAssessment;
+  /**
+   * The tier consumers should ENFORCE on (#3106): the classifier tier
+   * reconciled with the reputation assessment (demotion-only; Tier-1/allowlist
+   * wins; equals `trust.trustTier` when reputation is absent). Previously the
+   * reputation tier was computed but dropped — `trust.trustTier` alone left
+   * reputation unenforced.
+   */
+  readonly effectiveTrustTier: TrustTier;
+  /**
+   * The reputation gating decision behind `effectiveTrustTier` (#5381).
+   *
+   * **Absent means the reputation stage did not run** — not "it ran and
+   * suppressed nothing". `ReputationGateDecision.demotionSuppressed` is a
+   * required boolean, so surfacing it unconditionally would report `false` for a
+   * check that never happened. Since the stage defaults to off, that
+   * unevaluated case is the common one.
+   */
+  readonly reputationGate?: ReputationGateDecision;
+  readonly atl: string;
+  /**
+   * Rule-of-Two assessment surfaced by the `policyEnforcement` stage (#3198):
+   * present (`severity: 'block'`) when the effective tier is untrusted AND the
+   * context has both write and secret access; `undefined` when the stage is
+   * disabled or the rule holds. Since #5380 a view onto {@link policy} — its
+   * `RULE_OF_TWO` entry — kept so existing consumers read the same field.
+   */
+  readonly ruleOfTwoViolation?: Violation;
+  /**
+   * The `policyEnforcement` stage's full verdict (#5380). **Absent means the
+   * stage did not run.** Its `scope` says how much of `evaluatePolicy` could be
+   * evaluated ({@link FirewallPolicyEvaluation}), so "seven checks, none fired"
+   * is distinguishable from "one check, six unmeasured". `wouldRefuse` and the
+   * `enforce` refusal both derive from `policy.violations`, whichever scope.
+   */
+  readonly policy?: FirewallPolicyEvaluation;
+  /**
+   * The rollout mode this run was evaluated under (#5382). Recorded on the
+   * result rather than left implicit so a consumer reading a verdict can tell
+   * WHICH policy produced it — a result that does not say which rules were in
+   * force cannot be audited later.
+   */
+  readonly policyMode: FirewallPolicyMode;
+  /**
+   * Whether `enforce` would have refused this input.
+   *
+   * This is what makes `audit` mode measurable, and it is the field that makes
+   * the mode a real gate rather than a switch with two indistinguishable
+   * settings: under `audit` the answer is computed and reported while the input
+   * is still allowed through, so an operator can size the impact of flipping to
+   * `enforce` before flipping it.
+   *
+   * Always `false` under `enforce`, because an input that would be refused IS
+   * refused — it comes back as a `POLICY_REFUSED` error, not a result.
+   */
+  readonly wouldRefuse: boolean;
+  readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
+  /**
+   * Whether a durable `AuditLogger` was configured for this instance (#4992
+   * review). `configured` means this run's events were HANDED to that logger;
+   * delivery to the hash chain is subject to the logger's own severity filter
+   * (trust events are `info`), its bounded queue and its timed, fail-loud
+   * flush, and is NOT confirmed per call — the write is queued. `none` means
+   * the events exist only in the in-memory trail, which the next `process()`
+   * call clears. This is a construction-time fact, not a per-call outcome.
+   */
+  readonly auditSink: 'configured' | 'none';
+  readonly durationMs: number;
+  /**
+   * Action-shaped re-entry handle (#6310). Evaluates policy for one action
+   * against this classified input's metadata and enforced tier, recording only
+   * the `policy_gate` event to the audit trail without re-running sanitization,
+   * classification or reputation gating.
+   */
+  readonly evaluateAction: (
+    action: AgentAction,
+    options?: Pick<FirewallActionEvaluationOptions, 'context' | 'existingLabels'>
+  ) => Result<FirewallActionPolicyResult, FirewallError>;
+}
+
+/**
+ * Outcome of {@link HostileInputFirewall.validateAction} (#5382).
+ *
+ * A discriminated union rather than a struct with optional fields, deliberately:
+ * a caller cannot read `satisfied` without first narrowing on `evaluated`, so
+ * "the stage did not run" is structurally impossible to misread as "the stage
+ * ran and passed". `stages.corroboration` defaults to `false`, which makes the
+ * unevaluated branch the COMMON case — exactly where a silent `satisfied: true`
+ * would do the most damage.
+ */
+export type ActionValidation =
+  | {
+      readonly evaluated: false;
+      /** Why no verdict exists. Absence is attributable, not anonymous. */
+      readonly reason: 'corroboration-stage-disabled';
+      readonly policyMode: FirewallPolicyMode;
+    }
+  | {
+      readonly evaluated: true;
+      readonly satisfied: boolean;
+      /** Unmet corroboration requirements; empty when satisfied. */
+      readonly missing: readonly string[];
+      readonly corroboratingSources: readonly SourceCitation[];
+      /**
+       * The validator's #5796 marker: the floor was cleared, and only by
+       * `repoFile` citations the producer found absent from the base ref.
+       * Carried so a consumer can report it without re-deriving the rule.
+       */
+      readonly clearedOnlyByUnverifiedSources: boolean;
+      readonly policyMode: FirewallPolicyMode;
+      /** Whether `enforce` would have refused this action (see FirewallResult). */
+      readonly wouldRefuse: boolean;
+    };

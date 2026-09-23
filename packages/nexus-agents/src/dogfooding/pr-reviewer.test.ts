@@ -988,8 +988,10 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     async function reviewAndPost(fw: HostileInputFirewall): Promise<{
       result: PRReviewResult;
       processSpy: MockInstance<HostileInputFirewall['process']>;
+      evaluateActionSpy: MockInstance<HostileInputFirewall['evaluateAction']>;
     }> {
       const processSpy = vi.spyOn(fw, 'process');
+      const evaluateActionSpy = vi.spyOn(fw, 'evaluateAction');
       _setUntrustedInputFirewallForTests(fw);
       mockFormatReviewComment.mockReturnValueOnce('Ordinary review body');
       const { PRReviewer } = await import('./pr-reviewer.js');
@@ -998,14 +1000,14 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
         adapterReturning({ content: 'APPROVED', warnings: [] })
       ).reviewPR(URL);
       if (!r.ok) throw r.error;
-      return { result: r.value, processSpy };
+      return { result: r.value, processSpy, evaluateActionSpy };
     }
 
     it('under off: the DraftReply is evaluated exactly once, via the firewall, and a tier-3 author is not posted to', async () => {
       prBy('drive-by', 'NONE');
       mockEvaluatePolicy.mockClear();
 
-      const { result, processSpy } = await reviewAndPost(firewallWith());
+      const { result, processSpy, evaluateActionSpy } = await reviewAndPost(firewallWith());
 
       // Enforced under `off`: the caller acts on `policy.allowed`, which the
       // mode does not gate — the firewall itself refused nothing.
@@ -1015,14 +1017,30 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
 
       // ONE composition: `evaluatePolicy` ran once, for the one action…
       expect(mockEvaluatePolicy).toHaveBeenCalledTimes(1);
-      // …asked THROUGH the firewall, with that action…
-      const actionCalls = processSpy.mock.calls.filter(([, o]) => o?.action !== undefined);
-      expect(actionCalls.map(([, o]) => o?.action?.type)).toEqual(['DraftReply']);
+      // …asked THROUGH the firewall, with that action (#6310: via evaluateAction)…
+      expect(evaluateActionSpy).toHaveBeenCalledTimes(1);
+      expect(evaluateActionSpy.mock.calls[0]?.[0]?.type).toBe('DraftReply');
       // …and carrying the firewall's audit trail, which a direct call never has.
       expect(mockEvaluatePolicy.mock.calls[0]?.[2]).toBeDefined();
-      for (const r of processSpy.mock.results) {
-        expect(r.value).toMatchObject({ ok: true, value: { policyMode: 'off' } });
-      }
+      expect(evaluateActionSpy.mock.results[0]?.value).toMatchObject({
+        ok: true,
+        value: { policyMode: 'off' },
+      });
+      // Input-level process was called exactly once (classification)
+      expect(processSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('records one trust event and one sanitization event per review, plus one policy gate for posting (#6310)', async () => {
+      const { logger, log } = stubAuditLogger();
+      const fw = firewallWith({ auditLogger: logger });
+      prBy('contributor', 'CONTRIBUTOR');
+      await reviewAndPost(fw);
+
+      const byAction = (name: string): unknown[] =>
+        log.mock.calls.filter(([input]) => (input as { action?: string }).action === name);
+      expect(byAction('security.trust_classification')).toHaveLength(1);
+      expect(byAction('security.sanitization')).toHaveLength(1);
+      expect(byAction('security.policy_gate')).toHaveLength(1);
     });
 
     it('under off: a tier-2 author with cited files is posted, once the same single evaluation allows it', async () => {
