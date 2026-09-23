@@ -130,7 +130,8 @@ export class OpenAIAdapter extends BaseAdapter {
    * @throws {ConfigError} If API key is missing
    */
   constructor(config: OpenAIAdapterConfig) {
-    const resolvedModelId = resolveModelId(config.modelId);
+    const resolvedModelId =
+      config.verbatimModelId === true ? config.modelId : resolveModelId(config.modelId);
 
     // Build baseConfig conditionally to satisfy exactOptionalPropertyTypes
     const baseConfig: BaseAdapterConfig = {

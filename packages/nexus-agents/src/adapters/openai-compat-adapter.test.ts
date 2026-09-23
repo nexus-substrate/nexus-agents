@@ -69,6 +69,7 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     delete process.env['NEXUS_OPENAI_COMPAT_KEY'];
     delete process.env['NEXUS_OPENCODE_CONFIG'];
     delete process.env['NEXUS_OPENAI_COMPAT_ENDPOINT'];
+    delete process.env['NEXUS_OPENAI_COMPAT_MODELS'];
     mockReadOpencodeGateway.mockReset();
     mockReadOpencodeGateway.mockReturnValue(null);
   });
@@ -98,11 +99,13 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';
     const result = readOpenAICompatEnv();
     // Previously `{ baseUrl, apiKey }` only; the config now carries the arm's
-    // endpoint identity (#4392 inc 2 step 2), defaulted below.
+    // endpoint identity (#4392 inc 2 step 2), defaulted below, and the model
+    // allowlist (#6600), empty when NEXUS_OPENAI_COMPAT_MODELS is unset.
     expect(result).toEqual({
       baseUrl: 'https://gateway.example/v1',
       apiKey: 'sk-test',
       endpoint: 'openai-compat',
+      modelAllowlist: [],
     });
   });
 

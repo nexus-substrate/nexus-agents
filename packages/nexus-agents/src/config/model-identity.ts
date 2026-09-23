@@ -277,10 +277,14 @@ function detectFamily(normalised: string, vendor: ModelVendor): string | undefin
 }
 
 /**
- * Pull the version-ish substring after the family — `claude-opus-4-1`
- * → `4-1`, `gpt-4o-2024-08-06` → `2024-08-06`. Best-effort; many
- * models won't have a clean post-family numeric run, in which case
- * we return undefined.
+ * Pull the version-ish substring next to the family tier —
+ * `claude-opus-4-1` → `4-1`, `gpt-4o-2024-08-06` → `2024-08-06`.
+ *
+ * A numeric run AFTER the tier wins. When there is none, the run immediately
+ * BEFORE it is used (#6605): gateway catalogues write `claude_4_5_opus`, and
+ * Google writes `gemini-2.5-pro`, and both used to come back versionless — so
+ * two generations of a family shared one identity key. Best-effort; an id
+ * with neither returns undefined.
  */
 function extractVersion(normalised: string, family: string): string | undefined {
   // Strip vendor prefix if present, then look for a numeric segment
@@ -289,9 +293,20 @@ function extractVersion(normalised: string, family: string): string | undefined 
   const idx = normalised.indexOf(familyRoot);
   if (idx === -1) return undefined;
   const tail = normalised.slice(idx + familyRoot.length);
-  const m = /^[-]?(\d[\d.\-]*)/.exec(tail);
-  if (m === null) return undefined;
-  return m[1]?.replace(/-+$/, '') ?? undefined;
+  const after = /^[-]?(\d[\d.\-]*)/.exec(tail)?.[1]?.replace(/-+$/, '');
+  if (after !== undefined && after !== '') return after;
+  return /(?:^|-)(\d+(?:[.-]\d+)*)-$/.exec(normalised.slice(0, idx))?.[1];
+}
+
+/**
+ * Comparison key for a version string: normalised like an id, with `.`
+ * unified to `-`, so `4.5` and `4-5` compare equal (#6605). A KEY only —
+ * `ResolvedModelIdentity.version` keeps the spelling it was parsed from, and
+ * id normalisation stays {@link normaliseModelId}. Shared by the registry's
+ * identity tier and `canonicalModelKey`, which must agree on it.
+ */
+export function canonicalVersionKey(version: string): string {
+  return normaliseModelId(version).replace(/\./g, '-');
 }
 
 function detectQuirks(normalised: string): readonly string[] {

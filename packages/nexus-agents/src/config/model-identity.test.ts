@@ -44,6 +44,18 @@ describe('parseModelId — clean upstream names', () => {
     expect(r.family).toBe('gemini-flash');
   });
 
+  // #6605: the version can precede the family tier.
+  it('reads a version that precedes the tier', () => {
+    expect(parseModelId('gemini-2.0-flash').version).toBe('2.0');
+    expect(parseModelId('vertex_ai/gemini-2.5-pro').version).toBe('2.5');
+    expect(parseModelId('claude_4_5_opus').version).toBe('4-5');
+  });
+
+  it('still prefers the version that follows the tier', () => {
+    expect(parseModelId('claude-3-5-sonnet-20241022').version).toBe('20241022');
+    expect(parseModelId('claude-opus-4-1').version).toBe('4-1');
+  });
+
   it('classifies o1-preview as reasoning', () => {
     const r = parseModelId('o1-preview');
     expect(r.vendor).toBe('openai');

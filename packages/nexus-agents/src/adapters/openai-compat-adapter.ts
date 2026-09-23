@@ -48,9 +48,11 @@ import {
   DEFAULT_OPENAI_COMPAT_ENDPOINT,
   OPENAI_COMPAT_ENDPOINT_ENV,
   OPENAI_COMPAT_KEY_ENV,
+  OPENAI_COMPAT_MODELS_ENV,
   OPENAI_COMPAT_URL_ENV,
 } from './sdk/types.js';
 import { hostnameOf, redactApiKey } from './sdk/gateway-env.js';
+import { readModelAllowlist, refineGatewayCatalog } from './gateway-catalog-filter.js';
 
 export interface OpenAICompatConfig {
   /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
@@ -65,6 +67,11 @@ export interface OpenAICompatConfig {
    * registration. Never the URL.
    */
   readonly endpoint?: string;
+  /**
+   * Model-id allowlist (`NEXUS_OPENAI_COMPAT_MODELS`, #6600), applied before
+   * the adapter cap; `*` is a wildcard. Absent or empty means no allowlist.
+   */
+  readonly modelAllowlist?: readonly string[];
 }
 
 /**
@@ -129,7 +136,12 @@ function readGatewayFromEnv(): OpenAICompatConfig | null {
   const envKey = process.env[OPENAI_COMPAT_KEY_ENV]?.trim();
   if (envUrl === undefined || envUrl === '') return null;
   if (envKey === undefined || envKey === '') return null;
-  return { baseUrl: envUrl, apiKey: envKey, endpoint: readOpenAICompatEndpoint() };
+  return {
+    baseUrl: envUrl,
+    apiKey: envKey,
+    endpoint: readOpenAICompatEndpoint(),
+    modelAllowlist: readModelAllowlist(),
+  };
 }
 
 function readGatewayFromOpencode(): OpenAICompatConfig | null {
@@ -141,6 +153,7 @@ function readGatewayFromOpencode(): OpenAICompatConfig | null {
     baseUrl: fromFile.baseURL,
     apiKey: fromFile.apiKey,
     endpoint: readOpenAICompatEndpoint(),
+    modelAllowlist: readModelAllowlist(),
   };
 }
 
@@ -179,7 +192,9 @@ export function readOpenAICompatEndpoint(
  * unbounded list becomes unbounded objects during bootstrap. Aggregators
  * legitimately serve hundreds — models.dev lists 339 for one and 620 for
  * another — so this is a sanity ceiling on adapter construction, not a claim
- * about what a gateway may offer.
+ * about what a gateway may offer. It is checked AFTER deduplication, the
+ * non-chat filter and the operator allowlist (#6600), so a large catalogue is
+ * served by allowlisting the models wanted rather than refused.
  */
 const MAX_DISCOVERED_MODELS = 256;
 
@@ -201,10 +216,10 @@ const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
  * log line, and the count is what tells an operator the gateway's listing
  * needs a look.
  */
-function keepValidModelIds(
-  models: readonly DiscoveredModel[],
+function keepValidModelIds<T extends { readonly id: string }>(
+  models: readonly T[],
   logger: ILogger | undefined
-): readonly DiscoveredModel[] {
+): readonly T[] {
   const kept = models.filter((m) => MODEL_ID_PATTERN.test(m.id));
   const dropped = models.length - kept.length;
   if (dropped > 0) {
@@ -247,20 +262,17 @@ export async function discoverModels(
       maxRetries: 1,
     });
     const list = await client.models.list();
-    if (list.data.length > MAX_DISCOVERED_MODELS) {
-      return err(
-        new ConfigError(
-          `Gateway ${hostnameOf(config.baseUrl)} listed ${String(list.data.length)} models, above the ` +
-            `${String(MAX_DISCOVERED_MODELS)} cap. Refusing to build an adapter per model.`
-        )
-      );
+    // `listing` is the raw row: gateways add fields beyond the SDK's `Model`
+    // type (`type`, `mode`, `architecture`) that say whether it can chat.
+    const listed = list.data.map((m) => ({ id: m.id, listing: m, model: m }));
+    const allowlist = config.modelAllowlist ?? [];
+    const refined = refineGatewayCatalog(keepValidModelIds(listed, logger), allowlist, logger);
+    if (refined.length > MAX_DISCOVERED_MODELS) {
+      return err(overCapError(config, list.data.length, refined.length, allowlist.length > 0));
     }
-    const models: readonly DiscoveredModel[] = list.data.map((m) => ({
-      id: m.id,
-      created: m.created,
-      ownedBy: m.owned_by,
-    }));
-    return ok(keepValidModelIds(models, logger));
+    return ok(
+      refined.map(({ model: m }) => ({ id: m.id, created: m.created, ownedBy: m.owned_by }))
+    );
   } catch (e: unknown) {
     // This message lands on cli-server-gateway's probe-failed warn line, so it
     // names the host (a base URL can carry userinfo) and never the key: a
@@ -273,6 +285,28 @@ export async function discoverModels(
       )
     );
   }
+}
+
+/**
+ * The refusal for a catalogue still above the cap after refinement. It names
+ * the allowlist variable, which is the operator's way through (#6600).
+ */
+function overCapError(
+  config: OpenAICompatConfig,
+  listed: number,
+  refined: number,
+  allowlisted: boolean
+): ConfigError {
+  const cap = String(MAX_DISCOVERED_MODELS);
+  const host = hostnameOf(config.baseUrl);
+  const detail = allowlisted
+    ? `${OPENAI_COMPAT_MODELS_ENV} matched ${String(refined)} of its ${String(listed)} listed models`
+    : `it listed ${String(listed)} models (${String(refined)} chat models)`;
+  return new ConfigError(
+    `Gateway ${host}: ${detail}, above the ${cap} cap. Refusing to build an adapter per model. ` +
+      `Set ${OPENAI_COMPAT_MODELS_ENV} to a comma-separated allowlist of model ids ` +
+      `(\`*\` is a wildcard) naming at most ${cap} models.`
+  );
 }
 
 /**
@@ -294,7 +328,16 @@ export function createOpenAICompatAdapter(
   modelId: string,
   config: OpenAICompatConfig
 ): GatewayModelAdapter {
-  const inner = new OpenAIAdapter({ modelId, apiKey: config.apiKey, baseUrl: config.baseUrl });
+  // Verbatim: the id goes to the gateway exactly as it listed it. The direct
+  // adapter's alias table (`gpt-4o` -> a dated snapshot) names models the
+  // gateway may not serve, and would make `NEXUS_VOTER_MODEL_*` pins miss
+  // (#6605).
+  const inner = new OpenAIAdapter({
+    modelId,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    verbatimModelId: true,
+  });
   return withUsageRecording(inner, `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`);
 }
 

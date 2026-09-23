@@ -29,6 +29,7 @@ import { dirname } from 'node:path';
 import { createLogger } from '../core/index.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
 import { discoverModels } from '../adapters/openai-compat-adapter.js';
+import { readModelAllowlist } from '../adapters/gateway-catalog-filter.js';
 
 const logger = createLogger({ component: 'init-opencode' });
 
@@ -287,7 +288,11 @@ export async function runOpencodeValidate(opencodePath: string): Promise<Opencod
         'opencode.json does not resolve a usable gateway. Check that providers.openai-compat.options.{baseURL, apiKey} are set and that any {env:VAR} interpolation references are exported.',
     };
   }
-  const result = await discoverModels({ baseUrl: config.baseURL, apiKey: config.apiKey });
+  const result = await discoverModels({
+    baseUrl: config.baseURL,
+    apiKey: config.apiKey,
+    modelAllowlist: readModelAllowlist(),
+  });
   if (!result.ok) {
     return { ok: false, baseURL: config.baseURL, reason: result.error.message };
   }

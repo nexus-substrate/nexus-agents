@@ -1,0 +1,85 @@
+{
+  "_comment": "Shape of a corporate OpenAI-spec gateway GET /v1/models response fronting OpenAI, Anthropic and Google models (#6605, #6600). Ids carry slashes, dots, underscores, vendor prefixes, duplicates and non-chat models. Three entries carry listing metadata; the rest carry only the OpenAI-standard fields, so their classification falls to the id heuristic.",
+  "object": "list",
+  "data": [
+    { "id": "gpt-4o", "object": "model", "created": 1715367049, "owned_by": "openai" },
+    { "id": "gpt-5.2", "object": "model", "created": 1765000000, "owned_by": "openai" },
+    { "id": "openai/o3", "object": "model", "created": 1744000000, "owned_by": "openai" },
+    {
+      "id": "text-embedding-3-large",
+      "object": "model",
+      "created": 1705953180,
+      "owned_by": "openai"
+    },
+    { "id": "tts-1-hd", "object": "model", "created": 1699046015, "owned_by": "openai" },
+    { "id": "whisper-1", "object": "model", "created": 1677532384, "owned_by": "openai" },
+    { "id": "dall-e-3", "object": "model", "created": 1698785189, "owned_by": "openai" },
+    {
+      "id": "omni-moderation-latest",
+      "object": "model",
+      "created": 1731689265,
+      "owned_by": "openai"
+    },
+    { "id": "gpt-4o-mini-tts", "object": "model", "created": 1742403959, "owned_by": "openai" },
+    { "id": "gpt-4o", "object": "model", "created": 1715367049, "owned_by": "openai" },
+    { "id": "claude_4_5_opus", "object": "model", "created": 1763000000, "owned_by": "anthropic" },
+    { "id": "claude_4_1_opus", "object": "model", "created": 1754000000, "owned_by": "anthropic" },
+    {
+      "id": "claude-sonnet-4.5",
+      "object": "model",
+      "created": 1759000000,
+      "owned_by": "anthropic"
+    },
+    {
+      "id": "anthropic/claude-haiku-4-5",
+      "object": "model",
+      "created": 1760000000,
+      "owned_by": "anthropic"
+    },
+    { "id": "claude_4_5_opus", "object": "model", "created": 1763000000, "owned_by": "anthropic" },
+    { "id": "gemini-2.5-pro", "object": "model", "created": 1750000000, "owned_by": "google" },
+    { "id": "gemini-3-pro", "object": "model", "created": 1763500000, "owned_by": "google" },
+    {
+      "id": "vertex_ai/gemini-2.5-flash",
+      "object": "model",
+      "created": 1750000000,
+      "owned_by": "google"
+    },
+    {
+      "id": "gemini-embedding-001",
+      "object": "model",
+      "created": 1752000000,
+      "owned_by": "google"
+    },
+    {
+      "id": "imagen-4.0-generate-001",
+      "object": "model",
+      "created": 1752000000,
+      "owned_by": "google"
+    },
+    {
+      "id": "gemini-2.5-flash-image",
+      "object": "model",
+      "created": 1756000000,
+      "owned_by": "google",
+      "architecture": {
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["image", "text"]
+      }
+    },
+    {
+      "id": "bge-large-en-v1.5",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "corporate-gateway",
+      "type": "embedding"
+    },
+    {
+      "id": "vertex_ai/rerank-large",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "corporate-gateway",
+      "mode": "rerank"
+    }
+  ]
+}
