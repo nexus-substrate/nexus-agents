@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 8.90.0
+
+### Minor Changes
+
+- [#6566](https://github.com/nexus-substrate/nexus-agents/pull/6566) [`351fb34`](https://github.com/nexus-substrate/nexus-agents/commit/351fb344ac3dc5a6f3121567eb1c5b8259ad8a06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Outcome records now say when their task category was not detected. `TaskOutcome` gains an optional `categorySource` field (`'detected' | 'defaulted'`). When no category keyword matches, the `orchestrate` tool, worker dispatch and `execute_expert` still store `'exploration'` in the required `category` field, but now mark the row `categorySource: 'defaulted'`. Before this change such rows could not be told apart from measured exploration work.
+
+  Per-category readers skip defaulted rows: `OutcomeStore` category filters and `summarize().byCategory`, the weather report's per-CLI category breakdown and routing accuracy, `improvement_review`'s cli×category floor, `doctor --deep` category coverage, and distilled-rule training. Whole-population totals still count them.
+
+  The `orchestrate` CLI's routed-outcome writer now records runs whose category was not detected, marked `defaulted`, instead of writing no row. The routed population and `doctor`'s routed count therefore include them.
+
+  Two more writers mark their placeholder the same way. Parallel exploration stores `'exploration'` for an undetected task, since that fallback is also what makes the task eligible. `run_graph_workflow` used to file any workflow whose name has no security, audit or review signal as `'code_generation'`. It now marks that row `defaulted`, and its stored category becomes `'exploration'`.
+
+  Rows written before this change carry no `categorySource` and are read as before. `TaskCategory` is unchanged.
+
+- [#6565](https://github.com/nexus-substrate/nexus-agents/pull/6565) [`9678a83`](https://github.com/nexus-substrate/nexus-agents/commit/9678a831c2a7575f9973c9a453c5fe978d95aeb4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `consensus_vote` now names the working directory its seats were pointed at ([#6258](https://github.com/nexus-substrate/nexus-agents/issues/6258)). The response carries an optional `workspace` field: the caller's checkout (the CLI's ratification scratch checkout) or, when none was given, the server's working directory. `nexus-agents vote` prints the same value on a `Workspace:` summary line. When a seat comes back `unverifiable`, you can now see which directory it was given without reading stderr. A simulated panel gives no seat a directory, so the response omits the field and the summary line reads `Workspace: none (no live seat was pointed at one)`. The persisted vote record is unchanged.
+
 ## 8.89.4
 
 ### Patch Changes
