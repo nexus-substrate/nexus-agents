@@ -238,4 +238,9 @@ describe('sanitizeErrorDetails', () => {
     expect(result).toContain(`user_prompt=${REDACTED_KEY_PLACEHOLDER}`);
     expect(result).toContain('foo=bar');
   });
+
+  it('handles large 10 MB strings without stack overflow (#6484)', () => {
+    const large = 'e'.repeat(10 * 1024 * 1024);
+    expect(() => sanitizeOutput(large)).not.toThrow();
+  });
 });

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { toolErrorResponse, withToolError } from './tool-error-handler.js';
 import type { ILogger } from '../../core/index.js';
+import { FAKE_ANTHROPIC_KEY } from '../../testing/test-secrets.js';
 
 function createMockLogger(): ILogger {
   return {
@@ -52,6 +53,15 @@ describe('toolErrorResponse', () => {
     const logger = createMockLogger();
     toolErrorResponse('Wrapped', 42, logger);
     expect(logger.error).toHaveBeenCalledWith('Wrapped', expect.any(Error));
+  });
+
+  it('redacts credentials and sensitive tokens from error messages (#6484)', () => {
+    const error = new Error(`Request failed with Anthropic key ${FAKE_ANTHROPIC_KEY}`);
+    const result = toolErrorResponse('Dispatch failed', error);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).not.toContain(FAKE_ANTHROPIC_KEY);
+    const meta = result._meta?.['nexus-agents/error'] as { message: string } | undefined;
+    expect(meta?.message).not.toContain(FAKE_ANTHROPIC_KEY);
   });
 });
 
