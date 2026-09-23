@@ -106,11 +106,26 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
     const response = buildResponse(INPUT, extended(votes));
     expect(response.panelDiversity).toEqual({
       distinctModels: 3,
+      distinctFamilies: 3,
+      unclassifiedSeats: 0,
+      fallbacks: 0,
+    });
+    expect(response.panelWarning).toBeUndefined();
+  });
+
+  it('reports unclassified seats when an answering model names no recognised vendor', () => {
+    const votes = [
+      seat('architect', { cli: 'cli-claude', model: 'claude-opus', assignedCli: 'claude' }),
+      seat('security', { model: 'unrecognised-custom-model' }),
+      seat('scope_steward'),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response.panelDiversity).toEqual({
+      distinctModels: 3,
       distinctFamilies: 2,
       unclassifiedSeats: 1,
       fallbacks: 0,
     });
-    expect(response.panelWarning).toBeUndefined();
   });
 
   it('the empty case is explicit zeros on the response, never an absent key', () => {

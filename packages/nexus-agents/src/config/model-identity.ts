@@ -29,6 +29,8 @@
  */
 
 import type { IModelAdapter, ModelMetadata } from '../core/types/model.js';
+import { DEFAULT_MODEL_CAPABILITIES } from './in-tree-data.js';
+import type { Provider } from './model-capabilities-types.js';
 
 /** Coarse vendor bucket — drives behaviour-profile lookup downstream. */
 export type ModelVendor =
@@ -261,11 +263,58 @@ export function normaliseModelId(modelId: string): string {
   return modelId.toLowerCase().replace(/[_/]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
+/**
+ * Maps an in-tree provider to a ModelVendor (#6635). Gateway providers
+ * ('custom-openai', 'openrouter') return undefined to preserve pattern fallback.
+ */
+function inTreeProviderToVendor(provider: Provider): ModelVendor | undefined {
+  switch (provider) {
+    case 'anthropic':
+    case 'google':
+    case 'openai':
+      return provider;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Builds the map of in-tree model IDs, aliases, and CLI names to vendor (#6635).
+ * Consulted when the modelId string matches no vendor regex in VENDOR_PATTERNS.
+ */
+function buildInTreeVendorMap(): ReadonlyMap<string, ModelVendor> {
+  const map = new Map<string, ModelVendor>();
+  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+    const vendor = inTreeProviderToVendor(model.provider);
+    if (vendor === undefined) continue;
+    map.set(normaliseModelId(model.id), vendor);
+    if (model.aliases !== undefined) {
+      for (const alias of model.aliases) {
+        map.set(normaliseModelId(alias), vendor);
+      }
+    }
+    if (model.cliAlias !== undefined) {
+      map.set(normaliseModelId(model.cliAlias), vendor);
+    }
+    if (model.cliModelName !== undefined) {
+      map.set(normaliseModelId(model.cliModelName), vendor);
+    }
+  }
+  return map;
+}
+
+let cachedInTreeVendors: ReadonlyMap<string, ModelVendor> | undefined;
+
+function inTreeVendor(normalised: string): ModelVendor | undefined {
+  cachedInTreeVendors ??= buildInTreeVendorMap();
+  return cachedInTreeVendors.get(normalised);
+}
+
 function detectVendor(normalised: string): ModelVendor | undefined {
   for (const { vendor, regex } of VENDOR_PATTERNS) {
     if (regex.test(normalised)) return vendor;
   }
-  return undefined;
+  return inTreeVendor(normalised);
 }
 
 function detectFamily(normalised: string, vendor: ModelVendor): string | undefined {

@@ -136,8 +136,22 @@ describe('panelDiversityOf (#6115)', () => {
       unclassifiedSeats: 0,
       fallbacks: 5,
     });
-    // `codex-5.3` names no recognised vendor: counted as unclassified, never as a family.
+    // `codex-5.3` resolves to provider openai (#6635).
     expect(panelDiversityOf(diversePanel())).toEqual({
+      distinctModels: 3,
+      distinctFamilies: 3,
+      unclassifiedSeats: 0,
+      fallbacks: 0,
+    });
+  });
+
+  it('counts unrecognised models as unclassified seats, never as a family', () => {
+    const panelWithUnclassified = [
+      seat('architect', { cli: 'cli-claude', model: 'claude-opus', assignedCli: 'claude' }),
+      seat('security', { model: 'unrecognised-custom-model' }),
+      seat('scope_steward'),
+    ];
+    expect(panelDiversityOf(panelWithUnclassified)).toEqual({
       distinctModels: 3,
       distinctFamilies: 2,
       unclassifiedSeats: 1,
@@ -161,8 +175,8 @@ describe('panelDiversityOf (#6115)', () => {
     ];
     expect(panelDiversityOf(panel)).toEqual({
       distinctModels: 3,
-      distinctFamilies: 2,
-      unclassifiedSeats: 1,
+      distinctFamilies: 3,
+      unclassifiedSeats: 0,
       fallbacks: 0,
     });
   });
@@ -217,7 +231,7 @@ describe('modelsLine (#6115)', () => {
         assignedCli: 'claude',
         fallback: { fromCli: 'claude', fromModel: 'claude-fable-5', reason: 'capacity' },
       }),
-      seat('security', { cli: 'cli-codex', model: 'codex-5.3', assignedCli: 'codex' }),
+      seat('security', { cli: 'cli-custom', model: 'unrecognised-custom-model' }),
     ];
     expect(modelsLine(panel)).toBe(
       'Models: 3 distinct, 2 families (1 seat unclassified), 2 fallbacks (devex: codex→gemini, capacity; pm: claude-fable-5→claude-opus, capacity)'
@@ -225,9 +239,7 @@ describe('modelsLine (#6115)', () => {
   });
 
   it('renders explicit zeros for a clean panel and for a panel nobody answered', () => {
-    expect(modelsLine(diversePanel())).toBe(
-      'Models: 3 distinct, 2 families (1 seat unclassified), 0 fallbacks'
-    );
+    expect(modelsLine(diversePanel())).toBe('Models: 3 distinct, 3 families, 0 fallbacks');
     expect(modelsLine(anthropicPanel())).toBe('Models: 3 distinct, 1 family, 0 fallbacks');
     expect(modelsLine([])).toBe('Models: 0 distinct, 0 families, 0 fallbacks');
   });

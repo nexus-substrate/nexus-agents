@@ -259,3 +259,25 @@ describe('resolveModelIdentitySync', () => {
     expect(sync.source).toBe('modelHints');
   });
 });
+
+describe('in-tree alias vendor fallback (#6635)', () => {
+  it('resolves in-tree alias codex-5.3 to provider openai', () => {
+    const identity = resolveModelIdentitySync('codex-5.3');
+    expect(identity.vendor).toBe('openai');
+    expect(identity.source).toBe('modelIdParse');
+  });
+
+  it('resolves other in-tree codex aliases (codex-5.2, codex-5.1-mini) to openai', () => {
+    expect(resolveModelIdentitySync('codex-5.2').vendor).toBe('openai');
+    expect(resolveModelIdentitySync('codex-5.1-mini').vendor).toBe('openai');
+  });
+
+  it('resolves in-tree alias opencode-default to provider anthropic', () => {
+    expect(resolveModelIdentitySync('opencode-default').vendor).toBe('anthropic');
+  });
+
+  it('parseModelId resolves in-tree aliases when id regex matches no vendor', () => {
+    const parsed = parseModelId('codex-5.3');
+    expect(parsed.vendor).toBe('openai');
+  });
+});

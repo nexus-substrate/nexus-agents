@@ -13,8 +13,9 @@
  * Consumers should NOT import from here directly — they should read
  * via `getDefaultRegistry()` or the helpers in
  * `model-config-helpers.ts`. The only legitimate direct importers
- * are `in-tree-entries.ts` (the converter) and the helpers module
- * itself.
+ * are `in-tree-entries.ts` (the converter), `model-identity.ts`
+ * (fallback vendor lookup for in-tree aliases, #6635), and the
+ * helpers module itself.
  *
  * @module config/in-tree-data
  * (Source: Issue #683, Epic #682; renamed in #2546 slice E)
