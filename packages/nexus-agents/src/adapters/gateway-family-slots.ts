@@ -36,6 +36,13 @@
  *   may still serve it (`auto-adapter.ts`).
  * - No catalogue registered (no gateway, or discovery failed) is `inactive`:
  *   every caller keeps its pre-#6604 behaviour.
+ * - The unpinned default (#6626, `resolveGatewayDefault`) is a catalogue
+ *   model too: `NEXUS_CUSTOM_MODEL` when the catalogue lists it (an absent
+ *   one warns once and is never sent), else the highest-tier family top
+ *   model, ties broken anthropic, openai, google.
+ * - `opencode` has no family and gets no gateway model: without its binary
+ *   a pinned `opencode` slot is unavailable in gateway mode
+ *   (`auto-adapter.ts`), rather than a second name for the default.
  * - Whether a gateway model is serving a router arm right now is state of
  *   that arm (`cli-adapters/gateway-slot-arm.ts`), which the budget router
  *   reads to price it by `NEXUS_GATEWAY_COST`. There is no process-wide
@@ -49,7 +56,7 @@ import { createLogger } from '../core/index.js';
 import type { CliName, EndpointArmId } from '../cli-adapters/types.js';
 import { isEndpointArmId } from '../cli-adapters/types.js';
 import { resolveModelIdentitySync } from '../config/model-identity.js';
-import { rankFamilyModels } from './gateway-family-ranking.js';
+import { modelTierOf, rankFamilyModels } from './gateway-family-ranking.js';
 import { isChatModelId } from './gateway-catalog-filter.js';
 
 /** A model family a CLI slot is tied to. */
@@ -199,8 +206,7 @@ export function resolveGatewaySlot(
   const pinned = overrideAdapter(family, models, env, logger);
   if (pinned !== undefined) return { kind: 'resolved', family, adapter: pinned, via: 'override' };
   const inFamily = models.filter((m) => isChatModelId(m.modelId) && familyOf(m.modelId) === family);
-  const best = rankFamilyModels(inFamily.map((m) => ({ id: m.modelId, created: createdOf(m) })))[0];
-  const adapter = inFamily.find((m) => m.modelId === best);
+  const adapter = bestOf(inFamily);
   if (adapter === undefined) return { kind: 'unavailable', family };
   return { kind: 'resolved', family, adapter, via: 'preference' };
 }
@@ -228,10 +234,103 @@ export function createGatewaySlotAdapter(cli: CliName, model: IModelAdapter): IM
   return view;
 }
 
+/** How the unpinned default resolves in gateway mode (#6626). */
+type GatewayDefaultResolution =
+  /** No gateway catalogue: the caller keeps `NEXUS_CUSTOM_MODEL` unchanged. */
+  | { readonly kind: 'inactive' }
+  | {
+      readonly kind: 'resolved';
+      readonly adapter: IModelAdapter;
+      readonly via: 'override' | 'preference';
+    }
+  /** Gateway mode, but the catalogue holds no chat model. */
+  | { readonly kind: 'unavailable' };
+
+/**
+ * Family order for the unpinned default when two families' top models share
+ * a tier. It is the order the direct-API fallback already tries vendor keys
+ * in (`tryApiAdapter`: anthropic, openai, google), so the default prefers the
+ * same vendor with or without a gateway.
+ */
+const DEFAULT_FAMILY_ORDER: readonly GatewayFamily[] = ['anthropic', 'openai', 'google'];
+
+/** The variable naming the operator's default gateway model. */
+const CUSTOM_MODEL_ENV = 'NEXUS_CUSTOM_MODEL';
+
+/** `NEXUS_CUSTOM_MODEL`'s adapter when the catalogue lists it; an absent one warns once. */
+function customModelAdapter(
+  models: readonly IModelAdapter[],
+  env: NodeJS.ProcessEnv,
+  logger: ILogger
+): IModelAdapter | undefined {
+  const value = env[CUSTOM_MODEL_ENV]?.trim();
+  if (value === undefined || value === '') return undefined;
+  const match = models.find((m) => m.modelId === value);
+  if (match !== undefined) return match;
+  const key = `default=${value}`;
+  if (!warnedOverrides.has(key)) {
+    warnedOverrides.add(key);
+    logger.warn(
+      `${CUSTOM_MODEL_ENV}: ignored: the model is not in the gateway catalogue; the unpinned default uses the top-ranked gateway model`,
+      { model: value }
+    );
+  }
+  return undefined;
+}
+
+/** The best-ranked chat model of `candidates`, or undefined when there is none. */
+function bestOf(candidates: readonly IModelAdapter[]): IModelAdapter | undefined {
+  const ranked = rankFamilyModels(
+    candidates.map((m) => ({ id: m.modelId, created: createdOf(m) }))
+  );
+  return candidates.find((m) => m.modelId === ranked[0]);
+}
+
+/**
+ * The top-ranked default model: each family's best model, the highest TIER
+ * winning (a flagship of any family beats another family's mid-tier model),
+ * ties broken by {@link DEFAULT_FAMILY_ORDER}. Models of no known family are
+ * ranked only when the catalogue has no model of the three families.
+ */
+function topRankedDefault(models: readonly IModelAdapter[]): IModelAdapter | undefined {
+  const chat = models.filter((m) => isChatModelId(m.modelId));
+  let best: IModelAdapter | undefined;
+  for (const family of DEFAULT_FAMILY_ORDER) {
+    const top = bestOf(chat.filter((m) => familyOf(m.modelId) === family));
+    if (top === undefined) continue;
+    if (best === undefined || modelTierOf(top.modelId) > modelTierOf(best.modelId)) best = top;
+  }
+  return best ?? bestOf(chat);
+}
+
+/**
+ * Resolve the unpinned default (`registry.getDefault()`, and the
+ * `custom-openai` fallback) to a gateway catalogue model (#6626).
+ * `NEXUS_CUSTOM_MODEL` names it when the catalogue lists that model; a model
+ * the catalogue does not list is warned about once and never sent. Otherwise
+ * {@link topRankedDefault} picks it. `inactive` means no gateway catalogue: the
+ * caller's pre-#6626 path applies unchanged.
+ */
+export function resolveGatewayDefault(
+  env: NodeJS.ProcessEnv = process.env,
+  logger: ILogger = defaultLogger
+): GatewayDefaultResolution {
+  if (catalog === undefined) return { kind: 'inactive' };
+  const pinned = customModelAdapter(catalog, env, logger);
+  if (pinned !== undefined) return { kind: 'resolved', adapter: pinned, via: 'override' };
+  const top = topRankedDefault(catalog);
+  if (top === undefined) return { kind: 'unavailable' };
+  return { kind: 'resolved', adapter: top, via: 'preference' };
+}
+
 /** The vendor CLI slots, in the order the mapping is reported. */
 const FAMILY_SLOTS: readonly CliName[] = ['claude', 'codex', 'gemini'];
 
-/** Log the slot → model mapping once at registration, so an operator can see it. */
+/**
+ * Log the slot → model mapping once at registration, so an operator can see
+ * it: the three family slots, the unpinned `default` (#6626), and `opencode`,
+ * which has no family and is unavailable from the gateway without its binary.
+ */
 export function logGatewaySlotMapping(logger: ILogger): void {
   if (catalog === undefined) return;
   const mapping: Record<string, string> = {};
@@ -239,5 +338,8 @@ export function logGatewaySlotMapping(logger: ILogger): void {
     const r = resolveGatewaySlot(cli, process.env, logger);
     mapping[cli] = r.kind === 'resolved' ? r.adapter.modelId : 'unavailable';
   }
+  const d = resolveGatewayDefault(process.env, logger);
+  mapping['default'] = d.kind === 'resolved' ? d.adapter.modelId : 'unavailable';
+  mapping['opencode'] = 'cli-only';
   logger.info('Gateway family slots resolved', mapping);
 }
