@@ -46,6 +46,7 @@ import { buildPrReviewProposal } from './pr-review-proposal.js';
 import type { ReviewSanitizationInput } from './pr-review-record-producer.js';
 import { removalsBefore, resolveBindingMeasurement } from './pr-review-sanitization-view.js';
 import type { PrReviewInput } from './pr-review-tool.js';
+import { ensureGatewayDiscovered } from '../../adapters/gateway-rediscovery.js';
 
 /**
  * Tokens reserved for everything in the panel prompt that is NOT the diff, plus
@@ -189,6 +190,8 @@ export async function resolvePanelSeats(
   gatewayAdapters: readonly IModelAdapter[] | undefined,
   logger: ILogger
 ): Promise<PanelSeats> {
+  // #6608: re-discover a gateway that was down at boot before budgeting seats.
+  await ensureGatewayDiscovered();
   const fallback = resolveAdapter({ gatewayAdapters });
   if ('error' in fallback) return { ok: false, reason: `no adapter: ${fallback.error}` };
   try {

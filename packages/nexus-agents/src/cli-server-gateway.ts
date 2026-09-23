@@ -21,6 +21,11 @@ import {
   buildOpenAICompatAdapters,
 } from './adapters/openai-compat-adapter.js';
 import { createGatewayArmAdapter } from './adapters/gateway-arm-adapter.js';
+import {
+  GatewayHostRefusedError,
+  type GatewayHostRefused,
+} from './adapters/gateway-host-status.js';
+import { GatewayRediscovery, setGatewayRediscovery } from './adapters/gateway-rediscovery.js';
 import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
 import { logGatewaySlotMapping, setGatewaySlotCatalog } from './adapters/gateway-family-slots.js';
 import { gatewayEndpointRejection } from './adapters/sdk/gateway-cost.js';
@@ -60,6 +65,24 @@ import { EXIT_CODES } from './cli-types.js';
 export async function tryWireGatewayAdapters(
   logger: ILogger
 ): Promise<readonly IModelAdapter[] | undefined> {
+  return (await wireGatewayOnce(logger)).adapters;
+}
+
+/** One wiring attempt's adapters, and whether a later attempt could succeed. */
+interface WiringOutcome {
+  readonly adapters: readonly IModelAdapter[] | undefined;
+  readonly retryable: boolean;
+}
+
+/**
+ * One wiring attempt. `retryable` is true when a gateway is configured but
+ * the probe failed for a reason that can clear on its own — unreachable,
+ * error status, zero models — and false when retrying cannot help: not
+ * configured, or refused by the private-address guard (allowing it is an env
+ * change, which needs a restart). Lazy re-discovery (#6608) arms only on
+ * `retryable`.
+ */
+async function wireGatewayOnce(logger: ILogger): Promise<WiringOutcome> {
   // #4392 increment 3: the ONE deprecated-alias warn, at startup, from the
   // gateway bootstrap — the operator who set the legacy pair expecting this
   // path is told here that the rename is what opts in (option C).
@@ -69,24 +92,29 @@ export async function tryWireGatewayAdapters(
   if (env === null) {
     handleMissingEnv(logger, sandboxActive);
     noticeCliSubprocessFallback(logger);
-    return undefined;
+    return { adapters: undefined, retryable: false };
   }
 
   const result = await buildOpenAICompatAdapters(logger);
   if (result === null) {
     // env-was-set guard; build contract allows it
     noticeCliSubprocessFallback(logger);
-    return undefined;
+    return { adapters: undefined, retryable: false };
+  }
+  if (!result.ok && result.error instanceof GatewayHostRefusedError) {
+    handleHostRefused(logger, sandboxActive, result.error.status);
+    noticeCliSubprocessFallback(logger);
+    return { adapters: undefined, retryable: false };
   }
   if (!result.ok) {
     handleProbeFailure(logger, sandboxActive, result.error.message);
     noticeCliSubprocessFallback(logger);
-    return undefined;
+    return { adapters: undefined, retryable: true };
   }
   if (result.value.length === 0) {
     handleZeroModels(logger, sandboxActive);
     noticeCliSubprocessFallback(logger);
-    return undefined;
+    return { adapters: undefined, retryable: true };
   }
 
   // Log the discovered model IDs at info level — operators want to confirm
@@ -98,7 +126,7 @@ export async function tryWireGatewayAdapters(
     modelCount: result.value.length,
     models: result.value.map((a) => a.modelId),
   });
-  return result.value;
+  return { adapters: result.value, retryable: false };
 }
 
 export async function tryWireGatewayAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
@@ -210,13 +238,54 @@ export async function wireGateway(
   logger: ILogger,
   registry: Parameters<typeof registerGatewayArm>[2]
 ): Promise<readonly IModelAdapter[] | undefined> {
-  const adapters = await tryWireGatewayAdapters(logger);
-  registerGatewayArm(adapters, readOpenAICompatEndpoint(process.env, logger), registry);
-  // #6604: the family-slot catalogue — each vendor CLI slot without a binary
-  // resolves to a gateway model of its own family (none registered = no gateway).
+  const { adapters, retryable } = await wireGatewayOnce(logger);
+  const endpoint = readOpenAICompatEndpoint(process.env, logger);
+  registerGatewayArm(adapters, endpoint, registry);
+  registerFamilySlots(adapters, logger);
+  if (!retryable) return adapters;
+  // #6608: a gateway that was down at boot is retried lazily. The tools get
+  // an empty live list (every reader treats empty as "no gateway"); the first
+  // gateway-needing call after the backoff fills it in place and registers
+  // the arm. The default model adapter chosen at boot is not revisited.
+  const live: IModelAdapter[] = [];
+  setGatewayRediscovery(
+    new GatewayRediscovery({
+      target: live,
+      logger,
+      discover: () => rediscoverGateway(logger),
+      onDiscovered: (found) => {
+        registerGatewayArm(found, endpoint, registry);
+        registerFamilySlots(found, logger);
+      },
+    })
+  );
+  return live;
+}
+
+/**
+ * #6604: the family-slot catalogue — each vendor CLI slot without an
+ * available CLI resolves to a gateway model of its own family. None
+ * registered (no gateway, or discovery failed) means no gateway.
+ */
+function registerFamilySlots(
+  adapters: readonly IModelAdapter[] | undefined,
+  logger: ILogger
+): void {
   setGatewaySlotCatalog(adapters ?? []);
   logGatewaySlotMapping(logger);
-  return adapters;
+}
+
+/** One lazy re-discovery attempt: the adapters, or `undefined` (logged) when it failed. */
+async function rediscoverGateway(logger: ILogger): Promise<readonly IModelAdapter[] | undefined> {
+  const result = await buildOpenAICompatAdapters(logger);
+  if (result === null) return undefined;
+  if (!result.ok) {
+    logger.warn('Gateway re-discovery failed; calls stay on CLI subprocesses', {
+      error: result.error.message,
+    });
+    return undefined;
+  }
+  return result.value;
 }
 
 function handleMissingEnv(logger: ILogger, sandboxActive: boolean): void {
@@ -244,6 +313,27 @@ function handleProbeFailure(logger: ILogger, sandboxActive: boolean, reason: str
     error: reason,
   });
   return undefined;
+}
+
+/**
+ * The private-address guard refused the gateway host (#6608). The message
+ * names the variable that allows it and says the gateway is not in use —
+ * before this, the operator saw a generic probe-failure line.
+ */
+function handleHostRefused(
+  logger: ILogger,
+  sandboxActive: boolean,
+  status: GatewayHostRefused
+): void {
+  const message =
+    `Gateway host ${status.host} refused by the private-address guard: the in-process ` +
+    'gateway is NOT in use, and voter/consensus calls fall back to CLI subprocesses. ' +
+    status.remedy;
+  if (sandboxActive) {
+    logger.error(message, new Error(status.reason));
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }
+  logger.warn(message, { host: status.host, reason: status.reason });
 }
 
 function handleZeroModels(logger: ILogger, sandboxActive: boolean): void {

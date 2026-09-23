@@ -16,6 +16,7 @@ import { levenshtein } from '../string-distance.js';
 import { VOTER_ROLES } from '../cli/vote-types.js';
 import { gatewayEndpointRejection, parseGatewayCostEnv } from '../adapters/sdk/gateway-cost.js';
 import { resolveGatewayEnv, type DeprecatedGatewayEnvUse } from '../adapters/sdk/gateway-env.js';
+import { parseGatewayExtraHeaders } from '../adapters/gateway-http.js';
 import {
   describeClassGuard,
   MCP_TIMEOUTS,
@@ -256,6 +257,20 @@ const NexusEnvSchema = z.object({
     })
     .optional(),
   NEXUS_MODEL_REGISTRY_OVERLAY: z.string().optional(),
+  // #6608: the header carrying the gateway key instead of `Authorization:
+  // Bearer` (OPENAI_COMPAT_AUTH_HEADER_ENV), e.g. `api-key`. The runtime
+  // reader warns on an illegal header name and keeps the bearer default.
+  NEXUS_OPENAI_COMPAT_AUTH_HEADER: z.string().optional(),
+  // #6608: extra static gateway headers, `Name=value,Name2=value2`
+  // (OPENAI_COMPAT_EXTRA_HEADERS_ENV). Validated by the runtime parser; a
+  // value can be a credential, so an invalid one is logged redacted.
+  NEXUS_OPENAI_COMPAT_EXTRA_HEADERS: z
+    .string()
+    .superRefine((v, ctx) => {
+      const parsed = parseGatewayExtraHeaders(v);
+      if (!parsed.ok) ctx.addIssue({ code: 'custom', message: parsed.reason });
+    })
+    .optional(),
   // #4392 increment 2 step 2: the `<endpoint>` of the `api:<endpoint>` arm the
   // voter gateway registers as (OPENAI_COMPAT_ENDPOINT_ENV; spelled out for
   // the coverage script). Same shape rule as a scoped NEXUS_GATEWAY_COST key,
@@ -375,6 +390,7 @@ const KNOWN_NAMES: readonly string[] = Object.keys(NexusEnvSchema.shape);
 const REDACTED_VALUE_VARS: ReadonlySet<string> = new Set([
   'NEXUS_GATEWAY_COST',
   'NEXUS_OPENAI_COMPAT_ENDPOINT',
+  'NEXUS_OPENAI_COMPAT_EXTRA_HEADERS',
 ]);
 const REDACTED_VALUE = '<redacted>';
 

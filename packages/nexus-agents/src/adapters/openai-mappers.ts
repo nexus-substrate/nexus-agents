@@ -33,10 +33,78 @@ export function mapStopReason(openaiReason: string | null | undefined): StopReas
     case 'tool_calls':
     case 'function_call':
       return 'tool_use';
-    case 'content_filter':
-      return 'end_turn';
+    // `content_filter` is never mapped as a finish: the adapter turns it into an
+    // error before a response is built (#6607, see detectNonAnswer), because
+    // every consumer reads a mapped response as an answer.
     default:
       return 'end_turn';
+  }
+}
+
+/** A reply blocked by the provider's content filter, streamed or not (#6607). */
+export const CONTENT_FILTERED: NonAnswer = {
+  reason: 'content_filter',
+  detail: 'the reply was blocked by a content filter',
+};
+
+/** A completion that must surface as an error, never as an empty success (#6607). */
+export interface NonAnswer {
+  /** Why the completion carries no answer. */
+  readonly reason: 'content_filter' | 'no_choices' | 'reasoning_truncated';
+  readonly detail: string;
+  /** Reasoning tokens the vendor reported, when it reported them. */
+  readonly reasoningTokens?: number;
+}
+
+/**
+ * Classify a completion choice that is not an answer (#6607). The third kind,
+ * `no_choices` (an empty `choices` array, which some gateways return for a
+ * blocked prompt), has no choice to classify and is raised by the adapter.
+ *
+ * - `content_filter`: the provider's safety layer blocked or cut the reply. Any
+ *   partial text is not an answer either.
+ * - `reasoning_truncated`: a reasoning model hit the completion cap with no
+ *   visible output, so the whole budget went to reasoning. This is distinct
+ *   from an ordinary `length` truncation, which still carries partial text.
+ *   `reasoningFamily` comes from the model id; a reported non-zero
+ *   `reasoning_tokens` count is evidence on its own for ids the regex misses.
+ *
+ * Returns `undefined` for every other completion.
+ */
+export function detectNonAnswer(
+  choice: ChatCompletion.Choice,
+  usage: ChatCompletion['usage'],
+  reasoningFamily: boolean
+): NonAnswer | undefined {
+  if (choice.finish_reason === 'content_filter') return CONTENT_FILTERED;
+  if (choice.finish_reason !== 'length' || hasVisibleOutput(choice)) return undefined;
+  const reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens;
+  if (!reasoningFamily && !(reasoningTokens !== undefined && reasoningTokens > 0)) {
+    return undefined;
+  }
+  return {
+    reason: 'reasoning_truncated',
+    detail:
+      'the completion budget was spent on reasoning before any output (empty reply, finish length)',
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+  };
+}
+
+function hasVisibleOutput(choice: ChatCompletion.Choice): boolean {
+  const text = choice.message.content;
+  if (text !== null && text !== '') return true;
+  return (choice.message.tool_calls?.length ?? 0) > 0;
+}
+
+/**
+ * Parse a tool call's JSON `arguments` string. Unparseable text is kept under
+ * `_raw` rather than dropped, so the caller still sees what the model sent.
+ */
+function parseToolArguments(args: string): unknown {
+  try {
+    return JSON.parse(args) as unknown;
+  } catch {
+    return { _raw: args };
   }
 }
 
@@ -56,17 +124,11 @@ export function mapChoiceToContentBlocks(choice: ChatCompletion.Choice): Content
   if (message.tool_calls !== undefined && message.tool_calls.length > 0) {
     for (const toolCall of message.tool_calls) {
       if (isFunctionToolCall(toolCall)) {
-        let parsedInput: unknown;
-        try {
-          parsedInput = JSON.parse(toolCall.function.arguments) as unknown;
-        } catch {
-          parsedInput = { _raw: toolCall.function.arguments };
-        }
         blocks.push({
           type: 'tool_use',
           id: toolCall.id,
           name: toolCall.function.name,
-          input: parsedInput,
+          input: parseToolArguments(toolCall.function.arguments),
         });
       }
     }
@@ -82,20 +144,20 @@ export function mapChoiceToContentBlocks(choice: ChatCompletion.Choice): Content
 
 /**
  * Maps our Message format to OpenAI's ChatCompletionMessageParam format.
+ *
+ * Returns an ARRAY: one user message holding several `tool_result` blocks
+ * becomes one `tool` message per result (#6607). OpenAI requires a tool message
+ * for every `tool_call_id` the assistant issued; sending only the first made
+ * strict gateways reject the request with a 400.
  */
-export function mapMessage(message: Message): ChatCompletionMessageParam {
-  // Handle system messages
+export function mapMessage(message: Message): ChatCompletionMessageParam[] {
   if (message.role === 'system') {
-    return mapSystemMessage(message);
+    return [mapSystemMessage(message)];
   }
-
-  // Handle user messages
   if (message.role === 'user') {
     return mapUserMessage(message);
   }
-
-  // Handle assistant messages
-  return mapAssistantMessage(message);
+  return [mapAssistantMessage(message)];
 }
 
 /**
@@ -115,27 +177,23 @@ function mapSystemMessage(message: Message): ChatCompletionMessageParam {
 /**
  * Maps a user message.
  */
-function mapUserMessage(message: Message): ChatCompletionMessageParam {
+function mapUserMessage(message: Message): ChatCompletionMessageParam[] {
   if (typeof message.content === 'string') {
-    return { role: 'user', content: message.content };
+    return [{ role: 'user', content: message.content }];
   }
 
-  // Check for tool results - these need special handling
+  // Tool results become one `tool` message each, in order (#6607).
   const toolResults = message.content.filter(
     (b): b is { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean } =>
       b.type === 'tool_result'
   );
 
   if (toolResults.length > 0) {
-    // Return first tool result as a tool message
-    const firstResult = toolResults[0];
-    if (firstResult !== undefined) {
-      return {
-        role: 'tool',
-        tool_call_id: firstResult.tool_use_id,
-        content: firstResult.content,
-      };
-    }
+    return toolResults.map((result) => ({
+      role: 'tool' as const,
+      tool_call_id: result.tool_use_id,
+      content: result.content,
+    }));
   }
 
   // Map to user message with content array
@@ -155,7 +213,7 @@ function mapUserMessage(message: Message): ChatCompletionMessageParam {
     return { type: 'text' as const, text: '' };
   });
 
-  return { role: 'user', content };
+  return [{ role: 'user', content }];
 }
 
 /**
@@ -259,28 +317,53 @@ function mapContentDelta(
 }
 
 /**
- * Maps tool calls from stream chunk delta.
+ * Tool calls being assembled across a stream, keyed by the OpenAI tool index
+ * (#6607). OpenAI sends the id and name in the first delta for a call and the
+ * JSON `arguments` in fragments after it, so a call is only complete when the
+ * choice finishes. Create one per stream with {@link createStreamToolCallState}.
  */
-function mapToolCallsDelta(delta: OpenAI.Chat.ChatCompletionChunk.Choice.Delta): StreamChunk[] {
-  const chunks: StreamChunk[] = [];
+interface StreamToolCallState {
+  readonly calls: Map<number, { id: string; name: string; args: string }>;
+}
 
-  if (delta.tool_calls !== undefined && delta.tool_calls.length > 0) {
-    for (const toolCall of delta.tool_calls) {
-      if (toolCall.function?.name !== undefined) {
-        chunks.push({
-          type: 'content_block_start',
-          index: toolCall.index,
-          contentBlock: {
-            type: 'tool_use',
-            id: toolCall.id ?? '',
-            name: toolCall.function.name,
-            input: {},
-          },
-        });
-      }
-    }
+/** A fresh accumulator for one stream (#6607). */
+export function createStreamToolCallState(): StreamToolCallState {
+  return { calls: new Map() };
+}
+
+/**
+ * Accumulates tool-call deltas. Emits nothing: the `tool_use` block is emitted
+ * once, complete, at the finish chunk (see {@link flushToolCalls}). Emitting it
+ * on the first delta, as this used to, fixed its `input` at `{}` (#6607).
+ */
+function accumulateToolCallsDelta(
+  delta: OpenAI.Chat.ChatCompletionChunk.Choice.Delta,
+  state: StreamToolCallState
+): void {
+  for (const toolCall of delta.tool_calls ?? []) {
+    const entry = state.calls.get(toolCall.index) ?? { id: '', name: '', args: '' };
+    if (toolCall.id !== undefined) entry.id = toolCall.id;
+    if (toolCall.function?.name !== undefined) entry.name = toolCall.function.name;
+    if (toolCall.function?.arguments !== undefined) entry.args += toolCall.function.arguments;
+    state.calls.set(toolCall.index, entry);
   }
+}
 
+/** Emit each assembled tool call as one complete `tool_use` block, in index order. */
+function flushToolCalls(state: StreamToolCallState): StreamChunk[] {
+  const chunks: StreamChunk[] = [...state.calls.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([index, call]) => ({
+      type: 'content_block_start' as const,
+      index,
+      contentBlock: {
+        type: 'tool_use' as const,
+        id: call.id,
+        name: call.name,
+        input: call.args === '' ? {} : parseToolArguments(call.args),
+      },
+    }));
+  state.calls.clear();
   return chunks;
 }
 
@@ -290,11 +373,14 @@ function mapToolCallsDelta(delta: OpenAI.Chat.ChatCompletionChunk.Choice.Delta):
 function mapFinishChunks(
   choice: ChatCompletionChunk.Choice,
   chunk: ChatCompletionChunk,
-  currentIndex: number
+  currentIndex: number,
+  toolCalls: StreamToolCallState
 ): StreamChunk[] {
   const chunks: StreamChunk[] = [];
 
   if (choice.finish_reason !== null) {
+    chunks.push(...flushToolCalls(toolCalls));
+
     // End current content block
     chunks.push({
       type: 'content_block_stop',
@@ -349,7 +435,8 @@ function mapFinishChunks(
 export function mapStreamChunk(
   chunk: ChatCompletionChunk,
   currentIndex: number,
-  hasStarted: boolean
+  hasStarted: boolean,
+  toolCalls: StreamToolCallState
 ): StreamChunk[] {
   const chunks: StreamChunk[] = [];
   const choice = chunk.choices[0];
@@ -371,11 +458,11 @@ export function mapStreamChunk(
   // Map content delta
   chunks.push(...mapContentDelta(delta, currentIndex, hasStarted));
 
-  // Map tool calls
-  chunks.push(...mapToolCallsDelta(delta));
+  // Accumulate tool calls; they are emitted whole at the finish chunk.
+  accumulateToolCallsDelta(delta, toolCalls);
 
   // Map finish reason
-  chunks.push(...mapFinishChunks(choice, chunk, currentIndex));
+  chunks.push(...mapFinishChunks(choice, chunk, currentIndex, toolCalls));
 
   return chunks;
 }

@@ -349,6 +349,12 @@ function policyDecisionFields(decision: PolicyAuditDecision): {
  */
 const DROP_WARN_INTERVAL = 1000;
 
+/**
+ * close() needs at most two passes (the in-flight drain, then one for events
+ * logged during it — #6573); the third is slack before the bound reports.
+ */
+const MAX_CLOSE_DRAIN_PASSES = 3;
+
 export class AuditLogger implements IAuditLogger {
   private readonly storage: IAuditStorage;
   private readonly logger: ILogger;
@@ -487,7 +493,8 @@ export class AuditLogger implements IAuditLogger {
       policyName: input.policyName,
       policyDecision: input.policyDecision,
       violationType: input.violationType,
-      previousHash: this.enableHashChain ? (this.lastHash ?? undefined) : undefined,
+      // Linked at flush time by sealChain (#6546), not here.
+      previousHash: undefined,
     };
 
     // #3921: stamp the v2 hash version on a tier-transition event for
@@ -496,12 +503,30 @@ export class AuditLogger implements IAuditLogger {
     // load-bearing for integrity — it cannot be trusted to downgrade the hash.
     if (hasTierTransitionPayload(event)) event.hashVersion = AUDIT_HASH_VERSION_TIER_TRANSITION;
 
-    if (this.enableHashChain) {
-      event.hash = computeEventHash(event);
-      this.lastHash = event.hash;
-    }
+    // Snapshot in the persisted (JSON) form NOW (#6546 review): hashing waits
+    // for the flush, so the queued event must not share `actor`, `metadata` or
+    // `resource` objects the caller can still mutate after log() returns.
+    return JSON.parse(JSON.stringify(event)) as AuditEvent;
+  }
 
-    return event;
+  /**
+   * Link `events` onto the chain whose head is `tailHash` (#6546).
+   *
+   * Runs at flush time, not at log() time: the head of a shared log is only
+   * known under the storage's cross-process lock, after reading the last
+   * persisted event. `tailHash` undefined is the empty case — a fresh log —
+   * and the first event is then a genesis event with no `previousHash`.
+   */
+  private sealChain(events: AuditEvent[], tailHash: string | undefined): AuditEvent[] {
+    if (!this.enableHashChain) return events;
+    let prior = tailHash;
+    for (const event of events) {
+      event.previousHash = prior;
+      event.hash = computeEventHash(event);
+      prior = event.hash;
+    }
+    this.lastHash = prior ?? null;
+    return events;
   }
 
   log(input: AuditEventInput): void {
@@ -512,7 +537,14 @@ export class AuditLogger implements IAuditLogger {
 
     if (!this.shouldLog(input)) return;
 
-    const event = this.createEvent(input);
+    let event: AuditEvent;
+    try {
+      event = this.createEvent(input);
+    } catch (err: unknown) {
+      // Not serializable (e.g. circular metadata): it could never be written.
+      this.recordPersistFailure(err);
+      return;
+    }
     this.eventQueue.push(event);
 
     if (this.eventQueue.length > this.maxQueueDepth) {
@@ -726,7 +758,8 @@ export class AuditLogger implements IAuditLogger {
       severity: 'info',
       outcome: 'success',
       action: 'system.shutdown.begin',
-      description: 'Nexus Agents shutdown begun (no completion record — see logSystemShutdownBegin)',
+      description:
+        'Nexus Agents shutdown begun (no completion record — see logSystemShutdownBegin)',
       actor: SYSTEM_ACTOR,
       metadata,
     });
@@ -735,7 +768,24 @@ export class AuditLogger implements IAuditLogger {
   private async drainAndFlushOnce(): Promise<void> {
     if (this.eventQueue.length > 0) {
       const events = this.eventQueue.splice(0, this.eventQueue.length);
-      for (const event of events) {
+      if (this.storage.appendChained !== undefined) {
+        // #6546: seed from the persisted tail under the storage's lock, so a
+        // restarted or concurrent process continues the one chain on disk.
+        const progress = { sealed: false };
+        try {
+          await this.storage.appendChained((tailHash) => {
+            progress.sealed = true;
+            return this.sealChain(events, tailHash);
+          });
+        } catch (err: unknown) {
+          // Not yet linked (e.g. lock timeout): nothing was written, so the
+          // batch goes back to the queue rather than being lost.
+          if (!progress.sealed) this.eventQueue.unshift(...events);
+          throw err;
+        }
+        return;
+      }
+      for (const event of this.sealChain(events, this.lastHash ?? undefined)) {
         await this.storage.write(event);
       }
     }
@@ -748,7 +798,8 @@ export class AuditLogger implements IAuditLogger {
    * so an overlapping flush-timer tick cannot spawn parallel drains (see
    * #2979). A caller arriving while a flush is already running awaits the
    * existing promise; their newly-queued events, if any, are picked up by
-   * the next flush.
+   * the next flush — the timer's, or the extra passes {@link close} runs
+   * (#6573).
    */
   async flush(): Promise<void> {
     if (this.inFlightFlush !== null) return this.inFlightFlush;
@@ -778,9 +829,48 @@ export class AuditLogger implements IAuditLogger {
       this.flushTimer = null;
     }
 
-    await this.flush();
+    await this.drainForClose();
     await this.storage.close();
     this.logger.info('AuditLogger closed');
+  }
+
+  /**
+   * Flush until the queue is empty (#6573).
+   *
+   * One flush() is not enough: when a drain is already in flight, flush()
+   * joins it, and that drain spliced the queue before any event logged during
+   * it — `system.shutdown.begin` among them — arrived. `closed` is set before
+   * this runs, so log() admits nothing new: the in-flight drain plus one fresh
+   * pass empties the queue. The bound turns a regression of that invariant
+   * into a reported failure instead of a spin.
+   *
+   * A failed pass is not retried here. flush() has already counted and
+   * reported it; a batch it could not link (lock timeout) is back in the queue
+   * unwritten, so nothing is written twice, and with no later flush to come it
+   * is stranded — named here so the loss is not silent.
+   */
+  private async drainForClose(): Promise<void> {
+    for (let pass = 0; pass < MAX_CLOSE_DRAIN_PASSES; pass++) {
+      try {
+        await this.flush();
+      } catch (err: unknown) {
+        if (this.eventQueue.length > 0) {
+          this.logger.error(
+            'AUDIT CLOSE — queued audit events were NOT persisted and will be lost',
+            err instanceof Error ? err : new AuditError(String(err)),
+            { strandedEvents: this.eventQueue.length }
+          );
+        }
+        throw err;
+      }
+      if (this.eventQueue.length === 0) return;
+    }
+    const error = new AuditError(
+      `${String(this.eventQueue.length)} audit events still queued after ` +
+        `${String(MAX_CLOSE_DRAIN_PASSES)} flush passes at close`
+    );
+    this.recordPersistFailure(error);
+    throw error;
   }
 }
 

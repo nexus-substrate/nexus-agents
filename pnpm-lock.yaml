@@ -171,6 +171,9 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+      undici:
+        specifier: '>=6.28.0 <7'
+        version: 6.28.1
       yaml:
         specifier: ^2.9.1
         version: 2.9.1

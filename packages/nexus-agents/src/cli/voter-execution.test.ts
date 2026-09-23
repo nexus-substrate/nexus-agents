@@ -495,6 +495,26 @@ describe('voter-execution', () => {
       expect(request.responseFormat?.schema).toBeDefined();
     });
 
+    // #6607 item 5: Anthropic- and Gemini-backed OpenAI-compat layers accept
+    // `response_format` and silently ignore it. The seat must then fail loudly
+    // on the shape, never read approving prose as a vote.
+    it('fails the seat when a backend ignores responseFormat and answers in prose (#6607)', async () => {
+      const prose: MockCompletionResult = {
+        ok: true,
+        value: {
+          content: [{ type: 'text', text: 'Looks good to me, I approve this proposal.' }],
+          stopReason: 'end_turn',
+          model: 'test-model',
+        },
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(prose);
+
+      const result = await executeSingleVoteAttempt('devex', 'Test proposal', mockAdapter, 5000);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/^Vote parsing failed/);
+    });
+
     it('retries WITHOUT responseFormat on a tool-use-unsupported 404 and succeeds (#3497)', async () => {
       const toolUse404: MockCompletionResult = {
         ok: false,

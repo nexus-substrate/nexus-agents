@@ -3,7 +3,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ok, err, ConfigError, type IModelAdapter, type ILogger } from './core/index.js';
+import {
+  ok,
+  err,
+  ConfigError,
+  FixedTimeProvider,
+  resetTimeProvider,
+  setTimeProvider,
+  type IModelAdapter,
+  type ILogger,
+} from './core/index.js';
+import { checkGatewayHost, GatewayHostRefusedError } from './adapters/gateway-host-status.js';
+import { ensureGatewayDiscovered, setGatewayRediscovery } from './adapters/gateway-rediscovery.js';
 
 const buildOpenAICompatAdaptersMock = vi.fn();
 const readOpenAICompatEnvMock = vi.fn();
@@ -533,5 +544,149 @@ describe('wireGateway (#4392 inc 2 step 2 — discovery + arm in one call)', () 
     const claude = resolveGatewaySlot('claude');
     expect(claude.kind === 'resolved' && claude.adapter.modelId).toBe('claude-sonnet-4-6');
     expect(resolveGatewaySlot('gemini')).toEqual({ kind: 'unavailable', family: 'google' });
+  });
+});
+
+describe('private-address guard refusal is reported, not silent (#6608 item 3)', () => {
+  let savedAllow: string | undefined;
+  beforeEach(() => {
+    delete process.env['NEXUS_SANDBOX'];
+    savedAllow = process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'];
+    delete process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'];
+    buildOpenAICompatAdaptersMock.mockReset();
+    readOpenAICompatEnvMock.mockReset();
+    readOpenAICompatEndpointMock.mockReturnValue('openai-compat');
+  });
+  afterEach(() => {
+    if (savedAllow === undefined) delete process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'];
+    else process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'] = savedAllow;
+    setGatewayRediscovery(undefined);
+  });
+
+  it('exposes the refusal as a status and names the variable and "NOT in use" at startup', async () => {
+    const baseUrl = 'http://10.44.0.9:4000/v1';
+    const status = await checkGatewayHost(baseUrl);
+    expect(status).toMatchObject({ state: 'refused_private_host', host: '10.44.0.9' });
+    if (status.state !== 'refused_private_host') return;
+    expect(status.remedy).toContain('NEXUS_CUSTOM_API_ALLOW_PRIVATE=1');
+
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl, apiKey: 'sk-test' });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(err(new GatewayHostRefusedError(status)));
+    const logger = makeMockLogger();
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+
+    // Not retryable: allowing the host is an env change, so no live list is armed.
+    expect(await wireGateway(logger, registry)).toBeUndefined();
+    const messages = logger.warn.mock.calls.map((c) => String(c[0]));
+    const refusal = messages.find((m) => m.includes('10.44.0.9'));
+    expect(refusal).toBeDefined();
+    expect(refusal).toContain('NEXUS_CUSTOM_API_ALLOW_PRIVATE=1');
+    expect(refusal).toContain('NOT in use');
+    expect(messages.some((m) => m.includes('probe failed'))).toBe(false);
+  });
+
+  it('lets the host through once the variable is set', async () => {
+    process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'] = '1';
+    expect(await checkGatewayHost('http://10.44.0.9:4000/v1')).toEqual({
+      state: 'allowed',
+      host: '10.44.0.9',
+    });
+  });
+});
+
+describe('lazy re-discovery of a gateway down at boot (#6608 item 4)', () => {
+  const BOOT = Date.parse('2026-09-23T12:00:00Z');
+  let clock: FixedTimeProvider;
+
+  beforeEach(() => {
+    delete process.env['NEXUS_SANDBOX'];
+    buildOpenAICompatAdaptersMock.mockReset();
+    readOpenAICompatEnvMock.mockReset();
+    readOpenAICompatEndpointMock.mockReturnValue('corp-proxy');
+    _resetGatewayCatalogs();
+    clock = new FixedTimeProvider(BOOT);
+    setTimeProvider(clock);
+  });
+  afterEach(() => {
+    setGatewayRediscovery(undefined);
+    resetTimeProvider();
+  });
+
+  it('fills the live list on the first call after the backoff, at most once per interval', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw.example/v1', apiKey: 'sk' });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(err(new ConfigError('ECONNREFUSED')));
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+
+    const live = await wireGateway(makeMockLogger(), registry);
+    expect(live).toEqual([]);
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(1); // the boot attempt
+
+    const at = async (secondsAfterBoot: number): Promise<void> => {
+      clock.setTime(BOOT + secondsAfterBoot * 1000);
+      await ensureGatewayDiscovered();
+    };
+    await at(0);
+    await at(59);
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(1);
+    await at(61); // first call past the backoff: retried, still down
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(2);
+    await at(100); // 39 s after that attempt
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(2);
+    expect(live).toEqual([]);
+
+    const adapters = [makeMockAdapter('gw-late-a'), makeMockAdapter('gw-late-b')];
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
+    clock.setTime(BOOT + 125_000);
+    await Promise.all([ensureGatewayDiscovered(), ensureGatewayDiscovered()]); // one shared attempt
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(3);
+    expect(live).toEqual(adapters);
+    expect(registry.registerApiArm).toHaveBeenCalledTimes(1);
+    expect(registry.registerApiArm.mock.calls[0]?.[0]).toBe('api:corp-proxy');
+    expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-late-a', 'gw-late-b']);
+
+    await at(1000); // wired: no further discovery, ever
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('registers the family slots once a gateway down at boot is re-discovered (#6604)', async () => {
+    _resetGatewaySlotCatalog();
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw.example/v1', apiKey: 'sk' });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(err(new ConfigError('ECONNREFUSED')));
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+    await wireGateway(makeMockLogger(), registry);
+    expect(resolveGatewaySlot('claude')).toEqual({ kind: 'inactive' });
+
+    buildOpenAICompatAdaptersMock.mockResolvedValue(
+      ok([makeMockAdapter('gpt-5.5'), makeMockAdapter('claude-sonnet-4-6')])
+    );
+    clock.setTime(BOOT + 125_000);
+    await ensureGatewayDiscovered();
+
+    const claude = resolveGatewaySlot('claude');
+    expect(claude.kind === 'resolved' && claude.adapter.modelId).toBe('claude-sonnet-4-6');
+    _resetGatewaySlotCatalog();
+  });
+
+  it('arms nothing when the gateway wired at boot', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw.example/v1', apiKey: 'sk' });
+    const adapters = [makeMockAdapter('gw-a')];
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+    expect(await wireGateway(makeMockLogger(), registry)).toBe(adapters);
+    clock.setTime(BOOT + 3_600_000);
+    await ensureGatewayDiscovered();
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(1);
   });
 });

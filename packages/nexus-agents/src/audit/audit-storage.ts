@@ -24,6 +24,8 @@ import type {
 } from './audit-types.js';
 import { AuditError } from './audit-types.js';
 import { readAuditFile } from './audit-storage-queries.js';
+import { readChainTailHash } from './audit-chain-tail.js';
+import { withFileLock } from '../utils/file-lock.js';
 
 // Re-export query utilities and InMemoryAuditStorage for backwards compatibility
 export {
@@ -268,6 +270,10 @@ export class FileAuditStorage implements IAuditStorage {
 
     this.currentFile = path.join(this.logDir, this.generateFileName());
     this.currentFileSize = 0;
+    // Create the file now: the stream opens asynchronously, and until it does
+    // a directory listing (adoptLatestFile, #6546) would not see this file
+    // and rotate to a second one.
+    fs.closeSync(fs.openSync(this.currentFile, 'a'));
     this.openWriteStream();
     this.logger.debug('Rotated audit log file', { file: this.currentFile });
 
@@ -316,6 +322,65 @@ export class FileAuditStorage implements IAuditStorage {
         }
       });
     });
+  }
+
+  /**
+   * Append a chained batch under the cross-process lock (#6546). The tail
+   * read, the seal and the flush to disk all happen while the lock is held,
+   * so two processes can neither both chain from the same tail (a fork) nor
+   * interleave lines between another process's read and write.
+   */
+  async appendChained(
+    seal: (tailHash: string | undefined) => readonly AuditEvent[]
+  ): Promise<void> {
+    await withFileLock(path.join(this.logDir, `${this.filePrefix}.lock`), async () => {
+      this.adoptLatestFile();
+      this.terminateTornLine();
+      const tailHash = await readChainTailHash(this.logDir, this.getExistingLogFiles());
+      for (const event of seal(tailHash)) await this.write(event);
+      await this.flush();
+    });
+  }
+
+  /**
+   * Under the append lock, follow whichever file is newest now: another
+   * process may have rotated or appended since this one last wrote. Appending
+   * to an older file would place this batch BEFORE events it chains after.
+   */
+  private adoptLatestFile(): void {
+    const latest = this.getExistingLogFiles()[0];
+    if (latest === undefined) {
+      this.rotateFile();
+      return;
+    }
+    const latestPath = path.join(this.logDir, latest);
+    if (latestPath !== this.currentFile) {
+      this.writeStream?.end();
+      this.writeStream = null;
+      this.currentFile = latestPath;
+      this.openWriteStream();
+    }
+    this.currentFileSize = fs.statSync(latestPath).size;
+  }
+
+  /**
+   * Under the append lock: if a writer crashed mid-line, end that line before
+   * appending, or the next event would be glued onto it and lost with it. The
+   * torn line itself is left in place — the verifier still counts it as
+   * skipped — and the tail read links the new batch past it.
+   */
+  private terminateTornLine(): void {
+    if (this.currentFile === null || this.currentFileSize === 0) return;
+    const last = Buffer.alloc(1);
+    const fd = fs.openSync(this.currentFile, 'r');
+    try {
+      fs.readSync(fd, last, 0, 1, this.currentFileSize - 1);
+    } finally {
+      fs.closeSync(fd);
+    }
+    if (last[0] === 0x0a) return;
+    fs.appendFileSync(this.currentFile, '\n');
+    this.currentFileSize += 1;
   }
 
   async close(): Promise<void> {

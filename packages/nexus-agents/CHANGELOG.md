@@ -1,5 +1,62 @@
 # nexus-agents
 
+## 8.98.0
+
+### Minor Changes
+
+- [#6630](https://github.com/nexus-substrate/nexus-agents/pull/6630) [`b11adc7`](https://github.com/nexus-substrate/nexus-agents/commit/b11adc7ed78397c6b5910e89832f718aff6b9b0a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - OpenAI-compatible gateway (`NEXUS_OPENAI_COMPAT_URL`): support for gateways behind a corporate network. These apply to model discovery and every in-process gateway call.
+
+  - `NEXUS_OPENAI_COMPAT_AUTH_HEADER` names the header that carries the key, for example `api-key` for Azure-style gateways. `Authorization: Bearer` is then not sent. Unset keeps the bearer default.
+  - `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS` adds static headers to every request, as `Name=value,Name2=value2`. The whole value is refused and warned if it contains a newline or other control character, an entry without `=`, an illegal or duplicate name, `Authorization`, or the auth header. Header values and the key are never logged.
+  - Gateway calls now go through `HTTPS_PROXY` (or `HTTP_PROXY` for an `http://` gateway) and honour `NO_PROXY`. Before, they went direct: on Node 22 the global `fetch` ignores these variables unless the process starts with `NODE_USE_ENV_PROXY=1`. `NODE_EXTRA_CA_CERTS` was checked and applies to gateway calls, including through the proxy.
+  - When the private-address guard refuses the gateway host, the startup warning now names `NEXUS_CUSTOM_API_ALLOW_PRIVATE=1` and says the gateway is not in use. Before, it was a generic probe-failure line.
+  - A gateway that was unreachable at startup, returned an error or listed no models is retried on the first vote or `pr_review` panel at least 60 s after the last attempt. Before, the process stayed on CLI subprocesses until restart. Retries happen only on such a call, never on a timer, and stop once the gateway is wired. A private-address refusal is not retried.
+  - `OpenAIAdapterConfig` gains optional `defaultHeaders` and `fetchOptions` fields.
+  - Adds `undici` (major 6, the version Node 22 bundles) as a dependency, for the proxy agent.
+
+## 8.97.1
+
+### Patch Changes
+
+- [#6620](https://github.com/nexus-substrate/nexus-agents/pull/6620) [`500cc3f`](https://github.com/nexus-substrate/nexus-agents/commit/500cc3f152189498a1c99656cbbcb7ec8d29b2f4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - OpenAI adapter (direct and OpenAI-compatible gateways): responses that are not answers now return an error instead of a successful empty reply.
+
+  - A `content_filter` finish, on `complete()` or a stream, returns a `MODEL_ERROR` with `context.reason: 'content_filter'`. Partial text cut off by the filter is not returned as an answer.
+  - An empty `choices` array returns a `MODEL_ERROR` with `context.reason: 'no_choices'`.
+  - A reasoning model (o-series, gpt-5, codex, or any reply that reports reasoning tokens) that returns empty text with finish `length` returns a `MODEL_ERROR` with `context.reason: 'reasoning_truncated'` and `context.reasoningTokens` when the vendor reported them. On a non-reasoning model, an empty `length` finish is still an ordinary `max_tokens` truncation.
+  - When a request sets no `maxTokens`, reasoning models now get a default `max_completion_tokens` of 25,000, following OpenAI's guidance to reserve at least that much for reasoning and output. Other models keep 4,096. The value is a ceiling, not a spend.
+  - A user message with several `tool_result` blocks now sends one `tool` message per result. Before, only the first was sent, and strict gateways rejected the request with a 400.
+  - Streamed tool calls now keep their arguments. Each call is emitted once, complete, when the choice finishes. Before, it was emitted on its first fragment with `input: {}`.
+
+  Voter seats, experts and orchestrate already treat an adapter error as a failure, so a refusal now counts as an errored seat or a failed task, not as a vote or a success.
+
+- [#6621](https://github.com/nexus-substrate/nexus-agents/pull/6621) [`6d72198`](https://github.com/nexus-substrate/nexus-agents/commit/6d72198d34b812b31f9808608cfea4d370b7e328) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `AuditLogger.close()` no longer drops audit events logged while a flush was already running ([#6573](https://github.com/nexus-substrate/nexus-agents/issues/6573)). When a timer flush was in flight, `close()` waited for that flush and then closed storage, but the flush had taken its batch before the later events arrived. The usual casualty was `system.shutdown.begin`, logged just before shutdown. `close()` now flushes until the queue is empty. If a flush fails during close (for example, the cross-process lock times out), the events it could not write are counted as a persist failure, logged with a `strandedEvents` count, and `close()` rejects. They are never written twice.
+
+## 8.97.0
+
+### Minor Changes
+
+- [#6559](https://github.com/nexus-substrate/nexus-agents/pull/6559) [`b76d096`](https://github.com/nexus-substrate/nexus-agents/commit/b76d09642985a0583d3abc4d76fe1a212d7230af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `AuditLogger` hash chain now survives more than one process writing to the same log directory ([#6546](https://github.com/nexus-substrate/nexus-agents/issues/6546)). Before this, each process started its chain from nothing. The first event written after a server restart, or by a second concurrent session, had no `previousHash`, and concurrent processes interleaved two separate chains in one file. `verify_audit_chain` reported `previous_hash_mismatch` for every such log, the same verdict it gives for a deleted event.
+
+  - `FileAuditStorage` now appends under the cross-process file lock (`<logDir>/<filePrefix>.lock`). While it holds the lock, it moves to the newest log file, reads the hash of the last valid event on disk (looking back past an empty newest file), links the batch to that hash, and writes it out. Only the first event in an empty directory has no `previousHash`.
+  - Events are now linked when the queue is flushed, not when `log()` is called. An event dropped by queue backpressure no longer leaves a break in the chain. The logger's drop warning and counter still report it.
+  - The event's content is still fixed when `log()` is called: the logger keeps its own JSON copy, so changing the `actor` or `metadata` objects you passed in has no effect on the record. An event that cannot be serialized (for example, circular metadata) is counted as a persist failure, and `log()` does not throw.
+  - If a log file ends in a partial line (a writer crashed mid-write), the next append ends that line first, so no new event is lost. The partial line stays in the file, and `verify_audit_chain` still counts it in `skippedLines`.
+  - If the lock cannot be acquired, the flush fails loudly as before, and the batch stays queued for the next flush instead of being lost.
+  - `IAuditStorage` gains an optional `appendChained` method. Custom storages without it keep the previous single-process behaviour.
+  - Logs written before this release still fail verification at each old restart point. Those breaks are real and stay reported; there is no marker that hides them. Writers from older releases do not take the lock, so breaks continue until every process writing to the directory is upgraded. See §1.5 of `docs/security/audit-hash-chain-threat-model.md`.
+
+## 8.96.0
+
+### Minor Changes
+
+- [#6617](https://github.com/nexus-substrate/nexus-agents/pull/6617) [`d9e6cf7`](https://github.com/nexus-substrate/nexus-agents/commit/d9e6cf7c233e2cc04c03cd6795eeb3cd95c430af) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Harden OpenAI-compatible gateway discovery (`NEXUS_OPENAI_COMPAT_URL`/`_KEY`) for large, mixed catalogues.
+
+  - **Non-chat models are excluded.** Embedding, TTS, image, moderation, audio/whisper and rerank models no longer get an adapter or a voter seat, where they errored and could void an `absolute_quorum` panel. The listing's own metadata (`type`/`mode`, `capabilities.chat`, `architecture.output_modalities`) decides when present; otherwise the id does. The exclusion is logged at info with a count and a sample of ids.
+  - **Duplicate ids are removed**, so one listed model builds one adapter.
+  - **New `NEXUS_OPENAI_COMPAT_MODELS` allowlist.** Comma-separated model ids, with `*` as a wildcard (`anthropic/*,gemini-2.5-pro`). It is applied before the 256-model adapter cap, so a gateway listing more models than that now serves the allowlisted ones instead of failing discovery. An entry that matches no listed chat model is warned. Without an allowlist, a catalogue over the cap is still refused, and the error now names the variable. `nexus-agents init --opencode --validate` honours it too.
+  - **Listed ids are sent verbatim.** A gateway that lists `gpt-4o` is now asked for `gpt-4o`, not the dated `gpt-4o-2024-11-20` the direct OpenAI adapter's alias table substitutes, and `NEXUS_VOTER_MODEL_<ROLE>=gpt-4o` matches that adapter. `OpenAIAdapterConfig` gains an optional `verbatimModelId` flag for this; the direct OpenAI adapter's default is unchanged.
+  - **Model identity keeps versions.** `claude_4_5_opus` and `claude_4_1_opus`, and `gemini-2.5-pro` and `gemini-3-pro`, no longer share an identity key, and `vertex_ai/gemini-2.5-pro` gets a version. `claude-sonnet-4.5` and `claude-sonnet-4-5` now share one. The panel-diversity check (`countDistinctModels`) therefore stops reporting two model generations as one model. Registry lookup is unchanged: a census of 14,625 lookups over every registry entry, bare and under six gateway prefixes, resolved identically before and after.
+
 ## 8.95.0
 
 ### Minor Changes

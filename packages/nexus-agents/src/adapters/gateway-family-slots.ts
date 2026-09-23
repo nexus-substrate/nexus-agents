@@ -100,6 +100,11 @@ export function setGatewaySlotCatalog(models: readonly IModelAdapter[]): void {
   catalog = models.length === 0 ? undefined : [...models];
 }
 
+/** Whether a discovered gateway catalogue is registered (gateway mode). */
+export function hasGatewaySlotCatalog(): boolean {
+  return catalog !== undefined;
+}
+
 /** Test-only: forget the catalogue and the warn-once memory. */
 export function _resetGatewaySlotCatalog(): void {
   catalog = undefined;

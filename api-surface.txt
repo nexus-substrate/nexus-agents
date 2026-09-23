@@ -3830,6 +3830,7 @@ InterfaceDeclaration FeedbackMessage
 VariableDeclaration FeedbackRoutingDecisionSchema
   : z.ZodObject<{ armIndex: z.ZodOptional<z.ZodNumber>; banditContext: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; confidence: z.ZodOptional<z.ZodNumber>; domain: z.ZodOptional<z.ZodString>; id: z.ZodUUID; query: z.ZodString; queryFeatures: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>; routerType: z.ZodEnum<{ cascade: "cascade"; linucb: "linucb"; preference: "preference"; quality: "quality"; topsis: "topsis"; }>; routerTypeMeasured: z.ZodOptional<z.ZodBoolean>; selectedModel: z.ZodString; selectedTier: z.ZodOptional<z.ZodEnum<{ strong: "strong"; weak: "weak"; }>>; timestamp: z.ZodISODateTime; traceId: z.ZodString; ucbScore: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 ClassDeclaration FileAuditStorage
+  appendChained(seal: (tailHash: string | undefined) => readonly AuditEvent[]) => Promise<void>
   close() => Promise<void>
   createtypeof FileAuditStorage.create
   flush() => Promise<void>
@@ -4597,6 +4598,7 @@ InterfaceDeclaration IAuditLogger
   logTierTransition: (opts: TierTransitionAuditOpts) => void
   logToolInvocation: (opts: ToolInvocationAuditOpts) => void
 InterfaceDeclaration IAuditStorage
+  appendChained?: ((seal: (tailHash: string | undefined) => readonly AuditEvent[]) => Promise<void>) | undefined
   close: () => Promise<void>
   flush: () => Promise<void>
   query: (criteria: AuditQueryCriteria) => Promise<AuditEvent[]>
@@ -6156,6 +6158,8 @@ ClassDeclaration OpenAIAdapter
 InterfaceDeclaration OpenAIAdapterConfig
   apiKey: string
   baseUrl?: string | undefined
+  defaultHeaders?: Readonly<Record<string, null | string>> | undefined
+  fetchOptions?: Pick<RequestInit, "dispatcher"> | undefined
   maxRetries?: number | undefined
   modelId: string
   organization?: string | undefined
@@ -9162,6 +9166,7 @@ ClassDeclaration StreamError
 TypeAliasDeclaration StreamState
   = 'cancelled' | 'completed' | 'error' | 'idle' | 'paused' | 'streaming'
 InterfaceDeclaration StreamTextResult
+  finishReason?: Promise<string> | string | undefined
   textStream: AsyncIterable<string>
 VariableDeclaration StrictAgentRoleSchema
   : z.ZodEnum<{ architecture_expert: "architecture_expert"; code_expert: "code_expert"; custom: "custom"; documentation_expert: "documentation_expert"; infrastructure_expert: "infrastructure_expert"; orchestrator: "orchestrator"; security_expert: "security_expert"; testing_expert: "testing_expert"; }>

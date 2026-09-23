@@ -76,6 +76,12 @@ export const ALLOWLIST: readonly AllowlistEntry[] = [
       'Permanent legitimate exception. These are tiktoken library identifiers (NOT nexus-agents model IDs) — they map to BPE encoding names like "o200k_base", not API model versions. Confirmed legitimate during #2200 Child 4 review.',
     trackingIssue: 2200,
   },
+  {
+    file: 'packages/nexus-agents/src/testing/gateway/three-family-catalog.ts',
+    reason:
+      'Permanent legitimate exception. A recorded vendor /v1/models catalog for the fake-gateway acceptance fixture: the ids are the INPUT under test (dated, prefixed, dotted and non-chat spellings as a real gateway lists them), not nexus-agents model choices. Routing them through the registry would defeat the test.',
+    trackingIssue: 6610,
+  },
 ];
 
 /**
