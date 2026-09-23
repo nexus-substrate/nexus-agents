@@ -15,7 +15,13 @@ import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 import { colors, symbols } from './ansi-output.js';
 import { checkSqlite, checkDataDirectory, checkApiKeys } from './doctor.js';
 import { checkNativeGrammars } from './doctor-native-grammars.js';
-import { checkCodexModels, codexModelsVerifyCheck } from './doctor-codex-models.js';
+import {
+  checkCodexModels,
+  codexModelsVerifyCheck,
+  type CodexModelsVerifyCheckOptions,
+} from './doctor-codex-models.js';
+import { detectCliBinary } from './setup-cli-detection.js';
+import { DEFAULT_MODEL_PER_CLI } from '../config/in-tree-data.js';
 import { probeAllClis } from './cli-auth-probe.js';
 
 /**
@@ -249,15 +255,44 @@ async function checkGrammarAvailability(): Promise<VerifyCheck> {
   };
 }
 
+function getUserPinnedCodexSlug(): string | undefined {
+  try {
+    const result = loadConfig();
+    if (result.ok && result.value.configPath !== undefined) {
+      const modelDefault = result.value.config.models.default;
+      if (typeof modelDefault === 'string' && modelDefault.length > 0) {
+        return modelDefault;
+      }
+    }
+  } catch {
+    // Config read failure ignored
+  }
+  return undefined;
+}
+
 /**
  * Checks that every codex registry entry's `cliModelName` is a model the
  * installed codex serves (#5091), and that none retires within 30 days per the
  * cache's `upgrade` record (#6516). Two of three were dead for months because
  * nothing read the binary's list; this reads `~/.codex/models_cache.json`.
  * Rendering (including why `unmeasured` is never a pass) lives with the probe.
+ * When codex is absent, reports skipped rather than degraded (#6535).
  */
 function checkCodexModelSlugs(): VerifyCheck {
-  return codexModelsVerifyCheck(checkCodexModels());
+  const isInstalled = detectCliBinary('codex').installed;
+  if (!isInstalled) {
+    return codexModelsVerifyCheck(
+      { status: 'pass', served: [], missing: [], retiring: [], reason: null },
+      { isCodexInstalled: false }
+    );
+  }
+  const userPinnedSlug = getUserPinnedCodexSlug();
+  const verifyOptions: CodexModelsVerifyCheckOptions = {
+    isCodexInstalled: true,
+    ...(userPinnedSlug !== undefined ? { userPinnedSlug } : {}),
+    defaultModel: DEFAULT_MODEL_PER_CLI.codex,
+  };
+  return codexModelsVerifyCheck(checkCodexModels(), verifyOptions);
 }
 
 /**

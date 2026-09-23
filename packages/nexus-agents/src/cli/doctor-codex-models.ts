@@ -33,6 +33,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { findInTreeByCli } from '../config/model-config-helpers.js';
+import { DEFAULT_MODEL_PER_CLI } from '../config/in-tree-data.js';
 import type { VerifyCheck } from './verify-command.js';
 
 /** One codex registry entry, as the probe reports it. */
@@ -315,38 +316,125 @@ const CHECK_NAME = 'Codex Models';
  * as a warn whose message says so, never as a pass, because `VerifyCheck` has
  * no third state and a pass would claim a measurement that was not taken.
  */
-export function codexModelsVerifyCheck(result: CodexModelsCheck): VerifyCheck {
-  const servedList = `${String(result.served.length)} codex registry slug(s) served: ${result.served
-    .map((r) => r.cliModelName)
-    .join(', ')}`;
-  if (result.status === 'pass') {
-    return { name: CHECK_NAME, passed: true, message: servedList };
+/** Options for rendering the codex models verification check. */
+export interface CodexModelsVerifyCheckOptions {
+  /**
+   * Whether the codex binary is installed. When false, the check reports
+   * `passed: true` with message `skipped: codex not installed`.
+   */
+  readonly isCodexInstalled?: boolean | undefined;
+  /**
+   * Model slug pinned in user configuration (e.g. `nexus-agents.yaml`).
+   * When user config pins a retiring slug, the check escalates to a warning.
+   */
+  readonly userPinnedSlug?: string | undefined;
+  /**
+   * Active default model name (e.g. 'gpt-5.6-sol').
+   */
+  readonly defaultModel?: string | undefined;
+}
+
+interface EvaluatedRetirements {
+  readonly warns: readonly string[];
+  readonly infoNotes: readonly string[];
+  readonly upgradeTargets: readonly string[];
+}
+
+function evaluateRetirements(
+  retiring: readonly CodexRetiringRow[],
+  options?: CodexModelsVerifyCheckOptions
+): EvaluatedRetirements {
+  const warns: string[] = [];
+  const infoNotes: string[] = [];
+  const upgradeTargets: string[] = [];
+  const defaultModelName = options?.defaultModel ?? DEFAULT_MODEL_PER_CLI.codex;
+
+  for (const r of retiring) {
+    const date = r.retirementAt.slice(0, 10);
+    const isPast = r.daysLeft < 0;
+    const isPinned =
+      options?.userPinnedSlug !== undefined && options.userPinnedSlug === r.cliModelName;
+
+    if (isPast) {
+      warns.push(`${r.id} → ${r.cliModelName} retired ${date} (${String(-r.daysLeft)} day(s) ago)`);
+      if (r.upgradeModel !== null) upgradeTargets.push(r.upgradeModel);
+    } else if (isPinned) {
+      warns.push(`user config pins retiring slug ${r.cliModelName} (retires ${date})`);
+      if (r.upgradeModel !== null) upgradeTargets.push(r.upgradeModel);
+    } else {
+      infoNotes.push(
+        `${r.cliModelName} retires ${date}; nexus-agents default is ${defaultModelName}`
+      );
+    }
   }
-  if (result.status === 'warn') {
-    const fixes: string[] = [];
-    if (result.missing.length > 0) {
-      fixes.push(
-        'Refresh the codex entries in config/in-tree-data.ts against ~/.codex/models_cache.json (visibility=list)'
-      );
+
+  return { warns, infoNotes, upgradeTargets };
+}
+
+function buildVerifyFixes(missingCount: number, upgradeTargets: readonly string[]): string {
+  const fixes: string[] = [];
+  if (missingCount > 0) {
+    fixes.push('Update nexus-agents, or configure a supported model in nexus-agents.yaml');
+  }
+  if (upgradeTargets.length > 0) {
+    const target = upgradeTargets[0];
+    if (target !== undefined) {
+      fixes.push(`Update nexus-agents, or set your model to ${target} in nexus-agents.yaml`);
+    } else {
+      fixes.push('Update nexus-agents, or configure a supported model in nexus-agents.yaml');
     }
-    if (result.retiring.length > 0) {
-      fixes.push(
-        "Move the retiring slug's registry entry (and DEFAULT_MODEL_PER_CLI.codex, if it names it) to the cache's upgrade model before the date"
-      );
-    }
+  }
+  return fixes.join('; ');
+}
+
+/**
+ * Render a {@link CodexModelsCheck} as the `nexus-agents verify` row.
+ *
+ * When codex is absent, reports skipped rather than degraded (#6535).
+ * Planned retirements in the window with default migrated report as info.
+ * Warning triggers only when user config pins the retiring slug, the retirement
+ * date has passed, or a registry slug is not served.
+ */
+export function codexModelsVerifyCheck(
+  result: CodexModelsCheck,
+  options?: CodexModelsVerifyCheckOptions
+): VerifyCheck {
+  if (options?.isCodexInstalled === false) {
+    return { name: CHECK_NAME, passed: true, message: 'skipped: codex not installed' };
+  }
+  if (result.status === 'unmeasured') {
     return {
       name: CHECK_NAME,
       passed: false,
       severity: 'warn',
-      message: `${result.reason ?? 'codex registry slug(s) not served'}; ${servedList}`,
-      fix: fixes.join('; '),
+      message: `unmeasured: ${result.reason ?? 'codex model list unavailable'}`,
+      fix: 'Run codex once so ~/.codex/models_cache.json exists, then re-run verify',
     };
   }
-  return {
-    name: CHECK_NAME,
-    passed: false,
-    severity: 'warn',
-    message: `unmeasured: ${result.reason ?? 'codex model list unavailable'}`,
-    fix: 'Install codex and run it once so ~/.codex/models_cache.json exists, then re-run verify',
-  };
+
+  const servedList = `${String(result.served.length)} codex registry slug(s) served: ${result.served
+    .map((r) => r.cliModelName)
+    .join(', ')}`;
+
+  const missingReasons: string[] = [];
+  if (result.missing.length > 0) {
+    const named = result.missing.map((m) => `${m.id} → ${m.cliModelName}`).join(', ');
+    missingReasons.push(`not served by the installed codex: ${named}`);
+  }
+
+  const { warns, infoNotes, upgradeTargets } = evaluateRetirements(result.retiring, options);
+  const allWarnings = [...missingReasons, ...warns];
+
+  if (allWarnings.length > 0) {
+    return {
+      name: CHECK_NAME,
+      passed: false,
+      severity: 'warn',
+      message: `${allWarnings.join('; ')}; ${servedList}`,
+      fix: buildVerifyFixes(result.missing.length, upgradeTargets),
+    };
+  }
+
+  const message = infoNotes.length > 0 ? `${servedList} (${infoNotes.join('; ')})` : servedList;
+  return { name: CHECK_NAME, passed: true, message };
 }
