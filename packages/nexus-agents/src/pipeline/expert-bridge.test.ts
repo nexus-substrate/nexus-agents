@@ -52,6 +52,36 @@ describe('executeExpert workspace (#6358)', () => {
   });
 });
 
+describe('executeExpert served gateway arm (#6624)', () => {
+  beforeEach(() => {
+    executeTaskMock.mockReset();
+  });
+
+  it('carries the gateway arm that served the model', async () => {
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: {
+        text: 'done',
+        model: 'acme/claude-like-1',
+        routedCli: 'claude',
+        gatewayArm: 'api:custom-openai',
+      },
+    });
+    const result = await executeExpert('code', 'write it');
+    expect(result.model).toBe('acme/claude-like-1');
+    expect(result.gatewayArm).toBe('api:custom-openai');
+  });
+
+  it('carries no gateway arm when the response names none', async () => {
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: { text: 'done', model: 'claude-opus', routedCli: 'claude' },
+    });
+    const result = await executeExpert('code', 'write it');
+    expect('gatewayArm' in result).toBe(false);
+  });
+});
+
 describe('executeExpert routed marker (#6521)', () => {
   beforeEach(() => {
     executeTaskMock.mockReset();

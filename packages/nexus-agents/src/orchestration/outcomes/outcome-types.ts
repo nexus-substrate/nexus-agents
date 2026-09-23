@@ -14,6 +14,7 @@ import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { createLogger } from '../../core/index.js';
+import { PriceBasisSchema } from '../../core/price-basis.js';
 
 const logger = createLogger({ component: 'outcome-error-taxonomy' });
 
@@ -139,6 +140,27 @@ export const TaskOutcomeSchema = z.object({
   traceId: z.string().min(1).max(128).optional(),
   /** Request id correlating this outcome to its originating invocation (#3146). */
   requestId: z.string().min(1).max(128).optional(),
+  /**
+   * The model id the adapter reported serving the call (#6624). `model` stays
+   * what the writer has always put there: some writers store a role or
+   * aggregate marker in it (`pipeline`, `worker-<role>`, `consensus`) and
+   * readers group on that marker. Absent when the writer had no served model:
+   * the call failed, or the adapter reported none.
+   */
+  servedModel: z.string().min(1).max(200).optional(),
+  /**
+   * USD cost of the call (#6624), from the ledger's cost wrappers: the gateway
+   * arm's declaration when a gateway served it, else the registry rate for
+   * `servedModel`. Present ONLY when a price was found. Absent means the cost
+   * is unknown — never read an absent cost as $0.
+   */
+  costUsd: z.number().nonnegative().optional(),
+  /**
+   * What `costUsd` rests on (#6624): `'list'` when a rate was found, `'unknown'`
+   * when one was looked up and none exists. Absent when no lookup was made,
+   * because the adapter reported no token usage.
+   */
+  priceBasis: PriceBasisSchema.optional(),
 });
 
 /** Schema for filtering outcomes. */

@@ -59,6 +59,18 @@ describe('isDistillerEligible (#6521)', () => {
     // #6549: a rule is keyed on cli×category; a defaulted category names none.
     ['routed row, category defaulted', { ...routed, categorySource: 'defaulted' }, false],
     ['routed row, category detected', { ...routed, categorySource: 'detected' }, true],
+    // #6624: the served model and its cost ride beside the marker and change
+    // nothing eligibility reads, in either direction.
+    [
+      'routed pipeline row with a served model and cost',
+      { ...routed, model: 'pipeline', servedModel: 'claude-sonnet', costUsd: 0.033 },
+      true,
+    ],
+    [
+      'unrouted row with a served model and an unknown cost',
+      { model: 'worker-code', servedModel: 'acme-x', priceBasis: 'unknown' },
+      false,
+    ],
   ];
 
   it.each(table)('%s → %s', (_label, overrides, expected) => {

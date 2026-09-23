@@ -34,6 +34,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { CLI_NAMES, type CliNameLiteral } from '../../config/model-capabilities-types.js';
+import { servedOutcomeFields } from '../../orchestration/outcomes/outcome-served-model.js';
 
 const logger = createLogger({ tool: 'consensus-vote' });
 
@@ -383,6 +384,14 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
         // #2662 — carry the voter role so the stratified outcome report
         // can break consensus results down by role.
         voterRole: vote.role,
+        // #6624 — `model` stays the `consensus` marker; the model that sat
+        // this seat and its cost go beside it, priced like the vote rollup.
+        ...servedOutcomeFields({
+          model: vote.model,
+          gatewayArm: vote.gatewayArm,
+          inputTokens: vote.inputTokens,
+          outputTokens: vote.outputTokens,
+        }),
         ...(!voteSuccess && vote.error !== undefined
           ? {
               failureCategory: categorizeOutcomeErrorMessage(vote.error),

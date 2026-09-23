@@ -169,6 +169,67 @@ describe('recordVoteOutcomes CLI attribution (#5529)', () => {
   });
 });
 
+describe('recordVoteOutcomes served model and cost (#6624)', () => {
+  beforeEach(() => {
+    setOutcomeStore(new OutcomeStore());
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('records one row per seat, each with the model that sat it and its cost', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+    recordVoteOutcomes([
+      // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
+      {
+        ...agentVote('architect', 'approve'),
+        cli: 'claude',
+        model: 'claude-sonnet',
+        inputTokens: 1_000,
+        outputTokens: 2_000,
+      },
+      // The same model through a declared gateway: $1 / $2 per 1M = 0.005.
+      {
+        ...agentVote('security', 'approve'),
+        cli: 'claude',
+        model: 'claude-sonnet',
+        gatewayArm: 'api:custom-openai',
+        inputTokens: 1_000,
+        outputTokens: 2_000,
+      },
+      {
+        ...agentVote('devex', 'reject'),
+        cli: 'opencode',
+        model: 'acme-unpriced-model-xyz',
+        inputTokens: 1_000,
+        outputTokens: 2_000,
+      },
+    ]);
+
+    const [architect, security, devex] = getOutcomeStore().query();
+    expect(architect).toMatchObject({
+      model: 'consensus',
+      voterRole: 'architect',
+      servedModel: 'claude-sonnet',
+      costUsd: 0.033,
+      priceBasis: 'list',
+    });
+    expect(security).toMatchObject({ servedModel: 'claude-sonnet', costUsd: 0.005 });
+    expect(devex).toMatchObject({ servedModel: 'acme-unpriced-model-xyz', priceBasis: 'unknown' });
+    expect(devex !== undefined && 'costUsd' in devex).toBe(false);
+  });
+
+  it('records no served fields for a seat that never reached a model', () => {
+    recordVoteOutcomes([{ ...agentVote('pm', 'abstain', 'error'), error: 'spawn failed' }]);
+    const row = getOutcomeStore().query()[0] as unknown as Record<string, unknown>;
+    expect(row['model']).toBe('consensus');
+    for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
+      expect(key in row).toBe(false);
+    }
+  });
+});
+
 describe('recordAuthenticVote persistence outcome (#3991)', () => {
   let dir: string;
   let dataRoot: string;

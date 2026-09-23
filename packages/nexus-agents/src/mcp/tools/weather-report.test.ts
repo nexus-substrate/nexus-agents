@@ -570,6 +570,22 @@ describe('expert performance in weather report (Issue #1324)', () => {
     expect(arch?.role).toBe('architecture');
   });
 
+  it('keys a worker row by its role marker, not its served model (#6624)', () => {
+    getOutcomeStore().append(
+      makeOutcome({
+        model: 'worker-security',
+        servedModel: 'claude-sonnet',
+        costUsd: 0.033,
+        priceBasis: 'list',
+        success: true,
+        durationMs: 500,
+      })
+    );
+
+    const report = generateWeatherReport({});
+    expect(report.expertPerformance?.map((e) => e.role)).toEqual(['security']);
+  });
+
   it('includes consecutiveFailures from tail of outcome history (#1427)', () => {
     getOutcomeStore().append(makeOutcome({ model: 'worker-code', success: true, durationMs: 100 }));
     getOutcomeStore().append(
