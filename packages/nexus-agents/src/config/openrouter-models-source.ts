@@ -13,8 +13,10 @@
  *  - **Timeout-bounded** via AbortController.
  *  - **Fail-OPEN**: any error returns `[]`, so the AvailableModelsCache simply
  *    keeps prior/other sources — a probe failure never wedges routing.
- *  - **Existence only**: we read ids, never pricing/capability (those stay
- *    authoritative in the in-tree registry).
+ *  - **Existence for routing**: routing reads ids only; pricing/capability stay
+ *    authoritative in the in-tree registry. The listing's `created`,
+ *    `context_length` and `pricing` are parsed for the model-drift report
+ *    (#6625), which drafts registry entries from them and never applies them.
  *
  * @module config/openrouter-models-source
  */
@@ -40,17 +42,72 @@ const OpenRouterModelSchema = z.object({
   // older catalogs (and our older fixtures) omit it; consumers reading only `.id`
   // are unaffected. Bounded so a hostile payload can't blow memory.
   supported_parameters: z.array(z.string().max(256)).max(MAX_SUPPORTED_PARAMETERS).optional(),
+  // #6625: listing metadata for the model-drift report. Decorative, so a
+  // malformed value becomes `undefined` instead of discarding the record.
+  created: z.number().int().positive().optional().catch(undefined),
+  context_length: z.number().int().positive().optional().catch(undefined),
+  pricing: z
+    .object({
+      prompt: z.string().max(64).optional().catch(undefined),
+      completion: z.string().max(64).optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
 });
 const OpenRouterModelsResponseSchema = z.object({ data: z.array(OpenRouterModelSchema) });
+
+/** Listing price, converted from OpenRouter's USD-per-token strings to USD per 1M tokens. */
+interface OpenRouterCatalogPricing {
+  readonly inputPer1M?: number;
+  readonly outputPer1M?: number;
+}
 
 /**
  * A validated catalog model. `supportedParameters` is the provider's
  * machine-readable capability list (#4121) — `undefined` when the catalog omits
  * it (backward-compat). Existing existence-only consumers read `.id` and ignore it.
+ * `createdAt` (epoch seconds), `contextLength` and `pricing` are listing
+ * metadata for the model-drift report (#6625); each is absent when the catalog
+ * omits it or sends a malformed value.
  */
 export interface OpenRouterCatalogModel {
   readonly id: string;
   readonly supportedParameters?: readonly string[];
+  readonly createdAt?: number;
+  readonly contextLength?: number;
+  readonly pricing?: OpenRouterCatalogPricing;
+}
+
+/** The cache source, typed with the metadata its catalog rows carry (#6625). */
+interface OpenRouterModelsSource extends AvailableModelsSource {
+  listModels(): Promise<readonly OpenRouterCatalogModel[]>;
+}
+
+const TOKENS_PER_MILLION = 1_000_000;
+
+/** USD-per-token string → USD per 1M tokens; `undefined` for anything not a finite, non-negative number. */
+function perMillion(perToken: string | undefined): number | undefined {
+  if (perToken === undefined || perToken.trim() === '') return undefined;
+  const value = Number(perToken);
+  if (!Number.isFinite(value) || value < 0) return undefined;
+  // Round away float noise (0.000003 * 1e6 = 2.9999999999999996).
+  return Math.round(value * TOKENS_PER_MILLION * 1e6) / 1e6;
+}
+
+function toCatalogModel(m: z.infer<typeof OpenRouterModelSchema>): OpenRouterCatalogModel {
+  const inputPer1M = perMillion(m.pricing?.prompt);
+  const outputPer1M = perMillion(m.pricing?.completion);
+  const pricing: OpenRouterCatalogPricing = {
+    ...(inputPer1M !== undefined && { inputPer1M }),
+    ...(outputPer1M !== undefined && { outputPer1M }),
+  };
+  return {
+    id: m.id,
+    ...(m.supported_parameters !== undefined && { supportedParameters: m.supported_parameters }),
+    ...(m.created !== undefined && { createdAt: m.created }),
+    ...(m.context_length !== undefined && { contextLength: m.context_length }),
+    ...(Object.keys(pricing).length > 0 && { pricing }),
+  };
 }
 
 export interface OpenRouterModelsSourceOptions {
@@ -87,13 +144,7 @@ export function parseCatalog(text: string): readonly OpenRouterCatalogModel[] {
     });
     return [];
   }
-  return parsed.data.data
-    .slice(0, MAX_MODELS)
-    .map((m) =>
-      m.supported_parameters === undefined
-        ? { id: m.id }
-        : { id: m.id, supportedParameters: m.supported_parameters }
-    );
+  return parsed.data.data.slice(0, MAX_MODELS).map(toCatalogModel);
 }
 
 /** Fetch + validate the catalog. Fail-OPEN: any failure returns `[]`. */
@@ -159,7 +210,7 @@ async function fetchCatalog(
 
 export function createOpenRouterModelsSource(
   opts: OpenRouterModelsSourceOptions = {}
-): AvailableModelsSource {
+): OpenRouterModelsSource {
   const url = opts.url ?? OPENROUTER_MODELS_URL;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const doFetch = opts.fetchImpl ?? fetch;

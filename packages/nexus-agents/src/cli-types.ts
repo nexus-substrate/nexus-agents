@@ -182,6 +182,7 @@ export type CliCommand =
   | 'migrate'
   | 'tour'
   | 'improvement-review'
+  | 'model-drift'
   | 'auto-remediate'
   | 'remediation-review'
   | 'mode'
@@ -273,6 +274,8 @@ export interface ParsedCliArgs {
     // Registry command options (#2179)
     json?: boolean;
     source?: string;
+    /** model-drift `--file-issue` (#6625): open one issue per new model with `gh`. */
+    fileIssue?: boolean;
     // init --portable command options (#2305)
     portable?: boolean;
     gitignore?: boolean;
@@ -532,6 +535,11 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // model-drift command option (#6625)
+    'file-issue': {
+      type: 'boolean' as const,
+      default: false,
+    },
     source: {
       type: 'string' as const,
     },
@@ -657,6 +665,7 @@ export const VALID_COMMANDS: readonly CliCommand[] = [
   'login',
   'usage',
   'improvement-review',
+  'model-drift',
   'migrate',
   'tour',
   'auto-remediate',
