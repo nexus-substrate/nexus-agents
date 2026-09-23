@@ -35,6 +35,16 @@ import { canonicalVersionKey, resolveModelIdentitySync } from './model-identity.
  * `/` to `-` and matches vendor/family with unanchored patterns. That behaviour
  * is incidental to its design but is test-covered for the prefixed form.
  */
+/**
+ * Quirks that denote distinct model weights or output modalities (#6616).
+ *
+ * `small` (mini, nano, lite) and `image` (image generation) distinguish
+ * variants that otherwise share a vendor, family, and version with the base
+ * model (e.g. `gpt-4o` vs `gpt-4o-mini`, or `gemini-2.5-flash` vs
+ * `gemini-2.5-flash-image`).
+ */
+const VARIANT_QUIRKS: ReadonlySet<string> = new Set(['small', 'image']);
+
 export function canonicalModelKey(modelId: string): string | null {
   if (modelId === '') return null;
   const identity = resolveModelIdentitySync(modelId);
@@ -42,7 +52,14 @@ export function canonicalModelKey(modelId: string): string | null {
   // The version goes through the registry's version key, so `4.5` and `4-5`
   // name one model here exactly as they do in registry lookup (#6605).
   const version = identity.version === undefined ? '' : canonicalVersionKey(identity.version);
-  return `${identity.vendor}|${identity.family}|${version}`;
+  // Size and modality variants denote different weights (#6616).
+  const variant = identity.quirks
+    .filter((q) => VARIANT_QUIRKS.has(q))
+    .sort()
+    .join('-');
+  return variant === ''
+    ? `${identity.vendor}|${identity.family}|${version}`
+    : `${identity.vendor}|${identity.family}|${version}|${variant}`;
 }
 
 /**

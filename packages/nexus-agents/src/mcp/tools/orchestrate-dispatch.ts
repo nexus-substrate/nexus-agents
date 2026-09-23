@@ -34,7 +34,7 @@ import {
   type SynthesisSource,
 } from '../../orchestration/aorchestra/result-synthesizer.js';
 import { getTimeProvider, getRandomProvider } from '../../core/index.js';
-import type { ContentBlock } from '../../core/types/model.js';
+import type { ContentBlock, TokenUsage } from '../../core/types/model.js';
 import {
   DEFAULT_CLI,
   CliNameSchema,
@@ -51,6 +51,11 @@ import {
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
 import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
+import {
+  servedOutcomeFields,
+  type ServedCall,
+} from '../../orchestration/outcomes/outcome-served-model.js';
+import { isGatewayModelAdapter } from '../../adapters/openai-compat-adapter.js';
 
 // ============================================================================
 // Constants
@@ -230,11 +235,30 @@ async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerRe
       status: 'success',
       durationMs: getTimeProvider().now() - workerStartMs,
       resolvedCli: cliName,
+      served: servedCallOf(adapter, result.value),
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return makeErrorResult(entry, workerStartMs, message, cliName);
   }
+}
+
+/**
+ * The model that answered a worker and its usage (#6624). A gateway adapter
+ * names its arm, so the row is priced by the gateway's declaration.
+ */
+function servedCallOf(
+  adapter: IModelAdapter,
+  response: { readonly model: string; readonly usage?: TokenUsage | undefined }
+): ServedCall {
+  return {
+    model: response.model,
+    ...(isGatewayModelAdapter(adapter) && { gatewayArm: adapter.gatewayArm }),
+    ...(response.usage !== undefined && {
+      inputTokens: response.usage.inputTokens,
+      outputTokens: response.usage.outputTokens,
+    }),
+  };
 }
 
 function createWorkerExecutor(
@@ -654,6 +678,9 @@ export function recordWorkerOutcomes(
         timestamp: ts,
         source: 'delegate',
         ...buildOptionalFields(r),
+        // #6624: the model that answered, beside the `worker-<role>` marker
+        // the weather report and the learnings group on.
+        ...servedOutcomeFields(r.served),
       });
     }
   } catch (error: unknown) {

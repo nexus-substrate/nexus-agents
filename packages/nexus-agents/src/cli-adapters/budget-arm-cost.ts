@@ -302,3 +302,22 @@ export function gatewayCostDetail(
   const { costUsd } = computeTokenCost({ input: inputTokens, output: outputTokens }, rates);
   return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId: arm };
 }
+
+/**
+ * The cost a telemetry writer records for one call `modelId` served (#6624):
+ * by the gateway arm's declaration ({@link gatewayCostDetail}) when a gateway
+ * served it, else by the registry rate ({@link computeCostDetail}). The one
+ * place that choice is made, so the per-decision vote rollup and the outcome
+ * rows price a call the way the usage log does.
+ */
+export function servedCostDetail(
+  gatewayArm: EndpointArmId | undefined,
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number
+): CostDetail {
+  if (gatewayArm !== undefined) {
+    return gatewayCostDetail(gatewayArm, modelId, inputTokens, outputTokens);
+  }
+  return computeCostDetail(modelId, inputTokens, outputTokens);
+}

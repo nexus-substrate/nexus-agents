@@ -720,3 +720,79 @@ describe('recordWorkerOutcomes', () => {
     expect(TaskOutcomeSchema.safeParse(entries[0]).success).toBe(true);
   });
 });
+
+// ============================================================================
+// Served model and cost on worker rows (#6624)
+// ============================================================================
+
+describe('worker outcome rows record the served model and cost (#6624)', () => {
+  beforeEach(() => {
+    resetOutcomeStore();
+  });
+
+  afterEach(() => {
+    resetOutcomeStore();
+    vi.unstubAllEnvs();
+  });
+
+  function servedAdapter(model: string, gatewayArm?: string): IModelAdapter {
+    const adapter = makeMockAdapter('done');
+    (adapter.complete as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok({
+        content: [{ type: 'text' as const, text: 'done' }],
+        usage: { inputTokens: 1_000, outputTokens: 2_000, totalTokens: 3_000 },
+        stopReason: 'end_turn' as const,
+        model,
+      })
+    );
+    return gatewayArm === undefined ? adapter : Object.assign(adapter, { gatewayArm });
+  }
+
+  async function dispatchAndRecord(adapter: IModelAdapter): Promise<Record<string, unknown>> {
+    const result = await executeWorkerDispatch({
+      agentPlan: makePlan(1),
+      taskDescription: 'Implement auth feature',
+      modelAdapter: adapter,
+      logger,
+    });
+    recordWorkerOutcomes(result.results, 'Implement auth feature');
+    const entries = getOutcomeStore().query();
+    expect(entries).toHaveLength(1);
+    return entries[0] as unknown as Record<string, unknown>;
+  }
+
+  it('records the model that answered and its registry cost beside the role marker', async () => {
+    // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
+    const row = await dispatchAndRecord(servedAdapter('claude-sonnet'));
+    expect(row['model']).toBe('worker-code');
+    expect(row['servedModel']).toBe('claude-sonnet');
+    expect(row['costUsd']).toBe(0.033);
+    expect(row['priceBasis']).toBe('list');
+  });
+
+  it('prices a gateway-served worker by the gateway declaration', async () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
+    // $1 / $2 per 1M: 0.001 + 0.004. The list rate would be 0.033.
+    const row = await dispatchAndRecord(servedAdapter('claude-sonnet', 'api:custom-openai'));
+    expect(row['servedModel']).toBe('claude-sonnet');
+    expect(row['costUsd']).toBe(0.005);
+  });
+
+  it('records an unpriced model as an unknown cost, not $0', async () => {
+    const row = await dispatchAndRecord(servedAdapter('acme-unpriced-model-xyz'));
+    expect(row['servedModel']).toBe('acme-unpriced-model-xyz');
+    expect(row['priceBasis']).toBe('unknown');
+    expect('costUsd' in row).toBe(false);
+  });
+
+  it('records no served fields for a worker that got no completion', () => {
+    recordWorkerOutcomes(
+      [{ role: 'code', subTask: 's', output: '', status: 'error', durationMs: 5, error: 'boom' }],
+      'Implement auth feature'
+    );
+    const row = getOutcomeStore().query()[0] as unknown as Record<string, unknown>;
+    for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
+      expect(key in row).toBe(false);
+    }
+  });
+});

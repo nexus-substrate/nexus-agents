@@ -43,6 +43,9 @@ import { ErrorCode, type ILogger, type IModelAdapter } from '../../core/index.js
 import { loadUsageEvents } from '../../learning/usage-log.js';
 import { createServer } from '../../mcp/server.js';
 import { registerConsensusVoteTool, registerTools } from '../../mcp/tools/index.js';
+import { checkGatewayHealth, gatewayVerdict } from '../../cli/doctor-gateway.js';
+import { formatGatewayReport } from '../../cli/doctor-gateway-report.js';
+import { isAllHealthy, type CliCheckResult } from '../../cli/doctor.js';
 import {
   SCRIPTED_USAGE,
   echoModelScript,
@@ -466,7 +469,7 @@ describe('a 7-seat consensus_vote on a one-family gateway (#6606)', () => {
 
   it('reports one family over several models and carries the collapsed-panel warning', () => {
     expect(vote.panelDiversity).toEqual(
-      expect.objectContaining({ distinctFamilies: 1, distinctModels: 4 })
+      expect.objectContaining({ distinctFamilies: 1, distinctModels: 5 })
     );
     expect(vote.panelWarning).toContain('answering seats ran openai models');
   });
@@ -599,7 +602,73 @@ describe('family-slot routing with no CLIs installed (#6604)', () => {
 });
 
 // ============================================================================
-// 6. The single-model custom-openai adapter's API surface (#6645)
+// 6. doctor --gateway (#6609)
+// ============================================================================
+
+describe('doctor --gateway on a gateway-only host (#6609)', () => {
+  const noCli = (name: CliCheckResult['name']): CliCheckResult => ({
+    name,
+    installed: false,
+    authenticated: false,
+    authState: 'unverified',
+    version: 'N/A',
+    versionStatus: 'unsupported',
+  });
+  const healthyHost = {
+    nodeSupported: true,
+    hasAuthMethod: true,
+    mcpServerReady: true,
+    installFreshness: { state: 'aligned' as const, version: '1.0.0' },
+    scratchSpace: [],
+    clis: (['claude', 'gemini', 'codex', 'opencode'] as const).map(noCli),
+  };
+
+  it('measures the fake gateway: counts, family census, and the slots the router uses', async () => {
+    const health = await checkGatewayHealth();
+
+    expect(health.state).toBe('healthy');
+    if (health.state !== 'healthy') return;
+    expect(health.listedCount).toBe(THREE_FAMILY_CATALOG.length);
+    expect(health.chatCount).toBe(THREE_FAMILY_CHAT_IDS.length);
+    expect(health.census).toEqual({ anthropic: 4, openai: 5, google: 3, unknown: 0 });
+    // The same models the #6604 cases above see the router dispatch to.
+    expect(health.slots).toEqual(FAMILY_SLOT_MODEL);
+    expect(health.probes).toBe('skipped');
+    expect(gateway.chatRequests()).toHaveLength(0);
+    expect(formatGatewayReport(health).join('\n')).not.toContain(GATEWAY_KEY);
+  });
+
+  it('passes the verdict with no CLI installed', async () => {
+    const gatewayTerm = gatewayVerdict(await checkGatewayHealth());
+
+    expect(gatewayTerm).toBe('pass');
+    expect(isAllHealthy({ ...healthyHost, gateway: gatewayTerm })).toBe(true);
+  });
+
+  it('--probe sends one completion per family, to that family', async () => {
+    const health = await checkGatewayHealth({ probe: true });
+
+    const served = gateway.chatRequests().map((r) => familyOf((r.body as ChatRequestBody).model));
+    expect(served).toEqual(['anthropic', 'openai', 'google']);
+    expect(gatewayVerdict(health)).toBe('pass');
+  });
+
+  it('fails the verdict, naming the host, when the gateway is unreachable', async () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'http://127.0.0.1:1/v1');
+    try {
+      const health = await checkGatewayHealth();
+
+      expect(gatewayVerdict(health)).toBe('fail');
+      expect(isAllHealthy({ ...healthyHost, gateway: gatewayVerdict(health) })).toBe(false);
+      expect(formatGatewayReport(health).join('\n')).toContain('Gateway 127.0.0.1: FAILED');
+    } finally {
+      vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', gateway.baseUrl);
+    }
+  });
+});
+
+// ============================================================================
+// 7. The single-model custom-openai adapter's API surface (#6645)
 // ============================================================================
 
 describe('the single-model custom-openai adapter over HTTP (#6645)', () => {

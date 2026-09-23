@@ -271,6 +271,10 @@ export interface ParsedCliArgs {
      * not-attempted rather than assuming it.
      */
     live: boolean;
+    /** `doctor --gateway` (#6609): print the measured gateway section. */
+    gateway: boolean;
+    /** `doctor --probe` (#6609): one completion per gateway family; spends tokens. */
+    probe: boolean;
     // Registry command options (#2179)
     json?: boolean;
     source?: string;
@@ -536,6 +540,15 @@ export const PARSE_ARGS_CONFIG = {
     },
     // Doctor live readiness probe (#4376)
     live: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // Doctor gateway section and opt-in completion probe (#6609)
+    gateway: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    probe: {
       type: 'boolean' as const,
       default: false,
     },

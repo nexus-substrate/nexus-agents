@@ -111,6 +111,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
       missingCount: 0,
     },
     voterTransport: { configured: false },
+    gateway: { state: 'not_configured' },
     claudeModel: { alias: 'fable', status: 'available' as const, reason: null },
     scratchSpace: [
       {

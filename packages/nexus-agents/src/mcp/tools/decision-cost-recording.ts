@@ -22,8 +22,8 @@
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { createLogger, getTimeProvider, type ILogger } from '../../core/index.js';
-import { gatewayCostDetail } from '../../cli-adapters/budget-arm-cost.js';
-import { computeCostDetail, priceBasisOf, type CostDetail } from '../../learning/usage-log.js';
+import { servedCostDetail } from '../../cli-adapters/budget-arm-cost.js';
+import { priceBasisOf, type CostDetail } from '../../learning/usage-log.js';
 import { DecisionCostStore, type DecisionGate } from '../../observability/decision-cost-store.js';
 import type {
   DecisionBillingMode,
@@ -86,10 +86,7 @@ function reportedTokenFields(v: AgentVoteResult): Partial<VoterCostInput> {
 function voteCostDetail(v: AgentVoteResult): CostDetail | undefined {
   const hasTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
   if (!hasTokens || v.model === undefined) return undefined;
-  const input = v.inputTokens ?? 0;
-  const output = v.outputTokens ?? 0;
-  if (v.gatewayArm !== undefined) return gatewayCostDetail(v.gatewayArm, v.model, input, output);
-  return computeCostDetail(v.model, input, output);
+  return servedCostDetail(v.gatewayArm, v.model, v.inputTokens ?? 0, v.outputTokens ?? 0);
 }
 
 export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostInput[] {

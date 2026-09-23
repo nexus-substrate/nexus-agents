@@ -15,7 +15,7 @@ import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import { resolveCliSlot } from '../config/model-availability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
-import type { RoutingArmId } from '../cli-adapters/types-core.js';
+import type { EndpointArmId, RoutingArmId } from '../cli-adapters/types-core.js';
 
 /**
  * Resolves a CLI slot from the model string a (CLI or API) adapter returned.
@@ -94,6 +94,12 @@ export interface ExpertBridgeResult {
    */
   readonly tokensIn?: number;
   readonly tokensOut?: number;
+  /**
+   * The gateway arm that served {@link model}, when a gateway model answered
+   * (#6624, `CliResponse.gatewayArm`). An outcome writer prices the call by
+   * the arm's declaration instead of the model's list rate.
+   */
+  readonly gatewayArm?: EndpointArmId;
 }
 
 /** Attribution of a routed arm's run, on success and on failure (#6521). */
@@ -114,6 +120,7 @@ interface RouterLike {
       model?: string;
       tokensIn?: number;
       tokensOut?: number;
+      gatewayArm?: EndpointArmId;
     };
     error: RoutedAttribution & { message: string };
   }>;
@@ -257,6 +264,7 @@ function adaptCompositeRouter(
         model?: string;
         tokensIn?: number;
         tokensOut?: number;
+        gatewayArm?: EndpointArmId;
       };
       error: RoutedAttribution & { message: string };
     }> {
@@ -293,6 +301,9 @@ function adaptCompositeRouter(
             ...(tokensUsed !== undefined && { tokensUsed }),
             ...(model !== undefined && { model }),
             ...(split !== undefined && { tokensIn: split.tokensIn, tokensOut: split.tokensOut }),
+            // #6624: which gateway served the model, so its cost is priced by
+            // the gateway's declaration.
+            ...(result.value.gatewayArm !== undefined && { gatewayArm: result.value.gatewayArm }),
           },
           error: { message: '' },
         };
@@ -397,6 +408,7 @@ function toSuccessResult(
     ...(value.model !== undefined && { model: value.model }),
     ...(value.tokensIn !== undefined && { tokensIn: value.tokensIn }),
     ...(value.tokensOut !== undefined && { tokensOut: value.tokensOut }),
+    ...(value.gatewayArm !== undefined && { gatewayArm: value.gatewayArm }),
   };
 }
 

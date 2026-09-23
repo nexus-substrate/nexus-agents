@@ -208,15 +208,14 @@ describe('discovery of a three-family gateway catalogue (#6605)', () => {
     for (const id of context.sample) expect(NON_CHAT_IDS).toContain(id);
   });
 
-  it('gives each text chat model its own identity key', async () => {
+  it('gives each discovered model its own identity key (#6616)', async () => {
     mockList.mockResolvedValue(FIXTURE);
     const result = await discoverModels(config, makeLogger());
     if (!result.ok) throw new Error('discovery failed');
-    // gemini-2.5-flash-image shares vertex_ai/gemini-2.5-flash's family and
-    // version; variant suffixes are not part of the key yet (#6616).
-    const textModels = result.value.map((m) => m.id).filter((id) => !id.endsWith('-image'));
-    const keys = textModels.map((id) => canonicalModelKey(id) ?? `raw:${id}`);
-    expect(new Set(keys).size).toBe(textModels.length);
+    // #6616: gemini-2.5-flash-image folds its image modality quirk into the key,
+    // so it no longer shares vertex_ai/gemini-2.5-flash's key.
+    const keys = result.value.map((m) => canonicalModelKey(m.id) ?? `raw:${m.id}`);
+    expect(new Set(keys).size).toBe(result.value.length);
   });
 });
 

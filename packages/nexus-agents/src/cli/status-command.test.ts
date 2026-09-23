@@ -201,6 +201,8 @@ function createArgs(overrides: Record<string, unknown>): {
     mock: boolean;
     deep: boolean;
     live: boolean;
+    gateway: boolean;
+    probe: boolean;
   };
   positionals: string[];
 } {
@@ -234,6 +236,8 @@ function createArgs(overrides: Record<string, unknown>): {
       mock: false,
       deep: false,
       live: false,
+      gateway: false,
+      probe: false,
     },
     positionals: [],
   };

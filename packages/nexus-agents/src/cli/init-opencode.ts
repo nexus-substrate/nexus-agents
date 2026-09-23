@@ -17,7 +17,7 @@
  *     fills in (placeholder baseURL + `{env:WORKSPACE_PROXY_KEY}`).
  *   - `--dry-run` → print the diff (proposed vs existing) without writing.
  *   - `--validate` → after merge (or alongside dry-run), probe
- *     `providers.openai-compat.options.baseURL/v1/models` with the
+ *     `providers.openai-compat.options.baseURL` + `/models` with the
  *     resolved apiKey, exit non-zero if unreachable.
  *
  * @module cli/init-opencode
