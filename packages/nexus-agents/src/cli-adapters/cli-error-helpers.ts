@@ -19,6 +19,7 @@
 
 import { parseRetryAfterMs, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import type { CliError, CliErrorCode, CliName } from './types.js';
+import { ValidationError } from '../core/errors.js';
 
 /** Error codes the retry machinery treats as transient. */
 export const RETRYABLE_ERROR_CODES: ReadonlySet<CliErrorCode> = new Set<CliErrorCode>([
@@ -76,4 +77,21 @@ export function createCliError(
     ...(retryAfterMs !== undefined && { retryAfterMs }),
     ...(cause !== undefined && { cause }),
   };
+}
+
+/**
+ * A CliError caused by the caller's input — e.g. a requested model the CLI
+ * cannot resolve or has in cooldown (#6599) — rather than by the CLI's health.
+ * Marked by a {@link ValidationError} cause so every layer can tell it apart:
+ * the model bridge maps it to `ErrorCode.INVALID_INPUT`, and circuit breakers
+ * must not count it, or one bad model preference opens the breaker for every
+ * caller of that CLI. Non-retryable: the same input fails the same way.
+ */
+export function createCallerInputCliError(message: string, cli: CliName): CliError {
+  return createCliError('EXECUTION_ERROR', message, cli, new ValidationError(message));
+}
+
+/** Whether `error` was built by {@link createCallerInputCliError}. */
+export function isCallerInputCliError(error: CliError): boolean {
+  return error.cause instanceof ValidationError;
 }

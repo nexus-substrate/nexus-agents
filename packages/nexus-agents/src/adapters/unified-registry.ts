@@ -22,6 +22,7 @@ import { ConfigError } from '../core/errors.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { createLogger } from '../core/index.js';
 import { createResilientAdapter } from './resilient-adapter.js';
+import { ModelBoundAdapter } from './model-bound-adapter.js';
 import { isGatewayArmId, warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
 import type { IResilientAdapter } from './resilient-adapter-types.js';
 import type { CliName, EndpointArmId, ObservedArmId } from '../cli-adapters/types.js';
@@ -219,6 +220,10 @@ export class UnifiedAdapterRegistry {
    * Get adapter for a model preference string (e.g., "claude-opus-4-6").
    * Resolves the model to its CLI via the canonical registry.
    * Falls back to default adapter if model not recognized.
+   *
+   * An exact match returns the CLI slot adapter bound to the matched registry
+   * id, so the model reaches the CLI instead of its default (#6599). A prefix
+   * match routes to the CLI only, as before: the name was not an entry.
    */
   getAdapterForModel(modelPreference: string): IResilientAdapter {
     // Prefer exact matches (id / cliAlias / cliModelName) over prefix matches.
@@ -244,7 +249,8 @@ export class UnifiedAdapterRegistry {
         model: modelPreference,
         cli: model.cliName,
       });
-      return this.getAdapterForCli(model.cliName as CliName);
+      const slot = this.getAdapterForCli(model.cliName as CliName);
+      return exact !== undefined ? new ModelBoundAdapter(slot, exact.id) : slot;
     }
     this.logger.debug('Model not in registry, using default', {
       model: modelPreference,

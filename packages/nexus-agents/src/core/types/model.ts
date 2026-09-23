@@ -90,6 +90,12 @@ export interface CompletionRequest {
   timeoutMs?: number;
   /** Working directory for CLI adapters; API adapters ignore this field. */
   workDir?: string;
+  /**
+   * Model the caller wants to answer (#6599): a registry id, a CLI alias or a
+   * CLI-native id. CLI adapters forward it to the CLI, which resolves it or
+   * returns an error; SDK adapters bound to a single model ignore it.
+   */
+  model?: string;
   /** Tools available for the model */
   tools?: ToolDefinition[];
   /**

@@ -23,17 +23,20 @@ import {
   type TransientRetryConfig,
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
+import { createCallerInputCliError } from '../cli-error-helpers.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import { getAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
 import type { Result } from '../../core/index.js';
+import { ok, err } from '../../core/index.js';
 import type { CliResponse, CliError } from '../types-core.js';
-import type { ResolvedExecutionOptions } from '../types-capability.js';
+import type { ExecutionOptions, ResolvedExecutionOptions } from '../types-capability.js';
 import {
   getDefaultModelForCli,
   getCliModelName,
   buildModelInfo,
   findInTreeByCli,
+  findCanonicalModel,
   FALLBACK_CONTEXT_WINDOW,
   FALLBACK_MAX_OUTPUT,
 } from '../../config/model-config-helpers.js';
@@ -70,6 +73,46 @@ function buildOpenCodeAliasMap(): Record<string, string> {
 /** Resolves an internal model name to OpenCode CLI format. */
 function resolveOpenCodeModel(model: string): string {
   return MODEL_TO_CLI_NAME[model] ?? model;
+}
+
+/**
+ * Provider prefix opencode puts on gateway models: the registry and callers
+ * say `qwen/qwen3-coder`, `opencode models` lists `openrouter/qwen/qwen3-coder`.
+ */
+const OPENROUTER_PREFIX = 'openrouter/';
+
+/**
+ * Candidate opencode ids for a requested model, in preference order (#6599):
+ * the name as given, then its registry mapping, each also tried under the
+ * `openrouter/` prefix.
+ */
+function openCodeCandidates(requested: string): string[] {
+  const mapped = resolveOpenCodeModel(requested);
+  const bases = mapped === requested ? [requested] : [requested, mapped];
+  return bases.flatMap((b) => (b.startsWith(OPENROUTER_PREFIX) ? [b] : [b, OPENROUTER_PREFIX + b]));
+}
+
+/**
+ * The id a response reports for `cliId`, and so the id cost is priced by: the
+ * canonical registry id when one names this model (with or without the
+ * `openrouter/` prefix), else the opencode id itself — which an unpriced
+ * lookup then reports as unknown rather than at the default's price.
+ */
+function reportedModelId(requested: string, cliId: string): string {
+  const bare = cliId.startsWith(OPENROUTER_PREFIX) ? cliId.slice(OPENROUTER_PREFIX.length) : cliId;
+  const entry =
+    findCanonicalModel('opencode', requested) ??
+    findCanonicalModel('opencode', cliId) ??
+    findCanonicalModel('opencode', bare);
+  return entry?.id ?? cliId;
+}
+
+/** A requested model resolved against the local opencode install (#6599). */
+interface ResolvedOpenCodeModel {
+  /** The id passed as `--model`. */
+  readonly cliId: string;
+  /** The id the response reports, which cost is priced by. */
+  readonly reportedAs: string;
 }
 
 /** Timeout for `opencode models` probe (ms). */
@@ -141,8 +184,9 @@ function warnIfAnthropicProvider(models: Set<string>): void {
  * OpenCode CLI adapter using subprocess transport.
  * Executes: opencode run --format json "<task>"
  *
- * Probes available models on first use and omits --model flag
- * when the requested model isn't available (#1402).
+ * Probes available models on first use. The adapter's own default is passed
+ * as --model only when available (#1402); an explicitly requested model is
+ * resolved against the probe or returned as an error (#6599).
  */
 export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'opencode';
@@ -205,10 +249,80 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     return this.isModelAvailable(cliModel) && !this.isCooled(cliModel);
   }
 
+  /** The first candidate id for `requested` that this install lists. */
+  private matchInventory(requested: string): string | undefined {
+    const available = this.availableModels;
+    if (available === undefined || available.size === 0) return undefined;
+    return openCodeCandidates(requested).find((c) => available.has(c));
+  }
+
+  /**
+   * Resolves an explicitly requested model (#6599). Unlike the adapter's own
+   * default, an explicit request is never silently dropped: a model that is
+   * not listed, or is in rate-limit cooldown, is an error rather than a run of
+   * opencode's default under the requested model's name.
+   */
+  private resolveRequestedModel(requested: string): Result<ResolvedOpenCodeModel, CliError> {
+    if (this.availableModels === undefined || this.availableModels.size === 0) {
+      // No inventory to check against (`opencode models` failed): pass the
+      // registry mapping through and let opencode reject it if it must.
+      const cliId = resolveOpenCodeModel(requested);
+      logger.warn('OpenCode model inventory unavailable; passing requested model unverified', {
+        requested,
+        cliId,
+      });
+      return ok({ cliId, reportedAs: reportedModelId(requested, cliId) });
+    }
+    const cliId = this.matchInventory(requested);
+    if (cliId === undefined) {
+      return err(
+        createCallerInputCliError(
+          `OpenCode cannot run requested model "${requested}": \`opencode models\` lists none of ` +
+            `${openCodeCandidates(requested).join(', ')}. Refusing to run opencode's default in its place.`,
+          this.name
+        )
+      );
+    }
+    if (this.isCooled(cliId)) {
+      return err(
+        createCallerInputCliError(
+          `OpenCode requested model "${requested}" (${cliId}) is in rate-limit cooldown.`,
+          this.name
+        )
+      );
+    }
+    return ok({ cliId, reportedAs: reportedModelId(requested, cliId) });
+  }
+
+  /**
+   * #6599: an explicitly requested model is resolved to an opencode id before
+   * the run, and the response reports the model that ran so cost and outcome
+   * attribution price it rather than the adapter default. With no requested
+   * model the path is unchanged.
+   */
+  override async execute(
+    task: CliTask,
+    options?: ExecutionOptions
+  ): Promise<Result<CliResponse, CliError>> {
+    if (task.model === undefined) return super.execute(task, options);
+    if (!this.initialized) await this.initialize();
+    const resolved = this.resolveRequestedModel(task.model);
+    if (!resolved.ok) return resolved;
+    const { cliId, reportedAs } = resolved.value;
+    const result = await super.execute({ ...task, model: cliId }, options);
+    if (!result.ok) return result;
+    return ok({ ...result.value, model: reportedAs });
+  }
+
   /** Appends --model if the resolved model is usable (#1402, #3407, #3408). */
   private appendModelArg(args: string[], task: CliTask): void {
-    const internalModel = task.model ?? this.model;
-    const cliModel = resolveOpenCodeModel(internalModel);
+    if (task.model !== undefined) {
+      // Explicit request: already resolved by execute(). Never dropped — an
+      // id opencode does not know fails loudly in opencode itself.
+      args.push('--model', this.matchInventory(task.model) ?? resolveOpenCodeModel(task.model));
+      return;
+    }
+    const cliModel = resolveOpenCodeModel(this.model);
 
     if (this.isModelUsable(cliModel)) {
       args.push('--model', cliModel);
@@ -224,7 +338,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
    * #3408: mark a model in rate-limit cooldown when a call returns RATE_LIMITED,
    * so subsequent selections skip it until the AvailabilityCache TTL recovers.
    * Wraps the base executeTask; opt-in + fail-open (no-op when discovery is off).
-   * Advisory: a cooled model is still usable via an explicit, available --model.
+   * An explicitly requested model in cooldown is refused by execute() (#6599).
    */
   override async executeTask(
     task: CliTask,
@@ -257,7 +371,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   /**
    * Gets CLI command and arguments for execution.
    * Uses `opencode run` with JSON format for stable parsing.
-   * Omits --model when the requested model isn't available (#1402).
+   * Omits --model when the adapter default isn't available (#1402).
    */
   protected getCommand(task: CliTask): CommandConfig {
     const args: string[] = ['run', '--format', 'json'];
