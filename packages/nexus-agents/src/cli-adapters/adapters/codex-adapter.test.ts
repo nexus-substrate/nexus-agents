@@ -160,16 +160,17 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(info.costPerMillionOutput).toBe(30.0);
     });
 
-    it('should return correct info for gpt-5.4-mini model (from registry)', () => {
-      const miniAdapter = new CodexCliAdapter({ model: 'gpt-5.4-mini' });
+    it('should return correct info for gpt-6-luna model (from registry)', () => {
+      const miniAdapter = new CodexCliAdapter({ model: 'gpt-6-luna' });
       const info = miniAdapter.getModelInfo();
 
-      expect(info.id).toBe('gpt-5.4-mini');
-      // gpt-5.4-mini is codex-5.1-mini's cliModelName since #5091 (o3-mini is no
-      // longer served by codex): models.dev pricing {0.75, 4.5}, 400K context.
-      expect(info.costPerMillionInput).toBe(0.75);
-      expect(info.costPerMillionOutput).toBe(4.5);
-      expect(info.contextWindow).toBe(400_000);
+      expect(info.id).toBe('gpt-6-luna');
+      // gpt-6-luna is codex-5.1-mini's cliModelName since codex-cli 0.155.1
+      // stopped serving gpt-5.4-mini (#5091 → 2026-09-23 remap): models.dev /
+      // LiteLLM pricing {0.1, 0.5}, 1.05M context.
+      expect(info.costPerMillionInput).toBe(0.1);
+      expect(info.costPerMillionOutput).toBe(0.5);
+      expect(info.contextWindow).toBe(1_050_000);
     });
 
     it('should return legacy costs for non-canonical model', () => {

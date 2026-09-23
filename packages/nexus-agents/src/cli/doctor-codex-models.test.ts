@@ -91,6 +91,30 @@ describe('checkCodexModels', () => {
     expect(result.reason).toBeNull();
   });
 
+  it('passes against the 2026-09-23 served-list SNAPSHOT (codex-cli 0.155.1)', () => {
+    // A FROZEN copy of the visibility=list slugs in ~/.codex/models_cache.json
+    // on 2026-09-23 (codex-cli 0.155.1). It pins that the registry matched the
+    // binary on that date; it is NOT the drift gate. The live gate is
+    // `nexus-agents verify` (Codex Models), which reads the installed cache.
+    // Hidden rows (gpt-reserve, codex-auto-review) are not offered by codex.
+    const SERVED_2026_09_23 = [
+      'gpt-6-astra',
+      'gpt-6-sol',
+      'gpt-6-luna',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.5',
+    ];
+    const file = join(dir, 'models_cache.json');
+    writeFileSync(file, cacheJson(SERVED_2026_09_23, ['gpt-reserve', 'codex-auto-review']));
+
+    const result = checkCodexModels(file);
+
+    expect(result.missing).toEqual([]);
+    expect(result.status).toBe('pass');
+  });
+
   it('warns and names the unserved slug when one registry entry is missing', () => {
     const [dropped, ...rest] = registrySlugs();
     const file = join(dir, 'models_cache.json');
