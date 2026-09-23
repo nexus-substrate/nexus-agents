@@ -37,6 +37,18 @@ export function createZeroVector(dim: number): number[] {
 
 /**
  * Convert bandit context to feature vector.
+ *
+ * There is no bias column. `timePressure` (index 5) is `NEUTRAL_BANDIT_FEATURE`
+ * (0.5) on every route because nothing computes a deadline, so it acts as
+ * the model's per-arm intercept: its learned weight is an arm-level bias
+ * (scaled by 0.5), not a response to time pressure. That is deliberate, per the
+ * #4875 panel (option C). Dropping the dimension would make the model
+ * linear-through-origin and churn the persisted outcome schema for no routing
+ * change. Readers see it labelled via `formatBanditFeatureLabel`.
+ *
+ * Unblock trigger (#4875): a `route()` caller that carries a real,
+ * caller-supplied time budget (not an operation-class runaway guard, #3734),
+ * AND measured variance > 0 of the derived value across real routes.
  */
 export function contextToFeatures(context: BanditContext): number[] {
   return [
@@ -47,6 +59,30 @@ export function contextToFeatures(context: BanditContext): number[] {
     context.budgetUtilization,
     context.timePressure,
   ];
+}
+
+/**
+ * Feature names (as `LinUCBBandit.getDetailedStats` reports them) that enter
+ * the model as a constant and therefore carry the intercept, not a signal
+ * (#4875). Feature-importance renderers label these, and the CLI JSON outputs
+ * carry them as a sibling `interceptFeatures` flag.
+ */
+export const BANDIT_INTERCEPT_FEATURES: readonly string[] = ['timePressure'];
+
+/** One-line explanation rendered under a feature list that shows an intercept. */
+export const BANDIT_INTERCEPT_NOTE = 'intercept: constant 0.5, per-arm bias, not a signal (#4875)';
+
+/** Whether a feature name is one of {@link BANDIT_INTERCEPT_FEATURES}. */
+export function isBanditInterceptFeature(feature: string): boolean {
+  return BANDIT_INTERCEPT_FEATURES.includes(feature);
+}
+
+/**
+ * Display label for a feature-importance row: intercept features get an
+ * `(intercept)` suffix so a dashboard weight does not read as a signal (#4875).
+ */
+export function formatBanditFeatureLabel(feature: string): string {
+  return isBanditInterceptFeature(feature) ? `${feature} (intercept)` : feature;
 }
 
 /**

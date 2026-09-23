@@ -15,6 +15,11 @@ import type {
   ModelPerformanceSummary,
   TaskTypePerformance,
 } from './validation-dashboard-types.js';
+import {
+  BANDIT_INTERCEPT_NOTE,
+  formatBanditFeatureLabel,
+  isBanditInterceptFeature,
+} from '../cli-adapters/linucb-math.js';
 
 /**
  * Render a progress bar.
@@ -144,9 +149,14 @@ export function renderLearningProgress(
   if (options.showFeatureImportance === true && progress.featureImportance.length > 0) {
     lines.push('');
     lines.push('Top Features:');
-    for (const fi of progress.featureImportance.slice(0, 5)) {
+    const shown = progress.featureImportance.slice(0, 5);
+    for (const fi of shown) {
       const bar = renderProgressBar(fi.importance, 1.0);
-      lines.push(`  ${fi.feature.padEnd(20)} ${bar} ${fi.importance.toFixed(3)}`);
+      const label = formatBanditFeatureLabel(fi.feature);
+      lines.push(`  ${label.padEnd(20)} ${bar} ${fi.importance.toFixed(3)}`);
+    }
+    if (shown.some((fi) => isBanditInterceptFeature(fi.feature))) {
+      lines.push(`  ${BANDIT_INTERCEPT_NOTE}`);
     }
   }
 

@@ -145,7 +145,9 @@ export function taskAnalysisResultToBanditContext(
     // External context (default mid-range if not provided).
     // #4875: `timePressure` defaulted to 0.3 here while every replay path uses
     // 0.5, so the same dead feature entered the model at two values depending
-    // on which builder ran. No caller supplies the option today.
+    // on which builder ran. No caller supplies the option today, so the value
+    // is the constant 0.5 that serves as the bandit's per-arm intercept
+    // (`contextToFeatures` has no bias column; #4875 option C).
     budgetUtilization: options.budgetUtilization ?? 0.5,
     timePressure: options.timePressure ?? 0.5,
   };

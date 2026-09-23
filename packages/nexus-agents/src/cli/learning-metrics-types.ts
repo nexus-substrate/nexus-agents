@@ -57,6 +57,12 @@ export interface BanditProgress {
     readonly percent: number;
   }>;
   readonly topFeatures: ReadonlyArray<FeatureImportance>;
+  /**
+   * Features in `topFeatures` that are constant inputs, so their weight is the
+   * arm's intercept rather than a signal (#4875). A sibling flag, so `--json`
+   * consumers see the distinction without the `topFeatures` shape changing.
+   */
+  readonly interceptFeatures: readonly string[];
 }
 
 /**

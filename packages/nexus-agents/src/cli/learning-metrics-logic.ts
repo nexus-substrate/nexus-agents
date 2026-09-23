@@ -9,6 +9,7 @@
 
 import { getTimeProvider } from '../core/index.js';
 import type { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
+import { BANDIT_INTERCEPT_FEATURES } from '../cli-adapters/linucb-math.js';
 import type { RoutingMetricsCollector } from '../observability/routing-metrics.js';
 import type { FeedbackIntegration } from '../learning/feedback-integration.js';
 import type {
@@ -206,6 +207,7 @@ function computeBanditProgress(
     explorationRatio: explorationStats.explorationRatio,
     armDistribution: armDistributionWithPercent,
     topFeatures,
+    interceptFeatures: BANDIT_INTERCEPT_FEATURES,
   };
 }
 

@@ -19,6 +19,11 @@ import type {
 import { formatPercentage } from '../core/index.js';
 import { colors, color } from './ansi-output.js';
 import { horizontalLine, boxLine, centerText } from './box-drawing.js';
+import {
+  BANDIT_INTERCEPT_NOTE,
+  formatBanditFeatureLabel,
+  isBanditInterceptFeature,
+} from '../cli-adapters/linucb-math.js';
 
 // =============================================================================
 // ANSI Formatting Constants (from canonical source)
@@ -170,7 +175,11 @@ function formatFeatureImportance(features: readonly FeatureImportance[]): string
   for (const fi of features) {
     const importance = formatPercentage(fi.importance, 1);
     const arrow = fi.direction === 'positive' ? color('↑', ANSI.green) : color('↓', ANSI.red);
-    lines.push(boxLine(`   ${arrow} ${fi.feature.padEnd(20)} ${importance.padStart(6)}`));
+    const label = formatBanditFeatureLabel(fi.feature);
+    lines.push(boxLine(`   ${arrow} ${label.padEnd(20)} ${importance.padStart(6)}`));
+  }
+  if (features.some((fi) => isBanditInterceptFeature(fi.feature))) {
+    lines.push(boxLine(`   ${BANDIT_INTERCEPT_NOTE}`));
   }
 
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
