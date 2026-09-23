@@ -38,7 +38,7 @@ import {
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS } from './types.js';
-import { readGatewayEnv, redactApiKey } from './gateway-env.js';
+import { readCustomApiSurface, readGatewayEnv, redactApiKey } from './gateway-env.js';
 import { gatewayAiSdkOptions, readGatewayTransport } from '../gateway-http.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import {
@@ -105,8 +105,28 @@ interface AiSdkFunctions {
 /** AI SDK provider factory: creates a provider instance that is callable as a model factory. */
 type ProviderFactory = (opts: Record<string, unknown>) => ProviderInstance;
 
-/** AI SDK provider instance: callable to create a model. */
-type ProviderInstance = (id: string) => AiSdkModel;
+/**
+ * AI SDK provider instance: callable to create a model on the provider's
+ * default surface. `@ai-sdk/openai` also exposes `.chat` and `.responses`
+ * (#6645); they are optional here because other providers lack them.
+ */
+type ProviderInstance = ((id: string) => AiSdkModel) & {
+  readonly chat?: (id: string) => AiSdkModel;
+  readonly responses?: (id: string) => AiSdkModel;
+};
+
+/** Build the custom-openai model on the chosen OpenAI API surface (#6645). */
+function modelOnSurface(
+  provider: ProviderInstance,
+  surface: ReturnType<typeof readCustomApiSurface>,
+  modelId: string
+): AiSdkModel {
+  const build = surface === 'chat' ? provider.chat : provider.responses;
+  if (typeof build !== 'function') {
+    throw new Error(`AI SDK OpenAI provider has no '${surface}' model factory`);
+  }
+  return build(modelId);
+}
 
 /**
  * Extracts a named provider factory from a dynamically-imported AI SDK module.
@@ -332,6 +352,8 @@ export class SdkAdapter extends BaseAdapter {
   private readonly sdkConfig: SdkAdapterConfig;
   /** Validated base URL for custom-openai provider; undefined for built-ins. */
   private readonly customBaseUrl: string | undefined;
+  /** OpenAI API surface for custom-openai (#6645); undefined for built-ins. */
+  private readonly customApiSurface: ReturnType<typeof readCustomApiSurface> | undefined;
   /** Inflight init promise for coalescing concurrent calls (Issue #1438). */
   private initPromise: Promise<void> | undefined;
   /**
@@ -355,6 +377,8 @@ export class SdkAdapter extends BaseAdapter {
     this.sdkProviderId = config.providerId;
     this.sdkConfig = config;
     this.customBaseUrl = resolveAndValidateCustomBaseUrl(config);
+    this.customApiSurface =
+      config.providerId === 'custom-openai' ? readCustomApiSurface() : undefined;
   }
 
   /**
@@ -470,7 +494,11 @@ export class SdkAdapter extends BaseAdapter {
           Object.assign(opts, gatewayAiSdkOptions({ ...transport, apiKey }));
         }
         const provider = factory(opts);
-        return { model: provider(this.modelId) };
+        // Chat completions unless NEXUS_CUSTOM_API_SURFACE=responses (#6645):
+        // the provider's default is the Responses API, which many gateways lack.
+        return {
+          model: modelOnSurface(provider, this.customApiSurface ?? 'chat', this.modelId),
+        };
       }
     }
   }

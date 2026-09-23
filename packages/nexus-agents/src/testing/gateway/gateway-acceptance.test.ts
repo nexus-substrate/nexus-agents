@@ -30,6 +30,7 @@ import {
   resetGlobalRegistry,
 } from '../../adapters/unified-registry.js';
 import { _resetGatewaySlotCatalog } from '../../adapters/gateway-family-slots.js';
+import { SdkAdapter } from '../../adapters/sdk/sdk-adapter.js';
 import {
   ROLE_TO_TASK_CATEGORY,
   resolveAdapterForRole,
@@ -594,5 +595,42 @@ describe('family-slot routing with no CLIs installed (#6604)', () => {
       await client.close();
       await server.close();
     }
+  });
+});
+
+// ============================================================================
+// 6. The single-model custom-openai adapter's API surface (#6645)
+// ============================================================================
+
+describe('the single-model custom-openai adapter over HTTP (#6645)', () => {
+  const id = 'gpt-5.2';
+  const routes = (): string[] => gateway.requests.map((r) => `${r.method} ${r.path}`);
+
+  afterEach(() => {
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', undefined);
+  });
+
+  it('posts to /v1/chat/completions by default and returns the answer', async () => {
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', undefined);
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: id }, silentLogger());
+
+    const result = await adapter.complete(ask);
+
+    expect(routes()).toEqual(['POST /v1/chat/completions']);
+    expect(result.ok ? result.value.content : result.error.message).toEqual([
+      { type: 'text', text: `reply from ${id}` },
+    ]);
+    expect((gateway.chatRequests()[0]?.body as ChatRequestBody).model).toBe(id);
+  });
+
+  it('posts to /v1/responses only when NEXUS_CUSTOM_API_SURFACE=responses', async () => {
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', 'responses');
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: id }, silentLogger());
+
+    const result = await adapter.complete(ask);
+
+    // This fake gateway serves chat completions only, so the opted-in surface 404s.
+    expect(routes()).toEqual(['POST /v1/responses']);
+    expect(result.ok ? 'ok' : result.error.message).toContain('/v1/responses');
   });
 });
