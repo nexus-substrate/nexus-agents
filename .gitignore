@@ -130,3 +130,6 @@ docs/.generated/entrypoints.yaml
 # is docs/architecture/dependency-graph.md, produced with an explicit --output
 # (#4799); anything written to the default path here is a stray local run.
 **/packages/nexus-agents/docs/dependency-graph.md
+
+# Publish staging directory with bundled dependencies (#6481, scripts/stage-publish.ts)
+packages/nexus-agents/.publish-stage/

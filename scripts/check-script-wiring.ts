@@ -103,6 +103,12 @@ export const MANUAL_ONLY: Readonly<Record<string, string>> = {
   // each agy upgrade (#5085). Listed rather than silently unwired, because an
   // unlisted gate nothing runs is what #4553 is about.
   'check-agy-model-drift.ts': 'needs the agy CLI; not installable on CI runners',
+  // Runs from packages/nexus-agents' `prepublishOnly` inside every `pnpm
+  // publish` (release.yml: `pnpm release` and the manual-publish job), so it
+  // gates each real publish, but through a lifecycle hook this scan of root
+  // scripts and workflows cannot see. Refuses a stale or mismatched stage.
+  'check-publish-stage.ts':
+    'runs in packages/nexus-agents prepublishOnly during pnpm publish (#6488); a lifecycle hook, not a workflow step',
   // Reads runtime telemetry from $NEXUS_DATA_DIR/mcp-timing.jsonl, which only a
   // long-running local MCP session produces; a CI runner has none. Operator
   // runbook in its header; logic covered by analyze-timeout-mismatch.test.ts

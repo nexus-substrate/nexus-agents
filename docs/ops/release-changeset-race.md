@@ -145,6 +145,8 @@ The race is rare. To minimize the chance of triggering it:
   4. Verify `npm view nexus-agents version` equals `packages/nexus-agents/package.json` before the next merge.
 
   Step 2 is the one that gets skipped. A stale version PR is also how npm gets ahead of `main` when the inverse race fires (see the inverse-variant section above).
+
+- **Never publish directly from inside `.publish-stage/` (`#6494`).** The stale-stage check (`scripts/check-publish-stage.ts`) is wired into the source manifest's `prepublishOnly` lifecycle hook at the package root (`packages/nexus-agents/`). The staged manifest deliberately strips `prepublishOnly` so consumer installs never execute it. Consequently, changing into `packages/nexus-agents/.publish-stage/` and running `npm publish` or `pnpm publish` bypasses the stale-stage verification and risks publishing stale bytes from a prior commit or interrupted build. Publishing must always be performed via `pnpm release` from the repository root or via the automated GitHub Actions `release` / `manual-publish` jobs, which re-stage at HEAD before publishing.
 - **Never `workflow_dispatch` a publish from a non-`main` ref.** The `manual-publish` job's `Guard — main only` step now fails this, but the discipline still matters.
 - **Watch for the symptom early**: after merging a release PR, if `npm view nexus-agents version` still shows the old version after ~5 minutes, check for the skew. The `Detect publish-race version skew` step auto-recovers `package.json`-ahead; the `Detect npm-ahead version skew` step fails loudly on the inverse.
 
@@ -156,4 +158,4 @@ The race is rare. To minimize the chance of triggering it:
 - `.github/workflows/release.yml` — the actual workflow definition (skew-detection steps + `manual-publish` guard).
 - `.github/workflows/ci.yml` — the `Changeset Presence` required check.
 - `scripts/check-changeset.ts` — the changeset-presence gate.
-- `package.json` `release` script — runs `pnpm build && changeset publish`.
+- `package.json` `release` script — runs `pnpm build`, then `scripts/stage-publish.ts` (which builds the staged package with bundled dependencies, #6481), then `changeset publish` under `npm_config_node_linker=hoisted`.
