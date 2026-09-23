@@ -64,6 +64,26 @@ export const BUNDLED_DEPENDENCIES: readonly string[] = [
   '@modelcontextprotocol/sdk',
 ];
 
+/**
+ * How old a version must be before the stage may bundle it. The stage resolves
+ * with no lockfile, and whatever it picks is frozen into a signed tarball that
+ * consumers cannot re-resolve or override. So it gets the same quarantine pnpm
+ * 12 applies by default (`minimumReleaseAge`: 24 h), measured from the commit
+ * being released rather than from "now". That also makes every stage of one
+ * commit resolve identically: the PR-time verify, the SBOM and the publish.
+ */
+export const MINIMUM_RELEASE_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** The `npm install --before` cutoff for a commit timestamp (ISO 8601). */
+export function resolutionCutoff(
+  commitIso: string,
+  ageMs: number = MINIMUM_RELEASE_AGE_MS
+): string {
+  const commitMs = Date.parse(commitIso);
+  if (Number.isNaN(commitMs)) throw new Error(`not a timestamp: ${commitIso}`);
+  return new Date(commitMs - ageMs).toISOString();
+}
+
 type Manifest = Record<string, unknown> & {
   dependencies?: Record<string, string>;
   scripts?: Record<string, string>;
@@ -77,8 +97,10 @@ type Manifest = Record<string, unknown> & {
  *   or npm would silently bundle nothing for it.
  * - `devDependencies` is dropped: npm cannot resolve its `workspace:` specs, and
  *   a consumer never installs them.
- * - `prepublishOnly` is dropped: it rebuilds `dist/` in the SOURCE directory,
- *   which the stage already copied; running it here would build nothing.
+ * - `prepublishOnly` is dropped from the STAGED manifest, which pnpm never
+ *   runs. pnpm runs the SOURCE manifest's `prepublishOnly` (a rebuild of the
+ *   source `dist/`) whatever this says; the stage has already copied `dist/`,
+ *   so that second build is redundant but harmless.
  * - `publishConfig.directory` / `linkDirectory` are dropped: they describe the
  *   source layout, not the published one.
  */
@@ -152,6 +174,41 @@ function run(cmd: string, args: string[], cwd: string): string {
   return execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
 }
 
+/**
+ * Install the staged package's runtime dependencies and prove the tarball will
+ * carry everything npm's installer expects to find inside the bundle.
+ */
+function installBundle(stageDir: string): void {
+  // --ignore-scripts: staging must not execute the hooks it exists to keep off
+  // users' machines. The lockfile npm writes is never packed.
+  const commitIso = run('git', ['log', '-1', '--format=%cI', 'HEAD'], ROOT).trim();
+  const before = resolutionCutoff(commitIso);
+  console.log(`resolving bundled dependencies as of ${before} (HEAD ${commitIso} minus 24 h)`);
+  run(
+    'npm',
+    ['install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', `--before=${before}`],
+    stageDir
+  );
+  const missing = missingFromStage(stageDir, BUNDLED_DEPENDENCIES);
+  if (missing.length > 0) {
+    throw new Error(
+      `bundled dependencies absent from the stage after install: ${missing.join(', ')}`
+    );
+  }
+  const lock = JSON.parse(
+    readFileSync(join(stageDir, 'node_modules', '.package-lock.json'), 'utf8')
+  ) as {
+    packages?: Record<string, { inBundle?: boolean }>;
+  };
+  const unpacked = unpackedBundleMembers(lock, packedFileList(stageDir));
+  if (unpacked.length > 0) {
+    throw new Error(
+      `npm will expect ${String(unpacked.length)} package(s) from the bundle that the tarball does not contain ` +
+        `(a bundled dependency's peer?): ${unpacked.slice(0, 10).join(', ')}`
+    );
+  }
+}
+
 /** Build the stage directory and return its path. */
 export function stage(): string {
   if (!existsSync(join(PACKAGE_DIR, 'dist'))) {
@@ -184,27 +241,7 @@ export function stage(): string {
     `${JSON.stringify(stageManifest(source, BUNDLED_DEPENDENCIES), null, 2)}\n`
   );
 
-  // --ignore-scripts: staging must not execute the hooks it exists to keep off
-  // users' machines. The lockfile npm writes is never packed.
-  run('npm', ['install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], stageDir);
-  const missing = missingFromStage(stageDir, BUNDLED_DEPENDENCIES);
-  if (missing.length > 0) {
-    throw new Error(
-      `bundled dependencies absent from the stage after install: ${missing.join(', ')}`
-    );
-  }
-  const lock = JSON.parse(
-    readFileSync(join(stageDir, 'node_modules', '.package-lock.json'), 'utf8')
-  ) as {
-    packages?: Record<string, { inBundle?: boolean }>;
-  };
-  const unpacked = unpackedBundleMembers(lock, packedFileList(stageDir));
-  if (unpacked.length > 0) {
-    throw new Error(
-      `npm will expect ${String(unpacked.length)} package(s) from the bundle that the tarball does not contain ` +
-        `(a bundled dependency's peer?): ${unpacked.slice(0, 10).join(', ')}`
-    );
-  }
+  installBundle(stageDir);
   return stageDir;
 }
 

@@ -19,6 +19,11 @@ on:
       - 'scripts/verify-npm-install.sh'
       - 'scripts/check-install-scripts.ts'
       - 'scripts/install-script-allowlist.json'
+      # #6481: the staging that produces the published tarball, the release
+      # script that invokes it, and the lockfile that pins the build.
+      - 'scripts/stage-publish.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - 'Dockerfile.npm-verify'
       - '.github/workflows/npm-verify.yml'
   push:

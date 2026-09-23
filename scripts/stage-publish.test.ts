@@ -9,7 +9,9 @@ import {
   BUNDLED_DEPENDENCIES,
   STAGE_DIRNAME,
   firstPackReport,
+  MINIMUM_RELEASE_AGE_MS,
   missingFromStage,
+  resolutionCutoff,
   stageManifest,
   unpackedBundleMembers,
 } from './stage-publish.js';
@@ -145,5 +147,20 @@ describe('firstPackReport', () => {
     expect(firstPackReport({})).toBeUndefined();
     expect(firstPackReport(null)).toBeUndefined();
     expect(firstPackReport('x')).toBeUndefined();
+  });
+});
+
+describe('resolutionCutoff', () => {
+  it('subtracts the release age from the commit time, not from now', () => {
+    expect(resolutionCutoff('2026-09-23T05:00:00-04:00')).toBe('2026-09-22T09:00:00.000Z');
+  });
+
+  it('defaults to a 24 h quarantine', () => {
+    expect(MINIMUM_RELEASE_AGE_MS).toBe(86_400_000);
+  });
+
+  it('refuses a value that is not a timestamp rather than resolving unbounded', () => {
+    expect(() => resolutionCutoff('')).toThrow(/not a timestamp/);
+    expect(() => resolutionCutoff('HEAD')).toThrow(/not a timestamp/);
   });
 });
