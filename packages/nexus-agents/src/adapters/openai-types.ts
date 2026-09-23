@@ -89,6 +89,17 @@ export interface OpenAIAdapterConfig {
    * names a model that gateway may not serve. Default `false`.
    */
   verbatimModelId?: boolean;
+  /**
+   * Headers sent on every request; a `null` value removes a default header
+   * (`Authorization: null` drops the bearer). Set by the OpenAI-compatible
+   * gateway path for a custom auth header and extra static headers (#6608).
+   */
+  defaultHeaders?: Readonly<Record<string, string | null>>;
+  /**
+   * `fetch` options for every request — the gateway path sets a proxy
+   * `dispatcher` here when `HTTPS_PROXY` / `HTTP_PROXY` applies (#6608).
+   */
+  fetchOptions?: Pick<RequestInit, 'dispatcher'>;
 }
 
 // Note: Token estimation moved to core/token-estimator.ts (unified TokenEstimator)

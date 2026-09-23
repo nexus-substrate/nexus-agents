@@ -186,6 +186,12 @@ export class OpenAIAdapter extends BaseAdapter {
     if (config.organization !== undefined) {
       clientOptions.organization = config.organization;
     }
+    if (config.defaultHeaders !== undefined) {
+      clientOptions.defaultHeaders = config.defaultHeaders;
+    }
+    if (config.fetchOptions !== undefined) {
+      clientOptions.fetchOptions = config.fetchOptions;
+    }
 
     return new OpenAI(clientOptions);
   }

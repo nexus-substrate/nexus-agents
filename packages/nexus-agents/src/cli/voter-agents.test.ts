@@ -31,6 +31,7 @@ import type { IModelAdapter, CompletionResponse, ILogger } from '../core/index.j
 import type { Result } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
+import { GatewayRediscovery, setGatewayRediscovery } from '../adapters/gateway-rediscovery.js';
 
 describe('voter-agents', () => {
   describe('VOTER_SYSTEM_PROMPTS', () => {
@@ -1122,6 +1123,34 @@ describe('collectRealVotes — gateway routing (#4040)', () => {
     expect(calls(a)).toBe(1);
     expect(calls(b)).toBe(1);
     expect(calls(c)).toBe(1);
+  });
+
+  it('re-discovers a gateway that was down at boot before assigning seats (#6608)', async () => {
+    const a = gatewayAdapter('gw-late-a');
+    const b = gatewayAdapter('gw-late-b');
+    const c = gatewayAdapter('gw-late-c');
+    const live: IModelAdapter[] = [];
+    const discover = vi.fn(() => Promise.resolve([a, b, c]));
+    // lastAttemptAt 0: the boot attempt is long past the backoff.
+    setGatewayRediscovery(
+      new GatewayRediscovery({ target: live, discover, logger, lastAttemptAt: 0 })
+    );
+    try {
+      const results = await collectRealVotes({
+        roles: ['architect', 'security', 'scope_steward'],
+        proposal: 'ship it',
+        gatewayAdapters: live,
+        logger,
+        timeoutMs: 5000,
+        maxRetries: 1,
+        interAgentDelayMs: 0,
+      });
+      expect(results.every((r) => r.source === 'llm')).toBe(true);
+    } finally {
+      setGatewayRediscovery(undefined);
+    }
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(calls(a) + calls(b) + calls(c)).toBe(3);
   });
 
   it('wraps round-robin when the gateway serves fewer models than roles', async () => {

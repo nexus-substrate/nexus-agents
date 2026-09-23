@@ -90,6 +90,7 @@ import {
 import { resolveVoteTimeout, VOTE_TIMEOUTS, getMcpSafeDeadlineMs } from '../config/timeouts.js';
 import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
 import { resolvePanelWorkspace } from './panel-workspace.js';
+import { ensureGatewayDiscovered } from '../adapters/gateway-rediscovery.js';
 
 /**
  * Computes an overall wall-clock deadline for a consensus vote call (#1871).
@@ -605,6 +606,9 @@ export async function collectRealVotes(
     return createSimulatedVotes(roles, proposal);
   }
 
+  // #6608: a gateway down at boot is re-discovered here (backoff-bounded)
+  // and fills `options.gatewayAdapters` in place before seats are assigned.
+  await ensureGatewayDiscovered();
   const adapterResult = resolveAdapterOrFail(options, logger, allowSimulation === true);
   if ('simulated' in adapterResult)
     return createSimulatedVotes(roles, proposal, 'No adapter available');
