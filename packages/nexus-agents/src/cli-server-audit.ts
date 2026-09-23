@@ -24,6 +24,14 @@ import {
 const DEFAULT_AUDIT_DIR = nexusDataPath('audit');
 
 /**
+ * Default file prefix for audit log files (#5120).
+ *
+ * Exported so producers and consumers (`verify-audit-chain-tool`) share a single
+ * source of truth for the filename convention (`${DEFAULT_AUDIT_FILE_PREFIX}-*.jsonl`).
+ */
+export const DEFAULT_AUDIT_FILE_PREFIX = 'audit';
+
+/**
  * Initializes the audit logger from security configuration.
  * Returns null if audit logging is not enabled.
  *
@@ -47,7 +55,7 @@ export function initializeAuditLogger(
       enableHashChain: auditConfig.enableHashChain,
       maxFileSizeBytes: auditConfig.maxFileSizeBytes,
       maxFiles: auditConfig.maxFiles,
-      filePrefix: 'audit',
+      filePrefix: DEFAULT_AUDIT_FILE_PREFIX,
       enableCompression: false,
       flushIntervalMs: 1000,
       maxQueueDepth: 10_000,
