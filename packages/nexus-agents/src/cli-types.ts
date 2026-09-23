@@ -290,6 +290,15 @@ export interface ParsedCliArgs {
     note?: string;
     sound?: boolean;
     unsound?: boolean;
+    // improvement-review command options (#2444, #6636)
+    'file-issues'?: boolean;
+    fileIssues?: boolean;
+    'lookback-days'?: string;
+    lookbackDays?: string;
+    'min-sample-size'?: string;
+    minSampleSize?: string;
+    'fitness-floor'?: string;
+    fitnessFloor?: string;
   };
   positionals: string[];
 }
