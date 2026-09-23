@@ -15,6 +15,7 @@
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
+import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
 import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
@@ -104,8 +105,18 @@ async function tryCliAdapter(
       ? { defaultTimeoutMs: config.defaultCliTimeoutMs }
       : undefined;
 
+  // #6590: a preferred CLI disabled by NEXUS_DISABLED_CLIS is skipped, not
+  // probed. The registry pins every per-CLI adapter through this field.
+  if (preferredCli !== undefined && isCliDisabled(preferredCli)) {
+    logger.info('Preferred CLI is disabled by NEXUS_DISABLED_CLIS', { cli: preferredCli });
+  }
+
   // If preferred CLI specified, try that first
-  if (preferredCli !== undefined && (await isCliAvailable(preferredCli, cache))) {
+  if (
+    preferredCli !== undefined &&
+    !isCliDisabled(preferredCli) &&
+    (await isCliAvailable(preferredCli, cache))
+  ) {
     logger.info('Using preferred CLI', { cli: preferredCli });
     const cliAdapter = createCliAdapter({ cli: preferredCli, logger });
     await cliAdapter.initialize();

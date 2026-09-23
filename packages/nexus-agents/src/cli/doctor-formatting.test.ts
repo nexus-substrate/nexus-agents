@@ -178,6 +178,7 @@ describe('doctor-formatting', () => {
       clis: options.clis ?? [],
       mcpServerReady: options.mcpServerReady ?? true,
       mcpClientReady: options.mcpClientReady ?? true,
+      disabledClis: [],
       registryAdvisory: {
         totalModels: 10,
         availableModels: 10,
@@ -733,6 +734,18 @@ describe('doctor-formatting', () => {
       ).toBe(true);
       expect(calls.some((call) => call.includes('MCP Client mode: Ready'))).toBe(false);
       expect(calls.some((call) => call.includes('Codex not installed'))).toBe(false);
+    });
+
+    it('names the CLIs disabled by NEXUS_DISABLED_CLIS (#6590)', () => {
+      printDoctorResults({ ...createDoctorResult(), disabledClis: ['gemini', 'codex'] });
+      expect(
+        getCalls().some((c) => c.includes('Disabled by NEXUS_DISABLED_CLIS: gemini, codex'))
+      ).toBe(true);
+    });
+
+    it('prints no disabled line when none is disabled (#6590)', () => {
+      printDoctorResults({ ...createDoctorResult(), disabledClis: [] });
+      expect(getCalls().some((c) => c.includes('NEXUS_DISABLED_CLIS'))).toBe(false);
     });
 
     it('should print voter transport status (#4255)', () => {

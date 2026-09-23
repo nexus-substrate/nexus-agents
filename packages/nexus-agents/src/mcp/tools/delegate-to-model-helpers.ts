@@ -42,6 +42,7 @@ import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getAdaptiveBonus } from './weather-report.js';
 import { getAvailabilityCache, resolveFallback } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
+import { isCliDisabled } from '../../cli-adapters/disabled-clis.js';
 
 /**
  * Checks if any keyword from list is in the text.
@@ -298,20 +299,24 @@ export function scoreAllModels(
   const eligible = filterByModality(requirements);
   const availCache = getAvailabilityCache();
 
-  return Object.entries(MODEL_CAPABILITIES)
-    .filter(([name]) => eligible === null || eligible.has(name))
-    .filter(([name]) => !availCache.isKnownUnavailable(name as ModelId))
-    .map(([name, profile]) => {
-      const cap = lookupInTreeCapability(name);
-      const opts: ScoreModelOptions = {
-        preferredCapability: pref,
-        billingMode,
-        specialization,
-        deprecated: cap?.deprecated,
-      };
-      return { name, profile, score: scoreModel(name, profile, requirements, opts) };
-    })
-    .sort((a, b) => b.score - a.score);
+  return (
+    Object.entries(MODEL_CAPABILITIES)
+      .filter(([name]) => eligible === null || eligible.has(name))
+      .filter(([name]) => !availCache.isKnownUnavailable(name as ModelId))
+      // #6590: a model served by a CLI disabled via NEXUS_DISABLED_CLIS is not a candidate.
+      .filter(([name]) => !isCliDisabled(getCliForModel(name)))
+      .map(([name, profile]) => {
+        const cap = lookupInTreeCapability(name);
+        const opts: ScoreModelOptions = {
+          preferredCapability: pref,
+          billingMode,
+          specialization,
+          deprecated: cap?.deprecated,
+        };
+        return { name, profile, score: scoreModel(name, profile, requirements, opts) };
+      })
+      .sort((a, b) => b.score - a.score)
+  );
 }
 
 /** Selection result type. */

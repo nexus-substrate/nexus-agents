@@ -69,6 +69,7 @@ function makeDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorResult {
     configFile: { found: true, path: './nexus-agents.yaml' },
     mcpServerReady: true,
     mcpClientReady: true,
+    disabledClis: [],
     registryAdvisory: {
       totalModels: 5,
       availableModels: 5,
