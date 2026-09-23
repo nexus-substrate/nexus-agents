@@ -42,12 +42,12 @@ export interface CodexModelRow {
 }
 
 /** Days ahead of a cache-announced retirement at which the check warns. */
-export const RETIREMENT_WARN_DAYS = 30;
+const RETIREMENT_WARN_DAYS = 30;
 
 const MS_PER_DAY = 86_400_000;
 
 /** A cache row's announced retirement (`upgrade.retirement_at`). */
-export interface CodexRetirement {
+interface CodexRetirement {
   readonly slug: string;
   /** ISO-8601, normalised through `Date`. */
   readonly retirementAt: string;
@@ -56,7 +56,7 @@ export interface CodexRetirement {
 }
 
 /** A registry entry whose slug retires within the warning window. */
-export interface CodexRetiringRow extends CodexModelRow {
+interface CodexRetiringRow extends CodexModelRow {
   readonly retirementAt: string;
   readonly upgradeModel: string | null;
   /** Whole days until retirement; negative once the date has passed. */
