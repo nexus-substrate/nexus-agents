@@ -30,8 +30,8 @@ export interface FailedPackage {
   readonly name: string;
   readonly version: string;
   readonly isStaged: boolean;
-  readonly code?: string;
-  readonly message?: string;
+  readonly code?: string | undefined;
+  readonly message?: string | undefined;
 }
 
 export interface PublishAnalysis {

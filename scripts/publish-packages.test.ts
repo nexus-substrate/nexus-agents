@@ -224,7 +224,7 @@ describe('runPublish', () => {
 
   it('passes forward CLI arguments to the runner', () => {
     const repoDir = initGitRepo();
-    let capturedArgs: string[] | undefined;
+    let capturedArgs: readonly string[] | undefined;
     runPublish({
       args: ['--tag', 'next', '--output', 'result.json'],
       cwd: repoDir,
