@@ -37,10 +37,12 @@ import {
   initializeEventBus,
   recordServerStartup,
   watchParentProcess,
+  createGracefulShutdown,
   recordServerShutdown,
   logFinalHealthMetrics,
   logFinalEventBusStats,
   type ServerEventContext,
+  type ShutdownRequest,
 } from './cli-server-lifecycle.js';
 import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orchestrator.js';
 import {
@@ -77,31 +79,14 @@ export { type OrchestratorModeOptions } from './cli-orchestrator.js';
  *
  * @param cleanup - Async cleanup function to call on shutdown
  * @param logger - Logger instance
+ * @returns The shared, bounded, run-once shutdown request. Parent death
+ *   (`watchParentProcess`) must call this too, not `process.exit` (#6560).
  */
-export function setupShutdownHandlers(cleanup: () => Promise<void>, logger: ILogger): void {
-  let isShuttingDown = false;
-
-  const handleShutdown = async (signal: string): Promise<void> => {
-    if (isShuttingDown) {
-      logger.debug('Shutdown already in progress, ignoring signal', { signal });
-      return;
-    }
-
-    isShuttingDown = true;
-    logger.info('Received shutdown signal', { signal });
-
-    try {
-      await cleanup();
-      logger.info('Shutdown complete');
-      process.exit(EXIT_CODES.SUCCESS);
-    } catch (error) {
-      logger.error(
-        'Error during shutdown',
-        error instanceof Error ? error : new Error(String(error))
-      );
-      process.exit(EXIT_CODES.SHUTDOWN_ERROR);
-    }
-  };
+export function setupShutdownHandlers(
+  cleanup: () => Promise<void>,
+  logger: ILogger
+): ShutdownRequest {
+  const handleShutdown = createGracefulShutdown({ cleanup, logger });
 
   // `handleShutdown` has an internal try/catch that calls `process.exit` on
   // both success and failure, so the chance of an unhandled rejection is
@@ -128,6 +113,8 @@ export function setupShutdownHandlers(cleanup: () => Promise<void>, logger: ILog
     logger.error('Unhandled rejection', error);
     process.exit(EXIT_CODES.SERVER_START_FAILED);
   });
+
+  return handleShutdown;
 }
 
 /**
@@ -607,8 +594,6 @@ export async function startServer(
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);
 
-  watchParentProcess(logger); // Issue #810: exit when the parent closes stdin
-
   // Setup graceful shutdown with observer and EventBus cleanup
   const cleanup = createShutdownCleanup({
     eventBusBridge,
@@ -619,7 +604,13 @@ export async function startServer(
     logger,
     auditLogger,
   });
-  setupShutdownHandlers(cleanup, logger);
+  const requestShutdown = setupShutdownHandlers(cleanup, logger);
+  // Issue #810: shut down when the parent closes stdin — through the same
+  // bounded cleanup as the signals, so the audit log is flushed (#6560).
+  // Registered after the cleanup exists; nothing between here and the startup
+  // record below awaits, so a close event cannot run before that record is
+  // queued.
+  watchParentProcess(logger, requestShutdown);
 
   // Startup complete — cancel the watchdog so it can't fire during request
   // handling (#2163).

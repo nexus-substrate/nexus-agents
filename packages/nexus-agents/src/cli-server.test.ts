@@ -69,7 +69,10 @@ vi.mock('./security/sandbox/index.js', () => ({
   getSandboxMode: vi.fn(() => 'none'),
 }));
 
-vi.mock('./cli-server-lifecycle.js', () => ({
+vi.mock('./cli-server-lifecycle.js', async (importOriginal) => ({
+  // The real shutdown coordinator: setupShutdownHandlers builds on it (#6560).
+  createGracefulShutdown: (await importOriginal<typeof import('./cli-server-lifecycle.js')>())
+    .createGracefulShutdown,
   initializeSwarmObserver: vi.fn(() => ({
     recordEvent: vi.fn(),
     getHealthMetrics: vi.fn(() => ({
@@ -237,9 +240,9 @@ describe('setupShutdownHandlers', () => {
     sigintHandler();
     // Wait for async cleanup
     await vi.waitFor(() => {
-      expect(cleanup).toHaveBeenCalledOnce();
+      expect(processExitSpy).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
     });
-    expect(processExitSpy).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 
   it('exits with SHUTDOWN_ERROR when cleanup throws', async () => {
@@ -509,6 +512,37 @@ describe('startServer', () => {
     await startServer(false, 'server', true);
 
     expect(order).toEqual(['configureToolMemory', 'initializeSkillLibrary']);
+  });
+
+  it('hands parent-death the same run-once shutdown the signals use (#6560)', async () => {
+    const lifecycle = await import('./cli-server-lifecycle.js');
+    const audit = await import('./cli-server-audit.js');
+    vi.mocked(audit.shutdownAuditLogger).mockResolvedValue(undefined);
+    // resetAllMocks cleared the factory default; the cleanup reads this shape.
+    vi.mocked(lifecycle.initializeEventBus).mockReturnValue({
+      initialized: false,
+      subscriptionCount: 0,
+      cleanup: vi.fn(),
+    });
+    const mcpModule = await import('./mcp/index.js');
+    vi.mocked(mcpModule.closeServer).mockResolvedValue({ ok: true, value: undefined } as never);
+    const processOnSpy = vi.mocked(process.on);
+    const { startServer } = await import('./cli-server.js');
+
+    await startServer(false, 'server', true);
+
+    const requestShutdown = vi.mocked(lifecycle.watchParentProcess).mock.calls[0]?.[1];
+    expect(requestShutdown).toBeTypeOf('function');
+    const sigterm = processOnSpy.mock.calls.find((c) => c[0] === 'SIGTERM')?.[1] as () => void;
+
+    // Parent death first, then a racing SIGTERM: one cleanup, one exit.
+    await requestShutdown?.('parent-gone');
+    sigterm();
+    await vi.waitFor(() => {
+      expect(processExitSpy).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
+    });
+    expect(audit.shutdownAuditLogger).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledOnce();
   });
 
   it('provides default orchestrator options when none given', async () => {

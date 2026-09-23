@@ -8,7 +8,11 @@
  * (Source: Issue #339)
  */
 
-import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
+import {
+  getStdinLifecycleMonitor,
+  type StdinLifecycleMonitor,
+} from './adapters/stdin-lifecycle.js';
+import { EXIT_CODES } from './cli-types.js';
 import type { ILogger } from './core/index.js';
 import { getTimeProvider } from './core/index.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
@@ -172,16 +176,106 @@ export function logFinalEventBusStats(logger: ILogger): void {
 }
 
 /**
- * Exits the process when the parent closes stdin (Issue #810).
+ * Upper bound on the graceful-shutdown cleanup before the process exits
+ * anyway (#6560).
+ *
+ * Why 12 s: the slowest step the cleanup is expected to finish is the audit
+ * logger's final flush. Once that flush appends under the cross-process audit
+ * lock (#6546/#6559), a contended flush may legitimately wait the lock's 10 s
+ * acquisition timeout (`utils/file-lock.ts`) before it fails loudly; 2 s on top
+ * covers the append itself and the remaining in-process teardown. Anything
+ * longer is a hang, and a hung cleanup must not keep an orphaned server alive —
+ * not lingering is the whole point of {@link watchParentProcess}.
+ */
+const SHUTDOWN_CLEANUP_TIMEOUT_MS = 12_000;
+
+/** Options for {@link createGracefulShutdown}. */
+interface GracefulShutdownOptions {
+  /** Teardown to run once (flushes and closes the audit logger, etc.). */
+  readonly cleanup: () => Promise<void>;
+  readonly logger: ILogger;
+  /** Process exit seam. Default: `process.exit`. */
+  readonly exit?: ((code: number) => void) | undefined;
+  /** Cleanup bound in ms. Default: {@link SHUTDOWN_CLEANUP_TIMEOUT_MS}. */
+  readonly timeoutMs?: number | undefined;
+}
+
+/** Requests shutdown; `reason` names the trigger (a signal, or parent death). */
+export type ShutdownRequest = (reason: string) => Promise<void>;
+
+/**
+ * Builds the single shutdown entry point shared by SIGINT/SIGTERM and parent
+ * death (#6560). The first request runs `cleanup`, bounded by `timeoutMs`, then
+ * exits: SUCCESS when it completed, SHUTDOWN_ERROR when it threw or timed out.
+ * Later requests — a signal racing stdin EOF — are ignored, so the cleanup
+ * (and the audit `system.shutdown.begin` it writes) runs exactly once.
+ */
+export function createGracefulShutdown(options: GracefulShutdownOptions): ShutdownRequest {
+  const { cleanup, logger } = options;
+  const exit = options.exit ?? ((code: number): void => process.exit(code));
+  const timeoutMs = options.timeoutMs ?? SHUTDOWN_CLEANUP_TIMEOUT_MS;
+  let isShuttingDown = false;
+
+  return async (reason: string): Promise<void> => {
+    if (isShuttingDown) {
+      logger.debug('Shutdown already in progress, ignoring signal', { signal: reason });
+      return;
+    }
+    isShuttingDown = true;
+    logger.info('Received shutdown signal', { signal: reason });
+
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<'timeout'>((resolve) => {
+      // Deliberately NOT unref'd: this timer is what guarantees the exit when
+      // the cleanup is stuck on something that holds no handle of its own.
+      timer = setTimeout(() => {
+        resolve('timeout');
+      }, timeoutMs);
+    });
+
+    try {
+      const outcome = await Promise.race([cleanup().then(() => 'done' as const), timedOut]);
+      if (outcome === 'timeout') {
+        logger.error(
+          'Shutdown cleanup timed out; exiting without completing it',
+          new Error(`shutdown cleanup exceeded ${String(timeoutMs)}ms (trigger: ${reason})`)
+        );
+        exit(EXIT_CODES.SHUTDOWN_ERROR);
+        return;
+      }
+      logger.info('Shutdown complete');
+      exit(EXIT_CODES.SUCCESS);
+    } catch (error) {
+      logger.error(
+        'Error during shutdown',
+        error instanceof Error ? error : new Error(String(error))
+      );
+      exit(EXIT_CODES.SHUTDOWN_ERROR);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+/** The part of the stdin lifecycle monitor {@link watchParentProcess} uses. */
+type ParentProcessMonitor = Pick<StdinLifecycleMonitor, 'start' | 'onClose'>;
+
+/**
+ * Shuts the server down when the parent closes stdin or dies (Issue #810).
  *
  * A stdio MCP server whose parent dies keeps running as a zombie holding the
- * pipe open; the monitor turns that into a clean exit.
+ * pipe open; the monitor turns that into an exit. Since #6560 the exit goes
+ * through `requestShutdown` — the same bounded cleanup SIGINT/SIGTERM use — so
+ * the audit log is flushed and `system.shutdown.begin` written before exit.
  */
-export function watchParentProcess(logger: ILogger): void {
-  const monitor = getStdinLifecycleMonitor();
+export function watchParentProcess(
+  logger: ILogger,
+  requestShutdown: ShutdownRequest,
+  monitor: ParentProcessMonitor = getStdinLifecycleMonitor()
+): void {
   monitor.start();
   monitor.onClose(() => {
     logger.warn('Parent process closed stdin, shutting down');
-    process.exit(0);
+    return requestShutdown('parent-gone');
   });
 }
