@@ -349,10 +349,11 @@ export class CompositeRouter implements ICompositeRouter {
     // `routing.topsis` section in nexus-agents.yaml never reached the stage.
     if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter(topsisConfig);
     if (this.config.enableLinUCBSelection && this.cliNames.length > 0) {
-      // Arms include distinct api:* arms (#3422). Persisted outcomes/priors are
-      // slot-attributed, so api:* arms start cold and gain no warm-start credit
-      // by design — do NOT collapse the arm names here, that would destroy the
-      // CLI-vs-API distinct learning this migration exists to enable.
+      // Arms include distinct api:* arms (#3422). Routed outcome rows record
+      // the arm that ran (#6554), so warm start credits an api:* arm from its
+      // own rows; rows a slot-only writer recorded credit the slot. Do NOT
+      // collapse the arm names here, that would destroy the CLI-vs-API
+      // distinct learning this migration exists to enable.
       this.linucbBandit = new LinUCBBandit(this.cliNames, { alpha: this.config.linucbAlpha });
       this.warmStartBandit();
     }
@@ -641,8 +642,9 @@ export class CompositeRouter implements ICompositeRouter {
     success: boolean,
     durationMs: number
   ): void {
-    // The bandit learns the DISTINCT arm; everything slot-level (quality
-    // reward, latency, routing memory, metrics) collapses to the display
+    // The bandit and the quality reward read the DISTINCT arm (#6552: the
+    // reward uses the arm's own history, falling back to its slot's while it
+    // has none). Latency, routing memory and metrics collapse to the display
     // slot so CLI and API telemetry stay attributed to the vendor (#3422).
     const arm = decision.cliName;
     const slot = routingArmDisplaySlot(arm);

@@ -243,6 +243,55 @@ describe('doctor-deep', () => {
     });
   });
 
+  // #6574: the learning-loop and data-sufficiency checks iterated CLI_NAMES
+  // only, so an api:* row (recorded under its own id since #6554) was invisible.
+  describe('api:* rows outside the convergence block (#6574)', () => {
+    /** The Data Sufficiency block of the formatted output, alone. */
+    function dataSufficiencyBlock(): string {
+      const output = formatDeepDiagnostics(runDeepDiagnostics());
+      const start = output.indexOf('Data Sufficiency:');
+      return output.slice(start, output.indexOf('Routing Convergence:'));
+    }
+
+    it('counts an adaptive bonus earned only by api:anthropic rows, on the claude slot', () => {
+      seed('api:anthropic', 5, 5);
+
+      const ll = runDeepDiagnostics().learningLoop;
+      expect(ll.activeBonuses).toBe(1);
+      // Bonuses are slot-keyed (delegate_to_model routes by slot), so the
+      // denominator stays slots x categories.
+      expect(ll.totalBonusPairs).toBe(4 * TASK_CATEGORIES.length);
+    });
+
+    it('reports data sufficiency for an api arm that has rows', () => {
+      seed('api:anthropic', 4, 1);
+
+      const status = runDeepDiagnostics().dataSufficiency.cliStatus;
+      expect(status.find((c) => c.cli === 'api:anthropic')).toEqual({
+        cli: 'api:anthropic',
+        taskCount: 4,
+        aboveThreshold: true,
+      });
+    });
+
+    it('renders arms with no rows as unmeasured, not as 0 tasks', () => {
+      seed('api:anthropic', 4, 1);
+
+      const block = dataSufficiencyBlock();
+      expect(block).toContain('api:anthropic: 4 tasks (above threshold)');
+      expect(block).toMatch(/Unmeasured \(no rows\): claude, gemini, codex, opencode, api:openai/);
+      expect(block).not.toContain('0 tasks');
+    });
+
+    it('names the empty case: every arm is unmeasured', () => {
+      const block = dataSufficiencyBlock();
+      expect(block).toContain(
+        'Unmeasured (no rows): claude, gemini, codex, opencode, api:anthropic, api:openai, api:google, api:custom-openai'
+      );
+      expect(block).not.toContain('0 tasks');
+    });
+  });
+
   describe('formatDeepDiagnostics', () => {
     it('renders the empty case as unmeasured, not a 0% or NaN rate', () => {
       const output = formatDeepDiagnostics(runDeepDiagnostics());
