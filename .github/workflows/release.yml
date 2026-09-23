@@ -500,6 +500,18 @@ jobs:
             echo "::error::no GitHub release found for ${TAG}; the SBOM has nothing to attach to (#5450)"
             exit 1
           fi
+          # #6500 fallback path: when npm held the version in its staging
+          # window, a later run re-enters here for a version an EARLIER run
+          # published. That run's SBOM describes the bytes that shipped; this
+          # run's describes a newer tree. Keep the original. Read through the
+          # REST API: `gh release view` served a stale empty list here.
+          EXISTING=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            --jq '[.assets[] | select(.name == "sbom.cdx.json" and .state == "uploaded")] | length')
+          if [[ "$EXISTING" != "0" ]]; then
+            echo "::notice::${TAG} already carries sbom.cdx.json from the run that published it; not replacing it (#6500)"
+            exit 0
+          fi
+
           echo "Uploading SBOM to release tag: $TAG"
           gh release upload "$TAG" "$SBOM" --clobber
 
