@@ -35,6 +35,10 @@ vi.mock('./cli-auth-probe.js', () => ({
   ]),
 }));
 
+vi.mock('./setup-cli-detection.js', () => ({
+  detectCliBinary: vi.fn().mockReturnValue({ installed: false }),
+}));
+
 describe('verify-command', () => {
   describe('runVerify', () => {
     it('returns a verify result with all required fields', async () => {
@@ -249,7 +253,7 @@ describe('verify-command', () => {
       // cache never passes) is carried by the fixture-driven unit tests in
       // doctor-codex-models.test.ts, not here.
       if (codexCheck.passed) {
-        expect(codexCheck.message).toMatch(/served: /);
+        expect(codexCheck.message).toMatch(/skipped: codex not installed|served: /);
       } else {
         expect(codexCheck.severity).toBe('warn');
         expect(codexCheck.message).toMatch(/not served|retir|unmeasured/);

@@ -380,31 +380,106 @@ describe('codexModelsVerifyCheck', () => {
     expect(check.message).toBe('1 codex registry slug(s) served: fixture-new-slug');
   });
 
-  it('warns on a retirement while still listing what is served', () => {
+  it('reports skipped when codex is not installed (#6535)', () => {
+    const check = codexModelsVerifyCheck(
+      {
+        status: 'unmeasured',
+        served: [],
+        missing: [],
+        retiring: [],
+        reason: 'no cache',
+      },
+      { isCodexInstalled: false }
+    );
+    expect(check.passed).toBe(true);
+    expect(check.message).toBe('skipped: codex not installed');
+  });
+
+  it('reports passed with an informational note when retirement is within window and default is migrated (#6535)', () => {
+    const check = codexModelsVerifyCheck(
+      {
+        status: 'warn',
+        served,
+        missing: [],
+        retiring,
+        reason: 'retiring per the codex cache: fixture-old → fixture-old-slug retires 2026-10-14',
+      },
+      { defaultModel: 'gpt-5.6-sol' }
+    );
+    expect(check.passed).toBe(true);
+    expect(check.message).toContain('served: fixture-new-slug');
+    expect(check.message).toContain(
+      '(fixture-old-slug retires 2026-10-14; nexus-agents default is gpt-5.6-sol)'
+    );
+  });
+
+  it('warns when user config pins the retiring slug (#6535)', () => {
+    const check = codexModelsVerifyCheck(
+      {
+        status: 'warn',
+        served,
+        missing: [],
+        retiring,
+        reason: 'retiring per the codex cache',
+      },
+      { userPinnedSlug: 'fixture-old-slug' }
+    );
+    expect(check.passed).toBe(false);
+    expect(check.severity).toBe('warn');
+    expect(check.message).toContain('user config pins retiring slug');
+    expect(check.fix).toBe(
+      'Update nexus-agents, or set your model to fixture-new-slug in nexus-agents.yaml'
+    );
+  });
+
+  it('warns when the retirement date has passed (#6535)', () => {
     const check = codexModelsVerifyCheck({
       status: 'warn',
       served,
       missing: [],
-      retiring,
-      reason: 'retiring per the codex cache: fixture-old → fixture-old-slug retires 2026-10-14',
+      retiring: [{ ...retiring[0]!, daysLeft: -3 }],
+      reason: 'retiring per the codex cache',
     });
     expect(check.passed).toBe(false);
     expect(check.severity).toBe('warn');
-    expect(check.message).toContain('retires 2026-10-14');
-    expect(check.message).toContain('served: fixture-new-slug');
-    expect(check.fix).toContain('upgrade');
+    expect(check.message).toContain('retired 2026-10-14 (3 day(s) ago)');
+    expect(check.fix).toContain('set your model to fixture-new-slug');
   });
 
-  it('renders unmeasured as a warn that says so, never a pass', () => {
+  it('warns with user-facing fix when registry slug is not served (#6535)', () => {
     const check = codexModelsVerifyCheck({
-      status: 'unmeasured',
-      served: [],
-      missing: [],
+      status: 'warn',
+      served,
+      missing: [{ id: 'fixture-missing', cliModelName: 'missing-slug' }],
       retiring: [],
-      reason: 'no cache',
+      reason: 'not served',
     });
     expect(check.passed).toBe(false);
+    expect(check.severity).toBe('warn');
+    expect(check.fix).toBe(
+      'Update nexus-agents, or configure a supported model in nexus-agents.yaml'
+    );
+    expect(check.fix).not.toContain('in-tree-data.ts');
+  });
+
+  it('renders unmeasured as a warn with user-facing fix when codex is installed (#6535)', () => {
+    const check = codexModelsVerifyCheck(
+      {
+        status: 'unmeasured',
+        served: [],
+        missing: [],
+        retiring: [],
+        reason: 'no cache',
+      },
+      { isCodexInstalled: true }
+    );
+    expect(check.passed).toBe(false);
+    expect(check.severity).toBe('warn');
     expect(check.message).toBe('unmeasured: no cache');
+    expect(check.fix).toBe(
+      'Run codex once so ~/.codex/models_cache.json exists, then re-run verify'
+    );
+    expect(check.fix).not.toContain('Install codex');
   });
 });
 
