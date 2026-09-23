@@ -29,6 +29,8 @@ import {
   heartbeatJob,
   readLastProgressMs,
 } from './job-result-store.js';
+import { extractFailureDetail } from './job-failure-detail.js';
+export { extractFailureDetail } from './job-failure-detail.js';
 import { registerJobAbort, unregisterJobAbort } from './job-abort-registry.js';
 import { bridgePipelineEventsToHeartbeat } from './job-heartbeat-bridge.js';
 import { registerIdempotentJob, shortCircuitOrFreshJobId } from './job-idempotency.js';
@@ -496,6 +498,37 @@ export function runAsJob<I, R, E = ToolResult>(params: RunAsJobParams<I, R, E>):
  * detached promise.
  * @internal
  */
+function settleJobResult<I, R, E>(
+  jobId: string,
+  params: RunAsJobParams<I, R, E>,
+  result: unknown
+): void {
+  const failure = detectFailureShapedResult(result);
+  if (failure !== null && params.allowFailureShapedResult === undefined) {
+    writeJobFailed(
+      jobId,
+      params.toolName,
+      describeFailureShape(failure),
+      params.producerVersion,
+      extractFailureDetail(result)
+    );
+    return;
+  }
+  if (failure !== null) {
+    params.logger?.warn(
+      `Recorded a failure-shaped ${params.toolName} result as complete (opted out)`,
+      { jobId, key: failure.key, reason: params.allowFailureShapedResult }
+    );
+  }
+  writeJobComplete(jobId, params.toolName, result, params.producerVersion);
+}
+
+/**
+ * Detached executor for `runAsJob`. Exported for tests so a test can drive
+ * the background run deterministically without racing the dispatch envelope.
+ *
+ * @internal
+ */
 export async function runJobInBackground<I, R, E>(
   jobId: string,
   params: RunAsJobParams<I, R, E>
@@ -529,22 +562,17 @@ export async function runJobInBackground<I, R, E>(
     // caller polling `get_job_result` read it as a success. Fail closed by
     // default — an opt-in predicate was rejected because "caller forgot to
     // normalize" would just become "caller forgot to pass the predicate".
-    const failure = detectFailureShapedResult(result);
-    if (failure !== null && params.allowFailureShapedResult === undefined) {
-      writeJobFailed(jobId, params.toolName, describeFailureShape(failure), params.producerVersion);
-    } else {
-      if (failure !== null) {
-        params.logger?.warn(
-          `Recorded a failure-shaped ${params.toolName} result as complete (opted out)`,
-          { jobId, key: failure.key, reason: params.allowFailureShapedResult }
-        );
-      }
-      writeJobComplete(jobId, params.toolName, result, params.producerVersion);
-    }
+    settleJobResult(jobId, params, result);
   } catch (err: unknown) {
     const errObj = err instanceof Error ? err : new Error(String(err));
     params.logger?.error(`Async ${params.toolName} dispatch failed`, errObj, { jobId });
-    writeJobFailed(jobId, params.toolName, errObj.message, params.producerVersion);
+    writeJobFailed(
+      jobId,
+      params.toolName,
+      errObj.message,
+      params.producerVersion,
+      extractFailureDetail(err)
+    );
   } finally {
     unbridge();
     guard.clear();

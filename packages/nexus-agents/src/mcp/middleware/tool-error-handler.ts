@@ -11,6 +11,7 @@
 
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
+import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 
 /** Standard MCP tool response shape. */
@@ -25,7 +26,8 @@ type ToolResponse = ToolResult;
  * @returns MCP tool response with a structured `internal` error envelope
  */
 export function toolErrorResponse(prefix: string, error: unknown, logger?: ILogger): ToolResponse {
-  const message = getErrorMessage(error);
+  const rawMessage = getErrorMessage(error);
+  const message = sanitizeErrorDetails(rawMessage);
   if (logger !== undefined) {
     const errorObj = error instanceof Error ? error : new Error(message);
     logger.error(prefix, errorObj);

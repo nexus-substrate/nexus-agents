@@ -1,5 +1,101 @@
 # nexus-agents
 
+## 8.83.0
+
+### Minor Changes
+
+- [#6483](https://github.com/nexus-substrate/nexus-agents/pull/6483) [`f7bcc84`](https://github.com/nexus-substrate/nexus-agents/commit/f7bcc843e7821afda834d827aeb39384ff15abae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add structured adapter/transport failure detail in job records with write-path redaction ([#4375](https://github.com/nexus-substrate/nexus-agents/issues/4375))
+
+### Patch Changes
+
+- [#6487](https://github.com/nexus-substrate/nexus-agents/pull/6487) [`e955b4c`](https://github.com/nexus-substrate/nexus-agents/commit/e955b4c01f863b7560fef25080ddcf6fe3076e5d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Unify MCP tool output and error envelope redaction on `sanitizeErrorDetails` ([#6484](https://github.com/nexus-substrate/nexus-agents/issues/6484)).
+
+  - Extends `output-sanitizer.ts` secret patterns to cover Anthropic (`sk-ant-*`), OpenAI project keys (`sk-proj-*`), public keys (`pk-*`), AWS access key IDs (`AKIA*`), and plain-text credential assignments (`password=...`, `secret:...`).
+  - Sanitizes `result.structuredContent` and `result._meta` recursively in `secure-handler.ts` so structured outputs and nested error metadata cannot leak credentials.
+  - Sanitizes error messages in `toolErrorResponse` in `tool-error-handler.ts` before creating structured error envelopes.
+
+- [#6495](https://github.com/nexus-substrate/nexus-agents/pull/6495) [`f645c84`](https://github.com/nexus-substrate/nexus-agents/commit/f645c84e7fd480c3d2aab1423c7abaf9814ec282) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Pin npm 11.x in release workflow publish jobs to prevent `EUNKNOWNCONFIG` errors from `--no-git-checks` under npm 12 ([#6486](https://github.com/nexus-substrate/nexus-agents/issues/6486)). Changesets passes `--no-git-checks` through `pnpm publish` to npm, which npm 11 accepts with a warning while npm 12 errors out.
+
+- [#6498](https://github.com/nexus-substrate/nexus-agents/pull/6498) [`65bb4ed`](https://github.com/nexus-substrate/nexus-agents/commit/65bb4ed1aa840b43383ab5b453bb276d3e7c8d93) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(ops): document prevention of direct publishing from inside .publish-stage ([#6494](https://github.com/nexus-substrate/nexus-agents/issues/6494))
+
+## 8.82.2
+
+### Patch Changes
+
+- [#6491](https://github.com/nexus-substrate/nexus-agents/pull/6491) [`1eed437`](https://github.com/nexus-substrate/nexus-agents/commit/1eed4372f0751a21b58c0433f7318e800f140f04) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Packages bundled inside the nexus-agents tarball now honor the repository's security version floors ([#6488](https://github.com/nexus-substrate/nexus-agents/issues/6488)). The bundle was resolved by npm, which ignores the workspace's `pnpm.overrides`, so it could ship a version the workspace had already raised past: `fast-uri` was bundled at 3.1.8 while the floor is `>=4.1.3`. A bundled copy cannot be overridden from your own project, so the floor has to hold before publishing.
+
+  Publishing now translates the floors into npm `overrides` for the staged package, so the bundle resolves above them (`fast-uri` is now 4.2.1), and then checks every bundled package against every floor. A violation fails the release, naming the package path, its version and the floor it breaks. The `overrides` field appears in the published `package.json`; npm and pnpm read it only from a root project, so it does not change how your own dependencies resolve.
+
+  One effect you can see: the repository's `protobufjs` floor now reaches the bundled copy, so it resolves to 8.x instead of the 7.6.6 that npm picked from `@google/genai`'s `^7.5.4`. 8.x declares no install script, so a default install now carries three packages with install scripts (all bundled, none run by npm 12 or pnpm), down from four. The workspace has tested `@google/genai` on protobufjs 8 through the same floor.
+
+## 8.82.1
+
+### Patch Changes
+
+- [#6485](https://github.com/nexus-substrate/nexus-agents/pull/6485) [`67a7e47`](https://github.com/nexus-substrate/nexus-agents/commit/67a7e47b9b47cfcf41e06e5fbdda26da020ad06f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Installs no longer stall or fail on dependency install scripts ([#6481](https://github.com/nexus-substrate/nexus-agents/issues/6481)). Before this release, `pnpm add -g nexus-agents` in a terminal (pnpm 12) stopped at an interactive "Choose which packages to build" prompt and installed nothing until you answered. `npm install -g nexus-agents` with npm 12's `strict-allow-scripts` exited 1.
+
+  `@ast-grep/lang-go`, `@ast-grep/lang-python`, `@google/genai` and `@modelcontextprotocol/sdk` now ship inside the nexus-agents tarball as `bundleDependencies`, together with their full dependency closure (about 130 packages, including `zod`, `express`, `hono`, `ajv` and `ws`). npm 12 (default and strict) and pnpm 12 install with no prompt, no blocked-scripts warning and no script executed. The Go/Python grammars and the Gemini adapter work as before. The MCP SDK is bundled because `@google/genai` declares it as a peer, and npm expects a bundled package's peers inside the bundle.
+
+  Trade-offs: the tarball grows from about 6 MB to about 15 MB. Every bundled package is fixed at the version resolved for the release, at least 24 hours old at the release commit. A security fix in any of them reaches you through a nexus-agents release, not through `npm update` or your own `overrides`, though `npm audit` still reports it.
+
+## 8.82.0
+
+### Minor Changes
+
+- [#6435](https://github.com/nexus-substrate/nexus-agents/pull/6435) [`08d3136`](https://github.com/nexus-substrate/nexus-agents/commit/08d313670bb2f27d7d4b0942942bb55ba308baf4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `security.policy.defaultMode` now defaults to `read-write` instead of `read-only` ([#6431](https://github.com/nexus-substrate/nexus-agents/issues/6431)). Under `read-only` the MCP policy firewall's `deny-mutations-without-mode` rule fires on every manifest-classified mutation tool (`consensus_vote`, `run_dev_pipeline`, `memory_write`, and the rest of the 20 tools with `readOnlyHint: false`), and nothing on the MCP path set the mode per call — so a default install would have lost every mutation tool the day enforcement turned on. `read-only` is now an operator opt-in lock: an operator who wants a host that can never mutate anything through MCP must set `security.policy.defaultMode: read-only` explicitly. The setting also reaches the firewall for the first time: it used to stop at a startup log line while every secure handler evaluated under a literal `read-only`; the policy registry now carries it to every handler ([#6294](https://github.com/nexus-substrate/nexus-agents/issues/6294)).
+
+  New environment variable `NEXUS_MCP_POLICY_ENFORCE` (`true`/`1` on; `false`/`0` off; default off): runs the MCP policy firewall in `enforce` instead of the rollout default `warn`. The flag was described as the per-operator opt-in since [#4987](https://github.com/nexus-substrate/nexus-agents/issues/4987) but had no reader; it now has one, an entry in the startup env validator, and a row in `docs/getting-started/CONFIGURATION.md`. `security.policy.policyMode` is still not read for the effective mode. The startup `Security configuration` line now reports the mode in effect and why — `policyMode: enforce (NEXUS_MCP_POLICY_ENFORCE)` or `warn (rollout default)` — replacing the `configuredPolicyMode` field, which named a configured `enforce` beside a firewall that had just been set to `warn`.
+
+### Patch Changes
+
+- [#6452](https://github.com/nexus-substrate/nexus-agents/pull/6452) [`f981710`](https://github.com/nexus-substrate/nexus-agents/commit/f9817101237d82ba17c6a23a2c9b1de2a22f8564) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Apply strict Tier 1 floor for unlisted action types in corroboration validator ([#6419](https://github.com/nexus-substrate/nexus-agents/issues/6419)). Fixes docs/code drift where `.rules/untrusted-input.md` mandates that an action type absent from the corroboration table receives the strict Tier 1 floor, preventing `TypeError` on unlisted types.
+
+- [#6443](https://github.com/nexus-substrate/nexus-agents/pull/6443) [`1146798`](https://github.com/nexus-substrate/nexus-agents/commit/114679885b5659d700e131ec1d6b755b85fa5eba) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refuse `custom-openai` as a gateway endpoint ID in `NEXUS_OPENAI_COMPAT_ENDPOINT` and validate endpoint keys in `NEXUS_GATEWAY_COST` ([#6437](https://github.com/nexus-substrate/nexus-agents/issues/6437)). `custom-openai` is reserved for the single-model `NEXUS_CUSTOM_API_*` provider path (`api:custom-openai`); permitting it on the gateway path risked collisions where both mechanisms shared the same arm ID, circuit breaker, catalogue, and cost declarations. `parseGatewayCostEnv` now validates endpoint keys through `gatewayEndpointRejection` to reject vendor segments and `custom-openai`.
+
+- [#6444](https://github.com/nexus-substrate/nexus-agents/pull/6444) [`a528ff1`](https://github.com/nexus-substrate/nexus-agents/commit/a528ff1357db6f996f168b4d945f20f3ee6fedb8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix vacuous `tokensMeasured: true` on zero-step orchestrator execution ([#6439](https://github.com/nexus-substrate/nexus-agents/issues/6439)). `createResult` now aggregates `tokensMeasured` across steps with `allOf(steps, (s) => s.tokensMeasured === true, false)`, correctly naming the empty case as unmeasured per `.rules/development-disciplines.md` instead of allowing `[].every()` to default to `true`.
+
+- [#6451](https://github.com/nexus-substrate/nexus-agents/pull/6451) [`f3dd398`](https://github.com/nexus-substrate/nexus-agents/commit/f3dd398a1faca55085a55357f6f8bb1d934cb597) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove expired `swe-bench` and `atbench` CLI subcommands and option parsers ([#6442](https://github.com/nexus-substrate/nexus-agents/issues/6442)). These subcommands were deprecated shims pointing operators to `nexus-eval-swebench` and `nexus-eval-atbench`.
+
+- [#6449](https://github.com/nexus-substrate/nexus-agents/pull/6449) [`a66a238`](https://github.com/nexus-substrate/nexus-agents/commit/a66a238bb52e23195f2c3ebd920f3d92d3b8dda7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix vacuous `passed: true` in `ScenarioRunner.runDryRun` when `expectedOutputs` is empty ([#6446](https://github.com/nexus-substrate/nexus-agents/issues/6446)). Uses `allOf(validations, (v) => v.passed, false)` so that scenarios asserting nothing correctly fail rather than reporting passed, adhering to `.rules/development-disciplines.md`.
+
+- [#6460](https://github.com/nexus-substrate/nexus-agents/pull/6460) [`6810d0c`](https://github.com/nexus-substrate/nexus-agents/commit/6810d0caddba259c5b0ca56679e20d43f37b79ce) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix state overwrite in `ForestEngine.processStep` and eliminate vacuous assertions in `forest-engine`, `agent-expert-system`, and `agent-skill-library` tests ([#6456](https://github.com/nexus-substrate/nexus-agents/issues/6456)). Preserves expanded and completed nodes in reasoning forest trees, and verifies real compositions and expert query results.
+
+- [#6461](https://github.com/nexus-substrate/nexus-agents/pull/6461) [`a437ed8`](https://github.com/nexus-substrate/nexus-agents/commit/a437ed893236e5ed7479ccc4c52eb29a4f6f44bf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Register 6 former debt environment variables in `NexusEnvSchema` and burn down `docs/ops/env-schema-coverage-baseline.json` debt list to zero ([#6457](https://github.com/nexus-substrate/nexus-agents/issues/6457)). Adds Zod validation and known registration for `NEXUS_BUDGET_TOLERANCE`, `NEXUS_CONSOLE`, `NEXUS_CONTEXT_WARN_THRESHOLD`, `NEXUS_CUSTOM_API_ALLOW_PRIVATE`, `NEXUS_PORTABLE_MODE`, and `NEXUS_TASK_STATE_ENABLED`.
+
+- [#6462](https://github.com/nexus-substrate/nexus-agents/pull/6462) [`d1d7ad3`](https://github.com/nexus-substrate/nexus-agents/commit/d1d7ad33053220b283e4c0474a645a88238061db) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Prune unreferenced `SessionJournal` flight recorder module and types superseded by `StructuredTaskState` ([#6458](https://github.com/nexus-substrate/nexus-agents/issues/6458)). Removes unused `session-journal.ts`, `session-journal-types.ts`, and internal re-exports from `src/context/index.ts`.
+
+- [#6472](https://github.com/nexus-substrate/nexus-agents/pull/6472) [`c9e63a2`](https://github.com/nexus-substrate/nexus-agents/commit/c9e63a2ffb5684df654a90b744fb3c1e78e39371) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Align mock IWorkflowEngine listTemplates return values with interface contract
+
+- [#6469](https://github.com/nexus-substrate/nexus-agents/pull/6469) [`62a8dbe`](https://github.com/nexus-substrate/nexus-agents/commit/62a8dbec6a73658912f7fae83cd57485fb11546a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Document vacuous truth behavior when stepIds is empty in areStepsCompleted
+
+- [#6470](https://github.com/nexus-substrate/nexus-agents/pull/6470) [`f4d2f16`](https://github.com/nexus-substrate/nexus-agents/commit/f4d2f16061b61205348cca3312b4406fe66a790b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract and classify issue trigger conditions in check-unblocked ops report
+
+- [#6448](https://github.com/nexus-substrate/nexus-agents/pull/6448) [`511c7d1`](https://github.com/nexus-substrate/nexus-agents/commit/511c7d105a79f460661c82c624093d107dad116c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Sanitize and redact credentials in code-PR push execution and out-of-band git auth. Transmit push credentials out-of-band via `GIT_CONFIG_VALUE_0` (`http.extraHeader`) rather than embedding tokens into command-line `argv` URLs, preventing exposure in process listings and `/proc`. Scrub tokens, base64 authorization headers, and URL userinfo from `git`, `gh`, and `executeCodePrPush` error messages and denial details.
+
+- [#6474](https://github.com/nexus-substrate/nexus-agents/pull/6474) [`bc8f092`](https://github.com/nexus-substrate/nexus-agents/commit/bc8f0925d33a2ac59010613afb22e00a682dde76) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Replace wildcard export in core/index with explicit named re-exports to prevent accidental shadowing
+
+- [#6466](https://github.com/nexus-substrate/nexus-agents/pull/6466) [`12a5a17`](https://github.com/nexus-substrate/nexus-agents/commit/12a5a1727ca9f0a47b935d95ecd6732d3cf49088) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Filter sensitive credentials and secrets from prefix-matched environment variables when spawning CLI subprocesses.
+
+- [#6454](https://github.com/nexus-substrate/nexus-agents/pull/6454) [`d2b391f`](https://github.com/nexus-substrate/nexus-agents/commit/d2b391faa746b113832903ff195094f1ae281fe8) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Drop unused FeedbackIntegration initialization in MCP server and stop threading it to delegate_to_model ([#6323](https://github.com/nexus-substrate/nexus-agents/issues/6323)).
+
+- [#6464](https://github.com/nexus-substrate/nexus-agents/pull/6464) [`0d78bdb`](https://github.com/nexus-substrate/nexus-agents/commit/0d78bdb7372b8d149c497932d244cc1f24507ee6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): prevent overwriting built-in vendor arms in unified registry
+
+- [#6455](https://github.com/nexus-substrate/nexus-agents/pull/6455) [`a3abd6d`](https://github.com/nexus-substrate/nexus-agents/commit/a3abd6d7ce03ec1ecd2625da76838dece617d276) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Update Gemini CLI error envelope login hints to name \`agy\` and provide \`GEMINI_API_KEY\` / \`GOOGLE_AI_API_KEY\` environment variable guidance ([#6278](https://github.com/nexus-substrate/nexus-agents/issues/6278)).
+
+- [#6463](https://github.com/nexus-substrate/nexus-agents/pull/6463) [`b98a6ea`](https://github.com/nexus-substrate/nexus-agents/commit/b98a6ea7fe94906ebe3bca40bcbef9332f98cdd2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): comprehensive path extraction across MCP tool parameters in policy firewall
+
+- [#6471](https://github.com/nexus-substrate/nexus-agents/pull/6471) [`f2a6816`](https://github.com/nexus-substrate/nexus-agents/commit/f2a6816e6f287c2f31f0bdb4f52723a958b37c51) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Resolve async job results across repo-local and shared data directories ([#5472](https://github.com/nexus-substrate/nexus-agents/issues/5472))
+
+- [#6467](https://github.com/nexus-substrate/nexus-agents/pull/6467) [`2071244`](https://github.com/nexus-substrate/nexus-agents/commit/207124437bdf5a4731ea9632338fdde8192f79f0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Use argument arrays and stdin body for issue creation in CLI issue command
+
+- [#6459](https://github.com/nexus-substrate/nexus-agents/pull/6459) [`53d1a71`](https://github.com/nexus-substrate/nexus-agents/commit/53d1a7162cb8ced0ec20aac812f8838b84e84de6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Harden \`resolveInsideRoot\` with filesystem symlink target canonicalization and fail-closed path confinement.
+
+- [#6453](https://github.com/nexus-substrate/nexus-agents/pull/6453) [`c1175a9`](https://github.com/nexus-substrate/nexus-agents/commit/c1175a96e227f7ad04d02f2831d0e4f1225ea75c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Defend sandbox execution against newline, carriage return, and null byte command injection in command arguments and names.
+
+- [#6465](https://github.com/nexus-substrate/nexus-agents/pull/6465) [`8967545`](https://github.com/nexus-substrate/nexus-agents/commit/896754552d1c4939a3166ccb4623518e37298850) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): sanitize secrets, tokens, and credentials in upstream API error bodies and descriptions
+
+- [#6468](https://github.com/nexus-substrate/nexus-agents/pull/6468) [`89455bd`](https://github.com/nexus-substrate/nexus-agents/commit/89455bd35d54adb1aea97e3f547bb35eb0108748) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Eliminate vacuous assertions in scanner registry cache, skill loader, and agentic memory tests
+
 ## 8.81.2
 
 ### Patch Changes

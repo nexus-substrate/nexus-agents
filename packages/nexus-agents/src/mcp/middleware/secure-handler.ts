@@ -31,6 +31,7 @@ import {
 import type { IAuditLogger, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
+import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { getGlobalExecutionMode } from './policy-registry.js';
 import { runPolicyCheck, getRegisteredAuditLogger } from './policy-check.js';
@@ -191,50 +192,54 @@ function internalError(message: string, requestId: string): ToolResult {
 const MAX_INPUT_SIZE_BYTES = 10 * 1024 * 1024;
 
 /**
- * Patterns that indicate leaked secrets in tool output.
- * Each pattern is tested against tool response text.
+ * Redact detected secrets from tool output text (#6484).
+ * Unifies on canonical sanitizeErrorDetails to cover Anthropic sk-ant-*,
+ * OpenAI sk-proj-*, Gemini AIzaSy*, GitHub PATs, and URL/Bearer credentials.
  */
-// #3109: every pattern is GLOBAL so `replace` redacts ALL matches, not just
-// the first — two secrets of the same shape (e.g. a rotated old+new key) must
-// both be redacted before the result reaches the MCP caller.
-const SECRET_PATTERNS: readonly RegExp[] = [
-  // API keys with common prefixes
-  /\b(sk-[a-zA-Z0-9]{20,})\b/g,
-  /\b(pk-[a-zA-Z0-9]{20,})\b/g,
-  // AWS-style keys
-  /\b(AKIA[A-Z0-9]{16})\b/g,
-  // Bearer tokens in output
-  /Bearer\s+[a-zA-Z0-9_\-.~+/]+=*/g,
-  // Generic long hex secrets (40+ chars)
-  /\b[0-9a-f]{40,}\b/gi,
-  // password= or token= in output
-  /(?:password|token|secret|apikey|api_key)\s*[=:]\s*\S{8,}/gi,
-];
-
-/** Redact detected secrets from tool output text. */
-function sanitizeOutput(text: string, logger: ILogger): string {
-  let sanitized = text;
-  for (const pattern of SECRET_PATTERNS) {
-    // #3109: replace unconditionally — do NOT guard with pattern.test(), which
-    // advances a global regex's lastIndex and makes replace() skip earlier
-    // matches. `String.replace` with a global regex redacts every occurrence
-    // and resets lastIndex to 0 on completion, so the shared pattern stays
-    // safe across calls. Detect a redaction via a before/after compare.
-    const before = sanitized;
-    sanitized = sanitized.replace(pattern, '[REDACTED]');
-    if (sanitized !== before) {
-      logger.warn('Potential secret detected in tool output, redacting', {
-        pattern: pattern.source.slice(0, 30),
-      });
-    }
+function sanitizeOutput(text: string, logger?: ILogger): string {
+  const sanitized = sanitizeErrorDetails(text, undefined, '[REDACTED]');
+  if (sanitized !== text && logger !== undefined) {
+    logger.warn('Potential secret detected in tool output, redacting');
   }
   return sanitized;
 }
 
-/** Sanitize all text content in a tool result (Issue #740). */
+/** Recursively sanitize string fields in structured values (#6484). */
+function sanitizeDeep(value: unknown, logger?: ILogger): unknown {
+  if (typeof value === 'string') {
+    return sanitizeOutput(value, logger);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeDeep(item, logger));
+  }
+  if (typeof value === 'object' && value !== null) {
+    return sanitizeDeepRecord(value as Record<string, unknown>, logger);
+  }
+  return value;
+}
+
+/** Recursively sanitize record entries (#6484). */
+function sanitizeDeepRecord(
+  obj: Record<string, unknown>,
+  logger?: ILogger
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    result[key] = sanitizeDeep(val, logger);
+  }
+  return result;
+}
+
+/** Sanitize all text content, structuredContent, and _meta in a tool result (#740, #6484). */
 function sanitizeToolResult(result: ToolResult, logger: ILogger): void {
   for (const item of result.content) {
     item.text = sanitizeOutput(item.text, logger);
+  }
+  if (result.structuredContent !== undefined) {
+    result.structuredContent = sanitizeDeepRecord(result.structuredContent, logger);
+  }
+  if (result._meta !== undefined) {
+    result._meta = sanitizeDeepRecord(result._meta, logger);
   }
 }
 

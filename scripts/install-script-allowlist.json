@@ -16,11 +16,6 @@
       "name": "@google/genai",
       "hooks": { "preinstall": "echo 'preinstall: no-op'" },
       "why": "Literally an echo. The package's own `prepare` (node scripts/prepare.js) is not reachable from a registry install."
-    },
-    {
-      "name": "protobufjs",
-      "hooks": { "postinstall": "node scripts/postinstall" },
-      "why": "Transitive via @google/genai. Generates CommonJS interop shims from files already in the tarball; the ESM entry points nexus-agents reaches do not depend on them. NOTE: this package is absent from the repo's own pnpm tree, which resolves protobufjs to 8.8.0 through a repo-local pnpm.overrides entry that is not published — which is why this check must run against an npm install of the tarball and never against the workspace."
     }
   ]
 }
