@@ -23,6 +23,10 @@ import { CliDetectionCache } from './cli-detection-cache.js';
 import { probeCli } from '../cli/cli-auth-probe.js';
 import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
 import { isCliDisabled } from './disabled-clis.js';
+import { isCliBinaryOnPath } from './cli-binary-on-path.js';
+import { createModelToCliAdapter } from './model-to-cli-adapter.js';
+import { createGatewaySlotAdapter, resolveGatewaySlot } from '../adapters/gateway-family-slots.js';
+import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import {
   codexMcpServerAvailable,
   CodexMcpServerUnavailableError,
@@ -129,7 +133,10 @@ function createCodexAdapter(
  * Codex transport is selected by probe unless one is passed (#6119).
  *
  * The four CLI slots are registered under their slot key, except any disabled
- * by `NEXUS_DISABLED_CLIS` (#6590); every CLI disabled yields an empty map. When
+ * by `NEXUS_DISABLED_CLIS` (#6590); every CLI disabled yields an empty map. In
+ * gateway mode a vendor slot whose binary is not on PATH is served by a
+ * gateway model of its family, and omitted when the gateway serves none of
+ * that family (#6604); without a gateway catalogue the slots are unchanged. When
  * `NEXUS_BILLING_MODE=api`, the direct-API adapters whose keys are present are
  * ALSO appended as distinct `api:<vendor>` routing arms (#3422) so the router /
  * bandit can score them separately from the CLI slots. DEFAULT (plan) mode
@@ -156,7 +163,10 @@ export function createAllAdapters(
   // #6590: an operator-disabled CLI is not an arm. Skipped before
   // construction, so a disabled codex is not even probed for its transport.
   for (const [cli, create] of slots) {
-    if (!isCliDisabled(cli)) adapters.set(cli, create());
+    if (isCliDisabled(cli)) continue;
+    const arm = gatewaySlotArm(cli, logger);
+    if (arm === 'unavailable') continue;
+    adapters.set(cli, arm ?? create());
   }
 
   // API arms enter the router only in explicit api billing mode (#3422).
@@ -167,6 +177,25 @@ export function createAllAdapters(
   }
 
   return adapters;
+}
+
+/**
+ * The gateway-served arm for a slot whose binary is not installed (#6604).
+ *
+ * `undefined` keeps the subprocess arm: no gateway catalogue (the pre-#6604
+ * path, unchanged), or the slot's binary is on PATH. In gateway mode a slot
+ * with no binary is served by its family's gateway model under the SLOT key,
+ * so outcomes keep slot keys; a slot whose family the gateway does not serve
+ * is `'unavailable'` and gets no arm, exactly like a disabled CLI.
+ */
+function gatewaySlotArm(cli: CliName, logger?: ILogger): ICliAdapter | 'unavailable' | undefined {
+  const slot = resolveGatewaySlot(cli, process.env, logger);
+  if (slot.kind === 'inactive' || isCliBinaryOnPath(cli)) return undefined;
+  if (slot.kind === 'unavailable') return 'unavailable';
+  return createModelToCliAdapter(createGatewaySlotAdapter(cli, slot.adapter), {
+    name: cli,
+    capabilities: buildCliCapabilityProfiles()[cli],
+  });
 }
 
 /**

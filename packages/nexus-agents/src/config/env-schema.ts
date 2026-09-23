@@ -234,6 +234,12 @@ const NexusEnvSchema = z.object({
   NEXUS_CUSTOM_API_BASE_URL: z.string().optional(),
   NEXUS_CUSTOM_API_KEY: z.string().optional(),
   NEXUS_CUSTOM_MODEL: z.string().optional(),
+  // #6604: pin the gateway model a family slot (claude/codex/gemini) uses.
+  // Any model id is legal here; the one reader (adapters/gateway-family-slots.ts)
+  // validates it against the discovered catalogue and warns on a miss.
+  NEXUS_GATEWAY_MODEL_ANTHROPIC: z.string().optional(),
+  NEXUS_GATEWAY_MODEL_OPENAI: z.string().optional(),
+  NEXUS_GATEWAY_MODEL_GOOGLE: z.string().optional(),
   // #4392 increment 2: what a gateway arm costs (GATEWAY_COST_ENV; spelled
   // out because scripts/check-env-schema-coverage.ts reads keys by regex).
   // Validated by the same parser every runtime reader uses, so "invalid" here

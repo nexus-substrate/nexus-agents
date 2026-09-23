@@ -1,0 +1,226 @@
+/**
+ * Gateway family slots (#6604, epic #6612, panel option A).
+ *
+ * With an OpenAI-spec gateway configured and discovered, each vendor CLI slot
+ * resolves to a gateway model of ITS OWN family: `claude` to an Anthropic
+ * model, `codex` to an OpenAI model, `gemini` to a Google model. Before this,
+ * a slot with no CLI binary fell back to one hard-coded `NEXUS_CUSTOM_MODEL`
+ * (default `gpt-5.5`), so a "claude" outcome could record a GPT call.
+ *
+ * This module is the ONE place slot → gateway-model resolution happens. The
+ * two adapter-construction points consume it: `createAutoAdapter` (every
+ * registry-pinned slot: orchestrate workers, execute_expert, voter seats) and
+ * `createAllAdapters` (the router arm set: run_dev_pipeline's expert stage).
+ *
+ * Rules:
+ * - Family comes from `resolveModelIdentitySync(id).vendor`.
+ * - Within a family: models the registry has quality scores for come first,
+ *   best first by `reasoning + codeGeneration`; the rest follow, newest
+ *   version first; ties break on the id so the choice is deterministic.
+ * - `NEXUS_GATEWAY_MODEL_<FAMILY>` pins the family's model. It must name a
+ *   catalogue id that is not classified as a DIFFERENT family; otherwise it
+ *   warns once and the preference order applies.
+ * - A slot whose family has no gateway model is UNAVAILABLE. It is never
+ *   given another family's model.
+ * - No catalogue registered (no gateway, or discovery failed) is `inactive`:
+ *   every caller keeps its pre-#6604 behaviour.
+ *
+ * @module adapters/gateway-family-slots
+ */
+
+import type { ILogger, IModelAdapter } from '../core/index.js';
+import { createLogger } from '../core/index.js';
+import type { CliName, EndpointArmId } from '../cli-adapters/types.js';
+import { isEndpointArmId } from '../cli-adapters/types.js';
+import { resolveModelIdentitySync, normaliseModelId } from '../config/model-identity.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
+
+/** A model family a CLI slot is tied to. */
+export type GatewayFamily = 'anthropic' | 'openai' | 'google';
+
+/** The family each vendor CLI slot serves. `opencode` has none: it is multi-vendor. */
+const SLOT_FAMILY: Readonly<Partial<Record<CliName, GatewayFamily>>> = {
+  claude: 'anthropic',
+  codex: 'openai',
+  gemini: 'google',
+};
+
+/** Operator override variable per family. */
+export const GATEWAY_MODEL_OVERRIDE_ENV: Readonly<Record<GatewayFamily, string>> = {
+  anthropic: 'NEXUS_GATEWAY_MODEL_ANTHROPIC',
+  openai: 'NEXUS_GATEWAY_MODEL_OPENAI',
+  google: 'NEXUS_GATEWAY_MODEL_GOOGLE',
+};
+
+/** How a slot resolves in gateway mode. */
+export type GatewaySlotResolution =
+  /** No gateway catalogue, or a slot with no family: callers keep their old path. */
+  | { readonly kind: 'inactive' }
+  | {
+      readonly kind: 'resolved';
+      readonly family: GatewayFamily;
+      /** The gateway model adapter that will serve the slot. */
+      readonly adapter: IModelAdapter;
+      readonly via: 'override' | 'preference';
+    }
+  /** Gateway mode, but the gateway serves no model of this slot's family. */
+  | { readonly kind: 'unavailable'; readonly family: GatewayFamily };
+
+const defaultLogger = createLogger({ component: 'gateway-family-slots' });
+
+/** The discovered gateway models; `undefined` is "no gateway" (the named empty case). */
+let catalog: readonly IModelAdapter[] | undefined;
+
+/** Overrides already warned about, keyed `family=value`, so each warns once. */
+const warnedOverrides = new Set<string>();
+
+/**
+ * Register the discovered gateway models. An empty list clears the catalogue:
+ * a gateway with no models is no gateway, and must not make every slot
+ * unavailable.
+ */
+export function setGatewaySlotCatalog(models: readonly IModelAdapter[]): void {
+  catalog = models.length === 0 ? undefined : [...models];
+}
+
+/** Test-only: forget the catalogue and the warn-once memory. */
+export function _resetGatewaySlotCatalog(): void {
+  catalog = undefined;
+  warnedOverrides.clear();
+}
+
+/** The family `modelId` belongs to, or undefined for any other vendor. */
+function familyOf(modelId: string): GatewayFamily | 'other' | undefined {
+  const vendor = resolveModelIdentitySync(modelId).vendor;
+  if (vendor === 'anthropic' || vendor === 'openai' || vendor === 'google') return vendor;
+  return vendor === 'unknown' ? undefined : 'other';
+}
+
+/** Registry quality (`reasoning + codeGeneration`), or undefined for a model it has no scores for. */
+function registryQuality(modelId: string): number | undefined {
+  const q = getDefaultRegistry().getEntry(modelId).qualityScores;
+  return q === undefined ? undefined : q.reasoning + q.codeGeneration;
+}
+
+/** Numeric version segments: the parsed identity version, else the first number run in the id. */
+function versionParts(modelId: string): readonly number[] {
+  const parsed = resolveModelIdentitySync(modelId).version;
+  const raw = parsed ?? /\d+(?:[.-]\d+)*/.exec(normaliseModelId(modelId))?.[0];
+  if (raw === undefined) return [];
+  return raw.split(/[.-]/).map((s) => Number.parseInt(s, 10));
+}
+
+/** Descending comparison of version segment lists; a missing segment sorts lower. */
+function compareVersionsDesc(a: readonly number[], b: readonly number[]): number {
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const diff = (b[i] ?? -1) - (a[i] ?? -1);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * Rank the ids of one family best-first: registry-scored models by quality,
+ * then unscored models; within each, newest version first, then id.
+ */
+export function rankFamilyModels(ids: readonly string[]): readonly string[] {
+  const keyed = ids.map((id) => ({ id, quality: registryQuality(id), version: versionParts(id) }));
+  return keyed
+    .sort((a, b) => {
+      if (a.quality !== undefined && b.quality === undefined) return -1;
+      if (a.quality === undefined && b.quality !== undefined) return 1;
+      const byQuality = (b.quality ?? 0) - (a.quality ?? 0);
+      if (byQuality !== 0) return byQuality;
+      const byVersion = compareVersionsDesc(a.version, b.version);
+      return byVersion !== 0 ? byVersion : a.id.localeCompare(b.id);
+    })
+    .map((k) => k.id);
+}
+
+/** The override's adapter when it is valid for `family`, else undefined (warned once). */
+function overrideAdapter(
+  family: GatewayFamily,
+  models: readonly IModelAdapter[],
+  env: NodeJS.ProcessEnv,
+  logger: ILogger
+): IModelAdapter | undefined {
+  const envVar = GATEWAY_MODEL_OVERRIDE_ENV[family];
+  const value = env[envVar]?.trim();
+  if (value === undefined || value === '') return undefined;
+  const match = models.find((m) => m.modelId === value);
+  const classified = match === undefined ? undefined : familyOf(match.modelId);
+  const reason =
+    match === undefined
+      ? 'not in the gateway catalogue'
+      : classified !== undefined && classified !== family
+        ? `classified as ${classified}, not ${family}`
+        : undefined;
+  if (reason === undefined) return match;
+  const key = `${family}=${value}`;
+  if (!warnedOverrides.has(key)) {
+    warnedOverrides.add(key);
+    logger.warn(`${envVar} ignored: the model is ${reason}; using the family preference order`, {
+      model: value,
+    });
+  }
+  return undefined;
+}
+
+/**
+ * Resolve `cli` to a gateway model of its family. See the module doc for the
+ * rules; `inactive` means the caller's pre-#6604 path applies unchanged.
+ */
+export function resolveGatewaySlot(
+  cli: CliName,
+  env: NodeJS.ProcessEnv = process.env,
+  logger: ILogger = defaultLogger
+): GatewaySlotResolution {
+  const family = SLOT_FAMILY[cli];
+  if (catalog === undefined || family === undefined) return { kind: 'inactive' };
+  const models = catalog;
+  const pinned = overrideAdapter(family, models, env, logger);
+  if (pinned !== undefined) return { kind: 'resolved', family, adapter: pinned, via: 'override' };
+  const inFamily = models.filter((m) => familyOf(m.modelId) === family);
+  const best = rankFamilyModels(inFamily.map((m) => m.modelId))[0];
+  const adapter = inFamily.find((m) => m.modelId === best);
+  if (adapter === undefined) return { kind: 'unavailable', family };
+  return { kind: 'resolved', family, adapter, via: 'preference' };
+}
+
+/**
+ * The slot's view of its gateway model. `providerId` is the slot identity a
+ * CLI-served slot reports (`cli-<slot>`, as `CliToModelAdapter` does), so
+ * outcome writers that key on it keep the slot key. `modelId` is the gateway
+ * model that actually serves the call, and the gateway-arm marker is carried
+ * through so a seat is priced by the gateway's `NEXUS_GATEWAY_COST`
+ * declaration rather than a vendor list price.
+ */
+export function createGatewaySlotAdapter(cli: CliName, model: IModelAdapter): IModelAdapter {
+  const arm: unknown = (model as { gatewayArm?: unknown }).gatewayArm;
+  const view: IModelAdapter & { gatewayArm?: EndpointArmId } = {
+    providerId: `cli-${cli}`,
+    modelId: model.modelId,
+    capabilities: model.capabilities,
+    complete: (request) => model.complete(request),
+    stream: (request) => model.stream(request),
+    countTokens: (text) => model.countTokens(text),
+    validateConfig: () => model.validateConfig(),
+    ...(typeof arm === 'string' && isEndpointArmId(arm) && { gatewayArm: arm }),
+  };
+  return view;
+}
+
+/** The vendor CLI slots, in the order the mapping is reported. */
+const FAMILY_SLOTS: readonly CliName[] = ['claude', 'codex', 'gemini'];
+
+/** Log the slot → model mapping once at registration, so an operator can see it. */
+export function logGatewaySlotMapping(logger: ILogger): void {
+  if (catalog === undefined) return;
+  const mapping: Record<string, string> = {};
+  for (const cli of FAMILY_SLOTS) {
+    const r = resolveGatewaySlot(cli, process.env, logger);
+    mapping[cli] = r.kind === 'resolved' ? r.adapter.modelId : 'unavailable';
+  }
+  logger.info('Gateway family slots resolved', mapping);
+}

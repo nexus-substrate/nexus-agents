@@ -16,6 +16,7 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
+import { createGatewaySlotAdapter, resolveGatewaySlot } from './gateway-family-slots.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
 import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
@@ -88,6 +89,13 @@ function resolveCache(config: AutoAdapterConfig, logger: ILogger): ICliDetection
   return enableCache ? createCliDetectionCache({ logger }) : undefined;
 }
 
+/** The CLI bridge's timeout config, when the caller set one. */
+function cliBridgeConfig(config: AutoAdapterConfig): { defaultTimeoutMs: number } | undefined {
+  return config.defaultCliTimeoutMs !== undefined
+    ? { defaultTimeoutMs: config.defaultCliTimeoutMs }
+    : undefined;
+}
+
 /**
  * Attempts to create a CLI-based model adapter.
  * The CLI tools (claude, gemini, codex) handle their own model selection.
@@ -99,11 +107,7 @@ async function tryCliAdapter(
   cache?: ICliDetectionCache
 ): Promise<AdapterSelection | null> {
   const preferredCli = config.preferredCli;
-
-  const bridgeConfig =
-    config.defaultCliTimeoutMs !== undefined
-      ? { defaultTimeoutMs: config.defaultCliTimeoutMs }
-      : undefined;
+  const bridgeConfig = cliBridgeConfig(config);
 
   // #6590: a preferred CLI disabled by NEXUS_DISABLED_CLIS is skipped, not
   // probed. The registry pins every per-CLI adapter through this field.
@@ -128,6 +132,11 @@ async function tryCliAdapter(
       cache,
     };
   }
+
+  // #6604: in gateway mode a pinned slot with no CLI is served by its
+  // family's gateway model, or is unavailable — never another CLI's family.
+  const gatewaySlot = tryGatewaySlot(preferredCli, logger);
+  if (gatewaySlot !== undefined) return gatewaySlot;
 
   // Otherwise, get all available CLIs and use the first one found
   const availableClis = await getAvailableClis(cache);
@@ -154,6 +163,35 @@ async function tryCliAdapter(
     name: selectedCli,
     reason: `Using '${selectedCli}' CLI (model selection handled by CLI)`,
     cache,
+  };
+}
+
+/**
+ * The gateway selection for a pinned slot whose CLI is not available (#6604).
+ * `undefined` keeps the pre-#6604 path: no pinned slot, a disabled one, or no
+ * gateway catalogue. A slot whose family the gateway does not serve THROWS, so
+ * the resilient adapter reports it unavailable instead of substituting the
+ * first installed CLI or `NEXUS_CUSTOM_MODEL`.
+ */
+function tryGatewaySlot(
+  preferredCli: CliName | undefined,
+  logger: ILogger
+): AdapterSelection | undefined {
+  if (preferredCli === undefined || isCliDisabled(preferredCli)) return undefined;
+  const slot = resolveGatewaySlot(preferredCli, process.env, logger);
+  if (slot.kind === 'inactive') return undefined;
+  if (slot.kind === 'unavailable') {
+    throw new Error(
+      `The '${preferredCli}' slot is unavailable: its CLI is not available and the gateway serves no ${slot.family} model`
+    );
+  }
+  const modelId = slot.adapter.modelId;
+  logger.info('Using gateway family model for CLI slot', { cli: preferredCli, model: modelId });
+  return {
+    adapter: createGatewaySlotAdapter(preferredCli, slot.adapter),
+    source: 'api',
+    name: preferredCli,
+    reason: `CLI '${preferredCli}' is not available; gateway ${slot.family} model '${modelId}' serves the slot (${slot.via})`,
   };
 }
 

@@ -22,6 +22,7 @@ import {
 } from './adapters/openai-compat-adapter.js';
 import { createGatewayArmAdapter } from './adapters/gateway-arm-adapter.js';
 import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import { logGatewaySlotMapping, setGatewaySlotCatalog } from './adapters/gateway-family-slots.js';
 import { gatewayEndpointRejection } from './adapters/sdk/gateway-cost.js';
 import { hostnameOf, warnDeprecatedGatewayEnvOnce } from './adapters/sdk/gateway-env.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
@@ -200,8 +201,9 @@ export function registerGatewayArm(
 /**
  * The bootstrap entry (#4392 inc 2 step 2): discover the gateway
  * ({@link tryWireGatewayAdapters}), register its `api:<endpoint>` arm
- * ({@link registerGatewayArm}) under the operator's endpoint id, and hand the
- * per-model adapters back for the tools. One call, so `cli-server.ts` cannot
+ * ({@link registerGatewayArm}) under the operator's endpoint id, register the
+ * family-slot catalogue (#6604), and hand the per-model adapters back for the
+ * tools. One call, so `cli-server.ts` cannot
  * wire the adapters without the arm.
  */
 export async function wireGateway(
@@ -210,6 +212,10 @@ export async function wireGateway(
 ): Promise<readonly IModelAdapter[] | undefined> {
   const adapters = await tryWireGatewayAdapters(logger);
   registerGatewayArm(adapters, readOpenAICompatEndpoint(process.env, logger), registry);
+  // #6604: the family-slot catalogue — each vendor CLI slot without a binary
+  // resolves to a gateway model of its own family (none registered = no gateway).
+  setGatewaySlotCatalog(adapters ?? []);
+  logGatewaySlotMapping(logger);
   return adapters;
 }
 

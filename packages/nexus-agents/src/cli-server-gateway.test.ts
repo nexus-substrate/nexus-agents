@@ -25,6 +25,11 @@ import {
   _resetCliSubprocessFallbackNotice,
 } from './cli-server-gateway.js';
 import { _resetGatewayCatalogs, getGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import {
+  _resetGatewaySlotCatalog,
+  resolveGatewaySlot,
+  setGatewaySlotCatalog,
+} from './adapters/gateway-family-slots.js';
 import { createUnifiedRegistry } from './adapters/unified-registry.js';
 import type { EndpointArmId } from './cli-adapters/types.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
@@ -479,6 +484,7 @@ describe('wireGateway (#4392 inc 2 step 2 — discovery + arm in one call)', () 
     readOpenAICompatEndpointMock.mockReset();
     readOpenAICompatEndpointMock.mockReturnValue('corp-proxy');
     _resetGatewayCatalogs();
+    _resetGatewaySlotCatalog();
   });
 
   it('registers the discovered models as api:<endpoint> and returns them for the tools', async () => {
@@ -504,8 +510,28 @@ describe('wireGateway (#4392 inc 2 step 2 — discovery + arm in one call)', () 
       registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
       getLogger: () => makeMockLogger(),
     };
+    // A stale catalogue from an earlier wiring must not outlive the gateway.
+    setGatewaySlotCatalog([makeMockAdapter('gpt-5.5')]);
 
     expect(await wireGateway(makeMockLogger(), registry)).toBeUndefined();
     expect(registry.registerApiArm).not.toHaveBeenCalled();
+    expect(resolveGatewaySlot('claude')).toEqual({ kind: 'inactive' });
+  });
+
+  it('registers the family-slot catalogue, so each slot resolves in its family (#6604)', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw/v1', apiKey: 'sk' });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(
+      ok([makeMockAdapter('gpt-5.5'), makeMockAdapter('claude-sonnet-4-6')])
+    );
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+
+    await wireGateway(makeMockLogger(), registry);
+
+    const claude = resolveGatewaySlot('claude');
+    expect(claude.kind === 'resolved' && claude.adapter.modelId).toBe('claude-sonnet-4-6');
+    expect(resolveGatewaySlot('gemini')).toEqual({ kind: 'unavailable', family: 'google' });
   });
 });
