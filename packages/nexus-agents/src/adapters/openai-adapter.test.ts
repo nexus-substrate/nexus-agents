@@ -880,8 +880,9 @@ describe('OPENAI_MODELS', () => {
     expect(OPENAI_MODELS.GPT_5_2).toBe('gpt-5.2');
     expect(OPENAI_MODELS.GPT_5_2_INSTANT).toBe('gpt-5.2-chat-latest');
     expect(OPENAI_MODELS.GPT_5_2_PRO).toBe('gpt-5.2-pro');
-    // Registry-derived; codex-5.2 points at gpt-5.3-codex-spark since #5091.
-    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.3-codex-spark');
+    // Registry-derived; codex-5.2 points at gpt-5.6-luna since 2026-09-23 (was
+    // gpt-5.3-codex-spark from #5091 until codex-cli 0.155.1 dropped it).
+    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.6-luna');
   });
 
   it('should have correct GPT-4o model identifiers', () => {
@@ -919,9 +920,9 @@ describe('OPENAI_MODELS — derived constants', () => {
   it('GPT_5_2_CODEX derives from canonical registry codex-5.2 entry', () => {
     // Locks in #2200 Child 3 partial migration: this single overlap with
     // the CLI registry (codex-5.2's cliModelName) is registry-derived. Since
-    // #5091 that entry points at gpt-5.3-codex-spark (gpt-5.2-codex is no
-    // longer served), so the constant's KEY now lags its value — renaming the
-    // key is a public-API change tracked separately.
-    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.3-codex-spark');
+    // #5091 that entry pointed at gpt-5.3-codex-spark, and since 2026-09-23 at
+    // gpt-5.6-luna (codex-cli 0.155.1 serves neither older slug), so the
+    // constant's KEY lags its value — renaming it is a public-API change (#5489).
+    expect(OPENAI_MODELS.GPT_5_2_CODEX).toBe('gpt-5.6-luna');
   });
 });

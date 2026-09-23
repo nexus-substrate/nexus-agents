@@ -1211,9 +1211,9 @@ describe('Tracer', () => {
         provider: 'openai',
       });
 
-      // codex-5.1-mini → gpt-5.4-mini (#5091): $0.75/1M input, $4.50/1M output
-      // 10M * 0.75 + 5M * 4.50 = 7.5 + 22.5 = 30.0
-      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(30.0, 2);
+      // codex-5.1-mini → gpt-6-luna (2026-09-23): $0.10/1M input, $0.50/1M output
+      // 10M * 0.10 + 5M * 0.50 = 1.0 + 2.5 = 3.5
+      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(3.5, 2);
     });
 
     it('should calculate correct cost for gemini-flash', () => {

@@ -437,8 +437,9 @@ describe('computeCostDetail characterization — pinned before the #5122 refacto
     // Without these the round-to-micro-USD step could be deleted and every test
     // still passed: at $3/1M a single token is exactly 3 micro-USD, so rounding
     // is a no-op there. Found by mutation testing.
-    // codex-5.2 at $1.75/1M: exact 0.00000175 → 0.000002.
-    { model: 'codex-5.2', input: 1, output: 0, costUsd: 0.000002, priced: true },
+    // codex-5.2 at $0.2/1M (gpt-5.6-luna since 2026-09-23): 8 tokens is exact
+    // 0.0000016 → 0.000002 (rounds UP; one token would round down to 0).
+    { model: 'codex-5.2', input: 8, output: 0, costUsd: 0.000002, priced: true },
     // gemini-3-flash at $0.5/1M: exact 0.0000015 → 0.000002 (half rounds up).
     { model: 'gemini-3-flash', input: 3, output: 0, costUsd: 0.000002, priced: true },
     // gemini-flash at $0.3/1M: exact 3e-7 rounds DOWN TO ZERO. A real cost
@@ -457,8 +458,8 @@ describe('computeCostDetail characterization — pinned before the #5122 refacto
 
   it('keeps rounding to micro-USD, which the shared core deliberately does not do', () => {
     // Uses a FRACTIONAL rate so the assertion can actually fail if rounding is
-    // removed. codex-5.2 is $1.75/1M, so one token is 0.00000175 exactly and
+    // removed. codex-5.2 is $0.2/1M, so eight tokens are 0.0000016 exactly and
     // 0.000002 rounded. Asserting against claude-sonnet here proved nothing.
-    expect(computeCostDetail('codex-5.2', 1, 0).costUsd).toBe(0.000002);
+    expect(computeCostDetail('codex-5.2', 8, 0).costUsd).toBe(0.000002);
   });
 });

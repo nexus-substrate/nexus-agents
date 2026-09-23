@@ -33,13 +33,14 @@ describe('resolveModelForTier (#3394)', () => {
     expect(resolveModelForTier('claude', 'powerful')).toBe('claude-opus');
   });
 
-  it('pins the codex balanced tier to codex-5.2 (gpt-5.3-codex-spark) and fast to codex-5.1-mini (#5091)', () => {
+  it('pins the codex balanced tier to codex-5.2 (gpt-5.6-luna) and fast to codex-5.1-mini (gpt-6-luna)', () => {
     // Balanced ranks codeGeneration, where gpt-5.5, codex-5.3 and codex-5.2 tie
-    // at 10; the tie-break prefers the higher `cost` score, so codex-5.2 (7)
+    // at 10; the tie-break prefers the higher `cost` score, so codex-5.2 (9)
     // wins over codex-5.3 (5) and gpt-5.5 (4). Before #5091 that winner named
-    // a slug codex rejected (gpt-5.2-codex); it now names the served, smaller
-    // gpt-5.3-codex-spark. The scores were carried over rather than measured,
-    // so this pin exists to turn any rescore into a visible decision.
+    // a slug codex rejected (gpt-5.2-codex); #5091 pointed it at
+    // gpt-5.3-codex-spark, which codex-cli 0.155.1 in turn stopped serving, so
+    // it now names gpt-5.6-luna. The scores were carried over rather than
+    // measured, so this pin exists to turn any rescore into a visible decision.
     expect(resolveModelForTier('codex', 'balanced')).toBe('codex-5.2');
     expect(resolveModelForTier('codex', 'fast')).toBe('codex-5.1-mini');
   });

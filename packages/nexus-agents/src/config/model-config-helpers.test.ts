@@ -421,13 +421,14 @@ describe('resolveCliModelName', () => {
 // ============================================================================
 
 describe('codex registry entries (#5091)', () => {
-  // Verified against ~/.codex/models_cache.json (codex 0.146.0, visibility=list):
-  // gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5, gpt-5.4, gpt-5.4-mini,
-  // gpt-5.3-codex-spark. `gpt-5.2-codex` and `o3-mini` are not served.
+  // Verified against ~/.codex/models_cache.json (codex-cli 0.155.1,
+  // 2026-09-23, visibility=list): gpt-6-astra, gpt-6-sol, gpt-6-luna,
+  // gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5. `gpt-5.3-codex-spark`
+  // and `gpt-5.4-mini` (the #5091 targets) are no longer served.
   it.each([
     ['codex-5.3', 'gpt-5.6-terra'],
-    ['codex-5.2', 'gpt-5.3-codex-spark'],
-    ['codex-5.1-mini', 'gpt-5.4-mini'],
+    ['codex-5.2', 'gpt-5.6-luna'],
+    ['codex-5.1-mini', 'gpt-6-luna'],
   ] as const)('%s → cliModelName %s (a slug codex serves)', (id, slug) => {
     expect(getCliModelName(id)).toBe(slug);
   });
@@ -440,19 +441,21 @@ describe('codex registry entries (#5091)', () => {
   }
 
   it('describes the slug it points at, not the one it replaced', () => {
-    const spark = codexEntry('gpt-5.3-codex-spark');
-    expect(spark.displayName).toBe('GPT-5.3 Codex Spark');
-    expect(spark.contextWindow).toBe(128_000);
-    expect(spark.maxOutputTokens).toBe(32_000);
-    expect(spark.pricing).toEqual({ inputPer1M: 1.75, outputPer1M: 14.0 });
-    expect(spark.notes).not.toMatch(/5\.2/);
+    // codex-5.2 → gpt-5.6-luna: models.dev snapshot 2026-09-21.
+    const luna56 = codexEntry('gpt-5.6-luna');
+    expect(luna56.displayName).toBe('GPT-5.6 Luna');
+    expect(luna56.contextWindow).toBe(1_050_000);
+    expect(luna56.maxOutputTokens).toBe(128_000);
+    expect(luna56.pricing).toEqual({ inputPer1M: 0.2, outputPer1M: 1.2 });
+    expect(luna56.notes).toMatch(/^GPT-5\.6 Luna/);
 
-    const mini = codexEntry('gpt-5.4-mini');
-    expect(mini.displayName).toBe('GPT-5.4 Mini');
-    expect(mini.contextWindow).toBe(400_000);
-    expect(mini.maxOutputTokens).toBe(128_000);
-    expect(mini.pricing).toEqual({ inputPer1M: 0.75, outputPer1M: 4.5 });
-    expect(mini.notes).not.toMatch(/o3/);
+    // codex-5.1-mini → gpt-6-luna: live models.dev / LiteLLM 2026-09-23.
+    const luna6 = codexEntry('gpt-6-luna');
+    expect(luna6.displayName).toBe('GPT-6 Luna');
+    expect(luna6.contextWindow).toBe(1_050_000);
+    expect(luna6.maxOutputTokens).toBe(128_000);
+    expect(luna6.pricing).toEqual({ inputPer1M: 0.1, outputPer1M: 0.5 });
+    expect(luna6.notes).toMatch(/^GPT-6 Luna/);
   });
 
   /** cliModelName → ids of every in-tree entry (any CLI) that claims it. */

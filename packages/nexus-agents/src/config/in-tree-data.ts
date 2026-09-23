@@ -303,9 +303,9 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     {
       id: 'codex-5.2',
-      displayName: 'GPT-5.3 Codex Spark',
+      displayName: 'GPT-5.6 Luna',
       provider: 'openai',
-      contextWindow: 128_000,
+      contextWindow: 1_050_000,
       outputModalities: ['text', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'pdf', 'code'],
       toolCapabilities: [
@@ -322,34 +322,42 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
         'No native image/audio/video generation',
         'Network access restricted in sandbox',
       ],
-      // #5091: repointed from gpt-5.2-codex, which codex 0.146.0 no longer
-      // serves (~/.codex/models_cache.json visibility=list). Context window,
-      // max output and pricing are models.dev's figures for this slug
-      // (snapshot 2026-08-31). Quality scores are the codex arm's tier
-      // positions carried over from the replaced entry, not a measurement of
-      // this slug; `cost` is unchanged because the price is identical.
+      // 2026-09-23: repointed from gpt-5.3-codex-spark, which codex-cli 0.155.1
+      // no longer serves (~/.codex/models_cache.json visibility=list; the
+      // verify Codex Models check reported it). Same shape as #5091 option A:
+      // the id stays (it holds the arm's outcome history), only the slug and
+      // the metadata describing it move.
+      // WHY gpt-5.6-luna: this id is the codex fast/spark tier. The served
+      // fast models are the two "luna" variants (codex catalog: gpt-5.6-luna
+      // "Older fast and efficient model"; gpt-6-luna "Fast and affordable model
+      // for easier tasks"). gpt-6-luna is the cheaper of the two, so it takes
+      // the mini id; this id takes gpt-5.6-luna.
+      // Context window, max output and pricing are models.dev's figures for
+      // this slug (snapshot 2026-09-21); the codex cache reports a 272K default
+      // window. reasoning/codeGeneration/speed are tier positions CARRIED OVER
+      // from the replaced entry, not a measurement of this slug; `cost` follows
+      // the registry's price scale (9, as for $0.3/$1 openrouter-qwen-coder;
+      // only the free model scores 10) — spark's 7 described a $1.75/$14 slug.
       // ROUTING CONSEQUENCE: `resolve-model-for-tier` ranks the balanced tier
       // by codeGeneration and breaks the 10/10/10 tie on the higher `cost`
-      // score, so this entry (cost 7) wins the balanced codex tier over
-      // codex-5.3 (5) and gpt-5.5 (4). It already did; what changed is that
-      // the winner now runs (spark) instead of being rejected (gpt-5.2-codex).
-      // `resolve-model-for-tier.test.ts` pins this so a rescore is a visible
-      // decision, not a side effect.
+      // score, so this entry (now cost 9) still wins the balanced codex tier
+      // over codex-5.3 (5) and gpt-5.5 (4). `resolve-model-for-tier.test.ts`
+      // pins it so a rescore is a visible decision, not a side effect.
       notes:
-        'GPT-5.3 Codex Spark (models.dev 2026-08-31); fast codex-tuned tier below GPT-5.4; 128K context; sandboxed execution environment',
-      pricing: { inputPer1M: 1.75, outputPer1M: 14.0 },
-      qualityScores: { reasoning: 9, codeGeneration: 10, speed: 8, cost: 7 },
-      maxOutputTokens: 32_000,
+        'GPT-5.6 Luna (models.dev 2026-09-21; codex catalog: "older fast and efficient model"); fast codex tier; served by codex-cli 0.155.1; 1.05M context (codex cache default window 272K)',
+      pricing: { inputPer1M: 0.2, outputPer1M: 1.2 },
+      qualityScores: { reasoning: 9, codeGeneration: 10, speed: 8, cost: 9 },
+      maxOutputTokens: 128_000,
       cliName: 'codex',
-      cliModelName: 'gpt-5.3-codex-spark',
+      cliModelName: 'gpt-5.6-luna',
       unsupportedParameters: ['temperature'],
       maxTokensParam: 'max_completion_tokens',
     },
     {
       id: 'codex-5.1-mini',
-      displayName: 'GPT-5.4 Mini',
+      displayName: 'GPT-6 Luna',
       provider: 'openai',
-      contextWindow: 400_000,
+      contextWindow: 1_050_000,
       outputModalities: ['text', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'code'],
       toolCapabilities: [
@@ -361,20 +369,26 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       ],
       specialFeatures: ['streaming'],
       constraints: ['Sandboxed execution only', 'No native image/audio/video generation'],
-      // #5091: repointed from o3-mini, which codex 0.146.0 no longer serves
-      // (~/.codex/models_cache.json visibility=list). Context window, max
-      // output and pricing are models.dev's figures for this slug (snapshot
-      // 2026-08-31). Quality scores are the codex arm's tier positions carried
-      // over from the replaced entry, not a measurement of this slug; `cost`
-      // follows the registry's own price scale ($1/$5 haiku and $0.5/$3
-      // gemini-3-flash both score 9, and $0.75/$4.5 sits between them).
+      // 2026-09-23: repointed from gpt-5.4-mini, which codex-cli 0.155.1 no
+      // longer serves (~/.codex/models_cache.json visibility=list); #5091 had
+      // repointed it from o3-mini. WHY gpt-6-luna: it is the smallest served
+      // model — $0.1/$0.5 per 1M, below gpt-5.6-luna's $0.2/$1.2 — and the
+      // codex catalog calls it "Fast and affordable model for easier tasks".
+      // SOURCE: the committed models.dev snapshot (2026-09-21) and generated
+      // catalogue (2026-09-20) predate gpt-6-luna. Context window, max output
+      // and pricing are the live models.dev / LiteLLM figures for
+      // `openai/gpt-6-luna` as read by `pnpm build:registry` on 2026-09-23
+      // (LiteLLM: 922K max input); the codex cache reports a 272K default
+      // window. Quality scores are the codex arm's tier positions carried
+      // over, not a measurement of this slug; `cost` stays 9 on the registry's
+      // price scale (only the free model scores 10).
       notes:
-        'GPT-5.4 Mini (models.dev 2026-08-31); compact codex tier; fast and cost-effective for code tasks; 400K context',
-      pricing: { inputPer1M: 0.75, outputPer1M: 4.5 },
+        'GPT-6 Luna (models.dev/LiteLLM 2026-09-23; codex catalog: "fast and affordable model for easier tasks"); compact codex tier; served by codex-cli 0.155.1; 1.05M context (codex cache default window 272K)',
+      pricing: { inputPer1M: 0.1, outputPer1M: 0.5 },
       qualityScores: { reasoning: 7, codeGeneration: 8, speed: 9, cost: 9 },
       maxOutputTokens: 128_000,
       cliName: 'codex',
-      cliModelName: 'gpt-5.4-mini',
+      cliModelName: 'gpt-6-luna',
       unsupportedParameters: ['temperature'],
       maxTokensParam: 'max_completion_tokens',
     },
