@@ -1,5 +1,46 @@
 # nexus-agents
 
+## 8.99.0
+
+### Minor Changes
+
+- [#6637](https://github.com/nexus-substrate/nexus-agents/pull/6637) [`684a874`](https://github.com/nexus-substrate/nexus-agents/commit/684a874fe893203983bccb91ca9b662a7bf58ce9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - In gateway mode, voter panel seats are now dealt across model families first (Anthropic, OpenAI, Google), then across models within a family. Previously they were dealt round-robin in the order the gateway listed its models. On a realistic three-family catalogue, the old order seated 5 OpenAI models, 2 Anthropic models and no Google model on a 7-seat panel; the same catalogue now seats 3 Anthropic, 2 OpenAI and 2 Google. The assignment is the same whatever order the gateway lists its models in. Models with an unrecognised vendor are dealt last, as their own group. `NEXUS_VOTER_MODEL_<ROLE>` pins still win, and the remaining seats are balanced around them. When every assigned seat is in one family, a warning is logged: "Consensus panel collapsed to a single model family".
+
+  The `consensus_vote` response gains three additive fields:
+
+  - `panelDiversity.distinctFamilies`: the number of distinct vendors among the seats that answered.
+  - `panelDiversity.unclassifiedSeats`: the number of answering seats whose model names no recognised vendor. These seats are never counted as a family.
+  - `votes[].modelUsed`: the model each seat ran on. This was previously only in `costSummary.perVoter`.
+
+  If a 3+ seat panel answered on several models of one family, `panelWarning` now says so. The CLI summary line reads, for example, `Models: 7 distinct, 3 families, 0 fallbacks`. The persisted vote record is unchanged.
+
+- [#6638](https://github.com/nexus-substrate/nexus-agents/pull/6638) [`fdb1907`](https://github.com/nexus-substrate/nexus-agents/commit/fdb190785a42f8f30477d8f87f0cbaafd3094912) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - New `nexus-agents model-drift` command: reports models that discovery sources list but the in-tree registry does not name, and registry models that no source lists any more. It proposes and never edits the registry or routing.
+
+  - **Sources.** The OpenAI-compatible gateway catalog (after the non-chat filter and `NEXUS_OPENAI_COMPAT_MODELS` allowlist), the Anthropic, OpenAI and Google list endpoints (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`), and the unauthenticated OpenRouter catalog. A source without credentials is reported `unmeasured` with the reason; a probe that throws is reported `failed`. Neither counts as "no new models".
+  - **Matching.** Dot and dash spellings (`claude-sonnet-4.6`), vendor prefixes (`anthropic/…`), `:free`-style tags and dated snapshots of a known model are not reported as new.
+  - **New models** come with a drafted registry entry: vendor, family, tier (flagship, mid, small or unknown, parsed from the id), context window, price in USD per 1M tokens and release date when the source publishes them, otherwise `unknown`. Non-chat models, vendors the registry does not track, `-latest` aliases and models older than 180 days are left out and counted.
+  - **Possibly retired** lists registry models no measured source lists, but only for vendors a measured source covers; the rest are listed as retirement-unmeasured.
+  - **Verdict.** `drift`, `no-drift`, or `unmeasured` when no source could be asked. `unmeasured` exits non-zero and is never reported as up to date.
+  - **Flags.** `--json` prints the report as JSON. `--file-issue` opens one GitHub issue per new model with `gh`, labelled `discovered`, deduplicated against open issue titles by model id, and at most 5 per run. Without `gh` nothing is filed and the drafts are printed.
+  - **Weekly workflow.** The parameter-drift workflow gains a report job that uploads `model-drift-report.json` as an artifact and fails when the report is unmeasured. Filing is off unless the repository variable `MODEL_DRIFT_FILE_ISSUES` is `true`; the filing job holds no model API keys.
+
+  The OpenRouter catalog parser now also keeps each model's `created`, `context_length` and `pricing`; a malformed value drops that field, not the model.
+
+### Patch Changes
+
+- [#6631](https://github.com/nexus-substrate/nexus-agents/pull/6631) [`4aa7c85`](https://github.com/nexus-substrate/nexus-agents/commit/4aa7c85b32b1e4e042725fd234569841e38cacbc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - AI SDK adapter: responses that are not answers now return an error instead of a successful empty reply ([#6618](https://github.com/nexus-substrate/nexus-agents/issues/6618), mirroring [#6607](https://github.com/nexus-substrate/nexus-agents/issues/6607)).
+
+  - A `content-filter` finish, on `completeText()`, `completeStructured()`, or a stream, returns a `MODEL_ERROR` with `context.reason: 'content_filter'`. Partial text cut off by the filter is not returned as an answer.
+  - An empty text reply with finish `length` (or `null`/`undefined` object in structured completion) returns a `MODEL_ERROR` with `context.reason: 'reasoning_truncated'`, representing a completion budget exhausted before output. Non-empty truncated replies continue to return normally with stopReason `max_tokens`.
+  - `StreamTextResult` duck-typed interface exposes optional `finishReason?: Promise<string> | string | undefined` to validate stream completion finish reasons before completing the stream generator.
+  - `toErrorResult` preserves `ModelError` instances thrown during completion rather than re-wrapping them as generic SDK errors.
+
+- [#6639](https://github.com/nexus-substrate/nexus-agents/pull/6639) [`454ed96`](https://github.com/nexus-substrate/nexus-agents/commit/454ed966a2091a4e3cecdae26c94074aa9178e7b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Forward `improvement-review` CLI flags through `buildOptions` ([#6636](https://github.com/nexus-substrate/nexus-agents/issues/6636)).
+
+  - Copies `--file-issues`, `--lookback-days`, `--min-sample-size`, and `--fitness-floor` from `values` into `ParsedCliArgs['options']` in `cli.ts`.
+  - Exposes both kebab-case and camelCase options on `ParsedCliArgs['options']` (`file-issues`/`fileIssues`, `lookback-days`/`lookbackDays`, `min-sample-size`/`minSampleSize`, `fitness-floor`/`fitnessFloor`).
+  - Fixes `nexus-agents improvement-review` silently dropping these arguments and falling back to default values.
+
 ## 8.98.0
 
 ### Minor Changes
