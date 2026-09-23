@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isPersistenceEnabled } from './learning-persistence.js';
+import { isPersistenceEnabled, isStrategyDistillationEnabled } from './learning-persistence.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -35,5 +35,24 @@ describe('isPersistenceEnabled (#5464)', () => {
   it('falls back to the default ON for a value outside the accept-set', () => {
     vi.stubEnv('NEXUS_PERSIST_LEARNING', 'no');
     expect(isPersistenceEnabled()).toBe(true);
+  });
+});
+
+describe('isStrategyDistillationEnabled (#6512 review I1)', () => {
+  it('defaults ON when the variable is unset', () => {
+    vi.stubEnv('NEXUS_STRATEGY_DISTILLATION', undefined);
+    expect(isStrategyDistillationEnabled()).toBe(true);
+  });
+
+  it.each(['false', '0'])('treats %s as OFF', (value) => {
+    vi.stubEnv('NEXUS_STRATEGY_DISTILLATION', value);
+    expect(isStrategyDistillationEnabled()).toBe(false);
+  });
+
+  it('is independent of NEXUS_PERSIST_LEARNING', () => {
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    vi.stubEnv('NEXUS_STRATEGY_DISTILLATION', '0');
+    expect(isPersistenceEnabled()).toBe(true);
+    expect(isStrategyDistillationEnabled()).toBe(false);
   });
 });

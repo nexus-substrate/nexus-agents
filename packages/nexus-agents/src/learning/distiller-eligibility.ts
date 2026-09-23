@@ -21,37 +21,52 @@ import { TaskOutcomeSchema } from '../orchestration/outcomes/outcome-types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
 /** The fields eligibility reads. */
-export type DistillerEligibilityInput = Pick<TaskOutcome, 'source' | 'cli' | 'cliSource'>;
+export type DistillerEligibilityInput = Pick<
+  TaskOutcome,
+  'source' | 'cli' | 'cliSource' | 'durationMs'
+>;
 
 const ROUTABLE_CLIS: ReadonlySet<string> = new Set(CLI_NAMES);
 
 /**
  * Whether an outcome may train distilled routing rules.
  *
- * - `source: 'consensus'` is excluded: voter-seat records, where "returned a
- *   parseable vote" is scored as success.
- * - `source: 'manual'` is excluded: warm-up pings (`cli/warm-up.ts`), e2e-eval
- *   runs (`cli/e2e-eval.ts`), and tool bookkeeping rows (execute_spec,
- *   issue_triage, research_discover, run_graph_workflow, create_expert,
- *   self-eval). None of them is the router picking a CLI.
- * - `source: 'delegate'` is INCLUDED. Verified: not every delegate writer goes
- *   through `CompositeRouter` (parallel-exploration picks its own CLIs;
- *   triangulated-review and consensus-plan run fixed panels), so this is wider
- *   than "routed". It is kept because every delegate writer records a real
- *   execution of the named CLI on the named category, which is the thing a
- *   rule claims about, and excluding it would leave the loop with no data at
- *   all until #6521 lands.
- * - A `cli` outside `CLI_NAMES` is excluded: `'unknown'` names no CLI, and an
- *   `api:*` arm id can never equal a candidate slot the stage matches against
- *   (the stage sees display slots, and `RulesSnapshotSchema` rejects the whole
- *   rules file if one rule carries such a cli).
- * - `cliSource: 'category-default'` is excluded: the cli is a default filled in
- *   for the category, not the CLI that ran.
+ * Eligibility requires POSITIVE evidence that the named CLI ran. It is not a
+ * blacklist of known-bad writers (#6512 review C1):
+ *
+ * - `cliSource: 'executed'` is required. It is the only marker in the
+ *   `cliSource` vocabulary (`'executed' | 'category-default'`) that says the CLI
+ *   actually ran, and today only `mcp/tools/orchestrate.ts` writes it. Rows
+ *   without it are excluded, which drops two populations:
+ *   - legacy orchestrate rows written before `cliSource` existed (the last is
+ *     from 2026-08-29): `model: 'orchestrator'`, `durationMs: 0`, and a
+ *     `cli`/`category` filled from `DEFAULT_CLI` / `'exploration'` defaults.
+ *     In the real store they were 235 of the 241 rows the first version of
+ *     this filter admitted, and they would have minted an active
+ *     `success-rate:claude:exploration` boost at confidence 1.0;
+ *   - every other `delegate` writer (agent-executor, parallel-exploration,
+ *     triangulated-review, consensus-plan, execute_expert, …). None of them
+ *     records how its cli was attributed, and several do not route through
+ *     `CompositeRouter` at all, so nothing shows the CLI they name is the one
+ *     the router would be learning about.
+ * - `durationMs > 0` is required: a run that took no time did not execute.
+ * - `source` must be `'delegate'`. `consensus` (voter seats, where "returned a
+ *   parseable vote" is success) and `manual` (warm-up pings in `cli/warm-up.ts`,
+ *   e2e-eval runs in `cli/e2e-eval.ts`, tool bookkeeping rows) never train
+ *   routing rules.
+ * - `cli` must be in `CLI_NAMES`: `'unknown'` names no CLI, and an `api:*` arm
+ *   id can never equal a candidate slot the stage matches against (and
+ *   `RulesSnapshotSchema` rejects the whole rules file if one rule carries it).
+ *
+ * The result is a near-zero population until writers record an explicit
+ * routed-origin tag; #6521 tracks that, and this function is the one place to
+ * change when it lands.
  */
 export function isDistillerEligible(outcome: DistillerEligibilityInput): boolean {
   if (outcome.source !== 'delegate') return false;
-  if (!ROUTABLE_CLIS.has(outcome.cli)) return false;
-  return outcome.cliSource !== 'category-default';
+  if (outcome.cliSource !== 'executed') return false;
+  if (!(outcome.durationMs > 0)) return false;
+  return ROUTABLE_CLIS.has(outcome.cli);
 }
 
 /**
@@ -80,11 +95,18 @@ export function countEligibleSince(
  * uninitialised when this file is evaluated.
  */
 let eligibilityFieldsSchema:
-  | ReturnType<typeof TaskOutcomeSchema.pick<{ source: true; cli: true; cliSource: true }>>
+  | ReturnType<
+      typeof TaskOutcomeSchema.pick<{ source: true; cli: true; cliSource: true; durationMs: true }>
+    >
   | undefined;
 
 function getEligibilityFieldsSchema(): NonNullable<typeof eligibilityFieldsSchema> {
-  eligibilityFieldsSchema ??= TaskOutcomeSchema.pick({ source: true, cli: true, cliSource: true });
+  eligibilityFieldsSchema ??= TaskOutcomeSchema.pick({
+    source: true,
+    cli: true,
+    cliSource: true,
+    durationMs: true,
+  });
   return eligibilityFieldsSchema;
 }
 

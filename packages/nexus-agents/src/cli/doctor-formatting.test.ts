@@ -191,8 +191,10 @@ describe('doctor-formatting', () => {
         dirExists: false,
         dirWritable: false,
         outcomeCount: 0,
-        eligibleOutcomeCount: 0,
+        fileEligibleOutcomeCount: 0,
         ruleCount: 0,
+        activeRuleCount: 0,
+        trainedOnEligible: null,
         rulesLastSaved: null,
         error: null,
       },
@@ -249,8 +251,10 @@ describe('doctor-formatting', () => {
       dirExists: true,
       dirWritable: true,
       outcomeCount: 3,
-      eligibleOutcomeCount: 0,
+      fileEligibleOutcomeCount: 0,
       ruleCount: 0,
+      activeRuleCount: 0,
+      trainedOnEligible: 0,
       rulesLastSaved: '2026-09-23T12:00:00.000Z',
       error: null,
     };
@@ -258,17 +262,40 @@ describe('doctor-formatting', () => {
     it('renders the 0/0 snapshot with its timestamp, not "never"', () => {
       printDoctorResults({ ...createDoctorResult(), learningPersistence: enabled });
       expect(getCalls()).toContain(
-        '  Distilled rules: 0 (eligible outcomes: 0, last distill: 2026-09-23T12:00:00.000Z)'
+        '  Distilled rules: 0 (0 active; trained on 0 eligible outcomes; last distill: 2026-09-23T12:00:00.000Z)'
       );
     });
 
-    it('renders "never" when no snapshot exists', () => {
+    it('separates applied (active) rules from the total and labels the file-wide count', () => {
       printDoctorResults({
         ...createDoctorResult(),
-        learningPersistence: { ...enabled, eligibleOutcomeCount: 7, rulesLastSaved: null },
+        learningPersistence: {
+          ...enabled,
+          ruleCount: 4,
+          activeRuleCount: 1,
+          trainedOnEligible: 241,
+          fileEligibleOutcomeCount: 377,
+        },
+      });
+      const calls = getCalls();
+      expect(calls).toContain(
+        '  Distilled rules: 4 (1 active; trained on 241 eligible outcomes; last distill: 2026-09-23T12:00:00.000Z)'
+      );
+      expect(calls).toContain('  Eligible outcomes in outcomes.jsonl (whole file): 377');
+    });
+
+    it('renders "never" and an unrecorded training count when no snapshot exists', () => {
+      printDoctorResults({
+        ...createDoctorResult(),
+        learningPersistence: {
+          ...enabled,
+          fileEligibleOutcomeCount: 7,
+          trainedOnEligible: null,
+          rulesLastSaved: null,
+        },
       });
       expect(getCalls()).toContain(
-        '  Distilled rules: 0 (eligible outcomes: 7, last distill: never)'
+        '  Distilled rules: 0 (0 active; trained-on count not recorded; last distill: never)'
       );
     });
   });

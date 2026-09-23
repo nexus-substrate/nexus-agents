@@ -135,6 +135,8 @@ const NexusEnvSchema = z.object({
 
   // --- Features ---
   NEXUS_PERSIST_LEARNING: boolLooseStr.optional(),
+  // #6512: off switch for strategy distillation only (read by isStrategyDistillationEnabled).
+  NEXUS_STRATEGY_DISTILLATION: boolLooseStr.optional(),
   NEXUS_REFLECTIVE_MEMORY: z.enum(['true', 'false', 'shadow']).optional(),
   NEXUS_EVENTBUS_ENABLED: boolStr.optional(),
   // NEXUS_EVENTBUS_MAX_HISTORY removed in #2977 — silent no-op (no production reader).

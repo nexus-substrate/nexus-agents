@@ -141,7 +141,9 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
       const { runDoctor } = await import('./doctor.js');
       const check = (await runDoctor()).learningPersistence;
       expect(check.ruleCount).toBe(0);
-      expect(check.eligibleOutcomeCount).toBe(0);
+      expect(check.activeRuleCount).toBe(0);
+      expect(check.trainedOnEligible).toBe(0);
+      expect(check.fileEligibleOutcomeCount).toBe(0);
       expect(check.outcomeCount).toBe(1);
       expect(check.rulesLastSaved).not.toBeNull();
     } finally {

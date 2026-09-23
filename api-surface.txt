@@ -6518,6 +6518,7 @@ InterfaceDeclaration PersistentOutcomeStoreConfig
   readonly dataDir?: string | undefined
   readonly filePath?: string | undefined
 ClassDeclaration PersistentStrategyDistiller
+  checkPersistedTrigger() => boolean
   distill() => void
   extends StrategyDistiller
 VariableDeclaration PIPELINE_EVENT_TYPES

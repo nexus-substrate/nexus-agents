@@ -154,9 +154,21 @@ export interface LearningPersistenceCheck {
   readonly dirExists: boolean;
   readonly dirWritable: boolean;
   readonly outcomeCount: number;
-  /** Outcomes the strategy distiller may train on (#6512); see `isDistillerEligible`. */
-  readonly eligibleOutcomeCount: number;
+  /**
+   * Eligible outcomes (`isDistillerEligible`) across the WHOLE outcomes.jsonl
+   * (#6512). The distiller sees only the store's newest-10k window, so this can
+   * exceed what it trains on; `trainedOnEligible` is that number.
+   */
+  readonly fileEligibleOutcomeCount: number;
+  /** Every persisted rule, whatever its status. */
   readonly ruleCount: number;
+  /** Persisted rules with status `active`: the ones routing applies (#6512). */
+  readonly activeRuleCount: number;
+  /**
+   * Eligible outcomes the last distill trained on, from the snapshot's
+   * `eligibleOutcomes`. Null: no snapshot, or one written before the count.
+   */
+  readonly trainedOnEligible: number | null;
   /** `savedAt` of rules.json: the last distill time. Null means never distilled. */
   readonly rulesLastSaved: string | null;
   readonly error: string | null;
@@ -654,19 +666,39 @@ function countJsonlLines(filePath: string): number {
     .filter((l) => l.trim().length > 0).length;
 }
 
-/** Reads rules snapshot metadata. Returns count and savedAt. */
-function readRulesMetadata(filePath: string): { count: number; savedAt: string | null } {
-  if (!existsSync(filePath)) return { count: 0, savedAt: null };
+interface RulesMetadata {
+  readonly count: number;
+  readonly activeCount: number;
+  readonly eligibleOutcomes: number | null;
+  readonly savedAt: string | null;
+}
+
+const NO_RULES: RulesMetadata = { count: 0, activeCount: 0, eligibleOutcomes: null, savedAt: null };
+
+function isActiveRule(rule: unknown): boolean {
+  return (
+    typeof rule === 'object' &&
+    rule !== null &&
+    (rule as Record<string, unknown>)['status'] === 'active'
+  );
+}
+
+/** Reads rules snapshot metadata: total and active rule counts, trained-on count, savedAt. */
+function readRulesMetadata(filePath: string): RulesMetadata {
+  if (!existsSync(filePath)) return NO_RULES;
   try {
     const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
-    const rules = raw['rules'];
+    const rules = Array.isArray(raw['rules']) ? (raw['rules'] as unknown[]) : [];
     const saved = raw['savedAt'];
+    const eligible = raw['eligibleOutcomes'];
     return {
-      count: Array.isArray(rules) ? rules.length : 0,
+      count: rules.length,
+      activeCount: rules.filter(isActiveRule).length,
+      eligibleOutcomes: typeof eligible === 'number' ? eligible : null,
       savedAt: typeof saved === 'string' ? saved : null,
     };
   } catch {
-    return { count: 0, savedAt: null };
+    return NO_RULES;
   }
 }
 
@@ -687,8 +719,10 @@ const DISABLED_CHECK: LearningPersistenceCheck = {
   dirExists: false,
   dirWritable: false,
   outcomeCount: 0,
-  eligibleOutcomeCount: 0,
+  fileEligibleOutcomeCount: 0,
   ruleCount: 0,
+  activeRuleCount: 0,
+  trainedOnEligible: null,
   rulesLastSaved: null,
   error: null,
 };
@@ -699,16 +733,18 @@ function checkLearningPersistence(): LearningPersistenceCheck {
   try {
     const { exists: dirExists, writable: dirWritable } = checkDirAccess(getLearningDir());
     const outcomeCount = countJsonlLines(getOutcomesFile());
-    const eligibleOutcomeCount = countEligibleOutcomesInFile(getOutcomesFile());
-    const { count: ruleCount, savedAt: rulesLastSaved } = readRulesMetadata(getRulesFile());
+    const fileEligibleOutcomeCount = countEligibleOutcomesInFile(getOutcomesFile());
+    const rules = readRulesMetadata(getRulesFile());
     return {
       enabled: true,
       dirExists,
       dirWritable,
       outcomeCount,
-      eligibleOutcomeCount,
-      ruleCount,
-      rulesLastSaved,
+      fileEligibleOutcomeCount,
+      ruleCount: rules.count,
+      activeRuleCount: rules.activeCount,
+      trainedOnEligible: rules.eligibleOutcomes,
+      rulesLastSaved: rules.savedAt,
       error: null,
     };
   } catch (error: unknown) {
@@ -717,8 +753,10 @@ function checkLearningPersistence(): LearningPersistenceCheck {
       dirExists: false,
       dirWritable: false,
       outcomeCount: 0,
-      eligibleOutcomeCount: 0,
+      fileEligibleOutcomeCount: 0,
       ruleCount: 0,
+      activeRuleCount: 0,
+      trainedOnEligible: null,
       rulesLastSaved: null,
       error: getErrorMessage(error),
     };

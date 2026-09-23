@@ -88,6 +88,7 @@ function distillerFrom(
     durationMs: 1000,
     timestamp: '2026-09-04T00:00:00Z',
     source: 'delegate',
+    cliSource: 'executed',
   });
   for (const g of groups) {
     for (let i = 0; i < g.failures; i++) store.append(outcome(g.cli, false));
@@ -418,6 +419,7 @@ describe('DistilledRuleStage', () => {
           durationMs: 1000,
           timestamp: '2026-09-04T00:00:00Z',
           source: 'delegate',
+          cliSource: 'executed',
         });
       }
       const distiller = new StrategyDistiller(store);

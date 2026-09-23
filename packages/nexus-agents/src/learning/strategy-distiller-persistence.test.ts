@@ -97,6 +97,7 @@ function makeOutcome(overrides?: Partial<TaskOutcome>): TaskOutcome {
     durationMs: 1200,
     timestamp: '2026-02-07T10:00:00Z',
     source: 'delegate',
+    cliSource: 'executed',
     ...overrides,
   };
 }
@@ -569,6 +570,50 @@ describe('PersistentStrategyDistiller', () => {
       expect(snap.rules).toHaveLength(0);
       expect(snap.eligibleOutcomes).toBe(0);
       expect(Number.isNaN(Date.parse(snap.savedAt))).toBe(false);
+    });
+
+    it('expires a hydrated rule past ruleExpiryMs before routing can apply it (review I2)', async () => {
+      // updatedAt 2000 ms after the epoch: far older than the 24 h expiry.
+      writeFileSync(filePath, JSON.stringify(makeSnapshot([makeRule({ status: 'active' })])));
+      const d = new PersistentStrategyDistiller(new OutcomeStore(), { filePath, dataDir: tmpDir });
+      expect(d.getRules('active')).toHaveLength(1);
+
+      const { DistilledRuleStage } =
+        await import('../cli-adapters/routing/stages/distilled-rule-stage.js');
+      const stage = new DistilledRuleStage(d);
+      const ctx = {
+        task: 't',
+        metadata: { taskCategory: 'code_generation' },
+        availableClis: ['claude', 'gemini'] as const,
+        scores: new Map([
+          ['claude', 0],
+          ['gemini', 0],
+        ] as const),
+        filtered: new Map(),
+        signals: [],
+        trace: [],
+      };
+      const result = await stage.route(ctx);
+      expect(d.getRules('active')).toHaveLength(0);
+      if (!result.ok) throw new Error('route failed');
+      expect(
+        result.value.context.signals.some((sig) => sig.startsWith('distilled-rule:applied'))
+      ).toBe(false);
+    });
+
+    it('does not overwrite an unreadable rules.json on the first route', () => {
+      writeFileSync(filePath, '{corrupt');
+      const store = new OutcomeStore();
+      populateFailures(store, 10);
+      const d = new PersistentStrategyDistiller(
+        store,
+        { filePath, dataDir: tmpDir },
+        undefined,
+        config
+      );
+
+      expect(d.checkPersistedTrigger()).toBe(false);
+      expect(readFileSync(filePath, 'utf-8')).toBe('{corrupt');
     });
 
     it('restores the last-distill time from the snapshot', () => {

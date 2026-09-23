@@ -28,18 +28,26 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
 }
 
 describe('isDistillerEligible (#6512)', () => {
+  const executed = { cliSource: 'executed' as const };
   const table: ReadonlyArray<[string, Partial<TaskOutcome>, boolean]> = [
-    ['delegate on a routable CLI', {}, true],
-    ['delegate with an executed CLI attribution', { cliSource: 'executed' }, true],
-    ['each routable CLI: gemini', { cli: 'gemini' }, true],
-    ['each routable CLI: codex', { cli: 'codex' }, true],
-    ['each routable CLI: opencode', { cli: 'opencode' }, true],
-    ['consensus voter seat', { source: 'consensus' }, false],
-    ['manual (warm-up / e2e-eval)', { source: 'manual' }, false],
-    ['unknown CLI', { cli: 'unknown' }, false],
-    ['api:* arm no rule can match', { cli: 'api:anthropic' }, false],
+    ['delegate with an executed CLI attribution', executed, true],
+    ['each routable CLI: gemini', { ...executed, cli: 'gemini' }, true],
+    ['each routable CLI: codex', { ...executed, cli: 'codex' }, true],
+    ['each routable CLI: opencode', { ...executed, cli: 'opencode' }, true],
+    // No positive marker that a CLI ran: not eligible (#6512 review C1).
+    ['delegate with no cliSource marker', {}, false],
+    [
+      'legacy orchestrate row: model orchestrator, 0 ms, no cliSource',
+      { id: 'orch-1', model: 'orchestrator', durationMs: 0, category: 'exploration' },
+      false,
+    ],
+    ['legacy orchestrate row with a duration', { model: 'orchestrator', durationMs: 900 }, false],
+    ['executed marker but 0 ms', { ...executed, durationMs: 0 }, false],
     ['CLI attributed by category default', { cliSource: 'category-default' }, false],
-    ['consensus on a routable CLI', { source: 'consensus', cli: 'claude' }, false],
+    ['consensus voter seat', { ...executed, source: 'consensus' }, false],
+    ['manual (warm-up / e2e-eval)', { ...executed, source: 'manual' }, false],
+    ['unknown CLI', { ...executed, cli: 'unknown' }, false],
+    ['api:* arm no rule can match', { ...executed, cli: 'api:anthropic' }, false],
   ];
 
   it.each(table)('%s → %s', (_label, overrides, expected) => {
@@ -53,22 +61,27 @@ describe('countEligibleSince (#6512)', () => {
   });
 
   it('counts every eligible outcome when there is no snapshot', () => {
-    const outcomes = [makeOutcome(), makeOutcome(), makeOutcome({ source: 'consensus' })];
+    const outcomes = [
+      makeOutcome({ cliSource: 'executed' }),
+      makeOutcome({ cliSource: 'executed' }),
+      makeOutcome({ cliSource: 'executed', source: 'consensus' }),
+      makeOutcome(),
+    ];
     expect(countEligibleSince(outcomes, undefined)).toBe(2);
   });
 
   it('counts only outcomes strictly newer than the snapshot', () => {
     const since = Date.parse('2026-09-10T00:00:00.000Z');
     const outcomes = [
-      makeOutcome({ timestamp: '2026-09-09T00:00:00.000Z' }),
-      makeOutcome({ timestamp: '2026-09-10T00:00:00.000Z' }),
-      makeOutcome({ timestamp: '2026-09-11T00:00:00.000Z' }),
+      makeOutcome({ cliSource: 'executed', timestamp: '2026-09-09T00:00:00.000Z' }),
+      makeOutcome({ cliSource: 'executed', timestamp: '2026-09-10T00:00:00.000Z' }),
+      makeOutcome({ cliSource: 'executed', timestamp: '2026-09-11T00:00:00.000Z' }),
     ];
     expect(countEligibleSince(outcomes, since)).toBe(1);
   });
 
   it('does not count an unparseable timestamp as newer than a snapshot', () => {
-    const outcomes = [makeOutcome({ timestamp: 'not-a-date' })];
+    const outcomes = [makeOutcome({ cliSource: 'executed', timestamp: 'not-a-date' })];
     expect(countEligibleSince(outcomes, 0)).toBe(0);
   });
 });
@@ -91,13 +104,14 @@ describe('countEligibleOutcomesInFile (#6512)', () => {
   it('counts eligible records and skips malformed and ineligible lines', () => {
     const path = join(dir, 'outcomes.jsonl');
     const lines = [
+      JSON.stringify(makeOutcome({ cliSource: 'executed' })),
       JSON.stringify(makeOutcome()),
-      JSON.stringify(makeOutcome({ source: 'consensus' })),
-      JSON.stringify(makeOutcome({ source: 'manual' })),
-      JSON.stringify({ ...makeOutcome(), cli: 'cli-codex' }),
+      JSON.stringify(makeOutcome({ cliSource: 'executed', source: 'consensus' })),
+      JSON.stringify(makeOutcome({ cliSource: 'executed', source: 'manual' })),
+      JSON.stringify({ ...makeOutcome({ cliSource: 'executed' }), cli: 'cli-codex' }),
       '{not json',
       '',
-      JSON.stringify(makeOutcome({ cli: 'gemini' })),
+      JSON.stringify(makeOutcome({ cliSource: 'executed', cli: 'gemini' })),
     ];
     writeFileSync(path, lines.join('\n'));
     expect(countEligibleOutcomesInFile(path)).toBe(2);

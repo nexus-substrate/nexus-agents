@@ -35,6 +35,7 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
     durationMs: 1000,
     timestamp: new Date().toISOString(),
     source: 'delegate',
+    cliSource: 'executed',
     ...overrides,
   };
 }

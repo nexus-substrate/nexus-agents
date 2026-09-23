@@ -129,6 +129,8 @@ export interface PersistentDistillerConfig {
 export class PersistentStrategyDistiller extends StrategyDistiller {
   private readonly filePath: string;
   private readonly persistLogger: ILogger;
+  /** rules.json existed but could not be read or validated (#6512). */
+  private snapshotUnreadable = false;
 
   constructor(
     outcomeStore: OutcomeStore,
@@ -143,6 +145,19 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
     const dataDir = persistConfig?.dataDir;
     ensureLearningDir(dataDir);
     this.hydrate();
+  }
+
+  /**
+   * An existing but unreadable rules.json is not overwritten by the first-route
+   * trigger: it may hold rules written by a newer build, or be recoverable by
+   * hand. It is logged and skipped; the in-process counter still distills.
+   */
+  override checkPersistedTrigger(): boolean {
+    if (!this.snapshotUnreadable) return super.checkPersistedTrigger();
+    this.persistLogger.warn('rules.json is unreadable; first-route distill skipped', {
+      path: this.filePath,
+    });
+    return false;
   }
 
   /** Override distill to persist rules after each run. */
@@ -169,6 +184,7 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
       const result = RulesSnapshotSchema.safeParse(parsed);
 
       if (!result.success) {
+        this.snapshotUnreadable = true;
         this.persistLogger.warn('Rules file failed validation, starting fresh', {
           path: this.filePath,
           error: result.error.message,
@@ -193,6 +209,7 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
         path: this.filePath,
       });
     } catch (error: unknown) {
+      this.snapshotUnreadable = true;
       const msg = error instanceof Error ? error.message : String(error);
       this.persistLogger.warn('Failed to hydrate rules from disk', {
         error: msg,

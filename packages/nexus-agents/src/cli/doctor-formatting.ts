@@ -256,11 +256,19 @@ function printLearningPersistence(check: LearningPersistenceCheck): void {
     : `${colors.yellow}not created yet${colors.reset}`;
   writeLine(`  Data directory: ${dirStatus}`);
   writeLine(`  Outcomes: ${String(check.outcomeCount)} recorded`);
-  // #6512: informational, never a failure. `ruleCount` is every persisted rule,
-  // not only active ones, and "never" means no distill has written rules.json;
-  // a distill over zero eligible outcomes records a timestamp instead.
+  // #6512: informational, never a failure. N is every persisted rule; A is the
+  // active ones routing applies. E is what the last distill trained on (from
+  // the snapshot); the whole-file eligible count is labelled separately because
+  // the distiller only sees the store's newest-10k window.
+  const trained =
+    check.trainedOnEligible === null
+      ? 'trained-on count not recorded'
+      : `trained on ${String(check.trainedOnEligible)} eligible outcomes`;
   writeLine(
-    `  Distilled rules: ${String(check.ruleCount)} (eligible outcomes: ${String(check.eligibleOutcomeCount)}, last distill: ${check.rulesLastSaved ?? 'never'})`
+    `  Distilled rules: ${String(check.ruleCount)} (${String(check.activeRuleCount)} active; ${trained}; last distill: ${check.rulesLastSaved ?? 'never'})`
+  );
+  writeLine(
+    `  Eligible outcomes in outcomes.jsonl (whole file): ${String(check.fileEligibleOutcomeCount)}`
   );
 }
 

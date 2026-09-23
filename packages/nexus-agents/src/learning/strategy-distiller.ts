@@ -264,12 +264,18 @@ export class StrategyDistiller {
    * eligible outcomes it distills anyway, so the empty state is recorded as
    * "0 eligible, 0 rules, at <time>" rather than left as "never".
    *
+   * Before deciding, rules past `ruleExpiryMs` are expired, so a hydrated rule
+   * that is out of date is never applied.
+   *
    * Runs at most once per instance; `DistilledRuleStage` calls it when it first
    * runs, so constructing a distiller stays cheap. Returns whether it distilled.
    */
   checkPersistedTrigger(): boolean {
     if (this.persistedTriggerChecked) return false;
     this.persistedTriggerChecked = true;
+    // #6512 review I2: hydrated rules only expired inside distill(), and the
+    // next distill can be far off, so a stale rule stayed active indefinitely.
+    this.expireRules(getTimeProvider().now());
     const newer = countEligibleSince(this.outcomeStore.query(), this.lastDistillAt);
     const recordEmpty = this.lastDistillAt === undefined && newer === 0;
     if (newer < this.config.triggerThreshold && !recordEmpty) return false;
