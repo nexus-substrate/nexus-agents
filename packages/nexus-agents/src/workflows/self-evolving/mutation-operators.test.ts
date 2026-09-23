@@ -529,10 +529,22 @@ describe('Mutation Operators', () => {
         mutationRate: 1.0, // Always mutate
       };
 
-      const { mutations } = applyRandomMutation(workflow, config);
-
-      // Should have at least one mutation with 100% mutation rate (#6447)
-      expect(mutations.length).toBeGreaterThan(0);
+      // #6541: rate 1.0 means every step is SELECTED, not that a mutation
+      // results. The operator is drawn at random too, and addParallelization /
+      // reorderSteps return null when nothing is eligible, so an unseeded run
+      // produced 0 mutations now and then. Pin every draw to 0.1: below the
+      // rate (the step is selected) and in the timeout-adjustment band (< 0.4),
+      // which always applies to a step with a timeout.
+      const pinned = new SeededRandomProvider(0);
+      pinned.random = () => 0.1;
+      setRandomProvider(pinned);
+      try {
+        const { mutations } = applyRandomMutation(workflow, config);
+        // Both steps selected, both adjusted (#6447).
+        expect(mutations).toHaveLength(2);
+      } finally {
+        resetRandomProvider();
+      }
     });
 
     it('should respect zero mutation rate', () => {
