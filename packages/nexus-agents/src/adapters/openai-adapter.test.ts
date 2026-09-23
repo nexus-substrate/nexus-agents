@@ -777,7 +777,8 @@ describe('OpenAIAdapter', () => {
       ['length', 'max_tokens'],
       ['tool_calls', 'tool_use'],
       ['function_call', 'tool_use'],
-      ['content_filter', 'end_turn'],
+      // content_filter is not a finish: it is an error (#6607), see
+      // openai-response-fidelity.test.ts.
       [null, 'end_turn'],
       ['unknown', 'end_turn'],
     ])('should map "%s" to "%s"', async (openaiReason, expectedReason) => {

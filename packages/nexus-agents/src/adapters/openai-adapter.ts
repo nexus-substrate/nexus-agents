@@ -19,7 +19,7 @@ import type {
   StreamChunk,
   TokenUsage,
 } from '../core/index.js';
-import { ok, err, ModelError, ConfigError, getTokenEstimator } from '../core/index.js';
+import { ok, err, ModelError, ConfigError, ErrorCode, getTokenEstimator } from '../core/index.js';
 import {
   BaseAdapter,
   type BaseAdapterConfig,
@@ -34,6 +34,7 @@ import {
   type OpenAIAdapterConfig,
 } from './openai-types.js';
 import { planOptionalParams, type DroppedParam } from './optional-params.js';
+import { getMaxTokensParamForModel } from '../config/model-parameter-support.js';
 import {
   mapMessage,
   mapTool,
@@ -41,6 +42,10 @@ import {
   mapChoiceToContentBlocks,
   mapResponseUsage,
   mapStreamChunk,
+  createStreamToolCallState,
+  detectNonAnswer,
+  CONTENT_FILTERED,
+  type NonAnswer,
 } from './openai-mappers.js';
 import { sanitizeErrorDetails } from '../security/output-sanitizer.js';
 
@@ -323,9 +328,15 @@ export class OpenAIAdapter extends BaseAdapter {
 
       let contentIndex = 0;
       let hasStarted = false;
+      const toolCalls = createStreamToolCallState();
 
       for await (const chunk of stream) {
-        const mappedChunks = mapStreamChunk(chunk, contentIndex, hasStarted);
+        // #6607: a filtered stream is a refusal. Error the stream instead of
+        // finishing it normally over whatever partial text arrived.
+        if (chunk.choices[0]?.finish_reason === 'content_filter') {
+          throw nonAnswerError(`${this.providerId}/${this.modelId}`, CONTENT_FILTERED, chunk.model);
+        }
+        const mappedChunks = mapStreamChunk(chunk, contentIndex, hasStarted, toolCalls);
 
         for (const mappedChunk of mappedChunks) {
           if (mappedChunk.type === 'message_start') {
@@ -357,7 +368,7 @@ export class OpenAIAdapter extends BaseAdapter {
     const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
       model: this.resolvedModelId,
       messages,
-      max_completion_tokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
+      max_completion_tokens: request.maxTokens ?? this.defaultMaxCompletionTokens(),
     };
 
     const dropped = this.addOptionalParams(params, request);
@@ -380,7 +391,7 @@ export class OpenAIAdapter extends BaseAdapter {
       if (msg.role === 'system' && request.systemPrompt !== undefined) {
         continue;
       }
-      messages.push(mapMessage(msg));
+      messages.push(...mapMessage(msg));
     }
 
     return messages;
@@ -449,12 +460,21 @@ export class OpenAIAdapter extends BaseAdapter {
     response: ChatCompletion,
     dropped: readonly DroppedParam[] = []
   ): CompletionResponse {
+    // #6607: a refusal, an empty `choices` array or a reasoning-exhausted reply
+    // is not an answer. Consumers (voters, experts, orchestrate) read any mapped
+    // response as one and never branch on `stopReason`, so the only signal they
+    // honour is an error.
     const firstChoice = response.choices[0];
-
-    // Handle case where no choices are returned
     if (firstChoice === undefined) {
-      return this.createEmptyResponse(response, dropped);
+      throw nonAnswerError(
+        `${this.providerId}/${this.modelId}`,
+        { reason: 'no_choices', detail: 'the response contained no choices' },
+        response.model
+      );
     }
+    const nonAnswer = detectNonAnswer(firstChoice, response.usage, this.isReasoningFamily());
+    if (nonAnswer !== undefined)
+      throw nonAnswerError(`${this.providerId}/${this.modelId}`, nonAnswer, response.model);
 
     const content = mapChoiceToContentBlocks(firstChoice);
     const usage: TokenUsage | undefined = mapResponseUsage(response);
@@ -471,20 +491,24 @@ export class OpenAIAdapter extends BaseAdapter {
   }
 
   /**
-   * Creates an empty response when no choices are returned.
+   * Reasoning families are the models that take `max_completion_tokens`
+   * (o-series, gpt-5, codex); the registry answers first, a regex second.
    */
-  private createEmptyResponse(
-    response: ChatCompletion,
-    dropped: readonly DroppedParam[] = []
-  ): CompletionResponse {
-    const emptyUsage = mapResponseUsage(response);
-    return {
-      content: [{ type: 'text', text: '' }],
-      ...(emptyUsage !== undefined ? { usage: emptyUsage } : {}),
-      stopReason: 'end_turn',
-      model: response.model,
-      ...(dropped.length > 0 ? { warnings: dropped } : {}),
-    };
+  private isReasoningFamily(): boolean {
+    return getMaxTokensParamForModel(this.resolvedModelId) === 'max_completion_tokens';
+  }
+
+  /**
+   * Default completion cap when the request sets none (#6607). On a reasoning
+   * model the cap covers hidden reasoning tokens AND the visible reply, and
+   * 4,096 can be spent entirely on reasoning, leaving an empty reply. OpenAI's
+   * reasoning guide recommends reserving at least 25,000 tokens for reasoning
+   * and output when starting out, so that is the reasoning default. It is a
+   * ceiling, not a spend: a reply that finishes early is billed for what it
+   * used. Other models keep `DEFAULT_MAX_TOKENS`.
+   */
+  private defaultMaxCompletionTokens(): number {
+    return this.isReasoningFamily() ? REASONING_DEFAULT_MAX_COMPLETION_TOKENS : DEFAULT_MAX_TOKENS;
   }
 
   /**
@@ -537,6 +561,30 @@ export class OpenAIAdapter extends BaseAdapter {
 }
 
 const LIST_MODELS_TTL_MS = 5 * 60 * 1000;
+
+/** See `defaultMaxCompletionTokens` for why 25,000 (#6607). */
+const REASONING_DEFAULT_MAX_COMPLETION_TOKENS = 25_000;
+
+/**
+ * A non-answer as a non-retryable `MODEL_ERROR` (#6607). `context.reason`
+ * names which kind it was, so telemetry can tell a refusal from a
+ * reasoning-exhausted budget. `source` is `provider/model`.
+ *
+ * Module-level rather than a private method: the API-surface snapshot follows
+ * types named anywhere in an exported class, private members included.
+ */
+function nonAnswerError(source: string, nonAnswer: NonAnswer, servedModel?: string): ModelError {
+  return new ModelError(`${source}: ${nonAnswer.detail}`, {
+    code: ErrorCode.MODEL_ERROR,
+    context: {
+      reason: nonAnswer.reason,
+      ...(servedModel !== undefined ? { servedModel } : {}),
+      ...(nonAnswer.reasoningTokens !== undefined
+        ? { reasoningTokens: nonAnswer.reasoningTokens }
+        : {}),
+    },
+  });
+}
 
 /**
  * Creates an OpenAIAdapter with the specified configuration.
