@@ -6,7 +6,13 @@
  */
 
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
-import { TaskOutcomeSchema, OutcomeQuerySchema } from './outcome-types.js';
+import {
+  TaskOutcomeSchema,
+  OutcomeQuerySchema,
+  UNDETECTED_CATEGORY_FALLBACK,
+  hasMeasuredCategory,
+  resolveOutcomeCategory,
+} from './outcome-types.js';
 import type { TaskOutcome } from './outcome-types.js';
 import {
   OutcomeStore,
@@ -881,5 +887,91 @@ describe('OutcomeStore baselineId filter (#2697)', () => {
     store.append(recorded);
     const back = store.query({ baselineId: 'baseline-xyz' });
     expect(back[0]?.baselineId).toBe('baseline-xyz');
+  });
+});
+
+// ============================================================================
+// Undetected category (#6549)
+// ============================================================================
+
+describe('undetected category representation (#6549)', () => {
+  it('accepts categorySource detected and defaulted, and rejects other values', () => {
+    for (const categorySource of ['detected', 'defaulted'] as const) {
+      expect(TaskOutcomeSchema.safeParse(makeOutcome({ categorySource })).success).toBe(true);
+    }
+    const bad = { ...makeOutcome(), categorySource: 'guessed' };
+    expect(TaskOutcomeSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('still hydrates a legacy row with no categorySource', () => {
+    const parsed = TaskOutcomeSchema.safeParse(makeOutcome());
+    expect(parsed.success).toBe(true);
+    expect(parsed.success ? parsed.data.categorySource : 'parse-failed').toBe(undefined);
+  });
+
+  it('resolveOutcomeCategory marks a detected category as detected', () => {
+    expect(resolveOutcomeCategory('testing')).toEqual({
+      category: 'testing',
+      categorySource: 'detected',
+    });
+  });
+
+  it('resolveOutcomeCategory marks the undetected case as defaulted, never detected', () => {
+    expect(resolveOutcomeCategory(undefined)).toEqual({
+      category: UNDETECTED_CATEGORY_FALLBACK,
+      categorySource: 'defaulted',
+    });
+  });
+
+  it('hasMeasuredCategory is false only for a defaulted row (legacy rows stay measured)', () => {
+    expect(hasMeasuredCategory({ categorySource: 'defaulted' })).toBe(false);
+    expect(hasMeasuredCategory({ categorySource: 'detected' })).toBe(true);
+    expect(hasMeasuredCategory({})).toBe(true);
+  });
+
+  describe('OutcomeStore readers', () => {
+    let s: OutcomeStore;
+    beforeEach(() => {
+      s = new OutcomeStore();
+      s.append(
+        makeOutcome({ id: 'measured', category: 'exploration', categorySource: 'detected' })
+      );
+      s.append(
+        makeOutcome({
+          id: 'defaulted',
+          category: 'exploration',
+          categorySource: 'defaulted',
+          success: false,
+        })
+      );
+    });
+
+    it('a category filter does not return a defaulted row as that category', () => {
+      expect(s.query({ category: 'exploration' }).map((o) => o.id)).toEqual(['measured']);
+    });
+
+    it('an unfiltered query still returns the defaulted row', () => {
+      expect(
+        s
+          .query()
+          .map((o) => o.id)
+          .sort()
+      ).toEqual(['defaulted', 'measured']);
+    });
+
+    it('summarize counts the defaulted row in totals but not in byCategory', () => {
+      const summary = s.summarize();
+      expect(summary.totalTasks).toBe(2);
+      expect(summary.byCategory.get('exploration')?.count).toBe(1);
+      expect(summary.byCategory.get('exploration')?.successRate).toBe(1);
+    });
+
+    it('summarize over only defaulted rows has an empty byCategory', () => {
+      const only = new OutcomeStore();
+      only.append(makeOutcome({ id: 'd', categorySource: 'defaulted' }));
+      const summary = only.summarize();
+      expect(summary.totalTasks).toBe(1);
+      expect(summary.byCategory.size).toBe(0);
+    });
   });
 });

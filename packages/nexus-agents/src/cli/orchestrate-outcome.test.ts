@@ -3,7 +3,7 @@
  *
  * The recorder reads the router's own attribution (`routedCli`,
  * `routedDurationMs`) off an `executeDecision` result. It writes nothing when
- * no arm ran, and nothing when the task category was not detected.
+ * no arm ran; an undetected category is recorded as `categorySource: 'defaulted'`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { recordRoutedOrchestrateOutcome } from './orchestrate-outcome.js';
@@ -92,10 +92,36 @@ describe('recordRoutedOrchestrateOutcome (#6533)', () => {
     expect(store.query()).toHaveLength(0);
   });
 
-  it('writes no row when the category was not detected, rather than defaulting it', () => {
+  it('records an undetected-category run, marked defaulted (#6549)', () => {
     recordRoutedOrchestrateOutcome(UNDETECTED_TASK, routedSuccess());
 
-    expect(store.query()).toHaveLength(0);
+    const rows = store.query();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      cli: 'gemini',
+      routedBy: 'composite-router',
+      categorySource: 'defaulted',
+    });
+  });
+
+  it('marks a detected category as detected', () => {
+    recordRoutedOrchestrateOutcome(TESTING_TASK, routedSuccess());
+
+    expect(store.query()[0]).toMatchObject({ category: 'testing', categorySource: 'detected' });
+  });
+
+  it('does not train distilled rules on an undetected-category row (#6549)', () => {
+    recordRoutedOrchestrateOutcome(UNDETECTED_TASK, routedSuccess());
+    const row = store.query()[0];
+
+    expect(row).toBeDefined();
+    expect(row !== undefined && isDistillerEligible(row)).toBe(false);
+  });
+
+  it('does not report an undetected-category row under any category', () => {
+    recordRoutedOrchestrateOutcome(UNDETECTED_TASK, routedSuccess());
+
+    expect(store.summarize().byCategory.size).toBe(0);
   });
 
   describe('API arms are recorded under their own arm id (#6552)', () => {

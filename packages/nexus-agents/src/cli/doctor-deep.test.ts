@@ -48,6 +48,25 @@ describe('doctor-deep', () => {
       }
     });
 
+    it('does not count a defaulted-category row as exploration coverage (#6549)', () => {
+      getOutcomeStore().append({
+        id: 'defaulted-1',
+        cli: 'claude',
+        category: 'exploration',
+        categorySource: 'defaulted',
+        model: 'claude-default',
+        success: true,
+        durationMs: 1000,
+        timestamp: new Date().toISOString(),
+        source: 'manual',
+      });
+
+      const diag = runDeepDiagnostics();
+      expect(diag.learningLoop.totalOutcomes).toBe(1);
+      expect(diag.dataSufficiency.missingCategories).toContain('exploration');
+      expect(diag.dataSufficiency.missingCategories.length).toBe(TASK_CATEGORIES.length);
+    });
+
     it('should detect outcomes after seeding', () => {
       const store = getOutcomeStore();
       for (let i = 0; i < 15; i++) {

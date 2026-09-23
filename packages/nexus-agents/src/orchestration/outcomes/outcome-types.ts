@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { CliNameSchema } from '../../config/model-capabilities-types.js';
 import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
+import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { createLogger } from '../../core/index.js';
 
 const logger = createLogger({ component: 'outcome-error-taxonomy' });
@@ -75,6 +76,16 @@ const OutcomeCliSourceSchema = z.enum(['executed', 'category-default']);
  */
 const OutcomeRoutedBySchema = z.enum(['composite-router']);
 
+/**
+ * How `category` was obtained (#6549). `'defaulted'` means no category was
+ * detected and `category` holds {@link UNDETECTED_CATEGORY_FALLBACK} only
+ * because the published field is required. An additive field, not a new
+ * `TaskCategory` value: that union is published, and widening it is a
+ * semver decision. Absent on legacy rows, which cannot be told apart and are
+ * read as before.
+ */
+const OutcomeCategorySourceSchema = z.enum(['detected', 'defaulted']);
+
 /** Schema for a single recorded task outcome. */
 export const TaskOutcomeSchema = z.object({
   id: z.string().min(1),
@@ -84,6 +95,8 @@ export const TaskOutcomeSchema = z.object({
   /** Set only when `CompositeRouter` selected the CLI for this task (#6521). */
   routedBy: OutcomeRoutedBySchema.optional(),
   category: TaskCategorySchema,
+  /** Whether `category` was detected or defaulted (#6549). Absent on legacy rows. */
+  categorySource: OutcomeCategorySourceSchema.optional(),
   model: z.string().min(1),
   success: z.boolean(),
   durationMs: z.number().nonnegative(),
@@ -161,6 +174,45 @@ export type OutcomeRoutedBy = z.infer<typeof OutcomeRoutedBySchema>;
 
 /** Category of failure for failed outcomes (Issue #1025). */
 export type OutcomeFailureCategory = z.infer<typeof OutcomeFailureCategorySchema>;
+
+/** Provenance of an outcome's `category` (#6549). */
+export type OutcomeCategorySource = z.infer<typeof OutcomeCategorySourceSchema>;
+
+// ============================================================================
+// Undetected category (#6549)
+// ============================================================================
+
+/**
+ * The value an outcome writer stores in the required `category` field when no
+ * category was detected. It is a placeholder, not a measurement: the row is
+ * marked `categorySource: 'defaulted'` and per-category readers skip it.
+ */
+export const UNDETECTED_CATEGORY_FALLBACK: TaskCategory = 'exploration';
+
+/**
+ * The `category` and `categorySource` fields for an outcome row, given the
+ * detected category (`undefined` when detection found none).
+ */
+export function resolveOutcomeCategory(detected: TaskCategory | undefined): {
+  readonly category: TaskCategory;
+  readonly categorySource: OutcomeCategorySource;
+} {
+  if (detected === undefined) {
+    return { category: UNDETECTED_CATEGORY_FALLBACK, categorySource: 'defaulted' };
+  }
+  return { category: detected, categorySource: 'detected' };
+}
+
+/**
+ * Whether an outcome's `category` may be read as a measured category. False
+ * only for a row marked `'defaulted'`; a legacy row with no marker is read as
+ * it always was, since nothing on it says otherwise. Per-category readers
+ * (group-bys, category filters, cli×category keys) must skip rows for which
+ * this is false; whole-population totals still count them.
+ */
+export function hasMeasuredCategory(outcome: Pick<TaskOutcome, 'categorySource'>): boolean {
+  return outcome.categorySource !== 'defaulted';
+}
 
 // ============================================================================
 // Error Classification (Issue #1025)

@@ -315,6 +315,24 @@ describe('execute-expert-recording', () => {
     expect(last?.source).toBe('delegate');
   });
 
+  it('recordExpertOutcome marks an undetected category as defaulted (#6549)', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+    const { detectTaskCategory } = await import('../../config/task-specialization.js');
+    vi.mocked(detectTaskCategory).mockReturnValueOnce(null);
+
+    recordExpertOutcome({ task: 'zzqx flurb', success: true, durationMs: 10 });
+
+    expect(getOutcomeStore().query().at(-1)?.categorySource).toBe('defaulted');
+  });
+
+  it('recordExpertOutcome marks a role- or task-derived category as detected (#6549)', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+
+    recordExpertOutcome({ task: 'Review code', success: true, durationMs: 10 });
+
+    expect(getOutcomeStore().query().at(-1)?.categorySource).toBe('detected');
+  });
+
   it('recordExpertOutcome records failure with category', async () => {
     const { recordExpertOutcome } = await import('./execute-expert-recording.js');
     const store = getOutcomeStore();

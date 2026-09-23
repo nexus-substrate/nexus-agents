@@ -75,6 +75,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
+import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { DEFAULT_CLI, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
@@ -344,12 +345,11 @@ export function recordToOutcomeStore(
     const match = detectTaskCategory(taskDescription);
     const cli = opts?.actualCli ?? match?.primaryCli ?? DEFAULT_CLI;
     const cliSource = opts?.actualCli === undefined ? 'category-default' : 'executed';
-    const category = match?.category ?? 'exploration';
     getOutcomeStore().append({
       id: `orch-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli,
       cliSource,
-      category,
+      ...resolveOutcomeCategory(match?.category),
       model: 'orchestrator',
       success,
       durationMs,

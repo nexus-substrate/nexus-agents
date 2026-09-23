@@ -440,6 +440,26 @@ describe('recordWorkerOutcomes', () => {
     expect(entries[0]?.failureCategory).toBeDefined();
   });
 
+  it('marks worker rows of an undetected category as defaulted (#6549)', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'x', output: 'ok', status: 'success', durationMs: 10 },
+    ];
+
+    recordWorkerOutcomes(results, 'zzqx flurb');
+
+    expect(getOutcomeStore().query()[0]?.categorySource).toBe('defaulted');
+  });
+
+  it('marks worker rows of a detected category as detected (#6549)', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'x', output: 'ok', status: 'success', durationMs: 10 },
+    ];
+
+    recordWorkerOutcomes(results, 'write unit tests for the parser');
+
+    expect(getOutcomeStore().query()[0]?.categorySource).toBe('detected');
+  });
+
   it('maps worker errorType to outcome failureCategory', () => {
     const results: WorkerResult[] = [
       {

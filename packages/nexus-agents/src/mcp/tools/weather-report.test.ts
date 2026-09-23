@@ -119,6 +119,24 @@ describe('generateWeatherReport', () => {
     expect(claudeW?.byCategory.get('testing')?.count).toBe(2);
   });
 
+  it('keeps defaulted-category rows out of the per-category breakdown (#6549)', () => {
+    seedOutcomes(2, { cli: 'claude', category: 'exploration', categorySource: 'detected' });
+    seedOutcomes(4, { cli: 'claude', category: 'exploration', categorySource: 'defaulted' });
+
+    const report = generateWeatherReport({});
+    const claudeW = report.cliWeather.find((c) => c.cli === 'claude');
+    expect(report.overall.totalTasks).toBe(6);
+    expect(claudeW?.byCategory.get('exploration')?.count).toBe(2);
+  });
+
+  it('a category filter does not count defaulted-category rows (#6549)', () => {
+    seedOutcomes(4, { category: 'exploration', categorySource: 'defaulted' });
+
+    const report = generateWeatherReport({ category: 'exploration' });
+
+    expect(report.overall.totalTasks).toBe(0);
+  });
+
   it('includes adaptive bonuses when requested', () => {
     seedOutcomes(15, { cli: 'claude', category: 'architecture', success: true });
 
@@ -705,6 +723,16 @@ describe('swarmHealth in weather report', () => {
     expect(report.swarmHealth).toBeDefined();
     // Best CLI for code_generation = claude (100%). 5/10 tasks went to claude.
     expect(report.swarmHealth?.routingAccuracy).toBeCloseTo(0.5, 2);
+  });
+
+  it('does not score routing accuracy over defaulted-category rows (#6549)', () => {
+    seedOutcomes(5, { cli: 'claude', category: 'exploration', categorySource: 'defaulted' });
+    seedOutcomes(5, { cli: 'gemini', category: 'exploration', categorySource: 'defaulted' });
+
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeDefined();
+    expect(report.swarmHealth?.observedCategories).toBe(0);
+    expect(report.swarmHealth?.analyzedCategories).toBe(0);
   });
 
   it('scores routing against API arms too, so an API arm row is not a free miss (#6552)', () => {

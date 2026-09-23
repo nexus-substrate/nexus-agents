@@ -153,13 +153,15 @@ describe('orchestrate CLI routed outcomes (#6533)', () => {
     expect(store.query()).toHaveLength(0);
   });
 
-  it('feeds the router but persists no row when the category is undetected', async () => {
+  it('persists an undetected-category run as a defaulted row (#6549)', async () => {
     const h = setUp();
 
     await orchestrateCommand({ task: 'zzqx flurb' });
 
     expect(h.executeDecision).toHaveBeenCalledTimes(1);
-    expect(store.query()).toHaveLength(0);
+    const rows = store.query();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ routedBy: 'composite-router', categorySource: 'defaulted' });
   });
 
   it('records nothing for a pinned --model run: the router chose no CLI', async () => {
