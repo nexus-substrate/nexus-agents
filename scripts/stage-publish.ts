@@ -113,6 +113,8 @@ type Manifest = Record<string, unknown> & {
  *   runs. pnpm runs the SOURCE manifest's `prepublishOnly` whatever this says:
  *   a rebuild of the source `dist/` (redundant — the stage already copied it)
  *   followed by `check-publish-stage.ts`, which refuses a stale stage (#6488).
+ *   Publishing directly from inside `.publish-stage` bypasses this check and is
+ *   forbidden by the release runbook (#6494).
  * - `publishConfig.directory` / `linkDirectory` are dropped: they describe the
  *   source layout, not the published one.
  */
