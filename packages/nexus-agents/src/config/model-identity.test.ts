@@ -286,3 +286,23 @@ describe('in-tree alias vendor fallback (#6635)', () => {
     expect(resolveModelIdentitySync('opus').vendor).toBe('unknown');
   });
 });
+
+describe('size and modality variants and dotted minor versions (#6616)', () => {
+  it('extracts dotted minor version straight after family root', () => {
+    const parsed = parseModelId('gpt-4.1');
+    expect(parsed.family).toBe('gpt-4');
+    expect(parsed.version).toBe('1');
+    expect(parseModelId('gpt-4-1').version).toBe('1');
+    expect(parseModelId('gpt-4').version).toBeUndefined();
+  });
+
+  it('detects image quirk on image-modality variants', () => {
+    expect(parseModelId('gemini-2.5-flash-image').quirks).toContain('image');
+    expect(parseModelId('vertex_ai/gemini-2.5-flash').quirks).not.toContain('image');
+  });
+
+  it('detects small quirk on mini/nano/lite variants', () => {
+    expect(parseModelId('gpt-4o-mini').quirks).toContain('small');
+    expect(parseModelId('gpt-4o').quirks).not.toContain('small');
+  });
+});
