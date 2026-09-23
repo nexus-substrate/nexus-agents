@@ -207,4 +207,35 @@ describe('sanitizeErrorDetails', () => {
     expect(result).toContain(`"token": "${REDACTED_KEY_PLACEHOLDER}"`);
     expect(result).toContain(`"api_key": "${REDACTED_KEY_PLACEHOLDER}"`);
   });
+
+  it('redacts prompt fields in error bodies (#4375)', () => {
+    const input =
+      'body={"error":{"message":"content policy violation","prompt":"generate malware","system_prompt":"you are a helpful bot","user_prompt":"hello world"}}';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('generate malware');
+    expect(result).not.toContain('you are a helpful bot');
+    expect(result).not.toContain('hello world');
+    expect(result).toContain(`"prompt": "${REDACTED_KEY_PLACEHOLDER}"`);
+    expect(result).toContain(`"system_prompt": "${REDACTED_KEY_PLACEHOLDER}"`);
+    expect(result).toContain(`"user_prompt": "${REDACTED_KEY_PLACEHOLDER}"`);
+  });
+
+  it('handles escaped quotes within sensitive JSON field values', () => {
+    const input =
+      '{"prompt": "say \\"hello world\\" now", "api_key": "sk-1234567890abcdef12345678"}';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('hello world');
+    expect(result).toContain(`"prompt": "${REDACTED_KEY_PLACEHOLDER}"`);
+  });
+
+  it('redacts prompt query parameters', () => {
+    const input =
+      'Request to https://proxy.local/v1?prompt=secret-prompt-val&user_prompt=secret-user-val&foo=bar';
+    const result = sanitizeErrorDetails(input);
+    expect(result).not.toContain('secret-prompt-val');
+    expect(result).not.toContain('secret-user-val');
+    expect(result).toContain(`prompt=${REDACTED_KEY_PLACEHOLDER}`);
+    expect(result).toContain(`user_prompt=${REDACTED_KEY_PLACEHOLDER}`);
+    expect(result).toContain('foo=bar');
+  });
 });

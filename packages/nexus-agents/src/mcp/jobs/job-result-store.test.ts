@@ -29,10 +29,14 @@ import {
   heartbeatJob,
   JOB_RECORD_RETENTION_MS,
   _setCandidatePathsResolverForTests,
+  JobFailureDetailSchema,
+  type JobFailureDetail,
   type JobResult,
 } from './job-result-store.js';
 import { VERSION } from '../../version.js';
 import { resetNexusDataDirCache, nexusDataPath } from '../../config/nexus-data-dir.js';
+import { FAKE_ANTHROPIC_KEY } from '../../testing/test-secrets.js';
+import { REDACTED_KEY_PLACEHOLDER } from '../../security/output-sanitizer.js';
 
 describe('job-result-store', () => {
   let tmpDir: string;
@@ -122,6 +126,124 @@ describe('job-result-store', () => {
     expect(record?.error).toBe('something broke');
     expect(record?.result).toBeUndefined();
     expect(record?.completedAt).toBeDefined();
+  });
+
+  describe('failureDetail and write-path redaction (#4375)', () => {
+    it('JobFailureDetailSchema parses valid detail and strips excess fields', () => {
+      const parsed = JobFailureDetailSchema.parse({
+        adapter: 'claude',
+        transport: 'subprocess',
+        category: 'rate_limited',
+        rawBody: 'should be stripped',
+        prompt: 'should not leak',
+      });
+      expect(parsed).toEqual({
+        adapter: 'claude',
+        transport: 'subprocess',
+        category: 'rate_limited',
+      });
+      expect((parsed as Record<string, unknown>)['rawBody']).toBeUndefined();
+      expect((parsed as Record<string, unknown>)['prompt']).toBeUndefined();
+    });
+
+    it('JobFailureDetailSchema accepts capacity_exhausted (#4373)', () => {
+      const parsed = JobFailureDetailSchema.parse({
+        adapter: 'codex',
+        transport: 'subprocess',
+        category: 'capacity_exhausted',
+      });
+      expect(parsed.category).toBe('capacity_exhausted');
+    });
+
+    it('JobFailureDetailSchema rejects empty strings', () => {
+      expect(() =>
+        JobFailureDetailSchema.parse({
+          adapter: '',
+          transport: 'subprocess',
+          category: 'rate_limit',
+        })
+      ).toThrow();
+      expect(() =>
+        JobFailureDetailSchema.parse({ adapter: 'claude', transport: '', category: 'rate_limit' })
+      ).toThrow();
+      expect(() =>
+        JobFailureDetailSchema.parse({ adapter: 'claude', transport: 'subprocess', category: '' })
+      ).toThrow();
+    });
+
+    it('persists structured failureDetail for an ordinary adapter failure', () => {
+      const jobId = 'job-fail-detail-1';
+      writeJobPending(jobId, 'orchestrate');
+      const detail: JobFailureDetail = {
+        adapter: 'claude',
+        transport: 'subprocess',
+        category: 'rate_limited',
+      };
+      writeJobFailed(jobId, 'orchestrate', 'Process exited with code 1', undefined, detail);
+
+      const record = readJobResult(jobId);
+      expect(record?.status).toBe('failed');
+      expect(record?.failureDetail).toEqual({
+        adapter: 'claude',
+        transport: 'subprocess',
+        category: 'rate_limited',
+      });
+    });
+
+    it('asserts provider error body containing credential and prompt fragment does NOT reach job record (#4375)', () => {
+      const jobId = 'job-redact-on-write';
+      writeJobPending(jobId, 'orchestrate');
+
+      const providerBody = JSON.stringify({
+        error: {
+          message: `Request failed with key ${FAKE_ANTHROPIC_KEY}`,
+          prompt: 'Generate confidential source code for project Apollo',
+          system_prompt: 'System prompt instructions',
+        },
+      });
+      const rawErrorMessage = `Upstream API failure: 429 Too Many Requests: ${providerBody}`;
+
+      writeJobFailed(jobId, 'orchestrate', rawErrorMessage, undefined, {
+        adapter: 'anthropic',
+        transport: 'subprocess',
+        category: 'rate_limit',
+      });
+
+      // Read raw file from disk directly to verify disk representation
+      const filePath = nexusDataPath('jobs', `result-${jobId}.json`);
+      const fileContent = readFileSync(filePath, 'utf8');
+
+      // Assert neither credential nor prompt fragment reached disk
+      expect(fileContent).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect(fileContent).not.toContain('Generate confidential source code for project Apollo');
+      expect(fileContent).not.toContain('System prompt instructions');
+      expect(fileContent).toContain(REDACTED_KEY_PLACEHOLDER);
+
+      // Verify readJobResult parses the sanitized record
+      const record = readJobResult(jobId);
+      expect(record?.status).toBe('failed');
+      expect(record?.error).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect(record?.error).not.toContain('Generate confidential source code');
+      expect(record?.failureDetail).toEqual({
+        adapter: 'anthropic',
+        transport: 'subprocess',
+        category: 'rate_limit',
+      });
+    });
+
+    it('sanitizes credentials and prompt fragments in writeJobCancelled reason', () => {
+      const jobId = 'job-cancel-redact';
+      writeJobPending(jobId, 'orchestrate');
+      const rawReason = `Cancelled due to token leak ${FAKE_ANTHROPIC_KEY} and prompt={"prompt":"secret"}`;
+      writeJobCancelled(jobId, 'orchestrate', rawReason);
+
+      const filePath = nexusDataPath('jobs', `result-${jobId}.json`);
+      const fileContent = readFileSync(filePath, 'utf8');
+
+      expect(fileContent).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect(fileContent).not.toContain('secret');
+      expect(fileContent).toContain(REDACTED_KEY_PLACEHOLDER);
+    });
   });
 
   it('readJobResult returns null for unknown jobId', () => {
