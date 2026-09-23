@@ -477,3 +477,71 @@ describe('WorkflowEngine', () => {
   // Usage ACCOUNTING survives and is now reachable: see the recordPhaseUsage
   // tests in workflow-engine-execution.test.ts.
 });
+
+describe('execute — cancellation via options.signal (#6305)', () => {
+  const phases = [{ steps: [sampleWorkflow.steps[0]!] }, { steps: [sampleWorkflow.steps[1]!] }];
+
+  function phaseCountingDeps(onPhase?: (n: number) => void): {
+    deps: WorkflowEngineDeps;
+    phasesRun: () => number;
+  } {
+    let run = 0;
+    const deps = createMockDeps({
+      createExecutionPlan: vi
+        .fn()
+        .mockReturnValue(ok({ phases, totalSteps: 2, maxParallelism: 1 })),
+      executePhase: vi.fn().mockImplementation(() => {
+        run += 1;
+        onPhase?.(run);
+        return Promise.resolve(ok([{ stepId: `step${String(run)}`, status: 'success' }]));
+      }),
+    });
+    return { deps, phasesRun: () => run };
+  }
+
+  it('runs no phase when the signal has already fired', async () => {
+    const { deps, phasesRun } = phaseCountingDeps();
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await new WorkflowEngine(deps).execute(
+      sampleWorkflow,
+      { input1: 'test' },
+      { signal: controller.signal }
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe('Workflow cancelled');
+    expect(phasesRun()).toBe(0);
+  });
+
+  it('a cancel during the LAST phase is the cancel, not a completed run', async () => {
+    const controller = new AbortController();
+    const { deps, phasesRun } = phaseCountingDeps((n) => {
+      if (n === phases.length) controller.abort();
+    });
+
+    const result = await new WorkflowEngine(deps).execute(
+      sampleWorkflow,
+      { input1: 'test' },
+      { signal: controller.signal }
+    );
+
+    expect(phasesRun()).toBe(2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe('Workflow cancelled');
+  });
+
+  it('runs every phase with a signal that never fires — the empty case', async () => {
+    const { deps, phasesRun } = phaseCountingDeps();
+
+    const result = await new WorkflowEngine(deps).execute(
+      sampleWorkflow,
+      { input1: 'test' },
+      { signal: new AbortController().signal }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(phasesRun()).toBe(2);
+  });
+});

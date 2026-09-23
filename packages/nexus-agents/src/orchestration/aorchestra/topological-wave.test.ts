@@ -5,7 +5,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   topologicalWaveAssign,
-  groupByTopologicalWave,
   CycleError,
   MissingDependencyError,
   type WaveEntry,
@@ -127,26 +126,5 @@ describe('topologicalWaveAssign', () => {
     // Input should still have wave: 1 on both (mutation would break this).
     expect(plan[0]?.wave).toBe(1);
     expect(plan[1]?.wave).toBe(1);
-  });
-});
-
-describe('groupByTopologicalWave', () => {
-  it('returns empty array for empty input', () => {
-    expect(groupByTopologicalWave([])).toEqual([]);
-  });
-
-  it('groups entries by wave in ascending order', () => {
-    const plan = [entry('c', 3, 2), entry('a', 1, 1), entry('d', 4, 3), entry('b', 2, 1)];
-    const waves = groupByTopologicalWave(plan);
-    expect(waves.length).toBe(3);
-    expect(waves[0]?.map((e) => e.role).sort()).toEqual(['a', 'b']);
-    expect(waves[1]?.map((e) => e.role)).toEqual(['c']);
-    expect(waves[2]?.map((e) => e.role)).toEqual(['d']);
-  });
-
-  it('preserves insertion order within a wave', () => {
-    const plan = [entry('z', 1, 1), entry('a', 2, 1)];
-    const waves = groupByTopologicalWave(plan);
-    expect(waves[0]?.map((e) => e.role)).toEqual(['z', 'a']);
   });
 });

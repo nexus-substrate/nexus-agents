@@ -12,10 +12,22 @@ import type { AgentVoteResult, VotingResult } from './vote-types.js';
 import { VOTER_ROLES } from './voter-roles.js';
 import { panelDiversityOf, seatFallbacks, type SeatFallbackDetail } from './vote-diversity.js';
 import type { ResolvedVoterProject } from './voter-project.js';
-import type { ContrarianCheckStatus } from '../mcp/tools/consensus-vote-types.js';
+import type {
+  ContrarianCheckStatus,
+  ExtendedVotingResult,
+} from '../mcp/tools/consensus-vote-types.js';
+
+/** The option gate's verdict as `executeVoting` stamps it: the engine's own tally. */
+type OptionGateVerdictView = NonNullable<ExtendedVotingResult['optionGate']>;
 
 /** A CLI voting result plus the #6110 project disclosure `executeVoting` stamps on it. */
-export type VotingResultWithProject = VotingResult & { readonly project?: ResolvedVoterProject };
+export type VotingResultWithProject = VotingResult & {
+  readonly project?: ResolvedVoterProject | undefined;
+  /** #6587: the option gate verdict carried by CliVoteResult. */
+  readonly optionGate?: ExtendedVotingResult['optionGate'];
+  /** #6587: declared options for the proposal, when any were declared. */
+  readonly declaredOptions?: readonly string[] | undefined;
+};
 
 /**
  * The one-line rendering of the project the panel judged and how the name was
@@ -185,10 +197,72 @@ function seatTimingLine(votes: readonly AgentVoteResult[]): string {
   return `Seat timing (queued→ran): ${parts.join('; ')}; queued total ${seconds(queuedTotal)}`;
 }
 
-/** The three always-printed panel-shape lines, in summary order: project (#6110), models (#6115), seat timing (#6103). */
+/**
+ * The directory the panel's seats were pointed at (#6258) —
+ * `Workspace: /path`. `executeVoting` stamps it on every live panel; absence
+ * means no live seat was handed one (a simulated panel), and the line says so
+ * rather than being omitted, so a missing stamp never reads as the cwd.
+ */
+function workspaceLine(workspace: string | undefined): string {
+  return `Workspace: ${workspace ?? 'none (no live seat was pointed at one)'}`;
+}
+
+/**
+ * The always-printed panel-shape lines, in summary order: project (#6110),
+ * models (#6115), seat timing (#6103), workspace (#6258). `workspace` is a
+ * required parameter so the compiler names every caller that must supply it.
+ */
 export function panelShapeLines(
   project: ResolvedVoterProject | undefined,
-  votes: readonly AgentVoteResult[]
+  votes: readonly AgentVoteResult[],
+  workspace: string | undefined
 ): readonly string[] {
-  return [projectLine(project), modelsLine(votes), seatTimingLine(votes)];
+  return [projectLine(project), modelsLine(votes), seatTimingLine(votes), workspaceLine(workspace)];
+}
+
+/**
+ * Which option won, as the option gate decided it. Checked in this order
+ * because each arm rules out the next: nobody named an option; the top count
+ * is shared (`tallyOptions` orders a tie by label, so `leadingOption` is an
+ * ordering there, not a win — and no option bar can be cleared by a tied
+ * leader); the leader cleared the bar; the leader fell short of it.
+ */
+function winnerLine(gate: OptionGateVerdictView): string {
+  const [first, second] = gate.tally;
+  if (gate.selectedCount === 0 || first === undefined) {
+    return 'Winner: none — no voter named a declared option';
+  }
+  if (second?.count === first.count) {
+    const tied = gate.tally.filter((t) => t.count === first.count).map((t) => `"${t.option}"`);
+    return `Winner: none — tie at ${String(first.count)} each between ${tied.join(', ')}`;
+  }
+  const held = `${String(gate.leadingCount)} of ${String(gate.approverCount)} approvers`;
+  if (gate.approved) {
+    return `Winner: "${first.option}" (${held}; cleared the ${gate.threshold} option bar)`;
+  }
+  return `Winner: none — leading option "${first.option}" held ${held}, below the ${gate.threshold} option bar`;
+}
+
+/**
+ * The declared-option block of the terminal summary (#6585): each declared
+ * option with the count the option gate tallied (a declared option nobody chose
+ * is a measured `0`), the winner, and the coverage — how many approvers named a
+ * declared option. Renders the gate's verdict; it computes no tally of its own.
+ *
+ * No options declared ⇒ no block. Options declared but no verdict on the
+ * result ⇒ a line saying so, never an omitted block that reads as "no options".
+ */
+export function optionSummaryLines(
+  declared: readonly string[] | undefined,
+  gate: OptionGateVerdictView | undefined
+): readonly string[] {
+  if (declared === undefined || declared.length === 0) return [];
+  if (gate === undefined) return ['Options: declared, but the result carries no option tally'];
+  const counts = declared.map(
+    (option) => `  ${option}: ${String(gate.tally.find((t) => t.option === option)?.count ?? 0)}`
+  );
+  const coverage =
+    `  Coverage: ${String(gate.selectedCount)} of ${String(gate.approverCount)} approvers` +
+    ` named a declared option (${String(gate.unattributedApprovals)} unattributed)`;
+  return ['Options:', ...counts, `  ${winnerLine(gate)}`, coverage];
 }

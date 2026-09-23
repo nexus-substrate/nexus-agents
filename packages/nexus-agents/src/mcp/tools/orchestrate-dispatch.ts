@@ -49,6 +49,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
+import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
 import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
 
 // ============================================================================
@@ -101,7 +102,12 @@ export interface WorkerDispatchExecutionOptions {
   readonly learnings?: readonly WorkerLearning[];
   /** Opt-in: route each worker to its task-optimal CLI via specialization matrix (Issue #1416) */
   readonly perWorkerRouting?: boolean;
-  /** Quality gate for worker output validation (default: DEFAULT_QUALITY_GATE, #1502) */
+  /**
+   * Quality gate for worker output validation (#1502). There is no default:
+   * when omitted (or `false`) no gate runs and worker output is accepted
+   * ungated. The orchestrate tool passes none, so its worker output is not
+   * gated (#6589).
+   */
   readonly qualityGate?: QualityGateFn | false;
 }
 
@@ -522,7 +528,7 @@ export async function executeWorkerDispatch(
   const startMs = getTimeProvider().now();
   const entries = prepareBudgetedEntries(agentPlan, maxCalls, logger);
 
-  // Quality gate: opt-in via qualityGate option (#1502). Pass DEFAULT_QUALITY_GATE to enable.
+  // Quality gate: opt-in via the qualityGate option (#1502); absent means ungated (#6589).
   const qualityGate = options.qualityGate === false ? undefined : options.qualityGate;
 
   const executorConfig: WorkerExecutorConfig = {
@@ -627,7 +633,7 @@ export function recordWorkerOutcomes(
   try {
     const store = getOutcomeStore();
     const match = detectTaskCategory(taskDescription);
-    const category = match?.category ?? 'exploration';
+    const categoryFields = resolveOutcomeCategory(match?.category);
     // Fallback CLI from specialization — only used when worker has no resolvedCli
     const fallbackCli = match?.primaryCli ?? DEFAULT_CLI;
     const ts = new Date(getTimeProvider().now()).toISOString();
@@ -641,7 +647,7 @@ export function recordWorkerOutcomes(
       store.append({
         id: `worker-${r.role}-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 6)}`,
         cli,
-        category,
+        ...categoryFields,
         model: `worker-${r.role}`,
         success,
         durationMs: r.durationMs,

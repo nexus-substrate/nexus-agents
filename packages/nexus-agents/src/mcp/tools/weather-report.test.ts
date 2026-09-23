@@ -119,6 +119,24 @@ describe('generateWeatherReport', () => {
     expect(claudeW?.byCategory.get('testing')?.count).toBe(2);
   });
 
+  it('keeps defaulted-category rows out of the per-category breakdown (#6549)', () => {
+    seedOutcomes(2, { cli: 'claude', category: 'exploration', categorySource: 'detected' });
+    seedOutcomes(4, { cli: 'claude', category: 'exploration', categorySource: 'defaulted' });
+
+    const report = generateWeatherReport({});
+    const claudeW = report.cliWeather.find((c) => c.cli === 'claude');
+    expect(report.overall.totalTasks).toBe(6);
+    expect(claudeW?.byCategory.get('exploration')?.count).toBe(2);
+  });
+
+  it('a category filter does not count defaulted-category rows (#6549)', () => {
+    seedOutcomes(4, { category: 'exploration', categorySource: 'defaulted' });
+
+    const report = generateWeatherReport({ category: 'exploration' });
+
+    expect(report.overall.totalTasks).toBe(0);
+  });
+
   it('includes adaptive bonuses when requested', () => {
     seedOutcomes(15, { cli: 'claude', category: 'architecture', success: true });
 
@@ -707,6 +725,16 @@ describe('swarmHealth in weather report', () => {
     expect(report.swarmHealth?.routingAccuracy).toBeCloseTo(0.5, 2);
   });
 
+  it('does not score routing accuracy over defaulted-category rows (#6549)', () => {
+    seedOutcomes(5, { cli: 'claude', category: 'exploration', categorySource: 'defaulted' });
+    seedOutcomes(5, { cli: 'gemini', category: 'exploration', categorySource: 'defaulted' });
+
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeDefined();
+    expect(report.swarmHealth?.observedCategories).toBe(0);
+    expect(report.swarmHealth?.analyzedCategories).toBe(0);
+  });
+
   it('scores routing against API arms too, so an API arm row is not a free miss (#6552)', () => {
     // api:anthropic is the best arm for code_generation (100%); gemini fails.
     seedOutcomes(5, { cli: 'api:anthropic', category: 'code_generation', success: true });
@@ -909,5 +937,87 @@ describe('the regret denominator counts only ANALYSABLE categories (#6036)', () 
     expect(health?.adaptationSpeedCategories).toBe(0);
     // The value itself is still 0 — that is precisely why the count must exist.
     expect(health?.adaptationSpeed).toBe(0);
+  });
+});
+
+// ============================================================================
+// API-arm rows (#6574): routed rows record `api:*` since #6554
+// ============================================================================
+
+describe('api:* outcome rows reach every weather reader (#6574)', () => {
+  it('recommendedMappings folds an api arm into its slot', () => {
+    // The issue's failing assertion: only api:anthropic rows for a category.
+    seedOutcomes(5, { cli: 'api:anthropic', category: 'testing', success: true });
+
+    const mappings = generateWeatherReport({}).recommendedMappings ?? [];
+    const testing = mappings.find((m) => m.category === 'testing');
+    expect(testing?.recommendedCli).toBe('claude');
+    expect(testing?.sampleCount).toBe(5);
+  });
+
+  it('recommendedMappings sums a slot with its api arm rather than picking one', () => {
+    // claude slot = 1 CLI success + 3 api:anthropic failures = 25%; gemini = 50%.
+    // Ignoring the api rows, or scoring them as a separate arm, makes claude 100%.
+    seedOutcomes(1, { cli: 'claude', category: 'testing', success: true });
+    seedOutcomes(3, { cli: 'api:anthropic', category: 'testing', success: false });
+    seedOutcomes(2, { cli: 'gemini', category: 'testing', success: true });
+    seedOutcomes(2, { cli: 'gemini', category: 'testing', success: false });
+
+    const testing = (generateWeatherReport({}).recommendedMappings ?? []).find(
+      (m) => m.category === 'testing'
+    );
+    expect(testing?.recommendedCli).toBe('gemini');
+    expect(testing?.successRate).toBe(0.5);
+  });
+
+  it('an empty store yields no mappings, insights or measured bonuses', () => {
+    const report = generateWeatherReport({});
+    expect(report.recommendedMappings).toEqual([]);
+    expect(report.learningInsights).toEqual([]);
+    expect(report.adaptiveBonuses.filter((b) => b.sampleCount > 0)).toEqual([]);
+    expect(report.swarmHealth).toBeUndefined();
+    expect(getAdaptiveBonus('claude', 'testing')).toBe(0);
+  });
+
+  it('getAdaptiveBonus credits api:anthropic rows to the claude slot, not another slot', () => {
+    seedOutcomes(5, { cli: 'api:anthropic', category: 'testing', success: true });
+
+    expect(getAdaptiveBonus('claude', 'testing')).toBeGreaterThan(0);
+    expect(getAdaptiveBonus('codex', 'testing')).toBe(0);
+  });
+
+  it('adaptiveBonuses count api:openai rows under the codex slot', () => {
+    seedOutcomes(4, { cli: 'api:openai', category: 'testing', success: true });
+
+    const bonus = generateWeatherReport({}).adaptiveBonuses.find(
+      (b) => b.cli === 'codex' && b.category === 'testing'
+    );
+    expect(bonus?.sampleCount).toBe(4);
+    expect(bonus?.sufficient).toBe(true);
+  });
+
+  it('learningInsights report the api arm under its own id, and no row-less arm', () => {
+    seedOutcomes(5, { cli: 'api:anthropic', category: 'testing', success: true });
+
+    const insights = generateWeatherReport({}).learningInsights ?? [];
+    expect(insights.map((i) => i.cli)).toEqual(['api:anthropic']);
+    expect(insights[0]?.sampleCount).toBe(5);
+  });
+
+  it('adaptation speed is measured from api-arm rows', () => {
+    // 40 samples → confidence 0.8, above the 0.7 adaptation threshold.
+    seedOutcomes(40, { cli: 'api:google', category: 'testing', success: true });
+
+    const health = generateWeatherReport({}).swarmHealth;
+    expect(health?.adaptationSpeedCategories).toBe(1);
+    expect(health?.adaptationSpeed).toBe(40);
+  });
+
+  it('cliWeather adds an api arm that has rows and omits the ones that do not', () => {
+    seedOutcomes(3, { cli: 'api:anthropic', category: 'testing', success: true });
+
+    const weather = generateWeatherReport({}).cliWeather;
+    expect(weather.map((c) => c.cli)).toEqual([...CLI_NAMES, 'api:anthropic']);
+    expect(weather.find((c) => c.cli === 'api:anthropic')?.totalTasks).toBe(3);
   });
 });

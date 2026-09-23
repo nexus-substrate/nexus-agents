@@ -73,30 +73,6 @@ export function topologicalWaveAssign<T extends WaveEntry>(
   return ok(entries.map((e) => ({ ...e, wave: waveByRole.get(e.role) ?? e.wave })));
 }
 
-/**
- * Group topologically-waved entries into wave buckets. Returned waves
- * are sorted ascending; each wave contains the entries that may run in
- * parallel once earlier waves complete.
- *
- * Named `groupByTopologicalWave` rather than `groupByWave` to avoid a
- * collision with `worker-dispatcher.groupByWave`, which operates on the
- * richer `AgentPlanEntry` union and is the canonical public export.
- */
-export function groupByTopologicalWave<T extends WaveEntry>(entries: readonly T[]): readonly T[][] {
-  const buckets = new Map<number, T[]>();
-  for (const e of entries) {
-    const bucket = buckets.get(e.wave);
-    if (bucket === undefined) {
-      buckets.set(e.wave, [e]);
-    } else {
-      bucket.push(e);
-    }
-  }
-  return Array.from(buckets.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([, v]) => v);
-}
-
 function buildRoleIndex<T extends WaveEntry>(entries: readonly T[]): Map<string, T> {
   const byRole = new Map<string, T>();
   for (const e of entries) byRole.set(e.role, e);

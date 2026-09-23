@@ -9,15 +9,13 @@
  * module turns that into a `TaskOutcome` with `routedBy: 'composite-router'`,
  * the same fields the dev-pipeline stages write through `expert-bridge`.
  *
- * Two cases write NO row, and both are deliberate:
- * - no arm ran (routing failed, or the result carries no `routedCli`): there is
- *   no routed execution to attribute;
- * - the task category was not detected. `TaskOutcome.category` is required, so
- *   an undetected category cannot be recorded as absent, and any placeholder
- *   (the old `'exploration'` default) would be a fabricated signal that the
- *   distiller and every per-category report would read as measured. The
- *   router's in-process feedback still happens; only the persisted row is
- *   skipped. #6549 tracks giving "undetected" a representation.
+ * No arm ran (routing failed, or the result carries no `routedCli`): NO row is
+ * written, since there is no routed execution to attribute.
+ *
+ * The task category was not detected: the row IS written, marked
+ * `categorySource: 'defaulted'` (#6549). The routed population and `doctor`'s
+ * routed count include the run; the distiller and every per-category reader
+ * skip it, so the placeholder category is never read as measured.
  *
  * @module cli/orchestrate-outcome
  */
@@ -26,7 +24,10 @@ import { createLogger, getTimeProvider, getRandomProvider, type Result } from '.
 import type { CliError, CliResponse, RoutingArmId } from '../cli-adapters/index.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
-import { outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js';
+import {
+  outcomeFailureFields,
+  resolveOutcomeCategory,
+} from '../orchestration/outcomes/outcome-types.js';
 
 const logger = createLogger({ component: 'orchestrate-outcome' });
 
@@ -61,11 +62,6 @@ export function recordRoutedOrchestrateOutcome(
     logger.debug('No routed arm on the result; no outcome recorded');
     return;
   }
-  const category = detectTaskCategory(taskContent)?.category;
-  if (category === undefined) {
-    logger.debug('Task category not detected; routed outcome not persisted', { routedArm });
-    return;
-  }
   try {
     const nowMs = getTimeProvider().now();
     const suffix = getRandomProvider().random().toString(36).slice(2, 8);
@@ -73,7 +69,7 @@ export function recordRoutedOrchestrateOutcome(
       id: `orchestrate-cli-${String(nowMs)}-${suffix}`,
       cli: routedArm,
       routedBy: 'composite-router',
-      category,
+      ...resolveOutcomeCategory(detectTaskCategory(taskContent)?.category),
       model: 'orchestrate-cli',
       success: result.ok,
       durationMs: routedDurationMs,

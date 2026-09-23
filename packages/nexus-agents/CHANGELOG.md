@@ -1,5 +1,119 @@
 # nexus-agents
 
+## 8.94.0
+
+### Minor Changes
+
+- [#6593](https://github.com/nexus-substrate/nexus-agents/pull/6593) [`849bfca`](https://github.com/nexus-substrate/nexus-agents/commit/849bfca8f6d948d8a6c389125187e7a029c30226) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - New `NEXUS_DISABLED_CLIS` environment variable takes CLIs out of service, e.g. `NEXUS_DISABLED_CLIS=codex,gemini` when those plans are out of quota. Before this, a quota-exhausted CLI stayed selectable because it is still installed and authenticated: it kept receiving voter seats and router traffic until its circuit breaker had watched real calls fail.
+
+  The value is a comma-separated list of `claude`, `gemini`, `codex` and `opencode`, trimmed and case-insensitive. A disabled CLI is dropped from `getAvailableClis` (voter seats and auto-selection), from `createAllAdapters` (the routing arm set used by `orchestrate` and the pipeline router), from per-CLI registry adapters and expert fallback chains, and from `delegate_to_model` recommendations. `doctor` lists disabled CLIs and does not probe them. An unknown name logs one warning and is ignored. Disabling every CLI leaves no CLI adapter, so callers get the existing no-adapter error. Unset or empty changes nothing.
+
+### Patch Changes
+
+- [#6594](https://github.com/nexus-substrate/nexus-agents/pull/6594) [`fda51ac`](https://github.com/nexus-substrate/nexus-agents/commit/fda51ac158c3d69c16994623bbeb089d4f056c3e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents vote --record <issue> --option …` now renders the `Options:` block in the recorded GitHub issue comment. The comment previously omitted the declared-option tally added in [#6585](https://github.com/nexus-substrate/nexus-agents/issues/6585), so the durable comment could not show which option won or the breakdown across declared options.
+
+## 8.93.1
+
+### Patch Changes
+
+- [#6591](https://github.com/nexus-substrate/nexus-agents/pull/6591) [`a9cccd7`](https://github.com/nexus-substrate/nexus-agents/commit/a9cccd7d746e8ddae070767282f570d7002d7154) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove three multi-CLI orchestration strategies that nothing called: `executeTriangulatedReview`, `executeParallelExploration` and `executeConsensusPlan`, along with their config schemas, default-config factories and result types. None was on the published API surface, and no MCP tool, CLI command or pipeline stage dispatched to them. Multi-CLI review and planning remain available through `consensus_vote`, `pr_review` and `run_dev_pipeline`.
+
+- [#6584](https://github.com/nexus-substrate/nexus-agents/pull/6584) [`6d40351`](https://github.com/nexus-substrate/nexus-agents/commit/6d4035133bf1bca875281793186bdefa88b6540d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removed three internal helpers that no production code called: the in-memory pipeline `CheckpointStore` (with `getCheckpointStore`, `resetCheckpointStore` and its `StageCheckpoint`, `CheckpointPort` and `CheckpointStoreOptions` types), the `orchestration/aorchestra/context-freshness` module (`isContextFresh`, `markContextVerified`, `getContextAge`, `DEFAULT_TTL_MS`, `ContextEntry`), and `groupByTopologicalWave`. Pipeline resume still goes through `saveStageCheckpoint`, and wave grouping through `groupByWave`. None of these were part of the published API surface, so nothing public changed.
+
+- [#6586](https://github.com/nexus-substrate/nexus-agents/pull/6586) [`8a335e0`](https://github.com/nexus-substrate/nexus-agents/commit/8a335e063afa7400159b6b282bb039bde9472f84) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents vote --option …` now prints an `Options:` block in its terminal summary. Before this, the declared-option tally was written to the audit record but the summary showed only Approve/Reject counts and `Result:`, so a reader could not tell which option won without opening `.nexus-agents/governance/vote-records.jsonl`.
+
+  The block lists every declared option with its count (an option nobody chose prints `0`), a `Winner:` line, and a `Coverage:` line giving how many approvers named a declared option and how many were unattributed. The winner line says `none` with the reason when no voter named an option, when the top count is tied, or when the leading option fell short of the option bar. The counts are the option gate's own tally from the engine, not a second computation. A vote without `--option` prints no block.
+
+## 8.93.0
+
+### Minor Changes
+
+- [#6581](https://github.com/nexus-substrate/nexus-agents/pull/6581) [`17059f8`](https://github.com/nexus-substrate/nexus-agents/commit/17059f8cb2f7f36ca4e3a2a3211d851af862c9f5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` now stops an async `run_workflow` or `execute_spec` job at the next step boundary. Before this, cancelling either job marked the record `cancelled` while the run kept dispatching steps, and so kept spending, until it finished.
+
+  - `IWorkflowEngine.execute` options gain `signal` (new, optional): `WorkflowEngine` links it to the execution's own abort controller, so a step not yet dispatched is skipped and the run fails with `Workflow cancelled` at the next phase boundary, including after the final phase.
+  - `SpecExecutionOptions.signal` (new, optional): `executeSpec` hands the signal to the graph executor, which checks it before each super-step. Once it has fired, `executeSpec` returns the error `Spec execution cancelled` at stage `execute`, never a partial result that goes on to validation.
+
+  In both cases a step that is already running finishes. Only the steps after it are skipped. The job record's `signalAccepted` is now `true` for both tools. `orchestrate` and `run` still do not accept the signal ([#6305](https://github.com/nexus-substrate/nexus-agents/issues/6305)).
+
+## 8.92.0
+
+### Minor Changes
+
+- [#6576](https://github.com/nexus-substrate/nexus-agents/pull/6576) [`4afdc1e`](https://github.com/nexus-substrate/nexus-agents/commit/4afdc1e72048700aad8cd857408af653c0138201) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Outcome rows recorded under an API arm (`api:anthropic`, `api:openai`, `api:google`, `api:custom-openai`) count again in the weather report and `doctor --deep` ([#6574](https://github.com/nexus-substrate/nexus-agents/issues/6574)). Since 8.89 a routed API run records its arm instead of its CLI slot, and these readers only looked at CLI slots, so those runs counted toward nothing.
+
+  - Adaptive bonuses (`getAdaptiveBonus`, which `delegate_to_model` uses, and `adaptiveBonuses`) and `recommendedMappings` add each API arm's rows to its CLI slot. For example, `api:anthropic` rows count toward `claude`.
+  - `learningInsights`, the adaptation-speed metric and `doctor --deep` data sufficiency keep each API arm separate from its slot, the same way routing accuracy already does. `cliWeather` lists an API arm once it has rows. `doctor --deep` lists arms with no rows as unmeasured and no longer prints them as "0 tasks".
+  - `computeAdaptiveThresholds` now accepts any routing arm id (`RoutingArmId`), not just a CLI name. This widens the accepted input, so existing callers still work.
+
+### Patch Changes
+
+- [#6578](https://github.com/nexus-substrate/nexus-agents/pull/6578) [`ec287bd`](https://github.com/nexus-substrate/nexus-agents/commit/ec287bd45cd3aaf9726407425c196da19625a962) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Server-mode shutdown no longer loses audit records at the end of a session ([#6573](https://github.com/nexus-substrate/nexus-agents/issues/6573)).
+
+  - **Audit logger closes last.** Shutdown now closes the MCP server first, waits up to 1 s for running tool calls to finish, runs the rest of the teardown, and only then closes the audit logger. Before, the logger closed first, so a tool call that finished during shutdown lost its audit event ("Attempted to log after close"). `system.shutdown.begin` now carries `metadata.toolCallsStillRunning`, the number of calls still running when the logger closed, so a missing event is visible on the record. Task-based tools and async jobs are not waited for.
+  - **A closed stderr pipe no longer crashes shutdown.** When the host process dies, the server's first write to its stderr pipe fails with EPIPE. That error used to become an uncaught exception, and the process exited with code 1 before the audit flush, so `system.shutdown.begin` was never written. An EPIPE on stderr now requests the normal graceful shutdown. Other stderr errors still end the process.
+
+## 8.91.0
+
+### Minor Changes
+
+- [#6575](https://github.com/nexus-substrate/nexus-agents/pull/6575) [`627880b`](https://github.com/nexus-substrate/nexus-agents/commit/627880b1c5557eebbc7956e97f492bf73f058b18) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` now stops an async `run_dev_pipeline` or `run_pipeline` job at the next stage boundary. Before this, cancelling either job marked the record `cancelled` while the pipeline kept calling stages, and so kept spending, until it finished.
+
+  - `DevPipelineOptions.signal` (new, optional): `runDevPipeline` checks the signal immediately before every stage call, including each plan/vote and implement/QA iteration. Once it has fired, the run rejects with `Dev pipeline cancelled before the <stage> stage` and no further stage runs.
+  - `GraphPipelineOptions.signal` (new, optional, and inherited by `AdaptiveOrchestratorOptions`): the signal is handed to the graph executor. The executor checks it before each super-step and fails the run with `Graph execution aborted`.
+
+  In both cases a stage that is already running finishes. Only the stages after it are skipped. The job record's `signalAccepted` is now `true` for both tools, and it reports only what the engines actually read. The four other `runAsJob` tools listed in [#6305](https://github.com/nexus-substrate/nexus-agents/issues/6305) still do not accept the signal.
+
+## 8.90.0
+
+### Minor Changes
+
+- [#6566](https://github.com/nexus-substrate/nexus-agents/pull/6566) [`351fb34`](https://github.com/nexus-substrate/nexus-agents/commit/351fb344ac3dc5a6f3121567eb1c5b8259ad8a06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Outcome records now say when their task category was not detected. `TaskOutcome` gains an optional `categorySource` field (`'detected' | 'defaulted'`). When no category keyword matches, the `orchestrate` tool, worker dispatch and `execute_expert` still store `'exploration'` in the required `category` field, but now mark the row `categorySource: 'defaulted'`. Before this change such rows could not be told apart from measured exploration work.
+
+  Per-category readers skip defaulted rows: `OutcomeStore` category filters and `summarize().byCategory`, the weather report's per-CLI category breakdown and routing accuracy, `improvement_review`'s cli×category floor, `doctor --deep` category coverage, and distilled-rule training. Whole-population totals still count them.
+
+  The `orchestrate` CLI's routed-outcome writer now records runs whose category was not detected, marked `defaulted`, instead of writing no row. The routed population and `doctor`'s routed count therefore include them.
+
+  Two more writers mark their placeholder the same way. Parallel exploration stores `'exploration'` for an undetected task, since that fallback is also what makes the task eligible. `run_graph_workflow` used to file any workflow whose name has no security, audit or review signal as `'code_generation'`. It now marks that row `defaulted`, and its stored category becomes `'exploration'`.
+
+  Rows written before this change carry no `categorySource` and are read as before. `TaskCategory` is unchanged.
+
+- [#6565](https://github.com/nexus-substrate/nexus-agents/pull/6565) [`9678a83`](https://github.com/nexus-substrate/nexus-agents/commit/9678a831c2a7575f9973c9a453c5fe978d95aeb4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `consensus_vote` now names the working directory its seats were pointed at ([#6258](https://github.com/nexus-substrate/nexus-agents/issues/6258)). The response carries an optional `workspace` field: the caller's checkout (the CLI's ratification scratch checkout) or, when none was given, the server's working directory. `nexus-agents vote` prints the same value on a `Workspace:` summary line. When a seat comes back `unverifiable`, you can now see which directory it was given without reading stderr. A simulated panel gives no seat a directory, so the response omits the field and the summary line reads `Workspace: none (no live seat was pointed at one)`. The persisted vote record is unchanged.
+
+## 8.89.4
+
+### Patch Changes
+
+- [#6563](https://github.com/nexus-substrate/nexus-agents/pull/6563) [`268592a`](https://github.com/nexus-substrate/nexus-agents/commit/268592a0275946b3d3b1d656a4853020f750de91) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `doctor --deep` routing convergence no longer reports an arm with no outcome rows as a 0% success rate. It now covers `api:*` arms (recorded under their own id since [#6554](https://github.com/nexus-substrate/nexus-agents/issues/6554)) as well as the four CLI slots. An arm with no rows is reported as `unmeasured`, and the average success rate is taken over measured arms only. When no arm has rows, the average is `unmeasured` and the output says so, where it used to print 0.0%.
+
+  `RoutingConvergence` changes shape:
+
+  - `cliSuccessRates: Map<string, number>` is replaced by `armSuccessRates: Map<string, ArmSuccessRate>`, where each entry is either `{ status: 'measured', rate, sampleCount }` or `{ status: 'unmeasured' }`.
+  - `avgSuccessRate` is now `number | 'unmeasured'`.
+  - A new field, `measuredArmCount`, reports how many arms have rows.
+  - `converged` now requires every measured arm to clear the cold-start threshold, and is `false` when no arm is measured. Previously it required all four CLI slots, so a workspace that routes only through API arms could never report converged.
+
+## 8.89.3
+
+### Patch Changes
+
+- [#6561](https://github.com/nexus-substrate/nexus-agents/pull/6561) [`9cfc65c`](https://github.com/nexus-substrate/nexus-agents/commit/9cfc65c90892648b9e04b18a03234090338e5b84) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Server mode now flushes the audit log when the MCP host closes stdin ([#6560](https://github.com/nexus-substrate/nexus-agents/issues/6560)).
+
+  Closing stdin is how stdio MCP hosts normally stop a server. That path used to call `process.exit(0)` directly, skipping the shutdown cleanup that SIGINT and SIGTERM run. Audit records queued since the last 1 s flush were lost: a session shorter than one second left an empty audit file, and `system.shutdown.begin` was never written, so a normal stop looked the same as a crash. Tool-memory persistence and the rest of the teardown were skipped too.
+
+  Parent death (stdin end, stdin close, or a parent-pid change) now goes through the same cleanup as the signals. That cleanup runs once even when a signal and stdin EOF arrive together. It is bounded at 12 s so a hung flush cannot keep an orphaned server alive; if the bound fires, the server logs an error and exits with code 2 (`SHUTDOWN_ERROR`). A clean stop still exits 0.
+
+## 8.89.2
+
+### Patch Changes
+
+- [#6554](https://github.com/nexus-substrate/nexus-agents/pull/6554) [`bc0ba73`](https://github.com/nexus-substrate/nexus-agents/commit/bc0ba7301f5bf330ef1a2169f31cf9ef01520205) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Routed outcome rows now record the arm that ran, not its vendor slot ([#6552](https://github.com/nexus-substrate/nexus-agents/issues/6552)). A task the router sent to the Anthropic API arm was written to the outcome store as `cli: 'claude'`, so the next process's LinUCB warm start credited the claude CLI arm and the `api:anthropic` arm started cold. The claude CLI arm's quality reward also mixed API runs into its success rate.
+
+  - `CliResponse`, `CliError` and `ExpertBridgeResult` gain an optional `routedArm` (a `RoutingArmId`, such as `api:anthropic` or `claude`), set by `CompositeRouter` next to the existing `routedCli`. `routedCli` is unchanged and remains the display slot.
+  - Rows written by the dev-pipeline stages and by `nexus-agents orchestrate` store `routedArm` as `cli`. A CLI arm is still recorded under its own name (`claude`, `codex`, ...).
+  - The router's quality reward reads the success rate of the arm that ran. An API arm with no history of its own falls back to its display slot's rate, so a new API arm is not rewarded below its CLI sibling for the same success.
+  - `weather_report` swarm health now scores routing accuracy and regret over API arms as well as CLI names. Before, an API-arm row could never count as accurate, and a category mixing API and CLI rows could report negative regret. A category made only of API-arm rows is now analysed rather than skipped.
+  - API-arm rows do not train distilled routing rules, as before: the rules file accepts CLI names only. The difference is that API runs no longer reach the rules under the `claude` label. Per-CLI tables in `weather_report`, `doctor --deep` and adaptive timeouts also drop API runs from the CLI rows that used to include them. Rows written before this change keep their slot label.
+
 ## 8.89.1
 
 ### Patch Changes

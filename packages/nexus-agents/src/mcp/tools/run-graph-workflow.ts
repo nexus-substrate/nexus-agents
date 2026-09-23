@@ -42,6 +42,7 @@ import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
+import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
@@ -440,13 +441,17 @@ function createErrorResponse(opts: ErrorResponseOpts): RunGraphWorkflowResponse 
 
 const graphLogger = createLogger({ tool: 'run-graph-workflow' });
 
-/** Maps workflow name to task category for accurate weather report tracking. */
-function workflowToCategory(
-  workflow: string
-): 'code_review' | 'security_review' | 'code_generation' {
-  if (workflow.includes('security') || workflow.includes('audit')) return 'security_review';
-  if (workflow.includes('review')) return 'code_review';
-  return 'code_generation';
+/**
+ * Maps a workflow name to the outcome's category fields. A name with no
+ * security/audit/review signal carries no category, so the row is marked
+ * defaulted rather than filed as measured code generation (#6549).
+ */
+function workflowToCategory(workflow: string): ReturnType<typeof resolveOutcomeCategory> {
+  if (workflow.includes('security') || workflow.includes('audit')) {
+    return resolveOutcomeCategory('security_review');
+  }
+  if (workflow.includes('review')) return resolveOutcomeCategory('code_review');
+  return resolveOutcomeCategory(undefined);
 }
 
 /** Records graph workflow result to memory and outcome store. Best-effort. */
@@ -487,7 +492,7 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
       // `'unknown'` is the schema's own unattributed value, and the bandit's
       // warm-start already partitions it out (#4935) instead of replaying it.
       cli: 'unknown',
-      category: workflowToCategory(result.workflow),
+      ...workflowToCategory(result.workflow),
       model: 'graph-workflow',
       success: succeeded,
       durationMs: result.durationMs,

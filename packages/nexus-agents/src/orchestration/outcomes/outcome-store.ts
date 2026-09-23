@@ -10,7 +10,7 @@
  */
 
 import type { TaskOutcome, OutcomeQuery, PerformanceSummary, GroupStats } from './outcome-types.js';
-import { categorizeOutcomeErrorMessage } from './outcome-types.js';
+import { categorizeOutcomeErrorMessage, hasMeasuredCategory } from './outcome-types.js';
 import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 import { getDefaultRegistry, type ModelRegistry } from '../../config/model-registry.js';
 
@@ -179,7 +179,9 @@ export class OutcomeStore {
       successRate: successCount / outcomes.length,
       avgDurationMs: totalDuration / outcomes.length,
       byCli: groupBy(outcomes, (o) => o.cli),
-      byCategory: groupBy(outcomes, (o) => o.category),
+      // A defaulted category (#6549) is no category: totals count the row,
+      // the per-category breakdown does not.
+      byCategory: groupBy(outcomes.filter(hasMeasuredCategory), (o) => o.category),
     };
   }
 
@@ -370,7 +372,10 @@ export function getOutcomeSummaryText(limit = 5): string {
 function buildPredicates(filter: OutcomeQuery): Array<(o: TaskOutcome) => boolean> {
   const preds: Array<(o: TaskOutcome) => boolean> = [];
   if (filter.cli !== undefined) preds.push((o) => o.cli === filter.cli);
-  if (filter.category !== undefined) preds.push((o) => o.category === filter.category);
+  if (filter.category !== undefined) {
+    // A defaulted row is not a row of its placeholder category (#6549).
+    preds.push((o) => hasMeasuredCategory(o) && o.category === filter.category);
+  }
   if (filter.source !== undefined) preds.push((o) => o.source === filter.source);
   if (filter.success !== undefined) preds.push((o) => o.success === filter.success);
   if (filter.failureCategory !== undefined) {

@@ -362,6 +362,37 @@ describe('executeWorkerDispatch', () => {
 
     expect(result.conflicts).toEqual([]);
   });
+
+  // #6589: the JSDoc on `qualityGate` says there is no default. A 2-character
+  // worker output is what a length gate would reject, so if a default gate is
+  // ever wired in here, this fails and the doc must be revisited with it.
+  it('does not gate worker output when no qualityGate is passed (#6589)', async () => {
+    const result = await executeWorkerDispatch({
+      agentPlan: makePlan(1),
+      taskDescription: 'Short answer task',
+      modelAdapter: makeMockAdapter('ok'),
+      logger,
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.status).toBe('success');
+    expect(result.results[0]?.output).toBe('ok');
+    expect(result.results[0]?.error).toBeUndefined();
+  });
+
+  it('applies a qualityGate when the caller passes one (#6589)', async () => {
+    const result = await executeWorkerDispatch({
+      agentPlan: makePlan(1),
+      taskDescription: 'Gated task',
+      modelAdapter: makeMockAdapter('ok'),
+      logger,
+      qualityGate: (r) => (r.output.length < 3 ? 'too short for test gate' : undefined),
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.status).toBe('error');
+    expect(result.results[0]?.error).toBe('Quality gate: too short for test gate');
+  });
 });
 
 // ============================================================================
@@ -438,6 +469,26 @@ describe('recordWorkerOutcomes', () => {
     const entries = getOutcomeStore().query();
     expect(entries[0]?.success).toBe(false);
     expect(entries[0]?.failureCategory).toBeDefined();
+  });
+
+  it('marks worker rows of an undetected category as defaulted (#6549)', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'x', output: 'ok', status: 'success', durationMs: 10 },
+    ];
+
+    recordWorkerOutcomes(results, 'zzqx flurb');
+
+    expect(getOutcomeStore().query()[0]?.categorySource).toBe('defaulted');
+  });
+
+  it('marks worker rows of a detected category as detected (#6549)', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'x', output: 'ok', status: 'success', durationMs: 10 },
+    ];
+
+    recordWorkerOutcomes(results, 'write unit tests for the parser');
+
+    expect(getOutcomeStore().query()[0]?.categorySource).toBe('detected');
   });
 
   it('maps worker errorType to outcome failureCategory', () => {

@@ -515,6 +515,12 @@ export interface ConsensusVoteResponse {
    * input sees `default` next to the verdict instead of a silent mis-scope.
    */
   project: ResolvedVoterProject;
+  /**
+   * #6258: the working directory every seat was pointed at — the caller's
+   * checkout, else the server's `process.cwd()`. Present-only: absent when no
+   * live seat ran (a simulated panel) or the result bypassed `executeVoting`.
+   */
+  workspace?: string;
   higherOrderMetadata?: HigherOrderMetadata;
   /**
    * Set when an error policy short-circuited the vote (#2630/#3124). Explains a
@@ -659,6 +665,11 @@ export interface ExtendedVotingResult extends VotingResult {
    * Absent only on results built by paths that never ran `executeVoting`.
    */
   project?: ResolvedVoterProject;
+  /**
+   * #6258: the directory `executeVoting` handed every seat, stamped once per
+   * panel. Absent on a simulated panel and on results that bypassed it.
+   */
+  workspace?: string;
 }
 
 // ============================================================================
@@ -839,6 +850,14 @@ function disclosedProject(
   return { name, source };
 }
 
+/**
+ * The workspace disclosure for the response (#6258): present-only, like the
+ * stamp it copies — no directory is fabricated for a panel that never ran one.
+ */
+function disclosedWorkspace(result: ExtendedVotingResult): { workspace?: string } {
+  return result.workspace === undefined ? {} : { workspace: result.workspace };
+}
+
 export function buildResponse(
   input: ConsensusVoteInput,
   result: ExtendedVotingResult,
@@ -883,6 +902,7 @@ export function buildResponse(
     durationMs: result.totalTimeMs,
     simulateVotes: result.simulateVotes,
     project: disclosedProject(input, result),
+    ...disclosedWorkspace(result),
     // #6115: always present — a panel nobody answered is explicit zeros.
     panelDiversity: panelDiversityOf(result.votes),
     // #3991: surface the authentic-vote-record persistence outcome so a skipped

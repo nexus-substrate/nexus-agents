@@ -274,54 +274,6 @@ export type { Trend, AdaptiveThresholdResult } from './outcomes/index.js';
 // `emitThresholdUpdate` / `emitTrendDetected` removed in #3022 — see
 // outcomes/index.ts for the activate-or-delete rationale.
 
-// Parallel Exploration (Issue #862)
-export { executeParallelExploration } from './parallel-exploration.js';
-export type { ExploreOptions } from './parallel-exploration.js';
-export {
-  isParallelEligible,
-  createDefaultConfig as createParallelExplorationConfig,
-  ParallelExplorationConfigSchema,
-} from './parallel-exploration-types.js';
-export type {
-  PartitionResult,
-  ExplorationResult,
-  ParallelExplorationConfig,
-} from './parallel-exploration-types.js';
-
-// Triangulated Code Review (Issue #864)
-export { executeTriangulatedReview } from './triangulated-review.js';
-export type { ReviewOptions } from './triangulated-review.js';
-export {
-  createDefaultReviewConfig,
-  TriangulatedReviewConfigSchema,
-} from './triangulated-review-types.js';
-export type {
-  CliReviewPartition,
-  DeduplicatedFinding,
-  TriangulatedReviewResult,
-  TriangulatedReviewConfig,
-} from './triangulated-review-types.js';
-
-// Consensus Planning (Issue #863)
-export { executeConsensusPlan } from './consensus-plan.js';
-export type { PlanOptions } from './consensus-plan.js';
-export {
-  createDefaultPlanConfig,
-  ConsensusPlanConfigSchema,
-  PlanStepSchema,
-  PlanRiskSchema,
-} from './consensus-plan-types.js';
-export type {
-  PlanStep,
-  PlanRisk,
-  CliPlan,
-  CliPlanPartition,
-  AgreedStep,
-  Divergence,
-  ConsensusPlanResult,
-  ConsensusPlanConfig,
-} from './consensus-plan-types.js';
-
 // AOrchestra — Dynamic Sub-Agent Creation (Issue #699)
 export {
   planAgentTeam,
@@ -333,10 +285,6 @@ export {
   detectConflicts,
   matchTriggers,
   DEFAULT_TRIGGER_TABLE,
-  isContextFresh,
-  markContextVerified,
-  getContextAge,
-  DEFAULT_TTL_MS,
 } from './aorchestra/index.js';
 export type {
   AgentPlan,
@@ -347,7 +295,6 @@ export type {
   WorkerLearning,
   WorkerConflict,
   TriggerRule,
-  ContextEntry,
 } from './aorchestra/index.js';
 
 // Checkpointing (Issue #833)

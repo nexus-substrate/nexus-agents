@@ -17,7 +17,10 @@ import type {
 } from '../../orchestration/outcomes/outcome-types.js';
 import { getRandomProvider } from '../../core/index.js';
 import { getOutcomeStore, type OutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
-import { categorizeOutcomeErrorMessage } from '../../orchestration/outcomes/outcome-types.js';
+import {
+  categorizeOutcomeErrorMessage,
+  hasMeasuredCategory,
+} from '../../orchestration/outcomes/outcome-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { TASK_CATEGORIES } from '../../config/task-specialization-types.js';
 import { getSpecialization } from '../../config/task-specialization.js';
@@ -54,15 +57,13 @@ import {
 } from '../../observability/decision-cost-store.js';
 import { strategyCostProfiles } from '../../orchestration/strategy-manifest-registry.js';
 import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
+import { ROUTED_ARMS, rowsOfSlot } from './weather-report-arms.js';
 
 // ============================================================================
 // Public API
 // ============================================================================
 
 const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
-
-/** CLI slots plus API arms: every `cli` an attributed outcome row can carry (#6552). */
-const ROUTED_ARMS: readonly string[] = [...CLI_NAMES, ...ApiArmIdSchema.options];
 
 /**
  * Optional injectable dependencies for {@link generateWeatherReport} (#3856).
@@ -255,6 +256,10 @@ function buildRateLimitReport(): readonly RateLimitReport[] {
 /**
  * Queries outcomes with a lookback window, falling back to all history
  * if the window has fewer samples than coldStartThreshold. (#1401)
+ *
+ * Folds each `api:*` arm into its display slot (#6574): the bonuses built on
+ * this are consumed by slot (`delegate_to_model`, the weather routing stage),
+ * and since #6554 a routed API run records `api:anthropic`, not `claude`.
  */
 export function queryWithLookback(
   store: OutcomeStore,
@@ -266,11 +271,14 @@ export function queryWithLookback(
   const exclude = ['e2e-eval'];
   if (cfg.outcomeLookbackMs > 0) {
     const since = new Date(Date.now() - cfg.outcomeLookbackMs).toISOString();
-    const recent = store.query({ cli, category, since, excludeQualitySignals: exclude });
+    const recent = rowsOfSlot(
+      store.query({ category, since, excludeQualitySignals: exclude }),
+      cli
+    );
     if (recent.length >= cfg.coldStartThreshold) return recent;
   }
   // Fall back to all history if lookback window has insufficient data
-  return store.query({ cli, category, excludeQualitySignals: exclude });
+  return rowsOfSlot(store.query({ category, excludeQualitySignals: exclude }), cli);
 }
 
 /**
@@ -368,17 +376,23 @@ function buildCliWeather(
   summary: PerformanceSummary,
   input: WeatherReportOptions
 ): readonly CliWeather[] {
-  const clis = input.cli !== undefined ? [input.cli] : [...CLI_NAMES];
+  const store = getOutcomeStore();
+  // The four slots always appear; an api:* arm appears once it has rows
+  // (#6574), so a routed API run is not invisible and a row-less arm is not
+  // rendered as a measured 0%. The arms stay apart, as in analyzeCategoryRouting.
+  const observedApiArms = ApiArmIdSchema.options.filter(
+    (arm) => store.query({ cli: arm, limit: 1 }).length > 0
+  );
+  const clis = input.cli !== undefined ? [input.cli] : [...CLI_NAMES, ...observedApiArms];
 
   return clis.map((cli) => {
     const stats = summary.byCli.get(cli);
-    const store = getOutcomeStore();
     const cliOutcomes = store.query({ cli: cli });
 
     // Build per-category breakdown for this CLI
     const byCategory = new Map<string, GroupStats>();
     for (const cat of TASK_CATEGORIES) {
-      const catOutcomes = cliOutcomes.filter((o) => o.category === cat);
+      const catOutcomes = cliOutcomes.filter((o) => hasMeasuredCategory(o) && o.category === cat);
       if (catOutcomes.length > 0) {
         const sc = catOutcomes.filter((o) => o.success).length;
         const td = catOutcomes.reduce((s, o) => s + o.durationMs, 0);
@@ -450,7 +464,9 @@ function buildLearningInsights(): readonly LearningInsight[] {
   const store = getOutcomeStore();
   const insights: LearningInsight[] = [];
 
-  for (const cli of CLI_NAMES) {
+  // Per observed arm, like analyzeCategoryRouting (#6574): a report keeps an
+  // api:* arm apart from its slot. An arm with no rows yields no insight.
+  for (const cli of ROUTED_ARMS) {
     for (const category of TASK_CATEGORIES) {
       const thresholds = computeAdaptiveThresholds(store, cli, category);
       if (thresholds.sampleCount > 0) {
@@ -469,7 +485,11 @@ function buildLearningInsights(): readonly LearningInsight[] {
   return insights;
 }
 
-/** Builds recommended CLI mappings per category for LinUCB cold-start (#952). */
+/**
+ * Builds recommended CLI mappings per category for LinUCB cold-start (#952).
+ * A mapping names a CLI slot, so each `api:*` arm's rows fold into their slot
+ * (#6574) — otherwise a category routed only through API arms had no mapping.
+ */
 function buildRecommendedMappings(): readonly RecommendedMapping[] {
   const store = getOutcomeStore();
   const mappings: RecommendedMapping[] = [];
@@ -478,9 +498,10 @@ function buildRecommendedMappings(): readonly RecommendedMapping[] {
     let bestCli = '';
     let bestRate = -1;
     let bestCount = 0;
+    const categoryRows = store.query({ category });
 
     for (const cli of CLI_NAMES) {
-      const outcomes = store.query({ cli, category });
+      const outcomes = rowsOfSlot(categoryRows, cli);
       if (outcomes.length === 0) continue;
       const rate = outcomes.filter((o) => o.success).length / outcomes.length;
       if (rate > bestRate || (rate === bestRate && outcomes.length > bestCount)) {
@@ -567,10 +588,11 @@ function computeAdaptationSpeed(): { average: number; categories: number } {
   let speedSum = 0;
   let speedCount = 0;
   for (const category of TASK_CATEGORIES) {
-    // Find the best CLI for this category (fewest samples to reach confidence)
+    // Find the best arm for this category (fewest samples to reach confidence).
+    // Every observed arm, api:* included (#6574), as in analyzeCategoryRouting.
     let bestSamples = Infinity;
     let found = false;
-    for (const cli of CLI_NAMES) {
+    for (const cli of ROUTED_ARMS) {
       const thresholds = computeAdaptiveThresholds(store, cli, category);
       if (thresholds.confidence >= ADAPTATION_CONFIDENCE_THRESHOLD && thresholds.sampleCount > 0) {
         if (thresholds.sampleCount < bestSamples) {
@@ -621,7 +643,9 @@ function buildSwarmHealth(
   let analyzedCategories = 0;
 
   for (const category of TASK_CATEGORIES) {
-    const catOutcomes = allOutcomes.filter((o) => o.category === category);
+    const catOutcomes = allOutcomes.filter(
+      (o) => hasMeasuredCategory(o) && o.category === category
+    );
     if (catOutcomes.length < ROUTING_MIN_SAMPLES) continue;
     observedCategories++;
     const stats = analyzeCategoryRouting(catOutcomes);

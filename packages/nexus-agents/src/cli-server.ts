@@ -6,12 +6,7 @@
  * @module cli-server
  */
 
-import {
-  createServer,
-  connectTransport,
-  closeServer,
-  type EventBusBridgeResult,
-} from './mcp/index.js';
+import { createServer, connectTransport, type EventBusBridgeResult } from './mcp/index.js';
 import { initializeBuiltInTemplates } from './workflows/index.js';
 import { createUnifiedRegistry, type UnifiedAdapterRegistry } from './adapters/unified-registry.js';
 import { MCP_TIMEOUTS } from './config/timeouts.js';
@@ -26,21 +21,16 @@ import { VERSION } from './version.js';
 import { warnIfVersionStale } from './cli/version-check.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
-import {
-  SwarmObserver,
-  shutdownSwarmHealthSignals,
-  shutdownFailoverSignals,
-} from './observability/index.js';
+import type { SwarmObserver } from './observability/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
 import {
   initializeSwarmObserver,
   initializeEventBus,
   recordServerStartup,
   watchParentProcess,
-  recordServerShutdown,
-  logFinalHealthMetrics,
-  logFinalEventBusStats,
-  type ServerEventContext,
+  createGracefulShutdown,
+  routeStderrEpipeToShutdown,
+  type ShutdownRequest,
 } from './cli-server-lifecycle.js';
 import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orchestrator.js';
 import {
@@ -54,14 +44,14 @@ import { wireGateway, resolveDefaultModelAdapter } from './cli-server-gateway.js
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeAuth } from './cli-server-auth.js';
-import { shutdownToolMemory, configureToolMemory } from './mcp/tools/tool-memory.js';
-import { shutdownExpertBridge } from './pipeline/expert-bridge.js';
-import { shutdownPipelineEventBridge } from './pipeline/event-bus-bridge.js';
-import { shutdownTuneStage } from './pipeline/tune-stage.js';
-import { shutdownImprovementReviewScheduler } from './mcp/tools/improvement-review-scheduler.js';
+import { configureToolMemory } from './mcp/tools/tool-memory.js';
+import {
+  createShutdownCleanup,
+  trackInFlightToolCalls,
+  type InFlightToolCalls,
+} from './cli-server-shutdown.js';
 import {
   initializeAuditLogger,
-  shutdownAuditLogger,
   recordStartupComplete,
   recordStartupFailure,
   logSecurityConfig,
@@ -77,31 +67,17 @@ export { type OrchestratorModeOptions } from './cli-orchestrator.js';
  *
  * @param cleanup - Async cleanup function to call on shutdown
  * @param logger - Logger instance
+ * @returns The shared, bounded, run-once shutdown request. Parent death
+ *   (`watchParentProcess`) must call this too, not `process.exit` (#6560).
  */
-export function setupShutdownHandlers(cleanup: () => Promise<void>, logger: ILogger): void {
-  let isShuttingDown = false;
-
-  const handleShutdown = async (signal: string): Promise<void> => {
-    if (isShuttingDown) {
-      logger.debug('Shutdown already in progress, ignoring signal', { signal });
-      return;
-    }
-
-    isShuttingDown = true;
-    logger.info('Received shutdown signal', { signal });
-
-    try {
-      await cleanup();
-      logger.info('Shutdown complete');
-      process.exit(EXIT_CODES.SUCCESS);
-    } catch (error) {
-      logger.error(
-        'Error during shutdown',
-        error instanceof Error ? error : new Error(String(error))
-      );
-      process.exit(EXIT_CODES.SHUTDOWN_ERROR);
-    }
-  };
+export function setupShutdownHandlers(
+  cleanup: () => Promise<void>,
+  logger: ILogger
+): ShutdownRequest {
+  const handleShutdown = createGracefulShutdown({ cleanup, logger });
+  // A dead host's closed stderr pipe must not crash shutdown before the audit
+  // flush (#6573).
+  routeStderrEpipeToShutdown(handleShutdown);
 
   // `handleShutdown` has an internal try/catch that calls `process.exit` on
   // both success and failure, so the chance of an unhandled rejection is
@@ -128,6 +104,8 @@ export function setupShutdownHandlers(cleanup: () => Promise<void>, logger: ILog
     logger.error('Unhandled rejection', error);
     process.exit(EXIT_CODES.SERVER_START_FAILED);
   });
+
+  return handleShutdown;
 }
 
 /**
@@ -203,70 +181,6 @@ function loadAndLogConfig(logger: ILogger): ConfigLoadResult {
   }
 
   return configResult;
-}
-
-/**
- * Options for creating the shutdown cleanup handler.
- */
-interface ShutdownCleanupOptions {
-  readonly eventBusBridge: EventBusBridgeResult;
-  readonly observer: SwarmObserver;
-  readonly eventContext: ServerEventContext;
-  readonly server: McpServer;
-  readonly serverLogger: ILogger;
-  readonly logger: ILogger;
-  /** Audit logger (if enabled) - Issue #740 Phase 2 */
-  readonly auditLogger: AuditLogger | null;
-}
-
-/**
- * Creates the shutdown cleanup handler.
- */
-function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<void> {
-  const { eventBusBridge, observer, eventContext, server, serverLogger, logger, auditLogger } =
-    options;
-
-  return async (): Promise<void> => {
-    // Flush and close audit logger (Issue #740 Phase 2)
-    await shutdownAuditLogger(auditLogger, logger);
-
-    if (eventBusBridge.initialized) {
-      logFinalEventBusStats(logger);
-      eventBusBridge.cleanup();
-    }
-
-    recordServerShutdown(observer, eventContext);
-    logFinalHealthMetrics(observer, logger);
-
-    // Persist tool memory session to disk (Issue #690)
-    shutdownToolMemory();
-
-    // Cleanup the cached MCP-config tempdir (closes #2946)
-    await shutdownExpertBridge();
-
-    // Release the V2 pipeline → global event forwarder. This slot used to hold
-    // `shutdownFeedbackSubscriber()`, which was an unconditional no-op: nothing
-    // ever called `startFeedbackSubscriber`, because #5003's panel removed that
-    // bridge on purpose. The forwarder is the subscription that WAS leaking.
-    shutdownPipelineEventBridge();
-
-    // Release the shadow TuneStage signal subscription (#3147)
-    shutdownTuneStage();
-
-    // Release the swarm-health signal poll timer (#3223)
-    shutdownSwarmHealthSignals();
-
-    // Release the adapter-failover signal subscription (#3321)
-    shutdownFailoverSignals();
-
-    // Release the scheduled improvement_review timer (#3229)
-    shutdownImprovementReviewScheduler();
-
-    const closeResult = await closeServer(server, serverLogger);
-    if (!closeResult.ok) {
-      throw new Error(closeResult.error.message);
-    }
-  };
 }
 
 /**
@@ -479,6 +393,7 @@ async function initializeSubsystems(
   observer: SwarmObserver;
   eventBusBridge: EventBusBridgeResult;
   auditLogger: AuditLogger | null;
+  inFlightToolCalls: InFlightToolCalls;
 }> {
   // Initialize experts from configuration (Issue #486)
   const expertResult = initializeExperts({ expertConfig: config.experts, logger });
@@ -507,6 +422,8 @@ async function initializeSubsystems(
   });
 
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
+  // Before any tool is registered, so shutdown can drain every call (#6573).
+  const inFlightToolCalls = trackInFlightToolCalls(server);
 
   // Wire observability config to SwarmObserver (Issue #493)
   const observer = initializeSwarmObserver(serverLogger, {
@@ -531,7 +448,7 @@ async function initializeSubsystems(
     });
   });
 
-  return { server, serverLogger, observer, eventBusBridge, auditLogger };
+  return { server, serverLogger, observer, eventBusBridge, auditLogger, inFlightToolCalls };
 }
 
 /**
@@ -598,7 +515,7 @@ export async function startServer(
   validateNexusEnv(logger); // Warn-only env var validation (Issue #1016)
 
   // Initialize all subsystems
-  const { server, serverLogger, observer, eventBusBridge, auditLogger } =
+  const { server, serverLogger, observer, eventBusBridge, auditLogger, inFlightToolCalls } =
     await initializeSubsystems(configResult.config, logger);
 
   // Connect to transport
@@ -606,8 +523,6 @@ export async function startServer(
 
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);
-
-  watchParentProcess(logger); // Issue #810: exit when the parent closes stdin
 
   // Setup graceful shutdown with observer and EventBus cleanup
   const cleanup = createShutdownCleanup({
@@ -618,8 +533,15 @@ export async function startServer(
     serverLogger,
     logger,
     auditLogger,
+    inFlightToolCalls,
   });
-  setupShutdownHandlers(cleanup, logger);
+  const requestShutdown = setupShutdownHandlers(cleanup, logger);
+  // Issue #810: shut down when the parent closes stdin — through the same
+  // bounded cleanup as the signals, so the audit log is flushed (#6560).
+  // Registered after the cleanup exists; nothing between here and the startup
+  // record below awaits, so a close event cannot run before that record is
+  // queued.
+  watchParentProcess(logger, requestShutdown);
 
   // Startup complete — cancel the watchdog so it can't fire during request
   // handling (#2163).

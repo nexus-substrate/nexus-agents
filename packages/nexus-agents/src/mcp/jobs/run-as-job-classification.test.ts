@@ -92,12 +92,19 @@ describe('every runAsJob call site classifies its cancel-signal arity (#5393)', 
     }
   );
 
-  it('the signal-taking set is exactly the panel + graph tools', () => {
+  it('the signal-taking set is exactly the panel, graph, pipeline, workflow and spec tools', () => {
     const threaded = sites.filter((s) => /arity [34]/.test(s.note)).map((s) => s.file);
     expect([...new Set(threaded)].sort()).toEqual([
       'consensus-vote.ts',
+      // #6305: stage-boundary gates in `runDevPipeline` / the graph executor.
+      'dev-pipeline-tool.ts',
+      // #6305: step-boundary gates in `executeSpec` / the graph executor.
+      'execute-spec-tool.ts',
+      'pipeline-tool.ts',
       'pr-review-tool.ts',
       'run-graph-workflow.ts',
+      // #6305: phase- and step-dispatch gates in the workflow engine.
+      'run-workflow.ts',
       'supply-chain-tradeoff-panel.ts',
     ]);
   });

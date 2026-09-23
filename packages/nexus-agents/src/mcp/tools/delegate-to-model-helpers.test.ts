@@ -14,6 +14,7 @@ import {
   calcPreferenceScore,
   scoreModel,
   scoreAllModels,
+  getCliForModel,
   buildReasons,
   getTradeoff,
   selectModel,
@@ -419,6 +420,29 @@ describe('scoreAllModels billing mode', () => {
     expect(['gemini-flash', 'gemini-3-flash', 'claude-haiku', 'codex-5.1-mini']).toContain(
       apiRanked[0]!.name
     );
+  });
+});
+
+describe('scoreAllModels honors NEXUS_DISABLED_CLIS (#6590)', () => {
+  it('never ranks a model served by a disabled CLI', () => {
+    const saved = process.env['NEXUS_DISABLED_CLIS'];
+    try {
+      delete process.env['NEXUS_DISABLED_CLIS'];
+      const all = scoreAllModels(makeRequirements(), undefined, 'plan').map((m) => m.name);
+      const clisOf = (names: string[]): Set<string | undefined> =>
+        new Set(names.map((n) => getCliForModel(n)));
+      // Guard the guard: the unfiltered ranking does include both CLIs.
+      expect(clisOf(all).has('gemini') && clisOf(all).has('codex')).toBe(true);
+
+      process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex';
+      const kept = scoreAllModels(makeRequirements(), undefined, 'plan').map((m) => m.name);
+      expect(kept.length).toBeGreaterThan(0);
+      expect(clisOf(kept).has('gemini')).toBe(false);
+      expect(clisOf(kept).has('codex')).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
+      else process.env['NEXUS_DISABLED_CLIS'] = saved;
+    }
   });
 });
 

@@ -126,11 +126,16 @@ function resolveExecutionEngineOrError(
  * @param inputs - Workflow inputs
  * @returns Tool result
  */
-/** Per-run engine overrides: phase timeout (#3017), heartbeat (#6162), token ceiling (#4754). */
-interface EngineRunOptions {
+/** Per-run engine overrides: phase timeout (#3017), token ceiling (#4754), async-job hooks. */
+interface EngineRunOptions extends Partial<AsyncJobHooks> {
   readonly phaseTimeoutMs?: number;
-  readonly onPhaseComplete?: () => void;
   readonly budget?: { readonly maxTokens: number };
+}
+
+/** The async-job hooks: heartbeat per settled phase (#6162), `cancel_job`'s signal (#6305). */
+interface AsyncJobHooks {
+  readonly onPhaseComplete: () => void;
+  readonly signal: AbortSignal;
 }
 
 /**
@@ -149,6 +154,7 @@ function runEngine(
     ...(options?.phaseTimeoutMs !== undefined ? { phaseTimeoutMs: options.phaseTimeoutMs } : {}),
     ...(options?.onPhaseComplete !== undefined ? { onPhaseComplete: options.onPhaseComplete } : {}),
     ...(options?.budget !== undefined ? { budget: options.budget } : {}),
+    ...(options?.signal !== undefined ? { signal: options.signal } : {}),
   };
   return Object.keys(engineOptions).length > 0
     ? engine.execute(workflow, inputs, engineOptions)
@@ -301,8 +307,8 @@ function buildFailureEnvelope(
 async function handleRunWorkflow(
   deps: RunWorkflowDeps,
   args: RunWorkflowInput,
-  /** Async-job heartbeat (#6162), fired per settled phase. Absent in sync mode. */
-  onPhaseComplete?: () => void
+  /** Absent in sync mode. */
+  job?: AsyncJobHooks
 ): Promise<ToolResponse> {
   const { template, inputs, dryRun, timeoutMs, maxTokens } = args;
   deps.logger?.debug('run_workflow called', {
@@ -334,7 +340,7 @@ async function handleRunWorkflow(
   const { budget, notice } = resolveWorkflowBudget(deps, workflow.name, maxTokens);
   const executeResult = await executeWorkflow(deps, workflow, inputs, {
     ...(timeoutMs !== undefined ? { phaseTimeoutMs: timeoutMs } : {}),
-    ...(onPhaseComplete !== undefined ? { onPhaseComplete } : {}),
+    ...job,
     ...(budget !== undefined ? { budget } : {}),
   });
   if (!executeResult.ok) {
@@ -398,15 +404,14 @@ function dispatchAsyncRunWorkflow(deps: RunWorkflowDeps, args: RunWorkflowInput)
     // `handleRunWorkflow` already encapsulates the full sync path (dry-run +
     // validation + recording); recording its whole envelope as the job result
     // preserves the success/error discriminator + stepResults for polling.
-    // #5393: deliberately arity-2 — `handleRunWorkflow` drives
-    // `executionEngine.execute`, which has no AbortSignal option, so taking the
-    // signal here would flip `signalAccepted` to true with nothing reading it.
-    // Threading it needs a phase-boundary gate in the engine first: #6305.
-    // #6162: heartbeats by jobId after each settled phase.
-    run: (jobId, input) =>
-      handleRunWorkflow(deps, input, () => {
+    // #5393 / #6305: arity 3 — the engine checks the signal before each phase
+    // and each step dispatch. #6162: heartbeats by jobId after each settled phase.
+    run: (jobId, input, signal) => {
+      const onPhaseComplete = (): void => {
         heartbeatJob(jobId);
-      }),
+      };
+      return handleRunWorkflow(deps, input, { onPhaseComplete, signal });
+    },
     toEnvelope: {
       pending: (jobId) =>
         successResponse({

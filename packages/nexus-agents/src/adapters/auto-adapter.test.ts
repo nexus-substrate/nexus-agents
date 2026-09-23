@@ -222,6 +222,38 @@ describe('createAutoAdapter', () => {
       expect(result.source).toBe('cli');
       expect(result.name).toBe('claude');
     });
+
+    // #6590: the registry pins each CLI's adapter through `preferredCli`, so
+    // this is the path voter seats, expert routing and orchestrate's alt
+    // adapter reach. A disabled preferred CLI must not be selected even though
+    // it is detectable and authenticated.
+    describe('disabled by NEXUS_DISABLED_CLIS (#6590)', () => {
+      const saved = process.env['NEXUS_DISABLED_CLIS'];
+      afterEach(() => {
+        if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
+        else process.env['NEXUS_DISABLED_CLIS'] = saved;
+      });
+
+      it('skips a disabled preferred CLI that is otherwise available', async () => {
+        process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex';
+        vi.mocked(isCliAvailable).mockReturnValue(Promise.resolve(true));
+        vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve(['claude']));
+        const result = await createAutoAdapter({ priority: 'cli-only', preferredCli: 'gemini' });
+        expect(result.name).toBe('claude');
+        expect(createCliAdapter).not.toHaveBeenCalledWith(
+          expect.objectContaining({ cli: 'gemini' })
+        );
+      });
+
+      it('throws rather than selecting a disabled preferred CLI when nothing else is left', async () => {
+        process.env['NEXUS_DISABLED_CLIS'] = 'claude,gemini,codex,opencode';
+        vi.mocked(isCliAvailable).mockReturnValue(Promise.resolve(true));
+        vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
+        await expect(
+          createAutoAdapter({ priority: 'cli-only', preferredCli: 'codex' })
+        ).rejects.toThrow('No CLI adapters available');
+      });
+    });
   });
 
   describe('API key from config', () => {

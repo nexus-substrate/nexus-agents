@@ -113,8 +113,7 @@ export interface MetaDecision {
    * A PRIOR, not a measurement of this goal (#5957). It is either the matched
    * routing rule's authored literal or the classifier's confidence
    * (`meta-orchestrator-routing.ts` picks between them); in the routing-rule
-   * case nothing observed about the goal can move it. `triangulated-review.ts`
-   * annotates the identical shape under #5119.
+   * case nothing observed about the goal can move it.
    */
   readonly confidence: number;
   /** Other strategies that were plausible, best-first, excluding the chosen one. */
@@ -177,8 +176,7 @@ export interface MetaSelectionRecord {
    * A PRIOR, not a measurement of this goal (#5957). It is either the matched
    * routing rule's authored literal or the classifier's confidence
    * (`meta-orchestrator-routing.ts` picks between them); in the routing-rule
-   * case nothing observed about the goal can move it. `triangulated-review.ts`
-   * annotates the identical shape under #5119.
+   * case nothing observed about the goal can move it.
    */
   readonly confidence: number;
   /** The underlying workflow pattern. */

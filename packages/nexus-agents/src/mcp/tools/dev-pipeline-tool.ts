@@ -474,8 +474,15 @@ async function runDevPipelineHandler(
     const pipelineOptions = buildPipelineOptions(input, trustTier, auditLogger);
     const hasOptions = Object.keys(pipelineOptions).length > 0;
     const resolvedOptions = hasOptions ? pipelineOptions : undefined;
-    const run = (): Promise<ToolResult> =>
-      executeDevPipelineBody(taskText, stages, resolvedOptions, simulated);
+    // #6305: the async dispatch passes `cancel_job`'s signal; the sync path
+    // passes none, so its options are unchanged.
+    const run = (signal?: AbortSignal): Promise<ToolResult> =>
+      executeDevPipelineBody(
+        taskText,
+        stages,
+        signal !== undefined ? { ...resolvedOptions, signal } : resolvedOptions,
+        simulated
+      );
 
     // #3726: async dispatch for real (non-dryRun) runs — a full pipeline can
     // exceed the 900s MCP request timeout. dryRun ALWAYS stays sync (plan+vote
@@ -514,7 +521,7 @@ async function runDevPipelineHandler(
  */
 function dispatchAsyncDevPipeline(
   input: DevPipelineInput,
-  run: () => Promise<ToolResult>,
+  run: (signal: AbortSignal) => Promise<ToolResult>,
   logger: ILogger
 ): ToolResult {
   // No sessionId → mint a fresh dp-<uuid>; no idempotency surface to track.
@@ -523,10 +530,8 @@ function dispatchAsyncDevPipeline(
       toolName: 'run_dev_pipeline',
       input,
       freshJobId: () => `dp-${randomUUID()}`,
-      // #5393: deliberately arity-0 — `runDevPipeline` has no AbortSignal
-      // option, so taking the signal would flip `signalAccepted` to true with
-      // nothing reading it. Stage-boundary gate first: #6305.
-      run,
+      // #5393 / #6305: arity 3 — `runDevPipeline` checks the signal before every stage.
+      run: (_jobId, _input, signal) => run(signal),
       logger,
     });
   }
@@ -552,8 +557,8 @@ function dispatchAsyncDevPipeline(
     toolName: 'run_dev_pipeline',
     input,
     freshJobId: () => sessionId,
-    // #5393: deliberately arity-0 — same body as the keyless dispatch above; see #6305.
-    run,
+    // #5393 / #6305: arity 3 — same body as the keyless dispatch above.
+    run: (_jobId, _input, signal) => run(signal),
     logger,
   });
 }

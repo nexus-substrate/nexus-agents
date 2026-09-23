@@ -140,6 +140,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
     configFile: { found: false, path: null },
     mcpServerReady: true,
     mcpClientReady: true,
+    disabledClis: [],
     registryAdvisory: {
       totalModels: 11,
       availableModels: 11,
@@ -265,6 +266,50 @@ describe('Doctor Command', () => {
       expect(result.nodeVersion).toBeDefined();
       expect(result.apiKeys).toHaveLength(3);
       expect(result.configFile).toBeDefined();
+    });
+
+    it('reports CLIs disabled by NEXUS_DISABLED_CLIS and does not probe them (#6590)', async () => {
+      const saved = process.env['NEXUS_DISABLED_CLIS'];
+      process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex';
+      try {
+        const healthCheck = vi.fn().mockResolvedValue({
+          healthy: true,
+          version: '1.0.0',
+          versionStatus: 'supported',
+          lastChecked: new Date(),
+        });
+        const adapter = { healthCheck, getCapacity: vi.fn().mockRejectedValue(new Error('n/a')) };
+        // All four slots present: doctor itself must skip the disabled ones.
+        vi.mocked(createAllAdapters).mockReturnValue(
+          new Map([
+            ['claude', adapter],
+            ['gemini', adapter],
+            ['codex', adapter],
+            ['opencode', adapter],
+          ]) as never
+        );
+
+        const result = await runDoctor();
+
+        expect(result.disabledClis).toEqual(['gemini', 'codex']);
+        expect(result.clis.map((c) => c.name)).toEqual(['claude', 'opencode']);
+      } finally {
+        if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
+        else process.env['NEXUS_DISABLED_CLIS'] = saved;
+      }
+    });
+
+    it('reports no disabled CLIs when NEXUS_DISABLED_CLIS is unset (#6590)', async () => {
+      const saved = process.env['NEXUS_DISABLED_CLIS'];
+      delete process.env['NEXUS_DISABLED_CLIS'];
+      try {
+        vi.mocked(createAllAdapters).mockReturnValue(new Map() as never);
+        const result = await runDoctor();
+        expect(result.disabledClis).toEqual([]);
+        expect(result.clis.map((c) => c.name)).toEqual(['claude', 'gemini', 'codex', 'opencode']);
+      } finally {
+        if (saved !== undefined) process.env['NEXUS_DISABLED_CLIS'] = saved;
+      }
     });
 
     it('should include Node.js version check', async () => {

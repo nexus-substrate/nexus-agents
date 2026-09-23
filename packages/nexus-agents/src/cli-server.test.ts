@@ -69,7 +69,10 @@ vi.mock('./security/sandbox/index.js', () => ({
   getSandboxMode: vi.fn(() => 'none'),
 }));
 
-vi.mock('./cli-server-lifecycle.js', () => ({
+vi.mock('./cli-server-lifecycle.js', async (importOriginal) => ({
+  // The real shutdown coordinator: setupShutdownHandlers builds on it (#6560).
+  createGracefulShutdown: (await importOriginal<typeof import('./cli-server-lifecycle.js')>())
+    .createGracefulShutdown,
   initializeSwarmObserver: vi.fn(() => ({
     recordEvent: vi.fn(),
     getHealthMetrics: vi.fn(() => ({
@@ -91,6 +94,8 @@ vi.mock('./cli-server-lifecycle.js', () => ({
   logFinalHealthMetrics: vi.fn(),
   logFinalEventBusStats: vi.fn(),
   watchParentProcess: vi.fn(),
+  // Mocked so the test runner's own stderr gets no listener.
+  routeStderrEpipeToShutdown: vi.fn(),
 }));
 
 vi.mock('./cli-orchestrator.js', () => ({
@@ -200,6 +205,18 @@ describe('setupShutdownHandlers', () => {
     expect(sigintCalls.length).toBe(1);
   });
 
+  it('routes a stderr EPIPE to the same shutdown request (#6573)', async () => {
+    const lifecycle = await import('./cli-server-lifecycle.js');
+    const { setupShutdownHandlers } = await import('./cli-server.js');
+    const requestShutdown = setupShutdownHandlers(
+      vi.fn(() => Promise.resolve()),
+      mockLogger
+    );
+
+    expect(lifecycle.routeStderrEpipeToShutdown).toHaveBeenCalledOnce();
+    expect(lifecycle.routeStderrEpipeToShutdown).toHaveBeenCalledWith(requestShutdown);
+  });
+
   it('registers SIGTERM handler', async () => {
     const { setupShutdownHandlers } = await import('./cli-server.js');
     const cleanup = vi.fn(() => Promise.resolve());
@@ -237,9 +254,9 @@ describe('setupShutdownHandlers', () => {
     sigintHandler();
     // Wait for async cleanup
     await vi.waitFor(() => {
-      expect(cleanup).toHaveBeenCalledOnce();
+      expect(processExitSpy).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
     });
-    expect(processExitSpy).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 
   it('exits with SHUTDOWN_ERROR when cleanup throws', async () => {
@@ -463,7 +480,8 @@ describe('startServer', () => {
       value: {
         // `.server` mirrors the real McpServer's low-level Server handle, which
         // cli-server wires `oninitialized` onto for MCP-roots resolution (#3991).
-        server: { connect: vi.fn(), server: {} },
+        // `registerTool` is wrapped by the in-flight tool-call tracker (#6573).
+        server: { connect: vi.fn(), registerTool: vi.fn(), server: {} },
         logger: createMockLogger(),
       },
     } as never);
@@ -509,6 +527,37 @@ describe('startServer', () => {
     await startServer(false, 'server', true);
 
     expect(order).toEqual(['configureToolMemory', 'initializeSkillLibrary']);
+  });
+
+  it('hands parent-death the same run-once shutdown the signals use (#6560)', async () => {
+    const lifecycle = await import('./cli-server-lifecycle.js');
+    const audit = await import('./cli-server-audit.js');
+    vi.mocked(audit.shutdownAuditLogger).mockResolvedValue(undefined);
+    // resetAllMocks cleared the factory default; the cleanup reads this shape.
+    vi.mocked(lifecycle.initializeEventBus).mockReturnValue({
+      initialized: false,
+      subscriptionCount: 0,
+      cleanup: vi.fn(),
+    });
+    const mcpModule = await import('./mcp/index.js');
+    vi.mocked(mcpModule.closeServer).mockResolvedValue({ ok: true, value: undefined } as never);
+    const processOnSpy = vi.mocked(process.on);
+    const { startServer } = await import('./cli-server.js');
+
+    await startServer(false, 'server', true);
+
+    const requestShutdown = vi.mocked(lifecycle.watchParentProcess).mock.calls[0]?.[1];
+    expect(requestShutdown).toBeTypeOf('function');
+    const sigterm = processOnSpy.mock.calls.find((c) => c[0] === 'SIGTERM')?.[1] as () => void;
+
+    // Parent death first, then a racing SIGTERM: one cleanup, one exit.
+    await requestShutdown?.('parent-gone');
+    sigterm();
+    await vi.waitFor(() => {
+      expect(processExitSpy).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
+    });
+    expect(audit.shutdownAuditLogger).toHaveBeenCalledOnce();
+    expect(processExitSpy).toHaveBeenCalledOnce();
   });
 
   it('provides default orchestrator options when none given', async () => {

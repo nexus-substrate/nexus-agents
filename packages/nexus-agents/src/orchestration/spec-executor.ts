@@ -15,6 +15,7 @@ import type { ParsedSpec } from './spec-parser-types.js';
 import { decomposeSpec } from './spec-decomposer.js';
 import { compileSpecToGraph } from './spec-pipeline.js';
 import { executeGraph } from './graph/index.js';
+import type { CompiledGraph, GraphExecutionResult } from './graph/index.js';
 import { validateScenario } from './scenario-validator.js';
 import type {
   SpecExecutionResult,
@@ -40,19 +41,8 @@ export async function executeSpec(
   const compileResult = compileSpecToGraph(markdown, options);
   if (!compileResult.ok) return err({ message: compileResult.error.message, stage: 'compile' });
 
-  const onProgress = options?.onProgress;
-  const execResult = await executeGraph(
-    compileResult.value,
-    { results: [] },
-    onProgress === undefined
-      ? undefined
-      : {
-          onEvent: () => {
-            onProgress();
-          },
-        }
-  );
-  if (!execResult.ok) return err({ message: execResult.error.message, stage: 'execute' });
+  const execResult = await runCompiledGraph(compileResult.value, options);
+  if (!execResult.ok) return execResult;
 
   const outputs = extractOutputs(execResult.value.finalState);
 
@@ -82,6 +72,44 @@ export async function executeSpec(
     validation,
     durationMs: getTimeProvider().now() - startTime,
   });
+}
+
+/**
+ * Run the compiled graph with the caller's heartbeat (#6162) and cancel signal
+ * (#6305). The graph executor checks the signal before each super-step; it is
+ * checked again here BEFORE the graph's own result, because the executor
+ * reports an abort as a generic failure, and a cancel landing in the last
+ * super-step returns `ok` with a partial output that must not reach validation.
+ */
+async function runCompiledGraph(
+  graph: CompiledGraph,
+  options: SpecExecutionOptions | undefined
+): Promise<Result<GraphExecutionResult, SpecExecutionError>> {
+  const signal = options?.signal;
+  const onProgress = options?.onProgress;
+  const execResult = await executeGraph(
+    graph,
+    { results: [] },
+    {
+      ...(onProgress !== undefined ? { onEvent: onProgress } : {}),
+      ...(signal !== undefined ? { signal } : {}),
+    }
+  );
+  const cancelled = cancelledError(signal);
+  if (cancelled !== undefined) return err(cancelled);
+  if (!execResult.ok) return err({ message: execResult.error.message, stage: 'execute' });
+  return execResult;
+}
+
+/**
+ * The post-graph cancel check (#6305). Read through a call, never inline:
+ * TypeScript narrows `signal.aborted` to `false` after one inline check, which
+ * is unsound across an `await`, so a second inline check added later would be
+ * typed as dead code.
+ */
+function cancelledError(signal: AbortSignal | undefined): SpecExecutionError | undefined {
+  if (signal?.aborted !== true) return undefined;
+  return { message: 'Spec execution cancelled', stage: 'execute' };
 }
 
 /** Validates scenario, returning result or null on error. */

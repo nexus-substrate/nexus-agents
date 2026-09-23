@@ -18,6 +18,7 @@ import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { CliName } from '../../cli-adapters/types.js';
 import { getFallbackChainForCategory } from '../../cli-adapters/fallback-chains.js';
+import { isCliDisabled } from '../../cli-adapters/disabled-clis.js';
 
 /** Maps TaskCategory to FallbackTaskType for chain lookup. */
 const CATEGORY_TO_FALLBACK_TYPE: Record<TaskCategory, string> = {
@@ -111,7 +112,8 @@ export function getExpertFallbackChain(
     category,
     bucketType as Parameters<typeof getFallbackChainForCategory>[1]
   );
-  const filtered = chain.filter((cli) => cli !== excludeCli);
+  // #6590: a CLI disabled via NEXUS_DISABLED_CLIS is never a fallback.
+  const filtered = chain.filter((cli) => cli !== excludeCli && !isCliDisabled(cli));
   logger.debug('Expert fallback chain resolved', { role, category, excludeCli, chain: filtered });
   return [...filtered];
 }

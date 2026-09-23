@@ -12,6 +12,7 @@ import { CODEX_MCP_SERVER_UNAVAILABLE_REASON } from '../cli-adapters/codex-mcp-s
 import { formatScratchFilesystems } from './doctor-scratch-space.js';
 import { formatClaudeModelLine } from './doctor-claude-model.js';
 import { printVoterTransportCheck } from './doctor-voter-transport.js';
+import { printDisabledClis } from './doctor-disabled-clis.js';
 import type {
   CliCheckResult,
   NodeVersionCheck,
@@ -453,6 +454,7 @@ export function printDoctorResults(result: DoctorResult): void {
   writeLine(`${colors.cyan}Checking CLI installations...${colors.reset}`);
   writeLine('');
   for (const cli of result.clis) printCliResult(cli);
+  printDisabledClis(result.disabledClis);
   // #6120: the pinned voter model, MEASURED with one call, not inferred.
   writeLine(formatClaudeModelLine(result.claudeModel));
   writeLine('');
@@ -508,8 +510,7 @@ function printInstallFreshness(check: DoctorResult['installFreshness']): void {
  * the option-B federation contract.
  */
 function printHarnessAlignment(check: DoctorResult['harnessAlignment']): void {
-  writeLine(`${colors.cyan}Checking agent-harness alignment...${colors.reset}`);
-  writeLine('');
+  writeLine(`${colors.cyan}Checking agent-harness alignment...${colors.reset}\n`);
 
   if (!check.inProject) {
     writeLine(

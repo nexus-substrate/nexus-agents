@@ -207,10 +207,7 @@
         "parseSpec",
         "decomposeSpec",
         "compileSpecToGraph",
-        "OutcomeStore",
-        "executeParallelExploration",
-        "executeTriangulatedReview",
-        "executeConsensusPlan"
+        "OutcomeStore"
       ],
       "canonical_paths": {
         "graph": "src/orchestration/graph/graph-builder.ts",

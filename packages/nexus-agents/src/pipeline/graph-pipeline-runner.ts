@@ -32,6 +32,14 @@ export interface GraphPipelineOptions {
    * atomic and start only when their full batch fits in the remaining budget.
    */
   readonly maxSteps?: number | undefined;
+  /**
+   * Cancels the run at the next super-step boundary (#6305). Handed to the
+   * graph executor, which checks it before each super-step and fails the run
+   * with `Graph execution aborted`; a stage already in flight is not
+   * interrupted. `run_pipeline` threads `cancel_job`'s signal here. Absent: the
+   * run is not cancellable.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** Result of a graph-based pipeline execution. */
@@ -157,6 +165,7 @@ async function executeAndReport(args: ExecuteAndReportArgs): Promise<GraphPipeli
     { [K.TASK]: task },
     {
       maxSteps: options?.maxSteps ?? DEFAULT_MAX_STEPS,
+      ...(options?.signal !== undefined ? { signal: options.signal } : {}),
     }
   );
 

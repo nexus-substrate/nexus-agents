@@ -150,6 +150,24 @@ describe('getExpertFallbackChain', () => {
     expect(chain).not.toContain('codex');
   });
 
+  it('omits CLIs disabled by NEXUS_DISABLED_CLIS (#6590)', () => {
+    const saved = process.env['NEXUS_DISABLED_CLIS'];
+    try {
+      delete process.env['NEXUS_DISABLED_CLIS'];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+      const full = getExpertFallbackChain('code_expert', 'opencode', mockLogger as any);
+      expect(full.some((c) => c === 'gemini' || c === 'codex')).toBe(true);
+      process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+      const chain = getExpertFallbackChain('code_expert', 'opencode', mockLogger as any);
+      expect(chain).not.toContain('gemini');
+      expect(chain).not.toContain('codex');
+    } finally {
+      if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
+      else process.env['NEXUS_DISABLED_CLIS'] = saved;
+    }
+  });
+
   it('returns empty array for unknown role', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const chain = getExpertFallbackChain('unknown_role', 'claude', mockLogger as any);

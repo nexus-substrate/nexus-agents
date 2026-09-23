@@ -56,6 +56,9 @@ describe('isDistillerEligible (#6521)', () => {
     ['e2e-eval simulated run', { source: 'manual', qualitySignals: ['e2e-eval'] }, false],
     ['routed but unknown CLI', { ...routed, cli: 'unknown' }, false],
     ['routed api:* arm no rule can match', { ...routed, cli: 'api:anthropic' }, false],
+    // #6549: a rule is keyed on cli×category; a defaulted category names none.
+    ['routed row, category defaulted', { ...routed, categorySource: 'defaulted' }, false],
+    ['routed row, category detected', { ...routed, categorySource: 'detected' }, true],
   ];
 
   it.each(table)('%s → %s', (_label, overrides, expected) => {
@@ -126,6 +129,21 @@ describe('countEligibleOutcomesInFile (#6512)', () => {
     ];
     writeFileSync(path, lines.join('\n'));
     expect(countEligibleOutcomesInFile(path)).toBe(2);
+  });
+
+  it('does not count a routed row whose category was defaulted (#6549)', () => {
+    const path = join(dir, 'outcomes.jsonl');
+    const routed = { routedBy: 'composite-router' as const };
+    const lines = [
+      makeOutcome({ ...routed, categorySource: 'defaulted' }),
+      makeOutcome({ ...routed, categorySource: 'detected' }),
+    ].map((o) => JSON.stringify(o));
+    writeFileSync(path, lines.join('\n'));
+    expect(countEligibleOutcomesInFile(path)).toBe(1);
+    expect(countRoutedOutcomesInFile(path, Date.parse('2026-09-02T00:00:00.000Z'))).toEqual({
+      total: 2,
+      last7Days: 2,
+    });
   });
 });
 

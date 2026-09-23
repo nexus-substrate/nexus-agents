@@ -530,6 +530,7 @@ export type {
   LearningLoopHealth,
   DataSufficiency,
   RoutingConvergence,
+  ArmSuccessRate,
   CliDataStatus,
 } from './doctor-deep.js';
 

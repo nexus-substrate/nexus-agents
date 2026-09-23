@@ -23,6 +23,7 @@ import { detectTaskCategory } from '../../config/task-specialization.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { CliNameSchema } from '../../config/model-capabilities-types.js';
 import { getDefaultRegistry } from '../../config/model-registry.js';
+import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
 import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
@@ -57,11 +58,13 @@ export interface ExpertOutcomeOpts {
   readonly errorMessage?: string;
 }
 
-/** Resolves category from role or task content. */
-function resolveExpertCategory(opts: ExpertOutcomeOpts): TaskCategory {
+/**
+ * Resolves category from role or task content; neither yielding one is
+ * recorded as a defaulted category, not as measured exploration (#6549).
+ */
+function resolveExpertCategory(opts: ExpertOutcomeOpts): ReturnType<typeof resolveOutcomeCategory> {
   const roleCategory = opts.role !== undefined ? ROLE_TO_CATEGORY[opts.role] : undefined;
-  if (roleCategory !== undefined) return roleCategory;
-  return detectTaskCategory(opts.task)?.category ?? 'exploration';
+  return resolveOutcomeCategory(roleCategory ?? detectTaskCategory(opts.task)?.category);
 }
 
 /** Models that are placeholders, not real resolvable model ids (#3624). */
@@ -100,7 +103,7 @@ export function recordExpertOutcome(opts: ExpertOutcomeOpts): void {
     getOutcomeStore().append({
       id: `exp-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`,
       cli: resolveExpertCli(opts.model),
-      category: resolveExpertCategory(opts),
+      ...resolveExpertCategory(opts),
       model,
       success: opts.success,
       durationMs: opts.durationMs,
