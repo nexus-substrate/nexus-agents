@@ -13,6 +13,7 @@ import {
   mapTool,
   mapResponseUsage,
   mapStreamChunk,
+  createStreamToolCallState,
 } from './openai-mappers.js';
 
 // ============================================================================
@@ -157,10 +158,19 @@ describe('mapChoiceToContentBlocks', () => {
 // mapMessage
 // ============================================================================
 
+/** mapMessage for a message that must map to exactly one OpenAI message. */
+function mapOne(message: Message): ReturnType<typeof mapMessage>[number] {
+  const out = mapMessage(message);
+  expect(out).toHaveLength(1);
+  const [first] = out;
+  if (first === undefined) throw new Error('mapMessage returned no messages');
+  return first;
+}
+
 describe('mapMessage', () => {
   it('maps system message with string content', () => {
     const message: Message = { role: 'system', content: 'You are helpful' };
-    const result = mapMessage(message);
+    const result = mapOne(message);
     expect(result.role).toBe('system');
     expect(result.content).toBe('You are helpful');
   });
@@ -173,14 +183,14 @@ describe('mapMessage', () => {
         { type: 'text', text: 'Part 2' },
       ],
     };
-    const result = mapMessage(message);
+    const result = mapOne(message);
     expect(result.role).toBe('system');
     expect(result.content).toBe('Part 1\nPart 2');
   });
 
   it('maps user message with string content', () => {
     const message: Message = { role: 'user', content: 'Hello' };
-    const result = mapMessage(message);
+    const result = mapOne(message);
     expect(result.role).toBe('user');
     expect(result.content).toBe('Hello');
   });
@@ -196,13 +206,13 @@ describe('mapMessage', () => {
         },
       ],
     };
-    const result = mapMessage(message);
+    const result = mapOne(message);
     expect(result.role).toBe('tool');
   });
 
   it('maps assistant message with string content', () => {
     const message: Message = { role: 'assistant', content: 'Response text' };
-    const result = mapMessage(message);
+    const result = mapOne(message);
     expect(result.role).toBe('assistant');
     expect(result.content).toBe('Response text');
   });
@@ -212,7 +222,7 @@ describe('mapMessage', () => {
       role: 'assistant',
       content: [{ type: 'tool_use', id: 'call-1', name: 'test_fn', input: { key: 'val' } }],
     };
-    const result = mapMessage(message);
+    const result = mapOne(message);
     expect(result.role).toBe('assistant');
     expect('tool_calls' in result).toBe(true);
   });
@@ -276,7 +286,7 @@ describe('mapStreamChunk', () => {
       model: 'gpt-4',
       choices: [{ delta: { content: 'Hi' }, index: 0, finish_reason: null }],
     } as ChatCompletionChunk;
-    const result = mapStreamChunk(chunk, 0, false);
+    const result = mapStreamChunk(chunk, 0, false, createStreamToolCallState());
     expect(result[0]?.type).toBe('message_start');
   });
 
@@ -285,7 +295,7 @@ describe('mapStreamChunk', () => {
       model: 'gpt-4',
       choices: [{ delta: { content: 'more' }, index: 0, finish_reason: null }],
     } as ChatCompletionChunk;
-    const result = mapStreamChunk(chunk, 1, true);
+    const result = mapStreamChunk(chunk, 1, true, createStreamToolCallState());
     expect(result.some((c) => c.type === 'message_start')).toBe(false);
   });
 
@@ -300,7 +310,9 @@ describe('mapStreamChunk', () => {
       usage: { completion_tokens: 42, total_tokens: 42 },
     } as unknown as ChatCompletionChunk;
 
-    const delta = mapStreamChunk(chunk, 0, true).find((c) => c.type === 'message_delta');
+    const delta = mapStreamChunk(chunk, 0, true, createStreamToolCallState()).find(
+      (c) => c.type === 'message_delta'
+    );
 
     expect(delta).toBeDefined();
     expect(delta?.type === 'message_delta' ? delta.usage : undefined).toEqual(
@@ -310,7 +322,7 @@ describe('mapStreamChunk', () => {
 
   it('handles empty choices', () => {
     const chunk = { model: 'gpt-4', choices: [] } as unknown as ChatCompletionChunk;
-    const result = mapStreamChunk(chunk, 0, true);
+    const result = mapStreamChunk(chunk, 0, true, createStreamToolCallState());
     expect(result).toEqual([]);
   });
 
@@ -319,7 +331,7 @@ describe('mapStreamChunk', () => {
       model: 'gpt-4',
       choices: [{ delta: { content: 'text' }, index: 0, finish_reason: null }],
     } as ChatCompletionChunk;
-    const result = mapStreamChunk(chunk, 0, true);
+    const result = mapStreamChunk(chunk, 0, true, createStreamToolCallState());
     expect(result.some((c) => c.type === 'content_block_delta')).toBe(true);
   });
 
@@ -328,7 +340,7 @@ describe('mapStreamChunk', () => {
       model: 'gpt-4',
       choices: [{ delta: {}, index: 0, finish_reason: 'stop' }],
     } as ChatCompletionChunk;
-    const result = mapStreamChunk(chunk, 0, true);
+    const result = mapStreamChunk(chunk, 0, true, createStreamToolCallState());
     expect(result.some((c) => c.type === 'message_stop')).toBe(true);
   });
 });
@@ -360,7 +372,9 @@ describe('mapStreamChunk usage on an unreported stream', () => {
   }
 
   it('omits usage entirely when the API reported none', () => {
-    const delta = mapStreamChunk(finalChunk(), 1, true).find((c) => c.type === 'message_delta');
+    const delta = mapStreamChunk(finalChunk(), 1, true, createStreamToolCallState()).find(
+      (c) => c.type === 'message_delta'
+    );
 
     expect(delta).toBeDefined();
     // The #4439 policy, stated on the field itself: where NOTHING is known,
@@ -370,7 +384,9 @@ describe('mapStreamChunk usage on an unreported stream', () => {
 
   it('still emits the stop reason without usage', () => {
     // Omitting usage must not cost the chunk its actual payload.
-    const delta = mapStreamChunk(finalChunk(), 1, true).find((c) => c.type === 'message_delta');
+    const delta = mapStreamChunk(finalChunk(), 1, true, createStreamToolCallState()).find(
+      (c) => c.type === 'message_delta'
+    );
 
     expect(delta?.delta?.stop_reason).toBe('end_turn');
   });
@@ -381,7 +397,8 @@ describe('mapStreamChunk usage on an unreported stream', () => {
     const delta = mapStreamChunk(
       finalChunk({ completion_tokens: 42, total_tokens: 42 }),
       1,
-      true
+      true,
+      createStreamToolCallState()
     ).find((c) => c.type === 'message_delta');
 
     expect(delta?.usage?.outputTokens).toBe(42);
