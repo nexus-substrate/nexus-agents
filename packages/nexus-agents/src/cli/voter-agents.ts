@@ -89,6 +89,7 @@ import {
 } from './voter-execution.js';
 import { resolveVoteTimeout, VOTE_TIMEOUTS, getMcpSafeDeadlineMs } from '../config/timeouts.js';
 import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
+import { resolvePanelWorkspace } from './panel-workspace.js';
 
 /**
  * Computes an overall wall-clock deadline for a consensus vote call (#1871).
@@ -619,7 +620,7 @@ export async function collectRealVotes(
   // directory (#6358) — explicitly passed to every subprocess seat, which the
   // gemini arm now also gets as --add-dir — read once so every seat of the
   // panel names the same tree in its REPOSITORY ACCESS block.
-  const workspace = options.workspace ?? process.cwd();
+  const workspace = resolvePanelWorkspace(options.workspace);
   const voteOptions = resolveVoteExecution({ ...options, workspace });
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
