@@ -468,7 +468,7 @@ describe('a 7-seat consensus_vote on a one-family gateway (#6606)', () => {
 
   it('reports one family over several models and carries the collapsed-panel warning', () => {
     expect(vote.panelDiversity).toEqual(
-      expect.objectContaining({ distinctFamilies: 1, distinctModels: 4 })
+      expect.objectContaining({ distinctFamilies: 1, distinctModels: 5 })
     );
     expect(vote.panelWarning).toContain('answering seats ran openai models');
   });

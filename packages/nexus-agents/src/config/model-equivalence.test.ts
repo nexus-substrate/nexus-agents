@@ -70,6 +70,26 @@ describe('canonicalModelKey', () => {
     expect(canonicalModelKey('claude-sonnet-4-6')).not.toBe(canonicalModelKey('gpt-5.5'));
   });
 
+  it('keeps size variants of one model distinct (#6616)', () => {
+    expect(canonicalModelKey('gpt-4o')).not.toBe(canonicalModelKey('gpt-4o-mini'));
+    expect(countDistinctModels(['gpt-4o', 'gpt-4o-mini'])).toBe(2);
+  });
+
+  it('keeps modality variants of one model distinct (#6616)', () => {
+    expect(canonicalModelKey('vertex_ai/gemini-2.5-flash')).not.toBe(
+      canonicalModelKey('gemini-2.5-flash-image')
+    );
+    expect(
+      countDistinctModels(['vertex_ai/gemini-2.5-flash', 'gemini-2.5-flash-image'])
+    ).toBe(2);
+  });
+
+  it('reads a dotted minor version straight after the family root (#6616)', () => {
+    expect(canonicalModelKey('gpt-4.1')).not.toBe(canonicalModelKey('gpt-4'));
+    expect(canonicalModelKey('gpt-4.1')).toBe(canonicalModelKey('gpt-4-1'));
+    expect(countDistinctModels(['gpt-4', 'gpt-4.1'])).toBe(2);
+  });
+
   describe('unresolvable identities', () => {
     it('returns null rather than a shared placeholder', () => {
       // `sonnet` is a real value the claude CLI adapter can report. It carries
@@ -142,6 +162,11 @@ describe('assessPanelIndependence', () => {
   it('reports a diverse panel', () => {
     const result = assessPanelIndependence(['claude-sonnet-4-6', 'gpt-5.5', 'gemini-3-pro']);
     expect(result).toEqual({ kind: 'diverse', distinct: 3 });
+  });
+
+  it('reports a panel split between base and size variant as diverse (#6616)', () => {
+    const result = assessPanelIndependence(['gpt-4o', 'gpt-4o-mini']);
+    expect(result).toEqual({ kind: 'diverse', distinct: 2 });
   });
 
   it('refuses to judge a panel whose adapters have not detected their model', () => {
