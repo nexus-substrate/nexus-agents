@@ -1295,7 +1295,19 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
         resetQualityRewardCache();
         const store = new OutcomeStore();
         setOutcomeStore(store);
+        // claude (the slot) succeeds every time; api:anthropic (the arm)
+        // never has. The two histories give different rewards.
         for (let i = 0; i < 10; i++) {
+          store.append({
+            id: `api-${String(i)}`,
+            cli: 'api:anthropic',
+            category: 'code_generation',
+            model: 'm',
+            success: false,
+            durationMs: 1,
+            timestamp: '2026-09-01T00:00:00.000Z',
+            source: 'delegate',
+          });
           store.append({
             id: `claude-${String(i)}`,
             cli: 'claude',
@@ -1315,10 +1327,13 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
           resetQualityRewardCache();
           vi.unstubAllEnvs();
         }
-        // No api:anthropic history: the base reward (0.5) less a latency
-        // penalty. Reading the claude slot's 100% rate would add 0.3.
-        const reward = recordOutcomeSpy.mock.calls[0]?.[2] as number;
-        expect(reward).toBeLessThanOrEqual(0.5);
+        // A success, rewarded from api:anthropic's own 0% rate: the 0.5 base
+        // less a sub-millisecond latency penalty. The claude slot's 100% rate
+        // would give ~0.8, and a failure reward would be exactly 0.1.
+        const [arm, , reward, success] = recordOutcomeSpy.mock.calls[0] ?? [];
+        expect(arm).toBe('api:anthropic');
+        expect(success).toBe(true);
+        expect(reward).toBeCloseTo(0.5, 2);
       });
     });
 

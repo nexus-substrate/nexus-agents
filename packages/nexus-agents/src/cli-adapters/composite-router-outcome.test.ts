@@ -371,6 +371,51 @@ describe('composite-router-outcome', () => {
       expect(reward).toBeCloseTo(0.8, 1);
     });
 
+    describe('API arms: own history first, display slot as the cold fallback (#6552)', () => {
+      function seed(cli: 'claude' | 'api:anthropic', success: boolean, count: number): void {
+        const store = getOutcomeStore();
+        for (let i = 0; i < count; i++) {
+          store.append({
+            id: `${cli}-${String(success)}-${String(i)}`,
+            cli,
+            category: 'code_generation',
+            model: 'm',
+            success,
+            durationMs: 500,
+            timestamp: new Date().toISOString(),
+            source: 'delegate',
+          });
+        }
+      }
+
+      it("a cold API arm takes its slot's rate, so it is not rewarded below its CLI sibling", () => {
+        seed('claude', true, 10);
+        // 0.5 base + 1.0 (claude's rate) * 0.3
+        expect(computeQualityReward('api:anthropic', true, 0)).toBeCloseTo(0.8, 6);
+      });
+
+      it("an API arm with its own history uses it, not the slot's", () => {
+        seed('claude', true, 10);
+        seed('api:anthropic', true, 1);
+        seed('api:anthropic', false, 3);
+        // 0.5 base + 0.25 (api:anthropic's own rate) * 0.3; the slot would give 0.8
+        expect(computeQualityReward('api:anthropic', true, 0)).toBeCloseTo(0.575, 6);
+      });
+
+      it('the CLI arm reads only its own history', () => {
+        seed('claude', true, 1);
+        seed('claude', false, 1);
+        seed('api:anthropic', true, 10);
+        // 0.5 base + 0.5 (claude's own rate) * 0.3
+        expect(computeQualityReward('claude', true, 0)).toBeCloseTo(0.65, 6);
+      });
+
+      it('a cold CLI arm is not rewarded from an API arm of its vendor', () => {
+        seed('api:anthropic', true, 10);
+        expect(computeQualityReward('claude', true, 0)).toBeCloseTo(0.5, 6);
+      });
+    });
+
     it('applies latency penalty for slow responses', () => {
       const fast = computeQualityReward('claude', true, 0);
       const slow = computeQualityReward('claude', true, 30_000);
