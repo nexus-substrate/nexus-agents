@@ -7,7 +7,7 @@
  *
  * @module cli/vote-audit-line
  */
-import { colors } from './ansi-output.js';
+import { colors, writeLine } from './ansi-output.js';
 import type { VoteRecordPersistOutcome } from '../mcp/tools/consensus-vote-recording.js';
 import type { ErrorPolicy } from '../mcp/tools/consensus-vote-types.js';
 import type { VoteRecordPrBinding } from '../audit/vote-record.js';
@@ -21,7 +21,9 @@ import type { VoteRecordPrBinding } from '../audit/vote-record.js';
  */
 export function auditLineFor(outcome: VoteRecordPersistOutcome): string {
   if (outcome.persisted) {
-    return `${colors.dim}Audit record #${String(outcome.record.sequence)} written (${outcome.record.id})${colors.reset}\n`;
+    // #6531: name the ledger. A record written into a worktree's ledger that
+    // was later reaped printed only its id, so nobody could see where it went.
+    return `${colors.dim}Audit record #${String(outcome.record.sequence)} written (${outcome.record.id}) to ${outcome.path}${colors.reset}\n`;
   }
   if (outcome.reason === 'all-simulated') {
     return `${colors.dim}No audit record — votes were simulated${colors.reset}\n`;
@@ -82,7 +84,7 @@ function governorBarNotice(ran: {
  * and, when the run was below the governor bar, the notice. An unbound vote
  * prints exactly what it printed before.
  */
-export function persistLines(
+function persistLines(
   outcome: VoteRecordPersistOutcome,
   binding: VoteRecordPrBinding | undefined,
   ran: { readonly strategy: string; readonly errorPolicy?: ErrorPolicy | undefined }
@@ -94,4 +96,20 @@ export function persistLines(
     prBindingLine(outcome, binding),
     ...(notice === undefined ? [] : [notice]),
   ];
+}
+
+/**
+ * Print every line for one persist attempt and return the exit code the
+ * outcome forces on the command, or `undefined` when it leaves the decision's
+ * exit code alone (#6531). A record that did not read back is a fidelity
+ * failure: the command must not exit 0 on it. A write that failed outright
+ * keeps its #4924 contract (stated, not fatal).
+ */
+export function reportPersistOutcome(
+  outcome: VoteRecordPersistOutcome,
+  binding: VoteRecordPrBinding | undefined,
+  ran: { readonly strategy: string; readonly errorPolicy?: ErrorPolicy | undefined }
+): number | undefined {
+  for (const line of persistLines(outcome, binding, ran)) writeLine(line);
+  return !outcome.persisted && outcome.reason === 'read-back-missed' ? 1 : undefined;
 }

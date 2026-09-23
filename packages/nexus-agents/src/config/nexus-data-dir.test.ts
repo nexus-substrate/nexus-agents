@@ -827,4 +827,50 @@ describe('active workspace root (#3991 — MCP roots)', () => {
     process.env['NEXUS_DATA_DIR'] = '/tmp/explicit-wins';
     expect(getNexusRepoDir()).toBe(null);
   });
+
+  // #6531: a vote run from a linked worktree wrote its record into
+  // <worktree>/.nexus-agents/governance/, which is reaped with the worktree.
+  // Vote (quick panel, option B 2-1): governance routes to the main checkout;
+  // every other per-repo category stays worktree-local.
+  it('routes governance from a linked worktree to the main checkout, other per-repo state stays local', async () => {
+    const { setActiveWorkspaceRoot, nexusDataPath } = await import('./nexus-data-dir.js');
+    const { rmSync, realpathSync } = await import('node:fs');
+    const { execFileSync } = await import('node:child_process');
+    // A real repository and linked worktree: the main checkout is git's answer.
+    rmSync(join(repoDir, '.git'), { recursive: true });
+    const git = (cwd: string, ...args: string[]): void => {
+      execFileSync('git', args, {
+        cwd,
+        stdio: 'ignore',
+        env: {
+          PATH: process.env['PATH'] ?? '',
+          GIT_CONFIG_GLOBAL: '/dev/null',
+          GIT_CONFIG_NOSYSTEM: '1',
+          GIT_AUTHOR_NAME: 't',
+          GIT_AUTHOR_EMAIL: 't@example.com',
+          GIT_COMMITTER_NAME: 't',
+          GIT_COMMITTER_EMAIL: 't@example.com',
+        },
+      });
+    };
+    git(repoDir, 'init', '-q');
+    git(repoDir, 'commit', '-q', '--allow-empty', '-m', 'init');
+    const wt = join(cwdOutsideRepo, 'wt');
+    git(repoDir, 'worktree', 'add', '-q', wt);
+
+    // Both entry points: the MCP-declared root and cwd detection.
+    for (const viaActiveRoot of [true, false]) {
+      if (viaActiveRoot) setActiveWorkspaceRoot(wt);
+      else {
+        setActiveWorkspaceRoot(null);
+        process.chdir(wt);
+      }
+      expect(nexusDataPath('governance', 'vote-records.jsonl')).toBe(
+        join(realpathSync(repoDir), '.nexus-agents', 'governance', 'vote-records.jsonl')
+      );
+      expect(nexusDataPath('sessions', 'x.db')).toBe(
+        join(realpathSync(wt), '.nexus-agents', 'sessions', 'x.db')
+      );
+    }
+  });
 });

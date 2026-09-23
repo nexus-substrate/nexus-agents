@@ -1182,6 +1182,7 @@ describe('buildResponse surfaces vote-record persistence outcome (#3991)', () =>
     const response = buildResponse(input, makeResult(), undefined, {
       persisted: true,
       record: { id: 'vote-1', decision: 'approved' } as unknown as VoteRecord,
+      path: '/data/.nexus-agents/governance/vote-records.jsonl',
     });
     expect(response.voteRecordPersisted).toBe(true);
     expect(response.voteRecordNote).toBeUndefined();

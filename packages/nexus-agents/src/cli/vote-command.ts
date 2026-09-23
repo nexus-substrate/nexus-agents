@@ -56,7 +56,7 @@ import {
 import { mapOutcomeToDecision } from '../consensus/decision/verdict.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
-import { persistLines } from './vote-audit-line.js';
+import { reportPersistOutcome } from './vote-audit-line.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
@@ -609,9 +609,9 @@ function exitCodeForDecision(decision: VoteDecisionStatus, policy: NoQuorumPolic
  *
  * Skipped for a dry run: `recordAuthenticVote` would decline it anyway, and
  * printing a persistence line for a vote that never happened is its own small
- * misreport.
+ * misreport. Returns the exit code the persist outcome forces, if any (#6531).
  */
-function persistToAuditChain(
+async function persistToAuditChain(
   options: VoteCommandOptions,
   result: VotingResult & {
     readonly strategy: string;
@@ -623,9 +623,9 @@ function persistToAuditChain(
     /** #6211: the effective error policy, from the same stamp. */
     readonly errorPolicy?: ErrorPolicy | undefined;
   }
-): void {
-  if (options.dryRun === true) return;
-  const outcome = recordAuthenticVote({
+): Promise<number | undefined> {
+  if (options.dryRun === true) return undefined;
+  const outcome = await recordAuthenticVote({
     proposal: result.proposal,
     strategy: result.strategy,
     result: result.result,
@@ -642,7 +642,7 @@ function persistToAuditChain(
     errorPolicy: result.errorPolicy,
     ratifiesPr: options.ratifiesPr,
   });
-  for (const line of persistLines(outcome, options.ratifiesPr, result)) writeLine(line);
+  return reportPersistOutcome(outcome, options.ratifiesPr, result);
 }
 
 /**
@@ -683,10 +683,10 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
       if (options.verbose === true) printHashes(result.votes);
       writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
 
-      persistToAuditChain(options, result);
+      const persistExit = await persistToAuditChain(options, result);
       handleRecording(options, result, result.decision, result.contrarianCheck);
 
-      return exitCodeForDecision(result.decision, onNoQuorum);
+      return persistExit ?? exitCodeForDecision(result.decision, onNoQuorum);
     });
   } catch (error) {
     writeLine(`${colors.red}Error: ${getErrorMessage(error)}${colors.reset}`);

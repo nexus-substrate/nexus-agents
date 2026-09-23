@@ -789,7 +789,7 @@ interface DeclaredByCaller {
  * outcome (#3991) so the handler can surface persistence visibility in the
  * result instead of leaving a skip as a server-only WARN.
  */
-function recordVoteSideEffects(
+async function recordVoteSideEffects(
   proposal: string,
   strategy: string,
   result: ExtendedVotingResult,
@@ -800,16 +800,16 @@ function recordVoteSideEffects(
    * max-params cap.
    */
   declared: DeclaredByCaller
-): {
+): Promise<{
   costSummary: ReturnType<typeof recordDecisionCost> | undefined;
   voteRecord: VoteRecordPersistOutcome;
-} {
+}> {
   const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
   // #3897: persist an authentic, hash-chained vote record to the committable
   // governance artifact at vote time so the promotion gate/CI can rest
   // authenticity on the chain, not on hand-transcribed YAML. #4004: bind the
   // authority-tier ratification subject into the record when provided.
-  const voteRecord = recordAuthenticVote({
+  const voteRecord = await recordAuthenticVote({
     proposal,
     strategy,
     result: result.result,
@@ -917,7 +917,7 @@ async function handleConsensusVote(
       approvalPercentage: result.result.approvalPercentage,
       votes: result.votes,
     });
-    const { costSummary, voteRecord } = recordVoteSideEffects(
+    const { costSummary, voteRecord } = await recordVoteSideEffects(
       args.proposal,
       result.strategy,
       result,
