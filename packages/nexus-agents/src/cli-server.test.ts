@@ -94,6 +94,8 @@ vi.mock('./cli-server-lifecycle.js', async (importOriginal) => ({
   logFinalHealthMetrics: vi.fn(),
   logFinalEventBusStats: vi.fn(),
   watchParentProcess: vi.fn(),
+  // Mocked so the test runner's own stderr gets no listener.
+  routeStderrEpipeToShutdown: vi.fn(),
 }));
 
 vi.mock('./cli-orchestrator.js', () => ({
@@ -201,6 +203,18 @@ describe('setupShutdownHandlers', () => {
 
     const sigintCalls = processOnSpy.mock.calls.filter((c) => c[0] === 'SIGINT');
     expect(sigintCalls.length).toBe(1);
+  });
+
+  it('routes a stderr EPIPE to the same shutdown request (#6573)', async () => {
+    const lifecycle = await import('./cli-server-lifecycle.js');
+    const { setupShutdownHandlers } = await import('./cli-server.js');
+    const requestShutdown = setupShutdownHandlers(
+      vi.fn(() => Promise.resolve()),
+      mockLogger
+    );
+
+    expect(lifecycle.routeStderrEpipeToShutdown).toHaveBeenCalledOnce();
+    expect(lifecycle.routeStderrEpipeToShutdown).toHaveBeenCalledWith(requestShutdown);
   });
 
   it('registers SIGTERM handler', async () => {
@@ -466,7 +480,8 @@ describe('startServer', () => {
       value: {
         // `.server` mirrors the real McpServer's low-level Server handle, which
         // cli-server wires `oninitialized` onto for MCP-roots resolution (#3991).
-        server: { connect: vi.fn(), server: {} },
+        // `registerTool` is wrapped by the in-flight tool-call tracker (#6573).
+        server: { connect: vi.fn(), registerTool: vi.fn(), server: {} },
         logger: createMockLogger(),
       },
     } as never);

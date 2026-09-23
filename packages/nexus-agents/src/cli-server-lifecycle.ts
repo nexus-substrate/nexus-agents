@@ -279,3 +279,43 @@ export function watchParentProcess(
     return requestShutdown('parent-gone');
   });
 }
+
+/** The part of `process.stderr` {@link routeStderrEpipeToShutdown} listens on. */
+type ErrorEventSource = Pick<NodeJS.EventEmitter, 'on'>;
+
+function isEpipe(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'EPIPE'
+  );
+}
+
+/**
+ * Makes an EPIPE on stderr a shutdown request instead of a crash (#6573).
+ *
+ * The server logs to stderr, usually a pipe to the host. When the host dies the
+ * pipe loses its reader, and the next log write — typically the "parent
+ * process closed stdin" warning at the start of shutdown — fails with EPIPE.
+ * With no `'error'` listener on the stream, that became an `uncaughtException`
+ * whose handler exited before the audit flush ran, so `system.shutdown.begin`
+ * was never written. A lost stderr reader is evidence the host is gone, so the
+ * error requests the same bounded, run-once shutdown as parent death (a no-op
+ * when that shutdown is already running). Any other stderr error is rethrown
+ * and stays fatal.
+ */
+export function routeStderrEpipeToShutdown(
+  requestShutdown: ShutdownRequest,
+  stream: ErrorEventSource = process.stderr
+): void {
+  stream.on('error', (error: unknown) => {
+    if (!isEpipe(error)) {
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+    // Nothing is logged here: stderr is the stream that just failed.
+    requestShutdown('stderr-closed').catch(() => {
+      process.exit(EXIT_CODES.SHUTDOWN_ERROR);
+    });
+  });
+}
