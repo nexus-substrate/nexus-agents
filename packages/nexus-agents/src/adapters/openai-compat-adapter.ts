@@ -12,7 +12,9 @@
  *   2. NEXUS_OPENCODE_CONFIG path → opencode.json → providers.openai-compat
  *   3. Unconfigured → adapter not built
  *
- * Models are discovered via GET {base}/v1/models at first use. Each model
+ * Models are discovered via GET {base}/models at first use, where {base} is
+ * NEXUS_OPENAI_COMPAT_URL and already ends in `/v1` (the SDK appends only
+ * `/models`, so a base without `/v1` probes the wrong path). Each model
  * the gateway exposes can be selected by ID; the adapter wraps the existing
  * `OpenAIAdapter` for the actual chat-completions request, so streaming +
  * tool use + the full IModelAdapter contract come for free.
@@ -60,7 +62,7 @@ import {
 } from './gateway-http.js';
 
 export interface OpenAICompatConfig extends GatewayTransport {
-  /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
+  /** Gateway base URL — ends in `/v1`; the SDK appends `/models` and `/chat/completions`. */
   readonly baseUrl: string;
   /** API key the gateway expects. */
   readonly apiKey: string;
@@ -244,7 +246,8 @@ function keepValidModelIds<T extends { readonly id: string }>(
 }
 
 /**
- * Discover available models by calling `GET {baseUrl}/v1/models`. Uses the
+ * Discover available models by calling `GET {baseUrl}/models` ({baseUrl} ends
+ * in `/v1`). Uses the
  * official `openai` SDK's `client.models.list()` so we benefit from its
  * pagination + retry handling. The list is the strongly authoritative
  * source: nexus-agents won't try to dispatch to a model the gateway doesn't
