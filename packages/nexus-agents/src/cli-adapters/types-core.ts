@@ -238,8 +238,17 @@ export interface CliResponse {
    * CLI slot of the arm `CompositeRouter.executeTask` selected and ran (#6521).
    * Set only by the router, never by an adapter. CLI subprocess adapters report
    * no `model`, so without this a caller cannot attribute a routed outcome.
+   * This is the DISPLAY slot: an `api:anthropic` run reads `claude` here. An
+   * outcome record wants {@link routedArm}.
    */
   readonly routedCli?: CliName;
+  /**
+   * Routing arm id of the arm the router ran (#6552): `api:anthropic` for the
+   * Anthropic API arm, `claude` for the claude CLI arm. Set only by the
+   * router, alongside {@link routedCli}. This is what a persisted outcome's
+   * `cli` records, so warm start credits the arm that ran, not its slot.
+   */
+  readonly routedArm?: RoutingArmId;
   /**
    * Wall time of the routed arm's `execute` call alone, in ms (#6521). Set only
    * by `CompositeRouter.executeTask`; excludes routing and caller overhead.
@@ -298,8 +307,11 @@ export interface CliError {
    * CLI slot of the arm `CompositeRouter.executeTask` selected, when that arm
    * ran and failed (#6521). Set only by the router, so a caller can record
    * the failure against the arm it routed to. Absent when routing itself failed.
+   * The display slot; see {@link CliResponse.routedArm} for the arm id.
    */
   readonly routedCli?: CliName;
+  /** Routing arm id of the arm that ran and failed (#6552); see {@link CliResponse.routedArm}. */
+  readonly routedArm?: RoutingArmId;
   /** Wall time of the failed arm's `execute` call alone, in ms (#6521). */
   readonly routedDurationMs?: number;
 }

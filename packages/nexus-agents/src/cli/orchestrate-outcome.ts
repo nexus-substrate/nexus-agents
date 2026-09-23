@@ -1,8 +1,11 @@
 /**
  * Outcome recording for the `orchestrate` CLI command's routed runs (#6533).
  *
- * `CompositeRouter.executeDecision` names the arm that ran (`routedCli`) and
- * times its call alone (`routedDurationMs`), on success and on failure. This
+ * `CompositeRouter.executeDecision` names the arm that ran (`routedArm`, with
+ * its display slot in `routedCli`) and times its call alone
+ * (`routedDurationMs`), on success and on failure. The row's `cli` is the ARM
+ * id (#6552): an `api:anthropic` run is recorded as `api:anthropic`, not as
+ * its `claude` slot, so warm start credits the arm that ran. This
  * module turns that into a `TaskOutcome` with `routedBy: 'composite-router'`,
  * the same fields the dev-pipeline stages write through `expert-bridge`.
  *
@@ -20,22 +23,26 @@
  */
 
 import { createLogger, getTimeProvider, getRandomProvider, type Result } from '../core/index.js';
-import type { CliError, CliResponse } from '../cli-adapters/index.js';
+import type { CliError, CliResponse, RoutingArmId } from '../cli-adapters/index.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js';
 
 const logger = createLogger({ component: 'orchestrate-outcome' });
 
-/** The router's attribution, read from whichever side of the result is present. */
+/**
+ * The router's attribution, read from whichever side of the result is present.
+ * `routedArm` is the arm id; a result that names only the slot (`routedCli`)
+ * falls back to it, which is the arm id for every CLI arm.
+ */
 function attributionOf(result: Result<CliResponse, CliError>): {
-  routedCli: CliResponse['routedCli'];
+  routedArm: RoutingArmId | undefined;
   routedDurationMs: number | undefined;
   error: string | undefined;
 } {
   const side = result.ok ? result.value : result.error;
   return {
-    routedCli: side.routedCli,
+    routedArm: side.routedArm ?? side.routedCli,
     routedDurationMs: side.routedDurationMs,
     error: result.ok ? undefined : result.error.message,
   };
@@ -49,14 +56,14 @@ export function recordRoutedOrchestrateOutcome(
   taskContent: string,
   result: Result<CliResponse, CliError>
 ): void {
-  const { routedCli, routedDurationMs, error } = attributionOf(result);
-  if (routedCli === undefined || routedDurationMs === undefined) {
+  const { routedArm, routedDurationMs, error } = attributionOf(result);
+  if (routedArm === undefined || routedDurationMs === undefined) {
     logger.debug('No routed arm on the result; no outcome recorded');
     return;
   }
   const category = detectTaskCategory(taskContent)?.category;
   if (category === undefined) {
-    logger.debug('Task category not detected; routed outcome not persisted', { routedCli });
+    logger.debug('Task category not detected; routed outcome not persisted', { routedArm });
     return;
   }
   try {
@@ -64,7 +71,7 @@ export function recordRoutedOrchestrateOutcome(
     const suffix = getRandomProvider().random().toString(36).slice(2, 8);
     getOutcomeStore().append({
       id: `orchestrate-cli-${String(nowMs)}-${suffix}`,
-      cli: routedCli,
+      cli: routedArm,
       routedBy: 'composite-router',
       category,
       model: 'orchestrate-cli',

@@ -17,8 +17,8 @@ import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js';
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
-import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
+import type { RoutingArmId } from '../cli-adapters/types-core.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -58,7 +58,7 @@ interface RecordOutcomeArgs {
    * is still emitted; only the cli-attributed outcome that would poison
    * the routing learner is suppressed.
    */
-  cli: CliNameLiteral | undefined;
+  cli: RoutingArmId | undefined;
   /**
    * The bridge result's `routedBy` (#6521), copied onto the outcome. Required
    * (though it may be `undefined`) so every call site states it: a stage that
@@ -88,7 +88,8 @@ export function outcomeFieldsFromBridge(
   r: ExpertBridgeResult
 ): Pick<RecordOutcomeArgs, 'cli' | 'routedBy' | 'success' | 'durationMs' | 'error'> {
   return {
-    cli: r.cli,
+    // #6552: the arm that ran; `r.cli` is its display slot.
+    cli: r.routedArm ?? r.cli,
     routedBy: r.routedBy,
     success: r.success,
     durationMs: r.routedDurationMs ?? r.durationMs,

@@ -10,7 +10,7 @@ import {
   taskAnalysisResultToTaskProfile,
   getTimeProvider,
 } from '../core/index.js';
-import type { CliName, CliTask, RoutingArmId } from './types.js';
+import type { CliTask, RoutingArmId } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
@@ -176,14 +176,14 @@ interface CachedRate {
   readonly computedAt: number;
 }
 
-const qualityRateCache = new Map<CliName, CachedRate>();
+const qualityRateCache = new Map<RoutingArmId, CachedRate>();
 
 /**
  * Per-CLI success rate over the recent window, cached with a short TTL to avoid
  * the O(N) OutcomeStore scan on every task. Returns undefined when there is no
  * history (caller leaves the base reward unadjusted). (#3261)
  */
-function getCachedCliSuccessRate(cli: CliName): number | undefined {
+function getCachedCliSuccessRate(cli: RoutingArmId): number | undefined {
   const now = getTimeProvider().now();
   const cached = qualityRateCache.get(cli);
   if (cached !== undefined && now - cached.computedAt < QUALITY_RATE_CACHE_TTL_MS) {
@@ -194,6 +194,20 @@ function getCachedCliSuccessRate(cli: CliName): number | undefined {
   const rate = recent.filter((o) => o.success).length / recent.length;
   qualityRateCache.set(cli, { rate, computedAt: now });
   return rate;
+}
+
+/**
+ * Success rate a reward reads for `arm` (#6552): the arm's own history once it
+ * has any, else its display slot's. Most writers still record slots, so a cold
+ * `api:*` arm reading only its own (empty) history would be rewarded below its
+ * CLI sibling for the same success. A CLI arm IS its slot, so it never falls
+ * back. Each rate is cached under the id it was measured for.
+ */
+function rewardSuccessRate(arm: RoutingArmId): number | undefined {
+  const own = getCachedCliSuccessRate(arm);
+  if (own !== undefined) return own;
+  const slot = routingArmDisplaySlot(arm);
+  return slot === arm ? undefined : getCachedCliSuccessRate(slot);
 }
 
 /** Clears the per-CLI success-rate cache. For tests (#3261). */
@@ -209,18 +223,23 @@ export function resetQualityRewardCache(): void {
  * LinUCB to learn more nuanced model preferences. The per-CLI success rate
  * is cached with a short TTL (#3261) so this stays O(1) on the hot path.
  *
- * @param cli - CLI that executed the task
+ * @param cli - Routing arm that executed the task. An `api:*` arm reads its
+ *   own history, or its display slot's while it has none (#6552).
  * @param success - Whether the task succeeded
  * @param durationMs - Task execution duration in ms
  * @returns Reward value in [0, 1] range
  */
-export function computeQualityReward(cli: CliName, success: boolean, durationMs: number): number {
+export function computeQualityReward(
+  cli: RoutingArmId,
+  success: boolean,
+  durationMs: number
+): number {
   if (!success) return 0.1;
 
   let reward = 0.5;
 
   try {
-    const rate = getCachedCliSuccessRate(cli);
+    const rate = rewardSuccessRate(cli);
     if (rate !== undefined) {
       reward += rate * 0.3;
     }

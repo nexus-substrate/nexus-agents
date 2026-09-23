@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { recordRoutedOrchestrateOutcome } from './orchestrate-outcome.js';
 import { OutcomeStore, setOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { isDistillerEligible } from '../learning/distiller-eligibility.js';
+import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { CliError, CliResponse } from '../cli-adapters/index.js';
 import type { Result } from '../core/index.js';
 
@@ -95,5 +96,73 @@ describe('recordRoutedOrchestrateOutcome (#6533)', () => {
     recordRoutedOrchestrateOutcome(UNDETECTED_TASK, routedSuccess());
 
     expect(store.query()).toHaveLength(0);
+  });
+
+  describe('API arms are recorded under their own arm id (#6552)', () => {
+    function apiSuccess(): Result<CliResponse, CliError> {
+      return {
+        ok: true,
+        value: {
+          text: 'ok',
+          routedCli: 'claude',
+          routedArm: 'api:anthropic',
+          routedDurationMs: 900,
+        },
+      };
+    }
+
+    it('records an api:anthropic run as api:anthropic, not its claude slot', () => {
+      recordRoutedOrchestrateOutcome(TESTING_TASK, apiSuccess());
+
+      expect(store.query().map((o) => o.cli)).toEqual(['api:anthropic']);
+    });
+
+    it('records the arm id on a failure row too', () => {
+      recordRoutedOrchestrateOutcome(TESTING_TASK, {
+        ok: false,
+        error: {
+          code: 'TIMEOUT',
+          message: 'api:anthropic timed out after 60000ms',
+          cli: 'claude',
+          retryable: true,
+          routedCli: 'claude',
+          routedArm: 'api:anthropic',
+          routedDurationMs: 60001,
+        },
+      });
+
+      expect(store.query()[0]).toMatchObject({
+        cli: 'api:anthropic',
+        success: false,
+        failureCategory: 'timeout',
+      });
+    });
+
+    it('still records the claude CLI arm as claude', () => {
+      recordRoutedOrchestrateOutcome(TESTING_TASK, {
+        ok: true,
+        value: { text: 'ok', routedCli: 'claude', routedArm: 'claude', routedDurationMs: 900 },
+      });
+
+      expect(store.query().map((o) => o.cli)).toEqual(['claude']);
+    });
+
+    it('warm-starts the api:anthropic arm from the row, and leaves claude cold', () => {
+      recordRoutedOrchestrateOutcome(TESTING_TASK, apiSuccess());
+      const bandit = new LinUCBBandit(['claude', 'api:anthropic']);
+
+      expect(bandit.warmStart(store.query())).toBe(1);
+      const pulls = new Map(bandit.getStats().map((s) => [s.name, s.pullCount]));
+      expect(pulls.get('api:anthropic')).toBe(1);
+      expect(pulls.get('claude')).toBe(0);
+    });
+
+    it('does not train distilled rules on an API arm row, which no rule can match', () => {
+      recordRoutedOrchestrateOutcome(TESTING_TASK, apiSuccess());
+
+      const row = store.query()[0];
+      expect(row?.routedBy).toBe('composite-router');
+      expect(row !== undefined && isDistillerEligible(row)).toBe(false);
+    });
   });
 });
