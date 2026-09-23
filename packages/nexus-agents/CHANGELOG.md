@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 8.93.0
+
+### Minor Changes
+
+- [#6581](https://github.com/nexus-substrate/nexus-agents/pull/6581) [`17059f8`](https://github.com/nexus-substrate/nexus-agents/commit/17059f8cb2f7f36ca4e3a2a3211d851af862c9f5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` now stops an async `run_workflow` or `execute_spec` job at the next step boundary. Before this, cancelling either job marked the record `cancelled` while the run kept dispatching steps, and so kept spending, until it finished.
+
+  - `IWorkflowEngine.execute` options gain `signal` (new, optional): `WorkflowEngine` links it to the execution's own abort controller, so a step not yet dispatched is skipped and the run fails with `Workflow cancelled` at the next phase boundary, including after the final phase.
+  - `SpecExecutionOptions.signal` (new, optional): `executeSpec` hands the signal to the graph executor, which checks it before each super-step. Once it has fired, `executeSpec` returns the error `Spec execution cancelled` at stage `execute`, never a partial result that goes on to validation.
+
+  In both cases a step that is already running finishes. Only the steps after it are skipped. The job record's `signalAccepted` is now `true` for both tools. `orchestrate` and `run` still do not accept the signal ([#6305](https://github.com/nexus-substrate/nexus-agents/issues/6305)).
+
 ## 8.92.0
 
 ### Minor Changes
