@@ -676,6 +676,19 @@ describe('buildOpenAICompatAdapters (#2468)', () => {
     expect(result.value.map((a) => a.modelId)).toEqual(['a', 'b', 'c']);
   });
 
+  it('carries each listed created stamp onto its adapter for family ranking (#6604)', async () => {
+    process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
+    process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';
+    mockList.mockResolvedValue({ data: [{ id: 'a', created: 1_700_000_000 }, { id: 'b' }] });
+    const result = await buildOpenAICompatAdapters();
+    if (result?.ok !== true) throw new Error('expected discovered adapters');
+    expect(result.value.map((a) => (a as { created?: number }).created)).toEqual([
+      1_700_000_000,
+      undefined,
+    ]);
+    expect(result.value.map((a) => 'created' in a)).toEqual([true, false]);
+  });
+
   it('propagates discovery errors', async () => {
     process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-test';

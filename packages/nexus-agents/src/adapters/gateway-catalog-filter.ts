@@ -133,9 +133,11 @@ function verdictFromMetadata(listing: unknown): ChatVerdict | undefined {
 /**
  * Id shapes of non-chat models across the three families: OpenAI
  * (`text-embedding-*`, `tts-*`, `whisper-*`, `dall-e-*`, `*-moderation-*`,
- * `gpt-image-*`, `*-audio-*`, `*-realtime-*`), Google (`*-embedding-*`,
- * `imagen-*`, `*-image`) and rerankers. Whole-token where a substring would
- * misfire (`tts`, `audio`, `image`, `speech`, `realtime`).
+ * `gpt-image-*`, `*-audio-*`, `*-realtime-*`, `*-transcribe`, `sora-*`),
+ * Google (`*-embedding-*`, `imagen-*`, `*-image`, `*-live-*`, `veo-*`,
+ * `lyria-*`) and rerankers. Whole-token where a substring would misfire
+ * (`tts`, `audio`, `image`, `speech`, `realtime`, `live`, `video`, `sora`,
+ * `veo`, `lyria`).
  */
 const NON_CHAT_ID_PATTERNS: readonly RegExp[] = [
   /embed/,
@@ -145,7 +147,7 @@ const NON_CHAT_ID_PATTERNS: readonly RegExp[] = [
   /dall-?e/,
   /imagen/,
   /transcri(?:be|ption)/,
-  /(?:^|[-_/.:])(?:tts|audio|image|speech|realtime)(?:[-_/.:]|$)/,
+  /(?:^|[-_/.:])(?:tts|audio|image|speech|realtime|live|video|sora|veo|lyria)(?:[-_/.:]|$)/,
 ];
 
 /**
@@ -159,6 +161,16 @@ export function isNonChatModelId(id: string): boolean {
 
 function verdictFromId(id: string): ChatVerdict {
   return isNonChatModelId(id) ? 'non-chat' : 'chat';
+}
+
+/**
+ * Whether an id names a chat model, by the id alone. The same classifier
+ * discovery falls back on when a listing carries no metadata; the family-slot
+ * mapping (#6604) applies it too, so a realtime or image model a gateway
+ * listed as chat never serves a CLI slot.
+ */
+export function isChatModelId(id: string): boolean {
+  return verdictFromId(id) === 'chat';
 }
 
 // ============================================================================

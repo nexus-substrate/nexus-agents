@@ -13,6 +13,7 @@
  */
 
 import { getAvailableClis } from '../../cli-adapters/factory.js';
+import { hasGatewaySlotCatalog } from '../../adapters/gateway-family-slots.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { CliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import type { ILogger } from '../../core/index.js';
@@ -74,6 +75,9 @@ const API_KEYS: readonly ApiKeyConfig[] = [
 /**
  * CLI authentication instructions.
  */
+/** How a discovered OpenAI-compatible gateway is listed among the providers (#6604). */
+const GATEWAY_PROVIDER = 'OpenAI-compatible gateway (NEXUS_OPENAI_COMPAT_URL)';
+
 const CLI_AUTH_INSTRUCTIONS = `1. An authenticated CLI (run one of these to authenticate):
   - claude (run: claude login)
   - gemini (run: gemini auth)
@@ -209,8 +213,12 @@ export async function checkAdapterAvailability(
   // Check CLIs (preferred - OAuth-authenticated)
   const availableClis = checkClis ? await detectAvailableClis(cache, log) : [];
 
-  // Check API keys as fallback
-  const availableApiKeys = checkApiKeysFlag ? getAvailableApiKeys() : [];
+  // Check API keys as fallback. A discovered gateway counts too (#6604): on a
+  // gateway-only host every family slot resolves to a gateway model, so the
+  // tools gated here (create_expert, execute_expert) must not refuse it.
+  const availableApiKeys = checkApiKeysFlag
+    ? [...getAvailableApiKeys(), ...(hasGatewaySlotCatalog() ? [GATEWAY_PROVIDER] : [])]
+    : [];
   if (availableApiKeys.length > 0) {
     log.debug('API key adapters available', { providers: availableApiKeys });
   }

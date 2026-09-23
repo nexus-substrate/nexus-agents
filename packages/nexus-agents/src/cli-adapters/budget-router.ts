@@ -35,11 +35,7 @@ import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { gatewayCostGap } from '../adapters/sdk/gateway-cost.js';
-import {
-  describeUnpricedArm,
-  estimateArmCostUsd,
-  estimateBudgetArmCostUsd,
-} from './budget-arm-cost.js';
+import { budgetCostOfArm, ceilingCostOfArm, unpricedReasonOfArm } from './budget-arm-cost.js';
 
 // The registry estimator moved to a sibling for the file cap (#4392 inc 2);
 // re-exported so `budget-router` keeps its published surface.
@@ -237,7 +233,7 @@ export class BudgetRouter implements IBudgetRouter {
     const armCostUsd =
       selected === null
         ? undefined
-        : estimateBudgetArmCostUsd(selected.arm, estimatedInputTokens, estimatedOutputTokens);
+        : budgetCostOfArm(selected, estimatedInputTokens, estimatedOutputTokens);
     // Named empty case: with nothing selectable there is no cost to report,
     // and `0` is the existing "nothing would run" value. It is never a
     // gateway's fabricated rate — that arm was skipped and is listed in
@@ -298,7 +294,8 @@ export class BudgetRouter implements IBudgetRouter {
     return candidates.filter((arm) => {
       // A vendor arm is priced by its display slot's default model (#3422); a
       // gateway arm by its NEXUS_GATEWAY_COST declaration (#4392 inc 2).
-      const cost = estimateArmCostUsd(arm, inputTokens, outputTokens);
+      const target = { arm, adapter: this.adapters.get(arm) };
+      const cost = ceilingCostOfArm(target, inputTokens, outputTokens);
       if (cost === undefined) {
         const gap = gatewayCostGap(arm);
         if (gap !== undefined) {
@@ -491,9 +488,10 @@ export class BudgetRouter implements IBudgetRouter {
       // A CLI slot or vendor arm keeps the conservative fallback; a gateway
       // arm is priced by its declaration and is `undefined` when it has none
       // (#6393). Unknown is NOT within budget: skip it and say why.
-      const estimatedCost = estimateBudgetArmCostUsd(arm, estimatedTokens / 2, estimatedTokens / 2);
+      const half = estimatedTokens / 2;
+      const estimatedCost = budgetCostOfArm({ arm, adapter }, half, half);
       if (estimatedCost === undefined) {
-        const reason = describeUnpricedArm(arm);
+        const reason = unpricedReasonOfArm({ arm, adapter });
         logger.warn(`Budget: ${reason} — not admitting ${arm} (fail-closed)`, { arm, reason });
         unpricedArms.push({ arm, reason });
         continue;

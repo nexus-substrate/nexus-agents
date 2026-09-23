@@ -24,7 +24,19 @@ import { z } from 'zod';
 
 import { discoverModels, readOpenAICompatEnv } from '../../adapters/openai-compat-adapter.js';
 import { _resetGatewayCatalogs, getGatewayCatalog } from '../../adapters/sdk/gateway-catalog.js';
-import { createUnifiedRegistry } from '../../adapters/unified-registry.js';
+import {
+  createUnifiedRegistry,
+  getGlobalRegistry,
+  resetGlobalRegistry,
+} from '../../adapters/unified-registry.js';
+import { _resetGatewaySlotCatalog } from '../../adapters/gateway-family-slots.js';
+import {
+  ROLE_TO_TASK_CATEGORY,
+  resolveAdapterForRole,
+} from '../../mcp/tools/create-expert-routing.js';
+import { executeExpert } from '../../pipeline/expert-bridge.js';
+import { createDefaultDeps, registerCreateExpertTool } from '../../mcp/tools/create-expert.js';
+import { registerExecuteExpertTool } from '../../mcp/tools/execute-expert.js';
 import { wireGateway } from '../../cli-server-gateway.js';
 import { ErrorCode, type ILogger, type IModelAdapter } from '../../core/index.js';
 import { loadUsageEvents } from '../../learning/usage-log.js';
@@ -43,6 +55,11 @@ import {
   familyOf,
   oversizedCatalog,
 } from './three-family-catalog.js';
+
+// The expert stage passes an MCP config to CLI experts; none is needed here.
+vi.mock('../../cli-adapters/child-mcp-config.js', () => ({
+  generateMcpConfig: () => Promise.resolve({ configPath: '/tmp/mcp.json', cleanup: vi.fn() }),
+}));
 
 // No agent CLI is installed on a gateway-only host.
 vi.mock('../../cli-adapters/factory.js', async (importOriginal) => {
@@ -458,8 +475,124 @@ describe('a 7-seat consensus_vote on a one-family gateway (#6606)', () => {
 // 4. Family-slot routing (#6604 — PR #6623 fills these in)
 // ============================================================================
 
+/**
+ * The model each vendor slot resolves to on the recorded catalogue. Every row
+ * carries a `created` stamp, so within the flagship tier the newest wins: the
+ * dated gpt-5.2 snapshot, claude_4_5_opus and gemini-3-pro-preview.
+ */
+const FAMILY_SLOT_MODEL = {
+  codex: 'gpt-5.2-2025-12-11',
+  claude: 'claude_4_5_opus',
+  gemini: 'gemini-3-pro-preview',
+} as const;
+type FamilySlot = keyof typeof FAMILY_SLOT_MODEL;
+
+function isFamilySlot(value: unknown): value is FamilySlot {
+  return typeof value === 'string' && value in FAMILY_SLOT_MODEL;
+}
+
 describe('family-slot routing with no CLIs installed (#6604)', () => {
-  it.todo('run_dev_pipeline runs its expert stage on the gateway model of the slot family');
-  it.todo('orchestrate dispatches each worker to the gateway model of its slot family');
-  it.todo('execute_expert runs on the gateway model of the expert slot family');
+  let emptyBin: string;
+
+  beforeAll(async () => {
+    // No agent binary on PATH either: the router's arms are gateway-served.
+    emptyBin = mkdtempSync(join(tmpdir(), 'nexus-gateway-no-clis-'));
+    vi.stubEnv('PATH', emptyBin);
+    // opencode is multi-vendor and has no family slot (#6626).
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'opencode');
+    // Plan billing: no api:<vendor> arms beside the slots. A declared gateway
+    // cost, so the budget filter admits the gateway-served slot arms.
+    vi.stubEnv('NEXUS_BILLING_MODE', undefined);
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    resetGlobalRegistry();
+    await wireFromEnv();
+  });
+
+  afterAll(() => {
+    vi.stubEnv('PATH', process.env['PATH']);
+    vi.stubEnv('NEXUS_DISABLED_CLIS', undefined);
+    vi.stubEnv('NEXUS_BILLING_MODE', 'api');
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    resetGlobalRegistry();
+    _resetGatewaySlotCatalog();
+    rmSync(emptyBin, { recursive: true, force: true });
+  });
+
+  const servedModels = (): string[] =>
+    gateway.chatRequests().map((r) => (r.body as ChatRequestBody).model);
+
+  it('run_dev_pipeline runs its expert stage on the gateway model of the slot family', async () => {
+    const result = await executeExpert('code', 'write a CSV parser');
+
+    expect(result.success).toBe(true);
+    expect(isFamilySlot(result.cli)).toBe(true);
+    if (!isFamilySlot(result.cli)) return;
+    expect(result.model).toBe(FAMILY_SLOT_MODEL[result.cli]);
+    expect(servedModels()).toEqual([FAMILY_SLOT_MODEL[result.cli]]);
+  });
+
+  it('orchestrate dispatches each worker to the gateway model of its slot family', async () => {
+    const registry = getGlobalRegistry();
+    const slotsSeen = new Set<string>();
+    for (const [role, category] of Object.entries(ROLE_TO_TASK_CATEGORY)) {
+      const slot = registry.getRouting(category)?.primaryCli;
+      if (!isFamilySlot(slot)) throw new Error(`${role} routes to ${String(slot)}`);
+      slotsSeen.add(slot);
+      gateway.clearRequests();
+
+      const adapter = resolveAdapterForRole(role, undefined, silentLogger());
+      const result = await adapter?.complete(ask);
+
+      expect({ role, ok: result?.ok, served: servedModels() }).toEqual({
+        role,
+        ok: true,
+        served: [FAMILY_SLOT_MODEL[slot]],
+      });
+    }
+    expect([...slotsSeen].sort()).toEqual(['claude', 'codex', 'gemini']);
+  });
+
+  it('execute_expert runs on the gateway model of the expert slot family', async () => {
+    const created = createServer();
+    if (!created.ok) throw new Error(created.error.message);
+    const { server } = created.value;
+    const logger = silentLogger();
+    const { rateLimiter } = registerTools(server, { logger });
+    const createDeps = createDefaultDeps(rateLimiter, logger);
+    registerCreateExpertTool(server, createDeps);
+    registerExecuteExpertTool(server, {
+      expertRegistry: createDeps.expertRegistry,
+      logger,
+      rateLimiter,
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'gateway-acceptance-experts', version: '1.0.0' });
+    await client.connect(clientTransport);
+    try {
+      const made = await client.callTool({
+        name: 'create_expert',
+        arguments: { role: 'security_expert', modelPreference: 'claude-opus' },
+      });
+      // create_expert answers in text content: the created expert as JSON.
+      const [first] = z
+        .object({ content: z.array(z.object({ text: z.string() })) })
+        .parse(made).content;
+      const { expertId } = z
+        .object({ expertId: z.string() })
+        .parse(JSON.parse(first?.text ?? 'null'), { error: () => String(first?.text) });
+      gateway.clearRequests();
+
+      await client.callTool({
+        name: 'execute_expert',
+        arguments: { expertId, task: 'review the auth flow' },
+      });
+
+      expect(servedModels().length).toBeGreaterThan(0);
+      expect(new Set(servedModels())).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });

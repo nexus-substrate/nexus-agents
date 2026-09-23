@@ -92,6 +92,11 @@ export interface OpenAICompatConfig extends GatewayTransport {
  */
 interface GatewayModelAdapter extends IModelAdapter {
   readonly gatewayArm: EndpointArmId;
+  /**
+   * The `/models` `created` stamp (epoch seconds) discovery listed for this
+   * model, when it listed one. Read by the family-slot ranking (#6604).
+   */
+  readonly created?: number;
 }
 
 /**
@@ -338,7 +343,8 @@ function overCapError(
  */
 export function createOpenAICompatAdapter(
   modelId: string,
-  config: OpenAICompatConfig
+  config: OpenAICompatConfig,
+  created?: number
 ): GatewayModelAdapter {
   // Verbatim: the id goes to the gateway exactly as it listed it. The direct
   // adapter's alias table (`gpt-4o` -> a dated snapshot) names models the
@@ -351,7 +357,11 @@ export function createOpenAICompatAdapter(
     verbatimModelId: true,
     ...gatewayClientOptions(config),
   });
-  return withUsageRecording(inner, `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`);
+  const wrapped = withUsageRecording(
+    inner,
+    `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`
+  );
+  return created === undefined ? wrapped : Object.assign(wrapped, { created });
 }
 
 /**
@@ -459,5 +469,5 @@ export async function buildOpenAICompatAdapters(
   if (config === null) return null;
   const discovered = await discoverModels(config, logger);
   if (!discovered.ok) return discovered;
-  return ok(discovered.value.map((m) => createOpenAICompatAdapter(m.id, config)));
+  return ok(discovered.value.map((m) => createOpenAICompatAdapter(m.id, config, m.created)));
 }

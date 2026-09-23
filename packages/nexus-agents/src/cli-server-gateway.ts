@@ -27,6 +27,7 @@ import {
 } from './adapters/gateway-host-status.js';
 import { GatewayRediscovery, setGatewayRediscovery } from './adapters/gateway-rediscovery.js';
 import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
+import { logGatewaySlotMapping, setGatewaySlotCatalog } from './adapters/gateway-family-slots.js';
 import { gatewayEndpointRejection } from './adapters/sdk/gateway-cost.js';
 import { hostnameOf, warnDeprecatedGatewayEnvOnce } from './adapters/sdk/gateway-env.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
@@ -228,8 +229,9 @@ export function registerGatewayArm(
 /**
  * The bootstrap entry (#4392 inc 2 step 2): discover the gateway
  * ({@link tryWireGatewayAdapters}), register its `api:<endpoint>` arm
- * ({@link registerGatewayArm}) under the operator's endpoint id, and hand the
- * per-model adapters back for the tools. One call, so `cli-server.ts` cannot
+ * ({@link registerGatewayArm}) under the operator's endpoint id, register the
+ * family-slot catalogue (#6604), and hand the per-model adapters back for the
+ * tools. One call, so `cli-server.ts` cannot
  * wire the adapters without the arm.
  */
 export async function wireGateway(
@@ -239,6 +241,7 @@ export async function wireGateway(
   const { adapters, retryable } = await wireGatewayOnce(logger);
   const endpoint = readOpenAICompatEndpoint(process.env, logger);
   registerGatewayArm(adapters, endpoint, registry);
+  registerFamilySlots(adapters, logger);
   if (!retryable) return adapters;
   // #6608: a gateway that was down at boot is retried lazily. The tools get
   // an empty live list (every reader treats empty as "no gateway"); the first
@@ -252,10 +255,24 @@ export async function wireGateway(
       discover: () => rediscoverGateway(logger),
       onDiscovered: (found) => {
         registerGatewayArm(found, endpoint, registry);
+        registerFamilySlots(found, logger);
       },
     })
   );
   return live;
+}
+
+/**
+ * #6604: the family-slot catalogue — each vendor CLI slot without an
+ * available CLI resolves to a gateway model of its own family. None
+ * registered (no gateway, or discovery failed) means no gateway.
+ */
+function registerFamilySlots(
+  adapters: readonly IModelAdapter[] | undefined,
+  logger: ILogger
+): void {
+  setGatewaySlotCatalog(adapters ?? []);
+  logGatewaySlotMapping(logger);
 }
 
 /** One lazy re-discovery attempt: the adapters, or `undefined` (logged) when it failed. */

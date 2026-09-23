@@ -16,6 +16,7 @@ import { computeTokenCost, roundToMicroUsd } from '../learning/token-cost-core.j
 import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
 import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
+import { gatewayServedSlotOf, type GatewayServedSlot } from './gateway-slot-arm.js';
 import { estimateCost } from './budget-utils.js';
 import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
@@ -113,6 +114,8 @@ function estimateGatewayModelCostUsd(
  *
  * `arm` is any observed arm: a published {@link RoutingArmId} or a dynamic
  * `api:<endpoint>` arm (the voter gateway registers as one since step 2).
+ * A router arm INSTANCE a gateway model serves is priced through
+ * {@link ceilingCostOfArm} instead (#6604).
  */
 export function estimateArmCostUsd(
   arm: ObservedArmId,
@@ -139,6 +142,44 @@ export function estimateArmCostUsd(
 }
 
 /**
+ * The cost of a CLI-slot arm a gateway model serves (#6604): priced as that
+ * gateway, by the declaration for the model that runs, never at the slot
+ * vendor's list price. Unpriced when the model carries no gateway-arm marker.
+ */
+function estimateServedSlotCostUsd(
+  served: GatewayServedSlot,
+  inputTokens: number,
+  outputTokens: number,
+  env: NodeJS.ProcessEnv
+): number | undefined {
+  if (served.arm === undefined) return undefined;
+  return estimateArmCostUsd(served.arm, inputTokens, outputTokens, env, served.modelId);
+}
+
+/** A router arm INSTANCE: its key and the adapter registered under it. */
+interface RouterArm {
+  readonly arm: RoutingArmId;
+  readonly adapter: unknown;
+}
+
+/**
+ * {@link estimateArmCostUsd} for a router arm INSTANCE (#6604): the serving
+ * state is read from that arm (`gatewayServedSlotOf`), so a slot arm a gateway
+ * model serves is priced as its gateway, and every other arm as before.
+ */
+export function ceilingCostOfArm(
+  target: RouterArm,
+  inputTokens: number,
+  outputTokens: number,
+  env: NodeJS.ProcessEnv = process.env
+): number | undefined {
+  const served = gatewayServedSlotOf(target.adapter);
+  if (served !== undefined)
+    return estimateServedSlotCostUsd(served, inputTokens, outputTokens, env);
+  return estimateArmCostUsd(target.arm, inputTokens, outputTokens, env);
+}
+
+/**
  * Estimate the USD cost of a task on a routing ARM for the per-task budget
  * filter (`checkBudget`, #6393). Two policies, deliberately named here so
  * neither can be swapped for the other by accident (#5122):
@@ -158,10 +199,35 @@ export function estimateBudgetArmCostUsd(
   arm: RoutingArmId,
   inputTokens: number,
   outputTokens: number,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  served?: GatewayServedSlot
 ): number | undefined {
+  if (served !== undefined)
+    return estimateServedSlotCostUsd(served, inputTokens, outputTokens, env);
   if (isGatewayArmId(arm)) return estimateArmCostUsd(arm, inputTokens, outputTokens, env);
   return estimateCost(routingArmDisplaySlot(arm), inputTokens, outputTokens);
+}
+
+/**
+ * {@link estimateBudgetArmCostUsd} for a router arm INSTANCE: the serving
+ * state is read from that arm (`gatewayServedSlotOf`, #6604).
+ */
+export function budgetCostOfArm(
+  target: RouterArm,
+  inputTokens: number,
+  outputTokens: number,
+  env: NodeJS.ProcessEnv = process.env
+): number | undefined {
+  const served = gatewayServedSlotOf(target.adapter);
+  return estimateBudgetArmCostUsd(target.arm, inputTokens, outputTokens, env, served);
+}
+
+/** {@link describeUnpricedArm} for a router arm INSTANCE (#6604). */
+export function unpricedReasonOfArm(
+  target: RouterArm,
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  return describeUnpricedArm(target.arm, env, undefined, gatewayServedSlotOf(target.adapter));
 }
 
 /**
@@ -177,8 +243,14 @@ export function estimateBudgetArmCostUsd(
 export function describeUnpricedArm(
   arm: ObservedArmId,
   env: NodeJS.ProcessEnv = process.env,
-  modelId?: string
+  modelId?: string,
+  served?: GatewayServedSlot
 ): string {
+  if (served !== undefined) {
+    return served.arm === undefined
+      ? `slot served by gateway model ${served.modelId}, which carries no gateway arm to price by`
+      : describeUnpricedArm(served.arm, env, served.modelId);
+  }
   const gap = gatewayCostGap(arm, env);
   if (gap !== undefined) return `gateway cost ${gap}`;
   const model = isGatewayArmId(arm) ? gatewayPricingModel(arm, modelId, env) : undefined;

@@ -34,7 +34,8 @@ import {
   toRateLimitError,
   recordRateLimitEvent,
 } from './rate-limit-detector.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, EndpointArmId } from '../cli-adapters/types.js';
+import { isEndpointArmId } from '../cli-adapters/types.js';
 import type {
   IResilientAdapter,
   AdapterHealthInfo,
@@ -121,6 +122,18 @@ export class ResilientAdapter implements IResilientAdapter {
 
   get capabilities(): readonly ModelCapability[] {
     return this.currentAdapter?.capabilities ?? [];
+  }
+
+  /**
+   * The gateway arm of the adapter currently serving this proxy, when a
+   * gateway model serves it (#6604 family slots); otherwise undefined. A
+   * telemetry writer handed this proxy reads it (`isGatewayModelAdapter`) to
+   * price the call by the gateway's `NEXUS_GATEWAY_COST` declaration instead
+   * of a list price.
+   */
+  get gatewayArm(): EndpointArmId | undefined {
+    const arm: unknown = (this.currentAdapter as { gatewayArm?: unknown } | undefined)?.gatewayArm;
+    return typeof arm === 'string' && isEndpointArmId(arm) ? arm : undefined;
   }
 
   // --- IModelAdapter methods ---

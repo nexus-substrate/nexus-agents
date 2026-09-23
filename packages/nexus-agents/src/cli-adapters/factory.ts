@@ -19,10 +19,11 @@ import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 import type { ILogger } from '../core/index.js';
 import type { ICliDetectionCache } from './cli-detection-cache.js';
-import { CliDetectionCache } from './cli-detection-cache.js';
+import { CliDetectionCache, createCliDetectionCache } from './cli-detection-cache.js';
 import { probeCli } from '../cli/cli-auth-probe.js';
 import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
 import { isCliDisabled } from './disabled-clis.js';
+import { buildGatewaySlotRouterArm } from './gateway-slot-arm.js';
 import {
   codexMcpServerAvailable,
   CodexMcpServerUnavailableError,
@@ -129,7 +130,12 @@ function createCodexAdapter(
  * Codex transport is selected by probe unless one is passed (#6119).
  *
  * The four CLI slots are registered under their slot key, except any disabled
- * by `NEXUS_DISABLED_CLIS` (#6590); every CLI disabled yields an empty map. When
+ * by `NEXUS_DISABLED_CLIS` (#6590); every CLI disabled yields an empty map. In
+ * gateway mode a vendor slot whose CLI is not available (`isCliAvailable`, the
+ * predicate `createAutoAdapter` uses) is served by a gateway model of its
+ * family, and a slot with neither a binary nor a family model is omitted
+ * (#6604, `gateway-slot-arm.ts`); without a gateway catalogue the slots are
+ * unchanged. When
  * `NEXUS_BILLING_MODE=api`, the direct-API adapters whose keys are present are
  * ALSO appended as distinct `api:<vendor>` routing arms (#3422) so the router /
  * bandit can score them separately from the CLI slots. DEFAULT (plan) mode
@@ -155,8 +161,12 @@ export function createAllAdapters(
   ];
   // #6590: an operator-disabled CLI is not an arm. Skipped before
   // construction, so a disabled codex is not even probed for its transport.
+  const isAvailable = sharedSlotAvailability();
   for (const [cli, create] of slots) {
-    if (!isCliDisabled(cli)) adapters.set(cli, create());
+    if (isCliDisabled(cli)) continue;
+    const arm = buildGatewaySlotRouterArm(cli, create, isAvailable, logger);
+    if (arm === 'unavailable') continue;
+    adapters.set(cli, arm ?? create());
   }
 
   // API arms enter the router only in explicit api billing mode (#3422).
@@ -167,6 +177,23 @@ export function createAllAdapters(
   }
 
   return adapters;
+}
+
+/**
+ * The availability predicate the gateway-mode router arms of ONE
+ * `createAllAdapters` call share (#6604): `isCliAvailable`, the predicate
+ * `createAutoAdapter` uses, over one detection cache created on first use;
+ * `fresh` invalidates the cached answer for that CLI first.
+ */
+function sharedSlotAvailability(): (cli: CliName, fresh: boolean) => Promise<boolean> {
+  let cache: ICliDetectionCache | undefined;
+  return (cli, fresh) => {
+    cache ??= createCliDetectionCache();
+    // A re-check after an availability failure must probe again, not read
+    // the cached "available" that committed the arm to the CLI.
+    if (fresh) cache.invalidate(cli);
+    return isCliAvailable(cli, cache);
+  };
 }
 
 /**
