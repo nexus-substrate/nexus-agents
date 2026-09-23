@@ -242,7 +242,8 @@ describe('verify-command', () => {
       if (codexCheck === undefined) return;
       // Whether this machine has a codex cache or not, the record must say
       // which of the three verdicts it reached: a pass names the served slugs,
-      // a warn names the unserved one, and no cache reads as unmeasured.
+      // a warn names the unserved or retiring one (#6516), and no cache reads
+      // as unmeasured.
       // This test accepts all three because it runs against the real machine;
       // the verdict DISCRIMINATION (pass vs warn vs unmeasured, and that no
       // cache never passes) is carried by the fixture-driven unit tests in
@@ -251,7 +252,7 @@ describe('verify-command', () => {
         expect(codexCheck.message).toMatch(/served: /);
       } else {
         expect(codexCheck.severity).toBe('warn');
-        expect(codexCheck.message).toMatch(/not served|unmeasured/);
+        expect(codexCheck.message).toMatch(/not served|retir|unmeasured/);
       }
     });
 

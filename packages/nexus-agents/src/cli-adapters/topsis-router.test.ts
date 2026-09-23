@@ -231,7 +231,7 @@ describe('TopsisRouter', () => {
 
       const result = qualityOnly.selectModel();
 
-      // claude (claude-fable-5) and codex (gpt-5.5) tie at quality 10 (#4176)
+      // claude (claude-fable-5) and codex (gpt-5.6-sol, #6516) tie at quality 10 (#4176)
       // — with cost/latency weights at 0 either is the highest-quality pick.
       expect(['claude', 'codex']).toContain(result.selectedModel);
       expect(result.estimatedSavingsPercent).toBeGreaterThanOrEqual(0);

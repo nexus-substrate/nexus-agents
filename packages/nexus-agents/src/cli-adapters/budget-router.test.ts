@@ -401,8 +401,8 @@ describe('BudgetRouter task-class cost ceiling (#4196)', () => {
   // Registry pricing of per-CLI default models (in-tree-data):
   //   claude → claude-fable-5 ($10/$50 per 1M)
   //   gemini → gemini-3-pro   ($2/$12 per 1M)
-  //   codex  → gpt-5.5        ($5/$30 per 1M)
-  // With maxTokens 10_000 output: claude ≈ $0.50, codex ≈ $0.30, gemini ≈ $0.12.
+  //   codex  → gpt-5.6-sol    ($4/$20 per 1M, #6516)
+  // With maxTokens 10_000 output: claude ≈ $0.50, codex ≈ $0.20, gemini ≈ $0.12.
   const ceilingTask: CliTask = { content: 'implement a function', maxTokens: 10_000 };
   const candidates: CliName[] = ['claude', 'gemini', 'codex'];
 
