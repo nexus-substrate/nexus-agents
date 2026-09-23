@@ -144,8 +144,48 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
       expect(check.activeRuleCount).toBe(0);
       expect(check.trainedOnEligible).toBe(0);
       expect(check.fileEligibleOutcomeCount).toBe(0);
+      expect(check.routedOutcomes).toEqual({ total: 0, last7Days: 0 });
       expect(check.outcomeCount).toBe(1);
       expect(check.rulesLastSaved).not.toBeNull();
+    } finally {
+      if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('counts routed outcomes and the ones from the last 7 days (#6521)', async () => {
+    process.env['NEXUS_PERSIST_LEARNING'] = 'true';
+    const originalDataDir = process.env['NEXUS_DATA_DIR'];
+    const dataDir = join(tmpdir(), `nexus-doctor-6521-${String(Date.now())}`);
+    process.env['NEXUS_DATA_DIR'] = dataDir;
+    try {
+      const { getOutcomesFile, ensureLearningDir } =
+        await import('../config/learning-persistence.js');
+      ensureLearningDir();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const row = (id: string, ageDays: number, routed: boolean): string =>
+        JSON.stringify({
+          id,
+          cli: 'claude',
+          category: 'code_generation',
+          model: 'pipeline',
+          success: true,
+          durationMs: 100,
+          timestamp: new Date(Date.now() - ageDays * dayMs).toISOString(),
+          source: 'delegate',
+          ...(routed && { routedBy: 'composite-router' }),
+        });
+      writeFileSync(
+        getOutcomesFile(),
+        [row('r1', 1, true), row('r2', 30, true), row('n1', 1, false)].join('\n') + '\n'
+      );
+
+      const { runDoctor } = await import('./doctor.js');
+      const check = (await runDoctor()).learningPersistence;
+      expect(check.outcomeCount).toBe(3);
+      expect(check.routedOutcomes).toEqual({ total: 2, last7Days: 1 });
+      expect(check.fileEligibleOutcomeCount).toBe(2);
     } finally {
       if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
       else process.env['NEXUS_DATA_DIR'] = originalDataDir;

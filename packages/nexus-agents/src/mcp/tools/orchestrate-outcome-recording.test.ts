@@ -113,6 +113,9 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
       cli: 'codex',
       cliSource: 'executed',
     });
+    // #6521: the CLI ran, but the server's configured adapter chose it, not
+    // CompositeRouter, so the row carries no routed marker.
+    expect(Object.keys(getOutcomeStore().query().at(-1) ?? {})).not.toContain('routedBy');
   });
 
   it('records a success outcome to OutcomeStore after orchestration', () => {

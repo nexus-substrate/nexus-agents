@@ -35,7 +35,7 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
     durationMs: 1000,
     timestamp: new Date().toISOString(),
     source: 'delegate',
-    cliSource: 'executed',
+    routedBy: 'composite-router',
     ...overrides,
   };
 }
@@ -721,7 +721,9 @@ describe('StrategyDistiller', () => {
     it('does not count ineligible outcomes toward the threshold', () => {
       for (let i = 0; i < 10; i++) {
         store.append(makeOutcome({ source: 'consensus' }));
-        store.append(makeOutcome({ source: 'manual' }));
+        // Executed but not routed (#6521): the orchestrate shape.
+        const { routedBy: _routed, ...unrouted } = makeOutcome({ cliSource: 'executed' });
+        store.append(unrouted);
         store.append(makeOutcome({ cli: 'unknown' }));
       }
       store.append(makeOutcome());
@@ -778,7 +780,13 @@ describe('StrategyDistiller', () => {
         store.append(
           makeOutcome({ source: 'consensus', category: 'security_review', success: false })
         );
-        store.append(makeOutcome({ source: 'manual', category: 'documentation', success: false }));
+        // Warm-up shape: manual and never routed (#6521).
+        const { routedBy: _routed, ...warmUp } = makeOutcome({
+          source: 'manual',
+          category: 'documentation',
+          success: false,
+        });
+        store.append(warmUp);
         store.append(makeOutcome({ cli: 'unknown', category: 'testing', success: false }));
       }
       distiller.distill();

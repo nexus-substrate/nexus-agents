@@ -66,12 +66,23 @@ export type OutcomeCli = z.infer<typeof OutcomeCliSchema>;
 /** Provenance for the CLI attributed to an outcome. */
 const OutcomeCliSourceSchema = z.enum(['executed', 'category-default']);
 
+/**
+ * Which selector chose the CLI for this outcome (#6521). `'composite-router'`
+ * means `CompositeRouter` routed THIS task and the outcome is the result of
+ * running the arm it picked. An additive field, not a new `source` value:
+ * `source` is a published union, and a writer that did not route leaves this
+ * absent rather than claiming a routing decision it never made.
+ */
+const OutcomeRoutedBySchema = z.enum(['composite-router']);
+
 /** Schema for a single recorded task outcome. */
 export const TaskOutcomeSchema = z.object({
   id: z.string().min(1),
   cli: OutcomeCliSchema,
   /** How the CLI attribution was obtained. Absent on legacy, unmeasured records. */
   cliSource: OutcomeCliSourceSchema.optional(),
+  /** Set only when `CompositeRouter` selected the CLI for this task (#6521). */
+  routedBy: OutcomeRoutedBySchema.optional(),
   category: TaskCategorySchema,
   model: z.string().min(1),
   success: z.boolean(),
@@ -144,6 +155,9 @@ export type OutcomeQuery = z.infer<typeof OutcomeQuerySchema>;
 
 /** Source of the outcome record. */
 export type OutcomeSource = z.infer<typeof OutcomeSourceSchema>;
+
+/** Selector that chose the CLI for a routed outcome (#6521). */
+export type OutcomeRoutedBy = z.infer<typeof OutcomeRoutedBySchema>;
 
 /** Category of failure for failed outcomes (Issue #1025). */
 export type OutcomeFailureCategory = z.infer<typeof OutcomeFailureCategorySchema>;

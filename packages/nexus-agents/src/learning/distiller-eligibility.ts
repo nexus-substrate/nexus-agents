@@ -1,16 +1,12 @@
 /**
- * Distiller training population (#6512, panel option B).
+ * Distiller training population (#6512 panel option B; keyed on the routed
+ * marker since #6521).
  *
  * `StrategyDistiller` turns outcomes into routing rules that `DistilledRuleStage`
- * applies to the router's scores. Only outcomes whose success means "this CLI
- * did this category of work" may train those rules. The store mixes in records
- * whose success means something else, and they are most of it.
- *
- * No outcome carries a routed-origin marker yet, so eligibility is inferred
- * as conservatively as the data allows.
- *
- * TODO(#6521): once outcomes carry a routed-origin tag, key eligibility on
- * that tag and drop the inference below.
+ * applies to the router's scores. Only outcomes the ROUTER produced may train
+ * those rules: an outcome whose CLI was picked by something else (the
+ * server's configured adapter, a voter panel, a synthetic prior) tells the
+ * router nothing about its own decisions.
  *
  * @module learning/distiller-eligibility
  */
@@ -23,7 +19,7 @@ import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 /** The fields eligibility reads. */
 export type DistillerEligibilityInput = Pick<
   TaskOutcome,
-  'source' | 'cli' | 'cliSource' | 'durationMs'
+  'source' | 'cli' | 'routedBy' | 'durationMs'
 >;
 
 const ROUTABLE_CLIS: ReadonlySet<string> = new Set(CLI_NAMES);
@@ -31,40 +27,27 @@ const ROUTABLE_CLIS: ReadonlySet<string> = new Set(CLI_NAMES);
 /**
  * Whether an outcome may train distilled routing rules.
  *
- * Eligibility requires POSITIVE evidence that the named CLI ran. It is not a
- * blacklist of known-bad writers (#6512 review C1):
- *
- * - `cliSource: 'executed'` is required. It is the only marker in the
- *   `cliSource` vocabulary (`'executed' | 'category-default'`) that says the CLI
- *   actually ran, and today only `mcp/tools/orchestrate.ts` writes it. Rows
- *   without it are excluded, which drops two populations:
- *   - legacy orchestrate rows written before `cliSource` existed (the last is
- *     from 2026-08-29): `model: 'orchestrator'`, `durationMs: 0`, and a
- *     `cli`/`category` filled from `DEFAULT_CLI` / `'exploration'` defaults.
- *     In the real store they were 235 of the 241 rows the first version of
- *     this filter admitted, and they would have minted an active
- *     `success-rate:claude:exploration` boost at confidence 1.0;
- *   - every other `delegate` writer (agent-executor, parallel-exploration,
- *     triangulated-review, consensus-plan, execute_expert, …). None of them
- *     records how its cli was attributed, and several do not route through
- *     `CompositeRouter` at all, so nothing shows the CLI they name is the one
- *     the router would be learning about.
+ * - `routedBy: 'composite-router'` is required. Writers set it only when
+ *   `CompositeRouter` chose the CLI for that task (today: the dev-pipeline
+ *   stages, via `expert-bridge`). Warm-up priors and e2e-eval runs never carry
+ *   it, so they are out by construction.
+ * - There is deliberately NO fallback to the #6512 inference
+ *   (`source: 'delegate'` + `cliSource: 'executed'`). The one writer of
+ *   `cliSource: 'executed'` is the `orchestrate` tool, which runs the server's
+ *   configured `deps.modelAdapter`, never a CLI the router selected. Keeping it
+ *   would train routing rules on the default adapter's own record, feeding the
+ *   router's default back to it as evidence. The live store held one such row
+ *   (2026-09-22) when this changed, so the fallback also bought nothing.
+ * - `source: 'consensus'` is excluded even when routed: a voter seat's
+ *   "success" is "returned a parseable vote", not "did this category of work".
  * - `durationMs > 0` is required: a run that took no time did not execute.
- * - `source` must be `'delegate'`. `consensus` (voter seats, where "returned a
- *   parseable vote" is success) and `manual` (warm-up pings in `cli/warm-up.ts`,
- *   e2e-eval runs in `cli/e2e-eval.ts`, tool bookkeeping rows) never train
- *   routing rules.
  * - `cli` must be in `CLI_NAMES`: `'unknown'` names no CLI, and an `api:*` arm
  *   id can never equal a candidate slot the stage matches against (and
  *   `RulesSnapshotSchema` rejects the whole rules file if one rule carries it).
- *
- * The result is a near-zero population until writers record an explicit
- * routed-origin tag; #6521 tracks that, and this function is the one place to
- * change when it lands.
  */
 export function isDistillerEligible(outcome: DistillerEligibilityInput): boolean {
-  if (outcome.source !== 'delegate') return false;
-  if (outcome.cliSource !== 'executed') return false;
+  if (outcome.routedBy !== 'composite-router') return false;
+  if (outcome.source === 'consensus') return false;
   if (!(outcome.durationMs > 0)) return false;
   return ROUTABLE_CLIS.has(outcome.cli);
 }
@@ -89,30 +72,40 @@ export function countEligibleSince(
   return count;
 }
 
+/** The fields `doctor` reads from each outcomes.jsonl line. */
+type FileOutcomeFields = DistillerEligibilityInput & Pick<TaskOutcome, 'timestamp'>;
+
 /**
  * Built on first use, not at module load: this module sits in an import cycle
  * through `strategy-distiller`, and `TaskOutcomeSchema` can still be
  * uninitialised when this file is evaluated.
  */
-let eligibilityFieldsSchema:
+let fileFieldsSchema:
   | ReturnType<
-      typeof TaskOutcomeSchema.pick<{ source: true; cli: true; cliSource: true; durationMs: true }>
+      typeof TaskOutcomeSchema.pick<{
+        source: true;
+        cli: true;
+        routedBy: true;
+        durationMs: true;
+        timestamp: true;
+      }>
     >
   | undefined;
 
-function getEligibilityFieldsSchema(): NonNullable<typeof eligibilityFieldsSchema> {
-  eligibilityFieldsSchema ??= TaskOutcomeSchema.pick({
+function getFileFieldsSchema(): NonNullable<typeof fileFieldsSchema> {
+  fileFieldsSchema ??= TaskOutcomeSchema.pick({
     source: true,
     cli: true,
-    cliSource: true,
+    routedBy: true,
     durationMs: true,
+    timestamp: true,
   });
-  return eligibilityFieldsSchema;
+  return fileFieldsSchema;
 }
 
-function parseLine(line: string): DistillerEligibilityInput | undefined {
+function parseLine(line: string): FileOutcomeFields | undefined {
   try {
-    const parsed = getEligibilityFieldsSchema().safeParse(JSON.parse(line));
+    const parsed = getFileFieldsSchema().safeParse(JSON.parse(line));
     return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
@@ -120,17 +113,50 @@ function parseLine(line: string): DistillerEligibilityInput | undefined {
 }
 
 /**
- * Count eligible records in an outcomes JSONL file, for `doctor`. Read-only.
- * A missing file is 0; a line that is not JSON, or whose source/cli fields do
- * not validate, is not eligible.
+ * Parsed records of an outcomes JSONL file. A missing file yields none; a
+ * blank line, a line that is not JSON, or one whose fields do not validate
+ * (including an unrecognised `routedBy`) is skipped.
  */
-export function countEligibleOutcomesInFile(filePath: string): number {
-  if (!existsSync(filePath)) return 0;
-  let count = 0;
+function readOutcomeFields(filePath: string): FileOutcomeFields[] {
+  if (!existsSync(filePath)) return [];
+  const records: FileOutcomeFields[] = [];
   for (const line of readFileSync(filePath, 'utf-8').split('\n')) {
     if (line.trim().length === 0) continue;
     const fields = parseLine(line);
-    if (fields !== undefined && isDistillerEligible(fields)) count++;
+    if (fields !== undefined) records.push(fields);
   }
-  return count;
+  return records;
+}
+
+/** Count eligible records in an outcomes JSONL file, for `doctor`. Read-only. */
+export function countEligibleOutcomesInFile(filePath: string): number {
+  return readOutcomeFields(filePath).filter(isDistillerEligible).length;
+}
+
+/** Routed-outcome counts for `doctor` (#6521): the routing loop's input rate. */
+export interface RoutedOutcomeCounts {
+  /** Records carrying `routedBy: 'composite-router'`, eligible or not. */
+  readonly total: number;
+  /** Of those, records whose timestamp parses and falls in the 7 days up to `nowMs`. */
+  readonly last7Days: number;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Count routed records in an outcomes JSONL file (#6521). Read-only. A missing
+ * file, or a store with no routed rows, is `{ total: 0, last7Days: 0 }`. A row
+ * whose timestamp does not parse counts toward `total` only: nothing shows it
+ * is recent.
+ */
+export function countRoutedOutcomesInFile(filePath: string, nowMs: number): RoutedOutcomeCounts {
+  let total = 0;
+  let last7Days = 0;
+  for (const record of readOutcomeFields(filePath)) {
+    if (record.routedBy !== 'composite-router') continue;
+    total++;
+    const at = Date.parse(record.timestamp);
+    if (at > nowMs - WEEK_MS && at <= nowMs) last7Days++;
+  }
+  return { total, last7Days };
 }

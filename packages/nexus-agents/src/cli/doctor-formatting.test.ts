@@ -192,6 +192,7 @@ describe('doctor-formatting', () => {
         dirWritable: false,
         outcomeCount: 0,
         fileEligibleOutcomeCount: 0,
+        routedOutcomes: { total: 0, last7Days: 0 },
         ruleCount: 0,
         activeRuleCount: 0,
         trainedOnEligible: null,
@@ -252,12 +253,30 @@ describe('doctor-formatting', () => {
       dirWritable: true,
       outcomeCount: 3,
       fileEligibleOutcomeCount: 0,
+      routedOutcomes: { total: 0, last7Days: 0 },
       ruleCount: 0,
       activeRuleCount: 0,
       trainedOnEligible: 0,
       rulesLastSaved: '2026-09-23T12:00:00.000Z',
       error: null,
     };
+
+    it('names the empty routed case: 0 routed outcomes, 0 this week (#6521)', () => {
+      printDoctorResults({ ...createDoctorResult(), learningPersistence: enabled });
+      expect(getCalls()).toContain(
+        '  Routed outcomes (CompositeRouter): 0 total, 0 in the last 7 days'
+      );
+    });
+
+    it('renders the routed total and the weekly rate independently (#6521)', () => {
+      printDoctorResults({
+        ...createDoctorResult(),
+        learningPersistence: { ...enabled, routedOutcomes: { total: 12, last7Days: 5 } },
+      });
+      expect(getCalls()).toContain(
+        '  Routed outcomes (CompositeRouter): 12 total, 5 in the last 7 days'
+      );
+    });
 
     it('renders the 0/0 snapshot with its timestamp, not "never"', () => {
       printDoctorResults({ ...createDoctorResult(), learningPersistence: enabled });

@@ -587,7 +587,9 @@ export class CompositeRouter implements ICompositeRouter {
     // Record routing decision to orchestration observer (Issue #587)
     this.recordToOrchestrationObserver(decision, task);
 
+    const armStart = getTimeProvider().now();
     const executeResult = await decision.adapter.execute(task);
+    const armDurationMs = getTimeProvider().now() - armStart;
 
     const durationMs = getTimeProvider().now() - startTime;
     const success = executeResult.ok;
@@ -595,7 +597,14 @@ export class CompositeRouter implements ICompositeRouter {
     // Auto-record feedback for learning systems
     this.autoRecordFeedback(decision, task, success, durationMs);
 
-    return executeResult;
+    // #6521: name the arm that ran and time its call alone, on success AND on
+    // failure, so an outcome writer records both against the arm routed to.
+    const routed = {
+      routedCli: routingArmDisplaySlot(decision.cliName),
+      routedDurationMs: armDurationMs,
+    };
+    if (!executeResult.ok) return err({ ...executeResult.error, ...routed });
+    return ok({ ...executeResult.value, ...routed });
   }
 
   private autoRecordFeedback(
