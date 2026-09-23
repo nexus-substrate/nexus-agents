@@ -1,3 +1,6 @@
+/* eslint max-lines: ["error", { "max": 500, "skipBlankLines": true, "skipComments": true }] */
+// ~475 lines as eslint counts them (blanks and comments skipped), inside the
+// 400-600 band .rules/governance.md preserves for a cohesive file — AI SDK model adapter lifecycle, response mapping, and error fidelity (#6618).
 /**
  * nexus-agents/adapters/sdk - Base SDK Adapter
  *
@@ -62,6 +65,7 @@ interface GenerateTextResult {
 /** AI SDK streamText result shape (duck-typed). */
 interface StreamTextResult {
   textStream: AsyncIterable<string>;
+  finishReason?: Promise<string> | string | undefined;
 }
 
 /** AI SDK generateObject result shape (duck-typed). */
@@ -221,9 +225,79 @@ function mapFinishReason(reason: string): CompletionResponse['stopReason'] {
       return 'max_tokens';
     case 'tool-calls':
       return 'tool_use';
+    // #6618: 'content-filter' is never mapped as a finish: the adapter turns it into
+    // an error before a response is built (see assertValidCompletion), because
+    // every consumer reads a mapped response as an answer.
     default:
       return 'end_turn';
   }
+}
+
+/** A completion that must surface as an error, never as an empty success (#6607, #6618). */
+interface NonAnswer {
+  /** Why the completion carries no answer. */
+  readonly reason: 'content_filter' | 'reasoning_truncated';
+  readonly detail: string;
+  readonly reasoningTokens?: number;
+}
+
+const CONTENT_FILTERED: NonAnswer = {
+  reason: 'content_filter',
+  detail: 'the reply was blocked by a content filter',
+};
+
+const REASONING_TRUNCATED: NonAnswer = {
+  reason: 'reasoning_truncated',
+  detail:
+    'the completion budget was spent on reasoning before any output (empty reply, finish length)',
+};
+
+/**
+ * A non-answer as a non-retryable `MODEL_ERROR` (#6607, #6618). `context.reason`
+ * names which kind it was, so telemetry can tell a refusal from a
+ * reasoning-exhausted budget. `source` is `provider/model`.
+ */
+function nonAnswerError(source: string, nonAnswer: NonAnswer, servedModel?: string): ModelError {
+  return new ModelError(`${source}: ${nonAnswer.detail}`, {
+    code: ErrorCode.MODEL_ERROR,
+    context: {
+      reason: nonAnswer.reason,
+      ...(servedModel !== undefined ? { servedModel } : {}),
+      ...(nonAnswer.reasoningTokens !== undefined
+        ? { reasoningTokens: nonAnswer.reasoningTokens }
+        : {}),
+    },
+  });
+}
+
+/**
+ * Classifies whether a completion result is a non-answer and throws a `ModelError` if so (#6618).
+ */
+function assertValidCompletion(
+  source: string,
+  finishReason: string,
+  hasContent: boolean,
+  servedModel?: string
+): void {
+  if (finishReason === 'content-filter') {
+    throw nonAnswerError(source, CONTENT_FILTERED, servedModel);
+  }
+  if (finishReason === 'length' && !hasContent) {
+    throw nonAnswerError(source, REASONING_TRUNCATED, servedModel);
+  }
+}
+
+/**
+ * Awaits and validates the stream finish reason (#6618).
+ */
+async function assertValidStreamFinish(
+  source: string,
+  result: StreamTextResult,
+  totalText: string
+): Promise<void> {
+  if (result.finishReason === undefined) return;
+  const finishReason = await result.finishReason;
+  assertValidCompletion(source, finishReason, totalText !== '');
 }
 
 /**
@@ -446,6 +520,12 @@ export class SdkAdapter extends BaseAdapter {
     options: Record<string, unknown>
   ): Promise<CompletionResponse> {
     const result = await sdk.generateText(options);
+    assertValidCompletion(
+      `${this.providerId}/${this.modelId}`,
+      result.finishReason,
+      result.text !== '' && result.text.trim() !== '',
+      result.response.modelId
+    );
     const usage = mapSdkUsage(result.usage);
     return {
       content: [{ type: 'text', text: result.text }],
@@ -478,6 +558,12 @@ export class SdkAdapter extends BaseAdapter {
           '(missing object/usage/finishReason/response.modelId)'
       );
     }
+    assertValidCompletion(
+      `${this.providerId}/${this.modelId}`,
+      result.finishReason,
+      result.object !== null && result.object !== undefined,
+      result.response.modelId
+    );
     const usage = mapSdkUsage(result.usage);
     return {
       content: [{ type: 'text', text: JSON.stringify(result.object) }],
@@ -547,17 +633,21 @@ export class SdkAdapter extends BaseAdapter {
     let index = 0;
     yield { type: 'content_block_start', index, contentBlock: { type: 'text', text: '' } };
 
+    let totalText = '';
     for await (const text of result.textStream) {
       // #3317 finding #8: skip empty-string deltas — the SDK can emit zero-length
       // chunks (keepalives/segment boundaries); a `text_delta` with `text: ''` is
       // noise that downstream re-assemblers must otherwise special-case.
       if (text === '') continue;
+      totalText += text;
       yield {
         type: 'content_block_delta',
         index,
         delta: { type: 'text_delta', text },
       };
     }
+
+    await assertValidStreamFinish(`${this.providerId}/${this.modelId}`, result, totalText);
 
     yield { type: 'content_block_stop', index };
     index++;
@@ -575,6 +665,11 @@ export class SdkAdapter extends BaseAdapter {
    * Converts a caught error into a Result error with categorized ErrorCode.
    */
   private toErrorResult(error: unknown, code: ErrorCode): Result<CompletionResponse, ModelError> {
+    if (error instanceof ModelError) {
+      this.logger.error(`SDK adapter error (${this.sdkProviderId})`, error);
+      return { ok: false, error };
+    }
+
     // Scrub API keys + bearer tokens out of upstream SDK error messages
     // before they hit logs or the surfaced ModelError. Parity with the
     // subprocess-adapter path. Audit #2824. The RESOLVED key is redacted by

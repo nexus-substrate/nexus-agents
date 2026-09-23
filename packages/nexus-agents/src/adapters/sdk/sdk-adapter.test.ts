@@ -522,6 +522,260 @@ describe('SdkAdapter', () => {
     });
   });
 
+  describe('refusals and empty replies are errors (#6618, mirroring #6607)', () => {
+    it('returns a MODEL_ERROR when generateText finishes with content-filter', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'partial text before filter',
+        finishReason: 'content-filter',
+        usage: { inputTokens: 10, outputTokens: 5 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
+        expect(result.error.context?.['reason']).toBe('content_filter');
+        expect(result.error.message).toContain('content filter');
+      }
+    });
+
+    it('returns a MODEL_ERROR when generateObject finishes with content-filter', async () => {
+      const { generateObject, jsonSchema } = await import('ai');
+      vi.mocked(jsonSchema).mockReturnValueOnce({
+        type: 'object',
+      } as unknown as ReturnType<typeof jsonSchema>);
+      vi.mocked(generateObject).mockResolvedValueOnce({
+        object: null,
+        finishReason: 'content-filter',
+        usage: { inputTokens: 10, outputTokens: 0 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete({
+        ...TEST_REQUEST,
+        responseFormat: { type: 'json_object' },
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
+        expect(result.error.context?.['reason']).toBe('content_filter');
+        expect(result.error.message).toContain('content filter');
+      }
+    });
+
+    it('returns a MODEL_ERROR when generateText finishes with length and empty text', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: '',
+        finishReason: 'length',
+        usage: { inputTokens: 10, outputTokens: 100 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
+        expect(result.error.context?.['reason']).toBe('reasoning_truncated');
+        expect(result.error.message).toContain('reasoning before any output');
+      }
+    });
+
+    it('errors the stream when streamText finishes with content-filter', async () => {
+      const { streamText } = await import('ai');
+      function* fakeGen(): Generator<string> {
+        yield 'partial';
+      }
+      const iter = fakeGen();
+      const textStream = Object.assign(new ReadableStream<string>(), {
+        [Symbol.asyncIterator]: () => ({ next: () => Promise.resolve(iter.next()) }),
+      });
+
+      vi.mocked(streamText).mockReturnValueOnce({
+        textStream,
+        finishReason: Promise.resolve('content-filter'),
+      } as unknown as ReturnType<typeof streamText>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      async function collectStream(): Promise<void> {
+        for await (const _chunk of adapter.stream(TEST_REQUEST)) {
+          // consume
+        }
+      }
+
+      await expect(collectStream()).rejects.toThrow(/content filter/);
+    });
+
+    it('errors the stream when streamText finishes with length and empty output', async () => {
+      const { streamText } = await import('ai');
+      function* fakeGen(): Generator<string> {
+        // empty
+      }
+      const iter = fakeGen();
+      const textStream = Object.assign(new ReadableStream<string>(), {
+        [Symbol.asyncIterator]: () => ({ next: () => Promise.resolve(iter.next()) }),
+      });
+
+      vi.mocked(streamText).mockReturnValueOnce({
+        textStream,
+        finishReason: Promise.resolve('length'),
+      } as unknown as ReturnType<typeof streamText>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      async function collectStream(): Promise<void> {
+        for await (const _chunk of adapter.stream(TEST_REQUEST)) {
+          // consume
+        }
+      }
+
+      await expect(collectStream()).rejects.toThrow(/reasoning before any output/);
+    });
+
+    it('returns a MODEL_ERROR when generateObject finishes with length and null object', async () => {
+      const { generateObject, jsonSchema } = await import('ai');
+      vi.mocked(jsonSchema).mockReturnValueOnce({} as unknown as ReturnType<typeof jsonSchema>);
+      vi.mocked(generateObject).mockResolvedValueOnce({
+        object: null,
+        finishReason: 'length',
+        usage: { inputTokens: 10, outputTokens: 100, totalTokens: 110 },
+        response: { modelId: 'test-model' },
+      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete({
+        ...TEST_REQUEST,
+        responseFormat: { type: 'json_object' },
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(ErrorCode.MODEL_ERROR);
+        expect(result.error.context?.['reason']).toBe('reasoning_truncated');
+        expect(result.error.message).toContain('reasoning before any output');
+      }
+    });
+
+    it('returns ok with max_tokens stopReason when generateText finishes with length and non-empty text', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'partial output before truncation',
+        finishReason: 'length',
+        usage: { inputTokens: 10, outputTokens: 100, totalTokens: 110 },
+        response: { modelId: 'test-model' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete(TEST_REQUEST);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stopReason).toBe('max_tokens');
+        expect(result.value.content).toEqual([
+          { type: 'text', text: 'partial output before truncation' },
+        ]);
+      }
+    });
+
+    it('returns ok with max_tokens stopReason when generateObject finishes with length and valid object', async () => {
+      const { generateObject, jsonSchema } = await import('ai');
+      vi.mocked(jsonSchema).mockReturnValueOnce({} as unknown as ReturnType<typeof jsonSchema>);
+      vi.mocked(generateObject).mockResolvedValueOnce({
+        object: { key: 'value' },
+        finishReason: 'length',
+        usage: { inputTokens: 10, outputTokens: 100, totalTokens: 110 },
+        response: { modelId: 'test-model' },
+      } as unknown as Awaited<ReturnType<typeof generateObject>>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const result = await adapter.complete({
+        ...TEST_REQUEST,
+        responseFormat: { type: 'json_object' },
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stopReason).toBe('max_tokens');
+        expect(result.value.content).toEqual([{ type: 'text', text: '{"key":"value"}' }]);
+      }
+    });
+
+    it('succeeds when streamText finishes with length and non-empty output', async () => {
+      const { streamText } = await import('ai');
+      function* fakeGen(): Generator<string> {
+        yield 'visible chunk';
+      }
+      const iter = fakeGen();
+      const textStream = Object.assign(new ReadableStream<string>(), {
+        [Symbol.asyncIterator]: () => ({ next: () => Promise.resolve(iter.next()) }),
+      });
+
+      vi.mocked(streamText).mockReturnValueOnce({
+        textStream,
+        finishReason: Promise.resolve('length'),
+      } as unknown as ReturnType<typeof streamText>);
+
+      const adapter = new SdkAdapter({
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        apiKey: 'test-key',
+      });
+
+      const chunks = [];
+      for await (const chunk of adapter.stream(TEST_REQUEST)) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.length).toBeGreaterThan(0);
+      const textChunks = chunks.filter((c) => c.type === 'content_block_delta');
+      expect(textChunks.length).toBe(1);
+    });
+  });
+
   describe('validateConfig', () => {
     it('passes with valid config', () => {
       const adapter = new SdkAdapter({

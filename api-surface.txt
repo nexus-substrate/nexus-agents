@@ -9166,6 +9166,7 @@ ClassDeclaration StreamError
 TypeAliasDeclaration StreamState
   = 'cancelled' | 'completed' | 'error' | 'idle' | 'paused' | 'streaming'
 InterfaceDeclaration StreamTextResult
+  finishReason?: Promise<string> | string | undefined
   textStream: AsyncIterable<string>
 VariableDeclaration StrictAgentRoleSchema
   : z.ZodEnum<{ architecture_expert: "architecture_expert"; code_expert: "code_expert"; custom: "custom"; documentation_expert: "documentation_expert"; infrastructure_expert: "infrastructure_expert"; orchestrator: "orchestrator"; security_expert: "security_expert"; testing_expert: "testing_expert"; }>
