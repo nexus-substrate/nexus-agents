@@ -24,7 +24,7 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
@@ -119,6 +119,12 @@
     ]
   },
   "pnpm": {
+    "ignoredBuiltDependencies": [
+      "@ast-grep/lang-go",
+      "@ast-grep/lang-python",
+      "@google/genai",
+      "esbuild"
+    ],
     "overrides": {
       "@modelcontextprotocol/sdk>ajv": ">=8.18.0",
       "hono": ">=4.13.5",

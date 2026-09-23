@@ -1,3 +1,9 @@
 packages:
   - 'packages/*'
   - 'website'
+
+# #6486: pnpm 10 skips dependency build scripts unless allowed. Every script in
+# the tree is reviewed in package.json `pnpm.ignoredBuiltDependencies` (inert:
+# prebuilt grammars, an `echo`, esbuild's binary check); strict mode makes a NEW
+# unreviewed build script fail the install instead of being skipped silently.
+strictDepBuilds: true
