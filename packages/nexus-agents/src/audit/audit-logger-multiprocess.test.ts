@@ -28,10 +28,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { ILogger } from '../core/logger.js';
 import { registerVerifyAuditChainTool } from '../mcp/tools/verify-audit-chain-tool.js';
 import type { VerifyAuditChainResponse } from '../mcp/tools/verify-audit-chain-tool.js';
+import { FileLockTimeoutError } from '../utils/file-lock.js';
 import { createAuditLogger, type AuditLogger } from './audit-logger.js';
 import {
   AuditLogConfigSchema,
@@ -431,5 +433,153 @@ describe('AuditLogger batch requeue around appendChained (#6546)', () => {
     expect(logger.getPersistFailureCount()).toBe(1);
     expect(written).toHaveLength(1);
     await logger.close();
+  });
+});
+
+describe('AuditLogger.close() drains events queued during an in-flight flush (#6573)', () => {
+  const INTERVAL_MS = 1_000;
+  const input = {
+    category: 'system',
+    severity: 'info',
+    outcome: 'success',
+    action: 'test.before-close',
+    actor: { type: 'system', id: 'X' },
+  } as const;
+
+  /**
+   * A storage whose FIRST appendChained parks until `release()` — the window in
+   * which a timer-initiated flush is in flight. Later calls follow `later`.
+   */
+  function gatedStorage(later: 'ok' | 'lock-timeout' = 'ok'): {
+    storage: IAuditStorage;
+    written: AuditEvent[];
+    calls: string[];
+    release: () => void;
+  } {
+    const written: AuditEvent[] = [];
+    const calls: string[] = [];
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      open = r;
+    });
+    let appends = 0;
+    const storage: IAuditStorage = {
+      write: () => Promise.resolve(),
+      flush: () => {
+        calls.push('flush');
+        return Promise.resolve();
+      },
+      close: () => {
+        calls.push('close');
+        return Promise.resolve();
+      },
+      query: () => Promise.resolve([]),
+      appendChained: async (seal) => {
+        appends += 1;
+        calls.push('append');
+        if (appends === 1) await gate;
+        else if (later === 'lock-timeout') {
+          throw new FileLockTimeoutError('/tmp/unused/audit.lock', 10_000);
+        }
+        written.push(...seal(written.at(-1)?.hash));
+      },
+    };
+    return {
+      storage,
+      written,
+      calls,
+      release: () => {
+        open();
+      },
+    };
+  }
+
+  function timedConfig(): AuditLogConfig {
+    return { ...config('/tmp/unused'), flushIntervalMs: INTERVAL_MS };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('writes an event logged while a timer-initiated flush was in flight', async () => {
+    vi.useFakeTimers();
+    const { storage, written, calls, release } = gatedStorage();
+    const logger = createAuditLogger(timedConfig(), storage);
+    logger.log(input);
+    vi.advanceTimersByTime(INTERVAL_MS); // the timer's flush splices the queue and parks
+    expect(calls).toEqual(['append']);
+    logger.logSystemShutdownBegin();
+    const closing = logger.close();
+    release();
+    await closing;
+    expect(written.map((e) => e.action)).toEqual(['test.before-close', 'system.shutdown.begin']);
+    expect(written[1]?.previousHash).toBe(written[0]?.hash);
+    expect(calls.at(-1)).toBe('close');
+    expect(logger.getPersistFailureCount()).toBe(0);
+  });
+
+  it('with nothing queued, close() appends nothing and still flushes and closes storage', async () => {
+    const { storage, written, calls } = gatedStorage();
+    const logger = createAuditLogger(config('/tmp/unused'), storage);
+    await logger.close();
+    expect(written).toHaveLength(0);
+    expect(calls).toEqual(['flush', 'close']);
+    expect(logger.getPersistFailureCount()).toBe(0);
+  });
+
+  it('reports a batch re-queued by a lock timeout at close, and never writes it twice', async () => {
+    vi.useFakeTimers();
+    const { storage, written, calls, release } = gatedStorage('lock-timeout');
+    const failures: Error[] = [];
+    const errorMeta: Array<Record<string, unknown> | undefined> = [];
+    const noop = (): void => undefined;
+    const log: ILogger = {
+      debug: noop,
+      info: noop,
+      warn: noop,
+      error: (_m: string, _e?: Error, meta?: Record<string, unknown>) => {
+        errorMeta.push(meta);
+      },
+      child: () => log,
+      setLevel: noop,
+    };
+    const logger = createAuditLogger(timedConfig(), storage, log, (e) => {
+      failures.push(e);
+    });
+    logger.log(input);
+    vi.advanceTimersByTime(INTERVAL_MS);
+    logger.logSystemShutdownBegin();
+    const closing = logger.close();
+    release();
+    await expect(closing).rejects.toBeInstanceOf(FileLockTimeoutError);
+    // The first batch landed exactly once; the unsealed one was not written.
+    expect(written.map((e) => e.action)).toEqual(['test.before-close']);
+    expect(calls.filter((c) => c === 'append')).toHaveLength(2);
+    // Counted once (by the failing flush) and the stranded event is named.
+    expect(logger.getPersistFailureCount()).toBe(1);
+    expect(failures).toHaveLength(1);
+    expect(errorMeta).toContainEqual(expect.objectContaining({ strandedEvents: 1 }));
+  });
+
+  it('leaves the drained events in a chain the real verify_audit_chain handler accepts', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'audit-close-'));
+    try {
+      const logger = createAuditLogger(config(dir));
+      logger.log(input);
+      const inFlight = logger.flush(); // what the timer does, not awaited here
+      logger.logSystemShutdownBegin();
+      await logger.close();
+      await inFlight;
+      expect(readEvents(dir).map((e) => e.action)).toEqual([
+        'test.before-close',
+        'system.shutdown.begin',
+      ]);
+      const body = await verifyDir(dir);
+      expect(body.eventCount).toBe(2);
+      expect(body.verification.ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

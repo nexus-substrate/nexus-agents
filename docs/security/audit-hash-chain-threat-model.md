@@ -217,6 +217,14 @@ the same head (a benign [fork](#t2-fork-divergent-chains)) or interleave lines.
 A batch whose lock acquisition times out was never linked, so it stays queued
 for the next flush rather than being lost.
 
+`close()` flushes until the queue is empty, so events logged while a flush was
+in flight — `system.shutdown.begin` among them — are written before storage
+closes (#6573). Close does not retry a failed flush. A batch whose lock
+acquisition times out during close has no next flush: it is counted as a
+persist failure, logged with its `strandedEvents` count, and `close()` rejects.
+It is lost, but not silently, and because it was never linked it is never
+written twice.
+
 **Limits.** The lock is advisory. A writer that does not take it — an
 `AuditLogger` from a release before #6546, still running from a pinned global
 install, or anything else appending to the directory — still produces seams
