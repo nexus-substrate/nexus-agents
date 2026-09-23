@@ -381,6 +381,21 @@ export function categorizeOutcomeErrorMessage(msg: string): OutcomeFailureCatego
   return classifyText(msg.toLowerCase());
 }
 
+/**
+ * `failureCategory` + `errorMessage` for a failed outcome row, so no failure
+ * is written unclassified (#6521). Empty for a success or an absent message.
+ */
+export function outcomeFailureFields(
+  success: boolean,
+  error: string | undefined
+): { failureCategory?: OutcomeFailureCategory; errorMessage?: string } {
+  if (success || error === undefined || error.length === 0) return {};
+  return {
+    failureCategory: categorizeOutcomeErrorMessage(error),
+    errorMessage: error.slice(0, 500),
+  };
+}
+
 /** Aggregated stats for a group of outcomes. */
 export interface GroupStats {
   readonly count: number;

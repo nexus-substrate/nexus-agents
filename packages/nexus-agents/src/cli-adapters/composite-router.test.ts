@@ -1192,6 +1192,62 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       expect(calibrate).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     });
 
+    describe('executeDecision (#6533)', () => {
+      it('runs a decision from route() and feeds the router, like executeTask', async () => {
+        const task: CliTask = { content: 'Test task' };
+        const routed = await router.route(task);
+        expect(routed.ok).toBe(true);
+        if (!routed.ok) return;
+        const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+
+        const result = await router.executeDecision(routed.value, task);
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.value.routedCli).toBe(routed.value.cliName);
+        expect(typeof result.value.routedDurationMs).toBe('number');
+        expect(recordOutcomeSpy).toHaveBeenCalledWith(
+          routed.value.cliName,
+          task,
+          expect.any(Number),
+          true
+        );
+      });
+
+      it('executes runTask when given, but learns against the routed task', async () => {
+        const task: CliTask = { content: 'Test task' };
+        const routed = await router.route(task);
+        expect(routed.ok).toBe(true);
+        if (!routed.ok) return;
+        const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+        const runTask: CliTask = { ...task, model: 'pinned-model' };
+
+        await router.executeDecision(routed.value, task, runTask);
+
+        expect(routed.value.adapter.execute).toHaveBeenLastCalledWith(runTask);
+        expect(recordOutcomeSpy.mock.calls[0]?.[1]).toBe(task);
+      });
+
+      it('names the ran arm on a failure and records the failure as feedback', async () => {
+        const task: CliTask = { content: 'Failing task' };
+        const routed = await router.route(task);
+        expect(routed.ok).toBe(true);
+        if (!routed.ok) return;
+        vi.mocked(routed.value.adapter.execute).mockResolvedValueOnce({
+          ok: false,
+          error: { code: 'EXECUTION_ERROR', message: 'Failed', cli: 'claude', retryable: false },
+        });
+        const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+
+        const result = await router.executeDecision(routed.value, task);
+
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.error.routedCli).toBe(routed.value.cliName);
+        expect(recordOutcomeSpy).toHaveBeenCalledWith(routed.value.cliName, task, 0.1, false);
+      });
+    });
+
     it('keeps interleaved calibration attributed to the routed execution', async () => {
       router = createExecutionScopedRouter(adapters);
       const bandit = (router as unknown as { linucbBandit?: LinUCBBandit }).linucbBandit;

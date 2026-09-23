@@ -15,7 +15,7 @@ import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
-import { categorizeOutcomeErrorMessage } from '../orchestration/outcomes/outcome-types.js';
+import { outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js';
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
@@ -96,15 +96,6 @@ export function outcomeFieldsFromBridge(
   };
 }
 
-/** Failure classification for a failed row, so no unclassified failure is written. */
-function failureFields(args: RecordOutcomeArgs): Record<string, string> {
-  if (args.success || args.error === undefined || args.error.length === 0) return {};
-  return {
-    failureCategory: categorizeOutcomeErrorMessage(args.error),
-    errorMessage: args.error.slice(0, 500),
-  };
-}
-
 /** Record a pipeline-stage outcome to the OutcomeStore. See {@link RecordOutcomeArgs}. */
 export function recordOutcome(args: RecordOutcomeArgs): void {
   if (args.cli === undefined) {
@@ -132,7 +123,7 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
       retryCount: args.retryCount,
       ...(args.routedBy !== undefined && { routedBy: args.routedBy }),
       ...(args.qualitySignals !== undefined && { qualitySignals: [...args.qualitySignals] }),
-      ...failureFields(args),
+      ...outcomeFailureFields(args.success, args.error),
     });
   } catch (error) {
     logger.debug('Failed to record outcome', { taskId: args.taskId, error: String(error) });
