@@ -23,6 +23,16 @@ import { ensureLearningDir, getOutcomesFile } from '../../config/learning-persis
 // Configuration
 // ============================================================================
 
+/**
+ * Schema for hydrating persisted outcomes (#6538).
+ *
+ * Uses `.loose()` so that forward-compatible fields written by newer
+ * versions (such as `routedBy`, `qualitySignals`, or future additions) are
+ * retained across rewrite cycles (reclassification, purgeSkippedWorkers)
+ * instead of being stripped by Zod's default unknown-key dropping.
+ */
+const PersistedOutcomeSchema = TaskOutcomeSchema.loose();
+
 export interface PersistentOutcomeStoreConfig extends OutcomeStoreConfig {
   /** Override the file path (useful for testing). */
   readonly filePath?: string;
@@ -114,7 +124,7 @@ export class PersistentOutcomeStore extends OutcomeStore {
       for (const line of lines) {
         try {
           const parsed: unknown = JSON.parse(line);
-          const result = TaskOutcomeSchema.safeParse(parsed);
+          const result = PersistedOutcomeSchema.safeParse(parsed);
           if (result.success) {
             super.append(result.data);
             loaded++;
