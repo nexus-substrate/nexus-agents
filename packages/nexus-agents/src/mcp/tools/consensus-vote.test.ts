@@ -468,7 +468,12 @@ describe('ConsensusVoteResponse structure', () => {
       contrarianCheck: 'skipped',
       durationMs: 5000,
       simulateVotes: false,
-      panelDiversity: { distinctModels: 1, fallbacks: 0 },
+      panelDiversity: {
+        distinctModels: 1,
+        distinctFamilies: 1,
+        unclassifiedSeats: 0,
+        fallbacks: 0,
+      },
       voteRecordPersisted: true,
     };
 
@@ -500,7 +505,12 @@ describe('ConsensusVoteResponse structure', () => {
       contrarianCheck: 'skipped',
       durationMs: 4500,
       simulateVotes: false,
-      panelDiversity: { distinctModels: 0, fallbacks: 0 },
+      panelDiversity: {
+        distinctModels: 0,
+        distinctFamilies: 0,
+        unclassifiedSeats: 0,
+        fallbacks: 0,
+      },
       voteRecordPersisted: false,
     };
 
@@ -1733,7 +1743,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     durationMs: 4321,
     simulateVotes: false,
     // #6115: always present on the response; the key-parity guard covers it.
-    panelDiversity: { distinctModels: 1, fallbacks: 1 },
+    panelDiversity: { distinctModels: 1, distinctFamilies: 1, unclassifiedSeats: 0, fallbacks: 1 },
     // #6258: present on every live panel; the key-parity guard covers it.
     workspace: '/srv/panel-cwd',
     higherOrderMetadata: {

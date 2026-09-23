@@ -86,7 +86,12 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
       )
     );
     const response = buildResponse(INPUT, extended(votes));
-    expect(response.panelDiversity).toEqual({ distinctModels: 1, fallbacks: 4 });
+    expect(response.panelDiversity).toEqual({
+      distinctModels: 1,
+      distinctFamilies: 1,
+      unclassifiedSeats: 0,
+      fallbacks: 4,
+    });
     expect(response.panelWarning).toContain(
       'All 7 seats answered on gemini-3.1-pro-preview; independence is weaker than assigned.'
     );
@@ -99,14 +104,24 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
       seat('scope_steward'),
     ];
     const response = buildResponse(INPUT, extended(votes));
-    expect(response.panelDiversity).toEqual({ distinctModels: 3, fallbacks: 0 });
+    expect(response.panelDiversity).toEqual({
+      distinctModels: 3,
+      distinctFamilies: 2,
+      unclassifiedSeats: 1,
+      fallbacks: 0,
+    });
     expect(response.panelWarning).toBeUndefined();
   });
 
   it('the empty case is explicit zeros on the response, never an absent key', () => {
     const response = buildResponse(INPUT, extended([]));
     expect(Object.keys(response)).toContain('panelDiversity');
-    expect(response.panelDiversity).toEqual({ distinctModels: 0, fallbacks: 0 });
+    expect(response.panelDiversity).toEqual({
+      distinctModels: 0,
+      distinctFamilies: 0,
+      unclassifiedSeats: 0,
+      fallbacks: 0,
+    });
   });
 
   it('the diversity warning is appended to an existing degradation warning, not assigned over it', () => {
@@ -117,6 +132,47 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
     const response = buildResponse(INPUT, extended(votes));
     expect(response.panelWarning).toContain('Panel degraded: 1 of 7 voters errored');
     expect(response.panelWarning).toContain('All 6 seats answered on gemini-3.1-pro-preview');
+  });
+});
+
+describe('consensus_vote response: panel families (#6606)', () => {
+  const oneFamily = [
+    seat('architect', { cli: 'api:gw', model: 'gpt-5.2' }),
+    seat('security', { cli: 'api:gw', model: 'openai/o3' }),
+    seat('scope_steward', { cli: 'api:gw', model: 'openai/gpt-4o' }),
+  ];
+
+  it('a one-family panel reports distinctFamilies 1 and appends the family warning', () => {
+    const response = buildResponse(INPUT, extended(oneFamily));
+    expect(response.panelDiversity).toMatchObject({ distinctModels: 3, distinctFamilies: 1 });
+    expect(response.panelWarning).toContain(
+      'All 3 answering seats ran openai models (3 distinct); independence is weaker than assigned.'
+    );
+  });
+
+  it('counts only seats that voted: an errored seat on another family adds nothing', () => {
+    const votes = [
+      ...oneFamily,
+      seat('pm', { source: 'error', model: 'claude_4_5_opus', error: 'boom' }),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response.panelDiversity.distinctFamilies).toBe(1);
+  });
+
+  it('each vote entry names the model that seat ran on', () => {
+    const response = buildResponse(INPUT, extended(oneFamily));
+    expect(response.votes.map((v) => v.modelUsed)).toEqual([
+      'gpt-5.2',
+      'openai/o3',
+      'openai/gpt-4o',
+    ]);
+  });
+
+  it('a seat with no resolved model carries no modelUsed', () => {
+    expect('modelUsed' in toAgentVoteSummary(seat('pm', { model: undefined }))).toBe(false);
+    expect('modelUsed' in toAgentVoteSummary(seat('pm', { model: 'pending-detection' }))).toBe(
+      false
+    );
   });
 });
 

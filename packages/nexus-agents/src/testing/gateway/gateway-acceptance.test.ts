@@ -306,7 +306,9 @@ describe('response fidelity over HTTP (#6607)', () => {
 const VoteResponse = z.object({
   decision: z.string(),
   voteCounts: z.object({ approve: z.number(), error: z.number() }),
-  panelDiversity: z.object({ distinctModels: z.number() }),
+  panelDiversity: z.object({ distinctModels: z.number(), distinctFamilies: z.number() }),
+  panelWarning: z.string().optional(),
+  votes: z.array(z.object({ role: z.string(), modelUsed: z.string().optional() })),
   costSummary: z.object({
     voterCount: z.number(),
     measuredVoters: z.number(),
@@ -318,49 +320,55 @@ const VoteResponse = z.object({
   }),
 });
 
+/** Run a full 7-seat consensus_vote over the MCP tool on `adapters`. */
+async function runSevenSeatVote(
+  adapters: readonly IModelAdapter[]
+): Promise<z.infer<typeof VoteResponse>> {
+  gateway.clearRequests();
+  gateway.setScript(() => ({
+    kind: 'text',
+    content: JSON.stringify({
+      decision: 'approve',
+      reasoning: 'Scripted approval from the fake gateway.',
+      confidence: 0.8,
+    }),
+  }));
+
+  const created = createServer();
+  if (!created.ok) throw new Error(created.error.message);
+  const { server } = created.value;
+  const { rateLimiter } = registerTools(server, { logger: silentLogger() });
+  registerConsensusVoteTool(server, {
+    logger: silentLogger(),
+    rateLimiter,
+    gatewayAdapters: adapters,
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: 'gateway-acceptance', version: '1.0.0' });
+  await client.connect(clientTransport);
+  try {
+    const result = await client.callTool({
+      name: 'consensus_vote',
+      arguments: {
+        proposal: 'Adopt the gateway as the only model channel for this host.',
+        quickMode: false,
+        dispatch: 'sync',
+      },
+    });
+    return VoteResponse.parse(result.structuredContent);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+}
+
 describe('a 7-seat consensus_vote with no CLIs installed', () => {
   let vote: z.infer<typeof VoteResponse>;
   let servedModels: readonly string[];
 
   beforeAll(async () => {
-    const adapters = await wireFromEnv();
-    gateway.clearRequests();
-    gateway.setScript(() => ({
-      kind: 'text',
-      content: JSON.stringify({
-        decision: 'approve',
-        reasoning: 'Scripted approval from the fake gateway.',
-        confidence: 0.8,
-      }),
-    }));
-
-    const created = createServer();
-    if (!created.ok) throw new Error(created.error.message);
-    const { server } = created.value;
-    const { rateLimiter } = registerTools(server, { logger: silentLogger() });
-    registerConsensusVoteTool(server, {
-      logger: silentLogger(),
-      rateLimiter,
-      gatewayAdapters: adapters,
-    });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    const client = new Client({ name: 'gateway-acceptance', version: '1.0.0' });
-    await client.connect(clientTransport);
-    try {
-      const result = await client.callTool({
-        name: 'consensus_vote',
-        arguments: {
-          proposal: 'Adopt the gateway as the only model channel for this host.',
-          quickMode: false,
-          dispatch: 'sync',
-        },
-      });
-      vote = VoteResponse.parse(result.structuredContent);
-    } finally {
-      await client.close();
-      await server.close();
-    }
+    vote = await runSevenSeatVote(await wireFromEnv());
     servedModels = gateway.chatRequests().map((r) => (r.body as ChatRequestBody).model);
   }, 25_000);
 
@@ -375,21 +383,31 @@ describe('a 7-seat consensus_vote with no CLIs installed', () => {
     expect([...servedModels].sort()).toEqual([...seatModels].sort());
   });
 
-  // #6606: seats are dealt round-robin over the LISTING order, so the first
-  // seven chat models take the panel. On this recorded catalogue that is five
-  // OpenAI seats, two Anthropic seats and no Google seat. This pins today's
-  // behaviour; #6606 changes it to deal seats across families.
-  it('deals seats in listing order today, so the panel skews by family (#6606)', () => {
+  // #6606: seats are dealt across FAMILIES first, then across models within a
+  // family. Round-robin over the listing order used to seat five OpenAI, two
+  // Anthropic and no Google model on this recorded catalogue.
+  it('deals the seven seats across all three families (#6606)', () => {
     const seatModels = vote.costSummary.perVoter.map((v) => v.model ?? '<none>');
-    expect([...seatModels].sort()).toEqual([...THREE_FAMILY_CHAT_IDS.slice(0, 7)].sort());
-
     const families = seatModels.map(familyOf);
-    expect(families.filter((f) => f === 'openai')).toHaveLength(5);
-    expect(families.filter((f) => f === 'anthropic')).toHaveLength(2);
-    expect(families.filter((f) => f === 'google')).toHaveLength(0);
+    expect(families.filter((f) => f === 'anthropic')).toHaveLength(3);
+    expect(families.filter((f) => f === 'openai')).toHaveLength(2);
+    expect(families.filter((f) => f === 'google')).toHaveLength(2);
+    // Twelve chat models for seven seats: no model sits twice.
+    expect(new Set(seatModels).size).toBe(7);
   });
 
-  it.todo('deals the seven seats across all three families (#6606)');
+  it('reports the families and models that voted, and names each seat model (#6606)', () => {
+    expect(vote.panelDiversity).toEqual(
+      expect.objectContaining({ distinctFamilies: 3, distinctModels: 7 })
+    );
+    // `votes[]` carries the role LABEL and `perVoter` the role key, so compare
+    // the seat models as a multiset; every vote entry must name one.
+    const voteModels = vote.votes.map((v) => v.modelUsed ?? '<none>');
+    const costModels = vote.costSummary.perVoter.map((v) => v.model ?? '<missing>');
+    expect(voteModels).toHaveLength(7);
+    expect([...voteModels].sort()).toEqual([...costModels].sort());
+    expect(vote.panelWarning ?? '').not.toContain('single model family');
+  });
 
   it('marks every seat unpriced when NEXUS_GATEWAY_COST is undeclared', () => {
     expect(vote.costSummary.measuredVoters).toBe(0);
@@ -417,6 +435,22 @@ describe('a 7-seat consensus_vote with no CLIs installed', () => {
       );
       expect(event.priceSource).toBeUndefined();
     }
+  });
+});
+
+describe('a 7-seat consensus_vote on a one-family gateway (#6606)', () => {
+  let vote: z.infer<typeof VoteResponse>;
+
+  beforeAll(async () => {
+    const openaiOnly = (await wireFromEnv()).filter((a) => familyOf(a.modelId) === 'openai');
+    vote = await runSevenSeatVote(openaiOnly);
+  }, 25_000);
+
+  it('reports one family over several models and carries the collapsed-panel warning', () => {
+    expect(vote.panelDiversity).toEqual(
+      expect.objectContaining({ distinctFamilies: 1, distinctModels: 4 })
+    );
+    expect(vote.panelWarning).toContain('answering seats ran openai models');
   });
 });
 

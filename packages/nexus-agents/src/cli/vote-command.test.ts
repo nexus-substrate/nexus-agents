@@ -1434,7 +1434,7 @@ describe('voteCommand — panel model diversity line (#6115)', () => {
     });
     await voteCommand({ proposal: 'p', quick: true });
     expect(stdout.join('')).toContain(
-      'Models: 2 distinct, 1 fallbacks (devex: codex→gemini, capacity)'
+      'Models: 2 distinct, 2 families, 1 fallbacks (devex: codex→gemini, capacity)'
     );
   });
 
@@ -1445,7 +1445,7 @@ describe('voteCommand — panel model diversity line (#6115)', () => {
       decision: 'approved',
     });
     await voteCommand({ proposal: 'p', quick: true });
-    expect(stdout.join('')).toContain('Models: 2 distinct, 0 fallbacks');
+    expect(stdout.join('')).toContain('Models: 2 distinct, 2 families, 0 fallbacks');
   });
 
   it('the GitHub comment carries the same line', () => {
@@ -1454,7 +1454,7 @@ describe('voteCommand — panel model diversity line (#6115)', () => {
       'approved'
     );
     expect(comment).toContain(
-      '**Models: 2 distinct, 1 fallbacks (devex: codex→gemini, capacity)**'
+      '**Models: 2 distinct, 2 families, 1 fallbacks (devex: codex→gemini, capacity)**'
     );
   });
 });
