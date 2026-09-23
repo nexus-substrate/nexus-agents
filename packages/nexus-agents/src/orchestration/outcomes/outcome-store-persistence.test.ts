@@ -203,6 +203,46 @@ describe('PersistentOutcomeStore', () => {
       expect(parsed1['failureCategory']).toBeUndefined();
     });
 
+    it('preserves unknown forward-compatible fields across hydration and rewrite (#6538)', () => {
+      // Write an outcome with an unknown extra key (e.g. routedBy or future field)
+      // plus a 0ms skipped worker failure that triggers purgeSkippedOnHydrate rewrite
+      const outcomeWithExtra = {
+        ...makeOutcome({ id: 'future-1', success: true }),
+        routedBy: 'composite-router',
+        futureExtension: { flag: true, score: 42 },
+      };
+      const skippedWorker = {
+        ...makeOutcome({
+          id: 'worker-skipped-1',
+          model: 'worker-code',
+          success: false,
+          durationMs: 0,
+        }),
+      };
+      const lines =
+        [JSON.stringify(outcomeWithExtra), JSON.stringify(skippedWorker)].join('\n') + '\n';
+      writeFileSync(filePath, lines);
+
+      // Hydration triggers purgeSkippedOnHydrate, which purges worker-skipped-1 and rewrites the file
+      const store = new PersistentOutcomeStore({ filePath, dataDir: tmpDir });
+      expect(store.size).toBe(1);
+
+      // Verify the in-memory entry retains the unknown fields
+      const inMemory = store.query()[0] as Record<string, unknown> | undefined;
+      expect(inMemory).toBeDefined();
+      expect(inMemory?.['routedBy']).toBe('composite-router');
+      expect(inMemory?.['futureExtension']).toEqual({ flag: true, score: 42 });
+
+      // Read the file back from disk — the unknown fields MUST have survived the rewrite
+      const diskContent = readFileSync(filePath, 'utf-8');
+      const diskLines = diskContent.trim().split('\n');
+      expect(diskLines).toHaveLength(1);
+      const parsedOnDisk = JSON.parse(diskLines[0] ?? '{}') as Record<string, unknown>;
+      expect(parsedOnDisk['id']).toBe('future-1');
+      expect(parsedOnDisk['routedBy']).toBe('composite-router');
+      expect(parsedOnDisk['futureExtension']).toEqual({ flag: true, score: 42 });
+    });
+
     it('enforces FIFO eviction when hydrated count exceeds maxEntries', () => {
       const lines =
         Array.from({ length: 10 }, (_, i) => makeOutcomeLine({ id: `out-${String(i)}` })).join(
