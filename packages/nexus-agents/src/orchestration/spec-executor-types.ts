@@ -35,6 +35,16 @@ export type SpecExecutionOptions = CompileOptions & {
    * `execute_spec` (#6162), whose body emits nothing on the pipeline bus.
    */
   readonly onProgress?: (() => void) | undefined;
+  /**
+   * Cancels the run at the next step boundary (#6305). Handed to the graph
+   * executor, which checks it before each super-step, and checked again once
+   * the graph returns — so a cancel
+   * is always reported as a `Spec execution cancelled` error at stage
+   * `execute`, never as a partial result that goes on to validation. A node
+   * already running is not interrupted. `execute_spec` threads `cancel_job`'s
+   * signal here. Absent: the run is not cancellable.
+   */
+  readonly signal?: AbortSignal | undefined;
 };
 
 /**

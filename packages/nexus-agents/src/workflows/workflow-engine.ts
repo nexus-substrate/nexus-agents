@@ -43,6 +43,70 @@ export type {
 } from './workflow-engine-helpers.js';
 export type { WorkflowEngineDeps } from './workflow-engine-types.js';
 
+/**
+ * The phase-boundary cancel check (#6305). Read through a call, never inline:
+ * TypeScript narrows `signal.aborted` to `false` after one check, which is
+ * unsound across the `await`s between phases.
+ */
+function cancelledError(context: ExecutionContext): WorkflowError | undefined {
+  if (!context.abortController.signal.aborted) return undefined;
+  return new WorkflowError('Workflow cancelled', {
+    context: { executionId: context.executionId },
+  });
+}
+
+/**
+ * Forward a caller's cancel signal (#6305) into the execution's own abort
+ * controller — the one the phase gate and the parallel executor's per-step
+ * dispatch already read — and return the listener's cleanup.
+ */
+function linkCancelSignal(signal: AbortSignal | undefined, target: AbortController): () => void {
+  if (signal === undefined) return () => undefined;
+  if (signal.aborted) {
+    target.abort();
+    return () => undefined;
+  }
+  const forward = (): void => {
+    target.abort();
+  };
+  signal.addEventListener('abort', forward, { once: true });
+  return () => {
+    signal.removeEventListener('abort', forward);
+  };
+}
+
+/** Record a settled phase's step results on the context and the run's list. */
+function collectPhaseResults(
+  results: readonly StepResult[],
+  context: ExecutionContext,
+  allResults: StepResult[]
+): void {
+  for (const result of results) {
+    context.stepResults.set(result.stepId, result);
+    allResults.push(result);
+  }
+}
+
+/** The per-run overrides `execute` forwards to `runExecution`, each only when set. */
+function runOverrides(
+  options:
+    | {
+        phaseTimeoutMs?: number;
+        onPhaseComplete?: () => void;
+        budget?: { readonly maxTokens: number };
+      }
+    | undefined
+): { phaseTimeoutMs?: number; onPhaseComplete?: () => void; budget?: WorkflowBudgetTracker } {
+  return {
+    ...(options?.phaseTimeoutMs !== undefined ? { phaseTimeoutMs: options.phaseTimeoutMs } : {}),
+    ...(options?.onPhaseComplete !== undefined ? { onPhaseComplete: options.onPhaseComplete } : {}),
+    // #4754: one tracker per execution; absent → the run is uncapped.
+    ...(options?.budget !== undefined
+      ? { budget: new WorkflowBudgetTracker(options.budget.maxTokens) }
+      : {}),
+  };
+}
+
 /** Workflow engine implementation. */
 export class WorkflowEngine implements IWorkflowEngine {
   private readonly config: ResolvedConfig;
@@ -70,6 +134,10 @@ export class WorkflowEngine implements IWorkflowEngine {
    * (set in the template YAML) and the engine's `defaultTimeoutMs`. Used
    * by the `run_workflow` MCP tool to expose a caller-supplied `timeoutMs`
    * for known-long templates (e.g. security-audit over a large repo).
+   *
+   * `options.signal` (#6305) cancels the run: it is linked to the execution's
+   * own abort controller, so a step not yet dispatched is skipped and the run
+   * fails with `Workflow cancelled` at the next phase boundary.
    */
   async execute(
     workflow: WorkflowDefinition,
@@ -78,6 +146,7 @@ export class WorkflowEngine implements IWorkflowEngine {
       phaseTimeoutMs?: number;
       onPhaseComplete?: () => void;
       budget?: { readonly maxTokens: number };
+      signal?: AbortSignal;
     }
   ): Promise<Result<WorkflowResult, WorkflowError>> {
     // Validate inputs and create execution plan
@@ -102,6 +171,7 @@ export class WorkflowEngine implements IWorkflowEngine {
       logger: this.logger,
     });
     this.executions.set(initResult.executionId, initResult.execution);
+    const unlink = linkCancelSignal(options?.signal, initResult.context.abortController);
 
     try {
       return await this.runExecution({
@@ -110,19 +180,12 @@ export class WorkflowEngine implements IWorkflowEngine {
         context: initResult.context,
         executionId: initResult.executionId,
         startTime: initResult.startTime,
-        ...(options?.phaseTimeoutMs !== undefined
-          ? { phaseTimeoutMs: options.phaseTimeoutMs }
-          : {}),
-        ...(options?.onPhaseComplete !== undefined
-          ? { onPhaseComplete: options.onPhaseComplete }
-          : {}),
-        // #4754: one tracker per execution; absent → the run is uncapped.
-        ...(options?.budget !== undefined
-          ? { budget: new WorkflowBudgetTracker(options.budget.maxTokens) }
-          : {}),
+        ...runOverrides(options),
       });
     } catch (error) {
       return this.handleExecutionError(error, initResult.executionId, workflow.name);
+    } finally {
+      unlink();
     }
   }
 
@@ -322,11 +385,8 @@ export class WorkflowEngine implements IWorkflowEngine {
     let completedSteps = 0;
 
     for (const [phaseIndex, phase] of plan.phases.entries()) {
-      if (context.abortController.signal.aborted) {
-        return err(
-          new WorkflowError('Workflow cancelled', { context: { executionId: context.executionId } })
-        );
-      }
+      const cancelled = cancelledError(context);
+      if (cancelled !== undefined) return err(cancelled);
 
       const currentStep = phase.steps[0]?.id ?? 'unknown';
       this.updateExecutionStatus(context.executionId, {
@@ -345,10 +405,7 @@ export class WorkflowEngine implements IWorkflowEngine {
       // consumed, not discarded — see reportUsageCoverage.
       this.reportUsageCoverage(recordPhaseUsage(phaseResult.value), workflow.name);
 
-      for (const result of phaseResult.value) {
-        context.stepResults.set(result.stepId, result);
-        allResults.push(result);
-      }
+      collectPhaseResults(phaseResult.value, context, allResults);
       completedSteps += phase.steps.length;
       // #6162: one heartbeat per settled phase — the unit of progress an
       // async run_workflow job can prove.
@@ -360,6 +417,11 @@ export class WorkflowEngine implements IWorkflowEngine {
       const halt = budget?.settlePhase(phaseResult.value, hasMorePhases, allResults);
       if (halt !== undefined) return err(halt);
     }
+    // #6305: a cancel that landed during the LAST phase skipped its queued
+    // steps; reporting those results as a finished run would be a partial
+    // success, so the boundary after the final phase is checked too.
+    const cancelled = cancelledError(context);
+    if (cancelled !== undefined) return err(cancelled);
     return ok(allResults);
   }
 

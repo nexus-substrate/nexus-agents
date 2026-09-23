@@ -94,17 +94,19 @@ function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolRes
   return toolSuccess(JSON.stringify(output, null, 2));
 }
 
+/** The async-job hooks: heartbeat (#6162) and `cancel_job`'s signal (#6305). Absent in sync mode. */
+interface SpecJobHooks {
+  readonly onProgress: () => void;
+  readonly signal: AbortSignal;
+}
+
 async function createFullResponse(
   input: ExecuteSpecInput,
   logger: ILogger,
-  /** Async-job heartbeat (#6162), fired per graph event. Absent in sync mode. */
-  onProgress?: () => void
+  job?: SpecJobHooks
 ): Promise<ToolResult> {
   const startMs = Date.now();
-  const result = await executeSpec(
-    input.spec,
-    onProgress === undefined ? undefined : { onProgress }
-  );
+  const result = await executeSpec(input.spec, job);
   const durationMs = Date.now() - startMs;
 
   if (!result.ok) {
@@ -179,13 +181,14 @@ function createExecuteSpecHandler(
         toolName: 'execute_spec',
         input,
         freshJobId: () => `es-${randomUUID()}`,
-        // #5393: deliberately arity-1 — `executeSpec` has no AbortSignal option,
-        // so taking the signal would flip `signalAccepted` to true with nothing
-        // reading it. Step-boundary gate first: #6305.
-        // #6162: heartbeats by jobId on every graph event.
-        run: (jobId) =>
-          createFullResponse(input, logger, () => {
-            heartbeatJob(jobId);
+        // #5393 / #6305: arity 3 — `executeSpec` checks the signal at every step
+        // boundary. #6162: heartbeats by jobId on every graph event.
+        run: (jobId, _input, signal) =>
+          createFullResponse(input, logger, {
+            onProgress: () => {
+              heartbeatJob(jobId);
+            },
+            signal,
           }),
         logger,
       });
