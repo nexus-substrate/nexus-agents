@@ -136,6 +136,16 @@ export interface ICircuitBreaker {
    * Records a success manually (for external success detection).
    */
   recordSuccess(): void;
+
+  /**
+   * Checks whether an execution can proceed under current circuit state.
+   */
+  canExecute(): import('../core/index.js').Result<true, CircuitError>;
+
+  /**
+   * Releases a half-open probe request without recording success or failure (#6613).
+   */
+  releaseHalfOpenProbe(): void;
 }
 
 // ============================================================================

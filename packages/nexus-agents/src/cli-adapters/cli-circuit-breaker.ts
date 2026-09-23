@@ -8,7 +8,7 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import type { FallbackTaskType } from './task-classifier.js';
 import { getFallbackChainForCategory } from './fallback-chains.js';
@@ -16,11 +16,13 @@ import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './typ
 import {
   CircuitBreakerRegistry,
   CircuitError,
+  CircuitErrorCode,
   mapCliErrorToCategory,
   type CircuitBreakerConfig,
   type CircuitBreakerSnapshot,
   type CircuitStateChangeListener,
 } from './circuit-breaker.js';
+import { isCallerInputCliError } from './cli-error-helpers.js';
 
 /** Maps canonical TaskCategory (10 types) to FallbackTaskType (5 types). */
 const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
@@ -242,24 +244,40 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     task: CliTask
   ): Promise<Result<CliResponse, CircuitError | CliError>> {
     const breaker = this.registry.getBreaker(adapter.name);
-    const result = await breaker.execute(async () => {
-      const execResult = await adapter.execute(task);
-      if (!execResult.ok) {
-        breaker.recordFailure(mapCliErrorToCategory(execResult.error.code));
-        const wrappedError = new Error(execResult.error.message);
-        (wrappedError as Error & { cliError: CliError }).cliError = execResult.error;
-        throw wrappedError;
-      }
-      return execResult.value;
-    });
-
-    if (!result.ok) {
-      if (result.error.circuitErrorCode === 'CIRCUIT_OPEN') return err(result.error);
-      const wrapped = result.error.cause as (Error & { cliError?: CliError }) | undefined;
-      if (wrapped?.cliError) return err(wrapped.cliError);
-      return err(result.error);
+    const canRun = breaker.canExecute();
+    if (!canRun.ok) {
+      return canRun;
     }
-    return ok(result.value);
+
+    let execResult: Result<CliResponse, CliError>;
+    try {
+      execResult = await adapter.execute(task);
+    } catch (error) {
+      breaker.recordFailure('unknown');
+      return err(
+        new CircuitError(`CLI execution threw unexpectedly: ${getErrorMessage(error)}`, {
+          circuitErrorCode: CircuitErrorCode.EXECUTION_FAILED,
+          cliName: adapter.name,
+          armId: adapter.name,
+          circuitState: breaker.getState(),
+          cause: error instanceof Error ? error : new Error(String(error)),
+        })
+      );
+    }
+
+    if (!execResult.ok) {
+      // #6613: caller-input errors (e.g. invalid model requested) must not count
+      // against the breaker or exhaust half-open probe capacity.
+      if (isCallerInputCliError(execResult.error)) {
+        breaker.releaseHalfOpenProbe();
+        return err(execResult.error);
+      }
+      breaker.recordFailure(mapCliErrorToCategory(execResult.error.code));
+      return err(execResult.error);
+    }
+
+    breaker.recordSuccess();
+    return ok(execResult.value);
   }
 
   private getFallbackClis(excludeCli: CliName, taskCategory?: TaskCategory): CliName[] {

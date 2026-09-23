@@ -152,7 +152,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   // Private Methods
   // -------------------------------------------------------------------------
 
-  private canExecute(): Result<true, CircuitError> {
+  canExecute(): Result<true, CircuitError> {
     this.checkStateTransition();
 
     if (this.state === 'closed') {
@@ -183,6 +183,15 @@ export class CliCircuitBreaker implements ICircuitBreaker {
     }
     this.halfOpenRequests++;
     return ok(true);
+  }
+
+  /**
+   * Releases a half-open probe request without recording success or failure (#6613).
+   */
+  releaseHalfOpenProbe(): void {
+    if (this.state === 'half-open' && this.halfOpenRequests > 0) {
+      this.halfOpenRequests--;
+    }
   }
 
   private checkStateTransition(): void {

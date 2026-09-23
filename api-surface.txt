@@ -1548,12 +1548,14 @@ FunctionDeclaration cliCategorizeError
   : (error: CliError) => FailureCategory
 ClassDeclaration CliCircuitBreaker
   addStateChangeListener(listener: CircuitStateChangeListener) => void
+  canExecute() => Result<true, CircuitError>
   execute<T>(fn: () => Promise<T>) => Promise<Result<T, CircuitError>>
   getSnapshot() => CircuitBreakerSnapshot
   getState() => CircuitState
   implements ICircuitBreaker
   recordFailure(category: FailureCategory) => void
   recordSuccess() => void
+  releaseHalfOpenProbe() => void
   removeStateChangeListener(listener: CircuitStateChangeListener) => void
   reset() => void
 InterfaceDeclaration CliCircuitBreakerConfig
@@ -4622,11 +4624,13 @@ InterfaceDeclaration ICheckpointStore
   save(checkpoint: Checkpoint) => void
   size() => number
 InterfaceDeclaration ICircuitBreaker
+  canExecute() => import("../core/index.js").Result<true, CircuitError>
   execute<T>(fn: () => Promise<T>) => Promise<import("../core/index.js").Result<T, CircuitError>>
   getSnapshot() => CircuitBreakerSnapshot
   getState() => CircuitState
   recordFailure(category: FailureCategory) => void
   recordSuccess() => void
+  releaseHalfOpenProbe() => void
   reset() => void
 InterfaceDeclaration ICliAdapter
   dispose() => Promise<void>

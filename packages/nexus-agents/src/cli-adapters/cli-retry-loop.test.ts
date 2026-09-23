@@ -57,6 +57,8 @@ function makeError(code: CliError['code'] = 'TIMEOUT', retryable = true): CliErr
 function makeCircuitBreaker(state: 'closed' | 'open' | 'half-open' = 'closed'): ICircuitBreaker {
   return {
     execute: vi.fn(),
+    canExecute: vi.fn().mockReturnValue(ok(true)),
+    releaseHalfOpenProbe: vi.fn(),
     getState: vi.fn().mockReturnValue(state),
     getSnapshot: vi.fn(),
     reset: vi.fn(),
