@@ -27,6 +27,10 @@ const KEY_PATTERNS: readonly RegExp[] = [
   /sk-proj-[A-Za-z0-9_-]{20,}/g,
   // Generic OpenAI: sk-... (at least 20 chars after prefix)
   /sk-[A-Za-z0-9_-]{20,}/g,
+  // Public keys: pk-...
+  /pk-[A-Za-z0-9_-]{20,}/g,
+  // AWS access key ID
+  /\bAKIA[A-Z0-9]{16}\b/g,
   // Google AI / Gemini: AIzaSy... (at least 30 chars total)
   /AIzaSy[A-Za-z0-9_-]{24,}/g,
   // GitHub PAT: ghp_...
@@ -48,16 +52,20 @@ const KEY_PATTERNS: readonly RegExp[] = [
  * is returned to callers, written to logs, or included in trace data.
  *
  * @param text - Raw subprocess output
- * @returns The same text with API keys replaced by [REDACTED_KEY]
+ * @param placeholder - Replacement placeholder (default: [REDACTED_KEY])
+ * @returns The same text with API keys replaced by placeholder
  */
-export function sanitizeOutput(text: string): string {
+export function sanitizeOutput(
+  text: string,
+  placeholder: string = REDACTED_KEY_PLACEHOLDER
+): string {
   if (text === '') return text;
 
   let result = text;
   for (const pattern of KEY_PATTERNS) {
     // Reset lastIndex for global regex reuse
     pattern.lastIndex = 0;
-    result = result.replace(pattern, REDACTED_KEY_PLACEHOLDER);
+    result = result.replace(pattern, placeholder);
   }
   return result;
 }
@@ -73,37 +81,44 @@ export function sanitizeOutput(text: string): string {
  * @param apiKey - Optional configured API key to redact by exact match
  * @returns The sanitized text with credentials redacted
  */
-export function sanitizeErrorDetails(text: string, apiKey?: string): string {
+export function sanitizeErrorDetails(
+  text: string,
+  apiKey?: string,
+  placeholder: string = REDACTED_KEY_PLACEHOLDER
+): string {
   if (text === '') return '';
 
   let result = text;
   if (apiKey !== undefined && apiKey.trim() !== '') {
-    result = result.replaceAll(apiKey.trim(), REDACTED_KEY_PLACEHOLDER);
+    result = result.replaceAll(apiKey.trim(), placeholder);
   }
 
   // Redact known key patterns
-  result = sanitizeOutput(result);
+  result = sanitizeOutput(result, placeholder);
 
   // Redact URL credentials like https://user:pass@host or https://token@host
   result = result.replace(/https?:\/\/[^\s/@]+@[^\s/]+/g, (match) => {
-    return match.replace(/https?:\/\/[^\s/@]+@/, `https://${REDACTED_KEY_PLACEHOLDER}@`);
+    return match.replace(/https?:\/\/[^\s/@]+@/, `https://${placeholder}@`);
   });
 
   // Redact Authorization headers: Bearer and Basic tokens
-  result = result.replace(/(authorization:\s*bearer\s+)\S+/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
-  result = result.replace(/(authorization:\s*basic\s+)\S+/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
-  result = result.replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
+  result = result.replace(/(authorization:\s*bearer\s+)\S+/gi, `$1${placeholder}`);
+  result = result.replace(/(authorization:\s*basic\s+)\S+/gi, `$1${placeholder}`);
+  result = result.replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, `$1${placeholder}`);
+
+  // Redact plain text assignments like password=... or secret: ...
+  result = result.replace(/(\b(?:password|passwd|secret)\s*[=:]\s*)\S{4,}/gi, `$1${placeholder}`);
 
   // Redact sensitive query parameters in URLs or logs (?api_key=..., &token=..., &prompt=...)
   result = result.replace(
     /([?&](?:api[_-]?key|token|access[_-]?token|secret|password|prompt|system_prompt|user_prompt)=)[^&\s]+/gi,
-    `$1${REDACTED_KEY_PLACEHOLDER}`
+    `$1${placeholder}`
   );
 
   // Redact sensitive JSON keys: "api_key": "...", "token": "...", "prompt": "...", etc.
   result = result.replace(
     /"(api[_-]?key|access[_-]?token|token|secret|password|prompt|system_prompt|user_prompt)"\s*:\s*"(?:[^"\\]|\\.)*"/gi,
-    `"$1": "${REDACTED_KEY_PLACEHOLDER}"`
+    `"$1": "${placeholder}"`
   );
 
   return result;

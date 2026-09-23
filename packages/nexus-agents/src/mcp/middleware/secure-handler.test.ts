@@ -25,7 +25,12 @@ import { getCurrentRequestContext, measuredTrustTier } from './request-context.j
 import { createDefaultPolicyFirewall } from './policy.js';
 import { setGlobalExecutionMode, resetGlobalPolicyFirewall } from './policy-registry.js';
 import { RateLimiter, type RateLimiterState } from './rate-limiter.js';
-import { FAKE_OPENAI_KEY } from '../../testing/test-secrets.js';
+import {
+  FAKE_OPENAI_KEY,
+  FAKE_ANTHROPIC_KEY,
+  FAKE_GOOGLE_KEY,
+  FAKE_GITHUB_PAT,
+} from '../../testing/test-secrets.js';
 
 // =============================================================================
 // Test Utilities
@@ -1261,6 +1266,86 @@ describe('SecureHandler', () => {
       expect(text).not.toContain('AKIAIOSFODNN7EXAMPLE');
       expect(text).not.toContain('AKIA1234567890ABCDEF');
       expect(text.match(/\[REDACTED\]/g)?.length).toBe(2);
+    });
+
+    it('redacts Anthropic sk-ant- keys, OpenAI project keys, and Gemini keys in output (#6484)', async () => {
+      const outputText = `Anthropic: ${FAKE_ANTHROPIC_KEY}, OpenAI: sk-proj-TESTFAKExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, Gemini: ${FAKE_GOOGLE_KEY}, GitHub: ${FAKE_GITHUB_PAT}`;
+      const handler: ToolHandler = vi.fn(() =>
+        Promise.resolve({ content: [{ type: 'text' as const, text: outputText }] })
+      );
+      const secureHandler = createSecureHandler(handler, { toolName: 'modern_keys_tool' });
+      const result = await secureHandler({});
+      const text = result.content[0]?.text ?? '';
+      expect(text).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect(text).not.toContain('sk-proj-TESTFAKE');
+      expect(text).not.toContain(FAKE_GOOGLE_KEY);
+      expect(text).not.toContain(FAKE_GITHUB_PAT);
+      expect(text).toContain('[REDACTED]');
+    });
+
+    it('redacts secrets within _meta error envelopes (#6484)', async () => {
+      const handler: ToolHandler = vi.fn(() =>
+        Promise.resolve({
+          isError: true,
+          content: [{ type: 'text' as const, text: 'Operation failed' }],
+          _meta: {
+            'nexus-agents/error': {
+              errorCategory: 'upstream',
+              message: `Upstream failed with token ${FAKE_ANTHROPIC_KEY} and key ${FAKE_GOOGLE_KEY}`,
+              detail: {
+                apiKeyEcho: FAKE_OPENAI_KEY,
+                authHeader: 'Bearer sk-proj-TESTFAKExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+              },
+            },
+          },
+        })
+      );
+      const secureHandler = createSecureHandler(handler, { toolName: 'meta_error_tool' });
+      const result = await secureHandler({});
+      const errorMeta = (result._meta as Record<string, unknown>)?.['nexus-agents/error'] as Record<
+        string,
+        unknown
+      >;
+      expect(errorMeta).toBeDefined();
+      expect(errorMeta.message).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect(errorMeta.message).not.toContain(FAKE_GOOGLE_KEY);
+      expect(errorMeta.message).toContain('[REDACTED]');
+      const detail = errorMeta.detail as Record<string, unknown>;
+      expect(detail.apiKeyEcho).toBe('[REDACTED]');
+      expect(detail.authHeader).not.toContain('sk-proj-TESTFAKE');
+    });
+
+    it('redacts secrets in structuredContent (#6484)', async () => {
+      const handler: ToolHandler = vi.fn(() =>
+        Promise.resolve({
+          content: [{ type: 'text' as const, text: 'ok' }],
+          structuredContent: {
+            token: FAKE_ANTHROPIC_KEY,
+            nested: {
+              secretKey: FAKE_GOOGLE_KEY,
+            },
+          },
+        })
+      );
+      const secureHandler = createSecureHandler(handler, { toolName: 'structured_content_tool' });
+      const result = await secureHandler({});
+      const structured = result.structuredContent as Record<string, unknown>;
+      expect(structured.token).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect((structured.nested as Record<string, unknown>).secretKey).not.toContain(
+        FAKE_GOOGLE_KEY
+      );
+    });
+
+    it('redacts Anthropic sk-ant- keys in thrown exceptions (#6484)', async () => {
+      const handler: ToolHandler = vi.fn(() => {
+        throw new Error(`AuthenticationError: invalid key ${FAKE_ANTHROPIC_KEY}`);
+      });
+      const secureHandler = createSecureHandler(handler, { toolName: 'throwing_tool' });
+      const result = await secureHandler({});
+      expect(result.isError).toBe(true);
+      const text = result.content[0]?.text ?? '';
+      expect(text).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect(text).toContain('[REDACTED]');
     });
 
     it('should handle slow handler execution', async () => {
