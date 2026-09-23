@@ -90,6 +90,9 @@ describe('orchestrate CLI routed outcomes (#6533)', () => {
       { model?: string },
     ];
     expect(decision).toBe((await h.route.mock.results[0]?.value)?.value);
+    // The router learns against the SAME object it routed: pendingRoutingOutcomes
+    // is a WeakMap keyed by it, so a copy would silently lose attribution.
+    expect(task).toBe(h.route.mock.calls[0]?.[0]);
     expect(task.model).toBeUndefined();
     expect(runTask.model).toBe('claude-sonnet');
     expect(store.query()).toEqual([
