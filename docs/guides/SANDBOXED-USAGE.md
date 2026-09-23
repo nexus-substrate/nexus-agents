@@ -189,9 +189,9 @@ The portable-mode flow above covers the "I'm running nexus-agents directly in a 
 │                                                             │
 │  At startup, nexus-agents:                                  │
 │    1. detectSandbox() → active=true, flavor=docker-opencode │
-│    2. tryWireGatewayAdapter() → probe /v1/models            │
+│    2. tryWireGatewayAdapter() → probe <URL>/models          │
 │    3. fail-fast if gateway unreachable                      │
-│    4. log "gateway wired: <baseURL>, N models discovered"   │
+│    4. log "gateway wired" { host, modelCount, models }      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -273,7 +273,7 @@ docker run --rm -it \
 When sandbox mode is active and the gateway is misconfigured, nexus-agents fails fast at startup ([#2502](https://github.com/nexus-substrate/nexus-agents/issues/2502)):
 
 - Missing env vars (and no `NEXUS_OPENCODE_CONFIG`-pointed file with `providers.openai-compat`): exit, error names the missing env vars + this doc.
-- `/v1/models` probe fails: exit, error includes the HTTP failure.
+- The `$NEXUS_OPENAI_COMPAT_URL/models` probe fails: exit, error includes the HTTP failure.
 - Gateway returns zero models: exit.
 
 This is intentional — there's no human at a CLI prompt inside the container to diagnose later, so a misconfigured gateway should surface at first boot, not on the operator's first orchestrate call.
@@ -315,7 +315,7 @@ This shows the proposed merge without writing. Drop `--dry-run` to commit. The m
 
 **"Sandbox mode active but NEXUS_OPENAI_COMPAT_URL / NEXUS_OPENAI_COMPAT_KEY are not set"** — Either pass the env vars when running the container, or set `NEXUS_OPENCODE_CONFIG` to point at an `opencode.json` whose `providers.openai-compat.options` resolves to a real URL + key.
 
-**Gateway probe fails** — From inside the container, `curl -H "Authorization: Bearer $NEXUS_OPENAI_COMPAT_KEY" $NEXUS_OPENAI_COMPAT_URL/v1/models`. If that fails, the workspace key proxy isn't reachable from the sandbox network. Check outbound network access to the proxy host and that the proxy is bound to an interface the container can reach.
+**Gateway probe fails** — From inside the container, `curl -H "Authorization: Bearer $NEXUS_OPENAI_COMPAT_KEY" "$NEXUS_OPENAI_COMPAT_URL/models"`. `NEXUS_OPENAI_COMPAT_URL` already ends in `/v1`, so do not append a second `/v1`. If that fails, the workspace key proxy isn't reachable from the sandbox network. Check outbound network access to the proxy host and that the proxy is bound to an interface the container can reach.
 
 **"Mock orchestration" warnings appearing post-upgrade** — Older `Dockerfile.sandbox` builds set `NEXUS_ALLOW_MOCK_ORCHESTRATION=true` as a band-aid for the unwired gateway. With the gateway now wired ([#2502](https://github.com/nexus-substrate/nexus-agents/issues/2502)), drop that env var — orchestration uses real LLM calls. Mock-orchestration is heuristic-based and silently produces non-LLM results; leaving it on after the gateway is configured will mask real routing decisions.
 
