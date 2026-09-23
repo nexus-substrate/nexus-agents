@@ -88,6 +88,55 @@ describe('dealSeatsAcrossFamilies (#6606)', () => {
     expect(ids(seats)).toEqual(['openai/o3', 'openai/gpt-4o']);
   });
 
+  // #6634: within a family, seats go best-ranked first (#6623's ranking), not
+  // alphabetically. Alphabetically `gpt-4o-mini` sorts before `openai/gpt-4o` and
+  // `anthropic/claude-haiku-4.5` before `claude-opus-4-1-20250805`.
+  const FLAGSHIP_AND_SMALL = [
+    'gpt-4o-mini',
+    'openai/gpt-4o',
+    'anthropic/claude-haiku-4.5',
+    'claude-opus-4-1-20250805',
+    'models/gemini-2.5-flash',
+    'vertex_ai/gemini-2.5-pro',
+  ];
+
+  it('gives each family its first seat to its flagship, not its mini (#6634)', () => {
+    const seats = ids(dealSeatsAcrossFamilies(3, models(FLAGSHIP_AND_SMALL)));
+    expect(seats).toEqual([
+      'claude-opus-4-1-20250805',
+      'openai/gpt-4o',
+      'vertex_ai/gemini-2.5-pro',
+    ]);
+  });
+
+  it('deals the ranked order identically across every input permutation (#6634)', () => {
+    const expected = ids(dealSeatsAcrossFamilies(6, models(FLAGSHIP_AND_SMALL)));
+    const permutations = [
+      [...FLAGSHIP_AND_SMALL].reverse(),
+      [...FLAGSHIP_AND_SMALL.slice(3), ...FLAGSHIP_AND_SMALL.slice(0, 3)],
+      [1, 4, 0, 5, 2, 3].map((i) => FLAGSHIP_AND_SMALL[i] ?? ''),
+    ];
+    for (const order of permutations) {
+      expect(ids(dealSeatsAcrossFamilies(6, models(order)))).toEqual(expected);
+    }
+    // The second pass over each family seats the smaller model.
+    expect(expected.slice(3)).toEqual([
+      'anthropic/claude-haiku-4.5',
+      'gpt-4o-mini',
+      'models/gemini-2.5-flash',
+    ]);
+  });
+
+  it('ranks same-tier models by the discovery created stamp they carry (#6634)', () => {
+    const stamped = [
+      { modelId: 'gpt-5.2', created: 1_700_000_000 },
+      { modelId: 'openai/o3', created: 1_800_000_000 },
+    ];
+    // Unstamped, the id generation puts gpt-5.2 first; the newer stamp wins here.
+    expect(ids(dealSeatsAcrossFamilies(1, stamped))).toEqual(['openai/o3']);
+    expect(ids(dealSeatsAcrossFamilies(1, models(['openai/o3', 'gpt-5.2'])))).toEqual(['gpt-5.2']);
+  });
+
   it('names the empty cases: no seats or no models deal nothing', () => {
     expect(dealSeatsAcrossFamilies(0, models(['gpt-5.2']))).toEqual([]);
     expect(dealSeatsAcrossFamilies(3, [])).toEqual([]);

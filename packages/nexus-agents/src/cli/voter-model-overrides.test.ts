@@ -213,6 +213,39 @@ describe('resolveGatewayRoleAdapters — family-first dealing (#6606)', () => {
     expect(families.filter((f) => f === 'google')).toHaveLength(2);
   });
 
+  it('seats each family flagship before its mini, and a pin still wins (#6634)', () => {
+    const catalog = [
+      'gpt-4o-mini',
+      'openai/gpt-4o',
+      'anthropic/claude-haiku-4.5',
+      'claude-opus-4-1-20250805',
+      'models/gemini-2.5-flash',
+      'vertex_ai/gemini-2.5-pro',
+    ].map(adapter);
+    const three: readonly VoterRole[] = ['architect', 'security', 'devex'];
+    const models = (a: Map<VoterRole, IModelAdapter>): (string | undefined)[] =>
+      three.map((r) => a.get(r)?.modelId);
+    const listed = models(resolveGatewayRoleAdapters(three, catalog, fallback, fakeLogger()));
+    expect(new Set(listed)).toEqual(
+      new Set(['claude-opus-4-1-20250805', 'openai/gpt-4o', 'vertex_ai/gemini-2.5-pro'])
+    );
+    const reversed = resolveGatewayRoleAdapters(
+      three,
+      [...catalog].reverse(),
+      fallback,
+      fakeLogger()
+    );
+    expect(models(reversed)).toEqual(listed);
+
+    process.env['NEXUS_VOTER_MODEL_ARCHITECT'] = 'gpt-4o-mini';
+    const pinned = resolveGatewayRoleAdapters(three, catalog, fallback, fakeLogger());
+    expect(pinned.get('architect')?.modelId).toBe('gpt-4o-mini');
+    // OpenAI already holds the pinned seat: the dealt seats go to the other flagships.
+    expect(new Set([pinned.get('security')?.modelId, pinned.get('devex')?.modelId])).toEqual(
+      new Set(['claude-opus-4-1-20250805', 'vertex_ai/gemini-2.5-pro'])
+    );
+  });
+
   it('warns that a one-family catalogue collapsed the panel to one family', () => {
     const logger = fakeLogger();
     resolveGatewayRoleAdapters(
