@@ -37,6 +37,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  currentMarker,
+  STAGE_DIRNAME,
+  STAGE_MARKER,
+  writeStageMarker,
+} from './check-publish-stage.js';
 import { ROOT } from './script-paths.js';
 import {
   assertBundleFloors,
@@ -44,11 +50,11 @@ import {
   parseOverrideFloors,
   type ParsedFloors,
 } from './stage-publish-floors.js';
+import { assertSamePacklist, pnpmPackedFileList } from './stage-publish-packlist.js';
 
 const PACKAGE_DIR = join(ROOT, 'packages/nexus-agents');
 
-/** Must equal `publishConfig.directory` in the package manifest. */
-export const STAGE_DIRNAME = '.publish-stage';
+export { STAGE_DIRNAME };
 
 /**
  * Direct dependencies shipped inside the tarball. The first three carry, or
@@ -104,9 +110,9 @@ type Manifest = Record<string, unknown> & {
  * - `devDependencies` is dropped: npm cannot resolve its `workspace:` specs, and
  *   a consumer never installs them.
  * - `prepublishOnly` is dropped from the STAGED manifest, which pnpm never
- *   runs. pnpm runs the SOURCE manifest's `prepublishOnly` (a rebuild of the
- *   source `dist/`) whatever this says; the stage has already copied `dist/`,
- *   so that second build is redundant but harmless.
+ *   runs. pnpm runs the SOURCE manifest's `prepublishOnly` whatever this says:
+ *   a rebuild of the source `dist/` (redundant — the stage already copied it)
+ *   followed by `check-publish-stage.ts`, which refuses a stale stage (#6488).
  * - `publishConfig.directory` / `linkDirectory` are dropped: they describe the
  *   source layout, not the published one.
  */
@@ -209,7 +215,10 @@ function installBundle(stageDir: string, floors: ParsedFloors): void {
   assertBundleFloors(lock, floors, (line) => {
     console.log(line);
   });
-  const unpacked = unpackedBundleMembers(lock, packedFileList(stageDir));
+  const npmFiles = packedFileList(stageDir);
+  // The guard below reads npm's packlist; pnpm packs what is published.
+  assertSamePacklist(npmFiles, pnpmPackedFileList(PACKAGE_DIR));
+  const unpacked = unpackedBundleMembers(lock, npmFiles);
   if (unpacked.length > 0) {
     throw new Error(
       `npm will expect ${String(unpacked.length)} package(s) from the bundle that the tarball does not contain ` +
@@ -246,6 +255,10 @@ export function stage(): string {
   const floors = workspaceFloors();
   writeStagedManifest(stageDir, floors);
   installBundle(stageDir, floors);
+  // Last, so a stage that failed any step above carries no marker and
+  // check-publish-stage.ts refuses to publish it (#6488).
+  writeStageMarker(stageDir, currentMarker(ROOT, PACKAGE_DIR));
+  console.log(`wrote ${STAGE_MARKER} for HEAD`);
   return stageDir;
 }
 

@@ -72,7 +72,7 @@
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
     "docs:api:md": "typedoc --options typedoc.markdown.json",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build && pnpm exec tsx ../../scripts/check-publish-stage.ts"
   },
   "optionalDependencies": {
     "@atproto/api": "^0.20.44"
