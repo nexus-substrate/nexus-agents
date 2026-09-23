@@ -19,7 +19,7 @@
  */
 
 import OpenAI from 'openai';
-import { assertCustomApiHostResolvesPublic } from './sdk/custom-api-validation.js';
+import { checkGatewayHost, GatewayHostRefusedError } from './gateway-host-status.js';
 
 import type {
   Result,
@@ -53,8 +53,13 @@ import {
 } from './sdk/types.js';
 import { hostnameOf, redactApiKey } from './sdk/gateway-env.js';
 import { readModelAllowlist, refineGatewayCatalog } from './gateway-catalog-filter.js';
+import {
+  gatewayClientOptions,
+  readGatewayTransport,
+  type GatewayTransport,
+} from './gateway-http.js';
 
-export interface OpenAICompatConfig {
+export interface OpenAICompatConfig extends GatewayTransport {
   /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
   readonly baseUrl: string;
   /** API key the gateway expects. */
@@ -141,6 +146,7 @@ function readGatewayFromEnv(): OpenAICompatConfig | null {
     apiKey: envKey,
     endpoint: readOpenAICompatEndpoint(),
     modelAllowlist: readModelAllowlist(),
+    ...readGatewayTransport(envUrl, process.env, endpointLogger),
   };
 }
 
@@ -154,6 +160,7 @@ function readGatewayFromOpencode(): OpenAICompatConfig | null {
     apiKey: fromFile.apiKey,
     endpoint: readOpenAICompatEndpoint(),
     modelAllowlist: readModelAllowlist(),
+    ...readGatewayTransport(fromFile.baseURL, process.env, endpointLogger),
   };
 }
 
@@ -248,9 +255,11 @@ export async function discoverModels(
   // from an env var, so the input is not always direct operator intent.
   // The guard fails OPEN on transient resolver errors and rejects only a
   // confirmed private/loopback/link-local resolution.
-  const hostCheck = await assertCustomApiHostResolvesPublic(hostnameOf(config.baseUrl));
-  if (!hostCheck.ok) {
-    return err(new ConfigError(`Gateway URL rejected: ${hostCheck.error.message}`));
+  // #6608: the refusal is a typed error so the bootstrap can say which
+  // variable allows it and that the gateway is not in use.
+  const hostCheck = await checkGatewayHost(config.baseUrl);
+  if (hostCheck.state === 'refused_private_host') {
+    return err(new GatewayHostRefusedError(hostCheck));
   }
   try {
     const client = new OpenAI({
@@ -260,6 +269,9 @@ export async function discoverModels(
       // not stall startup indefinitely. The SDK's own default is far longer.
       timeout: MODEL_DISCOVERY_TIMEOUT_MS,
       maxRetries: 1,
+      // Auth header, extra headers and proxy (#6608) — the same options every
+      // per-model adapter gets, so discovery cannot pass where completions fail.
+      ...gatewayClientOptions(config),
     });
     const list = await client.models.list();
     // `listing` is the raw row: gateways add fields beyond the SDK's `Model`
@@ -337,6 +349,7 @@ export function createOpenAICompatAdapter(
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
     verbatimModelId: true,
+    ...gatewayClientOptions(config),
   });
   return withUsageRecording(inner, `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`);
 }

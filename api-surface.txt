@@ -6158,6 +6158,8 @@ ClassDeclaration OpenAIAdapter
 InterfaceDeclaration OpenAIAdapterConfig
   apiKey: string
   baseUrl?: string | undefined
+  defaultHeaders?: Readonly<Record<string, null | string>> | undefined
+  fetchOptions?: Pick<RequestInit, "dispatcher"> | undefined
   maxRetries?: number | undefined
   modelId: string
   organization?: string | undefined
