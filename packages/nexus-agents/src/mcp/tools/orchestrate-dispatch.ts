@@ -102,7 +102,7 @@ export interface WorkerDispatchExecutionOptions {
   readonly learnings?: readonly WorkerLearning[];
   /** Opt-in: route each worker to its task-optimal CLI via specialization matrix (Issue #1416) */
   readonly perWorkerRouting?: boolean;
-  /** Quality gate for worker output validation (default: DEFAULT_QUALITY_GATE, #1502) */
+  /** Optional quality gate for worker output validation (no gate runs unless one is passed, #1502, #6589). */
   readonly qualityGate?: QualityGateFn | false;
 }
 
@@ -523,7 +523,7 @@ export async function executeWorkerDispatch(
   const startMs = getTimeProvider().now();
   const entries = prepareBudgetedEntries(agentPlan, maxCalls, logger);
 
-  // Quality gate: opt-in via qualityGate option (#1502). Pass DEFAULT_QUALITY_GATE to enable.
+  // Quality gate: opt-in via qualityGate option (#1502, #6589). No gate runs unless one is passed.
   const qualityGate = options.qualityGate === false ? undefined : options.qualityGate;
 
   const executorConfig: WorkerExecutorConfig = {

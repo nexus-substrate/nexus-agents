@@ -63,17 +63,8 @@ export type {
   SynthesisPromptInput,
   SynthesisSource,
 } from './result-synthesizer.js';
-export {
-  outputLengthGate,
-  nonEmptyGate,
-  composeGates,
-  applyQualityGate,
-  DEFAULT_QUALITY_GATE,
-  MIN_OUTPUT_LENGTH,
-  MAX_OUTPUT_LENGTH,
-} from './quality-gate.js';
+export { applyQualityGate, createQaGate } from './quality-gate.js';
 export type { QualityGateFn, AsyncQualityGateFn } from './quality-gate.js';
-export { createQaGate } from './quality-gate.js';
 export {
   evaluateState,
   withWatchdog,
