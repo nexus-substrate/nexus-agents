@@ -14,6 +14,7 @@ import type { SecurityConfig, AppConfig } from './config/index.js';
 import { DEFAULT_EXECUTION_MODE } from './config/schemas-security.js';
 import { nexusDataPath } from './config/nexus-data-dir.js';
 import { createDefaultPolicyFirewall } from './mcp/middleware/index.js';
+import { VERSION } from './version.js';
 import {
   resolvePolicyRolloutMode,
   formatPolicyRolloutMode,
@@ -58,7 +59,7 @@ export function initializeAuditLogger(
   // Startup has BEGUN here — authentication, tool registration and transport
   // connect have not run yet. `startServer` writes the completion record
   // once the server reaches "waiting for requests" (#5577).
-  auditLogger.logSystemStartupBegin({ auditLogDir: logDir });
+  auditLogger.logSystemStartupBegin({ auditLogDir: logDir, packageVersion: VERSION });
   logger.info('Audit logging enabled', { logDir });
   return auditLogger;
 }
@@ -89,11 +90,15 @@ export async function shutdownAuditLogger(
 /**
  * Writes the startup COMPLETION record (#5577).
  *
+ * Every startup record carries `packageVersion` (#6509): the global install is
+ * replaced in place while a running server keeps old code, so a window of
+ * audit records is only attributable to a build through its startup record.
+ *
  * Call only once the server has actually reached "waiting for requests".
  * `initializeAuditLogger` writes the matching `system.startup.begin`.
  */
 export function recordStartupComplete(auditLogger: AuditLogger | null, mode: string): void {
-  auditLogger?.logSystemStartup({ mode });
+  auditLogger?.logSystemStartup({ mode, packageVersion: VERSION });
 }
 
 /**
@@ -112,7 +117,11 @@ export async function recordStartupFailure<T>(
     return await run();
   } catch (error) {
     auditLogger?.logSystemStartup(
-      { failedAt: step, error: error instanceof Error ? error.message : String(error) },
+      {
+        failedAt: step,
+        error: error instanceof Error ? error.message : String(error),
+        packageVersion: VERSION,
+      },
       'failure'
     );
     throw error;
