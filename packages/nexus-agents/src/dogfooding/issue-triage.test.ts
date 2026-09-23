@@ -981,8 +981,8 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     const v = await triage({ dryRun: false });
 
     expect(v.trustAssessment.trustTier).toBe('3');
-    // One classification run, then one run per action (#5383).
-    expect(processSpy).toHaveBeenCalledTimes(1 + v.proposedActions.length);
+    // One classification run (#6310: actions evaluate via evaluateAction, not process).
+    expect(processSpy).toHaveBeenCalledTimes(1);
     const [, options] = processSpy.mock.calls[0] ?? [];
     expect(options?.context).toEqual({ hasWriteAccess: true, hasSecretAccess: true });
     const returned = processSpy.mock.results[0]?.value;
@@ -1002,7 +1002,7 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     expect(r.error.message).toContain('POLICY_REFUSED');
   });
 
-  it('emits a trust event to the audit trail for every firewall run of a triage', async () => {
+  it('emits exactly one trust event per triage to the audit trail (#6310)', async () => {
     const { logger, log } = stubAuditLogger();
     _setUntrustedInputFirewallForTests(firewallWith({ auditLogger: logger }));
 
@@ -1012,12 +1012,11 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
     const trustEvents = log.mock.calls.filter(
       ([input]) => (input as { action?: string }).action === 'security.trust_classification'
     );
-    // Since #5383 each triage runs the firewall once to classify and once per
-    // action, and every run records its trust decision (#6310 tracks folding
-    // the per-action runs onto the classification's record).
-    expect(trustEvents).toHaveLength(
-      2 + first.proposedActions.length + second.proposedActions.length
-    );
+    // #6310: per-action evaluation reuses the classification result and emits
+    // only policy_gate events, so each triage records exactly one trust event.
+    expect(first.proposedActions.length).toBeGreaterThan(0);
+    expect(second.proposedActions.length).toBeGreaterThan(0);
+    expect(trustEvents).toHaveLength(2);
   });
 
   it('records auditSink: none when no durable logger is configured for the process', async () => {
@@ -1067,7 +1066,7 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
   describe('per-action policy through the firewall (#5383)', () => {
     it('under off: every action is evaluated exactly once, via the firewall, and the tier-3 ProposeLabels is refused', async () => {
       const fw = firewallWith();
-      const processSpy = vi.spyOn(fw, 'process');
+      const evaluateActionSpy = vi.spyOn(fw, 'evaluateAction');
       _setUntrustedInputFirewallForTests(fw);
 
       const v = await triage();
@@ -1084,9 +1083,9 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       // ONE composition: `evaluatePolicy` ran exactly once per proposed action…
       expect(v.proposedActions.length).toBeGreaterThan(1);
       expect(mockEvaluatePolicy).toHaveBeenCalledTimes(v.proposedActions.length);
-      // …each of those calls was asked THROUGH the firewall, with that action…
-      const actionCalls = processSpy.mock.calls.filter(([, o]) => o?.action !== undefined);
-      expect(actionCalls.map(([, o]) => o?.action?.type)).toEqual(
+      // …each of those calls was asked THROUGH the firewall, with that action (#6310: via evaluateAction)…
+      expect(evaluateActionSpy).toHaveBeenCalledTimes(v.proposedActions.length);
+      expect(evaluateActionSpy.mock.calls.map(([action]) => action.type)).toEqual(
         v.proposedActions.map((a) => a.type)
       );
       // …and carried the firewall's audit trail, which a direct call never has.
@@ -1095,14 +1094,14 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       }
       // The mode this ran under was `off`: enforcement here is the caller acting
       // on `policy.allowed`, which the mode does not gate.
-      for (const r of processSpy.mock.results) {
+      for (const r of evaluateActionSpy.mock.results) {
         expect(r.value).toMatchObject({ ok: true, value: { policyMode: 'off' } });
       }
     });
 
     it('passes the repository label set per action so label validity is measured, not failed closed', async () => {
       const fw = firewallWith();
-      const processSpy = vi.spyOn(fw, 'process');
+      const evaluateActionSpy = vi.spyOn(fw, 'evaluateAction');
       _setUntrustedInputFirewallForTests(fw);
       // A COLLABORATOR is tier 2, which ProposeLabels requires; `bug` is in the
       // repository's label set, so the label check can pass only if that set
@@ -1116,7 +1115,9 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       const proposeLabels = v.proposedActions.find((a) => a.type === 'ProposeLabels');
       expect(proposeLabels?.details['policyViolations']).toEqual([]);
       expect(proposeLabels?.policyApproved).toBe(true);
-      const labelCall = processSpy.mock.calls.find(([, o]) => o?.action?.type === 'ProposeLabels');
+      const labelCall = evaluateActionSpy.mock.calls.find(
+        ([action]) => action.type === 'ProposeLabels'
+      );
       expect(labelCall?.[1]?.existingLabels).toEqual(new Set(['bug']));
     });
 
@@ -1161,10 +1162,10 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
 
     it('fails closed when the per-action run enforces a different tier than the classification run', async () => {
       const fw = firewallWith();
-      const real = fw.process.bind(fw);
-      vi.spyOn(fw, 'process').mockImplementation((input, options) => {
-        const r = real(input, options);
-        if (options?.action === undefined || !r.ok) return r;
+      const real = fw.evaluateAction.bind(fw);
+      vi.spyOn(fw, 'evaluateAction').mockImplementation((action, options) => {
+        const r = real(action, options);
+        if (!r.ok || !r.value.evaluated) return r;
         return ok({ ...r.value, effectiveTrustTier: '1' });
       });
       _setUntrustedInputFirewallForTests(fw);
@@ -1176,7 +1177,7 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
       expect(r.error.message).toContain('enforced tier');
     });
 
-    it('records one trust event per firewall run: the classification plus one per action', async () => {
+    it('records one trust event and one sanitization event per triage, plus one policy gate per action (#6310)', async () => {
       const { logger, log } = stubAuditLogger();
       _setUntrustedInputFirewallForTests(firewallWith({ auditLogger: logger }));
 
@@ -1184,9 +1185,11 @@ describe('untrusted-input firewall on the live path (#4992)', () => {
 
       const byAction = (name: string): unknown[] =>
         log.mock.calls.filter(([input]) => (input as { action?: string }).action === name);
-      expect(byAction('security.trust_classification')).toHaveLength(1 + v.proposedActions.length);
-      // The gain over the direct call: each per-action decision now reaches the
-      // durable trail, where the direct `evaluatePolicy` call recorded nothing.
+      // #6310: the classification runs once per triage. Per-action policy
+      // evaluations do NOT re-emit sanitization or trust_classification events.
+      expect(v.proposedActions.length).toBeGreaterThan(0);
+      expect(byAction('security.trust_classification')).toHaveLength(1);
+      expect(byAction('security.sanitization')).toHaveLength(1);
       expect(byAction('security.policy_gate')).toHaveLength(v.proposedActions.length);
     });
   });

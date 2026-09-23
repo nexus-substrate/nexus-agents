@@ -12,12 +12,14 @@
 
 import type { ILogger } from '../core/index.js';
 import { validateAgentAction, type SourceCitation } from '../security/action-schema.js';
-import type { GitHubInput } from '../security/firewall/github-adapter.js';
 import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 import type { TrustTier } from '../security/trust-types.js';
 import { reportUnverifiedCorroboration } from './pr-review-citations.js';
 import type { ReviewPostingVerdict } from './pr-reviewer-helpers.js';
-import type { FirewallCorroborationDecision } from './untrusted-input-firewall.js';
+import type {
+  FirewallCorroborationDecision,
+  FirewallActionInput,
+} from './untrusted-input-firewall.js';
 import {
   evaluateActionThroughFirewall,
   validateActionCorroboration,
@@ -65,7 +67,7 @@ function corroborationViolation(
  */
 export function auditReviewAction(
   draft: { readonly body: string; readonly sources: readonly SourceCitation[] },
-  input: GitHubInput,
+  input: FirewallActionInput,
   gate: Pick<FirewallProcessOptions, 'context' | 'reputation'> & {
     readonly enforcedTier: TrustTier;
   },

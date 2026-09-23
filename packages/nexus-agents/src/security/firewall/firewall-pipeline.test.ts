@@ -1114,3 +1114,93 @@ describe('policyEnforcement stage — the full evaluatePolicy set (#5380)', () =
     });
   });
 });
+
+describe('action evaluation without re-running pipeline via evaluateAction (#6310)', () => {
+  const READ_ONLY = { hasWriteAccess: false, hasSecretAccess: false } as const;
+  const draftReply: AgentAction = {
+    type: 'DraftReply',
+    body: 'Thanks for the report.',
+    requiresApproval: true,
+    sources: [{ type: 'repoFile', path: 'README.md' }],
+  };
+
+  it('evaluates action against an enforced tier and records only policy_gate on the audit trail', () => {
+    const fw = createFirewall({ context: READ_ONLY, policyMode: 'off' });
+    const result = fw.evaluateAction(draftReply, {
+      user: 'alice',
+      effectiveTrustTier: '3',
+      context: READ_ONLY,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.evaluated).toBe(true);
+    if (!result.value.evaluated) return;
+    expect(result.value.policy.allowed).toBe(false);
+    expect(result.value.policy.violations.map((v) => v.rule)).toEqual([
+      'INSUFFICIENT_TRUST',
+      'UNTRUSTED_INFLUENCE',
+    ]);
+    // Emits exactly one policy_gate event and ZERO sanitization/trust/reputation events
+    const auditTrail = fw.getAuditTrail();
+    expect(auditTrail.query({ type: 'policy_gate' })).toHaveLength(1);
+    expect(auditTrail.query({ type: 'sanitization' })).toHaveLength(0);
+    expect(auditTrail.query({ type: 'trust_classification' })).toHaveLength(0);
+  });
+
+  it('refuses under enforce mode when violations are present', () => {
+    const fw = createFirewall({ context: READ_ONLY, policyMode: 'enforce' });
+    const result = fw.evaluateAction(draftReply, {
+      user: 'alice',
+      effectiveTrustTier: '3',
+      context: READ_ONLY,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('POLICY_REFUSED');
+    expect(result.error.stage).toBe('policy');
+    expect(result.error.violations?.map((v) => v.rule)).toEqual([
+      'INSUFFICIENT_TRUST',
+      'UNTRUSTED_INFLUENCE',
+    ]);
+  });
+
+  it('reports evaluated: false when policy stage is disabled', () => {
+    const fw = createFirewall({
+      context: READ_ONLY,
+      stages: { policyEnforcement: false },
+    });
+    const result = fw.evaluateAction(draftReply, {
+      user: 'alice',
+      effectiveTrustTier: '2',
+      context: READ_ONLY,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual({
+      evaluated: false,
+      reason: 'policy-stage-disabled',
+      policyMode: 'off',
+    });
+  });
+
+  it('FirewallResult.evaluateAction automatically reuses author and effectiveTrustTier from process()', () => {
+    const fw = createFirewall({ context: READ_ONLY, policyMode: 'audit' });
+    const processResult = fw.process(issueInput({ username: 'bob' }));
+    expect(processResult.ok).toBe(true);
+    if (!processResult.ok) return;
+
+    const actionResult = processResult.value.evaluateAction(draftReply);
+    expect(actionResult.ok).toBe(true);
+    if (!actionResult.ok) return;
+    expect(actionResult.value.evaluated).toBe(true);
+    if (!actionResult.value.evaluated) return;
+    expect(actionResult.value.effectiveTrustTier).toBe(processResult.value.effectiveTrustTier);
+    expect(actionResult.value.wouldRefuse).toBe(true);
+
+    const auditTrail = fw.getAuditTrail();
+    // One trust event and one sanitization event from process(), and one policy_gate from evaluateAction()
+    expect(auditTrail.query({ type: 'trust_classification' })).toHaveLength(1);
+    expect(auditTrail.query({ type: 'sanitization' })).toHaveLength(1);
+    expect(auditTrail.query({ type: 'policy_gate' })).toHaveLength(1);
+  });
+});

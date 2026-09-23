@@ -1,5 +1,23 @@
 # nexus-agents
 
+## 8.83.0
+
+### Minor Changes
+
+- [#6483](https://github.com/nexus-substrate/nexus-agents/pull/6483) [`f7bcc84`](https://github.com/nexus-substrate/nexus-agents/commit/f7bcc843e7821afda834d827aeb39384ff15abae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add structured adapter/transport failure detail in job records with write-path redaction ([#4375](https://github.com/nexus-substrate/nexus-agents/issues/4375))
+
+### Patch Changes
+
+- [#6487](https://github.com/nexus-substrate/nexus-agents/pull/6487) [`e955b4c`](https://github.com/nexus-substrate/nexus-agents/commit/e955b4c01f863b7560fef25080ddcf6fe3076e5d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Unify MCP tool output and error envelope redaction on `sanitizeErrorDetails` ([#6484](https://github.com/nexus-substrate/nexus-agents/issues/6484)).
+
+  - Extends `output-sanitizer.ts` secret patterns to cover Anthropic (`sk-ant-*`), OpenAI project keys (`sk-proj-*`), public keys (`pk-*`), AWS access key IDs (`AKIA*`), and plain-text credential assignments (`password=...`, `secret:...`).
+  - Sanitizes `result.structuredContent` and `result._meta` recursively in `secure-handler.ts` so structured outputs and nested error metadata cannot leak credentials.
+  - Sanitizes error messages in `toolErrorResponse` in `tool-error-handler.ts` before creating structured error envelopes.
+
+- [#6495](https://github.com/nexus-substrate/nexus-agents/pull/6495) [`f645c84`](https://github.com/nexus-substrate/nexus-agents/commit/f645c84e7fd480c3d2aab1423c7abaf9814ec282) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Pin npm 11.x in release workflow publish jobs to prevent `EUNKNOWNCONFIG` errors from `--no-git-checks` under npm 12 ([#6486](https://github.com/nexus-substrate/nexus-agents/issues/6486)). Changesets passes `--no-git-checks` through `pnpm publish` to npm, which npm 11 accepts with a warning while npm 12 errors out.
+
+- [#6498](https://github.com/nexus-substrate/nexus-agents/pull/6498) [`65bb4ed`](https://github.com/nexus-substrate/nexus-agents/commit/65bb4ed1aa840b43383ab5b453bb276d3e7c8d93) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs(ops): document prevention of direct publishing from inside .publish-stage ([#6494](https://github.com/nexus-substrate/nexus-agents/issues/6494))
+
 ## 8.82.2
 
 ### Patch Changes

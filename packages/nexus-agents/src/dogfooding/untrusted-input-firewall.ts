@@ -44,8 +44,11 @@
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger } from '../core/index.js';
 import type { IAuditLogger } from '../audit/audit-types.js';
-import { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
-import type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+import {
+  HostileInputFirewall,
+  type FirewallActionPolicyResult,
+  type FirewallResult,
+} from '../security/firewall/firewall-pipeline.js';
 import type { FirewallError, FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 import type { FirewallPolicyMode } from '../security/firewall/firewall-policy-mode.js';
 import { createGitHubAdapter } from '../security/firewall/github-adapter.js';
@@ -174,21 +177,86 @@ export type FirewallActionDecision =
     };
 
 /**
- * Runs one action through the shared firewall and returns its policy verdict.
+ * Target input for per-action policy evaluation (#6310).
  *
- * `enforcedTier` is the tier the caller's classification run enforced (the
- * reputation gate's, #3122) and stamped on the action's citations. The
- * firewall recomputes that gate here from the same measurement; a run that
- * enforces a DIFFERENT tier fails the call, because a record that disagrees
- * with what was enforced is worse than none (#5719).
- *
- * Fails closed — an `Error`, not a verdict — wherever no verdict exists: that
- * tier disagreement, a non-policy firewall error (an unparseable payload), and
- * a run whose `policy` is absent or `scope: 'context'`, which means the policy
- * stage did not evaluate this action. None of these is "denied"; recording
- * `allowed: false` for them would put a measurement where none was taken.
+ * Either:
+ * - A classified {@link FirewallResult} (or object carrying its `evaluateAction` handle
+ *   and `effectiveTrustTier`), which evaluates the action directly without re-emitting
+ *   input-level audit events.
+ * - A raw {@link GitHubInput}, which runs the full pipeline as a legacy fallback.
  */
-export function evaluateActionThroughFirewall(
+export type FirewallActionInput =
+  GitHubInput | Pick<FirewallResult, 'effectiveTrustTier' | 'evaluateAction'>;
+
+type ActionHandleInput = Pick<FirewallResult, 'effectiveTrustTier' | 'evaluateAction'>;
+
+function isActionHandleInput(input: FirewallActionInput): input is ActionHandleInput {
+  return 'evaluateAction' in input && typeof input.evaluateAction === 'function';
+}
+
+function logAuditRefusal(
+  actionType: string,
+  result: Extract<FirewallActionPolicyResult, { evaluated: true }>
+): void {
+  const { policy, effectiveTrustTier } = result;
+  logger.warn('Untrusted-input firewall would refuse under enforce (audit mode)', {
+    actionType,
+    trustTier: effectiveTrustTier,
+    scope: policy.scope,
+    rules: policy.violations.filter((v) => v.severity === 'block').map((v) => v.rule),
+    unmeasured: policy.unmeasured,
+  });
+}
+
+function evaluateActionViaHandle(
+  input: ActionHandleInput,
+  options: FirewallProcessOptions & {
+    readonly action: AgentAction;
+    readonly enforcedTier: TrustTier;
+  }
+): Result<FirewallActionDecision, Error> {
+  const actionResult = input.evaluateAction(options.action, {
+    context: options.context,
+    existingLabels: options.existingLabels,
+  });
+  if (!actionResult.ok) {
+    const { code, stage, violations } = actionResult.error;
+    if (code !== 'POLICY_REFUSED' || stage !== 'policy') return err(asError(actionResult.error));
+    if (violations === undefined || violations.length === 0)
+      return err(asError(actionResult.error));
+    return ok({ refused: true, allowed: false, violations, policyMode: 'enforce' });
+  }
+  if (!actionResult.value.evaluated) {
+    return err(
+      new Error(
+        `Untrusted-input firewall did not evaluate policy for action ${options.action.type} (the policy stage is disabled)`
+      )
+    );
+  }
+  const { policy, policyMode, wouldRefuse, effectiveTrustTier } = actionResult.value;
+  if (effectiveTrustTier !== options.enforcedTier) {
+    return err(
+      new Error(
+        `Untrusted-input firewall enforced tier ${effectiveTrustTier} for action ` +
+          `${options.action.type} but tier ${options.enforcedTier} for the classification`
+      )
+    );
+  }
+  if (wouldRefuse) {
+    logAuditRefusal(options.action.type, actionResult.value);
+  }
+  return ok({
+    refused: false,
+    allowed: policy.allowed,
+    requiresApproval: policy.requiresApproval,
+    violations: policy.violations,
+    effectiveTrustTier,
+    policyMode,
+    wouldRefuse,
+  });
+}
+
+function evaluateActionViaProcess(
   input: GitHubInput,
   options: FirewallProcessOptions & {
     readonly action: AgentAction;
@@ -200,7 +268,6 @@ export function evaluateActionThroughFirewall(
   if (!result.ok) {
     const { code, stage, violations } = result.error;
     if (code !== 'POLICY_REFUSED' || stage !== 'policy') return err(asError(result.error));
-    // A refusal that names no rule cannot be recorded as a policy decision.
     if (violations === undefined || violations.length === 0) return err(asError(result.error));
     return ok({ refused: true, allowed: false, violations, policyMode: 'enforce' });
   }
@@ -230,6 +297,38 @@ export function evaluateActionThroughFirewall(
     policyMode,
     wouldRefuse,
   });
+}
+
+/**
+ * Runs one action through the shared firewall and returns its policy verdict.
+ *
+ * `enforcedTier` is the tier the caller's classification run enforced (the
+ * reputation gate's, #3122) and stamped on the action's citations. When a raw
+ * `GitHubInput` is passed, the firewall recomputes that gate here from the same
+ * measurement; a run that enforces a DIFFERENT tier fails the call, because a
+ * record that disagrees with what was enforced is worse than none (#5719).
+ *
+ * When a classified `FirewallResult` is passed (#6310), it reuses the action
+ * handle directly, avoiding re-extraction, re-sanitization, and re-classification,
+ * and emitting only the `policy_gate` audit event.
+ *
+ * Fails closed — an `Error`, not a verdict — wherever no verdict exists: that
+ * tier disagreement, a non-policy firewall error (an unparseable payload), and
+ * a run whose `policy` is absent or `scope: 'context'`, which means the policy
+ * stage did not evaluate this action. None of these is "denied"; recording
+ * `allowed: false` for them would put a measurement where none was taken.
+ */
+export function evaluateActionThroughFirewall(
+  input: FirewallActionInput,
+  options: FirewallProcessOptions & {
+    readonly action: AgentAction;
+    readonly enforcedTier: TrustTier;
+  }
+): Result<FirewallActionDecision, Error> {
+  if (isActionHandleInput(input)) {
+    return evaluateActionViaHandle(input, options);
+  }
+  return evaluateActionViaProcess(input, options);
 }
 
 /**

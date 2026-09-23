@@ -147,7 +147,11 @@ export class PRReviewer {
 
     const postOutcome: ReviewPostOutcome = this.config.dryRun
       ? { status: 'skipped', reason: 'dry-run' }
-      : await this.postReviewToGitHub(provider, prMetadata, result, gateDecision, reputation);
+      : await this.postReviewToGitHub(provider, prMetadata, result, {
+          gateDecision,
+          reputation,
+          firewallResult: firewall.value,
+        });
 
     logger.info('PR review completed', {
       prNumber,
@@ -422,8 +426,11 @@ Provide a structured review with:
     provider: FullCapableProvider,
     pr: PRMetadata,
     result: PRReviewDraft,
-    gateDecision: ReputationGateDecision,
-    reputation: ReputationAssessment | undefined
+    context: {
+      readonly gateDecision: ReputationGateDecision;
+      readonly reputation: ReputationAssessment | undefined;
+      readonly firewallResult?: FirewallResult;
+    }
   ): Promise<ReviewPostOutcome> {
     const { formatReviewComment } = await import('./pr-reviewer-helpers.js');
     const formattedBody = formatReviewComment(result);
@@ -431,11 +438,11 @@ Provide a structured review with:
     const sources: SourceCitation[] = buildReviewCitations(pr.files);
     const policyResult = auditReviewAction(
       { body, sources },
-      firewallInputFor('pull_request', pr),
+      context.firewallResult ?? firewallInputFor('pull_request', pr),
       {
         context: REVIEW_ACCESS_CONTEXT,
-        reputation: { assessment: reputation },
-        enforcedTier: gateDecision.enforcedTier,
+        reputation: { assessment: context.reputation },
+        enforcedTier: context.gateDecision.enforcedTier,
       },
       logger
     );

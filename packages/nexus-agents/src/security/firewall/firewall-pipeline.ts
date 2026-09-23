@@ -47,150 +47,38 @@ import {
 } from './firewall-passthrough.js';
 import { describeGate } from './firewall-trust-reason.js';
 import type {
+  ActionValidation,
   ATLData,
   FirewallConfig,
   FirewallError,
   FirewallProcessOptions,
+  FirewallResult,
   FirewallStages,
   SourceMetadata,
 } from './firewall-types.js';
+export type { FirewallResult, ActionValidation };
 import { FirewallConfigSchema } from './firewall-types.js';
-import type { Violation } from '../policy-gate.js';
 import {
   blockingViolations,
   buildActionContext,
+  evaluateActionPolicy,
   evaluateFirewallPolicy,
   policyRefusal,
+  type FirewallActionEvaluationOptions,
+  type FirewallActionPolicyEvaluation,
+  type FirewallActionPolicyResult,
   type FirewallPolicyEvaluation,
 } from './firewall-policy-stage.js';
+export type {
+  FirewallActionEvaluationOptions,
+  FirewallActionPolicyEvaluation,
+  FirewallActionPolicyResult,
+};
 import { validateCorroboration } from '../corroboration-validator.js';
-import type { AgentAction, SourceCitation } from '../action-schema.js';
+import type { AgentAction } from '../action-schema.js';
 import { createLogger } from '../../core/index.js';
 
 const logger = createLogger({ component: 'HostileInputFirewall' });
-
-// ============================================================================
-// Firewall Result
-// ============================================================================
-
-/**
- * Output of the firewall pipeline. Aggregates results from each stage.
- */
-export interface FirewallResult {
-  readonly sanitized: SanitizedInput;
-  readonly trust: ClassifyResult;
-  /**
-   * Whether the author is on the maintainer allowlist — present ONLY when an
-   * allowlist was consulted (#4992), i.e. one was supplied at construction or
-   * per call. `trust.isAllowlisted` is the classifier's published always-boolean
-   * field and reads `false` whether the list was empty or never supplied; this
-   * field is the one to record, because absence here means "not measured"
-   * rather than "measured false" — the same treatment `reputationGate` gets.
-   */
-  readonly isAllowlisted?: boolean;
-  readonly reputation?: ReputationAssessment;
-  /**
-   * The tier consumers should ENFORCE on (#3106): the classifier tier
-   * reconciled with the reputation assessment (demotion-only; Tier-1/allowlist
-   * wins; equals `trust.trustTier` when reputation is absent). Previously the
-   * reputation tier was computed but dropped — `trust.trustTier` alone left
-   * reputation unenforced.
-   */
-  readonly effectiveTrustTier: TrustTier;
-  /**
-   * The reputation gating decision behind `effectiveTrustTier` (#5381).
-   *
-   * **Absent means the reputation stage did not run** — not "it ran and
-   * suppressed nothing". `ReputationGateDecision.demotionSuppressed` is a
-   * required boolean, so surfacing it unconditionally would report `false` for a
-   * check that never happened. Since the stage defaults to off, that
-   * unevaluated case is the common one.
-   */
-  readonly reputationGate?: ReputationGateDecision;
-  readonly atl: string;
-  /**
-   * Rule-of-Two assessment surfaced by the `policyEnforcement` stage (#3198):
-   * present (`severity: 'block'`) when the effective tier is untrusted AND the
-   * context has both write and secret access; `undefined` when the stage is
-   * disabled or the rule holds. Since #5380 a view onto {@link policy} — its
-   * `RULE_OF_TWO` entry — kept so existing consumers read the same field.
-   */
-  readonly ruleOfTwoViolation?: Violation;
-  /**
-   * The `policyEnforcement` stage's full verdict (#5380). **Absent means the
-   * stage did not run.** Its `scope` says how much of `evaluatePolicy` could be
-   * evaluated ({@link FirewallPolicyEvaluation}), so "seven checks, none fired"
-   * is distinguishable from "one check, six unmeasured". `wouldRefuse` and the
-   * `enforce` refusal both derive from `policy.violations`, whichever scope.
-   */
-  readonly policy?: FirewallPolicyEvaluation;
-  /**
-   * The rollout mode this run was evaluated under (#5382). Recorded on the
-   * result rather than left implicit so a consumer reading a verdict can tell
-   * WHICH policy produced it — a result that does not say which rules were in
-   * force cannot be audited later.
-   */
-  readonly policyMode: FirewallPolicyMode;
-  /**
-   * Whether `enforce` would have refused this input.
-   *
-   * This is what makes `audit` mode measurable, and it is the field that makes
-   * the mode a real gate rather than a switch with two indistinguishable
-   * settings: under `audit` the answer is computed and reported while the input
-   * is still allowed through, so an operator can size the impact of flipping to
-   * `enforce` before flipping it.
-   *
-   * Always `false` under `enforce`, because an input that would be refused IS
-   * refused — it comes back as a `POLICY_REFUSED` error, not a result.
-   */
-  readonly wouldRefuse: boolean;
-  readonly auditEvents: readonly { readonly id: string; readonly type: string }[];
-  /**
-   * Whether a durable `AuditLogger` was configured for this instance (#4992
-   * review). `configured` means this run's events were HANDED to that logger;
-   * delivery to the hash chain is subject to the logger's own severity filter
-   * (trust events are `info`), its bounded queue and its timed, fail-loud
-   * flush, and is NOT confirmed per call — the write is queued. `none` means
-   * the events exist only in the in-memory trail, which the next `process()`
-   * call clears. This is a construction-time fact, not a per-call outcome.
-   */
-  readonly auditSink: 'configured' | 'none';
-  readonly durationMs: number;
-}
-
-/**
- * Outcome of {@link HostileInputFirewall.validateAction} (#5382).
- *
- * A discriminated union rather than a struct with optional fields, deliberately:
- * a caller cannot read `satisfied` without first narrowing on `evaluated`, so
- * "the stage did not run" is structurally impossible to misread as "the stage
- * ran and passed". `stages.corroboration` defaults to `false`, which makes the
- * unevaluated branch the COMMON case — exactly where a silent `satisfied: true`
- * would do the most damage.
- */
-export type ActionValidation =
-  | {
-      readonly evaluated: false;
-      /** Why no verdict exists. Absence is attributable, not anonymous. */
-      readonly reason: 'corroboration-stage-disabled';
-      readonly policyMode: FirewallPolicyMode;
-    }
-  | {
-      readonly evaluated: true;
-      readonly satisfied: boolean;
-      /** Unmet corroboration requirements; empty when satisfied. */
-      readonly missing: readonly string[];
-      readonly corroboratingSources: readonly SourceCitation[];
-      /**
-       * The validator's #5796 marker: the floor was cleared, and only by
-       * `repoFile` citations the producer found absent from the base ref.
-       * Carried so a consumer can report it without re-deriving the rule.
-       */
-      readonly clearedOnlyByUnverifiedSources: boolean;
-      readonly policyMode: FirewallPolicyMode;
-      /** Whether `enforce` would have refused this action (see FirewallResult). */
-      readonly wouldRefuse: boolean;
-    };
 
 // ============================================================================
 // HostileInputFirewall
@@ -318,8 +206,33 @@ export class HostileInputFirewall {
         atl,
         policy,
         start,
+        user: meta.username,
+        context,
       })
     );
+  }
+
+  /**
+   * Action-shaped re-entry that evaluates policy for one action against an
+   * already-enforced trust tier (#6310).
+   *
+   * Unlike {@link process}, this does NOT re-run input extraction, sanitization,
+   * trust classification, or reputation gating, and does NOT re-emit the
+   * input-level audit events (`sanitization`, `reputation`, `trust_classification`).
+   * It evaluates the policy stage against the provided tier and context,
+   * recording only the `policy_gate` event to the audit trail.
+   */
+  evaluateAction(
+    action: AgentAction,
+    options: FirewallActionEvaluationOptions
+  ): Result<FirewallActionPolicyResult, FirewallError> {
+    return evaluateActionPolicy(action, options, {
+      defaultContext: this.context,
+      policyMode: this.policyMode,
+      policyEnforcementStage: this.stages.policyEnforcement,
+      auditTrail: this.auditTrail,
+      auditStage: this.stages.audit,
+    });
   }
 
   /**
@@ -368,6 +281,8 @@ export class HostileInputFirewall {
     readonly atl: string;
     readonly policy: FirewallPolicyEvaluation | undefined;
     readonly start: number;
+    readonly user: string;
+    readonly context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean };
   }): FirewallResult {
     const { isAllowlisted, reputation, reputationGate, policy } = parts;
     const ruleOfTwoViolation = policy?.violations.find((v) => v.rule === 'RULE_OF_TWO');
@@ -391,6 +306,13 @@ export class HostileInputFirewall {
       auditEvents: this.auditTrail.query().map((e) => ({ id: e.id, type: e.type })),
       auditSink: this.auditSink,
       durationMs: Date.now() - parts.start,
+      evaluateAction: (action, evalOptions) =>
+        this.evaluateAction(action, {
+          user: parts.user,
+          effectiveTrustTier: parts.effectiveTrustTier,
+          context: evalOptions?.context ?? parts.context,
+          existingLabels: evalOptions?.existingLabels,
+        }),
     };
   }
 

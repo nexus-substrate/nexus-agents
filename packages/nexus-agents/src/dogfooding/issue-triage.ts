@@ -244,8 +244,10 @@ export class IssueTriage {
     const withEscalation = applySafetyActions(actions, gateDecision, reputation, issueResult);
     // #5383: each action is its own firewall run; the policy decision is the
     // firewall's, enforced there as `policyApproved` under every mode.
+    // #6310: passes the classified firewall result so actions evaluate policy
+    // directly via the handle without re-emitting input-level audit events.
     const validatedActions = validateActionsThroughFirewall(
-      firewallInputFor('issue', issueResult),
+      firewall.value,
       { ...this.firewallOptions(reputation), enforcedTier: gateDecision.enforcedTier },
       withEscalation,
       existingLabels
