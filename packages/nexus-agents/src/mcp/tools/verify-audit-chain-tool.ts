@@ -31,6 +31,7 @@ import {
 } from './tool-result.js';
 import { verifyChain, withCoverage, type ChainVerification } from '../../audit/audit-logger.js';
 import { AuditEventSchema, type AuditEvent } from '../../audit/audit-types.js';
+import { DEFAULT_AUDIT_FILE_PREFIX } from '../../cli-server-audit.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 
 export const VerifyAuditChainInputSchema = z.object({
@@ -40,6 +41,15 @@ export const VerifyAuditChainInputSchema = z.object({
     .max(512)
     .describe(
       'Filesystem path to the FileAuditStorage log directory. Tool reads all `audit-*.jsonl` files in lexicographic order and verifies the combined chain.'
+    ),
+  filePrefix: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .default(DEFAULT_AUDIT_FILE_PREFIX)
+    .describe(
+      'Filename prefix for audit log files (defaults to "audit"). Files matching `${filePrefix}-*.jsonl` will be verified.'
     ),
 });
 
@@ -75,9 +85,43 @@ export type VerifyAuditChainDeps = BaseMcpToolDeps;
  * to the rest — but the caller has to be told how much was dropped, or a
  * partial verdict is indistinguishable from a complete one.
  */
+/**
+ * Parses JSONL lines from a single log file into AuditEvents.
+ */
+function parseLogLines(
+  content: string,
+  filename: string,
+  logger: HandlerContext['logger']
+): { events: AuditEvent[]; skippedLines: number } {
+  const events: AuditEvent[] = [];
+  let skippedLines = 0;
+  for (const line of content.split('\n')) {
+    if (line.length === 0) continue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      const validated = AuditEventSchema.safeParse(parsed);
+      if (validated.success) {
+        events.push(validated.data);
+      } else {
+        logger.warn('Skipping malformed audit event', {
+          filename,
+          error: validated.error.message,
+        });
+        skippedLines++;
+      }
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : String(cause);
+      logger.warn('Skipping unparseable audit event', { filename, error: msg });
+      skippedLines++;
+    }
+  }
+  return { events, skippedLines };
+}
+
 async function loadAuditEvents(
   dir: string,
-  logger: HandlerContext['logger']
+  logger: HandlerContext['logger'],
+  filePrefix: string = DEFAULT_AUDIT_FILE_PREFIX
 ): Promise<{
   events: AuditEvent[];
   fileCount: number;
@@ -85,8 +129,9 @@ async function loadAuditEvents(
   unreadableFiles: number;
 }> {
   const entries = await fs.readdir(dir);
+  const prefix = `${filePrefix}-`;
   const auditFiles = entries
-    .filter((name) => name.startsWith('audit-') && name.endsWith('.jsonl'))
+    .filter((name) => name.startsWith(prefix) && name.endsWith('.jsonl'))
     .sort();
   const events: AuditEvent[] = [];
   let skippedLines = 0;
@@ -102,26 +147,9 @@ async function loadAuditEvents(
       unreadableFiles++;
       continue;
     }
-    for (const line of content.split('\n')) {
-      if (line.length === 0) continue;
-      try {
-        const parsed: unknown = JSON.parse(line);
-        const validated = AuditEventSchema.safeParse(parsed);
-        if (validated.success) {
-          events.push(validated.data);
-        } else {
-          logger.warn('Skipping malformed audit event', {
-            filename,
-            error: validated.error.message,
-          });
-          skippedLines++;
-        }
-      } catch (cause) {
-        const msg = cause instanceof Error ? cause.message : String(cause);
-        logger.warn('Skipping unparseable audit event', { filename, error: msg });
-        skippedLines++;
-      }
-    }
+    const parsed = parseLogLines(content, filename, logger);
+    events.push(...parsed.events);
+    skippedLines += parsed.skippedLines;
   }
   return { events, fileCount: auditFiles.length, skippedLines, unreadableFiles };
 }
@@ -155,7 +183,8 @@ async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> 
 
   const { events, fileCount, skippedLines, unreadableFiles } = await loadAuditEvents(
     resolvedDir,
-    ctx.logger
+    ctx.logger,
+    parsed.data.filePrefix
   );
   // The loader is the only party that knows what was skipped, so it is the one
   // that can state coverage on the verdict itself (#4805).
@@ -186,6 +215,14 @@ export function registerVerifyAuditChainTool(server: McpServer, deps: VerifyAudi
       .max(512)
       .describe(
         'Filesystem path to the FileAuditStorage log directory. Tool reads all `audit-*.jsonl` files and verifies the combined hash chain.'
+      ),
+    filePrefix: z
+      .string()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe(
+        'Filename prefix for audit log files (defaults to "audit"). Files matching `${filePrefix}-*.jsonl` will be verified.'
       ),
   };
 
