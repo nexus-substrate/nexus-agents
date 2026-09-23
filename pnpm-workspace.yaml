@@ -7,3 +7,10 @@ packages:
 # prebuilt grammars, an `echo`, esbuild's binary check); strict mode makes a NEW
 # unreviewed build script fail the install instead of being skipped silently.
 strictDepBuilds: true
+
+# pnpm 10 stopped hoisting these to the root node_modules by default; pnpm 9
+# did, and eslint-rules/*.test.js import @typescript-eslint/parser through it.
+# Restored so the upgrade stays a drop-in (#6486).
+publicHoistPattern:
+  - '*eslint*'
+  - '*prettier*'
