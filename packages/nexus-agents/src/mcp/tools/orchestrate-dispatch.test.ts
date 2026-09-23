@@ -15,7 +15,11 @@ import type { AgentPlan } from '../../orchestration/aorchestra/index.js';
 import type { WorkerResult } from '../../orchestration/aorchestra/index.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { ok, err, createLogger, ModelError, ErrorCode } from '../../core/index.js';
-import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  resetOutcomeStore,
+  TaskOutcomeSchema,
+} from '../../orchestration/outcomes/index.js';
 import type { SynthesisResult } from '../../orchestration/aorchestra/result-synthesizer.js';
 
 // Disable persistence so getOutcomeStore() returns a fresh in-memory store
@@ -613,5 +617,55 @@ describe('recordWorkerOutcomes', () => {
     const entries = getOutcomeStore().query();
     // 'Implement' matches code_generation → primaryCli is 'codex'
     expect(entries[0]?.cli).toBe('codex');
+  });
+
+  it('normalizes cli-prefixed providerId like cli-codex to codex (#6529)', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Implement feature',
+        output: 'done',
+        status: 'success',
+        durationMs: 200,
+        resolvedCli: 'cli-codex',
+      },
+      {
+        role: 'security',
+        subTask: 'Audit feature',
+        output: 'done',
+        status: 'success',
+        durationMs: 150,
+        resolvedCli: 'cli-claude',
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Implement auth feature');
+
+    const entries = getOutcomeStore().query();
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.cli).toBe('codex');
+    expect(TaskOutcomeSchema.safeParse(entries[0]).success).toBe(true);
+    expect(entries[1]?.cli).toBe('claude');
+    expect(TaskOutcomeSchema.safeParse(entries[1]).success).toBe(true);
+  });
+
+  it('normalizes invalid resolvedCli to unknown rather than unvalidated cast (#6529)', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Implement feature',
+        output: 'done',
+        status: 'success',
+        durationMs: 200,
+        resolvedCli: 'cli-unknown-tool',
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Implement auth feature');
+
+    const entries = getOutcomeStore().query();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.cli).toBe('unknown');
+    expect(TaskOutcomeSchema.safeParse(entries[0]).success).toBe(true);
   });
 });
