@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runAsJob, runJobInBackground } from './run-as-job.js';
+import { runAsJob, runJobInBackground, extractFailureDetail } from './run-as-job.js';
 import {
   heartbeatJob,
   readJobResult,
@@ -15,6 +15,7 @@ import {
   writeJobCancelled,
   JOB_RECORD_RETENTION_MS,
 } from './job-result-store.js';
+import { FAKE_ANTHROPIC_KEY } from '../../testing/test-secrets.js';
 import { stepBus } from '../../core/step-bus.js';
 import { abortJob } from './job-abort-registry.js';
 import { registerIdempotentJob, resolveIdempotency } from './job-idempotency.js';
@@ -870,6 +871,182 @@ describe('runAsJob', () => {
         );
 
         expect(warn).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('structured adapter/transport failure detail in job records (#4375)', () => {
+    describe('extractFailureDetail', () => {
+      it('extracts detail from a CliError shape', () => {
+        const cliError = {
+          code: 'RATE_LIMITED',
+          message: 'Rate limit exceeded',
+          cli: 'claude',
+          retryable: true,
+        };
+        expect(extractFailureDetail(cliError)).toEqual({
+          adapter: 'claude',
+          transport: 'subprocess',
+          category: 'rate_limited',
+        });
+      });
+
+      it('extracts detail from Error with cause', () => {
+        const cause = {
+          code: 'TIMEOUT',
+          message: 'Process timed out',
+          cli: 'codex',
+          transport: 'mcp',
+        };
+        const err = new Error('Execution failed', { cause });
+        expect(extractFailureDetail(err)).toEqual({
+          adapter: 'codex',
+          transport: 'mcp',
+          category: 'timeout',
+        });
+      });
+
+      it('extracts capacity_exhausted category (#4373)', () => {
+        const err = Object.assign(new Error('Filter: capacity_exhausted'), {
+          adapter: 'gemini',
+          category: 'capacity_exhausted',
+        });
+        expect(extractFailureDetail(err)).toEqual({
+          adapter: 'gemini',
+          transport: 'subprocess',
+          category: 'capacity_exhausted',
+        });
+      });
+
+      it('extracts failureDetail from a failure-shaped result', () => {
+        const result = {
+          ok: false,
+          error: 'Rate limit hit',
+          failureDetail: {
+            adapter: 'opencode',
+            transport: 'subprocess',
+            category: 'rate_limited',
+          },
+        };
+        expect(extractFailureDetail(result)).toEqual({
+          adapter: 'opencode',
+          transport: 'subprocess',
+          category: 'rate_limited',
+        });
+      });
+
+      it('returns undefined for an error without adapter/transport info', () => {
+        expect(extractFailureDetail(new Error('Generic syntax error'))).toBeUndefined();
+        expect(
+          extractFailureDetail({ ok: false, error: 'missing required field' })
+        ).toBeUndefined();
+        expect(extractFailureDetail(null)).toBeUndefined();
+        expect(extractFailureDetail('string error')).toBeUndefined();
+      });
+
+      it('strips raw response bodies and prompts from the extracted detail', () => {
+        const err = Object.assign(new Error('Rate limit exceeded'), {
+          adapter: 'claude',
+          transport: 'subprocess',
+          category: 'rate_limited',
+          rawBody: `Error with key ${FAKE_ANTHROPIC_KEY} and prompt {"prompt": "secret"}`,
+          prompt: 'secret prompt text',
+        });
+        const detail = extractFailureDetail(err);
+        expect(detail).toEqual({
+          adapter: 'claude',
+          transport: 'subprocess',
+          category: 'rate_limited',
+        });
+        expect((detail as Record<string, unknown>)['rawBody']).toBeUndefined();
+        expect((detail as Record<string, unknown>)['prompt']).toBeUndefined();
+      });
+    });
+
+    describe('integration in runJobInBackground', () => {
+      it('records failureDetail when background job rejects with adapter error', async () => {
+        const jobId = 'job-bg-adapter-fail';
+        const err = Object.assign(new Error('API rate limited'), {
+          cli: 'claude',
+          code: 'RATE_LIMITED',
+        });
+
+        const params = {
+          toolName: 'orchestrate',
+          input: { task: 't' } as DummyInput,
+          freshJobId: () => jobId,
+          run: () => Promise.reject(err),
+        };
+        runAsJob<DummyInput, unknown>({ ...params, run: () => new Promise(() => {}) });
+        await runJobInBackground(jobId, params);
+
+        const record = readJobResult(jobId);
+        expect(record?.status).toBe('failed');
+        expect(record?.failureDetail).toEqual({
+          adapter: 'claude',
+          transport: 'subprocess',
+          category: 'rate_limited',
+        });
+      });
+
+      it('asserts background job rejection does NOT leak credentials or prompts to the job record', async () => {
+        const jobId = 'job-bg-leak-prevented';
+        const rawBody = `{"error": "bad request with key ${FAKE_ANTHROPIC_KEY}", "prompt": "confidential prompt text"}`;
+        const err = Object.assign(new Error(`Adapter failed: ${rawBody}`), {
+          cli: 'anthropic',
+          code: 'EXECUTION_ERROR',
+          rawResponse: rawBody,
+        });
+
+        const params = {
+          toolName: 'orchestrate',
+          input: { task: 't' } as DummyInput,
+          freshJobId: () => jobId,
+          run: () => Promise.reject(err),
+        };
+        runAsJob<DummyInput, unknown>({ ...params, run: () => new Promise(() => {}) });
+        await runJobInBackground(jobId, params);
+
+        const record = readJobResult(jobId);
+        expect(record?.status).toBe('failed');
+        const serialized = JSON.stringify(record);
+        expect(serialized).not.toContain(FAKE_ANTHROPIC_KEY);
+        expect(serialized).not.toContain('confidential prompt text');
+        expect(record?.failureDetail).toEqual({
+          adapter: 'anthropic',
+          transport: 'subprocess',
+          category: 'execution_error',
+        });
+      });
+
+      it('records failureDetail from a failure-shaped result', async () => {
+        const jobId = 'job-bg-failure-shaped-detail';
+        const result = {
+          isError: true,
+          content: [{ type: 'text', text: 'CLI exited with code 1' }],
+          failureDetail: {
+            adapter: 'codex',
+            transport: 'subprocess',
+            category: 'execution_error',
+          },
+        };
+
+        const params = {
+          toolName: 'orchestrate',
+          input: { task: 't' } as DummyInput,
+          freshJobId: () => jobId,
+          run: () => Promise.resolve(result),
+        };
+        runAsJob<DummyInput, unknown>({ ...params, run: () => new Promise(() => {}) });
+        await runJobInBackground(jobId, params);
+
+        const record = readJobResult(jobId);
+        expect(record?.status).toBe('failed');
+        expect(record?.failureDetail).toEqual({
+          adapter: 'codex',
+          transport: 'subprocess',
+          category: 'execution_error',
+        });
       });
     });
   });

@@ -94,15 +94,15 @@ export function sanitizeErrorDetails(text: string, apiKey?: string): string {
   result = result.replace(/(authorization:\s*basic\s+)\S+/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
   result = result.replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, `$1${REDACTED_KEY_PLACEHOLDER}`);
 
-  // Redact sensitive query parameters in URLs or logs (?api_key=..., &token=...)
+  // Redact sensitive query parameters in URLs or logs (?api_key=..., &token=..., &prompt=...)
   result = result.replace(
-    /([?&](?:api[_-]?key|token|access[_-]?token|secret|password)=)[^&\s]+/gi,
+    /([?&](?:api[_-]?key|token|access[_-]?token|secret|password|prompt|system_prompt|user_prompt)=)[^&\s]+/gi,
     `$1${REDACTED_KEY_PLACEHOLDER}`
   );
 
-  // Redact sensitive JSON keys: "api_key": "...", "token": "...", etc.
+  // Redact sensitive JSON keys: "api_key": "...", "token": "...", "prompt": "...", etc.
   result = result.replace(
-    /"(api[_-]?key|access[_-]?token|token|secret|password)"\s*:\s*"[^"]+"/gi,
+    /"(api[_-]?key|access[_-]?token|token|secret|password|prompt|system_prompt|user_prompt)"\s*:\s*"(?:[^"\\]|\\.)*"/gi,
     `"$1": "${REDACTED_KEY_PLACEHOLDER}"`
   );
 

@@ -35,6 +35,7 @@ import { z } from 'zod';
 import { createLogger, getTimeProvider } from '../../core/index.js';
 import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
 import { resolveClassGuardMs, type OperationClassName } from '../../config/timeouts.js';
+import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
 import { VERSION } from '../../version.js';
 import { readIndexEntry } from './job-idempotency.js';
 import {
@@ -48,6 +49,12 @@ export {
   candidateJobResultPaths,
   _setCandidatePathsResolverForTests,
 } from './job-result-candidates.js';
+export { JobFailureDetailSchema, type JobFailureDetail } from './job-failure-detail.js';
+import {
+  JobFailureDetailSchema,
+  type JobFailureDetail,
+  validateAndSanitizeFailureDetail,
+} from './job-failure-detail.js';
 
 const logger = createLogger({ component: 'job-result-store' });
 
@@ -80,6 +87,12 @@ export const JobResultSchema = z.object({
    * `result` — the discriminator is `status`.
    */
   error: z.string().optional(),
+  /**
+   * Structured failure detail when `status === 'failed'` (#4375).
+   * Holds normalized adapter, transport, and category information without
+   * raw response bodies or prompt strings.
+   */
+  failureDetail: JobFailureDetailSchema.optional(),
   /**
    * Machine-readable reason for a `failed` record that was NOT settled by the
    * process that ran the job (#6224). `abandoned` is written only by
@@ -339,12 +352,16 @@ export function writeJobComplete(
  * Terminal `failed` status. `error` is the human-readable failure message.
  * Like {@link writeJobComplete}, a NO-OP when the job is already `cancelled`
  * (#4017) so a post-cancel failure cannot rewrite the cancellation.
+ *
+ * Write-path redaction (#4375): sanitizes `error` and any string fields in
+ * `failureDetail` via {@link sanitizeErrorDetails} before persisting to disk.
  */
 export function writeJobFailed(
   jobId: string,
   toolName: string,
   error: string,
-  producerVersion: string = VERSION
+  producerVersion: string = VERSION,
+  failureDetail?: JobFailureDetail
 ): void {
   const existing = readJobResult(jobId);
   if (existing?.status === 'cancelled') {
@@ -354,6 +371,9 @@ export function writeJobFailed(
     });
     return;
   }
+  const sanitizedError = sanitizeErrorDetails(error);
+  const validatedDetail = validateAndSanitizeFailureDetail(failureDetail);
+
   const record: JobResult = {
     v: 1,
     jobId,
@@ -361,14 +381,15 @@ export function writeJobFailed(
     status: 'failed',
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
-    error,
+    error: sanitizedError,
+    ...(validatedDetail !== undefined ? { failureDetail: validatedDetail } : {}),
     producerVersion,
     ...carriedProgress(existing),
   };
   const primaryPath = jobResultPath(jobId);
   persistJobRecord(primaryPath, record);
   syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
-  logger.debug('Wrote failed job record', { jobId, toolName, error });
+  logger.debug('Wrote failed job record', { jobId, toolName, error: sanitizedError });
 }
 
 /**
@@ -446,6 +467,7 @@ export function writeJobCancelled(
   producerVersion: string = VERSION
 ): void {
   const existing = readJobResult(jobId);
+  const sanitizedReason = reason !== undefined ? sanitizeErrorDetails(reason) : undefined;
   const record: JobResult = {
     v: 1,
     jobId,
@@ -453,14 +475,14 @@ export function writeJobCancelled(
     status: 'cancelled',
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
-    ...(reason !== undefined ? { error: reason } : {}),
+    ...(sanitizedReason !== undefined ? { error: sanitizedReason } : {}),
     producerVersion,
     ...carriedProgress(existing),
   };
   const primaryPath = jobResultPath(jobId);
   persistJobRecord(primaryPath, record);
   syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
-  logger.debug('Wrote cancelled job record', { jobId, toolName, reason });
+  logger.debug('Wrote cancelled job record', { jobId, toolName, reason: sanitizedReason });
 }
 
 /**
