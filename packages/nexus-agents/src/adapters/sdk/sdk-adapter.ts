@@ -39,6 +39,7 @@ import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS } from './types.js';
 import { readGatewayEnv, redactApiKey } from './gateway-env.js';
+import { gatewayAiSdkOptions, readGatewayTransport } from '../gateway-http.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import {
   validateCustomApiBaseUrl,
@@ -462,7 +463,12 @@ export class SdkAdapter extends BaseAdapter {
         const mod = await import('@ai-sdk/openai');
         const factory = extractProviderFactory(mod, 'createOpenAI');
         const opts: Record<string, unknown> = { apiKey };
-        if (this.customBaseUrl !== undefined) opts['baseURL'] = this.customBaseUrl;
+        if (this.customBaseUrl !== undefined) {
+          opts['baseURL'] = this.customBaseUrl;
+          // Auth header, extra headers and proxy: the gateway's transport (#6629).
+          const transport = readGatewayTransport(this.customBaseUrl, process.env, this.logger);
+          Object.assign(opts, gatewayAiSdkOptions({ ...transport, apiKey }));
+        }
         const provider = factory(opts);
         return { model: provider(this.modelId) };
       }
