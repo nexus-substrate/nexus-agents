@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.93.1
+
+### Patch Changes
+
+- [#6591](https://github.com/nexus-substrate/nexus-agents/pull/6591) [`a9cccd7`](https://github.com/nexus-substrate/nexus-agents/commit/a9cccd7d746e8ddae070767282f570d7002d7154) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove three multi-CLI orchestration strategies that nothing called: `executeTriangulatedReview`, `executeParallelExploration` and `executeConsensusPlan`, along with their config schemas, default-config factories and result types. None was on the published API surface, and no MCP tool, CLI command or pipeline stage dispatched to them. Multi-CLI review and planning remain available through `consensus_vote`, `pr_review` and `run_dev_pipeline`.
+
+- [#6584](https://github.com/nexus-substrate/nexus-agents/pull/6584) [`6d40351`](https://github.com/nexus-substrate/nexus-agents/commit/6d4035133bf1bca875281793186bdefa88b6540d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removed three internal helpers that no production code called: the in-memory pipeline `CheckpointStore` (with `getCheckpointStore`, `resetCheckpointStore` and its `StageCheckpoint`, `CheckpointPort` and `CheckpointStoreOptions` types), the `orchestration/aorchestra/context-freshness` module (`isContextFresh`, `markContextVerified`, `getContextAge`, `DEFAULT_TTL_MS`, `ContextEntry`), and `groupByTopologicalWave`. Pipeline resume still goes through `saveStageCheckpoint`, and wave grouping through `groupByWave`. None of these were part of the published API surface, so nothing public changed.
+
+- [#6586](https://github.com/nexus-substrate/nexus-agents/pull/6586) [`8a335e0`](https://github.com/nexus-substrate/nexus-agents/commit/8a335e063afa7400159b6b282bb039bde9472f84) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents vote --option …` now prints an `Options:` block in its terminal summary. Before this, the declared-option tally was written to the audit record but the summary showed only Approve/Reject counts and `Result:`, so a reader could not tell which option won without opening `.nexus-agents/governance/vote-records.jsonl`.
+
+  The block lists every declared option with its count (an option nobody chose prints `0`), a `Winner:` line, and a `Coverage:` line giving how many approvers named a declared option and how many were unattributed. The winner line says `none` with the reason when no voter named an option, when the top count is tied, or when the leading option fell short of the option bar. The counts are the option gate's own tally from the engine, not a second computation. A vote without `--option` prints no block.
+
 ## 8.93.0
 
 ### Minor Changes
