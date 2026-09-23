@@ -32,7 +32,9 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": true,
+    "directory": ".publish-stage",
+    "linkDirectory": false
   },
   "keywords": [
     "mcp",
