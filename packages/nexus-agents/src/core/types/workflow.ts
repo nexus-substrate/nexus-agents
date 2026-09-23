@@ -226,7 +226,11 @@ export interface IWorkflowEngine {
    *   `budget` (#4754) caps the run's total reported token spend: it is checked
    *   before each phase and before each step is dispatched. Steps already in
    *   flight when the ceiling is crossed run to completion — a cap stops new
-   *   spend, it cannot recall spend already committed.
+   *   spend, it cannot recall spend already committed. `signal` (#6305)
+   *   cancels the run: a step not yet dispatched is skipped and the run fails
+   *   with `Workflow cancelled` at the next phase boundary; a step already
+   *   running is not interrupted. `run_workflow` threads `cancel_job`'s signal
+   *   here.
    * @returns Result with WorkflowResult or WorkflowError
    */
   execute(
@@ -236,6 +240,7 @@ export interface IWorkflowEngine {
       phaseTimeoutMs?: number;
       onPhaseComplete?: () => void;
       budget?: { readonly maxTokens: number };
+      signal?: AbortSignal;
     }
   ): Promise<Result<WorkflowResult, WorkflowError>>;
 

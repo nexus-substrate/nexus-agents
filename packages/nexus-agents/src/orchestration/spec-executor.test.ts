@@ -179,3 +179,67 @@ Implement OAuth2 login for the app.
     expect(result.value.validation.totalCriteria).toBe(1);
   });
 });
+
+describe('executeSpec — cancellation via options.signal (#6305)', () => {
+  const SPEC = [
+    '# Feature',
+    '',
+    '## Requirements',
+    '- Build the helper',
+    '',
+    '## Acceptance Criteria',
+    '- [ ] The helper works',
+  ].join('\n');
+  const CANCELLED = {
+    ok: false,
+    error: { message: 'Spec execution cancelled', stage: 'execute' },
+  };
+
+  function counting(onCall?: (n: number) => void): {
+    factory: NodeHandlerFactory;
+    calls: string[];
+  } {
+    const calls: string[] = [];
+    const factory: NodeHandlerFactory = (node) => () => {
+      calls.push(node.id);
+      onCall?.(calls.length);
+      return Promise.resolve({ results: [node.id + ': The helper works'] });
+    };
+    return { factory, calls };
+  }
+
+  it('runs no node when the signal has already fired', async () => {
+    const { factory, calls } = counting();
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await executeSpec(SPEC, { handlerFactory: factory, signal: controller.signal });
+
+    expect(result).toEqual(CANCELLED);
+    expect(calls).toEqual([]);
+  });
+
+  it('a cancel during the LAST node is the cancel, not a result sent to validation', async () => {
+    const controller = new AbortController();
+    const { factory, calls } = counting((n) => {
+      if (n === 2) controller.abort();
+    });
+
+    const result = await executeSpec(SPEC, { handlerFactory: factory, signal: controller.signal });
+
+    expect(calls).toEqual(['code-0', 'test-0']);
+    expect(result).toEqual(CANCELLED);
+  });
+
+  it('runs every node with a signal that never fires — the empty case', async () => {
+    const { factory, calls } = counting();
+
+    const result = await executeSpec(SPEC, {
+      handlerFactory: factory,
+      signal: new AbortController().signal,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual(['code-0', 'test-0']);
+  });
+});
