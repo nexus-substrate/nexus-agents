@@ -3019,6 +3019,7 @@ InterfaceDeclaration DevPipelineOptions
   readonly qualityGate?: QualityGateMode | undefined
   readonly researchOverride?: string | undefined
   readonly sessionId?: string | undefined
+  readonly signal?: AbortSignal | undefined
   readonly trustTier?: string | undefined
   readonly untrustedInputGuard?: (() => void) | undefined
 InterfaceDeclaration DevPipelineResult
@@ -4433,6 +4434,7 @@ InterfaceDeclaration GraphNode @workflows/dependency-graph
 InterfaceDeclaration GraphPipelineOptions
   readonly dryRun?: boolean | undefined
   readonly maxSteps?: number | undefined
+  readonly signal?: AbortSignal | undefined
 InterfaceDeclaration GraphPipelineResult
   readonly dryRun?: true | undefined
   readonly durationMs: number

@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- 756 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); one orchestrator over the seven dev-pipeline stages with checkpoint/resume (hindsight and prior-research recall moved to dev-pipeline-context.ts); split tracked in #6148 */
+/* eslint-disable max-lines -- 791 lines as eslint counts them, above the 600 ceiling (.rules/governance.md); one orchestrator over the seven dev-pipeline stages with checkpoint/resume (hindsight and prior-research recall moved to dev-pipeline-context.ts); split tracked in #6148 */
 /**
  * Multi-Agent Development Pipeline (#1684)
  *
@@ -437,6 +437,59 @@ export interface DevPipelineOptions {
    * path), behavior is unchanged — the in-memory bus emit is the only sink.
    */
   readonly auditLogger?: IAuditLogger | undefined;
+  /**
+   * Cancels the run at the next stage boundary (#6305). Checked immediately
+   * before every stage call; once it has fired the run rejects with an error
+   * naming the stage it stopped before, and no further stage runs. A stage
+   * already in flight is not interrupted. `run_dev_pipeline` threads
+   * `cancel_job`'s signal here. Absent: the run is not cancellable.
+   */
+  readonly signal?: AbortSignal | undefined;
+}
+
+/** Raised at a stage boundary once {@link DevPipelineOptions.signal} has fired. */
+class DevPipelineCancelledError extends Error {
+  constructor(stage: string) {
+    super(`Dev pipeline cancelled before the ${stage} stage`);
+    this.name = 'DevPipelineCancelledError';
+  }
+}
+
+/**
+ * Read through a call, never inline: TypeScript narrows `signal.aborted` to
+ * `false` after one check, which is unsound across the `await`s between stages.
+ */
+function throwIfCancelled(signal: AbortSignal, stage: string): void {
+  if (signal.aborted) throw new DevPipelineCancelledError(stage);
+}
+
+/**
+ * Wrap every stage so it checks the signal before running (#6305). Gating the
+ * stage calls themselves covers every boundary — including each plan/vote and
+ * implement/QA iteration — without threading the signal through each phase.
+ */
+function gateStagesOnSignal(
+  stages: DevPipelineStages,
+  signal: AbortSignal | undefined
+): DevPipelineStages {
+  if (signal === undefined) return stages;
+  const gate =
+    <A extends unknown[], R>(stage: string, fn: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      throwIfCancelled(signal, stage);
+      return fn(...args);
+    };
+  const qualityGate = stages.qualityGate?.bind(stages);
+  return {
+    research: gate('research', stages.research.bind(stages)),
+    plan: gate('plan', stages.plan.bind(stages)),
+    vote: gate('vote', stages.vote.bind(stages)),
+    decompose: gate('decompose', stages.decompose.bind(stages)),
+    implement: gate('implement', stages.implement.bind(stages)),
+    qaReview: gate('qaReview', stages.qaReview.bind(stages)),
+    ...(qualityGate !== undefined ? { qualityGate: gate('qualityGate', qualityGate) } : {}),
+    securityScan: gate('securityScan', stages.securityScan.bind(stages)),
+  };
 }
 
 /**
@@ -462,7 +515,8 @@ export async function runDevPipeline(
   const traceWriter = createTraceWriter(sid);
 
   try {
-    return await runDevPipelineInner(task, stages, options, sid, prior);
+    const gated = gateStagesOnSignal(stages, options?.signal);
+    return await runDevPipelineInner(task, gated, options, sid, prior);
   } finally {
     await flushTraceWriter(traceWriter);
   }
@@ -1224,6 +1278,9 @@ async function implementSingleTaskSafe(
   try {
     return await implementSingleTask(task, stages, limits);
   } catch (error) {
+    // A cancel is not a failed task: absorbing it here would report the
+    // boundary as a task failure and let the remaining tasks reach their gates.
+    if (error instanceof DevPipelineCancelledError) throw error;
     const reason = error instanceof Error ? error : new Error(String(error));
     logger.error('Task implementation failed', reason, {});
     return null;

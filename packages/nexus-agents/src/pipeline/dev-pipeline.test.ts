@@ -1117,3 +1117,44 @@ describe('vote-verdict deciders (#4174) — isApproved / createVoteResult / getV
     }
   });
 });
+
+describe('runDevPipeline — cancellation at stage boundaries (#6305)', () => {
+  it('runs no stage when the signal has already fired', async () => {
+    const stages = createMockStages();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      runDevPipeline('Build feature X', stages, { signal: controller.signal })
+    ).rejects.toThrow('Dev pipeline cancelled before the research stage');
+    expect(stages.research).not.toHaveBeenCalled();
+  });
+
+  it('a cancel inside the implement loop surfaces as the cancel, not as failed tasks', async () => {
+    const controller = new AbortController();
+    const stages = createMockStages({
+      implement: vi.fn(() => {
+        controller.abort();
+        return Promise.resolve('impl');
+      }),
+    });
+
+    // Absorbing the cancel as a failed task would let the run reach the
+    // security boundary and name THAT stage instead. The two tasks run
+    // concurrently, so the second task's implement boundary may observe it first.
+    await expect(
+      runDevPipeline('Build feature X', stages, { signal: controller.signal })
+    ).rejects.toThrow(/^Dev pipeline cancelled before the (implement|qaReview) stage$/);
+    expect(stages.qaReview).not.toHaveBeenCalled();
+    expect(stages.securityScan).not.toHaveBeenCalled();
+  });
+
+  it('runs to completion with a signal that never fires — the empty case', async () => {
+    const stages = createMockStages();
+    const result = await runDevPipeline('Build feature X', stages, {
+      signal: new AbortController().signal,
+    });
+    expect(result.completed).toBe(true);
+    expect(stages.securityScan).toHaveBeenCalledTimes(1);
+  });
+});
