@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.82.1
+
+### Patch Changes
+
+- [#6485](https://github.com/nexus-substrate/nexus-agents/pull/6485) [`67a7e47`](https://github.com/nexus-substrate/nexus-agents/commit/67a7e47b9b47cfcf41e06e5fbdda26da020ad06f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Installs no longer stall or fail on dependency install scripts ([#6481](https://github.com/nexus-substrate/nexus-agents/issues/6481)). Before this release, `pnpm add -g nexus-agents` in a terminal (pnpm 12) stopped at an interactive "Choose which packages to build" prompt and installed nothing until you answered. `npm install -g nexus-agents` with npm 12's `strict-allow-scripts` exited 1.
+
+  `@ast-grep/lang-go`, `@ast-grep/lang-python`, `@google/genai` and `@modelcontextprotocol/sdk` now ship inside the nexus-agents tarball as `bundleDependencies`, together with their full dependency closure (about 130 packages, including `zod`, `express`, `hono`, `ajv` and `ws`). npm 12 (default and strict) and pnpm 12 install with no prompt, no blocked-scripts warning and no script executed. The Go/Python grammars and the Gemini adapter work as before. The MCP SDK is bundled because `@google/genai` declares it as a peer, and npm expects a bundled package's peers inside the bundle.
+
+  Trade-offs: the tarball grows from about 6 MB to about 15 MB. Every bundled package is fixed at the version resolved for the release, at least 24 hours old at the release commit. A security fix in any of them reaches you through a nexus-agents release, not through `npm update` or your own `overrides`, though `npm audit` still reports it.
+
 ## 8.82.0
 
 ### Minor Changes
