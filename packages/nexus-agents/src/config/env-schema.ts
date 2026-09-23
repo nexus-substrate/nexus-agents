@@ -266,6 +266,9 @@ const NexusEnvSchema = z.object({
     })
     .optional(),
   NEXUS_OPENAI_COMPAT_KEY: z.string().optional(),
+  // #6600: gateway model-id allowlist (OPENAI_COMPAT_MODELS_ENV), applied
+  // before the per-gateway adapter cap. Comma-separated; `*` is a wildcard.
+  NEXUS_OPENAI_COMPAT_MODELS: z.string().optional(),
   NEXUS_OPENAI_COMPAT_URL: z.string().optional(),
   NEXUS_OPENCODE_CONFIG: z.string().optional(),
   NEXUS_PR_REVIEW_RECORDS_PATH: z.string().optional(),

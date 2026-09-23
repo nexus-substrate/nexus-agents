@@ -6160,6 +6160,7 @@ InterfaceDeclaration OpenAIAdapterConfig
   modelId: string
   organization?: string | undefined
   timeout?: number | undefined
+  verbatimModelId?: boolean | undefined
 ClassDeclaration OpenCodeCliAdapter
   execute(task: CliTask, options?: ExecutionOptions) => Promise<Result<CliResponse, CliError>>
   executeTask(task: CliTask, options: ResolvedExecutionOptions) => Promise<Result<CliResponse, CliError>>

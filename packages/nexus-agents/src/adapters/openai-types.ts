@@ -82,6 +82,13 @@ export interface OpenAIAdapterConfig {
   maxRetries?: number;
   /** Organization ID (optional) */
   organization?: string;
+  /**
+   * Send `modelId` exactly as given, skipping {@link OPENAI_MODEL_ALIASES}
+   * (#6605). Set by the OpenAI-compatible gateway path, whose ids come from
+   * the gateway's own listing: rewriting `gpt-4o` to a dated OpenAI snapshot
+   * names a model that gateway may not serve. Default `false`.
+   */
+  verbatimModelId?: boolean;
 }
 
 // Note: Token estimation moved to core/token-estimator.ts (unified TokenEstimator)

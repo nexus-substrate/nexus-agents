@@ -126,6 +126,14 @@ export const GATEWAY_COST_ENV = 'NEXUS_GATEWAY_COST';
 export const OPENAI_COMPAT_ENDPOINT_ENV = 'NEXUS_OPENAI_COMPAT_ENDPOINT';
 
 /**
+ * Operator allowlist of gateway model ids (#6600): comma-separated, `*` is a
+ * wildcard. Applied to the discovered catalogue BEFORE the per-gateway model
+ * cap, so a gateway listing hundreds of models serves the few named here.
+ * Unset or empty means no allowlist.
+ */
+export const OPENAI_COMPAT_MODELS_ENV = 'NEXUS_OPENAI_COMPAT_MODELS';
+
+/**
  * The default endpoint identity: the `providers.openai-compat` key the
  * opencode.json bridge reads the same gateway from (#2503), so an operator
  * who declares `openai-compat=free` names the arm the gateway registers as.

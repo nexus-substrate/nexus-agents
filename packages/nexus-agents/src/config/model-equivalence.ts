@@ -18,7 +18,7 @@
  * @module config/model-equivalence
  */
 
-import { resolveModelIdentitySync } from './model-identity.js';
+import { canonicalVersionKey, resolveModelIdentitySync } from './model-identity.js';
 
 /**
  * A key that is equal for two model strings iff they denote the same model, or
@@ -39,7 +39,10 @@ export function canonicalModelKey(modelId: string): string | null {
   if (modelId === '') return null;
   const identity = resolveModelIdentitySync(modelId);
   if (identity.vendor === 'unknown' || identity.family === 'unknown') return null;
-  return `${identity.vendor}|${identity.family}|${identity.version ?? ''}`;
+  // The version goes through the registry's version key, so `4.5` and `4-5`
+  // name one model here exactly as they do in registry lookup (#6605).
+  const version = identity.version === undefined ? '' : canonicalVersionKey(identity.version);
+  return `${identity.vendor}|${identity.family}|${version}`;
 }
 
 /**

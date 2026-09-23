@@ -30,6 +30,38 @@ describe('canonicalModelKey', () => {
     expect(canonicalModelKey('claude-sonnet-4-6')).not.toBe(canonicalModelKey('claude-sonnet-4-5'));
   });
 
+  // #6605: gateway catalogues name models version-first (`claude_4_5_opus`) or
+  // with the version before the tier (`gemini-2.5-pro`), and both forms used to
+  // lose the version — two generations of a family shared one key, so a panel
+  // split across them was reported as collapsed onto one model.
+  it('keeps a version that precedes the family tier (#6605)', () => {
+    expect(canonicalModelKey('claude_4_5_opus')).not.toBe(canonicalModelKey('claude_4_1_opus'));
+    expect(canonicalModelKey('gemini-2.5-pro')).not.toBe(canonicalModelKey('gemini-3-pro'));
+  });
+
+  it('treats a dotted and a dashed version as the same model (#6605)', () => {
+    expect(canonicalModelKey('claude-sonnet-4.5')).not.toBeNull();
+    expect(canonicalModelKey('claude-sonnet-4.5')).toBe(canonicalModelKey('claude-sonnet-4-5'));
+  });
+
+  it('versions a gateway-prefixed Google id like the bare one (#6605)', () => {
+    expect(canonicalModelKey('vertex_ai/gemini-2.5-pro')).toBe(canonicalModelKey('gemini-2.5-pro'));
+    expect(canonicalModelKey('vertex_ai/gemini-2.5-pro')).not.toBe(
+      canonicalModelKey('gemini-3-pro')
+    );
+  });
+
+  it('counts two generations of one family as two models (#6605)', () => {
+    expect(
+      countDistinctModels([
+        'claude_4_5_opus',
+        'claude_4_1_opus',
+        'claude-opus-4.5',
+        'claude-opus-4-5',
+      ])
+    ).toBe(2);
+  });
+
   it('keeps different families of one vendor distinct', () => {
     expect(canonicalModelKey('claude-sonnet-4-6')).not.toBe(canonicalModelKey('claude-opus-4-6'));
   });

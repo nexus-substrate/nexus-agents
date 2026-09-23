@@ -28,7 +28,11 @@
  * @module config/model-fuzzy-resolution
  */
 
-import { normaliseModelId, resolveModelIdentitySync } from './model-identity.js';
+import {
+  canonicalVersionKey,
+  normaliseModelId,
+  resolveModelIdentitySync,
+} from './model-identity.js';
 import type { ResolvedModelIdentity } from './model-identity.js';
 import type { ModelEntry } from './model-registry.js';
 import type { Pricing } from './model-capabilities-types.js';
@@ -61,16 +65,6 @@ function byTierPriority(a: ModelEntry, b: ModelEntry): number {
   return SOURCE_RANK[a.source] - SOURCE_RANK[b.source];
 }
 
-/**
- * Canonical comparison key for version strings. Reuses `normaliseModelId`,
- * additionally unifying `.` with `-` so a decorated `4.8` compares equal to
- * the canonical Anthropic-style `4-8`. This is a version-KEY canonicalizer
- * only — id normalization stays `normaliseModelId` verbatim.
- */
-function versionKey(version: string): string {
-  return normaliseModelId(version).replace(/\./g, '-');
-}
-
 /** Entry-side version: the stored field, else best-effort parse of the id. */
 function entryVersion(entry: ModelEntry): string | undefined {
   return entry.version ?? resolveModelIdentitySync(entry.id).version;
@@ -86,7 +80,7 @@ function identityKeyFor(
 ): string | undefined {
   if (identity.vendor === 'unknown' || identity.family === 'unknown') return undefined;
   if (identity.version === undefined) return undefined;
-  return `${identity.vendor}|${identity.family}|${versionKey(identity.version)}`;
+  return `${identity.vendor}|${identity.family}|${canonicalVersionKey(identity.version)}`;
 }
 
 /**
@@ -228,11 +222,11 @@ function selectDateStripped(
   identity: Pick<ResolvedModelIdentity, 'vendor' | 'family'>,
   version: string
 ): ModelEntry | undefined {
-  const vk = versionKey(version);
+  const vk = canonicalVersionKey(version);
   if (!TRAILING_DATE_SEGMENT.test(vk)) return undefined;
   const stripped = vk.replace(TRAILING_DATE_SEGMENT, '');
   // FAIL-CLOSED guard: index buckets are keyed by the canonical side's
-  // versionKey, so requiring the stripped key to be date-FREE guarantees
+  // canonicalVersionKey, so requiring the stripped key to be date-FREE guarantees
   // every candidate's own version carries no date segment. Snapshot-style
   // canonicals (dated gpt-4o ids, version = the date) stay reachable only
   // through full equality on the primary key.
