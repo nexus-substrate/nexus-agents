@@ -186,10 +186,13 @@ jobs:
   # Verified inputs and config reads at the exact action pins:
   # https://github.com/pnpm/action-setup/blob/b307475762933b98ed359c036b0e51f26b63b74b/action.yml
   # https://github.com/pnpm/action-setup/blob/b307475762933b98ed359c036b0e51f26b63b74b/src/install-pnpm/run.ts
-  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/action.yml
-  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/src/main.ts
-  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/src/cache-utils.ts
-  # https://github.com/actions/setup-node/blob/6044e13b5dc448c55e2357c09f80417699197238/src/cache-restore.ts
+  # https://github.com/actions/setup-node/blob/820762786026740c76f36085b0efc47a31fe5020/action.yml
+  # https://github.com/actions/setup-node/blob/820762786026740c76f36085b0efc47a31fe5020/src/main.ts
+  # https://github.com/actions/setup-node/blob/820762786026740c76f36085b0efc47a31fe5020/src/cache-utils.ts
+  # https://github.com/actions/setup-node/blob/820762786026740c76f36085b0efc47a31fe5020/src/cache-restore.ts
+  # Re-verified for v7.0.0 (#6479): against v6.2.0 (6044e13) these four files
+  # change only ESM import extensions, two new cache outputs, an await, and the
+  # problem-matcher path (inside the action dir). None of the reads above moves.
   #
   # STEP ORDER (#6260 panel, scope steward): the detector runs BEFORE any
   # GitHub API call, and the evidence and gate steps are gated on its output.
