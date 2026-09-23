@@ -187,7 +187,7 @@ export type OutcomeCategorySource = z.infer<typeof OutcomeCategorySourceSchema>;
  * category was detected. It is a placeholder, not a measurement: the row is
  * marked `categorySource: 'defaulted'` and per-category readers skip it.
  */
-export const UNDETECTED_CATEGORY_FALLBACK: TaskCategory = 'exploration';
+const UNDETECTED_CATEGORY_FALLBACK: TaskCategory = 'exploration';
 
 /**
  * The `category` and `categorySource` fields for an outcome row, given the

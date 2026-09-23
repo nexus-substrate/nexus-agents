@@ -9,7 +9,6 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import {
   TaskOutcomeSchema,
   OutcomeQuerySchema,
-  UNDETECTED_CATEGORY_FALLBACK,
   hasMeasuredCategory,
   resolveOutcomeCategory,
 } from './outcome-types.js';
@@ -918,7 +917,7 @@ describe('undetected category representation (#6549)', () => {
 
   it('resolveOutcomeCategory marks the undetected case as defaulted, never detected', () => {
     expect(resolveOutcomeCategory(undefined)).toEqual({
-      category: UNDETECTED_CATEGORY_FALLBACK,
+      category: 'exploration',
       categorySource: 'defaulted',
     });
   });
