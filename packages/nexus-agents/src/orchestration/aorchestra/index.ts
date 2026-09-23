@@ -31,13 +31,6 @@ export type { WorkerConflict } from './conflict-detector.js';
 export { matchTriggers, DEFAULT_TRIGGER_TABLE } from './trigger-table.js';
 export type { TriggerRule } from './trigger-table.js';
 export {
-  isContextFresh,
-  markContextVerified,
-  getContextAge,
-  DEFAULT_TTL_MS,
-} from './context-freshness.js';
-export type { ContextEntry } from './context-freshness.js';
-export {
   sanitizeWorkerOutput,
   buildPriorWaveContextBlock,
   shadowDistillPriorWave,
@@ -114,10 +107,5 @@ export type { WorkerCheckpoint } from './worker-checkpoint.js';
 export { triageWorkerFailure } from './worker-triage.js';
 export type { TriageAction, TriageResult } from './worker-triage.js';
 // DAG dependency resolution (#2034).
-export {
-  topologicalWaveAssign,
-  groupByTopologicalWave,
-  CycleError,
-  MissingDependencyError,
-} from './topological-wave.js';
+export { topologicalWaveAssign, CycleError, MissingDependencyError } from './topological-wave.js';
 export type { WaveEntry } from './topological-wave.js';

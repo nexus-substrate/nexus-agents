@@ -87,16 +87,11 @@ export {
   ArtifactStore,
   getPipelineArtifactStore,
   resetPipelineArtifactStore,
-  getCheckpointStore,
-  resetCheckpointStore,
   type Artifact,
   type ArtifactFilter,
   type ProvenanceEntry,
   type IArtifactStore,
   type ArtifactStoreOptions,
-  type StageCheckpoint,
-  type CheckpointPort,
-  type CheckpointStoreOptions,
 } from './artifact-store.js';
 
 export {
