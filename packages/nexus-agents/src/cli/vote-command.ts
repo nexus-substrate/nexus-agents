@@ -367,7 +367,8 @@ function decisionResultLabel(decision: VoteDecisionStatus): { emoji: string; tex
 export function formatVoteComment(
   result: VotingResultWithProject,
   decision?: VoteDecisionStatus,
-  contrarianCheck: ContrarianCheckStatus = 'skipped'
+  contrarianCheck: ContrarianCheckStatus = 'skipped',
+  declaredOptions?: readonly string[]
 ): string {
   const now = new Date(getTimeProvider().now()).toLocaleDateString('en-US', {
     timeZone: 'America/New_York',
@@ -379,6 +380,9 @@ export function formatVoteComment(
   const effectiveDecision = decision ?? mapOutcomeToDecision(result.result.outcome);
   const { emoji: outcomeEmoji, text: outcomeText } = decisionResultLabel(effectiveDecision);
   const voteRows = result.votes.map(commentVoteRow).join('\n');
+  const options = declaredOptions ?? result.declaredOptions;
+  const optLines = optionSummaryLines(options, result.optionGate);
+  const optionsBlock = optLines.length > 0 ? `\n\n${optLines.join('\n')}` : '';
 
   return `## Consensus Vote Result
 
@@ -395,7 +399,7 @@ ${voteRows}
 
 **Summary:** ${tallySummaryLine(result)}
 **${contrarianCheckLine(contrarianCheck)}**
-**${modelsLine(result.votes)}**
+**${modelsLine(result.votes)}**${optionsBlock}
 
 ---
 *Vote conducted per CLAUDE.md Consensus Voting Protocol*`;
@@ -416,9 +420,10 @@ export function recordVoteToGitHub(
   issueNumber: number,
   result: VotingResultWithProject,
   decision?: VoteDecisionStatus,
-  contrarianCheck?: ContrarianCheckStatus
+  contrarianCheck?: ContrarianCheckStatus,
+  declaredOptions?: readonly string[]
 ): void {
-  const comment = formatVoteComment(result, decision, contrarianCheck);
+  const comment = formatVoteComment(result, decision, contrarianCheck, declaredOptions);
 
   const output = safeExecSandboxed(`gh issue comment ${String(issueNumber)} --body-file -`, {
     context: 'gh',
@@ -524,7 +529,7 @@ function validateIssueIfNeeded(issueNumber: number | undefined): boolean {
  */
 function handleRecording(
   options: VoteCommandOptions,
-  result: VotingResult,
+  result: VotingResultWithProject,
   decision: VoteDecisionStatus,
   contrarianCheck: ContrarianCheckStatus
 ): void {
@@ -535,7 +540,7 @@ function handleRecording(
       `${colors.yellow}[DRY RUN]${colors.reset} Would record to issue #${String(options.issueNumber)}\n`
     );
   } else {
-    recordVoteToGitHub(options.issueNumber, result, decision, contrarianCheck);
+    recordVoteToGitHub(options.issueNumber, result, decision, contrarianCheck, options.options);
   }
 }
 

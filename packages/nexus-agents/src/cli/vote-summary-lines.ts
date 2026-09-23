@@ -21,7 +21,13 @@ import type {
 type OptionGateVerdictView = NonNullable<ExtendedVotingResult['optionGate']>;
 
 /** A CLI voting result plus the #6110 project disclosure `executeVoting` stamps on it. */
-export type VotingResultWithProject = VotingResult & { readonly project?: ResolvedVoterProject };
+export type VotingResultWithProject = VotingResult & {
+  readonly project?: ResolvedVoterProject | undefined;
+  /** #6587: the option gate verdict carried by CliVoteResult. */
+  readonly optionGate?: ExtendedVotingResult['optionGate'];
+  /** #6587: declared options for the proposal, when any were declared. */
+  readonly declaredOptions?: readonly string[] | undefined;
+};
 
 /**
  * The one-line rendering of the project the panel judged and how the name was
