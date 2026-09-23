@@ -142,4 +142,10 @@ export interface DistillerStats {
   readonly lastDistillAt: number | undefined;
   /** Number of outcomes processed since last distillation */
   readonly outcomesSinceLastDistill: number;
+  /**
+   * Eligible outcomes the last distillation trained on (#6512). Undefined when
+   * no distillation has run or been restored from a snapshot; 0 is a real
+   * measurement (a distill ran and nothing was eligible).
+   */
+  readonly eligibleOutcomesAtLastDistill?: number | undefined;
 }

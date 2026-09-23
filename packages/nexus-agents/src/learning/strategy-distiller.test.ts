@@ -35,6 +35,7 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
     durationMs: 1000,
     timestamp: new Date().toISOString(),
     source: 'delegate',
+    cliSource: 'executed',
     ...overrides,
   };
 }
@@ -681,6 +682,109 @@ describe('StrategyDistiller', () => {
       const d = new StrategyDistiller(store, undefined, config);
       d.onOutcome();
       expect(d.getStats().lastDistillAt).toBeUndefined();
+    });
+  });
+
+  describe('checkPersistedTrigger() — first-route trigger (#6512)', () => {
+    const config: Partial<DistillerConfig> = { triggerThreshold: 5 };
+
+    it('distills when the store holds threshold eligible outcomes and there is no snapshot', () => {
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 5,
+        success: false,
+      });
+      const d = new StrategyDistiller(store, undefined, config);
+
+      expect(d.checkPersistedTrigger()).toBe(true);
+      expect(d.getStats().lastDistillAt).toBeDefined();
+      expect(d.getStats().eligibleOutcomesAtLastDistill).toBe(5);
+      expect(d.getRules().length).toBeGreaterThan(0);
+    });
+
+    it('does not distill below threshold', () => {
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 4,
+        success: false,
+      });
+      const d = new StrategyDistiller(store, undefined, config);
+
+      expect(d.checkPersistedTrigger()).toBe(false);
+      expect(d.getStats().lastDistillAt).toBeUndefined();
+    });
+
+    it('does not count ineligible outcomes toward the threshold', () => {
+      for (let i = 0; i < 10; i++) {
+        store.append(makeOutcome({ source: 'consensus' }));
+        store.append(makeOutcome({ source: 'manual' }));
+        store.append(makeOutcome({ cli: 'unknown' }));
+      }
+      store.append(makeOutcome());
+      const d = new StrategyDistiller(store, undefined, config);
+
+      expect(d.checkPersistedTrigger()).toBe(false);
+      expect(d.getStats().lastDistillAt).toBeUndefined();
+    });
+
+    it('runs at most once per instance', () => {
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 5,
+        success: false,
+      });
+      const d = new StrategyDistiller(store, undefined, config);
+
+      expect(d.checkPersistedTrigger()).toBe(true);
+      expect(d.checkPersistedTrigger()).toBe(false);
+    });
+
+    it('names the empty case: zero eligible outcomes distills to 0 rules and records it', () => {
+      store.append(makeOutcome({ source: 'consensus' }));
+      const d = new StrategyDistiller(store, undefined, config);
+
+      expect(d.checkPersistedTrigger()).toBe(true);
+      const stats = d.getStats();
+      expect(stats.lastDistillAt).toBeDefined();
+      expect(stats.eligibleOutcomesAtLastDistill).toBe(0);
+      expect(stats.totalRules).toBe(0);
+    });
+
+    it('the in-process counter still fires after a first-route check that did not distill', () => {
+      populateStore({
+        store,
+        cli: 'claude',
+        category: 'code_generation',
+        count: 4,
+        success: false,
+      });
+      const d = new StrategyDistiller(store, undefined, config);
+      expect(d.checkPersistedTrigger()).toBe(false);
+
+      for (let i = 0; i < 5; i++) d.onOutcome();
+      expect(d.getStats().lastDistillAt).toBeDefined();
+    });
+  });
+
+  describe('distill() training population (#6512)', () => {
+    it('never mints a rule from consensus, manual or unknown-CLI outcomes', () => {
+      for (let i = 0; i < 10; i++) {
+        store.append(
+          makeOutcome({ source: 'consensus', category: 'security_review', success: false })
+        );
+        store.append(makeOutcome({ source: 'manual', category: 'documentation', success: false }));
+        store.append(makeOutcome({ cli: 'unknown', category: 'testing', success: false }));
+      }
+      distiller.distill();
+
+      expect(distiller.getRules()).toHaveLength(0);
+      expect(distiller.getStats().eligibleOutcomesAtLastDistill).toBe(0);
     });
   });
 

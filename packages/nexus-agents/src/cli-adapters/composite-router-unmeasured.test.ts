@@ -15,6 +15,7 @@ import type { ICliAdapter, CliName, CliTask } from './types.js';
 
 vi.mock('../config/learning-persistence.js', () => ({
   isPersistenceEnabled: vi.fn(() => false),
+  isStrategyDistillationEnabled: vi.fn(() => true),
   getModelSelectionShadowFile: vi.fn(() => '/dev/null'),
 }));
 

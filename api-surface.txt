@@ -3120,6 +3120,7 @@ InterfaceDeclaration DistillerConfig
   readonly successRateThreshold: number
   readonly triggerThreshold: number
 InterfaceDeclaration DistillerStats
+  readonly eligibleOutcomesAtLastDistill?: number | undefined
   readonly lastDistillAt: number | undefined
   readonly outcomesSinceLastDistill: number
   readonly ruleCountByStatus: Readonly<Record<RuleStatus, number>>
@@ -6517,6 +6518,7 @@ InterfaceDeclaration PersistentOutcomeStoreConfig
   readonly dataDir?: string | undefined
   readonly filePath?: string | undefined
 ClassDeclaration PersistentStrategyDistiller
+  checkPersistedTrigger() => boolean
   distill() => void
   extends StrategyDistiller
 VariableDeclaration PIPELINE_EVENT_TYPES
@@ -8066,7 +8068,7 @@ InterfaceDeclaration RoutingRecord
 TypeAliasDeclaration RulesSnapshot
   = z.infer<typeof RulesSnapshotSchema>
 VariableDeclaration RulesSnapshotSchema
-  : z.ZodObject<{ rules: z.ZodArray<z.ZodObject<{ action: z.ZodEnum<{ avoid: "avoid"; boost: "boost"; penalize: "penalize"; }>; category: z.ZodString; cli: z.ZodEnum<{ claude: "claude"; codex: "codex"; gemini: "gemini"; opencode: "opencode"; }>; confidence: z.ZodNumber; createdAt: z.ZodNumber; effect: z.ZodOptional<z.ZodNumber>; id: z.ZodString; metric: z.ZodNumber; observationCount: z.ZodNumber; patternType: z.ZodEnum<{ "failure-rate": "failure-rate"; "latency-spike": "latency-spike"; "success-rate": "success-rate"; }>; status: z.ZodEnum<{ active: "active"; draft: "draft"; expired: "expired"; promoted: "promoted"; }>; support: z.ZodOptional<z.ZodNumber>; tainted: z.ZodBoolean; updatedAt: z.ZodNumber; }, z.core.$strip>>; savedAt: z.ZodString; version: z.ZodLiteral<1>; }, z.core.$strip>
+  : z.ZodObject<{ eligibleOutcomes: z.ZodOptional<z.ZodNumber>; rules: z.ZodArray<z.ZodObject<{ action: z.ZodEnum<{ avoid: "avoid"; boost: "boost"; penalize: "penalize"; }>; category: z.ZodString; cli: z.ZodEnum<{ claude: "claude"; codex: "codex"; gemini: "gemini"; opencode: "opencode"; }>; confidence: z.ZodNumber; createdAt: z.ZodNumber; effect: z.ZodOptional<z.ZodNumber>; id: z.ZodString; metric: z.ZodNumber; observationCount: z.ZodNumber; patternType: z.ZodEnum<{ "failure-rate": "failure-rate"; "latency-spike": "latency-spike"; "success-rate": "success-rate"; }>; status: z.ZodEnum<{ active: "active"; draft: "draft"; expired: "expired"; promoted: "promoted"; }>; support: z.ZodOptional<z.ZodNumber>; tainted: z.ZodBoolean; updatedAt: z.ZodNumber; }, z.core.$strip>>; savedAt: z.ZodString; version: z.ZodLiteral<1>; }, z.core.$strip>
 TypeAliasDeclaration RuleStatus
   = 'active' | 'draft' | 'expired' | 'promoted'
 FunctionDeclaration runAdapterLatencyBenchmark
@@ -9114,6 +9116,7 @@ InterfaceDeclaration StrategyCostProfileEntry
   readonly entrypointTool: string
   readonly strategy: ExecutionStrategy
 ClassDeclaration StrategyDistiller
+  checkPersistedTrigger() => boolean
   distill() => void
   getRules(status?: RuleStatus) => readonly DistilledRule[]
   getStats() => DistillerStats

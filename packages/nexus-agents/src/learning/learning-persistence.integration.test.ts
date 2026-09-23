@@ -38,6 +38,7 @@ function makeOutcome(overrides?: Partial<TaskOutcome>): TaskOutcome {
     durationMs: 1200,
     timestamp: '2026-02-07T10:00:00Z',
     source: 'delegate',
+    cliSource: 'executed',
     ...overrides,
   };
 }

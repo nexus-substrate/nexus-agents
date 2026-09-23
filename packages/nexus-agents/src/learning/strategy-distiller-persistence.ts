@@ -60,6 +60,11 @@ export const RulesSnapshotSchema = z.object({
   version: z.literal(1),
   savedAt: z.string(),
   rules: z.array(DistilledRuleSchema),
+  /**
+   * Eligible outcomes the distill that wrote this snapshot trained on (#6512).
+   * Optional: snapshots written before it do not carry the count.
+   */
+  eligibleOutcomes: z.number().int().nonnegative().optional(),
 });
 
 export type RulesSnapshot = z.infer<typeof RulesSnapshotSchema>;
@@ -124,6 +129,8 @@ export interface PersistentDistillerConfig {
 export class PersistentStrategyDistiller extends StrategyDistiller {
   private readonly filePath: string;
   private readonly persistLogger: ILogger;
+  /** rules.json existed but could not be read or validated (#6512). */
+  private snapshotUnreadable = false;
 
   constructor(
     outcomeStore: OutcomeStore,
@@ -138,6 +145,19 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
     const dataDir = persistConfig?.dataDir;
     ensureLearningDir(dataDir);
     this.hydrate();
+  }
+
+  /**
+   * An existing but unreadable rules.json is not overwritten by the first-route
+   * trigger: it may hold rules written by a newer build, or be recoverable by
+   * hand. It is logged and skipped; the in-process counter still distills.
+   */
+  override checkPersistedTrigger(): boolean {
+    if (!this.snapshotUnreadable) return super.checkPersistedTrigger();
+    this.persistLogger.warn('rules.json is unreadable; first-route distill skipped', {
+      path: this.filePath,
+    });
+    return false;
   }
 
   /** Override distill to persist rules after each run. */
@@ -164,6 +184,7 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
       const result = RulesSnapshotSchema.safeParse(parsed);
 
       if (!result.success) {
+        this.snapshotUnreadable = true;
         this.persistLogger.warn('Rules file failed validation, starting fresh', {
           path: this.filePath,
           error: result.error.message,
@@ -181,12 +202,14 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
       }
 
       this.loadRules(hydrated.map((h) => h.rule));
+      this.restoreSnapshotTime(result.data);
       this.persistLogger.info('Hydrated distilled rules from disk', {
         ruleCount: hydrated.length,
         savedAt: result.data.savedAt,
         path: this.filePath,
       });
     } catch (error: unknown) {
+      this.snapshotUnreadable = true;
       const msg = error instanceof Error ? error.message : String(error);
       this.persistLogger.warn('Failed to hydrate rules from disk', {
         error: msg,
@@ -195,12 +218,27 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
     }
   }
 
+  /**
+   * The snapshot's `savedAt` is the last distill time the first-route trigger
+   * compares outcomes against (#6512). An unparseable one restores nothing, so
+   * every eligible outcome counts, which errs toward distilling.
+   */
+  private restoreSnapshotTime(snapshot: RulesSnapshot): void {
+    const savedAtMs = Date.parse(snapshot.savedAt);
+    if (Number.isNaN(savedAtMs)) return;
+    this.restoreDistillState(savedAtMs, snapshot.eligibleOutcomes);
+  }
+
   private saveSnapshot(): void {
     const rules = this.getRules();
+    const stats = this.getStats();
     const snapshot: RulesSnapshot = {
       version: 1,
-      savedAt: new Date().toISOString(),
+      savedAt: new Date(stats.lastDistillAt ?? Date.now()).toISOString(),
       rules: rules as DistilledRule[],
+      ...(stats.eligibleOutcomesAtLastDistill === undefined
+        ? {}
+        : { eligibleOutcomes: stats.eligibleOutcomesAtLastDistill }),
     };
 
     // PID-suffixed temp path so two processes saving concurrently don't truncate each

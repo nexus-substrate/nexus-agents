@@ -323,6 +323,40 @@ describe('CompositeRouter', () => {
         expect(onOutcome).toHaveBeenCalledTimes(outcomeCount);
       });
 
+      describe('NEXUS_STRATEGY_DISTILLATION switch (#6512 review I1)', () => {
+        afterEach(() => {
+          vi.unstubAllEnvs();
+        });
+
+        it('switch off: no distill runs, no outcome is forwarded, no rule is read', async () => {
+          vi.stubEnv('NEXUS_STRATEGY_DISTILLATION', '0');
+          const trigger = vi.spyOn(StrategyDistiller.prototype, 'checkPersistedTrigger');
+          const distill = vi.spyOn(StrategyDistiller.prototype, 'distill');
+          const onOutcome = vi.spyOn(StrategyDistiller.prototype, 'onOutcome');
+          const getRules = vi.spyOn(StrategyDistiller.prototype, 'getRules');
+          const router = new CompositeRouter(adapters, { enableStrategyDistillation: true });
+
+          const result = await router.route({ content: 'Write a sorting function' });
+          router.recordOutcome('claude', { content: 'x' }, 0.8, true);
+
+          expect(result.ok).toBe(true);
+          if (result.ok) expect(result.value.stagesExecuted).not.toContain('distilled-rule');
+          expect(trigger).not.toHaveBeenCalled();
+          expect(distill).not.toHaveBeenCalled();
+          expect(onOutcome).not.toHaveBeenCalled();
+          expect(getRules).not.toHaveBeenCalled();
+        });
+
+        it('switch unset: the first route runs the persisted-store check', async () => {
+          vi.stubEnv('NEXUS_STRATEGY_DISTILLATION', undefined);
+          const trigger = vi.spyOn(StrategyDistiller.prototype, 'checkPersistedTrigger');
+          const router = new CompositeRouter(adapters, { enableStrategyDistillation: true });
+
+          await router.route({ content: 'Write a sorting function' });
+          expect(trigger).toHaveBeenCalledTimes(1);
+        });
+      });
+
       it('does not forward outcomes when strategy distillation is disabled', () => {
         const onOutcome = vi.spyOn(StrategyDistiller.prototype, 'onOutcome');
         const nonDistillingRouter = new CompositeRouter(adapters, {

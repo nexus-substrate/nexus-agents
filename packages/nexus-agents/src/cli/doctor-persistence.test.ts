@@ -108,6 +108,51 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
     }
   });
 
+  it('reports the named empty case: 0 eligible, 0 rules, and a last-distill time (#6512)', async () => {
+    process.env['NEXUS_PERSIST_LEARNING'] = 'true';
+    const originalDataDir = process.env['NEXUS_DATA_DIR'];
+    const dataDir = join(tmpdir(), `nexus-doctor-6512-${String(Date.now())}`);
+    process.env['NEXUS_DATA_DIR'] = dataDir;
+    try {
+      const { getOutcomesFile, getRulesFile, ensureLearningDir } =
+        await import('../config/learning-persistence.js');
+      ensureLearningDir();
+      const { TaskOutcomeSchema } = await import('../orchestration/outcomes/outcome-types.js');
+      const seat = TaskOutcomeSchema.parse({
+        id: 's1',
+        cli: 'claude',
+        category: 'code_generation',
+        model: 'test',
+        success: true,
+        durationMs: 100,
+        timestamp: '2026-09-01T00:00:00.000Z',
+        source: 'consensus',
+      });
+      writeFileSync(getOutcomesFile(), JSON.stringify(seat) + '\n');
+
+      const { OutcomeStore } = await import('../orchestration/outcomes/outcome-store.js');
+      const { PersistentStrategyDistiller } =
+        await import('../learning/strategy-distiller-persistence.js');
+      const store = new OutcomeStore();
+      store.append(seat);
+      const distiller = new PersistentStrategyDistiller(store, { filePath: getRulesFile() });
+      expect(distiller.checkPersistedTrigger()).toBe(true);
+
+      const { runDoctor } = await import('./doctor.js');
+      const check = (await runDoctor()).learningPersistence;
+      expect(check.ruleCount).toBe(0);
+      expect(check.activeRuleCount).toBe(0);
+      expect(check.trainedOnEligible).toBe(0);
+      expect(check.fileEligibleOutcomeCount).toBe(0);
+      expect(check.outcomeCount).toBe(1);
+      expect(check.rulesLastSaved).not.toBeNull();
+    } finally {
+      if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+      else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it('DoctorResult includes learningPersistence field', async () => {
     const { runDoctor } = await import('./doctor.js');
     const result = await runDoctor();

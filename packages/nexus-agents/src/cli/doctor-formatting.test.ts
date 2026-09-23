@@ -191,7 +191,10 @@ describe('doctor-formatting', () => {
         dirExists: false,
         dirWritable: false,
         outcomeCount: 0,
+        fileEligibleOutcomeCount: 0,
         ruleCount: 0,
+        activeRuleCount: 0,
+        trainedOnEligible: null,
         rulesLastSaved: null,
         error: null,
       },
@@ -241,6 +244,61 @@ describe('doctor-formatting', () => {
     });
     return withInstallFreshness(base, options.installFreshness);
   };
+
+  describe('distilled-rules line (#6512)', () => {
+    const enabled = {
+      enabled: true,
+      dirExists: true,
+      dirWritable: true,
+      outcomeCount: 3,
+      fileEligibleOutcomeCount: 0,
+      ruleCount: 0,
+      activeRuleCount: 0,
+      trainedOnEligible: 0,
+      rulesLastSaved: '2026-09-23T12:00:00.000Z',
+      error: null,
+    };
+
+    it('renders the 0/0 snapshot with its timestamp, not "never"', () => {
+      printDoctorResults({ ...createDoctorResult(), learningPersistence: enabled });
+      expect(getCalls()).toContain(
+        '  Distilled rules: 0 (0 active; trained on 0 eligible outcomes; last distill: 2026-09-23T12:00:00.000Z)'
+      );
+    });
+
+    it('separates applied (active) rules from the total and labels the file-wide count', () => {
+      printDoctorResults({
+        ...createDoctorResult(),
+        learningPersistence: {
+          ...enabled,
+          ruleCount: 4,
+          activeRuleCount: 1,
+          trainedOnEligible: 241,
+          fileEligibleOutcomeCount: 377,
+        },
+      });
+      const calls = getCalls();
+      expect(calls).toContain(
+        '  Distilled rules: 4 (1 active; trained on 241 eligible outcomes; last distill: 2026-09-23T12:00:00.000Z)'
+      );
+      expect(calls).toContain('  Eligible outcomes in outcomes.jsonl (whole file): 377');
+    });
+
+    it('renders "never" and an unrecorded training count when no snapshot exists', () => {
+      printDoctorResults({
+        ...createDoctorResult(),
+        learningPersistence: {
+          ...enabled,
+          fileEligibleOutcomeCount: 7,
+          trainedOnEligible: null,
+          rulesLastSaved: null,
+        },
+      });
+      expect(getCalls()).toContain(
+        '  Distilled rules: 0 (0 active; trained-on count not recorded; last distill: never)'
+      );
+    });
+  });
 
   describe('printDoctorResults', () => {
     it('prints harness alignment as not applicable outside a project', () => {

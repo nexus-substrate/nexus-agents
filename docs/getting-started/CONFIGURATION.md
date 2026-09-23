@@ -272,14 +272,17 @@ The scheduled run is **analysis-only by default** (emits signals, files no issue
 
 ### Learning & Memory Variables
 
-| Variable                  | Description                                                       | Default  |
-| ------------------------- | ----------------------------------------------------------------- | -------- |
-| `NEXUS_PERSIST_LEARNING`  | Cross-session routing persistence (boolean; `false`/`0` disables) | `true`   |
-| `NEXUS_REFLECTIVE_MEMORY` | Reflective memory retrieval (`shadow`/`true`/`false`)             | `shadow` |
-| `NEXUS_BILLING_MODE`      | Cost mode (`plan`=strongest model wins, `api`=cost-aware)         | `plan`   |
-| `NEXUS_TUNE_ENFORCE`      | Self-tuning loop: apply bounded routing demotions                 | `true`   |
+| Variable                      | Description                                                       | Default  |
+| ----------------------------- | ----------------------------------------------------------------- | -------- |
+| `NEXUS_PERSIST_LEARNING`      | Cross-session routing persistence (boolean; `false`/`0` disables) | `true`   |
+| `NEXUS_STRATEGY_DISTILLATION` | Strategy distillation only (boolean; `false`/`0` disables)        | `true`   |
+| `NEXUS_REFLECTIVE_MEMORY`     | Reflective memory retrieval (`shadow`/`true`/`false`)             | `shadow` |
+| `NEXUS_BILLING_MODE`          | Cost mode (`plan`=strongest model wins, `api`=cost-aware)         | `plan`   |
+| `NEXUS_TUNE_ENFORCE`          | Self-tuning loop: apply bounded routing demotions                 | `true`   |
 
 Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` — this is **cross-repo** state (shared across all your projects) and is not affected by the per-repo data dir (epic #2872). When persistence is enabled, `routingMemory`, `strategyDistillation`, and `preferenceRouting` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
+
+**`NEXUS_STRATEGY_DISTILLATION` — distilled routing rules (#6512).** When it is on (the default), the first route in each process distills rules from the persisted outcome store if at least 50 eligible outcomes are newer than the last `rules.json` snapshot. Only `delegate` outcomes marked `cliSource: 'executed'`, with a positive duration and a real CLI name, are eligible. `false`/`0` turns distillation off without touching outcome persistence: the router builds no distiller, and it reads or applies no distilled rule. It overrides a config that enables `routing.stages.strategyDistillation`. `nexus-agents doctor` reports `Distilled rules: N (A active; trained on E eligible outcomes; last distill: …)`.
 
 **`NEXUS_TUNE_ENFORCE` — the self-tuning routing loop (epic #3143 / #3147).** The loop reacts to health signals (`signal.swarm_unhealthy` from SwarmObserver bottlenecks and adapter circuit-breaker failovers) by **demoting** an unhealthy CLI in routing. The same flag gates both the write (the `TuneStage` applies the demotion) and the read (the `CompositeRouter` folds it into candidate scoring), so the loop is **either fully live or fully shadow — never half-wired**.
 
