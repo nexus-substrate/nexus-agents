@@ -128,6 +128,38 @@ export interface WorkflowResult {
   output: unknown;
   /** Total duration in ms */
   totalDurationMs: number;
+  /** Token-budget outcome (#4754). Present only when the run had a ceiling. */
+  budget?: WorkflowBudgetOutcome;
+}
+
+/**
+ * What a workflow run's token ceiling measured (#4754).
+ *
+ * `status` is a verdict about the ledger, not only about the spend:
+ * - `exhausted` — reported spend crossed the ceiling (a real measurement even
+ *   when some steps were unmeasured: the lower bound already exceeds it).
+ * - `unmeasured` — at least one executed step reported no token usage, or no
+ *   step reported any (the empty case, zero steps, included), so `spentTokens`
+ *   is a LOWER BOUND and "within budget" cannot be claimed.
+ * - `within_budget` — every executed step reported usage and the sum stayed
+ *   under the ceiling.
+ */
+export interface WorkflowBudgetOutcome {
+  status: 'within_budget' | 'exhausted' | 'unmeasured';
+  /** The token ceiling the run was held to. */
+  ceilingTokens: number;
+  /**
+   * Sum of reported step usage; a lower bound when `unmeasuredSteps > 0`.
+   * A retried step reports only its successful attempt's tokens, so retries
+   * are under-counted too (bounded in practice: `DEFAULT_RETRIES` is 0).
+   */
+  spentTokens: number;
+  /** Settled steps with known usage (a `skipped` step with none counts as zero). */
+  measuredSteps: number;
+  /** Executed steps that reported none — not counted as zero. */
+  unmeasuredSteps: number;
+  /** Steps never dispatched because the ceiling was already reached. */
+  skippedStepIds: string[];
 }
 
 /**
@@ -191,12 +223,20 @@ export interface IWorkflowEngine {
    *   over both `workflow.timeout` (set in the template YAML) and the
    *   engine's `defaultTimeoutMs`. `onPhaseComplete` (#6162) is called after
    *   each phase settles — the async-job liveness heartbeat for `run_workflow`.
+   *   `budget` (#4754) caps the run's total reported token spend: it is checked
+   *   before each phase and before each step is dispatched. Steps already in
+   *   flight when the ceiling is crossed run to completion — a cap stops new
+   *   spend, it cannot recall spend already committed.
    * @returns Result with WorkflowResult or WorkflowError
    */
   execute(
     workflow: WorkflowDefinition,
     inputs: Record<string, unknown>,
-    options?: { phaseTimeoutMs?: number; onPhaseComplete?: () => void }
+    options?: {
+      phaseTimeoutMs?: number;
+      onPhaseComplete?: () => void;
+      budget?: { readonly maxTokens: number };
+    }
   ): Promise<Result<WorkflowResult, WorkflowError>>;
 
   /**

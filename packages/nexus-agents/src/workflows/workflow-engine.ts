@@ -30,9 +30,9 @@ import {
   initializeExecution,
   recordPhaseUsage,
 } from './workflow-engine-execution.js';
+import { WorkflowBudgetTracker } from './workflow-budget.js';
 
 // Re-export types from helpers for backward compatibility
-export type { BudgetEnforcementEvent } from './budget-enforcement.js';
 export type { WorkflowStep } from './workflow-types.js';
 export type {
   WorkflowEngineConfig,
@@ -74,7 +74,11 @@ export class WorkflowEngine implements IWorkflowEngine {
   async execute(
     workflow: WorkflowDefinition,
     inputs: Record<string, unknown>,
-    options?: { phaseTimeoutMs?: number; onPhaseComplete?: () => void }
+    options?: {
+      phaseTimeoutMs?: number;
+      onPhaseComplete?: () => void;
+      budget?: { readonly maxTokens: number };
+    }
   ): Promise<Result<WorkflowResult, WorkflowError>> {
     // Validate inputs and create execution plan
     const inputValidation = this.validateInputs(workflow, inputs);
@@ -112,6 +116,10 @@ export class WorkflowEngine implements IWorkflowEngine {
         ...(options?.onPhaseComplete !== undefined
           ? { onPhaseComplete: options.onPhaseComplete }
           : {}),
+        // #4754: one tracker per execution; absent → the run is uncapped.
+        ...(options?.budget !== undefined
+          ? { budget: new WorkflowBudgetTracker(options.budget.maxTokens) }
+          : {}),
       });
     } catch (error) {
       return this.handleExecutionError(error, initResult.executionId, workflow.name);
@@ -127,15 +135,11 @@ export class WorkflowEngine implements IWorkflowEngine {
     phaseTimeoutMs?: number;
     /** #6162: async-job heartbeat, fired after each phase settles. */
     onPhaseComplete?: () => void;
+    /** #4754: the run's token ceiling. */
+    budget?: WorkflowBudgetTracker;
   }): Promise<Result<WorkflowResult, WorkflowError>> {
-    const { workflow, plan, context, executionId, startTime, phaseTimeoutMs } = args;
-    const stepResults = await this.executePhases(
-      plan,
-      context,
-      workflow,
-      phaseTimeoutMs,
-      args.onPhaseComplete
-    );
+    const { workflow, executionId, startTime } = args;
+    const stepResults = await this.executePhases(args);
     if (!stepResults.ok) {
       this.updateExecutionStatus(executionId, {
         state: 'failed',
@@ -160,6 +164,7 @@ export class WorkflowEngine implements IWorkflowEngine {
       stepResults: stepResults.value,
       output: buildFinalOutput(stepResults.value),
       totalDurationMs: getTimeProvider().now() - startTime,
+      ...(args.budget !== undefined ? { budget: args.budget.outcome() } : {}),
     };
     this.storeExecutionResult(executionId, result);
     return ok(result);
@@ -303,18 +308,20 @@ export class WorkflowEngine implements IWorkflowEngine {
     });
   }
 
-  private async executePhases(
-    plan: ExecutionPlan,
-    context: ExecutionContext,
-    workflow: WorkflowDefinition,
-    phaseTimeoutMs?: number,
-    onPhaseComplete?: () => void
-  ): Promise<Result<StepResult[], WorkflowError>> {
+  private async executePhases(args: {
+    plan: ExecutionPlan;
+    context: ExecutionContext;
+    workflow: WorkflowDefinition;
+    phaseTimeoutMs?: number;
+    onPhaseComplete?: () => void;
+    budget?: WorkflowBudgetTracker;
+  }): Promise<Result<StepResult[], WorkflowError>> {
+    const { plan, context, workflow, phaseTimeoutMs, onPhaseComplete, budget } = args;
     const allResults: StepResult[] = [];
     const totalSteps = plan.phases.reduce((sum, p) => sum + p.steps.length, 0);
     let completedSteps = 0;
 
-    for (const phase of plan.phases) {
+    for (const [phaseIndex, phase] of plan.phases.entries()) {
       if (context.abortController.signal.aborted) {
         return err(
           new WorkflowError('Workflow cancelled', { context: { executionId: context.executionId } })
@@ -328,14 +335,7 @@ export class WorkflowEngine implements IWorkflowEngine {
         progress: completedSteps / totalSteps,
       });
 
-      // #3017: per-call `phaseTimeoutMs` from run_workflow MCP input wins
-      // over both `workflow.timeout` and `this.config.defaultTimeoutMs`.
-      const options: ExecutionOptions = {
-        maxConcurrency: this.config.maxConcurrency,
-        failFast: true,
-        timeoutMs: phaseTimeoutMs ?? workflow.timeout ?? this.config.defaultTimeoutMs,
-      };
-
+      const options = this.phaseOptions(workflow, phaseTimeoutMs, budget);
       const phaseResult = await this.deps.executePhase(phase.steps, context, options);
       if (!phaseResult.ok) return phaseResult;
 
@@ -353,8 +353,33 @@ export class WorkflowEngine implements IWorkflowEngine {
       // #6162: one heartbeat per settled phase — the unit of progress an
       // async run_workflow job can prove.
       onPhaseComplete?.();
+      // #4754: stop before the next phase dispatches anything once the ceiling
+      // is crossed. Steps already running in THIS phase were not halted — see
+      // workflows/workflow-budget.ts.
+      const hasMorePhases = phaseIndex < plan.phases.length - 1;
+      const halt = budget?.settlePhase(phaseResult.value, hasMorePhases, allResults);
+      if (halt !== undefined) return err(halt);
     }
     return ok(allResults);
+  }
+
+  /**
+   * Per-phase execution options. #3017: a per-call `phaseTimeoutMs` from the
+   * run_workflow MCP input wins over both `workflow.timeout` and
+   * `this.config.defaultTimeoutMs`. #4754: `budget` is included only when the
+   * run has a ceiling, so an uncapped run passes exactly the options it did.
+   */
+  private phaseOptions(
+    workflow: WorkflowDefinition,
+    phaseTimeoutMs: number | undefined,
+    budget: WorkflowBudgetTracker | undefined
+  ): ExecutionOptions {
+    return {
+      maxConcurrency: this.config.maxConcurrency,
+      failFast: true,
+      timeoutMs: phaseTimeoutMs ?? workflow.timeout ?? this.config.defaultTimeoutMs,
+      ...(budget !== undefined ? { budget } : {}),
+    };
   }
 
   private updateExecutionStatus(executionId: string, status: ExecutionStatus): void {

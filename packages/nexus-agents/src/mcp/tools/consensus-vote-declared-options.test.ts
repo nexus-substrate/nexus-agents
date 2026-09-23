@@ -34,7 +34,7 @@ vi.mock('../../cli/voter-agents.js', () => ({
 vi.mock('../middleware/tool-wrapper.js', () => ({
   wrapToolWithTimeout: (_name: string, fn: unknown) => fn,
   toSdkCallback: (fn: unknown) => fn,
-  toSdkCallbackWithBudgetCheck: (fn: unknown) => fn,
+  toSdkCallbackWithTimeoutCheck: (fn: unknown) => fn,
   getToolTimeout: () => 900_000,
 }));
 vi.mock('../middleware/secure-handler.js', () => ({

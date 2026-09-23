@@ -3398,6 +3398,7 @@ InterfaceDeclaration ExecutionOptions @cli-adapters/types-capability
   readonly timeoutMs?: number | undefined
   readonly trackUsage?: boolean | undefined
 InterfaceDeclaration ExecutionOptions @workflows/workflow-engine-helpers
+  budget?: StepBudgetGate | undefined
   failFast: boolean
   maxConcurrency: number
   timeoutMs?: number | undefined
@@ -5339,7 +5340,7 @@ InterfaceDeclaration IWeightedVoting
   weightedConsensus(votes: ReadonlyMap<string, Vote>) => WeightedConsensusResult
 InterfaceDeclaration IWorkflowEngine
   cancel(executionId: string) => Promise<Result<void, WorkflowError>>
-  execute(workflow: WorkflowDefinition, inputs: Record<string, unknown>, options?: { onPhaseComplete?: () => void; phaseTimeoutMs?: number; }) => Promise<Result<WorkflowResult, WorkflowError>>
+  execute(workflow: WorkflowDefinition, inputs: Record<string, unknown>, options?: { budget?: { readonly maxTokens: number; }; onPhaseComplete?: () => void; phaseTimeoutMs?: number; }) => Promise<Result<WorkflowResult, WorkflowError>>
   getStatus(executionId: string) => ExecutionStatus
   getTemplateByName(name: string) => Promise<WorkflowDefinition | undefined>
   listTemplates() => Promise<WorkflowTemplate[]>
@@ -8148,7 +8149,7 @@ InterfaceDeclaration RunWorkflowDeps
 TypeAliasDeclaration RunWorkflowInput
   = z.infer<typeof RunWorkflowInputSchema>
 VariableDeclaration RunWorkflowInputSchema
-  : z.ZodObject<{ dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; idempotencyKey: z.ZodOptional<z.ZodString>; inputs: z.ZodRecord<z.ZodString, z.ZodUnknown>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; template: z.ZodString; timeoutMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
+  : z.ZodObject<{ dispatch: z.ZodOptional<import("src/mcp/tools/async-dispatch-input").DispatchEnum>; dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; idempotencyKey: z.ZodOptional<z.ZodString>; inputs: z.ZodRecord<z.ZodString, z.ZodUnknown>; maxTokens: z.ZodOptional<z.ZodNumber>; mode: z.ZodOptional<z.ZodEnum<{ async: "async"; sync: "sync"; }>>; template: z.ZodString; timeoutMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strip>
 VariableDeclaration safePathsRule
   : PolicyRule
 VariableDeclaration SAFETY_CATEGORIES
@@ -9030,6 +9031,9 @@ ClassDeclaration StdioClientTransport
   onmessage?: ((message: JSONRPCMessage) => void) | undefined
   send(message: JSONRPCMessage) => Promise<void>
   start() => Promise<void>
+InterfaceDeclaration StepBudgetGate
+  admit(stepId: string) => boolean
+  record(result: StepResult) => void
 InterfaceDeclaration StepContext
   readonly runnableIds: readonly string[]
   readonly stepsExecuted: number
@@ -10478,6 +10482,15 @@ InterfaceDeclaration WorkerOutput
 InterfaceDeclaration WorkflowAdapterConfig
   extends WorkflowEngineFactoryConfig
   logger?: ILogger | undefined
+InterfaceDeclaration WorkflowBudgetOutcome
+  ceilingTokens: number
+  measuredSteps: number
+  skippedStepIds: string[]
+  spentTokens: number
+  status: "exhausted" | "unmeasured" | "within_budget"
+  unmeasuredSteps: number
+TypeAliasDeclaration WorkflowBudgetReport
+  = WorkflowBudgetOutcome | { reason: string; requestedMaxTokens?: number; status: 'not_enforced'; }
 TypeAliasDeclaration WorkflowConfig
   = z.infer<typeof WorkflowConfigSchema>
 VariableDeclaration WorkflowConfigSchema
@@ -10547,6 +10560,7 @@ ClassDeclaration WorkflowOrchestratorAdapter
 TypeAliasDeclaration WorkflowPattern
   = 'aflow' | 'consensus' | 'graph' | 'puppeteer' | 'sequential' | 'wave'
 InterfaceDeclaration WorkflowResult
+  budget?: WorkflowBudgetOutcome | undefined
   executionId: string
   output: unknown
   stepResults: StepResult[]
@@ -10590,6 +10604,7 @@ InterfaceDeclaration WorkflowTemplate
   path: string
   version: string
 InterfaceDeclaration WorkflowToolResult
+  budget?: WorkflowBudgetReport | undefined
   durationMs: number
   executionId: string
   output: unknown

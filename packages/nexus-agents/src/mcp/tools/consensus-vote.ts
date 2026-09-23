@@ -19,7 +19,7 @@ import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import {
   wrapToolWithTimeout,
-  toSdkCallbackWithBudgetCheck,
+  toSdkCallbackWithTimeoutCheck,
   getToolTimeout,
 } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -1341,7 +1341,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
       outputSchema: CONSENSUS_VOTE_OUTPUT_SCHEMA,
       annotations: getToolAnnotations('consensus_vote'),
     },
-    toSdkCallbackWithBudgetCheck(wrappedHandler, 'consensus_vote', timeoutMs, logger)
+    toSdkCallbackWithTimeoutCheck(wrappedHandler, 'consensus_vote', timeoutMs, logger)
   );
   logger.info('Registered consensus_vote tool with secure handler and timeout protection');
 }

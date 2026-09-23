@@ -1,5 +1,5 @@
 /**
- * Tests for `toSdkCallbackWithBudgetCheck` (audit on #2619 / #2631).
+ * Tests for `toSdkCallbackWithTimeoutCheck` (audit on #2619 / #2631).
  *
  * The WARN fires when a long-running tool is invoked without `progressToken`
  * in the request's `_meta`. That mismatch means the MCP client will kill the
@@ -26,7 +26,7 @@ import type { ILogger } from '../../core/index.js';
 import {
   MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS,
   TIMEOUT_MISMATCH_TELEMETRY_REL_PATH,
-  toSdkCallbackWithBudgetCheck,
+  toSdkCallbackWithTimeoutCheck,
   type TimeoutMismatchEvent,
 } from './tool-wrapper.js';
 
@@ -66,10 +66,10 @@ function readEvents(): TimeoutMismatchEvent[] {
     .map((line) => JSON.parse(line) as TimeoutMismatchEvent);
 }
 
-describe('toSdkCallbackWithBudgetCheck (#2619 / #2631 audit)', () => {
+describe('toSdkCallbackWithTimeoutCheck (#2619 / #2631 audit)', () => {
   it('does not warn when configured budget fits within MCP SDK default', async () => {
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(
+    const callback = toSdkCallbackWithTimeoutCheck(
       passthroughHandler,
       'short_tool',
       MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS - 1_000,
@@ -85,7 +85,12 @@ describe('toSdkCallbackWithBudgetCheck (#2619 / #2631 audit)', () => {
 
   it('does not warn when client sent a progressToken (long budget OK)', async () => {
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(passthroughHandler, 'long_tool', 600_000, logger);
+    const callback = toSdkCallbackWithTimeoutCheck(
+      passthroughHandler,
+      'long_tool',
+      600_000,
+      logger
+    );
 
     // The MCP SDK only sets _meta.progressToken when the caller passed
     // `onprogress`. Pair it with sendNotification so extractProgressContext
@@ -107,7 +112,7 @@ describe('toSdkCallbackWithBudgetCheck (#2619 / #2631 audit)', () => {
     // minutes for consensus_vote, but the client request times out at 60s
     // because no progressToken was sent.
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(
+    const callback = toSdkCallbackWithTimeoutCheck(
       passthroughHandler,
       'consensus_vote',
       600_000,
@@ -130,7 +135,7 @@ describe('toSdkCallbackWithBudgetCheck (#2619 / #2631 audit)', () => {
   it('still invokes the underlying handler even when warning fires', async () => {
     const logger = makeMockLogger();
     const handler = vi.fn(passthroughHandler);
-    const callback = toSdkCallbackWithBudgetCheck(handler, 'long_tool', 600_000, logger);
+    const callback = toSdkCallbackWithTimeoutCheck(handler, 'long_tool', 600_000, logger);
 
     const result = await callback({ key: 'value' }, { _meta: {} });
 
@@ -140,10 +145,10 @@ describe('toSdkCallbackWithBudgetCheck (#2619 / #2631 audit)', () => {
   });
 });
 
-describe('toSdkCallbackWithBudgetCheck #2703 telemetry — correlation-keyed JSONL', () => {
+describe('toSdkCallbackWithTimeoutCheck #2703 telemetry — correlation-keyed JSONL', () => {
   it('records a success event with eventId matching the WARN log', async () => {
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(
+    const callback = toSdkCallbackWithTimeoutCheck(
       passthroughHandler,
       'consensus_vote',
       600_000,
@@ -189,7 +194,7 @@ describe('toSdkCallbackWithBudgetCheck #2703 telemetry — correlation-keyed JSO
         },
       });
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(errorHandler, 'consensus_vote', 600_000, logger);
+    const callback = toSdkCallbackWithTimeoutCheck(errorHandler, 'consensus_vote', 600_000, logger);
 
     await callback({}, { _meta: {} });
 
@@ -206,7 +211,7 @@ describe('toSdkCallbackWithBudgetCheck #2703 telemetry — correlation-keyed JSO
       throw new Error('handler exploded');
     };
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(
+    const callback = toSdkCallbackWithTimeoutCheck(
       throwingHandler,
       'consensus_vote',
       600_000,
@@ -224,7 +229,7 @@ describe('toSdkCallbackWithBudgetCheck #2703 telemetry — correlation-keyed JSO
 
   it('records nothing when no mismatch fires (the non-mismatch path stays silent)', async () => {
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(
+    const callback = toSdkCallbackWithTimeoutCheck(
       passthroughHandler,
       'short_tool',
       MCP_SDK_DEFAULT_REQUEST_TIMEOUT_MS - 1_000,
@@ -238,7 +243,7 @@ describe('toSdkCallbackWithBudgetCheck #2703 telemetry — correlation-keyed JSO
 
   it('eventIds are unique across mismatched calls', async () => {
     const logger = makeMockLogger();
-    const callback = toSdkCallbackWithBudgetCheck(
+    const callback = toSdkCallbackWithTimeoutCheck(
       passthroughHandler,
       'consensus_vote',
       600_000,

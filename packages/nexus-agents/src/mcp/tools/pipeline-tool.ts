@@ -10,7 +10,6 @@
 
 import { z } from 'zod';
 import { asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
-import { parseBoolEnv } from '../../config/defaults-env.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -22,9 +21,8 @@ import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchest
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
 import { createAgentStages, type AgentExecutorConfig } from '../../pipeline/agent-executor.js';
 import type { AgentBudgetConfig } from '../../pipeline/budget-guard.js';
-import { estimateRelativeBudget, resolveBudgetTolerance } from '../../pipeline/budget-guard.js';
+import { isBudgetEnforcementEnabled, resolveEnforcedRunBudget } from '../../pipeline/run-budget.js';
 import { getTemplate } from '../../pipeline/templates.js';
-import { createSharedTaskAnalyzer } from '../../core/task-analysis/shared-task-analyzer.js';
 import {
   createDevStageRegistry,
   createGreenfieldStageRegistry,
@@ -189,47 +187,30 @@ async function resolveTask(task: string, specFile: string | undefined): Promise<
   }
 }
 
-/** Typical LLM output:input token ratio (matches `buildDryRunReport`). */
-const OUTPUT_TOKEN_RATIO = 0.6;
 /** Fallback stage count when the effective template can't be resolved. */
 const DEFAULT_STAGE_COUNT = 6;
 
 /**
- * Estimate-relative per-run token budget (#3262), gated behind the boolean
- * `NEXUS_BUDGET_ENFORCE` (`true`/`1`; default-off — existing runs are
- * byte-for-byte unchanged; #5155). The dry-run estimator is per-CALL, so the whole run is
- * approximated as `perCallTokens × stageCount` (stages of the effective
- * template), then capped at `× tolerance` (NEXUS_BUDGET_TOLERANCE, default 1.5).
- * Token-based — never dollars — so it holds under `NEXUS_BILLING_MODE=plan`.
- * Returns `undefined` (→ the existing no-op guard) when enforcement is off or no
- * usable estimate exists; the fail-OPEN no-op is logged so it's never silent.
+ * Estimate-relative per-run token budget (#3262), gated behind
+ * `NEXUS_BUDGET_ENFORCE` through the shared {@link resolveEnforcedRunBudget}
+ * — `run_workflow` resolves through the same function (#4754). The dry-run
+ * estimator is per-CALL, so the run is approximated as one call per stage of
+ * the effective template.
  */
 function resolveRunBudget(
   task: string,
   templateId: string | undefined,
   logger: ILogger
 ): AgentBudgetConfig | undefined {
-  if (!parseBoolEnv('NEXUS_BUDGET_ENFORCE', false)) return undefined;
+  if (!isBudgetEnforcementEnabled()) return undefined;
   const effectiveId = templateId ?? classifyTask(task).pipelineType;
   const template = getTemplate(effectiveId) ?? getTemplate('general');
-  const stageCount = template?.stages.length ?? DEFAULT_STAGE_COUNT;
-  const perCall = Math.round(
-    createSharedTaskAnalyzer().estimateTokens(task) * (1 + OUTPUT_TOKEN_RATIO)
-  );
-  const budget = estimateRelativeBudget(perCall * stageCount, resolveBudgetTolerance());
-  if (budget === undefined) {
-    logger.warn('Budget enforcement on but no usable token estimate — running unguarded (#3262)', {
-      perCall,
-      stageCount,
-    });
-  } else {
-    logger.info('Estimate-relative token budget enforced (#3262)', {
-      template: effectiveId,
-      stageCount,
-      maxTokens: budget.maxTokens,
-    });
-  }
-  return budget;
+  return resolveEnforcedRunBudget({
+    estimateText: task,
+    callCount: template?.stages.length ?? DEFAULT_STAGE_COUNT,
+    logger,
+    logContext: { template: effectiveId },
+  });
 }
 
 /** Select the appropriate stage registry based on template or auto-detection. */
