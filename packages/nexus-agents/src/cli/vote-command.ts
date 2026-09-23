@@ -46,6 +46,7 @@ import {
   contrarianCheckLine,
   contrarianCheckSummaryLine,
   modelsLine,
+  optionSummaryLines,
   panelShapeLines,
   projectLine,
   retriedFromLabel,
@@ -156,8 +157,10 @@ interface SummaryContext {
    * live was wrong, in the laundering direction.
    */
   readonly decision: VoteDecisionStatus;
-  /** #5362: present when the option gate drove the rejection. */
-  readonly optionGate?: OptionGateExplain;
+  /** #5362 veto reason; #6585 the tally the `Options:` block renders. */
+  readonly optionGate?: CliVoteResult['optionGate'];
+  /** #6585: required so every caller states whether options were declared. */
+  readonly declaredOptions: readonly string[] | undefined;
   /** #6111: the quick-mode contrarian check, which no seat count can carry. */
   readonly contrarianCheck: ContrarianCheckStatus;
   /** #6110: the project the panel judged; `executeVoting` always stamps it. */
@@ -190,6 +193,7 @@ function printSummary(ctx: SummaryContext): void {
   writeLine(`  Threshold: ${threshold}`);
   // Project, #6115 models (zeros included), #6103 seat timing, #6258 workspace: always printed.
   for (const l of panelShapeLines(ctx.project, votes, ctx.workspace)) writeLine(`  ${l}`);
+  for (const l of optionSummaryLines(ctx.declaredOptions, ctx.optionGate)) writeLine(`  ${l}`);
 
   // Yellow for a void: it is neither an approval nor the panel rejecting, and
   // the colour is the first thing a human reads.
@@ -620,6 +624,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
         threshold: result.threshold,
         decision: result.decision,
         ...(result.optionGate === undefined ? {} : { optionGate: result.optionGate }),
+        declaredOptions: options.options,
         contrarianCheck: result.contrarianCheck,
         project: result.project,
         workspace: result.workspace,

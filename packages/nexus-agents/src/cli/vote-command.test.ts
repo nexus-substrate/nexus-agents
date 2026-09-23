@@ -1392,3 +1392,80 @@ describe('voteCommand — panel model diversity line (#6115)', () => {
     );
   });
 });
+
+describe('voteCommand — declared-option block (#6585)', () => {
+  function extendedResult(optionGate?: Record<string, unknown>): Record<string, unknown> {
+    return {
+      proposal: 'p',
+      threshold: 'simple_majority',
+      result: createMockConsensusResult({ outcome: 'approved' }),
+      votes: [],
+      totalTimeMs: 5,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+      decision: 'approved',
+      ...(optionGate === undefined ? {} : { optionGate }),
+    };
+  }
+
+  let stdout: string[];
+
+  beforeEach(() => {
+    executeVotingMock.mockReset();
+    recordAuthenticVoteMock.mockReset();
+    recordAuthenticVoteMock.mockReturnValue(
+      persistedOutcome() as unknown as {
+        persisted: boolean;
+        record: { id: string; sequence: number };
+      }
+    );
+    stdout = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('prints each declared option with the engine tally, the winner and the coverage', async () => {
+    executeVotingMock.mockResolvedValue(
+      extendedResult({
+        tally: [
+          { option: 'Alpha', count: 3 },
+          { option: 'Beta', count: 1 },
+        ],
+        leadingOption: 'Alpha',
+        leadingCount: 3,
+        approverCount: 4,
+        selectedCount: 4,
+        unattributedApprovals: 0,
+        leadingShare: 0.75,
+        threshold: 'majority',
+        approved: true,
+      })
+    );
+    await voteCommand({ proposal: 'p', options: ['Alpha', 'Beta', 'Gamma'] });
+    const out = stdout.join('');
+    expect(out).toContain('  Options:');
+    expect(out).toContain('    Alpha: 3');
+    expect(out).toContain('    Beta: 1');
+    expect(out).toContain('    Gamma: 0');
+    expect(out).toContain(
+      '    Winner: "Alpha" (3 of 4 approvers; cleared the majority option bar)'
+    );
+    expect(out).toContain(
+      '    Coverage: 4 of 4 approvers named a declared option (0 unattributed)'
+    );
+  });
+
+  it('prints no Options block when no options were declared', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult());
+    await voteCommand({ proposal: 'p' });
+    expect(stdout.join('')).not.toContain('Options:');
+    // Positive control: the summary rendered, so the absence is not vacuous.
+    expect(stdout.join('')).toContain('Workspace:');
+  });
+});
