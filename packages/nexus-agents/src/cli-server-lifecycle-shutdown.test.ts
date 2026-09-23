@@ -31,7 +31,7 @@ import type { ILogger } from './core/index.js';
  * Pinned here so changing how long an orphaned server may linger is a
  * deliberate, reviewed edit rather than a silent one.
  */
-const DEFAULT_SHUTDOWN_BOUND_MS = 12_000;
+const DEFAULT_SHUTDOWN_BOUND_MS = 13_000;
 
 function createMockLogger(): ILogger {
   return {
@@ -208,7 +208,7 @@ describe('createGracefulShutdown', () => {
     );
   });
 
-  it('defaults the bound to 12 s (SHUTDOWN_CLEANUP_TIMEOUT_MS)', async () => {
+  it('defaults the bound to 13 s (SHUTDOWN_CLEANUP_TIMEOUT_MS)', async () => {
     vi.useFakeTimers();
     const exit = vi.fn();
     const done = createGracefulShutdown({

@@ -37,9 +37,9 @@ import type { AuditLogger } from './audit/index.js';
  * How long shutdown waits for running tool calls before closing the audit
  * logger anyway.
  *
- * It spends part of the 12 s cleanup bound (`SHUTDOWN_CLEANUP_TIMEOUT_MS` in
- * `cli-server-lifecycle.ts`), which is sized for a contended final audit flush
- * (10 s lock wait + 2 s). Waiting longer here would let one slow tool call push
+ * It spends part of the 13 s cleanup bound (`SHUTDOWN_CLEANUP_TIMEOUT_MS` in
+ * `cli-server-lifecycle.ts`), which is sized for this drain plus a contended
+ * final audit flush (1 s + 10 s lock wait + 2 s). Waiting longer here would let one slow tool call push
  * the flush past that bound and lose `system.shutdown.begin` as well. Closing
  * the transport aborts each handler's `extra.signal`, so a handler that honours
  * it returns well inside this window; one that does not is counted on the

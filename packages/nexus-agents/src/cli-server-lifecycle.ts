@@ -179,15 +179,17 @@ export function logFinalEventBusStats(logger: ILogger): void {
  * Upper bound on the graceful-shutdown cleanup before the process exits
  * anyway (#6560).
  *
- * Why 12 s: the slowest step the cleanup is expected to finish is the audit
- * logger's final flush. Once that flush appends under the cross-process audit
- * lock (#6546/#6559), a contended flush may legitimately wait the lock's 10 s
- * acquisition timeout (`utils/file-lock.ts`) before it fails loudly; 2 s on top
- * covers the append itself and the remaining in-process teardown. Anything
+ * Why 13 s: the slowest step the cleanup is expected to finish is the audit
+ * logger's final flush, and since #6573 it runs LAST, after the tool-call
+ * drain (`TOOL_CALL_DRAIN_TIMEOUT_MS`, 1 s) and the rest of the teardown. Once
+ * that flush appends under the cross-process audit lock (#6546/#6559), a
+ * contended flush may legitimately wait the lock's 10 s acquisition timeout
+ * (`utils/file-lock.ts`) before it fails loudly. 10 s + the 1 s drain + 2 s
+ * for the append, closing the transport and the remaining teardown. Anything
  * longer is a hang, and a hung cleanup must not keep an orphaned server alive —
  * not lingering is the whole point of {@link watchParentProcess}.
  */
-const SHUTDOWN_CLEANUP_TIMEOUT_MS = 12_000;
+const SHUTDOWN_CLEANUP_TIMEOUT_MS = 13_000;
 
 /** Options for {@link createGracefulShutdown}. */
 interface GracefulShutdownOptions {
