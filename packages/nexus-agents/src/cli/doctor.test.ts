@@ -154,6 +154,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       dirWritable: false,
       outcomeCount: 0,
       fileEligibleOutcomeCount: 0,
+      routedOutcomes: { total: 0, last7Days: 0 },
       ruleCount: 0,
       activeRuleCount: 0,
       trainedOnEligible: null,

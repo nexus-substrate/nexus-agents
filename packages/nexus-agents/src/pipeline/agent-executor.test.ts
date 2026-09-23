@@ -451,6 +451,62 @@ describe('createAgentStages — central workflow hub', () => {
   // The threaded `cli` now comes from `r.cli` (executeExpert's resolved CLI);
   // when undefined (bridge failed before dispatch, or non-CLI stage like
   // local security scan) the record is skipped rather than fabricated.
+  describe('routed marker on stage outcomes (#6521)', () => {
+    function findRecord(spy: ReturnType<typeof vi.fn>, prefix: string): Record<string, unknown> {
+      const call = spy.mock.calls.find(
+        (c: unknown[]) => (c[0] as { id?: string }).id?.startsWith(prefix) === true
+      );
+      if (call === undefined) throw new Error(`no ${prefix} record`);
+      return call[0] as Record<string, unknown>;
+    }
+
+    it('copies routedBy from a routed bridge result onto every CLI stage record', async () => {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      const routed = { success: true, durationMs: 90, cli: 'codex', routedBy: 'composite-router' };
+      mockExecuteExpert
+        .mockResolvedValueOnce({ ...routed, text: 'Plan v1', expertType: 'architecture' })
+        .mockResolvedValueOnce({
+          ...routed,
+          text: '[{"id":"t1","title":"x","description":"y","assignedTo":"dev"}]',
+          expertType: 'pm',
+        })
+        .mockResolvedValueOnce({ ...routed, text: 'implementation done', expertType: 'code' });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+      const tasks = await stages.decompose('plan');
+      await stages.implement(tasks[0]!);
+
+      for (const prefix of ['pipeline-plan-', 'pipeline-decompose-', 'pipeline-t1-']) {
+        expect(findRecord(appendSpy, prefix)['routedBy']).toBe('composite-router');
+      }
+    });
+
+    it('leaves the marker off when the bridge result was not routed', async () => {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: 'Plan v1',
+        durationMs: 90,
+        expertType: 'architecture',
+        cli: 'gemini',
+      });
+
+      const stages = createAgentStages();
+      await stages.plan('build feature A', '');
+
+      expect(Object.keys(findRecord(appendSpy, 'pipeline-plan-'))).not.toContain('routedBy');
+    });
+  });
+
   describe('recordOutcome cli threading (#2823)', () => {
     it('writes the actual cli from executeExpert, never hardcoded claude', async () => {
       const appendSpy = vi.fn();

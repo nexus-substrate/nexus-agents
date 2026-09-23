@@ -234,6 +234,12 @@ export interface CliResponse {
   readonly fallbackFrom?: string;
   /** Duration in milliseconds */
   readonly durationMs?: number;
+  /**
+   * CLI slot of the arm `CompositeRouter.executeTask` selected and ran (#6521).
+   * Set only by the router, never by an adapter. CLI subprocess adapters report
+   * no `model`, so without this a caller cannot attribute a routed outcome.
+   */
+  readonly routedCli?: CliName;
   /** Raw response (for debugging) */
   readonly raw?: unknown;
   /**

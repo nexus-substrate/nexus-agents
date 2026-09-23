@@ -1102,6 +1102,20 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       }
     });
 
+    it('names the CLI slot of the arm it routed to on the response (#6521)', async () => {
+      const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+      const result = await router.executeTask({ content: 'Test task' });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // The mock adapters report no `model`, like the CLI subprocess adapters:
+      // routedCli is then the only attribution the caller has.
+      expect(result.value.model).toBeUndefined();
+      const routedArm = recordOutcomeSpy.mock.calls[0]?.[0];
+      expect(routedArm).toBeDefined();
+      expect(result.value.routedCli).toBe(routedArm);
+    });
+
     it('should auto-record feedback after successful execution', async () => {
       const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
       const zeroRouter = router.getZeroRouter();

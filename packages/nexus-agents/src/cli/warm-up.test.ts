@@ -10,6 +10,7 @@ import { generateSyntheticPriors, runWarmUp, SYNTHETIC_MARKER } from './warm-up.
 import { resetOutcomeStore, getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { TASK_CATEGORIES } from '../config/task-specialization-types.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
+import { isDistillerEligible } from '../learning/distiller-eligibility.js';
 
 // Disable persistence so getOutcomeStore() returns a fresh in-memory store
 vi.mock('../config/learning-persistence.js', () => ({
@@ -89,6 +90,14 @@ describe('warm-up', () => {
       for (const o of outcomes) {
         expect(o.source).toBe('manual');
       }
+    });
+
+    it('never tags a synthetic prior as routed, so none can train distilled rules (#6521)', () => {
+      runWarmUp();
+      const outcomes = getOutcomeStore().query();
+      expect(outcomes.length).toBeGreaterThan(0);
+      expect(outcomes.filter((o) => o.routedBy !== undefined)).toEqual([]);
+      expect(outcomes.filter(isDistillerEligible)).toEqual([]);
     });
 
     it('should mark primary CLI outcomes as success', () => {

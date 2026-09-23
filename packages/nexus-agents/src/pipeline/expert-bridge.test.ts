@@ -52,6 +52,44 @@ describe('executeExpert workspace (#6358)', () => {
   });
 });
 
+describe('executeExpert routed marker (#6521)', () => {
+  beforeEach(() => {
+    executeTaskMock.mockReset();
+  });
+
+  it('tags a CompositeRouter-executed result as routed', async () => {
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done', model: 'claude-opus' } });
+    const result = await executeExpert('code', 'write it');
+    expect(result.success).toBe(true);
+    expect(result.routedBy).toBe('composite-router');
+  });
+
+  it('attributes the routed CLI when the adapter reports no model', async () => {
+    // CLI subprocess adapters return no `model`; before #6521 the bridge then
+    // had no cli and the pipeline dropped the routed outcome entirely.
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done', routedCli: 'codex' } });
+    const result = await executeExpert('code', 'write it');
+    expect(result.cli).toBe('codex');
+    expect(result.routedBy).toBe('composite-router');
+  });
+
+  it('keeps the model-derived CLI when the adapter reports one', async () => {
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: { text: 'done', model: 'gemini-3-pro', routedCli: 'gemini' },
+    });
+    const result = await executeExpert('code', 'write it');
+    expect(result.cli).toBe('gemini');
+  });
+
+  it('does not tag a failed execution', async () => {
+    executeTaskMock.mockResolvedValue({ ok: false, error: { message: 'boom' } });
+    const result = await executeExpert('code', 'write it');
+    expect(result.success).toBe(false);
+    expect(result.routedBy).toBeUndefined();
+  });
+});
+
 describe('totalTokensFromUsage (#3396)', () => {
   it('returns undefined when no usage was reported', () => {
     // CLI-subprocess paths whose extractUsage() returns null land here — the

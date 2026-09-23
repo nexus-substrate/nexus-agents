@@ -97,7 +97,7 @@ function makeOutcome(overrides?: Partial<TaskOutcome>): TaskOutcome {
     durationMs: 1200,
     timestamp: '2026-02-07T10:00:00Z',
     source: 'delegate',
-    cliSource: 'executed',
+    routedBy: 'composite-router',
     ...overrides,
   };
 }
@@ -557,7 +557,8 @@ describe('PersistentStrategyDistiller', () => {
     it('names the empty case: zero eligible outcomes writes a 0/0 snapshot with a timestamp', () => {
       const store = new OutcomeStore();
       store.append(makeOutcome({ id: 'seat', source: 'consensus' }));
-      store.append(makeOutcome({ id: 'warm', source: 'manual' }));
+      const { routedBy: _routed, ...warmUp } = makeOutcome({ id: 'warm', source: 'manual' });
+      store.append(warmUp);
       const d = new PersistentStrategyDistiller(
         store,
         { filePath, dataDir: tmpDir },

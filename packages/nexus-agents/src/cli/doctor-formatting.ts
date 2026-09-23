@@ -270,6 +270,11 @@ function printLearningPersistence(check: LearningPersistenceCheck): void {
   writeLine(
     `  Eligible outcomes in outcomes.jsonl (whole file): ${String(check.fileEligibleOutcomeCount)}`
   );
+  // #6521: the routed count is the loop's input; a zero here is the finding,
+  // not a failure, so it renders as a plain line.
+  writeLine(
+    `  Routed outcomes (CompositeRouter): ${String(check.routedOutcomes.total)} total, ${String(check.routedOutcomes.last7Days)} in the last 7 days`
+  );
 }
 
 /**

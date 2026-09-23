@@ -65,6 +65,7 @@ export function createResearchStage({
         taskId: 'research',
         category: 'research',
         cli: undefined,
+        routedBy: undefined,
         success: true,
         durationMs,
       });
@@ -123,6 +124,7 @@ export function createPlanStage({
       taskId: 'plan',
       category: 'architecture',
       cli: r.cli,
+      routedBy: r.routedBy,
       success: r.success,
       durationMs: r.durationMs,
     });
@@ -161,6 +163,7 @@ export function createDecomposeStage({
       taskId: 'decompose',
       category: 'planning',
       cli: r.cli,
+      routedBy: r.routedBy,
       success: r.success,
       durationMs: r.durationMs,
     });
@@ -193,6 +196,7 @@ export function createImplementStage({
       taskId: task.id,
       category: 'code_generation',
       cli: r.cli,
+      routedBy: r.routedBy,
       success: r.success,
       durationMs: r.durationMs,
     });
@@ -231,6 +235,7 @@ export function createQaReviewStage({
       taskId: task.id,
       category: 'code_review',
       cli: r.cli,
+      routedBy: r.routedBy,
       success: review.verdict === 'pass',
       durationMs: r.durationMs,
     });
@@ -277,6 +282,7 @@ export function createQualityGateStage({
       taskId: 'quality-gate',
       category: 'code_review',
       cli: undefined,
+      routedBy: undefined,
       success: passed,
       durationMs: ms,
     });
@@ -317,6 +323,7 @@ export function createSecurityScanStage({
       taskId: 'security',
       category: 'security_review',
       cli: undefined,
+      routedBy: undefined,
       success: passed,
       durationMs: ms,
     });

@@ -124,6 +124,7 @@ async function failClosedVote(
     taskId: 'vote',
     category: 'planning',
     cli: undefined,
+    routedBy: undefined,
     success: false,
     durationMs: getTimeProvider().now() - start,
   });
@@ -171,6 +172,7 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
         taskId: 'vote',
         category: 'planning',
         cli: undefined,
+        routedBy: undefined,
         success: vote.kind === 'approved',
         durationMs: ms,
       });

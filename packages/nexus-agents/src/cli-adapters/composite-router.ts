@@ -595,7 +595,10 @@ export class CompositeRouter implements ICompositeRouter {
     // Auto-record feedback for learning systems
     this.autoRecordFeedback(decision, task, success, durationMs);
 
-    return executeResult;
+    if (!executeResult.ok) return executeResult;
+    // #6521: name the arm that ran, so an outcome writer can attribute a
+    // routed result the adapter did not tag with a model.
+    return ok({ ...executeResult.value, routedCli: routingArmDisplaySlot(decision.cliName) });
   }
 
   private autoRecordFeedback(

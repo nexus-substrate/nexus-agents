@@ -37,7 +37,11 @@ import {
   getOutcomesFile,
   getRulesFile,
 } from '../config/learning-persistence.js';
-import { countEligibleOutcomesInFile } from '../learning/distiller-eligibility.js';
+import {
+  countEligibleOutcomesInFile,
+  countRoutedOutcomesInFile,
+  type RoutedOutcomeCounts,
+} from '../learning/distiller-eligibility.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
@@ -160,6 +164,11 @@ export interface LearningPersistenceCheck {
    * exceed what it trains on; `trainedOnEligible` is that number.
    */
   readonly fileEligibleOutcomeCount: number;
+  /**
+   * Outcomes tagged `routedBy: 'composite-router'` in outcomes.jsonl, and how
+   * many landed in the last 7 days (#6521): the routing loop's input rate.
+   */
+  readonly routedOutcomes: RoutedOutcomeCounts;
   /** Every persisted rule, whatever its status. */
   readonly ruleCount: number;
   /** Persisted rules with status `active`: the ones routing applies (#6512). */
@@ -720,6 +729,7 @@ const DISABLED_CHECK: LearningPersistenceCheck = {
   dirWritable: false,
   outcomeCount: 0,
   fileEligibleOutcomeCount: 0,
+  routedOutcomes: { total: 0, last7Days: 0 },
   ruleCount: 0,
   activeRuleCount: 0,
   trainedOnEligible: null,
@@ -734,6 +744,7 @@ function checkLearningPersistence(): LearningPersistenceCheck {
     const { exists: dirExists, writable: dirWritable } = checkDirAccess(getLearningDir());
     const outcomeCount = countJsonlLines(getOutcomesFile());
     const fileEligibleOutcomeCount = countEligibleOutcomesInFile(getOutcomesFile());
+    const routedOutcomes = countRoutedOutcomesInFile(getOutcomesFile(), getTimeProvider().now());
     const rules = readRulesMetadata(getRulesFile());
     return {
       enabled: true,
@@ -741,6 +752,7 @@ function checkLearningPersistence(): LearningPersistenceCheck {
       dirWritable,
       outcomeCount,
       fileEligibleOutcomeCount,
+      routedOutcomes,
       ruleCount: rules.count,
       activeRuleCount: rules.activeCount,
       trainedOnEligible: rules.eligibleOutcomes,
@@ -754,6 +766,7 @@ function checkLearningPersistence(): LearningPersistenceCheck {
       dirWritable: false,
       outcomeCount: 0,
       fileEligibleOutcomeCount: 0,
+      routedOutcomes: { total: 0, last7Days: 0 },
       ruleCount: 0,
       activeRuleCount: 0,
       trainedOnEligible: null,

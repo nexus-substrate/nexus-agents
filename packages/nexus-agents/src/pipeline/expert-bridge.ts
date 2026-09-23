@@ -14,6 +14,7 @@ import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import { resolveCliSlot } from '../config/model-availability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
 
 /**
  * Resolves a CLI slot from the model string a (CLI or API) adapter returned.
@@ -49,6 +50,13 @@ export interface ExpertBridgeResult {
    */
   readonly cli?: CliNameLiteral;
   /**
+   * `'composite-router'` when `CompositeRouter.executeTask` selected the CLI
+   * that produced this result (#6521). Set where the router's decision and the
+   * execution meet (`adaptCompositeRouter`), so an outcome recorder copies it
+   * rather than asserting routing on its own. Undefined on every failure path.
+   */
+  readonly routedBy?: OutcomeRoutedBy;
+  /**
    * Total tokens (input + output) the underlying CLI/adapter reported for this
    * call, when available (#3396). Best-effort: `CliResponse.usage` is optional
    * — CLI-subprocess paths whose `extractUsage` returns null leave this
@@ -80,6 +88,7 @@ interface RouterLike {
     value: {
       text: string;
       cli?: CliNameLiteral;
+      routedBy?: OutcomeRoutedBy;
       tokensUsed?: number;
       model?: string;
       tokensIn?: number;
@@ -203,6 +212,7 @@ function adaptCompositeRouter(
       value: {
         text: string;
         cli?: CliNameLiteral;
+        routedBy?: OutcomeRoutedBy;
         tokensUsed?: number;
         model?: string;
         tokensIn?: number;
@@ -223,7 +233,9 @@ function adaptCompositeRouter(
         // adapter didn't set `model` or the model isn't in the registry,
         // cli stays undefined and downstream code can skip the record
         // rather than lie.
-        const cli = resolveCliFromModelString(result.value.model);
+        // #6521: CLI subprocess adapters report no model; the router's own
+        // record of the arm it ran is then the attribution.
+        const cli = resolveCliFromModelString(result.value.model) ?? result.value.routedCli;
         // #3396: surface token usage (best-effort) so budget enforcement,
         // attribution, and routing-experience metrics get real numbers instead
         // of zeros. `usage` is optional and `totalTokens` may be absent — fall
@@ -238,6 +250,9 @@ function adaptCompositeRouter(
           ok: true,
           value: {
             text: result.value.text,
+            // #6521: this router picked the arm that ran; the tag rides with
+            // the result so the outcome writer can say so.
+            routedBy: 'composite-router',
             ...(cli !== undefined && { cli }),
             ...(tokensUsed !== undefined && { tokensUsed }),
             ...(model !== undefined && { model }),
@@ -313,6 +328,26 @@ function checkCircuitHealth(): { healthy: boolean; message: string } {
   return { healthy: true, message: '' };
 }
 
+/** A successful router result as an {@link ExpertBridgeResult}; absent fields stay absent. */
+function toSuccessResult(
+  value: Awaited<ReturnType<RouterLike['executeTask']>>['value'],
+  expertType: BuiltInExpertType,
+  durationMs: number
+): ExpertBridgeResult {
+  return {
+    success: true,
+    text: value.text,
+    expertType,
+    durationMs,
+    ...(value.cli !== undefined && { cli: value.cli }),
+    ...(value.routedBy !== undefined && { routedBy: value.routedBy }),
+    ...(value.tokensUsed !== undefined && { tokensUsed: value.tokensUsed }),
+    ...(value.model !== undefined && { model: value.model }),
+    ...(value.tokensIn !== undefined && { tokensIn: value.tokensIn }),
+    ...(value.tokensOut !== undefined && { tokensOut: value.tokensOut }),
+  };
+}
+
 /** Dispatch task to router with rate limit retry (#1802). */
 async function dispatchWithRateLimitRetry(
   router: RouterLike,
@@ -331,17 +366,7 @@ async function dispatchWithRateLimitRetry(
         durationMs,
         cli: result.value.cli,
       });
-      return {
-        success: true,
-        text: result.value.text,
-        expertType,
-        durationMs,
-        ...(result.value.cli !== undefined && { cli: result.value.cli }),
-        ...(result.value.tokensUsed !== undefined && { tokensUsed: result.value.tokensUsed }),
-        ...(result.value.model !== undefined && { model: result.value.model }),
-        ...(result.value.tokensIn !== undefined && { tokensIn: result.value.tokensIn }),
-        ...(result.value.tokensOut !== undefined && { tokensOut: result.value.tokensOut }),
-      };
+      return toSuccessResult(result.value, expertType, durationMs);
     }
 
     const isRateLimit = isRateLimitText(result.error.message);

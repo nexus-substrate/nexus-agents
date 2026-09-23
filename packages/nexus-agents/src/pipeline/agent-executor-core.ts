@@ -17,6 +17,7 @@ import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -57,6 +58,13 @@ interface RecordOutcomeArgs {
    * the routing learner is suppressed.
    */
   cli: CliNameLiteral | undefined;
+  /**
+   * The bridge result's `routedBy` (#6521), copied onto the outcome. Required
+   * (though it may be `undefined`) so every call site states it: a stage that
+   * forgot to forward it would silently drop the routed marker, and the
+   * compiler is what names the call sites.
+   */
+  routedBy: OutcomeRoutedBy | undefined;
   success: boolean;
   durationMs: number;
   routingStage?: string;
@@ -88,6 +96,7 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
       source: 'delegate' as const,
       routingStage: args.routingStage,
       retryCount: args.retryCount,
+      ...(args.routedBy !== undefined && { routedBy: args.routedBy }),
     });
   } catch (error) {
     logger.debug('Failed to record outcome', { taskId: args.taskId, error: String(error) });
