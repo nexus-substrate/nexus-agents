@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.94.1
+
+### Patch Changes
+
+- [#6596](https://github.com/nexus-substrate/nexus-agents/pull/6596) [`b65a8a1`](https://github.com/nexus-substrate/nexus-agents/commit/b65a8a170d4ec06e275193c35ea11fae1f304f1f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct the documentation of the worker quality gate used by `orchestrate`. It said worker output was checked by a default gate (non-empty, 10 to 100,000 characters). No such default ever ran: `executeWorkerDispatch` applies a gate only when a caller passes one, and the `orchestrate` tool passes none, so its worker output is not gated. The docs now say so, and a test fails if a default is wired in without the docs changing. The unused helpers behind the old claim (`DEFAULT_QUALITY_GATE`, `composeGates`, `nonEmptyGate`, `outputLengthGate`, `MIN_OUTPUT_LENGTH`, `MAX_OUTPUT_LENGTH`) are removed. None was on the published API surface. The `qualityGate` option, the `QualityGateFn` type and `applyQualityGate` remain.
+
 ## 8.94.0
 
 ### Minor Changes
