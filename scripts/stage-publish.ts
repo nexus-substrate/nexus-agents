@@ -38,6 +38,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ROOT } from './script-paths.js';
+import {
+  assertBundleFloors,
+  npmOverrides,
+  parseOverrideFloors,
+  type ParsedFloors,
+} from './stage-publish-floors.js';
 
 const PACKAGE_DIR = join(ROOT, 'packages/nexus-agents');
 
@@ -178,7 +184,7 @@ function run(cmd: string, args: string[], cwd: string): string {
  * Install the staged package's runtime dependencies and prove the tarball will
  * carry everything npm's installer expects to find inside the bundle.
  */
-function installBundle(stageDir: string): void {
+function installBundle(stageDir: string, floors: ParsedFloors): void {
   // --ignore-scripts: staging must not execute the hooks it exists to keep off
   // users' machines. The lockfile npm writes is never packed.
   const commitIso = run('git', ['log', '-1', '--format=%cI', 'HEAD'], ROOT).trim();
@@ -198,8 +204,11 @@ function installBundle(stageDir: string): void {
   const lock = JSON.parse(
     readFileSync(join(stageDir, 'node_modules', '.package-lock.json'), 'utf8')
   ) as {
-    packages?: Record<string, { inBundle?: boolean }>;
+    packages?: Record<string, { version?: string; name?: string; inBundle?: boolean }>;
   };
+  assertBundleFloors(lock, floors, (line) => {
+    console.log(line);
+  });
   const unpacked = unpackedBundleMembers(lock, packedFileList(stageDir));
   if (unpacked.length > 0) {
     throw new Error(
@@ -234,15 +243,37 @@ export function stage(): string {
     rmSync(packDir, { recursive: true, force: true });
   }
 
+  const floors = workspaceFloors();
+  writeStagedManifest(stageDir, floors);
+  installBundle(stageDir, floors);
+  return stageDir;
+}
+
+/** The root manifest's `pnpm.overrides`, parsed into floors (#6488). */
+function workspaceFloors(): ParsedFloors {
+  const root = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
+    pnpm?: { overrides?: Record<string, string> };
+  };
+  return parseOverrideFloors(root.pnpm?.overrides ?? {});
+}
+
+/**
+ * Rewrite the extracted manifest into the staged one, carrying the workspace
+ * floors as npm `overrides` so the stage install resolves above them. The
+ * field ships in the tarball, where it is inert: npm and pnpm read
+ * `overrides` only from the ROOT project, never from a dependency.
+ */
+function writeStagedManifest(stageDir: string, floors: ParsedFloors): void {
   const manifestPath = join(stageDir, 'package.json');
   const source = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
-  writeFileSync(
-    manifestPath,
-    `${JSON.stringify(stageManifest(source, BUNDLED_DEPENDENCIES), null, 2)}\n`
-  );
-
-  installBundle(stageDir);
-  return stageDir;
+  const staged = stageManifest(source, BUNDLED_DEPENDENCIES);
+  const { overrides, untranslated } = npmOverrides(floors.floors, staged.dependencies ?? {});
+  for (const floor of untranslated) {
+    console.log(
+      `floor "${floor.key}" names a direct dependency; npm cannot override it, checked only`
+    );
+  }
+  writeFileSync(manifestPath, `${JSON.stringify({ ...staged, overrides }, null, 2)}\n`);
 }
 
 function main(argv: readonly string[]): void {
