@@ -6,7 +6,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { CliToModelAdapter, createCliToModelAdapter } from './cli-to-model-adapter.js';
-import { ModelCapability } from '../core/index.js';
+import { ModelCapability, ErrorCode, err } from '../core/index.js';
+import { createCallerInputCliError } from './cli-error-helpers.js';
 import type { ICliAdapter, CliResponse, CliError } from './types.js';
 
 // ============================================================================
@@ -100,6 +101,50 @@ describe('CliToModelAdapter.complete — requested model (#6599)', () => {
     const cli = makeMockCliAdapter({ name: 'opencode' as const });
     await new CliToModelAdapter(cli).complete({ messages: [{ role: 'user', content: 'hi' }] });
     expect('model' in sentTask(cli)).toBe(false);
+  });
+
+  it('reports the forwarded model as the one that ran when the CLI names none', async () => {
+    const cli = makeMockCliAdapter({
+      name: 'codex' as const,
+      execute: vi.fn().mockResolvedValue({ ok: true, value: { text: 'ok' } }),
+    });
+    const res = await new CliToModelAdapter(cli).complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      model: 'gpt-6-luna',
+    });
+    // The canonical id of the forwarded model, not the adapter's modelId.
+    if (res.ok) expect(res.value.model).toBe('codex-5.1-mini');
+    expect(res.ok).toBe(true);
+  });
+
+  it('keeps the model the CLI itself reported over the forwarded one', async () => {
+    const cli = makeMockCliAdapter({
+      name: 'codex' as const,
+      execute: vi.fn().mockResolvedValue({ ok: true, value: { text: 'ok', model: 'gpt-5.5' } }),
+    });
+    const res = await new CliToModelAdapter(cli).complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      model: 'gpt-6-luna',
+    });
+    if (res.ok) expect(res.value.model).toBe('gpt-5.5');
+    expect(res.ok).toBe(true);
+  });
+
+  it('maps a caller-input CLI error to an INVALID_INPUT ModelError', async () => {
+    const cli = makeMockCliAdapter({
+      name: 'opencode' as const,
+      execute: vi
+        .fn()
+        .mockResolvedValue(
+          err(createCallerInputCliError('requested model is in rate-limit cooldown', 'opencode'))
+        ),
+    });
+    const res = await new CliToModelAdapter(cli).complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      model: 'acme/x',
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe(ErrorCode.INVALID_INPUT);
   });
 
   it('does not hand one CLI a registry model that belongs to another CLI', async () => {

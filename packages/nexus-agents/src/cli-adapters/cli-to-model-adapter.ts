@@ -20,12 +20,14 @@ import {
   err,
   ModelError,
   ConfigError,
+  ErrorCode,
   createLogger,
 } from '../core/index.js';
 import { estimateTokens } from '../core/token-estimator.js';
 import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } from './types.js';
 import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
+import { isCallerInputCliError } from './cli-error-helpers.js';
 import { findCanonicalModel } from '../config/model-config-helpers.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
@@ -153,7 +155,7 @@ export class CliToModelAdapter implements IModelAdapter {
   /**
    * Converts CliResponse to CompletionResponse.
    */
-  private toCompletionResponse(response: CliResponse): CompletionResponse {
+  private toCompletionResponse(response: CliResponse, forwarded?: string): CompletionResponse {
     const u = response.usage;
     return {
       content: [{ type: 'text', text: response.text }],
@@ -165,7 +167,10 @@ export class CliToModelAdapter implements IModelAdapter {
       // usage crosses the type boundary through the one conversion (#4440).
       ...(u !== undefined ? { usage: toModelTokenUsage(u) } : {}),
       stopReason: 'end_turn',
-      model: response.model ?? this.modelId,
+      // #6599: no CLI parser reports the model, so a forwarded model is the
+      // one that ran — report its canonical id, or cost and outcomes are
+      // attributed to the CLI default.
+      model: response.model ?? this.reportedForwardedModel(forwarded) ?? this.modelId,
       // #6094: carry the transport's captured stderr up to the model boundary
       // so the voter path can read the structured "could not read" signal.
       // Absent stays absent; an empty string is not a signal.
@@ -183,7 +188,21 @@ export class CliToModelAdapter implements IModelAdapter {
    */
   private toModelError(cliError: CliError): ModelError {
     const options = cliError.cause !== undefined ? { cause: cliError.cause } : {};
-    return new ModelError(cliError.message, options);
+    // #6599: caller input (e.g. an unresolvable requested model) keeps its
+    // identity across the bridge, so the breaker can decline to count it.
+    const code = isCallerInputCliError(cliError) ? { code: ErrorCode.INVALID_INPUT } : {};
+    return new ModelError(cliError.message, { ...options, ...code });
+  }
+
+  /**
+   * The canonical registry id of a model forwarded to this CLI, when the
+   * registry lists it under this CLI. A name the registry does not know is not
+   * claimed: the CLI may have substituted its default (agy does), so the
+   * adapter default stays the honest report.
+   */
+  private reportedForwardedModel(forwarded: string | undefined): string | undefined {
+    if (forwarded === undefined) return undefined;
+    return findCanonicalModel(this.cliAdapter.name, forwarded)?.id;
   }
 
   /**
@@ -203,7 +222,7 @@ export class CliToModelAdapter implements IModelAdapter {
       return err(this.toModelError(result.error));
     }
 
-    return ok(this.toCompletionResponse(result.value));
+    return ok(this.toCompletionResponse(result.value, task.model));
   }
 
   /**

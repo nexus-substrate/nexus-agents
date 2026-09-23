@@ -38,7 +38,7 @@ import {
 /**
  * Maps internal model names → Claude CLI aliases. Derived entirely from the
  * canonical registry: every claude entry contributes its `cliAlias` (passthrough),
- * its `cliModelName`, and every legacy-name in `aliases[]`. Migration of these
+ * its registry `id`, its `cliModelName`, and every legacy-name in `aliases[]`. Migration of these
  * legacy strings into the registry happened in #2200 Child 1.
  */
 const MODEL_TO_CLI_ALIAS: Record<string, string> = buildClaudeAliasMap();
@@ -49,6 +49,10 @@ function buildClaudeAliasMap(): Record<string, string> {
     if (model.cliAlias === undefined) continue;
     const alias = model.cliAlias;
     map[alias] = alias;
+    // #6599: the canonical registry id is what a model-bound request carries
+    // (`getAdapterForModel`, `resolveModelForTier`); the claude binary rejects
+    // it as `unrecognized_model`, so it must map to the alias too.
+    map[model.id] = alias;
     if (model.cliModelName !== undefined) map[model.cliModelName] = alias;
     for (const legacyName of model.aliases ?? []) {
       map[legacyName] = alias;

@@ -23,6 +23,7 @@ import {
   type TransientRetryConfig,
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
+import { createCallerInputCliError } from '../cli-error-helpers.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import { getAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
@@ -275,18 +276,18 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     const cliId = this.matchInventory(requested);
     if (cliId === undefined) {
       return err(
-        this.createError(
-          'EXECUTION_ERROR',
+        createCallerInputCliError(
           `OpenCode cannot run requested model "${requested}": \`opencode models\` lists none of ` +
-            `${openCodeCandidates(requested).join(', ')}. Refusing to run opencode's default in its place.`
+            `${openCodeCandidates(requested).join(', ')}. Refusing to run opencode's default in its place.`,
+          this.name
         )
       );
     }
     if (this.isCooled(cliId)) {
       return err(
-        this.createError(
-          'EXECUTION_ERROR',
-          `OpenCode requested model "${requested}" (${cliId}) is in rate-limit cooldown.`
+        createCallerInputCliError(
+          `OpenCode requested model "${requested}" (${cliId}) is in rate-limit cooldown.`,
+          this.name
         )
       );
     }

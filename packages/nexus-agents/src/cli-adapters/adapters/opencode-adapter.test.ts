@@ -17,6 +17,7 @@ import { getAvailabilityCache, resetAvailabilityCache } from '../../config/model
 import type { ModelId } from '../../config/model-capabilities-types.js';
 import { computeCostDetail } from '../../learning/usage-log.js';
 import { CliToModelAdapter } from '../cli-to-model-adapter.js';
+import { isCallerInputCliError } from '../cli-error-helpers.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('opencode'));
@@ -337,7 +338,10 @@ describe('OpenCodeCliAdapter', () => {
         // the default's outcome under the requested id. The caller gets an
         // explicit cooldown error instead.
         expect(res.ok).toBe(false);
-        if (!res.ok) expect(res.error.message).toContain('cooldown');
+        if (!res.ok) {
+          expect(res.error.message).toContain('cooldown');
+          expect(isCallerInputCliError(res.error)).toBe(true);
+        }
         expect(vi.mocked(spawn)).not.toHaveBeenCalled();
       } finally {
         delete process.env['NEXUS_DYNAMIC_MODELS'];
@@ -893,6 +897,8 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
     if (!res.ok) {
       expect(res.error.message).toContain('acme/not-listed-anywhere');
       expect(res.error.retryable).toBe(false);
+      // Caller input, not CLI health: breakers must not count it.
+      expect(isCallerInputCliError(res.error)).toBe(true);
     }
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
   });
