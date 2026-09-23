@@ -1889,6 +1889,7 @@ InterfaceDeclaration ComplianceStatus
   framework: string
   status: "compliant" | "non-compliant" | "partial"
 ClassDeclaration CompositeRouter
+  executeDecision(decision: CompositeRoutingDecision, task: CliTask, runTask?: CliTask) => Promise<Result<CliResponse, CliError>>
   executeTask(task: CliTask) => Promise<Result<CliResponse, CliError | CompositeRoutingError>>
   getAvailableModelsCache() => import("../config/available-models-cache.js").AvailableModelsCache | undefined
   getLatencyTracker() => ILatencyTracker | undefined
@@ -4666,6 +4667,7 @@ InterfaceDeclaration ICollaborationProtocol
   execute(config: CollaborationConfig, agents: Map<string, IAgent>) => Promise<Result<CollaborationResult, AgentError>>
   readonly pattern: CollaborationPattern
 InterfaceDeclaration ICompositeRouter
+  executeDecision((decision: CompositeRoutingDecision, task: CliTask, runTask?: CliTask) => Promise<Result<CliResponse, CliError>>) | undefined
   executeTask(task: CliTask) => Promise<Result<CliResponse, CliError | CompositeRoutingError>>
   getLatencyTracker() => ILatencyTracker | undefined
   getMetricsCollector() => IRoutingMetricsCollector | undefined

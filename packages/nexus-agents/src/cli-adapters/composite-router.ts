@@ -152,6 +152,16 @@ const DEFAULT_TOKEN_ESTIMATE = 1000;
 export interface ICompositeRouter {
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
   executeTask(task: CliTask): Promise<Result<CliResponse, CliError | CompositeRoutingError>>;
+  /**
+   * Run a decision `route()` returned and feed the outcome back, exactly as
+   * {@link executeTask} does after routing (#6533). Optional so existing
+   * implementors of this DI seam stay valid; `CompositeRouter` implements it.
+   */
+  executeDecision?(
+    decision: CompositeRoutingDecision,
+    task: CliTask,
+    runTask?: CliTask
+  ): Promise<Result<CliResponse, CliError>>;
   /** Record a routing outcome for a distinct routing arm (CLI slot or api:* arm) (#3422). */
   recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean): void;
   recordPreference(
@@ -572,8 +582,24 @@ export class CompositeRouter implements ICompositeRouter {
     if (!routeResult.ok) {
       return err(routeResult.error);
     }
+    return this.executeDecision(routeResult.value, task);
+  }
 
-    const decision = routeResult.value;
+  /**
+   * Execute a decision `route(task)` returned and auto-record feedback (#6533).
+   *
+   * For callers that need the decision itself (to display it, or to apply the
+   * route-time model to the task) before running it. `task` must be the object
+   * passed to `route()`: route-time attribution is keyed on it. `runTask` is
+   * what the arm executes when it differs from `task` (defaults to `task`).
+   * The result names the arm that ran (`routedCli`) and its own run time
+   * (`routedDurationMs`), on success and on failure.
+   */
+  async executeDecision(
+    decision: CompositeRoutingDecision,
+    task: CliTask,
+    runTask: CliTask = task
+  ): Promise<Result<CliResponse, CliError>> {
     const startTime = getTimeProvider().now();
 
     // Generate traceId for metrics correlation (Issue #559)
@@ -588,7 +614,7 @@ export class CompositeRouter implements ICompositeRouter {
     this.recordToOrchestrationObserver(decision, task);
 
     const armStart = getTimeProvider().now();
-    const executeResult = await decision.adapter.execute(task);
+    const executeResult = await decision.adapter.execute(runTask);
     const armDurationMs = getTimeProvider().now() - armStart;
 
     const durationMs = getTimeProvider().now() - startTime;

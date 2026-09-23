@@ -11,13 +11,21 @@
 
 /* eslint-disable no-console -- stdout is this command's user-facing output; the logger writes to stderr */
 
-import { createLogger, getTimeProvider, formatPercentage, type ILogger } from '../core/index.js';
+import {
+  createLogger,
+  getTimeProvider,
+  formatPercentage,
+  type ILogger,
+  type Result,
+} from '../core/index.js';
 import {
   createCompositeRouter,
   createAllAdapters,
   getAvailableClis,
   type ICliAdapter,
+  type ICompositeRouter,
   type CompositeRoutingDecision,
+  type CliError,
   type CliResponse,
   type CliName,
   type RoutingArmId,
@@ -27,6 +35,7 @@ import { getConfig, adaptRoutingConfig } from '../config/index.js';
 import { executeWithPuppeteer } from './orchestrate-puppeteer.js';
 import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 import { buildDryRunReport, renderDryRunText, type DryRunReport } from './orchestrate-dry-run.js';
+import { recordRoutedOrchestrateOutcome } from './orchestrate-outcome.js';
 
 // Re-export types for backward compatibility
 export type { OrchestrateEngine, OrchestrateOptions } from './orchestrate-types.js';
@@ -44,11 +53,34 @@ interface OrchestrationResult {
 }
 
 /**
+ * Run the routed arm through the router, so it learns from the run, and record
+ * the outcome (#6533). `task` is the object that was routed; `runTask` is what
+ * the arm executes.
+ */
+async function executeRouted(
+  router: ICompositeRouter,
+  decision: CompositeRoutingDecision,
+  task: CliTask,
+  runTask: CliTask,
+  logger: ILogger
+): Promise<Result<CliResponse, CliError>> {
+  if (router.executeDecision === undefined) {
+    // Only a custom ICompositeRouter lacks it; createCompositeRouter's does not.
+    logger.warn('Router cannot execute a decision; running the arm with no outcome feedback');
+    return decision.adapter.execute(runTask);
+  }
+  const result = await router.executeDecision(decision, task, runTask);
+  recordRoutedOrchestrateOutcome(task.content, result);
+  return result;
+}
+
+/**
  * Execute task with a routed adapter.
  */
 async function runWithAdapter(
   task: CliTask,
   decision: CompositeRoutingDecision,
+  router: ICompositeRouter,
   logger: ILogger,
   startTime: number
 ): Promise<OrchestrationResult> {
@@ -61,7 +93,7 @@ async function runWithAdapter(
       ? { ...task, model: decision.model }
       : task;
   logger.info('Executing task...', { model: decision.model ?? decision.cliName });
-  const execResult = await decision.adapter.execute(effectiveTask);
+  const execResult = await executeRouted(router, decision, task, effectiveTask, logger);
 
   if (!execResult.ok) {
     return {
@@ -134,7 +166,7 @@ async function executeWithRouting(
     };
   }
 
-  return runWithAdapter(task, decision, logger, startTime);
+  return runWithAdapter(task, decision, router, logger, startTime);
 }
 
 /**
