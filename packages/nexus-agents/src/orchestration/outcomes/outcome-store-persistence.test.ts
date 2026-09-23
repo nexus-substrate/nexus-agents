@@ -7,7 +7,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+  statSync,
+  utimesSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { TaskOutcome } from './outcome-types.js';
@@ -241,6 +249,87 @@ describe('PersistentOutcomeStore', () => {
       expect(parsedOnDisk['id']).toBe('future-1');
       expect(parsedOnDisk['routedBy']).toBe('composite-router');
       expect(parsedOnDisk['futureExtension']).toEqual({ flag: true, score: 42 });
+    });
+
+    it('keeps unknown keys on reclassified rows and changes only failureCategory (#6538)', () => {
+      // Two reclassify paths: autoClassify (no category) and the stale-category
+      // branch ('unknown' → 'execution'). Each row carries keys this schema
+      // does not know; the rewrite must change failureCategory and nothing else.
+      const unclassified = {
+        ...makeOutcome({ id: 'fail-unclassified', success: false, errorMessage: 'boom' }),
+        routedBy: 'composite-router',
+        futureField: 'x',
+      };
+      const staleCategory = {
+        ...makeOutcome({ id: 'fail-stale', success: false }),
+        failureCategory: 'unknown',
+        futureField: { nested: [1, 2] },
+      };
+      writeFileSync(
+        filePath,
+        [JSON.stringify(unclassified), JSON.stringify(staleCategory)].join('\n') + '\n'
+      );
+
+      new PersistentOutcomeStore({ filePath, dataDir: tmpDir });
+
+      const onDisk = readFileSync(filePath, 'utf-8')
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l) as Record<string, unknown>);
+      expect(onDisk).toHaveLength(2);
+      const [first, second] = onDisk;
+
+      // Hydrate's append also derives `family`/`vendor` from `model`; that
+      // enrichment is the only other permitted addition.
+      const allowedAdditions = ['failureCategory', 'family', 'vendor'];
+      const addedKeys = (row: Record<string, unknown> | undefined, before: object): string[] =>
+        Object.keys(row ?? {}).filter((k) => !(k in before));
+
+      expect(typeof first?.['failureCategory']).toBe('string');
+      expect(first).toMatchObject(unclassified);
+      expect(addedKeys(first, unclassified).every((k) => allowedAdditions.includes(k))).toBe(true);
+
+      const { failureCategory: _old, ...staleRest } = staleCategory;
+      expect(second?.['failureCategory']).toBe('execution');
+      expect(second).toMatchObject(staleRest);
+      expect(addedKeys(second, staleRest).every((k) => allowedAdditions.includes(k))).toBe(true);
+    });
+
+    it('does not rewrite an empty file on hydrate', () => {
+      writeFileSync(filePath, '');
+      const past = new Date('2020-01-01T00:00:00Z');
+      utimesSync(filePath, past, past);
+
+      new PersistentOutcomeStore({ filePath, dataDir: tmpDir });
+
+      expect(statSync(filePath).mtimeMs).toBe(past.getTime());
+      expect(readFileSync(filePath, 'utf-8')).toBe('');
+    });
+
+    it('does not rewrite a file whose rows need no purge or reclassification', () => {
+      // Non-canonical key order and an unknown key: any rewrite would show up
+      // in the bytes as well as the mtime.
+      const content =
+        [
+          JSON.stringify({ futureField: 'x', ...makeOutcome({ id: 'ok-1' }) }),
+          JSON.stringify(
+            makeOutcome({
+              id: 'fail-classified',
+              success: false,
+              errorMessage: 'request timed out',
+              failureCategory: 'timeout',
+            })
+          ),
+        ].join('\n') + '\n';
+      writeFileSync(filePath, content);
+      const past = new Date('2020-01-01T00:00:00Z');
+      utimesSync(filePath, past, past);
+
+      const store = new PersistentOutcomeStore({ filePath, dataDir: tmpDir });
+
+      expect(store.size).toBe(2);
+      expect(statSync(filePath).mtimeMs).toBe(past.getTime());
+      expect(readFileSync(filePath, 'utf-8')).toBe(content);
     });
 
     it('enforces FIFO eviction when hydrated count exceeds maxEntries', () => {
