@@ -114,6 +114,17 @@ export function isPersistenceEnabled(): boolean {
   return parseBoolEnv('NEXUS_PERSIST_LEARNING', true);
 }
 
+/**
+ * Off switch for strategy distillation alone (#6512 review I1). Defaults ON,
+ * matching the default-on learning loop. `NEXUS_STRATEGY_DISTILLATION=false`/`0`
+ * stops the router from distilling or applying distilled rules without also
+ * turning off outcome persistence, which `NEXUS_PERSIST_LEARNING` would. It
+ * overrides a config that enables `strategyDistillation`.
+ */
+export function isStrategyDistillationEnabled(): boolean {
+  return parseBoolEnv('NEXUS_STRATEGY_DISTILLATION', true);
+}
+
 /** Ensure the learning data directory exists. */
 export function ensureLearningDir(dir?: string): void {
   mkdirSync(dir ?? getLearningDir(), { recursive: true, mode: DIR_MODE });

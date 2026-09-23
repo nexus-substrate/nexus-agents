@@ -28,6 +28,7 @@ import type {
   StrategyAction,
 } from './strategy-distiller-types.js';
 import { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
+import { countEligibleSince, isDistillerEligible } from './distiller-eligibility.js';
 
 // ============================================================================
 // Helpers — pure functions
@@ -230,6 +231,8 @@ export class StrategyDistiller {
   private readonly rules = new Map<string, DistilledRule>();
   private outcomeCounter = 0;
   private lastDistillAt: number | undefined;
+  private eligibleAtLastDistill: number | undefined;
+  private persistedTriggerChecked = false;
 
   constructor(outcomeStore: OutcomeStore, logger?: ILogger, config?: Partial<DistillerConfig>) {
     this.outcomeStore = outcomeStore;
@@ -237,7 +240,11 @@ export class StrategyDistiller {
     this.logger = logger ?? createLogger({ component: 'StrategyDistiller' });
   }
 
-  /** Called for each processed outcome. Triggers distillation at threshold. */
+  /**
+   * Called for each processed outcome. Triggers distillation at threshold.
+   * This counter is per-process; `checkPersistedTrigger` covers the
+   * cross-process case (#6512).
+   */
   onOutcome(): void {
     this.outcomeCounter++;
     if (this.outcomeCounter >= this.config.triggerThreshold) {
@@ -246,10 +253,44 @@ export class StrategyDistiller {
     }
   }
 
-  /** Run distillation on current OutcomeStore data. */
+  /**
+   * First-route trigger against the persisted store (#6512).
+   *
+   * The in-process counter above only fires after `triggerThreshold` outcomes
+   * in ONE process, which short-lived CLI processes never reach. This checks
+   * the store instead: distill when it holds at least `triggerThreshold`
+   * eligible outcomes newer than the last distill (a hydrated snapshot's
+   * `savedAt`; no snapshot means all of them count). With no snapshot and zero
+   * eligible outcomes it distills anyway, so the empty state is recorded as
+   * "0 eligible, 0 rules, at <time>" rather than left as "never".
+   *
+   * Before deciding, rules past `ruleExpiryMs` are expired, so a hydrated rule
+   * that is out of date is never applied.
+   *
+   * Runs at most once per instance; `DistilledRuleStage` calls it when it first
+   * runs, so constructing a distiller stays cheap. Returns whether it distilled.
+   */
+  checkPersistedTrigger(): boolean {
+    if (this.persistedTriggerChecked) return false;
+    this.persistedTriggerChecked = true;
+    // #6512 review I2: hydrated rules only expired inside distill(), and the
+    // next distill can be far off, so a stale rule stayed active indefinitely.
+    this.expireRules(getTimeProvider().now());
+    const newer = countEligibleSince(this.outcomeStore.query(), this.lastDistillAt);
+    const recordEmpty = this.lastDistillAt === undefined && newer === 0;
+    if (newer < this.config.triggerThreshold && !recordEmpty) return false;
+    this.logger.debug('Persisted-store distill trigger fired', {
+      eligibleSinceLastDistill: newer,
+      triggerThreshold: this.config.triggerThreshold,
+    });
+    this.distill();
+    return true;
+  }
+
+  /** Run distillation on the eligible outcomes in the OutcomeStore (#6512). */
   distill(): void {
     const now = getTimeProvider().now();
-    const outcomes = this.outcomeStore.query();
+    const outcomes = this.outcomeStore.query().filter(isDistillerEligible);
     const groups = groupOutcomes(outcomes);
 
     // Expire old rules first
@@ -270,6 +311,7 @@ export class StrategyDistiller {
     this.enforceMaxRules();
 
     this.lastDistillAt = now;
+    this.eligibleAtLastDistill = outcomes.length;
     this.logger.debug('Distillation complete', {
       rulesTotal: this.rules.size,
       patternsFound: allPatterns.length,
@@ -300,6 +342,7 @@ export class StrategyDistiller {
       totalRules: this.rules.size,
       lastDistillAt: this.lastDistillAt,
       outcomesSinceLastDistill: this.outcomeCounter,
+      eligibleOutcomesAtLastDistill: this.eligibleAtLastDistill,
     };
   }
 
@@ -347,6 +390,15 @@ export class StrategyDistiller {
     for (const rule of rules) {
       this.rules.set(rule.id, rule);
     }
+  }
+
+  /**
+   * Restore last-distill state from a persisted snapshot (#6512), so the
+   * first-route trigger counts only outcomes newer than that snapshot.
+   */
+  protected restoreDistillState(lastDistillAt: number, eligibleOutcomes: number | undefined): void {
+    this.lastDistillAt = lastDistillAt;
+    this.eligibleAtLastDistill = eligibleOutcomes;
   }
 
   // ==========================================================================

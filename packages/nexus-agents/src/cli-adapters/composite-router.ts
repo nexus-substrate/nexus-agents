@@ -86,7 +86,10 @@ import {
   createPersistentDistillerOrFallback,
 } from '../learning/strategy-distiller.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
-import { isPersistenceEnabled } from '../config/learning-persistence.js';
+import {
+  isPersistenceEnabled,
+  isStrategyDistillationEnabled,
+} from '../config/learning-persistence.js';
 import { getPipelineEventBus } from '../pipeline/event-bus.js';
 import { generateSyntheticPriors, runWarmUp } from '../cli/warm-up.js';
 import {
@@ -166,6 +169,16 @@ export interface ICompositeRouter {
   getMetricsCollector(): IRoutingMetricsCollector | undefined;
   /** Get the orchestration observer (if configured) (Issue #587) */
   getOrchestrationObserver(): IOrchestrationObserver | undefined;
+}
+
+/**
+ * #6512 review I1: `NEXUS_STRATEGY_DISTILLATION=0` wins over config, so the
+ * distiller is never built and no distilled rule is read or applied.
+ */
+function applyDistillationSwitch(config: CompositeRouterConfig): CompositeRouterConfig {
+  return isStrategyDistillationEnabled()
+    ? config
+    : { ...config, enableStrategyDistillation: false };
 }
 
 /** CompositeRouter implementation. */
@@ -259,7 +272,7 @@ export class CompositeRouter implements ICompositeRouter {
       availableModelsCache,
       ...baseConfig
     } = config ?? {};
-    this.config = CompositeRouterConfigSchema.parse(baseConfig);
+    this.config = applyDistillationSwitch(CompositeRouterConfigSchema.parse(baseConfig));
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
     this.pendingRoutingOutcomes = new PendingRoutingOutcomes(this.logger);
     this.adapters = adapters;
