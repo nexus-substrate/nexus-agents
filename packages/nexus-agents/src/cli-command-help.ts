@@ -157,6 +157,8 @@ const DOCTOR_HELP: CommandHelpEntry = {
     'nexus-agents doctor --live',
     'nexus-agents doctor --deep',
     'nexus-agents doctor --fix',
+    'nexus-agents doctor --gateway',
+    'nexus-agents doctor --gateway --probe',
   ],
   flags: [
     // #4376: the previous wording said "adapter connectivity", which this flag
@@ -167,6 +169,14 @@ const DOCTOR_HELP: CommandHelpEntry = {
       description: 'Verify each adapter actually serves a completion (spends quota)',
     },
     { flag: '--fix', description: 'Auto-fix correctable issues (data dirs, config)' },
+    {
+      flag: '--gateway',
+      description: 'Gateway report: /models counts, family census, slot models, guard, proxy',
+    },
+    {
+      flag: '--probe',
+      description: 'With --gateway: one tiny completion per model family (spends tokens)',
+    },
     { flag: '--verbose', description: 'Show detailed check output' },
   ],
 };

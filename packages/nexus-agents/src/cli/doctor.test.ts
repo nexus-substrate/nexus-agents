@@ -86,7 +86,17 @@ vi.mock('./cli-auth-probe.js', () => ({
   ),
 }));
 
+// #6609: the gateway measurement makes network calls; stub it, keep the rest real.
+vi.mock('./doctor-gateway.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./doctor-gateway.js')>();
+  return {
+    ...actual,
+    checkGatewayHealth: vi.fn(() => Promise.resolve({ state: 'not_configured' as const })),
+  };
+});
+
 import { createAllAdapters } from '../cli-adapters/factory.js';
+import { checkGatewayHealth, type GatewayHealth } from './doctor-gateway.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import { probeClaudePinnedModel } from './doctor-claude-model.js';
 import { createServer } from '../mcp/server.js';
@@ -190,6 +200,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       missingCount: 0,
     },
     voterTransport: { configured: false },
+    gateway: { state: 'not_configured' },
     claudeModel: { alias: 'fable', status: 'available' as const, reason: null },
     scratchSpace: [
       {
@@ -1588,5 +1599,115 @@ describe('Doctor Command', () => {
         expect('deprecatedEnv' in checkVoterTransport()).toBe(false);
       });
     });
+  });
+});
+
+describe('doctor with a gateway (#6609)', () => {
+  const HEALTHY: GatewayHealth = {
+    state: 'healthy',
+    host: 'gw.example',
+    listedCount: 24,
+    chatCount: 12,
+    allowlistActive: false,
+    census: { anthropic: 4, openai: 5, google: 3, unknown: 0 },
+    slots: { claude: 'claude_4_5_opus', codex: 'gpt-5.2', gemini: 'gemini-3-pro-preview' },
+    proxy: { kind: 'direct' },
+    probes: 'skipped',
+  };
+  const DOWN: GatewayHealth = {
+    state: 'discovery_failed',
+    host: 'gw.example',
+    error: 'Failed to discover models from gw.example: Connection error.',
+    proxy: { kind: 'direct' },
+  };
+
+  let output: string[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(execFileSync).mockReturnValue(
+      JSON.stringify({ dependencies: { 'nexus-agents': { version: TEST_VERSION } } })
+    );
+    vi.mocked(createServer).mockReturnValue({ ok: true } as never);
+    vi.mocked(existsSync).mockReturnValue(false);
+    // A gateway-only host: no CLI adapter at all, no vendor API key.
+    vi.mocked(createAllAdapters).mockReturnValue(new Map() as never);
+    for (const name of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY']) {
+      vi.stubEnv(name, undefined);
+    }
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'https://gw.example/v1');
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'doctor-test-key-6609');
+    output = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      output.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('PASSES a gateway-only host whose gateway is healthy', async () => {
+    vi.mocked(checkGatewayHealth).mockResolvedValue(HEALTHY);
+
+    const result = await runDoctor();
+
+    expect(result.clis.every((c) => !c.installed)).toBe(true);
+    expect(result.apiKeys.every((k) => !k.configured)).toBe(true);
+    expect(result.allHealthy).toBe(true);
+    expect(await doctorCommand()).toBe(0);
+  });
+
+  it('FAILS when the gateway is unreachable, naming the host in the verdict and transport line', async () => {
+    vi.mocked(checkGatewayHealth).mockResolvedValue(DOWN);
+
+    const exitCode = await doctorCommand();
+
+    expect(exitCode).toBe(1);
+    const text = output.join('');
+    expect(text).toMatch(/Voter transport: In-process gateway at gw\.example FAILED/);
+    expect(text).toContain('gateway gw.example');
+    expect(text).not.toContain('doctor-test-key-6609');
+  });
+
+  it('the transport line reports the measurement, not the env vars', async () => {
+    vi.mocked(checkGatewayHealth).mockResolvedValue(HEALTHY);
+
+    await doctorCommand();
+
+    expect(output.join('')).toContain(
+      'Voter transport: In-process gateway (gw.example: 12 chat models answered /models)'
+    );
+  });
+
+  it('never asks for a completion probe unless --probe is passed', async () => {
+    vi.mocked(checkGatewayHealth).mockResolvedValue(HEALTHY);
+
+    await doctorCommand();
+    await doctorCommand({ gateway: true });
+    await doctorCommand({ gateway: true, probe: true });
+
+    expect(vi.mocked(checkGatewayHealth).mock.calls.map(([o]) => o?.probe)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+  });
+
+  it('prints the gateway section only for --gateway or --probe', async () => {
+    vi.mocked(checkGatewayHealth).mockResolvedValue(HEALTHY);
+
+    await doctorCommand();
+    expect(output.join('')).not.toContain('Checking gateway (doctor --gateway)');
+
+    await doctorCommand({ gateway: true });
+    const text = output.join('');
+    expect(text).toContain('Checking gateway (doctor --gateway)');
+    expect(text).toContain('Models: 24 listed, 12 chat models after the chat filter');
+    expect(text).toContain(
+      'claude → claude_4_5_opus, codex → gpt-5.2, gemini → gemini-3-pro-preview'
+    );
   });
 });

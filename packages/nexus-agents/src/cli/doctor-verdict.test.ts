@@ -43,6 +43,7 @@ const base = {
   installFreshness: { state: 'aligned' as const, version: '1.0.0' },
   scratchSpace: [scratch('ok')],
   clis: [healthyCli],
+  gateway: 'absent' as const,
 };
 
 describe('isAllHealthy', () => {
@@ -99,5 +100,38 @@ describe('isAllHealthy', () => {
     expect(isAllHealthy({ ...base, hasAuthMethod: false })).toBe(false);
     expect(isAllHealthy({ ...base, mcpServerReady: false })).toBe(false);
     expect(isAllHealthy({ ...base, clis: [{ ...healthyCli, authenticated: false }] })).toBe(false);
+  });
+});
+
+describe('isAllHealthy with a gateway (#6609)', () => {
+  const missing = (name: CliCheckResult['name']): CliCheckResult => ({
+    name,
+    installed: false,
+    authenticated: false,
+    authState: 'unverified',
+    version: 'N/A',
+    versionStatus: 'unsupported',
+  });
+  const noClis = (['claude', 'gemini', 'codex', 'opencode'] as const).map(missing);
+
+  it('PASSES a gateway-only host: no CLI installed, a passing gateway', () => {
+    expect(isAllHealthy({ ...base, clis: noClis, gateway: 'pass' })).toBe(true);
+  });
+
+  it('PASSES a passing gateway with every CLI disabled (empty CLI list)', () => {
+    expect(isAllHealthy({ ...base, clis: [], gateway: 'pass' })).toBe(true);
+  });
+
+  it('fails the same host with no gateway', () => {
+    expect(isAllHealthy({ ...base, clis: noClis, gateway: 'absent' })).toBe(false);
+  });
+
+  it('FAILS a failing gateway even when every CLI is healthy', () => {
+    expect(isAllHealthy({ ...base, gateway: 'fail' })).toBe(false);
+  });
+
+  it('still fails an installed CLI that is not authenticated, gateway or not', () => {
+    const clis = [{ ...healthyCli, authenticated: false }];
+    expect(isAllHealthy({ ...base, clis, gateway: 'pass' })).toBe(false);
   });
 });

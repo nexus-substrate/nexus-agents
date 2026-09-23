@@ -111,8 +111,11 @@ export function _resetGatewaySlotCatalog(): void {
   warnedOverrides.clear();
 }
 
-/** The family `modelId` belongs to, or undefined for any other vendor. */
-function familyOf(modelId: string): GatewayFamily | 'other' | undefined {
+/**
+ * The family `modelId` belongs to: one of the three, `'other'` for a
+ * classified vendor outside them, `undefined` when the vendor is unknown.
+ */
+export function gatewayModelFamily(modelId: string): GatewayFamily | 'other' | undefined {
   const vendor = resolveModelIdentitySync(modelId).vendor;
   if (vendor === 'anthropic' || vendor === 'openai' || vendor === 'google') return vendor;
   return vendor === 'unknown' ? undefined : 'other';
@@ -160,7 +163,7 @@ function overrideAdapter(
     );
     return undefined;
   }
-  const classified = familyOf(match.modelId);
+  const classified = gatewayModelFamily(match.modelId);
   if (classified !== undefined && classified !== family) {
     warnOverrideOnce(
       family,
@@ -190,12 +193,24 @@ export function resolveGatewaySlot(
   env: NodeJS.ProcessEnv = process.env,
   logger: ILogger = defaultLogger
 ): GatewaySlotResolution {
+  if (catalog === undefined) return { kind: 'inactive' };
+  return resolveSlotIn(catalog, cli, env, logger);
+}
+
+/** {@link resolveGatewaySlot} against an explicit catalogue. */
+function resolveSlotIn(
+  models: readonly IModelAdapter[],
+  cli: CliName,
+  env: NodeJS.ProcessEnv,
+  logger: ILogger
+): GatewaySlotResolution {
   const family = SLOT_FAMILY[cli];
-  if (catalog === undefined || family === undefined) return { kind: 'inactive' };
-  const models = catalog;
+  if (family === undefined) return { kind: 'inactive' };
   const pinned = overrideAdapter(family, models, env, logger);
   if (pinned !== undefined) return { kind: 'resolved', family, adapter: pinned, via: 'override' };
-  const inFamily = models.filter((m) => isChatModelId(m.modelId) && familyOf(m.modelId) === family);
+  const inFamily = models.filter(
+    (m) => isChatModelId(m.modelId) && gatewayModelFamily(m.modelId) === family
+  );
   const best = rankFamilyModels(inFamily.map((m) => ({ id: m.modelId, created: createdOf(m) })))[0];
   const adapter = inFamily.find((m) => m.modelId === best);
   if (adapter === undefined) return { kind: 'unavailable', family };
@@ -225,16 +240,33 @@ export function createGatewaySlotAdapter(cli: CliName, model: IModelAdapter): IM
   return view;
 }
 
-/** The vendor CLI slots, in the order the mapping is reported. */
-const FAMILY_SLOTS: readonly CliName[] = ['claude', 'codex', 'gemini'];
+/**
+ * Each vendor slot's gateway model id, or `'unavailable'` when its family has
+ * none. Keys in the order the mapping is reported.
+ */
+export type GatewaySlotMapping = Readonly<Record<'claude' | 'codex' | 'gemini', string>>;
+
+/**
+ * The slot → model mapping for `models`, resolved by the same rules as
+ * {@link resolveGatewaySlot}. Takes the catalogue explicitly so `doctor
+ * --gateway` (#6609) can report it without registering a process-wide one.
+ */
+export function gatewaySlotMapping(
+  models: readonly IModelAdapter[],
+  env: NodeJS.ProcessEnv = process.env,
+  logger: ILogger = defaultLogger
+): GatewaySlotMapping {
+  const modelFor = (cli: keyof GatewaySlotMapping): string => {
+    const r = resolveSlotIn(models, cli, env, logger);
+    return r.kind === 'resolved' ? r.adapter.modelId : 'unavailable';
+  };
+  return { claude: modelFor('claude'), codex: modelFor('codex'), gemini: modelFor('gemini') };
+}
 
 /** Log the slot → model mapping once at registration, so an operator can see it. */
 export function logGatewaySlotMapping(logger: ILogger): void {
   if (catalog === undefined) return;
-  const mapping: Record<string, string> = {};
-  for (const cli of FAMILY_SLOTS) {
-    const r = resolveGatewaySlot(cli, process.env, logger);
-    mapping[cli] = r.kind === 'resolved' ? r.adapter.modelId : 'unavailable';
-  }
-  logger.info('Gateway family slots resolved', mapping);
+  logger.info('Gateway family slots resolved', {
+    ...gatewaySlotMapping(catalog, process.env, logger),
+  });
 }

@@ -317,6 +317,8 @@ describe('CLI Argument Parsing', () => {
           mock: false,
           deep: false,
           live: false,
+          gateway: false,
+          probe: false,
         },
         positionals: [],
       };
@@ -362,6 +364,8 @@ describe('CLI Argument Parsing', () => {
           mock: false,
           deep: false,
           live: false,
+          gateway: false,
+          probe: false,
         },
         positionals: ['config', 'show'],
       };
@@ -399,6 +403,8 @@ describe('CLI Argument Parsing', () => {
           mock: false,
           deep: false,
           live: false,
+          gateway: false,
+          probe: false,
         },
         positionals: [],
       };

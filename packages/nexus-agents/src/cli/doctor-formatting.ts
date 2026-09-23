@@ -462,7 +462,7 @@ export function printDoctorResults(result: DoctorResult): void {
   writeLine(`${colors.cyan}Checking MCP configuration...${colors.reset}`);
   writeLine('');
   printMcpModes(result);
-  printVoterTransportCheck(result.voterTransport);
+  printVoterTransportCheck(result.voterTransport, result.gateway);
   writeLine('');
 
   writeLine(`${colors.cyan}Checking capabilities...${colors.reset}`);
