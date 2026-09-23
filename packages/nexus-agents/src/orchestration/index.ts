@@ -333,10 +333,6 @@ export {
   detectConflicts,
   matchTriggers,
   DEFAULT_TRIGGER_TABLE,
-  isContextFresh,
-  markContextVerified,
-  getContextAge,
-  DEFAULT_TTL_MS,
 } from './aorchestra/index.js';
 export type {
   AgentPlan,
@@ -347,7 +343,6 @@ export type {
   WorkerLearning,
   WorkerConflict,
   TriggerRule,
-  ContextEntry,
 } from './aorchestra/index.js';
 
 // Checkpointing (Issue #833)
