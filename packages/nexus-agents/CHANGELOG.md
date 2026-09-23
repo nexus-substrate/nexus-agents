@@ -1,5 +1,25 @@
 # nexus-agents
 
+## 8.82.2
+
+### Patch Changes
+
+- [#6491](https://github.com/nexus-substrate/nexus-agents/pull/6491) [`1eed437`](https://github.com/nexus-substrate/nexus-agents/commit/1eed4372f0751a21b58c0433f7318e800f140f04) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Packages bundled inside the nexus-agents tarball now honor the repository's security version floors ([#6488](https://github.com/nexus-substrate/nexus-agents/issues/6488)). The bundle was resolved by npm, which ignores the workspace's `pnpm.overrides`, so it could ship a version the workspace had already raised past: `fast-uri` was bundled at 3.1.8 while the floor is `>=4.1.3`. A bundled copy cannot be overridden from your own project, so the floor has to hold before publishing.
+
+  Publishing now translates the floors into npm `overrides` for the staged package, so the bundle resolves above them (`fast-uri` is now 4.2.1), and then checks every bundled package against every floor. A violation fails the release, naming the package path, its version and the floor it breaks. The `overrides` field appears in the published `package.json`; npm and pnpm read it only from a root project, so it does not change how your own dependencies resolve.
+
+  One effect you can see: the repository's `protobufjs` floor now reaches the bundled copy, so it resolves to 8.x instead of the 7.6.6 that npm picked from `@google/genai`'s `^7.5.4`. 8.x declares no install script, so a default install now carries three packages with install scripts (all bundled, none run by npm 12 or pnpm), down from four. The workspace has tested `@google/genai` on protobufjs 8 through the same floor.
+
+## 8.82.1
+
+### Patch Changes
+
+- [#6485](https://github.com/nexus-substrate/nexus-agents/pull/6485) [`67a7e47`](https://github.com/nexus-substrate/nexus-agents/commit/67a7e47b9b47cfcf41e06e5fbdda26da020ad06f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Installs no longer stall or fail on dependency install scripts ([#6481](https://github.com/nexus-substrate/nexus-agents/issues/6481)). Before this release, `pnpm add -g nexus-agents` in a terminal (pnpm 12) stopped at an interactive "Choose which packages to build" prompt and installed nothing until you answered. `npm install -g nexus-agents` with npm 12's `strict-allow-scripts` exited 1.
+
+  `@ast-grep/lang-go`, `@ast-grep/lang-python`, `@google/genai` and `@modelcontextprotocol/sdk` now ship inside the nexus-agents tarball as `bundleDependencies`, together with their full dependency closure (about 130 packages, including `zod`, `express`, `hono`, `ajv` and `ws`). npm 12 (default and strict) and pnpm 12 install with no prompt, no blocked-scripts warning and no script executed. The Go/Python grammars and the Gemini adapter work as before. The MCP SDK is bundled because `@google/genai` declares it as a peer, and npm expects a bundled package's peers inside the bundle.
+
+  Trade-offs: the tarball grows from about 6 MB to about 15 MB. Every bundled package is fixed at the version resolved for the release, at least 24 hours old at the release commit. A security fix in any of them reaches you through a nexus-agents release, not through `npm update` or your own `overrides`, though `npm audit` still reports it.
+
 ## 8.82.0
 
 ### Minor Changes

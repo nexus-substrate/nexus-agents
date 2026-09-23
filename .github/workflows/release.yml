@@ -114,7 +114,9 @@ jobs:
           SCRATCH="${RUNNER_TEMP}/sbom"
           rm -rf "$SCRATCH" && mkdir -p "$SCRATCH/pack" "$SCRATCH/tree"
 
-          (cd packages/nexus-agents && npm pack --pack-destination "$SCRATCH/pack")
+          # The STAGED package (#6481): the bytes `pnpm release` publishes, with
+          # the install-script dependencies bundled inside.
+          pnpm exec tsx scripts/stage-publish.ts --pack "$SCRATCH/pack"
           TARBALL=$(ls "$SCRATCH"/pack/*.tgz | head -1)
           echo "Packed: $(basename "$TARBALL")"
 
@@ -561,10 +563,18 @@ jobs:
         # the PR gate and this one cannot disagree.
         uses: ./.github/actions/fitness-gate
 
+      # #6481: nexus-agents publishes from its staged directory
+      # (publishConfig.directory), which only this script creates, and pnpm
+      # packs a bundleDependencies package only under the hoisted linker. Same
+      # two steps as `pnpm release` on the automated path.
+      - name: Stage nexus-agents with bundled dependencies
+        run: pnpm exec tsx scripts/stage-publish.ts
+
       - name: Publish packages (dry run)
         if: ${{ inputs.dry_run == true }}
         run: pnpm -r publish --access public --no-git-checks --dry-run
         env:
+          npm_config_node_linker: hoisted
           # OIDC trusted publishing — see the comment on the changesets/action
           # step above. Manual workflow_dispatch uses the same auth path.
           NPM_CONFIG_PROVENANCE: true
@@ -573,4 +583,5 @@ jobs:
         if: ${{ inputs.dry_run != true }}
         run: pnpm -r publish --access public --no-git-checks
         env:
+          npm_config_node_linker: hoisted
           NPM_CONFIG_PROVENANCE: true

@@ -1,6 +1,6 @@
 {
   "name": "nexus-agents",
-  "version": "8.82.0",
+  "version": "8.82.2",
   "description": "Governance substrate for AI coding agents — adversarial PR review, drift-detected rules, tamper-evident audit, and closed-loop outcome routing for Claude, Codex, Gemini, and OpenCode",
   "mcpName": "io.github.nexus-substrate/nexus-agents",
   "license": "MIT",
@@ -32,7 +32,9 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": true,
+    "directory": ".publish-stage",
+    "linkDirectory": false
   },
   "keywords": [
     "mcp",

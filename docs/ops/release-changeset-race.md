@@ -145,6 +145,7 @@ The race is rare. To minimize the chance of triggering it:
   4. Verify `npm view nexus-agents version` equals `packages/nexus-agents/package.json` before the next merge.
 
   Step 2 is the one that gets skipped. A stale version PR is also how npm gets ahead of `main` when the inverse race fires (see the inverse-variant section above).
+
 - **Never `workflow_dispatch` a publish from a non-`main` ref.** The `manual-publish` job's `Guard — main only` step now fails this, but the discipline still matters.
 - **Watch for the symptom early**: after merging a release PR, if `npm view nexus-agents version` still shows the old version after ~5 minutes, check for the skew. The `Detect publish-race version skew` step auto-recovers `package.json`-ahead; the `Detect npm-ahead version skew` step fails loudly on the inverse.
 
@@ -156,4 +157,4 @@ The race is rare. To minimize the chance of triggering it:
 - `.github/workflows/release.yml` — the actual workflow definition (skew-detection steps + `manual-publish` guard).
 - `.github/workflows/ci.yml` — the `Changeset Presence` required check.
 - `scripts/check-changeset.ts` — the changeset-presence gate.
-- `package.json` `release` script — runs `pnpm build && changeset publish`.
+- `package.json` `release` script — runs `pnpm build`, then `scripts/stage-publish.ts` (which builds the staged package with bundled dependencies, #6481), then `changeset publish` under `npm_config_node_linker=hoisted`.
