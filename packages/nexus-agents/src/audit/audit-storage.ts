@@ -10,6 +10,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
@@ -97,19 +98,39 @@ function validateLogDirBasic(logDir: string): Result<string, SecurityError> {
   const resolved = path.resolve(logDir);
 
   // Additional check: resolved path should not be a system directory
-  const systemDirs = ['/etc', '/var', '/usr', '/bin', '/sbin', '/root', '/proc', '/sys'];
-  for (const sysDir of systemDirs) {
-    if (resolved === sysDir || resolved.startsWith(sysDir + path.sep)) {
-      return {
-        ok: false,
-        error: new SecurityError('logDir cannot be a system directory', {
-          context: { logDir, resolved },
-        }),
-      };
-    }
+  if (isRefusedSystemPath(resolved, path.resolve(os.homedir()))) {
+    return {
+      ok: false,
+      error: new SecurityError('logDir cannot be a system directory', {
+        context: { logDir, resolved },
+      }),
+    };
   }
 
   return { ok: true, value: resolved };
+}
+
+/** System trees refused even when the user's home lies inside them. */
+const ALWAYS_REFUSED_DIRS = ['/etc', '/usr', '/bin', '/sbin', '/proc', '/sys'];
+
+/**
+ * System trees refused unless the path is inside the running user's own home.
+ * Root's home is /root (the Docker default user, #6515), and a service
+ * account's home can sit under /var/lib.
+ */
+const REFUSED_OUTSIDE_HOME_DIRS = ['/root', '/var'];
+
+/** True when `child` equals `parent` or lies inside it, by path segment. */
+function isWithin(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
+}
+
+function isRefusedSystemPath(resolved: string, home: string): boolean {
+  if (ALWAYS_REFUSED_DIRS.some((dir) => isWithin(resolved, dir))) return true;
+  // A home of `/` would contain every path, so it grants nothing.
+  const homeGrants = home !== path.parse(home).root && isWithin(resolved, home);
+  return REFUSED_OUTSIDE_HOME_DIRS.some((dir) => isWithin(resolved, dir)) && !homeGrants;
 }
 
 // ============================================================================
