@@ -369,10 +369,11 @@ describe('resolveModelCostPer1M', () => {
 
 describe('resolveCliCostPer1M', () => {
   it('maps each CLI to its default model registry pricing (per-1M)', () => {
-    // claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12, codex→gpt-5.5 $5/$30.
+    // claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
+    // codex→gpt-5.6-sol $4/$20 (#6516; was gpt-5.5 $5/$30).
     expect(resolveCliCostPer1M('claude')).toEqual({ input: 10.0, output: 50.0 });
     expect(resolveCliCostPer1M('gemini')).toEqual({ input: 2.0, output: 12.0 });
-    expect(resolveCliCostPer1M('codex')).toEqual({ input: 5.0, output: 30.0 });
+    expect(resolveCliCostPer1M('codex')).toEqual({ input: 4.0, output: 20.0 });
   });
 
   it('every CLI resolves to a non-$0 cost (no fail-open in budget gates)', () => {
@@ -483,6 +484,39 @@ describe('codex registry entries (#5091)', () => {
       const ids = owners.get(slug) ?? [];
       expect(ids, `${slug} owned by ${ids.join(', ')}`).toEqual([entry.id]);
     }
+  });
+
+  describe('gpt-5.6-sol as the codex default (#6516)', () => {
+    // codex-cli 0.155.1's cache announces gpt-5.5's retirement on 2026-10-14
+    // with upgrade.model gpt-5.6-sol. Panel option A: add the successor as its
+    // own entry and make it the default; gpt-5.5 stays routable until the
+    // removal tracked in #6526.
+    it('is the codex CLI default', () => {
+      expect(getDefaultModelForCli('codex')).toBe('gpt-5.6-sol');
+    });
+
+    it('has id equal to its served slug', () => {
+      expect(getCliModelName('gpt-5.6-sol')).toBe('gpt-5.6-sol');
+      expect(findCanonicalModel('codex', 'gpt-5.6-sol')?.id).toBe('gpt-5.6-sol');
+    });
+
+    it('describes gpt-5.6-sol from measured sources', () => {
+      const sol = codexEntry('gpt-5.6-sol');
+      // models.dev snapshot 2026-09-21 / generated catalogue 2026-09-23.
+      expect(sol.displayName).toBe('GPT-5.6 Sol');
+      expect(sol.contextWindow).toBe(1_050_000);
+      expect(sol.maxOutputTokens).toBe(128_000);
+      expect(sol.pricing).toEqual({ inputPer1M: 4.0, outputPer1M: 20.0 });
+    });
+
+    it('carries gpt-5.5 quality scores forward (a tier position, not a measurement)', () => {
+      expect(getModelQualityScores('gpt-5.6-sol')).toEqual(getModelQualityScores('gpt-5.5'));
+    });
+
+    it('keeps gpt-5.5 routable until its removal (#6526)', () => {
+      expect(getCliModelName('gpt-5.5')).toBe('gpt-5.5');
+      expect(findInTreeByCli('codex').map((e) => e.id)).toContain('gpt-5.5');
+    });
   });
 
   it('no codex entry collides with the gpt-5.5 entry the panel kept distinct', () => {

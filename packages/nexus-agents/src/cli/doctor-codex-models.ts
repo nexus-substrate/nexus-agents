@@ -18,6 +18,13 @@
  * unserved one without the cache, and reporting health it did not measure is
  * exactly the misreport this repo treats as a governor-path defect.
  *
+ * Retirement look-ahead (#6516). A cache row can carry an `upgrade` record
+ * (`{model, retirement_at}`) announcing that codex will stop serving the slug.
+ * The served/missing comparison only fires after the slug is gone, so a
+ * registry slug whose `retirement_at` falls within
+ * {@link RETIREMENT_WARN_DAYS} days — or has already passed — is reported as a
+ * warning naming the date and the upgrade target, before calls start failing.
+ *
  * @module cli/doctor-codex-models
  */
 
@@ -26,6 +33,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { findInTreeByCli } from '../config/model-config-helpers.js';
+import type { VerifyCheck } from './verify-command.js';
 
 /** One codex registry entry, as the probe reports it. */
 export interface CodexModelRow {
@@ -33,17 +41,43 @@ export interface CodexModelRow {
   readonly cliModelName: string;
 }
 
+/** Days ahead of a cache-announced retirement at which the check warns. */
+export const RETIREMENT_WARN_DAYS = 30;
+
+const MS_PER_DAY = 86_400_000;
+
+/** A cache row's announced retirement (`upgrade.retirement_at`). */
+export interface CodexRetirement {
+  readonly slug: string;
+  /** ISO-8601, normalised through `Date`. */
+  readonly retirementAt: string;
+  /** `upgrade.model`, or null when the cache names no successor. */
+  readonly upgradeModel: string | null;
+}
+
+/** A registry entry whose slug retires within the warning window. */
+export interface CodexRetiringRow extends CodexModelRow {
+  readonly retirementAt: string;
+  readonly upgradeModel: string | null;
+  /** Whole days until retirement; negative once the date has passed. */
+  readonly daysLeft: number;
+}
+
 /**
  * Result of comparing the registry's codex slugs against the served list.
  *
  * `served`/`missing` partition the registry entries that carry a
- * `cliModelName`. `reason` explains a `warn` or `unmeasured` verdict and is
- * null on `pass`.
+ * `cliModelName`. `retiring` lists registry entries whose slug the cache says
+ * retires within {@link RETIREMENT_WARN_DAYS} days (or already has); it is
+ * independent of the partition, so a retired slug can be both `missing` and
+ * `retiring`. `reason` explains a `warn` or `unmeasured` verdict and is null on
+ * `pass`.
  */
 export interface CodexModelsCheck {
   readonly status: 'pass' | 'warn' | 'unmeasured';
   readonly served: readonly CodexModelRow[];
   readonly missing: readonly CodexModelRow[];
+  readonly retiring: readonly CodexRetiringRow[];
   readonly reason: string | null;
 }
 
@@ -71,6 +105,38 @@ export interface ParsedCodexCache {
   readonly rows: number;
   /** Well-formed rows that carry no `visibility` field at all. */
   readonly withoutVisibility: number;
+  /** Rows of any visibility whose `upgrade` record names a valid `retirement_at`. */
+  readonly retirements: readonly CodexRetirement[];
+}
+
+/** Every well-formed row's announced retirement, of any visibility. */
+function parseRetirements(models: readonly unknown[]): CodexRetirement[] {
+  return models.flatMap((row) => {
+    if (!isRecord(row)) return [];
+    const slug = row['slug'];
+    if (typeof slug !== 'string' || slug === '') return [];
+    const retirement = parseRetirement(slug, row['upgrade']);
+    return retirement === null ? [] : [retirement];
+  });
+}
+
+/**
+ * Read a row's `upgrade` record. Absent, null, or a `retirement_at` that is not
+ * a parseable date all yield null: there is no retirement to warn about, and
+ * inventing one from a malformed field would be a warning nobody can act on.
+ */
+function parseRetirement(slug: string, upgrade: unknown): CodexRetirement | null {
+  if (!isRecord(upgrade)) return null;
+  const at = upgrade['retirement_at'];
+  if (typeof at !== 'string') return null;
+  const time = Date.parse(at);
+  if (Number.isNaN(time)) return null;
+  const model = upgrade['model'];
+  return {
+    slug,
+    retirementAt: new Date(time).toISOString(),
+    upgradeModel: typeof model === 'string' && model !== '' ? model : null,
+  };
 }
 
 /**
@@ -102,7 +168,8 @@ export function parseServedCodexSlugs(raw: string): ParsedCodexCache | null {
     if (row['visibility'] === undefined) withoutVisibility += 1;
     if (row['visibility'] === 'list') listed.push(slug);
   }
-  return { listed, rows, withoutVisibility };
+  const retirements = parseRetirements(parsed['models'] as unknown[]);
+  return { listed, rows, withoutVisibility, retirements };
 }
 
 /** Every codex registry entry that names a CLI slug. */
@@ -113,7 +180,9 @@ function codexRegistryRows(): CodexModelRow[] {
 }
 
 /** The served slugs, or the reason they could not be measured. */
-type ServedSlugs = { readonly slugs: readonly string[] } | { readonly unmeasured: string };
+type ServedSlugs =
+  | { readonly slugs: readonly string[]; readonly retirements: readonly CodexRetirement[] }
+  | { readonly unmeasured: string };
 
 /**
  * Read and parse the cache, turning each way it can fail into a named reason
@@ -145,13 +214,15 @@ function readServedSlugs(cachePath: string): ServedSlugs {
       unmeasured: `${cachePath} lists ${String(parsed.rows)} model(s), none with visibility=list`,
     };
   }
-  return { slugs: parsed.listed };
+  return { slugs: parsed.listed, retirements: parsed.retirements };
 }
 
 /**
  * Compare the registry's codex slugs against the served list in `cachePath`.
  *
- * `rows` is injectable so the registry-empty case is reachable from a test.
+ * `rows` is injectable so the registry-empty case is reachable from a test;
+ * `now` is injectable so the retirement window is testable against a fixed
+ * clock.
  * Both empty cases are named: no registry rows and a cache that lists nothing
  * each report `unmeasured`, because `[].every(served)` would render the first
  * as a pass and the second would render every registry slug as missing when
@@ -159,7 +230,8 @@ function readServedSlugs(cachePath: string): ServedSlugs {
  */
 export function checkCodexModels(
   cachePath: string = resolveCodexModelsCachePath(),
-  rows: readonly CodexModelRow[] = codexRegistryRows()
+  rows: readonly CodexModelRow[] = codexRegistryRows(),
+  now: Date = new Date()
 ): CodexModelsCheck {
   if (rows.length === 0) {
     return unmeasured('no codex entries in the registry to check');
@@ -172,18 +244,109 @@ export function checkCodexModels(
   const servedSet = new Set(read.slugs);
   const served = rows.filter((r) => servedSet.has(r.cliModelName));
   const missing = rows.filter((r) => !servedSet.has(r.cliModelName));
+  const retiring = findRetiring(rows, read.retirements, now);
+  // Each cause renders on its own: a retired slug is usually also missing,
+  // and folding one into the other would hide the upgrade target.
+  const reasons: string[] = [];
   if (missing.length > 0) {
     const named = missing.map((m) => `${m.id} → ${m.cliModelName}`).join(', ');
-    return {
-      status: 'warn',
-      served,
-      missing,
-      reason: `not served by the installed codex: ${named}`,
-    };
+    reasons.push(`not served by the installed codex: ${named}`);
   }
-  return { status: 'pass', served, missing, reason: null };
+  if (retiring.length > 0) {
+    reasons.push(
+      `retiring per the codex cache (within ${String(RETIREMENT_WARN_DAYS)} days): ${retiring
+        .map(describeRetirement)
+        .join(', ')}`
+    );
+  }
+  if (reasons.length > 0) {
+    return { status: 'warn', served, missing, retiring, reason: reasons.join('; ') };
+  }
+  return { status: 'pass', served, missing, retiring, reason: null };
+}
+
+/** Registry rows whose slug retires within the window, or already has. */
+function findRetiring(
+  rows: readonly CodexModelRow[],
+  retirements: readonly CodexRetirement[],
+  now: Date
+): CodexRetiringRow[] {
+  const bySlug = new Map(retirements.map((r) => [r.slug, r]));
+  return rows.flatMap((row) => {
+    const retirement = bySlug.get(row.cliModelName);
+    if (retirement === undefined) return [];
+    const msLeft = Date.parse(retirement.retirementAt) - now.getTime();
+    if (msLeft > RETIREMENT_WARN_DAYS * MS_PER_DAY) return [];
+    return [
+      {
+        ...row,
+        retirementAt: retirement.retirementAt,
+        upgradeModel: retirement.upgradeModel,
+        // floor, not trunc: a few hours past the date is "retired", never "in 0 days".
+        daysLeft: Math.floor(msLeft / MS_PER_DAY),
+      },
+    ];
+  });
+}
+
+function describeRetirement(r: CodexRetiringRow): string {
+  const date = r.retirementAt.slice(0, 10);
+  const when =
+    r.daysLeft < 0
+      ? `retired ${date} (${String(-r.daysLeft)} day(s) ago)`
+      : `retires ${date} (in ${String(r.daysLeft)} day(s))`;
+  const upgrade = r.upgradeModel === null ? 'no upgrade model named' : `upgrade: ${r.upgradeModel}`;
+  return `${r.id} → ${r.cliModelName} ${when}, ${upgrade}`;
 }
 
 function unmeasured(reason: string): CodexModelsCheck {
-  return { status: 'unmeasured', served: [], missing: [], reason };
+  return { status: 'unmeasured', served: [], missing: [], retiring: [], reason };
+}
+
+const CHECK_NAME = 'Codex Models';
+
+/**
+ * Render a {@link CodexModelsCheck} as the `nexus-agents verify` row.
+ *
+ * `warn`, matching the other environment checks: nexus-agents runs, but every
+ * codex invocation that resolves to a dead slug is rejected, and a retiring
+ * slug will be. A warn still lists the served slugs, so a retirement-only
+ * warning does not hide that the successor is available. `unmeasured` renders
+ * as a warn whose message says so, never as a pass, because `VerifyCheck` has
+ * no third state and a pass would claim a measurement that was not taken.
+ */
+export function codexModelsVerifyCheck(result: CodexModelsCheck): VerifyCheck {
+  const servedList = `${String(result.served.length)} codex registry slug(s) served: ${result.served
+    .map((r) => r.cliModelName)
+    .join(', ')}`;
+  if (result.status === 'pass') {
+    return { name: CHECK_NAME, passed: true, message: servedList };
+  }
+  if (result.status === 'warn') {
+    const fixes: string[] = [];
+    if (result.missing.length > 0) {
+      fixes.push(
+        'Refresh the codex entries in config/in-tree-data.ts against ~/.codex/models_cache.json (visibility=list)'
+      );
+    }
+    if (result.retiring.length > 0) {
+      fixes.push(
+        "Move the retiring slug's registry entry (and DEFAULT_MODEL_PER_CLI.codex, if it names it) to the cache's upgrade model before the date"
+      );
+    }
+    return {
+      name: CHECK_NAME,
+      passed: false,
+      severity: 'warn',
+      message: `${result.reason ?? 'codex registry slug(s) not served'}; ${servedList}`,
+      fix: fixes.join('; '),
+    };
+  }
+  return {
+    name: CHECK_NAME,
+    passed: false,
+    severity: 'warn',
+    message: `unmeasured: ${result.reason ?? 'codex model list unavailable'}`,
+    fix: 'Install codex and run it once so ~/.codex/models_cache.json exists, then re-run verify',
+  };
 }

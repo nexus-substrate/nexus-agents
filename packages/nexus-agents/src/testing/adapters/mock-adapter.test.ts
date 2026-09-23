@@ -417,8 +417,8 @@ describe('MockCliAdapter', () => {
 
       const info = codexAdapter.getModelInfo();
 
-      expect(info.id).toBe('gpt-5.5');
-      expect(info.name).toBe('GPT-5.5');
+      expect(info.id).toBe('gpt-5.6-sol');
+      expect(info.name).toBe('GPT-5.6 Sol');
       expect(info.contextWindow).toBe(1_050_000);
     });
   });

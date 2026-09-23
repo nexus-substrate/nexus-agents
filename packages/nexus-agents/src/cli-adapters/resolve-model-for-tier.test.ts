@@ -34,9 +34,9 @@ describe('resolveModelForTier (#3394)', () => {
   });
 
   it('pins the codex balanced tier to codex-5.2 (gpt-5.6-luna) and fast to codex-5.1-mini (gpt-6-luna)', () => {
-    // Balanced ranks codeGeneration, where gpt-5.5, codex-5.3 and codex-5.2 tie
-    // at 10; the tie-break prefers the higher `cost` score, so codex-5.2 (9)
-    // wins over codex-5.3 (5) and gpt-5.5 (4). Before #5091 that winner named
+    // Balanced ranks codeGeneration, where gpt-5.6-sol, gpt-5.5, codex-5.3 and
+    // codex-5.2 tie at 10; the tie-break prefers the higher `cost` score, so
+    // codex-5.2 (9) wins over codex-5.3 (5), gpt-5.6-sol (4) and gpt-5.5 (4). Before #5091 that winner named
     // a slug codex rejected (gpt-5.2-codex); #5091 pointed it at
     // gpt-5.3-codex-spark, which codex-cli 0.155.1 in turn stopped serving, so
     // it now names gpt-5.6-luna. The scores were carried over rather than
@@ -45,13 +45,13 @@ describe('resolveModelForTier (#3394)', () => {
     expect(resolveModelForTier('codex', 'fast')).toBe('codex-5.1-mini');
   });
 
-  it('picks codex-5.3 for the codex powerful tier despite gpt-5.5 being the CLI default (#4176)', () => {
-    // Deliberate tension, mirroring the claude pin above: gpt-5.5 and
-    // codex-5.3 tie at reasoning 10, so the tier resolver's tie-break
-    // (cheaper — higher cost score — first) picks codex-5.3 (cost 5 vs 4),
-    // while DEFAULT_MODEL_PER_CLI.codex is the frontier gpt-5.5.
+  it('picks codex-5.3 for the codex powerful tier despite gpt-5.6-sol being the CLI default (#4176, #6516)', () => {
+    // Deliberate tension, mirroring the claude pin above: gpt-5.6-sol,
+    // gpt-5.5 and codex-5.3 tie at reasoning 10, so the tier resolver's
+    // tie-break (cheaper — higher cost score — first) picks codex-5.3 (cost 5
+    // vs 4), while DEFAULT_MODEL_PER_CLI.codex is the frontier gpt-5.6-sol.
     expect(resolveModelForTier('codex', 'powerful')).toBe('codex-5.3');
-    expect(getDefaultModelForCli('codex')).toBe('gpt-5.5');
+    expect(getDefaultModelForCli('codex')).toBe('gpt-5.6-sol');
   });
 
   it('picks the highest-speed model for the fast tier', () => {

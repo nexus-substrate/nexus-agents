@@ -217,7 +217,8 @@ describe('selectModel with specialization integration', () => {
     const req = makeReq({ needsCodeGen: true });
     const result = selectModel(input, req, 'plan');
     // A codex-CLI model should be selected (code generation + specialization);
-    // since #4176 the frontier gpt-5.5 tops codex-5.3.
-    expect(['gpt-5.5', 'codex-5.3', 'codex-5.2']).toContain(result.model);
+    // since #4176 the frontier tier tops codex-5.3; since #6516 gpt-5.6-sol
+    // (listed before gpt-5.5, same carried scores) wins that tie.
+    expect(['gpt-5.6-sol', 'codex-5.3', 'codex-5.2']).toContain(result.model);
   });
 });

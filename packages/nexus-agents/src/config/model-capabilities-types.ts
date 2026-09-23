@@ -116,6 +116,7 @@ export const MODEL_IDS = [
   'gemini-3.5-flash',
   'gemini-3-flash',
   'gemini-flash',
+  'gpt-5.6-sol',
   'gpt-5.5',
   'codex-5.3',
   'codex-5.2',

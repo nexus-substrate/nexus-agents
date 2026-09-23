@@ -74,8 +74,9 @@ describe('budget-utils', () => {
   });
 
   // #4168: costs now come from registry pricing for each CLI's default model
-  // (claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12, codex→gpt-5.5
-  // $5/$30 per 1M), not the old static table — numbers updated deliberately.
+  // (claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
+  // codex→gpt-5.6-sol $4/$20 per 1M since #6516), not the old static table —
+  // numbers updated deliberately.
   describe('estimateCost', () => {
     it('calculates cost for claude', () => {
       // 1M input at $10.00 + 1M output at $50.00 = $60.00 (claude-fable-5)
@@ -90,9 +91,9 @@ describe('budget-utils', () => {
     });
 
     it('calculates cost for codex', () => {
-      // 1M input at $5.00 + 1M output at $30.00 = $35.00 (gpt-5.5)
+      // 1M input at $4.00 + 1M output at $20.00 = $24.00 (gpt-5.6-sol, #6516)
       const cost = estimateCost('codex', 1_000_000, 1_000_000);
-      expect(cost).toBe(35.0);
+      expect(cost).toBe(24.0);
     });
 
     it('scales linearly with tokens', () => {
@@ -164,7 +165,8 @@ describe('budget-gate invariant: an unpriced candidate is never free (#5122 incr
   const PINNED: readonly { cli: CliName; est: number }[] = [
     { cli: 'claude', est: 60 },
     { cli: 'gemini', est: 14 },
-    { cli: 'codex', est: 35 },
+    // #6516: the codex default moved gpt-5.5 ($5/$30) → gpt-5.6-sol ($4/$20).
+    { cli: 'codex', est: 24 },
     { cli: 'opencode', est: 18 },
   ];
 
