@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.85.1
+
+### Patch Changes
+
+- [#6510](https://github.com/nexus-substrate/nexus-agents/pull/6510) [`61c4b02`](https://github.com/nexus-substrate/nexus-agents/commit/61c4b02450b12f04d46e06676a3d11400c0f39bd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Audit `system.startup.begin` and `system.startup` records now include `packageVersion`, the running nexus-agents version ([#6509](https://github.com/nexus-substrate/nexus-agents/issues/6509)). A global install can be replaced while an MCP server started earlier keeps running old code, so the startup record is the only way to tell which build wrote a window of audit records.
+
 ## 8.85.0
 
 ### Minor Changes
