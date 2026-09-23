@@ -118,8 +118,11 @@ function familyOf(modelId: string): GatewayFamily | 'other' | undefined {
   return vendor === 'unknown' ? undefined : 'other';
 }
 
-/** The discovery `created` stamp a gateway model adapter carries, if any. */
-function createdOf(model: IModelAdapter): number | undefined {
+/**
+ * The discovery `created` stamp a gateway model adapter carries, if any. The
+ * voter seat dealing (#6634) ranks with the same stamps.
+ */
+export function createdOf(model: object): number | undefined {
   const created: unknown = (model as { created?: unknown }).created;
   return typeof created === 'number' ? created : undefined;
 }

@@ -9,7 +9,7 @@
  *
  * This deals each seat to the model FAMILY (vendor: Anthropic, OpenAI, Google,
  * ...) with the fewest seats so far, then to the least-used model inside that
- * family. Seats already taken — operator pins — seed the counts, so the dealt
+ * family, best-ranked first (#6634). Seats already taken — operator pins — seed the counts, so the dealt
  * seats balance around them. Every tie is broken by a fixed order, so the
  * result does not depend on the order the gateway lists its models in.
  *
@@ -19,6 +19,8 @@
 import type { ILogger } from '../core/index.js';
 import { canonicalModelKey, countDistinctModels } from '../config/model-equivalence.js';
 import { resolveModelIdentitySync, type ModelVendor } from '../config/model-identity.js';
+import { rankFamilyModels } from '../adapters/gateway-family-ranking.js';
+import { createdOf } from '../adapters/gateway-family-slots.js';
 
 /**
  * The family a model belongs to for panel dealing and diversity counting: its
@@ -46,22 +48,20 @@ function compareFamilies(a: ModelVendor, b: ModelVendor): number {
 }
 
 /**
- * Default within-family order: lexical by model id. Deterministic, and makes
- * no quality claim.
- *
- * SEAM: #6623's `rankFamilyModels` (adapters/gateway-family-ranking.ts) ranks
- * a family's models best-first. Once it is on main, pass it as
- * `rankWithinFamily` from the gateway path instead of this default — do not
- * reimplement the ranking here. Tracked in #6634.
+ * Default within-family order (#6634): #6623's `rankFamilyModels`, best-first:
+ * tier, then the discovery `created` stamp each candidate carries (used only
+ * when every model of the family has one), then the id's generation, with the
+ * id as the last tie-break. The ranking is total over the ids, so the order
+ * does not depend on the order the gateway lists its models in.
  */
-function lexicalOrder(modelIds: readonly string[]): readonly string[] {
-  return [...modelIds].sort();
+function rankedOrder(candidates: readonly { readonly modelId: string }[]): readonly string[] {
+  return rankFamilyModels(candidates.map((c) => ({ id: c.modelId, created: createdOf(c) })));
 }
 
 interface DealOptions {
   /** Model ids already seated (pins); they seed the family and model counts. */
   readonly seated?: readonly string[];
-  /** Orders one family's model ids best-first. Defaults to lexical order. */
+  /** Orders one family's model ids best-first. Defaults to #6623's family ranking. */
   readonly rankWithinFamily?: (modelIds: readonly string[]) => readonly string[];
 }
 
@@ -77,7 +77,7 @@ function increment(counts: Map<string, number>, key: string): void {
 /** Groups candidates by family, each family ordered by the ranking seam. */
 function groupByFamily<T extends { readonly modelId: string }>(
   candidates: readonly T[],
-  rank: (modelIds: readonly string[]) => readonly string[]
+  rank: (familyCandidates: readonly T[]) => readonly string[]
 ): Map<ModelVendor, T[]> {
   const byFamily = new Map<ModelVendor, T[]>();
   for (const c of candidates) {
@@ -87,7 +87,7 @@ function groupByFamily<T extends { readonly modelId: string }>(
     byFamily.set(family, list);
   }
   for (const [family, list] of byFamily) {
-    const order = rank(list.map((c) => c.modelId));
+    const order = rank(list);
     const position = (c: T): number => {
       const i = order.indexOf(c.modelId);
       return i === -1 ? order.length : i;
@@ -149,7 +149,10 @@ export function dealSeatsAcrossFamilies<T extends { readonly modelId: string }>(
   options: DealOptions = {}
 ): T[] {
   if (seatCount <= 0 || candidates.length === 0) return [];
-  const byFamily = groupByFamily(candidates, options.rankWithinFamily ?? lexicalOrder);
+  const custom = options.rankWithinFamily;
+  const rank = (list: readonly T[]): readonly string[] =>
+    custom === undefined ? rankedOrder(list) : custom(list.map((c) => c.modelId));
+  const byFamily = groupByFamily(candidates, rank);
   const families = [...byFamily.keys()].sort(compareFamilies);
 
   const familySeats = new Map<string, number>();
