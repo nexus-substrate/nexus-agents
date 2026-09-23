@@ -17,6 +17,7 @@ import {
 } from './openai-compat-adapter.js';
 import { gatewayProxyUrl, parseGatewayExtraHeaders, readGatewayTransport } from './gateway-http.js';
 import { GatewayHostRefusedError } from './gateway-host-status.js';
+import { SdkAdapter } from './sdk/sdk-adapter.js';
 import type { ILogger } from '../core/index.js';
 
 vi.mock('../learning/usage-log.js', async (importOriginal) => {
@@ -310,5 +311,69 @@ describe('gateway proxy (#6608 item 2)', () => {
     const logged = JSON.stringify(logger.warn.mock.calls);
     expect(logged).toContain('HTTPS_PROXY');
     expect(logged).not.toContain('hunter2');
+  });
+});
+
+/**
+ * #6629: the single-model `custom-openai` path (`SdkAdapter` over the AI-SDK
+ * `createOpenAI` factory) takes the same transport as the gateway. The reply
+ * shape is not asserted: the AI SDK's default endpoint differs from the fake
+ * gateway's chat-completions body, and what is under test is the request.
+ */
+describe('custom-openai single-model path shares the gateway transport (#6629)', () => {
+  /** The one completion request the gateway saw (anything but discovery). */
+  function completionHeaders(gateway: FakeGateway): Headers | undefined {
+    const paths = [...gateway.seen.keys()].filter((p) => !p.endsWith('/models'));
+    expect(paths).toHaveLength(1);
+    return gateway.seen.get(paths[0] ?? '');
+  }
+
+  async function completeOnce(baseUrl: string): Promise<void> {
+    process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'] = '1';
+    const adapter = new SdkAdapter({
+      providerId: 'custom-openai',
+      modelId: 'gw-model-a',
+      apiKey: GATEWAY_KEY,
+      baseUrl,
+      maxRetries: 0,
+    });
+    await adapter.complete({ messages: [{ role: 'user', content: 'ping' }], maxTokens: 8 });
+  }
+
+  it('sends the key in the configured header plus the extra headers, with no bearer', async () => {
+    const gateway = await startFakeGateway();
+    servers.push(gateway.server);
+    process.env['NEXUS_OPENAI_COMPAT_AUTH_HEADER'] = 'Api-Key';
+    process.env['NEXUS_OPENAI_COMPAT_EXTRA_HEADERS'] = 'X-Tenant=blue-team,X-Route=eu-1';
+    await completeOnce(`http://127.0.0.1:${String(gateway.port)}/v1`);
+
+    const headers = completionHeaders(gateway);
+    expect(headers?.['api-key']).toBe(GATEWAY_KEY);
+    expect(headers?.['authorization']).toBeUndefined();
+    expect(headers?.['x-tenant']).toBe('blue-team');
+    expect(headers?.['x-route']).toBe('eu-1');
+  });
+
+  it('keeps the bearer default and adds nothing when the options are unset', async () => {
+    const gateway = await startFakeGateway();
+    servers.push(gateway.server);
+    await completeOnce(`http://127.0.0.1:${String(gateway.port)}/v1`);
+
+    const headers = completionHeaders(gateway);
+    expect(headers?.['authorization']).toBe(`Bearer ${GATEWAY_KEY}`);
+    expect(headers?.['api-key']).toBeUndefined();
+    expect(headers?.['x-tenant']).toBeUndefined();
+  });
+
+  it('tunnels through HTTP_PROXY to a host only the proxy can reach', async () => {
+    const gateway = await startFakeGateway();
+    const proxy = await startTunnelProxy(gateway.port);
+    servers.push(gateway.server, proxy.server);
+    process.env['HTTP_PROXY'] = `http://127.0.0.1:${String(proxy.port)}`;
+    // `.invalid` never resolves (RFC 6761): only the proxy's tunnel reaches it.
+    await completeOnce('http://gateway.corp.invalid/v1');
+
+    expect(new Set(proxy.tunnels)).toEqual(new Set(['gateway.corp.invalid:80']));
+    expect(completionHeaders(gateway)?.['authorization']).toBe(`Bearer ${GATEWAY_KEY}`);
   });
 });

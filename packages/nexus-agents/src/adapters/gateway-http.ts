@@ -2,9 +2,11 @@
  * Corporate-network transport for in-process OpenAI-compatible gateway calls
  * (#6608): which header carries the key, extra static headers, and the proxy.
  *
- * Applies to the gateway path only — model discovery and every per-model
- * completion built by `openai-compat-adapter.ts`. Other in-process SDK
- * clients (the direct vendor adapters) are untouched.
+ * Applies to the gateway path — model discovery and every per-model
+ * completion built by `openai-compat-adapter.ts` — and to the single-model
+ * `custom-openai` path (`sdk/sdk-adapter.ts`, #6629), which reads the same
+ * gateway URL and key. Other in-process SDK clients (the direct vendor
+ * adapters) are untouched.
  *
  * **Proxy — measured, not assumed.** On Node 22.22.3, neither the global
  * `fetch` nor the `openai` SDK (which calls it) honours `HTTP_PROXY` /
@@ -292,15 +294,55 @@ export type GatewayClientOptions = Pick<OpenAIAdapterConfig, 'defaultHeaders' | 
 export function gatewayClientOptions(
   transport: GatewayTransport & { readonly apiKey: string }
 ): GatewayClientOptions {
+  const headers = gatewayHeaders(transport);
+  return {
+    ...(Object.keys(headers).length > 0 && { defaultHeaders: headers }),
+    ...(transport.proxyUrl !== undefined && {
+      fetchOptions: { dispatcher: proxyAgentFor(transport.proxyUrl) },
+    }),
+  };
+}
+
+/**
+ * The headers a transport adds: the extra headers, and with an auth header,
+ * the key in that header and `Authorization: null` (both clients drop a
+ * null-valued header, which removes their default bearer).
+ */
+function gatewayHeaders(
+  transport: GatewayTransport & { readonly apiKey: string }
+): Record<string, string | null> {
   const headers: Record<string, string | null> = { ...transport.extraHeaders };
   if (transport.authHeader !== undefined) {
     headers['Authorization'] = null;
     headers[transport.authHeader] = transport.apiKey;
   }
+  return headers;
+}
+
+/** The AI-SDK `createOpenAI` settings a gateway transport contributes. */
+interface GatewayAiSdkOptions {
+  readonly headers?: Readonly<Record<string, string | undefined>>;
+  readonly fetch?: typeof fetch;
+}
+
+/**
+ * The same transport as {@link gatewayClientOptions}, shaped for the AI-SDK
+ * `createOpenAI` factory the single-model `custom-openai` path uses (#6629):
+ * `headers` (a removed header is `undefined`, the AI SDK's spelling) and a
+ * `fetch` that carries the proxy dispatcher. Only the keys that apply.
+ */
+export function gatewayAiSdkOptions(
+  transport: GatewayTransport & { readonly apiKey: string }
+): GatewayAiSdkOptions {
+  const headers = Object.fromEntries(
+    Object.entries(gatewayHeaders(transport)).map(([name, value]) => [name, value ?? undefined])
+  );
+  const proxyUrl = transport.proxyUrl;
   return {
-    ...(Object.keys(headers).length > 0 && { defaultHeaders: headers }),
-    ...(transport.proxyUrl !== undefined && {
-      fetchOptions: { dispatcher: proxyAgentFor(transport.proxyUrl) },
+    ...(Object.keys(headers).length > 0 && { headers }),
+    ...(proxyUrl !== undefined && {
+      fetch: (input: string | URL | Request, init?: RequestInit) =>
+        fetch(input, { ...init, dispatcher: proxyAgentFor(proxyUrl) }),
     }),
   };
 }
