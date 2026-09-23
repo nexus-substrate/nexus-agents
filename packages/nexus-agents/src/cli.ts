@@ -175,6 +175,11 @@ interface ParsedValues {
   note?: string;
   sound: boolean;
   unsound: boolean;
+  // improvement-review command options (#2444, #6636)
+  'lookback-days'?: string;
+  'file-issues': boolean;
+  'min-sample-size'?: string;
+  'fitness-floor'?: string;
 }
 
 /** Builds orchestrate-specific options. */
@@ -331,6 +336,36 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...buildLearningMetricsOptions(values),
     ...buildSetupOptions(values),
     ...buildInitOptions(values),
+    ...buildImprovementReviewOptions(values),
+  };
+}
+
+/** Builds improvement-review specific options (#2444, #6636). */
+function buildImprovementReviewOptions(values: ParsedValues): {
+  'file-issues'?: boolean;
+  fileIssues?: boolean;
+  'lookback-days'?: string;
+  lookbackDays?: string;
+  'min-sample-size'?: string;
+  minSampleSize?: string;
+  'fitness-floor'?: string;
+  fitnessFloor?: string;
+} {
+  return {
+    'file-issues': values['file-issues'],
+    fileIssues: values['file-issues'],
+    ...(values['lookback-days'] !== undefined && {
+      'lookback-days': values['lookback-days'],
+      lookbackDays: values['lookback-days'],
+    }),
+    ...(values['min-sample-size'] !== undefined && {
+      'min-sample-size': values['min-sample-size'],
+      minSampleSize: values['min-sample-size'],
+    }),
+    ...(values['fitness-floor'] !== undefined && {
+      'fitness-floor': values['fitness-floor'],
+      fitnessFloor: values['fitness-floor'],
+    }),
   };
 }
 
