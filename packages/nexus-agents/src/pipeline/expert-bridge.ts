@@ -15,6 +15,7 @@ import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import { resolveCliSlot } from '../config/model-availability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
+import type { RoutingArmId } from '../cli-adapters/types-core.js';
 
 /**
  * Resolves a CLI slot from the model string a (CLI or API) adapter returned.
@@ -49,6 +50,13 @@ export interface ExpertBridgeResult {
    * a cli — see #2823 (#1154 regression).
    */
   readonly cli?: CliNameLiteral;
+  /**
+   * Routing arm id the router ran (#6552), when it names one: `api:anthropic`
+   * for the Anthropic API arm, where {@link cli} reads the `claude` slot. An
+   * outcome row records this, so warm start credits the arm that ran.
+   * Undefined when no arm ran, or when the router named only a slot.
+   */
+  readonly routedArm?: RoutingArmId;
   /**
    * `'composite-router'` when `CompositeRouter.executeTask` selected the CLI
    * that produced this result, success or failure (#6521). Set where the
@@ -91,6 +99,7 @@ export interface ExpertBridgeResult {
 /** Attribution of a routed arm's run, on success and on failure (#6521). */
 interface RoutedAttribution {
   cli?: CliNameLiteral;
+  routedArm?: RoutingArmId;
   routedBy?: OutcomeRoutedBy;
   routedDurationMs?: number;
 }
@@ -119,12 +128,13 @@ interface RouterLike {
  * then there is nothing to attribute.
  */
 function routedAttribution(
-  routed: { routedCli?: CliNameLiteral; routedDurationMs?: number },
+  routed: { routedCli?: CliNameLiteral; routedArm?: RoutingArmId; routedDurationMs?: number },
   model: string | undefined
 ): RoutedAttribution {
   const cli = routed.routedCli ?? resolveCliFromModelString(model);
   return {
     ...(cli !== undefined && { cli }),
+    ...(routed.routedArm !== undefined && { routedArm: routed.routedArm }),
     ...(routed.routedCli !== undefined && { routedBy: 'composite-router' as const }),
     ...(routed.routedDurationMs !== undefined && { routedDurationMs: routed.routedDurationMs }),
   };
@@ -365,6 +375,7 @@ function checkCircuitHealth(): { healthy: boolean; message: string } {
 function attributionOf(source: RoutedAttribution): RoutedAttribution {
   return {
     ...(source.cli !== undefined && { cli: source.cli }),
+    ...(source.routedArm !== undefined && { routedArm: source.routedArm }),
     ...(source.routedBy !== undefined && { routedBy: source.routedBy }),
     ...(source.routedDurationMs !== undefined && { routedDurationMs: source.routedDurationMs }),
   };

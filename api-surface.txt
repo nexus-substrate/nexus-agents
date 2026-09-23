@@ -1620,6 +1620,7 @@ InterfaceDeclaration CliError
   readonly message: string
   readonly retryAfterMs?: number | undefined
   readonly retryable: boolean
+  readonly routedArm?: RoutingArmId | undefined
   readonly routedCli?: "claude" | "codex" | "gemini" | "opencode" | undefined
   readonly routedDurationMs?: number | undefined
 TypeAliasDeclaration CliErrorCode
@@ -1645,6 +1646,7 @@ InterfaceDeclaration CliResponse
   readonly fallbackFrom?: string | undefined
   readonly model?: string | undefined
   readonly raw?: unknown
+  readonly routedArm?: RoutingArmId | undefined
   readonly routedCli?: "claude" | "codex" | "gemini" | "opencode" | undefined
   readonly routedDurationMs?: number | undefined
   readonly sessionId?: string | undefined
@@ -3567,6 +3569,7 @@ InterfaceDeclaration ExpertBridgeResult
   readonly error?: string | undefined
   readonly expertType: BuiltInExpertType
   readonly model?: string | undefined
+  readonly routedArm?: RoutingArmId | undefined
   readonly routedBy?: "composite-router" | undefined
   readonly routedDurationMs?: number | undefined
   readonly success: boolean

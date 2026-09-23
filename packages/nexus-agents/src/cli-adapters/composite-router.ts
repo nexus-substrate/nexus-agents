@@ -625,8 +625,10 @@ export class CompositeRouter implements ICompositeRouter {
 
     // #6521: name the arm that ran and time its call alone, on success AND on
     // failure, so an outcome writer records both against the arm routed to.
+    // #6552: the arm id too, which the slot alone loses for an api:* arm.
     const routed = {
       routedCli: routingArmDisplaySlot(decision.cliName),
+      routedArm: decision.cliName,
       routedDurationMs: armDurationMs,
     };
     if (!executeResult.ok) return err({ ...executeResult.error, ...routed });
@@ -645,8 +647,9 @@ export class CompositeRouter implements ICompositeRouter {
     const arm = decision.cliName;
     const slot = routingArmDisplaySlot(arm);
 
-    // Record bandit outcome with quality-enriched reward (Issue #929)
-    const reward = computeQualityReward(slot, success, durationMs);
+    // Record bandit outcome with quality-enriched reward (Issue #929). The
+    // history is the ARM's (#6552): outcome rows are keyed on the arm id.
+    const reward = computeQualityReward(arm, success, durationMs);
     this.recordOutcome(arm, task, reward, success);
 
     // Record difficulty outcome for ZeroRouter learning

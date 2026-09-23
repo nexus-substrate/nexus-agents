@@ -26,6 +26,7 @@ vi.mock('../cli-adapters/child-mcp-config.js', () => ({
 import { createAgentStages } from './agent-executor.js';
 import { OutcomeStore, setOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { StrategyDistiller } from '../learning/strategy-distiller.js';
+import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 
 const ARM_FAILURE = {
   ok: false,
@@ -71,5 +72,41 @@ describe('routed outcomes reach the distiller with their failures (#6521 I1)', (
       .getRules()
       .find((r) => r.patternType === 'success-rate' && r.cli === 'codex');
     expect(boost?.metric).toBe(0.8);
+  });
+
+  it('records an API arm run under the arm id, and warm start credits that arm (#6552)', async () => {
+    executeTaskMock
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          message: 'api:anthropic returned 500',
+          routedCli: 'claude',
+          routedArm: 'api:anthropic',
+          routedDurationMs: 30,
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: {
+          text: 'a plan',
+          routedCli: 'claude',
+          routedArm: 'api:anthropic',
+          routedDurationMs: 60,
+        },
+      });
+    const stages = createAgentStages();
+    for (let i = 0; i < 2; i++) await stages.plan(`task ${String(i)}`, '');
+
+    const rows = store.query().filter((o) => o.model === 'pipeline');
+    expect(rows.map((o) => [o.cli, o.success])).toEqual([
+      ['api:anthropic', false],
+      ['api:anthropic', true],
+    ]);
+
+    const bandit = new LinUCBBandit(['claude', 'api:anthropic']);
+    expect(bandit.warmStart(rows)).toBe(2);
+    const pulls = new Map(bandit.getStats().map((s) => [s.name, s.pullCount]));
+    expect(pulls.get('api:anthropic')).toBe(2);
+    expect(pulls.get('claude')).toBe(0);
   });
 });

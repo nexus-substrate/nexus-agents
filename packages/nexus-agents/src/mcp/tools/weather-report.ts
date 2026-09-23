@@ -53,12 +53,16 @@ import {
   type DecisionCostRecord,
 } from '../../observability/decision-cost-store.js';
 import { strategyCostProfiles } from '../../orchestration/strategy-manifest-registry.js';
+import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 
 // ============================================================================
 // Public API
 // ============================================================================
 
 const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
+
+/** CLI slots plus API arms: every `cli` an attributed outcome row can carry (#6552). */
+const ROUTED_ARMS: readonly string[] = [...CLI_NAMES, ...ApiArmIdSchema.options];
 
 /**
  * Optional injectable dependencies for {@link generateWeatherReport} (#3856).
@@ -524,7 +528,9 @@ function analyzeCategoryRouting(
 ): CategoryRoutingStats | null {
   let bestRate = 0;
   const cliRates = new Map<string, number>();
-  for (const cli of CLI_NAMES) {
+  // Every attributed arm, API arms included (#6552): scored over CLI names
+  // only, an api:* row could never be "accurate" and regret went negative.
+  for (const cli of ROUTED_ARMS) {
     const cliCat = catOutcomes.filter((o) => o.cli === cli);
     if (cliCat.length === 0) continue;
     const rate = cliCat.filter((o) => o.success).length / cliCat.length;
@@ -609,10 +615,9 @@ function buildSwarmHealth(
   // UNDERSTATES regret against a metric whose target is "decreasing".
   //
   // Reachable, not theoretical: analyzeCategoryRouting returns null when
-  // cliRates is empty, and OutcomeCliSchema admits `api:anthropic`,
-  // `api:openai`, `api:google`, `api:custom-openai` and `unknown` — none of
-  // which appear in this file's CLI_NAMES. A workspace routing through API
-  // arms rather than CLI adapters hits it on every category.
+  // cliRates is empty, and OutcomeCliSchema admits `unknown`, which is not in
+  // ROUTED_ARMS. A category whose rows are all unattributed hits it. (API arm
+  // rows were in the same position until #6552 added them to ROUTED_ARMS.)
   let analyzedCategories = 0;
 
   for (const category of TASK_CATEGORIES) {

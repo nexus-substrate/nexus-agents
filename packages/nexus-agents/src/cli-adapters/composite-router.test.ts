@@ -24,6 +24,8 @@ import {
   setDefaultAvailableModelsCache,
 } from '../config/available-models-cache.js';
 import { StrategyDistiller } from '../learning/strategy-distiller.js';
+import { OutcomeStore, setOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import { resetQualityRewardCache } from './composite-router-outcome.js';
 
 /**
  * Creates a mock CLI adapter for testing.
@@ -1245,6 +1247,78 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
         if (result.ok) return;
         expect(result.error.routedCli).toBe(routed.value.cliName);
         expect(recordOutcomeSpy).toHaveBeenCalledWith(routed.value.cliName, task, 0.1, false);
+      });
+
+      it('names the API arm itself, not only its vendor slot, on success and failure (#6552)', async () => {
+        const task: CliTask = { content: 'Test task' };
+        const routed = await router.route(task);
+        expect(routed.ok).toBe(true);
+        if (!routed.ok) return;
+        const apiDecision = { ...routed.value, cliName: 'api:anthropic' as const };
+
+        const success = await router.executeDecision(apiDecision, task);
+        expect(success.ok).toBe(true);
+        if (!success.ok) return;
+        expect(success.value.routedArm).toBe('api:anthropic');
+        expect(success.value.routedCli).toBe('claude');
+
+        vi.mocked(apiDecision.adapter.execute).mockResolvedValueOnce({
+          ok: false,
+          error: { code: 'EXECUTION_ERROR', message: 'Failed', cli: 'claude', retryable: false },
+        });
+        const failure = await router.executeDecision(apiDecision, task);
+        expect(failure.ok).toBe(false);
+        if (failure.ok) return;
+        expect(failure.error.routedArm).toBe('api:anthropic');
+        expect(failure.error.routedCli).toBe('claude');
+      });
+
+      it('names a CLI arm as itself (#6552)', async () => {
+        const task: CliTask = { content: 'Test task' };
+        const routed = await router.route(task);
+        expect(routed.ok).toBe(true);
+        if (!routed.ok) return;
+        const cliDecision = { ...routed.value, cliName: 'claude' as const };
+
+        const result = await router.executeDecision(cliDecision, task);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.value.routedArm).toBe('claude');
+      });
+
+      it("rewards an API arm from that arm's own history, not its CLI slot's (#6552)", async () => {
+        const task: CliTask = { content: 'Test task' };
+        const routed = await router.route(task);
+        expect(routed.ok).toBe(true);
+        if (!routed.ok) return;
+        vi.stubEnv('NEXUS_PERSIST_LEARNING', 'false');
+        resetQualityRewardCache();
+        const store = new OutcomeStore();
+        setOutcomeStore(store);
+        for (let i = 0; i < 10; i++) {
+          store.append({
+            id: `claude-${String(i)}`,
+            cli: 'claude',
+            category: 'code_generation',
+            model: 'm',
+            success: true,
+            durationMs: 1,
+            timestamp: '2026-09-01T00:00:00.000Z',
+            source: 'delegate',
+          });
+        }
+        const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+        try {
+          await router.executeDecision({ ...routed.value, cliName: 'api:anthropic' }, task);
+        } finally {
+          setOutcomeStore(new OutcomeStore());
+          resetQualityRewardCache();
+          vi.unstubAllEnvs();
+        }
+        // No api:anthropic history: the base reward (0.5) less a latency
+        // penalty. Reading the claude slot's 100% rate would add 0.3.
+        const reward = recordOutcomeSpy.mock.calls[0]?.[2] as number;
+        expect(reward).toBeLessThanOrEqual(0.5);
       });
     });
 

@@ -10,7 +10,7 @@ import {
   taskAnalysisResultToTaskProfile,
   getTimeProvider,
 } from '../core/index.js';
-import type { CliName, CliTask, RoutingArmId } from './types.js';
+import type { CliTask, RoutingArmId } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
@@ -176,14 +176,14 @@ interface CachedRate {
   readonly computedAt: number;
 }
 
-const qualityRateCache = new Map<CliName, CachedRate>();
+const qualityRateCache = new Map<RoutingArmId, CachedRate>();
 
 /**
  * Per-CLI success rate over the recent window, cached with a short TTL to avoid
  * the O(N) OutcomeStore scan on every task. Returns undefined when there is no
  * history (caller leaves the base reward unadjusted). (#3261)
  */
-function getCachedCliSuccessRate(cli: CliName): number | undefined {
+function getCachedCliSuccessRate(cli: RoutingArmId): number | undefined {
   const now = getTimeProvider().now();
   const cached = qualityRateCache.get(cli);
   if (cached !== undefined && now - cached.computedAt < QUALITY_RATE_CACHE_TTL_MS) {
@@ -209,12 +209,16 @@ export function resetQualityRewardCache(): void {
  * LinUCB to learn more nuanced model preferences. The per-CLI success rate
  * is cached with a short TTL (#3261) so this stays O(1) on the hot path.
  *
- * @param cli - CLI that executed the task
+ * @param cli - Routing arm that executed the task (an `api:*` arm reads its own history, #6552)
  * @param success - Whether the task succeeded
  * @param durationMs - Task execution duration in ms
  * @returns Reward value in [0, 1] range
  */
-export function computeQualityReward(cli: CliName, success: boolean, durationMs: number): number {
+export function computeQualityReward(
+  cli: RoutingArmId,
+  success: boolean,
+  durationMs: number
+): number {
   if (!success) return 0.1;
 
   let reward = 0.5;

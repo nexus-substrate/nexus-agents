@@ -707,6 +707,18 @@ describe('swarmHealth in weather report', () => {
     expect(report.swarmHealth?.routingAccuracy).toBeCloseTo(0.5, 2);
   });
 
+  it('scores routing against API arms too, so an API arm row is not a free miss (#6552)', () => {
+    // api:anthropic is the best arm for code_generation (100%); gemini fails.
+    seedOutcomes(5, { cli: 'api:anthropic', category: 'code_generation', success: true });
+    seedOutcomes(5, { cli: 'gemini', category: 'code_generation', success: false });
+
+    const report = generateWeatherReport({});
+    // Scored over CLI names only, gemini (0%) was "best", every gemini row was
+    // "accurate" and regret was negative (-0.5).
+    expect(report.swarmHealth?.routingAccuracy).toBeCloseTo(0.5, 2);
+    expect(report.swarmHealth?.weeklyRegret).toBeCloseTo(0.5, 2);
+  });
+
   it('computes weekly regret as gap from optimal', () => {
     // Best possible: 100% for code_generation via claude
     seedOutcomes(5, { cli: 'claude', category: 'code_generation', success: true });
@@ -825,20 +837,25 @@ describe('the regret denominator counts only ANALYSABLE categories (#6036)', () 
   // so a category counted toward the regret denominator even when its routing
   // could not be analysed — inflating the denominator and systematically
   // UNDERSTATING regret against a metric whose target is "decreasing".
-  it('a category routed entirely through api:* arms is observed but not analysed', () => {
-    // Reachable, not theoretical: OutcomeCliSchema admits `api:anthropic` and
-    // friends, none of which appear in this file's CLI_NAMES, so
-    // analyzeCategoryRouting finds no cliRates and returns null.
-    seedOutcomes(8, {
-      cli: 'api:anthropic' as TaskOutcome['cli'],
-      category: 'code_generation',
-      success: true,
-    });
+  it('a category of only unattributed rows is observed but not analysed', () => {
+    // Reachable, not theoretical: OutcomeCliSchema admits `unknown`, which
+    // names no arm, so analyzeCategoryRouting finds no rates and returns null.
+    seedOutcomes(8, { cli: 'unknown', category: 'code_generation', success: true });
 
     const health = generateWeatherReport({}).swarmHealth;
     expect(health).toBeDefined();
     expect(health?.observedCategories).toBeGreaterThan(0);
     expect(health?.analyzedCategories).toBe(0);
+  });
+
+  it('a category routed entirely through api:* arms is analysed (#6552)', () => {
+    // Before #6552 this was the unanalysable case: API arm ids were not in the
+    // scored set. Routed rows now carry them, so they must be scored.
+    seedOutcomes(8, { cli: 'api:anthropic', category: 'code_generation', success: true });
+
+    const health = generateWeatherReport({}).swarmHealth;
+    expect(health?.observedCategories).toBeGreaterThan(0);
+    expect(health?.analyzedCategories).toBe(health?.observedCategories);
   });
 
   it('a CLI-routed category is both observed and analysed', () => {
@@ -852,11 +869,7 @@ describe('the regret denominator counts only ANALYSABLE categories (#6036)', () 
   it('the MIXED case is the one that silently understated regret', () => {
     // One analysable category, one not. The denominator must be 1, not 2.
     seedOutcomes(8, { cli: 'claude', category: 'code_generation', success: true });
-    seedOutcomes(8, {
-      cli: 'api:openai' as TaskOutcome['cli'],
-      category: 'code_review',
-      success: true,
-    });
+    seedOutcomes(8, { cli: 'unknown', category: 'code_review', success: true });
 
     const health = generateWeatherReport({}).swarmHealth;
     expect(health?.observedCategories).toBe(2);
@@ -879,11 +892,7 @@ describe('the regret denominator counts only ANALYSABLE categories (#6036)', () 
 
     resetOutcomeStore();
     seedRegretfulCategory();
-    seedOutcomes(8, {
-      cli: 'api:openai' as TaskOutcome['cli'],
-      category: 'code_review',
-      success: true,
-    });
+    seedOutcomes(8, { cli: 'unknown', category: 'code_review', success: true });
     const withUnanalysable = generateWeatherReport({}).swarmHealth;
 
     // One more OBSERVED category, no more ANALYSED ones -> regret unchanged.
