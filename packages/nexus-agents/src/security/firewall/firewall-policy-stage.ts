@@ -17,13 +17,19 @@
  */
 
 import { createLogger } from '../../core/index.js';
+import { err, ok, type Result } from '../../core/result.js';
 import type { AgentAction, AgentActionType } from '../action-schema.js';
 import type { AuditTrail } from '../audit-trail.js';
-import { ACTION_SCOPED_POLICY_RULES, checkRuleOfTwo, evaluatePolicy } from '../policy-gate.js';
-import type { ActionContext, Violation } from '../policy-gate.js';
+import {
+  ACTION_SCOPED_POLICY_RULES,
+  checkRuleOfTwo,
+  evaluatePolicy,
+  type ActionContext,
+  type Violation,
+} from '../policy-gate.js';
 import type { TrustTier } from '../trust-types.js';
 import type { FirewallPolicyMode } from './firewall-policy-mode.js';
-import type { FirewallError, FirewallProcessOptions } from './firewall-types.js';
+import type { FirewallError } from './firewall-types.js';
 
 const logger = createLogger({ component: 'HostileInputFirewall' });
 
@@ -63,6 +69,8 @@ export type FirewallPolicyEvaluation =
       readonly unmeasured: readonly string[];
     };
 
+export type FirewallActionPolicyEvaluation = Extract<FirewallPolicyEvaluation, { scope: 'action' }>;
+
 /**
  * Builds the `ActionContext` for one call from the facts the pipeline has:
  * the ENFORCED tier (post reputation gate), the call's access posture, and the
@@ -73,7 +81,7 @@ export type FirewallPolicyEvaluation =
 export function buildActionContext(
   effectiveTrustTier: TrustTier,
   context: { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean },
-  options: FirewallProcessOptions | undefined
+  options?: { readonly existingLabels?: ReadonlySet<string> | undefined }
 ): ActionContext {
   return {
     inputTrustTier: effectiveTrustTier,
@@ -94,8 +102,23 @@ export function buildActionContext(
  */
 export function evaluateFirewallPolicy(
   context: ActionContext,
+  action: AgentAction,
+  auditTrail?: AuditTrail
+): FirewallActionPolicyEvaluation;
+export function evaluateFirewallPolicy(
+  context: ActionContext,
+  action: undefined,
+  auditTrail?: AuditTrail
+): Extract<FirewallPolicyEvaluation, { scope: 'context' }>;
+export function evaluateFirewallPolicy(
+  context: ActionContext,
   action: AgentAction | undefined,
-  auditTrail: AuditTrail | undefined
+  auditTrail?: AuditTrail
+): FirewallPolicyEvaluation;
+export function evaluateFirewallPolicy(
+  context: ActionContext,
+  action: AgentAction | undefined,
+  auditTrail?: AuditTrail
 ): FirewallPolicyEvaluation {
   if (action === undefined) {
     const violation = checkRuleOfTwo(context);
@@ -166,4 +189,123 @@ export function policyRefusal(
     stage: 'policy',
     violations: blocking,
   };
+}
+
+/**
+ * Options for action-level policy evaluation (#6310).
+ */
+export interface FirewallActionEvaluationOptions {
+  /** The author/username of the input. */
+  readonly user: string;
+  /** The enforced trust tier from the classification run. */
+  readonly effectiveTrustTier: TrustTier;
+  /** Access posture for the evaluation. Defaults to firewall context. */
+  readonly context?:
+    { readonly hasWriteAccess: boolean; readonly hasSecretAccess: boolean } | undefined;
+  /** Known repository labels for label validity checks. */
+  readonly existingLabels?: ReadonlySet<string> | undefined;
+}
+
+/**
+ * Outcome of {@link HostileInputFirewall.evaluateAction} (#6310).
+ *
+ * A discriminated union mirroring {@link ActionValidation}: a caller cannot read
+ * `policy` without first narrowing on `evaluated`, so "the stage did not run" is
+ * structurally impossible to misread as a pass.
+ */
+export type FirewallActionPolicyResult =
+  | {
+      readonly evaluated: false;
+      /** Why no verdict exists. Absence is attributable, not anonymous. */
+      readonly reason: 'policy-stage-disabled';
+      readonly policyMode: FirewallPolicyMode;
+    }
+  | {
+      readonly evaluated: true;
+      readonly policy: FirewallActionPolicyEvaluation;
+      readonly effectiveTrustTier: TrustTier;
+      readonly policyMode: FirewallPolicyMode;
+      readonly wouldRefuse: boolean;
+    };
+
+function executeActionPolicy(
+  action: AgentAction,
+  options: FirewallActionEvaluationOptions,
+  config: {
+    readonly defaultContext: {
+      readonly hasWriteAccess: boolean;
+      readonly hasSecretAccess: boolean;
+    };
+    readonly policyMode: FirewallPolicyMode;
+    readonly auditTrail: AuditTrail;
+    readonly auditStage: boolean;
+  }
+): Result<FirewallActionPolicyResult, FirewallError> {
+  const context = options.context ?? config.defaultContext;
+  const actionContext = buildActionContext(options.effectiveTrustTier, context, options);
+  const evaluation = evaluateFirewallPolicy(
+    actionContext,
+    action,
+    config.auditStage ? config.auditTrail : undefined
+  );
+  const blocking = blockingViolations(evaluation);
+  if (blocking.length > 0) {
+    logger.warn('Firewall surfaced blocking policy violations', {
+      user: options.user,
+      effectiveTrustTier: options.effectiveTrustTier,
+      scope: evaluation.scope,
+      rules: blocking.map((v) => v.rule),
+    });
+  }
+
+  const refusal = policyRefusal(
+    evaluation,
+    config.policyMode,
+    options.user,
+    options.effectiveTrustTier
+  );
+  if (refusal !== undefined) return err(refusal);
+
+  return ok({
+    evaluated: true,
+    policy: evaluation,
+    effectiveTrustTier: options.effectiveTrustTier,
+    policyMode: config.policyMode,
+    wouldRefuse: blocking.length > 0 && config.policyMode === 'audit',
+  });
+}
+
+/**
+ * Evaluates an action through the policy stage without re-running the input-level
+ * pipeline (#6310).
+ */
+export function evaluateActionPolicy(
+  action: AgentAction,
+  options: FirewallActionEvaluationOptions,
+  config: {
+    readonly defaultContext: {
+      readonly hasWriteAccess: boolean;
+      readonly hasSecretAccess: boolean;
+    };
+    readonly policyMode: FirewallPolicyMode;
+    readonly policyEnforcementStage: boolean;
+    readonly auditTrail: AuditTrail;
+    readonly auditStage: boolean;
+  }
+): Result<FirewallActionPolicyResult, FirewallError> {
+  if (options.user.trim() === '') {
+    return err({
+      code: 'EXTRACTION_FAILED',
+      message: 'Author username is required',
+      stage: 'extraction',
+    });
+  }
+  if (!config.policyEnforcementStage) {
+    return ok({
+      evaluated: false,
+      reason: 'policy-stage-disabled',
+      policyMode: config.policyMode,
+    });
+  }
+  return executeActionPolicy(action, options, config);
 }

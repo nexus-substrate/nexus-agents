@@ -184,6 +184,13 @@ export type { FirewallProcessOptions } from '../security/firewall/firewall-types
 // FirewallPolicyMode below — a consumer cannot narrow a value it is handed
 // without the type that names its discriminant.
 export type { ActionValidation } from '../security/firewall/firewall-pipeline.js';
+// #6310: action-shaped re-entry types for per-action policy evaluation without
+// duplicate input-level audit emissions.
+export type {
+  FirewallActionEvaluationOptions,
+  FirewallActionPolicyEvaluation,
+  FirewallActionPolicyResult,
+} from '../security/firewall/firewall-pipeline.js';
 // #5380: the type of `FirewallResult.policy` — a consumer cannot narrow on
 // `scope` ('action': all seven checks ran; 'context': Rule of Two only, the
 // rest named as unmeasured) without the type that declares the discriminant.
