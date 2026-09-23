@@ -177,6 +177,72 @@ describe('formatVoteComment', () => {
     // Date format should be MM/DD/YYYY
     expect(comment).toMatch(/\*\*Date:\*\* \d{2}\/\d{2}\/\d{4}/);
   });
+
+  it('includes Options block when declaredOptions are provided (#6587)', () => {
+    const result = {
+      ...createMockVotingResult(),
+      optionGate: {
+        tally: [
+          { option: 'Delete now', count: 4 },
+          { option: 'Keep', count: 1 },
+        ],
+        leadingOption: 'Delete now',
+        leadingCount: 4,
+        approverCount: 5,
+        selectedCount: 5,
+        unattributedApprovals: 0,
+        leadingShare: 4 / 5,
+        threshold: 'majority' as const,
+        approved: true,
+      },
+    };
+    const comment = formatVoteComment(result, 'approved', 'skipped', [
+      'Delete now',
+      'Keep',
+      'Deprecate first',
+    ]);
+
+    expect(comment).toContain('Options:');
+    expect(comment).toContain('  Delete now: 4');
+    expect(comment).toContain('  Keep: 1');
+    expect(comment).toContain('  Deprecate first: 0');
+    expect(comment).toContain(
+      'Winner: "Delete now" (4 of 5 approvers; cleared the majority option bar)'
+    );
+    expect(comment).toContain(
+      'Coverage: 5 of 5 approvers named a declared option (0 unattributed)'
+    );
+  });
+
+  it('reads declaredOptions from result when argument omitted (#6587)', () => {
+    const result = {
+      ...createMockVotingResult(),
+      declaredOptions: ['Alpha', 'Beta'],
+      optionGate: {
+        tally: [{ option: 'Alpha', count: 2 }],
+        leadingOption: 'Alpha',
+        leadingCount: 2,
+        approverCount: 2,
+        selectedCount: 2,
+        unattributedApprovals: 0,
+        leadingShare: 1,
+        threshold: 'majority' as const,
+        approved: true,
+      },
+    };
+    const comment = formatVoteComment(result);
+
+    expect(comment).toContain('Options:');
+    expect(comment).toContain('  Alpha: 2');
+    expect(comment).toContain('  Beta: 0');
+  });
+
+  it('reports when options were declared but result carries no tally (#6587)', () => {
+    const result = createMockVotingResult();
+    const comment = formatVoteComment(result, 'approved', 'skipped', ['Alpha', 'Beta']);
+
+    expect(comment).toContain('Options: declared, but the result carries no option tally');
+  });
 });
 
 // ============================================================================
@@ -1467,5 +1533,62 @@ describe('voteCommand — declared-option block (#6585)', () => {
     expect(stdout.join('')).not.toContain('Options:');
     // Positive control: the summary rendered, so the absence is not vacuous.
     expect(stdout.join('')).toContain('Workspace:');
+  });
+
+  it('records Options block in GitHub comment when options were declared (#6587)', async () => {
+    executeVotingMock.mockResolvedValue(
+      extendedResult({
+        tally: [
+          { option: 'Alpha', count: 3 },
+          { option: 'Beta', count: 1 },
+        ],
+        leadingOption: 'Alpha',
+        leadingCount: 3,
+        approverCount: 4,
+        selectedCount: 4,
+        unattributedApprovals: 0,
+        leadingShare: 0.75,
+        threshold: 'majority',
+        approved: true,
+      })
+    );
+    safeExecSandboxedMock.mockReturnValue('commented');
+
+    await voteCommand({
+      proposal: 'p',
+      options: ['Alpha', 'Beta', 'Gamma'],
+      issueNumber: 42,
+    });
+
+    const stdin = safeExecSandboxedMock.mock.calls
+      .map((call) => (call[1] as { stdin?: string } | undefined)?.stdin)
+      .filter((body): body is string => typeof body === 'string')
+      .find((body) => body.includes('## Consensus Vote Result'));
+
+    expect(stdin).toBeDefined();
+    expect(stdin).toContain('Options:');
+    expect(stdin).toContain('  Alpha: 3');
+    expect(stdin).toContain('  Beta: 1');
+    expect(stdin).toContain('  Gamma: 0');
+    expect(stdin).toContain('Winner: "Alpha" (3 of 4 approvers; cleared the majority option bar)');
+    expect(stdin).toContain('Coverage: 4 of 4 approvers named a declared option (0 unattributed)');
+  });
+
+  it('omits Options block in GitHub comment when no options declared (#6587)', async () => {
+    executeVotingMock.mockResolvedValue(extendedResult());
+    safeExecSandboxedMock.mockReturnValue('commented');
+
+    await voteCommand({
+      proposal: 'p',
+      issueNumber: 42,
+    });
+
+    const stdin = safeExecSandboxedMock.mock.calls
+      .map((call) => (call[1] as { stdin?: string } | undefined)?.stdin)
+      .filter((body): body is string => typeof body === 'string')
+      .find((body) => body.includes('## Consensus Vote Result'));
+
+    expect(stdin).toBeDefined();
+    expect(stdin).not.toContain('Options:');
   });
 });
