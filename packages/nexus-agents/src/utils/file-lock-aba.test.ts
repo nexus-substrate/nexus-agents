@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const lockModule = pathToFileURL(resolve(here, 'file-lock.ts')).href;
-const tsxCli = createRequire(import.meta.url).resolve('tsx/cli');
+const tsxEsm = createRequire(import.meta.url).resolve('tsx/esm');
 
 /**
  * One contender. `A` parks after observing the stale lock until `go-A` exists,
@@ -38,14 +38,22 @@ import { existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { withFileLock } from ${JSON.stringify(lockModule)};
 const [dir, name] = process.argv.slice(2);
-const waitFor = async (file) => { while (!existsSync(join(dir, file))) await new Promise((r) => setTimeout(r, 10)); };
+const waitFor = async (file, timeoutMs = 45000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!existsSync(join(dir, file))) {
+    if (Date.now() > deadline) {
+      throw new Error(\`worker \${name} timed out after \${String(timeoutMs)}ms waiting for \${file}\`);
+    }
+    await new Promise((r) => setTimeout(r, 10));
+  }
+};
 await withFileLock(join(dir, 'ledger.lock'), async () => {
   writeFileSync(join(dir, name + '-in'), String(Date.now()));
   writeFileSync(join(dir, name + '-token'), readFileSync(join(dir, 'ledger.lock'), 'utf-8'));
   if (name === 'B') await waitFor('release-B');
   writeFileSync(join(dir, name + '-out'), String(Date.now()));
 }, {
-  timeoutMs: 30000,
+  timeoutMs: 60000,
   staleMs: 60000,
   retryMs: 10,
   onStaleObserved: name === 'A'
@@ -72,9 +80,23 @@ const EXIT_MS = 15_000;
  */
 const SETTLE_MS = 500;
 
-async function waitForFile(path: string, label: string, timeoutMs = BARRIER_MS): Promise<void> {
+async function waitForFile(
+  path: string,
+  label: string,
+  contenders: readonly Contender[] = [],
+  timeoutMs = BARRIER_MS
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!existsSync(path)) {
+    for (const c of contenders) {
+      if (c.child.exitCode !== null) {
+        const err = c.getStderr().trim();
+        const detail = err.length > 0 ? `:\n${err}` : '';
+        throw new Error(
+          `contender ${c.name} (pid ${String(c.child.pid)}) exited unexpectedly with code ${String(c.child.exitCode)} while waiting for ${label} (${path})${detail}`
+        );
+      }
+    }
     if (Date.now() > deadline) {
       throw new Error(`timed out after ${String(timeoutMs)}ms waiting for ${label} (${path})`);
     }
@@ -89,14 +111,22 @@ async function waitForFile(path: string, label: string, timeoutMs = BARRIER_MS):
  */
 interface Contender {
   readonly child: ChildProcess;
+  readonly name: string;
   readonly exit: Promise<number | null>;
+  readonly getStderr: () => string;
 }
 
 function exited(contender: Contender, label: string, timeoutMs = EXIT_MS): Promise<number | null> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      reject(new Error(`timed out after ${String(timeoutMs)}ms waiting for ${label} to exit`));
+      const err = contender.getStderr().trim();
+      const detail = err.length > 0 ? `\nStderr:\n${err}` : '';
+      reject(
+        new Error(
+          `timed out after ${String(timeoutMs)}ms waiting for ${label} (pid ${String(contender.child.pid)}) to exit${detail}`
+        )
+      );
     }, timeoutMs);
   });
   return Promise.race([contender.exit, timeout]).finally(() => {
@@ -134,20 +164,26 @@ describe('withFileLock stale-lock break (ABA, #6531)', () => {
     const old = new Date(Date.now() - 120_000);
     utimesSync(join(dir, 'ledger.lock'), old, old);
     const spawnContender = (name: string): Contender => {
-      const child = spawn(process.execPath, [tsxCli, worker, dir, name], { stdio: 'ignore' });
+      const child = spawn(process.execPath, ['--import', tsxEsm, worker, dir, name], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+      child.stderr?.on('data', (chunk: unknown) => {
+        stderr += String(chunk);
+      });
       children.push(child);
       const exit = new Promise<number | null>((r) => child.once('close', r));
-      return { child, exit };
+      return { child, name, exit, getStderr: () => stderr };
     };
 
     const a = spawnContender('A');
-    await waitForFile(join(dir, 'A-saw-stale'), 'A to observe the stale lock');
+    await waitForFile(join(dir, 'A-saw-stale'), 'A to observe the stale lock', [a]);
     const b = spawnContender('B');
-    await waitForFile(join(dir, 'B-in'), 'B to acquire');
+    await waitForFile(join(dir, 'B-in'), 'B to acquire', [a, b]);
 
     // A resumes its break while B holds the lock.
     writeFileSync(join(dir, 'go-A'), '');
-    await waitForFile(join(dir, 'A-resumed'), 'A to resume its break', 10_000);
+    await waitForFile(join(dir, 'A-resumed'), 'A to resume its break', [a, b], 10_000);
     await new Promise((r) => setTimeout(r, SETTLE_MS));
     expect(existsSync(join(dir, 'A-in'))).toBe(false);
     expect(readFileSync(join(dir, 'ledger.lock'), 'utf-8')).toBe(
