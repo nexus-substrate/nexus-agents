@@ -187,6 +187,36 @@ describe('ModelToCliAdapter (#3422)', () => {
  * `createError` → `recordQuotaSignal` → the tracker). These tests pin the
  * bridge onto that same mechanism rather than a parallel one.
  */
+describe('ModelToCliAdapter gateway-arm marker (#6624)', () => {
+  it('reports the gateway arm that served the response', async () => {
+    const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
+    const gatewayModel = Object.assign(makeModelAdapter({ complete }), {
+      gatewayArm: 'api:custom-openai',
+    });
+    const adapter = createModelToCliAdapter(gatewayModel, { name: 'claude' });
+
+    const result = await adapter.execute({ content: 'hi' });
+
+    if (!result.ok) throw new Error('expected a successful execute');
+    expect(result.value.gatewayArm).toBe('api:custom-openai');
+  });
+
+  it('reports no gateway arm for a model without a valid marker', async () => {
+    const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
+    const plain = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'claude' });
+    const invalid = createModelToCliAdapter(
+      Object.assign(makeModelAdapter({ complete }), { gatewayArm: 'not-an-arm' }),
+      { name: 'claude' }
+    );
+
+    for (const adapter of [plain, invalid]) {
+      const result = await adapter.execute({ content: 'hi' });
+      if (!result.ok) throw new Error('expected a successful execute');
+      expect('gatewayArm' in result.value).toBe(false);
+    }
+  });
+});
+
 describe('ModelToCliAdapter provider quota signal (#4602)', () => {
   /** Longer than the tracker's own 60s window, so it means quota, not throttle. */
   const DURABLE_RETRY_SECONDS = 3_600;

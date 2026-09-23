@@ -31,7 +31,8 @@ import {
 } from './tool-result.js';
 
 const DESCRIPTION =
-  'Probe every model-discovery transport (OpenRouter API + opencode/claude/codex/gemini CLIs) ' +
+  'Probe every model-discovery transport (OpenRouter API, the configured gateway, and the ' +
+  'opencode/claude/codex/gemini CLIs) ' +
   'and report a per-transport health summary: probe ok/failed, model count, and a sample of ids. ' +
   'Use it to validate the CLIs and APIs are wired and reachable. Read-only; does not change routing.';
 
@@ -94,6 +95,12 @@ export interface ListAvailableModelsResponse {
 export interface ListAvailableModelsDeps extends BaseMcpToolDeps {
   /** Injectable source list (tests); defaults to the real transports. */
   readonly sourcesFactory?: (includeOpenRouter: boolean) => readonly AvailableModelsSource[];
+  /**
+   * Injectable routing-arm map (tests); defaults to `createAllAdapters()`.
+   * Unlike `sourcesFactory` it keeps the default source building, including
+   * the gateway transport (#6609).
+   */
+  readonly adaptersFactory?: () => ReadonlyMap<string, unknown>;
 }
 
 async function probeSource(
@@ -131,17 +138,61 @@ async function probeSource(
   }
 }
 
+/** The transport name the gateway catalogue is reported under (#6609). */
+const GATEWAY_TRANSPORT = 'gateway';
+
+/** The gateway arm `createAllAdapters` adds under `NEXUS_BILLING_MODE=api`. */
+const GATEWAY_API_ARM = 'api:custom-openai';
+
+/**
+ * The gateway's catalogue as its own transport (#6609), or undefined when no
+ * gateway is configured. With the discovery config set it lists what the
+ * server serves — `GET /models` after the chat filter and allowlist — in plan
+ * AND api mode; before, plan mode listed nothing and api mode listed the
+ * `api:custom-openai` arm's raw catalogue under its display slot, "opencode".
+ * A failed discovery rejects, so the probe reports it as a failed transport.
+ */
+async function gatewaySource(apiArm: unknown): Promise<AvailableModelsSource | undefined> {
+  const { discoverModels, readOpenAICompatEnv } =
+    await import('../../adapters/openai-compat-adapter.js');
+  const config = readOpenAICompatEnv();
+  if (config !== null) {
+    return {
+      name: GATEWAY_TRANSPORT,
+      listModels: async () => {
+        const discovered = await discoverModels(config);
+        if (!discovered.ok) throw discovered.error;
+        return discovered.value.map((m) => ({ id: m.id }));
+      },
+    };
+  }
+  // Only the legacy single-model variables are set: keep that arm's listing,
+  // under the gateway's name rather than "opencode".
+  const [legacy] = buildDefaultModelSources(new Map([[GATEWAY_API_ARM, apiArm]]), {
+    includeOpenRouter: false,
+  });
+  return legacy === undefined ? undefined : { ...legacy, name: GATEWAY_TRANSPORT };
+}
+
 async function defaultSources(
-  includeOpenRouter: boolean
+  includeOpenRouter: boolean,
+  adaptersFactory: ListAvailableModelsDeps['adaptersFactory']
 ): Promise<readonly AvailableModelsSource[]> {
-  const { createAllAdapters } = await import('../../cli-adapters/factory.js');
-  const adapters = createAllAdapters();
-  return buildDefaultModelSources(adapters, { includeOpenRouter });
+  const adapters = new Map<string, unknown>(
+    adaptersFactory !== undefined
+      ? adaptersFactory()
+      : (await import('../../cli-adapters/factory.js')).createAllAdapters()
+  );
+  const apiArm = adapters.get(GATEWAY_API_ARM);
+  adapters.delete(GATEWAY_API_ARM);
+  const sources = buildDefaultModelSources(adapters, { includeOpenRouter });
+  const gateway = await gatewaySource(apiArm);
+  return gateway === undefined ? sources : [...sources, gateway];
 }
 
 export async function listAvailableModelsHandler(
   args: unknown,
-  deps: Pick<ListAvailableModelsDeps, 'sourcesFactory'>,
+  deps: Pick<ListAvailableModelsDeps, 'sourcesFactory' | 'adaptersFactory'>,
   logger: ILogger
 ): Promise<ToolResult> {
   const parsed = ListAvailableModelsInputSchema.safeParse(args);
@@ -157,7 +208,7 @@ export async function listAvailableModelsHandler(
   const sources =
     deps.sourcesFactory !== undefined
       ? deps.sourcesFactory(includeOpenRouter)
-      : await defaultSources(includeOpenRouter);
+      : await defaultSources(includeOpenRouter, deps.adaptersFactory);
 
   const transports = await Promise.all(sources.map((s) => probeSource(s, includeModelIds)));
   const response: ListAvailableModelsResponse = {

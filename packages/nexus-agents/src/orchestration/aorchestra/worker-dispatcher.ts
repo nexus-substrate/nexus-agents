@@ -21,6 +21,7 @@ import type { IEventBus } from '../../pipeline/event-types.js';
 import { withWatchdog } from './watchdog.js';
 import { applyQualityGate, type QualityGateFn, type AsyncQualityGateFn } from './quality-gate.js';
 import { triageWorkerFailure, type TriageAction } from './worker-triage.js';
+import type { ServedCall } from '../outcomes/outcome-served-model.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
@@ -101,6 +102,11 @@ export interface WorkerResult {
   readonly triageAction?: TriageAction;
   /** Whether this result came from a triage-initiated retry (#1506). */
   readonly wasRetried?: boolean;
+  /**
+   * The model that answered and its token usage (#6624), for the outcome
+   * row's `servedModel` and cost. Absent when no completion came back.
+   */
+  readonly served?: ServedCall;
 }
 
 /**

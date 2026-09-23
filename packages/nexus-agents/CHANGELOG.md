@@ -1,5 +1,62 @@
 # nexus-agents
 
+## 8.101.0
+
+### Minor Changes
+
+- [#6647](https://github.com/nexus-substrate/nexus-agents/pull/6647) [`4e564cf`](https://github.com/nexus-substrate/nexus-agents/commit/4e564cf4ae4b88c475916eea8725a0050ec7e642) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents doctor` now measures a configured OpenAI-compatible gateway (`NEXUS_OPENAI_COMPAT_URL`/`_KEY`) instead of trusting that its env vars are set, and its verdict counts the gateway.
+
+  - **A gateway-only host passes.** Before, doctor counted only `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GOOGLE_AI_API_KEY` as auth and required every CLI to be installed, so a host served entirely by a working gateway always exited 1. With a gateway whose `/models` call succeeds, a CLI that is not installed no longer fails the verdict (its slot is served by a gateway model of its family). An installed CLI still has to be authenticated and on a supported version.
+  - **A broken gateway fails, naming the host.** A gateway that is unreachable, rejects the key, lists no chat model, or is refused by the private-address guard exits 1, and the summary names it (`gateway <host>`). The "Voter transport: In-process gateway" line now reports that measurement (the host and chat-model count, or `FAILED` with the reason) rather than the presence of the env vars. Doctor makes one `GET /models` call when a gateway is configured and none when it is not.
+  - **New `doctor --gateway`** prints the gateway section: the model count before and after the chat filter (and `NEXUS_OPENAI_COMPAT_MODELS`, when set), a per-family census (anthropic, openai, google, unknown), the model each of the `claude`/`codex`/`gemini` slots resolves to (or `unavailable`), the private-address guard result, and the proxy in use (direct, the proxy host, exempted by `NO_PROXY`, or an ignored invalid proxy variable).
+  - **New `doctor --probe`** (implies `--gateway`) sends one short completion per family to the model its slot resolves to. It spends gateway tokens and is off unless passed; a failed probe fails the verdict.
+  - The key, `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS` values and proxy credentials are never printed; error text from the gateway is redacted of the key and header values.
+  - **`list_available_models`** reports the gateway's discovered chat catalogue as a `gateway` transport in both plan and api billing mode. Before, plan mode did not list it, and api mode listed the `api:custom-openai` arm's catalogue under `opencode`.
+
+- [#6648](https://github.com/nexus-substrate/nexus-agents/pull/6648) [`94ca52b`](https://github.com/nexus-substrate/nexus-agents/commit/94ca52b0436cf936f7473ab29155c7293bac1fbc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Outcome rows written by the dev pipeline stages, `orchestrate` workers and `consensus_vote` seats now record the model that served the call and what it cost. Before, these rows held only a marker in `model` (`pipeline`, `worker-<role>`, `consensus`), and the served model was visible only in the usage log.
+
+  - **New optional `TaskOutcome` fields.** `servedModel` is the model id the adapter reported. `costUsd` is present only when a price was found. `priceBasis` is `'list'` when a rate was found and `'unknown'` when a lookup found none. An absent `costUsd` means the cost is unknown, never $0. When the adapter reported no token usage, no lookup is made and `priceBasis` is absent too.
+  - **Priced like the usage log.** A call a gateway served is priced by that gateway's `NEXUS_GATEWAY_COST` declaration, and an undeclared gateway is recorded as unpriced. Every other call is priced at the registry rate for the served model. The `consensus_vote` cost rollup now makes this choice through the same helper.
+  - **`model` is unchanged.** The weather report and the `orchestrate` learnings group rows by these markers, so they stay as they are. Distiller eligibility, LinUCB warm start and the weather report read the same fields as before. Rows written without a served model are unchanged byte for byte.
+  - **`CliResponse.gatewayArm` and `ExpertBridgeResult.gatewayArm`** (new, optional) name the gateway arm that served a response, when a gateway model answered it.
+
+### Patch Changes
+
+- [#6646](https://github.com/nexus-substrate/nexus-agents/pull/6646) [`c4cc7b1`](https://github.com/nexus-substrate/nexus-agents/commit/c4cc7b1f976cab95120e10420cf7186e5bf5940c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Model equivalence: distinguish model size and modality variants in canonicalModelKey ([#6616](https://github.com/nexus-substrate/nexus-agents/issues/6616)).
+
+  - Fold size and modality quirks (`small`, `image`) into `canonicalModelKey` so variants with distinct weights/modalities (e.g. `gpt-4o-mini` vs `gpt-4o`, `gemini-2.5-flash-image` vs `gemini-2.5-flash`) produce distinct identity keys.
+  - Detect `image`/`imagen` quirk during model id parsing.
+  - Support dotted minor versions directly following family roots (e.g. `gpt-4.1` extracts version `1` like `gpt-4-1`).
+  - Ensures `assessPanelIndependence` correctly reports panels with model variants as diverse rather than collapsed.
+
+## 8.100.0
+
+### Minor Changes
+
+- [#6623](https://github.com/nexus-substrate/nexus-agents/pull/6623) [`d0512c2`](https://github.com/nexus-substrate/nexus-agents/commit/d0512c244c44db740291a2b5ef39f91bbf67e0cc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - With a discovered OpenAI-compatible gateway (`NEXUS_OPENAI_COMPAT_URL`/`_KEY`), the `claude`, `codex` and `gemini` slots are now served by a gateway model of their own family when their CLI is not installed: `claude` by an Anthropic model, `codex` by an OpenAI model, `gemini` by a Google model. Before, such a slot fell back to the single `NEXUS_CUSTOM_MODEL` (default `gpt-5.5`), so a "claude" task could run GPT, and a gateway that did not serve that id failed every call.
+
+  - **Which model.** Only chat models count: realtime, audio, transcription, TTS, image, live and video ids are excluded (the same filter discovery applies, which now also drops `*-live-*`, `sora-*`, `veo-*` and `lyria-*`). Within a family the order is: tier first (flagship such as opus, pro, `gpt-5.5` or `o3`; then mid such as sonnet, mini or flash; then small such as haiku, nano or flash-lite), so a newer mini never replaces a flagship. Next, the newest model by the gateway's `/models` `created` stamp, when every model has one. Otherwise the generation parsed from the id decides (`claude-opus-4-6` over `claude-opus-4-1`). A vendor `-latest` alias and a date stamp in an id only break ties, so neither `chatgpt-4o-latest` nor `claude-3-haiku-20240307` outranks a newer generation. The chosen mapping is logged at startup.
+  - **New `NEXUS_GATEWAY_MODEL_ANTHROPIC` / `_OPENAI` / `_GOOGLE`** pin a family's model. An id missing from the discovered catalogue, or classified as another family, is ignored with a warning, and the default order applies. An id whose vendor cannot be classified is honoured, with a warning.
+  - **When the gateway is used.** Only when the slot's CLI is not available. Availability is decided the same way on every path: installed, healthy and logged in. A CLI that is installed but logged out is served from the gateway on the router as well as on the registry path. A router arm serving the CLI re-checks after an authentication, not-found or unsupported-version failure, so an expired login moves the slot to the gateway on its next call.
+  - **A family the gateway does not serve.** A direct API key of the same family (for example `ANTHROPIC_API_KEY` for `claude`) still serves the slot on the registry path. Otherwise the slot is unavailable: it gets no router arm when its CLI is not installed, and a pinned request for it fails. It is never given another family's model, another family's key or `NEXUS_CUSTOM_MODEL`.
+  - **Cost.** A gateway-served slot is priced by the gateway's `NEXUS_GATEWAY_COST` declaration, both on the router's cost ceiling and budget filter and in the usage log. It is not priced at the slot vendor's list price. An undeclared gateway is unpriced, so a router budget filter excludes those slot arms until `NEXUS_GATEWAY_COST` is set, as it already did for the gateway's `api:` arm.
+  - **Attribution.** Outcomes keep the slot key (`claude`, `codex`, `gemini`), and the model that served the call is its `modelId`.
+  - **`create_expert` and `execute_expert` on a gateway-only host.** Their adapter-availability check now counts a discovered gateway. Before, they refused with "No model adapter available" whenever no CLI and no vendor API key was present, even though the gateway could serve the expert's slot. A gateway re-discovered after being down at startup registers its family slots too.
+  - **Where it applies.** Orchestrate workers and their fallback adapters, `execute_expert`, and the router used by `run_dev_pipeline`'s expert stage and the `orchestrate` CLI. Server-mode voter seats still use the gateway models directly and are not dealt by family.
+  - **Still on `NEXUS_CUSTOM_MODEL`.** The unpinned default adapter and the `opencode` slot, when no CLI is available.
+  - **No gateway, no change.** Without a discovered gateway, adapter selection, router arms and pricing are unchanged, including the `NEXUS_CUSTOM_MODEL` fallback.
+
+### Patch Changes
+
+- [#6642](https://github.com/nexus-substrate/nexus-agents/pull/6642) [`8ade391`](https://github.com/nexus-substrate/nexus-agents/commit/8ade391d122cc70b99dc63d7ff4acd560472fcb0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The single-model `custom-openai` path (`NEXUS_OPENAI_COMPAT_URL` / `_KEY`, or the deprecated `NEXUS_CUSTOM_API_*` names) now uses the same transport options as the discovery gateway. `NEXUS_OPENAI_COMPAT_AUTH_HEADER` sends the key in the named header instead of `Authorization: Bearer`. `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS` adds static headers. `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` route requests through an explicit proxy agent, so `NODE_USE_ENV_PROXY=1` is not needed. Before this change, that path always sent a bearer token, sent no extra headers, and connected directly. When none of these variables is set, behaviour is unchanged ([#6629](https://github.com/nexus-substrate/nexus-agents/issues/6629)).
+
+- [#6641](https://github.com/nexus-substrate/nexus-agents/pull/6641) [`e32b3c9`](https://github.com/nexus-substrate/nexus-agents/commit/e32b3c9770cc461afea59eaa9e3f93e49f5d6736) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Model identity: fall back to in-tree provider when modelId regex matches no vendor ([#6635](https://github.com/nexus-substrate/nexus-agents/issues/6635)).
+
+  - In-tree aliases whose IDs do not contain vendor tokens (such as `codex-5.3`, `codex-5.2`, `codex-5.1-mini`, `opencode-default`) now resolve to their in-tree provider (`openai`, `anthropic`).
+  - Enables panel diversity calculations to classify CLI seats using in-tree aliases into their respective vendor families instead of marking them unclassified.
+
+- [#6643](https://github.com/nexus-substrate/nexus-agents/pull/6643) [`1de624c`](https://github.com/nexus-substrate/nexus-agents/commit/1de624ce3a1424b532b07031e072dac0df6a5b9d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Gateway voter panels now seat each model family's best-ranked model first. Within a family, seats used to go to models in alphabetical id order, so `gpt-4o-mini` took OpenAI's first seat ahead of `gpt-4o`, and `claude-haiku` took Anthropic's ahead of `claude-opus`. Seat dealing now uses the same family ranking as the gateway family slots: tier first (flagship before mini/small), then the gateway's `/models` `created` stamp when every model in the family has one, then the version parsed from the id. Operator pins (`NEXUS_VOTER_MODEL_<ROLE>`) still win, and the assignment is still the same whatever order the gateway lists its models in.
+
 ## 8.99.0
 
 ### Minor Changes

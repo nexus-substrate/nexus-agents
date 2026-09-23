@@ -101,6 +101,8 @@ function createMockArgs(
       mock: false,
       deep: false,
       live: false,
+      gateway: false,
+      probe: false,
       ...optionOverrides,
     },
   };

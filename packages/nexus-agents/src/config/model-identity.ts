@@ -168,6 +168,7 @@ const QUIRK_PATTERNS: ReadonlyArray<{ regex: RegExp; quirk: string }> = [
   { regex: /\bhigh\b/, quirk: 'high-variant' },
   { regex: /\b(\d+)b\b/, quirk: 'sized-suffix' }, // 7b, 70b, 405b
   { regex: /\b(?:\d{8}|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})\b/, quirk: 'dated' }, // 20240806 / 2024-08-06 / 2024-08
+  { regex: /\b(image|imagen)\b/, quirk: 'image' },
 ];
 
 // ============================================================================
@@ -331,8 +332,9 @@ function detectFamily(normalised: string, vendor: ModelVendor): string | undefin
  * A numeric run AFTER the tier wins. When there is none, the run immediately
  * BEFORE it is used (#6605): gateway catalogues write `claude_4_5_opus`, and
  * Google writes `gemini-2.5-pro`, and both used to come back versionless — so
- * two generations of a family shared one identity key. Best-effort; an id
- * with neither returns undefined.
+ * two generations of a family shared one identity key. Dotted minor versions
+ * straight after the root (`gpt-4.1` -> `1`) are matched identically to dashed
+ * ones (#6616). Best-effort; an id with neither returns undefined.
  */
 function extractVersion(normalised: string, family: string): string | undefined {
   // Strip vendor prefix if present, then look for a numeric segment
@@ -341,7 +343,7 @@ function extractVersion(normalised: string, family: string): string | undefined 
   const idx = normalised.indexOf(familyRoot);
   if (idx === -1) return undefined;
   const tail = normalised.slice(idx + familyRoot.length);
-  const after = /^[-]?(\d[\d.\-]*)/.exec(tail)?.[1]?.replace(/-+$/, '');
+  const after = /^[-.]?(\d[\d.\-]*)/.exec(tail)?.[1]?.replace(/-+$/, '');
   if (after !== undefined && after !== '') return after;
   return /(?:^|-)(\d+(?:[.-]\d+)*)-$/.exec(normalised.slice(0, idx))?.[1];
 }

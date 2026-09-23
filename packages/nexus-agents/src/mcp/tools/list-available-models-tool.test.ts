@@ -1,11 +1,12 @@
 /**
  * Tests for the list_available_models validation tool handler (#3406).
  */
-import { describe, it, expect } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 
 import { listAvailableModelsHandler } from './list-available-models-tool.js';
 import { createLogger } from '../../core/index.js';
 import type { AvailableModelsSource } from '../../config/available-models-cache.js';
+import { startFakeGateway, type FakeGateway } from '../../testing/gateway/fake-gateway.js';
 
 const logger = createLogger({ tool: 'test' });
 
@@ -150,5 +151,91 @@ describe('reachable is not the same as usable (#5128)', () => {
     expect(out.healthyTransports).toBe(2);
     expect(out.reachableTransports).toBe(2);
     expect(out.totalTransports).toBe(2);
+  });
+});
+
+describe('list_available_models lists the gateway under the gateway (#6609)', () => {
+  let gateway: FakeGateway;
+  /** A routing arm that can list models, as `createAllAdapters` returns them. */
+  const lister = (ids: string[]): { listModels: () => Promise<{ id: string }[]> } => ({
+    listModels: () => Promise.resolve(ids.map((id) => ({ id }))),
+  });
+
+  beforeAll(async () => {
+    gateway = await startFakeGateway();
+  });
+  afterAll(async () => {
+    await gateway.close();
+  });
+  beforeEach(() => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', gateway.baseUrl);
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', 'list-models-key-6609');
+    vi.stubEnv('NEXUS_CUSTOM_API_ALLOW_PRIVATE', '1');
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_MODELS', undefined);
+    vi.stubEnv('NEXUS_OPENCODE_CONFIG', undefined);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function transports(
+    arms: ReadonlyMap<string, unknown>
+  ): Promise<ReturnType<typeof parse>['transports']> {
+    const res = await listAvailableModelsHandler(
+      { includeOpenRouter: false },
+      { adaptersFactory: () => arms },
+      logger
+    );
+    return parse(res.content[0]?.text ?? '').transports;
+  }
+
+  it('plan mode: lists the discovered chat catalogue as a gateway transport', async () => {
+    const report = await transports(new Map([['opencode', lister(['oc-1'])]]));
+
+    expect(report.map((t) => [t.transport, t.modelCount])).toEqual([
+      ['opencode', 1],
+      ['gateway', 12],
+    ]);
+  });
+
+  it('api mode: the api:custom-openai arm is not listed under "opencode"', async () => {
+    const arms = new Map<string, unknown>([
+      ['opencode', lister(['oc-1'])],
+      ['api:custom-openai', lister(['raw-1', 'raw-2'])],
+    ]);
+
+    const report = await transports(arms);
+
+    expect(report.map((t) => [t.transport, t.modelCount])).toEqual([
+      ['opencode', 1],
+      ['gateway', 12],
+    ]);
+  });
+
+  it('legacy single-model variables only: that arm is listed under "gateway"', async () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', undefined);
+
+    const report = await transports(new Map([['api:custom-openai', lister(['raw-1'])]]));
+
+    expect(report.map((t) => [t.transport, t.modelCount])).toEqual([['gateway', 1]]);
+  });
+
+  it('no gateway: no gateway transport', async () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', undefined);
+
+    const report = await transports(new Map([['opencode', lister(['oc-1'])]]));
+
+    expect(report.map((t) => t.transport)).toEqual(['opencode']);
+  });
+
+  it('an unreachable gateway is a failed gateway transport, not a missing one', async () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'http://127.0.0.1:1/v1');
+
+    const report = await transports(new Map());
+
+    expect(report).toHaveLength(1);
+    expect(report[0]).toMatchObject({ transport: 'gateway', ok: false, servesModels: false });
+    expect(report[0]?.error).toContain('127.0.0.1');
+    expect(JSON.stringify(report)).not.toContain('list-models-key-6609');
   });
 });

@@ -12,7 +12,9 @@
  *   2. NEXUS_OPENCODE_CONFIG path → opencode.json → providers.openai-compat
  *   3. Unconfigured → adapter not built
  *
- * Models are discovered via GET {base}/v1/models at first use. Each model
+ * Models are discovered via GET {base}/models at first use, where {base} is
+ * NEXUS_OPENAI_COMPAT_URL and already ends in `/v1` (the SDK appends only
+ * `/models`, so a base without `/v1` probes the wrong path). Each model
  * the gateway exposes can be selected by ID; the adapter wraps the existing
  * `OpenAIAdapter` for the actual chat-completions request, so streaming +
  * tool use + the full IModelAdapter contract come for free.
@@ -60,7 +62,7 @@ import {
 } from './gateway-http.js';
 
 export interface OpenAICompatConfig extends GatewayTransport {
-  /** Gateway base URL — must reach `/v1/models` and `/v1/chat/completions`. */
+  /** Gateway base URL — ends in `/v1`; the SDK appends `/models` and `/chat/completions`. */
   readonly baseUrl: string;
   /** API key the gateway expects. */
   readonly apiKey: string;
@@ -244,7 +246,8 @@ function keepValidModelIds<T extends { readonly id: string }>(
 }
 
 /**
- * Discover available models by calling `GET {baseUrl}/v1/models`. Uses the
+ * Discover available models by calling `GET {baseUrl}/models` ({baseUrl} ends
+ * in `/v1`). Uses the
  * official `openai` SDK's `client.models.list()` so we benefit from its
  * pagination + retry handling. The list is the strongly authoritative
  * source: nexus-agents won't try to dispatch to a model the gateway doesn't
@@ -254,6 +257,23 @@ export async function discoverModels(
   config: OpenAICompatConfig,
   logger?: ILogger
 ): Promise<Result<readonly DiscoveredModel[], ConfigError>> {
+  const catalog = await discoverGatewayCatalog(config, logger);
+  return catalog.ok ? ok(catalog.value.models) : catalog;
+}
+
+/**
+ * {@link discoverModels} plus the raw listing size (#6609), so `doctor
+ * --gateway` can report the count before and after the chat filter from the
+ * same call the server makes. `listedCount` is the rows `GET /models`
+ * returned, before deduplication, the chat filter and the allowlist; `models`
+ * is what {@link discoverModels} returns.
+ */
+export async function discoverGatewayCatalog(
+  config: OpenAICompatConfig,
+  logger?: ILogger
+): Promise<
+  Result<{ readonly listedCount: number; readonly models: readonly DiscoveredModel[] }, ConfigError>
+> {
   // Reuse the SDK path's DNS-resolve-time SSRF guard (#3426) rather than
   // growing a second one. This path needs it at least as much: it can read its
   // base URL from a FILE (`NEXUS_OPENCODE_CONFIG` -> opencode.json), not only
@@ -287,9 +307,14 @@ export async function discoverModels(
     if (refined.length > MAX_DISCOVERED_MODELS) {
       return err(overCapError(config, list.data.length, refined.length, allowlist.length > 0));
     }
-    return ok(
-      refined.map(({ model: m }) => ({ id: m.id, created: m.created, ownedBy: m.owned_by }))
-    );
+    return ok({
+      listedCount: list.data.length,
+      models: refined.map(({ model: m }) => ({
+        id: m.id,
+        created: m.created,
+        ownedBy: m.owned_by,
+      })),
+    });
   } catch (e: unknown) {
     // This message lands on cli-server-gateway's probe-failed warn line, so it
     // names the host (a base URL can carry userinfo) and never the key: a

@@ -19,6 +19,10 @@ import { outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
 import type { RoutingArmId } from '../cli-adapters/types-core.js';
+import {
+  servedOutcomeFields,
+  type ServedCall,
+} from '../orchestration/outcomes/outcome-served-model.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -66,6 +70,14 @@ interface RecordOutcomeArgs {
    * compiler is what names the call sites.
    */
   routedBy: OutcomeRoutedBy | undefined;
+  /**
+   * The model that served the stage and its token usage (#6624), recorded as
+   * `servedModel` and its cost beside the `pipeline` marker in `model`.
+   * Required (though it may be `undefined`) for the same reason as
+   * {@link routedBy}: a stage that forgot to forward it would silently lose the
+   * served model, and the compiler is what names the call sites.
+   */
+  served: ServedCall | undefined;
   success: boolean;
   durationMs: number;
   /** Failure message; classified into `failureCategory` on a failed row (#6521). */
@@ -86,11 +98,18 @@ interface RecordOutcomeArgs {
  */
 export function outcomeFieldsFromBridge(
   r: ExpertBridgeResult
-): Pick<RecordOutcomeArgs, 'cli' | 'routedBy' | 'success' | 'durationMs' | 'error'> {
+): Pick<RecordOutcomeArgs, 'cli' | 'routedBy' | 'served' | 'success' | 'durationMs' | 'error'> {
   return {
     // #6552: the arm that ran; `r.cli` is its display slot.
     cli: r.routedArm ?? r.cli,
     routedBy: r.routedBy,
+    // #6624: the model that answered, priced by its gateway when one served it.
+    served: {
+      model: r.model,
+      gatewayArm: r.gatewayArm,
+      inputTokens: r.tokensIn,
+      outputTokens: r.tokensOut,
+    },
     success: r.success,
     durationMs: r.routedDurationMs ?? r.durationMs,
     error: r.error,
@@ -123,6 +142,7 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
       routingStage: args.routingStage,
       retryCount: args.retryCount,
       ...(args.routedBy !== undefined && { routedBy: args.routedBy }),
+      ...servedOutcomeFields(args.served),
       ...(args.qualitySignals !== undefined && { qualitySignals: [...args.qualitySignals] }),
       ...outcomeFailureFields(args.success, args.error),
     });

@@ -41,7 +41,9 @@ import type {
   ModelInfo,
   HealthStatus,
   CapacityStatus,
+  EndpointArmId,
 } from './types.js';
+import { isEndpointArmId } from './types.js';
 
 /** Configuration for {@link ModelToCliAdapter}. */
 export interface ModelToCliAdapterConfig {
@@ -136,7 +138,18 @@ export class ModelToCliAdapter implements ICliAdapter {
       // `inputTokensMeasured` (#4835) instead of dropping it.
       ...(usage !== undefined ? { usage: toCliTokenUsage(usage) } : {}),
       model: response.model,
+      ...this.gatewayArmField(),
     };
+  }
+
+  /**
+   * The model adapter's gateway-arm marker, when it carries a valid one
+   * (#6624), so an outcome writer prices a gateway-served call by the arm's
+   * declaration. Read by shape, like `isGatewayModelAdapter`.
+   */
+  private gatewayArmField(): { gatewayArm?: EndpointArmId } {
+    const arm: unknown = (this.modelAdapter as { gatewayArm?: unknown }).gatewayArm;
+    return typeof arm === 'string' && isEndpointArmId(arm) ? { gatewayArm: arm } : {};
   }
 
   /**

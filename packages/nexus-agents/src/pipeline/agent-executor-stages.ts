@@ -67,6 +67,7 @@ export function createResearchStage({
         category: 'research',
         cli: undefined,
         routedBy: undefined,
+        served: undefined,
         success: true,
         durationMs,
       });
@@ -275,6 +276,7 @@ export function createQualityGateStage({
       category: 'code_review',
       cli: undefined,
       routedBy: undefined,
+      served: undefined,
       success: passed,
       durationMs: ms,
     });
@@ -316,6 +318,7 @@ export function createSecurityScanStage({
       category: 'security_review',
       cli: undefined,
       routedBy: undefined,
+      served: undefined,
       success: passed,
       durationMs: ms,
     });
