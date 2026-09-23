@@ -349,6 +349,12 @@ function policyDecisionFields(decision: PolicyAuditDecision): {
  */
 const DROP_WARN_INTERVAL = 1000;
 
+/**
+ * close() needs at most two passes (the in-flight drain, then one for events
+ * logged during it — #6573); the third is slack before the bound reports.
+ */
+const MAX_CLOSE_DRAIN_PASSES = 3;
+
 export class AuditLogger implements IAuditLogger {
   private readonly storage: IAuditStorage;
   private readonly logger: ILogger;
@@ -792,7 +798,8 @@ export class AuditLogger implements IAuditLogger {
    * so an overlapping flush-timer tick cannot spawn parallel drains (see
    * #2979). A caller arriving while a flush is already running awaits the
    * existing promise; their newly-queued events, if any, are picked up by
-   * the next flush.
+   * the next flush — the timer's, or the extra passes {@link close} runs
+   * (#6573).
    */
   async flush(): Promise<void> {
     if (this.inFlightFlush !== null) return this.inFlightFlush;
@@ -822,9 +829,48 @@ export class AuditLogger implements IAuditLogger {
       this.flushTimer = null;
     }
 
-    await this.flush();
+    await this.drainForClose();
     await this.storage.close();
     this.logger.info('AuditLogger closed');
+  }
+
+  /**
+   * Flush until the queue is empty (#6573).
+   *
+   * One flush() is not enough: when a drain is already in flight, flush()
+   * joins it, and that drain spliced the queue before any event logged during
+   * it — `system.shutdown.begin` among them — arrived. `closed` is set before
+   * this runs, so log() admits nothing new: the in-flight drain plus one fresh
+   * pass empties the queue. The bound turns a regression of that invariant
+   * into a reported failure instead of a spin.
+   *
+   * A failed pass is not retried here. flush() has already counted and
+   * reported it; a batch it could not link (lock timeout) is back in the queue
+   * unwritten, so nothing is written twice, and with no later flush to come it
+   * is stranded — named here so the loss is not silent.
+   */
+  private async drainForClose(): Promise<void> {
+    for (let pass = 0; pass < MAX_CLOSE_DRAIN_PASSES; pass++) {
+      try {
+        await this.flush();
+      } catch (err: unknown) {
+        if (this.eventQueue.length > 0) {
+          this.logger.error(
+            'AUDIT CLOSE — queued audit events were NOT persisted and will be lost',
+            err instanceof Error ? err : new AuditError(String(err)),
+            { strandedEvents: this.eventQueue.length }
+          );
+        }
+        throw err;
+      }
+      if (this.eventQueue.length === 0) return;
+    }
+    const error = new AuditError(
+      `${String(this.eventQueue.length)} audit events still queued after ` +
+        `${String(MAX_CLOSE_DRAIN_PASSES)} flush passes at close`
+    );
+    this.recordPersistFailure(error);
+    throw error;
   }
 }
 
