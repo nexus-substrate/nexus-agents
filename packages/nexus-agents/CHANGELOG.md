@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.94.0
+
+### Minor Changes
+
+- [#6593](https://github.com/nexus-substrate/nexus-agents/pull/6593) [`849bfca`](https://github.com/nexus-substrate/nexus-agents/commit/849bfca8f6d948d8a6c389125187e7a029c30226) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - New `NEXUS_DISABLED_CLIS` environment variable takes CLIs out of service, e.g. `NEXUS_DISABLED_CLIS=codex,gemini` when those plans are out of quota. Before this, a quota-exhausted CLI stayed selectable because it is still installed and authenticated: it kept receiving voter seats and router traffic until its circuit breaker had watched real calls fail.
+
+  The value is a comma-separated list of `claude`, `gemini`, `codex` and `opencode`, trimmed and case-insensitive. A disabled CLI is dropped from `getAvailableClis` (voter seats and auto-selection), from `createAllAdapters` (the routing arm set used by `orchestrate` and the pipeline router), from per-CLI registry adapters and expert fallback chains, and from `delegate_to_model` recommendations. `doctor` lists disabled CLIs and does not probe them. An unknown name logs one warning and is ignored. Disabling every CLI leaves no CLI adapter, so callers get the existing no-adapter error. Unset or empty changes nothing.
+
+### Patch Changes
+
+- [#6594](https://github.com/nexus-substrate/nexus-agents/pull/6594) [`fda51ac`](https://github.com/nexus-substrate/nexus-agents/commit/fda51ac158c3d69c16994623bbeb089d4f056c3e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents vote --record <issue> --option …` now renders the `Options:` block in the recorded GitHub issue comment. The comment previously omitted the declared-option tally added in [#6585](https://github.com/nexus-substrate/nexus-agents/issues/6585), so the durable comment could not show which option won or the breakdown across declared options.
+
 ## 8.93.1
 
 ### Patch Changes
