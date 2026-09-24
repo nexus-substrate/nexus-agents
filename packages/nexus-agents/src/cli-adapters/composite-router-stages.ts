@@ -21,6 +21,7 @@ import {
 import { parseBoolEnv } from '../config/defaults-env.js';
 import type { CliName, RoutingArmId, CliTask } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
+import { isReadOnlyAnalysis } from './read-only-analysis.js';
 import { CompositeRoutingError, type PipelineResult } from './composite-router-types.js';
 import { CAPACITY_EXHAUSTED } from './routing/stages/index.js';
 import {
@@ -558,7 +559,12 @@ export async function runPipeline(
   );
 
   const latencyResult = runLatencyStage(candidates, stagesExecuted, deps);
-  const selectedCli = selectWithMemoryInfluence(effectiveSelection, scoring.memoryResult, deps);
+  const selectedCli = selectWithMemoryInfluence(
+    effectiveSelection,
+    scoring.memoryResult,
+    deps,
+    memoryPickBound(task, candidates)
+  );
 
   return ok(
     buildPipelineResult({
@@ -636,17 +642,48 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
   };
 }
 
-/** Select CLI with optional memory influence. (Issue #489) */
+/**
+ * The arms a routing-memory pick must stay within, or `undefined` for no
+ * bound (#6768). A read-only task may only take a pick that is still a
+ * candidate: the candidates were filtered to arms that enforce the mode.
+ */
+function memoryPickBound(
+  task: CliTask,
+  candidates: readonly RoutingArmId[]
+): readonly RoutingArmId[] | undefined {
+  return isReadOnlyAnalysis(task) ? candidates : undefined;
+}
+
+/**
+ * Select CLI with optional memory influence. (Issue #489)
+ *
+ * `allowed`, when set, bounds the memory pick (#6768): routing memory
+ * recommends a display slot, which can name an arm outside the candidates.
+ * A pick outside `allowed` falls back to the LinUCB/TOPSIS selection, which
+ * is always a candidate. Undefined leaves the pick unbounded, as before.
+ */
 function selectWithMemoryInfluence(
   linucbSelection: RoutingArmId,
   memoryResult: RoutingMemoryStageResult,
-  deps: StageDependencies
+  deps: StageDependencies,
+  allowed?: readonly RoutingArmId[]
 ): RoutingArmId {
   // If routing memory has a high-confidence recommendation, use it.
   // Threshold must exceed the default memoryConfidence (0.8) to prevent
   // routing memory from always overriding LinUCB learning. (#1171)
   if (memoryResult.recommendation !== undefined && memoryResult.memoryConfidence !== undefined) {
     const confidenceThreshold = 0.85;
+    if (
+      memoryResult.memoryConfidence >= confidenceThreshold &&
+      allowed !== undefined &&
+      !allowed.includes(memoryResult.recommendation)
+    ) {
+      deps.logger.debug('Routing memory pick is outside the allowed arms; using LinUCB pick', {
+        memoryChoice: memoryResult.recommendation,
+        linucbChoice: linucbSelection,
+      });
+      return linucbSelection;
+    }
     if (memoryResult.memoryConfidence >= confidenceThreshold) {
       deps.logger.debug('Using routing memory recommendation', {
         memoryChoice: memoryResult.recommendation,

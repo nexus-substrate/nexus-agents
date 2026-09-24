@@ -47,7 +47,7 @@ import type {
   ExecutionOptions,
 } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
-import { armsForAccessMode, selectedArmAccessRefusal } from './composite-router-access-mode.js';
+import { armsForAccessMode } from './composite-router-access-mode.js';
 import type {
   IOrchestrationObserver,
   RoutingDecision,
@@ -763,9 +763,6 @@ export class CompositeRouter implements ICompositeRouter {
         if (pipelineResult.error.stage === 'budget-filter') this.budgetRejections++;
         return pipelineResult;
       }
-      const selected = pipelineResult.value.selectedCli;
-      const refusal = selectedArmAccessRefusal(task, selected, this.adapters.get(selected));
-      if (refusal !== undefined) return err(refusal);
 
       const decisionResult = this.buildRoutingDecision({
         ...pipelineResult.value,

@@ -510,6 +510,31 @@ async function dispatchWithRateLimitRetry(
 }
 
 /**
+ * Every {@link ExecutionAccessMode}. A `Record` over the union, so adding a
+ * mode without listing it here fails to compile.
+ */
+const EXECUTION_ACCESS_MODES: Readonly<Record<ExecutionAccessMode, true>> = {
+  default: true,
+  'read-only-analysis': true,
+};
+
+/**
+ * Reject an `accessMode` outside {@link ExecutionAccessMode} (#6768).
+ * `executeExpert` is published, so a JavaScript caller can pass anything; a
+ * misspelled mode such as `'read-only'` would otherwise run with the default
+ * access AND the MCP config, the opposite of what the caller asked for.
+ */
+function assertAccessMode(accessMode: unknown): void {
+  if (accessMode === undefined) return;
+  if (typeof accessMode === 'string' && Object.hasOwn(EXECUTION_ACCESS_MODES, accessMode)) return;
+  throw new TypeError(
+    `executeExpert: unknown accessMode ${JSON.stringify(accessMode)}; expected one of ${Object.keys(
+      EXECUTION_ACCESS_MODES
+    ).join(', ')}`
+  );
+}
+
+/**
  * The router task for an expert call. Experts get the nexus-agents MCP config
  * so they can call its tools (#1708), except under read-only analysis mode
  * (#6768): an MCP server's tools fall outside the read-only allow list, and
@@ -540,6 +565,7 @@ async function buildBridgeTask(
  * @param expertType - Built-in expert type (code, architecture, security, qa, etc.)
  * @param prompt - Task prompt for the expert
  * @returns Expert result with text output
+ * @throws TypeError when `options.accessMode` is not an {@link ExecutionAccessMode}
  */
 export function executeExpert(
   expertType: BuiltInExpertType,
@@ -576,6 +602,9 @@ export async function executeExpert(
     accessMode?: ExecutionAccessMode | undefined;
   }
 ): Promise<ExpertBridgeResult> {
+  // Thrown, not returned as a failed call: a bad mode is a caller error, and a
+  // failure result would read as the expert failing.
+  assertAccessMode(options?.accessMode);
   const start = getTimeProvider().now();
   try {
     const { BUILT_IN_EXPERTS } = await import('../agents/experts/expert-config.js');

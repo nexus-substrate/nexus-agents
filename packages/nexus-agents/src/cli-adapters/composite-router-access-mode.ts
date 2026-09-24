@@ -6,7 +6,9 @@
  * own when it cannot enforce it (#6754), but the router does not fail over at
  * execution time, so letting selection pick a non-enforcing arm would turn a
  * routable task into a refusal. The router therefore removes those arms
- * BEFORE selection, and fails the route clearly when none is left.
+ * BEFORE selection, and fails the route clearly when none is left. The one
+ * selection input that can name an arm outside the candidates, a routing
+ * memory pick, is bounded to the candidates in `runPipeline`.
  *
  * @module cli-adapters/composite-router-access-mode
  */
@@ -45,22 +47,5 @@ export function armsForAccessMode(
       `No routing arm enforces read-only analysis mode (candidates: ${arms.join(', ') || 'none'}); the task was not run`,
       ACCESS_MODE_STAGE
     )
-  );
-}
-
-/**
- * The refusal for a selected arm that may not serve `task`, else `undefined`.
- * Selection can land outside the filtered candidates (routing memory
- * recommends a display slot, not an arm), so the selected arm is checked again.
- */
-export function selectedArmAccessRefusal(
-  task: Pick<CliTask, 'accessMode'>,
-  arm: RoutingArmId,
-  adapter: ICliAdapter | undefined
-): CompositeRoutingError | undefined {
-  if (armServes(task, adapter)) return undefined;
-  return new CompositeRoutingError(
-    `Selected arm ${arm} does not enforce read-only analysis mode; the task was not run`,
-    ACCESS_MODE_STAGE
   );
 }

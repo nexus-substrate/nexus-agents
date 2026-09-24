@@ -68,6 +68,41 @@ describe('executeExpert workspace (#6358)', () => {
   });
 });
 
+describe('executeExpert access mode validation (#6768)', () => {
+  beforeEach(() => {
+    executeTaskMock.mockReset();
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'reviewed' } });
+  });
+
+  it('throws on a misspelled mode instead of running with default access and MCP', async () => {
+    const options = { accessMode: 'read-only' } as unknown as Parameters<typeof executeExpert>[2];
+
+    await expect(executeExpert('qa', 'review it', options)).rejects.toThrow(
+      /unknown accessMode "read-only"; expected one of default, read-only-analysis/
+    );
+    expect(executeTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts the read-only mode and drops the MCP config', async () => {
+    await executeExpert('qa', 'review it', { accessMode: 'read-only-analysis' });
+
+    expect(executeTaskMock).toHaveBeenCalledWith({
+      content: expect.stringContaining('review it'),
+      accessMode: 'read-only-analysis',
+    });
+  });
+
+  it('accepts an explicit default mode and keeps the MCP config', async () => {
+    await executeExpert('code', 'implement it', { accessMode: 'default' });
+
+    expect(executeTaskMock).toHaveBeenCalledWith({
+      content: expect.stringContaining('implement it'),
+      options: { mcpConfigPath: '/tmp/mcp.json' },
+      accessMode: 'default',
+    });
+  });
+});
+
 describe('executeExpert abort signal (#6736)', () => {
   beforeEach(() => {
     executeTaskMock.mockReset();
