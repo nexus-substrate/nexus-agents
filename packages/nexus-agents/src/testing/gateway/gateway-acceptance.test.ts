@@ -38,8 +38,16 @@ import {
 import { executeExpert } from '../../pipeline/expert-bridge.js';
 import { createDefaultDeps, registerCreateExpertTool } from '../../mcp/tools/create-expert.js';
 import { registerExecuteExpertTool } from '../../mcp/tools/execute-expert.js';
-import { wireGateway } from '../../cli-server-gateway.js';
-import { ErrorCode, type ILogger, type IModelAdapter } from '../../core/index.js';
+import { resolveDefaultModelAdapter, wireGateway } from '../../cli-server-gateway.js';
+import { setGatewayRediscovery } from '../../adapters/gateway-rediscovery.js';
+import {
+  ErrorCode,
+  FixedTimeProvider,
+  resetTimeProvider,
+  setTimeProvider,
+  type ILogger,
+  type IModelAdapter,
+} from '../../core/index.js';
 import { loadUsageEvents } from '../../learning/usage-log.js';
 import { createServer } from '../../mcp/server.js';
 import { registerConsensusVoteTool, registerTools } from '../../mcp/tools/index.js';
@@ -561,49 +569,55 @@ describe('family-slot routing with no CLIs installed (#6604)', () => {
   });
 
   it('execute_expert runs on the gateway model of the expert slot family', async () => {
-    const created = createServer();
-    if (!created.ok) throw new Error(created.error.message);
-    const { server } = created.value;
-    const logger = silentLogger();
-    const { rateLimiter } = registerTools(server, { logger });
-    const createDeps = createDefaultDeps(rateLimiter, logger);
-    registerCreateExpertTool(server, createDeps);
-    registerExecuteExpertTool(server, {
-      expertRegistry: createDeps.expertRegistry,
-      logger,
-      rateLimiter,
-    });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    const client = new Client({ name: 'gateway-acceptance-experts', version: '1.0.0' });
-    await client.connect(clientTransport);
-    try {
-      const made = await client.callTool({
-        name: 'create_expert',
-        arguments: { role: 'security_expert', modelPreference: 'claude-opus' },
-      });
-      // create_expert answers in text content: the created expert as JSON.
-      const [first] = z
-        .object({ content: z.array(z.object({ text: z.string() })) })
-        .parse(made).content;
-      const { expertId } = z
-        .object({ expertId: z.string() })
-        .parse(JSON.parse(first?.text ?? 'null'), { error: () => String(first?.text) });
-      gateway.clearRequests();
+    await runExecuteExpert('review the auth flow');
 
-      await client.callTool({
-        name: 'execute_expert',
-        arguments: { expertId, task: 'review the auth flow' },
-      });
-
-      expect(servedModels().length).toBeGreaterThan(0);
-      expect(new Set(servedModels())).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
-    } finally {
-      await client.close();
-      await server.close();
-    }
+    expect(servedModels().length).toBeGreaterThan(0);
+    expect(new Set(servedModels())).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
   });
 });
+
+/**
+ * Create a claude-opus security expert and run one task through the real
+ * create_expert and execute_expert MCP tools. Requests the gateway saw while
+ * creating the expert are cleared, so only the execution's remain.
+ */
+async function runExecuteExpert(task: string): Promise<void> {
+  const created = createServer();
+  if (!created.ok) throw new Error(created.error.message);
+  const { server } = created.value;
+  const logger = silentLogger();
+  const { rateLimiter } = registerTools(server, { logger });
+  const createDeps = createDefaultDeps(rateLimiter, logger);
+  registerCreateExpertTool(server, createDeps);
+  registerExecuteExpertTool(server, {
+    expertRegistry: createDeps.expertRegistry,
+    logger,
+    rateLimiter,
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: 'gateway-acceptance-experts', version: '1.0.0' });
+  await client.connect(clientTransport);
+  try {
+    const made = await client.callTool({
+      name: 'create_expert',
+      arguments: { role: 'security_expert', modelPreference: 'claude-opus' },
+    });
+    // create_expert answers in text content: the created expert as JSON.
+    const [first] = z
+      .object({ content: z.array(z.object({ text: z.string() })) })
+      .parse(made).content;
+    const { expertId } = z
+      .object({ expertId: z.string() })
+      .parse(JSON.parse(first?.text ?? 'null'), { error: () => String(first?.text) });
+    gateway.clearRequests();
+
+    await client.callTool({ name: 'execute_expert', arguments: { expertId, task } });
+  } finally {
+    await client.close();
+    await server.close();
+  }
+}
 
 // ============================================================================
 // 5. The unpinned default and the opencode slot (#6626)
@@ -870,5 +884,125 @@ describe('the direct OpenAI adapter with OPENAI_BASE_URL (#6654)', () => {
 
     expect(unset.body).toContain('"input"');
     expect(explicit).toEqual(unset);
+  });
+});
+
+// ============================================================================
+// 9. A gateway down at boot and up later (#6659)
+// ============================================================================
+
+describe('a gateway down at boot and up later, with no vote run (#6659)', () => {
+  const BOOT = Date.parse('2026-09-23T12:00:00Z');
+  let clock: FixedTimeProvider;
+  let emptyBin: string;
+
+  beforeAll(() => {
+    emptyBin = mkdtempSync(join(tmpdir(), 'nexus-gateway-late-'));
+    vi.stubEnv('PATH', emptyBin);
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'opencode');
+    vi.stubEnv('NEXUS_BILLING_MODE', undefined);
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+  });
+
+  beforeEach(() => {
+    resetGlobalRegistry();
+    _resetGatewaySlotCatalog();
+    setGatewayRediscovery(undefined);
+    clock = new FixedTimeProvider(BOOT);
+    setTimeProvider(clock);
+  });
+
+  afterEach(() => {
+    resetTimeProvider();
+    setGatewayRediscovery(undefined);
+    _resetGatewaySlotCatalog();
+    resetGlobalRegistry();
+  });
+
+  afterAll(() => {
+    vi.stubEnv('PATH', process.env['PATH']);
+    vi.stubEnv('NEXUS_DISABLED_CLIS', undefined);
+    vi.stubEnv('NEXUS_BILLING_MODE', 'api');
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    rmSync(emptyBin, { recursive: true, force: true });
+  });
+
+  /** Boot with the gateway listing no models, then bring it up. */
+  async function bootWhileDown(): Promise<readonly IModelAdapter[]> {
+    gateway.setCatalog([]);
+    const logger = silentLogger();
+    const live = await wireGateway(logger, createUnifiedRegistry({ logger }));
+    expect(live).toEqual([]);
+    gateway.setCatalog(THREE_FAMILY_CATALOG);
+    gateway.clearRequests();
+    return live ?? [];
+  }
+
+  const servedModels = (): string[] =>
+    gateway.chatRequests().map((r) => (r.body as ChatRequestBody).model);
+
+  it('execute_expert re-discovers the gateway and runs on the slot family model', async () => {
+    const live = await bootWhileDown();
+    clock.setTime(BOOT + 61_000);
+
+    await runExecuteExpert('review the auth flow');
+
+    expect(live.length).toBeGreaterThan(0);
+    expect(servedModels().length).toBeGreaterThan(0);
+    expect(new Set(servedModels())).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
+  });
+
+  it('a slot adapter detected before the gateway came up is re-detected after it does', async () => {
+    const live = await bootWhileDown();
+    const slot = getGlobalRegistry().getAdapterForCli('claude');
+    clock.setTime(BOOT + 10_000); // inside the 60 s floor: no discovery yet
+    await slot.complete(ask);
+    // With no catalogue the slot falls through to the single-model
+    // custom-openai path (NEXUS_CUSTOM_MODEL), not the claude family model.
+    expect(servedModels()).not.toContain(FAMILY_SLOT_MODEL.claude);
+    gateway.clearRequests();
+
+    // Past the floor: this call starts discovery but does not wait on it —
+    // the slot already serves, on the path it detected before.
+    clock.setTime(BOOT + 61_000);
+    await slot.complete(ask);
+    expect(servedModels()).not.toContain(FAMILY_SLOT_MODEL.claude);
+    // That call's own attempt fills the live list; nothing else triggers one.
+    await vi.waitFor(() => {
+      expect(live.length).toBeGreaterThan(0);
+    });
+    gateway.clearRequests();
+
+    const after = await slot.complete(ask);
+
+    expect(after.ok).toBe(true);
+    expect(servedModels()).toEqual([FAMILY_SLOT_MODEL.claude]);
+  });
+
+  it('the boot-time default adapter moves to the gateway default after a late discovery', async () => {
+    const live = await bootWhileDown();
+    const registry = getGlobalRegistry();
+    const defaultAdapter = resolveDefaultModelAdapter(live, registry);
+    const requested = (): string[] =>
+      gateway.requests.flatMap((r) => {
+        const model: unknown = (r.body as { model?: unknown } | undefined)?.model;
+        return typeof model === 'string' ? [model] : [];
+      });
+    // Detected before the gateway is back: the default is NOT the gateway default.
+    clock.setTime(BOOT + 10_000);
+    await defaultAdapter.complete(ask);
+    expect(requested()).not.toContain(FAMILY_SLOT_MODEL.claude);
+
+    // Past the floor: this call starts discovery without waiting on it.
+    clock.setTime(BOOT + 61_000);
+    await defaultAdapter.complete(ask);
+    await vi.waitFor(() => {
+      expect(live.length).toBeGreaterThan(0);
+    });
+    gateway.clearRequests();
+
+    await defaultAdapter.complete(ask);
+
+    expect(new Set(requested())).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
   });
 });

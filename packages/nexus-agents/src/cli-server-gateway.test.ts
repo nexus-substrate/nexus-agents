@@ -701,6 +701,40 @@ describe('lazy re-discovery of a gateway down at boot (#6608 item 4)', () => {
     _resetGatewaySlotCatalog();
   });
 
+  it('a private-address refusal on re-discovery disarms it and logs the boot remedy (#6659)', async () => {
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'http://10.44.0.9:4000/v1', apiKey: 'sk' });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(err(new ConfigError('ECONNREFUSED')));
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+    const logger = makeMockLogger();
+    expect(await wireGateway(logger, registry)).toEqual([]);
+
+    const refusal = new GatewayHostRefusedError({
+      state: 'refused_private_host',
+      host: '10.44.0.9',
+      reason: 'resolves to a private address',
+      remedy: 'Set NEXUS_CUSTOM_API_ALLOW_PRIVATE=1 to allow it.',
+    });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(err(refusal));
+    clock.setTime(BOOT + 61_000);
+    await ensureGatewayDiscovered();
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(2);
+
+    const messages = logger.warn.mock.calls.map((c) => String(c[0]));
+    const logged = messages.find((m) => m.includes('10.44.0.9'));
+    expect(logged).toContain('NEXUS_CUSTOM_API_ALLOW_PRIVATE=1');
+    expect(logged).toContain('NOT in use');
+
+    // Not re-armed: allowing the host is an env change, which needs a restart.
+    for (const seconds of [200, 400, 3600]) {
+      clock.setTime(BOOT + seconds * 1000);
+      await ensureGatewayDiscovered();
+    }
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(2);
+  });
+
   it('arms nothing when the gateway wired at boot', async () => {
     readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw.example/v1', apiKey: 'sk' });
     const adapters = [makeMockAdapter('gw-a')];

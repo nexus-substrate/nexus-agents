@@ -258,7 +258,9 @@ export async function wireGateway(
   // #6608: a gateway that was down at boot is retried lazily. The tools get
   // an empty live list (every reader treats empty as "no gateway"); the first
   // gateway-needing call after the backoff fills it in place and registers
-  // the arm. The default model adapter chosen at boot is not revisited.
+  // the arm. Every registry adapter triggers it (#6659, see
+  // gateway-rediscovery.ts), and the boot-time default re-detects onto the
+  // gateway once it is found.
   const live: IModelAdapter[] = [];
   setGatewayRediscovery(
     new GatewayRediscovery({
@@ -287,10 +289,23 @@ function registerFamilySlots(
   logGatewaySlotMapping(logger);
 }
 
-/** One lazy re-discovery attempt: the adapters, or `undefined` (logged) when it failed. */
-async function rediscoverGateway(logger: ILogger): Promise<readonly IModelAdapter[] | undefined> {
+/**
+ * One lazy re-discovery attempt: the adapters; `undefined` (logged) when it
+ * failed in a way that can clear; `'refused'` when the private-address guard
+ * refused the host (#6659), logged with the same remedy as at boot and never
+ * retried, since allowing it is an env change that needs a restart.
+ */
+async function rediscoverGateway(
+  logger: ILogger
+): Promise<readonly IModelAdapter[] | 'refused' | undefined> {
   const result = await buildOpenAICompatAdapters(logger);
   if (result === null) return undefined;
+  if (!result.ok && result.error instanceof GatewayHostRefusedError) {
+    // Re-discovery is armed only outside sandbox mode (a failed boot probe
+    // there exits), so this never takes the sandbox exit branch.
+    handleHostRefused(logger, false, result.error.status);
+    return 'refused';
+  }
   if (!result.ok) {
     logger.warn('Gateway re-discovery failed; calls stay on CLI subprocesses', {
       error: result.error.message,

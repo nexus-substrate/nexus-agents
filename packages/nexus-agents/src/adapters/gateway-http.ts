@@ -23,6 +23,8 @@
  * @module adapters/gateway-http
  */
 
+import { BlockList, isIP } from 'node:net';
+
 import { ProxyAgent } from 'undici';
 import type { ILogger } from '../core/index.js';
 import type { OpenAIAdapterConfig } from './openai-types.js';
@@ -124,9 +126,13 @@ function splitNoProxyEntry(entry: string): { host: string; port: string | undefi
 }
 
 /**
- * Curl-style `NO_PROXY` match: `*` matches everything; an entry matches the
- * host itself and its subdomains (a leading `.` or `*.` is optional); an entry
- * with a port matches that port only.
+ * `NO_PROXY` match. `*` matches everything. A host-name entry matches the host
+ * itself and its subdomains (a leading `.` or `*.` is optional). An IP host is
+ * matched only by an IP entry of its own family, as a literal or a CIDR range
+ * (`10.0.0.0/8`, `fd00::/8`), never as a domain suffix, so `2.3` does not
+ * exempt `10.1.2.3`. A host name is not resolved to match an IP entry. Any
+ * entry may carry a `:port` (IPv6 bracketed: `[fd00::1]:8443`), and then
+ * matches that port only.
  */
 function matchesNoProxy(url: URL, noProxy: string): boolean {
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -143,8 +149,34 @@ function noProxyEntryMatches(entry: string, host: string, port: string): boolean
   if (entry === '*') return true;
   const parsed = splitNoProxyEntry(entry);
   if (parsed.port !== undefined && parsed.port !== port) return false;
+  const hostFamily = isIP(host);
+  if (hostFamily === 4 || hostFamily === 6) {
+    return ipEntryMatches(parsed.host, host, hostFamily);
+  }
   const suffix = parsed.host.replace(/^\*?\./, '');
   return suffix !== '' && (host === suffix || host.endsWith(`.${suffix}`));
+}
+
+/**
+ * An IP-literal or CIDR entry against an IP host of `family`. An entry of the
+ * other family, a malformed address, or a prefix outside the family's width
+ * matches nothing.
+ */
+function ipEntryMatches(entry: string, host: string, family: 4 | 6): boolean {
+  const type = family === 4 ? 'ipv4' : 'ipv6';
+  const slash = entry.indexOf('/');
+  const address = slash === -1 ? entry : entry.slice(0, slash);
+  if (isIP(address) !== family) return false;
+  const range = new BlockList();
+  if (slash === -1) {
+    range.addAddress(address, type);
+    return range.check(host, type);
+  }
+  const prefixText = entry.slice(slash + 1);
+  const prefix = Number(prefixText);
+  if (!/^\d{1,3}$/.test(prefixText) || prefix > (family === 4 ? 32 : 128)) return false;
+  range.addSubnet(address, prefix, type);
+  return range.check(host, type);
 }
 
 /**

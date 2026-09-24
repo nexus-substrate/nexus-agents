@@ -27,7 +27,11 @@ import {
   readOpenAICompatEnv,
   type OpenAICompatConfig,
 } from '../adapters/openai-compat-adapter.js';
-import { checkGatewayHost } from '../adapters/gateway-host-status.js';
+import {
+  checkGatewayHost,
+  GATEWAY_HOST_LOOKUP_TIMED_OUT,
+  type GatewayHostStatus,
+} from '../adapters/gateway-host-status.js';
 import { gatewayProxyUrl } from '../adapters/gateway-http.js';
 import {
   gatewayModelFamily,
@@ -130,6 +134,29 @@ export interface GatewayHealthOptions {
   readonly env?: NodeJS.ProcessEnv;
 }
 
+/**
+ * The health a host-guard outcome ends the check with, or `undefined` when the
+ * host is allowed. A lookup timeout fails closed, as discovery does (#6671).
+ */
+function hostGuardHealth(
+  guard: GatewayHostStatus,
+  proxy: GatewayProxyStatus
+): GatewayHealth | undefined {
+  if (guard.state === 'refused_private_host') {
+    const { host, reason, remedy } = guard;
+    return { state: 'refused_private_host', host, reason, remedy, proxy };
+  }
+  if (guard.state === 'lookup_timed_out') {
+    return {
+      state: 'discovery_failed',
+      host: guard.host,
+      error: GATEWAY_HOST_LOOKUP_TIMED_OUT,
+      proxy,
+    };
+  }
+  return undefined;
+}
+
 /** Measure the configured gateway. `not_configured` makes no network call. */
 export async function checkGatewayHealth(
   options: GatewayHealthOptions = {}
@@ -139,10 +166,8 @@ export async function checkGatewayHealth(
   const env = options.env ?? process.env;
   const proxy = proxyStatus(config, env);
   const guard = await checkGatewayHost(config.baseUrl);
-  if (guard.state === 'refused_private_host') {
-    const { host, reason, remedy } = guard;
-    return { state: 'refused_private_host', host, reason, remedy, proxy };
-  }
+  const blocked = hostGuardHealth(guard, proxy);
+  if (blocked !== undefined) return blocked;
   const host = guard.host;
   const discovered = await discoverGatewayCatalog(config);
   if (!discovered.ok) {

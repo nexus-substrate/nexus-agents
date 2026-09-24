@@ -14,6 +14,7 @@
 
 import { getAvailableClis } from '../../cli-adapters/factory.js';
 import { hasGatewaySlotCatalog } from '../../adapters/gateway-family-slots.js';
+import { ensureGatewayDiscovered } from '../../adapters/gateway-rediscovery.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { CliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import type { ILogger } from '../../core/index.js';
@@ -215,7 +216,10 @@ export async function checkAdapterAvailability(
 
   // Check API keys as fallback. A discovered gateway counts too (#6604): on a
   // gateway-only host every family slot resolves to a gateway model, so the
-  // tools gated here (create_expert, execute_expert) must not refuse it.
+  // tools gated here (create_expert, execute_expert) must not refuse it. The
+  // gate reads gateway state before any adapter is acquired, so it re-discovers
+  // a gateway that was down at boot the same way acquisition does (#6659).
+  if (checkApiKeysFlag) await ensureGatewayDiscovered();
   const availableApiKeys = checkApiKeysFlag
     ? [...getAvailableApiKeys(), ...(hasGatewaySlotCatalog() ? [GATEWAY_PROVIDER] : [])]
     : [];

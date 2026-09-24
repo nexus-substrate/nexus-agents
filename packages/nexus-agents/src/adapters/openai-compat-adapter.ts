@@ -21,7 +21,11 @@
  */
 
 import OpenAI from 'openai';
-import { checkGatewayHost, GatewayHostRefusedError } from './gateway-host-status.js';
+import {
+  checkGatewayHost,
+  GATEWAY_HOST_LOOKUP_TIMED_OUT,
+  GatewayHostRefusedError,
+} from './gateway-host-status.js';
 
 import type {
   Result,
@@ -285,6 +289,11 @@ export async function discoverGatewayCatalog(
   const hostCheck = await checkGatewayHost(config.baseUrl);
   if (hostCheck.state === 'refused_private_host') {
     return err(new GatewayHostRefusedError(hostCheck));
+  }
+  if (hostCheck.state === 'lookup_timed_out') {
+    // Fail closed for this attempt (#6671 review): a plain ConfigError, so the
+    // bootstrap treats it as retryable and lazy re-discovery tries again.
+    return err(new ConfigError(`${GATEWAY_HOST_LOOKUP_TIMED_OUT} (host ${hostCheck.host})`));
   }
   try {
     const client = new OpenAI({

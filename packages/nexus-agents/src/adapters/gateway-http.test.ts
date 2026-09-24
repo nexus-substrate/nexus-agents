@@ -300,6 +300,66 @@ describe('gateway proxy (#6608 item 2)', () => {
     expect(gatewayProxyUrl(baseUrl, env)).toBe(expected);
   });
 
+  // #6659 item 3: NO_PROXY entry forms beyond the host suffix. `direct` means
+  // the entry exempts the URL; `proxy` means the request still goes through it.
+  const PROXY = 'http://p:1';
+  it.each<[string, string, 'direct' | 'proxy']>([
+    // exact host and domain suffix, with and without a leading dot or `*.`
+    ['https://gw.corp.example/v1', 'gw.corp.example', 'direct'],
+    ['https://gw.corp.example/v1', '.corp.example', 'direct'],
+    ['https://gw.corp.example/v1', '*.corp.example', 'direct'],
+    ['https://corp.example/v1', '.corp.example', 'direct'],
+    ['https://gw.xcorp.example/v1', '.corp.example', 'proxy'],
+    ['https://gw.corp.example.evil/v1', 'corp.example', 'proxy'],
+    // wildcard: `*` alone exempts everything, including an IP
+    ['https://10.1.2.3/v1', '*', 'direct'],
+    ['https://[fd00::1]/v1', 'other.example, *', 'direct'],
+    // IPv4 literal
+    ['https://10.1.2.3/v1', '10.1.2.3', 'direct'],
+    ['https://10.1.2.4/v1', '10.1.2.3', 'proxy'],
+    ['https://110.1.2.3/v1', '10.1.2.3', 'proxy'],
+    // an IP host is never matched as a domain suffix
+    ['https://10.1.2.3/v1', '2.3', 'proxy'],
+    ['https://10.1.2.3/v1', '.1.2.3', 'proxy'],
+    // IPv4 CIDR (the measured defect: 10.0.0.0/8 used to return the proxy)
+    ['https://10.1.2.3/v1', '10.0.0.0/8', 'direct'],
+    ['https://11.1.2.3/v1', '10.0.0.0/8', 'proxy'],
+    ['https://192.168.7.9/v1', '192.168.7.0/24', 'direct'],
+    ['https://192.168.8.9/v1', '192.168.7.0/24', 'proxy'],
+    ['https://10.1.2.3/v1', '10.1.2.3/32', 'direct'],
+    ['https://10.1.2.4/v1', '10.1.2.3/32', 'proxy'],
+    ['https://8.8.8.8/v1', '0.0.0.0/0', 'direct'],
+    ['https://10.1.2.3/v1', '10.0.0.0/33', 'proxy'],
+    ['https://10.1.2.3/v1', '10.0.0.0/x', 'proxy'],
+    // a host NAME is not resolved to match a CIDR (curl does not either)
+    ['https://gw.corp.example/v1', '10.0.0.0/8', 'proxy'],
+    // IPv6 literal, bare or bracketed, in any spelling
+    ['https://[fd00::1]/v1', 'fd00::1', 'direct'],
+    ['https://[fd00::1]/v1', '[fd00::1]', 'direct'],
+    ['https://[fd00::1]/v1', 'fd00:0:0:0:0:0:0:1', 'direct'],
+    ['https://[fd00::1]/v1', 'fd00::2', 'proxy'],
+    // IPv6 CIDR
+    ['https://[fd00::1]/v1', 'fd00::/8', 'direct'],
+    ['https://[fd00::1]/v1', 'fe80::/10', 'proxy'],
+    // an IPv4 entry never matches an IPv6 host, nor the reverse
+    ['https://[fd00::1]/v1', '10.0.0.0/8', 'proxy'],
+    ['https://10.1.2.3/v1', '::/0', 'proxy'],
+    // optional :port, on a host, an IPv4, a CIDR and a bracketed IPv6
+    ['https://gw.corp.example:8443/v1', '.corp.example:8443', 'direct'],
+    ['https://gw.corp.example/v1', '.corp.example:8443', 'proxy'],
+    ['https://10.1.2.3/v1', '10.1.2.3:443', 'direct'],
+    ['https://10.1.2.3:8443/v1', '10.1.2.3:443', 'proxy'],
+    ['https://10.1.2.3:8443/v1', '10.0.0.0/8:8443', 'direct'],
+    ['https://10.1.2.3/v1', '10.0.0.0/8:8443', 'proxy'],
+    ['https://[fd00::1]:8443/v1', '[fd00::1]:8443', 'direct'],
+    ['https://[fd00::1]/v1', '[fd00::1]:8443', 'proxy'],
+    // empty entries exempt nothing
+    ['https://10.1.2.3/v1', ' , ,', 'proxy'],
+  ])('NO_PROXY for %s under %j: %s', (baseUrl, noProxy, expected) => {
+    const got = gatewayProxyUrl(baseUrl, { HTTPS_PROXY: PROXY, NO_PROXY: noProxy });
+    expect(got === undefined ? 'direct' : 'proxy').toBe(expected);
+  });
+
   it('ignores a proxy URL it cannot use, warning without echoing it', () => {
     const logger = makeLogger();
     const transport = readGatewayTransport(
