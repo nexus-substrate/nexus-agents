@@ -4,7 +4,7 @@
 
 Voter and reviewer CLI seats now run in a read-only analysis mode. Every `consensus_vote`, `pr_review` and supply-chain panel seat sends `accessMode: 'read-only-analysis'`, and each CLI adapter maps it to that CLI's own enforcement:
 
-- claude: `--permission-mode default --disallowedTools Bash,Edit,Write,NotebookEdit,WebFetch`
+- claude: `--tools Read,Grep,Glob --strict-mcp-config --permission-mode manual`, plus `--disallowedTools Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch`. Only the read tools are offered and no MCP server loads. A read-only task that also asks to skip permissions or names an MCP config is refused.
 - opencode: `OPENCODE_PERMISSION={"bash":"deny","edit":"deny","webfetch":"deny"}` in the child environment
 - gemini (agy): `--mode plan --sandbox`
 - codex: the `-s read-only` sandbox it already used, now the declared guarantee; codex over MCP refuses a read-only task that continues a session, because a reply carries no sandbox setting

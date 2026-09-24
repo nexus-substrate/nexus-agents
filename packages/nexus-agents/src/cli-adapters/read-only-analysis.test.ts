@@ -27,7 +27,11 @@ import { BaseCliAdapter } from './base-adapter.js';
 import { CliToModelAdapter } from './cli-to-model-adapter.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
 import { readOnlyAnalysisRefusal } from './read-only-analysis.js';
-import { ClaudeCliAdapter, CLAUDE_READ_ONLY_DISALLOWED_TOOLS } from './adapters/claude-adapter.js';
+import {
+  ClaudeCliAdapter,
+  CLAUDE_READ_ONLY_DISALLOWED_TOOLS,
+  CLAUDE_READ_ONLY_TOOLS,
+} from './adapters/claude-adapter.js';
 import { OpenCodeCliAdapter, OPENCODE_READ_ONLY_ENV } from './adapters/opencode-adapter.js';
 import { GeminiCliAdapter, AGY_READ_ONLY_ARGS } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
@@ -64,24 +68,47 @@ function flagValue(args: readonly string[], flag: string): string | undefined {
 }
 
 describe('claude maps read-only analysis to disallowed tools (#6754)', () => {
-  it('denies command, write and fetch tools and pins the permission mode', () => {
+  it('offers only the read tools, loads no MCP server, and pins the permission mode', () => {
     const { args, env } = new ClaudeProbe().command(READ_ONLY);
-    expect(flagValue(args, '--disallowedTools')).toBe('Bash,Edit,Write,NotebookEdit,WebFetch');
-    expect(flagValue(args, '--permission-mode')).toBe('default');
+    expect(flagValue(args, '--tools')).toBe('Read,Grep,Glob');
+    expect(args).toContain('--strict-mcp-config');
+    expect(flagValue(args, '--permission-mode')).toBe('manual');
     expect(args).not.toContain('--dangerously-skip-permissions');
     expect(env).toBeUndefined();
   });
 
-  it('the default mode carries neither flag', () => {
+  it('the allow list is exactly the read tools — no network, command or write tool', () => {
+    expect([...CLAUDE_READ_ONLY_TOOLS].sort()).toEqual(['Glob', 'Grep', 'Read']);
+  });
+
+  it('also denies command, write and network tools, WebSearch included', () => {
+    const { args } = new ClaudeProbe().command(READ_ONLY);
+    const denied = flagValue(args, '--disallowedTools')?.split(',') ?? [];
+    expect(denied.sort()).toEqual(
+      ['Bash', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Write'].sort()
+    );
+    expect([...CLAUDE_READ_ONLY_DISALLOWED_TOOLS].sort()).toEqual(denied);
+  });
+
+  it('the default mode carries none of the flags', () => {
     const { args } = new ClaudeProbe().command(DEFAULT_MODE);
+    expect(args).not.toContain('--tools');
+    expect(args).not.toContain('--strict-mcp-config');
     expect(args).not.toContain('--disallowedTools');
     expect(args).not.toContain('--permission-mode');
   });
 
-  it('the denied set names every tool the decision lists', () => {
-    expect([...CLAUDE_READ_ONLY_DISALLOWED_TOOLS].sort()).toEqual(
-      ['Bash', 'Edit', 'NotebookEdit', 'WebFetch', 'Write'].sort()
-    );
+  it('refuses a read-only task that also names an MCP config', async () => {
+    const adapter = new ClaudeProbe();
+    const spawnPath = vi.spyOn(adapter, 'executeTask');
+    const result = await adapter.execute({
+      ...READ_ONLY,
+      options: { mcpConfigPath: '/tmp/mcp.json' },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toMatch(/MCP config/);
+    expect(spawnPath).not.toHaveBeenCalled();
   });
 
   it('refuses a read-only task that also asks to skip permissions, before spawning', async () => {
@@ -312,23 +339,55 @@ class OpenCodeSpawnProbe extends OpenCodeCliAdapter {
   }
 }
 
-describe('the spawned child receives the command env (#6754)', () => {
-  it('a read-only opencode task spawns with the deny config, over an inherited value', async () => {
-    const inherited = process.env['OPENCODE_PERMISSION'];
-    process.env['OPENCODE_PERMISSION'] = JSON.stringify({ bash: 'allow' });
-    try {
-      const result = await new OpenCodeSpawnProbe().execute(READ_ONLY, { allowRetry: false });
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(JSON.parse(result.value.text)).toEqual({
-        bash: 'deny',
-        edit: 'deny',
-        webfetch: 'deny',
-      });
-    } finally {
-      if (inherited === undefined) delete process.env['OPENCODE_PERMISSION'];
-      else process.env['OPENCODE_PERMISSION'] = inherited;
+/** Run `body` with the named env vars set, restoring their previous values after. */
+async function withEnv(vars: Record<string, string>, body: () => Promise<void>): Promise<void> {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try {
+    await body();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) Reflect.deleteProperty(process.env, k);
+      else process.env[k] = v;
     }
+  }
+}
+
+describe('the spawned child receives the command env (#6754)', () => {
+  // `false` is the full-passthrough hatch: the inherited allow-all value DOES
+  // reach buildChildEnv there, so only the merge order keeps the deny config.
+  it.each(['true', 'false'])(
+    'a read-only opencode task spawns with the deny config over an inherited allow-all (allowlist=%s)',
+    async (allowlist) => {
+      await withEnv(
+        {
+          NEXUS_SUBPROCESS_ENV_ALLOWLIST: allowlist,
+          OPENCODE_PERMISSION: JSON.stringify({ bash: 'allow', edit: 'allow', webfetch: 'allow' }),
+        },
+        async () => {
+          const result = await new OpenCodeSpawnProbe().execute(READ_ONLY, { allowRetry: false });
+          expect(result.ok).toBe(true);
+          if (!result.ok) return;
+          expect(JSON.parse(result.value.text)).toEqual({
+            bash: 'deny',
+            edit: 'deny',
+            webfetch: 'deny',
+          });
+        }
+      );
+    }
+  );
+
+  it('the inherited value does reach the child under passthrough in the default mode (control)', async () => {
+    await withEnv(
+      { NEXUS_SUBPROCESS_ENV_ALLOWLIST: 'false', OPENCODE_PERMISSION: '{"bash":"allow"}' },
+      async () => {
+        const result = await new OpenCodeSpawnProbe().execute(DEFAULT_MODE, { allowRetry: false });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.value.text).toBe('{"bash":"allow"}');
+      }
+    );
   });
 
   it('a default-mode opencode task spawns without it', async () => {
