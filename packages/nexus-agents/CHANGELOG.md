@@ -1,5 +1,23 @@
 # nexus-agents
 
+## 8.103.0
+
+### Minor Changes
+
+- [#6666](https://github.com/nexus-substrate/nexus-agents/pull/6666) [`446d1f8`](https://github.com/nexus-substrate/nexus-agents/commit/446d1f8ba30639e48a2d911b44ea55d97450c405) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(consensus): record the model that answered a vote, and count seats whose model never resolved ([#6660](https://github.com/nexus-substrate/nexus-agents/issues/6660)).
+
+  - Consensus outcome rows now take `servedModel` and its cost from the model the adapter reported answering, not the alias the seat requested. A seat whose CLI fell back to another model (for example claude after an out-of-credits response) used to be named and priced as the requested model. `AgentVoteResult` gains an optional `servedModel` field carrying that reported model.
+  - `PanelDiversity` gains an optional `unresolvedSeats` count: answering seats whose model never resolved, which no other count included. `panelDiversityOf` always sets it, and the models line prints it, e.g. `Models: 1 distinct, 1 family (6 seats unresolved), 0 fallbacks`.
+  - `priceBasis` has no `declared` member yet, because adding one would be a breaking change to published types ([#6664](https://github.com/nexus-substrate/nexus-agents/issues/6664)). A rate declared in `NEXUS_GATEWAY_COST` is still labelled `'list'`. The mapping for each declaration form is documented in `core/price-basis.ts`.
+
+### Patch Changes
+
+- [#6662](https://github.com/nexus-substrate/nexus-agents/pull/6662) [`ded6987`](https://github.com/nexus-substrate/nexus-agents/commit/ded6987eda4dce0598669f06dc8d79bad811024a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(adapters): the direct OpenAI adapter (`OPENAI_API_KEY`) now calls `POST <base>/chat/completions` when `OPENAI_BASE_URL` names a host other than `api.openai.com` ([#6654](https://github.com/nexus-substrate/nexus-agents/issues/6654)).
+
+  The adapter always used the AI SDK's default surface, the Responses API (`POST <base>/responses`). Pointing `OPENAI_BASE_URL` at an OpenAI-compatible gateway that serves only chat completions therefore failed every call with a 404.
+
+  `NEXUS_CUSTOM_API_SURFACE`, until now read only by the single-model `custom-openai` adapter, also governs this case: `responses` keeps the Responses API for such a host; any value other than `chat` or `responses` is refused with a `ConfigError` when the adapter is built. With `OPENAI_BASE_URL` unset, blank, or naming `api.openai.com`, nothing changes: the adapter sends the same Responses API request as before and does not read `NEXUS_CUSTOM_API_SURFACE`.
+
 ## 8.102.2
 
 ### Patch Changes
