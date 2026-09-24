@@ -601,6 +601,63 @@ describe('family-slot routing with no CLIs installed (#6604)', () => {
 });
 
 // ============================================================================
+// 5. The unpinned default and the opencode slot (#6626)
+// ============================================================================
+
+describe('the unpinned default and the opencode slot with no CLIs installed (#6626)', () => {
+  const bootLogger = silentLogger();
+
+  beforeAll(async () => {
+    for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY']) {
+      vi.stubEnv(key, undefined);
+    }
+    // Named on purpose and absent from the catalogue: it must never be sent.
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', 'gpt-9-not-in-catalogue');
+    // Registration logs the slot mapping, default included, so the operator
+    // sees the warning at boot.
+    _resetGatewaySlotCatalog();
+    await wireGateway(bootLogger, createUnifiedRegistry({ logger: bootLogger }));
+  });
+
+  afterAll(() => {
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', undefined);
+    _resetGatewaySlotCatalog();
+  });
+
+  /** The model of every request that named one, whatever the endpoint. */
+  const requestedModels = (): string[] =>
+    gateway.requests.flatMap((r) => {
+      const model: unknown = (r.body as { model?: unknown } | undefined)?.model;
+      return typeof model === 'string' ? [model] : [];
+    });
+
+  it('sends the unpinned default to the top-ranked anthropic flagship, not NEXUS_CUSTOM_MODEL', async () => {
+    const registry = createUnifiedRegistry({ logger: silentLogger() });
+
+    const result = await registry.getAdapterForModel('no-such-registry-model').complete(ask);
+
+    expect(new Set(requestedModels())).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
+    expect(bootLogger.warnings.join('\n')).toContain(
+      'NEXUS_CUSTOM_MODEL: ignored: the model is not in the gateway catalogue'
+    );
+    // TODAY: the custom-openai adapter posts to /v1/responses, which this
+    // chat-only gateway does not serve, so the call fails. #6645 changes it.
+    expect(result.ok ? 'ok' : result.error.message).toContain('/v1/responses');
+  });
+
+  it('refuses a pinned opencode slot with no binary instead of running another model', async () => {
+    const registry = createUnifiedRegistry({ logger: silentLogger() });
+
+    const result = await registry.getAdapterForCli('opencode').complete(ask);
+
+    // The resilient adapter reports the refusal generically; what matters is
+    // that no model was sent (before #6626, NEXUS_CUSTOM_MODEL was).
+    expect(result.ok).toBe(false);
+    expect(requestedModels()).toEqual([]);
+  });
+});
+
+// ============================================================================
 // 6. doctor --gateway (#6609)
 // ============================================================================
 
