@@ -4,14 +4,30 @@
  * Router and MCP-config mocks expose the task options sent by executeExpert.
  * Pure reducer tests cover what `ExpertBridgeResult` carries for token usage.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { executeTaskMock } = vi.hoisted(() => ({ executeTaskMock: vi.fn() }));
+import { GatewayRediscovery, setGatewayRediscovery } from '../adapters/gateway-rediscovery.js';
+import type { ILogger, IModelAdapter } from '../core/index.js';
+
+const { executeTaskMock, createAllAdaptersMock, servedByBuild } = vi.hoisted(() => ({
+  executeTaskMock: vi.fn(),
+  createAllAdaptersMock: vi.fn(() => new Map([['claude', {}]])),
+  servedByBuild: [] as number[],
+}));
 vi.mock('../cli-adapters/factory.js', () => ({
-  createAllAdapters: () => new Map([['claude', {}]]),
+  createAllAdapters: createAllAdaptersMock,
 }));
 vi.mock('../cli-adapters/composite-router.js', () => ({
-  createCompositeRouter: () => ({ executeTask: executeTaskMock }),
+  createCompositeRouter: () => {
+    // Tag each built router so a test can tell which build served a call.
+    const build = createAllAdaptersMock.mock.calls.length;
+    return {
+      executeTask: (task: unknown): unknown => {
+        servedByBuild.push(build);
+        return executeTaskMock(task);
+      },
+    };
+  },
 }));
 vi.mock('../cli-adapters/cli-circuit-breaker.js', () => ({
   createCliCircuitBreakerIntegration: () => ({
@@ -145,6 +161,72 @@ describe('executeExpert routed marker (#6521)', () => {
     expect(result.success).toBe(false);
     expect(result.routedBy).toBeUndefined();
     expect(result.cli).toBeUndefined();
+  });
+});
+
+describe('executeExpert router after a late gateway discovery (#6667)', () => {
+  const logger: ILogger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    setLevel: vi.fn(),
+    child: (): ILogger => logger,
+  };
+
+  function armRediscovery(discover: () => Promise<readonly IModelAdapter[] | undefined>): void {
+    setGatewayRediscovery(
+      new GatewayRediscovery({ target: [], discover, logger, minIntervalMs: 0, lastAttemptAt: 0 })
+    );
+  }
+
+  beforeEach(() => {
+    executeTaskMock.mockReset();
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done' } });
+    setGatewayRediscovery(undefined);
+  });
+
+  afterEach(() => {
+    setGatewayRediscovery(undefined);
+  });
+
+  it('keeps one router across calls when no gateway re-discovery is armed', async () => {
+    await executeExpert('code', 'warm the cache');
+    const builds = createAllAdaptersMock.mock.calls.length;
+
+    await executeExpert('code', 'again');
+    await executeExpert('code', 'and again');
+
+    expect(createAllAdaptersMock.mock.calls.length).toBe(builds);
+  });
+
+  it('rebuilds the cached router once a late discovery lands, and serves from the new one', async () => {
+    await executeExpert('code', 'built while the gateway is down');
+    const staleBuild = createAllAdaptersMock.mock.calls.length;
+    const discover = vi.fn(() => Promise.resolve([{} as IModelAdapter]));
+    armRediscovery(discover);
+    servedByBuild.length = 0;
+
+    await executeExpert('code', 'after the gateway came up');
+    await executeExpert('code', 'and once more');
+
+    // The expert stage itself triggered discovery; nothing else ran it.
+    expect(discover).toHaveBeenCalledTimes(1);
+    // Rebuilt exactly once, and both calls ran on the rebuilt router.
+    expect(createAllAdaptersMock.mock.calls.length).toBe(staleBuild + 1);
+    expect(servedByBuild).toEqual([staleBuild + 1, staleBuild + 1]);
+  });
+
+  it('keeps the cached router when re-discovery finds no gateway', async () => {
+    await executeExpert('code', 'warm the cache');
+    const builds = createAllAdaptersMock.mock.calls.length;
+    const discover = vi.fn(() => Promise.resolve(undefined));
+    armRediscovery(discover);
+
+    await executeExpert('code', 'gateway still down');
+
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(createAllAdaptersMock.mock.calls.length).toBe(builds);
   });
 });
 
