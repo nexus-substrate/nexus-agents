@@ -30,6 +30,8 @@ import { VERSION } from '../../version.js';
 import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../../core/index.js';
 import { initTaskState, readTaskState } from '../../context/structured-task-state.js';
 import { emitStageCompleted } from '../../pipeline/pipeline-observability.js';
+import { createCallerAbortCliError } from '../../cli-adapters/cli-error-helpers.js';
+import { isCallerCancelled } from '../../adapters/abort-utils.js';
 
 interface DummyInput {
   readonly task: string;
@@ -1292,5 +1294,186 @@ describe('runAsJob — retention sweep before the pending write (#6224, #4976 ga
     clock.advance(60_000);
     dispatch('job-sweep-third');
     expect(existsSync(expiredAfterFirstSweep)).toBe(false);
+  });
+});
+
+describe('runAsJob — the runaway guard aborts the job body (#6725)', () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+  /** Short guard, at or under the standard ceiling: no wedged watchdog. */
+  const GUARD_MS = 1_000;
+  /** Above the 3.6M MCP ceiling, so the wedged watchdog is armed at 3/8. */
+  const LONG_GUARD_MS = 4_000_000;
+  const WEDGED_AT_MS = (LONG_GUARD_MS / 8) * 3;
+
+  /** What the body observed at the moment its signal fired. */
+  interface AbortObservation {
+    readonly reason: unknown;
+    readonly recordStatusAtAbort: string | undefined;
+    readonly inFlightAtAbort: number;
+  }
+
+  /** A body that never settles on its own and records what it saw on abort. */
+  function hangingBody(
+    jobId: string,
+    seen: AbortObservation[]
+  ): (id: string, input: DummyInput, signal: AbortSignal) => Promise<{ ok: true }> {
+    return (_id, _input, signal) =>
+      new Promise<{ ok: true }>(() => {
+        signal.addEventListener('abort', () => {
+          seen.push({
+            reason: signal.reason,
+            recordStatusAtAbort: readJobResult(jobId)?.status,
+            inFlightAtAbort: getInFlight('orchestrate'),
+          });
+        });
+      });
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-runasjob-guard-abort-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'];
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    resetConcurrency();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('aborts the signal with a TimeoutError BEFORE recording failed and releasing the slot', async () => {
+    process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(GUARD_MS);
+    const jobId = 'job-guard-abort-1';
+    const seen: AbortObservation[] = [];
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'wedged' },
+      freshJobId: () => jobId,
+      run: hangingBody(jobId, seen),
+    });
+
+    await vi.advanceTimersByTimeAsync(GUARD_MS);
+    await vi.waitFor(() => {
+      expect(readJobResult(jobId)?.status).toBe('failed');
+    });
+
+    expect(seen).toHaveLength(1);
+    const reason = seen[0]!.reason;
+    expect(reason).toBeInstanceOf(DOMException);
+    expect((reason as DOMException).name).toBe('TimeoutError');
+    expect((reason as DOMException).message).toBe('runaway guard exceeded');
+    // Ordering: when the body heard the abort, nothing had yet said it was over.
+    expect(seen[0]!.recordStatusAtAbort).toBe('pending');
+    expect(seen[0]!.inFlightAtAbort).toBe(1);
+    expect(readJobResult(jobId)?.error).toBe('runaway guard exceeded');
+    expect(getInFlight('orchestrate')).toBe(0);
+  });
+
+  it('the wedged watchdog aborts the body the same way', async () => {
+    process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(LONG_GUARD_MS);
+    const jobId = 'job-wedged-abort-1';
+    const seen: AbortObservation[] = [];
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'silent' },
+      freshJobId: () => jobId,
+      run: hangingBody(jobId, seen),
+    });
+
+    await vi.advanceTimersByTimeAsync(WEDGED_AT_MS);
+    await vi.waitFor(() => {
+      expect(readJobResult(jobId)?.status).toBe('failed');
+    });
+
+    expect(seen).toHaveLength(1);
+    expect((seen[0]!.reason as DOMException).name).toBe('TimeoutError');
+    expect((seen[0]!.reason as DOMException).message).toBe(
+      `wedged (no progress for ${String(WEDGED_AT_MS)} ms)`
+    );
+    expect(seen[0]!.recordStatusAtAbort).toBe('pending');
+  });
+
+  it('the abort reason classifies as a real TIMEOUT on the CLI breaker, not a caller cancel', async () => {
+    process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(GUARD_MS);
+    const jobId = 'job-guard-abort-breaker';
+    const seen: AbortObservation[] = [];
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'wedged' },
+      freshJobId: () => jobId,
+      run: hangingBody(jobId, seen),
+    });
+    await vi.advanceTimersByTimeAsync(GUARD_MS);
+    await vi.waitFor(() => {
+      expect(seen).toHaveLength(1);
+    });
+
+    // The seam a CLI adapter uses when the job's signal ends its call (#6691).
+    const cliError = createCallerAbortCliError(seen[0]!.reason, 'aborted', 'claude');
+    expect(cliError.code).toBe('TIMEOUT');
+    expect(isCallerCancelled(cliError)).toBe(false);
+  });
+
+  it('does not abort when the BODY rejects, even with the guard message text', async () => {
+    // The body has already settled — there is nothing left to stop. The guard
+    // is identified by its error class, never by message text.
+    const jobId = 'job-body-rejects-1';
+    let captured: AbortSignal | undefined;
+    await runJobInBackground<DummyInput, { ok: true }, never>(jobId, {
+      toolName: 'orchestrate',
+      input: { task: 'x' },
+      freshJobId: () => jobId,
+      run: (_id, _input, signal) => {
+        captured = signal;
+        return Promise.reject(new Error('runaway guard exceeded'));
+      },
+    });
+
+    expect(readJobResult(jobId)?.status).toBe('failed');
+    expect(captured).toBeDefined();
+    expect(captured?.aborted).toBe(false);
+  });
+
+  it('end to end: a body that respects the signal stops doing work when the guard fires', async () => {
+    process.env['NEXUS_TIMEOUT_CLASS_ASYNC_JOB_BODY_MS'] = String(GUARD_MS);
+    const jobId = 'job-guard-e2e-1';
+    const UNIT_MS = 100;
+    let unitsDone = 0;
+    let stoppedWith: unknown;
+    runAsJob<DummyInput, { ok: true }>({
+      toolName: 'orchestrate',
+      input: { task: 'loop' },
+      freshJobId: () => jobId,
+      // One unit of work per UNIT_MS until the signal fires.
+      run: async (_id, _input, signal) => {
+        while (!signal.aborted) {
+          await new Promise((resolve) => setTimeout(resolve, UNIT_MS));
+          if (signal.aborted) break;
+          unitsDone += 1;
+        }
+        stoppedWith = signal.reason;
+        throw new Error('stopped by signal');
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(GUARD_MS);
+    await vi.waitFor(() => {
+      expect(readJobResult(jobId)?.status).toBe('failed');
+    });
+    const unitsAtGuard = unitsDone;
+    // Ten more guard windows: a body that was not aborted would keep counting.
+    await vi.advanceTimersByTimeAsync(GUARD_MS * 10);
+
+    expect(unitsAtGuard).toBeGreaterThan(0);
+    expect(unitsDone).toBe(unitsAtGuard);
+    expect((stoppedWith as DOMException).name).toBe('TimeoutError');
+    expect(readJobResult(jobId)?.error).toBe('runaway guard exceeded');
   });
 });
