@@ -91,6 +91,11 @@ import {
   defaultCollisionEnvelope,
   type JobEnvelopeBuilders,
 } from '../jobs/run-as-job.js';
+import {
+  attachPartialsOnCancel,
+  throwIfVoteCancelled,
+  VoteCancelledError,
+} from './consensus-vote-cancelled.js';
 import { randomUUID } from 'node:crypto';
 import type {
   VotingStrategy,
@@ -512,6 +517,9 @@ export async function executeVoting(
   // live result, so an `unverifiable` seat is diagnosable without stderr.
   const panelWorkspace = resolvePanelWorkspace(opts?.workspace);
   const result = await executeVotingInner(input, logger, { ...opts, project, panelWorkspace });
+  // #6735 backstop: a cancel that landed after the seats settled (during the
+  // contrarian check or escalation) must not stamp or record a decision either.
+  throwIfVoteCancelled(opts?.signal, result.votes, result.votes.length);
   result.project = project;
   // A simulated panel pointed no seat at a directory, so it names none.
   if (!input.simulateVotes) result.workspace = panelWorkspace;
@@ -630,6 +638,9 @@ async function executeVotingInner(
     signal: opts.signal,
     onVoteCollected: opts.onVoteCollected,
   });
+  // #6735: a cancelled vote stops here, before the engine, with only the
+  // seats that cast a vote — no verdict is computed from a partial panel.
+  throwIfVoteCancelled(opts.signal, votes, roles.length);
 
   // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
   // count_as_abstain transformation. Engine sees the resulting shape.
@@ -940,6 +951,9 @@ async function handleConsensusVote(
     emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);
     return { ok: true, value: buildResponse(args, result, costSummary, voteRecord) };
   } catch (error) {
+    // #6735: a cancel is not a vote failure — it reaches the async dispatcher,
+    // which attaches the cast seats to the cancelled record.
+    if (error instanceof VoteCancelledError) throw error;
     const message = getErrorMessage(error);
     const cause = error instanceof Error ? error : new Error(message);
     logger.error('Consensus vote failed', cause);
@@ -966,7 +980,9 @@ type ConsensusVoteToolResponse = ToolResult;
  * also reaches every seat's adapter call, combined with the seat's deadline, so
  * a voter in flight is aborted rather than left to run for the length of its
  * slowest seat while the job holds its concurrency slot. The job record stays
- * `cancelled` with no vote payload (the terminal writers no-op, #4022).
+ * `cancelled` (the terminal writers no-op, #4022). Since #6735 the body stops
+ * before any verdict and the seats that had cast a vote are attached to that
+ * record as `cancelledPartial` — never as a decision, and never on the ledger.
  *
  * Concurrency cap is enforced via `tryAcquire('consensus_vote')`
  * (default 2; voting is 7-fan-out so caps multiply adapter load fast).
@@ -1007,6 +1023,8 @@ function dispatchAsyncConsensusVote(
     // #5066: structured envelopes — this tool declares an outputSchema, and
     // the SDK rejects a non-error result that carries no structured content.
     toEnvelope: ASYNC_ENVELOPES,
+    // #6735: on a cancel the body throws VoteCancelledError; the seats it had
+    // cast are attached to the `cancelled` record, which keeps its status.
     // #4362: `handleConsensusVote`'s `{ ok: false }` used to flow into the job
     // record verbatim, and `runAsJob` records `complete` for anything its `run`
     // callback RESOLVES — so a dead voter panel produced a job a caller polling
@@ -1018,8 +1036,11 @@ function dispatchAsyncConsensusVote(
     // `progress` is the liveness heartbeat, fired as each seat settles, so a
     // panel allowed past the standard MCP ceiling is never called wedged while
     // its seats keep landing.
-    run: (_jobId, input, signal, progress) =>
-      unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress)),
+    run: (jobId, input, signal, progress) =>
+      attachPartialsOnCancel(
+        jobId,
+        unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress))
+      ),
     ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });
 }

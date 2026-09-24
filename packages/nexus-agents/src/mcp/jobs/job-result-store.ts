@@ -55,6 +55,7 @@ import {
   type JobFailureDetail,
   validateAndSanitizeFailureDetail,
 } from './job-failure-detail.js';
+import { CancelledPartialSchema } from './job-cancelled-partial-schema.js';
 
 const logger = createLogger({ component: 'job-result-store' });
 
@@ -151,6 +152,14 @@ export const JobResultSchema = z.object({
    * silence from this stamp (or from job start when there is none).
    */
   lastProgressAt: z.iso.datetime().optional(),
+  /**
+   * What a cancelled vote had collected when `cancel_job` fired (#6735).
+   * Present only on a `cancelled` record, and only when the body settled after
+   * the cancel and reported what it had. Written only by
+   * `attachCancelledPartial` (`job-cancelled-partial.ts`), never by a status
+   * transition.
+   */
+  cancelledPartial: CancelledPartialSchema.optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;
 
@@ -269,6 +278,19 @@ function persistJobRecord(path: string, record: JobResult): void {
   chmodSync(path, 0o600);
 }
 
+/**
+ * Persist `record` as `jobId`'s primary sidecar and mirror it to every other
+ * candidate path — the one write step every writer shares. Applies NO status
+ * guard: each writer decides whether it may write before calling this.
+ * Exported for the writers in sibling modules (`job-cancelled-partial.ts`).
+ * @internal
+ */
+export function persistJobRecordAcrossCandidates(jobId: string, record: JobResult): void {
+  const primaryPath = jobResultPath(jobId);
+  persistJobRecord(primaryPath, record);
+  syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
+}
+
 /** The heartbeat a terminal writer carries forward from the record it replaces (#6162). */
 function carriedProgress(existing: JobResult | null): Pick<JobResult, 'lastProgressAt'> {
   return existing?.lastProgressAt !== undefined ? { lastProgressAt: existing.lastProgressAt } : {};
@@ -349,9 +371,7 @@ export function writeJobComplete(
     producerVersion,
     ...carriedProgress(existing),
   };
-  const primaryPath = jobResultPath(jobId);
-  persistJobRecord(primaryPath, record);
-  syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
+  persistJobRecordAcrossCandidates(jobId, record);
   logger.debug('Wrote complete job record', { jobId, toolName });
 }
 
@@ -393,9 +413,7 @@ export function writeJobFailed(
     producerVersion,
     ...carriedProgress(existing),
   };
-  const primaryPath = jobResultPath(jobId);
-  persistJobRecord(primaryPath, record);
-  syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
+  persistJobRecordAcrossCandidates(jobId, record);
   logger.debug('Wrote failed job record', { jobId, toolName, error: sanitizedError });
 }
 
@@ -448,9 +466,7 @@ function persistProgressStamp(jobId: string, at: string): void {
     return;
   }
   const updated: JobResult = { ...existing, lastProgressAt: at };
-  const primaryPath = jobResultPath(jobId);
-  persistJobRecord(primaryPath, updated);
-  syncAlternateCandidates(jobId, primaryPath, updated, logger, persistJobRecord);
+  persistJobRecordAcrossCandidates(jobId, updated);
 }
 
 /**
@@ -486,9 +502,7 @@ export function writeJobCancelled(
     producerVersion,
     ...carriedProgress(existing),
   };
-  const primaryPath = jobResultPath(jobId);
-  persistJobRecord(primaryPath, record);
-  syncAlternateCandidates(jobId, primaryPath, record, logger, persistJobRecord);
+  persistJobRecordAcrossCandidates(jobId, record);
   logger.debug('Wrote cancelled job record', { jobId, toolName, reason: sanitizedReason });
 }
 

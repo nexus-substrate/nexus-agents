@@ -267,11 +267,17 @@ export const ConsensusVoteInputSchema = z
      * that have not started and aborts the adapter call of every voter in
      * flight (combined with each seat's own deadline, so a deadline is still
      * recorded as a timeout). The body then settles and releases its
-     * async slot. The job record stays `{ status: 'cancelled' }` and carries
-     * NO vote payload: the terminal writers no-op against a cancelled record
-     * (#4022), so the votes that landed before the cancel are not in it —
-     * an earlier version of this comment promised a `partialVotes` field
-     * that was never written (#6735 tracks adding it).
+     * async slot. The job record stays `{ status: 'cancelled' }` — a later
+     * complete/failed write cannot change it (#4022) — and carries no
+     * `result` and no decision: the body stops before the tally, so no
+     * verdict is computed and nothing is appended to the vote-record ledger.
+     * Once the body settles, the record gains `cancelledPartial:
+     * { partialVotes, seatsCast, panelSize }` (#6735): the seats that had
+     * cast a vote before the cancel (a seat aborted or never launched is not
+     * counted), and how many of the panel that is — `seatsCast: 0` when none
+     * had. Sidecar store only; a `NEXUS_JOB_RESULT_SOURCE=task_state` read
+     * does not carry it. A poll between the cancel and the body settling
+     * sees `cancelled` without the field.
      *
      * The key is `dispatch` (#4968); `mode` is the deprecated alias this tool
      * used to spell it with, resolved as `dispatch ?? mode` by the handler and
