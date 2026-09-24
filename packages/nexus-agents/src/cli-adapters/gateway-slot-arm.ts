@@ -122,6 +122,18 @@ class GatewaySlotArm implements ICliAdapter {
     return this.current.capabilities;
   }
 
+  /**
+   * Whether this arm enforces read-only analysis mode (#6768). Either target
+   * can serve a call, so the arm declares enforcement only when BOTH do: the
+   * gateway target always does (it runs nothing on the host), and the CLI
+   * target, when there is one, must declare it itself.
+   */
+  get enforcesReadOnlyAnalysis(): boolean {
+    const cliEnforces =
+      this.deps.cliAdapter === undefined || this.deps.cliAdapter.enforcesReadOnlyAnalysis === true;
+    return cliEnforces && this.gatewayAdapter.enforcesReadOnlyAnalysis === true;
+  }
+
   private target(): Promise<ICliAdapter> {
     if (this.resolved !== undefined) return Promise.resolve(this.resolved);
     const cliAdapter = this.deps.cliAdapter;

@@ -38,6 +38,34 @@ const COMPLETION: CompletionResponse = {
   model: 'claude-opus',
 };
 
+describe('ModelToCliAdapter read-only analysis mode (#6768)', () => {
+  it('declares read-only enforcement, so the router may select it for a read-only task', () => {
+    const adapter = createModelToCliAdapter(makeModelAdapter(), { name: 'claude' });
+    expect(adapter.enforcesReadOnlyAnalysis).toBe(true);
+  });
+
+  it('sends a read-only task with no tools and forwards its access mode', async () => {
+    const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
+    const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'claude' });
+
+    const result = await adapter.execute({ content: 'review', accessMode: 'read-only-analysis' });
+
+    expect(result.ok).toBe(true);
+    const request = complete.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(request['accessMode']).toBe('read-only-analysis');
+    expect(request['tools']).toBeUndefined();
+  });
+
+  it('adds no access mode to a default task', async () => {
+    const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
+    const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'claude' });
+
+    await adapter.execute({ content: 'hi' });
+
+    expect(complete.mock.calls[0]?.[0]).not.toHaveProperty('accessMode');
+  });
+});
+
 describe('ModelToCliAdapter (#3422)', () => {
   it('exposes the configured display CLI slot as name (not the arm id)', () => {
     const adapter = createModelToCliAdapter(makeModelAdapter(), { name: 'claude' });
