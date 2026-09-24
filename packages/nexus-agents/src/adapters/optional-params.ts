@@ -44,31 +44,6 @@ export interface DroppedParam {
   readonly severity: ParamSeverity;
 }
 
-/**
- * Would-have-self-healed counter (#4069, epic #4066 layer 3). Keyed
- * `${modelId}:${param}`. Counts every PROACTIVE drop (this module) AND every
- * REACTIVE param-naming 400 the adapter classifies as MODEL_PARAMETER_UNSUPPORTED
- * (base-adapter). Both are exactly the events the reactive self-heal path (#4071)
- * would catch, so this single counter measures how often #4071 would have fired.
- */
-const wouldHaveSelfHealed = new Map<string, number>();
-
-/** Record one would-have-self-healed event for `modelId`'s `param` (#4069). */
-export function recordWouldHaveSelfHealed(modelId: string, param: string): void {
-  const key = `${modelId}:${param}`;
-  wouldHaveSelfHealed.set(key, (wouldHaveSelfHealed.get(key) ?? 0) + 1);
-}
-
-/** Snapshot of the would-have-self-healed counts (defensive copy). */
-export function getWouldHaveSelfHealedCounts(): ReadonlyMap<string, number> {
-  return new Map(wouldHaveSelfHealed);
-}
-
-/** Test seam: clear the would-have-self-healed counter. */
-export function _resetWouldHaveSelfHealed(): void {
-  wouldHaveSelfHealed.clear();
-}
-
 /** A request param the seam transformed (name/value). Reserved for #4069 / a later max-tokens increment; empty today. */
 export interface TransformedParam {
   readonly param: string;
@@ -104,9 +79,6 @@ export function planOptionalParams(request: CompletionRequest, modelId: string):
       // layer 3). temperature is the only param dropped today and it is behavioral,
       // so there is no second emit — adding one would double-warn.
       warnTemperatureDropped(modelId);
-      // Record the proactive drop: every time the reactive self-heal path (#4071)
-      // would have fired on a temperature-rejecting 400.
-      recordWouldHaveSelfHealed(modelId, 'temperature');
       dropped.push({
         param: 'temperature',
         reason: `model_rejects:${modelId}`,

@@ -21,7 +21,6 @@ import {
   resolveRetryAfterMs,
   RETRY_AFTER_CONTEXT_KEY,
 } from './rate-limit-detector.js';
-import { recordWouldHaveSelfHealed } from './optional-params.js';
 
 import {
   ok,
@@ -321,17 +320,12 @@ export abstract class BaseAdapter implements IModelAdapter {
     const errorMessage = getErrorMessage(error);
     const errorCode = this.determineErrorCode(error);
 
-    // #4069: a param-naming 400 carries the offending param name in context, and
-    // counts as a would-have-self-healed event (the reactive #4071 path would catch
-    // exactly this 400). Only set for MODEL_PARAMETER_UNSUPPORTED — all other codes
-    // are unchanged.
+    // #4069: a param-naming 400 carries the offending param name in context.
+    // Only set for MODEL_PARAMETER_UNSUPPORTED — all other codes are unchanged.
     const param =
       errorCode === ErrorCode.MODEL_PARAMETER_UNSUPPORTED
         ? this.extractErrorParam(error)
         : undefined;
-    if (param !== undefined) {
-      recordWouldHaveSelfHealed(this.modelId, param);
-    }
 
     // #4606: capture the provider's stated retry horizon HERE, while the
     // thrown SDK error — the last place the HTTP response is reachable — is

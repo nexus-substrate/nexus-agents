@@ -13,7 +13,6 @@ import type {
 import { ok, err, ModelError, ErrorCode, ModelCapability, NexusError } from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { isRetryableError } from './retry.js';
-import { getWouldHaveSelfHealedCounts, _resetWouldHaveSelfHealed } from './optional-params.js';
 
 /** Concrete test implementation of BaseAdapter for testing. */
 class TestAdapter extends BaseAdapter {
@@ -440,10 +439,6 @@ describe('BaseAdapter', () => {
     });
 
     describe('param-naming 400 → MODEL_PARAMETER_UNSUPPORTED (#4069)', () => {
-      beforeEach(() => {
-        _resetWouldHaveSelfHealed();
-      });
-
       it('classifies a 400 that names a param as MODEL_PARAMETER_UNSUPPORTED', () => {
         const error = Object.assign(new Error('Unsupported value: temperature'), {
           status: 400,
@@ -458,19 +453,11 @@ describe('BaseAdapter', () => {
         expect(result.context).toMatchObject({ param: 'temperature' });
       });
 
-      it('records a would-have-self-healed event for the param-naming 400', () => {
-        const error = Object.assign(new Error('bad param'), { status: 400, param: 'temperature' });
-        adapter.testTransformError(error);
-        // TestAdapter modelId is 'test-model'.
-        expect(getWouldHaveSelfHealedCounts().get('test-model:temperature')).toBe(1);
-      });
-
-      it('leaves a 400 with NO param as MODEL_ERROR (unchanged) and records nothing', () => {
+      it('leaves a 400 with NO param as MODEL_ERROR (unchanged)', () => {
         const error = Object.assign(new Error('generic bad request'), { status: 400 });
         const result = adapter.testTransformError(error);
         expect(result.code).toBe(ErrorCode.MODEL_ERROR);
         expect(result.context).toEqual({ providerId: 'test-provider', modelId: 'test-model' });
-        expect(getWouldHaveSelfHealedCounts().size).toBe(0);
       });
 
       it('leaves a non-400 that carries a param as its normal code (unchanged)', () => {
