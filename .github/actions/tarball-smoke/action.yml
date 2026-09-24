@@ -19,6 +19,12 @@ inputs:
       container. The default is the pre-publish set: the #5427 ignore-scripts
       path plus the two consent-gated installs that blocked real users (#6481).
     default: 'ignore-scripts npm12-strict pnpm'
+  smoke-memory:
+    description: >-
+      'true' to also require exactly one nexus-memory-*.tgz in pack-dir and
+      smoke it: install it into a clean prefix and import its entry point.
+      nexus-memory is published by the same `changeset publish` (#6770).
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -56,3 +62,35 @@ runs:
             bash /home/verifier/verify.sh /pkg.tgz
           echo "::endgroup::"
         done
+
+    # nexus-memory is a library with no bin, so verify.sh does not fit it. The
+    # smoke is the consumer's first act: install the tarball into an empty
+    # project and import the entry point, requiring the documented entry
+    # function to be present (an empty or wrong `exports` fails here).
+    - name: Install the nexus-memory tarball and import it
+      if: inputs.smoke-memory == 'true'
+      shell: bash
+      env:
+        PACK_DIR: ${{ inputs.pack-dir }}
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        tarballs=("$PACK_DIR"/nexus-memory-*.tgz)
+        if [[ ${#tarballs[@]} -ne 1 ]]; then
+          echo "::error::expected exactly one nexus-memory-*.tgz in $PACK_DIR, found ${#tarballs[@]}; nothing was smoked."
+          exit 1
+        fi
+        echo "Smoking $(basename "${tarballs[0]}")"
+        docker run --rm -v "${tarballs[0]}:/mem.tgz:ro" nexus-verify bash -c '
+          set -euo pipefail
+          mkdir -p /home/verifier/mem && cd /home/verifier/mem
+          npm init -y >/dev/null
+          npm install --ignore-scripts /mem.tgz
+          node --input-type=module -e "
+            const m = await import(\"nexus-memory\");
+            if (typeof m.getMemoryRegistry !== \"function\") {
+              throw new Error(\"nexus-memory entry point has no getMemoryRegistry export\");
+            }
+            console.log(\"nexus-memory import ok:\", Object.keys(m).length, \"exports\");
+          "
+        '
