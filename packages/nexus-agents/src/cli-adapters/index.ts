@@ -367,15 +367,6 @@ export type {
   LatencyTrackerStats,
 } from './latency-tracker.js';
 
-// Unified Routing Types (Issue #574)
-export {
-  UnifiedRoutingDecisionSchema,
-  RoutingDecisionBuilder,
-  createRoutingDecisionBuilder,
-  createSimpleRoutingDecision,
-} from './unified-routing-types.js';
-export type { RoutingStrategy, UnifiedRoutingDecision } from './unified-routing-types.js';
-
 // Typed Structured Output (Issue #1897) — removed in #3018. `generateObject`
 // was the Zod-schema-driven retry-with-feedback helper, but had zero
 // non-test callers in the tree. If structured output comes back as a
