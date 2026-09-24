@@ -11,12 +11,12 @@
 import { z } from 'zod';
 import { asyncDispatchInputDefaultSync } from './async-dispatch-input.js';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runAdaptiveOrchestrator, classifyTask } from '../../pipeline/adaptive-orchestrator.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import type { AdaptiveOrchestratorResult } from '../../pipeline/adaptive-orchestrator.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
 import { createAgentStages, type AgentExecutorConfig } from '../../pipeline/agent-executor.js';
@@ -167,14 +167,10 @@ function buildOutput(
  */
 async function resolveTask(task: string, specFile: string | undefined): Promise<string> {
   if (specFile === undefined) return task;
-  const resolved = path.resolve(specFile);
-  // Path traversal guard — restrict to cwd subtree. The `+ path.sep` is
-  // load-bearing: a sibling whose name starts with the cwd basename
-  // (`/home/u/projEVIL` for cwd `/home/u/proj`) bypasses a bare startsWith.
-  // Match the convention in security/safe-path.ts.
-  const cwdRoot = path.resolve('.');
-  if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + path.sep)) {
-    throw new Error(`Path traversal denied: specFile must be within ${cwdRoot}`);
+  // Path traversal guard — restrict to the cwd subtree, following symlinks.
+  const resolved = resolveInsideRoot(specFile);
+  if (resolved === null) {
+    throw new Error(`Path traversal denied: specFile must be within ${process.cwd()}`);
   }
   try {
     const specContent = await fs.promises.readFile(resolved, 'utf-8');
@@ -413,3 +409,6 @@ export function registerPipelineTool(server: McpServer, deps: BaseMcpToolDeps): 
   );
   logger.info('Registered run_pipeline tool');
 }
+
+/** Test-only surface — do not import in production code. */
+export const _testing = { resolveTask };

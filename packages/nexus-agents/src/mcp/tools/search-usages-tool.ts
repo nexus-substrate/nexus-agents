@@ -22,11 +22,13 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { relative } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { findSourceFiles } from '../../indexer/codebase-search.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import {
   IDENTIFIER_RE,
   LANG_VALUES,
@@ -122,12 +124,10 @@ export type SearchUsagesDeps = BaseMcpToolDeps;
 
 /** Resolve a caller path against a path-traversal guard (must stay within cwd). */
 function resolveWithinCwd(target: string): { resolved: string } | { error: string } {
-  const resolved = resolve(target);
-  const cwdRoot = resolve('.');
-  // The `+ sep` is load-bearing: a sibling dir whose name starts with the cwd
-  // basename bypasses a bare startsWith. Matches security/safe-path.ts.
-  if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + sep)) {
-    return { error: `Path traversal denied: scope must be within ${cwdRoot}` };
+  // Realpath-aware: a symlink inside cwd whose target is outside it is refused.
+  const resolved = resolveInsideRoot(target);
+  if (resolved === null) {
+    return { error: `Path traversal denied: scope must be within ${process.cwd()}` };
   }
   return { resolved };
 }
@@ -147,7 +147,12 @@ async function resolveFileScope(input: SearchUsagesInput): Promise<FileScope | {
     const guard = resolveWithinCwd(input.path);
     if ('error' in guard) return guard;
     // A single named file: nothing was walked, so nothing could be skipped.
-    return { files: [guard.resolved], root: resolve('.'), skippedDirs: 0, omittedFiles: 0 };
+    return {
+      files: [guard.resolved],
+      root: realpathSync(process.cwd()),
+      skippedDirs: 0,
+      omittedFiles: 0,
+    };
   }
   const guard = resolveWithinCwd(input.dir ?? process.cwd());
   if ('error' in guard) return guard;

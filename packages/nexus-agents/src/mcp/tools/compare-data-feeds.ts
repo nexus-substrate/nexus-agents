@@ -21,6 +21,7 @@
 
 import { z } from 'zod';
 import * as path from 'node:path';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import * as fs from 'node:fs';
 import * as yaml from 'yaml';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -278,13 +279,11 @@ function buildSummary(
 // =============================================================================
 
 function loadFeed(feedPath: string): unknown[] {
-  const resolved = path.resolve(feedPath);
-  // Path traversal guard. The `+ path.sep` is load-bearing: a sibling
-  // directory whose name starts with the cwd basename bypasses a bare
-  // startsWith. Match security/safe-path.ts.
-  const cwdRoot = path.resolve('.');
-  if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + path.sep)) {
-    throw new Error(`Path traversal denied: ${feedPath} must be within ${cwdRoot}`);
+  // Path traversal guard: realpath-aware, so a symlink inside cwd whose
+  // target is outside it is refused too.
+  const resolved = resolveInsideRoot(feedPath);
+  if (resolved === null) {
+    throw new Error(`Path traversal denied: ${feedPath} must be within ${process.cwd()}`);
   }
   if (!fs.existsSync(resolved)) {
     throw new Error(`Feed file not found: ${resolved}`);
@@ -402,3 +401,6 @@ export function registerCompareDataFeedsTool(server: McpServer, deps: CompareDat
   );
   logger.info('Registered compare_data_feeds tool');
 }
+
+/** Test-only surface — do not import in production code. */
+export const _testing = { loadFeed };

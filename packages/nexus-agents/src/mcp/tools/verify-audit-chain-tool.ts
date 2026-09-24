@@ -33,6 +33,9 @@ import { verifyChain, withCoverage, type ChainVerification } from '../../audit/a
 import { AuditEventSchema, type AuditEvent } from '../../audit/audit-types.js';
 import { DEFAULT_AUDIT_FILE_PREFIX } from '../../cli-server-audit.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { getActiveWorkspaceRoot, getNexusDataDir } from '../../config/nexus-data-dir.js';
+import { findRepoRoot } from '../../config/repo-root-detection.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 
 export const VerifyAuditChainInputSchema = z.object({
   logDir: z
@@ -40,7 +43,7 @@ export const VerifyAuditChainInputSchema = z.object({
     .min(1)
     .max(512)
     .describe(
-      'Filesystem path to the FileAuditStorage log directory. Tool reads all `audit-*.jsonl` files in lexicographic order and verifies the combined chain.'
+      'Filesystem path to the FileAuditStorage log directory. Must lie inside the nexus data dir, a repo-local `.nexus-agents/`, or the configured `security.audit.logDir`. Tool reads all `audit-*.jsonl` files in lexicographic order and verifies the combined chain.'
     ),
   filePrefix: z
     .string()
@@ -154,7 +157,66 @@ async function loadAuditEvents(
   return { events, fileCount: auditFiles.length, skippedLines, unreadableFiles };
 }
 
-async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> {
+/**
+ * Directories that legitimately hold audit logs, so `logDir` may name
+ * anything inside one of them:
+ *  - the global data dir (`getNexusDataDir()`: `~/.nexus-agents`,
+ *    `NEXUS_DATA_DIR`, or the sandbox root);
+ *  - the repo-local `.nexus-agents/` — where the default `audit` dir routes
+ *    under `NEXUS_REPO_PREFERRED` (and the unwritable-homedir fallback) — for
+ *    the declared workspace root, the enclosing git repo, and cwd itself;
+ *  - the directory the audit logger is configured to write
+ *    (`security.audit.logDir`), which may be anywhere the operator chose.
+ *
+ * A repo-local `.nexus-agents` is part of a checkout, so it is only a root
+ * while it resolves inside the directory it hangs off; see
+ * {@link repoLocalDataRoot}.
+ */
+function auditLogRoots(security: VerifyAuditChainDeps['security']): string[] {
+  const roots = [getNexusDataDir()];
+  const parents = [process.cwd()];
+  const repoRoot = getActiveWorkspaceRoot() ?? findRepoRoot(process.cwd());
+  if (repoRoot !== null) parents.push(repoRoot);
+  for (const parent of parents) {
+    const root = repoLocalDataRoot(parent);
+    if (root !== null) roots.push(root);
+  }
+  const configured = security?.audit?.logDir;
+  if (configured !== undefined) roots.push(path.resolve(configured));
+  return roots;
+}
+
+/**
+ * `<parent>/.nexus-agents`, or `null` when it resolves outside `parent`. The
+ * directory comes from the checkout, and a symlink there must not turn an
+ * arbitrary directory into an audit-log root.
+ */
+function repoLocalDataRoot(parent: string): string | null {
+  return resolveInsideRoot(path.join(parent, '.nexus-agents'), parent);
+}
+
+/**
+ * Resolve `logDir` (relative to cwd) and return its canonical path when it
+ * lies inside one of the audit-log roots, following symlinks; a `permission`
+ * error result otherwise.
+ */
+function containLogDir(logDir: string, roots: readonly string[]): string | ToolResult {
+  const absolute = path.resolve(logDir);
+  for (const root of roots) {
+    const contained = resolveInsideRoot(absolute, root);
+    if (contained !== null) return contained;
+  }
+  return toolStructuredError({
+    errorCategory: 'permission',
+    message: `logDir must be within an audit log root: ${roots.join(', ')}`,
+  });
+}
+
+async function handler(
+  args: unknown,
+  ctx: HandlerContext,
+  security: VerifyAuditChainDeps['security']
+): Promise<ToolResult> {
   const parsed = VerifyAuditChainInputSchema.safeParse(args);
   if (!parsed.success) {
     return toolStructuredError({
@@ -162,7 +224,9 @@ async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResult> 
       message: `Validation error: ${formatZodError(parsed.error)}`,
     });
   }
-  const resolvedDir = path.resolve(parsed.data.logDir);
+  const contained = containLogDir(parsed.data.logDir, auditLogRoots(security));
+  if (typeof contained !== 'string') return contained;
+  const resolvedDir = contained;
 
   let dirStats;
   try {
@@ -214,7 +278,7 @@ export function registerVerifyAuditChainTool(server: McpServer, deps: VerifyAudi
       .min(1)
       .max(512)
       .describe(
-        'Filesystem path to the FileAuditStorage log directory. Tool reads all `audit-*.jsonl` files and verifies the combined hash chain.'
+        'Filesystem path to the FileAuditStorage log directory. Must lie inside the nexus data dir, a repo-local `.nexus-agents/`, or the configured `security.audit.logDir`. Tool reads all `audit-*.jsonl` files and verifies the combined hash chain.'
       ),
     filePrefix: z
       .string()
@@ -236,7 +300,7 @@ export function registerVerifyAuditChainTool(server: McpServer, deps: VerifyAudi
     'read, so a verdict over a partial log is never mistaken for a complete ' +
     'one. Read-only — never writes or deletes events.';
 
-  const secureHandler = createSecureHandler(handler, {
+  const secureHandler = createSecureHandler((args, ctx) => handler(args, ctx, deps.security), {
     toolName: 'verify_audit_chain',
     rateLimiter: deps.rateLimiter,
     logger,

@@ -16,5 +16,5 @@ Verify the hash chain of a persisted FileAuditStorage audit log directory (#2281
 
 | Parameter | Type | Required | Constraints | Description |
 | --------- | ---- | -------- | ----------- | ----------- |
-| `logDir` | string | yes | minLength 1; maxLength 512 | Filesystem path to the FileAuditStorage log directory. Tool reads all `audit-*.jsonl` files in lexicographic order and verifies the combined chain. |
+| `logDir` | string | yes | minLength 1; maxLength 512 | Filesystem path to the FileAuditStorage log directory. Must lie inside the nexus data dir, a repo-local `.nexus-agents/`, or the configured `security.audit.logDir`. Tool reads all `audit-*.jsonl` files in lexicographic order and verifies the combined chain. |
 | `filePrefix` | string | no | minLength 1; maxLength 64; default audit | Filename prefix for audit log files (defaults to "audit"). Files matching `${filePrefix}-*.jsonl` will be verified. |

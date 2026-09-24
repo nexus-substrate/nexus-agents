@@ -10,12 +10,14 @@
 import { z } from 'zod';
 import { dispatchFieldDefaultSync, modeEnumErrorNamingDispatch } from './async-dispatch-input.js';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
+import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
+import { resolve } from 'node:path';
 import type { DevPipelineResult, DevPipelineOptions } from '../../pipeline/dev-pipeline.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
@@ -205,15 +207,11 @@ async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
     return input.task;
   }
   if (input.planFile !== undefined) {
-    const resolved = path.resolve(input.planFile);
-    // Path traversal guard — restrict to cwd subtree (security audit 2026-04-10).
-    // The `+ path.sep` is load-bearing: without it, a sibling directory whose
-    // name starts with the cwd basename (e.g. `/home/u/projEVIL` when cwd is
-    // `/home/u/proj`) bypasses the check. Match the convention in
-    // security/safe-path.ts and query-trace-tool.ts.
-    const cwdRoot = path.resolve('.');
-    if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + path.sep)) {
-      throw new Error(`Path traversal denied: planFile must be within ${cwdRoot}`);
+    // Path traversal guard — restrict to the cwd subtree, following symlinks
+    // (security audit 2026-04-10).
+    const resolved = resolveInsideRoot(input.planFile);
+    if (resolved === null) {
+      throw new Error(`Path traversal denied: planFile must be within ${process.cwd()}`);
     }
     try {
       return await fs.promises.readFile(resolved, 'utf-8');
@@ -225,6 +223,31 @@ async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
     }
   }
   throw new Error('Either task or planFile must be provided');
+}
+
+/**
+ * Contain `workingDir` to the cwd subtree or the MCP client's declared
+ * workspace root, following symlinks. A globally installed server runs with
+ * cwd outside the user's repo (see `mcp/workspace-roots.ts`), so the
+ * workspace root is where a legitimate `workingDir` lives. `workingDir`
+ * becomes the security scan target, so anything outside both is refused
+ * rather than scanned and fed into the pipeline's context.
+ *
+ * @returns the canonical path, or `undefined` when `workingDir` was omitted
+ * @throws when `workingDir` resolves outside every allowed root
+ */
+function containWorkingDir(workingDir: string | undefined): string | undefined {
+  if (workingDir === undefined) return undefined;
+  const roots = [process.cwd()];
+  const workspaceRoot = getActiveWorkspaceRoot();
+  if (workspaceRoot !== undefined) roots.push(workspaceRoot);
+  // Relative paths keep resolving against cwd; only the root set widens.
+  const absolute = resolve(workingDir);
+  for (const root of roots) {
+    const contained = resolveInsideRoot(absolute, root);
+    if (contained !== null) return contained;
+  }
+  throw new Error(`Path traversal denied: workingDir must be within ${roots.join(' or ')}`);
 }
 
 // ============================================================================
@@ -249,7 +272,7 @@ async function createStages(
   return createAgentStages({
     ...(trustTier !== undefined ? { callerTrustTier: trustTier, trustTier } : {}),
     ...inputSanitization,
-    scanTarget: input.workingDir,
+    scanTarget: containWorkingDir(input.workingDir),
     simulateVotes: input.simulateVotes,
     votingStrategy: input.votingStrategy,
     quickMode: input.quickMode,
@@ -442,6 +465,31 @@ function describeIncompleteRun(result: DevPipelineResult): string {
   return 'Pipeline did not complete';
 }
 
+/**
+ * Parse the tool input and contain `workingDir`. An uncontained `workingDir`
+ * is refused here, before anything else runs, with a `permission` error rather
+ * than the generic pipeline-failure envelope.
+ */
+function parseHandlerInput(args: unknown): { input: DevPipelineInput } | { error: ToolResult } {
+  const parsed = DevPipelineInputSchema.safeParse(args);
+  if (!parsed.success) {
+    return {
+      error: toolStructuredError({
+        errorCategory: 'validation',
+        message: `Invalid input: ${formatZodError(parsed.error)}`,
+      }),
+    };
+  }
+  try {
+    const workingDir = containWorkingDir(parsed.data.workingDir);
+    return { input: workingDir === undefined ? parsed.data : { ...parsed.data, workingDir } };
+  } catch (err: unknown) {
+    return {
+      error: toolStructuredError({ errorCategory: 'permission', message: getErrorMessage(err) }),
+    };
+  }
+}
+
 async function runDevPipelineHandler(
   args: unknown,
   logger: ILogger,
@@ -451,14 +499,9 @@ async function runDevPipelineHandler(
     inputSanitization: 'unmeasured',
   }
 ): Promise<ToolResult> {
-  const parsed = DevPipelineInputSchema.safeParse(args);
-  if (!parsed.success) {
-    return toolStructuredError({
-      errorCategory: 'validation',
-      message: `Invalid input: ${formatZodError(parsed.error)}`,
-    });
-  }
-  const input = parsed.data;
+  const validated = parseHandlerInput(args);
+  if ('error' in validated) return validated.error;
+  const { input } = validated;
   // #4170: simulateVotes fails CLOSED outside test runners — BEFORE the try
   // block (its catch categorizes as `internal`) and BEFORE the async dispatch
   // (sync and async modes must reject identically).
