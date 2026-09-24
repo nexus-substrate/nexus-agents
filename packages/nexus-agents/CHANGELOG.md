@@ -1,5 +1,28 @@
 # nexus-agents
 
+## 8.104.4
+
+### Patch Changes
+
+- [#6692](https://github.com/nexus-substrate/nexus-agents/pull/6692) [`ea35acf`](https://github.com/nexus-substrate/nexus-agents/commit/ea35acff7c210dd8453e2111a1c4ad2ae9b84bfb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` now interrupts an async `orchestrate` job while worker dispatch is running, not only between stages.
+
+  - Worker dispatch stops starting work. No further wave starts, a failed worker is not retried, and the dispatch throws before the synthesis and refinement phases instead of returning the waves that finished.
+  - The signal reaches every in-flight worker's model call as `CompletionRequest.signal`, and reaches the synthesis call too. SDK adapters that forward it to their `fetch` abort the request. CLI-backed adapters now forward it as well: `CliToModelAdapter` used to drop it, so neither a cancel nor a worker watchdog timeout could stop a running CLI. On a cancel or a timeout the adapter now signals the CLI and every descendant it spawned, found through `/proc` on Linux or `ps` on other POSIX systems. It sends SIGTERM, then SIGKILL to any of those processes still running after the 5-second grace window. A CLI that relaunches itself as a child is no longer left running as an orphan. On Windows only the direct child is signalled. CLIs stay in the server's process group, so a harness that kills that group, even with SIGKILL, still ends them. A signal to the server's PID alone does not reach them, so the server also tracks its running CLIs. It SIGTERMs them when it shuts down (SIGINT, SIGTERM or stdin EOF) and SIGKILLs any that are left when it exits. The gemini adapter's environment also sets `GEMINI_CLI_NO_RELAUNCH=true`. An aborted CLI call is not retried. An adapter that ignores the signal still runs its current call to completion.
+  - `orchestrator.execute` still runs its current call to completion, because the orchestrator adapters ignore `OrchestratorExecuteOptions.signal`. A cancel that lands during it now records the task state as a cancelled blocker, and it no longer writes a success or failure routing outcome.
+  - `withWatchdog` accepts an optional fourth argument, an outer `AbortSignal`, and forwards it to the task's signal. `SynthesizeResultsInput` gains an optional `signal`.
+
+  A cancelled job's record stays `cancelled`, as before.
+
+- [#6702](https://github.com/nexus-substrate/nexus-agents/pull/6702) [`e24d696`](https://github.com/nexus-substrate/nexus-agents/commit/e24d696da5e73ada726b8d7daf74e0d723618b20) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the unread would-have-self-healed counter from the adapter layer. It counted proactive temperature drops and param-naming 400s to gate a reactive self-heal spike ([#4071](https://github.com/nexus-substrate/nexus-agents/issues/4071)), which closed as superseded, and nothing in production ever read the counts. The temperature-drop warning, the `dropped[]` metadata and the `MODEL_PARAMETER_UNSUPPORTED` error with its `param` context are unchanged. The removed functions were internal and not part of the public API.
+
+- [#6699](https://github.com/nexus-substrate/nexus-agents/pull/6699) [`74ddd86`](https://github.com/nexus-substrate/nexus-agents/commit/74ddd864fa91e7ca95ce0e9586d6123e80946f3e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add 'retired' to TechniqueStatusSchema and unify research schemas to prevent research index rejection of retired techniques.
+
+  - Add `'retired'` to canonical `TechniqueStatusSchema` in `indexer/research-index/research-index-base-types.ts`, and re-export it from `research/research-schemas.ts` to maintain a single source of truth (DRY).
+  - Update `TechniqueStatusStats` and `countTechniquesByStatus` in `research-index-parser.ts` to account for retired status.
+  - Update `computeStats` in `research-index-generator.ts` and `validateHighPriorityIssue` in `research-validator-helpers.ts` to support retired status.
+  - Add `projectRoot` support to `ResearchIndexOptions` and `researchIndexCommand` in `research-index-command.ts`.
+  - Add test coverage verifying that `docs/research/registry/techniques.yaml` parses and validates cleanly through the CLI parser with retired techniques such as `daao-difficulty-estimation`.
+
 ## 8.104.3
 
 ### Patch Changes
