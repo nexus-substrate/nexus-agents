@@ -1,5 +1,33 @@
 # nexus-agents
 
+## 8.106.0
+
+### Minor Changes
+
+- [#6738](https://github.com/nexus-substrate/nexus-agents/pull/6738) [`96332b4`](https://github.com/nexus-substrate/nexus-agents/commit/96332b47645da08ae6934c9638cd21d87790df00) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run_pipeline` now honors `timeoutMs`, and the vote stage gets a deadline sized for a full panel.
+
+  - `timeoutMs` is a deadline for EACH stage, not a budget for the whole run. It was accepted and never read. It now applies to every stage, the vote included, and is clamped to the `pipeline` operation-class guard.
+  - Without `timeoutMs`, the vote stage runs under the `multi-llm-panel` class guard (900 s, adjustable with `NEXUS_TIMEOUT_CLASS_MULTI_LLM_PANEL_MS` and `NEXUS_TIMEOUT_MULTIPLIER`). Previously it used the 120 s graph default, so a full 7-seat panel, which took 190 s live, always failed with `vote: Node timed out after 120000ms`. Other stages keep the 120 s default.
+  - The run as a whole was also cut off at 120 s, because the graph executor checks the same value before every stage. It is now bounded by the `pipeline` class guard. This also applies to the `run` entry point's pipeline and research strategies. Because a run can now last up to the `pipeline` class guard, a non-vote stage that runs past 120 s fails as a stage timeout instead of being cut off by the old 120 s whole-run limit.
+  - New optional API: `compilePipelineGraph(template, stages, { stageTimeoutMs })` and `GraphPipelineOptions.stageTimeoutMs`.
+  - The `quickMode` description now says "3 agents instead of 7". The panel has 7 seats, not 6.
+
+### Patch Changes
+
+- [#6739](https://github.com/nexus-substrate/nexus-agents/pull/6739) [`eab75b9`](https://github.com/nexus-substrate/nexus-agents/commit/eab75b959eb8c30576a5ff3fcc01ab3cce1b38b7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents doctor` no longer reports a CLI disabled by `NEXUS_DISABLED_CLIS` as "not installed". In the model advisory, a disabled CLI's models now read `<cli> CLI is disabled by NEXUS_DISABLED_CLIS`. When a healthy gateway is configured, the line also says whether the gateway serves that CLI's slot (`; the gateway serves its slot with <model>`) or has no model for its family. The `MCP Client mode` line now reads `Disabled (codex disabled by NEXUS_DISABLED_CLIS)` with the neutral circle glyph instead of `Not ready (Codex not installed)` with a failure cross. The doctor verdict and exit code do not change, because MCP client readiness and the model advisory were never verdict terms.
+
+- [#6733](https://github.com/nexus-substrate/nexus-agents/pull/6733) [`5c7d92a`](https://github.com/nexus-substrate/nexus-agents/commit/5c7d92a52a4049f57bd4f854c7717d4a4de5e597) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Memory search no longer fails on queries containing `.`, `-`, `/`, `:` or other FTS5 operator characters. The hybrid and agentic backends (and the typed and adaptive backends that search through them) threw `fts5: syntax error` for any such query, so `memory_query` reported them as `errored` and a search for a version number or file name such as `8.104.8` or `foo.ts` silently fell back to the non-FTS backends. Each query term is now passed to FTS5 as a quoted string literal, so punctuation is matched as text and cannot alter the query. Terms are still combined with AND; bare `AND`/`OR`/`NOT`/`NEAR` and terms without a letter or digit are ignored, and a query with no usable terms returns no results instead of an error ([#6731](https://github.com/nexus-substrate/nexus-agents/issues/6731)).
+
+- [#6732](https://github.com/nexus-substrate/nexus-agents/pull/6732) [`23e7716`](https://github.com/nexus-substrate/nexus-agents/commit/23e7716b20ca9efcbbf739254a13e5df64aa29aa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - An async job whose runaway guard or wedged watchdog expires is now actually stopped, not just recorded as failed. Before, the job was marked `failed` and its concurrency slot handed to another job while its body kept running and making model calls, and a later `cancel_job` could no longer reach it.
+
+  The job's `AbortSignal` now fires before the failure is recorded and the slot is released, with a `DOMException` reason named `TimeoutError`. A CLI call ended by that signal is classified as a real `TIMEOUT` on the circuit breaker rather than as a caller cancel. A body that ignores its signal still runs to completion; the recorded `failed` verdict is unchanged. A job body that rejects on its own is not aborted.
+
+- [#6737](https://github.com/nexus-substrate/nexus-agents/pull/6737) [`a25277e`](https://github.com/nexus-substrate/nexus-agents/commit/a25277e4280b3e81c840232203259d06e460c6ea) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `cancel_job` on an async `consensus_vote` now stops the voters that are already running. Before, a cancel only stopped voters that had not started yet: voters already calling their model ran to completion (90–120 s on a live panel) and used quota after the cancel. The cancelled job also held its async concurrency slot until the slowest voter finished, so the next async vote could come back `busy`.
+
+  - The job's cancel signal now reaches each voter's model call, combined with that voter's own deadline. A cancel is recorded as a cancel, and a deadline that fires is still recorded as a timeout.
+  - A cancelled voter is not retried, a cancelled panel skips the errored-voter retry pass, and a voter whose adapter ignores its signal is no longer awaited after the cancel. The job settles promptly and frees its slot.
+  - The `consensus_vote` schema doc no longer promises a `partialVotes` field on a cancelled job. That field was never written: the job record stays `{ status: 'cancelled' }` with no vote payload.
+
 ## 8.105.0
 
 ### Minor Changes
