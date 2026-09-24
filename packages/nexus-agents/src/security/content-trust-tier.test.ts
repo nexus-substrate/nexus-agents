@@ -48,6 +48,7 @@ describe('resolveContentTrustProvenance (#6795)', () => {
     expect(p.contentTier).toBe('2');
     expect(p.callerTier).toBe('2');
     expect(p.declaredSourceTier).toBe('1');
+    expect(p.taskContentTier).toBe('2');
     expect(p.declarationClamped).toBe(true);
   });
 
@@ -63,14 +64,20 @@ describe('resolveContentTrustProvenance (#6795)', () => {
     expect(p.contentTier).toBe('3');
   });
 
-  it('records the declaration even when the caller is unmeasured', () => {
+  it('clamps an unmeasured caller declaring 1 to 3, and says so', () => {
     const p = resolveContentTrustProvenance(undefined, ['3'], '1');
     expect(p.callerTier).toBeUndefined();
     expect(p.declaredSourceTier).toBe('1');
+    expect(p.taskContentTier).toBe('3');
+    expect(p.declarationClamped).toBe(true);
     expect(p.sourceTiers).toEqual(['3']);
+    // The gate tier stays absent (engine fails closed to 4).
     expect(p.contentTier).toBeUndefined();
-    // Nothing was measured to clamp against.
-    expect(p.declarationClamped).toBe(false);
+  });
+
+  it('does not clamp an unmeasured caller declaring 3 or 4', () => {
+    expect(resolveContentTrustProvenance(undefined, [], '3').declarationClamped).toBe(false);
+    expect(resolveContentTrustProvenance(undefined, [], '4').taskContentTier).toBe('4');
   });
 });
 

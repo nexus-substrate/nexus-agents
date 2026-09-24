@@ -25,6 +25,7 @@ import { getTaskStore } from './task-store.js';
 import { claimGlobalRegistry } from '../adapters/unified-registry.js';
 import { initDataDirectories } from '../cli/setup-data-dir.js';
 import { recordServerTransport, type McpServerTransport } from './middleware/request-context.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 
 /**
  * Server configuration options.
@@ -170,7 +171,11 @@ export async function connectTransport(
   // dispatched as soon as `connect` starts reading, and it must see the tier.
   // Only a transport the server can identify is recorded; any other one stays
   // unmeasured, so its requests fall to the authentication branch.
-  const transportKind = identifyTransport(transport);
+  // A child server (spawned for an expert CLI, #6795) is called by a model, not
+  // the operator: its stdio caller is recorded as unmeasured, never tier 1.
+  const transportKind = parseBoolEnv('NEXUS_MCP_CHILD', false)
+    ? undefined
+    : identifyTransport(transport);
   recordServerTransport(transportKind);
   try {
     log.info('Connecting server to transport', { transport: transportKind ?? 'unidentified' });

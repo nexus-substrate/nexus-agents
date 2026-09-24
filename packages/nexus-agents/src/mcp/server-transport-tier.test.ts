@@ -7,7 +7,7 @@
  */
 
 import { PassThrough } from 'node:stream';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -80,8 +80,27 @@ function stdioExchange(
   });
 }
 
+/** initialize → initialized → tools/call (id 2) for the probe tool. */
+function stdioCall(): Record<string, unknown>[] {
+  return [
+    {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'probe', version: '0' },
+      },
+    },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: TOOL, arguments: {} } },
+  ];
+}
+
 afterEach(() => {
   recordServerTransport(undefined);
+  vi.unstubAllEnvs();
 });
 
 describe('caller transport → measured caller tier (#6795)', () => {
@@ -92,29 +111,22 @@ describe('caller transport → measured caller tier (#6795)', () => {
     const connected = await connectTransport(server, new StdioServerTransport(stdin, stdout));
     expect(connected.ok).toBe(true);
 
-    const response = await stdioExchange(
-      stdin,
-      stdout,
-      [
-        {
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'initialize',
-          params: {
-            protocolVersion: '2025-06-18',
-            capabilities: {},
-            clientInfo: { name: 'probe', version: '0' },
-          },
-        },
-        { jsonrpc: '2.0', method: 'notifications/initialized' },
-        { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: TOOL, arguments: {} } },
-      ],
-      2
-    );
+    const response = await stdioExchange(stdin, stdout, stdioCall(), 2);
     await server.close();
 
     expect(response['error']).toBeUndefined();
     expect(observed).toEqual([{ measured: '1', transport: 'stdio' }]);
+  });
+
+  it('a child server (NEXUS_MCP_CHILD=1) over stdio leaves its caller unmeasured', async () => {
+    vi.stubEnv('NEXUS_MCP_CHILD', '1');
+    const { server, observed } = createProbeServer();
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    await connectTransport(server, new StdioServerTransport(stdin, stdout));
+    await stdioExchange(stdin, stdout, stdioCall(), 2);
+    await server.close();
+    expect(observed).toEqual([{ measured: undefined, transport: undefined }]);
   });
 
   it('a transport the server cannot identify leaves the caller unmeasured', async () => {

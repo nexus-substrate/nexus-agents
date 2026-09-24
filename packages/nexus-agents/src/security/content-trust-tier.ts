@@ -53,12 +53,17 @@ export interface ContentTrustProvenance {
   readonly callerTier: TrustTier | undefined;
   /** The caller's declared `sourceTrustTier` for the task content; `undefined` = not declared. */
   readonly declaredSourceTier: TrustTier | undefined;
-  /** Tier applied to the task content: the declaration, or {@link UNDECLARED_SOURCE_TRUST_TIER}. */
+  /**
+   * Tier applied to the task content: the declaration (or
+   * {@link UNDECLARED_SOURCE_TRUST_TIER} when omitted), capped by the
+   * declaration ceiling — the measured caller tier, or Tier 3 when unmeasured.
+   */
   readonly taskContentTier: TrustTier;
   /**
-   * True when the declaration named a MORE trusted tier than the measured
-   * caller tier. A declaration never raises trust above the caller, so the
-   * caller tier bound the result.
+   * True when the declaration named a MORE trusted tier than its ceiling: the
+   * measured caller tier, or Tier 3 when the caller is unmeasured. A
+   * declaration never raises trust above what was measured, and nobody
+   * unmeasured can vouch for content above Tier 3.
    */
   readonly declarationClamped: boolean;
   /** Tiers of the measured sources that fed the run (research fetches are 3). */
@@ -79,6 +84,8 @@ export interface ContentTrustProvenance {
  * - `callerTier` undefined, or not a valid tier string, gives `contentTier`
  *   `undefined`. Policy consumers then default to Tier 4 (fail-closed); an
  *   unmeasured caller is never upgraded by a declaration or a source tier.
+ *   Its declaration takes no effect above Tier 3: `taskContentTier` is capped
+ *   at 3 and the cap is recorded as a clamp.
  * - No declaration applies {@link UNDECLARED_SOURCE_TRUST_TIER}: unknown
  *   provenance is untrusted, and that is a measured value, not an absent one.
  * - No source tiers leaves the caller and task content tiers.
@@ -90,11 +97,14 @@ export function resolveContentTrustProvenance(
 ): ContentTrustProvenance {
   const parsed = TrustTierSchema.safeParse(callerTier);
   const measuredCaller = parsed.success ? parsed.data : undefined;
-  const taskContentTier = declaredSourceTier ?? UNDECLARED_SOURCE_TRUST_TIER;
+  // What a declaration may claim at most: the measured caller, or Tier 3 when
+  // nothing about the caller was measured (fail-closed).
+  const ceiling = measuredCaller ?? UNDECLARED_SOURCE_TRUST_TIER;
+  const declared = declaredSourceTier ?? UNDECLARED_SOURCE_TRUST_TIER;
   const declarationClamped =
-    measuredCaller !== undefined &&
     declaredSourceTier !== undefined &&
-    TRUST_TIER_NUMERIC[declaredSourceTier] < TRUST_TIER_NUMERIC[measuredCaller];
+    TRUST_TIER_NUMERIC[declaredSourceTier] < TRUST_TIER_NUMERIC[ceiling];
+  const taskContentTier = declarationClamped ? ceiling : declared;
   return {
     callerTier: measuredCaller,
     declaredSourceTier,
@@ -105,6 +115,35 @@ export function resolveContentTrustProvenance(
       measuredCaller === undefined
         ? undefined
         : leastTrustedTier([measuredCaller, taskContentTier, ...sourceTiers]),
+  };
+}
+
+/** {@link ContentTrustProvenance} as a durable record: absence is written out, not dropped. */
+export interface ContentTrustProvenanceRecord {
+  readonly callerTier: TrustTier | 'unmeasured';
+  readonly declaredSourceTier: TrustTier | 'undeclared';
+  readonly taskContentTier: TrustTier;
+  readonly declarationClamped: boolean;
+  readonly sourceTiers: readonly TrustTier[];
+  readonly contentTier: TrustTier | 'unmeasured';
+}
+
+/**
+ * Serialize provenance for an audit record or event (#6795). JSON drops
+ * `undefined`, so an unmeasured caller or an omitted declaration would vanish
+ * from the persisted record; they are written as `'unmeasured'` and
+ * `'undeclared'` so the record represents what was NOT measured.
+ */
+export function toContentTrustProvenanceRecord(
+  p: ContentTrustProvenance
+): ContentTrustProvenanceRecord {
+  return {
+    callerTier: p.callerTier ?? 'unmeasured',
+    declaredSourceTier: p.declaredSourceTier ?? 'undeclared',
+    taskContentTier: p.taskContentTier,
+    declarationClamped: p.declarationClamped,
+    sourceTiers: [...p.sourceTiers],
+    contentTier: p.contentTier ?? 'unmeasured',
   };
 }
 

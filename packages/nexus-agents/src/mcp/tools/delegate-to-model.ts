@@ -51,6 +51,8 @@ import {
 } from '../gateway/governance-enforcer.js';
 import type { GovernanceClassification } from '../gateway/governance-enforcer.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { measuredTrustTier } from '../middleware/request-context.js';
+import { resolveContentTrustTier } from '../../security/content-trust-tier.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -160,12 +162,16 @@ function enrichWithGovernance(
  * verdict either (nor does `executeOrchestratePipeline`, the plan's other
  * fire-and-forget caller), so a gate that fired would report a refusal the
  * delegation above never honoured — the reason the cannot-fire gate was
- * removed rather than widened. */
+ * removed rather than widened.
+ * The tier recorded is the task text's CONTENT tier (#6795): delegate takes no
+ * provenance declaration, so the text is Tier 3 however trusted the caller,
+ * and an unmeasured caller records no tier. */
 function instrumentV2Pipeline(
   input: { task: string },
   logger: ILogger,
-  trustTier: string | undefined
+  callerTrustTier: string | undefined
 ): void {
+  const trustTier = resolveContentTrustTier(callerTrustTier, [], undefined);
   const tc = delegateInputToTaskContract(input, trustTier !== undefined ? { trustTier } : {});
   // #2960: catch rejections so an instrumentation-path failure logs
   // instead of becoming an unhandled rejection. Mirrors the sibling
@@ -254,7 +260,7 @@ function createDelegateHandler(
     if (resolveV2Config().delegateEnabled) {
       // Thread requestContext.trustTier so the V2 policy-engine actually
       // gates the pipeline (#2957).
-      instrumentV2Pipeline(input, ctx.logger, ctx.requestContext.trustTier);
+      instrumentV2Pipeline(input, ctx.logger, measuredTrustTier(ctx.requestContext));
     }
     const baseOpts: NotifyRecordOpts = {
       notifier,

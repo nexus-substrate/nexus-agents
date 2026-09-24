@@ -1088,7 +1088,7 @@ describe('runDevPipeline — content tier, not caller tier, reaches the policy g
       expect(cap.snapshots[0]?.trustProvenance).toEqual({
         callerTier: '2',
         declaredSourceTier: '1',
-        taskContentTier: '1',
+        taskContentTier: '2',
         declarationClamped: true,
         sourceTiers: [],
         contentTier: '2',
@@ -1109,6 +1109,9 @@ describe('runDevPipeline — content tier, not caller tier, reaches the policy g
       expect(cap.seen).toEqual([undefined]);
       expect(cap.snapshots[0]?.trustProvenance?.declaredSourceTier).toBe('1');
       expect(cap.snapshots[0]?.trustProvenance?.callerTier).toBeUndefined();
+      // Nothing measured vouches for the declaration: capped at 3, recorded.
+      expect(cap.snapshots[0]?.trustProvenance?.taskContentTier).toBe('3');
+      expect(cap.snapshots[0]?.trustProvenance?.declarationClamped).toBe(true);
     } finally {
       cap.restore();
     }
@@ -1217,6 +1220,40 @@ describe('runDevPipeline — durable policy-audit persistence (#3710)', () => {
     // The persisted chain verifies.
     expect(verifyChain(events).ok).toBe(true);
 
+    await auditLogger.close();
+  });
+
+  it('durable records and the bus event carry the trust provenance (#6795)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const storage = new InMemoryAuditStorage();
+    const auditLogger = new AuditLogger(hashChainConfig(), storage);
+    const busEvents: unknown[] = [];
+    const off = getPipelineEventBus().subscribe({ type: 'policy.evaluated' }, (e) => {
+      if (e.type === 'policy.evaluated') busEvents.push(e.trustProvenance);
+    });
+    try {
+      // Caller measured '1', declaration omitted → task text '3' → violation.
+      await runDevPipeline('Build feature X', createMockStages(), {
+        auditLogger,
+        trustTier: '1',
+        researchOverride: 'caller-supplied research',
+      });
+      await auditLogger.flush();
+    } finally {
+      off();
+    }
+    const expected = {
+      callerTier: '1',
+      declaredSourceTier: 'undeclared',
+      taskContentTier: '3',
+      declarationClamped: false,
+      sourceTiers: [],
+      contentTier: '3',
+    };
+    const policyGate = storage.getAll().filter((e) => e.action === 'security.policy_gate');
+    expect(policyGate.length).toBeGreaterThan(0);
+    for (const rec of policyGate) expect(rec.metadata?.['trustProvenance']).toEqual(expected);
+    expect(busEvents).toEqual([expected]);
     await auditLogger.close();
   });
 

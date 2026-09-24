@@ -131,14 +131,24 @@ describe('memory_write records the content trust tier (#6751)', () => {
     expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('2');
   });
 
-  it('keeps a declared tier for an unmeasured caller, unchanged by #6795', async () => {
+  it('caps an unmeasured caller declaring 1 at tier 3 — nothing measured vouches for it', async () => {
     await callMemoryWrite({
       key: uniqueKey(),
       content: 'declared fact',
       backend: 'belief',
       sourceTrustTier: '1',
     });
-    expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('1');
+    expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('3');
+  });
+
+  it('keeps a declared 4 for an unmeasured caller (a declaration can always lower trust)', async () => {
+    await callMemoryWrite({
+      key: uniqueKey(),
+      content: 'hostile fact',
+      backend: 'belief',
+      sourceTrustTier: '4',
+    });
+    expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('4');
   });
 
   it('records the external source tier when the content is flagged as external', async () => {

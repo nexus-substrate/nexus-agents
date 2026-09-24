@@ -22,6 +22,10 @@ import type {
 import type { IEventBus, PipelineEvent } from './event-types.js';
 import type { AuditTrail } from '../security/audit-trail.js';
 import { emitPipelinePolicyEvent } from '../security/audit-trail.js';
+import {
+  toContentTrustProvenanceRecord,
+  type ContentTrustProvenanceRecord,
+} from '../security/content-trust-tier.js';
 
 const logger = createLogger({ component: 'PolicyEvaluator' });
 
@@ -265,6 +269,29 @@ export function evaluatePipelinePolicy(
 // Internal Helpers
 // ============================================================================
 
+/**
+ * The bus event's trust-provenance field (#6795), serialized with absence
+ * written out; empty when the gate carried none.
+ */
+function trustProvenanceField(context: PolicyContext): {
+  trustProvenance?: ContentTrustProvenanceRecord;
+} {
+  const p = context.pipelineState.trustProvenance;
+  return p === undefined ? {} : { trustProvenance: toContentTrustProvenanceRecord(p) };
+}
+
+/**
+ * The durable record's trust-provenance field (#6795): the raw provenance,
+ * serialized with absence written out by the audit bridge; empty when the gate
+ * carried none.
+ */
+function durableProvenance(context: PolicyContext): {
+  trustProvenance?: NonNullable<PipelineStateSnapshot['trustProvenance']>;
+} {
+  const p = context.pipelineState.trustProvenance;
+  return p === undefined ? {} : { trustProvenance: p };
+}
+
 /** Emits policy.evaluated events for each violation. */
 function emitPolicyEvents(
   eventBus: IEventBus | undefined,
@@ -279,6 +306,7 @@ function emitPolicyEvents(
       executionId: context.taskId,
       gateId: `${context.stageId}:${v.ruleId}`,
       decision: 'deny',
+      ...trustProvenanceField(context),
     };
     eventBus.emit(event);
   }
@@ -317,6 +345,7 @@ function emitDurablePolicyEvents(
       // #3727: the existing per-violation records (the NUMERATOR detail). The
       // #3710 count-parity assertion scopes to this kind.
       recordKind: 'violation',
+      ...durableProvenance(context),
     });
   }
 }
@@ -347,6 +376,7 @@ function emitDurablePolicyEvaluationSummary(
     ruleIds: [],
     stageType: context.stageType,
     recordKind: 'summary',
+    ...durableProvenance(context),
     violationCount,
   });
 }
