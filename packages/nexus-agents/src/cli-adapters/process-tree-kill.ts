@@ -13,12 +13,22 @@
  * from `ps -A -o pid=,ppid=` on other POSIX systems. Where neither works
  * (Windows) only the direct child is signalled.
  *
+ * PID reuse (#6714): a PID is only a name, and the kernel hands it out again
+ * once its process is reaped. So the fresh walk is skipped once the child has
+ * exited (Node reaps it at once, freeing its PID), and on Linux each
+ * descendant is recorded with its start time (`/proc/<pid>/stat` field 22)
+ * and re-verified before every later signal or liveness check; a mismatch or
+ * an unreadable stat means the process is gone and the PID is skipped. Other
+ * platforms expose no start time cheaply, so there a descendant is recorded
+ * without one and signalled by PID alone, as before.
+ *
  * @module cli-adapters/process-tree-kill
  */
 
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import type { ChildProcess } from 'node:child_process';
+import { readProcStartTime } from './proc-start-time.js';
 
 /** Upper bound on descendants collected, so a fork bomb cannot stall the walk. */
 const MAX_DESCENDANTS = 1_000;
@@ -111,36 +121,73 @@ function isPidAlive(pid: number): boolean {
 }
 
 /**
- * Signal the child and its descendants. The descendants are collected before
- * anything is signalled — once a parent dies its children are reparented and
- * can no longer be found through it — and merged with `known`, the set an
- * earlier call collected, so a SIGKILL escalation still reaches a grandchild
- * whose parent exited on the SIGTERM. Only those PIDs are signalled; ESRCH
- * (already gone) is ignored. Returns the PIDs signalled besides the child.
+ * A descendant as it was when collected. `startTime` is REQUIRED so every
+ * producer has to decide it: the `/proc/<pid>/stat` start time on Linux, or
+ * `undefined` where the platform offers none, which means "signal by PID
+ * alone" (#6714).
  */
-export function signalProcessTree(
-  child: ChildProcess,
-  signal: NodeJS.Signals,
-  known: readonly number[] = []
-): number[] {
-  const pid = child.pid;
-  const fresh = isSpawnedProcess(child) && pid !== undefined ? collectDescendants(pid) : [];
-  const tree = [...new Set([...known, ...fresh])];
-  child.kill(signal);
-  for (const descendant of tree) {
-    try {
-      process.kill(descendant, signal);
-    } catch {
-      // ESRCH: already gone.
-    }
-  }
-  return tree;
+interface KnownProcess {
+  readonly pid: number;
+  readonly startTime: string | undefined;
 }
 
-/** True while the child, or any of the collected descendants, is still running. */
-export function isProcessTreeAlive(child: ChildProcess, tree: readonly number[] = []): boolean {
-  if (child.exitCode === null && child.signalCode === null) return true;
-  return tree.some(isPidAlive);
+/** The OS operations the tree kill performs; a seam so tests can stage PID reuse. */
+interface ProcessTreeOps {
+  /** Every descendant PID of `root`, or empty when they cannot be listed. */
+  readonly collectDescendants: (root: number) => number[];
+  /** True when start times are available at all (Linux). */
+  readonly hasStartTimes: boolean;
+  /** The start time of `pid` now, or undefined when it cannot be read (gone). */
+  readonly readStartTime: (pid: number) => string | undefined;
+  readonly isPidAlive: (pid: number) => boolean;
+  readonly kill: (pid: number, signal: NodeJS.Signals) => void;
+}
+
+const defaultOps: ProcessTreeOps = {
+  collectDescendants,
+  hasStartTimes: process.platform === 'linux',
+  readStartTime: readProcStartTime,
+  isPidAlive,
+  kill: (pid, signal) => {
+    process.kill(pid, signal);
+  },
+};
+
+/**
+ * Record each PID with its start time. On Linux a PID whose stat cannot be
+ * read has already exited and is dropped; elsewhere none has a start time.
+ */
+function identify(pids: readonly number[], ops: ProcessTreeOps): KnownProcess[] {
+  if (!ops.hasStartTimes) return pids.map((pid) => ({ pid, startTime: undefined }));
+  const out: KnownProcess[] = [];
+  for (const pid of pids) {
+    const startTime = ops.readStartTime(pid);
+    if (startTime !== undefined) out.push({ pid, startTime });
+  }
+  return out;
+}
+
+/**
+ * True while `known` is still the process that was collected. A recorded
+ * start time must read back identically; without one (non-Linux) only
+ * whether the PID exists can be checked.
+ */
+function isSameProcess(known: KnownProcess, ops: ProcessTreeOps): boolean {
+  if (known.startTime === undefined) return ops.isPidAlive(known.pid);
+  return ops.readStartTime(known.pid) === known.startTime;
+}
+
+/** The first entry recorded for each PID, in order. */
+function uniqueByPid(entries: readonly KnownProcess[]): KnownProcess[] {
+  const byPid = new Map<number, KnownProcess>();
+  for (const entry of entries) {
+    if (!byPid.has(entry.pid)) byPid.set(entry.pid, entry);
+  }
+  return [...byPid.values()];
+}
+
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
 }
 
 /**
@@ -151,15 +198,98 @@ export function isProcessTreeAlive(child: ChildProcess, tree: readonly number[] 
  * shutdown path SIGTERMs these trees instead, and a synchronous `exit` hook
  * SIGKILLs whatever is left.
  */
-const liveTrees = new Map<ChildProcess, number[]>();
+const liveTrees = new Map<ChildProcess, KnownProcess[]>();
 let exitHookInstalled = false;
 
-/** Track a spawned CLI until its stdio closes, returning it. Only real spawns are tracked. */
-export function trackProcessTree<T extends ChildProcess>(child: T): T {
+/**
+ * Signal the child and its descendants. The descendants are collected before
+ * anything is signalled — once a parent dies its children are reparented and
+ * can no longer be found through it — and merged with `known`, the set an
+ * earlier call collected, so a SIGKILL escalation still reaches a grandchild
+ * whose parent exited on the SIGTERM.
+ *
+ * Once the child has exited its PID may already belong to another process, so
+ * no fresh walk is made and only `known` is signalled; each known descendant
+ * is re-verified first and skipped if its PID now names a different process
+ * (#6714). ESRCH (already gone) is ignored. Returns the descendants still
+ * tracked: those signalled, besides the child.
+ */
+export function signalProcessTree(
+  child: ChildProcess,
+  signal: NodeJS.Signals,
+  known: readonly KnownProcess[],
+  ops: ProcessTreeOps = defaultOps
+): KnownProcess[] {
+  const pid = child.pid;
+  const walk = isSpawnedProcess(child) && pid !== undefined && !hasExited(child);
+  const fresh = walk ? identify(ops.collectDescendants(pid), ops) : [];
+  // A tracked tree may hold descendants an earlier signal collected (the shutdown path).
+  const candidates = uniqueByPid([...known, ...(liveTrees.get(child) ?? []), ...fresh]);
+  child.kill(signal);
+  const tree = candidates.filter((entry) => isSameProcess(entry, ops));
+  for (const entry of tree) {
+    try {
+      ops.kill(entry.pid, signal);
+    } catch {
+      // ESRCH: already gone.
+    }
+  }
+  if (liveTrees.has(child)) liveTrees.set(child, tree);
+  return tree;
+}
+
+/**
+ * True while the child, or any collected descendant that is still the same
+ * process (#6714), is running.
+ */
+export function isProcessTreeAlive(
+  child: ChildProcess,
+  tree: readonly KnownProcess[],
+  ops: ProcessTreeOps = defaultOps
+): boolean {
+  if (!hasExited(child)) return true;
+  return tree.some((entry) => isSameProcess(entry, ops));
+}
+
+/**
+ * True once a tracked tree can be forgotten: its child has exited and no known
+ * descendant is still the process that was collected. Without start times
+ * (non-Linux) a live PID cannot be told from a reused one, so there a tree is
+ * finished as soon as its child exits, as before #6714; retaining it could
+ * leave a reused PID for the exit hook to SIGKILL.
+ */
+function isFinishedTree(
+  child: ChildProcess,
+  known: readonly KnownProcess[],
+  ops: ProcessTreeOps
+): boolean {
+  if (!hasExited(child)) return false;
+  return !ops.hasStartTimes || !isProcessTreeAlive(child, known, ops);
+}
+
+/** Forget every tracked tree that is finished. */
+function pruneFinishedTrees(ops: ProcessTreeOps): void {
+  for (const [child, known] of liveTrees) {
+    if (isFinishedTree(child, known, ops)) liveTrees.delete(child);
+  }
+}
+
+/**
+ * Track a spawned CLI, returning it. Only real spawns are tracked. On Linux
+ * the tree stays tracked past the child's `close` while a descendant a signal
+ * already collected is still the same running process, so a shutdown inside
+ * the SIGKILL grace window still reaches a grandchild that ignored the
+ * SIGTERM (#6714). Elsewhere it is forgotten on `close`, as before.
+ */
+export function trackProcessTree<T extends ChildProcess>(
+  child: T,
+  ops: ProcessTreeOps = defaultOps
+): T {
   if (!isSpawnedProcess(child)) return child;
+  pruneFinishedTrees(ops);
   liveTrees.set(child, []);
   child.once('close', () => {
-    liveTrees.delete(child);
+    if (isFinishedTree(child, liveTrees.get(child) ?? [], ops)) liveTrees.delete(child);
   });
   if (!exitHookInstalled) {
     exitHookInstalled = true;
@@ -175,10 +305,14 @@ export function trackProcessTree<T extends ChildProcess>(child: T): T {
  * Each tree's collected descendants are remembered, so the exit hook's SIGKILL
  * still reaches a grandchild whose parent died on the shutdown SIGTERM.
  */
-export function signalTrackedProcessTrees(signal: NodeJS.Signals): number {
+export function signalTrackedProcessTrees(
+  signal: NodeJS.Signals,
+  ops: ProcessTreeOps = defaultOps
+): number {
+  pruneFinishedTrees(ops);
   let count = 0;
-  for (const [child, known] of liveTrees) {
-    liveTrees.set(child, signalProcessTree(child, signal, known));
+  for (const [child, known] of [...liveTrees]) {
+    signalProcessTree(child, signal, known, ops);
     count++;
   }
   return count;

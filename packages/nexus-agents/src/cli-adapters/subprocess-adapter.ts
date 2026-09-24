@@ -381,7 +381,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const onAbort = (): void => {
       if (child.exitCode === null && child.signalCode === null) {
         // #6680: the child and its descendants, so a relaunched CLI worker is not orphaned.
-        const tree = signalProcessTree(child, 'SIGTERM');
+        const tree = signalProcessTree(child, 'SIGTERM', []);
         // #6680: same escalation as the timeout path — a tree that ignores
         // SIGTERM is force-reaped rather than left running after the cancel.
         const sigkillTimer = setTimeout(() => {
@@ -652,16 +652,20 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     timeoutMs: number;
     requestId: string;
     resolveOnce: (result: Result<CliResponse, CliError>) => void;
-  }): { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined; tree: number[] } {
+  }): {
+    timeoutId: NodeJS.Timeout;
+    sigkillTimerId: NodeJS.Timeout | undefined;
+    tree: ReturnType<typeof signalProcessTree>;
+  } {
     const { child, timeoutMs, requestId, resolveOnce } = opts;
     const timers: {
       timeoutId: NodeJS.Timeout;
       sigkillTimerId: NodeJS.Timeout | undefined;
-      tree: number[];
+      tree: ReturnType<typeof signalProcessTree>;
     } = {
       tree: [],
       timeoutId: setTimeout(() => {
-        timers.tree = signalProcessTree(child, 'SIGTERM');
+        timers.tree = signalProcessTree(child, 'SIGTERM', []);
         resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
         timers.sigkillTimerId = setTimeout(() => {
           if (isProcessTreeAlive(child, timers.tree)) {
