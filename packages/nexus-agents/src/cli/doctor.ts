@@ -60,6 +60,7 @@ import {
   type GatewayCostDeclaration,
 } from '../adapters/sdk/gateway-cost.js';
 import { printDoctorResults } from './doctor-formatting.js';
+import { disabledCliModelReason } from './doctor-disabled-clis.js';
 import { probeCli } from './cli-auth-probe.js';
 import { probeClaudePinnedModel, type ClaudeModelProbe } from './doctor-claude-model.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
@@ -637,7 +638,11 @@ function checkMcpServerReady(): boolean {
  * — staleness on first run is a publishing concern, not an operator
  * concern.
  */
-function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
+function buildRegistryAdvisory(
+  cliResults: CliCheckResult[],
+  disabledClis: readonly CliName[],
+  gateway: GatewayHealth
+): RegistryAdvisory {
   const installedClis = new Set(cliResults.filter((c) => c.installed).map((c) => c.name));
 
   const matrix = getInTreeCapabilitiesMatrix();
@@ -646,7 +651,13 @@ function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
     .map((m) => {
       const cliName = m.cliName ?? '';
       const available = cliName.length > 0 && installedClis.has(cliName as CliName);
-      const reason = available ? `${cliName} CLI is installed` : `${cliName} CLI is not installed`;
+      // A disabled CLI is switched off, not missing (#6728): never say "install it".
+      const disabled = disabledClis.find((cli) => cli === cliName);
+      const reason = available
+        ? `${cliName} CLI is installed`
+        : disabled !== undefined
+          ? disabledCliModelReason(disabled, gateway, cliResults)
+          : `${cliName} CLI is not installed`;
       return { modelId: m.id, displayName: m.displayName, cliName, available, reason };
     });
 
@@ -1085,7 +1096,6 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
   const mcpServerReady = checkMcpServerReady();
   const codexCheck = clis.find((c) => c.name === 'codex');
   const mcpClientReady = (codexCheck?.installed ?? false) && codexMcpServerAvailable();
-  const registryAdvisory = buildRegistryAdvisory(clis);
   const learningPersistence = checkLearningPersistence();
   const sqliteCheck = await checkSqlite();
   const dataDirectory = checkDataDirectory();
@@ -1093,6 +1103,7 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
   const env = collectEnvironmentChecks();
   const gateway = await measureGateway(deps.checkGateway, deps.gatewayProbe);
   const gatewayTerm = gatewayVerdict(gateway);
+  const registryAdvisory = buildRegistryAdvisory(clis, disabledClis, gateway);
 
   const allHealthy = isAllHealthy({
     nodeSupported: nodeVersion.supported,

@@ -10,7 +10,32 @@
 import type { CliName } from '../cli-adapters/types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { formatGatewaySlotWarnings } from './doctor-gateway-report.js';
-import type { DoctorResult } from './doctor.js';
+import type { CliCheckResult, DoctorResult } from './doctor.js';
+import type { GatewayHealth } from './doctor-gateway.js';
+import { gatewaySlotServing } from './doctor-gateway-slots.js';
+
+/** The reason every report line gives for a CLI switched off on purpose. */
+const DISABLED_BY_ENV = 'disabled by NEXUS_DISABLED_CLIS';
+
+/**
+ * The model-advisory reason for a model whose CLI is disabled (#6728): it is
+ * switched off, not missing, so the report must not tell the operator to
+ * install it. When a healthy gateway has a slot for the CLI, the reason also
+ * says whether the gateway serves that slot — the same `decideSlotServing`
+ * answer `doctor --gateway` prints.
+ */
+export function disabledCliModelReason(
+  cli: CliName,
+  gateway: GatewayHealth,
+  clis: readonly CliCheckResult[]
+): string {
+  const base = `${cli} CLI is ${DISABLED_BY_ENV}`;
+  const slot = gatewaySlotServing(gateway, clis).find((s) => s.slot === cli);
+  if (slot === undefined) return base;
+  return slot.serving === 'gateway'
+    ? `${base}; the gateway serves its slot with ${slot.model}`
+    : `${base}; the gateway has no ${slot.family} model`;
+}
 
 /**
  * Names the disabled CLIs. They are not probed, so without this line they
