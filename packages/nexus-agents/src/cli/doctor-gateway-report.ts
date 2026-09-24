@@ -12,10 +12,14 @@ import {
   OPENAI_COMPAT_MODELS_ENV,
   OPENAI_COMPAT_URL_ENV,
 } from '../adapters/sdk/types.js';
-import type {
-  GatewayCompletionProbe,
-  GatewayHealth,
-  GatewayProxyStatus,
+import type { CliCheckResult } from './doctor.js';
+import {
+  gatewaySlotWarnings,
+  gatewayVerdict,
+  unservedSlotLines,
+  type GatewayCompletionProbe,
+  type GatewayHealth,
+  type GatewayProxyStatus,
 } from './doctor-gateway.js';
 import { gatewayFailureReason } from './doctor-voter-transport.js';
 import { colors, symbols } from './ansi-output.js';
@@ -55,9 +59,31 @@ export function formatGatewayReport(health: GatewayHealth): string[] {
       `google ${String(census.google)}, unknown ${String(census.unknown)}`,
     `  Slots (used when the CLI is not available): claude → ${slots.claude}, ` +
       `codex → ${slots.codex}, gemini → ${slots.gemini}`,
-    ...formatProbes(health.probes)
+    ...formatProbes(health.probes),
+    ...formatUnservedSlots(health)
   );
   return lines;
+}
+
+/**
+ * The missing CLIs a passing gateway cannot stand in for, one warning line
+ * each (#6658). Printed with every `doctor` run, `--gateway` or not: they are
+ * not failures — other slots work — but they are never silently excused.
+ */
+export function formatGatewaySlotWarnings(
+  health: GatewayHealth,
+  clis: readonly CliCheckResult[]
+): string[] {
+  return gatewaySlotWarnings(health, clis).map((warning) => `${WARN} ${warning}`);
+}
+
+/**
+ * Each family slot the gateway does not serve (#6658): a warning while some
+ * slot works, a failure when none does — the same line `gatewayVerdict` fails on.
+ */
+function formatUnservedSlots(health: GatewayHealth): string[] {
+  const glyph = gatewayVerdict(health) === 'fail' ? CROSS : WARN;
+  return unservedSlotLines(health).map((line) => `  ${glyph} ${line}`);
 }
 
 function formatProxy(proxy: GatewayProxyStatus): string {

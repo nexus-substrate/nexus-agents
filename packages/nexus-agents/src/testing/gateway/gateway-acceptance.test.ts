@@ -43,7 +43,11 @@ import { ErrorCode, type ILogger, type IModelAdapter } from '../../core/index.js
 import { loadUsageEvents } from '../../learning/usage-log.js';
 import { createServer } from '../../mcp/server.js';
 import { registerConsensusVoteTool, registerTools } from '../../mcp/tools/index.js';
-import { checkGatewayHealth, gatewayVerdict } from '../../cli/doctor-gateway.js';
+import {
+  checkGatewayHealth,
+  gatewaySlotWarnings,
+  gatewayVerdict,
+} from '../../cli/doctor-gateway.js';
 import { formatGatewayReport } from '../../cli/doctor-gateway-report.js';
 import { isAllHealthy, type CliCheckResult } from '../../cli/doctor.js';
 import {
@@ -712,6 +716,36 @@ describe('doctor --gateway on a gateway-only host (#6609)', () => {
     const served = gateway.chatRequests().map((r) => familyOf((r.body as ChatRequestBody).model));
     expect(served).toEqual(['anthropic', 'openai', 'google']);
     expect(gatewayVerdict(health)).toBe('pass');
+  });
+
+  it('an OpenAI-only gateway passes, naming the claude and gemini slots unavailable (#6658)', async () => {
+    gateway.setCatalog(THREE_FAMILY_CATALOG.filter((r) => r.owned_by === 'openai'));
+
+    const health = await checkGatewayHealth({ probe: true });
+    const gatewayTerm = gatewayVerdict(health);
+
+    // codex is served, so the host passes — but not silently.
+    expect(gatewayTerm).toBe('pass');
+    expect(isAllHealthy({ ...healthyHost, gateway: gatewayTerm })).toBe(true);
+    expect(gatewaySlotWarnings(health, healthyHost.clis)).toEqual([
+      'claude slot unavailable: not installed, and the gateway has no anthropic model',
+      'gemini slot unavailable: not installed, and the gateway has no google model',
+      'opencode slot unavailable: not installed, and the gateway has no opencode slot',
+    ]);
+    // Only the served family was probed.
+    const served = gateway.chatRequests().map((r) => familyOf((r.body as ChatRequestBody).model));
+    expect(served).toEqual(['openai']);
+  });
+
+  it('a gateway that serves no slot fails the verdict (#6658)', async () => {
+    gateway.setCatalog([
+      { id: 'mistral-large-2411', object: 'model', created: 1731000000, owned_by: 'mistral' },
+    ]);
+
+    const gatewayTerm = gatewayVerdict(await checkGatewayHealth());
+
+    expect(gatewayTerm).toBe('fail');
+    expect(isAllHealthy({ ...healthyHost, gateway: gatewayTerm })).toBe(false);
   });
 
   it('fails the verdict, naming the host, when the gateway is unreachable', async () => {
