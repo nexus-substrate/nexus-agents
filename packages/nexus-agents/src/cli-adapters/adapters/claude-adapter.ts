@@ -107,14 +107,14 @@ function nextClaudeAlias(alias: string): string | undefined {
  * claude 2.1.281: with `--tools Read,Grep,Glob` the model reported having
  * exactly those three and made no search or fetch request.
  */
-export const CLAUDE_READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'] as const;
+const CLAUDE_READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'] as const;
 
 /**
  * Tools also denied outright under read-only analysis (#6754). Redundant with
  * {@link CLAUDE_READ_ONLY_TOOLS}; kept so a settings-file allow rule cannot
  * re-admit any of them if the allow list is ever widened by mistake.
  */
-export const CLAUDE_READ_ONLY_DISALLOWED_TOOLS = [
+const CLAUDE_READ_ONLY_DISALLOWED_TOOLS = [
   'Bash',
   'Edit',
   'Write',

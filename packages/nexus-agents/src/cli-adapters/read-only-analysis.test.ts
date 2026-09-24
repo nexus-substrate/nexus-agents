@@ -27,13 +27,9 @@ import { BaseCliAdapter } from './base-adapter.js';
 import { CliToModelAdapter } from './cli-to-model-adapter.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
 import { readOnlyAnalysisRefusal } from './read-only-analysis.js';
-import {
-  ClaudeCliAdapter,
-  CLAUDE_READ_ONLY_DISALLOWED_TOOLS,
-  CLAUDE_READ_ONLY_TOOLS,
-} from './adapters/claude-adapter.js';
-import { OpenCodeCliAdapter, OPENCODE_READ_ONLY_ENV } from './adapters/opencode-adapter.js';
-import { GeminiCliAdapter, AGY_READ_ONLY_ARGS } from './adapters/gemini-adapter.js';
+import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
+import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
+import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 
@@ -78,7 +74,8 @@ describe('claude maps read-only analysis to disallowed tools (#6754)', () => {
   });
 
   it('the allow list is exactly the read tools — no network, command or write tool', () => {
-    expect([...CLAUDE_READ_ONLY_TOOLS].sort()).toEqual(['Glob', 'Grep', 'Read']);
+    const allowed = flagValue(new ClaudeProbe().command(READ_ONLY).args, '--tools')?.split(',');
+    expect(allowed?.sort()).toEqual(['Glob', 'Grep', 'Read']);
   });
 
   it('also denies command, write and network tools, WebSearch included', () => {
@@ -87,7 +84,6 @@ describe('claude maps read-only analysis to disallowed tools (#6754)', () => {
     expect(denied.sort()).toEqual(
       ['Bash', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Write'].sort()
     );
-    expect([...CLAUDE_READ_ONLY_DISALLOWED_TOOLS].sort()).toEqual(denied);
   });
 
   it('the default mode carries none of the flags', () => {
@@ -138,7 +134,7 @@ describe('claude maps read-only analysis to disallowed tools (#6754)', () => {
 describe('opencode maps read-only analysis to an OPENCODE_PERMISSION deny config (#6754)', () => {
   it('sets the deny config in the child env', () => {
     const { env } = new OpenCodeProbe().command(READ_ONLY);
-    expect(env).toEqual(OPENCODE_READ_ONLY_ENV);
+    expect(Object.keys(env ?? {})).toEqual(['OPENCODE_PERMISSION']);
     const permission = JSON.parse(env?.['OPENCODE_PERMISSION'] ?? 'null') as unknown;
     expect(permission).toEqual({ bash: 'deny', edit: 'deny', webfetch: 'deny' });
   });
@@ -154,7 +150,6 @@ describe('gemini (agy) maps read-only analysis to plan mode in a sandbox (#6754)
     expect(flagValue(args, '--mode')).toBe('plan');
     expect(args).toContain('--sandbox');
     expect(args.indexOf('--sandbox')).toBeLessThan(args.indexOf('--print'));
-    expect(AGY_READ_ONLY_ARGS).toEqual(['--mode', 'plan', '--sandbox']);
   });
 
   it('the default mode carries neither flag', () => {

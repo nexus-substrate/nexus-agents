@@ -102,7 +102,7 @@ export { GEMINI_CLI_COMMAND };
  * runs with terminal restrictions. What plan mode permits was NOT observed on
  * a live run (quota-limited when this was written); the flags were.
  */
-export const AGY_READ_ONLY_ARGS = ['--mode', 'plan', '--sandbox'] as const;
+const AGY_READ_ONLY_ARGS = ['--mode', 'plan', '--sandbox'] as const;
 
 export class GeminiCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'gemini';

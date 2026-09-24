@@ -197,7 +197,7 @@ function warnIfAnthropicProvider(models: Set<string>): void {
  * documented at https://opencode.ai/docs/permissions). `bash` covers command
  * execution, `edit` every file write, `webfetch` network fetch.
  */
-export const OPENCODE_READ_ONLY_ENV: Readonly<Record<string, string>> = {
+const OPENCODE_READ_ONLY_ENV: Readonly<Record<string, string>> = {
   OPENCODE_PERMISSION: JSON.stringify({ bash: 'deny', edit: 'deny', webfetch: 'deny' }),
 };
 

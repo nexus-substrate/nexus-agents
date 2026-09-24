@@ -51,7 +51,7 @@ export { createCodexError, normalizeCodexResponse, delay } from './codex-adapter
  * ones that ask. Named so a change to the default is a visible change to the
  * mode's guarantee.
  */
-export const CODEX_EXEC_SANDBOX = 'read-only';
+const CODEX_EXEC_SANDBOX = 'read-only';
 
 export class CodexCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'codex';
