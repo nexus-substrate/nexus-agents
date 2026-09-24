@@ -26,6 +26,7 @@ import type {
   BaseAdapterOptions,
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
+import { isReadOnlyAnalysis } from '../read-only-analysis.js';
 import { AgyResponseParser } from '../parsers/agy-parser.js';
 import { toAgyModelSlug, AGY_MODEL_SLUGS } from '../../config/agy-model-map.js';
 import type { CliModelInfo } from '../types-capability.js';
@@ -95,8 +96,17 @@ export { GEMINI_CLI_COMMAND };
  *
  * Includes tiered timeouts, resilient parsing, retry logic, and circuit breaker.
  */
+/**
+ * agy flags for a read-only analysis task (#6754), verified in `agy --help`:
+ * `--mode plan` is the agent execution mode without edits, and `--sandbox`
+ * runs with terminal restrictions. What plan mode permits was NOT observed on
+ * a live run (quota-limited when this was written); the flags were.
+ */
+export const AGY_READ_ONLY_ARGS = ['--mode', 'plan', '--sandbox'] as const;
+
 export class GeminiCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'gemini';
+  override readonly enforcesReadOnlyAnalysis = true;
 
   /**
    * #4346: the arm is still called `gemini` (it serves Google's Gemini models
@@ -200,6 +210,10 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     task: CliTask,
     options?: ExecutionOptions
   ): Promise<Result<GeminiExecutionResult, CliError>> {
+    // #6754: this path bypasses the base execute, so it applies the same
+    // fail-closed access-mode check first.
+    const refusal = this.accessModeRefusal(task);
+    if (refusal !== undefined) return err(refusal);
     const circuitCheckResult = this.checkCircuitBreaker();
     if (circuitCheckResult !== null) {
       return err(circuitCheckResult);
@@ -278,6 +292,8 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     // Derive the CLI's wait from the task timeout, a little below the guard
     // so agy's own timeout fires first and its stderr is readable.
     args.push(...agyPrintTimeoutArgs(task.timeoutMs));
+
+    args.push(...agyAccessModeArgs(task));
 
     // agy has no system-prompt flag. The old CLI's `--policy <file>` preserved
     // system-role framing (#1886); agy offers only `--agent`, which selects a
@@ -366,6 +382,11 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 /** Creates a Gemini CLI adapter with reliability features. */
 export function createGeminiAdapter(options?: GeminiConfig): GeminiCliAdapter {
   return new GeminiCliAdapter(options);
+}
+
+/** agy's argv for the task's access mode (#6754); empty in the default mode. */
+function agyAccessModeArgs(task: CliTask): readonly string[] {
+  return isReadOnlyAnalysis(task) ? AGY_READ_ONLY_ARGS : [];
 }
 
 /** Headroom between agy's print-mode wait and the subprocess guard (#6277). */

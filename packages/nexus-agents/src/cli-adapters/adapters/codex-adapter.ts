@@ -44,8 +44,18 @@ export { createCodexError, normalizeCodexResponse, delay } from './codex-adapter
  * - Capacity tracking
  * - Subprocess spawn with timeout handling
  */
+/**
+ * The codex sandbox every `codex exec` runs under (#6754). Read-only analysis
+ * mode needs nothing beyond it: `-s read-only` already refuses writes and
+ * network, so this adapter enforces the mode on every task, not only on the
+ * ones that ask. Named so a change to the default is a visible change to the
+ * mode's guarantee.
+ */
+export const CODEX_EXEC_SANDBOX = 'read-only';
+
 export class CodexCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'codex';
+  override readonly enforcesReadOnlyAnalysis = true;
   protected readonly parser: ICliResponseParser = new CodexResponseParser();
 
   private readonly model: string;
@@ -101,7 +111,7 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     // Add sandbox mode for safety (read-only by default). On Linux, back it
     // with legacy landlock so the read-only sandbox actually starts under
     // AppArmor's userns restriction (#6093, see codexPlatformSandboxArgs).
-    args.push('-s', 'read-only', ...codexPlatformSandboxArgs(this.platform));
+    args.push('-s', CODEX_EXEC_SANDBOX, ...codexPlatformSandboxArgs(this.platform));
 
     // Skip git repo check for standalone prompts
     args.push('--skip-git-repo-check');

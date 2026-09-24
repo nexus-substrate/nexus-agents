@@ -21,6 +21,7 @@ import type {
 import type { Result } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
+import { isReadOnlyAnalysis, readOnlyAnalysisConflict } from '../read-only-analysis.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
@@ -103,8 +104,23 @@ function nextClaudeAlias(alias: string): string | undefined {
  * Claude CLI adapter using subprocess transport.
  * Executes: claude -p --output-format json "<task>"
  */
+/**
+ * Built-in claude tools a read-only analysis seat may not use (#6754): command
+ * execution, file writes and network fetch. Names verified against
+ * `claude --help` (2.1.x): `--disallowedTools` takes a comma- or
+ * space-separated list of tool names.
+ */
+export const CLAUDE_READ_ONLY_DISALLOWED_TOOLS = [
+  'Bash',
+  'Edit',
+  'Write',
+  'NotebookEdit',
+  'WebFetch',
+] as const;
+
 export class ClaudeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'claude';
+  override readonly enforcesReadOnlyAnalysis = true;
   protected readonly parser: ICliResponseParser = new ClaudeResponseParser();
 
   private readonly model: string;
@@ -184,6 +200,19 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     return ok({ ...second.value, model: next, fallbackFrom: requested });
   }
 
+  /**
+   * #6754: a permission bypass would defeat read-only analysis mode, so the
+   * combination is refused rather than resolved one way silently.
+   */
+  protected override accessModeRefusal(task: CliTask): CliError | undefined {
+    const base = super.accessModeRefusal(task);
+    if (base !== undefined || !isReadOnlyAnalysis(task)) return base;
+    if (task.options?.['skipPermissions'] === true) {
+      return readOnlyAnalysisConflict(this.name, 'the task also asks to skip permissions');
+    }
+    return undefined;
+  }
+
   /** Appends optional string-type task options to CLI args. */
   private appendTaskOptions(args: string[], task: CliTask): void {
     const workDir = task.options?.['workDir'];
@@ -193,6 +222,13 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     const mcpConfigPath = task.options?.['mcpConfigPath'];
     if (typeof mcpConfigPath === 'string' && mcpConfigPath.length > 0) {
       args.push('--mcp-config', mcpConfigPath);
+    }
+    if (isReadOnlyAnalysis(task)) {
+      // #6754: remove the tools that run commands, write files or fetch, and
+      // pin the permission mode so a settings-file default cannot widen it.
+      args.push('--permission-mode', 'default');
+      args.push('--disallowedTools', CLAUDE_READ_ONLY_DISALLOWED_TOOLS.join(','));
+      return;
     }
     // Allow full tool access in non-interactive mode (needed for SWE-bench)
     if (task.options?.['skipPermissions'] === true) {

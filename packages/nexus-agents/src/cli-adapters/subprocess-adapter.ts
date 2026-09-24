@@ -212,7 +212,9 @@ function spawnCliChild(
   // own vendor credentials, so cross-vendor API keys don't leak
   // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
   // CLI must not believe it's already inside Claude Code.
-  const childEnv = buildChildEnv(cliName);
+  // #6754: a command's own variables (e.g. a read-only permission config) are
+  // applied last, so an inherited value of the same name cannot override them.
+  const childEnv = { ...buildChildEnv(cliName), ...cmdConfig.env };
   return trackProcessTree(
     spawn(cmdConfig.command, cmdConfig.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -305,6 +307,11 @@ export interface CommandConfig {
   args: string[];
   /** Optional stdin content (prompt passed via stdin instead of args) */
   stdin?: string;
+  /**
+   * Variables set on the child's environment on top of the curated base
+   * (#6754). They win over any inherited value of the same name.
+   */
+  env?: Readonly<Record<string, string>>;
   /**
    * Optional cleanup callback invoked after the subprocess resolves
    * (success, error, or timeout). Used by adapters that materialize

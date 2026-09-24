@@ -25,6 +25,7 @@ import {
 } from '../core/index.js';
 import { estimateTokens } from '../core/token-estimator.js';
 import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } from './types.js';
+import { readOnlyAnalysisRefusal } from './read-only-analysis.js';
 import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
@@ -114,6 +115,7 @@ export class CliToModelAdapter implements IModelAdapter {
     const task: CliTask = {
       content,
       ...(request.workDir !== undefined ? { options: { workDir: request.workDir } } : {}),
+      ...(request.accessMode !== undefined ? { accessMode: request.accessMode } : {}),
     };
 
     if (request.systemPrompt !== undefined) {
@@ -210,6 +212,10 @@ export class CliToModelAdapter implements IModelAdapter {
    */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
     const task = this.toCliTask(request);
+    // #6754: fail closed for an adapter that does not declare read-only
+    // enforcement, whatever its own execute would have done with the field.
+    const refusal = readOnlyAnalysisRefusal(this.cliAdapter, task);
+    if (refusal !== undefined) return err(this.toModelError(refusal));
     // Per-request timeout (#3304) takes precedence over the construction-time
     // default, so a long-budget caller (e.g. a consensus vote) isn't cut off by
     // the adapter's shorter standard CLI timeout.
