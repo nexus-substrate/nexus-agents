@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.108.1
+
+### Patch Changes
+
+- [#6755](https://github.com/nexus-substrate/nexus-agents/pull/6755) [`bf115c9`](https://github.com/nexus-substrate/nexus-agents/commit/bf115c95a96c24224226f808f4c5d22b1d3f7de3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Error messages and job records now redact configured gateway header values and more GitHub token formats; the code-PR path guard covers more repository-control paths.
+
+  - Gateway errors (model discovery, per-model adapter errors and `doctor --gateway`) redact the key and every `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS` value through one shared helper.
+  - The output, logger and outcome-storage sanitizers redact `ghs_`, `ghu_` and `github_pat_` tokens, and the credentials in URL userinfo (`scheme://user:pass@host`), keeping the scheme and host.
+  - Completed async job records sanitize every string value of the stored result, as failed records already did. Keys and non-string values are unchanged.
+  - The code-PR sensitive-path classifier treats `.git` (the path and anything under it), `.husky/**`, `.gitattributes` and `.github/actions/**` as sensitive. `.gitignore` stays allowed.
+  - CI withholds secrets from `nexus-codepr/` branches as it does from `auto-remediation/` branches.
+
 ## 8.108.0
 
 ### Minor Changes
