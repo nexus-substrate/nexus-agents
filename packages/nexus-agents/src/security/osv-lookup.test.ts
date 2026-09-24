@@ -134,3 +134,46 @@ describe('queryOsvBatch', () => {
     expect(results[1]?.vulnerabilities).toHaveLength(0);
   });
 });
+
+describe('OSV lookups and the caller abort signal (#6747)', () => {
+  it('hands fetch a signal that aborts when the caller aborts', async () => {
+    const controller = new AbortController();
+    let fetchSignal: AbortSignal | undefined;
+    mockFetch.mockImplementation((_url: string, init: RequestInit) => {
+      fetchSignal = init.signal ?? undefined;
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(new Error('aborted'));
+        });
+      });
+    });
+
+    const pending = queryOsv('lodash', '4.17.20', { timeoutMs: 60_000 }, controller.signal);
+    controller.abort('cancel_job');
+    const result = await pending;
+
+    expect(fetchSignal?.aborted).toBe(true);
+    expect(result.error).not.toBeNull();
+  });
+
+  it('queries no further package once the caller has aborted', async () => {
+    const controller = new AbortController();
+    mockFetch.mockImplementation(() => {
+      controller.abort('cancel_job');
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ vulns: [] }) });
+    });
+
+    const results = await queryOsvBatch(
+      [
+        { name: 'a', version: '1.0.0' },
+        { name: 'b', version: '1.0.0' },
+        { name: 'c', version: '1.0.0' },
+      ],
+      { timeoutMs: 60_000 },
+      controller.signal
+    );
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(results).toHaveLength(1);
+  });
+});

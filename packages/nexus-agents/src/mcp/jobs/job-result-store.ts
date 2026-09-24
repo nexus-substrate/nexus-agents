@@ -35,7 +35,7 @@ import { z } from 'zod';
 import { createLogger, getTimeProvider } from '../../core/index.js';
 import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
 import { resolveClassGuardMs, type OperationClassName } from '../../config/timeouts.js';
-import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
+import { sanitizeErrorDetails, sanitizeStringLeaves } from '../../security/output-sanitizer.js';
 import { VERSION } from '../../version.js';
 import { readIndexEntry } from './job-idempotency.js';
 import {
@@ -345,6 +345,11 @@ export function writeJobPending(
  * yet abort the underlying work), this is a NO-OP so the cancellation is not
  * silently rewritten back to `complete`. Symmetric with the caller-side
  * cancel-after-complete guard documented on {@link writeJobCancelled}.
+ *
+ * Write-path redaction: every string leaf of `result` passes through
+ * {@link sanitizeErrorDetails}, as the `failed` path's `error` does and as
+ * the synchronous tool path does for `structuredContent`. Keys and non-string
+ * values are left alone, so the structure a poller reads is unchanged.
  */
 export function writeJobComplete(
   jobId: string,
@@ -367,7 +372,7 @@ export function writeJobComplete(
     status: 'complete',
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
-    result,
+    result: sanitizeStringLeaves(result, (text) => sanitizeErrorDetails(text)),
     producerVersion,
     ...carriedProgress(existing),
   };

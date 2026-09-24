@@ -111,7 +111,8 @@ function mapSemanticScholarPaper(
  */
 export async function discoverSemanticScholar(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   const query = encodeURIComponent(topic);
   const fields = 'title,url,abstract,citationCount,year,isOpenAccess,externalIds';
@@ -130,11 +131,7 @@ export async function discoverSemanticScholar(
     headers['x-api-key'] = apiKey;
   }
 
-  const fetchResult = await fetchSource({
-    url,
-    source: 'semantic_scholar',
-    headers,
-  });
+  const fetchResult = await fetchSource({ url, source: 'semantic_scholar', headers, signal });
   if (!fetchResult.ok) return fetchResult;
 
   let raw: unknown;
@@ -206,7 +203,8 @@ function isNonJsonResponse(response: Response): boolean {
  */
 export async function discoverPapersWithCode(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   const query = encodeURIComponent(topic);
   const url = `https://paperswithcode.com/api/v1/papers/?q=${query}&items_per_page=${String(maxResults)}`;
@@ -215,6 +213,7 @@ export async function discoverPapersWithCode(
     url,
     source: 'papers_with_code',
     headers: { 'User-Agent': 'nexus-agents', Accept: 'application/json' },
+    signal,
   });
   if (!fetchResult.ok) return fetchResult;
 
@@ -321,7 +320,8 @@ function openAlexParseError(message: string): { ok: false; error: DiscoverError 
 export async function discoverOpenAlex(
   topic: string,
   maxResults = 10,
-  apiKey?: string
+  apiKey?: string,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   const query = encodeURIComponent(topic);
   // Use polite API with mailto for better rate limits
@@ -341,6 +341,7 @@ export async function discoverOpenAlex(
     url,
     source: 'openalex',
     headers,
+    signal,
   });
   if (!fetchResult.ok) return fetchResult;
 

@@ -4,8 +4,9 @@
  * @module security/quality-gate.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runQualityGate } from './quality-gate.js';
+import { AbortError } from '../adapters/abort-utils.js';
 import type { GateCheckFn } from './quality-gate.js';
 import type { GateCheckResult } from './quality-gate-types.js';
 
@@ -147,5 +148,46 @@ describe('partial coverage still passes on what ran', () => {
       Promise.resolve({ name: 'lint', verdict: 'skip' as const, details: 'no script' });
 
     expect((await runQualityGate('qa', [passing, skipped])).verdict).toBe('pass');
+  });
+});
+
+describe('runQualityGate and the abort signal (#6747)', () => {
+  it('hands each check the signal', async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const check: GateCheckFn = (signal) => {
+      seen.push(signal);
+      return Promise.resolve({ name: 'c', verdict: 'pass', details: 'OK', durationMs: 1 });
+    };
+    const signal = new AbortController().signal;
+
+    await runQualityGate('qa', [check, check], 1, signal);
+
+    expect(seen).toEqual([signal, signal]);
+  });
+
+  it('starts no later check once the signal has fired', async () => {
+    const controller = new AbortController();
+    const later = vi.fn(passingCheck('lint'));
+    const first: GateCheckFn = () => {
+      controller.abort('cancel_job');
+      return Promise.resolve({ name: 'tc', verdict: 'fail', details: 'killed', durationMs: 1 });
+    };
+
+    await expect(runQualityGate('qa', [first, later], 1, controller.signal)).rejects.toBeInstanceOf(
+      AbortError
+    );
+    expect(later).not.toHaveBeenCalled();
+  });
+
+  it('returns no verdict when the signal fired during a check that ignored it', async () => {
+    const controller = new AbortController();
+    const ignoresSignal: GateCheckFn = () => {
+      controller.abort('cancel_job');
+      return Promise.resolve({ name: 'tests', verdict: 'pass', details: 'OK', durationMs: 1 });
+    };
+
+    await expect(
+      runQualityGate('qa', [ignoresSignal], 1, controller.signal)
+    ).rejects.toBeInstanceOf(AbortError);
   });
 });

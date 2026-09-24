@@ -82,6 +82,15 @@ const SECRET_PATTERNS = [
 ];
 
 /**
+ * URL userinfo (`scheme://user:pass@`, `scheme://token@`): the credentials
+ * are replaced and the scheme (group 1) and host kept. Excludes `:` from the
+ * user part and `/?#@` from both, so a port or an `@` in a path is not
+ * credentials; bounded quantifiers keep it ReDoS-safe (#1496).
+ */
+const URL_USERINFO_PATTERN =
+  /\b([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/?#@:]{0,256}(?::[^\s/?#@]{0,256})?@/gi;
+
+/**
  * Field names that should have their values fully redacted.
  * Case-insensitive matching.
  * (Source: OWASP Logging Cheat Sheet)
@@ -160,7 +169,7 @@ export function sanitize(text: string): string {
   for (const pattern of SECRET_PATTERNS) {
     result = result.replace(pattern, '[REDACTED]');
   }
-  return result;
+  return result.replace(URL_USERINFO_PATTERN, '$1[REDACTED]@');
 }
 
 /**

@@ -37,6 +37,12 @@ const KEY_PATTERNS: readonly RegExp[] = [
   /ghp_[A-Za-z0-9]{20,}/g,
   // GitHub OAuth: gho_...
   /gho_[A-Za-z0-9]{20,}/g,
+  // GitHub user-to-server: ghu_...
+  /ghu_[A-Za-z0-9]{20,}/g,
+  // GitHub server-to-server (app installation): ghs_...
+  /ghs_[A-Za-z0-9]{20,}/g,
+  // GitHub fine-grained PAT: github_pat_...
+  /github_pat_[A-Za-z0-9_]{22,}/g,
   // GitLab PAT: glpat-...
   /glpat-[A-Za-z0-9_-]{10,}/g,
   // npm token: npm_...
@@ -44,6 +50,16 @@ const KEY_PATTERNS: readonly RegExp[] = [
   // PyPI token: pypi-...
   /pypi-[A-Za-z0-9_-]{20,}/g,
 ];
+
+/**
+ * URL userinfo: `scheme://user:pass@` or `scheme://token@`. Group 1 is the
+ * scheme, kept so the redacted URL still names its host. The user part
+ * excludes `:` and both parts exclude `/?#@` and whitespace, so a port
+ * (`host:8080/…`) or an `@` in a path or query is never taken for
+ * credentials. Bounded quantifiers keep the match linear.
+ */
+const URL_USERINFO_PATTERN =
+  /\b([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/?#@:]{0,256}(?::[^\s/?#@]{0,256})?@/gi;
 
 /**
  * Redacts known API key patterns from a string.
@@ -67,7 +83,8 @@ export function sanitizeOutput(
     pattern.lastIndex = 0;
     result = result.replace(pattern, placeholder);
   }
-  return result;
+  URL_USERINFO_PATTERN.lastIndex = 0;
+  return result.replace(URL_USERINFO_PATTERN, `$1${placeholder}@`);
 }
 
 /**
@@ -93,13 +110,8 @@ export function sanitizeErrorDetails(
     result = result.replaceAll(apiKey.trim(), placeholder);
   }
 
-  // Redact known key patterns
+  // Redact known key patterns and URL credentials (user:pass@ / token@)
   result = sanitizeOutput(result, placeholder);
-
-  // Redact URL credentials like https://user:pass@host or https://token@host
-  result = result.replace(/https?:\/\/[^\s/@]+@[^\s/]+/g, (match) => {
-    return match.replace(/https?:\/\/[^\s/@]+@/, `https://${placeholder}@`);
-  });
 
   // Redact Authorization headers: Bearer and Basic tokens
   result = result.replace(/(authorization:\s*bearer\s+)\S+/gi, `$1${placeholder}`);
@@ -122,4 +134,32 @@ export function sanitizeErrorDetails(
   );
 
   return result;
+}
+
+/** `value.toJSON()` when it has one (a `Date`), as `JSON.stringify` would; else `value`. */
+function serializedForm(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const toJSON: unknown = (value as { toJSON?: unknown }).toJSON;
+  return typeof toJSON === 'function' ? (toJSON as () => unknown).call(value) : value;
+}
+
+/**
+ * `value` with `sanitize` applied to every string LEAF. A `toJSON` object (a
+ * `Date`) is taken in its serialized form first, as `JSON.stringify` would;
+ * arrays are mapped and objects copied from their own enumerable entries.
+ * Keys, numbers, booleans and `null` are untouched, so the structure a JSON
+ * reader sees survives. Returns a copy — the input is not mutated.
+ */
+export function sanitizeStringLeaves(input: unknown, sanitize: (text: string) => string): unknown {
+  const value = serializedForm(input);
+  if (typeof value === 'string') return sanitize(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeStringLeaves(item, sanitize));
+  if (typeof value === 'object' && value !== null) {
+    const copy: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      copy[key] = sanitizeStringLeaves(entry, sanitize);
+    }
+    return copy;
+  }
+  return value;
 }

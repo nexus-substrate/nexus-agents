@@ -47,11 +47,11 @@ jobs:
     # Default is local-mode via scripts/pr-review-local.ts (subscription auth).
     # #3614: never run on auto-remediation bot branches — model-API-key secrets
     # must not be exposed to a bot-authored remediation PR (Rule-of-Two third leg
-    # via CI). Prefix kept in sync with AUTO_REMEDIATION_BRANCH_PREFIX in
-    # src/mcp/tools/auto-remediation-branch.ts.
+    # via CI). Prefixes kept in sync with src/mcp/tools/auto-remediation-branch.ts.
     if: >-
       contains(github.event.pull_request.labels.*.name, 'pr-review-ci') &&
-      !startsWith(github.event.pull_request.head.ref, 'auto-remediation/')
+      !startsWith(github.event.pull_request.head.ref, 'auto-remediation/') &&
+      !startsWith(github.event.pull_request.head.ref, 'nexus-codepr/')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

@@ -509,6 +509,33 @@ describe('OpenAIAdapter', () => {
       }
     });
 
+    it('redacts configured header values (custom auth header + extra headers) from errors', async () => {
+      const extraValue = 'tenant-TESTFAKE-header-0002';
+      const gatewayKey = 'gw-TESTFAKE-key-0003';
+      const withHeaders = {
+        ...validConfig,
+        apiKey: gatewayKey,
+        defaultHeaders: { Authorization: null, 'X-Gw-Key': gatewayKey, 'X-Tenant': extraValue },
+      };
+      const apiError = new APIError(
+        403,
+        { error: { message: `tenant ${extraValue} rejected`, echoed: { 'x-gw-key': gatewayKey } } },
+        `forbidden for ${extraValue}`,
+        undefined
+      );
+      const adapter = new OpenAIAdapter(withHeaders);
+      // Both error paths: the APIError override and the generic transform.
+      for (const failure of [apiError, new Error(`socket closed after header ${extraValue}`)]) {
+        mockCreate.mockRejectedValueOnce(failure);
+        const result = await adapter.complete({ messages: [{ role: 'user', content: 'Hi!' }] });
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('expected a failed completion');
+        expect(result.error.message).not.toContain(extraValue);
+        expect(result.error.message).not.toContain(gatewayKey);
+        expect(result.error.message).toContain('[REDACTED_KEY]');
+      }
+    });
+
     it('preserves error-code classification through the APIError override (429 → rate-limited)', async () => {
       const apiError = new APIError(
         429,

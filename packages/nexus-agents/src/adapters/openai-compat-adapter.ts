@@ -57,7 +57,8 @@ import {
   OPENAI_COMPAT_MODELS_ENV,
   OPENAI_COMPAT_URL_ENV,
 } from './sdk/types.js';
-import { hostnameOf, redactApiKey } from './sdk/gateway-env.js';
+import { hostnameOf } from './sdk/gateway-env.js';
+import { redactGatewaySecrets } from './gateway-redaction.js';
 import { readModelAllowlist, refineGatewayCatalog } from './gateway-catalog-filter.js';
 import {
   gatewayClientOptions,
@@ -326,12 +327,13 @@ export async function discoverGatewayCatalog(
     });
   } catch (e: unknown) {
     // This message lands on cli-server-gateway's probe-failed warn line, so it
-    // names the host (a base URL can carry userinfo) and never the key: a
-    // gateway's 401 body may echo the bearer it rejected (#4392 increment 3).
+    // names the host (a base URL can carry userinfo) and never the key or an
+    // extra header value: a gateway's error body may echo what it received
+    // (#4392 increment 3).
     return err(
       new ConfigError(
         `Failed to discover models from ${hostnameOf(config.baseUrl)}: ` +
-          `${redactApiKey(getErrorMessage(e), config.apiKey)}. ` +
+          `${redactGatewaySecrets(getErrorMessage(e), { apiKey: config.apiKey, headers: config.extraHeaders })}. ` +
           `Verify ${OPENAI_COMPAT_URL_ENV} and ${OPENAI_COMPAT_KEY_ENV}, then retry.`
       )
     );

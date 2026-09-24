@@ -9,13 +9,17 @@ import { executeSecurityScan } from './security-scan.js';
 import { SecurityScanInputSchema } from './security-scan-types.js';
 import type { SecurityScanInput } from './security-scan-types.js';
 
-// Mock child_process to avoid needing semgrep installed
+// Mock child_process to avoid needing semgrep installed: every exec fails as
+// a missing binary would. Returns a PID-less stand-in child (#6747).
 vi.mock('node:child_process', () => ({
-  execFile: vi.fn(),
-}));
-
-vi.mock('node:util', () => ({
-  promisify: vi.fn().mockReturnValue(vi.fn().mockRejectedValue(new Error('not found'))),
+  execFile: vi.fn(
+    (_cmd: string, _args: readonly string[], _opts: unknown, cb: (e: Error) => void) => {
+      queueMicrotask(() => {
+        cb(new Error('not found'));
+      });
+      return {};
+    }
+  ),
 }));
 
 describe('executeSecurityScan', () => {
