@@ -129,5 +129,25 @@ describe('path guards follow symlinks', () => {
       const result = executor.validate('echo', [], options(fx.linkIn));
       expect(result.violations.map((v) => v.type)).not.toContain('path');
     });
+
+    it('runs the command in the canonical dir, with PWD naming it', async () => {
+      const run = (command: string, args: string[]): ReturnType<typeof executor.execute> =>
+        executor.execute(command, args, {
+          cwd: fx.linkIn,
+          policy: {
+            ...STANDARD_POLICY,
+            allowedCommands: ['pwd', 'env'],
+            allowedEnvVars: ['PATH'],
+            pathRules: [{ path: fx.insideDir, access: 'read' }],
+          },
+        });
+      const pwd = await run('pwd', ['-P']);
+      expect(pwd.success).toBe(true);
+      expect(pwd.stdout.trim()).toBe(realDir);
+      const env = await run('env', []);
+      expect(env.success).toBe(true);
+      const pwdLine = env.stdout.split('\n').find((l) => l.startsWith('PWD='));
+      expect(pwdLine).toBe(`PWD=${realDir}`);
+    });
   });
 });

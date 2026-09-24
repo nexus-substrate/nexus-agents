@@ -97,8 +97,9 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     const startTime = getTimeProvider().now();
     const policy = options.policy;
 
-    // Validate command and args
-    const evaluation = this.validate(command, args, options);
+    // Validate once. The canonical cwd approved here is the one the command
+    // runs in; it is never re-resolved, so a later symlink swap cannot move it.
+    const { evaluation, canonicalCwd } = this.evaluate(command, args, options);
 
     // If not allowed and enforcement is on, return failure
     if (!evaluation.allowed && this.config.enforce) {
@@ -110,16 +111,13 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
       this.logViolations(command, evaluation);
     }
 
-    // Prepare execution environment
-    const execEnv = this.prepareEnvironment(options, policy);
-    const limits = { ...DEFAULT_RESOURCE_LIMITS, ...policy.limits, ...options.limits };
+    // A disallowed cwd reaches this point only in warn-only mode (enforce
+    // returned above), which by design runs the caller's path and logs.
+    const execCwd = canonicalCwd ?? options.cwd;
 
-    // Run in the canonical directory the policy check approved, not a path
-    // that re-follows a symlink. Warn-only mode keeps the caller's path.
-    const execCwd =
-      options.cwd === undefined
-        ? undefined
-        : (this.resolveAllowedCwd(options.cwd, policy) ?? options.cwd);
+    // Prepare execution environment; PWD matches the directory actually used.
+    const execEnv = this.prepareEnvironment(options, policy, execCwd);
+    const limits = { ...DEFAULT_RESOURCE_LIMITS, ...policy.limits, ...options.limits };
 
     try {
       const result = await this.executeWithLimits(command, args, execCwd, execEnv, limits);
@@ -137,6 +135,18 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     args: readonly string[],
     options: SandboxExecutionOptions
   ): PolicyEvaluation {
+    return this.evaluate(command, args, options).evaluation;
+  }
+
+  /**
+   * Evaluates the policy and returns the canonical cwd it approved:
+   * `undefined` when no cwd was given, `null` when the cwd is not allowed.
+   */
+  private evaluate(
+    command: string,
+    args: readonly string[],
+    options: SandboxExecutionOptions
+  ): { evaluation: PolicyEvaluation; canonicalCwd: string | null | undefined } {
     const policy = options.policy;
     const violations: PolicyViolation[] = [];
 
@@ -153,9 +163,14 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     }
 
     // Validate working directory
-    const cwdViolation = this.validateCwd(options.cwd, policy);
-    if (cwdViolation !== null) {
-      violations.push(cwdViolation);
+    const canonicalCwd =
+      options.cwd === undefined ? undefined : this.resolveAllowedCwd(options.cwd, policy);
+    if (options.cwd !== undefined && canonicalCwd === null) {
+      violations.push({
+        type: 'path',
+        denied: options.cwd,
+        reason: `Working directory '${options.cwd}' is not allowed by policy`,
+      });
     }
 
     const result: PolicyEvaluation = {
@@ -166,10 +181,10 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
 
     // Only add reason if there are violations
     if (violations.length > 0 && violations[0] !== undefined) {
-      return { ...result, reason: violations[0].reason };
+      return { evaluation: { ...result, reason: violations[0].reason }, canonicalCwd };
     }
 
-    return result;
+    return { evaluation: result, canonicalCwd };
   }
 
   /**
@@ -188,31 +203,15 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
   }
 
   /**
-   * Validates working directory against policy.
-   */
-  private validateCwd(cwd: string | undefined, policy: SandboxPolicy): PolicyViolation | null {
-    if (cwd === undefined) return null;
-
-    if (this.resolveAllowedCwd(cwd, policy) === null) {
-      return {
-        type: 'path',
-        denied: cwd,
-        reason: `Working directory '${cwd}' is not allowed by policy`,
-      };
-    }
-
-    return null;
-  }
-
-  /**
    * Prepares environment variables for execution.
    */
   private prepareEnvironment(
     options: SandboxExecutionOptions,
-    policy: SandboxPolicy
+    policy: SandboxPolicy,
+    execCwd: string | undefined
   ): Record<string, string> {
-    // Start with minimal env
-    const baseEnv = createMinimalEnv(options.cwd);
+    // Start with minimal env; PWD names the directory the command runs in.
+    const baseEnv = createMinimalEnv(execCwd);
 
     // Sanitize process.env and merge with additional env
     const sanitized = sanitizeEnvironment(process.env, policy.allowedEnvVars, options.env);
