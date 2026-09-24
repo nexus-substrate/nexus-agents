@@ -67,7 +67,7 @@ import { getGlobalEventBus } from '../core/event-bus.js';
 // ============================================================================
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeSelection(name = 'claude') {
+function makeSelection(name = 'claude', source: 'cli' | 'api' = 'cli') {
   return {
     adapter: {
       providerId: 'mock-provider',
@@ -78,7 +78,7 @@ function makeSelection(name = 'claude') {
       countTokens: mockCountTokens,
       validateConfig: mockValidateConfig,
     },
-    source: 'cli' as const,
+    source,
     name,
     reason: 'test',
   } satisfies AdapterSelection;
@@ -551,6 +551,12 @@ describe('ResilientAdapter', () => {
   });
 
   describe('API failure → circuit breaker (#3423)', () => {
+    // #6712: this layer records only direct-API selections; a CLI selection's
+    // retry loop records its own failures (resilient-adapter-breaker-count.test).
+    beforeEach(() => {
+      vi.mocked(createAutoAdapter).mockReturnValue(Promise.resolve(makeSelection('claude', 'api')));
+    });
+
     function makeLogger(): ILogger {
       const logger: ILogger = {
         debug: vi.fn(),
@@ -603,7 +609,7 @@ describe('ResilientAdapter', () => {
 
       // Next call re-detects (failover) — a different adapter name confirms
       // the failover path fired.
-      vi.mocked(createAutoAdapter).mockResolvedValueOnce(makeSelection('gemini'));
+      vi.mocked(createAutoAdapter).mockResolvedValueOnce(makeSelection('gemini', 'api'));
       mockComplete.mockReturnValueOnce(
         Promise.resolve(
           ok({
