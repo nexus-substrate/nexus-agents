@@ -8,6 +8,13 @@
  * relocated here in #2515 — the helper is generic CLI-spawn
  * infrastructure, not benchmark-specific.
  *
+ * The generated config grants NO tool approvals. It only tells the child
+ * where the nexus-agents MCP server is; whether an expert may actually call
+ * one of its tools follows the host's Claude permission settings (for
+ * example `defaultMode`). Measured 2026-09-24: in auto mode the calls run,
+ * in default mode they are refused (#6784). An unused `allowedTools` list
+ * that read like a guard but was never passed to the CLI was removed then.
+ *
  * @module cli-adapters/child-mcp-config
  */
 
@@ -42,19 +49,7 @@ export interface McpConfigOptions {
   readonly cliPath?: string;
   /** Additional environment variables for the MCP server. */
   readonly env?: Readonly<Record<string, string>>;
-  /** Custom allowed tools (default: read-only subset). */
-  readonly allowedTools?: readonly string[];
 }
-
-/** Default read-only tools available to SWE-bench child sessions. */
-const DEFAULT_ALLOWED_TOOLS: readonly string[] = [
-  'memory_query',
-  'memory_stats',
-  'research_query',
-  'research_discover',
-  'weather_report',
-  'delegate_to_model',
-];
 
 /**
  * Resolves the nexus-agents CLI path.
@@ -85,10 +80,6 @@ function buildConfig(options?: McpConfigOptions): McpConfigFile {
       'nexus-agents': entry,
     },
   };
-
-  // Tool allowlisting is handled by Claude CLI's --allowedTools flag, not in
-  // the MCP config itself; the caller passes tools separately. Nothing here
-  // needs the resolved list, so it is no longer computed.
 }
 
 /**
@@ -99,8 +90,6 @@ export interface GeneratedMcpConfig {
   readonly configPath: string;
   /** Cleanup function to remove temp files. */
   readonly cleanup: () => Promise<void>;
-  /** Allowed tools list for --allowedTools flag. */
-  readonly allowedTools: readonly string[];
 }
 
 /**
@@ -111,7 +100,6 @@ export interface GeneratedMcpConfig {
  */
 export async function generateMcpConfig(options?: McpConfigOptions): Promise<GeneratedMcpConfig> {
   const config = buildConfig(options);
-  const tools = options?.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
 
   const tempDir = await nexusMkdtemp('nexus-mcp-');
   const configPath = join(tempDir, 'mcp-config.json');
@@ -126,5 +114,5 @@ export async function generateMcpConfig(options?: McpConfigOptions): Promise<Gen
     });
   };
 
-  return { configPath, cleanup, allowedTools: tools };
+  return { configPath, cleanup };
 }
