@@ -71,7 +71,7 @@ export function installedCliIsBroken(cli: CliCheckResult): boolean {
 }
 
 /** An installed, broken CLI whose slot the gateway serves (#6782). */
-export interface GatewayCoveredCli {
+interface GatewayCoveredCli {
   readonly cli: CliCheckResult['name'];
   /** The gateway model serving the slot. */
   readonly model: string;
