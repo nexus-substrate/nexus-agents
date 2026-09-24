@@ -6,7 +6,9 @@
  * failed-CI logs:
  *
  * 1. **GitHub status page** — `https://www.githubstatus.com/api/v2/components.json`
- *    reports per-component health. The `GitHub Actions` component flips to
+ *    reports per-component health. The Actions component (matched by its
+ *    stable id, then by the exact name `Actions` or the older `GitHub Actions`
+ *    — #6772) flips to
  *    `degraded_performance` / `partial_outage` / `major_outage` during the
  *    kind of incident #3076 describes.
  * 2. **Recent-runs activity window** — query the configured repo's
@@ -98,7 +100,75 @@ function mapStatusPageStatus(raw: string): CiHealthStatus {
   return 'unknown';
 }
 
-/** Fetch GitHub's component status and extract the `GitHub Actions` row. */
+/**
+ * Stable statuspage.io id of the Actions component on githubstatus.com
+ * (#6772). Ids survive renames; names do not — the component was once named
+ * `GitHub Actions` and is now `Actions`.
+ */
+const ACTIONS_COMPONENT_ID = 'br0l2tvcx85d';
+/** Exact names the Actions component has carried, current first. Never substring-matched. */
+const ACTIONS_COMPONENT_NAMES: readonly string[] = ['Actions', 'GitHub Actions'];
+
+interface StatusPageComponent {
+  readonly id?: string;
+  readonly name?: string;
+  readonly status?: string;
+}
+
+/** Find the Actions component: by stable id first, then by an exact known name. */
+function findActionsComponent(
+  components: readonly StatusPageComponent[]
+): StatusPageComponent | undefined {
+  return (
+    components.find((c) => c.id === ACTIONS_COMPONENT_ID) ??
+    components.find((c) => c.name !== undefined && ACTIONS_COMPONENT_NAMES.includes(c.name))
+  );
+}
+
+/** Evidence for a feed that does not contain the Actions component — names what it did contain. */
+function componentNotFoundEvidence(components: readonly StatusPageComponent[]): string {
+  const names = components.map((c) => c.name ?? '(unnamed)').join(', ');
+  return (
+    `Actions component not found in status feed (looked for id ${ACTIONS_COMPONENT_ID} or ` +
+    `name ${ACTIONS_COMPONENT_NAMES.map((n) => `'${n}'`).join(' / ')}); ` +
+    `feed listed ${String(components.length)} components: ${names}`
+  );
+}
+
+/** Map a parsed components payload onto the status-page signal. */
+function signalFromComponents(payload: {
+  components?: readonly StatusPageComponent[];
+}): CiHealthSignal {
+  if (!Array.isArray(payload.components)) {
+    return {
+      source: 'github-status',
+      status: 'unknown',
+      evidence: 'status feed response has no components array',
+    };
+  }
+  const actions = findActionsComponent(payload.components);
+  if (actions === undefined) {
+    return {
+      source: 'github-status',
+      status: 'unknown',
+      evidence: componentNotFoundEvidence(payload.components),
+    };
+  }
+  if (actions.status === undefined) {
+    return {
+      source: 'github-status',
+      status: 'unknown',
+      evidence: `Actions component '${actions.name ?? ACTIONS_COMPONENT_ID}' is in the status feed but has no status`,
+    };
+  }
+  return {
+    source: 'github-status',
+    status: mapStatusPageStatus(actions.status),
+    evidence: `Actions component reports: ${actions.status}`,
+  };
+}
+
+/** Fetch GitHub's component status and extract the Actions row. */
 async function checkGithubStatus(logger: ILogger): Promise<CiHealthSignal> {
   try {
     const res = await fetch(STATUS_PAGE_URL, {
@@ -112,22 +182,8 @@ async function checkGithubStatus(logger: ILogger): Promise<CiHealthSignal> {
         evidence: `status page returned HTTP ${String(res.status)}`,
       };
     }
-    const payload = (await res.json()) as {
-      components?: Array<{ name?: string; status?: string }>;
-    };
-    const actions = payload.components?.find((c) => c.name === 'GitHub Actions');
-    if (actions?.status === undefined) {
-      return {
-        source: 'github-status',
-        status: 'unknown',
-        evidence: 'GitHub Actions component not found in status page response',
-      };
-    }
-    return {
-      source: 'github-status',
-      status: mapStatusPageStatus(actions.status),
-      evidence: `GitHub Actions component reports: ${actions.status}`,
-    };
+    const payload = (await res.json()) as { components?: readonly StatusPageComponent[] };
+    return signalFromComponents(payload);
   } catch (err) {
     logger.warn('Status page fetch failed', {
       error: err instanceof Error ? err.message : String(err),
