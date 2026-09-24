@@ -9,7 +9,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { resolve, normalize, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   ISandboxExecutor,
@@ -25,6 +25,7 @@ import { DEFAULT_RESOURCE_LIMITS } from './sandbox-types.js';
 import { validateCommand, validateArgs } from './command-allowlist.js';
 import { sanitizeEnvironment, createMinimalEnv } from './env-sanitizer.js';
 import { STANDARD_POLICY } from './default-policies.js';
+import { resolveInsideRoot } from '../safe-path.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'sandbox-executor' });
@@ -113,8 +114,15 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     const execEnv = this.prepareEnvironment(options, policy);
     const limits = { ...DEFAULT_RESOURCE_LIMITS, ...policy.limits, ...options.limits };
 
+    // Run in the canonical directory the policy check approved, not a path
+    // that re-follows a symlink. Warn-only mode keeps the caller's path.
+    const execCwd =
+      options.cwd === undefined
+        ? undefined
+        : (this.resolveAllowedCwd(options.cwd, policy) ?? options.cwd);
+
     try {
-      const result = await this.executeWithLimits(command, args, options.cwd, execEnv, limits);
+      const result = await this.executeWithLimits(command, args, execCwd, execEnv, limits);
       return this.createSuccessResult(command, args, result, evaluation, startTime);
     } catch (error: unknown) {
       return this.createErrorResult(command, args, error, evaluation, startTime);
@@ -165,22 +173,27 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
   }
 
   /**
+   * Returns the canonical `cwd` when a non-`none` path rule contains it after
+   * following symlinks, else `null`. No rules means no allowed directory.
+   */
+  private resolveAllowedCwd(cwd: string, policy: SandboxPolicy): string | null {
+    // A relative cwd is relative to the process cwd, not to each rule's root.
+    const absolute = resolve(cwd);
+    for (const rule of policy.pathRules) {
+      if (rule.access === 'none') continue;
+      const contained = resolveInsideRoot(absolute, rule.path);
+      if (contained !== null) return contained;
+    }
+    return null;
+  }
+
+  /**
    * Validates working directory against policy.
    */
   private validateCwd(cwd: string | undefined, policy: SandboxPolicy): PolicyViolation | null {
     if (cwd === undefined) return null;
 
-    const normalizedCwd = normalize(resolve(cwd));
-
-    // Check if cwd is allowed by path rules
-    const isAllowed = policy.pathRules.some((rule) => {
-      const normalizedRule = normalize(resolve(rule.path));
-      const isUnderRule =
-        normalizedCwd === normalizedRule || normalizedCwd.startsWith(normalizedRule + sep);
-      return isUnderRule && rule.access !== 'none';
-    });
-
-    if (!isAllowed) {
+    if (this.resolveAllowedCwd(cwd, policy) === null) {
       return {
         type: 'path',
         denied: cwd,

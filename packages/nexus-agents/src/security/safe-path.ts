@@ -41,7 +41,10 @@ function canonicalizeRoot(root: string): string {
   try {
     return realpathFn(resolved);
   } catch {
-    return resolved;
+    // A root that does not exist yet (e.g. a runs dir not created) is
+    // canonicalized through its nearest existing ancestor, the same way the
+    // candidate is, so a symlinked ancestor does not put children "outside".
+    return resolvePathWithSymlinks(resolved) ?? resolved;
   }
 }
 

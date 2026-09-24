@@ -6,10 +6,11 @@
  * (Source: Issue #300)
  */
 
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import type { ZodError } from 'zod';
 import type { Result } from '../core/index.js';
 import { ok, err, SecurityError } from '../core/index.js';
+import { resolveInsideRoot } from '../security/safe-path.js';
 import {
   VALID_EXPERT_TIERS,
   VALID_EXPERT_DOMAINS,
@@ -32,22 +33,21 @@ export interface CustomExpertError {
 
 /**
  * Validates that a file path is within the allowed root directory.
- * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd), following
+ * symlinks: a link inside the root whose target is outside it is refused.
  * @param userPath - The user-provided file path
  * @param allowedRoot - The root directory that paths must be within
- * @returns Result with validated absolute path or SecurityError
+ * @returns Result with the canonical absolute path or SecurityError
  */
 export function validateConfigPath(
   userPath: string,
   allowedRoot: string
 ): Result<string, SecurityError> {
-  const resolvedRoot = resolve(allowedRoot);
-  const resolved = resolve(allowedRoot, userPath);
-
-  if (!resolved.startsWith(resolvedRoot + sep) && resolved !== resolvedRoot) {
+  const resolved = resolveInsideRoot(resolve(allowedRoot, userPath), allowedRoot);
+  if (resolved === null) {
     return err(
       new SecurityError('Path traversal detected: config path escapes allowed root directory', {
-        context: { userPath, allowedRoot: resolvedRoot },
+        context: { userPath, allowedRoot: resolve(allowedRoot) },
       })
     );
   }

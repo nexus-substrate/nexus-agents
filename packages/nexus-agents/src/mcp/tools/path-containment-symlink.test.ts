@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLogger } from '../../core/index.js';
 import {
@@ -21,6 +22,8 @@ import { _testing as searchUsages } from './search-usages-tool.js';
 import { _testing as searchCodebase } from './search-codebase-tool.js';
 import { _testing as pipelineTool } from './pipeline-tool.js';
 import { _testing as securityScan } from './security-scan.js';
+import { queryTraceFromDisk } from './query-trace-tool.js';
+import { validateWorkflowPath } from './run-workflow-helpers.js';
 
 function makeCtx(toolName: string): Parameters<typeof extractSymbols.extractSymbolsHandler>[1] {
   return {
@@ -148,6 +151,36 @@ describe('MCP path guards follow symlinks', () => {
 
     it('accepts an inside symlink', () => {
       expect(() => securityScan.validateTargetPath(fx.linkIn)).not.toThrow();
+    });
+  });
+
+  describe('query_trace runs dir', () => {
+    const TRACE_LINE = JSON.stringify({ timestamp: 1, runId: 'r', eventType: 'model.called' });
+
+    beforeEach(() => {
+      writeFileSync(join(fx.outsideDir, 'trace.jsonl'), TRACE_LINE + '\n');
+      writeFileSync(join(fx.insideDir, 'real', 'trace.jsonl'), TRACE_LINE + '\n');
+    });
+
+    it('rejects a run dir that is a symlink escape', async () => {
+      const result = await queryTraceFromDisk({ runId: 'escape' }, fx.insideDir);
+      expect(result.totalEvents).toBe(0);
+    });
+
+    it('accepts a run dir that is an inside symlink', async () => {
+      const result = await queryTraceFromDisk({ runId: 'alias' }, fx.insideDir);
+      expect(result.totalEvents).toBe(1);
+    });
+  });
+
+  describe('run_workflow template path', () => {
+    it('rejects a symlink escape', () => {
+      expect(validateWorkflowPath(join(fx.linkOut, 'plan.md'), [fx.insideDir]).ok).toBe(false);
+    });
+
+    it('accepts an inside symlink and returns the canonical path', () => {
+      const r = validateWorkflowPath(join(fx.linkIn, 'plan.md'), [fx.insideDir]);
+      expect(r.ok && r.value).toBe(join(fx.insideDir, 'real', 'plan.md'));
     });
   });
 });
