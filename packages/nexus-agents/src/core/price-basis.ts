@@ -34,7 +34,8 @@ import { z } from 'zod';
 /**
  * The vocabulary itself. Members:
  *
- * - `'list'` — a price WAS resolved from the registry chain. Read it as "an
+ * - `'list'` — a price WAS resolved, from the registry chain or from a
+ *   `NEXUS_GATEWAY_COST` declaration (#6660). Read it as "an
  *   assumed published rate", not a guaranteed vendor list rate: see
  *   {@link PriceBasis} for the cases where the resolved number is something
  *   else and is still reported this way.
@@ -65,7 +66,22 @@ export const PriceBasisSchema = z.enum(['list', 'unknown']);
  *     `mergeMatchedWithDerived`) grants a decorated gateway id the pricing of a
  *     DIFFERENT canonical entry it matched. That rate is a real vendor rate for
  *     some other model, not necessarily for the id being priced.
- *  3. In the reverse direction, `'unknown'` is not a claim that no price
+ *  3. A gateway rate the operator DECLARED in `NEXUS_GATEWAY_COST` (#6660).
+ *     A call a gateway arm served is priced by `gatewayCostDetail`
+ *     (`cli-adapters/budget-arm-cost.ts`), not by the registry, and the basis
+ *     is then read off `priced` alone (`priceBasisOf`), so:
+ *       - `priced:<in>,<out>` → `'list'`, `costUsd` = the declared flat rate;
+ *       - `free` / `local`    → `'list'`, `costUsd` = a measured `0`;
+ *       - bare `priced`       → the registry rate of the model that answered:
+ *         `'list'` when the registry prices it, `'unknown'` when not;
+ *       - no declaration for the arm (unset, invalid, no entry) → `'unknown'`,
+ *         no `costUsd`.
+ *     The first two are an operator's statement, not a published rate, and
+ *     carry the `'list'` label anyway. There is no `'declared'` member because
+ *     adding one widens a union exposed on published types (`TaskOutcome`,
+ *     `DecisionCostSummary`, `VoterCostBreakdown`), which the api-surface gate
+ *     treats as BREAKING for readers; the member waits for a major (#6664).
+ *  4. In the reverse direction, `'unknown'` is not a claim that no price
  *     exists — see the loader caveat on {@link PriceBasisSchema}.
  *
  * There is deliberately no `'contract'` member. The gap is NOT that an operator

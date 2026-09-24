@@ -34,6 +34,15 @@ export interface PanelDiversity {
   readonly distinctFamilies: number;
   /** Answering seats whose resolved model names no recognised vendor (#6606). */
   readonly unclassifiedSeats: number;
+  /**
+   * Answering seats whose model never resolved — absent, empty, or the
+   * `pending-detection` placeholder (#6660). They sit in none of the other
+   * counts, so without this one "1 distinct, 1 family" could describe a panel
+   * where six of seven answering seats named no model at all.
+   * {@link panelDiversityOf} always sets it, explicit zero included; optional
+   * in the type only so the published shape widens additively.
+   */
+  readonly unresolvedSeats?: number;
   /** Seats that answered on a CLI or model other than the one assigned. */
   readonly fallbacks: number;
 }
@@ -80,15 +89,15 @@ export function seatFallbacks(votes: readonly AgentVoteResult[]): SeatFallbackDe
  * over — which is the named empty case, not a claim of diversity.
  */
 export function panelDiversityOf(votes: readonly AgentVoteResult[]): PanelDiversity {
-  const models = answeringSeats(votes)
-    .map(resolvedModel)
-    .filter((m): m is string => m !== undefined);
+  const resolved = answeringSeats(votes).map(resolvedModel);
+  const models = resolved.filter((m): m is string => m !== undefined);
   const families = models.map(vendorFamilyOf);
   const classified = families.filter((f) => f !== 'unknown');
   return {
     distinctModels: countDistinctModels(models),
     distinctFamilies: new Set(classified).size,
     unclassifiedSeats: families.length - classified.length,
+    unresolvedSeats: resolved.length - models.length,
     fallbacks: seatFallbacks(votes).length,
   };
 }
