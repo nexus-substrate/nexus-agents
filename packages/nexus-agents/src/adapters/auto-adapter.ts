@@ -16,7 +16,12 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
-import { createGatewaySlotAdapter, resolveGatewaySlot } from './gateway-family-slots.js';
+import {
+  createGatewaySlotAdapter,
+  hasGatewaySlotCatalog,
+  resolveGatewayDefault,
+  resolveGatewaySlot,
+} from './gateway-family-slots.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
 import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
@@ -190,6 +195,14 @@ async function tryPreferredCli(
 function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSelection | undefined {
   const preferredCli = config.preferredCli;
   if (preferredCli === undefined || isCliDisabled(preferredCli)) return undefined;
+  if (preferredCli === 'opencode' && hasGatewaySlotCatalog()) {
+    // #6626: opencode is multi-vendor, not a family. Serving it with the
+    // gateway default would record the default's outcomes under the opencode
+    // slot, and its registry ids (`opencode-custom-opus`) are not gateway ids.
+    throw new Error(
+      "The 'opencode' slot is unavailable: its CLI is not available, and in gateway mode it is not substituted (opencode has no model family; the unpinned default serves any-model requests)"
+    );
+  }
   const slot = resolveGatewaySlot(preferredCli, process.env, logger);
   if (slot.kind === 'inactive') return undefined;
   if (slot.kind === 'unavailable') {
@@ -293,7 +306,9 @@ function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelec
 function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
   const { baseUrl: customBaseUrl, apiKey: customKey } = readGatewayEnv(process.env, logger);
   if (customKey === undefined || customBaseUrl === undefined) return null;
-  const customModelId = process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL;
+  const choice = customModelChoice(logger);
+  if (choice === null) return null;
+  const { modelId: customModelId, note } = choice;
   const host = hostnameOf(customBaseUrl);
   logger.info('Using custom-openai SDK adapter', { model: customModelId, host });
   return {
@@ -310,8 +325,25 @@ function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
     ),
     source: 'api',
     name: 'custom-openai',
-    reason: `Using custom OpenAI-compatible gateway at ${host} (model: ${customModelId})`,
+    reason: `Using custom OpenAI-compatible gateway at ${host} (model: ${customModelId}${note})`,
   };
+}
+
+/**
+ * The model the custom-openai adapter sends. With no gateway catalogue it is
+ * `NEXUS_CUSTOM_MODEL` or the built-in default, exactly as before #6626. In
+ * gateway mode it is a catalogue model (`resolveGatewayDefault`), never an
+ * unvalidated id; null when the catalogue holds no chat model.
+ */
+function customModelChoice(logger: ILogger): { modelId: string; note: string } | null {
+  const d = resolveGatewayDefault(process.env, logger);
+  if (d.kind === 'inactive') {
+    return { modelId: process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL, note: '' };
+  }
+  if (d.kind === 'resolved')
+    return { modelId: d.adapter.modelId, note: `; gateway default by ${d.via}` };
+  logger.warn('Gateway catalogue has no chat model; the custom-openai default is unavailable');
+  return null;
 }
 
 /**

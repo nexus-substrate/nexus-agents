@@ -1,5 +1,34 @@
 # nexus-agents
 
+## 8.101.0
+
+### Minor Changes
+
+- [#6647](https://github.com/nexus-substrate/nexus-agents/pull/6647) [`4e564cf`](https://github.com/nexus-substrate/nexus-agents/commit/4e564cf4ae4b88c475916eea8725a0050ec7e642) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents doctor` now measures a configured OpenAI-compatible gateway (`NEXUS_OPENAI_COMPAT_URL`/`_KEY`) instead of trusting that its env vars are set, and its verdict counts the gateway.
+
+  - **A gateway-only host passes.** Before, doctor counted only `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GOOGLE_AI_API_KEY` as auth and required every CLI to be installed, so a host served entirely by a working gateway always exited 1. With a gateway whose `/models` call succeeds, a CLI that is not installed no longer fails the verdict (its slot is served by a gateway model of its family). An installed CLI still has to be authenticated and on a supported version.
+  - **A broken gateway fails, naming the host.** A gateway that is unreachable, rejects the key, lists no chat model, or is refused by the private-address guard exits 1, and the summary names it (`gateway <host>`). The "Voter transport: In-process gateway" line now reports that measurement (the host and chat-model count, or `FAILED` with the reason) rather than the presence of the env vars. Doctor makes one `GET /models` call when a gateway is configured and none when it is not.
+  - **New `doctor --gateway`** prints the gateway section: the model count before and after the chat filter (and `NEXUS_OPENAI_COMPAT_MODELS`, when set), a per-family census (anthropic, openai, google, unknown), the model each of the `claude`/`codex`/`gemini` slots resolves to (or `unavailable`), the private-address guard result, and the proxy in use (direct, the proxy host, exempted by `NO_PROXY`, or an ignored invalid proxy variable).
+  - **New `doctor --probe`** (implies `--gateway`) sends one short completion per family to the model its slot resolves to. It spends gateway tokens and is off unless passed; a failed probe fails the verdict.
+  - The key, `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS` values and proxy credentials are never printed; error text from the gateway is redacted of the key and header values.
+  - **`list_available_models`** reports the gateway's discovered chat catalogue as a `gateway` transport in both plan and api billing mode. Before, plan mode did not list it, and api mode listed the `api:custom-openai` arm's catalogue under `opencode`.
+
+- [#6648](https://github.com/nexus-substrate/nexus-agents/pull/6648) [`94ca52b`](https://github.com/nexus-substrate/nexus-agents/commit/94ca52b0436cf936f7473ab29155c7293bac1fbc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Outcome rows written by the dev pipeline stages, `orchestrate` workers and `consensus_vote` seats now record the model that served the call and what it cost. Before, these rows held only a marker in `model` (`pipeline`, `worker-<role>`, `consensus`), and the served model was visible only in the usage log.
+
+  - **New optional `TaskOutcome` fields.** `servedModel` is the model id the adapter reported. `costUsd` is present only when a price was found. `priceBasis` is `'list'` when a rate was found and `'unknown'` when a lookup found none. An absent `costUsd` means the cost is unknown, never $0. When the adapter reported no token usage, no lookup is made and `priceBasis` is absent too.
+  - **Priced like the usage log.** A call a gateway served is priced by that gateway's `NEXUS_GATEWAY_COST` declaration, and an undeclared gateway is recorded as unpriced. Every other call is priced at the registry rate for the served model. The `consensus_vote` cost rollup now makes this choice through the same helper.
+  - **`model` is unchanged.** The weather report and the `orchestrate` learnings group rows by these markers, so they stay as they are. Distiller eligibility, LinUCB warm start and the weather report read the same fields as before. Rows written without a served model are unchanged byte for byte.
+  - **`CliResponse.gatewayArm` and `ExpertBridgeResult.gatewayArm`** (new, optional) name the gateway arm that served a response, when a gateway model answered it.
+
+### Patch Changes
+
+- [#6646](https://github.com/nexus-substrate/nexus-agents/pull/6646) [`c4cc7b1`](https://github.com/nexus-substrate/nexus-agents/commit/c4cc7b1f976cab95120e10420cf7186e5bf5940c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Model equivalence: distinguish model size and modality variants in canonicalModelKey ([#6616](https://github.com/nexus-substrate/nexus-agents/issues/6616)).
+
+  - Fold size and modality quirks (`small`, `image`) into `canonicalModelKey` so variants with distinct weights/modalities (e.g. `gpt-4o-mini` vs `gpt-4o`, `gemini-2.5-flash-image` vs `gemini-2.5-flash`) produce distinct identity keys.
+  - Detect `image`/`imagen` quirk during model id parsing.
+  - Support dotted minor versions directly following family roots (e.g. `gpt-4.1` extracts version `1` like `gpt-4-1`).
+  - Ensures `assessPanelIndependence` correctly reports panels with model variants as diverse rather than collapsed.
+
 ## 8.100.0
 
 ### Minor Changes

@@ -7,6 +7,7 @@ import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
 import {
   _resetGatewaySlotCatalog,
   createGatewaySlotAdapter,
+  resolveGatewayDefault,
   resolveGatewaySlot,
   setGatewaySlotCatalog,
 } from './gateway-family-slots.js';
@@ -149,5 +150,83 @@ describe('createGatewaySlotAdapter (#6604)', () => {
   it('carries no gateway arm for a model that has none', () => {
     const view = createGatewaySlotAdapter('codex', fakeGatewayModel('gpt-5.5'));
     expect('gatewayArm' in view).toBe(false);
+  });
+});
+
+describe('resolveGatewayDefault (#6626)', () => {
+  beforeEach(() => {
+    _resetGatewaySlotCatalog();
+  });
+
+  const defaultOf = (env: NodeJS.ProcessEnv = {}, logger = silentLogger()): string => {
+    const r = resolveGatewayDefault(env, logger);
+    return r.kind === 'resolved' ? r.adapter.modelId : r.kind;
+  };
+
+  it('is inactive with no gateway catalogue, so the caller keeps NEXUS_CUSTOM_MODEL', () => {
+    expect(resolveGatewayDefault({ NEXUS_CUSTOM_MODEL: 'x' }, silentLogger())).toEqual({
+      kind: 'inactive',
+    });
+  });
+
+  it('prefers the anthropic flagship when every family has one', () => {
+    setGatewaySlotCatalog(
+      ['gpt-5.5', 'gemini-2.5-pro', 'claude-sonnet-4-6', 'claude-opus-4-6'].map((id) =>
+        fakeGatewayModel(id)
+      )
+    );
+    expect(defaultOf()).toBe('claude-opus-4-6');
+  });
+
+  it('takes a flagship of a later family over a mid-tier model of an earlier one', () => {
+    setGatewaySlotCatalog(
+      ['claude-sonnet-4-6', 'gemini-2.5-flash', 'gpt-5.5'].map((id) => fakeGatewayModel(id))
+    );
+    expect(defaultOf()).toBe('gpt-5.5');
+  });
+
+  it('breaks a tier tie by family order: openai before google', () => {
+    setGatewaySlotCatalog(['gemini-2.5-pro', 'gpt-5.5'].map((id) => fakeGatewayModel(id)));
+    expect(defaultOf()).toBe('gpt-5.5');
+  });
+
+  it('falls back to the ranked unclassified models only when no family model exists', () => {
+    setGatewaySlotCatalog(['corp-model-y-mini', 'corp-model-x'].map((id) => fakeGatewayModel(id)));
+    expect(defaultOf()).toBe('corp-model-x');
+  });
+
+  it('is unavailable when the catalogue holds no chat model', () => {
+    setGatewaySlotCatalog(['gpt-realtime', 'gpt-image-1'].map((id) => fakeGatewayModel(id)));
+    expect(defaultOf()).toBe('unavailable');
+  });
+
+  it('honours NEXUS_CUSTOM_MODEL when it names a catalogue model, without warning', () => {
+    setGatewaySlotCatalog(['claude-opus-4-6', 'gpt-5.5'].map((id) => fakeGatewayModel(id)));
+    const logger = silentLogger();
+    const r = resolveGatewayDefault({ NEXUS_CUSTOM_MODEL: 'gpt-5.5' }, logger);
+    expect(r).toMatchObject({ kind: 'resolved', via: 'override' });
+    expect(r.kind === 'resolved' && r.adapter.modelId).toBe('gpt-5.5');
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns once and uses the ranking when NEXUS_CUSTOM_MODEL is not in the catalogue', () => {
+    setGatewaySlotCatalog(['claude-opus-4-6', 'gpt-5.5'].map((id) => fakeGatewayModel(id)));
+    const logger = silentLogger();
+    const env = { NEXUS_CUSTOM_MODEL: 'gpt-9-imaginary' };
+    const first = resolveGatewayDefault(env, logger);
+    resolveGatewayDefault(env, logger);
+    expect(first).toMatchObject({ kind: 'resolved', via: 'preference' });
+    expect(first.kind === 'resolved' && first.adapter.modelId).toBe('claude-opus-4-6');
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    const message = String(logger.warn.mock.calls[0]?.[0]);
+    expect(message).toContain('NEXUS_CUSTOM_MODEL');
+    expect(message).toContain('not in the gateway catalogue');
+  });
+
+  it('treats a blank NEXUS_CUSTOM_MODEL as unset: no warning', () => {
+    setGatewaySlotCatalog([fakeGatewayModel('gpt-5.5')]);
+    const logger = silentLogger();
+    expect(defaultOf({ NEXUS_CUSTOM_MODEL: '  ' }, logger)).toBe('gpt-5.5');
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

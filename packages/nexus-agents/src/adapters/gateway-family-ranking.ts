@@ -122,6 +122,14 @@ function parseId(id: string): Pick<RankKey, 'generation' | 'tier' | 'date' | 'la
   return { generation, tier, date, latest };
 }
 
+/**
+ * The tier an id marks, larger is bigger: 3 flagship, 2 mid, 1 small. The
+ * cross-family default (#6626) compares families' top models by it.
+ */
+export function modelTierOf(id: string): number {
+  return parseId(id).tier;
+}
+
 /** Registry quality under the id or its dot/dash respelling; undefined when unscored. */
 function registryQuality(id: string): number | undefined {
   const registry = getDefaultRegistry();
