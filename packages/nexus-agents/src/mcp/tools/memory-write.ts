@@ -29,7 +29,7 @@ import { getToolAnnotations } from '../tool-annotations.js';
 import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
 import { TrustTierSchema } from '../../security/trust-types.js';
 import type { TrustTier } from '../../security/trust-types.js';
-import { leastTrustedTier } from '../../security/content-trust-tier.js';
+import { resolveContentTrustTier } from '../../security/content-trust-tier.js';
 import { measuredTrustTier } from '../middleware/request-context.js';
 import { memoryTrustTierTag } from '../../context/memory-trust-tier.js';
 
@@ -38,8 +38,9 @@ import { memoryTrustTierTag } from '../../context/memory-trust-tier.js';
 // ============================================================================
 
 const SOURCE_TRUST_TIER_DESCRIPTION =
-  "Trust tier ('1'-'4') of the content's original source when it did not come from the caller, " +
-  "e.g. '3' for external web content. The stored tier is the least-trusted of this and the caller's tier.";
+  "Trust tier ('1'-'4') of where the content came from: '1' only for content the caller authored " +
+  "or took from repo files, '3' for external web or issue text. Omitted means '3'. The stored tier " +
+  "is the least-trusted of this and the caller's measured tier, so it can lower trust, never raise it.";
 
 /**
  * Input schema for memory_write tool.
@@ -304,12 +305,17 @@ function redactMemoryInput(input: MemoryWriteInput): MemoryWriteInput {
 /**
  * Redact, resolve the content tier, then write.
  *
- * The stored tier is the least-trusted of the caller's MEASURED tier and
- * `input.sourceTrustTier`. `callerTrustTier` is `undefined` when the request
- * context holds no measured caller information (see `measuredTrustTier`):
- * recording that fallback would label every entry Tier 3 as if measured. With
- * neither tier known the entry is stored unlabelled. A stdio server measures
- * its caller at Tier 1 (#6795), so an undeclared entry is then labelled Tier 1.
+ * With a MEASURED caller, the stored tier is the least-trusted of the caller
+ * tier and `input.sourceTrustTier`, and an omitted `sourceTrustTier` means
+ * Tier 3 (#6795): content of unknown provenance is untrusted however trusted
+ * the caller, so an undeclared stdio write is stored as Tier 3, and a
+ * declaration can lower the tier but never raise it above the caller.
+ *
+ * `callerTrustTier` is `undefined` when the request context holds no measured
+ * caller information (see `measuredTrustTier`). Then nothing is measured to
+ * apply a default against: the entry keeps the declared tier if there is one,
+ * and is stored unlabelled otherwise. Recording a fallback there would label
+ * every entry as if measured.
  */
 async function executeMemoryWrite(
   rawInput: MemoryWriteInput,
@@ -317,9 +323,10 @@ async function executeMemoryWrite(
   callerTrustTier: TrustTier | undefined
 ): Promise<MemoryWriteResponse> {
   const input = redactMemoryInput(rawInput);
-  const trustTier = leastTrustedTier(
-    [callerTrustTier, input.sourceTrustTier].filter((t): t is TrustTier => t !== undefined)
-  );
+  const trustTier =
+    callerTrustTier === undefined
+      ? input.sourceTrustTier
+      : resolveContentTrustTier(callerTrustTier, [], input.sourceTrustTier);
   // Session-level dedup: skip if the same key+content reached this backend
   if (isDuplicateWrite(input)) {
     logger.debug('Skipping duplicate memory write', { key: input.key, backend: input.backend });
