@@ -305,6 +305,17 @@ export interface ParsedCliArgs {
     minSampleSize?: string;
     'fitness-floor'?: string;
     fitnessFloor?: string;
+    // session command options (#6693)
+    limit?: string;
+    markdown?: boolean;
+    // usage command options (#6693)
+    since?: string;
+    until?: string;
+    // validation command options (#6693)
+    'task-type'?: string;
+    taskType?: string;
+    'min-sample'?: string;
+    minSample?: string;
   };
   positionals: string[];
 }
@@ -626,6 +637,28 @@ export const PARSE_ARGS_CONFIG = {
     unsound: {
       type: 'boolean' as const,
       default: false,
+    },
+    // session command options (#6693)
+    limit: {
+      type: 'string' as const,
+    },
+    markdown: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // usage command options (#6693)
+    since: {
+      type: 'string' as const,
+    },
+    until: {
+      type: 'string' as const,
+    },
+    // validation command options (#6693)
+    'task-type': {
+      type: 'string' as const,
+    },
+    'min-sample': {
+      type: 'string' as const,
     },
   },
   allowPositionals: true,

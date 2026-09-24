@@ -136,10 +136,12 @@ export function validationDashboardCommand(options: ValidationDashboardOptions =
   }
 }
 
-/** Parsed flags forwarded from the global CLI parser (#6678). */
+/** Parsed flags forwarded from the global CLI parser (#6678, #6693). */
 interface ValidationParsedFlags {
   readonly period?: string | undefined;
   readonly model?: string | undefined;
+  readonly taskType?: string | undefined;
+  readonly minSample?: string | undefined;
 }
 
 /** Parse --period=X from positionals or forwarded flag. */
@@ -156,22 +158,22 @@ function parseModels(positionals: readonly string[], flagModel?: string): string
   return models !== undefined && models.length > 0 ? models : undefined;
 }
 
-/** Parse --task-type=X,Y from positionals. */
-function parseTaskTypes(positionals: readonly string[]): string[] | undefined {
-  const arg = positionals.find((p) => p.startsWith('--task-type='))?.split('=')[1];
-  const types = arg?.split(',').filter((t) => t.length > 0);
+/** Parse --task-type=X,Y from positionals or forwarded flag (#6693). */
+function parseTaskTypes(positionals: readonly string[], flagTaskType?: string): string[] | undefined {
+  const raw = flagTaskType ?? positionals.find((p) => p.startsWith('--task-type='))?.split('=')[1];
+  const types = raw?.split(',').filter((t) => t.length > 0);
   return types !== undefined && types.length > 0 ? types : undefined;
 }
 
-/** Parse --min-sample=N from positionals. */
-function parseMinSample(positionals: readonly string[]): number | undefined {
-  const arg = positionals.find((p) => p.startsWith('--min-sample='))?.split('=')[1];
-  const value = arg !== undefined ? parseInt(arg, 10) : undefined;
+/** Parse --min-sample=N from positionals or forwarded flag (#6693). */
+function parseMinSample(positionals: readonly string[], flagMinSample?: string): number | undefined {
+  const raw = flagMinSample ?? positionals.find((p) => p.startsWith('--min-sample='))?.split('=')[1];
+  const value = raw !== undefined ? parseInt(raw, 10) : undefined;
   return Number.isFinite(value) ? value : undefined;
 }
 
 /**
- * Parses CLI positionals and forwarded flags to extract validation options (#6678).
+ * Parses CLI positionals and forwarded flags to extract validation options (#6678, #6693).
  */
 export function parseValidationArgs(
   positionals: readonly string[],
@@ -185,8 +187,8 @@ export function parseValidationArgs(
   };
   const period = parsePeriod(positionals, flags?.period);
   const models = parseModels(positionals, flags?.model);
-  const taskTypes = parseTaskTypes(positionals);
-  const minSampleSize = parseMinSample(positionals);
+  const taskTypes = parseTaskTypes(positionals, flags?.taskType);
+  const minSampleSize = parseMinSample(positionals, flags?.minSample);
 
   if (period !== undefined) options['period'] = period;
   if (models !== undefined) options['models'] = models;
