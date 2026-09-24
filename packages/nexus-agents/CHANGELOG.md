@@ -1,5 +1,34 @@
 # nexus-agents
 
+## 8.105.0
+
+### Minor Changes
+
+- [#6723](https://github.com/nexus-substrate/nexus-agents/pull/6723) [`842c6c0`](https://github.com/nexus-substrate/nexus-agents/commit/842c6c0d03aaab8b6cf444be92deda8846683026) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `NEXUS_DISABLED_CLIS` now disables only a CLI's **transport**, not its slot ([#6720](https://github.com/nexus-substrate/nexus-agents/issues/6720)). This changes behaviour on hosts with an OpenAI-compatible gateway (`NEXUS_OPENAI_COMPAT_URL`).
+
+  Before this release, a disabled CLI took its whole family slot with it on a gateway host. `NEXUS_DISABLED_CLIS=claude` left the router with no `claude` arm, even when the gateway listed Anthropic models. A task pinned to `claude` fell through to another installed CLI, and `doctor --gateway` still reported the slot as served by the gateway.
+
+  A disabled CLI now counts as "CLI not available", the same as a CLI that is not installed:
+
+  - On a gateway host, the family's gateway model serves the slot. This covers the router arm, a pinned slot, the expert fallback chain and `delegate_to_model` scoring. If the gateway has no model of that family, the slot has no arm. A pinned call fails as "unavailable". It does not substitute another family, and a same-family API key (e.g. `OPENAI_API_KEY` for a disabled `codex`) does not serve it either, so disabling a CLI never starts new API spend.
+  - Without a gateway, nothing changes: the disabled CLI has no arm and gets no fallback slot or recommendation.
+  - The disabled binary is never spawned or probed. `doctor` still skips it, and `doctor --live` skips its installed and auth checks and its auth probe. A gateway-served slot is reported as `served by gateway model <id>`, not as that CLI's readiness.
+  - Gateway voter panels were already dealt from the gateway catalogue, and still are. A disabled CLI's family is still seated there. The CLI voter path still excludes the disabled CLI.
+
+  `doctor --gateway` now prints one line per family slot, saying what serves it: `CLI`, the gateway model, or `unavailable`, with the reason. It uses the same decision and the same CLI admission predicate the router uses. Plain `doctor` now also warns about a disabled CLI whose slot the gateway cannot serve, for example `claude slot unavailable: disabled by NEXUS_DISABLED_CLIS, and the gateway has no anthropic model`.
+
+  If you used `NEXUS_DISABLED_CLIS` on a gateway host to remove a family entirely, it no longer does that. Instead, set `NEXUS_OPENAI_COMPAT_MODELS` to an allowlist with no model of that family. The slot then has no arm, and voter panels do not seat that family.
+
+## 8.104.10
+
+### Patch Changes
+
+- [#6722](https://github.com/nexus-substrate/nexus-agents/pull/6722) [`51f8040`](https://github.com/nexus-substrate/nexus-agents/commit/51f80404470c19a0c99bc8df9377449b06526119) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Finish migrating path guards to the realpath-aware `resolveInsideRoot` helper.
+
+  - These containment checks now follow symlinks, so a symlink inside the allowed root whose target lies outside it is refused, and an accepted path is used in its canonical form: the `ast-rule-runner` scan directory, `query_trace` trace files (a run directory that resolves outside the runs directory returns no events), `run_workflow` template paths, the `workflow run --input` file, `NEXUS_CONFIG_PATH` for custom experts, `config` import/export file paths, the PolicyFirewall `isPathSafe` allowlist check, and the sandbox executor's working-directory policy. The sandbox resolves the working directory once, during policy evaluation, and runs the command in that canonical directory with `PWD` set to it.
+  - `run_workflow` also accepts template paths inside the MCP client's declared workspace root when no `security.allowedPaths` is configured, so a globally installed server whose working directory is outside the user's repo can load templates from that repo. An explicit `allowedPaths` list is not widened.
+  - `resolveInsideRoot` canonicalizes a root that does not exist yet through its nearest existing ancestor, so a child of a not-yet-created directory under a symlinked ancestor is no longer reported as outside it.
+
 ## 8.104.9
 
 ### Patch Changes

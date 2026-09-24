@@ -21,6 +21,8 @@ export interface VoteOptions {
   readonly timeoutMs: number;
   readonly maxRetries: number;
   readonly allowSimulation: boolean;
+  /** The panel's cancel (#6729), handed to each seat's adapter call. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 export type VoteFn = (
@@ -53,11 +55,10 @@ export interface LaunchVotesInput {
    * Cancellation for in-flight panels (#5393).
    *
    * Checked after each stagger delay, so a cancel stops LAUNCHING the voters
-   * that have not started. Votes already in flight are left to settle — an
-   * adapter call is a subprocess or an HTTP request whose cost is already
-   * incurred, and abandoning it would lose the result without saving the spend.
-   * The win is the remaining panel: cancelling a 7-voter vote after two have
-   * run stops five model calls.
+   * that have not started, and before the cross-CLI fallback. Aborting the
+   * seats already in flight is not done here: the same signal rides in
+   * `voteOptions` to each seat's adapter call (#6729), where it is combined
+   * with the seat's deadline.
    *
    * Absent or un-aborted changes nothing.
    */
@@ -280,7 +281,7 @@ export async function launchVotesWithOverallDeadline(
       const runStartedAt = Date.now();
       const remaining = Math.max(1, overallDeadlineMs - (runStartedAt - startedAt));
       const result = await raceWithDeadline(
-        voteFn(role, proposal, adapter, logger, voteOptions),
+        voteFn(role, proposal, adapter, logger, { ...voteOptions, signal: input.signal }),
         role,
         remaining
       );

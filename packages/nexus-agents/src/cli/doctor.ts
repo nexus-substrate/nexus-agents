@@ -43,6 +43,7 @@ import {
   type RoutedOutcomeCounts,
 } from '../learning/distiller-eligibility.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
+import { isCliAdmitted } from '../cli-adapters/cli-admission.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
@@ -116,6 +117,14 @@ export interface CliCheckResult {
    * login command that fixes nothing.
    */
   readonly authState: 'authenticated' | 'unverified' | 'not-authenticated';
+  /**
+   * Whether the router would route to this CLI: `isCliAdmitted` over the same
+   * health check and auth probe (#6720). `doctor --gateway` reads it to say
+   * whether a gateway slot is served by the CLI or the gateway, so the report
+   * cannot claim the CLI while the router picks the gateway. Not installed is
+   * `false`.
+   */
+  readonly routerAdmits: boolean;
   readonly authMethod?: string;
   readonly capacity?: CapacityStatus;
   readonly error?: string;
@@ -420,6 +429,7 @@ function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
     // a determination nobody made; the auth line is not printed for an
     // uninstalled CLI anyway (#4661).
     authState: 'unverified',
+    routerAdmits: false,
     installed: false,
     version: 'N/A',
     versionStatus: 'unsupported',
@@ -485,6 +495,7 @@ function createHealthyResult(
     versionStatus: health.versionStatus,
     authenticated,
     authState,
+    routerAdmits: isCliAdmitted(health, authProbe),
     ...(authenticated && { authMethod: detectAuthMethod(name) }),
     ...(capacity !== undefined && { capacity }),
   };
@@ -1133,7 +1144,9 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<number
   printDoctorResults(result);
   if (options.gateway === true || options.probe === true) {
     const { formatGatewayReport } = await import('./doctor-gateway-report.js');
-    for (const line of formatGatewayReport(result.gateway)) process.stdout.write(line + '\n');
+    for (const line of formatGatewayReport(result.gateway, result.clis)) {
+      process.stdout.write(line + '\n');
+    }
   }
 
   if (options.fix === true) {

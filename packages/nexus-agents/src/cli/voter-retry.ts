@@ -10,6 +10,7 @@ import type { ILogger } from '../core/index.js';
 import { clipForRecord } from '../audit/vote-record.js';
 import { sleep } from '../utils/async-utils.js';
 import { isAbsentSeat } from './voter-unverifiable.js';
+import { isCancelled } from './voter-cancel.js';
 
 /**
  * C0 and C1 control characters, DEL included (#6246, security seat; the C1
@@ -69,13 +70,27 @@ export const DEFAULT_ERRORED_ROLE_BACKOFF_MS = 3000;
  * REPLACES the first result (marked `retried: true`) rather than looping, and
  * the panel records one entry for the role.
  */
+/** The absent seats to relaunch — none once the panel is cancelled (#6729). */
+function rolesToRetry(
+  first: readonly AgentVoteResult[],
+  signal: AbortSignal | undefined
+): VoterRole[] {
+  return isCancelled(signal) ? [] : first.filter(isAbsentSeat).map((v) => v.role);
+}
+
 export async function retryErroredRoles(
   first: readonly AgentVoteResult[],
   relaunch: (roles: readonly VoterRole[]) => Promise<readonly AgentVoteResult[]>,
   logger: ILogger,
-  backoffMs: number
+  backoffMs: number,
+  /**
+   * The panel's cancel (#6729). A cancelled panel is not retried: every seat
+   * the cancel aborted reads as errored, and the pass would only wait out its
+   * backoff to relaunch seats the launcher refuses anyway.
+   */
+  signal?: AbortSignal
 ): Promise<readonly AgentVoteResult[]> {
-  const erroredRoles = first.filter(isAbsentSeat).map((v) => v.role);
+  const erroredRoles = rolesToRetry(first, signal);
   if (erroredRoles.length === 0) return first;
 
   logger.warn('Retrying errored or unverifiable voter roles before aggregating (#5578, #6094)', {

@@ -56,9 +56,17 @@ import { withAsyncTaskStateDispatch } from '../../context/structured-task-state.
  * job actually runs under is logged once at job start so real job durations
  * can be judged against it.
  *
- * On expiry the job is recorded as failed with `runaway guard exceeded` and the
- * slot is released by the existing `finally`. This is a runaway-guard, not an
- * SLA — 1h is generous.
+ * On expiry the job's `AbortSignal` is aborted FIRST, with a `DOMException`
+ * named `TimeoutError` (#6725), then the job is recorded as failed with
+ * `runaway guard exceeded` and the slot is released by the existing `finally`.
+ * The abort is what makes "failed" true of the work and not just of the record:
+ * before it, the body kept making model calls after its slot went to another
+ * job, and a later `cancel_job` could no longer reach it. The `TimeoutError`
+ * reason is deliberate — `createCallerAbortCliError` classifies it as a real
+ * `TIMEOUT` that counts on the CLI breaker (#6691/#6709), where a plain abort
+ * would read as a caller cancel and be skipped. A body that ignores the signal
+ * still runs on; the abort is the most the dispatcher can do in-process. This
+ * is a runaway-guard, not an SLA — 1h is generous.
  */
 export const ASYNC_JOB_BODY_GUARD_CLASS = 'async-job-body' as const;
 
@@ -69,8 +77,18 @@ export const ASYNC_JOB_BODY_GUARD_CLASS = 'async-job-body' as const;
  */
 export const ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD = 0.5;
 
-/** Sentinel rejection used to distinguish a guard expiry from a body failure. */
+/** Message of the guard's rejection when the guard window elapses. */
 const ASYNC_JOB_BODY_RUNAWAY_MESSAGE = 'runaway guard exceeded';
+
+/**
+ * The guard's own rejection — runaway expiry or wedged verdict — as opposed to
+ * a rejection from the body (#6725). Identified by class, not by message: a
+ * body is free to throw an Error whose text happens to match, and that must not
+ * be read as a guard expiry. Module-private: only the guard constructs it.
+ */
+class AsyncJobGuardExpiredError extends Error {
+  override readonly name = 'AsyncJobGuardExpiredError';
+}
 
 /**
  * Liveness for a body allowed past the standard MCP ceiling (#6162 item 1).
@@ -143,7 +161,7 @@ interface LivenessWatch {
 function makeLivenessWatch(
   jobId: string,
   guardMs: number,
-  onWedged: (err: Error) => void
+  onWedged: (err: AsyncJobGuardExpiredError) => void
 ): LivenessWatch {
   const startedAtMs = getTimeProvider().now();
   const progress = (): void => {
@@ -165,7 +183,7 @@ function makeLivenessWatch(
       arm(silenceBudgetMs - silentMs);
       return;
     }
-    onWedged(new Error(`wedged (no progress for ${String(silentMs)} ms)`));
+    onWedged(new AsyncJobGuardExpiredError(`wedged (no progress for ${String(silentMs)} ms)`));
   };
   arm(silenceBudgetMs);
   return {
@@ -219,7 +237,7 @@ function makeAsyncBodyGuard(
     Math.floor(guardMs * ASYNC_JOB_BODY_NEAR_TIMEOUT_THRESHOLD)
   );
   const guardTimer = setTimeout(() => {
-    reject(new Error(ASYNC_JOB_BODY_RUNAWAY_MESSAGE));
+    reject(new AsyncJobGuardExpiredError(ASYNC_JOB_BODY_RUNAWAY_MESSAGE));
   }, guardMs);
   // Don't keep the event loop alive solely for these timers.
   guardTimer.unref();
@@ -329,9 +347,10 @@ export interface RunAsJobParams<I, R, E = ToolResult> {
   /**
    * The detached background work. Receives the resolved `jobId` (so the
    * runner can thread it into a task-state log), the `input`, and an
-   * `AbortSignal` (#4086) that fires when `cancel_job` cancels this job —
-   * thread it into awaited operations to make cancellation actually stop the
-   * work. The fourth argument is the body's heartbeat (#6162): call
+   * `AbortSignal` (#4086) that fires when `cancel_job` cancels this job, or —
+   * with a `TimeoutError` reason — when the runaway guard or wedged watchdog
+   * expires (#6725). Thread it into awaited operations to make cancellation and
+   * the guard actually stop the work. The fourth argument is the body's heartbeat (#6162): call
    * `progress()` after each unit of work (a seat, a stage, a fetch) to stamp
    * `lastProgressAt` on the pending record. Under a guard past the standard
    * MCP ceiling (`MCP_TIMEOUTS.maxMs`) the heartbeat is REQUIRED — a body that
@@ -352,8 +371,7 @@ export interface RunAsJobParams<I, R, E = ToolResult> {
    *
    * By default a `run` callback that RESOLVES a failure-shaped payload records
    * the job `failed` rather than `complete`. A handful of tools legitimately
-   * resolve such a payload as their real answer — `consensus_vote` records the
-   * partial vote set collected before a `cancel_job`, for instance. Those set
+   * resolve such a payload as their real answer. Those set
    * this field; the reason is logged whenever it actually suppresses a
    * detection, so an opted-out caller is a visible policy decision rather than
    * a silent kwarg.
@@ -551,8 +569,9 @@ export async function runJobInBackground<I, R, E>(
   const unbridge = bridgePipelineEventsToHeartbeat(jobId, guard.progress);
   try {
     // Race the body against the runaway-guard. On guard expiry the guard
-    // rejects with the sentinel → recorded as failed below. On body settle the
-    // guard is cleared so it can never fire afterward.
+    // rejects with AsyncJobGuardExpiredError → the body is aborted and the job
+    // recorded as failed below. On body settle the guard is cleared so it can
+    // never fire afterward.
     const body = withAsyncTaskStateDispatch(jobId, () =>
       params.run(jobId, params.input, controller.signal, guard.progress)
     );
@@ -564,6 +583,13 @@ export async function runJobInBackground<I, R, E>(
     // normalize" would just become "caller forgot to pass the predicate".
     settleJobResult(jobId, params, result);
   } catch (err: unknown) {
+    // #6725: the guard won the race, so the body is still running. Stop it
+    // BEFORE recording failed and releasing the slot, so the record never
+    // describes a job as over while its work continues. A body rejection is
+    // NOT aborted: the body has already settled, and there is nothing to stop.
+    if (err instanceof AsyncJobGuardExpiredError) {
+      controller.abort(new DOMException(err.message, 'TimeoutError'));
+    }
     const errObj = err instanceof Error ? err : new Error(String(err));
     params.logger?.error(`Async ${params.toolName} dispatch failed`, errObj, { jobId });
     writeJobFailed(

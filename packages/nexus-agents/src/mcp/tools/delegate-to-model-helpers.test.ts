@@ -22,6 +22,11 @@ import {
   successResult,
   checkRateLimit,
 } from './delegate-to-model-helpers.js';
+import {
+  _resetGatewaySlotCatalog,
+  setGatewaySlotCatalog,
+} from '../../adapters/gateway-family-slots.js';
+import { fakeGatewayModel } from '../../testing/adapters/fake-gateway-model.js';
 
 // ============================================================================
 // Test Helpers
@@ -440,6 +445,22 @@ describe('scoreAllModels honors NEXUS_DISABLED_CLIS (#6590)', () => {
       expect(clisOf(kept).has('gemini')).toBe(false);
       expect(clisOf(kept).has('codex')).toBe(false);
     } finally {
+      if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
+      else process.env['NEXUS_DISABLED_CLIS'] = saved;
+    }
+  });
+
+  it('keeps a disabled CLI whose family the gateway serves (#6720, transport-scoped)', () => {
+    const saved = process.env['NEXUS_DISABLED_CLIS'];
+    try {
+      process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex';
+      setGatewaySlotCatalog([fakeGatewayModel('gpt-5.5')]);
+      const kept = scoreAllModels(makeRequirements(), undefined, 'plan').map((m) => m.name);
+      const clis = new Set(kept.map((n) => getCliForModel(n)));
+      expect(clis.has('codex')).toBe(true);
+      expect(clis.has('gemini')).toBe(false);
+    } finally {
+      _resetGatewaySlotCatalog();
       if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
       else process.env['NEXUS_DISABLED_CLIS'] = saved;
     }
