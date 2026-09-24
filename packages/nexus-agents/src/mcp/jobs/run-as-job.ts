@@ -371,8 +371,7 @@ export interface RunAsJobParams<I, R, E = ToolResult> {
    *
    * By default a `run` callback that RESOLVES a failure-shaped payload records
    * the job `failed` rather than `complete`. A handful of tools legitimately
-   * resolve such a payload as their real answer — `consensus_vote` records the
-   * partial vote set collected before a `cancel_job`, for instance. Those set
+   * resolve such a payload as their real answer. Those set
    * this field; the reason is logged whenever it actually suppresses a
    * detection, so an opted-out caller is a visible policy decision rather than
    * a silent kwarg.

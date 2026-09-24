@@ -262,12 +262,16 @@ export const ConsensusVoteInputSchema = z
      * `NEXUS_JOB_MAX_CONCURRENT_CONSENSUS_VOTE` (default 2 — voting is
      * 7-fan-out so concurrent jobs multiply adapter load fast).
      *
-     * Cancellation semantics (#3041 vote deferred this to Stage 4): when
-     * a polling client calls `cancel_job` mid-vote, the dispatcher aborts
-     * in-flight voters via the AbortSignal plumbing from #3038. The
-     * resulting job result is `{ status: 'cancelled', partialVotes: [...] }`
-     * with whatever voters completed before the abort signal — preserves
-     * audit visibility into who voted before the cancel landed.
+     * Cancellation semantics (#5393, #6729): when a polling client calls
+     * `cancel_job` mid-vote, the job's AbortSignal stops launching voters
+     * that have not started and aborts the adapter call of every voter in
+     * flight (combined with each seat's own deadline, so a deadline is still
+     * recorded as a timeout). The body then settles and releases its
+     * async slot. The job record stays `{ status: 'cancelled' }` and carries
+     * NO vote payload: the terminal writers no-op against a cancelled record
+     * (#4022), so the votes that landed before the cancel are not in it —
+     * an earlier version of this comment promised a `partialVotes` field
+     * that was never written (#6735 tracks adding it).
      *
      * The key is `dispatch` (#4968); `mode` is the deprecated alias this tool
      * used to spell it with, resolved as `dispatch ?? mode` by the handler and

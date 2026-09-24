@@ -253,7 +253,8 @@ export async function executeAgentVote(
 
   logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
 
-  const retryOptions = { role, proposal, adapter, logger, ...settings };
+  // #6729: the panel's cancel rides along so it reaches this seat's adapter call.
+  const retryOptions = { role, proposal, adapter, logger, ...settings, signal: options?.signal };
   const result = await executeWithRetries({ ...retryOptions, options: declaredOptions });
   const processingTimeMs = getTimeProvider().now() - start;
 
@@ -317,8 +318,9 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
    */
   readonly project?: string | undefined;
   /**
-   * Cancellation for an in-flight panel (#5393). Stops LAUNCHING voters that
-   * have not started; votes already in flight settle. Absent changes nothing.
+   * Cancellation for an in-flight panel. Stops LAUNCHING voters that have not
+   * started (#5393), aborts the adapter call of every seat already in flight
+   * (#6729), and skips the errored-seat retry pass. Absent changes nothing.
    */
   readonly signal?: AbortSignal | undefined;
   /**
@@ -348,9 +350,7 @@ function assignUniformAdapter(
   roles: readonly VoterRole[],
   adapter: IModelAdapter
 ): Map<VoterRole, IModelAdapter> {
-  const adapters = new Map<VoterRole, IModelAdapter>();
-  for (const role of roles) adapters.set(role, adapter);
-  return adapters;
+  return new Map(roles.map((role) => [role, adapter]));
 }
 
 /** Creates CLI-specific adapters for available CLIs via the unified registry. */
@@ -520,6 +520,8 @@ export interface VoteExecutionOverrides {
   workspace?: string | undefined;
   /** Ratified commit when workspace is a detached scratch checkout. */
   workspaceSha?: string | undefined;
+  /** The panel's cancel (#6729): aborts this seat's adapter call in flight. */
+  signal?: AbortSignal | undefined;
 }
 
 /** Resolved per-call vote execution settings. */
@@ -658,7 +660,8 @@ export async function collectRealVotes(
     firstPass,
     (retryRoles) => launchStaggeredVotes({ ...launchInput, roles: retryRoles }),
     logger,
-    options.erroredRoleBackoffMs ?? DEFAULT_ERRORED_ROLE_BACKOFF_MS
+    options.erroredRoleBackoffMs ?? DEFAULT_ERRORED_ROLE_BACKOFF_MS,
+    options.signal
   );
 
   // #4983/#5546: this is the only point the question is answerable. Assess the

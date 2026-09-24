@@ -12,6 +12,7 @@ import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { getRandomProvider } from '../core/index.js';
 import { delay, withTimeout } from '../utils/async-utils.js';
+import { cancelledSeat, isCancelled, seatSignal, unlessCancelled } from './voter-cancel.js';
 import { getVoterPrompts, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 import {
   buildVotePrompt,
@@ -247,6 +248,7 @@ function buildVoteRequest({
   project,
   workspace,
   workspaceSha,
+  signal,
 }: VoteCompletionArgs): CompletionRequest {
   const base: CompletionRequest = {
     messages: [
@@ -265,10 +267,11 @@ function buildVoteRequest({
     maxTokens: 4000,
     temperature: 0.3, // Low temperature for consistent evaluations
     // Thread the vote budget so the CLI timeout doesn't fire first (#3304); pass
-    // signal too for CLI-vs-API cancellation parity (#3036/#3304).
+    // signal too for CLI-vs-API cancellation parity (#3036/#3304). #6729: the
+    // signal also carries the panel's cancel, so `cancel_job` ends the call.
     timeoutMs,
     ...(workspace !== undefined && workspace.trim() !== '' ? { workDir: workspace } : {}),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: seatSignal(timeoutMs, signal),
   };
   return withResponseFormat
     ? { ...base, responseFormat: { type: 'json_schema', schema: VOTE_JSON_SCHEMA } }
@@ -330,6 +333,8 @@ interface VoteCompletionArgs {
    */
   readonly workspace: string | undefined;
   readonly workspaceSha?: string | undefined;
+  /** The panel's cancel (#6729), combined with the seat deadline; absent ⇒ deadline only. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 async function runVoteCompletion(args: VoteCompletionArgs): Promise<
@@ -346,7 +351,7 @@ async function runVoteCompletion(args: VoteCompletionArgs): Promise<
   const { role, adapter, timeoutMs } = args;
   const request = buildVoteRequest(args);
   const timeoutResult = await withTimeout(
-    adapter.complete(request),
+    unlessCancelled(adapter.complete(request), args.signal),
     timeoutMs,
     `Vote timeout after ${String(timeoutMs)}ms for role: ${role}`
   );
@@ -413,6 +418,8 @@ interface VotePromptContext {
   /** Working directory named in the user prompt; omitted ⇒ no REPOSITORY ACCESS block. */
   readonly workspace?: string | undefined;
   readonly workspaceSha?: string | undefined;
+  /** The panel's cancel (#6729); aborts the adapter call in flight. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -490,6 +497,11 @@ export interface RetryOptions {
   /** Working directory named in the user prompt (#6254); absent ⇒ no REPOSITORY ACCESS block. */
   readonly workspace?: string | undefined;
   readonly workspaceSha?: string | undefined;
+  /**
+   * The panel's cancel (#6729). Reaches the adapter call in flight, combined
+   * with the per-attempt deadline, and stops further attempts once it fires.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -542,6 +554,8 @@ export async function executeWithRetries(
   let lastError = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // #6729: a cancelled panel makes no further adapter call, first or retry.
+    if (isCancelled(opts.signal)) return cancelledSeat(lastError);
     if (attempt > 0) {
       const isRateLimit = isRateLimitError(lastError);
       const baseDelay = isRateLimit ? RATE_LIMIT_RETRY_DELAY_MS : INITIAL_RETRY_DELAY_MS;
