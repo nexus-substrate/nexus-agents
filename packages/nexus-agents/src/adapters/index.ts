@@ -134,7 +134,6 @@ export {
 // Auto-selecting adapter factory
 export {
   createAutoAdapter,
-  getAvailableAdapters,
   type AutoAdapterConfig,
   type AdapterSelection,
   type AdapterPriority,

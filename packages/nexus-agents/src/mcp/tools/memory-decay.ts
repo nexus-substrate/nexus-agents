@@ -304,8 +304,7 @@ export class MemoryDecayManager {
     }, this.config.decayIntervalMs);
     // #5402: never be the sole reason the process stays alive. A background
     // maintenance sweep on a 1-hour cadence must not outvote the exit path —
-    // `task-store.ts` and `response-cache.ts` already unref theirs for the same
-    // reason. Today every server exit path calls `process.exit()`, which does
+    // `task-store.ts` already unrefs its timer for the same reason. Today every server exit path calls `process.exit()`, which does
     // not wait for the loop to drain, so this is latent rather than live; that
     // masking is incidental and one `transport.onclose` handler away from
     // mattering.

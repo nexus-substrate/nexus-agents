@@ -45,7 +45,6 @@ vi.mock('./core/index.js', () => ({
 // exports (ModelError etc.) — mock the gateway helper directly so this test
 // stays focused on cli-server's own surface.
 vi.mock('./cli-server-gateway.js', () => ({
-  tryWireGatewayAdapter: vi.fn(() => Promise.resolve(undefined)),
   // #4040: cli-server now also imports these from the gateway module.
   tryWireGatewayAdapters: vi.fn(() => Promise.resolve(undefined)),
   // #4392 inc 2 step 2: cli-server now enters through wireGateway (discovery

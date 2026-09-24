@@ -41,7 +41,9 @@ import { detectSandbox } from './config/sandbox-detection.js';
 import { EXIT_CODES } from './cli-types.js';
 
 /**
- * Try to wire an OpenAI-compatible gateway as an `IModelAdapter`.
+ * Wire ALL discovered gateway adapters — one per model the gateway serves
+ * (#4040), so the voter path can round-robin roles across distinct models
+ * (per-role diversity, all in-process).
  *
  * Behavioural matrix:
  *
@@ -49,22 +51,14 @@ import { EXIT_CODES } from './cli-types.js';
  * | :------ | :------- | :------ | :--------------------------------------- |
  * | active  | unset    | n/a     | exit(SERVER_START_FAILED)                |
  * | active  | set      | fails   | exit(SERVER_START_FAILED) with HTTP info |
- * | active  | set      | succeed | log + return first discovered adapter    |
+ * | active  | set      | succeed | log + return every discovered adapter    |
  * | inactive| unset    | n/a     | return undefined (CLI flow handles it)   |
  * | inactive| set      | fails   | log warning + return undefined           |
- * | inactive| set      | succeed | log + return first discovered adapter    |
+ * | inactive| set      | succeed | log + return every discovered adapter    |
  *
- * The "first discovered" choice is intentional: when the harness is the
- * one routing models (via MCP tool params), nexus-agents should use
- * whichever the gateway lists. Per-model adapter selection lives in the
- * tool handlers, not in the bootstrap.
- */
-/**
- * Wire ALL discovered gateway adapters — one per model the gateway serves
- * (#4040). Same probe/fail-closed contract as {@link tryWireGatewayAdapter};
- * returns the full list so the voter path can round-robin roles across distinct
- * models (per-role diversity, all in-process). Returns undefined when no gateway
- * is configured or the probe fails.
+ * A gateway listing 0 models is treated as a failed probe. Which adapter a
+ * tool uses by default is {@link resolveDefaultModelAdapter}'s decision, not
+ * list order.
  */
 export async function tryWireGatewayAdapters(
   logger: ILogger
@@ -131,11 +125,6 @@ async function wireGatewayOnce(logger: ILogger): Promise<WiringOutcome> {
     models: result.value.map((a) => a.modelId),
   });
   return { adapters: result.value, retryable: false };
-}
-
-export async function tryWireGatewayAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
-  const all = await tryWireGatewayAdapters(logger);
-  return all?.[0];
 }
 
 /**

@@ -189,7 +189,7 @@ The portable-mode flow above covers the "I'm running nexus-agents directly in a 
 │                                                             │
 │  At startup, nexus-agents:                                  │
 │    1. detectSandbox() → active=true, flavor=docker-opencode │
-│    2. tryWireGatewayAdapter() → probe <URL>/models          │
+│    2. tryWireGatewayAdapters() → probe <URL>/models         │
 │    3. fail-fast if gateway unreachable                      │
 │    4. log "gateway wired" { host, modelCount, models }      │
 └─────────────────────────────────────────────────────────────┘

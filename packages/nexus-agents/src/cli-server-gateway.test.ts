@@ -1,5 +1,5 @@
 /**
- * Tests for tryWireGatewayAdapter (#2502, child 2 of epic #2500).
+ * Tests for the gateway bootstrap (#2502, child 2 of epic #2500).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -28,7 +28,6 @@ vi.mock('./adapters/openai-compat-adapter.js', () => ({
 }));
 
 import {
-  tryWireGatewayAdapter,
   tryWireGatewayAdapters,
   resolveDefaultModelAdapter,
   registerGatewayArm,
@@ -84,7 +83,9 @@ function makeMockLogger(): MockLogger {
   return logger;
 }
 
-describe('tryWireGatewayAdapter', () => {
+// The probe/fail-closed matrix, driven through the one wiring entry point
+// (the singular `tryWireGatewayAdapter` wrapper was deleted in #6688).
+describe('tryWireGatewayAdapters — probe and fail-closed matrix', () => {
   let savedSandbox: string | undefined;
   let savedExit: typeof process.exit;
 
@@ -108,7 +109,7 @@ describe('tryWireGatewayAdapter', () => {
   describe('non-sandbox mode', () => {
     it('returns undefined when env vars unset', async () => {
       readOpenAICompatEnvMock.mockReturnValue(null);
-      const result = await tryWireGatewayAdapter(makeMockLogger());
+      const result = await tryWireGatewayAdapters(makeMockLogger());
       expect(result).toBeUndefined();
       expect(buildOpenAICompatAdaptersMock).not.toHaveBeenCalled();
     });
@@ -120,7 +121,7 @@ describe('tryWireGatewayAdapter', () => {
       });
       buildOpenAICompatAdaptersMock.mockResolvedValue(err(new ConfigError('ENOTFOUND')));
       const logger = makeMockLogger();
-      const result = await tryWireGatewayAdapter(logger);
+      const result = await tryWireGatewayAdapters(logger);
       expect(result).toBeUndefined();
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining('probe failed'),
@@ -128,7 +129,7 @@ describe('tryWireGatewayAdapter', () => {
       );
     });
 
-    it('returns first adapter when probe succeeds', async () => {
+    it('returns the discovered adapters when probe succeeds', async () => {
       readOpenAICompatEnvMock.mockReturnValue({
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'sk-test',
@@ -136,8 +137,8 @@ describe('tryWireGatewayAdapter', () => {
       const adapters = [makeMockAdapter('claude-sonnet-4-6'), makeMockAdapter('gpt-5-nano')];
       buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
       const logger = makeMockLogger();
-      const result = await tryWireGatewayAdapter(logger);
-      expect(result).toBe(adapters[0]);
+      const result = await tryWireGatewayAdapters(logger);
+      expect(result).toEqual(adapters);
       // Previously pinned `baseUrl: 'https://gateway.example/v1'`; the line
       // carries the host only since #4392 inc 3 (a base URL can carry userinfo).
       expect(logger.info).toHaveBeenCalledWith(
@@ -156,7 +157,7 @@ describe('tryWireGatewayAdapter', () => {
       });
       buildOpenAICompatAdaptersMock.mockResolvedValue(ok([]));
       const logger = makeMockLogger();
-      const result = await tryWireGatewayAdapter(logger);
+      const result = await tryWireGatewayAdapters(logger);
       expect(result).toBeUndefined();
       expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('0 models'));
     });
@@ -170,7 +171,7 @@ describe('tryWireGatewayAdapter', () => {
     it('exits when env vars unset', async () => {
       readOpenAICompatEnvMock.mockReturnValue(null);
       const logger = makeMockLogger();
-      await expect(tryWireGatewayAdapter(logger)).rejects.toThrow('process.exit');
+      await expect(tryWireGatewayAdapters(logger)).rejects.toThrow('process.exit');
       expect(process.exit).toHaveBeenCalledWith(1);
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining('Sandbox mode active but NEXUS_OPENAI_COMPAT_URL'),
@@ -185,7 +186,7 @@ describe('tryWireGatewayAdapter', () => {
       });
       buildOpenAICompatAdaptersMock.mockResolvedValue(err(new ConfigError('ECONNREFUSED')));
       const logger = makeMockLogger();
-      await expect(tryWireGatewayAdapter(logger)).rejects.toThrow('process.exit');
+      await expect(tryWireGatewayAdapters(logger)).rejects.toThrow('process.exit');
       expect(process.exit).toHaveBeenCalledWith(1);
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining('Sandbox mode active and OpenAI-compatible gateway probe failed'),
@@ -200,19 +201,19 @@ describe('tryWireGatewayAdapter', () => {
       });
       buildOpenAICompatAdaptersMock.mockResolvedValue(ok([]));
       const logger = makeMockLogger();
-      await expect(tryWireGatewayAdapter(logger)).rejects.toThrow('process.exit');
+      await expect(tryWireGatewayAdapters(logger)).rejects.toThrow('process.exit');
       expect(process.exit).toHaveBeenCalledWith(1);
     });
 
-    it('returns first adapter when probe succeeds', async () => {
+    it('returns the discovered adapters when probe succeeds', async () => {
       readOpenAICompatEnvMock.mockReturnValue({
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'sk-test',
       });
       const adapters = [makeMockAdapter('m1'), makeMockAdapter('m2')];
       buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
-      const result = await tryWireGatewayAdapter(makeMockLogger());
-      expect(result).toBe(adapters[0]);
+      const result = await tryWireGatewayAdapters(makeMockLogger());
+      expect(result).toEqual(adapters);
       expect(process.exit).not.toHaveBeenCalled();
     });
 
@@ -224,7 +225,7 @@ describe('tryWireGatewayAdapter', () => {
       const adapters = [makeMockAdapter('m1')];
       buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
       const logger = makeMockLogger();
-      await tryWireGatewayAdapter(logger);
+      await tryWireGatewayAdapters(logger);
       const allLogCalls = [
         ...logger.info.mock.calls,
         ...logger.warn.mock.calls,
@@ -242,7 +243,7 @@ describe('tryWireGatewayAdapter', () => {
       });
       buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('m1')]));
       const logger = makeMockLogger();
-      await tryWireGatewayAdapter(logger);
+      await tryWireGatewayAdapters(logger);
       const flat = JSON.stringify([...logger.info.mock.calls, ...logger.warn.mock.calls]);
       expect(flat).toContain('gateway.example');
       expect(flat).not.toContain('pw-TESTFAKE');
@@ -330,8 +331,6 @@ describe('tryWireGatewayAdapters (#4040 — full list for voter diversity)', () 
     buildOpenAICompatAdaptersMock.mockResolvedValue(ok(adapters));
     const result = await tryWireGatewayAdapters(makeMockLogger());
     expect(result).toEqual(adapters);
-    // The singular wrapper still yields only the first (existing single-adapter consumers).
-    expect(await tryWireGatewayAdapter(makeMockLogger())).toBe(adapters[0]);
   });
 
   it('returns undefined when no gateway is configured', async () => {

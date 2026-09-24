@@ -8,7 +8,6 @@ import type { AutoAdapterConfig, AdapterSelection } from './auto-adapter.js';
 import {
   collectApiRoutingArms,
   createAutoAdapter,
-  getAvailableAdapters,
   wrapApiSelectionForRouter,
 } from './auto-adapter.js';
 import { ok, type ILogger, type IModelAdapter } from '../core/index.js';
@@ -353,71 +352,6 @@ describe('createAutoAdapter', () => {
       const result = await createAutoAdapter({});
       expect(result.source).toBe('cli');
     });
-  });
-});
-
-describe('getAvailableAdapters', () => {
-  const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
-  const originalOpenaiKey = process.env.OPENAI_API_KEY;
-  const originalGoogleKey = process.env.GOOGLE_AI_API_KEY;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_AI_API_KEY;
-    // Re-setup mock return values after clearAllMocks
-    vi.mocked(createCliDetectionCache).mockReturnValue({
-      get: vi.fn(),
-      set: vi.fn(),
-      clear: vi.fn(),
-    } as never);
-  });
-
-  afterEach(() => {
-    if (originalAnthropicKey !== undefined) {
-      process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
-    } else {
-      delete process.env.ANTHROPIC_API_KEY;
-    }
-    if (originalOpenaiKey !== undefined) {
-      process.env.OPENAI_API_KEY = originalOpenaiKey;
-    } else {
-      delete process.env.OPENAI_API_KEY;
-    }
-    if (originalGoogleKey !== undefined) {
-      process.env.GOOGLE_AI_API_KEY = originalGoogleKey;
-    } else {
-      delete process.env.GOOGLE_AI_API_KEY;
-    }
-  });
-
-  it('returns available CLIs and API key status', async () => {
-    vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve(['claude', 'gemini']));
-    process.env.ANTHROPIC_API_KEY = 'test-key';
-    process.env.OPENAI_API_KEY = 'openai-key';
-    const result = await getAvailableAdapters();
-    expect(result.clis).toEqual(['claude', 'gemini']);
-    expect(result.hasAnthropicKey).toBe(true);
-    expect(result.hasOpenaiKey).toBe(true);
-    expect(result.hasGoogleKey).toBe(false);
-    expect(result.cache).toBeDefined();
-  });
-
-  it('reports no API keys when none set', async () => {
-    vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
-    const result = await getAvailableAdapters();
-    expect(result.clis).toEqual([]);
-    expect(result.hasAnthropicKey).toBe(false);
-    expect(result.hasOpenaiKey).toBe(false);
-    expect(result.hasGoogleKey).toBe(false);
-  });
-
-  it('reports no API key when empty string', async () => {
-    vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
-    process.env.ANTHROPIC_API_KEY = '';
-    const result = await getAvailableAdapters();
-    expect(result.hasAnthropicKey).toBe(false);
   });
 });
 
