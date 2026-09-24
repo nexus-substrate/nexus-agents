@@ -1056,6 +1056,7 @@ function dispatchAsyncConsensusVote(
     run: (jobId, input, signal, progress) =>
       attachPartialsOnCancel(
         jobId,
+        'consensus_vote',
         unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress))
       ),
     ...(deps.logger !== undefined ? { logger: deps.logger } : {}),

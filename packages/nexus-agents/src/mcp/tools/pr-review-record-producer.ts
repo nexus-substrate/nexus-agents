@@ -9,7 +9,9 @@
  *
  * Best-effort and never-throws: a missing binding or a write failure is surfaced
  * as a structured {@link PrReviewRecordOutcome}, never an exception into the
- * review path (an audit sink must not break the operation it observes).
+ * review path (an audit sink must not break the operation it observes). The one
+ * exception is a cancelled async review (#6750): it throws `VoteCancelledError`
+ * so the review stops with no record and no verdict.
  *
  * @module mcp/tools/pr-review-record-producer
  */
@@ -32,6 +34,8 @@ import {
   type PanelBudgetSource,
 } from './pr-review-diff-budget.js';
 import { resolveBindingMeasurement } from './pr-review-sanitization-view.js';
+import type { AgentVoteResult } from '../../cli/vote-types.js';
+import { throwIfVoteCancelled } from './consensus-vote-cancelled.js';
 import type { PrReviewAggregate, PrReviewInput } from './pr-review-tool.js';
 
 /**
@@ -292,6 +296,19 @@ export interface PersistReviewRecordArgs {
    * carries neither field).
    */
   readonly coverage?: PrReviewCoverageStamp | undefined;
+  /**
+   * The async job's cancel signal and the seats it collected (#6750). Checked
+   * first, synchronously before the append, with no `await` between the check
+   * and the write. Absent in sync mode and on the local-ledger door.
+   */
+  readonly cancellation?: ReviewCancellation | undefined;
+}
+
+/** What {@link persistReviewRecord} needs to refuse a cancelled review (#6750). */
+export interface ReviewCancellation {
+  readonly signal: AbortSignal | undefined;
+  readonly votes: readonly AgentVoteResult[];
+  readonly panelSize: number;
 }
 
 /**
@@ -554,6 +571,13 @@ function refuseToPersist(args: PersistReviewRecordArgs): PersistGate {
 }
 
 export function persistReviewRecord(args: PersistReviewRecordArgs): PrReviewRecordOutcome {
+  // #6750: a cancelled review writes nothing. This is the last check before
+  // the append and runs outside the try below, so the cancel reaches the async
+  // dispatcher instead of becoming a `write-failed` outcome.
+  const { cancellation } = args;
+  if (cancellation !== undefined) {
+    throwIfVoteCancelled(cancellation.signal, cancellation.votes, cancellation.panelSize);
+  }
   const gate = refuseToPersist(args);
   if (!gate.ok) return gate.outcome;
   // Defense-in-depth: buildAndPersist's only non-store-guarded step is the diff
