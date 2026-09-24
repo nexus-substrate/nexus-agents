@@ -12,6 +12,10 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
+import {
+  ensureGatewayDiscovered,
+  gatewayDiscoveryGeneration,
+} from '../adapters/gateway-rediscovery.js';
 import { resolveCliSlot } from '../config/model-availability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
@@ -324,9 +328,30 @@ function adaptCompositeRouter(
 // (closes #2969). N=7 voter fan-out previously ran createAllAdapters() N times
 // — N sets of CLI probe subprocesses, all but one discarded.
 let routerInitPromise: Promise<RouterLike | null> | null = null;
+// The gateway discovery generation the cached router (or its in-flight build)
+// belongs to (#6667). Gateway slot arms exist only if the slot catalogue was
+// set when the router was built, so a router built while the gateway was down
+// never sees it; a late discovery bumps the generation and the next call
+// rebuilds.
+let routerGeneration = 0;
 
-/** Get or create a cached CompositeRouter with circuit breaker monitoring. */
+/**
+ * Get or create a cached CompositeRouter with circuit breaker monitoring.
+ *
+ * Triggers lazy gateway re-discovery first (#6667): a no-op with no gateway
+ * configured or once it is wired, otherwise at most one attempt per backoff,
+ * bounded by the discovery request's own timeout. When a late discovery has
+ * landed since the router was built, the router is rebuilt from
+ * `createAllAdapters()` — never resilient-wrapped (#5191).
+ */
 async function getRouter(): Promise<RouterLike | null> {
+  await ensureGatewayDiscovered();
+  const generation = gatewayDiscoveryGeneration();
+  if (generation !== routerGeneration) {
+    cachedRouter = null;
+    routerInitPromise = null;
+    routerGeneration = generation;
+  }
   if (cachedRouter !== null) return cachedRouter;
   routerInitPromise ??= (async (): Promise<RouterLike | null> => {
     // ROUTER CONSTRUCTION, a distinct operation from adapter acquisition
@@ -346,11 +371,16 @@ async function getRouter(): Promise<RouterLike | null> {
     const { createAllAdapters } = await import('../cli-adapters/factory.js');
     const { createCompositeRouter } = await import('../cli-adapters/composite-router.js');
     const adapters = createAllAdapters();
+    // A late discovery landed during this build and a newer build owns the
+    // cache: serve this call, but leave the cache to the newer build.
+    const superseded = generation !== routerGeneration;
     if (adapters.size === 0) {
-      routerInitPromise = null; // allow retry once adapters become available
+      if (!superseded) routerInitPromise = null; // allow retry once adapters become available
       return null;
     }
-    cachedRouter = adaptCompositeRouter(createCompositeRouter(adapters));
+    const router = adaptCompositeRouter(createCompositeRouter(adapters));
+    if (superseded) return router;
+    cachedRouter = router;
 
     // Initialize circuit breaker monitoring (#1766)
     try {
@@ -364,7 +394,7 @@ async function getRouter(): Promise<RouterLike | null> {
       logger.debug('Circuit breaker init failed; continuing without it', { error: msg });
     }
 
-    return cachedRouter;
+    return router;
   })();
   return routerInitPromise;
 }

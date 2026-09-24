@@ -983,4 +983,22 @@ describe('a gateway down at boot and up later, with no vote run (#6659)', () => 
     });
     expect(new Set(requested)).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
   });
+
+  // #6667: the expert stage's router is cached per process, off the registry
+  // path, so it must trigger re-discovery itself and rebuild after it lands.
+  // A router built while the gateway is down cannot be primed here without
+  // spawning a CLI (the spawn guard forbids it); the stale-cache rebuild is
+  // pinned in `pipeline/expert-bridge.test.ts`. Run alone, this case also
+  // fails without the fix: the router is then built with no catalogue.
+  it('run_dev_pipeline expert stage re-discovers the gateway and runs on the slot family model', async () => {
+    await bootWhileDown();
+    clock.setTime(BOOT + 61_000);
+    const after = await executeExpert('code', 'write a CSV parser');
+
+    expect(after.success).toBe(true);
+    expect(isFamilySlot(after.cli)).toBe(true);
+    if (!isFamilySlot(after.cli)) return;
+    expect(after.model).toBe(FAMILY_SLOT_MODEL[after.cli]);
+    expect(servedModels()).toEqual([FAMILY_SLOT_MODEL[after.cli]]);
+  });
 });
