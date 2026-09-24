@@ -90,6 +90,7 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
       distinctModels: 1,
       distinctFamilies: 1,
       unclassifiedSeats: 0,
+      unresolvedSeats: 0,
       fallbacks: 4,
     });
     expect(response.panelWarning).toContain(
@@ -108,6 +109,7 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
       distinctModels: 3,
       distinctFamilies: 3,
       unclassifiedSeats: 0,
+      unresolvedSeats: 0,
       fallbacks: 0,
     });
     expect(response.panelWarning).toBeUndefined();
@@ -124,6 +126,7 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
       distinctModels: 3,
       distinctFamilies: 2,
       unclassifiedSeats: 1,
+      unresolvedSeats: 0,
       fallbacks: 0,
     });
   });
@@ -135,6 +138,7 @@ describe('consensus_vote response: panel diversity (#6115)', () => {
       distinctModels: 0,
       distinctFamilies: 0,
       unclassifiedSeats: 0,
+      unresolvedSeats: 0,
       fallbacks: 0,
     });
   });

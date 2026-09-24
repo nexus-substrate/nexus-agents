@@ -386,8 +386,11 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
         voterRole: vote.role,
         // #6624 — `model` stays the `consensus` marker; the model that sat
         // this seat and its cost go beside it, priced like the vote rollup.
+        // #6660 — the model the adapter REPORTED answering, never `vote.model`
+        // (the alias requested): a seat that fell back to another model was
+        // named, and priced, as the one it asked for.
         ...servedOutcomeFields({
-          model: vote.model,
+          model: vote.servedModel,
           gatewayArm: vote.gatewayArm,
           inputTokens: vote.inputTokens,
           outputTokens: vote.outputTokens,

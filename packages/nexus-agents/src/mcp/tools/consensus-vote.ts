@@ -1268,6 +1268,9 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       // answering seats whose model names no recognised vendor.
       distinctFamilies: z.number().int().nonnegative(),
       unclassifiedSeats: z.number().int().nonnegative(),
+      // #6660: answering seats whose model never resolved. Always set by
+      // panelDiversityOf; optional so the published schema widens additively.
+      unresolvedSeats: z.number().int().nonnegative().optional(),
       fallbacks: z.number().int().nonnegative(),
     })
     .optional(),

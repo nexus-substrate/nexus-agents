@@ -339,6 +339,7 @@ async function runVoteCompletion(args: VoteCompletionArgs): Promise<
       usage: VoteUsage;
       cliStderr: string | undefined;
       fallbackFrom: string | undefined;
+      servedModel: string | undefined;
     }
   | { ok: false; error: string }
 > {
@@ -384,6 +385,9 @@ async function runVoteCompletion(args: VoteCompletionArgs): Promise<
     // #6115: the alias the seat asked for, when the CLI answered on another
     // one of its family (#6120) — the seat's result discloses it as a fallback.
     fallbackFrom: response.value.fallbackFrom,
+    // #6660: the model the adapter reported answering — not `adapter.modelId`,
+    // the alias requested. An empty report is no report.
+    servedModel: response.value.model === '' ? undefined : response.value.model,
   };
 }
 
@@ -397,6 +401,8 @@ interface VoteAttemptSuccess {
   readonly cliStderr: string | undefined;
   /** The requested model alias when the CLI answered on another of its family (#6120). */
   readonly fallbackFrom: string | undefined;
+  /** The model the adapter reported answering (#6660); undefined when it reported none. */
+  readonly servedModel: string | undefined;
 }
 
 /** What the prompt carries beyond the proposal: declared options (#4472), the target project (#6110) and the working directory (#6254). */
@@ -455,6 +461,7 @@ export async function executeSingleVoteAttempt(
       usage: completion.usage,
       cliStderr: completion.cliStderr,
       fallbackFrom: completion.fallbackFrom,
+      servedModel: completion.servedModel,
     };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
@@ -524,6 +531,8 @@ export interface VoteOutcome {
   readonly usage: VoteUsage;
   readonly cliStderr: string | undefined;
   readonly fallbackFrom: string | undefined;
+  /** The model the adapter reported answering (#6660); undefined when it reported none. */
+  readonly servedModel: string | undefined;
 }
 
 export async function executeWithRetries(
@@ -554,8 +563,8 @@ export async function executeWithRetries(
         attemptMs,
         succeeded: true,
       });
-      const { vote, usage, cliStderr, fallbackFrom } = result;
-      return { vote, usage, cliStderr, fallbackFrom, ok: true };
+      const { vote, usage, cliStderr, fallbackFrom, servedModel } = result;
+      return { vote, usage, cliStderr, fallbackFrom, servedModel, ok: true };
     }
 
     lastError = result.error;

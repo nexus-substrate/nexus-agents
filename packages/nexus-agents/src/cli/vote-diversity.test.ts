@@ -103,6 +103,32 @@ describe('panelDiversityOf — families (#6606)', () => {
   });
 });
 
+describe('panelDiversityOf — unresolved seats (#6660)', () => {
+  it('counts answering seats whose model never resolved, and the models line prints them', () => {
+    // Six of seven answering seats never resolved a model: one resolved seat
+    // alone read as "1 distinct, 1 family" with the six counted nowhere.
+    const panel = [
+      seat('architect', { cli: 'cli-claude', model: 'claude-opus', assignedCli: 'claude' }),
+      seat('security', { model: 'pending-detection' }),
+      seat('devex', { model: undefined }),
+      seat('ai_ml', { model: '' }),
+      seat('pm', { model: 'pending-detection' }),
+      seat('catfish', { model: undefined }),
+      seat('scope_steward', { model: 'pending-detection' }),
+      // An errored seat did not answer: it is not an unresolved answering seat.
+      seat('architect', { source: 'error', model: undefined, error: 'boom' }),
+    ];
+    expect(panelDiversityOf(panel)).toMatchObject({
+      distinctModels: 1,
+      distinctFamilies: 1,
+      unresolvedSeats: 6,
+    });
+    expect(modelsLine(panel)).toBe(
+      'Models: 1 distinct, 1 family (6 seats unresolved), 0 fallbacks'
+    );
+  });
+});
+
 describe('singleFamilyPanelWarning (#6606)', () => {
   it('fires when a 3+ panel answered on several models of one family', () => {
     expect(singleFamilyPanelWarning(anthropicPanel())).toBe(
@@ -134,6 +160,7 @@ describe('panelDiversityOf (#6115)', () => {
       distinctModels: 1,
       distinctFamilies: 1,
       unclassifiedSeats: 0,
+      unresolvedSeats: 0,
       fallbacks: 5,
     });
     // `codex-5.3` resolves to provider openai (#6635).
@@ -141,6 +168,7 @@ describe('panelDiversityOf (#6115)', () => {
       distinctModels: 3,
       distinctFamilies: 3,
       unclassifiedSeats: 0,
+      unresolvedSeats: 0,
       fallbacks: 0,
     });
   });
@@ -155,6 +183,7 @@ describe('panelDiversityOf (#6115)', () => {
       distinctModels: 3,
       distinctFamilies: 2,
       unclassifiedSeats: 1,
+      unresolvedSeats: 0,
       fallbacks: 0,
     });
   });
@@ -163,7 +192,13 @@ describe('panelDiversityOf (#6115)', () => {
     const errored = SEVEN.map((role) =>
       seat(role, { source: 'error', model: undefined, error: 'boom' })
     );
-    const zeros = { distinctModels: 0, distinctFamilies: 0, unclassifiedSeats: 0, fallbacks: 0 };
+    const zeros = {
+      distinctModels: 0,
+      distinctFamilies: 0,
+      unclassifiedSeats: 0,
+      unresolvedSeats: 0,
+      fallbacks: 0,
+    };
     expect(panelDiversityOf(errored)).toEqual(zeros);
     expect(panelDiversityOf([])).toEqual(zeros);
   });
@@ -177,6 +212,7 @@ describe('panelDiversityOf (#6115)', () => {
       distinctModels: 3,
       distinctFamilies: 3,
       unclassifiedSeats: 0,
+      unresolvedSeats: 0,
       fallbacks: 0,
     });
   });
