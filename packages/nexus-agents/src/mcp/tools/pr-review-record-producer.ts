@@ -305,7 +305,7 @@ export interface PersistReviewRecordArgs {
 }
 
 /** What {@link persistReviewRecord} needs to refuse a cancelled review (#6750). */
-export interface ReviewCancellation {
+interface ReviewCancellation {
   readonly signal: AbortSignal | undefined;
   readonly votes: readonly AgentVoteResult[];
   readonly panelSize: number;
