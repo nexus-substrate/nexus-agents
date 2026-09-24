@@ -26,7 +26,7 @@ Research on intelligent routing of tasks to optimal models based on cost, qualit
 
 - PILOT: BudgetRouter + LinUCBBandit in `cli-adapters/`
 - MoMA: TopsisRouter in `cli-adapters/topsis-router.ts`
-- Edge Multi-LLM: AgreementCascadeRouter in `cli-adapters/agreement-cascade-router.ts`
+- Edge Multi-LLM: agreement-based early close (`canCascadeEarly`) in `consensus/engine.ts`; the standalone AgreementCascadeRouter was never wired and was deleted in #6688
 - RouteLLM: PreferenceRouter in `cli-adapters/preference-router.ts`
 - Cross-Attention: CapabilityMatchStage in `cli-adapters/routing/stages/capability-match-stage.ts` (cross-attention matrix over task features × capability dimensions)
 - OptiRoute (kNN): KnnRoutingStage in `cli-adapters/routing/stages/knn-routing-stage.ts` (commit 34f1db73)
@@ -88,7 +88,7 @@ Cascade of increasingly powerful models with ensemble agreement at each stage. E
 - ✅ BudgetRouter with session budget tracking
 - ✅ TopsisRouter for multi-criteria optimization
 - ✅ LinUCBBandit for contextual bandit selection
-- ✅ AgreementCascadeRouter for ensemble agreement
+- ✅ AgreementCascadeRouter for ensemble agreement (never wired; deleted in #6688)
 - ✅ FeedbackIntegration for closed-loop learning
 - ✅ CliDetectionCache for health check caching
 

@@ -127,9 +127,6 @@ export type {
 export { RoutingError, RouterConfigSchema } from './router-types.js';
 export type { ITaskRouter, RoutingDecision, RouterConfig } from './router-types.js';
 
-// Router Scoring Constants (Issue #78)
-export { CAPABILITY_MATRIX, SCORING_WEIGHTS, SCORING_THRESHOLDS } from './router-scoring.js';
-
 // Confidence Router types (Issue #99)
 // ConfidenceRouter class removed — use CompositeRouter with ConfidenceCascadeStage
 export type {
@@ -151,24 +148,6 @@ export type {
   BudgetRoutingResult,
   BudgetRouterOptions,
 } from './types.js';
-
-// Agreement Cascade Router (Issue #121, arXiv:2410.10347)
-export {
-  AgreementCascadeRouter,
-  createAgreementCascadeRouter,
-  createDefaultCascadeStages,
-  AgreementCascadeConfigSchema,
-  DEFAULT_CASCADE_CONFIG,
-} from './agreement-cascade-router.js';
-export type {
-  IAgreementCascadeRouter,
-  AgreementCascadeConfig,
-  CascadeStage,
-  StageResult,
-  CascadeResult as AgreementCascadeResult,
-  AgreementResult,
-  ResponseCluster,
-} from './agreement-cascade-router.js';
 
 // TOPSIS Multi-Criteria Router (Issue #146, arXiv:2509.07571)
 export { TopsisRouter, createTopsisRouter, selectModelWithTopsis } from './topsis-router.js';

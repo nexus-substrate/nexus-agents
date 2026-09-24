@@ -421,21 +421,17 @@ techniques:
     priority: P2
     complexity: medium
     integration_files:
-      - packages/nexus-agents/src/cli-adapters/agreement-cascade-router.ts
-      - packages/nexus-agents/src/cli-adapters/agreement-cascade-router.test.ts
+      - packages/nexus-agents/src/consensus/engine.ts
+      - packages/nexus-agents/src/consensus/agreement-cascade.test.ts
     implementation_issue: 121
     related_prs: []
-    notes: 'Implemented AgreementCascadeRouter class with:
+    notes: 'Live implementation: ConsensusEngine closes a proposal early
 
-      - Multi-model execution at each cascade stage
+      (canCascadeEarly) once the outcome is mathematically determined.
 
-      - Jaccard similarity-based response clustering
+      The standalone AgreementCascadeRouter (cli-adapters, #121) was never
 
-      - Configurable agreement thresholds (default 0.7)
-
-      - Cost savings tracking for early resolution
-
-      - 14 comprehensive tests
+      wired into a production path and was deleted in #6688.
 
       '
     dependencies:
@@ -444,6 +440,9 @@ techniques:
       - date: '2026-01-07'
         decision: Implemented
         rationale: 'Commit 36436f1 - feat(cli-adapters): implement agreement-based cascade routing (#121)'
+      - date: '2026-09-24'
+        decision: Removed unwired AgreementCascadeRouter
+        rationale: 'Issue #6688 - barrel-only module with no production caller; the consensus engine early-close path remains'
   preference-trained-routing:
     name: Preference-Trained Router (RouteLLM)
     description: 'Train router on human preference data for dynamic selection
