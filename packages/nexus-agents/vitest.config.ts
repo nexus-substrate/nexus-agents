@@ -28,6 +28,10 @@ import { ensureTestDataDir, ensureTestScratchRoot } from './src/testing/test-scr
  * root reached 9.7 GB across 1,987 entries before anything measured it. The
  * `globalSetup` reaper below is the other half of that trade (#4413).
  * Gitignored via `.nexus-agents/`.
+ *
+ * Exception: in a checkout deep enough that tsx's IPC socket under it would
+ * overflow the 108-byte Unix socket path, the root is a short per-checkout dir
+ * under the system temp dir instead (#6615, see testing/test-scratch-root.ts).
  */
 const TEST_TMP = ensureTestScratchRoot();
 
