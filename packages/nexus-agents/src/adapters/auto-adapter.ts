@@ -567,29 +567,3 @@ export async function createAutoAdapter(config: AutoAdapterConfig = {}): Promise
     }
   }
 }
-
-/**
- * Checks which adapters are available without creating them.
- * Uses caching to avoid repeated CLI health checks.
- *
- * @param cache - Optional cache to use
- * @returns Available CLIs and which API keys are set
- */
-export async function getAvailableAdapters(cache?: ICliDetectionCache): Promise<{
-  clis: CliName[];
-  hasAnthropicKey: boolean;
-  hasOpenaiKey: boolean;
-  hasGoogleKey: boolean;
-  cache?: ICliDetectionCache;
-}> {
-  const effectiveCache = cache ?? createCliDetectionCache();
-  const clis = await getAvailableClis(effectiveCache);
-
-  return {
-    clis,
-    hasAnthropicKey: resolveApiKeyFromEnv(undefined, 'ANTHROPIC_API_KEY') !== undefined,
-    hasOpenaiKey: resolveApiKeyFromEnv(undefined, 'OPENAI_API_KEY') !== undefined,
-    hasGoogleKey: resolveApiKeyFromEnv(undefined, 'GOOGLE_AI_API_KEY') !== undefined,
-    cache: effectiveCache,
-  };
-}

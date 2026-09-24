@@ -81,7 +81,7 @@
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
 │  │                      Support Systems                             │        │
-│  │  • ResponseCache    • LatencyTracker   • CapacityTracker        │        │
+│  │  • LatencyTracker   • CapacityTracker                            │        │
 │  │  • CircuitBreaker   • FallbackChains   • RoutingMetrics         │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │                                                                              │

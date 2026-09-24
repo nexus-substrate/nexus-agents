@@ -314,7 +314,7 @@ describe('the auto-decay timer releases the event loop (#5402)', () => {
     const timer = (manager as unknown as { decayTimer: NodeJS.Timeout | null }).decayTimer;
     expect(timer).not.toBeNull();
     // A 1-hour background maintenance sweep must not outvote the exit path;
-    // `task-store.ts` and `response-cache.ts` already unref theirs.
+    // `task-store.ts` already unrefs its timer.
     expect(timer?.hasRef()).toBe(false);
 
     manager.stopAutoDecay();

@@ -6,11 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  OpenCodeCliAdapter,
-  createOpenCodeAdapter,
-  resetOpenCodeModelCache,
-} from './opencode-adapter.js';
+import { OpenCodeCliAdapter, resetOpenCodeModelCache } from './opencode-adapter.js';
 import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 import { getAvailabilityCache, resetAvailabilityCache } from '../../config/model-availability.js';
@@ -818,15 +814,9 @@ describe('OpenCodeCliAdapter systemPrompt (#1886)', () => {
   });
 });
 
-describe('createOpenCodeAdapter', () => {
-  it('should create adapter instance', () => {
-    const adapter = createOpenCodeAdapter();
-    expect(adapter).toBeInstanceOf(OpenCodeCliAdapter);
-    expect(adapter.name).toBe('opencode');
-  });
-
+describe('OpenCodeCliAdapter construction', () => {
   it('should pass options through', () => {
-    const adapter = createOpenCodeAdapter({ model: 'google/gemini-2.5-pro' });
+    const adapter = new OpenCodeCliAdapter({ model: 'google/gemini-2.5-pro' });
     const info = adapter.getModelInfo();
     expect(info.id).toBe('google/gemini-2.5-pro');
   });

@@ -8,12 +8,17 @@
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import {
+  budgetCostOfArm,
+  ceilingCostOfArm,
   describeUnpricedArm,
   estimateArmCostUsd,
   estimateBudgetArmCostUsd,
   estimateRegistryCostUsd,
   gatewayCostDetail,
+  unpricedReasonOfArm,
 } from './budget-arm-cost.js';
+import { createModelToCliAdapter } from './model-to-cli-adapter.js';
+import type { IModelAdapter } from '../core/index.js';
 import { estimateCost } from './budget-utils.js';
 import {
   _resetGatewayCatalogs,
@@ -248,6 +253,65 @@ describe('bare priced on api:custom-openai without a catalogue (#6404)', () => {
         NEXUS_CUSTOM_MODEL: '  ',
       })
     ).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// #6688: the api:custom-openai router arm is priced at the model it SENDS.
+// In gateway mode (#6650) that arm sends the ranked catalogue default, which
+// differs from NEXUS_CUSTOM_MODEL whenever the catalogue does not list it; the
+// arm-only path can only read the env value.
+// =============================================================================
+
+describe('api:custom-openai router arm is priced at the model it sends (#6688)', () => {
+  const ARM = 'api:custom-openai' as const;
+  const M = 1_000_000;
+
+  /** The router arm `wrapApiSelectionForRouter` builds, sending `modelId`. */
+  function routerArm(modelId: string): { arm: typeof ARM; adapter: unknown } {
+    const model = { providerId: 'custom-openai', modelId } as unknown as IModelAdapter;
+    return { arm: ARM, adapter: createModelToCliAdapter(model, { name: 'opencode' }) };
+  }
+
+  function registryCost(modelId: string, tokens: number): number {
+    const pricing = getDefaultRegistry().getEntry(modelId).pricing;
+    if (pricing === undefined) throw new Error(`fixture model ${modelId} has no pricing`);
+    return computeTokenCost({ input: tokens, output: tokens }, pricing).costUsd;
+  }
+
+  beforeEach(() => {
+    _resetGatewayCatalogs();
+  });
+
+  it('prices the sent model, not NEXUS_CUSTOM_MODEL, when the two differ', () => {
+    // The env names one priced model; the arm sends a different priced model.
+    const env = { NEXUS_GATEWAY_COST: 'priced', NEXUS_CUSTOM_MODEL: 'gpt-4o' };
+    expect(registryCost('claude-haiku-4-5', M)).not.toBeCloseTo(registryCost('gpt-4o', M), 6);
+
+    const target = routerArm('claude-haiku-4-5');
+    expect(ceilingCostOfArm(target, M, M, env)).toBeCloseTo(registryCost('claude-haiku-4-5', M), 9);
+    expect(budgetCostOfArm(target, M / 2, M / 2, env)).toBeCloseTo(
+      registryCost('claude-haiku-4-5', M / 2),
+      9
+    );
+  });
+
+  it('is unknown when the sent model is unpriced, even though NEXUS_CUSTOM_MODEL is priced', () => {
+    const env = { NEXUS_GATEWAY_COST: 'priced', NEXUS_CUSTOM_MODEL: 'gpt-4o' };
+    const target = routerArm('mystery-gateway-model');
+    expect(ceilingCostOfArm(target, 1_000, 1_000, env)).toBeUndefined();
+    expect(budgetCostOfArm(target, 1_000, 1_000, env)).toBeUndefined();
+    expect(unpricedReasonOfArm(target, env)).toBe(
+      'gateway cost priced at registry rates, but mystery-gateway-model has no registry pricing'
+    );
+  });
+
+  it('prices the sent model when NEXUS_CUSTOM_MODEL is unset', () => {
+    const env = { NEXUS_GATEWAY_COST: 'priced' };
+    expect(ceilingCostOfArm(routerArm('gpt-4o'), M, M, env)).toBeCloseTo(
+      registryCost('gpt-4o', M),
+      9
+    );
   });
 });
 

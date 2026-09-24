@@ -413,13 +413,6 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   }
 }
 
-/**
- * Factory function for creating OpenCode adapter.
- */
-export function createOpenCodeAdapter(options?: BaseAdapterOptions): OpenCodeCliAdapter {
-  return new OpenCodeCliAdapter(options);
-}
-
 /** Resets model probe cache (for testing). */
 export function resetOpenCodeModelCache(): void {
   cachedModels = undefined;

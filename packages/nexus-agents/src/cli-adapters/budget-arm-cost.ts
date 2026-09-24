@@ -17,6 +17,7 @@ import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
 import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
 import { gatewayServedSlotOf, type GatewayServedSlot } from './gateway-slot-arm.js';
+import { ModelToCliAdapter } from './model-to-cli-adapter.js';
 import { estimateCost } from './budget-utils.js';
 import { getDefaultModelForCli, getModelPricing } from '../config/model-config-helpers.js';
 import { getDefaultRegistry } from '../config/model-registry.js';
@@ -55,9 +56,13 @@ export function estimateRegistryCostUsd(
 }
 
 /**
- * Mechanism A's single-model gateway arm and the env that pins the model it
- * dispatches to (`adapters/auto-adapter.ts` reads the same name). That arm
- * never gets a catalogue, so the env is the only model it can be priced at.
+ * Mechanism A's single-model gateway arm and the env that names its model.
+ * That arm never gets a catalogue. The env is only a fallback for an arm-only
+ * call: since #6650 the arm sends the ranked gateway default in gateway mode,
+ * which differs from `NEXUS_CUSTOM_MODEL` whenever the catalogue does not list
+ * it, so the router-instance functions ({@link ceilingCostOfArm},
+ * {@link budgetCostOfArm}, {@link unpricedReasonOfArm}) pass the model the arm
+ * instance actually sends ({@link sentModelOf}, #6688).
  */
 const CUSTOM_OPENAI_ARM: EndpointArmId = 'api:custom-openai';
 const CUSTOM_MODEL_ENV = 'NEXUS_CUSTOM_MODEL';
@@ -163,6 +168,16 @@ interface RouterArm {
 }
 
 /**
+ * The model a direct-API router arm instance sends (#6688): the id of the
+ * model adapter `wrapApiSelectionForRouter` wrapped, which the SDK adapter
+ * passes to the endpoint verbatim. Undefined for any other arm shape, and the
+ * arm-only resolution ({@link gatewayPricingModel}) then applies.
+ */
+function sentModelOf(adapter: unknown): string | undefined {
+  return adapter instanceof ModelToCliAdapter ? adapter.getModelInfo().id : undefined;
+}
+
+/**
  * {@link estimateArmCostUsd} for a router arm INSTANCE (#6604): the serving
  * state is read from that arm (`gatewayServedSlotOf`), so a slot arm a gateway
  * model serves is priced as its gateway, and every other arm as before.
@@ -176,7 +191,13 @@ export function ceilingCostOfArm(
   const served = gatewayServedSlotOf(target.adapter);
   if (served !== undefined)
     return estimateServedSlotCostUsd(served, inputTokens, outputTokens, env);
-  return estimateArmCostUsd(target.arm, inputTokens, outputTokens, env);
+  return estimateArmCostUsd(
+    target.arm,
+    inputTokens,
+    outputTokens,
+    env,
+    sentModelOf(target.adapter)
+  );
 }
 
 /**
@@ -219,6 +240,10 @@ export function budgetCostOfArm(
   env: NodeJS.ProcessEnv = process.env
 ): number | undefined {
   const served = gatewayServedSlotOf(target.adapter);
+  if (served === undefined && isGatewayArmId(target.arm)) {
+    const sent = sentModelOf(target.adapter);
+    return estimateArmCostUsd(target.arm, inputTokens, outputTokens, env, sent);
+  }
   return estimateBudgetArmCostUsd(target.arm, inputTokens, outputTokens, env, served);
 }
 
@@ -227,7 +252,8 @@ export function unpricedReasonOfArm(
   target: RouterArm,
   env: NodeJS.ProcessEnv = process.env
 ): string {
-  return describeUnpricedArm(target.arm, env, undefined, gatewayServedSlotOf(target.adapter));
+  const served = gatewayServedSlotOf(target.adapter);
+  return describeUnpricedArm(target.arm, env, sentModelOf(target.adapter), served);
 }
 
 /**
