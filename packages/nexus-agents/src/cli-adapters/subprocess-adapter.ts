@@ -34,7 +34,7 @@ import {
   classifyExtractedError,
   isAuthFailureText,
 } from './cli-error-envelope.js';
-import { isTimeoutText } from './cli-error-helpers.js';
+import { createCallerAbortCliError, isTimeoutText } from './cli-error-helpers.js';
 import { generateHyphenId } from '../utils/id-utils.js';
 
 /** Minimum length for plaintext fallback to kick in.
@@ -401,7 +401,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
           });
         }
       }
-      resolve(err(this.createError('TIMEOUT', 'Aborted by caller signal')));
+      // #6691: the adapter's own watchdog is the timer in `spawnSubprocess`,
+      // not this listener, so a caller abort is a cancel unless its reason
+      // names a deadline.
+      resolve(err(createCallerAbortCliError(signal.reason, 'Aborted by caller signal', this.name)));
     };
     signal.addEventListener('abort', onAbort, { once: true });
     child.once('close', () => {
@@ -526,7 +529,9 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     // command builder can create a tempdir that only the spawn path cleans up.
     const signal = options.signal;
     if (signal?.aborted === true) {
-      return Promise.resolve(err(this.createError('TIMEOUT', 'Aborted before spawn')));
+      return Promise.resolve(
+        err(createCallerAbortCliError(signal.reason, 'Aborted before spawn', this.name))
+      );
     }
     // #6277: the resolved guard reaches getCommand on the task, so an adapter
     // whose CLI has its own wait (agy --print-timeout) can size it to the

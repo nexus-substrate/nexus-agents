@@ -93,10 +93,12 @@ export async function withWatchdog<T>(
   // resolves with the timeout rejection, leaking subprocess fan-out
   // and late OutcomeStore writes.
   const controller = new AbortController();
+  // #6691: forward the caller's reason, so a CLI adapter still reads a
+  // cancel_job abort as a cancel and a caller deadline as a timeout.
   const forwardOuterAbort = (): void => {
-    controller.abort();
+    controller.abort(outerSignal?.reason);
   };
-  if (outerSignal?.aborted === true) controller.abort();
+  if (outerSignal?.aborted === true) controller.abort(outerSignal.reason);
   outerSignal?.addEventListener('abort', forwardOuterAbort, { once: true });
   const taskPromise = task(controller.signal);
   const { promise: timeoutPromise, cancel: cancelTimeout } = createTerminationTimer(
@@ -137,8 +139,11 @@ function createTerminationTimer(
       });
       // Abort BEFORE rejecting so any signal listeners (subprocess
       // SIGTERM, fetch cancel) fire before the rejection propagates.
-      controller.abort();
-      reject(new Error(`Worker timeout after ${String(timeoutMs)}ms`));
+      // #6691: a TimeoutError reason tells a CLI adapter this is a timeout,
+      // which counts on its breaker; a bare abort would read as a cancel.
+      const message = `Worker timeout after ${String(timeoutMs)}ms`;
+      controller.abort(new DOMException(message, 'TimeoutError'));
+      reject(new Error(message));
     }, timeoutMs);
   });
   const cancel = (): void => {

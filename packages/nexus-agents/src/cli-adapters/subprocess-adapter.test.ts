@@ -13,6 +13,8 @@ import { Writable, Readable } from 'node:stream';
 import type { CliTask, ResolvedExecutionOptions, ICliResponseParser } from './types.js';
 import type { CommandConfig } from './subprocess-adapter.js';
 import { SubprocessCliAdapter, SIGKILL_GRACE_MS } from './subprocess-adapter.js';
+import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
+import { isCallerCancelled } from '../adapters/abort-utils.js';
 
 // Mock node:child_process
 vi.mock('node:child_process', async (importOriginal) => {
@@ -649,7 +651,9 @@ describe('SubprocessCliAdapter', () => {
       expect(mockSpawn).not.toHaveBeenCalled();
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe('TIMEOUT');
+        // #6691: a caller cancel is not a timeout.
+        expect(result.error.code).toBe('EXECUTION_ERROR');
+        expect(isCallerCancelled(result.error)).toBe(true);
         expect(result.error.message).toContain('Aborted before spawn');
       }
     });
@@ -682,7 +686,9 @@ describe('SubprocessCliAdapter', () => {
       expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe('TIMEOUT');
+        // #6691: a caller cancel is not a timeout.
+        expect(result.error.code).toBe('EXECUTION_ERROR');
+        expect(isCallerCancelled(result.error)).toBe(true);
         expect(result.error.message).toContain('Aborted by caller signal');
       }
     });
@@ -1706,5 +1712,111 @@ describe('subprocess tempdir cleanup', () => {
     await adapter.execute({ content: 'hi' });
 
     expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================================
+// A caller cancel is not a breaker failure (#6691)
+// ============================================================================
+
+/**
+ * `cancel_job` aborts a CLI call through `ExecutionOptions.signal`. That used
+ * to come back as TIMEOUT and `executeCliRetryLoop` recorded it on the CLI's
+ * breaker, so enough cancels could open the circuit on a healthy CLI. The
+ * adapter's own watchdog, and a caller deadline (`AbortSignal.timeout`), are
+ * real timeouts and must keep counting.
+ */
+describe('SubprocessCliAdapter - caller cancel vs timeout on the breaker (#6691)', () => {
+  const EXECUTE_OPTS = { allowRetry: true, maxRetries: 2 } as const;
+
+  function failureCount(): number {
+    return getDefaultCliCircuitBreakerRegistry().getBreaker('claude').getSnapshot().failureCount;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getDefaultCliCircuitBreakerRegistry().getBreaker('claude').reset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    getDefaultCliCircuitBreakerRegistry().getBreaker('claude').reset();
+  });
+
+  it('does not count or retry a call cancelled mid-execution', async () => {
+    const adapter = new TestSubprocessAdapter();
+    const controller = new AbortController();
+    mockSpawn.mockImplementation(() => {
+      const { mockChild } = createMockChildProcess();
+      queueMicrotask(() => {
+        controller.abort('cancelled via cancel_job');
+      });
+      return mockChild;
+    });
+
+    const result = await adapter.execute(
+      { content: 'test' },
+      { ...EXECUTE_OPTS, signal: controller.signal }
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(isCallerCancelled(result.error)).toBe(true);
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(failureCount()).toBe(0);
+  });
+
+  it('does not count a call cancelled before spawn', async () => {
+    const adapter = new TestSubprocessAdapter();
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await adapter.execute(
+      { content: 'test' },
+      { ...EXECUTE_OPTS, signal: controller.signal }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(failureCount()).toBe(0);
+  });
+
+  it("still counts the adapter's own watchdog timeout", async () => {
+    vi.useFakeTimers();
+    const adapter = new TestSubprocessAdapter();
+    const { mockChild } = createMockChildProcess();
+    mockSpawn.mockReturnValue(mockChild);
+
+    const promise = adapter.execute({ content: 'test' }, { timeoutMs: 1_000, allowRetry: false });
+    await vi.advanceTimersByTimeAsync(1_001);
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('TIMEOUT');
+      expect(isCallerCancelled(result.error)).toBe(false);
+    }
+    expect(failureCount()).toBe(1);
+  });
+
+  it('still counts a caller deadline (an abort whose reason is a TimeoutError)', async () => {
+    const adapter = new TestSubprocessAdapter();
+    const controller = new AbortController();
+    mockSpawn.mockImplementation(() => {
+      const { mockChild } = createMockChildProcess();
+      queueMicrotask(() => {
+        // What `AbortSignal.timeout()` aborts with.
+        controller.abort(new DOMException('deadline', 'TimeoutError'));
+      });
+      return mockChild;
+    });
+
+    const result = await adapter.execute(
+      { content: 'test' },
+      { allowRetry: false, signal: controller.signal }
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
+    expect(failureCount()).toBe(1);
   });
 });

@@ -27,6 +27,7 @@ import type { CliResponse, CliError, CliErrorCode, CliName } from './types.js';
 import type { ICircuitBreaker, FailureCategory } from './circuit-breaker-types.js';
 import { delay } from '../utils/async-utils.js';
 import { RETRYABLE_ERROR_CODES } from './cli-error-helpers.js';
+import { isCallerCancelled } from '../adapters/abort-utils.js';
 
 // ============================================================================
 // Types
@@ -141,6 +142,9 @@ export async function executeCliRetryLoop(
     }
 
     lastError = result.error;
+
+    // #6691: a caller cancel is neither a health signal nor worth retrying.
+    if (isCallerCancelled(lastError)) return err(lastError);
 
     // Record failure with circuit breaker if present
     if (config.circuitBreaker !== undefined && config.circuitBreaker !== null) {

@@ -9,7 +9,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AdapterSelection } from './auto-adapter.js';
 import type { CompletionRequest } from '../core/types/model.js';
 import { CliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
-import { createCallerInputCliError } from '../cli-adapters/cli-error-helpers.js';
+import {
+  createCallerAbortCliError,
+  createCallerInputCliError,
+} from '../cli-adapters/cli-error-helpers.js';
 import type { ICliAdapter } from '../cli-adapters/types.js';
 import { ok, err } from '../core/result.js';
 import { ModelError, ErrorCode } from '../core/errors.js';
@@ -772,6 +775,42 @@ describe('ResilientAdapter', () => {
       const attempts = DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold + 2;
       for (let i = 0; i < attempts; i++) {
         const res = await failingAdapter.complete({ messages: [], model: 'x' });
+        expect(res.ok).toBe(false);
+      }
+
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+      expect(breaker.getState()).toBe('closed');
+    });
+
+    it('never counts a caller-cancelled CLI call against the breaker (#6691)', async () => {
+      // cancel_job aborts the CLI call; the cancel's AbortError cause crosses
+      // the real bridge. Without the exemption the message matches no category
+      // and counts as `unknown`.
+      const registry = new CircuitBreakerRegistry();
+      const breaker = registry.getBreaker('claude');
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+      const cli = {
+        name: 'claude',
+        getModelInfo: () => ({ id: 'claude-sonnet', name: 'x' }),
+        execute: () =>
+          Promise.resolve(
+            err(
+              createCallerAbortCliError(
+                'cancelled via cancel_job',
+                'Aborted by caller signal',
+                'claude'
+              )
+            )
+          ),
+      } as unknown as ICliAdapter;
+      const bridge = new CliToModelAdapter(cli);
+      mockComplete.mockImplementation((req: CompletionRequest) => bridge.complete(req));
+      vi.mocked(isRateLimitLikeError).mockReturnValue(false);
+
+      const attempts = DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold + 2;
+      for (let i = 0; i < attempts; i++) {
+        const res = await failingAdapter.complete({ messages: [] });
         expect(res.ok).toBe(false);
       }
 

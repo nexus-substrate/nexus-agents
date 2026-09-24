@@ -23,6 +23,7 @@ import {
   type CircuitStateChangeListener,
 } from './circuit-breaker.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
+import { isCallerCancelled } from '../adapters/abort-utils.js';
 
 /** Maps canonical TaskCategory (10 types) to FallbackTaskType (5 types). */
 const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
@@ -267,8 +268,9 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
 
     if (!execResult.ok) {
       // #6613: caller-input errors (e.g. invalid model requested) must not count
-      // against the breaker or exhaust half-open probe capacity.
-      if (isCallerInputCliError(execResult.error)) {
+      // against the breaker or exhaust half-open probe capacity. #6691: nor
+      // must a call its caller cancelled.
+      if (isCallerInputCliError(execResult.error) || isCallerCancelled(execResult.error)) {
         breaker.releaseHalfOpenProbe();
         return err(execResult.error);
       }

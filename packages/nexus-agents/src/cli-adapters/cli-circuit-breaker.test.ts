@@ -16,7 +16,7 @@ import {
   type CliCircuitBreakerConfig,
 } from './cli-circuit-breaker.js';
 import { CircuitError, CircuitErrorCode, type CircuitStateChangeEvent } from './circuit-breaker.js';
-import { createCallerInputCliError } from './cli-error-helpers.js';
+import { createCallerAbortCliError, createCallerInputCliError } from './cli-error-helpers.js';
 
 // ============================================================================
 // Test Helpers
@@ -230,6 +230,27 @@ describe('CliCircuitBreakerIntegration', () => {
       expect(snapshot?.failureCount).toBe(0);
     });
 
+    it('does not count a caller-cancelled CLI call against the breaker (#6691)', async () => {
+      const cancelled = createCallerAbortCliError(
+        'cancelled via cancel_job',
+        'Aborted by caller signal',
+        'opencode'
+      );
+      const cancelledAdapter = createAdapterReturningError('opencode', cancelled);
+      const custom = new CliCircuitBreakerIntegration([cancelledAdapter], {
+        perCliConfig: { opencode: { failureThreshold: 2 } },
+      });
+
+      for (let i = 0; i < 5; i++) {
+        const result = await custom.execute(cancelledAdapter, createTask());
+        expect(result.ok).toBe(false);
+      }
+
+      const snapshot = custom.getCircuitSnapshots().get('opencode');
+      expect(snapshot?.state).toBe('closed');
+      expect(snapshot?.failureCount).toBe(0);
+    });
+
     it('does not double-count standard CLI failures (#6613)', async () => {
       const failingAdapter = createMockAdapter('claude', 'circuit-error');
       const custom = new CliCircuitBreakerIntegration([failingAdapter], {
@@ -256,7 +277,9 @@ describe('CliCircuitBreakerIntegration', () => {
           if (returnCallerInput) {
             return Promise.resolve(err(callerInputError));
           }
-          return Promise.resolve(err({ code: 'TIMEOUT', message: 'timeout', cli: 'claude', retryable: true }));
+          return Promise.resolve(
+            err({ code: 'TIMEOUT', message: 'timeout', cli: 'claude', retryable: true })
+          );
         }),
       } as unknown as ICliAdapter;
 

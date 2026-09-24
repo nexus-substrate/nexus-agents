@@ -17,6 +17,7 @@ import {
   categorizeError,
 } from './cli-retry-loop.js';
 import type { CliRetryLoopConfig } from './cli-retry-loop.js';
+import { createCallerAbortCliError } from './cli-error-helpers.js';
 
 // Deterministic randomness for backoff jitter
 vi.mock('../core/index.js', async (importOriginal) => {
@@ -174,6 +175,29 @@ describe('executeCliRetryLoop', () => {
 
     expect(cb.recordFailure).toHaveBeenCalledTimes(2);
     expect(cb.recordFailure).toHaveBeenCalledWith('rate_limit');
+  });
+
+  it('neither records nor retries a caller-cancelled call (#6691)', async () => {
+    const cb = makeCircuitBreaker('closed');
+    // Flagged retryable on purpose: the cancel itself must stop the loop.
+    const cancelled: CliError = {
+      ...createCallerAbortCliError(
+        'cancelled via cancel_job',
+        'Aborted by caller signal',
+        'claude'
+      ),
+      retryable: true,
+    };
+    const executeFn = vi.fn().mockResolvedValue(err(cancelled));
+    const config = makeConfig({ circuitBreaker: cb, maxRetries: 2 });
+
+    const promise = executeCliRetryLoop(executeFn, config);
+    await vi.advanceTimersByTimeAsync(30_000);
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    expect(executeFn).toHaveBeenCalledTimes(1);
+    expect(cb.recordFailure).not.toHaveBeenCalled();
   });
 
   it('does NOT call recordSuccess (caller responsibility)', async () => {
