@@ -701,6 +701,7 @@ describe('doctor --gateway on a gateway-only host (#6609)', () => {
     installFreshness: { state: 'aligned' as const, version: '1.0.0' },
     scratchSpace: [],
     clis: (['claude', 'gemini', 'codex', 'opencode'] as const).map(noCli),
+    gatewayCoveredClis: [],
   };
 
   it('measures the fake gateway: counts, family census, and the slots the router uses', async () => {

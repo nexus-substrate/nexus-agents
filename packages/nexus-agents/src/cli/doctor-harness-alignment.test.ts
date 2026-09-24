@@ -43,6 +43,33 @@ describe('checkHarnessAlignment', () => {
     expect(check.agentsMdExists).toBe(false);
   });
 
+  it('finds AGENTS.md at the project root when run from a subdirectory (#6782)', () => {
+    // It looked only in the cwd while inProject walked up, so `doctor` from a
+    // subdirectory reported a false "MISSING — federation invariant broken".
+    writeAt('package.json', '{}');
+    writeAt('AGENTS.md', '# AGENTS.md');
+    const nested = join(root, 'src', 'nested');
+    mkdirSync(nested, { recursive: true });
+
+    const check = checkHarnessAlignment(nested);
+    expect(check.inProject).toBe(true);
+    expect(check.agentsMdExists).toBe(true);
+  });
+
+  it('prefers the git root over a nearer package.json, as in a monorepo (#6782)', () => {
+    mkdirSync(join(root, '.git'));
+    writeAt('AGENTS.md', '# AGENTS.md');
+    writeAt('.cursor/rules/agents.mdc', 'See AGENTS.md.');
+    writeAt('packages/app/package.json', '{}');
+    const nested = join(root, 'packages', 'app', 'src');
+    mkdirSync(nested, { recursive: true });
+
+    const check = checkHarnessAlignment(nested);
+    expect(check.agentsMdExists).toBe(true);
+    // The harness files are resolved at the same root, not the cwd.
+    expect(check.files.find((f) => f.harness === 'Cursor')?.redirectsToAgentsMd).toBe(true);
+  });
+
   it('reports agentsMdExists=true when AGENTS.md is present in a project', () => {
     writeAt('package.json', '{}');
     writeAt('AGENTS.md', '# AGENTS.md');

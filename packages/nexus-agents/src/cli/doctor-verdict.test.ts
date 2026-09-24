@@ -45,6 +45,7 @@ const base = {
   scratchSpace: [scratch('ok')],
   clis: [healthyCli],
   gateway: 'absent' as const,
+  gatewayCoveredClis: [],
 };
 
 describe('isAllHealthy', () => {
@@ -58,10 +59,19 @@ describe('isAllHealthy', () => {
     expect(isAllHealthy({ ...base, installFreshness })).toBe(false);
   });
 
-  it('is UNHEALTHY when install freshness is unmeasured (#5613)', () => {
+  it('stays healthy when install freshness is unmeasured: named in the summary, not failed (#6782)', () => {
+    // #5613 asked for exactly this ("unknown → not a failure but reported as
+    // unmeasured"); the implementation failed on it. One rule now covers every
+    // verdict section, the one scratch space already follows.
     const installFreshness = { state: 'unknown' as const, reason: 'not installed' };
 
-    expect(isAllHealthy({ ...base, installFreshness })).toBe(false);
+    expect(isAllHealthy({ ...base, installFreshness })).toBe(true);
+  });
+
+  it('stays healthy when the global install is newer than this build (#6782)', () => {
+    const installFreshness = { state: 'ahead' as const, global: '8.110.1', expected: '8.110.0' };
+
+    expect(isAllHealthy({ ...base, installFreshness })).toBe(true);
   });
 
   it('is UNHEALTHY when a scratch filesystem is critical', () => {
@@ -132,8 +142,17 @@ describe('isAllHealthy with a gateway (#6609)', () => {
     expect(isAllHealthy({ ...base, gateway: 'fail' })).toBe(false);
   });
 
-  it('still fails an installed CLI that is not authenticated, gateway or not', () => {
+  it('still fails an installed CLI that is not authenticated when the gateway does not serve its slot', () => {
     const clis = [{ ...healthyCli, authenticated: false }];
     expect(isAllHealthy({ ...base, clis, gateway: 'pass' })).toBe(false);
+  });
+
+  it('passes a broken installed CLI whose slot the gateway serves (#6782)', () => {
+    const clis = [{ ...healthyCli, versionStatus: 'unsupported' as const }];
+    expect(isAllHealthy({ ...base, clis, gateway: 'pass', gatewayCoveredClis: ['claude'] })).toBe(
+      true
+    );
+    // The pair: the same CLI with its slot unserved still fails.
+    expect(isAllHealthy({ ...base, clis, gateway: 'pass', gatewayCoveredClis: [] })).toBe(false);
   });
 });

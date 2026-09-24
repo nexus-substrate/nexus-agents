@@ -2,7 +2,8 @@
  * nexus-agents doctor — harness-alignment sub-check.
  *
  * Phase 3 of #2805 (option B federation of #2764). Walks the
- * harness-specific config files in the current working directory and
+ * harness-specific config files at the project root (the git root, else
+ * the nearest package.json ancestor of the working directory) and
  * reports whether each one redirects to AGENTS.md (aligned), exists
  * with non-redirect content (drift), or is absent (missing).
  *
@@ -38,7 +39,7 @@ export interface HarnessFileStatus {
 export interface HarnessAlignmentCheck {
   /** True iff cwd or an ancestor contains a package.json or .git marker. */
   readonly inProject: boolean;
-  /** True iff AGENTS.md is the federated surface (canonical doc exists). */
+  /** True iff AGENTS.md exists at the project root (the federated surface). */
   readonly agentsMdExists: boolean;
   /** Per-harness rows. */
   readonly files: readonly HarnessFileStatus[];
@@ -66,16 +67,22 @@ const HARNESS_FILES: ReadonlyArray<{ harness: string; path: string }> = [
 ];
 
 /**
- * Walk every known harness discovery file at the given root (defaults
- * to `process.cwd()`) and report alignment status.
+ * Walk every known harness discovery file at the project root containing
+ * `cwd` (defaults to `process.cwd()`) and report alignment status.
+ *
+ * AGENTS.md and the harness files are looked up at the same root the
+ * in-project check finds — the git root, else the nearest package.json
+ * ancestor. Looking only in `cwd` reported a false MISSING whenever doctor
+ * ran from a subdirectory (#6782). Outside a project, `cwd` is used.
  */
 export function checkHarnessAlignment(cwd: string = process.cwd()): HarnessAlignmentCheck {
-  const inProject = findRepoRoot(cwd) !== null || hasPackageJsonAncestor(cwd);
-  const agentsMdPath = join(cwd, 'AGENTS.md');
-  const agentsMdExists = existsSync(agentsMdPath);
+  const projectRoot = findProjectRoot(cwd);
+  const inProject = projectRoot !== null;
+  const base = projectRoot ?? cwd;
+  const agentsMdExists = existsSync(join(base, 'AGENTS.md'));
 
   const files: HarnessFileStatus[] = HARNESS_FILES.map(({ harness, path }) =>
-    inspectFile(harness, path, join(cwd, path))
+    inspectFile(harness, path, join(base, path))
   );
 
   const alignedCount = files.filter((f) => f.exists && f.redirectsToAgentsMd).length;
@@ -92,13 +99,18 @@ export function checkHarnessAlignment(cwd: string = process.cwd()): HarnessAlign
   };
 }
 
-/** Returns whether the starting directory or an ancestor contains package.json. */
-function hasPackageJsonAncestor(start: string): boolean {
+/** The git root containing `start`, else its nearest package.json ancestor, else null. */
+function findProjectRoot(start: string): string | null {
+  return findRepoRoot(start) ?? findPackageJsonAncestor(start);
+}
+
+/** The starting directory or nearest ancestor containing package.json, or null. */
+function findPackageJsonAncestor(start: string): string | null {
   let current = resolve(start);
   for (;;) {
-    if (existsSync(join(current, 'package.json'))) return true;
+    if (existsSync(join(current, 'package.json'))) return current;
     const parent = dirname(current);
-    if (parent === current) return false;
+    if (parent === current) return null;
     current = parent;
   }
 }

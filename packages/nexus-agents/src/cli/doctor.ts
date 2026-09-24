@@ -44,6 +44,7 @@ import {
 } from '../learning/distiller-eligibility.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import { isCliAdmitted } from '../cli-adapters/cli-admission.js';
+import { cliBinaryAdapterOf } from '../cli-adapters/gateway-slot-arm.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
@@ -68,7 +69,7 @@ import { checkHarnessAlignment } from './doctor-harness-alignment.js';
 import type { HarnessAlignmentCheck } from './doctor-harness-alignment.js';
 import {
   assessInstallFreshness,
-  installFreshnessIsHealthy,
+  installFreshnessFailsVerdict,
   readGlobalVersion,
   type InstallFreshness,
 } from './doctor-install-freshness.js';
@@ -82,6 +83,7 @@ import {
   type GatewayHealth,
   type GatewayVerdict,
 } from './doctor-gateway.js';
+import { gatewayCoveredClis } from './doctor-gateway-slots.js';
 
 /** API key environment variable names. */
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
@@ -546,10 +548,19 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
   // Pinned by `doctor-probe-exemption.test.ts` so a future "canonical path"
   // cleanup cannot silently flip it.
   const adapters = createAllAdapters();
-  const adapter = adapters.get(name);
+  const slotArm = adapters.get(name);
 
-  if (!adapter) {
+  if (!slotArm) {
     return createNotFoundResult(name, 'Adapter not available');
+  }
+  // #6782: in gateway mode the router arm is a gateway slot arm, and its
+  // `healthCheck` answers from whichever target the arm picks. When the CLI is
+  // unavailable that is the gateway model, and this list credited the CLI with
+  // the gateway's health. Measure the CLI binary only; the gateway's own health
+  // is the gateway section's to report.
+  const adapter = cliBinaryAdapterOf(slotArm);
+  if (adapter === undefined) {
+    return createNotFoundResult(name, 'Not found in PATH');
   }
 
   try {
@@ -1005,6 +1016,12 @@ export interface HealthVerdictInput {
    * missing CLI acceptable, because its slot is served by the gateway.
    */
   readonly gateway: GatewayVerdict;
+  /**
+   * Installed-but-broken CLIs whose slot the gateway actually serves (#6782),
+   * from `gatewayCoveredClis`. They do not fail the verdict; the report names
+   * them with ⚠.
+   */
+  readonly gatewayCoveredClis: readonly CliName[];
 }
 
 /**
@@ -1026,11 +1043,15 @@ export function isAllHealthy(input: HealthVerdictInput): boolean {
     input.nodeSupported &&
     input.hasAuthMethod &&
     input.mcpServerReady &&
-    installFreshnessIsHealthy(input.installFreshness) &&
+    !installFreshnessFailsVerdict(input.installFreshness) &&
     scratchSeverityIsAcceptable(worstSeverity(input.scratchSpace)) &&
     // whenEmpty: zero detected CLIs is not a healthy install (#4581) — unless
     // a passing gateway serves the slots (#6609), as on a gateway-only host.
-    allOf(input.clis, (c) => !cliFailsVerdict(c, input.gateway), input.gateway === 'pass')
+    allOf(
+      input.clis,
+      (c) => !cliFailsVerdict(c, input.gateway, input.gatewayCoveredClis.includes(c.name)),
+      input.gateway === 'pass'
+    )
   );
 }
 
@@ -1102,17 +1123,17 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
   const sandbox = checkSandbox();
   const env = collectEnvironmentChecks();
   const gateway = await measureGateway(deps.checkGateway, deps.gatewayProbe);
-  const gatewayTerm = gatewayVerdict(gateway);
   const registryAdvisory = buildRegistryAdvisory(clis, disabledClis, gateway);
 
   const allHealthy = isAllHealthy({
     nodeSupported: nodeVersion.supported,
-    hasAuthMethod: hasAnyAuthMethod(apiKeys, clis, gatewayTerm),
+    hasAuthMethod: hasAnyAuthMethod(apiKeys, clis, gatewayVerdict(gateway)),
     mcpServerReady,
     installFreshness: env.installFreshness,
     scratchSpace: env.scratchSpace,
     clis,
-    gateway: gatewayTerm,
+    gateway: gatewayVerdict(gateway),
+    gatewayCoveredClis: gatewayCoveredClis(gateway, clis).map((c) => c.cli),
   });
 
   return {

@@ -65,6 +65,54 @@ export function gatewaySlotServing(
   });
 }
 
+/** An installed CLI that fails its own check: unauthenticated or on an unsupported version. */
+export function installedCliIsBroken(cli: CliCheckResult): boolean {
+  return cli.installed && (!cli.authenticated || cli.versionStatus === 'unsupported');
+}
+
+/** An installed, broken CLI whose slot the gateway serves (#6782). */
+interface GatewayCoveredCli {
+  readonly cli: CliCheckResult['name'];
+  /** The gateway model serving the slot. */
+  readonly model: string;
+  /** The CLI's own failure, for the report line. */
+  readonly reason: string;
+}
+
+/**
+ * Installed CLIs that fail their own check while the gateway actually serves
+ * their slot (#6782). Service is unaffected, so they do not fail the verdict;
+ * they are reported with ⚠ and named in the summary instead. The CLI's health
+ * is its binary's own — the gateway's is never credited to it.
+ */
+export function gatewayCoveredClis(
+  health: GatewayHealth,
+  clis: readonly CliCheckResult[]
+): readonly GatewayCoveredCli[] {
+  const served = gatewaySlotServing(health, clis).filter((s) => s.serving === 'gateway');
+  return clis.filter(installedCliIsBroken).flatMap((cli) => {
+    const slot = served.find((s) => s.slot === cli.name);
+    if (slot === undefined) return [];
+    return [{ cli: cli.name, model: slot.model, reason: brokenCliReason(cli) }];
+  });
+}
+
+/** The CLI's own failure: its reported error, else the failed check. */
+function brokenCliReason(cli: CliCheckResult): string {
+  if (cli.error !== undefined && cli.error !== '') return cli.error;
+  return cli.versionStatus === 'unsupported'
+    ? `unsupported version ${cli.version}`
+    : 'not authenticated';
+}
+
+/** The report line for a gateway-covered CLI, with its remedy (#6782). */
+export function formatGatewayCoveredCli(c: GatewayCoveredCli): string {
+  return (
+    `${c.cli} CLI installed but unhealthy (${c.reason}); slot served by gateway model ${c.model}. ` +
+    `Repair the CLI, or set NEXUS_DISABLED_CLIS=${c.cli} to stop using it`
+  );
+}
+
 /** Why the CLI does not serve its slot, for a report line. */
 function cliAbsence(s: GatewaySlotServing): string {
   return s.disabled ? 'CLI disabled by NEXUS_DISABLED_CLIS' : 'CLI not available';

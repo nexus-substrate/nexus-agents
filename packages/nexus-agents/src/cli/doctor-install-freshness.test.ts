@@ -8,7 +8,9 @@ import { describe, it, expect } from 'vitest';
 import {
   assessInstallFreshness,
   describeInstallFreshness,
-  installFreshnessIsHealthy,
+  describeInstallFreshnessSummary,
+  installFreshnessFailsVerdict,
+  installFreshnessIsUnmeasured,
   readGlobalVersion,
 } from './doctor-install-freshness.js';
 
@@ -60,6 +62,48 @@ describe('assessInstallFreshness (#4767)', () => {
     expect(assessInstallFreshness('', '4.17.0').state).toBe('unknown');
   });
 
+  it('reports a NEWER global install as ahead, not behind (#6782)', () => {
+    // Exact equality reported 8.110.1 against 8.110.0 as `behind` — a false
+    // failure on the exit code for an install that is not stale at all.
+    expect(assessInstallFreshness('8.110.1', '8.110.0')).toEqual({
+      state: 'ahead',
+      global: '8.110.1',
+      expected: '8.110.0',
+    });
+  });
+
+  it('compares numerically, not as strings (#6782)', () => {
+    // '8.10.0' < '8.9.0' as strings; as versions it is newer.
+    expect(assessInstallFreshness('8.10.0', '8.9.0').state).toBe('ahead');
+    expect(assessInstallFreshness('8.9.0', '8.10.0').state).toBe('behind');
+  });
+
+  it('orders a pre-release before its release (#6782)', () => {
+    expect(assessInstallFreshness('8.110.0-rc.1', '8.110.0').state).toBe('behind');
+    expect(assessInstallFreshness('8.110.0', '8.110.0-rc.1').state).toBe('ahead');
+    expect(assessInstallFreshness('8.110.0-rc.2', '8.110.0-rc.1').state).toBe('ahead');
+  });
+
+  it('reports aligned when only build metadata differs (#6782)', () => {
+    expect(assessInstallFreshness('8.110.0+sha.abc', '8.110.0').state).toBe('aligned');
+  });
+
+  it('reports an unparseable global version as unknown, naming it (#6782)', () => {
+    const result = assessInstallFreshness('latest', '8.110.0');
+
+    expect(result.state).toBe('unknown');
+    if (result.state !== 'unknown') return;
+    expect(result.reason).toContain('latest');
+  });
+
+  it('reports an unparseable build version as unknown, naming it (#6782)', () => {
+    const result = assessInstallFreshness('8.110.0', 'not-a-version');
+
+    expect(result.state).toBe('unknown');
+    if (result.state !== 'unknown') return;
+    expect(result.reason).toContain('not-a-version');
+  });
+
   it('carries the reason for an unknown so the operator can act', () => {
     expect(assessInstallFreshness(null, '4.17.0', 'npm ls failed: ENOENT')).toEqual({
       state: 'unknown',
@@ -68,22 +112,39 @@ describe('assessInstallFreshness (#4767)', () => {
   });
 });
 
-describe('installFreshnessIsHealthy (#4767)', () => {
-  it('counts only aligned as healthy', () => {
-    expect(installFreshnessIsHealthy({ state: 'aligned', version: '1.0.0' })).toBe(true);
+describe('installFreshnessFailsVerdict (#4767, #6782)', () => {
+  it('fails the verdict when the global install is strictly older', () => {
+    expect(
+      installFreshnessFailsVerdict({ state: 'behind', global: '1.0.0', expected: '2.0.0' })
+    ).toBe(true);
   });
 
-  it('does not count unknown as healthy', () => {
-    // This is the load-bearing assertion. #4767 happened because nobody knew
-    // the versions had diverged; a check that passes when it could not measure
-    // reproduces exactly that.
-    expect(installFreshnessIsHealthy({ state: 'unknown', reason: 'not installed' })).toBe(false);
+  it('does not fail on aligned or ahead', () => {
+    expect(installFreshnessFailsVerdict({ state: 'aligned', version: '1.0.0' })).toBe(false);
+    expect(
+      installFreshnessFailsVerdict({ state: 'ahead', global: '2.0.0', expected: '1.0.0' })
+    ).toBe(false);
   });
 
-  it('does not count behind as healthy', () => {
-    expect(installFreshnessIsHealthy({ state: 'behind', global: '1.0.0', expected: '2.0.0' })).toBe(
-      false
-    );
+  it('does not fail on unknown by itself: unmeasured is reported, not failed (#6782)', () => {
+    // One rule for every section that feeds the verdict: unmeasured renders ⚠
+    // and is named in the summary (installFreshnessIsUnmeasured) but does not
+    // fail the exit code — the rule scratch space already follows. #4767's
+    // concern (nobody knew) is met by naming it, not by failing on it.
+    expect(installFreshnessFailsVerdict({ state: 'unknown', reason: 'not installed' })).toBe(false);
+  });
+});
+
+describe('installFreshnessIsUnmeasured (#6782)', () => {
+  it('is true only for unknown', () => {
+    expect(installFreshnessIsUnmeasured({ state: 'unknown', reason: 'x' })).toBe(true);
+    expect(installFreshnessIsUnmeasured({ state: 'aligned', version: '1.0.0' })).toBe(false);
+    expect(
+      installFreshnessIsUnmeasured({ state: 'ahead', global: '2.0.0', expected: '1.0.0' })
+    ).toBe(false);
+    expect(
+      installFreshnessIsUnmeasured({ state: 'behind', global: '1.0.0', expected: '2.0.0' })
+    ).toBe(false);
   });
 });
 
@@ -111,11 +172,36 @@ describe('describeInstallFreshness (#4767)', () => {
     expect(line).toMatch(/already-spawned|until it is restarted/i);
   });
 
-  it('says it could not confirm, rather than reporting a pass, when unknown', () => {
+  it('says it could not confirm, with a warning glyph, when unknown', () => {
     const line = describeInstallFreshness({ state: 'unknown', reason: 'not installed' });
 
     expect(line).toMatch(/not determined|cannot confirm/i);
-    expect(line).not.toMatch(/^✓/);
+    expect(line).toMatch(/^⚠/);
+  });
+
+  it('warns, without the stale-install remedy, when the global install is newer (#6782)', () => {
+    const line = describeInstallFreshness({
+      state: 'ahead',
+      global: '8.110.1',
+      expected: '8.110.0',
+    });
+
+    expect(line).toMatch(/^⚠/);
+    expect(line).toContain('8.110.1');
+    expect(line).toContain('8.110.0');
+    expect(line).toMatch(/newer/i);
+    expect(line).not.toContain('npm install -g');
+  });
+
+  it('names a newer global install in the summary note, not a stale one (#6782)', () => {
+    const note = describeInstallFreshnessSummary({
+      state: 'ahead',
+      global: '8.110.1',
+      expected: '8.110.0',
+    });
+
+    expect(note).toMatch(/newer/i);
+    expect(note).not.toMatch(/stale/i);
   });
 });
 

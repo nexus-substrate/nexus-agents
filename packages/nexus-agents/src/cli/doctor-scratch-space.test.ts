@@ -7,6 +7,7 @@ import {
   checkScratchSpace,
   formatScratchFilesystems,
   formatScratchSpace,
+  scratchSpaceIsUnmeasured,
   worstSeverity,
 } from './doctor-scratch-space.js';
 import type {
@@ -252,5 +253,28 @@ describe('formatScratchFilesystems', () => {
     ]);
 
     expect(out).toContain('NEXUS_TMPDIR');
+  });
+});
+
+describe('scratchSpaceIsUnmeasured (#6782)', () => {
+  const measured = checkScratchSpace('/tmp/a', () => reading(20 * GIB, 32 * GIB));
+  const unreadable = checkScratchSpace('/tmp/b', () => {
+    throw new Error('ENOSYS');
+  });
+
+  it('is false when every filesystem was read', () => {
+    expect(scratchSpaceIsUnmeasured([measured])).toBe(false);
+  });
+
+  it('is true when any filesystem could not be read, though it grades ok', () => {
+    // The verdict grades an unreadable filesystem `ok` (doctor must not fail
+    // closed on a diagnostic); this keeps that default from being reported as
+    // a measurement.
+    expect(unreadable.severity).toBe('ok');
+    expect(scratchSpaceIsUnmeasured([measured, unreadable])).toBe(true);
+  });
+
+  it('is true when no filesystem was identified at all', () => {
+    expect(scratchSpaceIsUnmeasured([])).toBe(true);
   });
 });

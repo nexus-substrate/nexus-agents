@@ -10,10 +10,15 @@
  * @module cli/doctor-verdict-terms
  */
 
-import { scratchSeverityIsAcceptable, worstSeverity } from './doctor-scratch-space.js';
+import {
+  scratchSeverityIsAcceptable,
+  scratchSpaceIsUnmeasured,
+  worstSeverity,
+} from './doctor-scratch-space.js';
 import * as installFreshness from './doctor-install-freshness.js';
 import type { DoctorResult } from './doctor.js';
 import { cliFailsVerdict, gatewayVerdict, type GatewayVerdict } from './doctor-gateway.js';
+import { gatewayCoveredClis } from './doctor-gateway-slots.js';
 
 /**
  * The verdict's failing terms, named.
@@ -35,7 +40,7 @@ export function failingVerdictTerms(result: DoctorResult): string[] {
   const terms: string[] = gatewayTerms(result.gateway, gateway);
   if (!result.nodeVersion.supported) terms.push('node version');
   if (!result.mcpServerReady) terms.push('MCP server');
-  if (!installFreshness.installFreshnessIsHealthy(result.installFreshness)) {
+  if (installFreshness.installFreshnessFailsVerdict(result.installFreshness)) {
     terms.push('install freshness');
   }
   if (!scratchSeverityIsAcceptable(worstSeverity(result.scratchSpace))) terms.push('scratch space');
@@ -49,14 +54,57 @@ export function failingVerdictTerms(result: DoctorResult): string[] {
   // while contributing nothing to the count.
   // With a passing gateway a missing CLI is not a term (#6609): the same
   // predicate `isAllHealthy` uses decides both.
+  // #6782: a broken CLI whose slot the gateway serves is named, not counted.
+  const covered = gatewayCoveredClis(result.gateway, result.clis).map((c) => c.cli);
   for (const c of result.clis) {
-    if (cliFailsVerdict(c, gateway)) terms.push(`CLI ${c.name}`);
+    if (cliFailsVerdict(c, gateway, covered.includes(c.name))) terms.push(`CLI ${c.name}`);
   }
   // `isAllHealthy` passes `whenEmpty = false` (#4581) unless a gateway passes:
   // zero detected CLIs is not a healthy install. Without this row an
   // API-key-only setup with no CLI reads as unhealthy with nothing counted.
   if (result.clis.length === 0 && gateway !== 'pass') terms.push('no CLIs detected');
   return terms;
+}
+
+/**
+ * The verdict sections that could not be measured (#6782), named.
+ *
+ * One rule for every section that feeds the verdict: unmeasured renders ⚠,
+ * is named here for the summary, and does not fail the exit code by itself —
+ * doctor must not fail closed on a diagnostic it could not run, and must not
+ * report a default as a measurement either.
+ */
+function unmeasuredVerdictSections(result: DoctorResult): string[] {
+  const sections: string[] = [];
+  if (installFreshness.installFreshnessIsUnmeasured(result.installFreshness)) {
+    sections.push('install freshness');
+  }
+  if (scratchSpaceIsUnmeasured(result.scratchSpace)) sections.push('scratch space');
+  return sections;
+}
+
+/**
+ * Summary notes for installed-but-broken CLIs the gateway serves around
+ * (#6782): not issues, since service is unaffected, but never silent.
+ */
+function gatewayCoveredCliNotes(result: DoctorResult): string[] {
+  return gatewayCoveredClis(result.gateway, result.clis).map(
+    (c) => `${c.cli} CLI unhealthy, slot served by gateway`
+  );
+}
+
+/**
+ * The summary line's suffix: the freshness note, the unmeasured sections and
+ * the gateway-covered CLIs (#6782). Each is named, none is counted as an issue.
+ */
+export function summaryNotes(result: DoctorResult): string {
+  const unmeasured = unmeasuredVerdictSections(result);
+  const covered = gatewayCoveredCliNotes(result);
+  return (
+    installFreshness.describeInstallFreshnessSummary(result.installFreshness) +
+    (unmeasured.length > 0 ? ` — unmeasured: ${unmeasured.join(', ')}` : '') +
+    (covered.length > 0 ? ` — ⚠ ${covered.join('; ')}` : '')
+  );
 }
 
 /** A failing gateway's term, naming its host (#6609); none otherwise. */

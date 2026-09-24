@@ -41,7 +41,7 @@ import {
   type GatewaySlotMapping,
 } from '../adapters/gateway-family-slots.js';
 import type { CliCheckResult } from './doctor.js';
-import { gatewaySlotServing } from './doctor-gateway-slots.js';
+import { gatewaySlotServing, installedCliIsBroken } from './doctor-gateway-slots.js';
 
 /** Census buckets: the three slot families, and every model outside them. */
 export type GatewayCensusBucket = GatewayFamily | 'unknown';
@@ -365,9 +365,16 @@ export function unservedSlotLines(health: GatewayHealth): string[] {
  * has none (or it is opencode, which never has one) it is a named warning
  * from {@link gatewaySlotWarnings}, not a failure (#6658). A host with zero
  * served slots has a failing gateway, so every missing CLI counts. An
- * installed CLI still has to be authenticated and supported.
+ * installed CLI still has to be authenticated and supported — unless the
+ * gateway actually serves its slot (`gatewayCovered`, from
+ * `gatewayCoveredClis` in `doctor-gateway-slots.ts`): service is unaffected, so it is a named ⚠, not
+ * a failure (#6782). A broken CLI whose slot nothing serves still fails.
  */
-export function cliFailsVerdict(cli: CliCheckResult, gateway: GatewayVerdict): boolean {
+export function cliFailsVerdict(
+  cli: CliCheckResult,
+  gateway: GatewayVerdict,
+  gatewayCovered: boolean
+): boolean {
   if (!cli.installed) return gateway !== 'pass';
-  return !cli.authenticated || cli.versionStatus === 'unsupported';
+  return installedCliIsBroken(cli) && !gatewayCovered;
 }

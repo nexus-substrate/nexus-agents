@@ -1145,20 +1145,89 @@ describe('doctor-formatting', () => {
       expect(summary).toMatch(/stale global install/i);
     });
 
-    it('counts and names unmeasured install freshness (#5613)', () => {
+    it('names unmeasured install freshness without counting it as an issue (#6782)', () => {
+      // Unmeasured is ⚠ and named in the summary, never an issue by itself:
+      // the one rule every verdict section follows.
       const result = createDoctorResult({
-        allHealthy: false,
-        // A healthy CLI so this fixture means "only the install-freshness term
-        // fails"; an empty CLI list is itself an unhealthy term (#4581).
+        allHealthy: true,
         clis: [createCliCheckResult('claude', true, true, 'supported')],
         installFreshness: { state: 'unknown', reason: 'not installed' },
       });
 
       printDoctorResults(result);
 
+      const summary = getCalls().find((call) => call.includes('Status: Ready'));
+      expect(summary).toMatch(/unmeasured: install freshness/i);
+      expect(getCalls().some((call) => call.includes('issue(s) found'))).toBe(false);
+    });
+
+    it('does not count a broken CLI the gateway serves around as an issue (#6782)', () => {
+      const gateway: DoctorResult['gateway'] = {
+        state: 'healthy',
+        host: 'gw.example',
+        listedCount: 1,
+        chatCount: 1,
+        allowlistActive: false,
+        census: { anthropic: 1, openai: 0, google: 0, unknown: 0 },
+        slots: { claude: 'claude-sonnet-4-6', codex: 'unavailable', gemini: 'unavailable' },
+        proxy: { kind: 'direct' },
+        probes: 'skipped',
+      };
+      const result = {
+        ...createDoctorResult({
+          allHealthy: false,
+          nodeVersion: createNodeVersionCheck(false, 'v18.0.0'),
+          // Not authenticated, so routerAdmits is false: the gateway serves the slot.
+          clis: [createCliCheckResult('claude', true, false, 'unsupported')],
+        }),
+        gateway,
+      };
+
+      printDoctorResults(result);
+
       const summary = getCalls().find((call) => call.includes('issue(s) found'));
-      expect(summary).toContain('1 issue(s) found');
-      expect(summary).toMatch(/install freshness unmeasured/i);
+      expect(summary).toContain('1 issue(s) found (node version)');
+      expect(summary).toContain('claude CLI unhealthy, slot served by gateway');
+    });
+
+    it('names an unreadable scratch filesystem in the summary (#6782)', () => {
+      const result = createDoctorResult({
+        allHealthy: true,
+        clis: [createCliCheckResult('claude', true, true, 'supported')],
+        scratchSpace: [
+          {
+            label: 'system' as const,
+            root: '/tmp',
+            available: false,
+            freeBytes: 0,
+            totalBytes: 0,
+            percentUsed: 0,
+            severity: 'ok' as const,
+            message: 'Scratch filesystem at /tmp could not be read (statfs unavailable)',
+          },
+        ],
+      });
+
+      printDoctorResults(result);
+
+      const summary = getCalls().find((call) => call.includes('Status: Ready'));
+      expect(summary).toMatch(/unmeasured: scratch space/i);
+    });
+
+    it('names unmeasured sections on an unhealthy summary too, apart from the issues (#6782)', () => {
+      const result = createDoctorResult({
+        allHealthy: false,
+        nodeVersion: createNodeVersionCheck(false, 'v18.0.0'),
+        clis: [createCliCheckResult('claude', true, true, 'supported')],
+        installFreshness: { state: 'unknown', reason: 'not installed' },
+        scratchSpace: [],
+      });
+
+      printDoctorResults(result);
+
+      const summary = getCalls().find((call) => call.includes('issue(s) found'));
+      expect(summary).toContain('1 issue(s) found (node version)');
+      expect(summary).toMatch(/unmeasured: install freshness, scratch space/i);
     });
   });
 
