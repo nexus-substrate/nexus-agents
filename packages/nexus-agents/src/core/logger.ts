@@ -5,6 +5,7 @@
  */
 
 import { createWriteStream } from 'node:fs';
+import { redactCredentialShapes } from './credential-patterns.js';
 import { getTimeProvider } from './time-provider.js';
 
 /** Log levels in order of severity */
@@ -48,47 +49,21 @@ export interface ILogger {
   setDestination?: ((destination: LogDestination, filePath?: string) => void) | undefined;
 }
 
-/** Patterns to sanitize from logs */
-const SECRET_PATTERNS = [
-  // API keys (OpenAI sk-*, Anthropic sk-ant-*)
-  /sk-[a-zA-Z0-9-_]{20,}/g,
-  // Google AI / Gemini API keys (AIza prefix)
-  /AIza[0-9A-Za-z_-]{35}/g,
-  // Bearer tokens
+/**
+ * The logger's local extension on top of the shared credential-shape set
+ * (`core/credential-patterns`, #6753): `Bearer …` and the generic
+ * `keyword[:=]value` forms. Kept local because the logger redacts the keyword
+ * with the value, where `security/output-sanitizer` keeps the keyword and
+ * `learning/outcome-storage` also matches `auth=`. Bounded quantifiers
+ * prevent ReDoS (#1496).
+ */
+const LOGGER_CONTEXT_PATTERNS: readonly RegExp[] = [
   /Bearer [a-zA-Z0-9-_.]+/g,
-  // Generic credential patterns — bounded quantifiers to prevent ReDoS (#1496)
   /password["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
   /api[_-]?key["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
   /secret["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
   /token["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
-  // AWS credentials — bounded quantifiers to prevent ReDoS (#1496)
-  /AKIA[0-9A-Z]{16}/g,
-  /aws_secret_access_key["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
-  /aws_session_token["']?[ \t]*[:=][ \t]*["']?[^"'\s]{1,256}/gi,
-  // Azure credentials
-  /AccountKey=[a-zA-Z0-9+/=]{1,256}/gi,
-  /SharedAccessSignature=[a-zA-Z0-9%]{1,256}/gi,
-  /DefaultEndpointsProtocol=https?;AccountName=[^;]{1,256};AccountKey=[^;]{1,256}/gi,
-  // GCP credentials — bounded quantifiers to prevent ReDoS (#1496)
-  /"private_key":\s*"-----BEGIN[^"]{1,5000}-----END[^"]{1,500}-----"/g,
-  /"private_key_id":\s*"[a-f0-9]{1,256}"/gi,
-  // GitHub tokens
-  /ghp_[a-zA-Z0-9]{36}/g,
-  /github_pat_[a-zA-Z0-9_]{22,}/g,
-  /gho_[a-zA-Z0-9]{36}/g,
-  /ghu_[a-zA-Z0-9]{36}/g,
-  /ghs_[a-zA-Z0-9]{36}/g,
-  /ghr_[a-zA-Z0-9]{36}/g,
 ];
-
-/**
- * URL userinfo (`scheme://user:pass@`, `scheme://token@`): the credentials
- * are replaced and the scheme (group 1) and host kept. Excludes `:` from the
- * user part and `/?#@` from both, so a port or an `@` in a path is not
- * credentials; bounded quantifiers keep it ReDoS-safe (#1496).
- */
-const URL_USERINFO_PATTERN =
-  /\b([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/?#@:]{0,256}(?::[^\s/?#@]{0,256})?@/gi;
 
 /**
  * Field names that should have their values fully redacted.
@@ -165,11 +140,11 @@ function getDefaultLogLevel(): LogLevel {
  * Sanitizes a string by redacting known secret patterns.
  */
 export function sanitize(text: string): string {
-  let result = text;
-  for (const pattern of SECRET_PATTERNS) {
+  let result = redactCredentialShapes(text, '[REDACTED]');
+  for (const pattern of LOGGER_CONTEXT_PATTERNS) {
     result = result.replace(pattern, '[REDACTED]');
   }
-  return result.replace(URL_USERINFO_PATTERN, '$1[REDACTED]@');
+  return result;
 }
 
 /**

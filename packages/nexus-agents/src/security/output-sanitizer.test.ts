@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { NEAR_MISS_SAMPLES, SHARED_SHAPE_SAMPLES } from '../core/__tests__/credential-corpus.js';
 
 import {
   FAKE_OPENAI_KEY,
@@ -328,5 +329,29 @@ describe('sanitizeStringLeaves', () => {
     for (const value of [undefined, null, 0, false]) {
       expect(sanitizeStringLeaves(value, upper)).toBe(value);
     }
+  });
+});
+
+describe('sanitizeOutput — shared credential corpus (#6753)', () => {
+  it.each(SHARED_SHAPE_SAMPLES)('redacts $id', ({ text, secret }) => {
+    const out = sanitizeOutput(text);
+    expect(out).not.toContain(secret);
+    expect(out).toContain('[REDACTED_KEY]');
+  });
+
+  it.each(NEAR_MISS_SAMPLES)('leaves near-miss %j unchanged', (text) => {
+    expect(sanitizeOutput(text)).toBe(text);
+  });
+});
+
+describe('sanitizeErrorDetails — shared credential corpus (#6753)', () => {
+  it.each(SHARED_SHAPE_SAMPLES)('redacts $id', ({ text, secret }) => {
+    const out = sanitizeErrorDetails(text);
+    expect(out).not.toContain(secret);
+    expect(out).toContain('[REDACTED_KEY]');
+  });
+
+  it.each(NEAR_MISS_SAMPLES)('leaves near-miss %j unchanged', (text) => {
+    expect(sanitizeErrorDetails(text)).toBe(text);
   });
 });

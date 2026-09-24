@@ -44,27 +44,22 @@ import {
   wrapStorageError,
 } from './outcome-storage-helpers.js';
 import { openSqliteDatabase } from '../context/open-database.js';
+import { redactCredentialShapes } from '../core/credential-patterns.js';
 
 /** Maximum length for persisted error messages. Truncates to prevent data leakage. */
 const MAX_ERROR_MESSAGE_LENGTH = 200;
 
 /**
- * Sensitive patterns to redact from error messages before persisting. Covers
- * OpenAI/Anthropic-style `sk-…`, GitHub PATs (`ghp_/gho_/ghu_/ghs_/github_pat_`),
- * AWS access keys (`AKIA…`), space-separated `Bearer <token>`, and the generic
- * `keyword[=:]value` form. Each alternative is linear (no nested quantifiers) so
- * the global match stays ReDoS-safe over untrusted-ish error strings.
+ * The outcome store's local extension on top of the shared credential-shape
+ * set (`core/credential-patterns`, #6753): space-separated `bearer <token>`
+ * and the generic `keyword[=:]value` form, `auth=` included. Kept local
+ * because the other redactors scope these rules differently (the logger
+ * requires `Bearer` capitalised; the output sanitizer applies them only to
+ * error bodies). Each alternative is linear, so the global match stays
+ * ReDoS-safe over untrusted-ish error strings.
  */
-/**
- * URL userinfo (`scheme://user:pass@`, `scheme://token@`): credentials
- * replaced, scheme (group 1) and host kept. A port or an `@` in a path is not
- * credentials; bounded quantifiers keep it linear.
- */
-const URL_USERINFO_PATTERN =
-  /\b([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/?#@:]{0,256}(?::[^\s/?#@]{0,256})?@/gi;
-
-const SENSITIVE_PATTERNS =
-  /(?:sk-[a-zA-Z0-9]{20,}|gh[posu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|bearer\s+\S+|(?:api[_-]?key|token|secret|password|auth)[=:]\s*\S+)/gi;
+const OUTCOME_CONTEXT_PATTERN =
+  /(?:bearer\s+\S+|(?:api[_-]?key|token|secret|password|auth)[=:]\s*\S+)/gi;
 
 /**
  * Sanitizes error messages before persisting to SQLite.
@@ -74,9 +69,10 @@ const SENSITIVE_PATTERNS =
  */
 export function sanitizeErrorMessage(msg: string | undefined): string | undefined {
   if (msg === undefined) return undefined;
-  const redacted = msg
-    .replace(URL_USERINFO_PATTERN, '$1[REDACTED]@')
-    .replace(SENSITIVE_PATTERNS, '[REDACTED]');
+  const redacted = redactCredentialShapes(msg, '[REDACTED]').replace(
+    OUTCOME_CONTEXT_PATTERN,
+    '[REDACTED]'
+  );
   return redacted.length > MAX_ERROR_MESSAGE_LENGTH
     ? redacted.slice(0, MAX_ERROR_MESSAGE_LENGTH) + '...'
     : redacted;

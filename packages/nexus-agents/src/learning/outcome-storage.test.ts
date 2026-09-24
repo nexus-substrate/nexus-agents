@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { NEAR_MISS_SAMPLES, SHARED_SHAPE_SAMPLES } from '../core/__tests__/credential-corpus.js';
 import type {
   ISQLiteDatabase,
   StoredRoutingDecision,
@@ -1016,5 +1017,17 @@ describe('sanitizeErrorMessage — GitHub token formats and URL userinfo', () =>
     ]) {
       expect(sanitizeErrorMessage(text)).toBe(text);
     }
+  });
+});
+
+describe('sanitizeErrorMessage — shared credential corpus (#6753)', () => {
+  it.each(SHARED_SHAPE_SAMPLES)('redacts $id', ({ text, secret }) => {
+    const out = sanitizeErrorMessage(text) ?? '';
+    expect(out).not.toContain(secret);
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it.each(NEAR_MISS_SAMPLES)('leaves near-miss %j unchanged', (text) => {
+    expect(sanitizeErrorMessage(text) ?? '').toBe(text);
   });
 });

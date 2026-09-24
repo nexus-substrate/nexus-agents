@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { NEAR_MISS_SAMPLES, SHARED_SHAPE_SAMPLES } from './__tests__/credential-corpus.js';
 import { sanitize, sanitizeDeep } from './logger.js';
 import {
   FAKE_OPENAI_KEY,
@@ -408,5 +409,17 @@ describe('sanitize — GitHub token formats and URL userinfo', () => {
     ]) {
       expect(sanitize(text)).toBe(text);
     }
+  });
+});
+
+describe('Logger sanitize — shared credential corpus (#6753)', () => {
+  it.each(SHARED_SHAPE_SAMPLES)('redacts $id', ({ text, secret }) => {
+    const out = sanitize(text);
+    expect(out).not.toContain(secret);
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it.each(NEAR_MISS_SAMPLES)('leaves near-miss %j unchanged', (text) => {
+    expect(sanitize(text)).toBe(text);
   });
 });
