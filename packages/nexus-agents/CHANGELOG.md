@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 8.111.0
+
+### Minor Changes
+
+- [#6777](https://github.com/nexus-substrate/nexus-agents/pull/6777) [`6c8a321`](https://github.com/nexus-substrate/nexus-agents/commit/6c8a3215589a2efd4868e1788fec93f69699545d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `list_available_models` now reports whether the router is refusing a CLI. Each CLI transport (`claude`, `codex`, `gemini`, `opencode`) carries `breakerOpen`, read from the shared circuit breaker that the router and the unified adapter registry consult. The response adds `breakerOpenTransports`, which lists the transports whose breaker is open and is empty when none is. A transport can probe fine and still be refused while its breaker is open, and the report used to call it healthy.
+
+  `breakerOpen` is absent on transports no CLI breaker tracks (`openrouter`, `gateway`). Absent means "not tracked", not "closed". Existing fields keep their meaning: `ok`, `servesModels`, `healthyTransports` and `reachableTransports` still describe the probe alone.
+
+### Patch Changes
+
+- [#6780](https://github.com/nexus-substrate/nexus-agents/pull/6780) [`b7fd5cd`](https://github.com/nexus-substrate/nexus-agents/commit/b7fd5cd6a79017a76787d4bdcbd79216b2f7db36) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `ci_health_check` reads the GitHub status page again. It looked for a component named `GitHub Actions`, but the githubstatus.com feed now names it `Actions`, so the status-page signal was always `unknown` and an Actions outage never reached the verdict. The component is now matched by its stable id (`br0l2tvcx85d`), then by the exact name `Actions` or `GitHub Actions`; a component whose name only contains "Actions" is not matched. When the feed has no matching component, the signal stays `unknown` and its evidence says "Actions component not found in status feed" and lists the components the feed did contain. A feed without a `components` array, and a matched component without a status, are each reported as such.
+
+- [#6778](https://github.com/nexus-substrate/nexus-agents/pull/6778) [`42d773b`](https://github.com/nexus-substrate/nexus-agents/commit/42d773b51b03720051518432ebaf715fdddf65e5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A QA review that fails or cannot be read no longer counts as a pass. The dev pipeline's QA stage used to record `pass` whenever the reviewer's reply lacked the words "reject" or "needs work", which included a failed expert call (empty reply after a budget skip, routing error, timeout or refusal) and any off-format answer. A task could therefore reach `done` without having been reviewed.
+
+  `pass` now requires a verdict line in the format the QA expert is prompted for: `PASS`, `NEEDS_WORK` or `REJECT` at the start of a line, optionally after markdown or a `Verdict:` label. "reject" inside prose, as in "no reason to reject", is no longer read as a verdict. When a reply states more than one verdict, the strictest one wins. A failed call or a reply with no readable verdict is recorded as `needs_work`. Its feedback says the review was unmeasured and why, and the outcome row carries a `qa-unmeasured:call-failed` or `qa-unmeasured:unreadable` signal. The QA loop is bounded, so a reviewer that keeps failing leaves the task `rejected` after the maximum iterations, with that feedback recorded.
+
 ## 8.110.1
 
 ### Patch Changes
