@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 8.104.1
+
+### Patch Changes
+
+- [#6682](https://github.com/nexus-substrate/nexus-agents/pull/6682) [`c1844fe`](https://github.com/nexus-substrate/nexus-agents/commit/c1844fe8bd4ac0b3afd6c7df6fc4f6db6978eb11) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `--dry-run` being silently ignored on two destructive commands, and make the Claude Code hooks that `setup` installs actually run.
+
+  - `improvement-review --file-issues --dry-run` now files no issues. It previously filed real GitHub issues because the handler read an option key the parser never sets.
+  - `session prune <days> --dry-run` now deletes nothing and reports how many sessions it would delete. It previously deleted them because the parsed flag was never forwarded to the handler.
+  - `nexus-agents hooks ...` now forwards everything after `hooks` verbatim to the hook router, which is the one definition of hook flags. The installed hooks (`pre-tool --tool Bash --validate`, `post-tool --track-metrics`, `stop --check-tasks`) previously exited 3 with "Unknown option" on every call, so validation, metrics and the task check never ran. This also stops `--validate` and `--source` being consumed and dropped for `hooks`.
+  - Re-running `setup` without `--force` now updates the hooks it installed and leaves everything else alone. It replaces only individual hooks that exactly match a command `setup` writes. Other hooks in the same matcher entry stay, as do nexus-agents hooks you customized (these are named in a warning) and hook types the merge does not manage (for example `UserPromptSubmit`). Hooks without a `command`, such as `type: "prompt"`, no longer crash `setup`.
+
+- [#6685](https://github.com/nexus-substrate/nexus-agents/pull/6685) [`b7334eb`](https://github.com/nexus-substrate/nexus-agents/commit/b7334eb3dfff29a5ca873af2332bc515d4cbe8c9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run_graph_workflow`: the `security-audit`, `test-generation` and `documentation` graph templates no longer label their steps `[claude]`, `[codex]` or `[gemini]`. These templates run local substring and regex checks and call no model, so a step such as `[claude] Threat modeling: 2 surfaces identified` claimed a review that never happened. Steps now read `[heuristic] …` (for example `[heuristic] Threat surfaces: 2 identified`), and the template descriptions and the tool description say the templates call no model. If you match on the old step prefixes, match on `[heuristic]` instead. The exported `CliAssignment.preferredCli` field is unchanged; it now documents the model family each node was designed for, not one that runs it.
+
 ## 8.104.0
 
 ### Minor Changes
