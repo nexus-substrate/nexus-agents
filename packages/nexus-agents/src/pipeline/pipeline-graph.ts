@@ -11,7 +11,8 @@ import { GraphBuilder } from '../orchestration/graph/graph-builder.js';
 import type { CompiledGraph } from '../orchestration/graph/graph-types.js';
 import { START, END, formatCompileError } from '../orchestration/graph/graph-types.js';
 import { createLogger } from '../core/index.js';
-import { GRAPH_TIMEOUTS, resolveClassGuardMs } from '../config/timeouts.js';
+import { GRAPH_TIMEOUTS } from '../config/timeouts.js';
+import { resolveStageTimeoutMs } from './stage-deadline.js';
 import type { IPipelineStage, PipelineTemplate, PipelineContext } from './stage-types.js';
 import { PIPELINE_STATE_KEYS } from './stage-types.js';
 
@@ -157,33 +158,9 @@ function registerNodes(
     const stage = stages.get(stageId);
     if (stage === undefined) continue;
     builder.addNode(stageId, createNodeHandler(stage, template), {
-      timeout: resolveStageTimeoutMs(stageId, stageTimeoutMs),
+      timeout: resolveStageTimeoutMs(stageId, stageTimeoutMs, GRAPH_TIMEOUTS.defaultMs),
     });
   }
-}
-
-/**
- * Stages that run a multi-voter panel. Their default deadline is the panel's
- * own runaway-guard, not the generic graph default: a full 7-seat vote took
- * 190 s live, and the graph default is 120 s (#6730).
- */
-const PANEL_STAGE_IDS: ReadonlySet<string> = new Set(['vote']);
-
-/**
- * The deadline one stage's node runs under.
- *
- * An explicit `stageTimeoutMs` applies to every stage, the vote included.
- * Without one, a panel stage gets the `multi-llm-panel` class guard (which is
- * above `VOTE_TIMEOUTS.defaultMs`, and above the consensus engine's own overall
- * deadline, so the engine returns partial results before this guard fires) and
- * every other stage gets `GRAPH_TIMEOUTS.defaultMs`. Either way the result is
- * clamped to the `pipeline` class guard: no stage may outlive the run.
- */
-function resolveStageTimeoutMs(stageId: string, stageTimeoutMs: number | undefined): number {
-  const stageDefault = PANEL_STAGE_IDS.has(stageId)
-    ? resolveClassGuardMs('multi-llm-panel')
-    : GRAPH_TIMEOUTS.defaultMs;
-  return Math.min(stageTimeoutMs ?? stageDefault, resolveClassGuardMs('pipeline'));
 }
 
 /** Create a GraphBuilder NodeHandler from an IPipelineStage. */

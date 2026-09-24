@@ -22,9 +22,9 @@ vi.mock('../cli-adapters/composite-router.js', () => ({
     // Tag each built router so a test can tell which build served a call.
     const build = createAllAdaptersMock.mock.calls.length;
     return {
-      executeTask: (task: unknown): unknown => {
+      executeTask: (task: unknown, ...execution: unknown[]): unknown => {
         servedByBuild.push(build);
-        return executeTaskMock(task);
+        return executeTaskMock(task, ...execution);
       },
     };
   },
@@ -65,6 +65,34 @@ describe('executeExpert workspace (#6358)', () => {
       content: expect.stringContaining('review the proposal'),
       options: { mcpConfigPath: '/tmp/mcp.json' },
     });
+  });
+});
+
+describe('executeExpert abort signal (#6736)', () => {
+  beforeEach(() => {
+    executeTaskMock.mockReset();
+  });
+
+  it('hands the signal to the routed call', async () => {
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done' } });
+    const signal = new AbortController().signal;
+
+    await executeExpert('code', 'implement it', { signal });
+
+    expect(executeTaskMock).toHaveBeenCalledWith(expect.anything(), { signal });
+  });
+
+  it('does not retry a rate-limited call once the signal has fired', async () => {
+    const controller = new AbortController();
+    executeTaskMock.mockImplementation(() => {
+      controller.abort();
+      return Promise.resolve({ ok: false, error: { message: 'rate limit exceeded (429)' } });
+    });
+
+    const result = await executeExpert('code', 'implement it', { signal: controller.signal });
+
+    expect(result.success).toBe(false);
+    expect(executeTaskMock).toHaveBeenCalledTimes(1);
   });
 });
 

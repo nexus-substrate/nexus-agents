@@ -891,7 +891,9 @@ describe('vote stage — no_quorum handling (#4135)', () => {
     expect(vote.kind).toBe('no_quorum');
     expect(mockExecuteVoting).toHaveBeenCalledWith(
       expect.objectContaining({ errorPolicy: 'absolute_quorum' }),
-      expect.anything()
+      expect.anything(),
+      // #6736: no stage signal was supplied, so no options reach the panel.
+      undefined
     );
   });
 

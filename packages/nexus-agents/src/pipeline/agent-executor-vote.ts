@@ -139,7 +139,7 @@ async function failClosedVote(
 
 /** The consensus-vote stage: votes on the plan, failing closed on infra error. */
 export function createVoteStage({ config, startStage }: StageDeps): DevPipelineStages['vote'] {
-  return async (plan, research) => {
+  return async (plan, research, signal) => {
     startStage('vote');
     const start = getTimeProvider().now();
     const strategy = config.votingStrategy ?? 'higher_order';
@@ -156,7 +156,10 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
           // #5506: plan approval requires the requested panel, not only survivors.
           errorPolicy: 'absolute_quorum',
         },
-        logger
+        logger,
+        // #6736: the stage's signal aborts in-flight seats (#6729) on the
+        // stage deadline or a job cancel.
+        signal !== undefined ? { signal } : undefined
       );
       // #4135: read the response-layer decision (honors a `no_quorum` void under
       // the opt-in absolute_quorum policy / an error-policy short-circuit) instead

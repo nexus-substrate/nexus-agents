@@ -1896,8 +1896,8 @@ InterfaceDeclaration ComplianceStatus
   framework: string
   status: "compliant" | "non-compliant" | "partial"
 ClassDeclaration CompositeRouter
-  executeDecision(decision: CompositeRoutingDecision, task: CliTask, runTask?: CliTask) => Promise<Result<CliResponse, CliError>>
-  executeTask(task: CliTask) => Promise<Result<CliResponse, CliError | CompositeRoutingError>>
+  executeDecision(decision: CompositeRoutingDecision, task: CliTask, runTask?: CliTask, options?: ExecutionOptions) => Promise<Result<CliResponse, CliError>>
+  executeTask(task: CliTask, options?: ExecutionOptions) => Promise<Result<CliResponse, CliError | CompositeRoutingError>>
   getAvailableModelsCache() => import("../config/available-models-cache.js").AvailableModelsCache | undefined
   getLatencyTracker() => ILatencyTracker | undefined
   getMetricsCollector() => IRoutingMetricsCollector | undefined
@@ -3025,6 +3025,7 @@ InterfaceDeclaration DevPipelineOptions
   readonly researchOverride?: string | undefined
   readonly sessionId?: string | undefined
   readonly signal?: AbortSignal | undefined
+  readonly stageTimeoutMs?: number | undefined
   readonly trustTier?: string | undefined
   readonly untrustedInputGuard?: (() => void) | undefined
 InterfaceDeclaration DevPipelineResult
@@ -3044,14 +3045,14 @@ InterfaceDeclaration DevPipelineResult
   readonly tasks: readonly PipelineTask[]
   readonly voteIterations: number
 InterfaceDeclaration DevPipelineStages
-  decompose(plan: string) => Promise<PipelineTask[]>
-  implement(task: PipelineTask) => Promise<string>
-  plan(task: string, research: string, priorFeedback?: string) => Promise<string>
-  qaReview(task: PipelineTask, implementation: string) => Promise<QaReviewResult>
-  qualityGate(() => Promise<{ feedback: string; passed: boolean; }>) | undefined
-  research(task: string) => Promise<ResearchContext>
-  securityScan() => Promise<{ readonly feedback: string; readonly passed: boolean; readonly verdict?: "fail" | "pass" | "skip"; }>
-  vote(plan: string, research: string) => Promise<VoteResult>
+  decompose(plan: string, signal?: AbortSignal) => Promise<PipelineTask[]>
+  implement(task: PipelineTask, signal?: AbortSignal) => Promise<string>
+  plan(task: string, research: string, priorFeedback?: string, signal?: AbortSignal) => Promise<string>
+  qaReview(task: PipelineTask, implementation: string, signal?: AbortSignal) => Promise<QaReviewResult>
+  qualityGate((signal?: AbortSignal) => Promise<{ feedback: string; passed: boolean; }>) | undefined
+  research(task: string, signal?: AbortSignal) => Promise<ResearchContext>
+  securityScan(signal?: AbortSignal) => Promise<{ readonly feedback: string; readonly passed: boolean; readonly verdict?: "fail" | "pass" | "skip"; }>
+  vote(plan: string, research: string, signal?: AbortSignal) => Promise<VoteResult>
 TypeAliasDeclaration DifficultyDimension
   = z.infer<typeof DifficultyDimensionSchema>
 InterfaceDeclaration DifficultyEstimate
@@ -3342,9 +3343,9 @@ FunctionDeclaration executeExpert
   : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
   : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
   : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
-  : (expertType: BuiltInExpertType, prompt: string, options: { workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
-  : (expertType: BuiltInExpertType, prompt: string, options: { workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
-  : (expertType: BuiltInExpertType, prompt: string, options: { workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
 InterfaceDeclaration ExecuteExpertDeps
   auditLogger?: IAuditLogger | undefined
   cliCache?: ICliDetectionCache | undefined
@@ -4684,8 +4685,8 @@ InterfaceDeclaration ICollaborationProtocol
   execute(config: CollaborationConfig, agents: Map<string, IAgent>) => Promise<Result<CollaborationResult, AgentError>>
   readonly pattern: CollaborationPattern
 InterfaceDeclaration ICompositeRouter
-  executeDecision((decision: CompositeRoutingDecision, task: CliTask, runTask?: CliTask) => Promise<Result<CliResponse, CliError>>) | undefined
-  executeTask(task: CliTask) => Promise<Result<CliResponse, CliError | CompositeRoutingError>>
+  executeDecision((decision: CompositeRoutingDecision, task: CliTask, runTask?: CliTask, options?: ExecutionOptions) => Promise<Result<CliResponse, CliError>>) | undefined
+  executeTask(task: CliTask, options?: ExecutionOptions) => Promise<Result<CliResponse, CliError | CompositeRoutingError>>
   getLatencyTracker() => ILatencyTracker | undefined
   getMetricsCollector() => IRoutingMetricsCollector | undefined
   getOrchestrationObserver() => IOrchestrationObserver | undefined

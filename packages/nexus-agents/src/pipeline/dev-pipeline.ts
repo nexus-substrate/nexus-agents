@@ -51,6 +51,7 @@ import type { IHindsightBeliefMemory } from '../context/belief-memory-interface.
 import { applyPipelineHindsight, assemblePlanContext } from './dev-pipeline-context.js';
 import { DEFAULT_MAX_NO_QUORUM_RETRIES, retryNoQuorumVote } from './iterative-consensus.js';
 import { allOf, anyOf } from '../utils/verdict-aggregation.js';
+import { DevPipelineCancelledError, guardDevPipelineStages } from './dev-pipeline-deadlines.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -288,29 +289,47 @@ export interface DevPipelineResult {
 // Pipeline Stage Interfaces
 // ============================================================================
 
-/** Pluggable stage implementations — inject real or mock agents. */
+/**
+ * Pluggable stage implementations — inject real or mock agents.
+ *
+ * Every method takes a trailing optional `signal` (#6736). `runDevPipeline`
+ * passes each call its own signal, which aborts when the run is cancelled or
+ * the stage's deadline passes; an implementation should hand it to its model
+ * calls so the work stops. One that ignores it still fails at the deadline,
+ * but its work runs on in the background — as the built-in research,
+ * qualityGate and securityScan stages do today (#6747).
+ */
 export interface DevPipelineStages {
   /**
    * Research expert gathers context for the task. Returns the full
    * {@link ResearchContext} (#3234 seam 0): `.text` feeds plan/vote as before,
    * `.metadata` is attached to decomposed tasks for routing-experience enrichment.
    */
-  research(task: string): Promise<ResearchContext>;
+  research(task: string, signal?: AbortSignal): Promise<ResearchContext>;
   /** Architect creates a plan from research + task. */
-  plan(task: string, research: string, priorFeedback?: string): Promise<string>;
+  plan(
+    task: string,
+    research: string,
+    priorFeedback?: string,
+    signal?: AbortSignal
+  ): Promise<string>;
   /**
    * Consensus vote on the plan. Returns approval + feedback. `research` is the
    * research-stage context, surfaced to voters so they can weigh research
    * maturity (#3258) — appended to the proposal as informational, untrusted
    * text (never as instructions).
    */
-  vote(plan: string, research: string): Promise<VoteResult>;
+  vote(plan: string, research: string, signal?: AbortSignal): Promise<VoteResult>;
   /** PM decomposes approved plan into tasks. */
-  decompose(plan: string): Promise<PipelineTask[]>;
+  decompose(plan: string, signal?: AbortSignal): Promise<PipelineTask[]>;
   /** Code expert implements a task. Returns the work product. */
-  implement(task: PipelineTask): Promise<string>;
+  implement(task: PipelineTask, signal?: AbortSignal): Promise<string>;
   /** QA expert reviews implementation. */
-  qaReview(task: PipelineTask, implementation: string): Promise<QaReviewResult>;
+  qaReview(
+    task: PipelineTask,
+    implementation: string,
+    signal?: AbortSignal
+  ): Promise<QaReviewResult>;
   /**
    * Local QA quality gate (typecheck/lint/tests/build) run before ship (#3356).
    * Optional: pipelines that don't supply it simply skip the gate. Returns
@@ -318,14 +337,14 @@ export interface DevPipelineStages {
    * engine. Whether a red gate fails the phase is governed by the
    * `qualityGate` mode in {@link DevPipelineOptions}, not this method.
    */
-  qualityGate?(): Promise<{ passed: boolean; feedback: string }>;
+  qualityGate?(signal?: AbortSignal): Promise<{ passed: boolean; feedback: string }>;
   /**
    * Security scan. `verdict` preserves the scanner's tri-state so a `skip`
    * (scanner absent or errored) is not recorded as a rejection (#5502).
    * Optional so stage implementations that predate the field still satisfy
    * the contract; when absent, `passed` is read as a measured pass/fail.
    */
-  securityScan(): Promise<{
+  securityScan(signal?: AbortSignal): Promise<{
     readonly passed: boolean;
     readonly verdict?: 'pass' | 'fail' | 'skip';
     readonly feedback: string;
@@ -438,58 +457,23 @@ export interface DevPipelineOptions {
    */
   readonly auditLogger?: IAuditLogger | undefined;
   /**
-   * Cancels the run at the next stage boundary (#6305). Checked immediately
-   * before every stage call; once it has fired the run rejects with an error
-   * naming the stage it stopped before, and no further stage runs. A stage
-   * already in flight is not interrupted. `run_dev_pipeline` threads
-   * `cancel_job`'s signal here. Absent: the run is not cancellable.
+   * Cancels the run (#6305). Checked immediately before every stage call; once
+   * it has fired the run rejects with an error naming the stage it stopped
+   * before, and no further stage runs. It also aborts the signal handed to the
+   * stage in flight (#6736), so that stage's model calls stop. `run_dev_pipeline`
+   * threads `cancel_job`'s signal here. Absent: the run is not cancellable.
    */
   readonly signal?: AbortSignal | undefined;
-}
-
-/** Raised at a stage boundary once {@link DevPipelineOptions.signal} has fired. */
-class DevPipelineCancelledError extends Error {
-  constructor(stage: string) {
-    super(`Dev pipeline cancelled before the ${stage} stage`);
-    this.name = 'DevPipelineCancelledError';
-  }
-}
-
-/**
- * Read through a call, never inline: TypeScript narrows `signal.aborted` to
- * `false` after one check, which is unsound across the `await`s between stages.
- */
-function throwIfCancelled(signal: AbortSignal, stage: string): void {
-  if (signal.aborted) throw new DevPipelineCancelledError(stage);
-}
-
-/**
- * Wrap every stage so it checks the signal before running (#6305). Gating the
- * stage calls themselves covers every boundary — including each plan/vote and
- * implement/QA iteration — without threading the signal through each phase.
- */
-function gateStagesOnSignal(
-  stages: DevPipelineStages,
-  signal: AbortSignal | undefined
-): DevPipelineStages {
-  if (signal === undefined) return stages;
-  const gate =
-    <A extends unknown[], R>(stage: string, fn: (...args: A) => Promise<R>) =>
-    async (...args: A): Promise<R> => {
-      throwIfCancelled(signal, stage);
-      return fn(...args);
-    };
-  const qualityGate = stages.qualityGate?.bind(stages);
-  return {
-    research: gate('research', stages.research.bind(stages)),
-    plan: gate('plan', stages.plan.bind(stages)),
-    vote: gate('vote', stages.vote.bind(stages)),
-    decompose: gate('decompose', stages.decompose.bind(stages)),
-    implement: gate('implement', stages.implement.bind(stages)),
-    qaReview: gate('qaReview', stages.qaReview.bind(stages)),
-    ...(qualityGate !== undefined ? { qualityGate: gate('qualityGate', qualityGate) } : {}),
-    securityScan: gate('securityScan', stages.securityScan.bind(stages)),
-  };
+  /**
+   * Deadline for EACH stage call, in ms (#6736) — not a budget for the whole
+   * run. Every plan/vote and implement/QA iteration gets its own. Replaces
+   * every stage's default, the vote's included, and is clamped to the
+   * `pipeline` class guard. Absent: the vote runs under the `multi-llm-panel`
+   * class guard and every other stage under the `pipeline` class guard. A
+   * stage past its deadline fails the run with a timeout naming the stage, and
+   * the signal it was handed is aborted.
+   */
+  readonly stageTimeoutMs?: number | undefined;
 }
 
 /**
@@ -515,7 +499,10 @@ export async function runDevPipeline(
   const traceWriter = createTraceWriter(sid);
 
   try {
-    const gated = gateStagesOnSignal(stages, options?.signal);
+    const gated = guardDevPipelineStages(stages, {
+      signal: options?.signal,
+      stageTimeoutMs: options?.stageTimeoutMs,
+    });
     return await runDevPipelineInner(task, gated, options, sid, prior);
   } finally {
     await flushTraceWriter(traceWriter);

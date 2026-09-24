@@ -200,16 +200,36 @@ export interface AgentExecutorConfig {
 }
 
 /**
+ * Throw once the stage's signal has fired (#6736): the abort's own reason when
+ * it is an Error (a stage-deadline `TimeoutError`, a job cancel), else a
+ * generic one. Read through a call, never inline: TypeScript narrows
+ * `signal.aborted` after one check, which is unsound across the `await` of the
+ * expert call.
+ */
+function throwIfAborted(signal: AbortSignal | undefined, expertType: BuiltInExpertType): void {
+  if (signal?.aborted !== true) return;
+  const reason: unknown = signal.reason;
+  throw reason instanceof Error ? reason : new Error(`${expertType} expert call aborted`);
+}
+
+/**
  * Run an expert through the per-run budget guard (#3395): skip (and return a
  * failure result) once the budget is exhausted, otherwise execute and record
  * the tokens consumed. A no-budget guard makes this a transparent passthrough.
+ *
+ * `signal` is the stage's abort signal (#6736): it reaches the routed CLI call,
+ * and once it has fired this THROWS instead of returning a failure result, so
+ * a stage that was cancelled or timed out does not go on to record the aborted
+ * call as the model's failure.
  */
 export async function runExpert(
   guard: BudgetGuard,
   expertType: BuiltInExpertType,
   prompt: string,
-  executionId?: string
+  executionId?: string,
+  signal?: AbortSignal
 ): Promise<ExpertBridgeResult> {
+  throwIfAborted(signal, expertType);
   if (guard.isExhausted()) {
     // Observable escalation (#3262): a budget short-circuit must not be silent.
     // Emit a pipeline event + structured log so operators can see the run was
@@ -232,8 +252,12 @@ export async function runExpert(
       error: 'Budget exhausted — expert call skipped (estimate-relative cap, #3262/#3395)',
     };
   }
-  const result = await executeExpert(expertType, prompt);
+  const result =
+    signal === undefined
+      ? await executeExpert(expertType, prompt)
+      : await executeExpert(expertType, prompt, { signal });
   guard.record(result.tokensUsed);
+  throwIfAborted(signal, expertType);
   maybeEmitModelCalled(executionId, result);
   return result;
 }

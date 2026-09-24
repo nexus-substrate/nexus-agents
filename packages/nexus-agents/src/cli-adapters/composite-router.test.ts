@@ -1230,6 +1230,22 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
         expect(recordOutcomeSpy.mock.calls[0]?.[1]).toBe(task);
       });
 
+      it('passes execution options, e.g. an abort signal, to the arm (#6736)', async () => {
+        const task: CliTask = { content: 'Test task' };
+        const signal = new AbortController().signal;
+        const routed = await router.route(task);
+        expect(routed.ok).toBe(true);
+        if (!routed.ok) return;
+
+        await router.executeDecision(routed.value, task, task, { signal });
+        expect(routed.value.adapter.execute).toHaveBeenLastCalledWith(task, { signal });
+
+        // executeTask hands its options to the same path.
+        const executeDecisionSpy = vi.spyOn(router, 'executeDecision');
+        await router.executeTask(task, { signal });
+        expect(executeDecisionSpy).toHaveBeenCalledWith(expect.anything(), task, task, { signal });
+      });
+
       it('names the ran arm on a failure and records the failure as feedback', async () => {
         const task: CliTask = { content: 'Failing task' };
         const routed = await router.route(task);
