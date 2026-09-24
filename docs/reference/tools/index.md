@@ -44,7 +44,7 @@ nexus-agents exposes **47 MCP tools** via stdio. Each tool below links to its fu
 | [`query_task_state`](./query_task_state.md) | Query the structured task-state log for a task ID |
 | [`get_job_result`](./get_job_result.md) | Read result of an async-mode dispatch by jobId (#3042 / #2631) |
 | [`list_jobs`](./list_jobs.md) | List async-mode jobs across all tools — cross-session discovery (#3046 / #2631) |
-| [`cancel_job`](./cancel_job.md) | Mark an async-mode job as cancelled — idempotent (#3042 Stage 1b) |
+| [`cancel_job`](./cancel_job.md) | Cancel an async-mode job; aborts in-flight voters and workers — idempotent (#3042) |
 | [`ci_health_check`](./ci_health_check.md) | CI infrastructure health — composes GitHub status + recent-runs activity (#3076) |
 | [`verify_audit_chain`](./verify_audit_chain.md) | Verify hash chain of a FileAuditStorage audit log directory |
 | [`repo_analyze`](./repo_analyze.md) | Analyze GitHub repository structure |

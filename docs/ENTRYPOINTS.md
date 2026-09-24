@@ -228,16 +228,16 @@ Options available for all commands:
 
 #### setup
 
-| Option              | Type    | Default | Description                         |
-| ------------------- | ------- | ------- | ----------------------------------- |
-| `--interactive`     | boolean | `true`  | Run interactive setup wizard        |
-| `--non-interactive` | boolean | `false` | Skip prompts (for CI/automation)    |
-| `--force`           | boolean | `false` | Overwrite existing files            |
-| `--skip-mcp`        | boolean | `false` | Skip MCP configuration              |
-| `--skip-rules`      | boolean | `false` | Skip rules file generation          |
-| `--skip-hooks`      | boolean | `false` | Skip hook configuration             |
-| `--scope`           | enum    | `user`  | MCP config scope: `user`, `project` |
-| `--dry-run`         | boolean | `false` | Show changes without making them    |
+| Option              | Type    | Default | Description                                                                      |
+| ------------------- | ------- | ------- | -------------------------------------------------------------------------------- |
+| `--interactive`     | boolean | `false` | Run the setup wizard. Without it, setup applies every step without prompting     |
+| `--non-interactive` | boolean | `false` | Required when stdout is not a TTY or in CI; setup exits with an error without it |
+| `--force`           | boolean | `false` | Overwrite existing files                                                         |
+| `--skip-mcp`        | boolean | `false` | Skip MCP configuration                                                           |
+| `--skip-rules`      | boolean | `false` | Skip rules file generation                                                       |
+| `--skip-hooks`      | boolean | `false` | Skip hook configuration                                                          |
+| `--scope`           | enum    | `user`  | MCP config scope: `user`, `project`                                              |
+| `--dry-run`         | boolean | `false` | Show changes without making them                                                 |
 
 #### routing-audit
 
@@ -425,7 +425,7 @@ nexus-agents hooks stop --check-tasks
 | `query_task_state`            | Read the structured task-state log for a task ID and return the current snapshot.                                                                                                                                                         | None (local) | Shared bucket |
 | `get_job_result`              | Read the result of an async-mode tool invocation by jobId (#3042 / epic #2631).                                                                                                                                                           | None (local) | Shared bucket |
 | `list_jobs`                   | List async-mode jobs across all tools (#3046 / epic #2631 Stage 5).                                                                                                                                                                       | None (local) | Shared bucket |
-| `cancel_job`                  | Mark an async-mode job as cancelled (#3042 Stage 1b / epic #2631).                                                                                                                                                                        | None (local) | Shared bucket |
+| `cancel_job`                  | Cancel an async-mode job and abort its in-flight work.                                                                                                                                                                                    | None (local) | Shared bucket |
 | `ci_health_check`             | Diagnostic for CI infrastructure health (#3076).                                                                                                                                                                                          | None (local) | Shared bucket |
 | `verify_audit_chain`          | Verify the hash chain of a persisted FileAuditStorage audit log directory (#2281 follow-up).                                                                                                                                              | None (local) | Shared bucket |
 | `repo_analyze`                | Analyze a GitHub repository structure.                                                                                                                                                                                                    | None (local) | Shared bucket |
@@ -812,9 +812,8 @@ cli_commands:
     subcommands: ['session-start', 'session-end', 'pre-tool', 'post-tool', 'stop']
     mode: any
   - name: vote
-    args: ['<proposal>']
-    flags: ['--threshold', '--quick', '--strategy']
-    mode: orchestrator
+    flags: ['--proposal', '-p', '--threshold', '--quick', '--strategy']
+    mode: any
   - name: fitness-audit
     flags: ['--format', '--verbose']
     mode: any
