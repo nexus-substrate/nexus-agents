@@ -3350,9 +3350,9 @@ FunctionDeclaration executeExpert
   : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
   : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
   : (expertType: BuiltInExpertType, prompt: string) => Promise<ExpertBridgeResult>
-  : (expertType: BuiltInExpertType, prompt: string, options: { signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
-  : (expertType: BuiltInExpertType, prompt: string, options: { signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
-  : (expertType: BuiltInExpertType, prompt: string, options: { signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { accessMode?: ExecutionAccessMode | undefined; signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { accessMode?: ExecutionAccessMode | undefined; signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
+  : (expertType: BuiltInExpertType, prompt: string, options: { accessMode?: ExecutionAccessMode | undefined; signal?: AbortSignal | undefined; workDir?: string | undefined; }) => Promise<ExpertBridgeResult>
 InterfaceDeclaration ExecuteExpertDeps
   auditLogger?: IAuditLogger | undefined
   cliCache?: ICliDetectionCache | undefined

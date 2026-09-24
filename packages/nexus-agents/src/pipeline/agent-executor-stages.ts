@@ -157,7 +157,7 @@ export function createPlanStage({
         ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\n${contextBlock}`
         : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
     await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-    const r = await runExpert(guard, 'architecture', prompt, 'plan', signal);
+    const r = await runExpert(guard, 'architecture', prompt, 'plan', { signal });
     // model: real per-model failure attribution for the feedback bridge (#4194)
     emitStageEvent('plan', r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -196,7 +196,7 @@ export function createDecomposeStage({
       'pm',
       `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
       'decompose',
-      signal
+      { signal }
     );
     const tasks = parseTasksFromResponse(r.text, plan);
     emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
@@ -224,7 +224,7 @@ export function createImplementStage({
       'code',
       `Implement:\n\n${task.title}\n${task.description}${fb}`,
       task.id,
-      signal
+      { signal }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -297,7 +297,12 @@ export function createQaReviewStage({
     startStage(`qa-${task.id}`);
     await postProgress(config, `QA [${task.id}]`, 'QA expert reviewing...');
     const { prompt, coverage } = buildQaPrompt(task.title, implementation);
-    const r = await runExpert(guard, 'qa', prompt, task.id, signal);
+    // #6768: the reviewer reads model-generated code that can come from issue
+    // text, so it runs read-only with no MCP tools (panel decision on #6768).
+    const r = await runExpert(guard, 'qa', prompt, task.id, {
+      signal,
+      accessMode: 'read-only-analysis',
+    });
     const { review: parsed, unmeasured } = readQaReview(r);
     const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;
     emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {

@@ -10,6 +10,7 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
+import type { ExecutionAccessMode } from '../core/index.js';
 import type { ITaskTracker } from './task-tracker.js';
 import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
@@ -212,23 +213,35 @@ function throwIfAborted(signal: AbortSignal | undefined, expertType: BuiltInExpe
   throw reason instanceof Error ? reason : new Error(`${expertType} expert call aborted`);
 }
 
+/** Per-call options for {@link runExpert}. */
+interface RunExpertOptions {
+  /**
+   * The stage's abort signal (#6736): it reaches the routed CLI call, and once
+   * it has fired {@link runExpert} THROWS instead of returning a failure
+   * result, so a stage that was cancelled or timed out does not go on to
+   * record the aborted call as the model's failure.
+   */
+  readonly signal?: AbortSignal | undefined;
+  /**
+   * Host access the expert's call may use (#6768). The QA review stage sets
+   * `'read-only-analysis'`; absent means the default.
+   */
+  readonly accessMode?: ExecutionAccessMode | undefined;
+}
+
 /**
  * Run an expert through the per-run budget guard (#3395): skip (and return a
  * failure result) once the budget is exhausted, otherwise execute and record
  * the tokens consumed. A no-budget guard makes this a transparent passthrough.
- *
- * `signal` is the stage's abort signal (#6736): it reaches the routed CLI call,
- * and once it has fired this THROWS instead of returning a failure result, so
- * a stage that was cancelled or timed out does not go on to record the aborted
- * call as the model's failure.
  */
 export async function runExpert(
   guard: BudgetGuard,
   expertType: BuiltInExpertType,
   prompt: string,
   executionId?: string,
-  signal?: AbortSignal
+  options: RunExpertOptions = {}
 ): Promise<ExpertBridgeResult> {
+  const { signal, accessMode } = options;
   throwIfAborted(signal, expertType);
   if (guard.isExhausted()) {
     // Observable escalation (#3262): a budget short-circuit must not be silent.
@@ -252,10 +265,14 @@ export async function runExpert(
       error: 'Budget exhausted — expert call skipped (estimate-relative cap, #3262/#3395)',
     };
   }
+  const bridgeOptions = {
+    ...(signal !== undefined && { signal }),
+    ...(accessMode !== undefined && { accessMode }),
+  };
   const result =
-    signal === undefined
+    Object.keys(bridgeOptions).length === 0
       ? await executeExpert(expertType, prompt)
-      : await executeExpert(expertType, prompt, { signal });
+      : await executeExpert(expertType, prompt, bridgeOptions);
   guard.record(result.tokensUsed);
   throwIfAborted(signal, expertType);
   maybeEmitModelCalled(executionId, result);
