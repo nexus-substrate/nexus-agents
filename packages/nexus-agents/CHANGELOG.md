@@ -1,5 +1,22 @@
 # nexus-agents
 
+## 8.104.6
+
+### Patch Changes
+
+- [#6707](https://github.com/nexus-substrate/nexus-agents/pull/6707) [`1a402ed`](https://github.com/nexus-substrate/nexus-agents/commit/1a402edcacf486bb7296d93336475e77ccf65496) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - More documented CLI flags that exited with `Unknown option` now work ([#6693](https://github.com/nexus-substrate/nexus-agents/issues/6693),
+  follow-up to [#6705](https://github.com/nexus-substrate/nexus-agents/issues/6705)): `research --topic`, `--status`, `--create-issues`,
+  `--max`, `--vote`; `research index --generate`, `--check`, `--strict`,
+  `--silent`, `--no-check-files`; `sprint plan --vote`; and `release-validate
+--strict` / `--skip <validator>` (repeatable). `--max` refuses a value that is
+  not a positive integer.
+
+  Help text that advertised flags with no implementation is corrected:
+  `fitness-audit --min-severity` is removed, the `research index` short aliases
+  (`-g`, `-v`, `-c`, `-f`, `-s`) are removed because they collided with global
+  flags or were never parsed, `research import` shows `--dry-run` instead of
+  `--dryRun`, and `migrate` points at `--output <path>` instead of `--to`.
+
 ## 8.104.5
 
 ### Patch Changes
