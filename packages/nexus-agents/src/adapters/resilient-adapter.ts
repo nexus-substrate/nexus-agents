@@ -28,6 +28,7 @@ import { getErrorMessage, createLogger } from '../core/index.js';
 import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 
 import { createAutoAdapter, type AdapterSelection } from './auto-adapter.js';
+import { isCallerCancelled } from './abort-utils.js';
 import { ensureGatewayDiscovered, gatewayDiscoveryGeneration } from './gateway-rediscovery.js';
 import {
   isRateLimitLikeError,
@@ -375,6 +376,8 @@ export class ResilientAdapter implements IResilientAdapter {
     // not a health signal. Counting it let one bad model preference open the
     // breaker for every caller of the CLI.
     if (error.code === ErrorCode.INVALID_INPUT) return;
+    // #6691: nor is a call its caller cancelled (cancel_job).
+    if (isCallerCancelled(error)) return;
 
     const category = mapModelErrorToCategory(error);
     // Skip rate limits: already accounted for by the rate-limit telemetry branch

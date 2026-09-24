@@ -24,6 +24,30 @@ export class AbortError extends Error {
 }
 
 /**
+ * Whether an error records a call its caller cancelled (#6691): its `cause` is
+ * an {@link AbortError}. A cancel says nothing about the adapter's health, so
+ * circuit breakers skip it and retry loops stop on it. Accepts both a
+ * `CliError` and a `ModelError`, since the cause crosses the CLI→model bridge.
+ */
+export function isCallerCancelled(error: { readonly cause?: unknown }): boolean {
+  return error.cause instanceof AbortError;
+}
+
+/**
+ * Whether an abort `reason` says a deadline fired rather than a cancel
+ * (#6691). `AbortSignal.timeout()` aborts with a `DOMException` named
+ * `TimeoutError`, and core's `TimeoutError` carries the same name. Any other
+ * reason — `cancel_job`'s string, a bare `abort()` — is a cancel.
+ */
+export function isTimeoutAbortReason(reason: unknown): boolean {
+  return (
+    typeof reason === 'object' &&
+    reason !== null &&
+    (reason as { readonly name?: unknown }).name === 'TimeoutError'
+  );
+}
+
+/**
  * Races `promise` against `signal`. Resolves with the promise's value
  * if it settles first; rejects with {@link AbortError} if the signal
  * aborts first.

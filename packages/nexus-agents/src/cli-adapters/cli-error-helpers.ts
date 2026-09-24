@@ -18,6 +18,7 @@
  */
 
 import { parseRetryAfterMs, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
+import { AbortError, isTimeoutAbortReason } from '../adapters/abort-utils.js';
 import type { CliError, CliErrorCode, CliName } from './types.js';
 import { ValidationError } from '../core/errors.js';
 
@@ -89,6 +90,22 @@ export function createCliError(
  */
 export function createCallerInputCliError(message: string, cli: CliName): CliError {
   return createCliError('EXECUTION_ERROR', message, cli, new ValidationError(message));
+}
+
+/**
+ * The CliError for a call the caller's `AbortSignal` ended (#6691). A deadline
+ * (`reason` named `TimeoutError`, as `AbortSignal.timeout()` produces) is a
+ * real timeout and stays `TIMEOUT`. Any other reason is a cancel — e.g.
+ * `cancel_job` — marked by an {@link AbortError} cause so breakers skip it
+ * (`isCallerCancelled`), and non-retryable so no layer re-runs it.
+ */
+export function createCallerAbortCliError(
+  reason: unknown,
+  message: string,
+  cli: CliName
+): CliError {
+  if (isTimeoutAbortReason(reason)) return createCliError('TIMEOUT', message, cli);
+  return createCliError('EXECUTION_ERROR', message, cli, new AbortError(message));
 }
 
 /** Whether `error` was built by {@link createCallerInputCliError}. */
