@@ -937,10 +937,18 @@ describe('runDevPipeline — trustTier threading into the policy snapshot (#3712
     expect(stages.decompose).not.toHaveBeenCalled();
   });
 
-  it("trusted trustTier '1' under block mode → COMPLETES (rule allows tier 1)", async () => {
+  // A caller-only run: `researchOverride` supplies the research text, so no
+  // external source feeds the run and the caller tier is the content tier (#6751).
+  const CALLER_ONLY = { researchOverride: 'caller-supplied research' } as const;
+
+  it("trusted trustTier '1', caller-only content, under block mode → COMPLETES", async () => {
     process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
     const stages = createMockStages();
-    const result = await runDevPipeline('Build feature X', stages, { trustTier: '1' });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...CALLER_ONLY,
+      trustTier: '1',
+    });
+    expect(stages.research).not.toHaveBeenCalled();
     expect(stages.decompose).toHaveBeenCalledTimes(1);
     expect(result.completed).toBe(true);
   });
@@ -949,7 +957,7 @@ describe('runDevPipeline — trustTier threading into the policy snapshot (#3712
     process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
     const stages = createMockStages();
     await expect(
-      runDevPipeline('Build feature X', stages, { trustTier: '3' })
+      runDevPipeline('Build feature X', stages, { ...CALLER_ONLY, trustTier: '3' })
     ).rejects.toBeInstanceOf(PolicyBlockedError);
     expect(stages.decompose).not.toHaveBeenCalled();
   });
@@ -959,6 +967,83 @@ describe('runDevPipeline — trustTier threading into the policy snapshot (#3712
     const result = await runDevPipeline('Build feature X', stages, { trustTier: '1' });
     expect(stages.decompose).toHaveBeenCalledTimes(1);
     expect(result.completed).toBe(true);
+  });
+});
+
+describe('runDevPipeline — content tier, not caller tier, reaches the policy gate (#6751)', () => {
+  /** Replace the default engine with one rule that records the tier it sees. */
+  async function captureGateTier(): Promise<{ seen: unknown[]; restore: () => void }> {
+    const mod = await import('./policy-engine.js');
+    const seen: unknown[] = [];
+    const engine = new mod.PolicyEngine();
+    engine.registerRule({
+      id: 'capture-tier',
+      priority: 1,
+      evaluate(context) {
+        seen.push(context.pipelineState.trustTier);
+        return { allow: true };
+      },
+    });
+    const spy = vi.spyOn(mod, 'createDefaultPolicyEngine').mockReturnValue(engine);
+    return {
+      seen,
+      restore: () => {
+        spy.mockRestore();
+      },
+    };
+  }
+
+  afterEach(() => {
+    delete process.env['NEXUS_POLICY_GATE_MODE'];
+  });
+
+  it("fresh research from the external stage reaches the gate as tier '3' for a tier-1 caller", async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const cap = await captureGateTier();
+    try {
+      const stages = createMockStages();
+      await runDevPipeline('Build feature X', stages, { trustTier: '1' });
+      expect(stages.research).toHaveBeenCalledTimes(1);
+      expect(cap.seen).toEqual(['3']);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("a caller-only run (researchOverride) keeps the caller's tier '1'", async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const cap = await captureGateTier();
+    try {
+      const stages = createMockStages();
+      await runDevPipeline('Build feature X', stages, {
+        trustTier: '1',
+        researchOverride: 'caller-supplied research',
+      });
+      expect(stages.research).not.toHaveBeenCalled();
+      expect(cap.seen).toEqual(['1']);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("a less-trusted caller is never upgraded by the research tier (caller '4' stays '4')", async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const cap = await captureGateTier();
+    try {
+      await runDevPipeline('Build feature X', createMockStages(), { trustTier: '4' });
+      expect(cap.seen).toEqual(['4']);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it('fresh research under block mode blocks a tier-1 caller at consensus→execute', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const stages = createMockStages();
+    await expect(
+      runDevPipeline('Build feature X', stages, { trustTier: '1' })
+    ).rejects.toBeInstanceOf(PolicyBlockedError);
+    expect(stages.decompose).not.toHaveBeenCalled();
   });
 });
 

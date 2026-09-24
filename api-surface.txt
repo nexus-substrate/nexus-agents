@@ -5785,7 +5785,7 @@ TypeAliasDeclaration MemoryWriteDeps
 TypeAliasDeclaration MemoryWriteInput
   = z.infer<typeof MemoryWriteInputSchema>
 VariableDeclaration MemoryWriteInputSchema
-  : z.ZodObject<{ backend: z.ZodEnum<{ adaptive: "adaptive"; agentic: "agentic"; belief: "belief"; session: "session"; typed: "typed"; }>; confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ high: "high"; low: "low"; medium: "medium"; }>>>; content: z.ZodString; key: z.ZodString; metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>; }, z.core.$strip>
+  : z.ZodObject<{ backend: z.ZodEnum<{ adaptive: "adaptive"; agentic: "agentic"; belief: "belief"; session: "session"; typed: "typed"; }>; confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ high: "high"; low: "low"; medium: "medium"; }>>>; content: z.ZodString; key: z.ZodString; metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>; sourceTrustTier: z.ZodOptional<z.ZodEnum<{ 1: "1"; 2: "2"; 3: "3"; 4: "4"; }>>; }, z.core.$strip>
 InterfaceDeclaration MemoryWriteResponse
   backend: string
   deduplicated?: boolean | undefined

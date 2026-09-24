@@ -31,6 +31,8 @@ import { runBeliefCleanup } from '../../context/belief-cleanup.js';
 import { AgenticMemoryBackend } from '../../context/agentic-memory.js';
 import { AdaptiveMemoryBackend } from '../../context/adaptive-memory.js';
 import type { MemoryMetadata, MemoryImportance } from '../../context/memory-backend-types.js';
+import { memoryTrustTierTag } from '../../context/memory-trust-tier.js';
+import type { TrustTier } from '../../security/trust-types.js';
 import { saveBeliefSnapshot, loadBeliefSnapshot } from '../../context/belief-memory-persistence.js';
 import { HybridMemoryBackend } from '../../context/memory-backend.js';
 import { createTypedMemory } from '../../context/typed-memory.js';
@@ -658,7 +660,8 @@ export class ToolMemoryManager {
     subject: string,
     predicate: string,
     object: string,
-    confidence: 'high' | 'medium' | 'low' = 'medium'
+    confidence: 'high' | 'medium' | 'low' = 'medium',
+    trustTier?: TrustTier
   ): Promise<MemoryStoreOutcome> {
     try {
       const result = await this.beliefs.retain({
@@ -668,6 +671,8 @@ export class ToolMemoryManager {
         confidence,
         sourceType: BeliefSourceType.OBSERVATION,
         sourceRef: 'mcp-tool-execution',
+        // #6751: the content tier, read back by the context retriever.
+        ...(trustTier !== undefined ? { metadata: { trustTier } } : {}),
       });
       // `retain` converts its own throws into `err`, so the catch below is
       // nearly unreachable and this branch is where a real failure shows up.
@@ -832,14 +837,15 @@ export class ToolMemoryManager {
   async storeAdaptive(
     key: string,
     value: unknown,
-    importance: number
+    importance: number,
+    trustTier?: TrustTier
   ): Promise<MemoryStoreOutcome> {
     if (this.adaptive === null) return { persisted: false, reason: 'adaptive backend unavailable' };
     try {
       const level = importance >= 0.8 ? 'high' : importance >= 0.6 ? 'medium' : 'low';
       const result = await this.adaptive.store(key, value, {
         importance: level,
-        tags: ['memory_write_tool'],
+        tags: withTrustTierTag(['memory_write_tool'], trustTier),
       });
       if (!result.ok) {
         this.log.debug('Failed to store adaptive memory', { key, error: result.error.message });
@@ -857,14 +863,15 @@ export class ToolMemoryManager {
   async storeTyped(
     key: string,
     value: unknown,
-    importance: MemoryImportance
+    importance: MemoryImportance,
+    trustTier?: TrustTier
   ): Promise<MemoryStoreOutcome> {
     if (this.typedBackend === null)
       return { persisted: false, reason: 'typed backend unavailable' };
     try {
       const result = await this.typedBackend.store(`semantic ${key}`, value, {
         importance,
-        tags: ['memory_write_tool', 'semantic'],
+        tags: withTrustTierTag(['memory_write_tool', 'semantic'], trustTier),
       });
       if (!result.ok) {
         this.log.debug('Failed to store typed memory', { key, error: result.error.message });
@@ -1345,6 +1352,10 @@ export class ToolMemoryManager {
         confidence,
         sourceType: BeliefSourceType.OBSERVATION,
         sourceRef: `session-learning`,
+        // #6751: the learning's content tier travels to the derived belief.
+        ...(learning.trustTier !== undefined
+          ? { metadata: { trustTier: learning.trustTier } }
+          : {}),
       });
     } catch (e: unknown) {
       this.log.debug('Belief creation from learning failed', { error: String(e) });
@@ -1386,4 +1397,9 @@ export class ToolMemoryManager {
       });
     }
   }
+}
+
+/** Append the #6751 trust-tier tag when the writer knows the content tier. */
+function withTrustTierTag(tags: string[], trustTier: TrustTier | undefined): string[] {
+  return trustTier === undefined ? tags : [...tags, memoryTrustTierTag(trustTier)];
 }
