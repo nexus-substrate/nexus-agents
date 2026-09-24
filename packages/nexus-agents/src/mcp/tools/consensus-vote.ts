@@ -962,11 +962,11 @@ type ConsensusVoteToolResponse = ToolResult;
  *
  * What happens now: the signal is threaded to the vote launcher, which checks it
  * after each stagger delay and does NOT launch the voters that have not started,
- * recording them as error results rather than as any decision. Votes already
- * in flight are left to settle — an adapter call is a subprocess or HTTP request
- * whose cost is already incurred, and abandoning it would lose the result
- * without saving the spend. The dispatcher still writes whatever landed, so
- * audit visibility into who voted before the cancel is preserved.
+ * recording them as error results rather than as any decision. Since #6729 it
+ * also reaches every seat's adapter call, combined with the seat's deadline, so
+ * a voter in flight is aborted rather than left to run for the length of its
+ * slowest seat while the job holds its concurrency slot. The job record stays
+ * `cancelled` with no vote payload (the terminal writers no-op, #4022).
  *
  * Concurrency cap is enforced via `tryAcquire('consensus_vote')`
  * (default 2; voting is 7-fan-out so caps multiply adapter load fast).
