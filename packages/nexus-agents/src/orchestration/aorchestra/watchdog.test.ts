@@ -165,4 +165,56 @@ describe('watchdog', () => {
       expect(observedSignal?.aborted).toBe(true);
     });
   });
+
+  describe('withWatchdog outer signal (#6680)', () => {
+    it('forwards an outer abort into the task signal', async () => {
+      const outer = new AbortController();
+      let observed: AbortSignal | undefined;
+      const done = withWatchdog(
+        'code',
+        60_000,
+        (signal) => {
+          observed = signal;
+          return new Promise<string>((resolve) => {
+            signal.addEventListener(
+              'abort',
+              () => {
+                resolve('aborted');
+              },
+              { once: true }
+            );
+          });
+        },
+        outer.signal
+      );
+      outer.abort();
+      await expect(done).resolves.toBe('aborted');
+      expect(observed?.aborted).toBe(true);
+    });
+
+    it('starts the task already aborted when the outer signal fired first', async () => {
+      const outer = new AbortController();
+      outer.abort();
+      let abortedAtStart: boolean | undefined;
+      await withWatchdog(
+        'code',
+        60_000,
+        (signal) => {
+          abortedAtStart = signal.aborted;
+          return Promise.resolve('done');
+        },
+        outer.signal
+      );
+      expect(abortedAtStart).toBe(true);
+    });
+
+    it('leaves the task signal live when no outer signal is given — the empty case', async () => {
+      let abortedAtStart: boolean | undefined;
+      await withWatchdog('code', 60_000, (signal) => {
+        abortedAtStart = signal.aborted;
+        return Promise.resolve('done');
+      });
+      expect(abortedAtStart).toBe(false);
+    });
+  });
 });

@@ -151,12 +151,15 @@ export interface WorkerDispatchOptions {
     signal?: AbortSignal
   ) => Promise<WorkerResult>;
   /**
-   * Optional AbortSignal for cooperative cancellation (#2188).
+   * Optional AbortSignal for cooperative cancellation (#2188, #6680).
    *
-   * Honored at two safe points: between waves (skips remaining waves) and
-   * before pulling the next task within a wave. In-flight workers are not
-   * forcibly killed — they finish their current task. Cancelled dispatches
-   * return whatever results accumulated up to the abort.
+   * Honored between waves (skips remaining waves), before pulling the next
+   * task within a wave, and before a triage retry. It is also forwarded to
+   * each in-flight worker through the watchdog's signal, so an executor
+   * whose adapter honours `CompletionRequest.signal` (an SDK fetch, a CLI
+   * subprocess) is aborted mid-call; an executor that ignores it completes
+   * the current call. Cancelled dispatches return whatever results
+   * accumulated up to the abort.
    */
   readonly signal?: AbortSignal;
 }
@@ -347,8 +350,10 @@ function isCancelled(signal: AbortSignal | undefined): boolean {
 /**
  * Execute an array of async tasks with bounded concurrency.
  *
- * Honors an optional AbortSignal between tasks (#2188). In-flight workers
- * are not forcibly killed — they finish their current task. Cancellation
+ * Honors an optional AbortSignal between tasks (#2188). This loop does not
+ * stop an in-flight task; the dispatcher forwards the same signal into each
+ * worker's watchdog signal (#6680), so a worker whose adapter honours it
+ * aborts, and one that ignores it finishes its current call. Cancellation
  * causes the remaining un-pulled tasks to be skipped and `results` to
  * contain only what completed before the abort.
  */
@@ -518,6 +523,7 @@ function createWorkerTask(
       timeoutMs,
       enableTriage: opts.enableTriage,
       altExecuteWorker: opts.options.altExecuteWorker,
+      signal: opts.options.signal,
     });
     return applyGates(result, entry.role, opts.qualityGate, opts.asyncQualityGate);
   };
@@ -665,6 +671,8 @@ function buildRetryEntry(
 
 /** Options for executeSafe — bundled to stay within max-params (5). */
 interface ExecuteSafeOptions {
+  /** The dispatch's cancellation (#6680): forwarded to the worker, and it suppresses a retry. */
+  readonly signal: AbortSignal | undefined;
   readonly entry: AgentPlanEntry;
   readonly executeWorker: (
     e: AgentPlanEntry,
@@ -687,9 +695,15 @@ interface ExecuteSafeOptions {
  * and pattern-based failure triage with single retry (#1506).
  */
 async function executeSafe(opts: ExecuteSafeOptions): Promise<WorkerResult> {
-  const { entry, executeWorker, priorWaveResults, timeoutMs, altExecuteWorker } = opts;
+  const { entry, executeWorker, priorWaveResults, timeoutMs, altExecuteWorker, signal } = opts;
   const enableTriage = opts.enableTriage ?? true;
-  const result = await attemptExecution(entry, executeWorker, priorWaveResults, timeoutMs);
+  const result = await attemptExecution({
+    entry,
+    executeWorker,
+    priorWaveResults,
+    timeoutMs,
+    signal,
+  });
   if (result.status !== 'error' || !enableTriage) return result;
   return maybeRetryAfterTriage({
     failedResult: result,
@@ -698,24 +712,31 @@ async function executeSafe(opts: ExecuteSafeOptions): Promise<WorkerResult> {
     priorWaveResults,
     timeoutMs,
     altExecuteWorker,
+    signal,
   });
 }
 
 /** Single execution attempt. Returns undefined on success (result returned directly), or failed WorkerResult. */
-async function attemptExecution(
-  entry: AgentPlanEntry,
-  executeWorker: (
+async function attemptExecution(opts: {
+  readonly entry: AgentPlanEntry;
+  readonly executeWorker: (
     e: AgentPlanEntry,
     prior?: readonly WorkerResult[],
     signal?: AbortSignal
-  ) => Promise<WorkerResult>,
-  priorWaveResults: readonly WorkerResult[] | undefined,
-  timeoutMs: number
-): Promise<WorkerResult> {
+  ) => Promise<WorkerResult>;
+  readonly priorWaveResults: readonly WorkerResult[] | undefined;
+  readonly timeoutMs: number;
+  /** The dispatch's cancellation, forwarded into the watchdog's signal (#6680). */
+  readonly signal: AbortSignal | undefined;
+}): Promise<WorkerResult> {
+  const { entry, executeWorker, priorWaveResults, timeoutMs } = opts;
   const startMs = Date.now();
   try {
-    return await withWatchdog(entry.role, timeoutMs, (signal) =>
-      executeWorker(entry, priorWaveResults, signal)
+    return await withWatchdog(
+      entry.role,
+      timeoutMs,
+      (signal) => executeWorker(entry, priorWaveResults, signal),
+      opts.signal
     );
   } catch (error: unknown) {
     const durationMs = Date.now() - startMs;
@@ -751,6 +772,7 @@ interface TriageRetryOptions {
         signal?: AbortSignal
       ) => Promise<WorkerResult>)
     | undefined;
+  readonly signal: AbortSignal | undefined;
 }
 
 /** Triage a failed result and retry once if recommended (#1506). */
@@ -777,6 +799,9 @@ async function maybeRetryAfterTriage(opts: TriageRetryOptions): Promise<WorkerRe
   if (triage.action === 'retry_different_cli') {
     await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_SPACING_MS));
   }
+  // #6680: a cancelled dispatch does not retry — the failure is the cancel.
+  // Checked after the rate-limit spacing delay so a cancel during it counts.
+  if (isCancelled(opts.signal)) return { ...failedResult, triageAction: triage.action };
 
   // Single retry for all retryable actions
   const retryTimeout =
@@ -794,12 +819,13 @@ async function maybeRetryAfterTriage(opts: TriageRetryOptions): Promise<WorkerRe
 
   // Enrich retry entry with failure context so the model can avoid the same mistake
   const retryEntry = buildRetryEntry(entry, failedResult, triage.reason);
-  const retryResult = await attemptExecution(
-    retryEntry,
-    retryExecutor,
+  const retryResult = await attemptExecution({
+    entry: retryEntry,
+    executeWorker: retryExecutor,
     priorWaveResults,
-    retryTimeout
-  );
+    timeoutMs: retryTimeout,
+    signal: opts.signal,
+  });
   if (retryResult.status === 'success') {
     logger.info('Triage retry succeeded', {
       role: entry.role,

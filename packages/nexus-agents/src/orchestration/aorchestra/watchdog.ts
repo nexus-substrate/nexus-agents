@@ -67,12 +67,18 @@ export function evaluateState(entry: WatchdogEntry, nowMs: number): WatchdogStat
  * @param timeoutMs - Total timeout for the worker
  * @param task - The async task to monitor; receives an AbortSignal it
  *               should thread into any cancellable work it does.
+ * @param outerSignal - The caller's cancellation (#6680), e.g. `cancel_job`'s
+ *               signal reaching worker dispatch. Its abort is forwarded to the
+ *               task's signal. Like the timeout abort it is a hint: a task
+ *               that ignores its signal completes the current call, and the
+ *               watchdog does not return early on an outer abort.
  * @returns Task result or timeout error
  */
 export async function withWatchdog<T>(
   role: string,
   timeoutMs: number,
-  task: (signal: AbortSignal) => Promise<T>
+  task: (signal: AbortSignal) => Promise<T>,
+  outerSignal?: AbortSignal
 ): Promise<T> {
   const entry: WatchdogEntry = {
     role,
@@ -87,6 +93,11 @@ export async function withWatchdog<T>(
   // resolves with the timeout rejection, leaking subprocess fan-out
   // and late OutcomeStore writes.
   const controller = new AbortController();
+  const forwardOuterAbort = (): void => {
+    controller.abort();
+  };
+  if (outerSignal?.aborted === true) controller.abort();
+  outerSignal?.addEventListener('abort', forwardOuterAbort, { once: true });
   const taskPromise = task(controller.signal);
   const { promise: timeoutPromise, cancel: cancelTimeout } = createTerminationTimer(
     entry,
@@ -98,6 +109,7 @@ export async function withWatchdog<T>(
   try {
     return await Promise.race([taskPromise, timeoutPromise]);
   } finally {
+    outerSignal?.removeEventListener('abort', forwardOuterAbort);
     clearInterval(watchdogTimer);
     cancelTimeout();
     // Idempotent — if abort already fired on timeout, this is a no-op.

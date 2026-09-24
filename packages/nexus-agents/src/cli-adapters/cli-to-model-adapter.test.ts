@@ -276,6 +276,24 @@ describe('CliToModelAdapter.complete', () => {
     expect(cli.execute).toHaveBeenCalledWith({ content: '[user]: Hello' }, undefined);
   });
 
+  it('forwards request.signal to the CLI adapter so an abort kills its subprocess (#6680)', async () => {
+    const cli = makeMockCliAdapter();
+    const adapter = new CliToModelAdapter(cli);
+    const controller = new AbortController();
+
+    await adapter.complete({
+      messages: [{ role: 'user', content: 'Hello' }],
+      signal: controller.signal,
+    });
+
+    const opts = (cli.execute as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as {
+      signal?: AbortSignal;
+      timeoutMs?: number;
+    };
+    expect(opts.signal).toBe(controller.signal);
+    expect(opts).not.toHaveProperty('timeoutMs');
+  });
+
   it('falls back to the default timeout when request.timeoutMs is absent (#3304)', async () => {
     const cli = makeMockCliAdapter();
     const adapter = new CliToModelAdapter(cli, { defaultTimeoutMs: 120_000 });

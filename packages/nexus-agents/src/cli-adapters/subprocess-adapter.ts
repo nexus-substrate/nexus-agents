@@ -200,7 +200,10 @@ export function isTransientError(code: CliErrorCode): boolean {
  * the futile work #5359 named. The claude out-of-credits envelope cost two
  * extra spawns and 1.5 s per call this way, then still failed.
  */
-function shouldRetryInPlace(error: CliError): boolean {
+function shouldRetryInPlace(error: CliError, signal: AbortSignal | undefined): boolean {
+  // #6680: an aborted call is not transient — retrying it only sleeps through
+  // the backoff to fast-fail again.
+  if (signal?.aborted === true) return false;
   return isTransientError(error.code) && !isDurableCapacityText(error.message);
 }
 
@@ -353,6 +356,21 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const onAbort = (): void => {
       if (child.exitCode === null && child.signalCode === null) {
         child.kill('SIGTERM');
+        // #6680: same escalation as the timeout path — a child that ignores
+        // SIGTERM is force-reaped rather than left running after the cancel.
+        const sigkillTimer = setTimeout(() => {
+          if (child.exitCode === null && child.signalCode === null) {
+            this.logger.warn('Child ignored SIGTERM after abort, escalating to SIGKILL', {
+              cli: this.name,
+              sigkillGraceMs: SIGKILL_GRACE_MS,
+            });
+            child.kill('SIGKILL');
+          }
+        }, SIGKILL_GRACE_MS);
+        sigkillTimer.unref();
+        child.once('close', () => {
+          clearTimeout(sigkillTimer);
+        });
       }
       resolve(err(this.createError('TIMEOUT', 'Aborted by caller signal')));
     };
@@ -381,7 +399,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const requestId = generateHyphenId('cli-req', 8);
     const result = await this.spawnSubprocess(task, options, requestId);
     if (result.ok || !this.transientRetry.enabled) return result;
-    if (!shouldRetryInPlace(result.error)) return result;
+    if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, options, result, 0, requestId);
   }
@@ -419,7 +437,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       : options;
     const result = await this.spawnSubprocess(task, retryOptions, requestId);
     if (result.ok) return result;
-    if (!shouldRetryInPlace(result.error)) return result;
+    if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, retryOptions, result, attempt + 1, requestId);
   }
@@ -473,6 +491,14 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     options: ResolvedExecutionOptions,
     requestId: string
   ): Promise<Result<CliResponse, CliError>> {
+    // #3026 finding 2: fast-fail if the caller already aborted before we
+    // bothered to spawn. Saves a child process start when an upstream
+    // wave/loop has already moved on. Checked before getCommand (#6680): a
+    // command builder can create a tempdir that only the spawn path cleans up.
+    const signal = options.signal;
+    if (signal?.aborted === true) {
+      return Promise.resolve(err(this.createError('TIMEOUT', 'Aborted before spawn')));
+    }
     // #6277: the resolved guard reaches getCommand on the task, so an adapter
     // whose CLI has its own wait (agy --print-timeout) can size it to the
     // budget instead of a default that races the guard.
@@ -480,14 +506,6 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       task.timeoutMs === undefined ? { ...task, timeoutMs: options.timeoutMs } : task
     );
     const startTime = getTimeProvider().now();
-
-    // #3026 finding 2: fast-fail if the caller already aborted before we
-    // bothered to spawn. Saves a child process start when an upstream
-    // wave/loop has already moved on.
-    const signal = options.signal;
-    if (signal?.aborted === true) {
-      return Promise.resolve(err(this.createError('TIMEOUT', 'Aborted before spawn')));
-    }
 
     return new Promise((resolveOuter) => {
       const runCleanupOnce = this.onceCleanup(cmdConfig.cleanup);

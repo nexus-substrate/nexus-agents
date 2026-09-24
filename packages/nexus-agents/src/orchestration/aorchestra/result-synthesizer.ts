@@ -50,6 +50,14 @@ export interface SynthesizeResultsInput {
   readonly conflicts: readonly WorkerConflict[];
   readonly taskDescription: string;
   readonly modelAdapter: IModelAdapter;
+  /**
+   * Caller cancellation (#6680), forwarded to each synthesis call as
+   * `CompletionRequest.signal`. Once it has fired during the first synthesis
+   * call, synthesis returns the fallback without escalating to the reimagine
+   * call and without recording the attempt in the synthesis history: a
+   * cancelled call is not a failed synthesis.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** Source of synthesis output. */
@@ -261,11 +269,16 @@ function isSynthesisLowQuality(synthesisText: string, inputLength: number): bool
 }
 
 /** Call LLM and return text or null on failure. Non-null may be empty string. */
-async function callLlm(adapter: IModelAdapter, prompt: string): Promise<string | null> {
+async function callLlm(
+  adapter: IModelAdapter,
+  prompt: string,
+  signal: AbortSignal | undefined
+): Promise<string | null> {
   try {
     const response = await adapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: SYNTHESIS_MAX_TOKENS,
+      ...(signal !== undefined ? { signal } : {}),
     });
     if (!response.ok) return null;
     return extractTextFromBlocks(response.value.content);
@@ -334,7 +347,8 @@ async function synthesizeTier2(
   const tracker = getSynthesisHistoryTracker();
   const prompt = buildSynthesisPrompt({ results, conflicts, taskDescription });
 
-  const tier2Text = await callLlm(modelAdapter, prompt);
+  const tier2Text = await callLlm(modelAdapter, prompt, input.signal);
+  if (isCancelled(input.signal)) return mkFallback(results, conflicts, excludedWorkerCount);
   if (tier2Text === null) {
     tracker.record(patternKey, 2, false);
     logger.warn('Synthesis LLM call failed, using fallback');
@@ -368,7 +382,7 @@ async function synthesizeTier3(
   const { results, conflicts, taskDescription, modelAdapter } = input;
   const tracker = getSynthesisHistoryTracker();
   const reimaginePrompt = buildReimaginePr({ results, conflicts, taskDescription });
-  const tier3Text = await callLlm(modelAdapter, reimaginePrompt);
+  const tier3Text = await callLlm(modelAdapter, reimaginePrompt, input.signal);
 
   if (tier3Text !== null && !isSynthesisLowQuality(tier3Text, inputLength)) {
     tracker.record(patternKey, 3, true);
@@ -378,6 +392,14 @@ async function synthesizeTier3(
   tracker.record(patternKey, 3, false);
   logger.warn('Reimagine also produced low-quality output, using fallback');
   return mkFallback(results, conflicts, excludedWorkerCount);
+}
+
+/**
+ * Read through a call, never inline: TypeScript narrows `signal.aborted` after
+ * one check, which is unsound across the `await` of a synthesis call.
+ */
+function isCancelled(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
 }
 
 /** Build fallback synthesis result. */
