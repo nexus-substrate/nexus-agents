@@ -19,6 +19,7 @@ import {
   type RequestContext,
   type CallerInfo,
   getCurrentRequestContext,
+  serverCallerInfo,
 } from './request-context.js';
 import type { IPolicyFirewall, ExecutionMode } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
@@ -452,9 +453,12 @@ export function createSecureHandler(
     // mode captured here would be the pre-registration default for the life of
     // the process.
     const mode = config.executionMode ?? getGlobalExecutionMode();
+    // A configured `callerInfo` wins; otherwise the caller is what the server
+    // measured — the transport it connected (#6795), the same source the
+    // middleware chain uses, so both contexts of one call derive one tier.
     const ctxOpts = {
       toolName: config.toolName,
-      ...(config.callerInfo && { caller: config.callerInfo }),
+      caller: config.callerInfo ?? serverCallerInfo(),
     };
     // Adopt the middleware chain's context when this handler is nested inside
     // it, so one call carries one id and one start/complete pair (#4981).
@@ -467,8 +471,8 @@ export function createSecureHandler(
     const ambient = getCurrentRequestContext();
     const inherited = ambient?.toolName === config.toolName ? ambient : undefined;
     // Join the outer request's IDENTITY, but keep deriving this handler's own
-    // caller and trust tier. The chain mints its context from { toolName }
-    // alone, so adopting that object wholesale would discard a configured
+    // caller and trust tier. The chain mints its context from the server's
+    // measured caller only, so adopting that object wholesale would discard a configured
     // `callerInfo` — downgrading trustTier and the audit actor to "unknown"
     // on the very path this change is meant to make auditable.
     const requestContext =

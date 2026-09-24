@@ -9,6 +9,7 @@
  */
 
 import type { IModelAdapter } from '../../core/index.js';
+import type { TrustTier } from '../../security/trust-types.js';
 import type {
   ExecutionStrategy,
   MetaOrchestratorInput,
@@ -45,7 +46,16 @@ import { runConsensusForGoal } from './consensus-vote.js';
 export function buildDefaultExecutors(
   trustTier?: string,
   gatewayAdapters?: readonly IModelAdapter[],
-  dryRun?: boolean,
+  /**
+   * Options only the dev-pipeline executor reads: `dryRun` (#4806), and the
+   * caller's declared provenance of the goal text (#6795) — the dev pipeline
+   * is the one strategy whose gate consumes a content tier. An omitted
+   * `sourceTrustTier` means '3' there.
+   */
+  devPipeline?: {
+    readonly dryRun?: boolean | undefined;
+    readonly sourceTrustTier?: TrustTier | undefined;
+  },
   /**
    * Async-job heartbeat (#6162), threaded only to the consensus executor: the
    * pipeline executors heartbeat through the stage events they emit on the
@@ -63,7 +73,13 @@ export function buildDefaultExecutors(
     cancellableExecutor(strategy, executor, signal);
   return {
     'dev-pipeline': gated('dev-pipeline', (_decision, metaInput: MetaOrchestratorInput) =>
-      runDevPipelineForGoal(metaInput.goal, trustTier, dryRun, signal)
+      runDevPipelineForGoal(
+        metaInput.goal,
+        trustTier,
+        devPipeline?.dryRun,
+        signal,
+        devPipeline?.sourceTrustTier
+      )
     ),
     pipeline: gated('pipeline', (_decision, metaInput: MetaOrchestratorInput) =>
       runPipelineForGoal(metaInput.goal, undefined, signal)

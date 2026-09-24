@@ -306,9 +306,10 @@ function redactMemoryInput(input: MemoryWriteInput): MemoryWriteInput {
  *
  * The stored tier is the least-trusted of the caller's MEASURED tier and
  * `input.sourceTrustTier`. `callerTrustTier` is `undefined` when the request
- * context only holds the no-caller-info fallback (see `measuredTrustTier`):
+ * context holds no measured caller information (see `measuredTrustTier`):
  * recording that fallback would label every entry Tier 3 as if measured. With
- * neither tier known the entry is stored unlabelled.
+ * neither tier known the entry is stored unlabelled. A stdio server measures
+ * its caller at Tier 1 (#6795), so an undeclared entry is then labelled Tier 1.
  */
 async function executeMemoryWrite(
   rawInput: MemoryWriteInput,

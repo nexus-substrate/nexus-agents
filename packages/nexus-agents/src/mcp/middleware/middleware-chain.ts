@@ -34,6 +34,7 @@ import {
   createRequestContext,
   contextForLogging,
   runWithRequestContext,
+  serverCallerInfo,
   type RequestContext,
 } from './request-context.js';
 import { createMetricsMiddleware } from './tool-metrics.js';
@@ -421,7 +422,13 @@ export function createMiddlewareChain(
 
   return (handler: ContextAwareToolHandler): ToolHandler => {
     return async (args: unknown): Promise<ToolResult> => {
-      const requestContext = createRequestContext({ toolName: config.toolName });
+      // The transport the server connected is what the server measured about
+      // the caller (#6795): stdio derives tier 1, and no recorded transport
+      // stays unmeasured rather than defaulting to a tier.
+      const requestContext = createRequestContext({
+        toolName: config.toolName,
+        caller: serverCallerInfo(),
+      });
       const requestLogger = logger.child(contextForLogging(requestContext));
       const ctx: MiddlewareContext = { requestContext, logger: requestLogger };
       // Publish the context ambiently so inner layers adopt it instead of

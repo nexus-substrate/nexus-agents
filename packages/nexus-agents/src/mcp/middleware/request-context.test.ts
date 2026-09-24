@@ -5,18 +5,19 @@
  * caller info extraction, logging format, and type guard.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   generateRequestId,
   generateSessionId,
   createRequestContext,
   deriveTrustTier,
-  extractCallerInfo,
   contextForLogging,
   isRequestContext,
   measuredTrustTier,
   runWithRequestContext,
   getCurrentRequestContext,
+  recordServerTransport,
+  serverCallerInfo,
 } from './request-context.js';
 import type { RequestContext } from './request-context.js';
 
@@ -139,75 +140,6 @@ describe('createRequestContext', () => {
 });
 
 // ============================================================================
-// extractCallerInfo
-// ============================================================================
-
-describe('extractCallerInfo', () => {
-  const originalEnv = process.env;
-
-  afterEach(() => {
-    process.env = originalEnv;
-    vi.restoreAllMocks();
-  });
-
-  it('returns empty caller for no metadata', () => {
-    expect(extractCallerInfo()).toEqual({});
-  });
-
-  it('extracts clientId from metadata', () => {
-    const info = extractCallerInfo({ clientId: 'claude-cli' });
-    expect(info.clientId).toBe('claude-cli');
-  });
-
-  it('extracts userAgent from metadata', () => {
-    const info = extractCallerInfo({ userAgent: 'TestAgent/1.0' });
-    expect(info.userAgent).toBe('TestAgent/1.0');
-  });
-
-  it('extracts sessionId from metadata', () => {
-    const info = extractCallerInfo({ sessionId: 'sess-123' });
-    expect(info.sessionId).toBe('sess-123');
-  });
-
-  it('extracts multiple metadata fields together', () => {
-    const info = extractCallerInfo({
-      clientId: 'claude-cli',
-      userAgent: 'TestAgent/1.0',
-      sessionId: 'sess-123',
-    });
-    expect(info.clientId).toBe('claude-cli');
-    expect(info.userAgent).toBe('TestAgent/1.0');
-    expect(info.sessionId).toBe('sess-123');
-  });
-
-  it('ignores non-string metadata values', () => {
-    const info = extractCallerInfo({ clientId: 42, userAgent: true });
-    expect(info.clientId).toBeUndefined();
-    expect(info.userAgent).toBeUndefined();
-  });
-
-  it('falls back to CLAUDE_SESSION_ID env var', () => {
-    process.env = { ...originalEnv, CLAUDE_SESSION_ID: 'env-sess-1' };
-    const info = extractCallerInfo();
-    expect(info.clientId).toBe('claude-cli');
-    expect(info.sessionId).toBe('env-sess-1');
-  });
-
-  it('falls back to GEMINI_SESSION_ID env var', () => {
-    process.env = { ...originalEnv, GEMINI_SESSION_ID: 'gem-sess-1' };
-    const info = extractCallerInfo();
-    expect(info.clientId).toBe('gemini-cli');
-    expect(info.sessionId).toBe('gem-sess-1');
-  });
-
-  it('prefers metadata over env vars', () => {
-    process.env = { ...originalEnv, CLAUDE_SESSION_ID: 'env-sess' };
-    const info = extractCallerInfo({ clientId: 'custom-client' });
-    expect(info.clientId).toBe('custom-client');
-  });
-});
-
-// ============================================================================
 // contextForLogging
 // ============================================================================
 
@@ -317,9 +249,29 @@ describe('isRequestContext', () => {
   });
 });
 
+describe('server transport as measured caller info (#6795)', () => {
+  afterEach(() => {
+    recordServerTransport(undefined);
+  });
+
+  it('a recorded stdio transport gives a measured tier 1', () => {
+    recordServerTransport('stdio');
+    const ctx = createRequestContext({ toolName: 't', caller: serverCallerInfo() });
+    expect(ctx.caller.transport).toBe('stdio');
+    expect(measuredTrustTier(ctx)).toBe('1');
+  });
+
+  it('no recorded transport gives the unmeasured fallback', () => {
+    expect(serverCallerInfo()).toEqual({});
+    const ctx = createRequestContext({ toolName: 't', caller: serverCallerInfo() });
+    expect(ctx.trustTier).toBe('3');
+    expect(measuredTrustTier(ctx)).toBeUndefined();
+  });
+});
+
 describe('measuredTrustTier (#4733)', () => {
-  // #4738 review: `extractCallerInfo` can return `{ sessionId }` or
-  // `{ userAgent }` alone. Neither is an input to `deriveTrustTier`, so a
+  // #4738 review: a caller can carry `{ sessionId }` or `{ userAgent }`
+  // alone. Neither is an input to `deriveTrustTier`, so a
   // "caller object is non-empty" test would have labelled the '3' fallback a
   // measurement the moment a producer supplied only those.
   it('does not treat a caller with only sessionId as measured', () => {
@@ -341,11 +293,11 @@ describe('measuredTrustTier (#4733)', () => {
   });
 
   // `createRequestContext` falls back to `caller = {}`, and `deriveTrustTier({})`
-  // returns '3'. Since nothing supplies callerInfo today, EVERY tier is that
-  // fallback — so recording `context.trustTier` records a constant that reads
+  // returns '3'. Before #6795 nothing supplied callerInfo, so EVERY tier was
+  // that fallback — recording `context.trustTier` recorded a constant that read
   // as a measurement. That is what #4699 shipped.
 
-  it('returns undefined when no caller info was supplied — the shipped reality', () => {
+  it('returns undefined when no caller info was supplied', () => {
     const ctx = createRequestContext({ toolName: 'run_pipeline' });
     // The raw field looks like a measurement...
     expect(ctx.trustTier).toBe('3');
@@ -361,8 +313,7 @@ describe('measuredTrustTier (#4733)', () => {
     expect(measuredTrustTier(ctx)).toBe('1');
   });
 
-  // The exact shape `extractCallerInfo` returns on its CLAUDE_SESSION_ID path.
-  // A previous version of the guard accepted `clientId` as a derivation input,
+  // The shape the removed `extractCallerInfo` returned on its env path. A previous version of the guard accepted `clientId` as a derivation input,
   // but `deriveTrustTier` reads it only inside `authenticated === true` — so
   // this shape yields the '3' fallback and must NOT be reported as measured.
   it('does not treat a clientId-only caller as measured', () => {
