@@ -1,5 +1,34 @@
 # nexus-agents
 
+## 8.109.0
+
+### Minor Changes
+
+- [#6757](https://github.com/nexus-substrate/nexus-agents/pull/6757) [`6130489`](https://github.com/nexus-substrate/nexus-agents/commit/6130489d9c32a2584661716816bbe87b6666c829) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Provenance labelling and input validation hardening.
+
+  - `run_dev_pipeline`: the consensus→execute policy gate now receives the tier of the content that fed the run, not only the caller's tier. When the research stage runs (or research is resumed from a checkpoint), the content tier is Tier 3 (external); a run that supplies its own research text keeps the caller's tier. Under `NEXUS_POLICY_GATE_MODE=block`, a Tier 1 caller whose run reads fresh research is now blocked at that gate.
+  - `memory_write`: credentials in `key` and `content` are redacted before storage. Entries record a trust tier when one is known — the caller's measured tier, or the new optional `sourceTrustTier` input for content from an external source, whichever is less trusted.
+  - Context prompt prefixes (`NEXUS_CONTEXT_RETRIEVER_INJECT`): memory lines with a recorded tier are labelled `[tier N]`, and entries recorded at Tier 3 or 4 are left out. `summarizeContextForPrompt` accepts `{ allowUntrustedMemory: true }` to include them. Entries without a recorded tier render as before.
+  - `get_job_result` and `cancel_job` reject a `jobId` outside the server-minted format (letters, digits, `_`, `-`; 1–128 characters). The job-result path builders apply the same check.
+
+### Patch Changes
+
+- [#6762](https://github.com/nexus-substrate/nexus-agents/pull/6762) [`98e83fe`](https://github.com/nexus-substrate/nexus-agents/commit/98e83fe8877ccadd2d5b6186836a61956a456ee5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `cancel_job` MCP tool description now says what a cancel does: it marks the job cancelled and aborts in-flight voter calls and orchestrate worker dispatch, and a cancelled `consensus_vote` records the votes already cast without a decision. It also notes that not every dev-pipeline stage forwards the cancel yet. The previous text said only that the job was marked cancelled.
+
+- [#6759](https://github.com/nexus-substrate/nexus-agents/pull/6759) [`8b6d40b`](https://github.com/nexus-substrate/nexus-agents/commit/8b6d40bc4264048a4c556eaa254d34e4aade3f92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A cancelled async `pr_review` no longer writes a governor-review record, and records no verdict.
+
+  - Fixes a fidelity bug. Before this change, a `pr_review` job cancelled with `cancel_job` carried on once its seats settled: it aggregated whatever seats had answered into a verdict and appended it to `governance/pr-review-records.jsonl`. Under the default `errorPolicy: 'standard'`, one answering seat out of five was enough. The governor-review gate reads that file, so a cancelled, partial review could count as review evidence.
+  - The review now stops once the seats settle, before any verdict is aggregated or any per-decision cost is recorded. The record producer checks the signal a second time, synchronously before the append, so a cancel that lands after the seats settled still writes nothing.
+  - The cancelled job record keeps `status: 'cancelled'` and gains `cancelledPartial: { partialVotes, seatsCast, panelSize }`, the same field a cancelled `consensus_vote` carries: the seats that had answered before the cancel, with no verdict. Sidecar job store only, as for `consensus_vote`.
+  - Synchronous `pr_review` calls, and `scripts/pr-review-local-ledger.ts`, are unchanged: they have no cancel signal. The `pr_review` MCP tool does not post to GitHub, so there is no post to suppress.
+
+- [#6758](https://github.com/nexus-substrate/nexus-agents/pull/6758) [`a2232d9`](https://github.com/nexus-substrate/nexus-agents/commit/a2232d9daa0fb1aeb5fd340528df0245585ad9e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run_dev_pipeline`: the research, quality-gate and security-scan stages now stop their work when the stage's deadline passes or the job is cancelled ([#6747](https://github.com/nexus-substrate/nexus-agents/issues/6747)). Before, the stage failed on time but its work kept running behind the failure.
+
+  - **Quality gate:** the typecheck, lint and test scripts are ended together with every process they spawned: SIGTERM, then SIGKILL after 5 s for any process that ignores it. The 120 s per-check timeout, which `run_quality_gate` shares, now ends the whole tree too. Before, it killed only the package manager and left the script's processes running.
+  - **Security scan:** semgrep's process tree is ended the same way, and the OSV dependency lookups in flight are cancelled. The scan's 5-minute timeout also ends the whole tree now.
+  - **Research:** the source fetch in flight is cancelled, and no further source is queried.
+  - An aborted stage reports a timeout when the stage deadline fired, or `Dev pipeline cancelled during the <stage> stage` for a cancel. It records no outcome, and the research stage no longer continues on minimal context after an abort.
+
 ## 8.108.1
 
 ### Patch Changes
