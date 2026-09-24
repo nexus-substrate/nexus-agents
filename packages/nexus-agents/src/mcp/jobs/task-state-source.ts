@@ -198,7 +198,7 @@ interface JobStatusCarrier {
 }
 
 /** The winner of one dual read, tagged with the store that produced it. */
-export interface PreferredJobRecord<T> {
+interface PreferredJobRecord<T> {
   readonly value: T;
   readonly source: JobResultSource;
 }
