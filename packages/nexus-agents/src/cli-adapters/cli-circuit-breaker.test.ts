@@ -16,6 +16,7 @@ import {
   type CliCircuitBreakerConfig,
 } from './cli-circuit-breaker.js';
 import { CircuitError, CircuitErrorCode, type CircuitStateChangeEvent } from './circuit-breaker.js';
+import { createCallerInputCliError } from './cli-error-helpers.js';
 
 // ============================================================================
 // Test Helpers
@@ -204,6 +205,87 @@ describe('CliCircuitBreakerIntegration', () => {
       }
 
       expect(getCliCircuitBreakerSnapshot('opencode')?.state).toBe('open');
+    });
+
+    it('does not count caller-input CLI errors against the breaker (#6613)', async () => {
+      const callerInputError = createCallerInputCliError(
+        'unknown model requested: unsupported-model',
+        'opencode'
+      );
+      const invalidInputAdapter = createAdapterReturningError('opencode', callerInputError);
+      const custom = new CliCircuitBreakerIntegration([invalidInputAdapter], {
+        perCliConfig: { opencode: { failureThreshold: 2 } },
+      });
+
+      for (let i = 0; i < 5; i++) {
+        const result = await custom.execute(invalidInputAdapter, createTask());
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error).toBe(callerInputError);
+        }
+      }
+
+      const snapshot = custom.getCircuitSnapshots().get('opencode');
+      expect(snapshot?.state).toBe('closed');
+      expect(snapshot?.failureCount).toBe(0);
+    });
+
+    it('does not double-count standard CLI failures (#6613)', async () => {
+      const failingAdapter = createMockAdapter('claude', 'circuit-error');
+      const custom = new CliCircuitBreakerIntegration([failingAdapter], {
+        perCliConfig: { claude: { failureThreshold: 2 } },
+      });
+
+      // 1 failure should increment failureCount to 1, keeping circuit closed
+      await custom.execute(failingAdapter, createTask());
+      expect(custom.getCircuitSnapshots().get('claude')?.failureCount).toBe(1);
+      expect(custom.getCircuitSnapshots().get('claude')?.state).toBe('closed');
+
+      // 2nd failure reaches threshold 2, opening the circuit
+      await custom.execute(failingAdapter, createTask());
+      expect(custom.getCircuitSnapshots().get('claude')?.failureCount).toBe(2);
+      expect(custom.getCircuitSnapshots().get('claude')?.state).toBe('open');
+    });
+
+    it('releases half-open probe budget on caller-input error (#6613)', async () => {
+      const callerInputError = createCallerInputCliError('invalid model', 'claude');
+      let returnCallerInput = false;
+      const alternatingAdapter: ICliAdapter = {
+        name: 'claude',
+        execute: vi.fn().mockImplementation(() => {
+          if (returnCallerInput) {
+            return Promise.resolve(err(callerInputError));
+          }
+          return Promise.resolve(err({ code: 'TIMEOUT', message: 'timeout', cli: 'claude', retryable: true }));
+        }),
+      } as unknown as ICliAdapter;
+
+      const custom = new CliCircuitBreakerIntegration([alternatingAdapter], {
+        perCliConfig: {
+          claude: {
+            failureThreshold: 1,
+            resetTimeoutMs: 1000,
+            halfOpenMaxRequests: 1,
+            halfOpenSuccessThreshold: 1,
+          },
+        },
+      });
+
+      // 1 timeout failure opens the circuit
+      await custom.execute(alternatingAdapter, createTask());
+      expect(custom.getCircuitSnapshots().get('claude')?.state).toBe('open');
+
+      // Advance past reset timeout into half-open
+      vi.advanceTimersByTime(1001);
+
+      // In half-open state, a caller-input error occurs
+      returnCallerInput = true;
+      const callerResult = await custom.execute(alternatingAdapter, createTask());
+      expect(callerResult.ok).toBe(false);
+
+      // The circuit should still be half-open and probe request should not be exhausted
+      expect(custom.getCircuitSnapshots().get('claude')?.state).toBe('half-open');
+      expect(custom.getCircuitSnapshots().get('claude')?.halfOpenRequests).toBe(0);
     });
   });
 
