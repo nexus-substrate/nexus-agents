@@ -1,5 +1,24 @@
 # nexus-agents
 
+## 8.110.0
+
+### Minor Changes
+
+- [#6764](https://github.com/nexus-substrate/nexus-agents/pull/6764) [`ef1845e`](https://github.com/nexus-substrate/nexus-agents/commit/ef1845ec58059946f1b83b2ec6087f70a4237f44) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Voter and reviewer CLI seats now run in a read-only analysis mode. Every `consensus_vote`, `pr_review` and supply-chain panel seat sends `accessMode: 'read-only-analysis'`, and each CLI adapter maps it to that CLI's own enforcement:
+
+  - claude: `--tools Read,Grep,Glob --strict-mcp-config --permission-mode manual`, plus `--disallowedTools Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch`. Only the read tools are offered and no MCP server loads. A read-only task that also asks to skip permissions or names an MCP config is refused.
+  - opencode: `OPENCODE_PERMISSION={"bash":"deny","edit":"deny","webfetch":"deny"}` in the child environment
+  - gemini (agy): `--mode plan --sandbox`
+  - codex: the `-s read-only` sandbox it already used, now the declared guarantee; codex over MCP refuses a read-only task that continues a session, because a reply carries no sandbox setting
+
+  An adapter that cannot enforce the mode refuses the seat instead of running with its defaults, and the panel's error policy counts that seat as errored. Implement and orchestrate tasks are unchanged.
+
+  New public API, all additive: the `ExecutionAccessMode` type, an optional `accessMode` on `CompletionRequest` and `CliTask`, an optional `enforcesReadOnlyAnalysis` on `ICliAdapter` (false on `BaseCliAdapter`, true on the four built-in CLI adapters), and an optional `env` on `CommandConfig`. A custom `ICliAdapter` used for voter seats must set `enforcesReadOnlyAnalysis: true` and apply the mode itself, or its seats will be refused.
+
+### Patch Changes
+
+- [#6767](https://github.com/nexus-substrate/nexus-agents/pull/6767) [`6933819`](https://github.com/nexus-substrate/nexus-agents/commit/6933819b2cf8890d528f36a4ab2f24905e439bdf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Redaction now applies one shared credential pattern set; some formats are now redacted in places that missed them. `sanitizeOutput` / `sanitizeErrorDetails`, the logger's `sanitize` / `sanitizeDeep`, and the outcome store's persisted error messages all apply the same credential shapes, each with its own placeholder. Newly redacted: in subprocess output and error details, GitHub `ghr_` tokens, fine-grained `github_pat_` tokens of 20–21 characters, `AKIA` key IDs embedded in a longer word, Azure `AccountKey=` / `SharedAccessSignature=` values, GCP `private_key` / `private_key_id` JSON fields, and `aws_secret_access_key` / `aws_session_token` assignments; in log output, `pk-` keys, `AIzaSy` keys shorter than 39 characters, GitHub `ghp_`/`gho_`/`ghu_`/`ghs_` tokens that are not exactly 36 characters, GitLab `glpat-`, npm `npm_` and PyPI `pypi-` tokens; in persisted outcome errors, `sk-ant-` / `sk-proj-` keys, `pk-` keys, Google `AIza` keys, `ghr_`, GitLab, npm, PyPI, Azure, GCP and AWS secret-key forms. Nothing that was redacted before is left in the clear. Context rules (`Bearer`, `password=`, `token:`, query and JSON fields) are unchanged in every module.
+
 ## 8.109.0
 
 ### Minor Changes
