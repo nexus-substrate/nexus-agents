@@ -30,7 +30,7 @@ import {
 import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
 import { isAuthFailureText } from '../cli-adapters/cli-error-envelope.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
-import { extractTextFromResponse } from './voter-response-text.js';
+import { extractTextFromResponse, isStructuredOutputUnsupported } from './voter-response-text.js';
 
 export { extractTextFromResponse };
 
@@ -271,22 +271,16 @@ function buildVoteRequest({
     // signal also carries the panel's cancel, so `cancel_job` ends the call.
     timeoutMs,
     ...(workspace !== undefined && workspace.trim() !== '' ? { workDir: workspace } : {}),
+    // #6754: every seat — consensus_vote, pr_review and the other panels that
+    // share this path — reads the artifact and answers; it never needs to run
+    // commands, edit files or fetch. A CLI that cannot enforce that refuses
+    // the seat, and the panel's error policy counts it.
+    accessMode: 'read-only-analysis',
     signal: seatSignal(timeoutMs, signal),
   };
   return withResponseFormat
     ? { ...base, responseFormat: { type: 'json_schema', schema: VOTE_JSON_SCHEMA } }
     : base;
-}
-
-/**
- * #3497: some backends don't silently ignore an unsupported `responseFormat`.
- * OpenRouter implements `json_schema` via provider tool-use, so a role routed to
- * a provider without tool-use returns a hard 404 "No endpoints found that
- * support tool use" instead of ignoring the field — silently shrinking the panel
- * (observed on devex/catfish). Detect it so the caller retries without it.
- */
-function isStructuredOutputUnsupported(errorMessage: string): boolean {
-  return /support tool use/i.test(errorMessage);
 }
 
 /**

@@ -69,6 +69,19 @@ export type ResponseFormat =
   | { type: 'json_schema'; schema: Record<string, unknown> };
 
 /**
+ * What a model call may do on the host it runs on (#6754).
+ *
+ * - `'default'`: the adapter's normal posture, unchanged.
+ * - `'read-only-analysis'`: the call may read, but may not run commands, edit
+ *   files or fetch from the network. Voter and reviewer seats set it. A CLI
+ *   adapter maps it to that CLI's own enforcement, and an adapter that cannot
+ *   enforce it refuses the call instead of running with its defaults. A
+ *   direct-API adapter executes nothing on the host, so it satisfies the mode
+ *   by construction.
+ */
+export type ExecutionAccessMode = 'default' | 'read-only-analysis';
+
+/**
  * Request to complete a conversation.
  */
 export interface CompletionRequest {
@@ -90,6 +103,11 @@ export interface CompletionRequest {
   timeoutMs?: number;
   /** Working directory for CLI adapters; API adapters ignore this field. */
   workDir?: string;
+  /**
+   * Host access the call may use (#6754). Absent means `'default'`. See
+   * {@link ExecutionAccessMode}.
+   */
+  accessMode?: ExecutionAccessMode;
   /**
    * Model the caller wants to answer (#6599): a registry id, a CLI alias or a
    * CLI-native id. CLI adapters forward it to the CLI, which resolves it or

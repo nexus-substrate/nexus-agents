@@ -41,3 +41,14 @@ function rawTextFromResponse(content: unknown): string {
   }
   return String(content);
 }
+
+/**
+ * #3497: some backends don't silently ignore an unsupported `responseFormat`.
+ * OpenRouter implements `json_schema` via provider tool-use, so a role routed to
+ * a provider without tool-use returns a hard 404 "No endpoints found that
+ * support tool use" instead of ignoring the field — silently shrinking the panel
+ * (observed on devex/catfish). Detect it so the caller retries without it.
+ */
+export function isStructuredOutputUnsupported(errorMessage: string): boolean {
+  return /support tool use/i.test(errorMessage);
+}

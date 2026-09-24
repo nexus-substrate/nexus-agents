@@ -283,6 +283,7 @@ export type {
   ContentBlock,
   ToolDefinition,
   ResponseFormat,
+  ExecutionAccessMode,
   TokenUsage,
   StopReason,
   StreamChunk,

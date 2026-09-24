@@ -67,6 +67,9 @@ function createMockChildProcess() {
 
 class FakeAgyAdapter extends SubprocessCliAdapter {
   override readonly name = 'gemini' as const;
+  // Stands in for the real agy adapter, which enforces read-only analysis
+  // mode; without the declaration every seat is refused before spawn (#6754).
+  override readonly enforcesReadOnlyAnalysis = true;
   readonly version = '1.0.0';
   protected override readonly transientRetry = { enabled: false };
   protected readonly parser: ICliResponseParser = new AgyResponseParser();

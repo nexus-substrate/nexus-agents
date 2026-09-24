@@ -26,6 +26,7 @@ import { getErrorMessage, ok, err, getTimeProvider, createLogger } from '../../c
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
+import { isReadOnlyAnalysis, readOnlyAnalysisConflict } from '../read-only-analysis.js';
 import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
 
 import {
@@ -59,6 +60,12 @@ import {
  */
 export class CodexMcpAdapter extends BaseCliAdapter {
   readonly name: CliName = 'codex';
+  /**
+   * #6754: a new thread is started with `sandbox: 'read-only'` on every call.
+   * A `codex-reply` carries no sandbox argument, so a read-only task that
+   * continues a session is refused in {@link accessModeRefusal}.
+   */
+  override readonly enforcesReadOnlyAnalysis = true;
   readonly transport: CliTransport = 'mcp';
 
   private readonly model: string;
@@ -236,6 +243,19 @@ export class CodexMcpAdapter extends BaseCliAdapter {
         return captured.slice(0, MAX_RESPONSE_STDERR_CHARS);
       },
     };
+  }
+
+  /** #6754: a continued session cannot be pinned to the read-only sandbox. */
+  protected override accessModeRefusal(task: CliTask): CliError | undefined {
+    const base = super.accessModeRefusal(task);
+    if (base !== undefined || !isReadOnlyAnalysis(task)) return base;
+    if (task.sessionId !== undefined && task.sessionId !== '') {
+      return readOnlyAnalysisConflict(
+        this.name,
+        'a continued codex session carries no sandbox setting'
+      );
+    }
+    return undefined;
   }
 
   /**

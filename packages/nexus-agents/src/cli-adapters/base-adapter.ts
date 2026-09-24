@@ -15,7 +15,7 @@ import semver from 'semver';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 import type { Result } from '../core/index.js';
-import { getTimeProvider } from '../core/index.js';
+import { err, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
@@ -42,6 +42,7 @@ import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { createCliError } from './cli-error-helpers.js';
+import { readOnlyAnalysisRefusal } from './read-only-analysis.js';
 
 const execAsync = promisify(exec);
 
@@ -81,6 +82,13 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   get binaryName(): string {
     return this.name;
   }
+
+  /**
+   * Whether this adapter maps `accessMode: 'read-only-analysis'` to its CLI's
+   * own enforcement (#6754). False here so a new adapter fails closed until it
+   * implements the mode and says so.
+   */
+  readonly enforcesReadOnlyAnalysis: boolean = false;
 
   protected readonly logger: ILogger;
   protected capacityTracker: CapacityTracker | null = null;
@@ -150,6 +158,11 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * 3. getTimeoutForTaskAuto() - computed from task complexity and CLI
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
+    // #6754: checked before anything else runs, so a refused read-only task
+    // never initializes, spawns or counts against the breaker.
+    const refusal = this.accessModeRefusal(task);
+    if (refusal !== undefined) return err(refusal);
+
     const effectiveTimeout = this.computeTimeout(task, options);
     const opts = { ...DEFAULT_OPTIONS, ...options, timeoutMs: effectiveTimeout };
 
@@ -165,6 +178,15 @@ export abstract class BaseCliAdapter implements ICliAdapter {
     });
 
     return this.executeWithRetry(task, opts);
+  }
+
+  /**
+   * The refusal for a task this adapter cannot run in its requested access
+   * mode, or `undefined` (#6754). Adapters override it to add conflicts their
+   * own options can create, and call `super` first.
+   */
+  protected accessModeRefusal(task: CliTask): CliError | undefined {
+    return readOnlyAnalysisRefusal(this, task);
   }
 
   /**

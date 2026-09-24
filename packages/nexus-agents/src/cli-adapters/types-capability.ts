@@ -7,7 +7,7 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
-import type { Result, ILogger } from '../core/index.js';
+import type { Result, ILogger, ExecutionAccessMode } from '../core/index.js';
 import type {
   CliName,
   CliTransport,
@@ -82,6 +82,12 @@ export interface CliTask {
   readonly timeoutMs?: number;
   /** Additional CLI-specific options */
   readonly options?: Record<string, unknown>;
+  /**
+   * Host access this task may use (#6754). Absent means `'default'`. Under
+   * `'read-only-analysis'` an adapter must apply its CLI's own read-only
+   * enforcement, or refuse the task when it cannot.
+   */
+  readonly accessMode?: ExecutionAccessMode;
 }
 
 /**
@@ -139,6 +145,12 @@ export interface ICliAdapter {
   readonly transport: CliTransport;
   /** Capability profile */
   readonly capabilities: CapabilityProfile;
+  /**
+   * True only when this adapter enforces `accessMode: 'read-only-analysis'`
+   * (#6754). Absent or false means it cannot, and a caller that asks for the
+   * mode must be refused rather than run with the adapter's defaults.
+   */
+  readonly enforcesReadOnlyAnalysis?: boolean;
 
   /**
    * Executes a task on the CLI.
