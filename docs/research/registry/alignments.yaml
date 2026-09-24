@@ -27,14 +27,15 @@ alignments:
       selection, then cascade if quality threshold not met.
     integration_approach: |
       QualityRouter selects initial model based on complexity.
-      AgreementCascadeRouter escalates on disagreement.
-      Chain: QualityRouter -> AgreementCascadeRouter -> final result
+      A cascade router escalates on disagreement.
+      Chain: QualityRouter -> cascade router -> final result
     status: rejected
     date: '2026-04-18'
     decision_rationale: |
       Both components ship independently: QualityConstraintStage lives in the
-      CompositeRouter pipeline; AgreementCascadeRouter / canCascadeEarly() lives
-      in the consensus engine. They solve different problems (model selection vs
+      CompositeRouter pipeline; canCascadeEarly() lives in the consensus engine
+      (the standalone AgreementCascadeRouter was never wired and was deleted
+      in #6688). They solve different problems (model selection vs
       consensus escalation) and run in different execution paths. A unified
       chain was never needed — CompositeRouter handles quality-aware selection;
       the consensus engine handles cascade-on-disagreement. No consumer has
@@ -74,14 +75,14 @@ alignments:
       Rather than just ensemble agreement, SATER uses model confidence
       to decide escalation. Can enhance existing cascade implementation.
     integration_approach: |
-      Add confidence scoring to AgreementCascadeRouter.
+      Add confidence scoring to the agreement cascade.
       Use both agreement threshold AND confidence for escalation.
     status: rejected
     date: '2026-04-18'
     decision_rationale: |
       Different subsystems. SATER is a ConfidenceCascadeStage in the routing
-      pipeline (pre-dispatch model selection). AgreementCascadeRouter runs in
-      the consensus engine (post-dispatch escalation on disagreement). Fusing
+      pipeline (pre-dispatch model selection). Agreement cascading
+      (canCascadeEarly) runs in the consensus engine (post-dispatch escalation on disagreement). Fusing
       their confidence signals would cross a subsystem boundary without a clear
       benefit — the confidence information SATER needs comes from response
       content, which is only available after consensus execution starts.

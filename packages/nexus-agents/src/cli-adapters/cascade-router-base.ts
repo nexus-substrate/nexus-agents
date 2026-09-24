@@ -2,7 +2,8 @@
  * Cascade Router Base
  *
  * Abstract base class for cascade routing patterns.
- * Extracts common functionality from ConfidenceRouter and AgreementCascadeRouter.
+ * Originally extracted from ConfidenceRouter and AgreementCascadeRouter, both
+ * since removed (AgreementCascadeRouter in #6688).
  *
  * Issue #574: Consolidate router implementations behind unified interface.
  *

@@ -7,7 +7,6 @@
  * Used by:
  * - context/agentic-memory-extraction.ts
  * - context/adaptive-memory-helpers.ts
- * - cli-adapters/agreement-cascade-helpers.ts
  *
  * @module utils/text-utils
  * @see docs/adr/0013-memory-helpers-consolidation.md

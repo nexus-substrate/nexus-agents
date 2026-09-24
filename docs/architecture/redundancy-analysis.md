@@ -35,17 +35,17 @@ The nexus-agents codebase contains **significant architectural redundancy** acro
 
 ### 1.1 Router Inventory (10 implementations)
 
-| Router                 | Location                                   | Purpose            | Overlap              |
-| ---------------------- | ------------------------------------------ | ------------------ | -------------------- |
-| TaskRouter             | `router.ts`                                | Capability-based   | HIGH with ZeroRouter |
-| QualityRouter          | `adapters/quality-router.ts`               | Cost/quality       | HIGH with TOPSIS     |
-| BudgetRouter           | `cli-adapters/budget-router.ts`            | Token/cost budgets | MEDIUM               |
-| ConfidenceRouter       | `cli-adapters/confidence-router.ts`        | Cascade escalation | HIGH with Agreement  |
-| ZeroRouter             | `cli-adapters/zero-router.ts`              | Difficulty space   | HIGH with Task       |
-| PreferenceRouter       | `cli-adapters/preference-router.ts`        | Human preference   | LOW                  |
-| TopsisRouter           | `cli-adapters/topsis-router.ts`            | Multi-criteria     | MEDIUM               |
-| AgreementCascadeRouter | `cli-adapters/agreement-cascade-router.ts` | Model agreement    | HIGH with Confidence |
-| CompositeRouter        | `cli-adapters/composite-router.ts`         | Pipeline           | ORCHESTRATOR         |
+| Router                 | Location                                                        | Purpose            | Overlap              |
+| ---------------------- | --------------------------------------------------------------- | ------------------ | -------------------- |
+| TaskRouter             | `router.ts`                                                     | Capability-based   | HIGH with ZeroRouter |
+| QualityRouter          | `adapters/quality-router.ts`                                    | Cost/quality       | HIGH with TOPSIS     |
+| BudgetRouter           | `cli-adapters/budget-router.ts`                                 | Token/cost budgets | MEDIUM               |
+| ConfidenceRouter       | `cli-adapters/confidence-router.ts`                             | Cascade escalation | HIGH with Agreement  |
+| ZeroRouter             | `cli-adapters/zero-router.ts`                                   | Difficulty space   | HIGH with Task       |
+| PreferenceRouter       | `cli-adapters/preference-router.ts`                             | Human preference   | LOW                  |
+| TopsisRouter           | `cli-adapters/topsis-router.ts`                                 | Multi-criteria     | MEDIUM               |
+| AgreementCascadeRouter | ~~`cli-adapters/agreement-cascade-router.ts`~~ (deleted, #6688) | Model agreement    | HIGH with Confidence |
+| CompositeRouter        | `cli-adapters/composite-router.ts`                              | Pipeline           | ORCHESTRATOR         |
 
 ### 1.2 Critical Overlaps
 
@@ -59,12 +59,12 @@ The nexus-agents codebase contains **significant architectural redundancy** acro
 **Cascade Pattern Duplication:**
 
 - `ConfidenceRouter`: Fast→Expensive escalation (SATER pattern)
-- `AgreementCascadeRouter`: Multi-model stages (arxiv:2410.10347)
+- `AgreementCascadeRouter`: Multi-model stages (arxiv:2410.10347) — **DELETED** in #6688 (never wired)
 - ~300 lines of similar cascade logic
 
 **Capability Matching Duplication:**
 
-- `CAPABILITY_MATRIX` in router-scoring.ts
+- ~~`CAPABILITY_MATRIX` in router-scoring.ts~~ **DELETED** in #6688 (no routing path read it)
 - `getCapabilityWeights()` in quality-router.ts
 - TOPSIS criteria in topsis-router.ts
 - 3 different scoring approaches for same problem
