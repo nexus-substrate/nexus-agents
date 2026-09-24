@@ -387,6 +387,43 @@ describe('createAllAdapters gateway family slots (#6604)', () => {
     });
   });
 
+  describe('workspace-edit enforcement (#6792)', () => {
+    it('a gateway-only arm declares workspace-edit: it runs nothing on the host', () => {
+      setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+      const arms = createAllAdapters(undefined, 'subprocess');
+      for (const cli of ['claude', 'codex', 'gemini'] as const) {
+        expect(gatewayServedSlotOf(arms.get(cli))).toBeDefined();
+        expect(arms.get(cli)?.enforcesWorkspaceEdit).toBe(true);
+      }
+    });
+
+    it('a cli-or-gateway arm declares workspace-edit when its CLI does', () => {
+      setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+      installFakeBinary('claude');
+      const arm = buildGatewaySlotRouterArm(
+        'claude',
+        () => new ClaudeCliAdapter(),
+        () => Promise.resolve(true)
+      );
+      expect(arm).not.toBe('unavailable');
+      expect(typeof arm === 'object' ? arm.enforcesWorkspaceEdit : undefined).toBe(true);
+    });
+
+    it('a cli-or-gateway arm does not declare workspace-edit when its CLI declares only read-only', () => {
+      setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+      installFakeBinary('claude');
+      const readOnlyOnlyCli = { name: 'claude', enforcesReadOnlyAnalysis: true } as ICliAdapter;
+      const arm = buildGatewaySlotRouterArm(
+        'claude',
+        () => readOnlyOnlyCli,
+        () => Promise.resolve(true)
+      );
+      expect(arm).not.toBe('unavailable');
+      expect(typeof arm === 'object' ? arm.enforcesWorkspaceEdit : undefined).toBe(false);
+      expect(typeof arm === 'object' ? arm.enforcesReadOnlyAnalysis : undefined).toBe(true);
+    });
+  });
+
   it('is unchanged with no gateway catalogue: every slot is its subprocess arm', () => {
     const arms = createAllAdapters(undefined, 'subprocess');
     expect([...arms.keys()]).toEqual(['claude', 'gemini', 'codex', 'opencode']);

@@ -21,7 +21,12 @@ import type {
 import type { Result } from '../../core/index.js';
 import { ok } from '../../core/index.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
-import { isReadOnlyAnalysis, readOnlyAnalysisConflict } from '../read-only-analysis.js';
+import {
+  accessModeConflict,
+  isReadOnlyAnalysis,
+  isWorkspaceEdit,
+  restrictedAccessMode,
+} from '../access-mode.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
@@ -124,12 +129,76 @@ const CLAUDE_READ_ONLY_DISALLOWED_TOOLS = [
 ] as const;
 
 /**
+ * The ONLY built-in claude tools a workspace-edit task may use (#6792), passed
+ * as `--tools`: the read tools plus the two file-edit tools. No command,
+ * network, notebook or subagent tool.
+ *
+ * Measured on claude 2.1.281 with `--permission-mode acceptEdits`, run in a
+ * throwaway directory on a host whose settings file has `defaultMode: "auto"`
+ * and allow rules for `WebSearch` and `Bash(node:*)`: the session was offered
+ * exactly these five tools; an Edit inside the working directory landed; a
+ * Write to a path OUTSIDE it was refused as a permission denial and the file
+ * was not created. `--add-dir` widens the writable set, so the adapter only
+ * ever adds the task's own `workDir`, which is also the subprocess cwd.
+ */
+const CLAUDE_WORKSPACE_EDIT_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write'] as const;
+
+/**
+ * Tools also denied outright under workspace-edit (#6792), for the same reason
+ * as {@link CLAUDE_READ_ONLY_DISALLOWED_TOOLS}.
+ */
+const CLAUDE_WORKSPACE_EDIT_DISALLOWED_TOOLS = [
+  'Bash',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch',
+] as const;
+
+/**
+ * The argv that enforces the task's restricted access mode, or `undefined`
+ * in the default mode. Each pins the permission mode so a settings-file
+ * default such as `auto` cannot widen it, offers only its allow list, loads
+ * no MCP server and denies the excluded tools again.
+ *
+ * - #6754 read-only analysis: `manual` is the documented mode; in print mode
+ *   nothing that would prompt can be approved.
+ * - #6792 workspace-edit: `acceptEdits` approves edits inside the working
+ *   directory and refuses the rest in print mode.
+ */
+function restrictedModeArgs(task: CliTask): readonly string[] | undefined {
+  if (isReadOnlyAnalysis(task)) {
+    return [
+      '--permission-mode',
+      'manual',
+      '--tools',
+      CLAUDE_READ_ONLY_TOOLS.join(','),
+      '--strict-mcp-config',
+      '--disallowedTools',
+      CLAUDE_READ_ONLY_DISALLOWED_TOOLS.join(','),
+    ];
+  }
+  if (isWorkspaceEdit(task)) {
+    return [
+      '--permission-mode',
+      'acceptEdits',
+      '--tools',
+      CLAUDE_WORKSPACE_EDIT_TOOLS.join(','),
+      '--strict-mcp-config',
+      '--disallowedTools',
+      CLAUDE_WORKSPACE_EDIT_DISALLOWED_TOOLS.join(','),
+    ];
+  }
+  return undefined;
+}
+
+/**
  * Claude CLI adapter using subprocess transport.
  * Executes: claude -p --output-format json "<task>"
  */
 export class ClaudeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'claude';
   override readonly enforcesReadOnlyAnalysis = true;
+  override readonly enforcesWorkspaceEdit = true;
   protected readonly parser: ICliResponseParser = new ClaudeResponseParser();
 
   private readonly model: string;
@@ -210,19 +279,20 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
   }
 
   /**
-   * #6754: a permission bypass would defeat read-only analysis mode, so the
-   * combination is refused rather than resolved one way silently.
+   * #6754/#6792: a permission bypass would defeat either restricted mode, so
+   * the combination is refused rather than resolved one way silently.
    */
   protected override accessModeRefusal(task: CliTask): CliError | undefined {
     const base = super.accessModeRefusal(task);
-    if (base !== undefined || !isReadOnlyAnalysis(task)) return base;
+    const mode = restrictedAccessMode(task);
+    if (base !== undefined || mode === undefined) return base;
     if (task.options?.['skipPermissions'] === true) {
-      return readOnlyAnalysisConflict(this.name, 'the task also asks to skip permissions');
+      return accessModeConflict(this.name, mode, 'the task also asks to skip permissions');
     }
     // `--strict-mcp-config` still loads the servers `--mcp-config` names, and
     // an MCP server's tools are outside the built-in allow list.
     if (typeof task.options?.['mcpConfigPath'] === 'string') {
-      return readOnlyAnalysisConflict(this.name, 'the task also names an MCP config');
+      return accessModeConflict(this.name, mode, 'the task also names an MCP config');
     }
     return undefined;
   }
@@ -237,15 +307,9 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     if (typeof mcpConfigPath === 'string' && mcpConfigPath.length > 0) {
       args.push('--mcp-config', mcpConfigPath);
     }
-    if (isReadOnlyAnalysis(task)) {
-      // #6754: offer only the read tools, load no MCP server, deny the
-      // command/write/network tools again, and pin the permission mode so a
-      // settings-file default cannot widen it. `manual` is the documented
-      // mode; in print mode nothing that would prompt can be approved.
-      args.push('--permission-mode', 'manual');
-      args.push('--tools', CLAUDE_READ_ONLY_TOOLS.join(','));
-      args.push('--strict-mcp-config');
-      args.push('--disallowedTools', CLAUDE_READ_ONLY_DISALLOWED_TOOLS.join(','));
+    const modeArgs = restrictedModeArgs(task);
+    if (modeArgs !== undefined) {
+      args.push(...modeArgs);
       return;
     }
     // Allow full tool access in non-interactive mode (needed for SWE-bench)

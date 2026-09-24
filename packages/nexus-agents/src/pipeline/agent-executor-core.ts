@@ -16,7 +16,7 @@ import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
-import { outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js';
+import { accessModeSignal, outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js';
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
 import type { RoutingArmId } from '../cli-adapters/types-core.js';
@@ -79,6 +79,15 @@ interface RecordOutcomeArgs {
    * served model, and the compiler is what names the call sites.
    */
   served: ServedCall | undefined;
+  /**
+   * The access mode the expert call was dispatched under (#6792), recorded as
+   * an `access-mode:<mode>` quality signal so the audit trail shows which
+   * calls ran unrestricted. Required (though it may be `undefined`) for the
+   * same reason as {@link routedBy}. `undefined` means unmeasured (a stage
+   * without an expert call, or a bridge result that did not state it) and
+   * records no signal rather than a guessed `default`.
+   */
+  accessMode: ExecutionAccessMode | undefined;
   success: boolean;
   durationMs: number;
   /** Failure message; classified into `failureCategory` on a failed row (#6521). */
@@ -99,11 +108,16 @@ interface RecordOutcomeArgs {
  */
 export function outcomeFieldsFromBridge(
   r: ExpertBridgeResult
-): Pick<RecordOutcomeArgs, 'cli' | 'routedBy' | 'served' | 'success' | 'durationMs' | 'error'> {
+): Pick<
+  RecordOutcomeArgs,
+  'cli' | 'routedBy' | 'served' | 'accessMode' | 'success' | 'durationMs' | 'error'
+> {
   return {
     // #6552: the arm that ran; `r.cli` is its display slot.
     cli: r.routedArm ?? r.cli,
     routedBy: r.routedBy,
+    // #6792: the mode the bridge dispatched the call under.
+    accessMode: r.accessMode,
     // #6624: the model that answered, priced by its gateway when one served it.
     served: {
       model: r.model,
@@ -131,6 +145,7 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
     // #2961: persisted outcome IDs/timestamps must go through the time
     // provider so replay/snapshot tests can reproduce.
     const nowMs = getTimeProvider().now();
+    const qualitySignals = outcomeQualitySignals(args);
     getOutcomeStore().append({
       id: `pipeline-${args.taskId}-${String(nowMs)}`,
       cli: args.cli,
@@ -144,12 +159,24 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
       retryCount: args.retryCount,
       ...(args.routedBy !== undefined && { routedBy: args.routedBy }),
       ...servedOutcomeFields(args.served),
-      ...(args.qualitySignals !== undefined && { qualitySignals: [...args.qualitySignals] }),
+      ...(qualitySignals.length > 0 && { qualitySignals }),
       ...outcomeFailureFields(args.success, args.error),
     });
   } catch (error) {
     logger.debug('Failed to record outcome', { taskId: args.taskId, error: String(error) });
   }
+}
+
+/**
+ * A row's quality signals: the stage's own, then the call's access mode
+ * (#6792). Empty when there are none, so the row carries no `qualitySignals`
+ * field, as before.
+ */
+function outcomeQualitySignals(args: RecordOutcomeArgs): string[] {
+  return [
+    ...(args.qualitySignals ?? []),
+    ...(args.accessMode !== undefined ? [accessModeSignal(args.accessMode)] : []),
+  ];
 }
 
 /** Configuration for the agent executor. */

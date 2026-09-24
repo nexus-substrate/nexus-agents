@@ -198,3 +198,93 @@ describe('armsForAccessMode (#6768)', () => {
     expect(arms.ok).toBe(false);
   });
 });
+
+const WORKSPACE_EDIT: CliTask = { content: 'hello there', accessMode: 'workspace-edit' };
+
+/** An adapter that declares workspace-edit, read-only analysis, both or neither. */
+function modeAdapter(
+  name: CliName,
+  declares: { readOnly?: boolean; workspaceEdit?: boolean }
+): ICliAdapter {
+  const base = mockAdapter(name, declares.readOnly);
+  return declares.workspaceEdit === undefined
+    ? base
+    : { ...base, enforcesWorkspaceEdit: declares.workspaceEdit };
+}
+
+describe('CompositeRouter workspace-edit routing (#6792)', () => {
+  it('skips an arm that declares only read-only analysis for a workspace-edit task', async () => {
+    const codex = modeAdapter('codex', { readOnly: true });
+    const claude = modeAdapter('claude', { readOnly: true, workspaceEdit: true });
+    const r = router([
+      ['codex', codex],
+      ['claude', claude],
+    ]);
+
+    const result = await r.executeTask(WORKSPACE_EDIT);
+
+    expect(result.ok && result.value.text).toBe('ran on claude');
+    expect(codex.execute).not.toHaveBeenCalled();
+  });
+
+  it('the same first arm serves a default task (control)', async () => {
+    const r = router([
+      ['codex', modeAdapter('codex', { readOnly: true })],
+      ['claude', modeAdapter('claude', { readOnly: true, workspaceEdit: true })],
+    ]);
+    const decision = await r.route(DEFAULT_TASK);
+    expect(decision.ok && decision.value.cliName).toBe('codex');
+  });
+
+  it('fails clearly, running nothing, when no arm enforces workspace-edit', async () => {
+    const codex = modeAdapter('codex', { readOnly: true });
+    const gemini = modeAdapter('gemini', { readOnly: true, workspaceEdit: false });
+    const r = router([
+      ['codex', codex],
+      ['gemini', gemini],
+    ]);
+
+    const result = await r.executeTask(WORKSPACE_EDIT);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toMatch(/No routing arm enforces workspace-edit mode/);
+    expect((result.error as { stage?: string }).stage).toBe('access-mode');
+    expect(codex.execute).not.toHaveBeenCalled();
+    expect(gemini.execute).not.toHaveBeenCalled();
+  });
+
+  it('bounds a routing-memory pick to the workspace-edit candidates', async () => {
+    forcedMemory.slot = 'gemini';
+    const gemini = modeAdapter('gemini', { readOnly: true });
+    const arms = new Map<RoutingArmId, ICliAdapter>([
+      ['gemini', gemini],
+      ['claude', modeAdapter('claude', { readOnly: true, workspaceEdit: true })],
+    ]);
+    const scored = new CompositeRouter(arms);
+
+    const decision = await scored.route(WORKSPACE_EDIT);
+
+    expect(decision.ok && decision.value.cliName).toBe('claude');
+    const run = await scored.executeTask(WORKSPACE_EDIT);
+    expect(run.ok).toBe(true);
+    expect(gemini.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('armsForAccessMode workspace-edit (#6792)', () => {
+  const adapters = new Map<RoutingArmId, ICliAdapter>([
+    ['codex', modeAdapter('codex', { readOnly: true })],
+    ['claude', modeAdapter('claude', { workspaceEdit: true })],
+  ]);
+
+  it('keeps only arms that declare workspace-edit', () => {
+    const arms = armsForAccessMode(WORKSPACE_EDIT, ['codex', 'claude'], adapters);
+    expect(arms.ok && arms.value).toEqual(['claude']);
+  });
+
+  it('a workspace-edit declaration does not qualify an arm for read-only analysis', () => {
+    const arms = armsForAccessMode(READ_ONLY, ['codex', 'claude'], adapters);
+    expect(arms.ok && arms.value).toEqual(['codex']);
+  });
+});

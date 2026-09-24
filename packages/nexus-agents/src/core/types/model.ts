@@ -78,8 +78,16 @@ export type ResponseFormat =
  *   enforce it refuses the call instead of running with its defaults. A
  *   direct-API adapter executes nothing on the host, so it satisfies the mode
  *   by construction.
+ * - `'workspace-edit'`: the call may read, and edit files inside its working
+ *   directory, but may not run commands, fetch from the network or load MCP
+ *   servers (#6792). The dev-pipeline implement stage sets it. The same
+ *   fail-closed rule applies: an adapter that cannot enforce it refuses the
+ *   call, and a direct-API adapter satisfies it by construction.
+ *
+ * Each mode is declared separately: enforcing one does not qualify an adapter
+ * for another.
  */
-export type ExecutionAccessMode = 'default' | 'read-only-analysis';
+export type ExecutionAccessMode = 'default' | 'read-only-analysis' | 'workspace-edit';
 
 /**
  * Request to complete a conversation.

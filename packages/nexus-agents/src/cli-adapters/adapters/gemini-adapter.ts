@@ -26,7 +26,7 @@ import type {
   BaseAdapterOptions,
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
-import { isReadOnlyAnalysis } from '../read-only-analysis.js';
+import { isReadOnlyAnalysis } from '../access-mode.js';
 import { AgyResponseParser } from '../parsers/agy-parser.js';
 import { toAgyModelSlug, AGY_MODEL_SLUGS } from '../../config/agy-model-map.js';
 import type { CliModelInfo } from '../types-capability.js';

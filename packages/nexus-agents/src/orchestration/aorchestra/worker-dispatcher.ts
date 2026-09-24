@@ -15,6 +15,7 @@ import type { AgentPlanEntry } from './agent-planner.js';
 import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 import { topologicalWaveAssign } from './topological-wave.js';
 import { createLogger, getErrorMessage } from '../../core/index.js';
+import type { ExecutionAccessMode } from '../../core/index.js';
 import { getExpertTaskTimeout, WORKER_TIMEOUTS, INTERNAL_TIMEOUTS } from '../../config/timeouts.js';
 import { isRateLimitError } from '../../cli/voter-execution.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
@@ -107,6 +108,12 @@ export interface WorkerResult {
    * row's `servedModel` and cost. Absent when no completion came back.
    */
   readonly served?: ServedCall;
+  /**
+   * The access mode the worker's model call was dispatched under (#6792),
+   * recorded on the outcome row. Absent when no call was attempted (a skip,
+   * an unavailable alternate CLI) or the executor does not state it.
+   */
+  readonly accessMode?: ExecutionAccessMode;
 }
 
 /**

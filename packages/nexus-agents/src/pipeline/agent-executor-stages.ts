@@ -106,6 +106,7 @@ export function createResearchStage({
         cli: undefined,
         routedBy: undefined,
         served: undefined,
+        accessMode: undefined,
         success: true,
         durationMs,
       });
@@ -219,12 +220,16 @@ export function createImplementStage({
     startStage(`impl-${task.id}`);
     await postProgress(config, `Code [${task.id}]`, task.title);
     const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
+    // #6792: the prompt derives from issue text, which may be untrusted, so the
+    // code expert may edit files in its working directory but runs no command,
+    // fetches nothing and gets no MCP tools, whatever the host's own claude
+    // permission settings are (panel decision on #6792, option B).
     const r = await runExpert(
       guard,
       'code',
       `Implement:\n\n${task.title}\n${task.description}${fb}`,
       task.id,
-      { signal }
+      { signal, accessMode: 'workspace-edit' }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -376,6 +381,7 @@ export function createQualityGateStage({
       cli: undefined,
       routedBy: undefined,
       served: undefined,
+      accessMode: undefined,
       success: passed,
       durationMs: ms,
     });
@@ -419,6 +425,7 @@ export function createSecurityScanStage({
       cli: undefined,
       routedBy: undefined,
       served: undefined,
+      accessMode: undefined,
       success: passed,
       durationMs: ms,
     });

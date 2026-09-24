@@ -14,6 +14,7 @@ import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { createLogger } from '../../core/index.js';
+import type { ExecutionAccessMode } from '../../core/index.js';
 import { PriceBasisSchema } from '../../core/price-basis.js';
 
 const logger = createLogger({ component: 'outcome-error-taxonomy' });
@@ -468,6 +469,15 @@ export function outcomeFailureFields(
     failureCategory: categorizeOutcomeErrorMessage(error),
     errorMessage: error.slice(0, 500),
   };
+}
+
+/**
+ * The quality signal that records the access mode an outcome's model call ran
+ * under (#6792), e.g. `access-mode:workspace-edit`. One spelling for every
+ * writer, so a reader can filter on it.
+ */
+export function accessModeSignal(mode: ExecutionAccessMode): string {
+  return `access-mode:${mode}`;
 }
 
 /** Aggregated stats for a group of outcomes. */

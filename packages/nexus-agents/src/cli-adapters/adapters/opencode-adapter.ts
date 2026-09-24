@@ -24,7 +24,7 @@ import {
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
 import { createCallerInputCliError } from '../cli-error-helpers.js';
-import { isReadOnlyAnalysis } from '../read-only-analysis.js';
+import { isReadOnlyAnalysis } from '../access-mode.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import { getAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';

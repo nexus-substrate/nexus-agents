@@ -11,6 +11,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
+import { assertAccessMode, effectiveAccessMode } from './expert-access-mode.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import {
@@ -47,6 +48,15 @@ export interface ExpertBridgeResult {
   readonly expertType: BuiltInExpertType;
   readonly durationMs: number;
   readonly error?: string;
+  /**
+   * The access mode the call was dispatched under (#6792): the mode the bridge
+   * put on the routed task, `'default'` when the caller asked for none. The
+   * router only selects an arm that declares the mode and each adapter
+   * refuses a mode it cannot enforce, so a call that ran, ran under this mode.
+   * Optional on the published type; `executeExpert` always sets it, and a
+   * result without it (a caller's own stub) is recorded as unmeasured.
+   */
+  readonly accessMode?: ExecutionAccessMode;
   /**
    * CLI that actually executed the task, resolved from the underlying
    * `CliResponse.model` via `getCliForModelId`. Undefined when the bridge
@@ -509,45 +519,27 @@ async function dispatchWithRateLimitRetry(
   };
 }
 
-/**
- * Every {@link ExecutionAccessMode}. A `Record` over the union, so adding a
- * mode without listing it here fails to compile.
- */
-const EXECUTION_ACCESS_MODES: Readonly<Record<ExecutionAccessMode, true>> = {
-  default: true,
-  'read-only-analysis': true,
-};
-
-/**
- * Reject an `accessMode` outside {@link ExecutionAccessMode} (#6768).
- * `executeExpert` is published, so a JavaScript caller can pass anything; a
- * misspelled mode such as `'read-only'` would otherwise run with the default
- * access AND the MCP config, the opposite of what the caller asked for.
- */
-function assertAccessMode(accessMode: unknown): void {
-  if (accessMode === undefined) return;
-  if (typeof accessMode === 'string' && Object.hasOwn(EXECUTION_ACCESS_MODES, accessMode)) return;
-  throw new TypeError(
-    `executeExpert: unknown accessMode ${JSON.stringify(accessMode)}; expected one of ${Object.keys(
-      EXECUTION_ACCESS_MODES
-    ).join(', ')}`
-  );
+/** The options `executeExpert` and its call path take. */
+interface ExpertCallOptions {
+  workDir?: string | undefined;
+  signal?: AbortSignal | undefined;
+  accessMode?: ExecutionAccessMode | undefined;
 }
 
 /**
  * The router task for an expert call. Experts get the nexus-agents MCP config
- * so they can call its tools (#1708), except under read-only analysis mode
- * (#6768): an MCP server's tools fall outside the read-only allow list, and
- * the claude adapter refuses a read-only task that names an MCP config.
+ * so they can call its tools (#1708), but only in the default mode: under
+ * read-only analysis (#6768) or workspace-edit (#6792) an MCP server's tools
+ * fall outside the mode's allow list, and the claude adapter refuses a
+ * restricted task that names an MCP config.
  */
 async function buildBridgeTask(
   content: string,
-  options:
-    { workDir?: string | undefined; accessMode?: ExecutionAccessMode | undefined } | undefined
+  options: ExpertCallOptions | undefined
 ): Promise<BridgeTask> {
   const task: BridgeTask = { content };
-  const readOnly = options?.accessMode === 'read-only-analysis';
-  const mcpConfigPath = readOnly ? null : await getMcpConfigPath();
+  const restricted = effectiveAccessMode(options) !== 'default';
+  const mcpConfigPath = restricted ? null : await getMcpConfigPath();
   if (mcpConfigPath !== null) task.options = { mcpConfigPath };
   if (options?.workDir !== undefined) {
     task.options = { ...task.options, workDir: options.workDir };
@@ -581,9 +573,9 @@ export function executeExpert(
     signal?: AbortSignal | undefined;
     /**
      * Host access the expert's call may use (#6768). Under
-     * `'read-only-analysis'` the expert gets no nexus-agents MCP config (an
-     * MCP server's tools fall outside the read-only allow list) and the router
-     * only selects an arm that enforces the mode.
+     * `'read-only-analysis'` or `'workspace-edit'` (#6792) the expert gets no
+     * nexus-agents MCP config (an MCP server's tools fall outside the mode's
+     * allow list) and the router only selects an arm that enforces the mode.
      */
     accessMode?: ExecutionAccessMode | undefined;
   }
@@ -605,6 +597,19 @@ export async function executeExpert(
   // Thrown, not returned as a failed call: a bad mode is a caller error, and a
   // failure result would read as the expert failing.
   assertAccessMode(options?.accessMode);
+  const accessMode = effectiveAccessMode(options);
+  // #6792: the audit trail states which mode every expert call ran under.
+  logger.debug('Expert call access mode', { expertType, accessMode });
+  const result = await runExpertCall(expertType, prompt, options);
+  return { ...result, accessMode };
+}
+
+/** {@link executeExpert} after its access mode has been validated. */
+async function runExpertCall(
+  expertType: BuiltInExpertType,
+  prompt: string,
+  options: ExpertCallOptions | undefined
+): Promise<ExpertBridgeResult> {
   const start = getTimeProvider().now();
   try {
     const { BUILT_IN_EXPERTS } = await import('../agents/experts/expert-config.js');

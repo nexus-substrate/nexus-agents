@@ -42,7 +42,7 @@ import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { createCliError } from './cli-error-helpers.js';
-import { readOnlyAnalysisRefusal } from './read-only-analysis.js';
+import { unenforcedAccessModeRefusal } from './access-mode.js';
 
 const execAsync = promisify(exec);
 
@@ -89,6 +89,13 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * implements the mode and says so.
    */
   readonly enforcesReadOnlyAnalysis: boolean = false;
+
+  /**
+   * Whether this adapter maps `accessMode: 'workspace-edit'` to its CLI's own
+   * enforcement (#6792). False here for the same reason: a new adapter fails
+   * closed until it implements the mode and says so.
+   */
+  readonly enforcesWorkspaceEdit: boolean = false;
 
   protected readonly logger: ILogger;
   protected capacityTracker: CapacityTracker | null = null;
@@ -158,7 +165,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * 3. getTimeoutForTaskAuto() - computed from task complexity and CLI
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
-    // #6754: checked before anything else runs, so a refused read-only task
+    // #6754/#6792: checked before anything else runs, so a refused restricted task
     // never initializes, spawns or counts against the breaker.
     const refusal = this.accessModeRefusal(task);
     if (refusal !== undefined) return err(refusal);
@@ -186,7 +193,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * own options can create, and call `super` first.
    */
   protected accessModeRefusal(task: CliTask): CliError | undefined {
-    return readOnlyAnalysisRefusal(this, task);
+    return unenforcedAccessModeRefusal(this, task);
   }
 
   /**

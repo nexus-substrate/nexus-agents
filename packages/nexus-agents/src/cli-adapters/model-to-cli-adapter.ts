@@ -93,6 +93,14 @@ export class ModelToCliAdapter implements ICliAdapter {
    * enforcement or refuses.
    */
   readonly enforcesReadOnlyAnalysis = true;
+  /**
+   * Workspace-edit mode is satisfied by construction too (#6792), for the same
+   * reason: no tool definitions, so the model runs no command, fetches nothing
+   * and loads no MCP server. It edits no file either, which is narrower than
+   * the mode allows, never wider. The mode is forwarded on the request so a
+   * wrapped CLI applies its own enforcement or refuses.
+   */
+  readonly enforcesWorkspaceEdit = true;
 
   private readonly modelAdapter: IModelAdapter;
 

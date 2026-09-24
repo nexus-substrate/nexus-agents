@@ -11,7 +11,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import type { IModelAdapter } from '../../core/index.js';
+import type { ExecutionAccessMode, IModelAdapter } from '../../core/index.js';
 import { createLogger, getErrorMessage } from '../../core/index.js';
 import { resolveV2Config } from '../../pipeline/v2-config.js';
 import type { AgentPlan, AgentPlanEntry } from '../../orchestration/aorchestra/index.js';
@@ -49,7 +49,10 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
-import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
+import {
+  accessModeSignal,
+  resolveOutcomeCategory,
+} from '../../orchestration/outcomes/outcome-types.js';
 import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
 import {
   servedOutcomeFields,
@@ -65,6 +68,15 @@ const logger = createLogger({ component: 'orchestrate-dispatch' });
 
 /** Maximum tokens for individual worker LLM responses. */
 const WORKER_MAX_TOKENS = 4000;
+
+/**
+ * The access mode every worker call runs under (#6792). A worker's output is
+ * consumed as text only: synthesized, scanned for conflicting file
+ * references and recorded. Nothing reads a file a worker wrote, so a worker
+ * needs no command, write or network tool, and a CLI adapter that cannot
+ * enforce the mode refuses the call.
+ */
+const WORKER_ACCESS_MODE: ExecutionAccessMode = 'read-only-analysis';
 
 /** Resolves max worker calls from env or option (#1321). */
 function resolveMaxWorkerCalls(option?: number): number {
@@ -226,8 +238,21 @@ interface AdapterExecutionOptions {
   readonly signal?: AbortSignal | undefined;
 }
 
-/** Execute a worker task on a specific adapter, returning a WorkerResult. */
+/**
+ * Execute a worker task on a specific adapter, returning a WorkerResult that
+ * states the access mode its call was dispatched under (#6792), on success
+ * and on failure alike.
+ */
 async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerResult> {
+  logger.debug('Worker call access mode', {
+    role: opts.entry.role,
+    accessMode: WORKER_ACCESS_MODE,
+  });
+  return { ...(await completeOnAdapter(opts)), accessMode: WORKER_ACCESS_MODE };
+}
+
+/** {@link executeOnAdapter}'s model call under {@link WORKER_ACCESS_MODE}. */
+async function completeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerResult> {
   const {
     entry,
     adapter,
@@ -248,6 +273,7 @@ async function executeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerRe
     const result = await adapter.complete({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: WORKER_MAX_TOKENS,
+      accessMode: WORKER_ACCESS_MODE,
       ...(signal !== undefined ? { signal } : {}),
     });
     if (!result.ok) {
@@ -658,6 +684,8 @@ function buildOptionalFields(r: WorkerResult): Record<string, unknown> {
   }
   if (r.wasRetried === true) fields['wasRetried'] = true;
   if (r.triageAction !== undefined) fields['triageAction'] = r.triageAction;
+  // #6792: the mode the worker's call ran under; absent means unmeasured.
+  if (r.accessMode !== undefined) fields['qualitySignals'] = [accessModeSignal(r.accessMode)];
   return fields;
 }
 
