@@ -1753,3 +1753,103 @@ describe('doctor with a gateway (#6609)', () => {
     expect(text).toContain('gemini → gemini-3-pro-preview (gateway; CLI not available)');
   });
 });
+
+describe('doctor with CLIs disabled by NEXUS_DISABLED_CLIS (#6728)', () => {
+  const GATEWAY: GatewayHealth = {
+    state: 'healthy',
+    host: 'gw.example',
+    listedCount: 2,
+    chatCount: 2,
+    allowlistActive: false,
+    census: { anthropic: 0, openai: 1, google: 0, unknown: 0 },
+    slots: { claude: 'unavailable', codex: 'gpt-5.2', gemini: 'unavailable' },
+    proxy: { kind: 'direct' },
+    probes: 'skipped',
+  };
+
+  let output: string[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(execFileSync).mockReturnValue(
+      JSON.stringify({ dependencies: { 'nexus-agents': { version: TEST_VERSION } } })
+    );
+    vi.mocked(createServer).mockReturnValue({ ok: true } as never);
+    vi.mocked(existsSync).mockReturnValue(false);
+    vi.mocked(createAllAdapters).mockReturnValue(new Map() as never);
+    vi.mocked(checkGatewayHealth).mockResolvedValue({ state: 'not_configured' });
+    output = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      output.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  /** The advisory reasons for the models a CLI serves. */
+  function reasonsFor(result: DoctorResult, cli: string): string[] {
+    return result.registryAdvisory.models.filter((m) => m.cliName === cli).map((m) => m.reason);
+  }
+
+  it('reads a disabled CLI model as disabled, not uninstalled', async () => {
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'gemini,codex,opencode');
+
+    const result = await runDoctor();
+
+    for (const cli of ['gemini', 'codex', 'opencode']) {
+      const reasons = reasonsFor(result, cli);
+      expect(reasons.length).toBeGreaterThan(0);
+      for (const reason of reasons) {
+        expect(reason).toBe(`${cli} CLI is disabled by NEXUS_DISABLED_CLIS`);
+      }
+    }
+  });
+
+  it('says the MCP Client is disabled, not that codex is missing', async () => {
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'codex');
+
+    await doctorCommand();
+
+    const text = output.join('');
+    expect(text).toContain('MCP Client mode: Disabled (codex disabled by NEXUS_DISABLED_CLIS)');
+    expect(text).not.toContain('Codex not installed');
+    expect(text).toContain('GPT-5.6 Sol — codex CLI is disabled by NEXUS_DISABLED_CLIS');
+  });
+
+  it('names the gateway model that serves a disabled CLI family', async () => {
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'codex,gemini');
+    vi.mocked(checkGatewayHealth).mockResolvedValue(GATEWAY);
+
+    const result = await runDoctor();
+
+    expect(reasonsFor(result, 'codex').length).toBeGreaterThan(0);
+    for (const reason of reasonsFor(result, 'codex')) {
+      expect(reason).toBe(
+        'codex CLI is disabled by NEXUS_DISABLED_CLIS; the gateway serves its slot with gpt-5.2'
+      );
+    }
+    expect(reasonsFor(result, 'gemini').length).toBeGreaterThan(0);
+    for (const reason of reasonsFor(result, 'gemini')) {
+      expect(reason).toBe(
+        'gemini CLI is disabled by NEXUS_DISABLED_CLIS; the gateway has no google model'
+      );
+    }
+  });
+
+  it('empty case: NEXUS_DISABLED_CLIS unset leaves a missing CLI reading as not installed', async () => {
+    vi.stubEnv('NEXUS_DISABLED_CLIS', undefined);
+
+    const result = await runDoctor();
+    await doctorCommand();
+
+    expect(result.disabledClis).toEqual([]);
+    const reasons = result.registryAdvisory.models.map((m) => m.reason);
+    expect(reasons.filter((r) => r.includes('NEXUS_DISABLED_CLIS'))).toEqual([]);
+    expect(reasonsFor(result, 'codex')).toContain('codex CLI is not installed');
+    expect(output.join('')).toContain('MCP Client mode: Not ready (Codex not installed)');
+  });
+});
