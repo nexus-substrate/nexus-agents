@@ -13,6 +13,7 @@ import {
   type StdinLifecycleMonitor,
 } from './adapters/stdin-lifecycle.js';
 import { EXIT_CODES } from './cli-types.js';
+import { signalTrackedProcessTrees } from './cli-adapters/process-tree-kill.js';
 import type { ILogger } from './core/index.js';
 import { getTimeProvider } from './core/index.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
@@ -225,6 +226,11 @@ export function createGracefulShutdown(options: GracefulShutdownOptions): Shutdo
     }
     isShuttingDown = true;
     logger.info('Received shutdown signal', { signal: reason });
+    // #6680: CLI children run in their own process groups, so a signal to the
+    // server's group no longer reaches them. SIGTERM them first; the exit hook
+    // in process-tree-kill SIGKILLs anything still running when we exit.
+    const cliTrees = signalTrackedProcessTrees('SIGTERM');
+    if (cliTrees > 0) logger.info('Signalled CLI subprocesses', { count: cliTrees });
 
     let timer: NodeJS.Timeout | undefined;
     const timedOut = new Promise<'timeout'>((resolve) => {

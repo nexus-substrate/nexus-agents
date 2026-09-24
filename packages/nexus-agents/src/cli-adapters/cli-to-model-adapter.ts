@@ -214,8 +214,16 @@ export class CliToModelAdapter implements IModelAdapter {
     // default, so a long-budget caller (e.g. a consensus vote) isn't cut off by
     // the adapter's shorter standard CLI timeout.
     const effectiveTimeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
+    // #6680: the caller's signal reaches the CLI adapter, which kills its
+    // subprocess on abort. It used to stop here, so neither a watchdog timeout
+    // nor `cancel_job` could end a running CLI call.
     const opts: ExecutionOptions | undefined =
-      effectiveTimeoutMs !== undefined ? { timeoutMs: effectiveTimeoutMs } : undefined;
+      effectiveTimeoutMs !== undefined || request.signal !== undefined
+        ? {
+            ...(effectiveTimeoutMs !== undefined ? { timeoutMs: effectiveTimeoutMs } : {}),
+            ...(request.signal !== undefined ? { signal: request.signal } : {}),
+          }
+        : undefined;
     const result = await this.cliAdapter.execute(task, opts);
 
     if (!result.ok) {

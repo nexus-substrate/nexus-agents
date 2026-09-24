@@ -116,6 +116,17 @@ describe('buildChildEnv (#2865)', () => {
     expect(env['SOME_RANDOM_UNLISTED_VAR']).toBeUndefined();
   });
 
+  it('stops gemini relaunching itself as a child, in both env modes (#6680)', () => {
+    expect(buildChildEnv('gemini')['GEMINI_CLI_NO_RELAUNCH']).toBe('true');
+    vi.stubEnv('NEXUS_SUBPROCESS_ENV_ALLOWLIST', '0');
+    expect(buildChildEnv('gemini')['GEMINI_CLI_NO_RELAUNCH']).toBe('true');
+  });
+
+  it('does not set the gemini relaunch switch for other CLIs (#6680)', () => {
+    expect(buildChildEnv('claude')).not.toHaveProperty('GEMINI_CLI_NO_RELAUNCH');
+    expect(buildChildEnv('codex')).not.toHaveProperty('GEMINI_CLI_NO_RELAUNCH');
+  });
+
   it('never forwards CLAUDECODE (would break nested CLI sessions)', () => {
     vi.stubEnv('CLAUDECODE', '1');
     expect(buildChildEnv('codex')['CLAUDECODE']).toBeUndefined();

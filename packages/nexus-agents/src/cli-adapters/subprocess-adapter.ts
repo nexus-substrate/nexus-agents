@@ -9,12 +9,13 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process';
 
 import type { Result } from '../core/index.js';
 import { ok, err, getTimeProvider, createLogger, getErrorMessage } from '../core/index.js';
 
 import type {
+  CliName,
   CliTransport,
   CliTask,
   CliResponse,
@@ -25,6 +26,12 @@ import type {
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { buildChildEnv } from './subprocess-env.js';
+import {
+  SPAWN_IN_OWN_PROCESS_GROUP,
+  isProcessTreeAlive,
+  signalProcessTree,
+  trackProcessTree,
+} from './process-tree-kill.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import {
@@ -193,6 +200,32 @@ export function isTransientError(code: CliErrorCode): boolean {
 }
 
 /**
+ * Spawn the CLI in its own process group (#6680), so a cancel or timeout can
+ * signal the processes it spawns too, and track it so server shutdown ends it:
+ * out of the server's group, a signal to that group no longer reaches it.
+ * Never unref'd, so the parent still waits for it.
+ */
+function spawnCliChild(
+  cliName: CliName,
+  cmdConfig: CommandConfig,
+  workDir: unknown
+): ChildProcessWithoutNullStreams {
+  // Curated child env: base infrastructure vars + only this CLI's
+  // own vendor credentials, so cross-vendor API keys don't leak
+  // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
+  // CLI must not believe it's already inside Claude Code.
+  const childEnv = buildChildEnv(cliName);
+  return trackProcessTree(
+    spawn(cmdConfig.command, cmdConfig.args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: childEnv,
+      detached: SPAWN_IN_OWN_PROCESS_GROUP,
+      ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
+    })
+  );
+}
+
+/**
  * Whether a failed spawn is worth spawning again (#6120).
  *
  * A transient CODE is not the whole answer: a durable capacity cap arrives as
@@ -200,7 +233,10 @@ export function isTransientError(code: CliErrorCode): boolean {
  * the futile work #5359 named. The claude out-of-credits envelope cost two
  * extra spawns and 1.5 s per call this way, then still failed.
  */
-function shouldRetryInPlace(error: CliError): boolean {
+function shouldRetryInPlace(error: CliError, signal: AbortSignal | undefined): boolean {
+  // #6680: an aborted call is not transient — retrying it only sleeps through
+  // the backoff to fast-fail again.
+  if (signal?.aborted === true) return false;
   return isTransientError(error.code) && !isDurableCapacityText(error.message);
 }
 
@@ -352,7 +388,23 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   ): void {
     const onAbort = (): void => {
       if (child.exitCode === null && child.signalCode === null) {
-        child.kill('SIGTERM');
+        // #6680: the whole process tree, so a relaunched CLI worker is not orphaned.
+        signalProcessTree(child, 'SIGTERM');
+        // #6680: same escalation as the timeout path — a child that ignores
+        // SIGTERM is force-reaped rather than left running after the cancel.
+        const sigkillTimer = setTimeout(() => {
+          if (isProcessTreeAlive(child)) {
+            this.logger.warn('Child ignored SIGTERM after abort, escalating to SIGKILL', {
+              cli: this.name,
+              sigkillGraceMs: SIGKILL_GRACE_MS,
+            });
+            signalProcessTree(child, 'SIGKILL');
+          }
+        }, SIGKILL_GRACE_MS);
+        sigkillTimer.unref();
+        child.once('close', () => {
+          clearTimeout(sigkillTimer);
+        });
       }
       resolve(err(this.createError('TIMEOUT', 'Aborted by caller signal')));
     };
@@ -381,7 +433,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const requestId = generateHyphenId('cli-req', 8);
     const result = await this.spawnSubprocess(task, options, requestId);
     if (result.ok || !this.transientRetry.enabled) return result;
-    if (!shouldRetryInPlace(result.error)) return result;
+    if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, options, result, 0, requestId);
   }
@@ -419,7 +471,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       : options;
     const result = await this.spawnSubprocess(task, retryOptions, requestId);
     if (result.ok) return result;
-    if (!shouldRetryInPlace(result.error)) return result;
+    if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, retryOptions, result, attempt + 1, requestId);
   }
@@ -473,6 +525,14 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     options: ResolvedExecutionOptions,
     requestId: string
   ): Promise<Result<CliResponse, CliError>> {
+    // #3026 finding 2: fast-fail if the caller already aborted before we
+    // bothered to spawn. Saves a child process start when an upstream
+    // wave/loop has already moved on. Checked before getCommand (#6680): a
+    // command builder can create a tempdir that only the spawn path cleans up.
+    const signal = options.signal;
+    if (signal?.aborted === true) {
+      return Promise.resolve(err(this.createError('TIMEOUT', 'Aborted before spawn')));
+    }
     // #6277: the resolved guard reaches getCommand on the task, so an adapter
     // whose CLI has its own wait (agy --print-timeout) can size it to the
     // budget instead of a default that races the guard.
@@ -481,14 +541,6 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     );
     const startTime = getTimeProvider().now();
 
-    // #3026 finding 2: fast-fail if the caller already aborted before we
-    // bothered to spawn. Saves a child process start when an upstream
-    // wave/loop has already moved on.
-    const signal = options.signal;
-    if (signal?.aborted === true) {
-      return Promise.resolve(err(this.createError('TIMEOUT', 'Aborted before spawn')));
-    }
-
     return new Promise((resolveOuter) => {
       const runCleanupOnce = this.onceCleanup(cmdConfig.cleanup);
       const resolve = (r: Result<CliResponse, CliError>): void => {
@@ -496,18 +548,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         resolveOuter(r);
       };
       try {
-        // Curated child env: base infrastructure vars + only this CLI's
-        // own vendor credentials, so cross-vendor API keys don't leak
-        // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
-        // CLI must not believe it's already inside Claude Code.
-        const childEnv = buildChildEnv(this.name);
-        const workDir = task.options?.['workDir'];
-
-        const child = spawn(cmdConfig.command, cmdConfig.args, {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: childEnv,
-          ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
-        });
+        const child = spawnCliChild(this.name, cmdConfig, task.options?.['workDir']);
 
         const onProgress = options.onProgress;
         // Called for its side effects (handlers are attached to `child`);
@@ -612,16 +653,16 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const { child, timeoutMs, requestId, resolveOnce } = opts;
     const timers: { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined } = {
       timeoutId: setTimeout(() => {
-        child.kill('SIGTERM');
+        signalProcessTree(child, 'SIGTERM');
         resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
         timers.sigkillTimerId = setTimeout(() => {
-          if (child.exitCode === null && child.signalCode === null) {
+          if (isProcessTreeAlive(child)) {
             this.logger.warn('Child ignored SIGTERM, escalating to SIGKILL', {
               cli: this.name,
               requestId,
               sigkillGraceMs: SIGKILL_GRACE_MS,
             });
-            child.kill('SIGKILL');
+            signalProcessTree(child, 'SIGKILL');
           }
         }, SIGKILL_GRACE_MS);
         timers.sigkillTimerId.unref();

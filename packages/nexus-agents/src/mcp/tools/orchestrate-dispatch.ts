@@ -114,6 +114,35 @@ export interface WorkerDispatchExecutionOptions {
    * gated (#6589).
    */
   readonly qualityGate?: QualityGateFn | false;
+  /**
+   * `cancel_job`'s signal (#6680). Reaches the dispatcher, which skips the
+   * remaining waves and forwards it into every in-flight worker's
+   * `CompletionRequest.signal`, and the synthesis call. Checked before the
+   * synthesis and refinement phases: once it has fired, the dispatch throws
+   * {@link WorkerDispatchCancelledError} rather than returning a partial
+   * result. An adapter that ignores the signal completes the current call.
+   */
+  readonly signal?: AbortSignal | undefined;
+}
+
+/**
+ * Raised when `cancel_job`'s signal fires during worker dispatch (#6680). A
+ * cancelled dispatch has no result: returning the waves that finished would
+ * read as a partial success.
+ */
+class WorkerDispatchCancelledError extends Error {
+  constructor(phase: string) {
+    super(`Worker dispatch cancelled before the ${phase} phase`);
+    this.name = 'WorkerDispatchCancelledError';
+  }
+}
+
+/**
+ * Read through a call, never inline: TypeScript narrows `signal.aborted` to
+ * `false` after one check, which is unsound across the `await`s between phases.
+ */
+function throwIfDispatchCancelled(signal: AbortSignal | undefined, phase: string): void {
+  if (signal?.aborted === true) throw new WorkerDispatchCancelledError(phase);
 }
 
 /** Result from worker dispatch execution. */
@@ -428,6 +457,7 @@ async function runSynthesisPhase(
     conflicts: [...detectConflicts(state.results)],
     taskDescription: options.taskDescription,
     modelAdapter: options.modelAdapter,
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
   // Only count LLM calls toward budget — deterministic merge is free
   if (synthResult.ok && synthResult.synthesisSource !== 'deterministic') {
@@ -510,6 +540,7 @@ async function runRefinementPhase(
     executeWorker: executor,
     eventBus: getPipelineEventBus(),
     executionId: `refine-${Date.now().toString(36)}`,
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
   state.totalModelCalls += refinedResults.length;
   state.results = mergeRefinedResults(state.results, refinedResults);
@@ -571,6 +602,7 @@ export async function executeWorkerDispatch(
     eventBus: getPipelineEventBus(),
     executionId: `dispatch-${Date.now().toString(36)}`,
     ...(qualityGate !== undefined ? { qualityGate } : {}),
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
 
   const checkpoints = new WorkerCheckpointStore();
@@ -582,7 +614,9 @@ export async function executeWorkerDispatch(
     checkpoints,
   };
 
+  throwIfDispatchCancelled(options.signal, 'synthesis');
   await runSynthesisPhase(state, options, maxCalls);
+  throwIfDispatchCancelled(options.signal, 'refinement');
   const refined = await runRefinementPhase(state, entries, options, maxCalls);
 
   const base = buildDispatchResult(state.results, startMs, logger, state.totalModelCalls);

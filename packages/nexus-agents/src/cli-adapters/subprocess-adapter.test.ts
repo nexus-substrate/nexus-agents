@@ -284,6 +284,8 @@ describe('SubprocessCliAdapter', () => {
       expect(mockSpawn).toHaveBeenCalledWith('echo', ['hello'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: expect.objectContaining({}),
+        // #6680: its own process group on POSIX, so a kill reaches what it spawns.
+        detached: process.platform !== 'win32',
       });
     });
 
@@ -685,6 +687,63 @@ describe('SubprocessCliAdapter', () => {
         expect(result.error.code).toBe('TIMEOUT');
         expect(result.error.message).toContain('Aborted by caller signal');
       }
+    });
+
+    it('escalates to SIGKILL when the child ignores the abort SIGTERM (#6680)', async () => {
+      vi.useFakeTimers();
+      adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
+      const controller = new AbortController();
+      const { mockChild } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(
+        { content: 'test' },
+        {
+          timeoutMs: 60_000,
+          allowRetry: false,
+          maxRetries: 0,
+          trackUsage: true,
+          onProgress: undefined,
+          signal: controller.signal,
+        }
+      );
+      controller.abort();
+      const result = await promise;
+      expect(result.ok).toBe(false);
+      expect(mockChild.kill).toHaveBeenCalledTimes(1);
+      expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+
+      // The child ignores SIGTERM: exitCode/signalCode stay null past the grace window.
+      vi.advanceTimersByTime(SIGKILL_GRACE_MS + 1);
+      expect(mockChild.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(mockChild.kill).toHaveBeenCalledTimes(2);
+      vi.useRealTimers();
+    });
+
+    it('does NOT SIGKILL after an abort when the child exits within the grace window (#6680)', async () => {
+      vi.useFakeTimers();
+      adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
+      const controller = new AbortController();
+      const { mockChild } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(
+        { content: 'test' },
+        {
+          timeoutMs: 60_000,
+          allowRetry: false,
+          maxRetries: 0,
+          trackUsage: true,
+          onProgress: undefined,
+          signal: controller.signal,
+        }
+      );
+      controller.abort();
+      await promise;
+      mockChild.emit('close', null);
+      vi.advanceTimersByTime(SIGKILL_GRACE_MS + 1);
+      expect(mockChild.kill).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
     });
 
     it('does NOT SIGTERM when signal aborts after child already exited', async () => {
@@ -1556,6 +1615,45 @@ describe('SubprocessCliAdapter - nested retry layers (#2824)', () => {
     // Inner retryTransient: 1 initial + MAX_TRANSIENT_RETRIES(2) = 3 spawns.
     // The outer loop is suppressed (would have made it 6 before #2824).
     expect(mockSpawn).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry a call its caller aborted (#6680)', async () => {
+    const adapter = new RetryEnabledAdapter();
+    const delaySpy = vi.spyOn(adapter as unknown as { delay: () => Promise<void> }, 'delay');
+    const commandSpy = vi.spyOn(adapter as unknown as { getCommand: () => unknown }, 'getCommand');
+    const controller = new AbortController();
+    mockSpawn.mockImplementation(() => {
+      const { mockChild } = createMockChildProcess();
+      queueMicrotask(() => {
+        controller.abort();
+      });
+      return mockChild;
+    });
+
+    const result = await adapter.execute({ content: 'test' }, { signal: controller.signal });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('Aborted by caller signal');
+    expect(delaySpy).not.toHaveBeenCalled();
+    expect(commandSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not spawn again when the abort lands during the retry backoff (#6680)', async () => {
+    const controller = new AbortController();
+    class AbortDuringDelay extends RetryEnabledAdapter {
+      protected override delay(): Promise<void> {
+        controller.abort();
+        return Promise.resolve();
+      }
+    }
+    const adapter = new AbortDuringDelay();
+    const commandSpy = vi.spyOn(adapter as unknown as { getCommand: () => unknown }, 'getCommand');
+    spawnAlwaysExits(137); // transient CONNECTION_ERROR → the inner layer backs off
+
+    const result = await adapter.execute({ content: 'test' }, { signal: controller.signal });
+
+    expect(result.ok).toBe(false);
+    expect(commandSpy).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry a non-transient error at either layer', async () => {

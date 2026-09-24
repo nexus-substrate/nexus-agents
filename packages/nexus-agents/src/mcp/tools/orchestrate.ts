@@ -673,6 +673,8 @@ interface ExecuteOrchestrationOpts {
   // caller polls with (`get_job_result` → task-state). Sync mode omits it and
   // a fresh id is generated, preserving prior behavior.
   readonly taskId?: string;
+  /** `cancel_job`'s signal (#6680); see {@link runOrchestratorWithStateTracking}. */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -694,7 +696,7 @@ async function executeOrchestration(
   deps: OrchestrateDeps,
   opts: ExecuteOrchestrationOpts = {}
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { router, snapshot, taskId: providedTaskId } = opts;
+  const { router, snapshot, taskId: providedTaskId, signal } = opts;
   const { workflowRouter, decision, orchestrator, logger } = routeAndPrepare(input, deps, router);
   const taskId = providedTaskId ?? generateTaskId();
   const startTime = getTimeProvider().now();
@@ -728,6 +730,7 @@ async function executeOrchestration(
       workflowRouter,
       startTime,
       logger,
+      ...(signal !== undefined ? { signal } : {}),
     });
   } catch (error) {
     recordTaskStateBlocker(taskId, error instanceof Error ? error.message : String(error), logger);
@@ -741,7 +744,15 @@ async function executeOrchestration(
   }
 }
 
-/** Run the orchestrator and record success/failure stage transitions (#2043). */
+/**
+ * Run the orchestrator and record success/failure stage transitions (#2043).
+ *
+ * `orchestrator.execute` is one uninterruptible unit (#6680): the orchestrator
+ * adapters ignore `OrchestratorExecuteOptions.signal`, so a cancel that lands
+ * during it completes the current call. What the signal does stop is the
+ * record: once it has fired, the run is recorded as a cancelled blocker, not as
+ * a routing success or failure outcome.
+ */
 async function runOrchestratorWithStateTracking(params: {
   readonly taskId: string;
   readonly taskInput: string;
@@ -751,10 +762,18 @@ async function runOrchestratorWithStateTracking(params: {
   readonly workflowRouter: IWorkflowRouter;
   readonly startTime: number;
   readonly logger: ILogger;
+  readonly signal?: AbortSignal;
 }): Promise<Result<OrchestrateOutput, OrchestrationError>> {
   const { taskId, taskInput, definition, orchestrator, logger } = params;
   recordTaskStateStage(taskId, 'executing', logger);
   const result = await orchestrator.execute(definition, {});
+  if (isOrchestrateCancelled(params.signal)) {
+    recordTaskStateBlocker(taskId, 'cancelled by cancel_job', logger);
+    recordTaskStateStage(taskId, 'failed', logger);
+    return err(
+      new OrchestrationError('Orchestration cancelled', createErrorOptions(taskId, undefined))
+    );
+  }
   if (!result.ok) {
     recordTaskStateBlocker(taskId, result.error.message, logger);
     // #3091: see executeOrchestration — terminal failure stage is 'failed'.
@@ -906,9 +925,18 @@ async function tryWorkerDispatch(
   agentPlan: ReturnType<typeof computeAgentPlan>,
   task: string,
   deps: OrchestrateDeps,
-  logger: import('../../core/index.js').ILogger,
-  notifier: import('../mcp-notifier.js').IMcpNotifier
+  io: {
+    readonly logger: import('../../core/index.js').ILogger;
+    readonly notifier: import('../mcp-notifier.js').IMcpNotifier;
+    /**
+     * `cancel_job`'s signal (#6680). A cancel mid-dispatch makes the dispatch
+     * throw; this function swallows it like any dispatch error, and the
+     * `orchestration` boundary gate after it turns the cancel into the job's error.
+     */
+    readonly signal: AbortSignal | undefined;
+  }
 ): Promise<Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined> {
+  const { logger, notifier, signal } = io;
   const adapter = deps.modelAdapter;
   if (agentPlan === undefined || !isWorkerDispatchEnabled() || adapter === undefined) {
     return undefined;
@@ -932,6 +960,7 @@ async function tryWorkerDispatch(
         synthesize: true,
         refine: true,
         perWorkerRouting: true,
+        ...(signal !== undefined ? { signal } : {}),
       })
     );
   } catch (dispatchError: unknown) {
@@ -1070,8 +1099,9 @@ async function executeOrchestrationWithDeadline(params: {
   readonly logger: ILogger;
   /** #3091: pre-minted taskId (async mode) so jobId === taskId. */
   readonly taskId?: string;
+  readonly signal?: AbortSignal;
 }): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const { input, deps, notifier, logger, taskId } = params;
+  const { input, deps, notifier, logger, taskId, signal } = params;
   const overallDeadlineMs = getMcpSafeDeadlineMs(
     MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
     'orchestrate'
@@ -1085,6 +1115,7 @@ async function executeOrchestrationWithDeadline(params: {
       executeOrchestration(input, deps, {
         snapshot,
         ...(taskId !== undefined ? { taskId } : {}),
+        ...(signal !== undefined ? { signal } : {}),
       })
     ),
     overallDeadlineMs,
@@ -1117,7 +1148,11 @@ class OrchestrateCancelledError extends Error {
  * `false` after one check, which is unsound across the `await`s between stages.
  */
 function throwIfOrchestrateCancelled(signal: AbortSignal | undefined, stage: string): void {
-  if (signal?.aborted === true) throw new OrchestrateCancelledError(stage);
+  if (isOrchestrateCancelled(signal)) throw new OrchestrateCancelledError(stage);
+}
+
+function isOrchestrateCancelled(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
 }
 
 /** Body of the depth-guarded orchestration pipeline (extracted for line limit). */
@@ -1131,8 +1166,10 @@ async function runOrchestratePipeline(params: {
   readonly taskId?: string;
   /**
    * `cancel_job`'s signal on the async path (#6305); absent on the sync path.
-   * Checked before the worker-dispatch and orchestration stages. A stage
-   * already in flight is not interrupted (#6680).
+   * Checked before the worker-dispatch and orchestration stages, and after
+   * the orchestrator returns. Inside worker dispatch it skips the remaining
+   * waves and aborts in-flight adapter calls that honour it (#6680);
+   * `orchestrator.execute` completes the current call.
    */
   readonly signal?: AbortSignal;
 }): Promise<ToolResult> {
@@ -1155,13 +1192,11 @@ async function runOrchestratePipeline(params: {
     ? computeAgentPlan(input.task, logger, { filePaths: filePathsFromContext(input.context) })
     : undefined;
   throwIfOrchestrateCancelled(signal, 'worker-dispatch');
-  const workerDispatchResult = await tryWorkerDispatch(
-    agentPlan,
-    input.task,
-    deps,
+  const workerDispatchResult = await tryWorkerDispatch(agentPlan, input.task, deps, {
     logger,
-    notifier
-  );
+    notifier,
+    signal,
+  });
   // #6305: checked before the reflection call and the orchestrator run, both
   // of which spend model calls. A dispatch that finished is left unrecorded:
   // the job is cancelled, not a partial success.
@@ -1175,6 +1210,7 @@ async function runOrchestratePipeline(params: {
     notifier,
     logger,
     ...(taskId !== undefined ? { taskId } : {}),
+    ...(signal !== undefined ? { signal } : {}),
   });
   if (!result.ok) {
     return toolStructuredError({
