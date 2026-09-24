@@ -19,8 +19,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
-import { isProcessTreeAlive, signalProcessTree } from './process-tree-kill.js';
+import {
+  isProcessTreeAlive,
+  signalProcessTree,
+  terminateProcessTree,
+} from './process-tree-kill.js';
 import { parseProcStatStartTime } from './proc-start-time.js';
+import type { ICliResponseParser, ModelInfo } from './types.js';
 
 /** The seam `signalProcessTree` takes for its OS operations. */
 type ProcessTreeOps = NonNullable<Parameters<typeof signalProcessTree>[3]>;
@@ -252,6 +257,7 @@ interface FakeOps extends ProcessTreeOps {
 function fakeOps(walk: number[], startTimes: Record<number, string>): FakeOps {
   return {
     collectDescendants: vi.fn<(root: number) => number[]>(() => walk),
+    collectDescendantsAsync: undefined,
     hasStartTimes: true,
     readStartTime: (pid: number) => startTimes[pid],
     isPidAlive: () => true,
@@ -378,6 +384,246 @@ describe('PID identity before signalling a tree (#6714)', () => {
   });
 });
 
+/** A spawned-looking double whose own `kill` can be inspected. */
+function inspectableChild(): { child: ChildProcess; childKill: ReturnType<typeof vi.fn> } {
+  const childKill = vi.fn();
+  const child = Object.assign(new EventEmitter(), {
+    pid: 4242,
+    spawnfile: 'node',
+    spawnargs: ['node'],
+    exitCode: null,
+    signalCode: null,
+    kill: childKill,
+  }) as unknown as ChildProcess;
+  return { child, childKill };
+}
+
+/** Non-Linux seam ops whose async walk resolves only when `release` is called. */
+function asyncOps(): { ops: FakeOps; release: (pids: number[]) => void } {
+  let release: (pids: number[]) => void = () => undefined;
+  const pending = new Promise<number[]>((resolve) => {
+    release = resolve;
+  });
+  const ops: FakeOps = {
+    ...fakeOps([801], {}),
+    hasStartTimes: false,
+    collectDescendantsAsync: vi.fn<(root: number) => Promise<number[]>>(() => pending),
+  };
+  return {
+    ops,
+    release: (pids) => {
+      release(pids);
+    },
+  };
+}
+
+describe('asynchronous collection off Linux (#6718)', () => {
+  it('collects with the async walk FIRST, and signals only once it resolves', async () => {
+    const { ops, release } = asyncOps();
+    const { child, childKill } = inspectableChild();
+
+    // The escalation timer is unref'd and would only reach the fake ops.
+    const pending = terminateProcessTree(child, 60_000, undefined, ops);
+
+    expect(ops.collectDescendantsAsync).toHaveBeenCalledWith(4242);
+    expect(ops.collectDescendants).not.toHaveBeenCalled();
+    // Nothing is signalled while the collection is outstanding.
+    expect(childKill).not.toHaveBeenCalled();
+    expect(ops.kill).not.toHaveBeenCalled();
+
+    release([901, 902]);
+    await expect(pending).resolves.toEqual([
+      { pid: 901, startTime: undefined },
+      { pid: 902, startTime: undefined },
+    ]);
+    expect(childKill).toHaveBeenCalledWith('SIGTERM');
+    expect(ops.kill).toHaveBeenCalledWith(901, 'SIGTERM');
+    expect(ops.kill).toHaveBeenCalledWith(902, 'SIGTERM');
+  });
+
+  it('a failed async walk still signals the child, and does not reject', async () => {
+    const ops: FakeOps = {
+      ...fakeOps([], {}),
+      hasStartTimes: false,
+      collectDescendantsAsync: vi.fn<(root: number) => Promise<number[]>>(() =>
+        Promise.reject(new Error('ps failed'))
+      ),
+    };
+    const { child, childKill } = inspectableChild();
+
+    await expect(terminateProcessTree(child, 60_000, undefined, ops)).resolves.toEqual([]);
+    expect(childKill).toHaveBeenCalledWith('SIGTERM');
+    expect(ops.kill).not.toHaveBeenCalled();
+  });
+
+  it('a child that exits during the async walk has its walked PIDs dropped (PID reuse)', async () => {
+    const { ops, release } = asyncOps();
+    const { child, childKill } = inspectableChild();
+
+    const pending = terminateProcessTree(child, 60_000, undefined, ops);
+    // Reaped while `ps` ran: the walked PIDs may now belong to a stranger's tree.
+    (child as unknown as { exitCode: number }).exitCode = 0;
+    release([906]);
+
+    await expect(pending).resolves.toEqual([]);
+    expect(childKill).toHaveBeenCalledWith('SIGTERM');
+    // The same walk IS signalled while the child runs (the test above), so this is not vacuous.
+    expect(ops.kill).not.toHaveBeenCalledWith(906, 'SIGTERM');
+  });
+
+  it('terminateProcessTree SIGTERMs only after the async walk, then escalates', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ops, release } = asyncOps();
+      const { child, childKill } = inspectableChild();
+      const onEscalate = vi.fn();
+
+      const pending = terminateProcessTree(child, 1_000, onEscalate, ops);
+      expect(childKill).not.toHaveBeenCalled();
+
+      release([903]);
+      await pending;
+      expect(ops.kill).toHaveBeenCalledWith(903, 'SIGTERM');
+
+      // The child never exits, so the grace timer escalates.
+      await vi.advanceTimersByTimeAsync(1_001);
+      expect(onEscalate).toHaveBeenCalledTimes(1);
+      expect(childKill).toHaveBeenCalledWith('SIGKILL');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the exit path stays synchronous: it uses the sync walk and signals before returning', async () => {
+    const mod = await freshTreeKillModule();
+    const { ops } = asyncOps();
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4343,
+      spawnfile: 'node',
+      spawnargs: ['node'],
+      exitCode: null as number | null,
+      signalCode: null,
+      kill: vi.fn(),
+    }) as unknown as ChildProcess & { exitCode: number | null };
+    mod.trackProcessTree(child, ops);
+    try {
+      expect(mod.signalTrackedProcessTrees('SIGKILL', ops)).toBe(1);
+      expect(ops.collectDescendants).toHaveBeenCalledWith(4343);
+      expect(ops.collectDescendantsAsync).not.toHaveBeenCalled();
+      expect(ops.kill).toHaveBeenCalledWith(801, 'SIGKILL');
+    } finally {
+      // Closed without start times, the tree is forgotten, so the real exit hook skips it.
+      child.exitCode = 0;
+      child.emit('close', 0);
+    }
+  });
+
+  it('the graceful-shutdown pass uses the async walk', async () => {
+    const mod = await freshTreeKillModule();
+    const { ops, release } = asyncOps();
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4344,
+      spawnfile: 'node',
+      spawnargs: ['node'],
+      exitCode: null as number | null,
+      signalCode: null,
+      kill: vi.fn(),
+    }) as unknown as ChildProcess & { exitCode: number | null };
+    mod.trackProcessTree(child, ops);
+    try {
+      const pending = mod.signalTrackedProcessTreesAsync('SIGTERM', ops);
+      expect(ops.collectDescendantsAsync).toHaveBeenCalledWith(4344);
+      expect(ops.kill).not.toHaveBeenCalled();
+      release([904]);
+      await expect(pending).resolves.toBe(1);
+      expect(ops.collectDescendants).not.toHaveBeenCalled();
+      expect(ops.kill).toHaveBeenCalledWith(904, 'SIGTERM');
+    } finally {
+      child.exitCode = 0;
+      child.emit('close', 0);
+    }
+  });
+
+  describe('the default seam on a mocked non-Linux platform', () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    const psOutput = '    1     0\n 4242     1\n 5001  4242\n 5002  5001\n 6000     1\n';
+    const execFile = vi.fn(
+      (
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        callback: (error: Error | null, stdout: string) => void
+      ) => {
+        setImmediate(() => {
+          callback(null, psOutput);
+        });
+      }
+    );
+    const execFileSync = vi.fn(() => psOutput);
+
+    beforeEach(() => {
+      execFile.mockClear();
+      execFileSync.mockClear();
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      vi.spyOn(process, 'kill').mockImplementation(() => true);
+    });
+
+    afterEach(() => {
+      if (platform !== undefined) Object.defineProperty(process, 'platform', platform);
+      vi.doUnmock('node:child_process');
+      vi.restoreAllMocks();
+    });
+
+    async function darwinModule(): Promise<typeof import('./process-tree-kill.js')> {
+      vi.resetModules();
+      vi.doMock('node:child_process', () => ({ execFile, execFileSync }));
+      return import('./process-tree-kill.js');
+    }
+
+    it('the shutdown pass runs ps with execFile and a timeout, never execFileSync', async () => {
+      const mod = await darwinModule();
+      const child = Object.assign(new EventEmitter(), {
+        pid: 4242,
+        spawnfile: 'node',
+        spawnargs: ['node'],
+        exitCode: null as number | null,
+        signalCode: null,
+        kill: vi.fn(),
+      }) as unknown as ChildProcess & { exitCode: number | null };
+      mod.trackProcessTree(child);
+      try {
+        await expect(mod.signalTrackedProcessTreesAsync('SIGTERM')).resolves.toBe(1);
+
+        expect(execFile).toHaveBeenCalledWith(
+          'ps',
+          ['-A', '-o', 'pid=,ppid='],
+          expect.objectContaining({ timeout: 2_000 }),
+          expect.any(Function)
+        );
+        expect(execFileSync).not.toHaveBeenCalled();
+        expect(process.kill).toHaveBeenCalledWith(5001, 'SIGTERM');
+        expect(process.kill).toHaveBeenCalledWith(5002, 'SIGTERM');
+        expect(process.kill).not.toHaveBeenCalledWith(6000, 'SIGTERM');
+      } finally {
+        // Closed without start times, the tree is forgotten, so the real exit hook skips it.
+        child.exitCode = 0;
+        child.emit('close', 0);
+      }
+    });
+
+    it('the synchronous signal (the exit hook) still uses execFileSync', async () => {
+      const mod = await darwinModule();
+      const { child } = inspectableChild();
+
+      const tree = mod.signalProcessTree(child, 'SIGKILL', []);
+
+      expect(execFileSync).toHaveBeenCalledTimes(1);
+      expect(execFile).not.toHaveBeenCalled();
+      expect(tree.map((entry) => entry.pid)).toEqual([5001, 5002]);
+    });
+  });
+});
+
 describe.skipIf(process.platform !== 'linux')(
   'SIGKILL escalation on real processes (#6714)',
   () => {
@@ -455,6 +701,111 @@ describe.skipIf(process.platform !== 'linux')(
       await waitFor(() => !isAlive(grandchild), `grandchild ${String(grandchild)} to die`, 5_000);
       // Once its descendants are gone the tree is forgotten.
       expect(mod.signalTrackedProcessTrees('SIGKILL')).toBe(0);
+    }, 20_000);
+
+    /**
+     * The REAL adapter timeout path (#6718 review): a CLI that ignores SIGTERM,
+     * with a grandchild that ignores it too, must both be dead once the
+     * timeout's SIGKILL grace period has passed.
+     */
+    async function runTimedOutCli(
+      adapterModule: typeof import('./subprocess-adapter.js')
+    ): Promise<void> {
+      const cliPidFile = join(tmpDir, 'cli.pid');
+      const grandchildPidFile = join(tmpDir, 'grandchild.pid');
+      const grandchildScript =
+        "process.on('SIGTERM', () => {});" +
+        `require('fs').writeFileSync(${JSON.stringify(grandchildPidFile)}, String(process.pid));` +
+        'setInterval(() => {}, 1000);';
+      const cliScript =
+        "process.on('SIGTERM', () => {});" +
+        `require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], { stdio: 'ignore' });` +
+        `require('fs').writeFileSync(${JSON.stringify(cliPidFile)}, String(process.pid));` +
+        'setInterval(() => {}, 1000);';
+
+      class StubbornCli extends adapterModule.SubprocessCliAdapter {
+        override readonly name = 'claude' as const;
+        readonly version = '1.0.0';
+        protected override readonly transientRetry = { enabled: false };
+        protected readonly parser: ICliResponseParser = {
+          name: 'test-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: (raw: string) => raw,
+          extractResponse: (output: string) => output.trim() || null,
+          extractUsage: () => null,
+          extractSessionId: () => null,
+        };
+        protected getCommand(): { command: string; args: string[] } {
+          return { command: process.execPath, args: ['-e', cliScript] };
+        }
+        override initialize(): Promise<void> {
+          this.initialized = true;
+          return Promise.resolve();
+        }
+        getModelInfo(): ModelInfo {
+          return {
+            id: 'm',
+            name: 'm',
+            contextWindow: 1,
+            maxOutput: 1,
+            costPerMillionInput: 0,
+            costPerMillionOutput: 0,
+          };
+        }
+      }
+
+      const result = await new StubbornCli().execute(
+        { content: 'x' },
+        { timeoutMs: 2_500, allowRetry: false }
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
+
+      const cli = Number(readFileSync(cliPidFile, 'utf8'));
+      const grandchild = Number(readFileSync(grandchildPidFile, 'utf8'));
+      pids.push(cli, grandchild);
+      // Both ignore SIGTERM, so each is still running right after the timeout.
+      expect(isAlive(cli)).toBe(true);
+      expect(isAlive(grandchild)).toBe(true);
+      const limit = adapterModule.SIGKILL_GRACE_MS + 3_000;
+      await waitFor(() => !isAlive(cli), `CLI ${String(cli)} to die`, limit);
+      await waitFor(() => !isAlive(grandchild), `grandchild ${String(grandchild)} to die`, limit);
+    }
+
+    it('the adapter timeout path SIGKILLs a CLI and grandchild that ignore SIGTERM', async () => {
+      await freshTreeKillModule();
+      await runTimedOutCli(await import('./subprocess-adapter.js'));
+    }, 30_000);
+
+    it('the adapter timeout path, loaded as darwin, does the same through the async ps', async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      let adapterModule: typeof import('./subprocess-adapter.js');
+      try {
+        vi.resetModules();
+        adapterModule = await import('./subprocess-adapter.js');
+      } finally {
+        if (platform !== undefined) Object.defineProperty(process, 'platform', platform);
+      }
+      await runTimedOutCli(adapterModule);
+    }, 30_000);
+
+    it('off Linux (mocked), a real async ps walk finds and escalates the grandchild (#6718)', async () => {
+      // Loaded as darwin, the default seam collects with an async `ps`, which runs for real here.
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      let mod: typeof import('./process-tree-kill.js');
+      try {
+        mod = await freshTreeKillModule();
+      } finally {
+        if (platform !== undefined) Object.defineProperty(process, 'platform', platform);
+      }
+      const { cli, grandchild } = await spawnCliWithStubbornGrandchild();
+
+      const tree = await mod.terminateProcessTree(cli, 200);
+
+      expect(tree).toContainEqual({ pid: grandchild, startTime: undefined });
+      await waitFor(() => !isAlive(grandchild), `grandchild ${String(grandchild)} to die`, 5_000);
     }, 20_000);
   }
 );

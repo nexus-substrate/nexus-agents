@@ -74,7 +74,7 @@ export function execFileTree(
     /** End the tree, then settle with `failure`. */
     const stop = (failure: Error): void => {
       if (run.settled) return;
-      if (run.child !== undefined) terminateProcessTree(run.child, graceMs);
+      if (run.child !== undefined) void terminateProcessTree(run.child, graceMs);
       finish(() => {
         reject(failure);
       });
