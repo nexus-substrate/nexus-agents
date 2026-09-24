@@ -58,6 +58,10 @@ import { createRequestContext } from '../middleware/request-context.js';
 import type { HandlerContext } from '../middleware/secure-handler.js';
 import { createLogger } from '../../core/index.js';
 import * as agentExecutor from '../../pipeline/agent-executor.js';
+import {
+  createSymlinkEscapeFixture,
+  type SymlinkEscapeFixture,
+} from '../../testing/symlink-escape-fixture.js';
 
 interface HandlerCtx {
   // `caller` is part of the real RequestContext and is what makes the tier a
@@ -744,5 +748,83 @@ describe('runDevPipelineForGoal — dryRun reaches the pipeline (#4806)', () => 
       trustTier: '3',
       dryRun: true,
     });
+  });
+});
+
+// ============================================================================
+// workingDir and planFile are contained to the cwd subtree
+// ============================================================================
+
+describe('run_dev_pipeline path containment', () => {
+  let fx: SymlinkEscapeFixture;
+
+  beforeEach(() => {
+    fx = createSymlinkEscapeFixture();
+    runDevPipelineMock.mockClear();
+    vi.spyOn(agentExecutor, 'createAgentStages');
+  });
+
+  afterEach(() => {
+    fx.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('rejects a workingDir outside cwd before any stage is created', async () => {
+    const result = await captureHandler()(
+      { task: 'Build X', workingDir: fx.outsideDir },
+      STDIO_CTX
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/workingDir must be within/);
+    expect(agentExecutor.createAgentStages).not.toHaveBeenCalled();
+    expect(runDevPipelineMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a ../ workingDir', async () => {
+    const result = await captureHandler()({ task: 'Build X', workingDir: '../../..' }, STDIO_CTX);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/workingDir must be within/);
+    expect(agentExecutor.createAgentStages).not.toHaveBeenCalled();
+  });
+
+  it('rejects a workingDir that reaches outside cwd through a symlink', async () => {
+    const result = await captureHandler()({ task: 'Build X', workingDir: fx.linkOut }, STDIO_CTX);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/workingDir must be within/);
+    expect(agentExecutor.createAgentStages).not.toHaveBeenCalled();
+  });
+
+  it('accepts a workingDir inside cwd and scans its resolved path', async () => {
+    await captureHandler()({ task: 'Build X', workingDir: fx.linkIn }, STDIO_CTX);
+
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ scanTarget: join(fx.insideDir, 'real') })
+    );
+  });
+
+  it('leaves scanTarget unset when workingDir is omitted', async () => {
+    await captureHandler()({ task: 'Build X' }, STDIO_CTX);
+
+    expect(vi.mocked(agentExecutor.createAgentStages)).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(agentExecutor.createAgentStages).mock.calls[0]?.[0]?.scanTarget
+    ).toBeUndefined();
+  });
+
+  it('rejects a planFile that reaches outside cwd through a symlink', async () => {
+    const result = await captureHandler()({ planFile: join(fx.linkOut, 'plan.md') }, STDIO_CTX);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/planFile must be within/);
+    expect(runDevPipelineMock).not.toHaveBeenCalled();
+  });
+
+  it('reads a planFile through an inside symlink', async () => {
+    await captureHandler()({ planFile: join(fx.linkIn, 'plan.md') }, STDIO_CTX);
+
+    expect(runDevPipelineMock.mock.calls[0]?.[0]).toBe('# plan');
   });
 });

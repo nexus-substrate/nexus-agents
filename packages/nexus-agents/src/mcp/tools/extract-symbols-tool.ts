@@ -8,7 +8,7 @@
  * @module mcp/tools/extract-symbols-tool
  */
 
-import { extname, resolve, sep } from 'node:path';
+import { extname } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
@@ -22,6 +22,7 @@ import {
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { recordToolRefusal } from '../../core/task-analysis/tool-refusal-gap.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -229,17 +230,12 @@ async function extractSymbolsHandler(args: unknown, ctx: HandlerContext): Promis
   }
 
   const { filePath, mode, maxChars, maxSymbols } = parsed.data;
-  const resolvedPath = resolve(filePath);
-
-  // Path traversal guard — restrict to cwd subtree. The `+ sep` is
-  // load-bearing: a sibling directory whose name starts with the cwd
-  // basename (`/home/u/projEVIL` for cwd `/home/u/proj`) bypasses a bare
-  // startsWith. Match security/safe-path.ts.
-  const cwdRoot = resolve('.');
-  if (resolvedPath !== cwdRoot && !resolvedPath.startsWith(cwdRoot + sep)) {
+  // Path traversal guard — restrict to the cwd subtree, following symlinks.
+  const resolvedPath = resolveInsideRoot(filePath);
+  if (resolvedPath === null) {
     return toolStructuredError({
       errorCategory: 'permission',
-      message: `Path traversal denied: path must be within ${cwdRoot}`,
+      message: `Path traversal denied: path must be within ${process.cwd()}`,
     });
   }
 

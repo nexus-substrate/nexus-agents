@@ -12,7 +12,7 @@ import type { SecurityScanInput } from './security-scan-types.js';
 import { parseSarif } from '../../security/sarif-parser.js';
 import type { SarifParseResult } from '../../security/sarif-types.js';
 import { createLogger } from '../../core/index.js';
-import * as path from 'node:path';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 
 const logger = createLogger({ component: 'security-scan' });
 
@@ -57,11 +57,10 @@ async function runSemgrep(targetDir: string, rulesets: readonly string[]): Promi
  * (#1913 Class D — path traversal gap.)
  */
 function validateTargetPath(target: string): string {
-  const root = path.resolve(process.cwd());
-  const resolved = path.resolve(root, target);
-  // Require resolved path to be inside cwd (or cwd itself).
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-    throw new Error(`Invalid target path: must resolve inside ${root} (got ${resolved})`);
+  // Require the target to be inside cwd (or cwd itself), following symlinks.
+  const resolved = resolveInsideRoot(target);
+  if (resolved === null) {
+    throw new Error(`Invalid target path: must resolve inside ${process.cwd()} (got ${target})`);
   }
   return resolved;
 }
@@ -112,3 +111,6 @@ export async function executeSecurityScan(
     return { error: `Scan failed: ${msg.slice(0, 500)}` };
   }
 }
+
+/** Test-only surface — do not import in production code. */
+export const _testing = { validateTargetPath };

@@ -15,6 +15,11 @@ import {
   registerVerifyAuditChainTool,
   type VerifyAuditChainResponse,
 } from './verify-audit-chain-tool.js';
+import { getNexusDataDir, nexusDataPath } from '../../config/nexus-data-dir.js';
+import {
+  createSymlinkEscapeFixture,
+  type SymlinkEscapeFixture,
+} from '../../testing/symlink-escape-fixture.js';
 
 let tmpDir: string;
 
@@ -296,5 +301,99 @@ describe('verify_audit_chain handler behavior', () => {
     };
     expect(response.fileCount).toBe(2);
     expect(response.verification.ok).toBe(true);
+  });
+});
+
+// logDir is a caller-supplied path the tool reads every matching file under,
+// so it is contained to the roots that legitimately hold audit logs.
+describe('verify_audit_chain logDir containment', () => {
+  let fx: SymlinkEscapeFixture;
+
+  beforeEach(() => {
+    fx = createSymlinkEscapeFixture();
+  });
+
+  afterEach(() => {
+    fx.cleanup();
+  });
+
+  type Captured =
+    | ((a: unknown, c: unknown) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>)
+    | undefined;
+
+  async function call(
+    logDir: string,
+    deps: Record<string, unknown> = {}
+  ): Promise<{ isError: boolean; text: string }> {
+    let captured: Captured;
+    const server = {
+      registerTool: (_n: string, _s: unknown, h: unknown) => {
+        captured = h as Captured;
+      },
+    };
+    registerVerifyAuditChainTool(server as never, deps as never);
+    const res = await captured?.({ logDir }, {});
+    return { isError: res?.isError === true, text: res?.content[0]?.text ?? '' };
+  }
+
+  it('accepts the default audit directory', async () => {
+    const defaultDir = nexusDataPath('audit');
+    fs.mkdirSync(defaultDir, { recursive: true });
+
+    const res = await call(defaultDir);
+
+    expect(res.isError).toBe(false);
+    expect((JSON.parse(res.text) as VerifyAuditChainResponse).logDir).toBe(
+      fs.realpathSync(defaultDir)
+    );
+  });
+
+  it('rejects a directory outside every data root', async () => {
+    const res = await call(fx.outsideDir);
+
+    expect(res.isError).toBe(true);
+    expect(res.text).toMatch(/logDir must be within/);
+  });
+
+  it('rejects a ../ path that climbs out of the data root', async () => {
+    const res = await call(path.join(nexusDataPath('audit'), '..', '..', '..', '..', '..', '..'));
+
+    expect(res.isError).toBe(true);
+    expect(res.text).toMatch(/logDir must be within/);
+  });
+
+  it('rejects a sibling directory that shares the data root as a name prefix', async () => {
+    // The cwd-local `.nexus-agents` root is the one whose parent is not
+    // itself a root in the test run, so its prefix-sibling is outside them all.
+    const sibling = `${path.resolve('.nexus-agents')}EVIL`;
+    fs.mkdirSync(sibling, { recursive: true });
+    try {
+      const res = await call(sibling);
+      expect(res.isError).toBe(true);
+      expect(res.text).toMatch(/logDir must be within/);
+    } finally {
+      fs.rmSync(sibling, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a symlink inside the data root whose target is outside it', async () => {
+    const link = path.join(getNexusDataDir(), `escape-${crypto.randomUUID()}`);
+    fs.mkdirSync(getNexusDataDir(), { recursive: true });
+    fs.symlinkSync(fx.outsideDir, link, 'dir');
+    try {
+      const res = await call(link);
+      expect(res.isError).toBe(true);
+      expect(res.text).toMatch(/logDir must be within/);
+    } finally {
+      fs.rmSync(link, { force: true });
+    }
+  });
+
+  it('accepts the logDir the audit logger is configured to write', async () => {
+    const res = await call(fx.outsideDir, {
+      security: { audit: { enabled: true, logDir: fx.outsideDir } },
+    });
+
+    expect(res.isError).toBe(false);
   });
 });

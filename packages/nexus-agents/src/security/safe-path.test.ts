@@ -89,5 +89,25 @@ describe('resolveInsideRoot', () => {
       expect(result).not.toBeNull();
       expect(result).toBe(realpathSync(insideTarget));
     });
+
+    it('accepts a not-yet-existing path by resolving its nearest existing ancestor', () => {
+      const result = resolveInsideRoot('new-dir/deeper/file.txt', workspaceDir);
+      expect(result).toBe(join(realpathSync(workspaceDir), 'new-dir', 'deeper', 'file.txt'));
+    });
+
+    it('rejects a not-yet-existing path under a symlinked ancestor that points outside', () => {
+      symlinkSync(baseDir, join(workspaceDir, 'external-dir'));
+      expect(resolveInsideRoot('external-dir/new/file.txt', workspaceDir)).toBeNull();
+    });
+
+    it('realpaths the root: a symlinked root still contains its own children', () => {
+      const rootLink = join(baseDir, 'root-link');
+      symlinkSync(workspaceDir, rootLink);
+      writeFileSync(join(workspaceDir, 'child.txt'), 'x');
+      expect(resolveInsideRoot('child.txt', rootLink)).toBe(
+        join(realpathSync(workspaceDir), 'child.txt')
+      );
+      expect(resolveInsideRoot(join(rootLink, 'child.txt'), rootLink)).not.toBeNull();
+    });
   });
 });
