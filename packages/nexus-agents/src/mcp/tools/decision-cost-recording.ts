@@ -25,11 +25,12 @@ import { createLogger, getTimeProvider, type ILogger } from '../../core/index.js
 import { servedCostDetail } from '../../cli-adapters/budget-arm-cost.js';
 import { priceBasisOf, type CostDetail } from '../../learning/usage-log.js';
 import { DecisionCostStore, type DecisionGate } from '../../observability/decision-cost-store.js';
-import type {
-  DecisionBillingMode,
-  DecisionCostSummary,
-  UndeclaredOptionsDetectorRecord,
-  VoterCostInput,
+import {
+  UNKNOWN_MODEL,
+  type DecisionBillingMode,
+  type DecisionCostSummary,
+  type UndeclaredOptionsDetectorRecord,
+  type VoterCostInput,
 } from '../../observability/decision-cost.js';
 
 /** Resolve the active billing mode from env (default 'plan'). */
@@ -40,8 +41,8 @@ export function resolveBillingMode(): DecisionBillingMode {
 /**
  * Bridge a panel's per-voter results into per-voter cost inputs.
  *
- * The vote result carries the model id (#3855) and, where the adapter reported
- * it, token counts. When tokens are present we derive the api-mode cost via the
+ * The vote result carries the model the adapter reported serving (#6663) and,
+ * where the adapter reported them, token counts. When tokens are present we derive the api-mode cost via the
  * same registry-backed {@link computeCostDetail} the per-call usage log uses, so
  * a per-decision rollup and the per-call usage log price identically. When no
  * usage was reported the voter is left with no tokens/cost ⇒ unmeasured. A
@@ -78,15 +79,23 @@ function reportedTokenFields(v: AgentVoteResult): Partial<VoterCostInput> {
 
 /**
  * The seat's cost detail, or `undefined` when nothing was looked up (no usage
- * reported, or no model). A seat that answered through a gateway (#4392 step
- * 4, `gatewayArm`) is priced by the arm's `NEXUS_GATEWAY_COST` declaration —
+ * reported). A seat that answered through a gateway (#4392 step 4,
+ * `gatewayArm`) is priced by the arm's `NEXUS_GATEWAY_COST` declaration —
  * UNKNOWN when undeclared — never by the model id alone: a `claude-*` id a
  * gateway served used to roll up at Anthropic's list price as `'list'`.
+ *
+ * Priced by `servedModel`, the model the adapter reported answering, never by
+ * `model`, the alias the seat requested (#6663): a seat that fell back to
+ * another model was priced at the rate of the one it asked for. A seat that
+ * reported usage but no served model has a cost nobody can price, so it reads
+ * as unpriced (`'unknown'`, no `costUsd`) — never the requested alias's rate,
+ * and never a measured $0.
  */
 function voteCostDetail(v: AgentVoteResult): CostDetail | undefined {
   const hasTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
-  if (!hasTokens || v.model === undefined) return undefined;
-  return servedCostDetail(v.gatewayArm, v.model, v.inputTokens ?? 0, v.outputTokens ?? 0);
+  if (!hasTokens) return undefined;
+  if (v.servedModel === undefined) return { costUsd: 0, priced: false, resolvedId: UNKNOWN_MODEL };
+  return servedCostDetail(v.gatewayArm, v.servedModel, v.inputTokens ?? 0, v.outputTokens ?? 0);
 }
 
 export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostInput[] {
@@ -94,7 +103,8 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
     const detail = voteCostDetail(v);
     const input: VoterCostInput = {
       role: v.role,
-      model: v.model,
+      // #6663: the model that answered, the one the cost is priced at.
+      model: v.servedModel,
       // #6115: the assignment beside the model that answered.
       ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
       ...reportedTokenFields(v),

@@ -17,6 +17,7 @@ import type { ILogger } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { computeCostDetail } from '../../learning/usage-log.js';
 import { DecisionCostStore } from '../../observability/decision-cost-store.js';
+import { rollupDecisionCost, UNKNOWN_MODEL } from '../../observability/decision-cost.js';
 import {
   votesToCostInputs,
   recordDecisionCost,
@@ -27,8 +28,13 @@ import {
   _setWarnClockForTests,
 } from './decision-cost-recording.js';
 
+/**
+ * A seat whose adapter answered on the model it was built for, unless the test
+ * says otherwise: `servedModel` defaults to `model`. A test that needs the seat
+ * to report no served model passes `servedModel: undefined` explicitly.
+ */
 function vote(over: Partial<AgentVoteResult>): AgentVoteResult {
-  return {
+  const base: AgentVoteResult = {
     role: 'architect',
     vote: { decision: 'approve', reasoning: 'ok', confidence: 0.8 },
     processingTimeMs: 100,
@@ -37,6 +43,7 @@ function vote(over: Partial<AgentVoteResult>): AgentVoteResult {
     model: 'claude-sonnet',
     ...over,
   };
+  return 'servedModel' in over ? base : { ...base, servedModel: base.model };
 }
 
 describe('votesToCostInputs', () => {
@@ -99,6 +106,71 @@ describe('votesToCostInputs', () => {
     // say about its price basis — absent, not 'unknown'.
     const inputs = votesToCostInputs([vote({ role: 'architect', model: 'claude-sonnet' })]);
     expect(Object.keys(inputs[0] ?? {})).not.toContain('priceBasis');
+  });
+});
+
+// #6663: a seat is priced by the model that ANSWERED (`servedModel`), not the
+// alias it requested (`model`). The claude adapter's in-family substitution
+// after an out-of-credits envelope (#6120) is the known case where they differ.
+describe('votesToCostInputs prices the served model (#6663)', () => {
+  const REQUESTED = 'claude-fable-5';
+  const SERVED = 'claude-sonnet';
+
+  it('names and prices a seat that asked for A and was served by B at B', () => {
+    const served = computeCostDetail(SERVED, 1000, 200);
+    const requested = computeCostDetail(REQUESTED, 1000, 200);
+    // The premise: both price, and at different rates, so the test can tell them apart.
+    expect(served.priced && requested.priced).toBe(true);
+    expect(served.costUsd).not.toBe(requested.costUsd);
+
+    const inputs = votesToCostInputs([
+      vote({ model: REQUESTED, servedModel: SERVED, inputTokens: 1000, outputTokens: 200 }),
+    ]);
+    expect(inputs[0]?.model).toBe(SERVED);
+    expect(inputs[0]?.costUsd).toBe(served.costUsd);
+    expect(inputs[0]?.priceBasis).toBe('list');
+  });
+
+  it('rolls the decision total and per-model lines up at the served rates', () => {
+    const inputs = votesToCostInputs([
+      vote({
+        role: 'architect',
+        model: REQUESTED,
+        servedModel: SERVED,
+        inputTokens: 1000,
+        outputTokens: 200,
+      }),
+      vote({
+        role: 'security',
+        model: REQUESTED,
+        servedModel: 'claude-haiku',
+        inputTokens: 400,
+        outputTokens: 50,
+      }),
+    ]);
+    const summary = rollupDecisionCost(inputs, 'api');
+    const expected =
+      computeCostDetail(SERVED, 1000, 200).costUsd +
+      computeCostDetail('claude-haiku', 400, 50).costUsd;
+    expect(summary.totalCostUsd).toBeCloseTo(expected, 6);
+    expect(summary.measuredVoters).toBe(2);
+    expect(summary.perModel.map((m) => m.model).sort()).toEqual(['claude-haiku', SERVED]);
+  });
+
+  it('reports a seat with usage but no served model as UNKNOWN, never $0', () => {
+    const inputs = votesToCostInputs([
+      vote({ model: REQUESTED, servedModel: undefined, inputTokens: 1000, outputTokens: 200 }),
+    ]);
+    expect(inputs[0]?.model).toBeUndefined();
+    expect(Object.keys(inputs[0] ?? {})).not.toContain('costUsd');
+    expect(inputs[0]?.priceBasis).toBe('unknown');
+    expect(inputs[0]?.inputTokens).toBe(1000);
+
+    const summary = rollupDecisionCost(inputs, 'api');
+    expect(summary.perVoter[0]?.model).toBe(UNKNOWN_MODEL);
+    expect(summary.perVoter[0]?.unmeasured).toBe(true);
+    expect(summary.unmeasuredVoters).toBe(1);
+    expect(summary.priceBasis).toBe('unknown');
   });
 });
 
