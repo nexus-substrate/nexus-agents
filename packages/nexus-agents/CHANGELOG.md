@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.103.2
+
+### Patch Changes
+
+- [#6671](https://github.com/nexus-substrate/nexus-agents/pull/6671) [`265de62`](https://github.com/nexus-substrate/nexus-agents/commit/265de629b24f00fbca90fed41e6a4617756abc3b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Three gateway fixes.
+
+  **A gateway that was down at startup is now found by any call, not only by a vote.** Before, lazy re-discovery ran only from `consensus_vote` and the PR-review panel, so on a gateway-only host `orchestrate`, `execute_expert` and `create_expert` stayed off the gateway until a vote happened to run. Now every adapter the registry hands out triggers re-discovery on its calls, and so does the adapter-availability check. There is still at most one attempt per 60 s, and concurrent callers share it. An adapter that is already serving calls, such as a working CLI slot, starts the attempt and does not wait for it. It switches to the gateway on a later call once the attempt succeeds. An adapter with nothing to serve yet, and the availability check, do wait. Against an unresponsive gateway that wait is at most about 26 s: up to 5 s for the host's DNS lookup, then the model-listing request's 10 s timeout, retried once. The DNS lookup had no timeout before, so a stuck resolver could stall discovery at startup too. If the lookup times out, the gateway is not used for that attempt, because the later connection could still resolve to a private address and get past the check. The log says `gateway host check timed out`, and the next attempt, no sooner than 60 s later, runs the check again. This is not treated as a permanent refusal. A DNS error still lets the host through, as before. Once the gateway is found, the default adapter and the claude, codex and gemini slot adapters switch to it, even if they had already chosen a path before. The routing arm set that `run_dev_pipeline`'s expert stage uses is built once per process and is not rebuilt yet ([#6667](https://github.com/nexus-substrate/nexus-agents/issues/6667)).
+
+  **A private-address refusal is no longer retried.** If re-discovery is refused by the private-address guard, the log now gives the same `NEXUS_CUSTOM_API_ALLOW_PRIVATE=1` remedy as at startup, and re-discovery stops. Allowing the host is an env change, which needs a restart.
+
+  **`NO_PROXY` now matches IP addresses and CIDR ranges.** Entries like `10.0.0.0/8`, `10.1.2.3`, `fd00::1`, `[fd00::1]` and `fd00::/8` now exempt a gateway addressed by IP. Before, `NO_PROXY=10.0.0.0/8` still sent `https://10.1.2.3/v1` through the proxy. An IP host is never matched as a domain suffix, so `2.3` no longer exempts `10.1.2.3`, and a host name is not resolved to match an IP entry. `*`, exact hosts, domain suffixes (with or without a leading `.` or `*.`) and an optional `:port` work as before.
+
 ## 8.103.1
 
 ### Patch Changes
