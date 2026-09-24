@@ -381,13 +381,3 @@ export type { RoutingStrategy, UnifiedRoutingDecision } from './unified-routing-
 // non-test callers in the tree. If structured output comes back as a
 // production need, reintroduce alongside its consumer (same activation-
 // or-delete YAGNI pattern as #2937 / #2938 / #2939 / #2940).
-
-// Cascade Router Base (Issue #574)
-export { CascadeRouterBase, DEFAULT_CASCADE_BASE_CONFIG } from './cascade-router-base.js';
-export type {
-  CascadeRouterBaseConfig,
-  ModelExecutionResult,
-  CascadeStageResult,
-  CascadeExecutionResult,
-  ICascadeRouter,
-} from './cascade-router-base.js';

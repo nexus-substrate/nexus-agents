@@ -40,8 +40,8 @@ export const ErrorCode = {
    * unsupported `param` (e.g. a post-Opus-4.6 Claude or an OpenAI reasoning model
    * 400-ing on `temperature`). NON-RETRYABLE: retrying an identical request with
    * the same bad param will 400 again. The offending param name is carried in the
-   * error `context.param`. Distinct from generic MODEL_ERROR so callers/telemetry
-   * (#4069) and the reactive self-heal path (#4071) can act on the named param.
+   * error `context.param`. Distinct from generic MODEL_ERROR so callers and
+   * telemetry (#4069) can act on the named param.
    */
   MODEL_PARAMETER_UNSUPPORTED: 'MODEL_PARAMETER_UNSUPPORTED',
 

@@ -87,7 +87,7 @@ describe('UnifiedRoutingDecision', () => {
         .withSelectedCli('claude')
         .withConfidence(0.9)
         .withReason('Agreement reached')
-        .withStrategy('agreement_cascade')
+        .withStrategy('confidence_cascade')
         .withDecisionTime(150)
         .withCascadeInfo({
           resolvedAtStage: 1,
@@ -257,7 +257,6 @@ describe('UnifiedRoutingDecision', () => {
         'quality',
         'budget',
         'confidence_cascade',
-        'agreement_cascade',
         'zero_router',
         'preference',
         'topsis',

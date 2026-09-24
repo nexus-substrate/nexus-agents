@@ -360,11 +360,6 @@ export function unservedSlotLines(health: GatewayHealth): string[] {
   );
 }
 
-/** The gateway host for a verdict line, or undefined when none is configured. */
-export function gatewayHostOf(health: GatewayHealth): string | undefined {
-  return health.state === 'not_configured' ? undefined : health.host;
-}
-
 /**
  * Whether one CLI counts against the verdict. With a passing gateway — one
  * that serves at least one family slot — a CLI that is not installed does

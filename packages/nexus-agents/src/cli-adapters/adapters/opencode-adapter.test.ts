@@ -14,6 +14,7 @@ import type { ModelId } from '../../config/model-capabilities-types.js';
 import { computeCostDetail } from '../../learning/usage-log.js';
 import { CliToModelAdapter } from '../cli-to-model-adapter.js';
 import { isCallerInputCliError } from '../cli-error-helpers.js';
+import { getDefaultCliCircuitBreakerRegistry } from '../cli-circuit-breaker.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('opencode'));
@@ -882,6 +883,11 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
 
   it('returns an explicit error, and never spawns, for an unresolvable requested model', async () => {
     const a = await adapterWithInventory(INVENTORY);
+    // #6741: this is the only caller-input error a CLI selection can produce,
+    // and since #6712 the CLI layer alone records for a CLI selection, so the
+    // error must return before the retry loop's breaker sees it.
+    const breaker = getDefaultCliCircuitBreakerRegistry().getBreaker('opencode');
+    const recordFailure = vi.spyOn(breaker, 'recordFailure');
     const res = await a.execute({ content: 'x', model: 'acme/not-listed-anywhere' });
     expect(res.ok).toBe(false);
     if (!res.ok) {
@@ -890,6 +896,8 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
       // Caller input, not CLI health: breakers must not count it.
       expect(isCallerInputCliError(res.error)).toBe(true);
     }
+    expect(recordFailure).not.toHaveBeenCalled();
+    recordFailure.mockRestore();
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
   });
 

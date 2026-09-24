@@ -87,14 +87,6 @@ describe('planOptionalParams', () => {
     expect(a).toEqual(b);
   });
 
-  it('always returns transformed as an empty array (reserved for #4069)', () => {
-    expect(planOptionalParams(makeRequest({ temperature: 0.5 }), 'gpt-4o').transformed).toEqual([]);
-    expect(
-      planOptionalParams(makeRequest({ temperature: 0.3 }), 'claude-opus-4-8').transformed
-    ).toEqual([]);
-    expect(planOptionalParams(makeRequest(), 'gpt-4o').transformed).toEqual([]);
-  });
-
   describe('dropped param severity (#4069)', () => {
     it('tags a dropped temperature entry as behavioral', () => {
       const plan = planOptionalParams(makeRequest({ temperature: 0.3 }), 'claude-opus-4-8');
