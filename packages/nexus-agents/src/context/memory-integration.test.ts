@@ -42,7 +42,6 @@ function _createMemoryRow(key: string, value: unknown, metadata: MemoryMetadata)
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Infrastructure for future SQLite tests
 function _createSharedMockDatabase(): ISQLiteDatabase & { store: MockMemoryStore } {
   const store: MockMemoryStore = {
     memories: new Map(),

@@ -46,14 +46,12 @@ describe('ExecutionTraceEntry schema', () => {
   });
 
   it('requires runId', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { runId: _runId, ...without } = validEntry;
     const result = ExecutionTraceEntrySchema.safeParse(without);
     expect(result.success).toBe(false);
   });
 
   it('requires eventType', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { eventType: _eventType, ...without } = validEntry;
     const result = ExecutionTraceEntrySchema.safeParse(without);
     expect(result.success).toBe(false);
