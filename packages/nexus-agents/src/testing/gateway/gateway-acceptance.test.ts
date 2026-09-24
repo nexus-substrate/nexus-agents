@@ -51,7 +51,11 @@ import {
 import { loadUsageEvents } from '../../learning/usage-log.js';
 import { createServer } from '../../mcp/server.js';
 import { registerConsensusVoteTool, registerTools } from '../../mcp/tools/index.js';
-import { checkGatewayHealth, gatewayVerdict } from '../../cli/doctor-gateway.js';
+import {
+  checkGatewayHealth,
+  gatewaySlotWarnings,
+  gatewayVerdict,
+} from '../../cli/doctor-gateway.js';
 import { formatGatewayReport } from '../../cli/doctor-gateway-report.js';
 import { isAllHealthy, type CliCheckResult } from '../../cli/doctor.js';
 import {
@@ -728,6 +732,36 @@ describe('doctor --gateway on a gateway-only host (#6609)', () => {
     expect(gatewayVerdict(health)).toBe('pass');
   });
 
+  it('an OpenAI-only gateway passes, naming the claude and gemini slots unavailable (#6658)', async () => {
+    gateway.setCatalog(THREE_FAMILY_CATALOG.filter((r) => r.owned_by === 'openai'));
+
+    const health = await checkGatewayHealth({ probe: true });
+    const gatewayTerm = gatewayVerdict(health);
+
+    // codex is served, so the host passes — but not silently.
+    expect(gatewayTerm).toBe('pass');
+    expect(isAllHealthy({ ...healthyHost, gateway: gatewayTerm })).toBe(true);
+    expect(gatewaySlotWarnings(health, healthyHost.clis)).toEqual([
+      'claude slot unavailable: not installed, and the gateway has no anthropic model',
+      'gemini slot unavailable: not installed, and the gateway has no google model',
+      'opencode slot unavailable: not installed, and the gateway has no opencode slot',
+    ]);
+    // Only the served family was probed.
+    const served = gateway.chatRequests().map((r) => familyOf((r.body as ChatRequestBody).model));
+    expect(served).toEqual(['openai']);
+  });
+
+  it('a gateway that serves no slot fails the verdict (#6658)', async () => {
+    gateway.setCatalog([
+      { id: 'mistral-large-2411', object: 'model', created: 1731000000, owned_by: 'mistral' },
+    ]);
+
+    const gatewayTerm = gatewayVerdict(await checkGatewayHealth());
+
+    expect(gatewayTerm).toBe('fail');
+    expect(isAllHealthy({ ...healthyHost, gateway: gatewayTerm })).toBe(false);
+  });
+
   it('fails the verdict, naming the host, when the gateway is unreachable', async () => {
     vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'http://127.0.0.1:1/v1');
     try {
@@ -769,7 +803,92 @@ describe('the single-model custom-openai adapter over HTTP (#6645)', () => {
 });
 
 // ============================================================================
-// 8. A gateway down at boot and up later (#6659)
+// 8. The direct OpenAI adapter pointed at a gateway by OPENAI_BASE_URL (#6654)
+// ============================================================================
+
+describe('the direct OpenAI adapter with OPENAI_BASE_URL (#6654)', () => {
+  const id = 'gpt-5.2';
+  const routes = (): string[] => gateway.requests.map((r) => `${r.method} ${r.path}`);
+
+  beforeEach(() => {
+    vi.stubEnv('OPENAI_API_KEY', 'sk-TESTFAKE-direct-NOT-REAL-6654');
+  });
+
+  afterEach(() => {
+    vi.stubEnv('OPENAI_BASE_URL', undefined);
+    vi.stubEnv('OPENAI_API_KEY', undefined);
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', undefined);
+    vi.unstubAllGlobals();
+  });
+
+  it('posts to /v1/chat/completions when OPENAI_BASE_URL names a non-OpenAI host', async () => {
+    vi.stubEnv('OPENAI_BASE_URL', gateway.baseUrl);
+    const adapter = new SdkAdapter({ providerId: 'openai', modelId: id }, silentLogger());
+
+    const result = await adapter.complete(ask);
+
+    expect(routes()).toEqual(['POST /v1/chat/completions']);
+    expect(result.ok).toBe(true);
+  });
+
+  it('honours NEXUS_CUSTOM_API_SURFACE=responses against that host', async () => {
+    vi.stubEnv('OPENAI_BASE_URL', gateway.baseUrl);
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', 'responses');
+    const adapter = new SdkAdapter({ providerId: 'openai', modelId: id }, silentLogger());
+
+    await adapter.complete(ask);
+
+    expect(routes()).toEqual(['POST /v1/responses']);
+  });
+
+  /** The one request the adapter sends toward api.openai.com, captured without the network. */
+  async function captureOpenAiRequest(): Promise<{ url: string; body: string }> {
+    const seen: { url: string; body: string }[] = [];
+    vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      seen.push({ url, body: typeof init?.body === 'string' ? init.body : '' });
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: { message: 'captured', type: 'invalid_request' } }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+    });
+    const adapter = new SdkAdapter({ providerId: 'openai', modelId: id }, silentLogger());
+    await adapter.complete(ask);
+    vi.unstubAllGlobals();
+    const [only, ...rest] = seen;
+    if (only === undefined || rest.length > 0) {
+      throw new Error(`expected exactly one request, saw ${String(seen.length)}`);
+    }
+    return only;
+  }
+
+  it('keeps the Responses surface with no OPENAI_BASE_URL, ignoring the override', async () => {
+    vi.stubEnv('OPENAI_BASE_URL', undefined);
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', 'chat');
+
+    const captured = await captureOpenAiRequest();
+
+    expect(captured.url).toBe('https://api.openai.com/v1/responses');
+    expect(routes()).toEqual([]);
+  });
+
+  it('sends the same request whether OPENAI_BASE_URL is unset or names api.openai.com', async () => {
+    vi.stubEnv('OPENAI_BASE_URL', undefined);
+    const unset = await captureOpenAiRequest();
+
+    vi.stubEnv('OPENAI_BASE_URL', 'https://api.openai.com/v1');
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', 'chat');
+    const explicit = await captureOpenAiRequest();
+
+    expect(unset.body).toContain('"input"');
+    expect(explicit).toEqual(unset);
+  });
+});
+
+// ============================================================================
+// 9. A gateway down at boot and up later (#6659)
 // ============================================================================
 
 describe('a gateway down at boot and up later, with no vote run (#6659)', () => {

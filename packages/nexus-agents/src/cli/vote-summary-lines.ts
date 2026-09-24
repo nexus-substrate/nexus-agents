@@ -71,6 +71,11 @@ function fallbackLabel({ role, fallback, toCli, toModel }: SeatFallbackDetail): 
   return `${role}: ${from}→${to}, ${fallback.reason}`;
 }
 
+/** `2 seats unresolved`; empty for zero, so a clean panel's line is unchanged. */
+function seatCount(count: number, label: string): string {
+  return count === 0 ? '' : `${String(count)} ${count === 1 ? 'seat' : 'seats'} ${label}`;
+}
+
 /**
  * The one-line rendering of panel model diversity (#6115) —
  * `Models: 3 distinct, 2 families, 2 fallbacks (devex: codex→gemini, capacity)`.
@@ -81,17 +86,19 @@ function fallbackLabel({ role, fallback, toCli, toModel }: SeatFallbackDetail): 
  * comment bolds it.
  */
 export function modelsLine(votes: readonly AgentVoteResult[]): string {
-  const { distinctModels, distinctFamilies, unclassifiedSeats, fallbacks } =
+  const { distinctModels, distinctFamilies, unclassifiedSeats, unresolvedSeats, fallbacks } =
     panelDiversityOf(votes);
   const detail = seatFallbacks(votes).map(fallbackLabel).join('; ');
-  // #6606: the family count, and the seats it could not classify.
+  // #6606: the family count, and the seats it could not classify. #6660: and
+  // the answering seats whose model never resolved, which no count includes.
   const families = `${String(distinctFamilies)} ${distinctFamilies === 1 ? 'family' : 'families'}`;
-  const unclassified =
-    unclassifiedSeats === 0
-      ? ''
-      : ` (${String(unclassifiedSeats)} ${unclassifiedSeats === 1 ? 'seat' : 'seats'} unclassified)`;
+  const uncounted = [
+    seatCount(unclassifiedSeats, 'unclassified'),
+    seatCount(unresolvedSeats ?? 0, 'unresolved'),
+  ].filter((part) => part !== '');
+  const caveat = uncounted.length === 0 ? '' : ` (${uncounted.join(', ')})`;
   return (
-    `Models: ${String(distinctModels)} distinct, ${families}${unclassified}, ` +
+    `Models: ${String(distinctModels)} distinct, ${families}${caveat}, ` +
     `${String(fallbacks)} fallbacks` +
     (detail === '' ? '' : ` (${detail})`)
   );

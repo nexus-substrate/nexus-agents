@@ -253,16 +253,84 @@ function redact(message: string, config: OpenAICompatConfig): string {
     .reduce((text, secret) => text.replaceAll(secret, '<redacted>'), message);
 }
 
+/** A vendor slot the gateway can serve: one per family. */
+type GatewaySlot = keyof GatewaySlotMapping;
+
+/**
+ * The family slots a healthy gateway does NOT serve, in family order (#6658):
+ * each slot that resolved to `unavailable`. This is also exactly the set of
+ * `--probe` `no_model` results — `probeFamilies` reads the same mapping — so a
+ * `no_model` family counts against the verdict the same way. Empty for any
+ * other state: there is no slot mapping to read.
+ */
+function unservedGatewaySlots(health: GatewayHealth): readonly GatewaySlot[] {
+  if (health.state !== 'healthy') return [];
+  const { slots } = health;
+  return PROBE_FAMILIES.map((family) => PROBE_SLOT[family]).filter(
+    (slot) => slots[slot] === 'unavailable'
+  );
+}
+
 /**
  * The verdict term. A requested probe that failed fails the gateway: it was
- * asked whether the gateway serves, and it said no. A family with no model is
- * not a failure — the census reports it.
+ * asked whether the gateway serves, and it said no. A gateway that serves NO
+ * family slot fails too (#6658): it answered `/models` but every pinned slot
+ * would throw "unavailable" at use. One that serves SOME slots passes, and
+ * {@link gatewaySlotWarnings} names each slot it does not serve.
  */
 export function gatewayVerdict(health: GatewayHealth): GatewayVerdict {
   if (health.state === 'not_configured') return 'absent';
   if (health.state !== 'healthy') return 'fail';
   const failed = health.probes !== 'skipped' && health.probes.some((p) => p.outcome === 'failed');
-  return failed ? 'fail' : 'pass';
+  if (failed) return 'fail';
+  return unservedGatewaySlots(health).length < PROBE_FAMILIES.length ? 'pass' : 'fail';
+}
+
+/**
+ * One warning per missing CLI whose slot the passing gateway does not serve
+ * (#6658). Such a CLI does not fail the verdict — other slots work — but a
+ * task pinned to it throws "unavailable" at use, so it is named rather than
+ * silently excused. opencode has no gateway slot, so a missing opencode is
+ * always named. No warning when the gateway does not pass: the missing CLIs
+ * then fail the verdict themselves ({@link cliFailsVerdict}).
+ */
+export function gatewaySlotWarnings(
+  health: GatewayHealth,
+  clis: readonly CliCheckResult[]
+): string[] {
+  if (gatewayVerdict(health) !== 'pass') return [];
+  const unserved = unservedGatewaySlots(health);
+  const missing = (name: CliCheckResult['name']): boolean =>
+    clis.some((c) => c.name === name && !c.installed);
+  const warnings = PROBE_FAMILIES.filter((family) => {
+    const slot = PROBE_SLOT[family];
+    return unserved.includes(slot) && missing(slot);
+  }).map((family) => {
+    const slot = PROBE_SLOT[family];
+    return `${slot} slot unavailable: not installed, and the gateway has no ${family} model`;
+  });
+  if (missing('opencode')) {
+    warnings.push('opencode slot unavailable: not installed, and the gateway has no opencode slot');
+  }
+  return warnings;
+}
+
+/**
+ * The `doctor --gateway` line for each family slot the gateway does not serve,
+ * in family order — or one line saying no slot is served, the case
+ * {@link gatewayVerdict} fails on.
+ */
+export function unservedSlotLines(health: GatewayHealth): string[] {
+  const unserved = unservedGatewaySlots(health);
+  if (health.state !== 'healthy' || unserved.length === 0) return [];
+  if (unserved.length === PROBE_FAMILIES.length) {
+    return [
+      'no slot has a gateway model: every pinned claude, codex or gemini slot is unavailable',
+    ];
+  }
+  return PROBE_FAMILIES.filter((f) => unserved.includes(PROBE_SLOT[f])).map(
+    (f) => `${PROBE_SLOT[f]} slot unavailable: the gateway has no ${f} model`
+  );
 }
 
 /** The gateway host for a verdict line, or undefined when none is configured. */
@@ -271,9 +339,13 @@ export function gatewayHostOf(health: GatewayHealth): string | undefined {
 }
 
 /**
- * Whether one CLI counts against the verdict. With a passing gateway a CLI
- * that is not installed does not: its slot is served by a gateway model of
- * its family. An installed CLI still has to be authenticated and supported.
+ * Whether one CLI counts against the verdict. With a passing gateway — one
+ * that serves at least one family slot — a CLI that is not installed does
+ * not. When its own slot has a gateway model it is excused outright; when it
+ * has none (or it is opencode, which never has one) it is a named warning
+ * from {@link gatewaySlotWarnings}, not a failure (#6658). A host with zero
+ * served slots has a failing gateway, so every missing CLI counts. An
+ * installed CLI still has to be authenticated and supported.
  */
 export function cliFailsVerdict(cli: CliCheckResult, gateway: GatewayVerdict): boolean {
   if (!cli.installed) return gateway !== 'pass';

@@ -21,6 +21,8 @@ import { getNexusDataDir, nexusDataPath } from '../../config/nexus-data-dir.js';
 import { VOTE_RECORDS_PATH_ENV } from '../../audit/vote-record-store.js';
 import type { ConsensusResult, Vote } from '../../consensus/types.js';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
+import { executeAgentVote } from '../../cli/voter-agents.js';
+import type { ILogger, IModelAdapter } from '../../core/index.js';
 import {
   getOutcomeStore,
   OutcomeStore,
@@ -186,6 +188,7 @@ describe('recordVoteOutcomes served model and cost (#6624)', () => {
         ...agentVote('architect', 'approve'),
         cli: 'claude',
         model: 'claude-sonnet',
+        servedModel: 'claude-sonnet',
         inputTokens: 1_000,
         outputTokens: 2_000,
       },
@@ -194,6 +197,7 @@ describe('recordVoteOutcomes served model and cost (#6624)', () => {
         ...agentVote('security', 'approve'),
         cli: 'claude',
         model: 'claude-sonnet',
+        servedModel: 'claude-sonnet',
         gatewayArm: 'api:custom-openai',
         inputTokens: 1_000,
         outputTokens: 2_000,
@@ -202,6 +206,7 @@ describe('recordVoteOutcomes served model and cost (#6624)', () => {
         ...agentVote('devex', 'reject'),
         cli: 'opencode',
         model: 'acme-unpriced-model-xyz',
+        servedModel: 'acme-unpriced-model-xyz',
         inputTokens: 1_000,
         outputTokens: 2_000,
       },
@@ -227,6 +232,65 @@ describe('recordVoteOutcomes served model and cost (#6624)', () => {
     for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
       expect(key in row).toBe(false);
     }
+  });
+});
+
+describe('recordVoteOutcomes records the model that answered, not the one requested (#6660)', () => {
+  beforeEach(() => {
+    setOutcomeStore(new OutcomeStore());
+  });
+
+  it('a seat asked for claude-fable-5 that answered on claude-sonnet records claude-sonnet', async () => {
+    // The claude adapter substitutes the next alias when credits run out
+    // (#6120): the adapter was built for claude-fable-5, the response names
+    // claude-sonnet. The row must name, and price, the one that answered.
+    const approve = JSON.stringify({
+      decision: 'approve',
+      reasoning: 'Approve: the change is small and tested.',
+      confidence: 0.9,
+    });
+    const adapter: IModelAdapter = {
+      providerId: 'cli-claude',
+      modelId: 'claude-fable-5',
+      capabilities: [],
+      complete: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          content: approve,
+          stopReason: 'end_turn',
+          model: 'claude-sonnet',
+          fallbackFrom: 'claude-fable-5',
+          usage: { inputTokens: 1_000, outputTokens: 2_000 },
+        },
+      }),
+      stream: vi.fn(),
+      countTokens: vi.fn().mockResolvedValue(10),
+      validateConfig: vi.fn().mockReturnValue({ ok: true }),
+    };
+    const logger: ILogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn(),
+      setLevel: vi.fn(),
+    };
+    const seat = await executeAgentVote('architect', 'Ratify', adapter, logger, {
+      timeoutMs: 5000,
+      maxRetries: 0,
+    });
+    expect(seat.source).toBe('llm');
+
+    recordVoteOutcomes([seat]);
+
+    const [row] = getOutcomeStore().query();
+    // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
+    expect(row).toMatchObject({
+      model: 'consensus',
+      servedModel: 'claude-sonnet',
+      costUsd: 0.033,
+      priceBasis: 'list',
+    });
   });
 });
 

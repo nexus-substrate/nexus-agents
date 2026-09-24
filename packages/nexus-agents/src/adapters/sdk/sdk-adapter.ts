@@ -38,7 +38,12 @@ import {
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
 import { PROVIDER_ENV_KEYS } from './types.js';
-import { readCustomApiSurface, readGatewayEnv, redactApiKey } from './gateway-env.js';
+import {
+  readCustomApiSurface,
+  readDirectOpenAiSurface,
+  readGatewayEnv,
+  redactApiKey,
+} from './gateway-env.js';
 import { gatewayAiSdkOptions, readGatewayTransport } from '../gateway-http.js';
 import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 import {
@@ -115,7 +120,7 @@ type ProviderInstance = ((id: string) => AiSdkModel) & {
   readonly responses?: (id: string) => AiSdkModel;
 };
 
-/** Build the custom-openai model on the chosen OpenAI API surface (#6645). */
+/** Build an OpenAI-provider model on the chosen API surface (#6645, #6654). */
 function modelOnSurface(
   provider: ProviderInstance,
   surface: ReturnType<typeof readCustomApiSurface>,
@@ -126,6 +131,15 @@ function modelOnSurface(
     throw new Error(`AI SDK OpenAI provider has no '${surface}' model factory`);
   }
   return build(modelId);
+}
+
+/** The API surface an adapter's provider is pinned to, read once at construction. */
+function apiSurfaceFor(
+  providerId: SdkProviderId
+): ReturnType<typeof readCustomApiSurface> | undefined {
+  if (providerId === 'custom-openai') return readCustomApiSurface();
+  if (providerId === 'openai') return readDirectOpenAiSurface();
+  return undefined;
 }
 
 /**
@@ -352,8 +366,12 @@ export class SdkAdapter extends BaseAdapter {
   private readonly sdkConfig: SdkAdapterConfig;
   /** Validated base URL for custom-openai provider; undefined for built-ins. */
   private readonly customBaseUrl: string | undefined;
-  /** OpenAI API surface for custom-openai (#6645); undefined for built-ins. */
-  private readonly customApiSurface: ReturnType<typeof readCustomApiSurface> | undefined;
+  /**
+   * OpenAI API surface: always set for custom-openai (#6645); for the direct
+   * `openai` provider only when `OPENAI_BASE_URL` names a non-OpenAI host
+   * (#6654). `undefined` keeps the provider's default surface.
+   */
+  private readonly apiSurface: ReturnType<typeof readCustomApiSurface> | undefined;
   /** Inflight init promise for coalescing concurrent calls (Issue #1438). */
   private initPromise: Promise<void> | undefined;
   /**
@@ -377,8 +395,7 @@ export class SdkAdapter extends BaseAdapter {
     this.sdkProviderId = config.providerId;
     this.sdkConfig = config;
     this.customBaseUrl = resolveAndValidateCustomBaseUrl(config);
-    this.customApiSurface =
-      config.providerId === 'custom-openai' ? readCustomApiSurface() : undefined;
+    this.apiSurface = apiSurfaceFor(config.providerId);
   }
 
   /**
@@ -471,7 +488,10 @@ export class SdkAdapter extends BaseAdapter {
         const mod = await import('@ai-sdk/openai');
         const factory = extractProviderFactory(mod, 'createOpenAI');
         const provider = factory({ apiKey });
-        return { model: provider(this.modelId) };
+        // The provider reads OPENAI_BASE_URL itself; a gateway there gets chat
+        // completions unless NEXUS_CUSTOM_API_SURFACE=responses (#6654).
+        if (this.apiSurface === undefined) return { model: provider(this.modelId) };
+        return { model: modelOnSurface(provider, this.apiSurface, this.modelId) };
       }
       case 'google': {
         const mod = await import('@ai-sdk/google');
@@ -497,7 +517,7 @@ export class SdkAdapter extends BaseAdapter {
         // Chat completions unless NEXUS_CUSTOM_API_SURFACE=responses (#6645):
         // the provider's default is the Responses API, which many gateways lack.
         return {
-          model: modelOnSurface(provider, this.customApiSurface ?? 'chat', this.modelId),
+          model: modelOnSurface(provider, this.apiSurface ?? 'chat', this.modelId),
         };
       }
     }

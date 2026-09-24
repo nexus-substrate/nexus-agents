@@ -152,7 +152,7 @@ const defaultLogger = createLogger({ component: 'voter-agents' });
  */
 function buildLlmVoteResult(
   role: VoterRole,
-  { vote, usage, fallbackFrom }: VoteOutcome,
+  { vote, usage, fallbackFrom, servedModel }: VoteOutcome,
   adapter: IModelAdapter,
   processingTimeMs: number
 ): AgentVoteResult {
@@ -163,6 +163,9 @@ function buildLlmVoteResult(
     source: 'llm',
     cli: adapter.providerId,
     model: adapter.modelId,
+    // #6660: the model that answered, as the adapter reported it — the
+    // outcome row names and prices this one, not the requested `model`.
+    ...(servedModel !== undefined ? { servedModel } : {}),
     // #4392 step 4: which gateway arm served the seat, so the cost rollup
     // prices it by the arm's declaration and not the model id's list price.
     ...(isGatewayModelAdapter(adapter) ? { gatewayArm: adapter.gatewayArm } : {}),

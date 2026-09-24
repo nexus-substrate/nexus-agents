@@ -178,6 +178,26 @@ export function readCustomApiSurface(env: NodeJS.ProcessEnv = process.env): Cust
   );
 }
 
+/** Read by `@ai-sdk/openai` itself; the direct OpenAI adapter never passes a baseURL. */
+const OPENAI_BASE_URL_ENV = 'OPENAI_BASE_URL';
+const OPENAI_API_HOST = 'api.openai.com';
+
+/**
+ * The surface the direct OpenAI adapter (`OPENAI_API_KEY`) calls (#6654).
+ * `undefined` means the provider's own default (the Responses API), exactly
+ * as before: `OPENAI_BASE_URL` unset, blank, or naming `api.openai.com`, and
+ * `NEXUS_CUSTOM_API_SURFACE` is then not read at all. Any other host is an
+ * OpenAI-compatible gateway, so it gets {@link readCustomApiSurface}'s answer:
+ * chat completions unless `NEXUS_CUSTOM_API_SURFACE=responses`.
+ */
+export function readDirectOpenAiSurface(
+  env: NodeJS.ProcessEnv = process.env
+): CustomApiSurface | undefined {
+  const baseUrl = env[OPENAI_BASE_URL_ENV]?.trim() ?? '';
+  if (baseUrl === '' || hostnameOf(baseUrl) === OPENAI_API_HOST) return undefined;
+  return readCustomApiSurface(env);
+}
+
 /**
  * The host of a gateway base URL, for log lines and error messages. A base
  * URL can carry userinfo (`https://user:key@host/v1`), so the full string

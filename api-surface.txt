@@ -400,6 +400,7 @@ InterfaceDeclaration AgentVoteResult
   readonly retriedFrom?: RetriedFrom | undefined
   readonly role: VoterRole
   readonly selectedOption?: string | undefined
+  readonly servedModel?: string | undefined
   readonly source: "error" | "llm" | "simulation" | "unverifiable"
   readonly timing?: undefined | { readonly attempts: readonly SeatAttemptTiming[]; }
   readonly unverifiableSignal?: UnverifiableSignal | undefined
@@ -6424,6 +6425,7 @@ InterfaceDeclaration PanelDiversity
   readonly distinctModels: number
   readonly fallbacks: number
   readonly unclassifiedSeats: number
+  readonly unresolvedSeats?: number | undefined
 InterfaceDeclaration ParallelOptions
   failFast?: boolean | undefined
   maxConcurrency?: number | undefined
