@@ -7,7 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CliToModelAdapter, createCliToModelAdapter } from './cli-to-model-adapter.js';
 import { ModelCapability, ErrorCode, err } from '../core/index.js';
-import { createCallerInputCliError } from './cli-error-helpers.js';
+import { createCallerInputCliError, createCliError } from './cli-error-helpers.js';
 import type { ICliAdapter, CliResponse, CliError } from './types.js';
 
 // ============================================================================
@@ -145,6 +145,26 @@ describe('CliToModelAdapter.complete — requested model (#6599)', () => {
     });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe(ErrorCode.INVALID_INPUT);
+  });
+
+  it('maps a CANCELLED CLI error to an AbortError ModelError (#6691)', async () => {
+    const cli = makeMockCliAdapter({
+      name: 'claude' as const,
+      execute: vi
+        .fn()
+        .mockResolvedValue(
+          err(createCliError('CANCELLED', 'Aborted by caller signal', 'claude'))
+        ),
+    });
+    const res = await new CliToModelAdapter(cli).complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      model: 'claude-3-7-sonnet',
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.name).toBe('AbortError');
+      expect(res.error.message).toBe('Aborted by caller signal');
+    }
   });
 
   it('does not hand one CLI a registry model that belongs to another CLI', async () => {

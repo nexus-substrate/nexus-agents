@@ -268,7 +268,8 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     if (!execResult.ok) {
       // #6613: caller-input errors (e.g. invalid model requested) must not count
       // against the breaker or exhaust half-open probe capacity.
-      if (isCallerInputCliError(execResult.error)) {
+      // #6691: caller cancellations must not count either.
+      if (isCallerInputCliError(execResult.error) || execResult.error.code === 'CANCELLED') {
         breaker.releaseHalfOpenProbe();
         return err(execResult.error);
       }

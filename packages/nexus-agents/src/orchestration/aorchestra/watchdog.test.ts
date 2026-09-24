@@ -122,6 +122,7 @@ describe('watchdog', () => {
 
       expect(observedSignal).toBeDefined();
       expect(observedSignal?.aborted).toBe(true);
+      expect((observedSignal?.reason as Error)?.name).toBe('TimeoutError');
 
       vi.clearAllTimers();
     });
@@ -190,6 +191,47 @@ describe('watchdog', () => {
       outer.abort();
       await expect(done).resolves.toBe('aborted');
       expect(observed?.aborted).toBe(true);
+    });
+
+    it('forwards outer abort reason into the task signal (#6691)', async () => {
+      const outer = new AbortController();
+      let observedReason: unknown;
+      const done = withWatchdog(
+        'code',
+        60_000,
+        (signal) => {
+          return new Promise<string>((resolve) => {
+            signal.addEventListener(
+              'abort',
+              () => {
+                observedReason = signal.reason;
+                resolve('aborted');
+              },
+              { once: true }
+            );
+          });
+        },
+        outer.signal
+      );
+      outer.abort('cancelled via cancel_job');
+      await expect(done).resolves.toBe('aborted');
+      expect(observedReason).toBe('cancelled via cancel_job');
+    });
+
+    it('forwards outer abort reason when outer signal was already aborted (#6691)', async () => {
+      const outer = new AbortController();
+      outer.abort('cancelled via cancel_job');
+      let observedReason: unknown;
+      await withWatchdog(
+        'code',
+        60_000,
+        (signal) => {
+          observedReason = signal.reason;
+          return Promise.resolve('done');
+        },
+        outer.signal
+      );
+      expect(observedReason).toBe('cancelled via cancel_job');
     });
 
     it('starts the task already aborted when the outer signal fired first', async () => {

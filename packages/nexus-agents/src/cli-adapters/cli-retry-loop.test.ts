@@ -176,6 +176,30 @@ describe('executeCliRetryLoop', () => {
     expect(cb.recordFailure).toHaveBeenCalledWith('rate_limit');
   });
 
+  it('does NOT call recordFailure when error is CANCELLED (#6691)', async () => {
+    const cb = makeCircuitBreaker('closed');
+    const executeFn = vi.fn().mockResolvedValue(err(makeError('CANCELLED', false)));
+    const config = makeConfig({ circuitBreaker: cb, maxRetries: 2 });
+
+    const result = await executeCliRetryLoop(executeFn, config);
+
+    expect(result.ok).toBe(false);
+    expect(cb.recordFailure).not.toHaveBeenCalled();
+    expect(executeFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases half-open probe on CANCELLED error (#6691)', async () => {
+    const cb = makeCircuitBreaker('half-open');
+    const executeFn = vi.fn().mockResolvedValue(err(makeError('CANCELLED', false)));
+    const config = makeConfig({ circuitBreaker: cb, maxRetries: 1 });
+
+    const result = await executeCliRetryLoop(executeFn, config);
+
+    expect(result.ok).toBe(false);
+    expect(cb.releaseHalfOpenProbe).toHaveBeenCalledTimes(1);
+    expect(cb.recordFailure).not.toHaveBeenCalled();
+  });
+
   it('does NOT call recordSuccess (caller responsibility)', async () => {
     const cb = makeCircuitBreaker('closed');
     const executeFn = vi.fn().mockResolvedValue(ok(makeResponse()));

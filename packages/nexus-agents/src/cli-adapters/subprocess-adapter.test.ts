@@ -649,8 +649,34 @@ describe('SubprocessCliAdapter', () => {
       expect(mockSpawn).not.toHaveBeenCalled();
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe('TIMEOUT');
+        expect(result.error.code).toBe('CANCELLED');
         expect(result.error.message).toContain('Aborted before spawn');
+      }
+    });
+
+    it('fast-fails with TIMEOUT before spawn when aborted with a timeout reason (#6691)', async () => {
+      const controller = new AbortController();
+      const timeoutErr = new Error('Worker timeout after 100ms');
+      timeoutErr.name = 'TimeoutError';
+      controller.abort(timeoutErr);
+
+      const task: CliTask = { content: 'test' };
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 60_000,
+        allowRetry: false,
+        maxRetries: 0,
+        trackUsage: true,
+        onProgress: undefined,
+        signal: controller.signal,
+      };
+
+      const result = await adapter.executeTask(task, options);
+
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('TIMEOUT');
+        expect(result.error.message).toContain('Execution timed out before spawn');
       }
     });
 
@@ -682,8 +708,42 @@ describe('SubprocessCliAdapter', () => {
       expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error.code).toBe('TIMEOUT');
+        expect(result.error.code).toBe('CANCELLED');
         expect(result.error.message).toContain('Aborted by caller signal');
+      }
+    });
+
+    it('returns TIMEOUT when aborted with a timeout reason mid-execution (#6691)', async () => {
+      adapter.setCommandConfig({ command: 'sleep', args: ['10'] });
+      const task: CliTask = { content: 'test' };
+      const controller = new AbortController();
+
+      const options: ResolvedExecutionOptions = {
+        timeoutMs: 60_000,
+        allowRetry: false,
+        maxRetries: 0,
+        trackUsage: true,
+        onProgress: undefined,
+        signal: controller.signal,
+      };
+
+      const { mockChild } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      await Promise.resolve();
+      const timeoutErr = new Error('Worker timeout after 60000ms');
+      timeoutErr.name = 'TimeoutError';
+      controller.abort(timeoutErr);
+
+      const result = await promise;
+
+      expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('TIMEOUT');
+        expect(result.error.message).toContain('Execution timed out by watchdog');
       }
     });
 

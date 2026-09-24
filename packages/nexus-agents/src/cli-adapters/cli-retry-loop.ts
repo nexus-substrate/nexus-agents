@@ -26,7 +26,7 @@ import type { ILogger } from '../core/index.js';
 import type { CliResponse, CliError, CliErrorCode, CliName } from './types.js';
 import type { ICircuitBreaker, FailureCategory } from './circuit-breaker-types.js';
 import { delay } from '../utils/async-utils.js';
-import { RETRYABLE_ERROR_CODES } from './cli-error-helpers.js';
+import { RETRYABLE_ERROR_CODES, isCallerInputCliError } from './cli-error-helpers.js';
 
 // ============================================================================
 // Types
@@ -144,7 +144,11 @@ export async function executeCliRetryLoop(
 
     // Record failure with circuit breaker if present
     if (config.circuitBreaker !== undefined && config.circuitBreaker !== null) {
-      config.circuitBreaker.recordFailure(categorizeError(lastError));
+      if (lastError.code === 'CANCELLED' || isCallerInputCliError(lastError)) {
+        config.circuitBreaker.releaseHalfOpenProbe();
+      } else {
+        config.circuitBreaker.recordFailure(categorizeError(lastError));
+      }
     }
 
     // Check if we should retry

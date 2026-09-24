@@ -287,6 +287,79 @@ describe('CliCircuitBreakerIntegration', () => {
       expect(custom.getCircuitSnapshots().get('claude')?.state).toBe('half-open');
       expect(custom.getCircuitSnapshots().get('claude')?.halfOpenRequests).toBe(0);
     });
+
+    it('does not count caller-cancelled CLI errors against the breaker (#6691)', async () => {
+      const cancelledError: CliError = {
+        code: 'CANCELLED',
+        message: 'Aborted by caller signal',
+        cli: 'opencode',
+        retryable: false,
+      };
+      const cancelledAdapter = createAdapterReturningError('opencode', cancelledError);
+      const custom = new CliCircuitBreakerIntegration([cancelledAdapter], {
+        perCliConfig: { opencode: { failureThreshold: 2 } },
+      });
+
+      for (let i = 0; i < 5; i++) {
+        const result = await custom.execute(cancelledAdapter, createTask());
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error).toBe(cancelledError);
+        }
+      }
+
+      const snapshot = custom.getCircuitSnapshots().get('opencode');
+      expect(snapshot?.state).toBe('closed');
+      expect(snapshot?.failureCount).toBe(0);
+    });
+
+    it('releases half-open probe budget on CANCELLED error (#6691)', async () => {
+      const cancelledError: CliError = {
+        code: 'CANCELLED',
+        message: 'Aborted by caller signal',
+        cli: 'claude',
+        retryable: false,
+      };
+      let returnCancelled = false;
+      const alternatingAdapter: ICliAdapter = {
+        name: 'claude',
+        execute: vi.fn().mockImplementation(() => {
+          if (returnCancelled) {
+            return Promise.resolve(err(cancelledError));
+          }
+          return Promise.resolve(
+            err({ code: 'TIMEOUT', message: 'timeout', cli: 'claude', retryable: true })
+          );
+        }),
+      } as unknown as ICliAdapter;
+
+      const custom = new CliCircuitBreakerIntegration([alternatingAdapter], {
+        perCliConfig: {
+          claude: {
+            failureThreshold: 1,
+            resetTimeoutMs: 1000,
+            halfOpenMaxRequests: 1,
+            halfOpenSuccessThreshold: 1,
+          },
+        },
+      });
+
+      // 1 timeout failure opens the circuit
+      await custom.execute(alternatingAdapter, createTask());
+      expect(custom.getCircuitSnapshots().get('claude')?.state).toBe('open');
+
+      // Advance past reset timeout into half-open
+      vi.advanceTimersByTime(1001);
+
+      // In half-open state, a CANCELLED error occurs
+      returnCancelled = true;
+      const cancelledResult = await custom.execute(alternatingAdapter, createTask());
+      expect(cancelledResult.ok).toBe(false);
+
+      // The circuit should still be half-open and probe request should not be exhausted
+      expect(custom.getCircuitSnapshots().get('claude')?.state).toBe('half-open');
+      expect(custom.getCircuitSnapshots().get('claude')?.halfOpenRequests).toBe(0);
+    });
   });
 
   describe('execute - fallback behavior', () => {

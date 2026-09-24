@@ -154,6 +154,8 @@ export const CliErrorCode = {
   AUTH_FAILED: 'AUTH_FAILED',
   /** Request timed out */
   TIMEOUT: 'TIMEOUT',
+  /** Request cancelled */
+  CANCELLED: 'CANCELLED',
   /** Rate limited by provider */
   RATE_LIMITED: 'RATE_LIMITED',
   /** Model not available */

@@ -779,6 +779,27 @@ describe('ResilientAdapter', () => {
       expect(breaker.getState()).toBe('closed');
     });
 
+    it('does not count caller cancellations (AbortError) against the breaker (#6691)', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const breaker = registry.getBreaker('claude');
+      const failingAdapter = new ResilientAdapter();
+      failingAdapter.attachCircuitBreakerRegistry(registry);
+
+      const abortError = new ModelError('Aborted by caller signal');
+      abortError.name = 'AbortError';
+      mockComplete.mockReturnValue(Promise.resolve(err(abortError)));
+      vi.mocked(isRateLimitLikeError).mockReturnValue(false);
+
+      const attempts = DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold + 2;
+      for (let i = 0; i < attempts; i++) {
+        const res = await failingAdapter.complete({ messages: [] });
+        expect(res.ok).toBe(false);
+      }
+
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+      expect(breaker.getState()).toBe('closed');
+    });
+
     it('never leaks a secret carried in error.cause into the logged payload', async () => {
       // Hardening (#3423 security review): the secret lives in `error.cause`,
       // not `.message`. The recording path logs only {provider, category}, so a

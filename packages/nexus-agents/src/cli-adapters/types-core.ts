@@ -282,6 +282,7 @@ export type CliErrorCode =
   | 'NOT_AUTHENTICATED' // OAuth/auth required
   | 'RATE_LIMITED' // Rate limit exceeded
   | 'TIMEOUT' // Execution timed out
+  | 'CANCELLED' // Execution cancelled by caller (#6691)
   | 'PARSE_ERROR' // Response parsing failed
   | 'CONNECTION_ERROR' // MCP connection failed
   | 'EXECUTION_ERROR' // CLI returned error

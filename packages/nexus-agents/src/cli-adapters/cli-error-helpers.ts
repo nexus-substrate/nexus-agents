@@ -95,3 +95,55 @@ export function createCallerInputCliError(message: string, cli: CliName): CliErr
 export function isCallerInputCliError(error: CliError): boolean {
   return error.cause instanceof ValidationError;
 }
+
+/**
+ * Checks whether an abort reason indicates a timeout rather than a cancellation (#6691).
+ * Matches TimeoutError / WatchdogTimeoutError names or timeout text in message/string.
+ */
+export function isTimeoutReason(reason: unknown): boolean {
+  if (reason === null || reason === undefined) {
+    return false;
+  }
+  if (typeof reason === 'string') {
+    return isTimeoutText(reason);
+  }
+  if (typeof reason === 'object') {
+    const obj = reason as Record<string, unknown>;
+    if (
+      typeof obj['name'] === 'string' &&
+      (obj['name'] === 'TimeoutError' || obj['name'] === 'WatchdogTimeoutError')
+    ) {
+      return true;
+    }
+    if (typeof obj['message'] === 'string' && isTimeoutText(obj['message'])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Builds an abort CliError, distinguishing caller cancellations ('CANCELLED')
+ * from watchdog timeouts ('TIMEOUT') based on the signal abort reason (#6691).
+ */
+export function createAbortCliError(
+  cli: CliName,
+  reason: unknown,
+  context: 'before_spawn' | 'mid_execution'
+): CliError {
+  if (isTimeoutReason(reason)) {
+    const message =
+      context === 'before_spawn'
+        ? 'Execution timed out before spawn'
+        : 'Execution timed out by watchdog';
+    return createCliError('TIMEOUT', message, cli);
+  }
+  const message = context === 'before_spawn' ? 'Aborted before spawn' : 'Aborted by caller signal';
+  return createCliError('CANCELLED', message, cli);
+}
+
+/** Whether `error` was caused by a caller cancellation (#6691). */
+export function isCancelledCliError(error: CliError): boolean {
+  return error.code === 'CANCELLED';
+}
+

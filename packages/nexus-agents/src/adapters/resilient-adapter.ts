@@ -376,6 +376,14 @@ export class ResilientAdapter implements IResilientAdapter {
     // breaker for every caller of the CLI.
     if (error.code === ErrorCode.INVALID_INPUT) return;
 
+    // #6691: caller cancellations (AbortError) are not a health signal either.
+    if (
+      error.name === 'AbortError' ||
+      (error.cause instanceof Error && error.cause.name === 'AbortError')
+    ) {
+      return;
+    }
+
     const category = mapModelErrorToCategory(error);
     // Skip rate limits: already accounted for by the rate-limit telemetry branch
     // (and the breaker counts them by default). Check BOTH the mapped category

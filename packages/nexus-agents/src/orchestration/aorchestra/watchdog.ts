@@ -94,9 +94,9 @@ export async function withWatchdog<T>(
   // and late OutcomeStore writes.
   const controller = new AbortController();
   const forwardOuterAbort = (): void => {
-    controller.abort();
+    controller.abort(outerSignal?.reason);
   };
-  if (outerSignal?.aborted === true) controller.abort();
+  if (outerSignal?.aborted === true) controller.abort(outerSignal.reason);
   outerSignal?.addEventListener('abort', forwardOuterAbort, { once: true });
   const taskPromise = task(controller.signal);
   const { promise: timeoutPromise, cancel: cancelTimeout } = createTerminationTimer(
@@ -115,7 +115,9 @@ export async function withWatchdog<T>(
     // Idempotent — if abort already fired on timeout, this is a no-op.
     // If the task won the race cleanly, we still abort so any orphan
     // sub-work the task spawned but didn't await sees the cancel.
-    controller.abort();
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
   }
 }
 
@@ -137,8 +139,10 @@ function createTerminationTimer(
       });
       // Abort BEFORE rejecting so any signal listeners (subprocess
       // SIGTERM, fetch cancel) fire before the rejection propagates.
-      controller.abort();
-      reject(new Error(`Worker timeout after ${String(timeoutMs)}ms`));
+      const timeoutError = new Error(`Worker timeout after ${String(timeoutMs)}ms`);
+      timeoutError.name = 'TimeoutError';
+      controller.abort(timeoutError);
+      reject(timeoutError);
     }, timeoutMs);
   });
   const cancel = (): void => {

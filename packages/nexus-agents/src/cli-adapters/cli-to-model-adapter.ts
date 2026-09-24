@@ -191,7 +191,13 @@ export class CliToModelAdapter implements IModelAdapter {
     // #6599: caller input (e.g. an unresolvable requested model) keeps its
     // identity across the bridge, so the breaker can decline to count it.
     const code = isCallerInputCliError(cliError) ? { code: ErrorCode.INVALID_INPUT } : {};
-    return new ModelError(cliError.message, { ...options, ...code });
+    const err = new ModelError(cliError.message, { ...options, ...code });
+    // #6691: cancelled CLI calls keep their AbortError identity across the bridge
+    // so downstream retry and circuit-breaker layers do not record them as failures.
+    if (cliError.code === 'CANCELLED') {
+      err.name = 'AbortError';
+    }
+    return err;
   }
 
   /**

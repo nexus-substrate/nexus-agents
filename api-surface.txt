@@ -1627,7 +1627,7 @@ InterfaceDeclaration CliError
   readonly routedCli?: "claude" | "codex" | "gemini" | "opencode" | undefined
   readonly routedDurationMs?: number | undefined
 TypeAliasDeclaration CliErrorCode
-  = 'BUDGET_EXCEEDED' | 'CONNECTION_ERROR' | 'EXECUTION_ERROR' | 'NOT_AUTHENTICATED' | 'NOT_FOUND' | 'PARSE_ERROR' | 'RATE_LIMITED' | 'TIMEOUT' | 'UNKNOWN' | 'UNSUPPORTED_VERSION'
+  = 'BUDGET_EXCEEDED' | 'CANCELLED' | 'CONNECTION_ERROR' | 'EXECUTION_ERROR' | 'NOT_AUTHENTICATED' | 'NOT_FOUND' | 'PARSE_ERROR' | 'RATE_LIMITED' | 'TIMEOUT' | 'UNKNOWN' | 'UNSUPPORTED_VERSION'
 InterfaceDeclaration CliHealthResult
   readonly checkedAt: Date
   readonly healthy: boolean
