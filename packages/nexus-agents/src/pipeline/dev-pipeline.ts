@@ -34,7 +34,8 @@ import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
 import {
   EXTERNAL_CONTENT_TRUST_TIER,
-  resolveContentTrustTier,
+  resolveContentTrustProvenance,
+  type ContentTrustProvenance,
 } from '../security/content-trust-tier.js';
 import type { TrustTier } from '../security/trust-types.js';
 import type { PolicyContext } from './policy-engine.js';
@@ -464,16 +465,28 @@ export interface DevPipelineOptions {
    * `run` entry point thread `RequestContext.trustTier`; the auto-remediation
    * IMPLEMENT path may pass `'1'` only because #3643's typed RemediationPlan +
    * CapabilityLedger confine untrusted input upstream (it also sets
-   * {@link researchOverride}, so no external source feeds that run).
+   * {@link researchOverride}, so no external source feeds that run). Since
+   * #6795 such a caller must ALSO declare {@link sourceTrustTier} `'1'`: the
+   * caller tier alone no longer vouches for the task text.
    *
    * The consensus→execute policy snapshot does NOT receive this value directly.
-   * It receives the CONTENT tier: the least-trusted of this caller tier and each
+   * It receives the CONTENT tier: the least-trusted of this caller tier, the
+   * task content's tier ({@link sourceTrustTier}, 3 when omitted) and each
    * source that fed a stage — fresh or resumed research counts as external
    * ({@link EXTERNAL_CONTENT_TRUST_TIER}); a `researchOverride` adds no source.
-   * **When undefined the snapshot stays empty and the engine defaults to
+   * **When undefined the snapshot carries no tier and the engine defaults to
    * untrusted (4), fail-closed** — never infer a trusted tier from absence.
    */
   readonly trustTier?: string | undefined;
+  /**
+   * The caller's DECLARED tier for the task content itself (#6795) — same enum
+   * and meaning as `memory_write`'s `sourceTrustTier`. Omitted means Tier 3
+   * (Untrusted): a trusted caller can relay content it did not write. The
+   * content tier is the least-trusted of this, {@link trustTier} and each
+   * measured source, so a declaration never raises trust above the caller.
+   * Recorded with the caller tier in the gate's `pipelineState.trustProvenance`.
+   */
+  readonly sourceTrustTier?: TrustTier | undefined;
   /**
    * Durable, hash-chained audit logger (#3710). When supplied (the MCP server
    * threads its single startup `auditLogger`), the consensus→execute policy gate
@@ -545,7 +558,7 @@ async function runDevPipelineInner(
   sid: string | undefined,
   prior: PipelineCheckpointState | null
 ): Promise<DevPipelineResult> {
-  const { beliefMemory: bm, auditLogger, trustTier } = options ?? {};
+  const { beliefMemory: bm, auditLogger, trustTier, sourceTrustTier } = options ?? {};
 
   // Phases 1-2: Research + Plan/Vote
   const { planResult, researchMaturity, researchSourceTiers } = await runPlanningPhase(
@@ -573,9 +586,11 @@ async function runDevPipelineInner(
   // evaluator); emits policy.evaluated BEFORE any throw so blocked runs are
   // audited. WARN by default (block opt-in via NEXUS_POLICY_GATE_MODE).
   // The gate receives the CONTENT tier, not the caller's (#6751).
-  const contentTier = resolveContentTrustTier(trustTier, researchSourceTiers);
-  logger.debug('Consensus→execute content trust tier', { callerTier: trustTier, contentTier });
-  enforceConsensusExecutePolicy(sid, contentTier, auditLogger);
+  // The task string's own provenance is the caller's declaration, or Tier 3
+  // when undeclared (#6795); the declaration is recorded, not just applied.
+  const provenance = resolveContentTrustProvenance(trustTier, researchSourceTiers, sourceTrustTier);
+  logger.debug('Consensus→execute content trust tier', { ...provenance });
+  enforceConsensusExecutePolicy(sid, provenance, auditLogger);
 
   // Phase 3: Decompose
   const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, {
@@ -624,9 +639,10 @@ async function runDevPipelineInner(
  *
  * Mode resolves via `getGateEnforcementMode()`: WARN by default, block/off
  * opt-in via `NEXUS_POLICY_GATE_MODE`. The `trustTier` is the CONTENT tier from
- * {@link resolveContentTrustTier} (#6751): the least-trusted of the caller's
- * `RequestContext.trustTier` (#3712) and each source that fed the run.
- * **When undefined (no caller threaded a tier), the snapshot stays empty, so the
+ * {@link resolveContentTrustProvenance} (#6751, #6795): the least-trusted of the
+ * caller's `RequestContext.trustTier` (#3712), the task content's declared tier
+ * (Tier 3 when undeclared) and each source that fed the run.
+ * **When undefined (no caller threaded a tier), the snapshot has no tier, so the
  * engine defaults the missing tier to untrusted (4), fail-closed** — never infer
  * a trusted tier from absence. Under
  * WARN a violation logs + continues (cond. 3); under block it throws
@@ -634,9 +650,10 @@ async function runDevPipelineInner(
  */
 function enforceConsensusExecutePolicy(
   sessionId: string | undefined,
-  trustTier: string | undefined,
+  provenance: ContentTrustProvenance,
   auditLogger: IAuditLogger | undefined
 ): void {
+  const trustTier = provenance.contentTier;
   const mode = getGateEnforcementMode();
   if (mode === 'off') return;
 
@@ -651,7 +668,13 @@ function enforceConsensusExecutePolicy(
     // Inline narrowing of the content tier into the typed snapshot (#3712):
     // only a real string tier populates it; undefined keeps the snapshot empty
     // so the engine fail-closes to untrusted (4). Absence = untrusted.
-    pipelineState: typeof trustTier === 'string' ? { trustTier } : {},
+    // `trustProvenance` is record-only (#6795): no rule reads it, and it is
+    // present on both branches so an unmeasured caller's declaration is
+    // recorded too.
+    pipelineState:
+      typeof trustTier === 'string'
+        ? { trustTier, trustProvenance: provenance }
+        : { trustProvenance: provenance },
   };
 
   // evaluatePipelinePolicy emits policy.evaluated on the shared bus BEFORE it
@@ -930,11 +953,8 @@ async function runImplSecurityPhase(
   // security finding. In 'advisory' mode we record feedback but never fail.
   const qaGate = await runQualityGateStage(stages, qualityGateMode);
   // #6792: the gate ran scripts where the implement expert edited files.
-  const warnings = gateWorkspaceWarningFields(
-    stages,
-    qualityGateMode,
-    implResult.totalIterations > 0
-  );
+  const implRan = implResult.totalIterations > 0;
+  const warnings = gateWorkspaceWarningFields(stages, qualityGateMode, implRan);
   if (qualityGateMode === 'blocking' && !qaGate.passed) {
     return {
       completed: false,

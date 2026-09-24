@@ -19,6 +19,7 @@
 
 import { createLogger, getErrorMessage } from '../core/index.js';
 import { createAuditTrail } from './audit-trail.js';
+import { toContentTrustProvenanceRecord } from './content-trust-tier.js';
 import type {
   AuditEvent as SecurityAuditEvent,
   AuditTrail,
@@ -85,6 +86,10 @@ function pipelinePolicyMetadata(e: PolicyEvent): Record<string, unknown> {
     ...(e.stageType !== undefined ? { stageType: e.stageType } : {}),
     ...(e.recordKind !== undefined ? { recordKind: e.recordKind } : {}),
     ...(e.violationCount !== undefined ? { violationCount: e.violationCount } : {}),
+    // #6795: the gate's trust provenance, with absence written out.
+    ...(e.trustProvenance !== undefined
+      ? { trustProvenance: toContentTrustProvenanceRecord(e.trustProvenance) }
+      : {}),
   };
 }
 

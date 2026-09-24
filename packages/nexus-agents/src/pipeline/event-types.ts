@@ -8,6 +8,8 @@
  * @module pipeline/event-types
  */
 
+import type { ContentTrustProvenanceRecord } from '../security/content-trust-tier.js';
+
 // ============================================================================
 // Event Type Literals
 // ============================================================================
@@ -145,6 +147,11 @@ interface PolicyEvaluatedEvent extends BaseEvent {
   readonly executionId: string;
   readonly gateId: string;
   readonly decision: string;
+  /**
+   * #6795: how the gate's content tier was reached, with absence written out.
+   * Set by the dev-pipeline consensus→execute gate; absent elsewhere.
+   */
+  readonly trustProvenance?: ContentTrustProvenanceRecord;
 }
 
 /** Artifact events. */

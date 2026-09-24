@@ -21,4 +21,4 @@ Write a memory entry to a specific backend. Supports session, belief, agentic, a
 | `backend` | enum | yes | one of: session \| belief \| agentic \| adaptive \| typed | Target memory backend: session (learnings), belief (triples), agentic (knowledge), adaptive (priority-scored), typed (MIRIX-style semantic) |
 | `confidence` | enum | no | one of: high \| medium \| low; default medium | Confidence level (default: medium) |
 | `metadata` | object | no | — | Optional key-value metadata tags |
-| `sourceTrustTier` | enum | no | one of: 1 \| 2 \| 3 \| 4 | Trust tier ('1'-'4') of the content's original source when it did not come from the caller, e.g. '3' for external web content. The stored tier is the least-trusted of this and the caller's tier. |
+| `sourceTrustTier` | enum | no | one of: 1 \| 2 \| 3 \| 4 | Trust tier ('1'-'4') of where the content came from: '1' only for content the caller authored or took from repo files, '3' for external web or issue text. Omitted means '3'. The stored tier is the least-trusted of this and the caller's measured tier, so it can lower trust, never raise it; when the caller is unmeasured, a declaration counts as at most '3'. |

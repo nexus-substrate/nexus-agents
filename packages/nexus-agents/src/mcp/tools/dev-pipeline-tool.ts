@@ -20,6 +20,7 @@ import { resolveInsideRoot } from '../../security/safe-path.js';
 import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
 import { resolve } from 'node:path';
 import type { DevPipelineResult, DevPipelineOptions } from '../../pipeline/dev-pipeline.js';
+import { buildPipelineOptions } from './dev-pipeline-options.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
 import { createTaskTracker, detectBackend } from '../../pipeline/task-tracker.js';
@@ -27,6 +28,8 @@ import { getToolAnnotations } from '../tool-annotations.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { measuredTrustTier } from '../middleware/request-context.js';
+import type { TrustTier } from '../../security/trust-types.js';
+import { TaskSourceTrustTierSchema } from './task-source-trust-tier.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
 import {
   toolStructuredError,
@@ -71,6 +74,8 @@ function dispatchNoteFor(dryRun: boolean): string {
 export const DevPipelineInputSchema = z.object({
   /** Direct task instructions. */
   task: z.string().max(10000).optional().describe('Direct task instructions (what to build)'),
+  /** Declared provenance of the task text (#6795); omitted means '3'. */
+  sourceTrustTier: TaskSourceTrustTierSchema,
   /** Path to a plan file (.md, .yaml, .txt) to use as input. */
   planFile: z.string().max(500).optional().describe('Path to a plan/spec file to use as input'),
   /** Whether to run in dry-run mode (plan+vote only, no implementation). */
@@ -304,7 +309,9 @@ export async function runDevPipelineForGoal(
   trustTier?: string,
   dryRun?: boolean,
   /** `run`'s async-job cancel signal (#6305): checked before every stage. */
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** `run`'s declared provenance of the goal text (#6795); omitted means '3'. */
+  sourceTrustTier?: TrustTier
 ): Promise<DevPipelineResult> {
   // #4806: `dryRun` is the one pipeline option `run` forwards. `mode` and
   // `qualityGate` stay pipeline-specific vocabulary — a caller who wants those
@@ -328,6 +335,7 @@ export async function runDevPipelineForGoal(
     // `dev-pipeline.ts:367` never fired and a dry run implemented for real.
     ...(input.dryRun ? { dryRun: true as const } : {}),
     ...(signal !== undefined ? { signal } : {}),
+    ...(sourceTrustTier !== undefined ? { sourceTrustTier } : {}),
   });
 }
 
@@ -346,35 +354,6 @@ const RUN_DEV_PIPELINE_DESCRIPTION =
  * undefined (no caller context), the consensus→execute seam fail-closes to
  * untrusted (tier 4) — absence is never treated as trusted.
  */
-/**
- * Build the {@link DevPipelineOptions} from validated input plus the threaded
- * caller context. Extracted so the handler stays under the complexity cap. The
- * `auditLogger` (#3710) is included only when the server threaded one.
- */
-function buildPipelineOptions(
-  input: DevPipelineInput,
-  trustTier: string | undefined,
-  auditLogger: IAuditLogger | undefined
-): DevPipelineOptions {
-  return {
-    ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
-    ...(input.dryRun ? { dryRun: true } : {}),
-    ...(input.mode === 'harness' ? { mode: 'harness' as const } : {}),
-    ...(input.qualityGate !== 'off' ? { qualityGate: input.qualityGate } : {}),
-    // #4939: both were advertised, bounds-checked and defaulted since the tool
-    // shipped, and neither was ever read off `parsed.data`.
-    maxVoteIterations: input.maxVoteIterations,
-    maxQaIterations: input.maxQaIterations,
-    // #6736: advertised as a per-stage deadline since the tool shipped, and
-    // never read.
-    ...(input.timeoutMs !== undefined ? { stageTimeoutMs: input.timeoutMs } : {}),
-    ...(trustTier !== undefined ? { trustTier } : {}),
-    // #3710: thread the server's durable audit logger so the consensus→execute
-    // policy gate persists decisions to the shared hash chain.
-    ...(auditLogger !== undefined ? { auditLogger } : {}),
-  };
-}
-
 /**
  * Run the pipeline body + shape the structured success envelope. The
  * sync handler awaits this inline; the async dispatcher backgrounds it via

@@ -10,6 +10,7 @@
 import { createLogger } from '../core/index.js';
 
 import type { PolicyGateSpec } from './task-contract.js';
+import type { ContentTrustProvenance } from '../security/content-trust-tier.js';
 
 const logger = createLogger({ component: 'PolicyEngine' });
 
@@ -61,6 +62,13 @@ export interface PipelineStateSnapshot {
    * case rather than the safe one.
    */
   readonly trustTier?: string;
+  /**
+   * How `trustTier` was reached, when it is a content tier (#6795): the
+   * measured caller tier, the caller's declared `sourceTrustTier`, whether the
+   * declaration was clamped, and the measured source tiers. RECORD-ONLY — no
+   * rule reads it; it rides in the gate's context so the decision is auditable.
+   */
+  readonly trustProvenance?: ContentTrustProvenance;
 }
 
 /** Context provided to policy rules for evaluation. */

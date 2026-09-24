@@ -115,7 +115,10 @@ describe('MCP Server', () => {
       const connectResult = await connectTransport(server, serverTransport, logger);
 
       expect(connectResult.ok).toBe(true);
-      expect(mockLogger.info).toHaveBeenCalledWith('Connecting server to transport');
+      // An in-memory transport is not one the server can vouch for (#6795).
+      expect(mockLogger.info).toHaveBeenCalledWith('Connecting server to transport', {
+        transport: 'unidentified',
+      });
 
       // Clean up
       await clientTransport.close();

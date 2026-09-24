@@ -226,7 +226,8 @@ export interface AgentExecutorConfig {
   readonly budget?: AgentBudgetConfig | undefined;
   /**
    * Caller authentication from measuredTrustTier(), recorded at stage entry.
-   * Absent callerInfo means 'unmeasured'; no callerInfo producer exists today.
+   * Absent callerInfo means 'unmeasured'; the MCP server supplies the connected
+   * transport as callerInfo (#6795), so a stdio caller records Tier 1.
    * Record-only: no stage refuses on this value. Takes precedence over trustTier.
    */
   readonly callerTrustTier?: string | undefined;

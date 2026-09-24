@@ -3,12 +3,11 @@
  * (Source: Issue #185 Phase 1)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   generateRequestId,
   generateSessionId,
   createRequestContext,
-  extractCallerInfo,
   contextForLogging,
   isRequestContext,
   type RequestContext,
@@ -85,42 +84,6 @@ describe('RequestContext', () => {
       expect(() => {
         (ctx as { requestId: string }).requestId = 'modified';
       }).toThrow();
-    });
-  });
-
-  describe('extractCallerInfo', () => {
-    const originalEnv = process.env;
-
-    beforeEach(() => {
-      process.env = { ...originalEnv };
-    });
-
-    afterEach(() => {
-      process.env = originalEnv;
-    });
-
-    it('should return empty object when no metadata', () => {
-      const caller = extractCallerInfo();
-      expect(caller).toEqual({});
-    });
-
-    it('should extract clientId from metadata', () => {
-      const caller = extractCallerInfo({ clientId: 'test-client' });
-      expect(caller.clientId).toBe('test-client');
-    });
-
-    it('should detect Claude CLI from environment', () => {
-      process.env['CLAUDE_SESSION_ID'] = 'claude_sess_123';
-      const caller = extractCallerInfo();
-      expect(caller.clientId).toBe('claude-cli');
-      expect(caller.sessionId).toBe('claude_sess_123');
-    });
-
-    it('should detect Gemini CLI from environment', () => {
-      process.env['GEMINI_SESSION_ID'] = 'gemini_sess_456';
-      const caller = extractCallerInfo();
-      expect(caller.clientId).toBe('gemini-cli');
-      expect(caller.sessionId).toBe('gemini_sess_456');
     });
   });
 
