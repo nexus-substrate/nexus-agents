@@ -7,13 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  planOptionalParams,
-  parameterSeverity,
-  recordWouldHaveSelfHealed,
-  getWouldHaveSelfHealedCounts,
-  _resetWouldHaveSelfHealed,
-} from './optional-params.js';
+import { planOptionalParams, parameterSeverity } from './optional-params.js';
 import { _resetTemperatureWarnings } from '../config/temperature-support.js';
 import { modelSupportsParameter } from '../config/model-parameter-support.js';
 import type { CompletionRequest } from '../core/index.js';
@@ -116,48 +110,5 @@ describe('parameterSeverity (#4069)', () => {
 
   it.each(['max_tokens', 'stop', 'foo'])('classifies %s as cosmetic', (param) => {
     expect(parameterSeverity(param)).toBe('cosmetic');
-  });
-});
-
-describe('would-have-self-healed counter (#4069)', () => {
-  beforeEach(() => {
-    _resetTemperatureWarnings();
-    _resetWouldHaveSelfHealed();
-  });
-
-  it('increments on a proactive temperature drop, keyed by model:param', () => {
-    expect(getWouldHaveSelfHealedCounts().size).toBe(0);
-    planOptionalParams(makeRequest({ temperature: 0.3 }), 'claude-opus-4-8');
-    expect(getWouldHaveSelfHealedCounts().get('claude-opus-4-8:temperature')).toBe(1);
-  });
-
-  it('counts every drop (not deduped) — reflects how often #4071 would have fired', () => {
-    planOptionalParams(makeRequest({ temperature: 0.3 }), 'o3-mini');
-    planOptionalParams(makeRequest({ temperature: 0.3 }), 'o3-mini');
-    expect(getWouldHaveSelfHealedCounts().get('o3-mini:temperature')).toBe(2);
-  });
-
-  it('does not increment for supported models (no drop)', () => {
-    planOptionalParams(makeRequest({ temperature: 0.5 }), 'gpt-4o');
-    expect(getWouldHaveSelfHealedCounts().size).toBe(0);
-  });
-
-  it('recordWouldHaveSelfHealed increments directly (reactive-path entry)', () => {
-    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
-    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
-    expect(getWouldHaveSelfHealedCounts().get('gpt-5.6-terra:temperature')).toBe(2);
-  });
-
-  it('getWouldHaveSelfHealedCounts returns a defensive copy', () => {
-    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
-    const snapshot = getWouldHaveSelfHealedCounts() as Map<string, number>;
-    snapshot.set('gpt-5.6-terra:temperature', 999);
-    expect(getWouldHaveSelfHealedCounts().get('gpt-5.6-terra:temperature')).toBe(1);
-  });
-
-  it('reset clears the counter', () => {
-    recordWouldHaveSelfHealed('gpt-5.6-terra', 'temperature');
-    _resetWouldHaveSelfHealed();
-    expect(getWouldHaveSelfHealedCounts().size).toBe(0);
   });
 });
