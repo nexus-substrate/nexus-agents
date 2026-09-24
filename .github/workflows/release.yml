@@ -18,10 +18,101 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false # Never cancel a release mid-flight
 jobs:
+  # Pre-publish install smoke (#6770, option B). The Version Packages PR is
+  # UNGATED BY CONSTRUCTION: changesets/action opens it with GITHUB_TOKEN, and
+  # GitHub starts no workflow for an event that token created, so every
+  # pull_request check on it (npm-verify.yml included) ends with zero jobs and
+  # an empty status rollup. That stays true until #6788 (option A: open the PR
+  # with an App/PAT token, an owner action) lands. Until then, THIS job is the
+  # only install check that runs before a version reaches npm, and it gates the
+  # publish, not the PR.
+  #
+  # It runs on every push to main but only SMOKES when this run will publish.
+  # Both publish routes in the release job share one precondition: zero
+  # non-empty pending changesets at $GITHUB_SHA (changesets/action enters
+  # publish mode instead of PR mode, and the #2382 fallback stands down
+  # otherwise) AND a committed version npm does not have yet. Any other push
+  # only opens or updates the version PR, which publishes nothing.
+  #
+  # Scope: the nexus-agents tarball only. nexus-memory is a devDependency that
+  # tsup inlines into nexus-agents' dist, so its code IS exercised here, but
+  # its own published tarball is not smoked.
+  #
+  # A separate job so the tarball's code is installed and run without the
+  # release job's contents/pull-requests/id-token write permissions. It packs
+  # the same way `pnpm release` does (Node 24, npm 11, `pnpm build`, then
+  # scripts/stage-publish.ts), the same way the SBOM step below packs.
+  publish-smoke:
+    name: Pre-publish install smoke
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-node
+        with:
+          # Same Node as the publish job (#2524).
+          node-version: '24'
+
+      - name: Pin npm 11, as the publish job does (#6486)
+        shell: bash
+        run: npm install -g npm@11
+
+      - name: Decide whether this run publishes
+        id: publish-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Read the commit object, not the tree (#4487): the same inputs the
+          # release job's fallback decision reads.
+          pending=$(pnpm exec tsx scripts/count-pending-changesets.ts "$GITHUB_SHA")
+          if [ "$pending" -gt 0 ]; then
+            echo "$pending non-empty changeset(s) pending: this run opens or updates the version PR and publishes nothing. No smoke."
+            echo "will_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          local_version=$(git show "$GITHUB_SHA:packages/nexus-agents/package.json" | jq -r '.version')
+          # A failed lookup is unmeasured, never "nothing to publish" (#4927):
+          # guessing "not ahead" here would skip the smoke on a real publish.
+          if ! published_version=$(npm view nexus-agents version 2>/dev/null) || [ -z "$published_version" ]; then
+            echo "::error::npm view nexus-agents version failed, so whether this run publishes is unmeasured. Not skipping the smoke on a guess; re-run once the registry answers."
+            exit 1
+          fi
+          larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
+          echo "nexus-agents: package.json=$local_version npm=$published_version"
+          if [ "$local_version" != "$published_version" ] && [ "$larger" = "$local_version" ]; then
+            echo "No pending changesets and nexus-agents is ahead of npm: this run publishes. Smoking the packed tarball first."
+            echo "will_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No pending changesets and nexus-agents is not ahead of npm: nothing new to publish. No smoke."
+            echo "will_publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and pack the tarball the publish will ship
+        if: steps.publish-path.outputs.will_publish == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm build
+          pnpm exec tsx scripts/stage-publish.ts --pack "${RUNNER_TEMP}/publish-smoke"
+
+      - name: Install the packed tarball and smoke it
+        if: steps.publish-path.outputs.will_publish == 'true'
+        uses: ./.github/actions/tarball-smoke
+        with:
+          pack-dir: ${{ runner.temp }}/publish-smoke
+
   # Automated release via changesets (runs on push to main)
   release:
     name: Release
     if: github.event_name == 'push'
+    # #6770: a failed smoke skips this job, so nothing is published. When the
+    # run would not publish, the smoke job passes without smoking.
+    needs: publish-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:

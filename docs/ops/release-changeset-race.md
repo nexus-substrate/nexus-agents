@@ -154,6 +154,14 @@ The race is rare. To minimize the chance of triggering it:
 - **Never `workflow_dispatch` a publish from a non-`main` ref.** The `manual-publish` job's `Guard — main only` step now fails this, but the discipline still matters.
 - **Watch for the symptom early**: after merging a release PR, if `npm view nexus-agents version` still shows the old version after ~5 minutes, check for the skew. The `Detect publish-race version skew` step auto-recovers `package.json`-ahead; the `Detect npm-ahead version skew` step fails loudly on the inverse.
 
+## The Version Packages PR is ungated (#6770)
+
+No `pull_request` check evaluates the "Version Packages" PR. `changesets/action` opens it with `secrets.GITHUB_TOKEN`, and GitHub starts no workflow for an event that token created. Every `pull_request` workflow on that PR, `npm-verify.yml` included, ends `failure` with zero jobs. The status rollup is empty. A readiness check of the form "zero failures, zero pending" is vacuously true there. Treat an empty rollup on a version PR as **ungated**, not green.
+
+This stays true until #6788 lands: the owner opens the PR with a GitHub App or PAT token (option A).
+
+Until then, the pre-publish gate lives in `release.yml`. The `publish-smoke` job runs before the `release` job on every push to `main`. It smokes only when the run will publish, which means zero non-empty pending changesets at the pushed commit and a `nexus-agents` version that npm does not have yet. It packs the tarball the way `pnpm release` does (Node 24, npm 11, `pnpm build`, `scripts/stage-publish.ts`). It then installs the tarball in clean containers (`ignore-scripts`, `npm12-strict`, `pnpm`) through `.github/actions/tarball-smoke`, the same action `npm-verify.yml` uses. The smoke checks `--version`, `--help`, `doctor`, the MCP handshake, SQLite and the native grammars. A failure skips the `release` job, so nothing is published. If `npm view` fails, the job fails rather than skipping the smoke. The gate covers the `nexus-agents` tarball only. `nexus-memory` code is inlined into it and exercised, but its own tarball is not smoked. The `manual-publish` `workflow_dispatch` job is not gated by this job.
+
 ## See also
 
 - `#2382` — original ops issue documenting the race.

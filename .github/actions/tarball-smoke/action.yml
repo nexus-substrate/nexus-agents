@@ -1,0 +1,58 @@
+name: 'Packed-tarball install smoke'
+description: >-
+  Install a packed nexus-agents tarball into a clean container and run
+  scripts/verify-npm-install.sh against it (binary on PATH, --version, --help,
+  doctor, MCP stdio handshake, SQLite, native grammars). One definition shared
+  by npm-verify.yml (every PR and push) and release.yml (the publish gate,
+  #6770), so the two cannot drift. Requires a checkout first: the image is built
+  from Dockerfile.npm-verify and the script it copies.
+
+inputs:
+  pack-dir:
+    description: >-
+      Directory holding exactly one nexus-agents-*.tgz, as written by
+      `pnpm exec tsx scripts/stage-publish.ts --pack <dir>`.
+    required: true
+  modes:
+    description: >-
+      Space-separated NEXUS_VERIFY_INSTALL_MODE values, each run in a fresh
+      container. The default is the pre-publish set: the #5427 ignore-scripts
+      path plus the two consent-gated installs that blocked real users (#6481).
+    default: 'ignore-scripts npm12-strict pnpm'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build verification image
+      shell: bash
+      run: docker build -t nexus-verify -f Dockerfile.npm-verify .
+
+    - name: Install the tarball and smoke it in each mode
+      shell: bash
+      env:
+        PACK_DIR: ${{ inputs.pack-dir }}
+        MODES: ${{ inputs.modes }}
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        tarballs=("$PACK_DIR"/nexus-agents-*.tgz)
+        # Exactly one: zero means nothing was packed, and two means a stale
+        # tarball could be the one tested while the fresh one ships.
+        if [[ ${#tarballs[@]} -ne 1 ]]; then
+          echo "::error::expected exactly one nexus-agents-*.tgz in $PACK_DIR, found ${#tarballs[@]}; nothing was smoked."
+          exit 1
+        fi
+        read -r -a mode_list <<<"$MODES"
+        # Name the empty case: no modes would run no container and pass.
+        if [[ ${#mode_list[@]} -eq 0 ]]; then
+          echo "::error::no install modes given, so the smoke would test nothing."
+          exit 1
+        fi
+        echo "Smoking $(basename "${tarballs[0]}") in: ${mode_list[*]}"
+        for mode in "${mode_list[@]}"; do
+          echo "::group::$mode"
+          docker run --rm -e NEXUS_VERIFY_INSTALL_MODE="$mode" \
+            -v "${tarballs[0]}:/pkg.tgz:ro" nexus-verify \
+            bash /home/verifier/verify.sh /pkg.tgz
+          echo "::endgroup::"
+        done

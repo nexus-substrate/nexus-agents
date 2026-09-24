@@ -26,6 +26,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'Dockerfile.npm-verify'
       - '.github/workflows/npm-verify.yml'
+      - '.github/actions/tarball-smoke/**'
   push:
     branches: [main]
   schedule:
@@ -66,33 +67,18 @@ jobs:
           pnpm exec tsx scripts/stage-publish.ts --pack "${{ runner.temp }}"
           ls "${{ runner.temp }}"/*.tgz
 
-      - name: Build verification image
-        run: docker build -t nexus-verify -f Dockerfile.npm-verify .
-
-      - name: Run smoke test against pre-publish tarball
-        run: |
-          TARBALL=$(ls "${{ runner.temp }}"/nexus-agents-*.tgz | head -1)
-          # Keep the pre-publish tarball on the #5427 ignore-scripts path; the
-          # five-mode matrix below verifies packages only after publication.
-          docker run --rm -e NEXUS_VERIFY_INSTALL_MODE=ignore-scripts \
-            -v "${TARBALL}:/pkg.tgz:ro" nexus-verify \
-            bash /home/verifier/verify.sh /pkg.tgz
-
-      # #6481. The two consent-gated configurations that BLOCKED a real install:
-      # npm 12 with strict-allow-scripts (exit 1) and pnpm (a terminal install
-      # stops at the approve-builds prompt; non-interactively it prints the same
-      # list as "Ignored build scripts", which verify.sh fails on). Run against
-      # the pre-publish tarball so a regression fails the PR, not the release.
-      - name: Consent-gated installs of the pre-publish tarball (npm12-strict, pnpm)
-        run: |
-          TARBALL=$(ls "${{ runner.temp }}"/nexus-agents-*.tgz | head -1)
-          for mode in npm12-strict pnpm; do
-            echo "::group::$mode"
-            docker run --rm -e NEXUS_VERIFY_INSTALL_MODE=$mode \
-              -v "${TARBALL}:/pkg.tgz:ro" nexus-verify \
-              bash /home/verifier/verify.sh /pkg.tgz
-            echo "::endgroup::"
-          done
+      # The #5427 ignore-scripts path, then the two consent-gated configurations
+      # that BLOCKED a real install (#6481): npm 12 with strict-allow-scripts
+      # (exit 1) and pnpm (a terminal install stops at the approve-builds
+      # prompt; non-interactively it prints the same list as "Ignored build
+      # scripts", which verify.sh fails on). The six-mode matrix below verifies
+      # packages only after publication. release.yml runs this same action
+      # before publishing (#6770), because on the Version Packages PR this
+      # workflow never runs (a GITHUB_TOKEN-opened PR triggers no workflows).
+      - name: Smoke the pre-publish tarball
+        uses: ./.github/actions/tarball-smoke
+        with:
+          pack-dir: ${{ runner.temp }}
 
       # #5427. Measures what runs on a USER's machine at install time, so it
       # installs the packed tarball with npm rather than reading the workspace:
