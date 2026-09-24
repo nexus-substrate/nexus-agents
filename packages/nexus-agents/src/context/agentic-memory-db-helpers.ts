@@ -14,11 +14,9 @@ import type {
   AgenticMemoryEntry,
 } from './agentic-memory-types.js';
 // Shared utilities per ADR-0013
-import {
-  memoryRowToEntry,
-  type UnreadableMemoryRow,
-} from '../utils/memory-db-utils.js';
+import { memoryRowToEntry, type UnreadableMemoryRow } from '../utils/memory-db-utils.js';
 import { extractAttributes } from './agentic-memory-extraction.js';
+import { buildFtsMatchQuery } from './memory-operations.js';
 import { createLogger } from '../core/index.js';
 import { type Result, ok } from '../core/result.js';
 
@@ -124,11 +122,8 @@ export function searchWithAttributes(
   limit: number,
   extractionConfig: ExtractionConfig
 ): AgenticMemoryEntry[] {
-  const sanitized = query
-    .replace(/[*()":^]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (sanitized.length === 0) return [];
+  const matchQuery = buildFtsMatchQuery(query);
+  if (matchQuery.length === 0) return [];
 
   const stmt = db.prepare<MemoryRow>(`
     SELECT m.key, m.value, m.metadata, m.created_at, m.accessed_at, m.expires_at
@@ -136,7 +131,7 @@ export function searchWithAttributes(
     WHERE memories_fts MATCH ? ORDER BY rank LIMIT ?
   `);
 
-  const rows = stmt.all(sanitized, limit);
+  const rows = stmt.all(matchQuery, limit);
   return collectReadable(rows, extractionConfig, 'searchWithAttributes');
 }
 

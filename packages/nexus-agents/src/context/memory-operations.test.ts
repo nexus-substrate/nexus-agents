@@ -9,7 +9,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   rowToEntry,
-  sanitizeFtsQuery,
   cleanupExpiredEntries,
   countMemories,
   expireAllEntries,
@@ -209,90 +208,6 @@ describe('rowToEntry', () => {
     expect(entry.metadata.importance).toBe(MemoryImportance.LOW);
     expect(entry.metadata.tags).toBeUndefined();
     expect(entry.metadata.ttl).toBeUndefined();
-  });
-});
-
-// =============================================================================
-// Tests: sanitizeFtsQuery
-// =============================================================================
-
-describe('sanitizeFtsQuery', () => {
-  it('should remove FTS5 special operators', () => {
-    const query = 'test* OR value"';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized).not.toContain('*');
-    expect(sanitized).not.toContain('"');
-    expect(sanitized).not.toContain('OR');
-  });
-
-  it('should remove all special characters', () => {
-    const query = 'key:value^boost (group) {curly} [bracket]';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized).not.toContain(':');
-    expect(sanitized).not.toContain('^');
-    expect(sanitized).not.toContain('(');
-    expect(sanitized).not.toContain(')');
-    expect(sanitized).not.toContain('{');
-    expect(sanitized).not.toContain('}');
-    expect(sanitized).not.toContain('[');
-    expect(sanitized).not.toContain(']');
-  });
-
-  it('should remove FTS operators (AND, OR, NOT, NEAR)', () => {
-    const query = 'hello AND world OR foo NOT bar NEAR test';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized.toUpperCase()).not.toMatch(/\bAND\b/);
-    expect(sanitized.toUpperCase()).not.toMatch(/\bOR\b/);
-    expect(sanitized.toUpperCase()).not.toMatch(/\bNOT\b/);
-    expect(sanitized.toUpperCase()).not.toMatch(/\bNEAR\b/);
-  });
-
-  it('should preserve normal words', () => {
-    const query = 'simple search query';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized).toBe('simple search query');
-  });
-
-  it('should collapse multiple spaces', () => {
-    const query = 'hello    world   test';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized).toBe('hello world test');
-  });
-
-  it('should trim whitespace', () => {
-    const query = '  hello world  ';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized).toBe('hello world');
-  });
-
-  it('should return empty string for all-special-char input', () => {
-    const query = '*****';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized).toBe('');
-  });
-
-  it('should handle mixed case operators', () => {
-    const query = 'test And something Or other Not this';
-    const sanitized = sanitizeFtsQuery(query);
-
-    expect(sanitized.toLowerCase()).not.toMatch(/\band\b/);
-    expect(sanitized.toLowerCase()).not.toMatch(/\bor\b/);
-    expect(sanitized.toLowerCase()).not.toMatch(/\bnot\b/);
-  });
-
-  it('should handle empty string', () => {
-    expect(sanitizeFtsQuery('')).toBe('');
-  });
-
-  it('should handle string with only whitespace', () => {
-    expect(sanitizeFtsQuery('   ')).toBe('');
   });
 });
 

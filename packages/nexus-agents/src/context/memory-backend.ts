@@ -29,7 +29,7 @@ import {
 } from './memory-backend-types.js';
 import { MemoryMarkdownHelper } from './memory-markdown.js';
 import {
-  sanitizeFtsQuery,
+  buildFtsMatchQuery,
   cleanupExpiredEntries,
   countMemories,
   expireAllEntries,
@@ -251,8 +251,8 @@ export class HybridMemoryBackend implements IContextMemoryBackend {
           err(new MemoryError('Invalid limit: must be between 1 and 1000', { context: { limit } }))
         );
 
-      const sanitizedQuery = sanitizeFtsQuery(query);
-      if (sanitizedQuery.length === 0) return Promise.resolve(ok([]));
+      const matchQuery = buildFtsMatchQuery(query);
+      if (matchQuery.length === 0) return Promise.resolve(ok([]));
 
       const database = this.getDatabase();
       const stmt = database.prepare<MemoryRow>(`
@@ -260,7 +260,7 @@ export class HybridMemoryBackend implements IContextMemoryBackend {
         FROM memories m INNER JOIN memories_fts fts ON m.rowid = fts.rowid
         WHERE memories_fts MATCH ? ORDER BY rank LIMIT ?
       `);
-      const rows = stmt.all(sanitizedQuery, limit);
+      const rows = stmt.all(matchQuery, limit);
       const { entries } = cleanupExpiredEntries(rows, database, this.autoExpire, this.logger);
       return Promise.resolve(ok(entries));
     } catch (error) {

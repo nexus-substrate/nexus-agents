@@ -166,6 +166,19 @@ function handleDeleteByTime(
 /**
  * Mock SQLite statement.
  */
+/** The MATCH string is a run of quoted literals (#6731); returns their lower-cased text. */
+function parseMatchLiterals(match: string): string[] {
+  return [...match.matchAll(/"((?:[^"]|"")*)"/g)].map((m) =>
+    (m[1] ?? '').replaceAll('""', '"').toLowerCase()
+  );
+}
+
+/** Implicit AND over the literals; an empty MATCH matches nothing. */
+function containsEveryTerm(text: string, terms: readonly string[]): boolean {
+  if (terms.length === 0) return false;
+  return terms.every((term) => text.includes(term));
+}
+
 class MockSQLiteStatement<T> implements ISQLiteStatement<T> {
   constructor(
     private readonly db: MockSQLiteDatabase,
@@ -250,7 +263,7 @@ class MockSQLiteStatement<T> implements ISQLiteStatement<T> {
 
     // FTS search
     if (this.sql.includes('memories_fts MATCH')) {
-      const query = (params[0] as string).toLowerCase();
+      const terms = parseMatchLiterals(params[0] as string);
       const limit = params[1] as number;
       const results: T[] = [];
 
@@ -258,7 +271,7 @@ class MockSQLiteStatement<T> implements ISQLiteStatement<T> {
         if (results.length >= limit) break;
 
         const searchText = `${fts.key} ${fts.value} ${fts.tags}`.toLowerCase();
-        if (searchText.includes(query)) {
+        if (containsEveryTerm(searchText, terms)) {
           const row = memories.get(key);
           if (row !== undefined) {
             results.push(row as T);
