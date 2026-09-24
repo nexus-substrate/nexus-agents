@@ -1104,6 +1104,22 @@ async function executeOrchestrationWithDeadline(params: {
   );
 }
 
+/** Raised at an orchestrate stage boundary once `cancel_job`'s signal has fired (#6305). */
+class OrchestrateCancelledError extends Error {
+  constructor(stage: string) {
+    super(`Orchestration cancelled before the ${stage} stage`);
+    this.name = 'OrchestrateCancelledError';
+  }
+}
+
+/**
+ * Read through a call, never inline: TypeScript narrows `signal.aborted` to
+ * `false` after one check, which is unsound across the `await`s between stages.
+ */
+function throwIfOrchestrateCancelled(signal: AbortSignal | undefined, stage: string): void {
+  if (signal?.aborted === true) throw new OrchestrateCancelledError(stage);
+}
+
 /** Body of the depth-guarded orchestration pipeline (extracted for line limit). */
 async function runOrchestratePipeline(params: {
   readonly input: OrchestrateInput;
@@ -1113,8 +1129,14 @@ async function runOrchestratePipeline(params: {
   readonly trustTier?: string;
   /** #3091: pre-minted taskId (async mode) so jobId === taskId. */
   readonly taskId?: string;
+  /**
+   * `cancel_job`'s signal on the async path (#6305); absent on the sync path.
+   * Checked before the worker-dispatch and orchestration stages. A stage
+   * already in flight is not interrupted (#6680).
+   */
+  readonly signal?: AbortSignal;
 }): Promise<ToolResult> {
-  const { input, deps, notifier, logger, trustTier, taskId } = params;
+  const { input, deps, notifier, logger, trustTier, taskId, signal } = params;
   logger.debug('Starting orchestration', { taskLength: input.task.length });
   notifier.info('orchestrate', { event: 'orchestrate_start', taskLength: input.task.length });
   const startMs = getTimeProvider().now();
@@ -1132,6 +1154,7 @@ async function runOrchestratePipeline(params: {
   const agentPlan = v2Config.aorchestraEnabled
     ? computeAgentPlan(input.task, logger, { filePaths: filePathsFromContext(input.context) })
     : undefined;
+  throwIfOrchestrateCancelled(signal, 'worker-dispatch');
   const workerDispatchResult = await tryWorkerDispatch(
     agentPlan,
     input.task,
@@ -1139,6 +1162,10 @@ async function runOrchestratePipeline(params: {
     logger,
     notifier
   );
+  // #6305: checked before the reflection call and the orchestrator run, both
+  // of which spend model calls. A dispatch that finished is left unrecorded:
+  // the job is cancelled, not a partial success.
+  throwIfOrchestrateCancelled(signal, 'orchestration');
   recordAndReflect(workerDispatchResult, input.task, deps);
 
   // Wall-clock safeguard (sub-issue B of #2104): see helper doc.
@@ -1317,11 +1344,9 @@ function dispatchAsyncOrchestrate(params: {
     // taskId, so get_job_result(jobId) resolves directly from the task-state
     // log (orch-<ts>-<rand>) under the Stage-2 reader.
     freshJobId: () => generateTaskId(),
-    // #5393: deliberately arity-1 — the orchestrator pipeline behind
-    // `runOrchestratePipelineAsJob` has no AbortSignal surface, so taking the
-    // signal would flip `signalAccepted` to true with nothing reading it.
-    // Stage-boundary gate first: #6305.
-    run: (jobId) => runOrchestratePipelineAsJob(jobId, params),
+    // #5393 / #6305: arity 3 — the pipeline checks the signal before the
+    // worker-dispatch and orchestration stages.
+    run: (jobId, _input, signal) => runOrchestratePipelineAsJob(jobId, params, signal),
     toEnvelope: {
       pending: defaultPendingEnvelope,
       busy: defaultBusyEnvelope,
@@ -1350,7 +1375,9 @@ export async function runOrchestratePipelineAsJob(
     readonly notifier: ReturnType<typeof createMcpNotifier>;
     readonly logger: ILogger;
     readonly trustTier?: string;
-  }
+  },
+  /** `cancel_job`'s signal (#6305); a cancel rejects at the next stage boundary. */
+  signal?: AbortSignal
 ): Promise<ToolResult> {
   // #3091: jobId === taskId — thread it into the pipeline so the task-state
   // log is keyed identically and get_job_result can resolve from it.
@@ -1364,6 +1391,7 @@ export async function runOrchestratePipelineAsJob(
         logger: params.logger,
         taskId,
         ...(params.trustTier !== undefined ? { trustTier: params.trustTier } : {}),
+        ...(signal !== undefined ? { signal } : {}),
       })
     );
     // #3091: mirror the result payload into the Stage-2 task-state log so the
@@ -1403,8 +1431,8 @@ export async function runOrchestrateInBackground(
     toolName: 'orchestrate',
     input: params.input,
     freshJobId: () => jobId,
-    // #5393: deliberately arity-1 — same body as the dispatch above; see #6305.
-    run: (id) => runOrchestratePipelineAsJob(id, params),
+    // #5393 / #6305: arity 3 — same body as the dispatch above.
+    run: (id, _input, signal) => runOrchestratePipelineAsJob(id, params, signal),
     logger: params.logger,
   });
 }
