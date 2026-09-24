@@ -25,6 +25,11 @@ import type {
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { buildChildEnv } from './subprocess-env.js';
+import {
+  SPAWN_IN_OWN_PROCESS_GROUP,
+  isProcessTreeAlive,
+  signalProcessTree,
+} from './process-tree-kill.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import {
@@ -355,16 +360,17 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   ): void {
     const onAbort = (): void => {
       if (child.exitCode === null && child.signalCode === null) {
-        child.kill('SIGTERM');
+        // #6680: the whole process tree, so a relaunched CLI worker is not orphaned.
+        signalProcessTree(child, 'SIGTERM');
         // #6680: same escalation as the timeout path — a child that ignores
         // SIGTERM is force-reaped rather than left running after the cancel.
         const sigkillTimer = setTimeout(() => {
-          if (child.exitCode === null && child.signalCode === null) {
+          if (isProcessTreeAlive(child)) {
             this.logger.warn('Child ignored SIGTERM after abort, escalating to SIGKILL', {
               cli: this.name,
               sigkillGraceMs: SIGKILL_GRACE_MS,
             });
-            child.kill('SIGKILL');
+            signalProcessTree(child, 'SIGKILL');
           }
         }, SIGKILL_GRACE_MS);
         sigkillTimer.unref();
@@ -524,6 +530,9 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         const child = spawn(cmdConfig.command, cmdConfig.args, {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: childEnv,
+          // #6680: its own process group, so a cancel or timeout can signal the
+          // processes the CLI spawns too. Never unref'd: the parent still waits.
+          detached: SPAWN_IN_OWN_PROCESS_GROUP,
           ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
         });
 
@@ -630,16 +639,16 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const { child, timeoutMs, requestId, resolveOnce } = opts;
     const timers: { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined } = {
       timeoutId: setTimeout(() => {
-        child.kill('SIGTERM');
+        signalProcessTree(child, 'SIGTERM');
         resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
         timers.sigkillTimerId = setTimeout(() => {
-          if (child.exitCode === null && child.signalCode === null) {
+          if (isProcessTreeAlive(child)) {
             this.logger.warn('Child ignored SIGTERM, escalating to SIGKILL', {
               cli: this.name,
               requestId,
               sigkillGraceMs: SIGKILL_GRACE_MS,
             });
-            child.kill('SIGKILL');
+            signalProcessTree(child, 'SIGKILL');
           }
         }, SIGKILL_GRACE_MS);
         timers.sigkillTimerId.unref();

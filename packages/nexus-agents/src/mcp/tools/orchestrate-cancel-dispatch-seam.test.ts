@@ -88,7 +88,11 @@ import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes
 import { executeWorkerDispatch } from './orchestrate-dispatch.js';
 import { createLogger } from '../../core/index.js';
 import type { IOrchestrator } from '../../core/types/orchestrator.js';
-import { SubprocessCliAdapter, type CommandConfig } from '../../cli-adapters/subprocess-adapter.js';
+import {
+  SIGKILL_GRACE_MS,
+  SubprocessCliAdapter,
+  type CommandConfig,
+} from '../../cli-adapters/subprocess-adapter.js';
 import { CliToModelAdapter } from '../../cli-adapters/cli-to-model-adapter.js';
 import type { CliTask, ICliResponseParser } from '../../cli-adapters/types.js';
 import { ClaudeResponseParser } from '../../cli-adapters/parsers/claude-parser.js';
@@ -269,13 +273,33 @@ async function settle(): Promise<void> {
   if (getInFlight('orchestrate') > 0) throw new Error('orchestrate job never settled');
 }
 
+/** Only ESRCH proves a process is gone; EPERM means it exists but is not ours. */
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error: unknown) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
   }
+}
+
+/** Every fake-CLI PID a test saw, SIGKILLed afterwards so a failing run leaks nothing. */
+const spawnedPids: number[] = [];
+
+function reapSpawned(): void {
+  for (const pid of spawnedPids.splice(0)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+function readPid(file: string): number {
+  const pid = Number(readFileSync(file, 'utf8'));
+  spawnedPids.push(pid);
+  return pid;
 }
 
 async function waitFor(predicate: () => boolean, what: string, limitMs = 10_000): Promise<void> {
@@ -288,7 +312,10 @@ async function waitFor(predicate: () => boolean, what: string, limitMs = 10_000)
 
 /**
  * A subprocess CLI whose binary is `node` running a script that records its
- * PID and then idles forever — a CLI call that only a kill can end.
+ * PID and then idles forever — a CLI call that only a kill can end. With
+ * `grandchild`, it first relaunches itself as a child the way gemini-cli does
+ * and records that PID too; `ignore-sigterm` makes the grandchild ignore
+ * SIGTERM, so only a SIGKILL of the whole group ends it.
  */
 class LongRunningFakeCli extends SubprocessCliAdapter {
   override readonly name = 'claude' as const;
@@ -296,14 +323,30 @@ class LongRunningFakeCli extends SubprocessCliAdapter {
   protected override readonly transientRetry = { enabled: true };
   protected readonly parser: ICliResponseParser = new ClaudeResponseParser();
   spawnCount = 0;
-  constructor(private readonly pidFile: string) {
+  constructor(
+    private readonly pidFile: string,
+    private readonly grandchild?: {
+      readonly pidFile: string;
+      readonly mode: 'default' | 'ignore-sigterm';
+    }
+  ) {
     super();
   }
   protected getCommand(_task: CliTask): CommandConfig {
     this.spawnCount++;
+    const idle = 'setInterval(() => {}, 1000);';
+    const relaunch =
+      this.grandchild === undefined
+        ? ''
+        : `const g = require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(
+            (this.grandchild.mode === 'ignore-sigterm' ? "process.on('SIGTERM', () => {});" : '') +
+              idle
+          )}], { stdio: 'inherit' });` +
+          `require('fs').writeFileSync(${JSON.stringify(this.grandchild.pidFile)}, String(g.pid));`;
     const script =
+      relaunch +
       `require('fs').writeFileSync(${JSON.stringify(this.pidFile)}, String(process.pid));` +
-      'setInterval(() => {}, 1000);';
+      idle;
     return { command: process.execPath, args: ['-e', script] };
   }
   override initialize(): Promise<void> {
@@ -321,6 +364,11 @@ class LongRunningFakeCli extends SubprocessCliAdapter {
       costPerMillionOutput: 0,
     };
   }
+}
+
+/** One spawn per call, so every PID the timeout test must see dead is recorded. */
+class NoRetryFakeCli extends LongRunningFakeCli {
+  protected override readonly transientRetry = { enabled: false };
 }
 
 describe('cancel_job interrupts orchestrate inside worker dispatch (#6680)', () => {
@@ -342,6 +390,7 @@ describe('cancel_job interrupts orchestrate inside worker dispatch (#6680)', () 
   });
 
   afterEach(() => {
+    reapSpawned();
     if (saved.data === undefined) delete process.env['NEXUS_DATA_DIR'];
     else process.env['NEXUS_DATA_DIR'] = saved.data;
     if (saved.aorchestra === undefined) delete process.env['NEXUS_AORCHESTRA'];
@@ -402,7 +451,7 @@ describe('cancel_job interrupts orchestrate inside worker dispatch (#6680)', () 
     const jobId = await startJob(orchestrate);
 
     await waitFor(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '', 'fake CLI');
-    const pid = Number(readFileSync(pidFile, 'utf8'));
+    const pid = readPid(pidFile);
     expect(isAlive(pid)).toBe(true);
 
     await cancelJob(cancel, jobId);
@@ -412,6 +461,56 @@ describe('cancel_job interrupts orchestrate inside worker dispatch (#6680)', () 
     // No transient retry, no triage retry, no wave 2, no synthesis.
     expect(cli.spawnCount).toBe(1);
     expect(readJobResult(jobId)?.status).toBe('cancelled');
+  }, 20_000);
+
+  it('a cancel kills a CLI that relaunched itself, grandchild included', async () => {
+    const pidFile = join(tmpDir, 'fake-cli.pid');
+    const grandchildPidFile = join(tmpDir, 'fake-cli-grandchild.pid');
+    const cli = new LongRunningFakeCli(pidFile, { pidFile: grandchildPidFile, mode: 'default' });
+    const adapter = new CliToModelAdapter(cli, { defaultTimeoutMs: 60_000 });
+    const { orchestrate, cancel } = handlers(adapter);
+    const jobId = await startJob(orchestrate);
+
+    // The parent writes its own PID after the grandchild's, so both exist now.
+    await waitFor(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '', 'fake CLI');
+    const pid = readPid(pidFile);
+    const grandchildPid = readPid(grandchildPidFile);
+    expect(isAlive(grandchildPid)).toBe(true);
+
+    await cancelJob(cancel, jobId);
+    await settle();
+
+    await waitFor(() => !isAlive(pid), `fake CLI pid ${String(pid)} to exit`, 3_000);
+    await waitFor(
+      () => !isAlive(grandchildPid),
+      `grandchild pid ${String(grandchildPid)} to exit`,
+      3_000
+    );
+    expect(readJobResult(jobId)?.status).toBe('cancelled');
+  }, 20_000);
+
+  it('a CLI timeout SIGKILLs a grandchild that ignores SIGTERM', async () => {
+    const pidFile = join(tmpDir, 'fake-cli.pid');
+    const grandchildPidFile = join(tmpDir, 'fake-cli-grandchild.pid');
+    const cli = new NoRetryFakeCli(pidFile, {
+      pidFile: grandchildPidFile,
+      mode: 'ignore-sigterm',
+    });
+
+    const done = cli.execute({ content: 'x' }, { timeoutMs: 1_000, allowRetry: false });
+    await waitFor(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '', 'fake CLI');
+    const pid = readPid(pidFile);
+    const grandchildPid = readPid(grandchildPidFile);
+    const result = await done;
+    expect(result.ok).toBe(false);
+
+    await waitFor(() => !isAlive(pid), `fake CLI pid ${String(pid)} to exit`, 3_000);
+    // The grandchild outlives SIGTERM; only the group SIGKILL after the grace window ends it.
+    await waitFor(
+      () => !isAlive(grandchildPid),
+      `grandchild pid ${String(grandchildPid)} to exit`,
+      SIGKILL_GRACE_MS + 3_000
+    );
   }, 20_000);
 
   it('runs both waves, synthesis and the orchestrator when nothing cancels — the empty case', async () => {

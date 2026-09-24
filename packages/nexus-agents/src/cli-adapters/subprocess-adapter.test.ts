@@ -284,6 +284,8 @@ describe('SubprocessCliAdapter', () => {
       expect(mockSpawn).toHaveBeenCalledWith('echo', ['hello'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: expect.objectContaining({}),
+        // #6680: its own process group on POSIX, so a kill reaches what it spawns.
+        detached: process.platform !== 'win32',
       });
     });
 

@@ -176,6 +176,7 @@ export function buildChildEnv(cliName: CliName): NodeJS.ProcessEnv {
       if (value !== undefined && key !== 'CLAUDECODE') childEnv[key] = value;
     }
     childEnv[NEXUS_SUBPROCESS_DEPTH_ENV] = nextDepth;
+    stampNoRelaunch(cliName, childEnv);
     return childEnv;
   }
 
@@ -187,7 +188,18 @@ export function buildChildEnv(cliName: CliName): NodeJS.ProcessEnv {
     if (isAllowed(key, vendorKeys, extraEnv)) childEnv[key] = value;
   }
   childEnv[NEXUS_SUBPROCESS_DEPTH_ENV] = nextDepth;
+  stampNoRelaunch(cliName, childEnv);
   return childEnv;
+}
+
+/**
+ * gemini-cli relaunches itself as a child process unless told not to, and the
+ * relaunching parent does not stop its worker on SIGTERM (#6680). The adapter
+ * signals the whole process group anyway; this keeps the worker the process
+ * the adapter spawned. Harmless for a binary that does not read it.
+ */
+function stampNoRelaunch(cliName: CliName, childEnv: NodeJS.ProcessEnv): void {
+  if (cliName === 'gemini') childEnv['GEMINI_CLI_NO_RELAUNCH'] = 'true';
 }
 
 /** Test/introspection accessor for the per-CLI vendor-key map. */
