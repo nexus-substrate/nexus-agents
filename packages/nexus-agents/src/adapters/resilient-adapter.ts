@@ -28,6 +28,7 @@ import { getErrorMessage, createLogger } from '../core/index.js';
 import { UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 
 import { createAutoAdapter, type AdapterSelection } from './auto-adapter.js';
+import { ensureGatewayDiscovered, gatewayDiscoveryGeneration } from './gateway-rediscovery.js';
 import {
   isRateLimitLikeError,
   isDurableCapacityError,
@@ -85,6 +86,8 @@ export class ResilientAdapter implements IResilientAdapter {
   private readonly defaultCliTimeoutMs: number | undefined;
   /** Inflight detection promise for coalescing concurrent calls (Issue #1423). */
   private detectionPromise: Promise<IModelAdapter | undefined> | undefined;
+  /** The {@link gatewayDiscoveryGeneration} the current selection was made under (#6659). */
+  private detectedAtGeneration = 0;
 
   constructor(config?: ResilientAdapterConfig) {
     this.logger = config?.logger ?? createLogger({ component: 'resilient-adapter' });
@@ -245,6 +248,20 @@ export class ResilientAdapter implements IResilientAdapter {
   // --- Private methods ---
 
   private async ensureAdapter(): Promise<IModelAdapter | undefined> {
+    // #6659: the shared acquisition seam re-discovers a gateway that was down
+    // at boot (backoff-bounded, one shared attempt; a no-op unless armed).
+    // Once one is found, an adapter detected before it re-detects ONCE, so the
+    // default and the family slots move onto the gateway. Not a failover: the
+    // adapter left behind did not fail.
+    await ensureGatewayDiscovered();
+    if (
+      this.currentAdapter !== undefined &&
+      this.detectedAtGeneration !== gatewayDiscoveryGeneration()
+    ) {
+      this.currentAdapter = undefined;
+      this.currentSelection = undefined;
+      this.hasEverDetected = false;
+    }
     if (this.currentAdapter !== undefined) {
       return this.currentAdapter;
     }
@@ -256,6 +273,9 @@ export class ResilientAdapter implements IResilientAdapter {
   }
 
   private async detectAdapter(): Promise<IModelAdapter | undefined> {
+    // Read BEFORE detecting: a discovery that lands mid-detection leaves this
+    // selection tagged stale, so the next call re-detects instead of keeping it.
+    const generation = gatewayDiscoveryGeneration();
     try {
       this.logger.info('Detecting model adapter (lazy)');
       const config = {
@@ -267,6 +287,7 @@ export class ResilientAdapter implements IResilientAdapter {
       };
       const selection = await createAutoAdapter(config);
       this.applySelection(selection);
+      this.detectedAtGeneration = generation;
       return this.currentAdapter;
     } catch (error) {
       const message = getErrorMessage(error);

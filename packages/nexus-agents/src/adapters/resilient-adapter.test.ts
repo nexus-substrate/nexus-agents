@@ -333,7 +333,11 @@ describe('ResilientAdapter', () => {
       const p2 = freshAdapter.complete({ messages: [] });
       const p3 = freshAdapter.complete({ messages: [] });
 
-      // Resolve the single detection
+      // Detection starts after the gateway re-discovery check (#6659), which
+      // is asynchronous; wait for it, then resolve the single detection.
+      await vi.waitFor(() => {
+        expect(resolveDetection).toBeDefined();
+      });
       resolveDetection!(makeSelection());
 
       await Promise.all([p1, p2, p3]);
