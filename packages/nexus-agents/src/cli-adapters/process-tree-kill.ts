@@ -12,7 +12,7 @@
  * @module cli-adapters/process-tree-kill
  */
 
-import { ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 
 /**
  * Whether the CLI is spawned as its own process-group leader. Not on Windows,
@@ -23,12 +23,25 @@ import { ChildProcess } from 'node:child_process';
 export const SPAWN_IN_OWN_PROCESS_GROUP = process.platform !== 'win32';
 
 /**
+ * True for a child `spawn` actually started. Duck-typed on the fields only a
+ * real spawn sets, not `instanceof ChildProcess`: a test that replaces
+ * `node:child_process` wholesale has no `ChildProcess` export to compare with.
+ */
+function isSpawnedProcess(child: ChildProcess): boolean {
+  return (
+    typeof child.pid === 'number' &&
+    typeof child.spawnfile === 'string' &&
+    Array.isArray(child.spawnargs)
+  );
+}
+
+/**
  * The process group a child leads, when it is a real spawned process in its
- * own group. Test doubles are not `ChildProcess` instances, so they never
+ * own group. Test doubles lack the spawn fields, so they never
  * reach `process.kill` with a negative PID that might name a real group.
  */
 function ownGroupId(child: ChildProcess): number | undefined {
-  if (!SPAWN_IN_OWN_PROCESS_GROUP || !(child instanceof ChildProcess)) return undefined;
+  if (!SPAWN_IN_OWN_PROCESS_GROUP || !isSpawnedProcess(child)) return undefined;
   return child.pid;
 }
 
@@ -64,4 +77,47 @@ export function isProcessTreeAlive(child: ChildProcess): boolean {
     // Only ESRCH proves the group is empty; EPERM means a member still exists.
     return (error as NodeJS.ErrnoException).code !== 'ESRCH';
   }
+}
+
+/**
+ * CLI process trees still running, so server shutdown can end them (#6680).
+ *
+ * Spawning each CLI in its own process group takes it out of the server's
+ * group: a Ctrl-C, or a harness that SIGTERMs the server's group, no longer
+ * reaches it directly. The server's shutdown path signals these instead, and
+ * a synchronous `exit` hook SIGKILLs whatever is left. Neither runs when the
+ * server itself is SIGKILLed; see {@link trackProcessTree}.
+ */
+const liveTrees = new Set<ChildProcess>();
+let exitHookInstalled = false;
+
+/**
+ * Track a spawned CLI until its stdio closes, returning it. Only real children
+ * in their own group are tracked. Residual gap: a SIGKILL of the server runs no handler, so
+ * its CLI trees keep running. That includes a SIGKILL sent to the server's
+ * whole group, which used to reach them when they shared its group (#6701).
+ */
+export function trackProcessTree<T extends ChildProcess>(child: T): T {
+  if (ownGroupId(child) === undefined) return child;
+  liveTrees.add(child);
+  child.once('close', () => {
+    liveTrees.delete(child);
+  });
+  if (!exitHookInstalled) {
+    exitHookInstalled = true;
+    process.on('exit', () => {
+      signalTrackedProcessTrees('SIGKILL');
+    });
+  }
+  return child;
+}
+
+/** Signal every tracked CLI tree; returns how many were signalled. Synchronous. */
+export function signalTrackedProcessTrees(signal: NodeJS.Signals): number {
+  let count = 0;
+  for (const child of liveTrees) {
+    signalProcessTree(child, signal);
+    count++;
+  }
+  return count;
 }

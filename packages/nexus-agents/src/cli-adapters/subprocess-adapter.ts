@@ -9,12 +9,13 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process';
 
 import type { Result } from '../core/index.js';
 import { ok, err, getTimeProvider, createLogger, getErrorMessage } from '../core/index.js';
 
 import type {
+  CliName,
   CliTransport,
   CliTask,
   CliResponse,
@@ -29,6 +30,7 @@ import {
   SPAWN_IN_OWN_PROCESS_GROUP,
   isProcessTreeAlive,
   signalProcessTree,
+  trackProcessTree,
 } from './process-tree-kill.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
@@ -195,6 +197,32 @@ export const SIGKILL_GRACE_MS = 5_000;
  */
 export function isTransientError(code: CliErrorCode): boolean {
   return TRANSIENT_ERROR_CODES.has(code);
+}
+
+/**
+ * Spawn the CLI in its own process group (#6680), so a cancel or timeout can
+ * signal the processes it spawns too, and track it so server shutdown ends it:
+ * out of the server's group, a signal to that group no longer reaches it.
+ * Never unref'd, so the parent still waits for it.
+ */
+function spawnCliChild(
+  cliName: CliName,
+  cmdConfig: CommandConfig,
+  workDir: unknown
+): ChildProcessWithoutNullStreams {
+  // Curated child env: base infrastructure vars + only this CLI's
+  // own vendor credentials, so cross-vendor API keys don't leak
+  // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
+  // CLI must not believe it's already inside Claude Code.
+  const childEnv = buildChildEnv(cliName);
+  return trackProcessTree(
+    spawn(cmdConfig.command, cmdConfig.args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: childEnv,
+      detached: SPAWN_IN_OWN_PROCESS_GROUP,
+      ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
+    })
+  );
 }
 
 /**
@@ -520,21 +548,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         resolveOuter(r);
       };
       try {
-        // Curated child env: base infrastructure vars + only this CLI's
-        // own vendor credentials, so cross-vendor API keys don't leak
-        // into the spawned CLI (#2865). Also drops CLAUDECODE — a nested
-        // CLI must not believe it's already inside Claude Code.
-        const childEnv = buildChildEnv(this.name);
-        const workDir = task.options?.['workDir'];
-
-        const child = spawn(cmdConfig.command, cmdConfig.args, {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: childEnv,
-          // #6680: its own process group, so a cancel or timeout can signal the
-          // processes the CLI spawns too. Never unref'd: the parent still waits.
-          detached: SPAWN_IN_OWN_PROCESS_GROUP,
-          ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
-        });
+        const child = spawnCliChild(this.name, cmdConfig, task.options?.['workDir']);
 
         const onProgress = options.onProgress;
         // Called for its side effects (handlers are attached to `child`);
