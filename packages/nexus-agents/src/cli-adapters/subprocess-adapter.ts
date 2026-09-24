@@ -26,12 +26,7 @@ import type {
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { buildChildEnv } from './subprocess-env.js';
-import {
-  SPAWN_IN_OWN_PROCESS_GROUP,
-  isProcessTreeAlive,
-  signalProcessTree,
-  trackProcessTree,
-} from './process-tree-kill.js';
+import { isProcessTreeAlive, signalProcessTree, trackProcessTree } from './process-tree-kill.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import {
@@ -200,10 +195,8 @@ export function isTransientError(code: CliErrorCode): boolean {
 }
 
 /**
- * Spawn the CLI in its own process group (#6680), so a cancel or timeout can
- * signal the processes it spawns too, and track it so server shutdown ends it:
- * out of the server's group, a signal to that group no longer reaches it.
- * Never unref'd, so the parent still waits for it.
+ * Spawn the CLI and track it so server shutdown ends it (#6680). It stays in
+ * the server's process group, so a signal to that group reaches it too.
  */
 function spawnCliChild(
   cliName: CliName,
@@ -219,7 +212,6 @@ function spawnCliChild(
     spawn(cmdConfig.command, cmdConfig.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv,
-      detached: SPAWN_IN_OWN_PROCESS_GROUP,
       ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
     })
   );
@@ -388,23 +380,26 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   ): void {
     const onAbort = (): void => {
       if (child.exitCode === null && child.signalCode === null) {
-        // #6680: the whole process tree, so a relaunched CLI worker is not orphaned.
-        signalProcessTree(child, 'SIGTERM');
-        // #6680: same escalation as the timeout path — a child that ignores
+        // #6680: the child and its descendants, so a relaunched CLI worker is not orphaned.
+        const tree = signalProcessTree(child, 'SIGTERM');
+        // #6680: same escalation as the timeout path — a tree that ignores
         // SIGTERM is force-reaped rather than left running after the cancel.
         const sigkillTimer = setTimeout(() => {
-          if (isProcessTreeAlive(child)) {
+          if (isProcessTreeAlive(child, tree)) {
             this.logger.warn('Child ignored SIGTERM after abort, escalating to SIGKILL', {
               cli: this.name,
               sigkillGraceMs: SIGKILL_GRACE_MS,
             });
-            signalProcessTree(child, 'SIGKILL');
+            signalProcessTree(child, 'SIGKILL', tree);
           }
         }, SIGKILL_GRACE_MS);
         sigkillTimer.unref();
-        child.once('close', () => {
-          clearTimeout(sigkillTimer);
-        });
+        // A descendant can outlive the child's close, so only an empty tree cancels the check.
+        if (tree.length === 0) {
+          child.once('close', () => {
+            clearTimeout(sigkillTimer);
+          });
+        }
       }
       resolve(err(this.createError('TIMEOUT', 'Aborted by caller signal')));
     };
@@ -623,7 +618,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     child.on('close', (code: number | null) => {
       clearTimeout(timers.timeoutId);
-      if (timers.sigkillTimerId !== undefined) clearTimeout(timers.sigkillTimerId);
+      // #6680: a descendant can outlive the child's close; its escalation stands.
+      if (timers.sigkillTimerId !== undefined && timers.tree.length === 0) {
+        clearTimeout(timers.sigkillTimerId);
+      }
       this.logTimingBreakdown(state, startTime, code, requestId);
       resolveOnce(this.classifyCloseResult(code, state, startTime));
     });
@@ -649,20 +647,25 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     timeoutMs: number;
     requestId: string;
     resolveOnce: (result: Result<CliResponse, CliError>) => void;
-  }): { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined } {
+  }): { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined; tree: number[] } {
     const { child, timeoutMs, requestId, resolveOnce } = opts;
-    const timers: { timeoutId: NodeJS.Timeout; sigkillTimerId: NodeJS.Timeout | undefined } = {
+    const timers: {
+      timeoutId: NodeJS.Timeout;
+      sigkillTimerId: NodeJS.Timeout | undefined;
+      tree: number[];
+    } = {
+      tree: [],
       timeoutId: setTimeout(() => {
-        signalProcessTree(child, 'SIGTERM');
+        timers.tree = signalProcessTree(child, 'SIGTERM');
         resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
         timers.sigkillTimerId = setTimeout(() => {
-          if (isProcessTreeAlive(child)) {
+          if (isProcessTreeAlive(child, timers.tree)) {
             this.logger.warn('Child ignored SIGTERM, escalating to SIGKILL', {
               cli: this.name,
               requestId,
               sigkillGraceMs: SIGKILL_GRACE_MS,
             });
-            signalProcessTree(child, 'SIGKILL');
+            signalProcessTree(child, 'SIGKILL', timers.tree);
           }
         }, SIGKILL_GRACE_MS);
         timers.sigkillTimerId.unref();
