@@ -92,20 +92,13 @@ describe('every runAsJob call site classifies its cancel-signal arity (#5393)', 
     }
   );
 
-  it('the signal-taking set is exactly the panel, graph, pipeline, workflow and spec tools', () => {
+  it('every adopter takes the signal — #6305 threaded the last two', () => {
     const threaded = sites.filter((s) => /arity [34]/.test(s.note)).map((s) => s.file);
-    expect([...new Set(threaded)].sort()).toEqual([
-      'consensus-vote.ts',
-      // #6305: stage-boundary gates in `runDevPipeline` / the graph executor.
-      'dev-pipeline-tool.ts',
-      // #6305: step-boundary gates in `executeSpec` / the graph executor.
-      'execute-spec-tool.ts',
-      'pipeline-tool.ts',
-      'pr-review-tool.ts',
-      'run-graph-workflow.ts',
-      // #6305: phase- and step-dispatch gates in the workflow engine.
-      'run-workflow.ts',
-      'supply-chain-tradeoff-panel.ts',
-    ]);
+    // #6305: `orchestrate` gates its worker-dispatch and orchestration stages;
+    // `run` hands the signal to each wired strategy executor's engine. A new
+    // adopter that cannot be cancelled says `deliberately arity-N`, which fails
+    // the second assertion until this test names it as an exception.
+    expect([...new Set(threaded)].sort()).toEqual(ADOPTERS);
+    expect(sites.filter((s) => /deliberately arity-[0-2]/.test(s.note))).toEqual([]);
   });
 });

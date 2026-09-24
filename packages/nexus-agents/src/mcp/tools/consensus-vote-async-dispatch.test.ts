@@ -63,6 +63,7 @@ import {
   executeVoting,
   registerConsensusVoteTool,
   resetCorrelationTracker,
+  runConsensusForGoal,
   unwrapVoteOrThrow,
 } from './consensus-vote.js';
 import { readJobResult } from '../jobs/job-result-store.js';
@@ -408,5 +409,43 @@ describe('unwrapVoteOrThrow (#4362)', () => {
     await expect(
       unwrapVoteOrThrow(Promise.resolve(failed) as unknown as VotePromise)
     ).rejects.toThrow('All 3 voters failed');
+  });
+});
+
+describe("runConsensusForGoal hands `run`'s cancel signal to the collector (#6305)", () => {
+  let tmpDir: string;
+  const originalDataDir = process.env['NEXUS_DATA_DIR'];
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-vote-goal-'));
+    process.env['NEXUS_DATA_DIR'] = tmpDir;
+    resetNexusDataDirCache();
+    collectRealVotesMock.mockReset();
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) delete process.env['NEXUS_DATA_DIR'];
+    else process.env['NEXUS_DATA_DIR'] = originalDataDir;
+    resetNexusDataDirCache();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('the collector receives the very signal the `run` executor passed', async () => {
+    collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>
+      Promise.resolve(erroredVotes(opts.roles))
+    );
+    const controller = new AbortController();
+
+    await runConsensusForGoal(
+      'ship the thing',
+      CTX.logger as never,
+      undefined,
+      undefined,
+      controller.signal
+    ).catch(() => undefined);
+
+    expect(collectRealVotesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: controller.signal })
+    );
   });
 });

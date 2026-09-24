@@ -248,7 +248,9 @@ const RUN_PIPELINE_DESCRIPTION = `Single unified entry point for all pipeline te
  */
 export async function runPipelineForGoal(
   goal: string,
-  logger: ILogger = createLogger({ tool: 'run_pipeline' })
+  logger: ILogger = createLogger({ tool: 'run_pipeline' }),
+  /** `run`'s async-job cancel signal (#6305): checked before every super-step. */
+  signal?: AbortSignal
 ): Promise<AdaptiveOrchestratorResult> {
   const budget = resolveRunBudget(goal, undefined, logger);
   const agentStages = createAgentStages({
@@ -257,7 +259,7 @@ export async function runPipelineForGoal(
     inputSanitization: 'unmeasured',
   });
   const stages = selectStageRegistry(undefined, goal, agentStages);
-  return runAdaptiveOrchestrator(goal, { stages });
+  return runAdaptiveOrchestrator(goal, { stages, ...(signal !== undefined ? { signal } : {}) });
 }
 
 /**

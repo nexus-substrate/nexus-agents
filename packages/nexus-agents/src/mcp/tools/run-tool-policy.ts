@@ -22,6 +22,8 @@ export interface RunBodyOptions {
   readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
   readonly requestContext?: RequestContext | undefined;
   readonly onProgress?: (() => void) | undefined;
+  /** `cancel_job`'s signal on the async path (#6305); absent on the sync path. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**

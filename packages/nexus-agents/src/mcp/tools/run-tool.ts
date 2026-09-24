@@ -49,7 +49,6 @@ import {
   createMetaOrchestrator,
   type ExecutionStrategy,
   type MetaDecision,
-  type MetaOrchestratorInput,
 } from '../../orchestration/meta-orchestrator.js';
 import {
   getShadowSelector,
@@ -73,9 +72,7 @@ import {
   dispatchActionClass,
   type DispatchMode,
 } from '../../orchestration/authority-tier-guard.js';
-import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
-import { runPipelineForGoal } from './pipeline-tool.js';
-import { runConsensusForGoal } from './consensus-vote.js';
+import { assertDispatchNotCancelled, buildDefaultExecutors } from './run-tool-executors.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
 import { heartbeatJob } from '../jobs/job-result-store.js';
@@ -289,52 +286,9 @@ export function routeGoal(input: RunInput, logger?: ILogger): RunResponse {
   };
 }
 
-/**
- * Strategies wired for inline execution (increment B). Others fail closed with
- * a typed error, by design:
- * - `graph-workflow`: graph workflows are pre-defined templates (threat_model,
- *   code_analysis, …), not a goal-only call — no generic "goal → graph" entry.
- * - `spec`: `execute_spec` needs a markdown spec document, not a plain goal.
- * - `orchestrate`: needs an OrchestratorFactory + heavy deps the tool layer
- *   doesn't carry; use the `orchestrate` tool directly.
- * - `single-shot`: `delegate_to_model` recommends a model, it doesn't execute.
- */
-/**
- * Build the default inline executors, threading the caller's content-provenance
- * `trustTier` into the dev-pipeline executor (#3712). This closes the run-path
- * hole: `run` carries a real `RequestContext` AND runs a real research stage on
- * a possibly-untrusted goal, so the dev-pipeline's consensus→execute seam MUST
- * see the CALLER's real tier — never a hardcoded trusted '1'. `undefined` (no
- * tier threaded) leaves the seam to fail-close to untrusted (tier 4). Only the
- * dev-pipeline executor consumes the tier; the others don't reach that seam.
- */
-export function buildDefaultExecutors(
-  trustTier?: string,
-  gatewayAdapters?: readonly IModelAdapter[],
-  dryRun?: boolean,
-  /**
-   * Async-job heartbeat (#6162), threaded only to the consensus executor: the
-   * pipeline executors heartbeat through the stage events they emit on the
-   * pipeline bus, a vote body through each settled seat.
-   */
-  onProgress?: () => void
-): StrategyExecutorMap {
-  return {
-    'dev-pipeline': (_decision, metaInput: MetaOrchestratorInput) =>
-      runDevPipelineForGoal(metaInput.goal, trustTier, dryRun),
-    pipeline: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
-    // #3988: `research` deliberately ALIASES the `pipeline` engine — it runs the
-    // SAME generic stage registry (selectStageRegistry only branches greenfield/
-    // audit), shaped by the goal text, NOT a distinct research stage registry.
-    // The registry's research `entrypointTool` already points at run_pipeline, so
-    // this is intended aliasing, not a distinct executor. A real research-shaped
-    // registry is a feature with no current consumer (YAGNI) — add it only when a
-    // named loop needs research-specific stages; until then research==pipeline.
-    research: (_decision, metaInput: MetaOrchestratorInput) => runPipelineForGoal(metaInput.goal),
-    consensus: (_decision, metaInput: MetaOrchestratorInput) =>
-      runConsensusForGoal(metaInput.goal, undefined, gatewayAdapters, onProgress),
-  };
-}
+// #6305: the default executors live in `run-tool-executors.ts` for the line cap;
+// re-exported so existing importers keep their path.
+export { buildDefaultExecutors };
 
 /** Result of an inline `execute: true` run. */
 export interface RunExecuteResponse {
@@ -407,6 +361,11 @@ export async function executeGoal(
     readonly requestContext?: RequestContext | undefined;
     /** Async-job heartbeat (#6162); see {@link buildDefaultExecutors}. */
     readonly onProgress?: (() => void) | undefined;
+    /**
+     * `cancel_job`'s signal (#6305): checked before dispatch and handed to the
+     * default executors. An injected `executors` map receives none.
+     */
+    readonly signal?: AbortSignal | undefined;
   } = {}
 ): Promise<RunExecuteResponse> {
   // The authority-ladder guard fires inside `select` (#3920): an above-tier
@@ -425,12 +384,19 @@ export async function executeGoal(
   const dispatcher = createMetaDispatcher({
     executors:
       opts.executors ??
-      buildDefaultExecutors(opts.trustTier, opts.gatewayAdapters, input.dryRun, opts.onProgress),
+      buildDefaultExecutors(
+        opts.trustTier,
+        opts.gatewayAdapters,
+        input.dryRun,
+        opts.onProgress,
+        opts.signal
+      ),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
     ...(opts.classifyResult !== undefined ? { classifyResult: opts.classifyResult } : {}),
   });
+  assertDispatchNotCancelled(opts.signal, decision.strategy);
   const dispatch = await dispatcher.dispatch(decision, toMetaInput(input, 'execute'));
   return {
     strategy: dispatch.strategy,
@@ -563,12 +529,12 @@ async function runHandler(
         toolName: 'run',
         input,
         freshJobId: () => `rn-${randomUUID()}`,
-        // #5393: deliberately arity-1 — the executors take no AbortSignal; taking
-        // it would flip `signalAccepted` with nothing reading it (#6305 first).
-        // #6162: heartbeats by jobId (stage events / settled seats).
-        run: (jobId) =>
+        // #5393 / #6305: arity 3 — every wired strategy executor hands the
+        // signal to its engine. #6162: heartbeats by jobId.
+        run: (jobId, _input, signal) =>
           executeRunBodyOrThrow(input, logger, {
             ...body,
+            signal,
             onProgress: () => {
               heartbeatJob(jobId);
             },

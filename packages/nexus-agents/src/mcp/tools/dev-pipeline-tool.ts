@@ -272,7 +272,9 @@ async function createStages(
 export async function runDevPipelineForGoal(
   goal: string,
   trustTier?: string,
-  dryRun?: boolean
+  dryRun?: boolean,
+  /** `run`'s async-job cancel signal (#6305): checked before every stage. */
+  signal?: AbortSignal
 ): Promise<DevPipelineResult> {
   // #4806: `dryRun` is the one pipeline option `run` forwards. `mode` and
   // `qualityGate` stay pipeline-specific vocabulary — a caller who wants those
@@ -295,6 +297,7 @@ export async function runDevPipelineForGoal(
     // the options from `trustTier` alone, so the short-circuit at
     // `dev-pipeline.ts:367` never fired and a dry run implemented for real.
     ...(input.dryRun ? { dryRun: true as const } : {}),
+    ...(signal !== undefined ? { signal } : {}),
   });
 }
 

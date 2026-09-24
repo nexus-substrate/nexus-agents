@@ -721,7 +721,9 @@ export async function runConsensusForGoal(
   logger: ILogger = createLogger({ tool: 'consensus_vote' }),
   gatewayAdapters?: readonly IModelAdapter[],
   /** #6162: per-seat heartbeat when the caller is an async job body. */
-  onVoteCollected?: (vote: AgentVoteResult) => void
+  onVoteCollected?: (vote: AgentVoteResult) => void,
+  /** `run`'s async-job cancel signal (#6305): stops launching un-started voters. */
+  signal?: AbortSignal
 ): Promise<ExtendedVotingResult> {
   // Parse through the schema so defaults (quickMode, simulateVotes:false) apply.
   // #4042: thread the in-process gateway adapters so the run/MetaOrchestrator
@@ -730,6 +732,7 @@ export async function runConsensusForGoal(
   return executeVoting(ConsensusVoteInputSchema.parse({ proposal: goal }), logger, {
     ...(gatewayAdapters !== undefined && { gatewayAdapters }),
     onVoteCollected,
+    ...(signal !== undefined && { signal }),
   });
 }
 
