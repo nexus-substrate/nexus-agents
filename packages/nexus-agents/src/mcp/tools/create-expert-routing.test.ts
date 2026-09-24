@@ -11,6 +11,11 @@ import {
   resolveAdapterForRole,
   getExpertFallbackChain,
 } from './create-expert-routing.js';
+import {
+  _resetGatewaySlotCatalog,
+  setGatewaySlotCatalog,
+} from '../../adapters/gateway-family-slots.js';
+import { fakeGatewayModel } from '../../testing/adapters/fake-gateway-model.js';
 
 const mockLogger = {
   info: vi.fn(),
@@ -163,6 +168,23 @@ describe('getExpertFallbackChain', () => {
       expect(chain).not.toContain('gemini');
       expect(chain).not.toContain('codex');
     } finally {
+      if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
+      else process.env['NEXUS_DISABLED_CLIS'] = saved;
+    }
+  });
+
+  it('keeps a disabled CLI whose family the gateway serves (#6720, transport-scoped)', () => {
+    const saved = process.env['NEXUS_DISABLED_CLIS'];
+    try {
+      process.env['NEXUS_DISABLED_CLIS'] = 'gemini,codex';
+      // The gateway serves openai (codex's family) but not google (gemini's).
+      setGatewaySlotCatalog([fakeGatewayModel('gpt-5.5')]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+      const chain = getExpertFallbackChain('code_expert', 'opencode', mockLogger as any);
+      expect(chain).toContain('codex');
+      expect(chain).not.toContain('gemini');
+    } finally {
+      _resetGatewaySlotCatalog();
       if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
       else process.env['NEXUS_DISABLED_CLIS'] = saved;
     }

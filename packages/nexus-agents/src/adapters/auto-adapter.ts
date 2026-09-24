@@ -185,7 +185,9 @@ async function tryPreferredCli(
 
 /**
  * The gateway selection for a pinned slot whose CLI is not available (#6604).
- * `undefined` keeps the pre-#6604 path: no pinned slot, a disabled one, or no
+ * A CLI disabled by `NEXUS_DISABLED_CLIS` counts as not available (#6720:
+ * the variable is transport-scoped), so its family's gateway model serves
+ * the slot. `undefined` keeps the pre-#6604 path: no pinned slot, or no
  * gateway catalogue. A slot whose family the gateway does not serve is served
  * by a direct API key of the SAME family when one is set (#6604 review, item
  * 4: before the gateway existed that key served it); otherwise it THROWS, so
@@ -194,7 +196,7 @@ async function tryPreferredCli(
  */
 function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSelection | undefined {
   const preferredCli = config.preferredCli;
-  if (preferredCli === undefined || isCliDisabled(preferredCli)) return undefined;
+  if (preferredCli === undefined) return undefined;
   if (preferredCli === 'opencode' && hasGatewaySlotCatalog()) {
     // #6626: opencode is multi-vendor, not a family. Serving it with the
     // gateway default would record the default's outcomes under the opencode

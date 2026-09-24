@@ -187,6 +187,19 @@ describe('resolveGatewayRoleAdapters — family-first dealing (#6606)', () => {
     expect(new Set(familiesOf(assigned))).toEqual(new Set(['anthropic', 'openai', 'google']));
   });
 
+  it('still seats the families of CLIs disabled by NEXUS_DISABLED_CLIS (#6720)', () => {
+    // Transport-scoped: disabling the CLIs removes no gateway model from dealing.
+    const saved = process.env['NEXUS_DISABLED_CLIS'];
+    process.env['NEXUS_DISABLED_CLIS'] = 'claude,gemini,codex';
+    try {
+      const assigned = resolveGatewayRoleAdapters(SEVEN, CATALOG, fallback, fakeLogger());
+      expect(new Set(familiesOf(assigned))).toEqual(new Set(['anthropic', 'openai', 'google']));
+    } finally {
+      if (saved === undefined) Reflect.deleteProperty(process.env, 'NEXUS_DISABLED_CLIS');
+      else process.env['NEXUS_DISABLED_CLIS'] = saved;
+    }
+  });
+
   it('assigns the same model to each role whatever the listing order', () => {
     const listed = resolveGatewayRoleAdapters(SEVEN, CATALOG, fallback, fakeLogger());
     const reversed = resolveGatewayRoleAdapters(

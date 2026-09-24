@@ -8,7 +8,7 @@ import { createAutoAdapter } from './auto-adapter.js';
 import { _resetGatewaySlotCatalog, setGatewaySlotCatalog } from './gateway-family-slots.js';
 import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
 import { FAKE_ANTHROPIC_KEY, FAKE_OPENAI_KEY } from '../testing/test-secrets.js';
-import { getAvailableClis } from '../cli-adapters/factory.js';
+import { getAvailableClis, isCliAvailable } from '../cli-adapters/factory.js';
 import { createResilientAdapter } from './resilient-adapter.js';
 import { isGatewayModelAdapter } from './openai-compat-adapter.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
@@ -43,6 +43,7 @@ const GATEWAY_ENV = [
   'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'GOOGLE_AI_API_KEY',
+  'NEXUS_DISABLED_CLIS',
 ];
 
 describe('createAutoAdapter gateway family slots (#6604)', () => {
@@ -205,6 +206,37 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
 
     it('keeps the pre-#6626 opencode path with no gateway catalogue: the installed CLI', async () => {
       const s = await createAutoAdapter({ preferredCli: 'opencode', enableCache: false });
+      expect(s.source).toBe('cli');
+      expect(s.name).toBe('claude');
+    });
+  });
+
+  describe('a CLI disabled by NEXUS_DISABLED_CLIS is transport-scoped (#6720)', () => {
+    it('serves the pinned slot from its family gateway model, never probing the CLI', async () => {
+      process.env['NEXUS_DISABLED_CLIS'] = 'claude';
+      setGatewaySlotCatalog(['gpt-5.5', 'claude-sonnet-4-6'].map((id) => fakeGatewayModel(id)));
+      vi.mocked(isCliAvailable).mockClear();
+      const s = await createAutoAdapter({ preferredCli: 'claude', enableCache: false });
+      expect([s.adapter.modelId, s.adapter.providerId, s.name]).toEqual([
+        'claude-sonnet-4-6',
+        'cli-claude',
+        'claude',
+      ]);
+      const probed = vi.mocked(isCliAvailable).mock.calls.map(([cli]) => cli);
+      expect(probed).not.toContain('claude');
+    });
+
+    it('refuses the slot when the gateway has no model of its family', async () => {
+      process.env['NEXUS_DISABLED_CLIS'] = 'claude';
+      setGatewaySlotCatalog([fakeGatewayModel('gpt-5.5')]);
+      await expect(
+        createAutoAdapter({ preferredCli: 'claude', enableCache: false })
+      ).rejects.toThrow(/claude.*unavailable.*anthropic/);
+    });
+
+    it('keeps the pre-#6720 path with no gateway catalogue: another installed CLI', async () => {
+      process.env['NEXUS_DISABLED_CLIS'] = 'codex';
+      const s = await createAutoAdapter({ preferredCli: 'codex', enableCache: false });
       expect(s.source).toBe('cli');
       expect(s.name).toBe('claude');
     });

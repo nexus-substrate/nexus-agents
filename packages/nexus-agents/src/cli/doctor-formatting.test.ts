@@ -45,7 +45,9 @@ vi.mock('../utils/text-utils.js', () => ({
 }));
 
 // Mock DEFAULT_CAPABILITIES
-vi.mock('../cli-adapters/types.js', () => ({
+vi.mock('../cli-adapters/types.js', async (importOriginal) => ({
+  // The real type guards: `isCliDisabled` reads `isCliName` (#6720).
+  isCliName: (await importOriginal<typeof import('../cli-adapters/types.js')>()).isCliName,
   DEFAULT_CAPABILITIES: {
     claude: {
       reasoning: 95,

@@ -22,6 +22,7 @@ import {
   type GatewayProxyStatus,
 } from './doctor-gateway.js';
 import { gatewayFailureReason } from './doctor-voter-transport.js';
+import { formatSlotServing, gatewaySlotServing } from './doctor-gateway-slots.js';
 import { colors, symbols } from './ansi-output.js';
 
 const CHECK = `${colors.green}${symbols.check}${colors.reset}`;
@@ -31,8 +32,15 @@ const WARN = `${colors.yellow}${symbols.warn}${colors.reset}`;
 /** Says what the probe costs whether or not it ran, so the flag is never a surprise. */
 const PROBE_COST_NOTE = 'one tiny completion per family; this spends gateway tokens';
 
-/** The `doctor --gateway` section as lines. */
-export function formatGatewayReport(health: GatewayHealth): string[] {
+/**
+ * The `doctor --gateway` section as lines. `clis` are doctor's CLI checks;
+ * each slot line says what serves the slot, decided as the router decides it
+ * ({@link gatewaySlotServing}, #6720). Omitted, no CLI counts as installed.
+ */
+export function formatGatewayReport(
+  health: GatewayHealth,
+  clis: readonly CliCheckResult[] = []
+): string[] {
   const lines = [`${colors.cyan}Checking gateway (doctor --gateway)...${colors.reset}`, ''];
   if (health.state === 'not_configured') {
     lines.push(
@@ -49,7 +57,7 @@ export function formatGatewayReport(health: GatewayHealth): string[] {
   const filter = health.allowlistActive
     ? `after the chat filter and ${OPENAI_COMPAT_MODELS_ENV}`
     : 'after the chat filter';
-  const { census, slots } = health;
+  const { census } = health;
   lines.push(
     `${CHECK} Gateway ${health.host}: /models answered`,
     `  Private-address guard: allowed`,
@@ -57,8 +65,8 @@ export function formatGatewayReport(health: GatewayHealth): string[] {
     `  Models: ${String(health.listedCount)} listed, ${String(health.chatCount)} chat models ${filter}`,
     `  Families: anthropic ${String(census.anthropic)}, openai ${String(census.openai)}, ` +
       `google ${String(census.google)}, unknown ${String(census.unknown)}`,
-    `  Slots (used when the CLI is not available): claude → ${slots.claude}, ` +
-      `codex → ${slots.codex}, gemini → ${slots.gemini}`,
+    `  Slots (an available CLI serves its own slot first):`,
+    ...gatewaySlotServing(health, clis).map((s) => `    ${formatSlotServing(s)}`),
     ...formatProbes(health.probes),
     ...formatUnservedSlots(health)
   );

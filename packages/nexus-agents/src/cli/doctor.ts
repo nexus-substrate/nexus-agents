@@ -1133,7 +1133,9 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<number
   printDoctorResults(result);
   if (options.gateway === true || options.probe === true) {
     const { formatGatewayReport } = await import('./doctor-gateway-report.js');
-    for (const line of formatGatewayReport(result.gateway)) process.stdout.write(line + '\n');
+    for (const line of formatGatewayReport(result.gateway, result.clis)) {
+      process.stdout.write(line + '\n');
+    }
   }
 
   if (options.fix === true) {

@@ -6,8 +6,8 @@
  * decided by the predicate `createAutoAdapter` uses, `isCliAvailable` (health
  * AND auth), so the router and the registry agree on a logged-out CLI.
  *
- * - No binary on PATH: the gateway target, outright. `isCliAvailable` runs
- *   the binary, so it cannot be true.
+ * - No binary on PATH, or the CLI disabled by `NEXUS_DISABLED_CLIS` (#6720):
+ *   the gateway target, outright. The CLI adapter is not constructed.
  * - Binary on PATH: the arm asks the predicate on first use and commits.
  * - A committed CLI target that fails with an availability error
  *   (`NOT_FOUND`, `NOT_AUTHENTICATED`, `UNSUPPORTED_VERSION`) drops the
@@ -41,9 +41,14 @@ import type {
   ICliAdapter,
   ModelInfo,
 } from './types.js';
-import { isEndpointArmId } from './types.js';
+import { isCliName, isEndpointArmId } from './types.js';
 import type { ILogger, IModelAdapter, Result } from '../core/index.js';
-import { createGatewaySlotAdapter, resolveGatewaySlot } from '../adapters/gateway-family-slots.js';
+import {
+  createGatewaySlotAdapter,
+  resolveGatewaySlot,
+  type GatewaySlotResolution,
+} from '../adapters/gateway-family-slots.js';
+import { isCliDisabled } from './disabled-clis.js';
 import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import { isCliBinaryOnPath } from './cli-binary-on-path.js';
 import { createModelToCliAdapter } from './model-to-cli-adapter.js';
@@ -176,11 +181,69 @@ export function gatewayServedSlotOf(adapter: unknown): GatewayServedSlot | undef
 }
 
 /**
- * The router arm for a vendor slot in gateway mode (#6604), or what to do
- * instead. `undefined` keeps the plain subprocess arm: no gateway catalogue
- * (the pre-#6604 path, unchanged), or a gateway without this family while the
- * binary is installed (the CLI may still serve it). `'unavailable'` is no arm:
- * no binary and no family model, exactly like a disabled CLI.
+ * How a vendor slot is served (#6720): the ONE decision the router arm
+ * ({@link buildGatewaySlotRouterArm}) and `doctor --gateway` both read.
+ *
+ * - `cli`: the plain subprocess arm.
+ * - `cli-or-gateway`: the binary is installed and the gateway has a family
+ *   model; the availability probe decides on first use (#6604).
+ * - `gateway`: the family gateway model, outright.
+ * - `unavailable`: no arm.
+ */
+type SlotServing = 'cli' | 'cli-or-gateway' | 'gateway' | 'unavailable';
+
+/** What {@link decideSlotServing} needs to know about one slot. */
+interface SlotServingInput {
+  /** Disabled by `NEXUS_DISABLED_CLIS`. */
+  readonly disabled: boolean;
+  /** The CLI's binary is installed. Never consulted for a disabled CLI. */
+  readonly onPath: () => boolean;
+  /** The gateway's answer for the slot's family; `inactive` = no gateway catalogue. */
+  readonly gateway: GatewaySlotResolution['kind'];
+}
+
+/**
+ * The serving decision for one slot. `NEXUS_DISABLED_CLIS` is
+ * TRANSPORT-scoped (#6720, panel option A): a disabled CLI is treated as
+ * "CLI not available", so its family's gateway model still serves the slot.
+ * Without a gateway catalogue a disabled CLI has no arm (the #6590
+ * behaviour); an enabled one keeps its subprocess arm whether or not the
+ * binary exists (the pre-#6604 path).
+ */
+export function decideSlotServing(input: SlotServingInput): SlotServing {
+  if (input.gateway === 'inactive') return input.disabled ? 'unavailable' : 'cli';
+  // A disabled binary is never looked up, spawned or probed.
+  const cliUsable = !input.disabled && input.onPath();
+  if (input.gateway === 'unavailable') return cliUsable ? 'cli' : 'unavailable';
+  return cliUsable ? 'cli-or-gateway' : 'gateway';
+}
+
+/**
+ * Whether `cli` is disabled by `NEXUS_DISABLED_CLIS` AND its slot has no arm
+ * because the gateway does not serve its family (#6720). The sites that name
+ * a slot without building its arm (the expert fallback chain,
+ * `delegate_to_model` scoring) exclude exactly these, so they never name a
+ * slot the router and the registry cannot serve. A name that is not a CLI is
+ * never excluded.
+ */
+export function isDisabledSlotUnserved(cli: string | undefined): boolean {
+  if (cli === undefined || !isCliName(cli) || !isCliDisabled(cli)) return false;
+  const serving = decideSlotServing({
+    disabled: true,
+    onPath: () => false,
+    gateway: resolveGatewaySlot(cli).kind,
+  });
+  return serving === 'unavailable';
+}
+
+/**
+ * The router arm for a vendor slot, or what to do instead. `undefined` keeps
+ * the plain subprocess arm: no gateway catalogue (the pre-#6604 path,
+ * unchanged), or a gateway without this family while the binary is installed
+ * (the CLI may still serve it). `'unavailable'` is no arm: a CLI disabled by
+ * `NEXUS_DISABLED_CLIS` or missing, whose family the gateway does not serve.
+ * A disabled CLI whose family the gateway DOES serve is served by the gateway
+ * (#6720), and its subprocess adapter is never constructed.
  */
 export function buildGatewaySlotRouterArm(
   cli: CliName,
@@ -189,12 +252,16 @@ export function buildGatewaySlotRouterArm(
   logger?: ILogger
 ): ICliAdapter | 'unavailable' | undefined {
   const slot = resolveGatewaySlot(cli, process.env, logger);
-  if (slot.kind === 'inactive') return undefined;
-  const onPath = isCliBinaryOnPath(cli);
-  if (slot.kind === 'unavailable') return onPath ? undefined : 'unavailable';
+  const serving = decideSlotServing({
+    disabled: isCliDisabled(cli),
+    onPath: () => isCliBinaryOnPath(cli),
+    gateway: slot.kind,
+  });
+  if (serving === 'unavailable') return 'unavailable';
+  if (serving === 'cli' || slot.kind !== 'resolved') return undefined;
   return new GatewaySlotArm({
     cli,
-    cliAdapter: onPath ? createCli() : undefined,
+    cliAdapter: serving === 'cli-or-gateway' ? createCli() : undefined,
     gatewayModel: slot.adapter,
     isAvailable,
   });

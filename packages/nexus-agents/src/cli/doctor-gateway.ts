@@ -40,6 +40,7 @@ import {
   type GatewaySlotMapping,
 } from '../adapters/gateway-family-slots.js';
 import type { CliCheckResult } from './doctor.js';
+import { gatewaySlotServing } from './doctor-gateway-slots.js';
 
 /** Census buckets: the three slot families, and every model outside them. */
 export type GatewayCensusBucket = GatewayFamily | 'unknown';
@@ -312,28 +313,29 @@ export function gatewayVerdict(health: GatewayHealth): GatewayVerdict {
 }
 
 /**
- * One warning per missing CLI whose slot the passing gateway does not serve
- * (#6658). Such a CLI does not fail the verdict — other slots work — but a
- * task pinned to it throws "unavailable" at use, so it is named rather than
- * silently excused. opencode has no gateway slot, so a missing opencode is
- * always named. No warning when the gateway does not pass: the missing CLIs
- * then fail the verdict themselves ({@link cliFailsVerdict}).
+ * One warning per family slot the passing gateway leaves with no arm (#6658):
+ * its CLI is missing or disabled by `NEXUS_DISABLED_CLIS` (#6720), and the
+ * gateway has no model of its family — the router's own decision, read via
+ * {@link gatewaySlotServing}. Such a slot does not fail the verdict — other
+ * slots work — but a task pinned to it throws "unavailable" at use, so it is
+ * named rather than silently excused. opencode has no gateway slot, so a
+ * missing opencode is always named. No warning when the gateway does not
+ * pass: the missing CLIs then fail the verdict themselves
+ * ({@link cliFailsVerdict}).
  */
 export function gatewaySlotWarnings(
   health: GatewayHealth,
   clis: readonly CliCheckResult[]
 ): string[] {
   if (gatewayVerdict(health) !== 'pass') return [];
-  const unserved = unservedGatewaySlots(health);
   const missing = (name: CliCheckResult['name']): boolean =>
     clis.some((c) => c.name === name && !c.installed);
-  const warnings = PROBE_FAMILIES.filter((family) => {
-    const slot = PROBE_SLOT[family];
-    return unserved.includes(slot) && missing(slot);
-  }).map((family) => {
-    const slot = PROBE_SLOT[family];
-    return `${slot} slot unavailable: not installed, and the gateway has no ${family} model`;
-  });
+  const warnings = gatewaySlotServing(health, clis)
+    .filter((s) => s.serving === 'unavailable')
+    .map((s) => {
+      const why = s.disabled ? 'disabled by NEXUS_DISABLED_CLIS' : 'not installed';
+      return `${s.slot} slot unavailable: ${why}, and the gateway has no ${s.family} model`;
+    });
   if (missing('opencode')) {
     warnings.push('opencode slot unavailable: not installed, and the gateway has no opencode slot');
   }

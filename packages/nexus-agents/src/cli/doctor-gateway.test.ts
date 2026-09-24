@@ -19,6 +19,7 @@ import {
 } from './doctor-gateway.js';
 import type { GatewayHealth } from './doctor-gateway.js';
 import { formatGatewayReport } from './doctor-gateway-report.js';
+import { gatewaySlotServing } from './doctor-gateway-slots.js';
 import type { CliCheckResult } from './doctor.js';
 import {
   echoModelScript,
@@ -401,5 +402,70 @@ describe('slot coverage in the verdict (#6658)', () => {
     const health = healthy(await checkGatewayHealth({ probe: true }));
 
     expect(gatewayVerdict(health)).toBe('fail');
+  });
+});
+
+describe('slot serving under NEXUS_DISABLED_CLIS (#6720)', () => {
+  const cli = (
+    name: CliCheckResult['name'],
+    installed: boolean,
+    authenticated = installed
+  ): CliCheckResult => ({
+    name,
+    installed,
+    authenticated,
+    authState: authenticated ? 'authenticated' : 'not-authenticated',
+    version: installed ? '1.0.0' : 'N/A',
+    versionStatus: installed ? 'supported' : 'unsupported',
+  });
+  const openAiOnly = THREE_FAMILY_CATALOG.filter((r) => r.owned_by === 'openai');
+
+  it('reports a disabled claude as gateway-served when the gateway lists anthropic', async () => {
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'claude');
+    const health = healthy(await checkGatewayHealth());
+    // doctor does not probe a disabled CLI, so it is absent from the list.
+    const clis = [cli('gemini', false), cli('codex', true), cli('opencode', false)];
+
+    const serving = gatewaySlotServing(health, clis);
+    expect(serving.map((s) => [s.slot, s.serving])).toEqual([
+      ['claude', 'gateway'],
+      ['codex', 'cli'],
+      ['gemini', 'gateway'],
+    ]);
+    expect(serving[0]?.disabled).toBe(true);
+    const report = formatGatewayReport(health, clis).join('\n');
+    expect(report).toContain(
+      `claude → ${health.slots.claude} (gateway; CLI disabled by NEXUS_DISABLED_CLIS)`
+    );
+    expect(report).toContain('codex → CLI');
+    expect(gatewaySlotWarnings(health, clis).some((w) => w.startsWith('claude'))).toBe(false);
+  });
+
+  it('reports a disabled claude as unavailable when the gateway has no anthropic model', async () => {
+    vi.stubEnv('NEXUS_DISABLED_CLIS', 'claude');
+    gateway.setCatalog(openAiOnly);
+    const health = healthy(await checkGatewayHealth());
+    const clis = [cli('gemini', true), cli('codex', false), cli('opencode', true)];
+
+    expect(gatewaySlotServing(health, clis).find((s) => s.slot === 'claude')?.serving).toBe(
+      'unavailable'
+    );
+    expect(formatGatewayReport(health, clis).join('\n')).toContain(
+      'claude → unavailable (CLI disabled by NEXUS_DISABLED_CLIS; the gateway has no anthropic model)'
+    );
+    expect(gatewaySlotWarnings(health, clis)).toEqual([
+      'claude slot unavailable: disabled by NEXUS_DISABLED_CLIS, and the gateway has no anthropic model',
+    ]);
+  });
+
+  it('reports an installed, logged-out CLI as gateway-served, as the router probe decides', async () => {
+    const health = healthy(await checkGatewayHealth());
+    const clis = [cli('claude', true, false), cli('gemini', true), cli('codex', true)];
+
+    expect(gatewaySlotServing(health, clis).map((s) => s.serving)).toEqual([
+      'gateway',
+      'cli',
+      'cli',
+    ]);
   });
 });

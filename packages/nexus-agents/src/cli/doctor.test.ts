@@ -1706,8 +1706,9 @@ describe('doctor with a gateway (#6609)', () => {
     const text = output.join('');
     expect(text).toContain('Checking gateway (doctor --gateway)');
     expect(text).toContain('Models: 24 listed, 12 chat models after the chat filter');
-    expect(text).toContain(
-      'claude → claude_4_5_opus, codex → gpt-5.2, gemini → gemini-3-pro-preview'
-    );
+    // No CLI is installed here, so the gateway serves every family slot.
+    expect(text).toContain('claude → claude_4_5_opus (gateway; CLI not available)');
+    expect(text).toContain('codex → gpt-5.2 (gateway; CLI not available)');
+    expect(text).toContain('gemini → gemini-3-pro-preview (gateway; CLI not available)');
   });
 });
