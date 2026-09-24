@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.110.1
+
+### Patch Changes
+
+- [#6775](https://github.com/nexus-substrate/nexus-agents/pull/6775) [`a18f1cd`](https://github.com/nexus-substrate/nexus-agents/commit/a18f1cdda196ffd235184265734dfd8e76956e7e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents setup` no longer tells you to set `CI=true` when it refuses to run without a TTY. Setting `CI=true` is itself one of the conditions that triggers the refusal, so following that advice printed the same error again. The message now names the one remedy that works: re-run with `--non-interactive`.
+
 ## 8.110.0
 
 ### Minor Changes
