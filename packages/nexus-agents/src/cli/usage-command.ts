@@ -30,17 +30,16 @@ interface UsageOptions {
 }
 
 function parseOptions(args: ParsedCliArgs): UsageOptions {
-  // #6693: `--since` / `--until` are registered in the global parser and
-  // arrive typed; before that the parser rejected both as unknown options.
-  const format: 'text' | 'json' = args.options.format === 'json' ? 'json' : 'text';
-  const since = args.options.since ?? '';
+  const formatRaw = typeof args.options.format === 'string' ? args.options.format : 'text';
+  const format: 'text' | 'json' = formatRaw === 'json' ? 'json' : 'text';
+
+  const since = typeof args.options.since === 'string' ? args.options.since : '';
   const sinceIso = since === '' ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() : since;
-  return {
-    format,
-    sinceIso,
-    untilIso: args.options.until,
-    modelId: args.options.model,
-  };
+
+  const until = typeof args.options.until === 'string' ? args.options.until : undefined;
+  const model = typeof args.options.model === 'string' ? args.options.model : undefined;
+
+  return { format, sinceIso, untilIso: until, modelId: model };
 }
 
 export async function handleUsageCommand(args: ParsedCliArgs): Promise<CliExitResult> {

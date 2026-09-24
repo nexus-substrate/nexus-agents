@@ -2,13 +2,12 @@
 'nexus-agents': patch
 ---
 
-Documented CLI flags that exited with `Unknown option` now work (#6693):
-`session list --limit <n>`, `session export --markdown`, `usage --since/--until`,
-`validation --task-type/--min-sample`, `sprint plan --vote`, `research --topic`,
-`--status`, `--create-issues`, `--max`, `--vote`, `research index --generate`,
-`--check`, `--strict`, `--silent`, `--no-check-files`, and `release-validate
---strict` / `--skip <validator>` (repeatable). `--limit`, `--max` and
-`--min-sample` refuse a value that is not a positive integer.
+More documented CLI flags that exited with `Unknown option` now work (#6693,
+follow-up to #6705): `research --topic`, `--status`, `--create-issues`,
+`--max`, `--vote`; `research index --generate`, `--check`, `--strict`,
+`--silent`, `--no-check-files`; `sprint plan --vote`; and `release-validate
+--strict` / `--skip <validator>` (repeatable). `--max` refuses a value that is
+not a positive integer.
 
 Help text that advertised flags with no implementation is corrected:
 `fitness-audit --min-severity` is removed, the `research index` short aliases

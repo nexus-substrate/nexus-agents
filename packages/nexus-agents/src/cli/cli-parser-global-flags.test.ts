@@ -16,12 +16,25 @@ import { parseResearchIndexArgs } from './research-index-helpers.js';
 import { handleMemoryBenchmarkCommand } from './memory-benchmark-command.js';
 import { sessionCommand } from './session-commands.js';
 
+const mockListSessions = vi.fn().mockResolvedValue({ ok: true, value: [] });
+const mockGetSessionWithTasks = vi.fn().mockResolvedValue({
+  ok: true,
+  value: {
+    id: 's-123',
+    status: 'completed',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:00:00Z',
+    metadata: {},
+    tasks: [],
+  },
+});
+
 // Mock session-commands dependencies
 vi.mock('./session-storage.js', () => ({
   createSessionStorage: vi.fn(() => ({
     initialize: vi.fn().mockResolvedValue({ ok: true }),
-    listSessions: vi.fn().mockResolvedValue({ ok: true, value: [] }),
-    getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: null }),
+    listSessions: mockListSessions,
+    getSessionWithTasks: mockGetSessionWithTasks,
     deleteSession: vi.fn().mockResolvedValue({ ok: true, value: true }),
     prune: vi.fn().mockResolvedValue({ ok: true, value: 0 }),
     close: vi.fn(),
@@ -225,3 +238,63 @@ describe('Issue #6678 - session export and list flags', () => {
     expect(output).toContain('[]');
   });
 });
+
+describe('Issue #6693 - documented flags registered in global parser', () => {
+  let stdoutChunks: string[] = [];
+
+  beforeEach(() => {
+    stdoutChunks = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stdoutChunks.push(typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    });
+  });
+
+  it('parses session list --limit <n> into options.limit', () => {
+    const parsed = parseCliArgs(['session', 'list', '--limit', '5']);
+    expect(parsed.options.limit).toBe('5');
+  });
+
+  it('parses session export --markdown into options.markdown', () => {
+    const parsed = parseCliArgs(['session', 'export', 's-123', '--markdown']);
+    expect(parsed.options.markdown).toBe(true);
+  });
+
+  it('parses usage --since and --until into options', () => {
+    const parsed = parseCliArgs([
+      'usage',
+      '--since=2026-09-01T00:00:00Z',
+      '--until=2026-09-24T00:00:00Z',
+    ]);
+    expect(parsed.options.since).toBe('2026-09-01T00:00:00Z');
+    expect(parsed.options.until).toBe('2026-09-24T00:00:00Z');
+  });
+
+  it('parses validation --task-type and --min-sample into options', () => {
+    const parsed = parseCliArgs(['validation', '--task-type=code', '--min-sample=5']);
+    expect(parsed.options.taskType).toBe('code');
+    expect(parsed.options.minSample).toBe('5');
+  });
+
+  it('parseValidationArgs extracts taskType and minSample from forwarded options', () => {
+    const options = parseValidationArgs([], 'table', false, {
+      taskType: 'code,review',
+      minSample: '15',
+    });
+    expect(options['taskTypes']).toEqual(['code', 'review']);
+    expect(options['minSampleSize']).toBe(15);
+  });
+
+  it('sessionCommand forwards limit to sessionList', async () => {
+    mockListSessions.mockClear();
+    await sessionCommand('list', [], undefined, { limit: 5 });
+    expect(mockListSessions).toHaveBeenCalledWith(5);
+  });
+
+  it('sessionCommand forwards markdown format on export', async () => {
+    await sessionCommand('export', ['s-123'], undefined, { markdown: true });
+    const output = stdoutChunks.join('');
+    expect(output).toContain('# Session: s-123');
+  });
+});
+

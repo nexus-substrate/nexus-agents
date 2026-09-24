@@ -305,17 +305,18 @@ export interface ParsedCliArgs {
     minSampleSize?: string;
     'fitness-floor'?: string;
     fitnessFloor?: string;
-    // Subcommand flags the usage text advertised but the parser rejected (#6693).
-    /** `session list --limit <n>`. */
-    limit?: number;
-    /** `session export --markdown`. */
+    // session command options (#6693)
+    limit?: string;
     markdown?: boolean;
-    /** `usage --since=<iso>` / `--until=<iso>`. */
+    // usage command options (#6693)
     since?: string;
     until?: string;
-    /** `validation --task-type=<a,b>` / `--min-sample=<n>`. */
+    // validation command options (#6693)
+    'task-type'?: string;
     taskType?: string;
-    minSample?: number;
+    'min-sample'?: string;
+    minSample?: string;
+    // Subcommand flags the parser still rejected after #6705 (#6693 follow-up).
     /** `sprint --vote`, `research review|prioritize --vote`. */
     vote?: boolean;
     /** `research discover|review|prioritize|autofile --topic=<t>`. */
@@ -659,16 +660,32 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
-    // #6693 — subcommand flags that usage text advertised and handlers read,
-    // but that this strict parser rejected as `Unknown option`. Forwarded by
+    // session command options (#6693)
+    limit: {
+      type: 'string' as const,
+    },
+    markdown: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // usage command options (#6693)
+    since: {
+      type: 'string' as const,
+    },
+    until: {
+      type: 'string' as const,
+    },
+    // validation command options (#6693)
+    'task-type': {
+      type: 'string' as const,
+    },
+    'min-sample': {
+      type: 'string' as const,
+    },
+    // #6693 follow-up — subcommand flags that usage text advertised and
+    // handlers read, still rejected after #6705. Forwarded by
     // `buildSubcommandFlagOptions` (cli/subcommand-flag-options.ts). No short
     // letters: a short letter is global (see the note on `threshold`).
-    limit: { type: 'string' as const },
-    markdown: { type: 'boolean' as const, default: false },
-    since: { type: 'string' as const },
-    until: { type: 'string' as const },
-    'task-type': { type: 'string' as const },
-    'min-sample': { type: 'string' as const },
     vote: { type: 'boolean' as const, default: false },
     topic: { type: 'string' as const },
     status: { type: 'string' as const },

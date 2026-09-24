@@ -3,8 +3,9 @@
  *
  * The strict global parser (`PARSE_ARGS_CONFIG`) rejected several flags that
  * usage text advertised and handlers read, so each exited with
- * `Unknown option` before the handler ran. Part one drives each fixed flag
- * through the real `parseCliArgs` → handler path. Part two is the guard: every
+ * `Unknown option` before the handler ran. #6705 fixed the session, usage and
+ * validation flags; part one drives each flag it left through the real
+ * `parseCliArgs` → handler path. Part two is the guard: every
  * flag that `docs/ENTRYPOINTS.md` or a CLI help/usage string advertises must
  * parse without `Unknown option`, so this class of drift fails CI.
  *
@@ -16,39 +17,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseCliArgs } from '../cli.js';
-import {
-  handleResearchCommand,
-  handleSessionCommand,
-  handleSprintCommand,
-  handleValidationCommand,
-} from '../cli-commands-handlers.js';
+import { handleResearchCommand, handleSprintCommand } from '../cli-commands-handlers.js';
 import { handleReleaseValidateCommand } from '../cli-release-handlers.js';
-import { handleUsageCommand } from './usage-command.js';
-import {
-  researchCommand,
-  releaseValidateCommand,
-  sprintCommand,
-  validationDashboardCommand,
-} from './index.js';
-import { loadUsageEvents } from '../learning/usage-log.js';
+import { researchCommand, releaseValidateCommand, sprintCommand } from './index.js';
 import { researchIndexCommand } from './research-index-command.js';
-
-const storage = vi.hoisted(() => ({
-  listSessions: vi.fn(),
-  getSessionWithTasks: vi.fn(),
-}));
-
-vi.mock('./session-storage.js', () => ({
-  createSessionStorage: vi.fn(() => ({
-    initialize: vi.fn().mockResolvedValue({ ok: true }),
-    listSessions: storage.listSessions,
-    getSessionWithTasks: storage.getSessionWithTasks,
-    deleteSession: vi.fn().mockResolvedValue({ ok: true, value: true }),
-    prune: vi.fn().mockResolvedValue({ ok: true, value: 0 }),
-    close: vi.fn(),
-  })),
-  SQLiteSessionStorage: vi.fn(),
-}));
 
 vi.mock('./index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./index.js')>();
@@ -57,7 +29,6 @@ vi.mock('./index.js', async (importOriginal) => {
     // Pass-through spy: the research index path runs the real subcommand code.
     researchCommand: vi.fn(actual.researchCommand),
     sprintCommand: vi.fn().mockResolvedValue(0),
-    validationDashboardCommand: vi.fn().mockReturnValue(0),
     releaseValidateCommand: vi.fn().mockResolvedValue(0),
   };
 });
@@ -70,71 +41,13 @@ vi.mock('./research-index-command.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../learning/usage-log.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../learning/usage-log.js')>();
-  return {
-    ...actual,
-    loadUsageEvents: vi.fn(() => ({ events: [], complete: true, readErrors: [] })),
-  };
-});
-
-let stdout: string[] = [];
-
 beforeEach(() => {
   vi.clearAllMocks();
-  stdout = [];
-  vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
-    stdout.push(typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk));
-    return true;
-  });
+  vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   vi.spyOn(console, 'log').mockImplementation(() => undefined);
 });
 
-describe('#6693 documented flags reach their handlers', () => {
-  it('session list --limit <n> caps the listing at n', async () => {
-    storage.listSessions.mockResolvedValue({ ok: true, value: [] });
-    await handleSessionCommand(parseCliArgs(['session', 'list', '--limit', '5']));
-    expect(storage.listSessions).toHaveBeenCalledWith(5);
-  });
-
-  it('session list --limit refuses a non-integer', () => {
-    expect(() => parseCliArgs(['session', 'list', '--limit', 'five'])).toThrow(
-      /--limit must be a positive integer; got 'five'/
-    );
-  });
-
-  it('session export --markdown renders markdown, not JSON', async () => {
-    storage.getSessionWithTasks.mockResolvedValue({
-      ok: true,
-      value: {
-        id: 's-6693',
-        status: 'completed',
-        createdAt: '2026-09-24T00:00:00.000Z',
-        updatedAt: '2026-09-24T00:00:00.000Z',
-        metadata: {},
-        tasks: [],
-      },
-    });
-    await handleSessionCommand(parseCliArgs(['session', 'export', 's-6693', '--markdown']));
-    expect(stdout.join('')).toContain('# Session: s-6693');
-  });
-
-  it('usage --since / --until set the ledger window', async () => {
-    const since = '2026-09-01T00:00:00.000Z';
-    const until = '2026-09-02T00:00:00.000Z';
-    await handleUsageCommand(parseCliArgs(['usage', `--since=${since}`, `--until=${until}`]));
-    expect(vi.mocked(loadUsageEvents)).toHaveBeenCalledWith({ sinceIso: since, untilIso: until });
-  });
-
-  it('validation --task-type / --min-sample reach the dashboard filter', () => {
-    handleValidationCommand(
-      parseCliArgs(['validation', '--task-type=coding,review', '--min-sample=7'])
-    );
-    expect(vi.mocked(validationDashboardCommand)).toHaveBeenCalledWith(
-      expect.objectContaining({ taskTypes: ['coding', 'review'], minSampleSize: 7 })
-    );
-  });
-
+describe('#6693 follow-up: flags #6705 left reach their handlers', () => {
   it('sprint plan --vote asks for a vote without filing an issue', async () => {
     await handleSprintCommand(parseCliArgs(['sprint', 'plan', '--vote']));
     const opts = vi.mocked(sprintCommand).mock.calls[0]?.[0];
@@ -163,6 +76,12 @@ describe('#6693 documented flags reach their handlers', () => {
         max: 3,
         vote: true,
       })
+    );
+  });
+
+  it('research autofile --max refuses a non-integer', () => {
+    expect(() => parseCliArgs(['research', 'autofile', '--max=three'])).toThrow(
+      /--max must be a positive integer; got 'three'/
     );
   });
 

@@ -525,9 +525,7 @@ describe('session-commands', () => {
       const mockStorage = createMockStorage();
       mockCreateSessionStorage.mockReturnValue(mockStorage);
 
-      // #6693: the global parser consumes `--limit`, so it arrives as a flag,
-      // never in the positional args.
-      await sessionCommand('list', [], undefined, { limit: 5 });
+      await sessionCommand('list', ['--limit', '5']);
 
       expect(mockStorage.listSessions).toHaveBeenCalledWith(5);
     });

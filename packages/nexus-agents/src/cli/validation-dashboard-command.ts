@@ -136,14 +136,12 @@ export function validationDashboardCommand(options: ValidationDashboardOptions =
   }
 }
 
-/** Parsed flags forwarded from the global CLI parser (#6678). */
+/** Parsed flags forwarded from the global CLI parser (#6678, #6693). */
 interface ValidationParsedFlags {
   readonly period?: string | undefined;
   readonly model?: string | undefined;
-  /** `--task-type=a,b`, forwarded by the global parser (#6693). */
   readonly taskType?: string | undefined;
-  /** `--min-sample=<n>`, already validated as a positive integer (#6693). */
-  readonly minSample?: number | undefined;
+  readonly minSample?: string | undefined;
 }
 
 /** Parse --period=X from positionals or forwarded flag. */
@@ -160,29 +158,22 @@ function parseModels(positionals: readonly string[], flagModel?: string): string
   return models !== undefined && models.length > 0 ? models : undefined;
 }
 
-/** Parse --task-type=X,Y from positionals or forwarded flag. */
-function parseTaskTypes(
-  positionals: readonly string[],
-  flagTaskType?: string
-): string[] | undefined {
-  const arg = flagTaskType ?? positionals.find((p) => p.startsWith('--task-type='))?.split('=')[1];
-  const types = arg?.split(',').filter((t) => t.length > 0);
+/** Parse --task-type=X,Y from positionals or forwarded flag (#6693). */
+function parseTaskTypes(positionals: readonly string[], flagTaskType?: string): string[] | undefined {
+  const raw = flagTaskType ?? positionals.find((p) => p.startsWith('--task-type='))?.split('=')[1];
+  const types = raw?.split(',').filter((t) => t.length > 0);
   return types !== undefined && types.length > 0 ? types : undefined;
 }
 
-/** Parse --min-sample=N from positionals or forwarded flag. */
-function parseMinSample(
-  positionals: readonly string[],
-  flagMinSample?: number
-): number | undefined {
-  if (flagMinSample !== undefined) return flagMinSample;
-  const arg = positionals.find((p) => p.startsWith('--min-sample='))?.split('=')[1];
-  const value = arg !== undefined ? parseInt(arg, 10) : undefined;
+/** Parse --min-sample=N from positionals or forwarded flag (#6693). */
+function parseMinSample(positionals: readonly string[], flagMinSample?: string): number | undefined {
+  const raw = flagMinSample ?? positionals.find((p) => p.startsWith('--min-sample='))?.split('=')[1];
+  const value = raw !== undefined ? parseInt(raw, 10) : undefined;
   return Number.isFinite(value) ? value : undefined;
 }
 
 /**
- * Parses CLI positionals and forwarded flags to extract validation options (#6678).
+ * Parses CLI positionals and forwarded flags to extract validation options (#6678, #6693).
  */
 export function parseValidationArgs(
   positionals: readonly string[],
