@@ -340,8 +340,14 @@ function signalProcessTreeSoon(
   if (pid === undefined || collectAsync === undefined) {
     return signalProcessTree(child, signal, known, ops);
   }
-  return collectAsync(pid).then((pids) =>
-    signalCollected(child, signal, known, identify(pids, ops), ops)
+  return collectAsync(pid).then(
+    (pids) => {
+      // The child may have exited, and its PID been reused, while `ps` ran (#6714).
+      const fresh = hasExited(child) ? [] : identify(pids, ops);
+      return signalCollected(child, signal, known, fresh, ops);
+    },
+    // A failed walk must not leave the child unsignalled or reject into a `void`.
+    () => signalCollected(child, signal, known, [], ops)
   );
 }
 

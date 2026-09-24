@@ -25,6 +25,7 @@ import {
   terminateProcessTree,
 } from './process-tree-kill.js';
 import { parseProcStatStartTime } from './proc-start-time.js';
+import type { ICliResponseParser, ModelInfo } from './types.js';
 
 /** The seam `signalProcessTree` takes for its OS operations. */
 type ProcessTreeOps = NonNullable<Parameters<typeof signalProcessTree>[3]>;
@@ -386,14 +387,14 @@ describe('PID identity before signalling a tree (#6714)', () => {
 /** A spawned-looking double whose own `kill` can be inspected. */
 function inspectableChild(): { child: ChildProcess; childKill: ReturnType<typeof vi.fn> } {
   const childKill = vi.fn();
-  const child = {
+  const child = Object.assign(new EventEmitter(), {
     pid: 4242,
     spawnfile: 'node',
     spawnargs: ['node'],
     exitCode: null,
     signalCode: null,
     kill: childKill,
-  } as unknown as ChildProcess;
+  }) as unknown as ChildProcess;
   return { child, childKill };
 }
 
@@ -438,6 +439,36 @@ describe('asynchronous collection off Linux (#6718)', () => {
     expect(childKill).toHaveBeenCalledWith('SIGTERM');
     expect(ops.kill).toHaveBeenCalledWith(901, 'SIGTERM');
     expect(ops.kill).toHaveBeenCalledWith(902, 'SIGTERM');
+  });
+
+  it('a failed async walk still signals the child, and does not reject', async () => {
+    const ops: FakeOps = {
+      ...fakeOps([], {}),
+      hasStartTimes: false,
+      collectDescendantsAsync: vi.fn<(root: number) => Promise<number[]>>(() =>
+        Promise.reject(new Error('ps failed'))
+      ),
+    };
+    const { child, childKill } = inspectableChild();
+
+    await expect(terminateProcessTree(child, 60_000, undefined, ops)).resolves.toEqual([]);
+    expect(childKill).toHaveBeenCalledWith('SIGTERM');
+    expect(ops.kill).not.toHaveBeenCalled();
+  });
+
+  it('a child that exits during the async walk has its walked PIDs dropped (PID reuse)', async () => {
+    const { ops, release } = asyncOps();
+    const { child, childKill } = inspectableChild();
+
+    const pending = terminateProcessTree(child, 60_000, undefined, ops);
+    // Reaped while `ps` ran: the walked PIDs may now belong to a stranger's tree.
+    (child as unknown as { exitCode: number }).exitCode = 0;
+    release([906]);
+
+    await expect(pending).resolves.toEqual([]);
+    expect(childKill).toHaveBeenCalledWith('SIGTERM');
+    // The same walk IS signalled while the child runs (the test above), so this is not vacuous.
+    expect(ops.kill).not.toHaveBeenCalledWith(906, 'SIGTERM');
   });
 
   it('terminateProcessTree SIGTERMs only after the async walk, then escalates', async () => {
@@ -671,6 +702,93 @@ describe.skipIf(process.platform !== 'linux')(
       // Once its descendants are gone the tree is forgotten.
       expect(mod.signalTrackedProcessTrees('SIGKILL')).toBe(0);
     }, 20_000);
+
+    /**
+     * The REAL adapter timeout path (#6718 review): a CLI that ignores SIGTERM,
+     * with a grandchild that ignores it too, must both be dead once the
+     * timeout's SIGKILL grace period has passed.
+     */
+    async function runTimedOutCli(
+      adapterModule: typeof import('./subprocess-adapter.js')
+    ): Promise<void> {
+      const cliPidFile = join(tmpDir, 'cli.pid');
+      const grandchildPidFile = join(tmpDir, 'grandchild.pid');
+      const grandchildScript =
+        "process.on('SIGTERM', () => {});" +
+        `require('fs').writeFileSync(${JSON.stringify(grandchildPidFile)}, String(process.pid));` +
+        'setInterval(() => {}, 1000);';
+      const cliScript =
+        "process.on('SIGTERM', () => {});" +
+        `require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], { stdio: 'ignore' });` +
+        `require('fs').writeFileSync(${JSON.stringify(cliPidFile)}, String(process.pid));` +
+        'setInterval(() => {}, 1000);';
+
+      class StubbornCli extends adapterModule.SubprocessCliAdapter {
+        override readonly name = 'claude' as const;
+        readonly version = '1.0.0';
+        protected override readonly transientRetry = { enabled: false };
+        protected readonly parser: ICliResponseParser = {
+          name: 'test-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: (raw: string) => raw,
+          extractResponse: (output: string) => output.trim() || null,
+          extractUsage: () => null,
+          extractSessionId: () => null,
+        };
+        protected getCommand(): { command: string; args: string[] } {
+          return { command: process.execPath, args: ['-e', cliScript] };
+        }
+        override initialize(): Promise<void> {
+          this.initialized = true;
+          return Promise.resolve();
+        }
+        getModelInfo(): ModelInfo {
+          return {
+            id: 'm',
+            name: 'm',
+            contextWindow: 1,
+            maxOutput: 1,
+            costPerMillionInput: 0,
+            costPerMillionOutput: 0,
+          };
+        }
+      }
+
+      const result = await new StubbornCli().execute(
+        { content: 'x' },
+        { timeoutMs: 2_500, allowRetry: false }
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
+
+      const cli = Number(readFileSync(cliPidFile, 'utf8'));
+      const grandchild = Number(readFileSync(grandchildPidFile, 'utf8'));
+      pids.push(cli, grandchild);
+      // Both ignore SIGTERM, so each is still running right after the timeout.
+      expect(isAlive(cli)).toBe(true);
+      expect(isAlive(grandchild)).toBe(true);
+      const limit = adapterModule.SIGKILL_GRACE_MS + 3_000;
+      await waitFor(() => !isAlive(cli), `CLI ${String(cli)} to die`, limit);
+      await waitFor(() => !isAlive(grandchild), `grandchild ${String(grandchild)} to die`, limit);
+    }
+
+    it('the adapter timeout path SIGKILLs a CLI and grandchild that ignore SIGTERM', async () => {
+      await freshTreeKillModule();
+      await runTimedOutCli(await import('./subprocess-adapter.js'));
+    }, 30_000);
+
+    it('the adapter timeout path, loaded as darwin, does the same through the async ps', async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      let adapterModule: typeof import('./subprocess-adapter.js');
+      try {
+        vi.resetModules();
+        adapterModule = await import('./subprocess-adapter.js');
+      } finally {
+        if (platform !== undefined) Object.defineProperty(process, 'platform', platform);
+      }
+      await runTimedOutCli(adapterModule);
+    }, 30_000);
 
     it('off Linux (mocked), a real async ps walk finds and escalates the grandchild (#6718)', async () => {
       // Loaded as darwin, the default seam collects with an async `ps`, which runs for real here.
