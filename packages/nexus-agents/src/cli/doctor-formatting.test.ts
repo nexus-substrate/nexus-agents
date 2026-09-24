@@ -749,6 +749,37 @@ describe('doctor-formatting', () => {
       expect(getCalls().some((c) => c.includes('NEXUS_DISABLED_CLIS'))).toBe(false);
     });
 
+    it('names each missing CLI whose slot the gateway does not serve (#6658)', () => {
+      const missing = (name: CliName): CliCheckResult => ({
+        name,
+        installed: false,
+        authenticated: false,
+        authState: 'unverified',
+        version: 'N/A',
+        versionStatus: 'unsupported',
+      });
+      printDoctorResults({
+        ...createDoctorResult(),
+        clis: (['claude', 'gemini', 'codex'] as const).map(missing),
+        gateway: {
+          state: 'healthy',
+          host: 'gateway.example',
+          listedCount: 5,
+          chatCount: 5,
+          allowlistActive: false,
+          census: { anthropic: 0, openai: 5, google: 0, unknown: 0 },
+          slots: { claude: 'unavailable', codex: 'gpt-5.2', gemini: 'unavailable' },
+          proxy: { kind: 'direct' },
+          probes: 'skipped',
+        },
+      });
+      const calls = getCalls();
+      expect(calls.filter((c) => c.includes('slot unavailable: not installed'))).toHaveLength(2);
+      expect(calls.some((c) => c.includes('claude slot unavailable'))).toBe(true);
+      expect(calls.some((c) => c.includes('gemini slot unavailable'))).toBe(true);
+      expect(calls.some((c) => c.includes('codex slot unavailable'))).toBe(false);
+    });
+
     it('should print voter transport status (#4255)', () => {
       const testCases = [
         { configured: true, expected: 'Voter transport: In-process gateway' },

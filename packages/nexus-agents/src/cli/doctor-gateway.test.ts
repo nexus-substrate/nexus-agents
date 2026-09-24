@@ -10,7 +10,13 @@ import type { AddressInfo } from 'node:net';
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { checkGatewayHealth, cliFailsVerdict, gatewayVerdict } from './doctor-gateway.js';
+import {
+  checkGatewayHealth,
+  cliFailsVerdict,
+  gatewaySlotWarnings,
+  gatewayVerdict,
+  unservedSlotLines,
+} from './doctor-gateway.js';
 import type { GatewayHealth } from './doctor-gateway.js';
 import { formatGatewayReport } from './doctor-gateway-report.js';
 import type { CliCheckResult } from './doctor.js';
@@ -280,5 +286,120 @@ describe('cliFailsVerdict', () => {
 
   it('still counts an installed CLI that is not authenticated', () => {
     expect(cliFailsVerdict(unauthenticated, 'pass')).toBe(true);
+  });
+});
+
+describe('slot coverage in the verdict (#6658)', () => {
+  const missing = (name: CliCheckResult['name']): CliCheckResult => ({
+    name,
+    installed: false,
+    authenticated: false,
+    authState: 'unverified',
+    version: 'N/A',
+    versionStatus: 'unsupported',
+  });
+  const familyClis = (['claude', 'gemini', 'codex'] as const).map(missing);
+  const allClis = [...familyClis, missing('opencode')];
+  const openAiOnly = THREE_FAMILY_CATALOG.filter((r) => r.owned_by === 'openai');
+  const mistral: CatalogEntry = {
+    id: 'mistral-large-2411',
+    object: 'model',
+    created: 1731000000,
+    owned_by: 'mistral',
+  };
+
+  it('an OpenAI-only catalog passes, naming the claude and gemini slots unavailable', async () => {
+    gateway.setCatalog(openAiOnly);
+
+    const health = healthy(await checkGatewayHealth());
+
+    expect(unservedSlotLines(health)).toEqual([
+      'claude slot unavailable: the gateway has no anthropic model',
+      'gemini slot unavailable: the gateway has no google model',
+    ]);
+    expect(gatewayVerdict(health)).toBe('pass');
+    const warnings = gatewaySlotWarnings(health, familyClis);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toMatch(/^claude slot unavailable: .*no anthropic model/);
+    expect(warnings[1]).toMatch(/^gemini slot unavailable: .*no google model/);
+    expect(formatGatewayReport(health).join('\n')).toContain('claude slot unavailable');
+  });
+
+  it('an empty chat catalog fails', async () => {
+    gateway.setCatalog([]);
+
+    const health = await checkGatewayHealth();
+
+    expect(health.state).toBe('no_chat_models');
+    expect(gatewayVerdict(health)).toBe('fail');
+    expect(gatewaySlotWarnings(health, allClis)).toEqual([]);
+  });
+
+  it('a catalog whose chat models serve no slot fails: zero usable slots', async () => {
+    gateway.setCatalog([mistral]);
+
+    const health = healthy(await checkGatewayHealth());
+
+    expect(unservedSlotLines(health)).toEqual([
+      'no slot has a gateway model: every pinned claude, codex or gemini slot is unavailable',
+    ]);
+    expect(gatewayVerdict(health)).toBe('fail');
+    expect(formatGatewayReport(health).join('\n')).toContain('no slot has a gateway model');
+  });
+
+  it('a full three-family catalog passes with no slot warning', async () => {
+    const health = healthy(await checkGatewayHealth());
+
+    expect(unservedSlotLines(health)).toEqual([]);
+    expect(gatewayVerdict(health)).toBe('pass');
+    expect(gatewaySlotWarnings(health, familyClis)).toEqual([]);
+  });
+
+  it('a missing opencode is a named warning, not a failure', async () => {
+    const health = healthy(await checkGatewayHealth());
+
+    const warnings = gatewaySlotWarnings(health, allClis);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^opencode slot unavailable: /);
+    expect(cliFailsVerdict(missing('opencode'), gatewayVerdict(health))).toBe(false);
+  });
+
+  it('names no slot whose CLI is installed', async () => {
+    gateway.setCatalog(openAiOnly);
+    const installedClaude: CliCheckResult = {
+      ...missing('claude'),
+      installed: true,
+      authenticated: true,
+      authState: 'authenticated',
+      version: '1.0.0',
+      versionStatus: 'supported',
+    };
+
+    const health = healthy(await checkGatewayHealth());
+
+    const warnings = gatewaySlotWarnings(health, [installedClaude, missing('gemini')]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^gemini slot unavailable/);
+  });
+
+  it('--probe: a no_model family counts as an unavailable slot', async () => {
+    gateway.setCatalog(openAiOnly);
+
+    const health = healthy(await checkGatewayHealth({ probe: true }));
+
+    expect(health.probes).not.toBe('skipped');
+    if (health.probes === 'skipped') return;
+    expect(health.probes.map((p) => p.outcome)).toEqual(['no_model', 'ok', 'no_model']);
+    expect(unservedSlotLines(health)).toHaveLength(2);
+    expect(gatewaySlotWarnings(health, familyClis)).toHaveLength(2);
+    expect(gatewayVerdict(health)).toBe('pass');
+  });
+
+  it('--probe: no_model for every family fails', async () => {
+    gateway.setCatalog([mistral]);
+
+    const health = healthy(await checkGatewayHealth({ probe: true }));
+
+    expect(gatewayVerdict(health)).toBe('fail');
   });
 });
