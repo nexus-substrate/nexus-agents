@@ -4227,7 +4227,7 @@ InterfaceDeclaration GetJobResultResponse
   readonly jobId: string
   readonly producerVersionMeasured?: boolean | undefined
   readonly producerVersionSource?: JobResultSource | undefined
-  readonly record?: undefined | { completedAt?: string | undefined; createdAt: string; error?: string | undefined; errorKind?: "abandoned" | undefined; failureDetail?: undefined | { adapter: string; category: string; transport: string; }; jobId: string; lastProgressAt?: string | undefined; producerVersion?: string | undefined; result?: unknown; signalAccepted?: boolean | undefined; status: "cancelled" | "complete" | "failed" | "pending"; toolName: string; v: 1; }
+  readonly record?: undefined | { cancelledPartial?: undefined | { panelSize: number; partialVotes: unknown[]; seatsCast: number; }; completedAt?: string | undefined; createdAt: string; error?: string | undefined; errorKind?: "abandoned" | undefined; failureDetail?: undefined | { adapter: string; category: string; transport: string; }; jobId: string; lastProgressAt?: string | undefined; producerVersion?: string | undefined; result?: unknown; signalAccepted?: boolean | undefined; status: "cancelled" | "complete" | "failed" | "pending"; toolName: string; v: 1; }
 FunctionDeclaration getKnownNexusVarNames
   : () => readonly string[]
 FunctionDeclaration getOutcomeStore
