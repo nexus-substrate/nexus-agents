@@ -8,34 +8,14 @@
  * (Source: Issue #99, arXiv:2510.05164 - EMNLP 2025)
  */
 
-import type { CliResponse, ConfidenceEstimate } from './types.js';
-
 // =============================================================================
 // Types
 // =============================================================================
 
 /**
- * Response cache entry for avoiding redundant model calls.
- */
-export interface CacheEntry {
-  readonly response: CliResponse;
-  readonly confidence: ConfidenceEstimate;
-  readonly timestamp: number;
-}
-
-/**
  * Task complexity levels for confidence estimation.
  */
 export type TaskComplexity = 'simple' | 'moderate' | 'complex';
-
-/**
- * Cache statistics for monitoring.
- */
-export interface CacheStats {
-  readonly size: number;
-  readonly maxSize: number;
-  readonly maxAgeMs: number;
-}
 
 // =============================================================================
 // Default Configuration

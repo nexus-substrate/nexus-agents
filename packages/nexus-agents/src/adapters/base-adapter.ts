@@ -367,7 +367,7 @@ export abstract class BaseAdapter implements IModelAdapter {
       modelId: this.modelId,
     };
     // #4069: surface the offending param name for a param-naming 400 so callers
-    // and the reactive self-heal path (#4071) can read which param to retry without.
+    // can read which param was rejected.
     if (param !== undefined) {
       context.param = param;
     }

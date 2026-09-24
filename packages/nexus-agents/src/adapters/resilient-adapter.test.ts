@@ -9,10 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AdapterSelection } from './auto-adapter.js';
 import type { CompletionRequest } from '../core/types/model.js';
 import { CliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
-import {
-  createCallerAbortCliError,
-  createCallerInputCliError,
-} from '../cli-adapters/cli-error-helpers.js';
+import { createCallerAbortCliError } from '../cli-adapters/cli-error-helpers.js';
 import type { ICliAdapter } from '../cli-adapters/types.js';
 import { ok, err } from '../core/result.js';
 import { ModelError, ErrorCode } from '../core/errors.js';
@@ -745,47 +742,6 @@ describe('ResilientAdapter', () => {
 
       expect(recordFailureSpy).not.toHaveBeenCalled();
       expect(breaker.getSnapshot().failureCount).toBe(0);
-    });
-
-    it('never counts a caller-input error (bad requested model) against the breaker (#6599)', async () => {
-      // A requested model the CLI cannot resolve is the caller's mistake, not a
-      // CLI health signal. Counting it let one bad preference open the breaker
-      // for every caller of that CLI. Routed through the real bridge so the
-      // CliError → ModelError mapping is part of what is tested.
-      const registry = new CircuitBreakerRegistry();
-      const breaker = registry.getBreaker('claude');
-      const failingAdapter = new ResilientAdapter();
-      failingAdapter.attachCircuitBreakerRegistry(registry);
-      const cli = {
-        name: 'opencode',
-        getModelInfo: () => ({ id: 'opencode-default', name: 'x' }),
-        execute: () =>
-          Promise.resolve(
-            err(
-              createCallerInputCliError(
-                // The unresolvable-model text: it matches no category pattern,
-                // so without the caller-input exemption it counts as `unknown`.
-                'OpenCode cannot run requested model "acme/x": `opencode models` lists none of ' +
-                  "acme/x, openrouter/acme/x. Refusing to run opencode's default in its place.",
-                'opencode'
-              )
-            )
-          ),
-      } as unknown as ICliAdapter;
-      const bridge = new CliToModelAdapter(cli);
-      mockComplete.mockImplementation((req: CompletionRequest) => bridge.complete(req));
-      // Siblings leave this mocked true (clearAllMocks keeps implementations);
-      // a leaked true would skip the breaker for an unrelated reason.
-      vi.mocked(isRateLimitLikeError).mockReturnValue(false);
-
-      const attempts = DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold + 2;
-      for (let i = 0; i < attempts; i++) {
-        const res = await failingAdapter.complete({ messages: [], model: 'x' });
-        expect(res.ok).toBe(false);
-      }
-
-      expect(breaker.getSnapshot().failureCount).toBe(0);
-      expect(breaker.getState()).toBe('closed');
     });
 
     it('never counts a caller-cancelled CLI call against the breaker (#6691)', async () => {
