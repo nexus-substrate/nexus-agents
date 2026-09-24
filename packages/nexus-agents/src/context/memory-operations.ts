@@ -48,19 +48,32 @@ export function rowToEntry(row: MemoryRow): MemoryEntry {
   };
 }
 
+/** Bare words FTS5 reads as operators; dropped rather than required as terms. */
+const FTS_OPERATOR_WORDS = new Set(['AND', 'OR', 'NOT', 'NEAR']);
+
+/** A term the default `unicode61` tokenizer can index: at least one letter or digit. */
+const HAS_TOKEN_CHAR = /[\p{L}\p{N}]/u;
+
 /**
- * Sanitizes a query string for FTS5.
- * Removes special FTS5 operators to prevent injection.
+ * Builds an FTS5 MATCH expression from free-text user input (#6731).
+ *
+ * The single place a user query becomes MATCH syntax. Every whitespace-separated
+ * term is emitted as an FTS5 string literal (`"term"`, embedded `"` doubled), so
+ * no character in the input — `.`, `-`, `:`, `*`, `^`, `(`, `)`, `"` — can reach
+ * the FTS5 query parser as syntax. A dotted term such as `8.104.8` becomes a
+ * phrase of its tokens, which matches the same text in a stored memory.
+ * Literals are joined by spaces: FTS5's implicit AND, as before.
+ *
+ * Bare `AND`/`OR`/`NOT`/`NEAR` (any case) and terms with no letter or digit are
+ * dropped. Empty result means "no usable terms": callers return `[]` for it
+ * rather than running MATCH.
  */
-export function sanitizeFtsQuery(query: string): string {
+export function buildFtsMatchQuery(query: string): string {
   return query
-    .replace(/[*:^"(){}[\]]/g, ' ')
-    .replace(/\bAND\b/gi, ' ')
-    .replace(/\bOR\b/gi, ' ')
-    .replace(/\bNOT\b/gi, ' ')
-    .replace(/\bNEAR\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .split(/\s+/)
+    .filter((term) => HAS_TOKEN_CHAR.test(term) && !FTS_OPERATOR_WORDS.has(term.toUpperCase()))
+    .map((term) => `"${term.replaceAll('"', '""')}"`)
+    .join(' ');
 }
 
 /**

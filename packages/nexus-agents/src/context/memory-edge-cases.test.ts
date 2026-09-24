@@ -14,7 +14,7 @@ import type { IContextMemoryBackend } from './memory-backend-types.js';
 import { TypedMemory } from './typed-memory.js';
 import { MobiMem } from './mobimem.js';
 import { ok, err } from '../core/result.js';
-import { sanitizeFtsQuery, rowToEntry } from './memory-operations.js';
+import { buildFtsMatchQuery, rowToEntry } from './memory-operations.js';
 
 // =============================================================================
 // Mock Memory Backend
@@ -299,16 +299,13 @@ describe('Special Characters and Unicode', () => {
     expect(value.arabic).toBe('مرحبا بالعالم');
   });
 
-  it('should sanitize FTS5 special characters', () => {
+  it('should quote FTS5 special characters as literals', () => {
     const dangerous = 'test* OR hack" AND (drop) NOT [delete]';
-    const sanitized = sanitizeFtsQuery(dangerous);
+    const sanitized = buildFtsMatchQuery(dangerous);
 
-    expect(sanitized).not.toContain('*');
-    expect(sanitized).not.toContain('"');
-    expect(sanitized).not.toContain('(');
-    expect(sanitized).not.toContain('[');
-    expect(sanitized).toContain('test');
-    expect(sanitized).toContain('hack');
+    // Every operator character sits inside a quoted literal and the bare
+    // keywords are dropped, so nothing can change the MATCH structure.
+    expect(sanitized).toBe('"test*" "hack""" "(drop)" "[delete]"');
   });
 
   it('should handle special JSON characters', () => {
