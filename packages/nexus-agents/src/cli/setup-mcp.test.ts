@@ -707,23 +707,14 @@ describe('configureHooks', () => {
 // configureHooks re-run migration (#6679)
 // ============================================================================
 
-describe('configureHooks re-run rewrites stale nexus-agents entries (#6679)', () => {
+describe('configureHooks re-run replaces only managed hooks (#6679)', () => {
   const allCommands = (hooks: Record<string, unknown>): string[] =>
     Object.values(hooks).flatMap((entries) =>
-      (entries as Array<{ hooks: Array<{ command: string }> }>).flatMap((e) =>
-        e.hooks.map((h) => h.command)
+      (entries as Array<{ hooks: Array<{ command?: string }> }>).flatMap((e) =>
+        e.hooks.flatMap((h) => (h.command === undefined ? [] : [h.command]))
       )
     );
-
-  /** A previously installed config: a drifted nexus entry beside user hooks. */
-  const stale = {
-    PreToolUse: [
-      createHookEntry('nexus-agents hooks pre-tool --stale-flag', 'Bash'),
-      createHookEntry('my-custom-lint --check', 'Bash'),
-    ],
-    // A hook type the merge does not manage — must survive the rewrite.
-    UserPromptSubmit: [createHookEntry('my-prompt-hook')],
-  };
+  const generatedCommands = (): string[] => allCommands(generateHookConfig().hooks);
 
   /** Runs `configureHooks(false)` over `existing`; returns the result and what it wrote. */
   function rerun(existing: unknown): {
@@ -743,31 +734,87 @@ describe('configureHooks re-run rewrites stale nexus-agents entries (#6679)', ()
     return { result, written };
   }
 
+  /** A pre-#6679 install (same strings) with user hooks mixed in. */
+  const oldInstall = {
+    ...generateHookConfig().hooks,
+    PreToolUse: [
+      {
+        matcher: 'Bash',
+        hooks: [
+          { type: 'command', command: 'nexus-agents hooks pre-tool --tool Bash --validate' },
+          { type: 'command', command: '/home/u/my-audit.sh' },
+        ],
+      },
+    ],
+    PostToolUse: [
+      {
+        matcher: 'Edit',
+        hooks: [
+          { type: 'command', command: 'nexus-agents hooks post-tool --track-metrics', timeout: 5 },
+        ],
+      },
+    ],
+    UserPromptSubmit: [{ hooks: [{ type: 'prompt', prompt: 'be careful' }] }],
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('rewrites a drifted nexus-agents entry without --force and keeps user hooks', () => {
-    const { result, written } = rerun(stale);
+  it('keeps the user script that shares a matcher entry with a nexus hook', () => {
+    const { result, written } = rerun(oldInstall);
 
     expect(result).toMatchObject({ success: true, alreadyConfigured: false });
-    expect(written).toBeDefined();
+    expect(written?.['PreToolUse']).toContainEqual({
+      matcher: 'Bash',
+      hooks: [{ type: 'command', command: '/home/u/my-audit.sh' }],
+    });
+    expect(written?.['UserPromptSubmit']).toEqual(oldInstall.UserPromptSubmit);
+  });
+
+  it('keeps a customized nexus hook and names it in a warning', () => {
+    const { result, written } = rerun(oldInstall);
+
+    expect(written?.['PostToolUse']).toContainEqual(oldInstall.PostToolUse[0]);
+    expect(result.message).toContain(
+      'Warning: left unrecognized nexus-agents hook(s) unchanged: ' +
+        'nexus-agents hooks post-tool --track-metrics'
+    );
+  });
+
+  it('upgrades the old installed strings to exactly one managed copy of each', () => {
+    const { written } = rerun(oldInstall);
+
     const commands = allCommands(written ?? {});
-    expect(commands).not.toContain('nexus-agents hooks pre-tool --stale-flag');
-    const generated = allCommands(generateHookConfig().hooks);
-    for (const command of generated) expect(commands).toContain(command);
-    expect(commands).toContain('my-custom-lint --check');
-    expect(written?.['UserPromptSubmit']).toEqual(stale.UserPromptSubmit);
+    for (const command of generatedCommands()) {
+      const copies = commands.filter((c) => c === command).length;
+      // post-tool also stays once in the user's customized Edit entry.
+      const expected = command === 'nexus-agents hooks post-tool --track-metrics' ? 2 : 1;
+      expect({ command, copies }).toEqual({ command, copies: expected });
+    }
   });
 
   it('is idempotent: a re-run over its own output writes nothing', () => {
-    const first = rerun(stale).written;
+    const first = rerun(oldInstall).written;
+    expect(first).toBeDefined();
     vi.clearAllMocks();
 
     const { result, written } = rerun(first);
 
     expect(result).toMatchObject({ success: true, alreadyConfigured: true });
     expect(written).toBeUndefined();
+  });
+
+  it('does not throw on hooks without a command (type: "prompt")', () => {
+    const withPrompt = {
+      PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'prompt', prompt: 'check it' }] }],
+      Stop: [{ hooks: [{ type: 'command', command: 'nexus-agents hooks stop --check-tasks' }] }],
+    };
+
+    const { result, written } = rerun(withPrompt);
+
+    expect(result.success).toBe(true);
+    expect(written?.['PreToolUse']).toContainEqual(withPrompt.PreToolUse[0]);
   });
 });
 
