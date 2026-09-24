@@ -191,13 +191,62 @@ function withSidecarHeartbeat<T extends { readonly lastProgressAt?: string | und
   return { ...preferred, lastProgressAt: sidecar.lastProgressAt };
 }
 
+/** What the dual-read precedence rule needs from a record or a summary. */
+interface JobStatusCarrier {
+  readonly status: JobStatus;
+  readonly lastProgressAt?: string | undefined;
+}
+
+/** The winner of one dual read, tagged with the store that produced it. */
+export interface PreferredJobRecord<T> {
+  readonly value: T;
+  readonly source: JobResultSource;
+}
+
+/**
+ * The ONE precedence rule for a job seen in both stores (#6726). Both
+ * `get_job_result` ({@link resolveJobResultWithSource}) and `list_jobs`
+ * ({@link resolveJobListing}) resolve through it, so the detail view and the
+ * list view cannot disagree about a job's status. Before, the list let the
+ * task-state summary always win, so a job whose sidecar was `complete` while
+ * its task-state log still said `executing` (an orchestrate past its overall
+ * deadline returning an `ok` partial, or a runaway-guard failure) was listed
+ * `pending` while `get_job_result` said `complete`.
+ *
+ * - A terminal task-state record stands.
+ * - Otherwise a terminal sidecar outranks a non-terminal task-state record.
+ * - When neither is terminal, task state wins (it is the migration target),
+ *   carrying the sidecar's `lastProgressAt` across (#6162), since the
+ *   heartbeat is only ever written to the sidecar.
+ * - Only one store has the job → that store. Neither → `null`.
+ *
+ * Generic over {@link JobResult} and {@link JobSummary}: a summary carries the
+ * same `status` and `lastProgressAt` as the record it projects, so the rule
+ * gives the same answer on either shape.
+ */
+export function preferJobRecord<T extends JobStatusCarrier>(
+  fromState: T | null | undefined,
+  fromSidecar: T | null | undefined
+): PreferredJobRecord<T> | null {
+  // A Map lookup yields undefined, a store read yields null: both mean absent.
+  const state = fromState ?? null;
+  const sidecar = fromSidecar ?? null;
+  if (state !== null && state.status !== 'pending') {
+    return { value: state, source: 'task_state' };
+  }
+  if (sidecar !== null && sidecar.status !== 'pending') {
+    return { value: sidecar, source: 'sidecar' };
+  }
+  if (state !== null) {
+    return { value: withSidecarHeartbeat(state, sidecar), source: 'task_state' };
+  }
+  return sidecar === null ? null : { value: sidecar, source: 'sidecar' };
+}
+
 /**
  * Resolve an async job's result with dual-read semantics, naming the source:
- * - source toggle ON  → read both stores. A terminal task-state record stands;
- *   otherwise a terminal sidecar outranks a non-terminal task-state record.
- *   When neither is terminal, prefer task state and fall back to sidecar —
- *   carrying the sidecar's `lastProgressAt` across (#6162), since the heartbeat
- *   is only ever written there.
+ * - source toggle ON  → read both stores and apply {@link preferJobRecord},
+ *   the rule `list_jobs` shares (#6726).
  * - source toggle OFF → sidecar only (current behavior, unchanged).
  *
  * The source matters to a reader of `producerVersion` (#5008): a task-state
@@ -217,18 +266,11 @@ export function resolveJobResultWithSource(
     const sidecar = readJobResult(jobId);
     return sidecar === null ? null : resolvedJobResult(jobId, sidecar, 'sidecar');
   }
-  const fromState = readJobResultFromTaskState(jobId, customDir);
-  const fromSidecar = readJobResult(jobId);
-  if (fromState !== null && fromState.status !== 'pending') {
-    return resolvedJobResult(jobId, fromState, 'task_state');
-  }
-  if (fromSidecar !== null && fromSidecar.status !== 'pending') {
-    return resolvedJobResult(jobId, fromSidecar, 'sidecar');
-  }
-  if (fromState !== null) {
-    return resolvedJobResult(jobId, withSidecarHeartbeat(fromState, fromSidecar), 'task_state');
-  }
-  return fromSidecar === null ? null : resolvedJobResult(jobId, fromSidecar, 'sidecar');
+  const preferred = preferJobRecord(
+    readJobResultFromTaskState(jobId, customDir),
+    readJobResult(jobId)
+  );
+  return preferred === null ? null : resolvedJobResult(jobId, preferred.value, preferred.source);
 }
 
 /** {@link resolveJobResultWithSource} without the source tag. */
@@ -253,11 +295,11 @@ export function listJobsFromTaskState(customDir?: string): JobSummary[] {
 }
 
 /**
- * List async jobs with dual-read semantics (#3693), mirroring
- * {@link resolveJobResult}:
+ * List async jobs with dual-read semantics (#3693):
  * - source toggle OFF → the sidecar list only (current behavior, unchanged).
- * - source toggle ON  → the UNION of sidecar + task-state jobs, deduped by
- *   jobId with the task-state record preferred (it is the migration target).
+ * - source toggle ON  → the UNION of sidecar + task-state jobs, each jobId
+ *   resolved by {@link preferJobRecord} — the same rule `get_job_result` uses,
+ *   so the two tools report the same status for the same job (#6726).
  *
  * Unioning (rather than task-state-only) ensures no job is lost while the writer
  * half (#3091+) is still partial — sidecar-only jobs remain visible. Newest-first
@@ -271,13 +313,18 @@ export function resolveJobList(customDir?: string): JobSummary[] {
 export function resolveJobListing(customDir?: string): JobListing {
   const sidecar = listJobsWithDiagnostics();
   if (!isTaskStateJobSource()) return sidecar;
-  const byId = new Map<string, JobSummary>();
-  for (const summary of sidecar.jobs) byId.set(summary.jobId, summary);
-  for (const summary of listJobsFromTaskState(customDir)) {
-    byId.set(summary.jobId, withSidecarHeartbeat(summary, byId.get(summary.jobId)));
+  const sidecarById = new Map<string, JobSummary>();
+  for (const summary of sidecar.jobs) sidecarById.set(summary.jobId, summary);
+  const stateById = new Map<string, JobSummary>();
+  for (const summary of listJobsFromTaskState(customDir)) stateById.set(summary.jobId, summary);
+
+  const jobs: JobSummary[] = [];
+  for (const jobId of new Set([...sidecarById.keys(), ...stateById.keys()])) {
+    const preferred = preferJobRecord(stateById.get(jobId), sidecarById.get(jobId));
+    if (preferred !== null) jobs.push(preferred.value);
   }
   return {
-    jobs: [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    jobs: jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     diagnostics: sidecar.diagnostics,
   };
 }

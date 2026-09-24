@@ -195,6 +195,9 @@ const ASYNC_JOB_BODY_CLASS: OperationClassName = 'async-job-body';
  */
 const ABANDONED_TERMINAL_WRITE_SLACK_MS = 30_000;
 
+/** The fields the abandoned verdict reads — a record and a summary both carry them. */
+type AbandonedProbe = Pick<JobResult, 'status' | 'createdAt'>;
+
 /**
  * Whether a `pending` record describes work no process is still doing (#4976).
  *
@@ -220,8 +223,12 @@ const ABANDONED_TERMINAL_WRITE_SLACK_MS = 30_000;
  * treatment `notVerified` gives an audit chain that verified nothing. The one
  * exception is {@link pruneJobRecords}, which rewrites an abandoned record
  * only once it is also past the retention window.
+ *
+ * Reads only `status` and `createdAt` ({@link AbandonedProbe}), so it takes a
+ * {@link JobSummary} as well as a full record: `list_jobs` and
+ * `get_job_result` flag the same job with the same predicate (#6726).
  */
-export function isAbandonedJob(record: JobResult, nowMs: number): boolean {
+export function isAbandonedJob(record: AbandonedProbe, nowMs: number): boolean {
   return isAbandonedAt(record, nowMs, abandonedAfterMs());
 }
 
@@ -234,7 +241,7 @@ function abandonedAfterMs(): number {
 }
 
 /** The predicate with the threshold already resolved — one resolution per sweep. */
-function isAbandonedAt(record: JobResult, nowMs: number, abandonedAfter: number): boolean {
+function isAbandonedAt(record: AbandonedProbe, nowMs: number, abandonedAfter: number): boolean {
   if (record.status !== 'pending') return false;
   // An unparseable `createdAt` yields NaN, and every NaN comparison is false —
   // so an unknown age reports "not abandoned" without a separate guard. That is
@@ -529,6 +536,13 @@ export interface JobSummary {
   readonly hasError: boolean;
   /** Last heartbeat from the job body (#6162); absent when none was recorded. */
   readonly lastProgressAt?: string;
+  /**
+   * Set by `list_jobs` when a `pending` job has outlived the runaway guard, so
+   * no live process can still own it: the same {@link isAbandonedJob} verdict
+   * `get_job_result` reports (#6726). Computed at read time, never stored;
+   * absent means "not abandoned", and `status` stays `pending` as observed.
+   */
+  readonly abandoned?: boolean;
 }
 
 /** Project a full {@link JobResult} down to its {@link JobSummary} — shared by

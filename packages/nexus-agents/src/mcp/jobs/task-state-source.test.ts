@@ -18,12 +18,14 @@ import {
   resolveJobResultWithSource,
   listJobsFromTaskState,
   resolveJobList,
+  preferJobRecord,
 } from './task-state-source.js';
 import {
   writeJobCancelled,
   writeJobComplete,
   writeJobPending,
   heartbeatJob,
+  type JobStatus,
 } from './job-result-store.js';
 import type { StructuredTaskState } from '../../context/structured-task-state-types.js';
 import {
@@ -47,6 +49,51 @@ function makeState(overrides: Partial<StructuredTaskState> = {}): StructuredTask
     ...overrides,
   };
 }
+
+describe('preferJobRecord — the one precedence rule (#6726)', () => {
+  interface Probe {
+    readonly tag: string;
+    readonly status: JobStatus;
+    readonly lastProgressAt?: string;
+  }
+  const pending = (tag: string, lastProgressAt?: string): Probe => ({
+    tag,
+    status: 'pending',
+    ...(lastProgressAt !== undefined ? { lastProgressAt } : {}),
+  });
+  const complete = (tag: string): Probe => ({ tag, status: 'complete' });
+
+  it('empty case: neither store has the job → null, not a default record', () => {
+    expect(preferJobRecord(null, null)).toBeNull();
+    expect(preferJobRecord(undefined, undefined)).toBeNull();
+  });
+
+  it('a terminal task-state record stands over a terminal sidecar', () => {
+    expect(preferJobRecord(complete('state'), complete('sidecar'))).toEqual({
+      value: complete('state'),
+      source: 'task_state',
+    });
+  });
+
+  it('a terminal sidecar outranks a pending task-state record', () => {
+    expect(preferJobRecord(pending('state'), complete('sidecar'))).toEqual({
+      value: complete('sidecar'),
+      source: 'sidecar',
+    });
+  });
+
+  it('neither terminal → task state, carrying the sidecar heartbeat', () => {
+    expect(preferJobRecord(pending('state'), pending('sidecar', '2026-09-24T00:00:00Z'))).toEqual({
+      value: pending('state', '2026-09-24T00:00:00Z'),
+      source: 'task_state',
+    });
+  });
+
+  it('one store only → that store', () => {
+    expect(preferJobRecord(null, pending('sidecar'))?.source).toBe('sidecar');
+    expect(preferJobRecord(pending('state'), undefined)?.source).toBe('task_state');
+  });
+});
 
 describe('toolNameFromJobId', () => {
   it('maps known prefixes', () => {
