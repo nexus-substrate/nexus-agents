@@ -414,7 +414,7 @@ export async function handleImportCommand(
 ): Promise<string> {
   const csvPath = args[0];
   if (csvPath === undefined || csvPath === '') {
-    return 'Error: CSV file path is required. Usage: nexus-agents research import <csv-file> [--dryRun]';
+    return 'Error: CSV file path is required. Usage: nexus-agents research import <csv-file> [--dry-run]';
   }
 
   const dryRun = options['dryRun'] === true;

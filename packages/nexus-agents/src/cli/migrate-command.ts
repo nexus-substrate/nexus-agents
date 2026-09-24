@@ -136,7 +136,7 @@ function checkEarlyExits(
       subdirs: [],
       success: false,
       summary:
-        'No git repo detected from cwd. Run from inside a repo or pass --to <path> to choose an explicit destination.',
+        'No git repo detected from cwd. Run from inside a repo or pass --output <path> to choose an explicit destination.',
     };
   }
   if (!existsSync(fromBase)) {
@@ -187,7 +187,7 @@ function planAndExecuteEntry(
 /**
  * Resolves the default migration target: `<repo-root>/.nexus-agents/`
  * by walking upward from `cwd` for an ancestor `.git`. Returns `null`
- * when not inside a repo and `--to` wasn't provided.
+ * when not inside a repo and `--output` wasn't provided.
  */
 function resolveDefaultTarget(cwd: string): string | null {
   const repoRoot = findRepoRoot(cwd);
@@ -232,8 +232,9 @@ export function formatMigrationResult(result: MigrationResult): string {
 }
 
 /**
- * CLI entry point. Reads `--dry-run` from args; honors `--from <path>`
- * and `--to <path>` overrides via the parsed args' generic `input` /
+ * CLI entry point. Reads `--dry-run` from args; the source and destination
+ * overrides are spelled `--input <path>` and `--output <path>` (#6693) — the
+ * parsed args' generic `input` /
  * `output` slots (both flags are reused rather than adding bespoke
  * parser fields for a once-per-machine command).
  */

@@ -12,9 +12,13 @@ import { ErrorPolicySchema, type ErrorPolicy } from '../mcp/tools/consensus-vote
 import type { NoQuorumPolicy } from './vote-types.js';
 import { parseVoteBarFlags } from './vote-bar-flags.js';
 import type { ParsedCliArgs } from '../cli-types.js';
+import {
+  buildSubcommandFlagOptions,
+  type SubcommandFlagValues,
+} from './subcommand-flag-options.js';
 
-/** Parsed values from parseArgs. */
-export interface ParsedValues {
+/** Parsed values from parseArgs; the #6693 follow-up flags come from `SubcommandFlagValues`. */
+export interface ParsedValues extends SubcommandFlagValues {
   help: boolean;
   version: boolean;
   verbose: boolean;
@@ -143,9 +147,7 @@ function parseNoQuorumPolicy(value: string | undefined): NoQuorumPolicy | undefi
   if (value === 'fail' || value === 'exit2' || value === 'retry') {
     return value;
   }
-  throw new Error(
-    `--on-no-quorum must be one of ${NO_QUORUM_POLICIES.join(', ')}; got '${value}'`
-  );
+  throw new Error(`--on-no-quorum must be one of ${NO_QUORUM_POLICIES.join(', ')}; got '${value}'`);
 }
 
 /** Validates the vote command's `--timeout` flag (in seconds) (#6678). */
@@ -316,5 +318,6 @@ export function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...buildSetupOptions(values),
     ...buildInitOptions(values),
     ...buildImprovementReviewOptions(values),
+    ...buildSubcommandFlagOptions(values),
   } as ParsedCliArgs['options'];
 }

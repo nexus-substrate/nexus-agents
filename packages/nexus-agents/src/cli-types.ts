@@ -316,6 +316,28 @@ export interface ParsedCliArgs {
     taskType?: string;
     'min-sample'?: string;
     minSample?: string;
+    // Subcommand flags the parser still rejected after #6705 (#6693 follow-up).
+    /** `sprint --vote`, `research review|prioritize --vote`. */
+    vote?: boolean;
+    /** `research discover|review|prioritize|autofile --topic=<t>`. */
+    topic?: string;
+    /** `research status --status=<s>`. */
+    status?: string;
+    /** `research review --create-issues`. */
+    createIssues?: boolean;
+    /** `research autofile --max=<n>`. */
+    max?: number;
+    /** `research index --generate | --check`. */
+    generate?: boolean;
+    check?: boolean;
+    /** `research index --validate --strict`, `release-validate --strict`. */
+    strict?: boolean;
+    /** `research index --silent`. */
+    silent?: boolean;
+    /** `research index --no-check-files`. */
+    noCheckFiles?: boolean;
+    /** `release-validate --skip <validator>` (repeatable). */
+    skip?: string[];
   };
   positionals: string[];
 }
@@ -660,6 +682,21 @@ export const PARSE_ARGS_CONFIG = {
     'min-sample': {
       type: 'string' as const,
     },
+    // #6693 follow-up — subcommand flags that usage text advertised and
+    // handlers read, still rejected after #6705. Forwarded by
+    // `buildSubcommandFlagOptions` (cli/subcommand-flag-options.ts). No short
+    // letters: a short letter is global (see the note on `threshold`).
+    vote: { type: 'boolean' as const, default: false },
+    topic: { type: 'string' as const },
+    status: { type: 'string' as const },
+    'create-issues': { type: 'boolean' as const, default: false },
+    max: { type: 'string' as const },
+    generate: { type: 'boolean' as const, default: false },
+    check: { type: 'boolean' as const, default: false },
+    strict: { type: 'boolean' as const, default: false },
+    silent: { type: 'boolean' as const, default: false },
+    'no-check-files': { type: 'boolean' as const, default: false },
+    skip: { type: 'string' as const, multiple: true as const },
   },
   allowPositionals: true,
   strict: true,

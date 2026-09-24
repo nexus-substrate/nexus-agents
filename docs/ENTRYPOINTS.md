@@ -822,7 +822,8 @@ cli_commands:
     subcommands: ['query', 'add', 'discover', 'analyze']
     mode: any
   - name: release-validate
-    flags: ['--version', '--verbose', '--strict', '--skip']
+    args: ['<version>']
+    flags: ['--verbose', '--strict', '--skip']
     mode: any
   - name: verify
     flags: ['--verbose']
