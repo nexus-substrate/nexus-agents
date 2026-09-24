@@ -386,7 +386,7 @@ async function handlePrune(
  * Flags the global CLI parser has already consumed, forwarded by the command
  * handler because they no longer appear in the positional `args` (#6677, #6678).
  */
-export interface SessionCommandFlags {
+interface SessionCommandFlags {
   readonly dryRun?: boolean | undefined;
   readonly json?: boolean | undefined;
   readonly format?: string | undefined;

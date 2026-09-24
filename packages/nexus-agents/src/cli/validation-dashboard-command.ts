@@ -137,7 +137,7 @@ export function validationDashboardCommand(options: ValidationDashboardOptions =
 }
 
 /** Parsed flags forwarded from the global CLI parser (#6678). */
-export interface ValidationParsedFlags {
+interface ValidationParsedFlags {
   readonly period?: string | undefined;
   readonly model?: string | undefined;
 }
