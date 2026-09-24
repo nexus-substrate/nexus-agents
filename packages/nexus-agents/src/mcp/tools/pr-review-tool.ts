@@ -49,6 +49,7 @@ import { recordDecisionCost } from './decision-cost-recording.js';
 import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 // #3731 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
+import { attachPartialsOnCancel, throwIfVoteCancelled } from './consensus-vote-cancelled.js';
 import type { Finding } from './pr-review-findings.js';
 import {
   persistReviewRecord,
@@ -540,6 +541,8 @@ async function executePrReviewBody(
   // #6123: resolved ONCE per review; every seat's system prompt names it.
   const project = resolveAndLogVoterProject(input.project, logger);
   const voteResults = await collectReviewVotes(input, panel, project.name, logger, opts);
+  // #6750: a cancelled review stops here, before any verdict is aggregated.
+  throwIfVoteCancelled(opts.signal, voteResults, PR_REVIEW_ROLES.length);
 
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
@@ -564,6 +567,8 @@ async function executePrReviewBody(
     reviewCount: reviews.length,
     logger,
     ...(panel.coverage !== undefined ? { coverage: panel.coverage } : {}),
+    // #6750: re-checked immediately before the append.
+    cancellation: { signal: opts.signal, votes: voteResults, panelSize: PR_REVIEW_ROLES.length },
   });
 
   const response: PrReviewResponse = {
@@ -636,6 +641,7 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
     }
 
     try {
+      const opts = { ...adapterOpt, sanitization: sanitizationViewOf(ctx) };
       // #3731: async dispatch — the 5-voter live fan-out can exceed the MCP
       // request timeout. pr_review has no sessionId, so a fresh `pr-<uuid>` jobId
       // is always minted (no idempotency surface). Returns a pending envelope.
@@ -644,25 +650,23 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
           toolName: 'pr_review',
           input,
           freshJobId: () => `pr-${randomUUID()}`,
+          // #6750: on a cancel the body throws VoteCancelledError; the seats it
+          // had collected are attached to the `cancelled` record, with no verdict.
           // #5393: arity 4 — signal + #6162 progress (heartbeat per settled
           // seat). `runAsJob` derives `signalAccepted` from `run.length`, so
           // taking the signal is what makes the job record say cancellation
           // works — the claim follows the capability. The signal reaches
           // `collectRealVotes`, so `cancel_job` stops the seats not yet launched.
-          run: (_jobId, _input, signal, progress) =>
-            executePrReviewBody(input, ctx.logger, {
-              ...adapterOpt,
-              sanitization: sanitizationViewOf(ctx),
-              signal,
-              onVoteCollected: progress,
-            }),
+          run: (jobId, _input, signal, progress) =>
+            attachPartialsOnCancel(
+              jobId,
+              'pr_review',
+              executePrReviewBody(input, ctx.logger, { ...opts, signal, onVoteCollected: progress })
+            ),
           logger: ctx.logger,
         });
       }
-      return await executePrReviewBody(input, ctx.logger, {
-        ...adapterOpt,
-        sanitization: sanitizationViewOf(ctx),
-      });
+      return await executePrReviewBody(input, ctx.logger, opts);
     } catch (error) {
       // #3731 discoverability: a sync run that times out (or otherwise fails)
       // should point the caller at async mode — the durable fix for runs that

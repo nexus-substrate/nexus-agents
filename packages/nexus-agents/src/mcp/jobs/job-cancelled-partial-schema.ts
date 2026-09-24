@@ -10,11 +10,12 @@
 import { z } from 'zod';
 
 /**
- * The votes a cancelled `consensus_vote` had cast before the cancel (#6735).
+ * The votes a cancelled `consensus_vote` (#6735) or `pr_review` (#6750) had
+ * cast before the cancel.
  *
  * This is NOT a decision and carries none. No verdict is computed from these
  * seats: a cancelled vote never reaches the engine, the vote-record ledger or
- * the correlation tracker. `seatsCast` counts `partialVotes` (derived by the
+ * the correlation tracker, and a cancelled review writes no review record. `seatsCast` counts `partialVotes` (derived by the
  * writer, so the two cannot disagree) against `panelSize`, the seats the panel
  * convened, so a reader sees the coverage — `0` of `3` included — rather than
  * a tally that looks complete. The votes are the collector's own

@@ -71,13 +71,19 @@ export function throwIfVoteCancelled(
  * Await an async vote body; on {@link VoteCancelledError}, attach the cast
  * seats to the job's `cancelled` record, then rethrow so `runAsJob` still
  * settles the job through its normal path (a no-op on the cancelled record).
+ * `toolName` is the job's own tool — `consensus_vote`, or `pr_review` (#6750),
+ * whose panel is collected by the same launcher.
  */
-export async function attachPartialsOnCancel<T>(jobId: string, body: Promise<T>): Promise<T> {
+export async function attachPartialsOnCancel<T>(
+  jobId: string,
+  toolName: string,
+  body: Promise<T>
+): Promise<T> {
   try {
     return await body;
   } catch (error: unknown) {
     if (error instanceof VoteCancelledError) {
-      attachCancelledPartial(jobId, 'consensus_vote', {
+      attachCancelledPartial(jobId, toolName, {
         partialVotes: error.votesCast,
         panelSize: error.panelSize,
       });
