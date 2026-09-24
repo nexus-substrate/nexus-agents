@@ -231,8 +231,8 @@ describe('per-seat retriedFrom on the vote summary (#6246)', () => {
 describe('per-voter cost row names the assigned CLI (#6115)', () => {
   it('carries assignedCli beside the model that answered', () => {
     const inputs = votesToCostInputs([
-      seat('architect', { assignedCli: 'claude' }),
-      seat('security', { assignedCli: undefined }),
+      seat('architect', { assignedCli: 'claude', servedModel: 'gemini-3.1-pro-preview' }),
+      seat('security', { assignedCli: undefined, servedModel: 'gemini-3.1-pro-preview' }),
     ]);
     expect(inputs[0]?.assignedCli).toBe('claude');
     expect('assignedCli' in (inputs[1] ?? {})).toBe(false);
