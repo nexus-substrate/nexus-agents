@@ -704,6 +704,74 @@ describe('configureHooks', () => {
 });
 
 // ============================================================================
+// configureHooks re-run migration (#6679)
+// ============================================================================
+
+describe('configureHooks re-run rewrites stale nexus-agents entries (#6679)', () => {
+  const allCommands = (hooks: Record<string, unknown>): string[] =>
+    Object.values(hooks).flatMap((entries) =>
+      (entries as Array<{ hooks: Array<{ command: string }> }>).flatMap((e) =>
+        e.hooks.map((h) => h.command)
+      )
+    );
+
+  /** A previously installed config: a drifted nexus entry beside user hooks. */
+  const stale = {
+    PreToolUse: [
+      createHookEntry('nexus-agents hooks pre-tool --stale-flag', 'Bash'),
+      createHookEntry('my-custom-lint --check', 'Bash'),
+    ],
+    // A hook type the merge does not manage — must survive the rewrite.
+    UserPromptSubmit: [createHookEntry('my-prompt-hook')],
+  };
+
+  /** Runs `configureHooks(false)` over `existing`; returns the result and what it wrote. */
+  function rerun(existing: unknown): {
+    result: ReturnType<typeof configureHooks>;
+    written: Record<string, unknown> | undefined;
+  } {
+    mockedExecSync.mockReturnValue(JSON.stringify(existing));
+    mockedExecFileSync.mockReturnValue(Buffer.from('ok'));
+    const result = configureHooks(false);
+    const setCall = mockedExecFileSync.mock.calls.find(
+      ([cmd, argv]) => cmd === 'claude' && Array.isArray(argv) && argv[1] === 'set'
+    );
+    const written =
+      setCall === undefined
+        ? undefined
+        : (JSON.parse(String((setCall[1] as readonly string[])[3])) as Record<string, unknown>);
+    return { result, written };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rewrites a drifted nexus-agents entry without --force and keeps user hooks', () => {
+    const { result, written } = rerun(stale);
+
+    expect(result).toMatchObject({ success: true, alreadyConfigured: false });
+    expect(written).toBeDefined();
+    const commands = allCommands(written ?? {});
+    expect(commands).not.toContain('nexus-agents hooks pre-tool --stale-flag');
+    const generated = allCommands(generateHookConfig().hooks);
+    for (const command of generated) expect(commands).toContain(command);
+    expect(commands).toContain('my-custom-lint --check');
+    expect(written?.['UserPromptSubmit']).toEqual(stale.UserPromptSubmit);
+  });
+
+  it('is idempotent: a re-run over its own output writes nothing', () => {
+    const first = rerun(stale).written;
+    vi.clearAllMocks();
+
+    const { result, written } = rerun(first);
+
+    expect(result).toMatchObject({ success: true, alreadyConfigured: true });
+    expect(written).toBeUndefined();
+  });
+});
+
+// ============================================================================
 // generateHookSnippet
 // ============================================================================
 

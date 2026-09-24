@@ -652,7 +652,11 @@ export async function handleSessionCommand(
   // #3942: signal that delegation explicitly with the sentinel rather than a
   // bare `undefined`, so a dropped return on the error path above is caught.
   const remainingArgs = args.positionals.slice(2);
-  await sessionCommand(subcommand, remainingArgs);
+  // #6677: `--dry-run` was consumed by the parser, so forward it explicitly —
+  // it is not in the positionals, and prune used to delete under --dry-run.
+  await sessionCommand(subcommand, remainingArgs, undefined, {
+    dryRun: args.options.dryRun,
+  });
   return LIFECYCLE_DELEGATED;
 }
 

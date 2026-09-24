@@ -54,7 +54,9 @@ function parseOptions(args: ParsedCliArgs): CliOptions {
   const fitnessRaw = typeof opts['fitness-floor'] === 'string' ? opts['fitness-floor'] : '90';
   const fitnessParsed = Number.parseInt(fitnessRaw, 10);
 
-  const dryRun = opts['dry-run'] === true;
+  // #6677: the parser stores `--dry-run` as `options.dryRun` — there is no
+  // `'dry-run'` key, so reading that one made `--dry-run` file real issues.
+  const dryRun = args.options.dryRun;
   const fileIssuesFlag = opts['file-issues'] === true;
   const fileIssues = !dryRun && fileIssuesFlag;
 

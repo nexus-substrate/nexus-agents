@@ -359,7 +359,10 @@ export function mergeHookConfigs(
 
   const hookTypes = ['SessionStart', 'SessionEnd', 'PreToolUse', 'PostToolUse', 'Stop'] as const;
 
-  const merged: HookSettingsConfig['hooks'] = {};
+  // Start from a copy so hook types this merge does not manage (e.g. a user's
+  // UserPromptSubmit) survive: `setup` now rewrites on re-run (#6679), and a
+  // merge that dropped unknown types would delete them on every run.
+  const merged: HookSettingsConfig['hooks'] = { ...existing };
 
   for (const hookType of hookTypes) {
     const existingHooks = existing[hookType];
@@ -376,21 +379,29 @@ export function mergeHookConfigs(
 }
 
 /**
+ * True when merging `generated` into `existing` would change nothing — the
+ * installed nexus-agents entries already match what `setup` generates.
+ */
+function hooksAreCurrent(
+  existing: HookSettingsConfig['hooks'],
+  generated: HookSettingsConfig['hooks']
+): boolean {
+  return JSON.stringify(mergeHookConfigs(existing, generated)) === JSON.stringify(existing);
+}
+
+/**
  * Configures hooks in Claude CLI settings.
  * Uses `claude config set hooks` to register hook commands.
  * Merges with existing hooks instead of overwriting them (Issue #420).
+ *
+ * A re-run without `force` rewrites nexus-agents entries that drifted from
+ * {@link generateHookConfig} and leaves current ones untouched (#6679), so an
+ * install from an older release converges instead of reporting "already
+ * configured" forever. When the existing hooks cannot be read as JSON the old
+ * short-circuit stands: there is nothing safe to merge into.
  */
 export function configureHooks(force: boolean = false): HookConfigResult {
   const isConfigured = areHooksConfigured();
-
-  if (!force && isConfigured) {
-    return {
-      success: true,
-      alreadyConfigured: true,
-      message: 'Hooks already configured (use --force to reconfigure)',
-    };
-  }
-
   const nexusHookConfig = generateHookConfig();
 
   // Read existing hooks first to merge (Issue #420). Closes #2975: on
@@ -399,6 +410,18 @@ export function configureHooks(force: boolean = false): HookConfigResult {
   // drifts. Surface the problem so the operator can fix the underlying
   // condition (or pass --force after backing up their hooks).
   const existing = readExistingHooks();
+
+  if (
+    !force &&
+    isConfigured &&
+    (existing.kind !== 'present' || hooksAreCurrent(existing.hooks, nexusHookConfig.hooks))
+  ) {
+    return {
+      success: true,
+      alreadyConfigured: true,
+      message: 'Hooks already configured (use --force to reconfigure)',
+    };
+  }
   if (existing.kind === 'parse_failed') {
     return {
       success: false,

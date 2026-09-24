@@ -98,7 +98,11 @@ describe('handleImprovementReviewCommand', () => {
   });
 
   it('--dry-run forces fileIssues to false even when --file-issues is set', async () => {
-    await handleImprovementReviewCommand(makeArgs({ 'file-issues': true, 'dry-run': true }));
+    // Through the real parser (#6677): a hand-built `'dry-run'` key hid that
+    // the parser actually sets `dryRun`.
+    await handleImprovementReviewCommand(
+      parseCliArgs(['improvement-review', '--file-issues', '--dry-run'])
+    );
     const call = runMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(call['fileIssues']).toBe(false);
   });
