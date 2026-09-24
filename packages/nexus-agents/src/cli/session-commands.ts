@@ -341,13 +341,20 @@ async function handleDelete(args: string[], log: ILogger): Promise<void> {
   output(result.value ? 'Session deleted.' : 'Session not found.');
 }
 
-async function handlePrune(args: string[], log: ILogger): Promise<void> {
+async function handlePrune(
+  args: string[],
+  log: ILogger,
+  flags: SessionCommandFlags
+): Promise<void> {
   const daysArg = args[0];
   if (daysArg === undefined) {
     throw new Error('Days argument required');
   }
   const days = parseInt(daysArg, 10);
-  const dryRun = args.includes('--dry-run');
+  // #6677: the CLI parser consumes `--dry-run` before the positionals are
+  // built, so the CLI path supplies it as `flags.dryRun`. The positional check
+  // stays for direct callers of the exported `sessionCommand`.
+  const dryRun = flags.dryRun === true || args.includes('--dry-run');
   const result = await sessionPrune({ days, dryRun, logger: log });
   if (!result.ok) {
     throw new Error(result.error.message);
@@ -356,11 +363,20 @@ async function handlePrune(args: string[], log: ILogger): Promise<void> {
   output(dryRun ? 'Would delete ' + count + ' sessions.' : 'Deleted ' + count + ' sessions.');
 }
 
+/**
+ * Flags the global CLI parser has already consumed, forwarded by the command
+ * handler because they no longer appear in the positional `args` (#6677).
+ */
+interface SessionCommandFlags {
+  readonly dryRun?: boolean | undefined;
+}
+
 /** Main session command entry point. */
 export async function sessionCommand(
   subcommand: 'list' | 'show' | 'export' | 'delete' | 'prune',
   args: string[],
-  logger?: ILogger
+  logger?: ILogger,
+  flags: SessionCommandFlags = {}
 ): Promise<void> {
   const log = logger ?? createLogger({ component: 'SessionCommand' });
   const handlers = {
@@ -370,5 +386,5 @@ export async function sessionCommand(
     delete: handleDelete,
     prune: handlePrune,
   };
-  await handlers[subcommand](args, log);
+  await handlers[subcommand](args, log, flags);
 }

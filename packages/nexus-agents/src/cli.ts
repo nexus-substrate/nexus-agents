@@ -397,6 +397,38 @@ function buildInitOptions(values: ParsedValues): {
   };
 }
 
+const HOOKS_COMMAND = 'hooks';
+const HELP_FLAGS: ReadonlySet<string> = new Set(['--help', '-h']);
+
+/**
+ * `hooks` owns its flags (#6679). `parseHookArgs` in `cli/hooks/hook-router.ts`
+ * is the one definition of `--tool`, `--validate`, `--track-metrics`,
+ * `--check-tasks` and the rest, so the strict global parser must not see them:
+ * it rejected the ones it did not know (every `setup`-installed hook exited 3)
+ * and consumed-and-dropped the ones it did (`--validate`, `--source`, #6678).
+ * Everything after `hooks` is therefore forwarded verbatim as positionals,
+ * which `handleHooksCommand` hands to the hook router. Only `--help`/`-h` is
+ * read here, so per-command help keeps working.
+ */
+function parseHooksPassthrough(args: string[]): ParsedCliArgs {
+  const hookArgs = args.slice(1);
+  const wantsHelp = hookArgs.some((arg) => HELP_FLAGS.has(arg));
+  const { values } = parseArgs({
+    options: PARSE_ARGS_CONFIG.options,
+    allowPositionals: PARSE_ARGS_CONFIG.allowPositionals,
+    strict: PARSE_ARGS_CONFIG.strict,
+    args: wantsHelp ? ['--help'] : [],
+  });
+  const result: ParsedCliArgs = {
+    command: HOOKS_COMMAND,
+    options: buildOptions(values),
+    positionals: [HOOKS_COMMAND, ...hookArgs.filter((arg) => !HELP_FLAGS.has(arg))],
+  };
+  const subcommand = result.positionals[1];
+  if (subcommand !== undefined) result.subcommand = subcommand;
+  return result;
+}
+
 /**
  * Parses CLI arguments and determines the command to run.
  *
@@ -404,6 +436,7 @@ function buildInitOptions(values: ParsedValues): {
  * @returns Parsed CLI arguments with command and options
  */
 export function parseCliArgs(args: string[] = process.argv.slice(2)): ParsedCliArgs {
+  if (args[0] === HOOKS_COMMAND) return parseHooksPassthrough(args);
   const { values, positionals } = parseArgs({
     options: PARSE_ARGS_CONFIG.options,
     allowPositionals: PARSE_ARGS_CONFIG.allowPositionals,

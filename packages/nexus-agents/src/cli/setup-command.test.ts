@@ -649,9 +649,17 @@ describe('Setup Command', () => {
       expect(result.SessionStart?.[1]?.hooks[0]?.command).toContain('nexus-agents');
     });
 
-    it('should replace existing nexus-agents hooks with new ones', () => {
+    it('should replace managed nexus-agents hooks and keep unrecognized ones (#6679)', () => {
       const existingHooks: HookSettingsConfig['hooks'] = {
         SessionStart: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'nexus-agents hooks session-start',
+              },
+            ],
+          },
           {
             hooks: [
               {
@@ -674,10 +682,13 @@ describe('Setup Command', () => {
       const newConfig = generateHookConfig().hooks;
       const result = mergeHookConfigs(existingHooks, newConfig);
 
-      // Should have other-tool and new nexus-agents (not old nexus-agents)
-      expect(result.SessionStart).toHaveLength(2);
-      expect(result.SessionStart?.[0]?.hooks[0]?.command).toBe('other-tool start');
-      expect(result.SessionStart?.[1]?.hooks[0]?.command).toBe('nexus-agents hooks session-start');
+      // The managed hook is replaced once; a nexus-agents command setup never
+      // wrote is the user's and stays (#6679).
+      expect(result.SessionStart?.map((e) => e.hooks[0]?.command)).toEqual([
+        'nexus-agents hooks old-command',
+        'other-tool start',
+        'nexus-agents hooks session-start',
+      ]);
     });
 
     it('should preserve existing hooks for event types not in new config', () => {
