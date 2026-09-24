@@ -9,6 +9,7 @@
 
 import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
 import { z } from 'zod';
+import type { ExecutionAccessMode } from '../core/types/model.js';
 
 /**
  * Supported CLI names.
@@ -272,6 +273,32 @@ export interface CliResponse {
    * here while `text` still carries a parsed answer. Absent on a clean run.
    */
   readonly stderr?: string;
+  /**
+   * The access mode the adapter that served this call enforced (#6792),
+   * stamped by the adapter itself after it ran, so a caller records what was
+   * enforced rather than what was requested. Absent when the serving adapter
+   * does not report it.
+   */
+  readonly accessMode?: ExecutionAccessMode;
+  /**
+   * True when the serving arm runs nothing on the host (#6792): a direct-API
+   * or gateway arm sends the task with no tools, so no file was read or
+   * edited, whatever the access mode allowed. Absent for a CLI arm.
+   */
+  readonly textOnly?: true;
+  /**
+   * Tool calls the CLI's own permission layer refused during this call
+   * (#6792), when the CLI reports them (claude's `permission_denials`).
+   * Absent when none were reported.
+   */
+  readonly permissionDenials?: readonly CliPermissionDenial[];
+}
+
+/** One tool call a CLI's permission layer refused (#6792). */
+export interface CliPermissionDenial {
+  readonly toolName: string;
+  /** The file the refused call targeted, when it named one. */
+  readonly filePath?: string;
 }
 
 /**

@@ -11,7 +11,13 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
-import { assertAccessMode, effectiveAccessMode } from './expert-access-mode.js';
+import {
+  assertAccessMode,
+  requestedAccessModeOf,
+  servedAccessOf,
+  withRequestedAccessMode,
+  type ServedAccess,
+} from './expert-access-mode.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import {
@@ -21,7 +27,11 @@ import {
 import { resolveCliSlot } from '../config/model-availability.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
-import type { EndpointArmId, RoutingArmId } from '../cli-adapters/types-core.js';
+import type {
+  CliPermissionDenial,
+  EndpointArmId,
+  RoutingArmId,
+} from '../cli-adapters/types-core.js';
 
 /**
  * Resolves a CLI slot from the model string a (CLI or API) adapter returned.
@@ -49,14 +59,25 @@ export interface ExpertBridgeResult {
   readonly durationMs: number;
   readonly error?: string;
   /**
-   * The access mode the call was dispatched under (#6792): the mode the bridge
-   * put on the routed task, `'default'` when the caller asked for none. The
-   * router only selects an arm that declares the mode and each adapter
-   * refuses a mode it cannot enforce, so a call that ran, ran under this mode.
-   * Optional on the published type; `executeExpert` always sets it, and a
-   * result without it (a caller's own stub) is recorded as unmeasured.
+   * The access mode the arm that served the call reported enforcing (#6792),
+   * after routing. Absent when no arm served it (a failed route, a refusal)
+   * or the arm did not report one; {@link routedArm} / {@link cli} name the
+   * arm. Compare {@link requestedAccessMode}.
    */
   readonly accessMode?: ExecutionAccessMode;
+  /**
+   * The access mode the caller asked for (#6792), `'default'` when it named
+   * none. `executeExpert` always sets it; optional on the published type.
+   */
+  readonly requestedAccessMode?: ExecutionAccessMode;
+  /**
+   * True when the arm that served the call runs nothing on the host (#6792):
+   * a direct-API or gateway arm. No file was read or edited, whatever the
+   * access mode allowed; the text is the whole output.
+   */
+  readonly textOnly?: true;
+  /** Tool calls the serving CLI's permission layer refused (#6792). */
+  readonly permissionDenials?: readonly CliPermissionDenial[];
   /**
    * CLI that actually executed the task, resolved from the underlying
    * `CliResponse.model` via `getCliForModelId`. Undefined when the bridge
@@ -148,7 +169,7 @@ interface RouterLike {
       tokensIn?: number;
       tokensOut?: number;
       gatewayArm?: EndpointArmId;
-    };
+    } & ServedAccess;
     error: RoutedAttribution & { message: string };
   }>;
 }
@@ -329,6 +350,8 @@ function adaptCompositeRouter(
             // #6624: which gateway served the model, so its cost is priced by
             // the gateway's declaration.
             ...(result.value.gatewayArm !== undefined && { gatewayArm: result.value.gatewayArm }),
+            // #6792: what the served arm reported about its host access.
+            ...servedAccessOf(result.value),
           },
           error: { message: '' },
         };
@@ -460,6 +483,7 @@ function toSuccessResult(
     ...(value.tokensIn !== undefined && { tokensIn: value.tokensIn }),
     ...(value.tokensOut !== undefined && { tokensOut: value.tokensOut }),
     ...(value.gatewayArm !== undefined && { gatewayArm: value.gatewayArm }),
+    ...servedAccessOf(value),
   };
 }
 
@@ -538,7 +562,7 @@ async function buildBridgeTask(
   options: ExpertCallOptions | undefined
 ): Promise<BridgeTask> {
   const task: BridgeTask = { content };
-  const restricted = effectiveAccessMode(options) !== 'default';
+  const restricted = requestedAccessModeOf(options) !== 'default';
   const mcpConfigPath = restricted ? null : await getMcpConfigPath();
   if (mcpConfigPath !== null) task.options = { mcpConfigPath };
   if (options?.workDir !== undefined) {
@@ -597,11 +621,9 @@ export async function executeExpert(
   // Thrown, not returned as a failed call: a bad mode is a caller error, and a
   // failure result would read as the expert failing.
   assertAccessMode(options?.accessMode);
-  const accessMode = effectiveAccessMode(options);
-  // #6792: the audit trail states which mode every expert call ran under.
-  logger.debug('Expert call access mode', { expertType, accessMode });
   const result = await runExpertCall(expertType, prompt, options);
-  return { ...result, accessMode };
+  // #6792: the audit trail states the requested and the enforced mode.
+  return withRequestedAccessMode(result, requestedAccessModeOf(options), expertType);
 }
 
 /** {@link executeExpert} after its access mode has been validated. */

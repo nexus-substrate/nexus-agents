@@ -7,6 +7,16 @@
  *   its working directory, but may not run commands, fetch from the network
  *   or load MCP servers.
  *
+ * What workspace-edit does NOT cover: it stops the expert from running
+ * commands, but files it edits can still be executed by the pipeline. The
+ * dev-pipeline implement stage passes no `workDir`, so the expert's working
+ * directory is the MCP server's cwd, normally the real repository. A quality
+ * gate in `advisory` or `blocking` mode then runs the package manager's
+ * typecheck, lint and test scripts in that directory, including any
+ * `package.json` script or test file the expert edited. The pipeline reports
+ * this as a warning on its result. Running implement in a scratch worktree
+ * (#6794) is the fix.
+ *
  * Each adapter maps a mode to its CLI's own enforcement in `getCommand`. This
  * module holds the rules every adapter shares: an adapter declares each mode
  * it enforces separately, and one that does not declare the task's mode
@@ -14,7 +24,7 @@
  */
 
 import type { ExecutionAccessMode } from '../core/index.js';
-import type { CliError, CliTask, ICliAdapter } from './types.js';
+import type { CliError, CliResponse, CliTask, ICliAdapter } from './types.js';
 import { createCallerInputCliError } from './cli-error-helpers.js';
 
 /** A mode other than `'default'`: one an adapter must declare to serve. */
@@ -90,6 +100,19 @@ export function unenforcedAccessModeRefusal(
   const mode = restrictedAccessMode(task);
   if (mode === undefined || adapterEnforces(adapter, task)) return undefined;
   return accessModeConflict(adapter.name, mode, 'this adapter cannot enforce it');
+}
+
+/**
+ * `response` stamped with the access mode the serving adapter enforced for
+ * `task` (#6792). Called by an adapter AFTER it ran the task under its own
+ * enforcement, so the record states what the served arm enforced, not only
+ * what the caller asked for.
+ */
+export function withEnforcedAccessMode(
+  response: CliResponse,
+  task: Pick<CliTask, 'accessMode'>
+): CliResponse {
+  return { ...response, accessMode: task.accessMode ?? 'default' };
 }
 
 /**

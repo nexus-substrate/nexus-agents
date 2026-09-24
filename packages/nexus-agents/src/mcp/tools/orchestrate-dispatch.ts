@@ -684,8 +684,11 @@ function buildOptionalFields(r: WorkerResult): Record<string, unknown> {
   }
   if (r.wasRetried === true) fields['wasRetried'] = true;
   if (r.triageAction !== undefined) fields['triageAction'] = r.triageAction;
-  // #6792: the mode the worker's call ran under; absent means unmeasured.
-  if (r.accessMode !== undefined) fields['qualitySignals'] = [accessModeSignal(r.accessMode)];
+  // #6792: the mode the worker's call asked for. A model adapter's response
+  // does not report what it enforced, so the row says "requested", not more.
+  if (r.accessMode !== undefined) {
+    fields['qualitySignals'] = [accessModeSignal(r.accessMode, 'requested')];
+  }
   return fields;
 }
 

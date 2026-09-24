@@ -82,7 +82,10 @@ export type ResponseFormat =
  *   directory, but may not run commands, fetch from the network or load MCP
  *   servers (#6792). The dev-pipeline implement stage sets it. The same
  *   fail-closed rule applies: an adapter that cannot enforce it refuses the
- *   call, and a direct-API adapter satisfies it by construction.
+ *   call, and a direct-API adapter satisfies it by construction. The mode
+ *   stops the model from running commands; it does not stop files it edits
+ *   from being executed later by whatever runs in that directory, such as
+ *   the dev pipeline's quality gate (see `cli-adapters/access-mode.ts`).
  *
  * Each mode is declared separately: enforcing one does not qualify an adapter
  * for another.

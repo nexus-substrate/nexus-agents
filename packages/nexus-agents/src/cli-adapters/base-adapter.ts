@@ -15,7 +15,7 @@ import semver from 'semver';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 import type { Result } from '../core/index.js';
-import { err, getTimeProvider } from '../core/index.js';
+import { err, ok, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
@@ -42,7 +42,7 @@ import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { createCliError } from './cli-error-helpers.js';
-import { unenforcedAccessModeRefusal } from './access-mode.js';
+import { unenforcedAccessModeRefusal, withEnforcedAccessMode } from './access-mode.js';
 
 const execAsync = promisify(exec);
 
@@ -184,7 +184,10 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       timeoutMs: effectiveTimeout,
     });
 
-    return this.executeWithRetry(task, opts);
+    const result = await this.executeWithRetry(task, opts);
+    // #6792: the refusal above passed, so this adapter ran the task under the
+    // task's mode; the response says so for the caller's record.
+    return result.ok ? ok(withEnforcedAccessMode(result.value, task)) : result;
   }
 
   /**

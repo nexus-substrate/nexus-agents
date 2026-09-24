@@ -26,7 +26,7 @@ import type {
   BaseAdapterOptions,
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
-import { isReadOnlyAnalysis } from '../access-mode.js';
+import { isReadOnlyAnalysis, withEnforcedAccessMode } from '../access-mode.js';
 import { AgyResponseParser } from '../parsers/agy-parser.js';
 import { toAgyModelSlug, AGY_MODEL_SLUGS } from '../../config/agy-model-map.js';
 import type { CliModelInfo } from '../types-capability.js';
@@ -197,7 +197,8 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     const result = await this.executeWithMetadata(task, options);
 
     if (result.ok) {
-      return ok(result.value.response);
+      // #6792: this path bypasses the base execute, so it stamps the mode too.
+      return ok(withEnforcedAccessMode(result.value.response, task));
     }
 
     return err(result.error);

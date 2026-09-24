@@ -113,7 +113,7 @@ describe('orchestrate worker access mode (#6792)', () => {
 
     const rows = getOutcomeStore().query();
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.qualitySignals).toEqual(['access-mode:read-only-analysis']);
+    expect(rows[0]?.qualitySignals).toEqual(['access-mode-requested:read-only-analysis']);
   });
 
   it('records the mode on a failed worker row too', async () => {
@@ -134,7 +134,7 @@ describe('orchestrate worker access mode (#6792)', () => {
     expect(rows.every((r) => !r.success)).toBe(true);
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.map((r) => r.qualitySignals)).toEqual(
-      rows.map(() => ['access-mode:read-only-analysis'])
+      rows.map(() => ['access-mode-requested:read-only-analysis'])
     );
   });
 

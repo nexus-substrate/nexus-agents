@@ -25,7 +25,8 @@ import type {
   ResolvedExecutionOptions,
 } from './types.js';
 import { DEFAULT_CAPABILITIES } from './types.js';
-import type { CommandConfig } from './subprocess-adapter.js';
+import { SubprocessCliAdapter, type CommandConfig } from './subprocess-adapter.js';
+import { ClaudeResponseParser } from './parsers/claude-parser.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { CliToModelAdapter } from './cli-to-model-adapter.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
@@ -37,6 +38,13 @@ import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 
 const WORKSPACE_EDIT: CliTask = { content: 'implement this', accessMode: 'workspace-edit' };
+const RESOLVED: ResolvedExecutionOptions = {
+  timeoutMs: 5000,
+  allowRetry: false,
+  maxRetries: 0,
+  trackUsage: true,
+  onProgress: undefined,
+};
 const DEFAULT_MODE: CliTask = { content: 'implement this' };
 
 class ClaudeProbe extends ClaudeCliAdapter {
@@ -217,6 +225,79 @@ describe('an adapter that does not declare workspace-edit fails closed (#6792)',
       unenforcedAccessModeRefusal({ name: 'claude', enforcesWorkspaceEdit: true }, WORKSPACE_EDIT)
     ).toBeUndefined();
     expect(unenforcedAccessModeRefusal({ name: 'claude' }, DEFAULT_MODE)).toBeUndefined();
+  });
+});
+
+class DeclaringAdapter extends UndeclaredAdapter {
+  override readonly enforcesWorkspaceEdit = true;
+}
+
+describe('the serving adapter stamps the mode it enforced (#6792)', () => {
+  it('BaseCliAdapter stamps workspace-edit on a response it ran under that mode', async () => {
+    const result = await new DeclaringAdapter().execute(WORKSPACE_EDIT);
+    expect(result.ok && result.value.accessMode).toBe('workspace-edit');
+  });
+
+  it('and stamps default on a default-mode response', async () => {
+    const result = await new UndeclaredAdapter().execute(DEFAULT_MODE);
+    expect(result.ok && result.value.accessMode).toBe('default');
+  });
+
+  it('agy stamps too, though its execute bypasses the base one', async () => {
+    const adapter = new GeminiCliAdapter();
+    vi.spyOn(adapter, 'executeWithMetadata').mockResolvedValue(
+      ok({
+        response: { text: 'ran' },
+        retryCount: 0,
+        totalDurationMs: 1,
+        complexity: 'simple',
+        circuitState: 'closed',
+      })
+    );
+    const result = await adapter.execute({ content: 'x', accessMode: 'read-only-analysis' });
+    expect(result.ok && result.value.accessMode).toBe('read-only-analysis');
+  });
+});
+
+describe("claude's permission_denials reach the response (#6792)", () => {
+  const ENVELOPE = JSON.stringify({
+    type: 'result',
+    is_error: false,
+    result: 'done',
+    permission_denials: [
+      { tool_name: 'Write', tool_use_id: 't1', tool_input: { file_path: '/outside/x.txt' } },
+      { tool_name: 'Bash', tool_use_id: 't2', tool_input: { command: 'ls' } },
+      { tool_use_id: 't3' },
+    ],
+  });
+
+  it('the parser reads each denial; one without a tool name is skipped', () => {
+    expect(new ClaudeResponseParser().extractPermissionDenials(ENVELOPE)).toEqual([
+      { toolName: 'Write', filePath: '/outside/x.txt' },
+      { toolName: 'Bash' },
+    ]);
+  });
+
+  it('absent or empty denials read as none', () => {
+    const parser = new ClaudeResponseParser();
+    expect(parser.extractPermissionDenials('{"result":"x"}')).toBeNull();
+    expect(parser.extractPermissionDenials('{"result":"x","permission_denials":[]}')).toBeNull();
+    expect(parser.extractPermissionDenials('not json')).toBeNull();
+  });
+
+  it('the claude adapter copies them onto its response', async () => {
+    const spy = vi
+      .spyOn(SubprocessCliAdapter.prototype, 'executeTask')
+      .mockResolvedValue(ok({ text: 'done', raw: ENVELOPE }));
+    try {
+      const result = await new ClaudeProbe().executeTask(WORKSPACE_EDIT, RESOLVED);
+      expect(result.ok && result.value.permissionDenials).toEqual([
+        { toolName: 'Write', filePath: '/outside/x.txt' },
+        { toolName: 'Bash' },
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

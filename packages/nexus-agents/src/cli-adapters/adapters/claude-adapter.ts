@@ -199,7 +199,8 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'claude';
   override readonly enforcesReadOnlyAnalysis = true;
   override readonly enforcesWorkspaceEdit = true;
-  protected readonly parser: ICliResponseParser = new ClaudeResponseParser();
+  private readonly claudeParser = new ClaudeResponseParser();
+  protected readonly parser: ICliResponseParser = this.claudeParser;
 
   private readonly model: string;
 
@@ -256,8 +257,22 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
    *
    * The substitution is stamped on the response as `fallbackFrom` so a vote
    * record can say which model actually answered (#6115).
+   *
+   * Tool calls claude's permission layer refused are copied from the result
+   * envelope onto the response as `permissionDenials` (#6792).
    */
   override async executeTask(
+    task: CliTask,
+    options: ResolvedExecutionOptions
+  ): Promise<Result<CliResponse, CliError>> {
+    const result = await this.executeWithFallback(task, options);
+    if (!result.ok || typeof result.value.raw !== 'string') return result;
+    const denials = this.claudeParser.extractPermissionDenials(result.value.raw);
+    return denials === null ? result : ok({ ...result.value, permissionDenials: denials });
+  }
+
+  /** {@link executeTask}'s run with the one in-family retry (#6120). */
+  private async executeWithFallback(
     task: CliTask,
     options: ResolvedExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {

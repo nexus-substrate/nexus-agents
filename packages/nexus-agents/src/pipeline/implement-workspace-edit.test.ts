@@ -87,7 +87,10 @@ function outcomeRow(taskId: string): Record<string, unknown> {
 beforeEach(() => {
   executeTaskMock.mockReset();
   appendMock.mockReset();
-  executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done', routedCli: 'claude' } });
+  executeTaskMock.mockResolvedValue({
+    ok: true,
+    value: { text: 'done', routedCli: 'claude', accessMode: 'workspace-edit' },
+  });
 });
 
 describe('implement stage access mode (#6792)', () => {
@@ -104,13 +107,36 @@ describe('implement stage access mode (#6792)', () => {
     expect(options?.['mcpConfigPath']).toBeUndefined();
   });
 
-  it('records the effective mode on the implement outcome row', async () => {
+  it('records the mode the served arm enforced on the implement outcome row', async () => {
     await createImplementStage(deps())(TASK);
 
     expect(outcomeRow(TASK.id)['qualitySignals']).toEqual(['access-mode:workspace-edit']);
   });
 
-  it('records the mode on a failed implement call too', async () => {
+  it('records the served arm, not the request, when they differ', async () => {
+    // A stand-in arm that reports a different mode than asked: the row must
+    // carry what the arm reported, not echo the request.
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: { text: 'done', routedCli: 'claude', routedArm: 'claude', accessMode: 'default' },
+    });
+
+    await createImplementStage(deps())(TASK);
+
+    const row = outcomeRow(TASK.id);
+    expect(row['qualitySignals']).toEqual(['access-mode:default']);
+    expect(row['cli']).toBe('claude');
+  });
+
+  it('records only the requested mode when the served arm reported none', async () => {
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done', routedCli: 'claude' } });
+
+    await createImplementStage(deps())(TASK);
+
+    expect(outcomeRow(TASK.id)['qualitySignals']).toEqual(['access-mode-requested:workspace-edit']);
+  });
+
+  it('records the requested mode, not an enforced one, on a failed call', async () => {
     executeTaskMock.mockResolvedValue({
       ok: false,
       error: Object.assign(new Error('refused'), { routedCli: 'claude' }),
@@ -120,7 +146,62 @@ describe('implement stage access mode (#6792)', () => {
 
     const row = outcomeRow(TASK.id);
     expect(row['success']).toBe(false);
-    expect(row['qualitySignals']).toEqual(['access-mode:workspace-edit']);
+    expect(row['qualitySignals']).toEqual(['access-mode-requested:workspace-edit']);
+  });
+});
+
+describe('implement results say what was applied (#6792)', () => {
+  it('a text-only arm is recorded as text-only and not presented as applied', async () => {
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: {
+        text: 'diff --git a/x b/x',
+        routedCli: 'claude',
+        routedArm: 'api:anthropic',
+        accessMode: 'workspace-edit',
+        textOnly: true,
+      },
+    });
+
+    const text = await createImplementStage(deps())(TASK);
+
+    expect(outcomeRow(TASK.id)['qualitySignals']).toEqual([
+      'implement:text-only',
+      'access-mode:workspace-edit',
+    ]);
+    expect(text).toMatch(/^\[Text-only implementation: the serving arm \(api:anthropic\)/);
+    expect(text).toContain('not an applied change');
+    expect(text).toContain('diff --git a/x b/x');
+  });
+
+  it('a CLI arm result is returned as-is (control)', async () => {
+    const text = await createImplementStage(deps())(TASK);
+
+    expect(text).toBe('done');
+  });
+
+  it('surfaces the edits the CLI permission layer refused', async () => {
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: {
+        text: 'partly done',
+        routedCli: 'claude',
+        accessMode: 'workspace-edit',
+        permissionDenials: [
+          { toolName: 'Write', filePath: '/etc/outside.txt' },
+          { toolName: 'Bash' },
+        ],
+      },
+    });
+
+    const text = await createImplementStage(deps())(TASK);
+
+    expect(outcomeRow(TASK.id)['qualitySignals']).toEqual([
+      'implement:permission-denials:2',
+      'access-mode:workspace-edit',
+    ]);
+    expect(text).toContain('Refused by the CLI permission layer (2): Write /etc/outside.txt; Bash');
+    expect(text).toContain('partly done');
   });
 });
 
@@ -128,7 +209,7 @@ describe('the effective mode is recorded for every expert call (#6792)', () => {
   it('a QA review row records read-only analysis beside its verdict', async () => {
     executeTaskMock.mockResolvedValue({
       ok: true,
-      value: { text: 'VERDICT: PASS', routedCli: 'claude' },
+      value: { text: 'VERDICT: PASS', routedCli: 'claude', accessMode: 'read-only-analysis' },
     });
 
     await createQaReviewStage(deps())(TASK, 'const x = 1;');
@@ -140,7 +221,10 @@ describe('the effective mode is recorded for every expert call (#6792)', () => {
   });
 
   it('a decompose row records the default mode, which keeps its MCP config (contrast)', async () => {
-    executeTaskMock.mockResolvedValue({ ok: true, value: { text: '[]', routedCli: 'claude' } });
+    executeTaskMock.mockResolvedValue({
+      ok: true,
+      value: { text: '[]', routedCli: 'claude', accessMode: 'default' },
+    });
 
     await createDecomposeStage(deps())('the plan');
 
@@ -148,11 +232,25 @@ describe('the effective mode is recorded for every expert call (#6792)', () => {
     expect(outcomeRow('decompose')['qualitySignals']).toEqual(['access-mode:default']);
   });
 
-  it('the bridge result states the mode it ran under, default included', async () => {
+  it('the bridge result states the requested mode, default included', async () => {
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'x', routedCli: 'claude' } });
     const edit = await executeExpert('code', 'x', { accessMode: 'workspace-edit' });
     const plain = await executeExpert('code', 'x');
 
-    expect(edit.accessMode).toBe('workspace-edit');
-    expect(plain.accessMode).toBe('default');
+    expect(edit.requestedAccessMode).toBe('workspace-edit');
+    expect(plain.requestedAccessMode).toBe('default');
+    // Nothing reported enforcement, so none is claimed.
+    expect(edit.accessMode).toBeUndefined();
+  });
+});
+
+describe('the agent stages declare the implement workspace (#6792)', () => {
+  it('declares workspace-edit in the MCP server cwd', async () => {
+    const { createAgentStages } = await import('./agent-executor.js');
+
+    expect(createAgentStages().implementWorkspace).toEqual({
+      accessMode: 'workspace-edit',
+      directory: process.cwd(),
+    });
   });
 });

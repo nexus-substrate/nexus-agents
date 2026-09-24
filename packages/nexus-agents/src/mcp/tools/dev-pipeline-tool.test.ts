@@ -547,6 +547,24 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['taskStatus']).toBe('all_done');
   });
 
+  it('surfaces the pipeline warnings in the response envelope (#6792)', async () => {
+    runDevPipelineMock.mockResolvedValueOnce({
+      completed: true,
+      plan: 'a real plan',
+      tasks: [],
+      voteIterations: 1,
+      qaIterations: 1,
+      securityPassed: true,
+      warnings: ['the gate ran edited scripts'],
+    } as never);
+    const handler = captureHandler();
+
+    const result = await handler({ task: 'Build feature X' }, STDIO_CTX);
+    const output = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+
+    expect(output['warnings']).toEqual(['the gate ran edited scripts']);
+  });
+
   it('omits both fields when the pipeline did not report them', async () => {
     // Absent means the producer predates the distinction — not false, not 'empty'.
     const handler = captureHandler();

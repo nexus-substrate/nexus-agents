@@ -80,14 +80,20 @@ interface RecordOutcomeArgs {
    */
   served: ServedCall | undefined;
   /**
-   * The access mode the expert call was dispatched under (#6792), recorded as
-   * an `access-mode:<mode>` quality signal so the audit trail shows which
-   * calls ran unrestricted. Required (though it may be `undefined`) for the
-   * same reason as {@link routedBy}. `undefined` means unmeasured (a stage
-   * without an expert call, or a bridge result that did not state it) and
-   * records no signal rather than a guessed `default`.
+   * The access mode the arm that served the expert call reported enforcing
+   * (#6792), recorded as an `access-mode:<mode>` quality signal so the audit
+   * trail shows which calls ran unrestricted. Required (though it may be
+   * `undefined`) for the same reason as {@link routedBy}. `undefined` means
+   * no arm reported one; see {@link requestedAccessMode}.
    */
   accessMode: ExecutionAccessMode | undefined;
+  /**
+   * The mode the caller asked for (#6792). Recorded as
+   * `access-mode-requested:<mode>` only when {@link accessMode} is absent, so
+   * a failed call still says what it asked for without claiming enforcement.
+   * `undefined` on a stage without an expert call: no signal at all.
+   */
+  requestedAccessMode: ExecutionAccessMode | undefined;
   success: boolean;
   durationMs: number;
   /** Failure message; classified into `failureCategory` on a failed row (#6521). */
@@ -110,14 +116,22 @@ export function outcomeFieldsFromBridge(
   r: ExpertBridgeResult
 ): Pick<
   RecordOutcomeArgs,
-  'cli' | 'routedBy' | 'served' | 'accessMode' | 'success' | 'durationMs' | 'error'
+  | 'cli'
+  | 'routedBy'
+  | 'served'
+  | 'accessMode'
+  | 'requestedAccessMode'
+  | 'success'
+  | 'durationMs'
+  | 'error'
 > {
   return {
     // #6552: the arm that ran; `r.cli` is its display slot.
     cli: r.routedArm ?? r.cli,
     routedBy: r.routedBy,
-    // #6792: the mode the bridge dispatched the call under.
+    // #6792: what the served arm enforced, and what was asked for.
     accessMode: r.accessMode,
+    requestedAccessMode: r.requestedAccessMode,
     // #6624: the model that answered, priced by its gateway when one served it.
     served: {
       model: r.model,
@@ -173,10 +187,16 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
  * field, as before.
  */
 function outcomeQualitySignals(args: RecordOutcomeArgs): string[] {
-  return [
-    ...(args.qualitySignals ?? []),
-    ...(args.accessMode !== undefined ? [accessModeSignal(args.accessMode)] : []),
-  ];
+  return [...(args.qualitySignals ?? []), ...accessModeSignals(args)];
+}
+
+/** The row's access-mode signal: enforced when an arm reported it, else requested. */
+function accessModeSignals(args: RecordOutcomeArgs): string[] {
+  if (args.accessMode !== undefined) return [accessModeSignal(args.accessMode, 'enforced')];
+  if (args.requestedAccessMode !== undefined) {
+    return [accessModeSignal(args.requestedAccessMode, 'requested')];
+  }
+  return [];
 }
 
 /** Configuration for the agent executor. */

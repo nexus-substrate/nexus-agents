@@ -157,5 +157,9 @@ export function guardDevPipelineStages(
       ? { qualityGate: () => runStage('qualityGate', options, (s) => qualityGate(s)) }
       : {}),
     securityScan: () => runStage('securityScan', options, (s) => stages.securityScan(s)),
+    // #6792: a declaration, not a stage; carried through unchanged.
+    ...(stages.implementWorkspace !== undefined
+      ? { implementWorkspace: stages.implementWorkspace }
+      : {}),
   };
 }

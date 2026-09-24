@@ -472,12 +472,19 @@ export function outcomeFailureFields(
 }
 
 /**
- * The quality signal that records the access mode an outcome's model call ran
- * under (#6792), e.g. `access-mode:workspace-edit`. One spelling for every
- * writer, so a reader can filter on it.
+ * The quality signal that records an outcome's access mode (#6792). One
+ * spelling for every writer, so a reader can filter on it:
+ * - `access-mode:<mode>` (`'enforced'`): the mode the arm that served the call
+ *   reported enforcing;
+ * - `access-mode-requested:<mode>` (`'requested'`): only what the caller asked
+ *   for, when no served arm reported a mode (the call failed before an arm
+ *   ran, or the path cannot observe enforcement).
  */
-export function accessModeSignal(mode: ExecutionAccessMode): string {
-  return `access-mode:${mode}`;
+export function accessModeSignal(
+  mode: ExecutionAccessMode,
+  kind: 'enforced' | 'requested'
+): string {
+  return kind === 'enforced' ? `access-mode:${mode}` : `access-mode-requested:${mode}`;
 }
 
 /** Aggregated stats for a group of outcomes. */

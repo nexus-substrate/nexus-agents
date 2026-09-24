@@ -55,6 +55,18 @@ describe('ModelToCliAdapter workspace-edit mode (#6792)', () => {
     expect(request['accessMode']).toBe('workspace-edit');
     expect(request['tools']).toBeUndefined();
   });
+
+  it('reports the response as text-only, served under the mode', async () => {
+    const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
+    const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'claude' });
+
+    const edit = await adapter.execute({ content: 'implement', accessMode: 'workspace-edit' });
+    const plain = await adapter.execute({ content: 'hi' });
+
+    expect(edit.ok && edit.value.textOnly).toBe(true);
+    expect(edit.ok && edit.value.accessMode).toBe('workspace-edit');
+    expect(plain.ok && plain.value.accessMode).toBe('default');
+  });
 });
 
 describe('ModelToCliAdapter read-only analysis mode (#6768)', () => {

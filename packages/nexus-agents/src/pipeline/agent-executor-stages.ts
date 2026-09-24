@@ -37,6 +37,11 @@ import {
   getWeatherContext,
 } from './agent-executor-context.js';
 import { parseQaVerdict, parseTasksFromResponse } from './agent-executor-parsers.js';
+import {
+  IMPLEMENT_ACCESS_MODE,
+  implementQualitySignals,
+  implementStageText,
+} from './implement-result.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -107,6 +112,7 @@ export function createResearchStage({
         routedBy: undefined,
         served: undefined,
         accessMode: undefined,
+        requestedAccessMode: undefined,
         success: true,
         durationMs,
       });
@@ -220,26 +226,25 @@ export function createImplementStage({
     startStage(`impl-${task.id}`);
     await postProgress(config, `Code [${task.id}]`, task.title);
     const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
-    // #6792: the prompt derives from issue text, which may be untrusted, so the
-    // code expert may edit files in its working directory but runs no command,
-    // fetches nothing and gets no MCP tools, whatever the host's own claude
-    // permission settings are (panel decision on #6792, option B).
+    // #6792: see IMPLEMENT_ACCESS_MODE (panel decision on #6792, option B).
     const r = await runExpert(
       guard,
       'code',
       `Implement:\n\n${task.title}\n${task.description}${fb}`,
       task.id,
-      { signal, accessMode: 'workspace-edit' }
+      { signal, accessMode: IMPLEMENT_ACCESS_MODE }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
       // model: real per-model failure attribution for the feedback bridge (#4194)
       model: r.model,
     });
+    const signals = implementQualitySignals(r);
     recordOutcome({
       taskId: task.id,
       category: 'code_generation',
       ...outcomeFieldsFromBridge(r),
+      ...(signals.length > 0 && { qualitySignals: signals }),
     });
     recordRoutingExperience(
       'code_generation',
@@ -250,7 +255,7 @@ export function createImplementStage({
     );
     await postProgress(config, `Code [${task.id}]`, `Done (${String(r.durationMs)}ms)`);
     // An empty text is a failed implementation (`runExpert` returns `text: ''` on failure).
-    if (r.text !== '') return r.text;
+    if (r.text !== '') return implementStageText(r);
     return `[Implementation failed: ${r.error ?? 'unknown error'}]`;
   };
 }
@@ -382,6 +387,7 @@ export function createQualityGateStage({
       routedBy: undefined,
       served: undefined,
       accessMode: undefined,
+      requestedAccessMode: undefined,
       success: passed,
       durationMs: ms,
     });
@@ -426,6 +432,7 @@ export function createSecurityScanStage({
       routedBy: undefined,
       served: undefined,
       accessMode: undefined,
+      requestedAccessMode: undefined,
       success: passed,
       durationMs: ms,
     });
