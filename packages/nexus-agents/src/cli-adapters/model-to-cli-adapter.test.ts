@@ -51,9 +51,14 @@ describe('ModelToCliAdapter read-only analysis mode (#6768)', () => {
     const result = await adapter.execute({ content: 'review', accessMode: 'read-only-analysis' });
 
     expect(result.ok).toBe(true);
-    const request = complete.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(request['accessMode']).toBe('read-only-analysis');
-    expect(request['tools']).toBeUndefined();
+    expect(complete).toHaveBeenCalledTimes(1);
+    // The whole request, not `tools` alone: no path in the bridge sets
+    // `tools` (CliTask has no such field), so `tools` being undefined could
+    // not fail. An exact match fails if any key is added, `tools` included.
+    expect(complete.mock.calls[0]?.[0]).toEqual({
+      messages: [{ role: 'user', content: 'review' }],
+      accessMode: 'read-only-analysis',
+    });
   });
 
   it('adds no access mode to a default task', async () => {

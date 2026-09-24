@@ -403,6 +403,7 @@ describe('run-path trustTier threading (#3712) — the run→dev-pipeline hole',
       { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
       { trustTier: '1' }
     );
+    expect(runDevPipelineForGoalMock).toHaveBeenCalledTimes(1);
     expect(runDevPipelineForGoalMock.mock.calls[0]?.[4]).toBeUndefined();
   });
 
