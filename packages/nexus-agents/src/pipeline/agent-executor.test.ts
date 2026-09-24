@@ -446,6 +446,107 @@ describe('createAgentStages — central workflow hub', () => {
     });
   });
 
+  // #6776: a QA review that failed or could not be read was recorded as `pass`
+  // (runExpert returns `text: ''` on failure; the parser defaulted to pass).
+  describe('QA verdict fails closed (#6776)', () => {
+    const task = {
+      id: 'q6776',
+      title: 'Task',
+      description: '',
+      assignedTo: 'coder' as const,
+      status: 'review' as const,
+    };
+
+    function qaReply(over: Record<string, unknown>): void {
+      mockExecuteExpert.mockResolvedValue({
+        success: true,
+        text: '',
+        durationMs: 10,
+        expertType: 'qa',
+        ...over,
+      });
+    }
+
+    function appendSpyStore(): ReturnType<typeof vi.fn> {
+      const appendSpy = vi.fn();
+      mockGetOutcomeStore.mockReturnValue({
+        append: appendSpy,
+        query: vi.fn().mockReturnValue([]),
+      });
+      return appendSpy;
+    }
+
+    it('a failed expert call is never a pass, and carries the error', async () => {
+      const appendSpy = appendSpyStore();
+      qaReply({ success: false, text: '', error: 'budget exhausted', cli: 'claude' });
+
+      const review = await createAgentStages().qaReview(task, 'impl');
+
+      expect(review.verdict).toBe('needs_work');
+      expect(review.feedback).toContain('unmeasured');
+      expect(review.feedback).toContain('budget exhausted');
+      expect(mockRecordLearning).not.toHaveBeenCalled();
+      const row = appendSpy.mock.calls
+        .map((c: unknown[]) => c[0] as Record<string, unknown>)
+        .find((r) => String(r['id']).startsWith('pipeline-q6776-'));
+      expect(row?.['qualitySignals']).toEqual([
+        'qa-verdict:needs_work',
+        'qa-unmeasured:call-failed',
+      ]);
+    });
+
+    it('empty text from a "successful" call is not a pass', async () => {
+      qaReply({ text: '' });
+      const review = await createAgentStages().qaReview(task, 'impl');
+      expect(review.verdict).toBe('needs_work');
+      expect(review.feedback).toContain('unmeasured');
+    });
+
+    it('an off-format reply is not a pass', async () => {
+      const appendSpy = appendSpyStore();
+      qaReply({ text: 'Looks fine to me.', cli: 'claude' });
+      const review = await createAgentStages().qaReview(task, 'impl');
+      expect(review.verdict).toBe('needs_work');
+      expect(review.feedback).toContain('Looks fine to me.');
+      const row = appendSpy.mock.calls
+        .map((c: unknown[]) => c[0] as Record<string, unknown>)
+        .find((r) => String(r['id']).startsWith('pipeline-q6776-'));
+      expect(row?.['qualitySignals']).toEqual([
+        'qa-verdict:needs_work',
+        'qa-unmeasured:unreadable',
+      ]);
+    });
+
+    it('"reject" inside a PASS explanation stays a pass (positive control)', async () => {
+      qaReply({ text: 'PASS: no reason to reject; tests cover the edge cases.' });
+      const review = await createAgentStages().qaReview(task, 'impl');
+      expect(review.verdict).toBe('pass');
+      expect(mockRecordLearning).toHaveBeenCalled();
+    });
+
+    it('a failing reviewer exhausts the bounded QA loop and the task is not approved', async () => {
+      const { runQaLoop } = await import('../orchestration/qa-loop.js');
+      mockExecuteExpert.mockImplementation((expertType: string) =>
+        Promise.resolve(
+          expertType === 'qa'
+            ? { success: false, text: '', durationMs: 1, expertType: 'qa', error: 'timeout' }
+            : { success: true, text: 'impl', durationMs: 1, expertType: 'code' }
+        )
+      );
+      const stages = createAgentStages();
+
+      const result = await runQaLoop(
+        () => stages.implement(task),
+        (impl) => stages.qaReview(task, impl),
+        3
+      );
+
+      expect(result.approved).toBe(false);
+      expect(result.iterations).toBe(3);
+      expect(result.feedback).toContain('timeout');
+    });
+  });
+
   // #2823: regression coverage. recordOutcome used to hardcode `cli: 'claude'`,
   // poisoning the OutcomeStore + LinUCB cold-start warmStart on every run.
   // The threaded `cli` now comes from `r.cli` (executeExpert's resolved CLI);

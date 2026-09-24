@@ -36,7 +36,7 @@ import {
   getTrendContext,
   getWeatherContext,
 } from './agent-executor-context.js';
-import { parseQaFromResponse, parseTasksFromResponse } from './agent-executor-parsers.js';
+import { parseQaVerdict, parseTasksFromResponse } from './agent-executor-parsers.js';
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -250,6 +250,44 @@ export function createImplementStage({
   };
 }
 
+/** Why a QA review produced no verdict (#6776). */
+type QaUnmeasuredCause = 'call-failed' | 'unreadable';
+
+/**
+ * Turn the QA expert's result into a review, failing CLOSED (#6776).
+ *
+ * A failed call (`runExpert` returns `text: ''` on budget skip, routing error,
+ * timeout, refusal) and a reply with no readable verdict are both ABSENCE of a
+ * review. `QaReviewResult.verdict` has no `unmeasured` member (it is a
+ * published type, and the QA loop only distinguishes pass from not-pass), so
+ * absence is recorded as `needs_work` whose feedback says the verdict was
+ * unmeasured and why, plus a `qa-unmeasured:<cause>` outcome signal. The QA
+ * loop is bounded, so a reviewer that keeps failing ends the task not-done
+ * after its max iterations with this feedback on it.
+ */
+function readQaReview(r: {
+  readonly success: boolean;
+  readonly text: string;
+  readonly error?: string | undefined;
+}): { review: QaReviewResult; unmeasured?: QaUnmeasuredCause } {
+  if (!r.success) {
+    const reason = `QA review unmeasured: the QA expert call failed (${r.error ?? 'unknown error'}); no verdict was produced.`;
+    return {
+      review: { verdict: 'needs_work', feedback: reason, issues: [reason] },
+      unmeasured: 'call-failed',
+    };
+  }
+  const parsed = parseQaVerdict(r.text);
+  if (parsed !== undefined) return { review: parsed };
+  const excerpt = r.text.trim() === '' ? '(empty reply)' : r.text.slice(0, 500);
+  const reason =
+    'QA review unmeasured: no PASS / NEEDS_WORK / REJECT verdict could be read from the reviewer reply.';
+  return {
+    review: { verdict: 'needs_work', feedback: `${reason}\n\n${excerpt}`, issues: [reason] },
+    unmeasured: 'unreadable',
+  };
+}
+
 export function createQaReviewStage({
   config,
   guard,
@@ -260,7 +298,7 @@ export function createQaReviewStage({
     await postProgress(config, `QA [${task.id}]`, 'QA expert reviewing...');
     const { prompt, coverage } = buildQaPrompt(task.title, implementation);
     const r = await runExpert(guard, 'qa', prompt, task.id, signal);
-    const parsed = parseQaFromResponse(r.text);
+    const { review: parsed, unmeasured } = readQaReview(r);
     const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;
     emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -273,11 +311,19 @@ export function createQaReviewStage({
       // #6521 I2: the row scores the reviewer's CALL; the verdict judges the
       // implementation, so it rides as a signal, not as `success`.
       ...outcomeFieldsFromBridge(r),
-      qualitySignals: [`qa-verdict:${review.verdict}`],
+      qualitySignals: [
+        `qa-verdict:${review.verdict}`,
+        ...(unmeasured !== undefined ? [`qa-unmeasured:${unmeasured}`] : []),
+      ],
     });
     // Write-back: persist QA outcomes to memory (#1716)
     if (review.verdict === 'pass') {
       recordLearning(`Task "${task.title}" passed QA`, 0.8, 'pipeline-qa');
+    } else if (unmeasured !== undefined) {
+      recordMemoryError(
+        `QA review of "${task.title}" unmeasured (${unmeasured})`,
+        'QA produced no verdict'
+      );
     } else {
       recordMemoryError(
         `QA rejected "${task.title}": ${review.feedback.slice(0, 150)}`,
