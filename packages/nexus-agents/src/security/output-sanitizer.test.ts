@@ -15,11 +15,15 @@ import {
   FAKE_GOOGLE_KEY,
   FAKE_GITHUB_PAT,
   FAKE_GITHUB_OAUTH,
+  FAKE_GITHUB_USER_TOKEN,
+  FAKE_GITHUB_APP_TOKEN,
+  FAKE_GITHUB_FINE_GRAINED_PAT,
 } from '../testing/test-secrets.js';
 
 import {
   sanitizeOutput,
   sanitizeErrorDetails,
+  sanitizeStringLeaves,
   REDACTED_KEY_PLACEHOLDER,
 } from './output-sanitizer.js';
 
@@ -242,5 +246,87 @@ describe('sanitizeErrorDetails', () => {
   it('handles large 10 MB strings without stack overflow (#6484)', () => {
     const large = 'e'.repeat(10 * 1024 * 1024);
     expect(() => sanitizeOutput(large)).not.toThrow();
+  });
+});
+
+describe('sanitizeOutput — GitHub token formats and URL userinfo', () => {
+  const tokens = [
+    FAKE_GITHUB_PAT,
+    FAKE_GITHUB_OAUTH,
+    FAKE_GITHUB_USER_TOKEN,
+    FAKE_GITHUB_APP_TOKEN,
+    FAKE_GITHUB_FINE_GRAINED_PAT,
+  ];
+  for (const token of tokens) {
+    it(`redacts ${token.slice(0, 11)}…`, () => {
+      const out = sanitizeOutput(`push failed with ${token} for org`);
+      expect(out).not.toContain(token);
+      expect(out).toContain('[REDACTED_KEY]');
+      expect(out).toContain('push failed with');
+    });
+  }
+
+  it('leaves near-miss token prefixes that are too short', () => {
+    for (const text of ['label ghs_short here', 'label ghu_short here', 'see github_pat_short']) {
+      expect(sanitizeOutput(text)).toBe(text);
+    }
+  });
+
+  it('redacts user:pass userinfo and keeps the scheme and host', () => {
+    const out = sanitizeOutput(
+      'clone https://svc-user:TESTFAKE-pass@git.example.com/org/repo failed'
+    );
+    expect(out).not.toContain('TESTFAKE-pass');
+    expect(out).not.toContain('svc-user');
+    expect(out).toContain('https://[REDACTED_KEY]@git.example.com/org/repo');
+  });
+
+  it('redacts token-only and password-only userinfo on any scheme', () => {
+    const tokenOnly = sanitizeOutput('fetch https://TESTFAKEtoken0000@git.example.com/x');
+    expect(tokenOnly).not.toContain('TESTFAKEtoken0000');
+    expect(tokenOnly).toContain('@git.example.com/x');
+    const passOnly = sanitizeOutput('connect redis://:TESTFAKE-pass@cache.example:6379/0');
+    expect(passOnly).not.toContain('TESTFAKE-pass');
+    expect(passOnly).toContain('redis://[REDACTED_KEY]@cache.example:6379/0');
+  });
+
+  it('leaves near-miss URLs without userinfo unchanged', () => {
+    for (const text of [
+      'see https://host.example:8443/path/@handle?q=a@b.example',
+      'remote git@github.com:org/repo.git',
+      'mail dev@example.com or mailto:dev@example.com',
+    ]) {
+      expect(sanitizeOutput(text)).toBe(text);
+    }
+  });
+});
+
+describe('sanitizeStringLeaves', () => {
+  const upper = (text: string): string => text.toUpperCase();
+
+  it('applies the sanitizer to every string leaf and to nothing else', () => {
+    const input = { a: 'x', list: ['y', 2, { b: 'z', c: null, d: true }], e: 7 };
+    expect(sanitizeStringLeaves(input, upper)).toEqual({
+      a: 'X',
+      list: ['Y', 2, { b: 'Z', c: null, d: true }],
+      e: 7,
+    });
+  });
+
+  it('never rewrites keys and does not mutate the input', () => {
+    const input = { secret: 'v' };
+    expect(sanitizeStringLeaves(input, upper)).toEqual({ secret: 'V' });
+    expect(input).toEqual({ secret: 'v' });
+  });
+
+  it('takes a toJSON value (a Date) in its serialized form', () => {
+    const at = new Date('2026-01-02T03:04:05.000Z');
+    expect(sanitizeStringLeaves({ at }, upper)).toEqual({ at: '2026-01-02T03:04:05.000Z' });
+  });
+
+  it('passes non-string scalars through unchanged', () => {
+    for (const value of [undefined, null, 0, false]) {
+      expect(sanitizeStringLeaves(value, upper)).toBe(value);
+    }
   });
 });

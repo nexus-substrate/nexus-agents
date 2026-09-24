@@ -31,6 +31,7 @@ import {
   OPENAI_COMPAT_KEY_ENV,
   OPENAI_COMPAT_URL_ENV,
 } from './types.js';
+import { redactGatewaySecrets } from '../gateway-redaction.js';
 
 /** One deprecated gateway env name found set in the environment. */
 export interface DeprecatedGatewayEnvUse {
@@ -218,9 +219,9 @@ export function hostnameOf(baseUrl: string): string {
 /**
  * Every exact occurrence of `apiKey` in `message` replaced with `<redacted>`.
  * The pattern-based sanitizer only knows vendor key shapes; a gateway key can
- * be any string, and a 401 body may echo the one it rejected. An empty key
- * matches nothing (`replaceAll('')` would interleave the marker).
+ * be any string, and a 401 body may echo the one it rejected. A blank key
+ * matches nothing. The key-only case of {@link redactGatewaySecrets}.
  */
 export function redactApiKey(message: string, apiKey: string | undefined): string {
-  return apiKey === undefined || apiKey === '' ? message : message.replaceAll(apiKey, '<redacted>');
+  return redactGatewaySecrets(message, { apiKey });
 }

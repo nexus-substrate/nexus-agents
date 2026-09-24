@@ -39,6 +39,16 @@ export const FAKE_GITHUB_PAT = 'ghp_TESTFAKExxxxxxxxxxxxxxxxxxxxxxxxxx0000';
 /** Fake GitHub OAuth token (gho_ prefix, 40 chars). */
 export const FAKE_GITHUB_OAUTH = 'gho_TESTFAKExxxxxxxxxxxxxxxxxxxxxxxxxx0000';
 
+/** Fake GitHub user-to-server token (ghu_ prefix, 40 chars). */
+export const FAKE_GITHUB_USER_TOKEN = 'ghu_TESTFAKExxxxxxxxxxxxxxxxxxxxxxxxxx0000';
+
+/** Fake GitHub app installation token (ghs_ prefix, 40 chars). */
+export const FAKE_GITHUB_APP_TOKEN = 'ghs_TESTFAKExxxxxxxxxxxxxxxxxxxxxxxxxx0000';
+
+/** Fake GitHub fine-grained personal access token (github_pat_ prefix). */
+export const FAKE_GITHUB_FINE_GRAINED_PAT =
+  'github_pat_TESTFAKE0000_xxxxxxxxxxxxxxxxxxxxxxxxNOTREAL0000';
+
 /** Fake Bearer/JWT token. */
 export const FAKE_BEARER_TOKEN = 'Bearer eyTEST.FAKE.NOT-REAL-TOKEN-000000000';
 

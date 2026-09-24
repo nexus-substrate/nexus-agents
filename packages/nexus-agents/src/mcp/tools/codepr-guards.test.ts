@@ -252,11 +252,38 @@ describe('classifyPath', () => {
     ['pnpm-lock.yaml', 'dependency_manifest'],
     ['tsconfig.json', 'dependency_manifest'],
     ['packages/nexus-agents/tsconfig.build.json', 'dependency_manifest'],
+    ['.github/actions/fitness-gate/action.yml', 'workflow'],
+    ['packages/x/.github/actions/setup/action.yml', 'workflow'],
+    ['.git', 'repo_control'],
+    ['.git/config', 'repo_control'],
+    ['.git/hooks/pre-commit', 'repo_control'],
+    ['vendor/sub/.git', 'repo_control'],
+    ['.GIT/HEAD', 'repo_control'],
+    ['.husky/pre-commit', 'repo_control'],
+    ['.husky/_/husky.sh', 'repo_control'],
+    ['.gitattributes', 'repo_control'],
+    ['docs/.gitattributes', 'repo_control'],
   ];
   it.each(sensitiveCases)('DENIES sensitive path %s as %s', (path, category) => {
     const c = classifyPath(path);
     expect(c.sensitive).toBe(true);
     if (c.sensitive) expect(c.category).toBe(category);
+  });
+
+  // Look-alikes of the repository-control and CI rules stay allowed:
+  // `.gitignore` only affects untracked files.
+  const benignLookalikes = [
+    '.gitignore',
+    'packages/nexus-agents/.gitignore',
+    '.github/ISSUE_TEMPLATE/bug.md',
+    '.github/dependabot-notes.md',
+    'docs/git-guide.md',
+    'src/.gitkeep',
+    'husky-notes.md',
+    'docs/github-actions.md',
+  ];
+  it.each(benignLookalikes)('ALLOWS look-alike path %s', (path) => {
+    expect(classifyPath(path)).toEqual({ sensitive: false });
   });
 
   it('DENIES self-modification of the guard module itself', () => {

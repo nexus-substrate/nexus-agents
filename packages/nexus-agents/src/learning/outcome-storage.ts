@@ -55,6 +55,14 @@ const MAX_ERROR_MESSAGE_LENGTH = 200;
  * `keyword[=:]value` form. Each alternative is linear (no nested quantifiers) so
  * the global match stays ReDoS-safe over untrusted-ish error strings.
  */
+/**
+ * URL userinfo (`scheme://user:pass@`, `scheme://token@`): credentials
+ * replaced, scheme (group 1) and host kept. A port or an `@` in a path is not
+ * credentials; bounded quantifiers keep it linear.
+ */
+const URL_USERINFO_PATTERN =
+  /\b([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/?#@:]{0,256}(?::[^\s/?#@]{0,256})?@/gi;
+
 const SENSITIVE_PATTERNS =
   /(?:sk-[a-zA-Z0-9]{20,}|gh[posu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|bearer\s+\S+|(?:api[_-]?key|token|secret|password|auth)[=:]\s*\S+)/gi;
 
@@ -66,7 +74,9 @@ const SENSITIVE_PATTERNS =
  */
 export function sanitizeErrorMessage(msg: string | undefined): string | undefined {
   if (msg === undefined) return undefined;
-  const redacted = msg.replace(SENSITIVE_PATTERNS, '[REDACTED]');
+  const redacted = msg
+    .replace(URL_USERINFO_PATTERN, '$1[REDACTED]@')
+    .replace(SENSITIVE_PATTERNS, '[REDACTED]');
   return redacted.length > MAX_ERROR_MESSAGE_LENGTH
     ? redacted.slice(0, MAX_ERROR_MESSAGE_LENGTH) + '...'
     : redacted;
