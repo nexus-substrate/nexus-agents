@@ -12,12 +12,24 @@
  * @module cli-adapters/process-tree-kill.test
  */
 
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  isProcessTreeAlive,
+  signalProcessTree,
+  signalTrackedProcessTrees,
+  trackProcessTree,
+} from './process-tree-kill.js';
+import { parseProcStatStartTime } from './proc-start-time.js';
+
+/** The seam `signalProcessTree` takes for its OS operations. */
+type ProcessTreeOps = NonNullable<Parameters<typeof signalProcessTree>[3]>;
+/** A descendant as `signalProcessTree` records it. */
+type KnownProcess = ReturnType<typeof signalProcessTree>[number];
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..');
@@ -187,3 +199,185 @@ describe.skipIf(process.platform === 'win32')('CLI process trees at server stop 
     await expectBothDead(tree);
   }, 45_000);
 });
+
+/** Fields 3..21 of a stat line, so the next token is field 22 (starttime). */
+const STAT_FIELDS_3_TO_21 = 'S 1 1 1 0 -1 4194304 92 0 0 0 0 0 0 0 20 0 1 0';
+
+/**
+ * A stand-in that passes the "really spawned" duck-typing, so the tree kill
+ * walks it — through the seam's walk, never the real /proc.
+ */
+function fakeSpawnedChild(exited: boolean): ChildProcess {
+  return {
+    pid: 4242,
+    spawnfile: 'node',
+    spawnargs: ['node'],
+    exitCode: exited ? 0 : null,
+    signalCode: null,
+    kill: vi.fn(),
+  } as unknown as ChildProcess;
+}
+
+interface FakeOps extends ProcessTreeOps {
+  readonly kill: ReturnType<typeof vi.fn<(pid: number, signal: NodeJS.Signals) => void>>;
+  readonly collectDescendants: ReturnType<typeof vi.fn<(root: number) => number[]>>;
+}
+
+/** Linux-shaped seam ops: `startTimes` is what each PID's stat reads back now. */
+function fakeOps(walk: number[], startTimes: Record<number, string>): FakeOps {
+  return {
+    collectDescendants: vi.fn<(root: number) => number[]>(() => walk),
+    hasStartTimes: true,
+    readStartTime: (pid: number) => startTimes[pid],
+    isPidAlive: () => true,
+    kill: vi.fn<(pid: number, signal: NodeJS.Signals) => void>(),
+  };
+}
+
+describe('PID identity before signalling a tree (#6714)', () => {
+  it('parses starttime after the LAST paren of a comm like "a) b (c"', () => {
+    const stat = `123 (a) b (c) ${STAT_FIELDS_3_TO_21} 987654 8642560 500\n`;
+    expect(parseProcStatStartTime(stat)).toBe('987654');
+  });
+
+  it('parses a plain stat line, and rejects one without a comm or a field 22', () => {
+    expect(parseProcStatStartTime(`1 (init) ${STAT_FIELDS_3_TO_21} 42`)).toBe('42');
+    expect(parseProcStatStartTime(`1 init ${STAT_FIELDS_3_TO_21} 42`)).toBeUndefined();
+    expect(parseProcStatStartTime('1 (short) S 1 2')).toBeUndefined();
+  });
+
+  it("does not walk an exited child's PID: its reused PID's children are not signalled", () => {
+    const unrelated = 9_999;
+    const grandchild: KnownProcess = { pid: 777, startTime: '5' };
+    const ops = fakeOps([unrelated], { [unrelated]: '100', 777: '5' });
+
+    const tree = signalProcessTree(fakeSpawnedChild(true), 'SIGKILL', [grandchild], ops);
+
+    expect(ops.collectDescendants).not.toHaveBeenCalled();
+    expect(ops.kill).not.toHaveBeenCalledWith(unrelated, 'SIGKILL');
+    // The known grandchild, still the same process, IS signalled: the test is not vacuous.
+    expect(ops.kill).toHaveBeenCalledWith(777, 'SIGKILL');
+    expect(tree).toEqual([grandchild]);
+  });
+
+  it('walks a running child and records each descendant with its start time', () => {
+    const ops = fakeOps([501, 502], { 501: '11', 502: '12' });
+    const tree = signalProcessTree(fakeSpawnedChild(false), 'SIGTERM', [], ops);
+    expect(ops.kill).toHaveBeenCalledWith(501, 'SIGTERM');
+    expect(tree).toEqual([
+      { pid: 501, startTime: '11' },
+      { pid: 502, startTime: '12' },
+    ]);
+  });
+
+  it('skips a known descendant whose start time changed or can no longer be read', () => {
+    const reused: KnownProcess = { pid: 601, startTime: '5' };
+    const gone: KnownProcess = { pid: 602, startTime: '6' };
+    const same: KnownProcess = { pid: 603, startTime: '7' };
+    const ops = fakeOps([], { 601: '99', 603: '7' });
+
+    const tree = signalProcessTree(fakeSpawnedChild(true), 'SIGKILL', [reused, gone, same], ops);
+
+    expect(ops.kill).not.toHaveBeenCalledWith(601, 'SIGKILL');
+    expect(ops.kill).not.toHaveBeenCalledWith(602, 'SIGKILL');
+    expect(ops.kill).toHaveBeenCalledWith(603, 'SIGKILL');
+    expect(tree).toEqual([same]);
+  });
+
+  it('a reused PID does not keep the escalation armed', () => {
+    const exited = fakeSpawnedChild(true);
+    const known: KnownProcess[] = [{ pid: 701, startTime: '5' }];
+    expect(isProcessTreeAlive(exited, known, fakeOps([], { 701: '99' }))).toBe(false);
+    expect(isProcessTreeAlive(exited, known, fakeOps([], {}))).toBe(false);
+    expect(isProcessTreeAlive(exited, known, fakeOps([], { 701: '5' }))).toBe(true);
+    // The empty case: an exited child with no descendants is not alive.
+    expect(isProcessTreeAlive(exited, [], fakeOps([], {}))).toBe(false);
+  });
+
+  it('without start times (non-Linux) a descendant is recorded and signalled by PID alone', () => {
+    const ops: FakeOps = { ...fakeOps([801], {}), hasStartTimes: false };
+    const tree = signalProcessTree(fakeSpawnedChild(false), 'SIGTERM', [], ops);
+    expect(tree).toEqual([{ pid: 801, startTime: undefined }]);
+    expect(ops.kill).toHaveBeenCalledWith(801, 'SIGTERM');
+  });
+});
+
+describe.skipIf(process.platform !== 'linux')(
+  'SIGKILL escalation on real processes (#6714)',
+  () => {
+    let tmpDir: string;
+    const pids: number[] = [];
+
+    beforeEach(() => {
+      tmpDir = mkdtempSync(join(tmpdir(), 'nexus-tree-kill-'));
+    });
+
+    afterEach(() => {
+      for (const pid of pids.splice(0)) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // Already gone.
+        }
+      }
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    /** A CLI stand-in that dies on SIGTERM, with a grandchild that ignores it. */
+    async function spawnCliWithStubbornGrandchild(): Promise<{
+      cli: ChildProcess;
+      grandchild: number;
+    }> {
+      const grandchildPidFile = join(tmpDir, 'grandchild.pid');
+      const grandchild =
+        "process.on('SIGTERM', () => {});" +
+        `require('fs').writeFileSync(${JSON.stringify(grandchildPidFile)}, String(process.pid));` +
+        'setInterval(() => {}, 1000);';
+      const cliScript =
+        `require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' });` +
+        'setInterval(() => {}, 1000);';
+      const cli = spawn(process.execPath, ['-e', cliScript], { stdio: 'ignore' });
+      if (cli.pid !== undefined) pids.push(cli.pid);
+      await waitFor(
+        () => existsSync(grandchildPidFile) && readFileSync(grandchildPidFile, 'utf8') !== '',
+        'the grandchild to start',
+        10_000
+      );
+      const pid = Number(readFileSync(grandchildPidFile, 'utf8'));
+      pids.push(pid);
+      return { cli, grandchild: pid };
+    }
+
+    it('SIGKILLs a grandchild that ignored the SIGTERM its parent died on', async () => {
+      const { cli, grandchild } = await spawnCliWithStubbornGrandchild();
+      const closed = new Promise((r) => cli.once('close', r));
+
+      const tree = signalProcessTree(cli, 'SIGTERM', []);
+      expect(tree.map((entry) => entry.pid)).toContain(grandchild);
+      expect(tree.every((entry) => entry.startTime !== undefined)).toBe(true);
+      await closed;
+      expect(isAlive(grandchild)).toBe(true);
+      expect(isProcessTreeAlive(cli, tree)).toBe(true);
+
+      signalProcessTree(cli, 'SIGKILL', tree);
+      await waitFor(() => !isAlive(grandchild), `grandchild ${String(grandchild)} to die`, 5_000);
+      expect(isProcessTreeAlive(cli, tree)).toBe(false);
+    }, 20_000);
+
+    it('a shutdown after the CLI closed still reaches the grandchild (grace-window gap)', async () => {
+      const { cli, grandchild } = await spawnCliWithStubbornGrandchild();
+      trackProcessTree(cli);
+      const closed = new Promise((r) => cli.once('close', r));
+
+      signalProcessTree(cli, 'SIGTERM', []);
+      await closed;
+      expect(isAlive(grandchild)).toBe(true);
+
+      // The server-shutdown exit hook, inside the SIGKILL grace window.
+      expect(signalTrackedProcessTrees('SIGKILL')).toBe(1);
+      await waitFor(() => !isAlive(grandchild), `grandchild ${String(grandchild)} to die`, 5_000);
+      // Once its descendants are gone the tree is forgotten.
+      expect(signalTrackedProcessTrees('SIGKILL')).toBe(0);
+    }, 20_000);
+  }
+);
