@@ -355,8 +355,15 @@ export class ResilientAdapter implements IResilientAdapter {
    * same degradation/failover learning that CLI subprocess failures get (#3423).
    *
    * The breaker key is `currentSelection.name` — distinct from the `api:<vendor>`
-   * arm key used by the ModelToCliAdapter path (#3422), so the two paths never
-   * double-count the same failure.
+   * arm key used by the ModelToCliAdapter path (#3422).
+   *
+   * A CLI selection is NOT recorded here (#6712). Its CLI adapter's retry loop
+   * (`executeCliRetryLoop`) has already recorded the failure in the same
+   * registry under the same key, the CLI name, with the category taken from
+   * the CliError code. Recording it again counted every CLI failure twice (the
+   * second time usually as `unknown`), so the breaker opened at about half its
+   * configured threshold. Only a direct-API selection, which has no inner
+   * recorder, is recorded by this layer.
    *
    * Rate-limit failures are deliberately skipped here: they are already recorded
    * by the `recordRateLimitEvent` telemetry branch in `complete()`, and the
@@ -371,6 +378,8 @@ export class ResilientAdapter implements IResilientAdapter {
     if (this.circuitBreakerRegistry === undefined || this.currentSelection === undefined) {
       return;
     }
+    // #6712: the CLI adapter's retry loop owns recording for a CLI selection.
+    if (this.currentSelection.source === 'cli') return;
 
     // #6599: caller input (e.g. a requested model the CLI cannot resolve) is
     // not a health signal. Counting it let one bad model preference open the
