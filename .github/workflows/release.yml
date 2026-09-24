@@ -18,10 +18,121 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false # Never cancel a release mid-flight
 jobs:
+  # Pre-publish install smoke (#6770, option B). The Version Packages PR is
+  # UNGATED BY CONSTRUCTION: changesets/action opens it with GITHUB_TOKEN, and
+  # GitHub starts no workflow for an event that token created, so every
+  # pull_request check on it (npm-verify.yml included) ends with zero jobs and
+  # an empty status rollup. That stays true until #6788 (option A: open the PR
+  # with an App/PAT token, an owner action) lands. Until then, THIS job is the
+  # only install check that runs before a version reaches npm, and it gates the
+  # publish, not the PR.
+  #
+  # It runs on every push to main but only SMOKES when this run will publish.
+  # Both publish routes in the release job share one precondition: zero
+  # non-empty pending changesets at $GITHUB_SHA (changesets/action enters
+  # publish mode instead of PR mode, and the #2382 fallback stands down
+  # otherwise) AND a committed version of nexus-agents OR nexus-memory that npm
+  # does not have yet (`changeset publish` ships each package that is ahead).
+  # Any other push only opens or updates the version PR, which publishes
+  # nothing. When nexus-memory is ahead, its own tarball is packed and smoked
+  # too (install into a clean prefix, import the entry point).
+  #
+  # A separate job so the tarball's code is installed and run without the
+  # release job's contents/pull-requests/id-token write permissions. It packs
+  # the same way `pnpm release` does (Node 24, npm 11, `pnpm build`, then
+  # scripts/stage-publish.ts), the same way the SBOM step below packs.
+  publish-smoke:
+    name: Pre-publish install smoke
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-node
+        with:
+          # Same Node as the publish job (#2524).
+          node-version: '24'
+
+      - name: Pin npm 11, as the publish job does (#6486)
+        shell: bash
+        run: npm install -g npm@11
+
+      - name: Decide whether this run publishes
+        id: publish-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Read the commit object, not the tree (#4487): the same inputs the
+          # release job's fallback decision reads.
+          pending=$(pnpm exec tsx scripts/count-pending-changesets.ts "$GITHUB_SHA")
+          if [ "$pending" -gt 0 ]; then
+            echo "$pending non-empty changeset(s) pending: this run opens or updates the version PR and publishes nothing. No smoke."
+            echo "will_publish=false" >> "$GITHUB_OUTPUT"
+            echo "memory_ahead=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # `changeset publish` publishes EVERY package whose committed version
+          # npm lacks, so both published packages are measured: a bump of
+          # nexus-memory alone still publishes.
+          will_publish=false
+          memory_ahead=false
+          for pkg in nexus-agents nexus-memory; do
+            local_version=$(git show "$GITHUB_SHA:packages/$pkg/package.json" | jq -r '.version')
+            # A failed lookup is unmeasured, never "nothing to publish" (#4927):
+            # guessing "not ahead" here would skip the smoke on a real publish.
+            if ! published_version=$(npm view "$pkg" version 2>/dev/null) || [ -z "$published_version" ]; then
+              echo "::error::npm view $pkg version failed, so whether this run publishes is unmeasured. Not skipping the smoke on a guess; re-run once the registry answers."
+              exit 1
+            fi
+            larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
+            echo "$pkg: package.json=$local_version npm=$published_version"
+            if [ "$local_version" != "$published_version" ] && [ "$larger" = "$local_version" ]; then
+              echo "$pkg is ahead of npm: this run publishes it."
+              will_publish=true
+              if [ "$pkg" = "nexus-memory" ]; then memory_ahead=true; fi
+            fi
+          done
+          if [ "$will_publish" = "true" ]; then
+            echo "No pending changesets and a package is ahead of npm: smoking the packed tarball(s) first."
+          else
+            echo "No pending changesets and no package is ahead of npm: nothing new to publish. No smoke."
+          fi
+          echo "will_publish=$will_publish" >> "$GITHUB_OUTPUT"
+          echo "memory_ahead=$memory_ahead" >> "$GITHUB_OUTPUT"
+
+      - name: Build and pack the tarball the publish will ship
+        if: steps.publish-path.outputs.will_publish == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm build
+          pnpm exec tsx scripts/stage-publish.ts --pack "${RUNNER_TEMP}/publish-smoke"
+          # nexus-memory is published from its own directory by pnpm (no
+          # stage), so `pnpm pack` is the same packing the publish performs.
+          if [ "${MEMORY_AHEAD}" = "true" ]; then
+            pnpm --filter nexus-memory --fail-if-no-match pack --pack-destination "${RUNNER_TEMP}/publish-smoke"
+          fi
+        env:
+          MEMORY_AHEAD: ${{ steps.publish-path.outputs.memory_ahead }}
+
+      - name: Install the packed tarball(s) and smoke them
+        if: steps.publish-path.outputs.will_publish == 'true'
+        uses: ./.github/actions/tarball-smoke
+        with:
+          pack-dir: ${{ runner.temp }}/publish-smoke
+          smoke-memory: ${{ steps.publish-path.outputs.memory_ahead }}
+
   # Automated release via changesets (runs on push to main)
   release:
     name: Release
     if: github.event_name == 'push'
+    # #6770: a failed smoke skips this job, so nothing is published. When the
+    # run would not publish, the smoke job passes without smoking.
+    needs: publish-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
