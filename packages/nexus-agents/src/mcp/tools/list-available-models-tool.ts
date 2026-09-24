@@ -23,6 +23,8 @@ import { createSecureHandler } from '../middleware/secure-handler.js';
 import { buildDefaultModelSources } from '../../config/register-model-sources.js';
 import type { AvailableModelsSource } from '../../config/available-models-cache.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { getDefaultCliCircuitBreakerRegistry } from '../../cli-adapters/cli-circuit-breaker.js';
+import { isCliName } from '../../cli-adapters/types-core.js';
 import {
   toolStructuredError,
   toolSuccess,
@@ -33,7 +35,8 @@ import {
 const DESCRIPTION =
   'Probe every model-discovery transport (OpenRouter API, the configured gateway, and the ' +
   'opencode/claude/codex/gemini CLIs) ' +
-  'and report a per-transport health summary: probe ok/failed, model count, and a sample of ids. ' +
+  'and report a per-transport health summary: probe ok/failed, model count, a sample of ids, and ' +
+  'for each CLI whether its shared circuit breaker is open (the router refuses it while open). ' +
   'Use it to validate the CLIs and APIs are wired and reachable. Read-only; does not change routing.';
 
 /** Per-source probe timeout (ms). A hung transport must not block the report. */
@@ -72,6 +75,16 @@ export interface TransportReport {
   readonly sampleModelIds: readonly string[];
   readonly modelIds?: readonly string[];
   readonly error?: string;
+  /**
+   * Whether the SHARED CLI circuit breaker — the one the router and the
+   * unified adapter registry consult — is open for this transport (#6769).
+   * A transport can probe fine and still be refused by the router while its
+   * breaker is open; this reports that beside the probe, not in place of it.
+   *
+   * Present only for CLI-slot transports. Absent means no CLI breaker tracks
+   * this transport (openrouter, gateway) — never a default `false`.
+   */
+  readonly breakerOpen?: boolean;
 }
 
 export interface ListAvailableModelsResponse {
@@ -89,6 +102,8 @@ export interface ListAvailableModelsResponse {
   readonly reachableTransports: number;
   readonly totalTransports: number;
   readonly totalModels: number;
+  /** Transports whose shared circuit breaker is open (#6769); empty when none is. */
+  readonly breakerOpenTransports: readonly string[];
   readonly note: string;
 }
 
@@ -136,6 +151,20 @@ async function probeSource(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+/**
+ * Overlay the shared CLI breaker state on a CLI-slot transport (#6769, panel
+ * option A). Read from the same registry the router and the unified adapter
+ * registry consult, so an open breaker here is one the router is honouring.
+ * Non-CLI transports are returned unchanged: no CLI breaker tracks them.
+ */
+function withBreakerState(report: TransportReport): TransportReport {
+  if (!isCliName(report.transport)) return report;
+  return {
+    ...report,
+    breakerOpen: getDefaultCliCircuitBreakerRegistry().isOpen(report.transport),
+  };
 }
 
 /** The transport name the gateway catalogue is reported under (#6609). */
@@ -210,16 +239,19 @@ export async function listAvailableModelsHandler(
       ? deps.sourcesFactory(includeOpenRouter)
       : await defaultSources(includeOpenRouter, deps.adaptersFactory);
 
-  const transports = await Promise.all(sources.map((s) => probeSource(s, includeModelIds)));
+  const probed = await Promise.all(sources.map((s) => probeSource(s, includeModelIds)));
+  const transports = probed.map(withBreakerState);
   const response: ListAvailableModelsResponse = {
     transports,
     healthyTransports: transports.filter((t) => t.servesModels).length,
     reachableTransports: transports.filter((t) => t.ok).length,
     totalTransports: transports.length,
     totalModels: transports.reduce((sum, t) => sum + t.modelCount, 0),
+    breakerOpenTransports: transports.filter((t) => t.breakerOpen === true).map((t) => t.transport),
     note:
       'Probe results — existence only; the in-tree registry remains authoritative for pricing/capability. ' +
-      'healthyTransports counts transports that can serve a model; reachableTransports counts probes that merely succeeded.',
+      'healthyTransports counts transports that can serve a model; reachableTransports counts probes that merely succeeded. ' +
+      'breakerOpen marks a CLI transport the router is currently refusing (shared circuit breaker open), whatever its probe said.',
   };
   logger.debug('list_available_models probed transports', {
     healthy: response.healthyTransports,

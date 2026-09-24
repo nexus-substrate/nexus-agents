@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, it, expect, vi } 
 import { listAvailableModelsHandler } from './list-available-models-tool.js';
 import { createLogger } from '../../core/index.js';
 import type { AvailableModelsSource } from '../../config/available-models-cache.js';
+import { getDefaultCliCircuitBreakerRegistry } from '../../cli-adapters/cli-circuit-breaker.js';
 import { startFakeGateway, type FakeGateway } from '../../testing/gateway/fake-gateway.js';
 
 const logger = createLogger({ tool: 'test' });
@@ -23,6 +24,7 @@ function parse(text: string): {
   healthyTransports: number;
   reachableTransports: number;
   totalModels: number;
+  breakerOpenTransports: string[];
   transports: {
     transport: string;
     ok: boolean;
@@ -31,6 +33,7 @@ function parse(text: string): {
     sampleModelIds: string[];
     modelIds?: string[];
     error?: string;
+    breakerOpen?: boolean;
   }[];
 } {
   return JSON.parse(text) as ReturnType<typeof parse>;
@@ -237,5 +240,44 @@ describe('list_available_models lists the gateway under the gateway (#6609)', ()
     expect(report[0]).toMatchObject({ transport: 'gateway', ok: false, servesModels: false });
     expect(report[0]?.error).toContain('127.0.0.1');
     expect(JSON.stringify(report)).not.toContain('list-models-key-6609');
+  });
+});
+
+describe('list_available_models breaker state (#6769)', () => {
+  const breakers = getDefaultCliCircuitBreakerRegistry();
+
+  afterEach(() => {
+    breakers.resetAll();
+  });
+
+  it('flags a CLI transport whose shared breaker is open, and only that one', async () => {
+    const claude = breakers.getBreaker('claude');
+    for (let i = 0; i < 10 && claude.getState() !== 'open'; i++) claude.recordFailure('crash');
+    expect(breakers.isOpen('claude')).toBe(true);
+
+    const sourcesFactory = (): AvailableModelsSource[] => [
+      src('claude', ['claude-x']),
+      src('gemini', ['g-1']),
+      src('openrouter', ['a']),
+    ];
+    const res = await listAvailableModelsHandler({}, { sourcesFactory }, logger);
+    const data = parse(res.content[0]?.text ?? '');
+    const byName = new Map(data.transports.map((t) => [t.transport, t]));
+
+    // The probe still ran: breaker state is reported beside it, not instead of it.
+    expect(byName.get('claude')).toMatchObject({ ok: true, servesModels: true, breakerOpen: true });
+    expect(byName.get('gemini')).toMatchObject({ breakerOpen: false });
+    // No CLI breaker tracks openrouter: the field is absent, not a default `false`.
+    expect(byName.get('openrouter')).not.toHaveProperty('breakerOpen');
+    expect(data.breakerOpenTransports).toEqual(['claude']);
+  });
+
+  it('with no breaker open, every CLI transport reports breakerOpen:false', async () => {
+    const sourcesFactory = (): AvailableModelsSource[] => [src('codex', ['c-1'])];
+    const res = await listAvailableModelsHandler({}, { sourcesFactory }, logger);
+    const data = parse(res.content[0]?.text ?? '');
+
+    expect(data.transports[0]).toMatchObject({ transport: 'codex', breakerOpen: false });
+    expect(data.breakerOpenTransports).toEqual([]);
   });
 });
