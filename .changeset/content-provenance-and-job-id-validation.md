@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 Provenance labelling and input validation hardening.
