@@ -26,7 +26,7 @@ import { getErrorMessage, ok, err, getTimeProvider, createLogger } from '../../c
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
-import { isReadOnlyAnalysis, readOnlyAnalysisConflict } from '../read-only-analysis.js';
+import { accessModeConflict, isReadOnlyAnalysis } from '../access-mode.js';
 import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
 
 import {
@@ -250,8 +250,9 @@ export class CodexMcpAdapter extends BaseCliAdapter {
     const base = super.accessModeRefusal(task);
     if (base !== undefined || !isReadOnlyAnalysis(task)) return base;
     if (task.sessionId !== undefined && task.sessionId !== '') {
-      return readOnlyAnalysisConflict(
+      return accessModeConflict(
         this.name,
+        'read-only-analysis',
         'a continued codex session carries no sandbox setting'
       );
     }

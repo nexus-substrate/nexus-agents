@@ -322,6 +322,10 @@ async function waitFor(predicate: () => boolean, what: string, limitMs = 10_000)
 class LongRunningFakeCli extends SubprocessCliAdapter {
   override readonly name = 'claude' as const;
   readonly version = '1.0.0';
+  // Orchestrate workers run read-only (#6792), and an adapter that does not
+  // declare the mode refuses before spawning; this fake stands in for the
+  // claude arm, which declares it.
+  override readonly enforcesReadOnlyAnalysis = true;
   protected override readonly transientRetry = { enabled: true };
   protected readonly parser: ICliResponseParser = new ClaudeResponseParser();
   spawnCount = 0;

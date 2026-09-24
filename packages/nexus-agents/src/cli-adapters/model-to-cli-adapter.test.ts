@@ -38,6 +38,37 @@ const COMPLETION: CompletionResponse = {
   model: 'claude-opus',
 };
 
+describe('ModelToCliAdapter workspace-edit mode (#6792)', () => {
+  it('declares workspace-edit: it sends no tools, so it runs nothing on the host', () => {
+    const adapter = createModelToCliAdapter(makeModelAdapter(), { name: 'claude' });
+    expect(adapter.enforcesWorkspaceEdit).toBe(true);
+  });
+
+  it('forwards the workspace-edit mode on the request, with no tools', async () => {
+    const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
+    const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'claude' });
+
+    const result = await adapter.execute({ content: 'implement', accessMode: 'workspace-edit' });
+
+    expect(result.ok).toBe(true);
+    const request = complete.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(request['accessMode']).toBe('workspace-edit');
+    expect(request['tools']).toBeUndefined();
+  });
+
+  it('reports the response as text-only, served under the mode', async () => {
+    const complete = vi.fn().mockResolvedValue(ok(COMPLETION));
+    const adapter = createModelToCliAdapter(makeModelAdapter({ complete }), { name: 'claude' });
+
+    const edit = await adapter.execute({ content: 'implement', accessMode: 'workspace-edit' });
+    const plain = await adapter.execute({ content: 'hi' });
+
+    expect(edit.ok && edit.value.textOnly).toBe(true);
+    expect(edit.ok && edit.value.accessMode).toBe('workspace-edit');
+    expect(plain.ok && plain.value.accessMode).toBe('default');
+  });
+});
+
 describe('ModelToCliAdapter read-only analysis mode (#6768)', () => {
   it('declares read-only enforcement, so the router may select it for a read-only task', () => {
     const adapter = createModelToCliAdapter(makeModelAdapter(), { name: 'claude' });

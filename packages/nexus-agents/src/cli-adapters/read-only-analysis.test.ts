@@ -26,7 +26,7 @@ import type { CommandConfig } from './subprocess-adapter.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { CliToModelAdapter } from './cli-to-model-adapter.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
-import { readOnlyAnalysisRefusal } from './read-only-analysis.js';
+import { unenforcedAccessModeRefusal } from './access-mode.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
@@ -237,15 +237,15 @@ describe('an adapter that does not declare enforcement fails closed (#6754)', ()
     expect(adapter.executeTaskSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('readOnlyAnalysisRefusal passes only an explicit true', () => {
-    expect(readOnlyAnalysisRefusal({ name: 'claude' }, READ_ONLY)).toBeDefined();
+  it('unenforcedAccessModeRefusal passes only an explicit true', () => {
+    expect(unenforcedAccessModeRefusal({ name: 'claude' }, READ_ONLY)).toBeDefined();
     expect(
-      readOnlyAnalysisRefusal({ name: 'claude', enforcesReadOnlyAnalysis: false }, READ_ONLY)
+      unenforcedAccessModeRefusal({ name: 'claude', enforcesReadOnlyAnalysis: false }, READ_ONLY)
     ).toBeDefined();
     expect(
-      readOnlyAnalysisRefusal({ name: 'claude', enforcesReadOnlyAnalysis: true }, READ_ONLY)
+      unenforcedAccessModeRefusal({ name: 'claude', enforcesReadOnlyAnalysis: true }, READ_ONLY)
     ).toBeUndefined();
-    expect(readOnlyAnalysisRefusal({ name: 'claude' }, DEFAULT_MODE)).toBeUndefined();
+    expect(unenforcedAccessModeRefusal({ name: 'claude' }, DEFAULT_MODE)).toBeUndefined();
   });
 });
 

@@ -21,7 +21,7 @@ import {
 import { parseBoolEnv } from '../config/defaults-env.js';
 import type { CliName, RoutingArmId, CliTask } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
-import { isReadOnlyAnalysis } from './read-only-analysis.js';
+import { restrictedAccessMode } from './access-mode.js';
 import { CompositeRoutingError, type PipelineResult } from './composite-router-types.js';
 import { CAPACITY_EXHAUSTED } from './routing/stages/index.js';
 import {
@@ -644,14 +644,15 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
 
 /**
  * The arms a routing-memory pick must stay within, or `undefined` for no
- * bound (#6768). A read-only task may only take a pick that is still a
+ * bound (#6768). A task in a restricted mode (read-only analysis, or
+ * workspace-edit since #6792) may only take a pick that is still a
  * candidate: the candidates were filtered to arms that enforce the mode.
  */
 function memoryPickBound(
   task: CliTask,
   candidates: readonly RoutingArmId[]
 ): readonly RoutingArmId[] | undefined {
-  return isReadOnlyAnalysis(task) ? candidates : undefined;
+  return restrictedAccessMode(task) !== undefined ? candidates : undefined;
 }
 
 /**

@@ -15,7 +15,7 @@ import semver from 'semver';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 import type { Result } from '../core/index.js';
-import { err, getTimeProvider } from '../core/index.js';
+import { err, ok, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
@@ -42,7 +42,7 @@ import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { createCliError } from './cli-error-helpers.js';
-import { readOnlyAnalysisRefusal } from './read-only-analysis.js';
+import { unenforcedAccessModeRefusal, withEnforcedAccessMode } from './access-mode.js';
 
 const execAsync = promisify(exec);
 
@@ -89,6 +89,13 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * implements the mode and says so.
    */
   readonly enforcesReadOnlyAnalysis: boolean = false;
+
+  /**
+   * Whether this adapter maps `accessMode: 'workspace-edit'` to its CLI's own
+   * enforcement (#6792). False here for the same reason: a new adapter fails
+   * closed until it implements the mode and says so.
+   */
+  readonly enforcesWorkspaceEdit: boolean = false;
 
   protected readonly logger: ILogger;
   protected capacityTracker: CapacityTracker | null = null;
@@ -158,7 +165,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * 3. getTimeoutForTaskAuto() - computed from task complexity and CLI
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
-    // #6754: checked before anything else runs, so a refused read-only task
+    // #6754/#6792: checked before anything else runs, so a refused restricted task
     // never initializes, spawns or counts against the breaker.
     const refusal = this.accessModeRefusal(task);
     if (refusal !== undefined) return err(refusal);
@@ -177,7 +184,10 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       timeoutMs: effectiveTimeout,
     });
 
-    return this.executeWithRetry(task, opts);
+    const result = await this.executeWithRetry(task, opts);
+    // #6792: the refusal above passed, so this adapter ran the task under the
+    // task's mode; the response says so for the caller's record.
+    return result.ok ? ok(withEnforcedAccessMode(result.value, task)) : result;
   }
 
   /**
@@ -186,7 +196,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * own options can create, and call `super` first.
    */
   protected accessModeRefusal(task: CliTask): CliError | undefined {
-    return readOnlyAnalysisRefusal(this, task);
+    return unenforcedAccessModeRefusal(this, task);
   }
 
   /**
