@@ -35,7 +35,6 @@ import { dispatchCommand } from './cli-commands.js';
 import { isDirectRun } from './cli-direct-run.js';
 import { formatCommandHelp } from './cli-command-help.js';
 import { catalogCommandNames, formatUnknownCommandMessage } from './cli-command-suggester.js';
-import { CLI_NAMES, type CliNameLiteral } from './config/model-capabilities-types.js';
 import { ErrorPolicySchema, type ErrorPolicy } from './mcp/tools/consensus-vote-types.js';
 import type { NoQuorumPolicy } from './cli/vote-types.js';
 import { parseVoteBarFlags } from './cli/vote-bar-flags.js';
@@ -78,16 +77,6 @@ function parseNumericOption(value: string | undefined): number | undefined {
 }
 
 /**
- * Validates orchestrate model option.
- */
-function parseOrchestrateModel(value: string | undefined): CliNameLiteral | undefined {
-  if (value !== undefined && (CLI_NAMES as readonly string[]).includes(value)) {
-    return value as CliNameLiteral;
-  }
-  return undefined;
-}
-
-/**
  * Validates orchestrate engine option.
  * (Source: Issue #386)
  */
@@ -114,6 +103,7 @@ interface ParsedValues {
   'bandit-stats': boolean;
   setup: boolean;
   'skip-checks': boolean;
+  task?: string;
   model?: string;
   'max-tokens'?: string;
   'max-cost-usd'?: string;
@@ -188,13 +178,13 @@ interface ParsedValues {
 
 /** Builds orchestrate-specific options. */
 function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> {
-  const model = parseOrchestrateModel(values.model);
   const maxTokens = parseNumericOption(values['max-tokens']);
   const maxCostUsd = parseNumericOption(values['max-cost-usd']);
   const engine = parseOrchestrateEngine(values.engine);
   const maxSteps = parseNumericOption(values['max-steps']);
   return {
-    ...(model !== undefined && { model }),
+    ...(values.task !== undefined && { task: values.task }),
+    ...(values.model !== undefined && { model: values.model }),
     ...(maxTokens !== undefined && { maxTokens }),
     ...(maxCostUsd !== undefined && { maxCostUsd }),
     ...(engine !== undefined && { engine }),
@@ -211,22 +201,45 @@ function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> 
 function parseErrorPolicy(value: string | undefined): ErrorPolicy | undefined {
   if (value === undefined) return undefined;
   const parsed = ErrorPolicySchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  if (!parsed.success) {
+    throw new Error(
+      `--error-policy must be one of ${ErrorPolicySchema.options.join(', ')}; got '${value}'`
+    );
+  }
+  return parsed.data;
+}
+
+const NO_QUORUM_POLICIES = ['fail', 'exit2', 'retry'] as const;
+
+/**
+ * #4135: validates the `--on-no-quorum` flag (fail | exit2 | retry). Refuses
+ * invalid values (#6678).
+ */
+function parseNoQuorumPolicy(value: string | undefined): NoQuorumPolicy | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'fail' || value === 'exit2' || value === 'retry') {
+    return value;
+  }
+  throw new Error(
+    `--on-no-quorum must be one of ${NO_QUORUM_POLICIES.join(', ')}; got '${value}'`
+  );
 }
 
 /**
- * #4135: validates the `--on-no-quorum` flag (fail | exit2 | retry). Unknown
- * values fall through to `undefined` → the command default (`fail`).
+ * Validates the vote command's `--timeout` flag (in seconds) (#6678).
  */
-function parseNoQuorumPolicy(value: string | undefined): NoQuorumPolicy | undefined {
-  return value === 'fail' || value === 'exit2' || value === 'retry' ? value : undefined;
+function parseVoteTimeout(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) {
+    throw new Error(`--timeout must be a positive number; got '${value}'`);
+  }
+  return num * 1000;
 }
 
 /** Builds vote-specific options. */
 function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
-  const timeoutSec = parseNumericOption(values.timeout);
-  // Convert seconds to milliseconds (CLI uses seconds for readability)
-  const timeoutMs = timeoutSec !== undefined ? timeoutSec * 1000 : undefined;
+  const timeoutMs = parseVoteTimeout(values.timeout);
   const errorPolicy = parseErrorPolicy(values['error-policy']);
   const onNoQuorum = parseNoQuorumPolicy(values['on-no-quorum']);
   const { option: options, project } = values;
@@ -247,13 +260,10 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
 
 /** Builds learning-metrics specific options. */
 function buildLearningMetricsOptions(values: ParsedValues): {
-  period?: number;
   export?: string;
   noTrends?: boolean;
 } {
-  const period = parseNumericOption(values.period);
-  const result: { period?: number; export?: string; noTrends?: boolean } = {};
-  if (period !== undefined) result.period = period;
+  const result: { export?: string; noTrends?: boolean } = {};
   if (values.export !== undefined) result.export = values.export;
   if (values['no-trends']) result.noTrends = true;
   return result;
@@ -338,6 +348,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...(values.source !== undefined && { source: values.source }),
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
+    ...(values.period !== undefined && { period: values.period }),
     ...buildOrchestrateOptions(values),
     ...buildVoteOptions(values),
     ...buildLearningMetricsOptions(values),

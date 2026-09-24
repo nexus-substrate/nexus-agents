@@ -44,7 +44,12 @@ export interface VoteBarFlags {
 function parseThreshold(value: string | undefined): VoteThreshold | undefined {
   if (value === undefined) return undefined;
   const parsed = VoteThresholdSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  if (!parsed.success) {
+    throw new Error(
+      `--threshold must be one of ${VoteThresholdSchema.options.join(', ')}; got '${value}'`
+    );
+  }
+  return parsed.data;
 }
 
 /**

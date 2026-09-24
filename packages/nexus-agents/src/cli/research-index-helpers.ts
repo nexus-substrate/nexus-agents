@@ -113,11 +113,23 @@ export function createInitialParseState(): ParseState {
 // CLI Argument Parser
 // ============================================================================
 
+/** Apply options forwarded from global parser (#6678). */
+function applyForwardedOptions(state: ParseState, options?: Record<string, unknown>): void {
+  if (options === undefined) return;
+  if (options['validate'] === true) state.action = 'validate';
+  if (typeof options['output'] === 'string') state.output = options['output'];
+  if (options['format'] === 'json') state.format = 'json';
+}
+
 /**
- * Parse CLI arguments for the research index command.
+ * Parse CLI arguments and forwarded options for the research index command (#6678).
  */
-export function parseResearchIndexArgs(args: readonly string[]): ResearchIndexOptions {
+export function parseResearchIndexArgs(
+  args: readonly string[],
+  options?: Record<string, unknown>
+): ResearchIndexOptions {
   const state = createInitialParseState();
+  applyForwardedOptions(state, options);
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];

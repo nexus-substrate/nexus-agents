@@ -8,7 +8,6 @@
  */
 
 import type { ServerMode } from './cli/index.js';
-import type { CliNameLiteral } from './config/model-capabilities-types.js';
 import type {
   ErrorPolicy,
   VoteThreshold,
@@ -213,7 +212,7 @@ export interface ParsedCliArgs {
     skipChecks: boolean;
     // Orchestrate command options (also used in orchestrator mode)
     task?: string;
-    model?: CliNameLiteral;
+    model?: string;
     maxTokens?: number;
     maxCostUsd?: number;
     engine?: 'router' | 'puppeteer';
@@ -241,8 +240,8 @@ export interface ParsedCliArgs {
     options?: string[];
     /** #6110 — `--project`, the project the panel judges (replaces `nexus-agents` in the prompts). */
     project?: string;
-    // Learning-metrics command options
-    period?: number;
+    // Learning-metrics and validation command options
+    period?: string;
     export?: string;
     noTrends?: boolean;
     // Setup command options (Issue #363, #416, #1252, #1253, #1259, #1263)

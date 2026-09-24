@@ -59,6 +59,7 @@ import {
   isValidExpertListFormat,
   isValidThreshold,
   isValidErrorPolicy,
+  isValidOrchestrateModel,
   isValidIndexSubcommand,
   isValidIndexFormat,
   isValidResearchFormat,
@@ -200,12 +201,16 @@ export async function handleWorkflowCommand(args: ParsedCliArgs): Promise<CliExi
  * (Source: Issue #446 - Implement orchestrator mode)
  */
 function buildOrchestratorOptions(args: ParsedCliArgs): OrchestratorModeOptions {
+  const model =
+    args.options.model !== undefined && isValidOrchestrateModel(args.options.model)
+      ? args.options.model
+      : undefined;
   return {
     verbose: args.options.verbose,
     format: args.options.format === 'json' ? 'json' : 'text',
     dryRun: args.options.dryRun,
     ...(args.options.task !== undefined && { task: args.options.task }),
-    ...(args.options.model !== undefined && { model: args.options.model }),
+    ...(model !== undefined && { model }),
     ...(args.options.maxTokens !== undefined && { maxTokens: args.options.maxTokens }),
     ...(args.options.maxCostUsd !== undefined && { maxCostUsd: args.options.maxCostUsd }),
   };
@@ -393,6 +398,9 @@ export async function handleResearchCommand(args: ParsedCliArgs): Promise<CliExi
   if (args.options.output !== undefined) {
     options['output'] = args.options.output;
   }
+  if (args.options.validate === true) {
+    options['validate'] = true;
+  }
   if (args.options.dryRun) {
     options['dryRun'] = true;
   }
@@ -458,7 +466,15 @@ export async function handleRegistryCommand(args: ParsedCliArgs): Promise<CliExi
  * (Source: Issue #273)
  */
 export function handleValidationCommand(args: ParsedCliArgs): CliExitResult {
-  const options = parseValidationArgs(args.positionals, args.options.format, args.options.verbose);
+  const options = parseValidationArgs(
+    args.positionals,
+    args.options.format,
+    args.options.verbose,
+    {
+      period: args.options.period,
+      model: args.options.model,
+    }
+  );
   const exitCode = validationDashboardCommand(options);
   return cliExitFromStatus(exitCode);
 }
@@ -469,8 +485,11 @@ export function handleValidationCommand(args: ParsedCliArgs): CliExitResult {
  */
 export function handleLearningMetricsCommand(args: ParsedCliArgs): CliExitResult {
   const format: 'ascii' | 'json' = args.options.format === 'json' ? 'json' : 'ascii';
+  const periodNum = args.options.period !== undefined ? Number(args.options.period) : undefined;
+  const period =
+    periodNum !== undefined && Number.isFinite(periodNum) && periodNum > 0 ? periodNum : 24;
   const exitCode = learningMetricsCommand({
-    period: args.options.period ?? 24,
+    period,
     format,
     banditStats: args.options.banditStats,
     showTrends: args.options.noTrends !== true,
@@ -652,10 +671,13 @@ export async function handleSessionCommand(
   // #3942: signal that delegation explicitly with the sentinel rather than a
   // bare `undefined`, so a dropped return on the error path above is caught.
   const remainingArgs = args.positionals.slice(2);
-  // #6677: `--dry-run` was consumed by the parser, so forward it explicitly —
-  // it is not in the positionals, and prune used to delete under --dry-run.
+  // #6677, #6678: flags consumed by the parser forward explicitly so handlers
+  // receive `--output`, `--json`, `--format`, `--dry-run`.
   await sessionCommand(subcommand, remainingArgs, undefined, {
     dryRun: args.options.dryRun,
+    json: args.options.json,
+    format: args.options.format,
+    output: args.options.output,
   });
   return LIFECYCLE_DELEGATED;
 }

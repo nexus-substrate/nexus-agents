@@ -591,9 +591,12 @@ function ok(
   };
 }
 
-/** Handle index subcommand. Preserves the underlying `exitCode` so callers can fail CI on stale registries (#2761). */
-async function handleIndexCommand(args: string[]): Promise<ResearchCommandResult> {
-  const indexOptions = parseResearchIndexArgs(args);
+/** Handle index subcommand. Preserves the underlying `exitCode` so callers can fail CI on stale registries (#2761, #6678). */
+async function handleIndexCommand(
+  args: string[],
+  options?: Record<string, unknown>
+): Promise<ResearchCommandResult> {
+  const indexOptions = parseResearchIndexArgs(args, options);
   const result = await researchIndexCommand(indexOptions);
   return { text: result.message, exitCode: result.exitCode };
 }
@@ -610,7 +613,7 @@ const SUBCOMMAND_HANDLERS: Record<ResearchSubcommand, SubcommandHandler> = {
   stats: ok((_args, options) => handleStatsCommand(options)),
   refresh: ok((_args, options) => handleRefreshCommand(options)),
   check: ok(() => handleCheckCommand()),
-  index: (args) => handleIndexCommand(args),
+  index: (args, options) => handleIndexCommand(args, options),
   discover: ok(handleDiscoverCommand),
   review: ok(handleReviewCommand),
   prioritize: ok(handlePrioritizeCommand),
