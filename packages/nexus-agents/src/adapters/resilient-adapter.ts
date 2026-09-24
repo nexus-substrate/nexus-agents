@@ -21,7 +21,7 @@ import type {
 } from '../core/types/model.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { ModelError, ConfigError, ErrorCode } from '../core/errors.js';
+import { ModelError, ConfigError } from '../core/errors.js';
 import type { ILogger } from '../core/index.js';
 import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import { getErrorMessage, createLogger } from '../core/index.js';
@@ -381,11 +381,7 @@ export class ResilientAdapter implements IResilientAdapter {
     // #6712: the CLI adapter's retry loop owns recording for a CLI selection.
     if (this.currentSelection.source === 'cli') return;
 
-    // #6599: caller input (e.g. a requested model the CLI cannot resolve) is
-    // not a health signal. Counting it let one bad model preference open the
-    // breaker for every caller of the CLI.
-    if (error.code === ErrorCode.INVALID_INPUT) return;
-    // #6691: nor is a call its caller cancelled (cancel_job).
+    // #6691: a call its caller cancelled (cancel_job) is not a health signal.
     if (isCallerCancelled(error)) return;
 
     const category = mapModelErrorToCategory(error);

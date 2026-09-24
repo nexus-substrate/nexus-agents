@@ -25,7 +25,6 @@ export type RoutingStrategy =
   | 'quality'
   | 'budget'
   | 'confidence_cascade'
-  | 'agreement_cascade'
   | 'zero_router'
   | 'preference'
   | 'topsis'
@@ -104,7 +103,6 @@ export const UnifiedRoutingDecisionSchema = z.object({
     'quality',
     'budget',
     'confidence_cascade',
-    'agreement_cascade',
     'zero_router',
     'preference',
     'topsis',
