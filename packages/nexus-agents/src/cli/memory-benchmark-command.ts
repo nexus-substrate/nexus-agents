@@ -169,12 +169,15 @@ async function runBenchmark(options: MemoryBenchmarkOptions): Promise<MemoryBenc
   });
 }
 
-/** Parses options from CLI args. */
+/** Parses options from CLI args (#6678). */
 function parseOptions(args: ParsedCliArgs): MemoryBenchmarkOptions {
   return {
-    quick: args.subcommand === 'quick' || args.options.dryRun,
+    quick: args.subcommand === 'quick' || args.options.dryRun || args.options.quick,
     format: args.options.format === 'json' ? 'json' : 'text',
-    validate: args.subcommand === 'validate' || args.positionals.includes('--validate'),
+    validate:
+      args.subcommand === 'validate' ||
+      args.options.validate === true ||
+      args.positionals.includes('--validate'),
   };
 }
 

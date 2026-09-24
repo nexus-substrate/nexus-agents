@@ -136,16 +136,23 @@ export function validationDashboardCommand(options: ValidationDashboardOptions =
   }
 }
 
-/** Parse --period=X from positionals. */
-function parsePeriod(positionals: readonly string[]): string | undefined {
+/** Parsed flags forwarded from the global CLI parser (#6678). */
+export interface ValidationParsedFlags {
+  readonly period?: string | undefined;
+  readonly model?: string | undefined;
+}
+
+/** Parse --period=X from positionals or forwarded flag. */
+function parsePeriod(positionals: readonly string[], flagPeriod?: string): string | undefined {
+  if (flagPeriod !== undefined && isValidPeriod(flagPeriod)) return flagPeriod;
   const arg = positionals.find((p) => p.startsWith('--period='))?.split('=')[1];
   return isValidPeriod(arg) ? arg : undefined;
 }
 
-/** Parse --model=X,Y from positionals. */
-function parseModels(positionals: readonly string[]): string[] | undefined {
-  const arg = positionals.find((p) => p.startsWith('--model='))?.split('=')[1];
-  const models = arg?.split(',').filter((m) => m.length > 0);
+/** Parse --model=X,Y from positionals or forwarded flag. */
+function parseModels(positionals: readonly string[], flagModel?: string): string[] | undefined {
+  const raw = flagModel ?? positionals.find((p) => p.startsWith('--model='))?.split('=')[1];
+  const models = raw?.split(',').filter((m) => m.length > 0);
   return models !== undefined && models.length > 0 ? models : undefined;
 }
 
@@ -164,19 +171,20 @@ function parseMinSample(positionals: readonly string[]): number | undefined {
 }
 
 /**
- * Parses CLI positionals to extract validation options.
+ * Parses CLI positionals and forwarded flags to extract validation options (#6678).
  */
 export function parseValidationArgs(
   positionals: readonly string[],
   format: string,
-  verbose: boolean
+  verbose: boolean,
+  flags?: ValidationParsedFlags
 ): Record<string, unknown> {
   const options: Record<string, unknown> = {
     format: format === 'json' ? 'json' : 'ascii',
     verbose,
   };
-  const period = parsePeriod(positionals);
-  const models = parseModels(positionals);
+  const period = parsePeriod(positionals, flags?.period);
+  const models = parseModels(positionals, flags?.model);
   const taskTypes = parseTaskTypes(positionals);
   const minSampleSize = parseMinSample(positionals);
 
