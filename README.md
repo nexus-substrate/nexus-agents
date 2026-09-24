@@ -138,6 +138,8 @@ nexus-agents doctor
 
 Prints a health table — Node version, configured CLIs (claude / codex / gemini / opencode), API keys missing vs present. Read-only; safe to run any time.
 
+A CLI switched off with `NEXUS_DISABLED_CLIS` is listed as disabled and not probed. On a gateway host, `doctor` also says whether the gateway serves that CLI's slot (`doctor --gateway` prints one line per slot); see [CORPORATE_GATEWAY.md](./docs/guides/CORPORATE_GATEWAY.md).
+
 ### 3. See what success looks like (60-second smoke task — no API keys needed)
 
 ```bash
@@ -150,7 +152,7 @@ You should see:
 Nexus Agents Consensus Vote
 ============================
 
-Collecting votes from 3 agents (timeout: 60s each)...
+Collecting votes from 3 agents (timeout: 300s each)...
 
 Proposal: Use SQLite over JSON files for the outcome store
 
@@ -197,7 +199,7 @@ By default, `setup` writes/updates up to seven things in your environment. Each 
 | Codex MCP config                 | `~/.codex/config.toml`                               | `--skip-codex`    |
 | Project config file              | `./nexus-agents.yaml`                                | `--skip-config`   |
 
-Run with `--interactive` (the default) for a per-step confirm flow, or `--no-interactive` to accept all defaults.
+By default `setup` applies every step without prompting. Pass `--interactive` to run the setup wizard instead. Where stdout is not a TTY, or in CI, pass `--non-interactive`; without it `setup` exits with an error.
 
 ### 5. Standalone usage (no editor required)
 
@@ -275,7 +277,7 @@ nexus-agents                    # Start MCP server (default)
 nexus-agents doctor             # Check installation health
 nexus-agents setup              # Configure Claude CLI integration
 nexus-agents orchestrate "..."  # Run task with experts
-nexus-agents vote "proposal"    # Multi-agent consensus voting
+nexus-agents vote -p "proposal" # Multi-agent consensus voting
 nexus-agents review <pr-url>    # Review a GitHub PR
 nexus-agents expert list        # List available experts
 nexus-agents workflow list      # List workflow templates
@@ -332,7 +334,7 @@ When running as an MCP server, the following tools are available. **Start with `
 | `query_task_state`            | Query the structured task-state log for a task ID                                                                                                                                                                        |
 | `get_job_result`              | Read result of an async-mode dispatch by jobId (#3042 / #2631)                                                                                                                                                           |
 | `list_jobs`                   | List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)                                                                                                                                          |
-| `cancel_job`                  | Mark an async-mode job as cancelled — idempotent (#3042 Stage 1b)                                                                                                                                                        |
+| `cancel_job`                  | Cancel an async-mode job; aborts in-flight voters and workers — idempotent (#3042)                                                                                                                                       |
 | `ci_health_check`             | CI infrastructure health — composes GitHub status + recent-runs activity (#3076)                                                                                                                                         |
 | `verify_audit_chain`          | Verify hash chain of a FileAuditStorage audit log directory                                                                                                                                                              |
 | `repo_analyze`                | Analyze GitHub repository structure                                                                                                                                                                                      |
@@ -358,12 +360,13 @@ When running as an MCP server, the following tools are available. **Start with `
 
 **Environment Variables:**
 
-| Variable            | Description                       |
-| ------------------- | --------------------------------- |
-| `ANTHROPIC_API_KEY` | Claude API key                    |
-| `OPENAI_API_KEY`    | OpenAI API key                    |
-| `GOOGLE_AI_API_KEY` | Gemini API key                    |
-| `NEXUS_LOG_LEVEL`   | Log level (debug/info/warn/error) |
+| Variable              | Description                                                                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`   | Claude API key                                                                                                                                                                                              |
+| `OPENAI_API_KEY`      | OpenAI API key                                                                                                                                                                                              |
+| `GOOGLE_AI_API_KEY`   | Gemini API key                                                                                                                                                                                              |
+| `NEXUS_LOG_LEVEL`     | Log level (debug/info/warn/error)                                                                                                                                                                           |
+| `NEXUS_DISABLED_CLIS` | Comma-separated CLIs to take out of service (e.g. `codex,gemini`). Disables the CLI transport only: the binary is never spawned. On a gateway host the family's gateway model still serves the slot (#6723) |
 
 **Generate config file:**
 

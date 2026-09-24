@@ -184,10 +184,15 @@ export function registerCancelJobTool(server: McpServer, deps: CancelJobDeps): v
   };
 
   const description =
-    'Mark an async-mode job as cancelled (#3042 Stage 1b / epic #2631). Same-process ' +
-    'dispatcher unwinds via AbortSignal (#3035/#3038); cross-process workers observe ' +
-    'via get_job_result. Idempotent — cancel-after-complete is a no-op (preserves the ' +
-    'terminal record); second cancel returns already_cancelled.';
+    'Cancel an async-mode job and abort its in-flight work. Marks the record cancelled ' +
+    '(#3042 / epic #2631), then the same-process body unwinds via AbortSignal: it ' +
+    'aborts in-flight voter calls (#6729) and orchestrate worker dispatch (#6692); ' +
+    'not every dev-pipeline stage forwards it yet (#6747). A cancelled ' +
+    'consensus_vote reaches no decision and writes nothing to the vote ledger; the ' +
+    'votes already cast are attached to the cancelled record as a partial (#6735). ' +
+    'Cross-process workers observe the cancel via get_job_result. Idempotent — ' +
+    'cancel-after-complete is a no-op (preserves the terminal record); second cancel ' +
+    'returns already_cancelled.';
 
   const secureHandler = createSecureHandler((args: unknown) => cancelJobHandler(args, logger), {
     toolName: 'cancel_job',

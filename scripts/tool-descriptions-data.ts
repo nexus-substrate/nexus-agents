@@ -85,7 +85,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   list_jobs:
     'List async-mode jobs across all tools (#3046 / epic #2631 Stage 5). Cross-session discovery — returns summaries (jobId/toolName/status/timestamps, plus lastProgressAt when the body has heartbeat; #6162) sorted newest-first. Optional filters: toolName (exact match), status (pending|complete|failed|cancelled), limit (1-200). Result payloads excluded — fetch full records via get_job_result(jobId).',
   cancel_job:
-    'Mark an async-mode job as cancelled (#3042 Stage 1b / epic #2631). Same-process dispatcher unwinds via AbortSignal (#3035/#3038); cross-process workers observe via get_job_result. Idempotent — cancel-after-complete is a no-op (preserves the terminal record); second cancel returns already_cancelled. Returns outcome envelope discriminating cancelled / already_complete / already_cancelled / unknown_job.',
+    'Cancel an async-mode job and abort its in-flight work. Marks the record cancelled (#3042 / epic #2631), then the same-process body unwinds via AbortSignal: it aborts in-flight voter calls (#6729) and orchestrate worker dispatch (#6692); not every dev-pipeline stage forwards it yet (#6747). A cancelled consensus_vote reaches no decision and writes nothing to the vote ledger; the votes already cast are attached to the cancelled record as a partial (#6735). Cross-process workers observe the cancel via get_job_result. Idempotent — cancel-after-complete is a no-op (preserves the terminal record); second cancel returns already_cancelled. Returns outcome envelope discriminating cancelled / already_complete / already_cancelled / unknown_job.',
   ci_health_check:
     "Diagnostic for CI infrastructure health (#3076). Composes GitHub status-page state (githubstatus.com/api/v2/components.json) + the configured repo's recent workflow-runs activity into one verdict { status: healthy|degraded|outage|unknown, signals }. Pessimistic combination — repo-level wedge downgrades a healthy status page. Use BEFORE long auto-merge waits to skip the wedge cycle when CI is broken org-wide. Reads GitHub state only; appends a local CI-health telemetry event per call (no remote state mutated, not strictly idempotent).",
   run_dev_pipeline:
@@ -146,7 +146,7 @@ export const README_TOOL_DESCRIPTIONS: Record<string, string> = {
   query_task_state: 'Query the structured task-state log for a task ID',
   get_job_result: 'Read result of an async-mode dispatch by jobId (#3042 / #2631)',
   list_jobs: 'List async-mode jobs across all tools — cross-session discovery (#3046 / #2631)',
-  cancel_job: 'Mark an async-mode job as cancelled — idempotent (#3042 Stage 1b)',
+  cancel_job: 'Cancel an async-mode job; aborts in-flight voters and workers — idempotent (#3042)',
   ci_health_check:
     'CI infrastructure health — composes GitHub status + recent-runs activity (#3076)',
   repo_analyze: 'Analyze GitHub repository structure',
