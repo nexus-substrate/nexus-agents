@@ -17,6 +17,7 @@ import type {
   IModelAdapter,
   CompletionRequest,
   CompletionResponse,
+  ExecutionAccessMode,
 } from '../core/index.js';
 import { ok, err, ModelError } from '../core/index.js';
 import { FALLBACK_CONTEXT_WINDOW } from '../config/model-config-helpers.js';
@@ -83,6 +84,15 @@ export class ModelToCliAdapter implements ICliAdapter {
   readonly name: CliName;
   readonly transport: CliTransport = API_TRANSPORT;
   readonly capabilities: CapabilityProfile;
+  /**
+   * Read-only analysis mode is satisfied by construction (#6768): this bridge
+   * sends the task as one user message with no tool definitions, so the model
+   * has nothing to run on the host. The mode is also forwarded on the request
+   * (see {@link toCompletionRequest}), so a wrapped model adapter that does
+   * touch the host (a CLI behind `CliToModelAdapter`) applies its own
+   * enforcement or refuses.
+   */
+  readonly enforcesReadOnlyAnalysis = true;
 
   private readonly modelAdapter: IModelAdapter;
 
@@ -114,6 +124,9 @@ export class ModelToCliAdapter implements ICliAdapter {
     }
     if (options?.timeoutMs !== undefined) {
       (request as { timeoutMs: number }).timeoutMs = options.timeoutMs;
+    }
+    if (task.accessMode !== undefined) {
+      (request as { accessMode: ExecutionAccessMode }).accessMode = task.accessMode;
     }
     return request;
   }

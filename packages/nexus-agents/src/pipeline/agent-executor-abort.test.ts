@@ -52,7 +52,7 @@ function expertSignals(): unknown[] {
 describe('runExpert forwards the stage signal (#6736)', () => {
   it('hands the signal to the expert call', async () => {
     const signal = new AbortController().signal;
-    await runExpert(createBudgetGuard(), 'code', 'prompt', 'exec', signal);
+    await runExpert(createBudgetGuard(), 'code', 'prompt', 'exec', { signal });
     expect(expertSignals()).toEqual([signal]);
   });
 
@@ -65,7 +65,7 @@ describe('runExpert forwards the stage signal (#6736)', () => {
     });
 
     await expect(
-      runExpert(createBudgetGuard(), 'code', 'prompt', 'exec', controller.signal)
+      runExpert(createBudgetGuard(), 'code', 'prompt', 'exec', { signal: controller.signal })
     ).rejects.toBe(reason);
   });
 
@@ -73,7 +73,7 @@ describe('runExpert forwards the stage signal (#6736)', () => {
     const controller = new AbortController();
     controller.abort(new Error('cancelled'));
     await expect(
-      runExpert(createBudgetGuard(), 'code', 'prompt', 'exec', controller.signal)
+      runExpert(createBudgetGuard(), 'code', 'prompt', 'exec', { signal: controller.signal })
     ).rejects.toThrow('cancelled');
     expect(executeExpert).not.toHaveBeenCalled();
   });

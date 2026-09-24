@@ -47,6 +47,7 @@ import type {
   ExecutionOptions,
 } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
+import { armsForAccessMode, selectedArmAccessRefusal } from './composite-router-access-mode.js';
 import type {
   IOrchestrationObserver,
   RoutingDecision,
@@ -744,18 +745,27 @@ export class CompositeRouter implements ICompositeRouter {
     try {
       const taskProfile = analyzeTaskProfile(task, stagesExecuted);
       const deps = this.getStageDependencies();
-      const candidateCliNames = await this.getCandidateCliNames();
+      // #6768: a read-only task routes only to arms that enforce the mode.
+      const candidateCliNames = armsForAccessMode(
+        task,
+        await this.getCandidateCliNames(),
+        this.adapters
+      );
+      if (!candidateCliNames.ok) return candidateCliNames;
       const pipelineResult = await runPipeline(
         task,
         taskProfile,
         stagesExecuted,
-        candidateCliNames,
+        candidateCliNames.value,
         deps
       );
       if (!pipelineResult.ok) {
         if (pipelineResult.error.stage === 'budget-filter') this.budgetRejections++;
         return pipelineResult;
       }
+      const selected = pipelineResult.value.selectedCli;
+      const refusal = selectedArmAccessRefusal(task, selected, this.adapters.get(selected));
+      if (refusal !== undefined) return err(refusal);
 
       const decisionResult = this.buildRoutingDecision({
         ...pipelineResult.value,

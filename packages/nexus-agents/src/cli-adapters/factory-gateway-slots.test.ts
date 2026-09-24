@@ -52,7 +52,8 @@ import {
   _resetGatewaySlotCatalog,
   setGatewaySlotCatalog,
 } from '../adapters/gateway-family-slots.js';
-import { gatewayServedSlotOf } from './gateway-slot-arm.js';
+import { buildGatewaySlotRouterArm, gatewayServedSlotOf } from './gateway-slot-arm.js';
+import type { ICliAdapter } from './types.js';
 import { BudgetRouter } from './budget-router.js';
 import {
   describeUnpricedArm,
@@ -347,6 +348,42 @@ describe('createAllAdapters gateway family slots (#6604)', () => {
       installRecordingClaude();
       const arms = createAllAdapters(undefined, 'subprocess');
       expect([...arms.keys()]).toEqual(['gemini', 'codex', 'opencode']);
+    });
+  });
+
+  describe('read-only analysis enforcement (#6768)', () => {
+    it('a gateway-only arm declares enforcement: it runs nothing on the host', () => {
+      setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+      const arms = createAllAdapters(undefined, 'subprocess');
+      for (const cli of ['claude', 'codex', 'gemini'] as const) {
+        expect(gatewayServedSlotOf(arms.get(cli))).toBeDefined();
+        expect(arms.get(cli)?.enforcesReadOnlyAnalysis).toBe(true);
+      }
+    });
+
+    it('a cli-or-gateway arm declares enforcement when its CLI does', () => {
+      setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+      installFakeBinary('claude');
+      const arm = buildGatewaySlotRouterArm(
+        'claude',
+        () => new ClaudeCliAdapter(),
+        () => Promise.resolve(true)
+      );
+      expect(arm).not.toBe('unavailable');
+      expect(typeof arm === 'object' ? arm.enforcesReadOnlyAnalysis : undefined).toBe(true);
+    });
+
+    it('a cli-or-gateway arm does not declare enforcement when its CLI cannot', () => {
+      setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+      installFakeBinary('claude');
+      const nonEnforcingCli = { name: 'claude', enforcesReadOnlyAnalysis: false } as ICliAdapter;
+      const arm = buildGatewaySlotRouterArm(
+        'claude',
+        () => nonEnforcingCli,
+        () => Promise.resolve(true)
+      );
+      expect(arm).not.toBe('unavailable');
+      expect(typeof arm === 'object' ? arm.enforcesReadOnlyAnalysis : undefined).toBe(false);
     });
   });
 

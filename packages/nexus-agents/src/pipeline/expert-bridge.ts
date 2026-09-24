@@ -10,6 +10,7 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
+import type { ExecutionAccessMode } from '../core/index.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
 import {
@@ -114,10 +115,18 @@ interface RoutedAttribution {
   routedDurationMs?: number;
 }
 
+/** The task the bridge hands the router. */
+interface BridgeTask {
+  content: string;
+  options?: Record<string, unknown> | undefined;
+  /** Host access the routed call may use (#6768); absent means the default. */
+  accessMode?: ExecutionAccessMode | undefined;
+}
+
 /** Minimal router interface for the bridge. */
 interface RouterLike {
   executeTask(
-    task: { content: string; options?: Record<string, unknown> | undefined },
+    task: BridgeTask,
     /** #6736: aborts the routed CLI call (stage deadline, job cancel). */
     execution?: { signal?: AbortSignal | undefined }
   ): Promise<{
@@ -260,15 +269,21 @@ export function tokenSplitFromUsage(
   return { tokensIn, tokensOut };
 }
 
+/** The router's `CliTask` for a bridge task; absent fields stay absent. */
+function toCliTask(task: BridgeTask): import('../cli-adapters/types.js').CliTask {
+  return {
+    content: task.content,
+    ...(task.options !== undefined ? { options: task.options } : {}),
+    ...(task.accessMode !== undefined ? { accessMode: task.accessMode } : {}),
+  };
+}
+
 function adaptCompositeRouter(
   compositeRouter: import('../cli-adapters/composite-router.js').ICompositeRouter
 ): RouterLike {
   return {
     async executeTask(task, execution): ReturnType<RouterLike['executeTask']> {
-      const cliTask: import('../cli-adapters/types.js').CliTask = {
-        content: task.content,
-        ...(task.options !== undefined ? { options: task.options } : {}),
-      };
+      const cliTask = toCliTask(task);
       const result =
         execution?.signal === undefined
           ? await compositeRouter.executeTask(cliTask)
@@ -441,7 +456,7 @@ function toSuccessResult(
 /** Dispatch task to router with rate limit retry (#1802). */
 async function dispatchWithRateLimitRetry(
   router: RouterLike,
-  task: { content: string; options?: Record<string, unknown> | undefined },
+  task: BridgeTask,
   expertType: BuiltInExpertType,
   start: number,
   signal: AbortSignal | undefined
@@ -495,6 +510,28 @@ async function dispatchWithRateLimitRetry(
 }
 
 /**
+ * The router task for an expert call. Experts get the nexus-agents MCP config
+ * so they can call its tools (#1708), except under read-only analysis mode
+ * (#6768): an MCP server's tools fall outside the read-only allow list, and
+ * the claude adapter refuses a read-only task that names an MCP config.
+ */
+async function buildBridgeTask(
+  content: string,
+  options:
+    { workDir?: string | undefined; accessMode?: ExecutionAccessMode | undefined } | undefined
+): Promise<BridgeTask> {
+  const task: BridgeTask = { content };
+  const readOnly = options?.accessMode === 'read-only-analysis';
+  const mcpConfigPath = readOnly ? null : await getMcpConfigPath();
+  if (mcpConfigPath !== null) task.options = { mcpConfigPath };
+  if (options?.workDir !== undefined) {
+    task.options = { ...task.options, workDir: options.workDir };
+  }
+  if (options?.accessMode !== undefined) task.accessMode = options.accessMode;
+  return task;
+}
+
+/**
  * Execute an expert task with the full nexus-agents expert pipeline.
  *
  * Creates a built-in expert, executes via CompositeRouter (for intelligent
@@ -516,16 +553,28 @@ export function executeExpert(
     workDir?: string | undefined;
     /** Aborts the routed CLI call (#6736): a stage deadline or a job cancel. */
     signal?: AbortSignal | undefined;
+    /**
+     * Host access the expert's call may use (#6768). Under
+     * `'read-only-analysis'` the expert gets no nexus-agents MCP config (an
+     * MCP server's tools fall outside the read-only allow list) and the router
+     * only selects an arm that enforces the mode.
+     */
+    accessMode?: ExecutionAccessMode | undefined;
   }
 ): Promise<ExpertBridgeResult>;
 /**
  * Execute with an optional working directory for the expert's CLI subprocess,
- * and an optional signal that aborts the routed call (#6736).
+ * an optional signal that aborts the routed call (#6736), and an optional
+ * access mode (#6768).
  */
 export async function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string,
-  options?: { workDir?: string | undefined; signal?: AbortSignal | undefined }
+  options?: {
+    workDir?: string | undefined;
+    signal?: AbortSignal | undefined;
+    accessMode?: ExecutionAccessMode | undefined;
+  }
 ): Promise<ExpertBridgeResult> {
   const start = getTimeProvider().now();
   try {
@@ -557,17 +606,13 @@ export async function executeExpert(
       };
     }
 
-    // Pass MCP config so CLI experts can call nexus-agents tools (#1708)
-    const mcpConfigPath = await getMcpConfigPath();
-    const task: { content: string; options?: Record<string, unknown> | undefined } = {
-      content: fullPrompt,
-    };
-    if (mcpConfigPath !== null) task.options = { mcpConfigPath };
-    if (options?.workDir !== undefined) {
-      task.options = { ...task.options, workDir: options.workDir };
-    }
-
-    return await dispatchWithRateLimitRetry(router, task, expertType, start, options?.signal);
+    return await dispatchWithRateLimitRetry(
+      router,
+      await buildBridgeTask(fullPrompt, options),
+      expertType,
+      start,
+      options?.signal
+    );
   } catch (error) {
     const durationMs = getTimeProvider().now() - start;
     const msg = error instanceof Error ? error.message : String(error);
