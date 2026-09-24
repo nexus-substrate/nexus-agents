@@ -1,5 +1,16 @@
 # nexus-agents
 
+## 8.112.1
+
+### Patch Changes
+
+- [#6789](https://github.com/nexus-substrate/nexus-agents/pull/6789) [`fe31a8b`](https://github.com/nexus-substrate/nexus-agents/commit/fe31a8b77f7a127d88bf20bbc440d3d36fe05198) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents doctor` no longer reports false failures, and treats unmeasured checks the same way everywhere ([#6782](https://github.com/nexus-substrate/nexus-agents/issues/6782)).
+
+  - **Install freshness** compares versions as semver. A global install newer than this build (or a release newer than its pre-release) is now `ahead`, shown with ⚠ and not failing the exit code. Only a strictly older global install is `behind` ✗. An unparseable version is `unknown`.
+  - **Harness alignment** looks for `AGENTS.md` and the harness config files at the project root (the git root, else the nearest `package.json`), not only in the current directory. Running `doctor` from a subdirectory no longer reports a false "AGENTS.md MISSING".
+  - **Unmeasured checks**: install freshness that could not be determined, and a scratch filesystem that could not be read or identified, are shown with ⚠ and named in the summary line (`— unmeasured: install freshness, scratch space`). They do not fail the exit code by themselves. Before this, an unknown install freshness failed `doctor`, while an unreadable scratch filesystem passed with no mention in the summary.
+  - **CLI list in gateway mode** reports each CLI binary's own health. A slot served by the gateway because its CLI is unavailable was credited to the CLI (version `api`, healthy, admitted); the CLI now shows its own version, status and error, or "Not found in PATH" when there is no binary. An installed CLI that is broken while the gateway serves its slot is shown with ⚠ ("claude CLI installed but unhealthy (…); slot served by gateway model …", with `NEXUS_DISABLED_CLIS` as the remedy), is named in the summary, and does not fail the exit code, since service is unaffected. A broken CLI whose slot nothing serves still fails with ✗, and an installed CLI on an unsupported version now shows ✗ in the list rather than ⚠.
+
 ## 8.112.0
 
 ### Minor Changes
