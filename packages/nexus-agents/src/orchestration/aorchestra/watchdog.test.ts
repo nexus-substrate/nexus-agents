@@ -12,6 +12,14 @@ import {
   WATCHDOG_CHECK_INTERVAL_MS,
   type WatchdogEntry,
 } from './watchdog.js';
+import { err, createLogger } from '../../core/index.js';
+import type { Result } from '../../core/index.js';
+import type { CliError, CliResponse } from '../../cli-adapters/types.js';
+import type { ICircuitBreaker } from '../../cli-adapters/circuit-breaker-types.js';
+import { CircuitBreakerRegistry } from '../../cli-adapters/circuit-breaker.js';
+import { executeCliRetryLoop } from '../../cli-adapters/cli-retry-loop.js';
+import { createCallerAbortCliError } from '../../cli-adapters/cli-error-helpers.js';
+import { isTimeoutAbortReason } from '../../adapters/abort-utils.js';
 
 describe('watchdog', () => {
   describe('evaluateState', () => {
@@ -215,6 +223,93 @@ describe('watchdog', () => {
         return Promise.resolve('done');
       });
       expect(abortedAtStart).toBe(false);
+    });
+  });
+
+  // #6691: a CLI adapter reads its caller's abort reason to tell a timeout
+  // (counted on the breaker) from a cancel (not counted). The watchdog's
+  // termination is a timeout; a forwarded cancel_job abort is a cancel.
+  describe('withWatchdog abort classification on the CLI breaker (#6691)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** A task that fails the way a CLI adapter does when its signal aborts. */
+    function cliTaskRecordingOn(breaker: ICircuitBreaker) {
+      return (signal: AbortSignal): Promise<unknown> =>
+        executeCliRetryLoop(
+          () =>
+            new Promise<Result<CliResponse, CliError>>((resolve) => {
+              signal.addEventListener(
+                'abort',
+                () => {
+                  resolve(
+                    err(
+                      createCallerAbortCliError(signal.reason, 'Aborted by caller signal', 'claude')
+                    )
+                  );
+                },
+                { once: true }
+              );
+            }),
+          {
+            maxRetries: 0,
+            allowRetry: false,
+            baseDelayMs: 1,
+            maxDelayMs: 1,
+            circuitBreaker: breaker,
+            cli: 'claude',
+            logger: createLogger({ component: 'watchdog-test' }),
+          }
+        );
+    }
+
+    it("counts the watchdog's termination abort as a timeout", async () => {
+      const breaker = new CircuitBreakerRegistry().getBreaker('claude');
+      let reason: unknown;
+      const run = withWatchdog('code', 100, (signal) => {
+        signal.addEventListener('abort', () => {
+          reason = signal.reason;
+        });
+        return cliTaskRecordingOn(breaker)(signal);
+      });
+
+      vi.advanceTimersByTime(150);
+      await expect(run).rejects.toThrow('Worker timeout after 100ms');
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isTimeoutAbortReason(reason)).toBe(true);
+      expect(breaker.getSnapshot().failureCount).toBe(1);
+      vi.clearAllTimers();
+    });
+
+    it('keeps a forwarded outer cancel a cancel, uncounted', async () => {
+      const breaker = new CircuitBreakerRegistry().getBreaker('claude');
+      const outer = new AbortController();
+      let reason: unknown;
+      const run = withWatchdog(
+        'code',
+        60_000,
+        (signal) => {
+          signal.addEventListener('abort', () => {
+            reason = signal.reason;
+          });
+          return cliTaskRecordingOn(breaker)(signal);
+        },
+        outer.signal
+      );
+
+      outer.abort('cancelled via cancel_job');
+      await run;
+
+      // The caller's own reason is forwarded, not replaced.
+      expect(reason).toBe('cancelled via cancel_job');
+      expect(breaker.getSnapshot().failureCount).toBe(0);
+      vi.clearAllTimers();
     });
   });
 });
