@@ -919,6 +919,23 @@ async function runPostSetupHealthGate(dryRun: boolean): Promise<boolean> {
 }
 
 /**
+ * Refuses a setup run that cannot prompt and was not told it may skip prompts.
+ *
+ * `isInteractive()` is false with no TTY on stdout and whenever `CI=true` or
+ * `CONTINUOUS_INTEGRATION` is set, so `--non-interactive` is the only remedy.
+ * The message used to add "or set CI=true", which makes `isInteractive()`
+ * false and reproduces this refusal (#6761).
+ *
+ * @returns true when setup must stop (the refusal has been printed)
+ */
+function refuseWithoutNonInteractiveFlag(nonInteractive: boolean): boolean {
+  if (isInteractive() || nonInteractive) return false;
+  writeLine('Non-interactive environment detected (stdout is not a TTY, or a CI variable is set).');
+  writeLine('Re-run with --non-interactive to apply every setup step without prompts.');
+  return true;
+}
+
+/**
  * Setup command entry point (synchronous, non-interactive).
  *
  * @returns Exit code (0 = success, 1 = failure)
@@ -926,12 +943,7 @@ async function runPostSetupHealthGate(dryRun: boolean): Promise<boolean> {
 export function setupCommand(options: Partial<SetupOptions> = {}): number {
   const parsedOptions = SetupOptionsSchema.parse(options);
 
-  // Check for non-interactive mode in CI
-  if (!isInteractive() && !parsedOptions.nonInteractive) {
-    writeLine('Non-interactive environment detected.');
-    writeLine('Run with --non-interactive or set CI=true.');
-    return 1;
-  }
+  if (refuseWithoutNonInteractiveFlag(parsedOptions.nonInteractive)) return 1;
 
   const result = runSetup(options);
   printSetupResult(result, parsedOptions.verbose);
@@ -1005,9 +1017,7 @@ function runSetupAndPrint(options: SetupCommandOptions): {
   mcpConfigured: boolean;
 } {
   const parsedOptions = SetupOptionsSchema.parse(options);
-  if (!isInteractive() && !parsedOptions.nonInteractive) {
-    writeLine('Non-interactive environment detected.');
-    writeLine('Run with --non-interactive or set CI=true.');
+  if (refuseWithoutNonInteractiveFlag(parsedOptions.nonInteractive)) {
     return { exitCode: 1, mcpConfigured: false };
   }
   const result = runSetup(options);
