@@ -10,15 +10,18 @@
  * ledger held a decision nobody asked for, and the job record held none of the
  * votes that had landed.
  *
- * Now `executeVoting` checks the job signal once the seats settle and, if it
- * fired, throws {@link VoteCancelledError} carrying only the seats that cast a
- * vote. Nothing downstream of that point runs: no engine, no decision, no
+ * Now `executeVoting` checks the job signal once the seats settle, and again
+ * after the contrarian/escalation step. The ledger recorder checks it a last
+ * time inside its file lock, right before the append, because the lock wait is
+ * async. If it fired, each check throws {@link VoteCancelledError}, carrying
+ * only the seats that cast a vote. Nothing downstream of that point runs: no engine, no decision, no
  * tracker, no ledger. The async dispatcher catches the error and attaches the
  * seats to the `cancelled` record through the store's one narrow writer.
  *
  * @module mcp/tools/consensus-vote-cancelled
  */
 
+import { isTimeoutAbortReason } from '../../adapters/abort-utils.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { attachCancelledPartial } from '../jobs/job-cancelled-partial.js';
 
@@ -26,18 +29,22 @@ import { attachCancelledPartial } from '../jobs/job-cancelled-partial.js';
  * The job signal fired before the vote reached a verdict. Carries the seats
  * that cast a vote (every source except `error` — a seat aborted or never
  * launched by the cancel is an `error` result) and the panel size they were
- * cast against. Also thrown when the runaway guard aborts the job; that job is
- * recorded `failed`, and the attach below is then a no-op.
+ * cast against. Also thrown when the runaway guard aborts the job (`timedOut`,
+ * and the message says so); that job is recorded `failed`, and the attach
+ * below is then a no-op.
  */
 export class VoteCancelledError extends Error {
   override readonly name = 'VoteCancelledError';
 
   constructor(
     readonly votesCast: readonly AgentVoteResult[],
-    readonly panelSize: number
+    readonly panelSize: number,
+    /** True when the runaway guard fired rather than `cancel_job`. */
+    readonly timedOut = false
   ) {
     super(
-      `Vote cancelled before a verdict: ${String(votesCast.length)} of ${String(panelSize)} seats had cast a vote`
+      `${timedOut ? 'Vote timed out (runaway guard)' : 'Vote cancelled'} before a verdict: ` +
+        `${String(votesCast.length)} of ${String(panelSize)} seats had cast a vote`
     );
   }
 }
@@ -55,7 +62,8 @@ export function throwIfVoteCancelled(
   if (signal?.aborted !== true) return;
   throw new VoteCancelledError(
     votes.filter((v) => v.source !== 'error'),
-    panelSize
+    panelSize,
+    isTimeoutAbortReason(signal.reason)
   );
 }
 

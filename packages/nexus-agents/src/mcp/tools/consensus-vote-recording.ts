@@ -29,6 +29,7 @@ import { dirname } from 'node:path';
 
 import { FileLockTimeoutError, withFileLock } from '../../utils/file-lock.js';
 import { getToolMemory } from './tool-memory.js';
+import { throwIfVoteCancelled, VoteCancelledError } from './consensus-vote-cancelled.js';
 import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
@@ -211,6 +212,12 @@ interface RecordAuthenticVoteArgs {
    * key and the ledger gate reports it as `unrecorded`.
    */
   errorPolicy: ErrorPolicy | undefined;
+  /**
+   * The async job's cancel signal (#6735). Checked inside the ledger lock,
+   * synchronously before the append: the lock wait is async, so a cancel can
+   * land after the vote's own checks and before the write. Absent in sync mode.
+   */
+  signal?: AbortSignal | undefined;
 }
 
 export async function recordAuthenticVote(
@@ -242,10 +249,14 @@ export async function recordAuthenticVote(
   const id = `vote-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
   let record: VoteRecord | undefined;
   try {
-    record = await underLedgerLock(resolvedPath, () =>
-      persistVoteRecord(storeInput(args, id, resolvedPath))
-    );
+    record = await underLedgerLock(resolvedPath, () => {
+      // #6735: no `await` between this check and the append, so a cancel that
+      // landed during the lock wait appends nothing.
+      throwIfVoteCancelled(args.signal, args.votes, args.votes.length);
+      return persistVoteRecord(storeInput(args, id, resolvedPath));
+    });
   } catch (error: unknown) {
+    if (error instanceof VoteCancelledError) throw error;
     return lockFailure(resolvedPath, error);
   }
   if (record === undefined) {

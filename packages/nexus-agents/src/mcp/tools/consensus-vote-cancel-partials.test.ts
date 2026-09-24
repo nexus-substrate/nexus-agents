@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CompletionRequest, IModelAdapter } from '../../core/index.js';
@@ -33,24 +34,28 @@ vi.mock('../middleware/secure-handler.js', () => ({
   createSecureHandler: (fn: unknown) => fn,
 }));
 /**
- * The quick-mode contrarian check parks until the test releases it, so a
- * cancel can land AFTER every seat settled and before the verdict.
+ * The quick-mode contrarian check. With `park` set it waits until the test
+ * releases it, so a cancel can land AFTER every seat settled and before the
+ * verdict; otherwise it answers at once with no concern.
  */
 const contrarian = vi.hoisted(() => ({
   started: 0,
+  park: false,
   release: undefined as (() => void) | undefined,
 }));
 vi.mock('../../pipeline/expert-bridge.js', () => ({
   executeExpert: () => {
     contrarian.started++;
+    const answer = {
+      success: true,
+      text: '{"decision":"approve","confidence":0.9,"reasoning":"no concern"}',
+      expertType: 'architecture',
+      durationMs: 1,
+    };
+    if (!contrarian.park) return Promise.resolve(answer);
     return new Promise((resolve) => {
       contrarian.release = () => {
-        resolve({
-          success: true,
-          text: '{"decision":"approve","confidence":0.9,"reasoning":"no concern"}',
-          expertType: 'architecture',
-          durationMs: 1,
-        });
+        resolve(answer);
       };
     });
   },
@@ -82,6 +87,13 @@ const QUICK_PANEL_SIZE = 3;
 const LEDGER_ENV = 'NEXUS_VOTE_RECORDS_PATH';
 /** The one model whose seat answers; every other seat parks. */
 const ANSWERING_MODEL = 'claude-fable-5';
+const ALL_MODELS = [ANSWERING_MODEL, 'gpt-5.5', 'gemini-3-pro'];
+const RATIFIES_PR = { pr: 6749, headSha: '0123456789abcdef0123456789abcdef01234567' };
+/** Extra vote args per variant: a plain vote, and a governor-path ratification. */
+const VARIANTS: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+  ['plain', {}],
+  ['ratifiesPr', { ratifiesPr: RATIFIES_PR }],
+];
 
 function captureHandler(
   register: (server: { registerTool: (n: string, s: unknown, cb: Handler) => void }) => void
@@ -111,7 +123,7 @@ interface FakePanel {
  */
 function makePanel(answering: readonly string[]): FakePanel {
   const panel: FakePanel = { adapters: [], parked: [], answered: 0 };
-  for (const modelId of [ANSWERING_MODEL, 'gpt-5.5', 'gemini-3-pro']) {
+  for (const modelId of ALL_MODELS) {
     panel.adapters.push({
       modelId,
       providerId: `gateway-fake-${modelId}`,
@@ -177,6 +189,8 @@ describe('a cancelled consensus_vote records its partial votes, never a decision
     vi.stubEnv(LEDGER_ENV, ledgerPath);
     resetNexusDataDirCache();
     resetJobConcurrency();
+    contrarian.started = 0;
+    contrarian.park = false;
     // Stagger and retry backoff are real timers; faking them keeps rows fast.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
   });
@@ -193,9 +207,11 @@ describe('a cancelled consensus_vote records its partial votes, never a decision
 
   /** Every message the vote logged, so a row can prove no verdict was computed. */
   let logged: string[];
+  /** Logged only when a verdict is computed or the tracker is written. */
   const VERDICT_LOGS = [
     'Consensus vote completed',
     'Consensus vote short-circuited by error policy',
+    'Recorded votes to tracker',
   ];
 
   function handlers(panel: FakePanel): { vote: Handler; cancel: Handler } {
@@ -235,38 +251,52 @@ describe('a cancelled consensus_vote records its partial votes, never a decision
     return envelope['jobId'] as string;
   }
 
-  it('cancel after 1 of 3 seats answered: status cancelled, 1 partial vote of 3, no decision', async () => {
-    const panel = makePanel([ANSWERING_MODEL]);
-    const { vote, cancel } = handlers(panel);
-    const jobId = await dispatch(vote);
+  it('positive control: the same harness, uncancelled, DOES write the ledger', async () => {
+    const panel = makePanel(ALL_MODELS);
+    const { vote } = handlers(panel);
+    const jobId = await dispatch(vote, { strategy: 'simple_majority' });
+    await settleWithin(10_000);
 
-    await untilParked(panel, QUICK_PANEL_SIZE - 1);
-    expect(panel.answered).toBe(1);
-    expect(panel.parked).toHaveLength(QUICK_PANEL_SIZE - 1);
-
-    await cancel({ jobId }, CTX);
-    await settleWithin(1_000);
-    expect(getInFlight('consensus_vote')).toBe(0);
-
-    const record = readJobResult(jobId);
-    expect(record?.status).toBe('cancelled');
-    expect(record?.cancelledPartial).toMatchObject({
-      partialVotes: [{ source: 'llm', vote: { decision: 'approve' } }],
-      seatsCast: 1,
-      panelSize: QUICK_PANEL_SIZE,
-    });
-    expect(record?.cancelledPartial?.partialVotes).toHaveLength(1);
-    // No decision: no result payload, nothing reached the vote-record ledger,
-    // and the engine never tallied the partial panel.
-    expect(record).not.toHaveProperty('result');
-    expect(existsSync(ledgerPath)).toBe(false);
-    expect(logged.filter((m) => VERDICT_LOGS.includes(m))).toEqual([]);
+    expect(readJobResult(jobId)?.status).toBe('complete');
+    expect(existsSync(ledgerPath)).toBe(true);
+    expect(logged).toContain('Recorded votes to tracker');
   });
 
+  it.each(VARIANTS)(
+    '%s: cancel after 1 of 3 seats answered records 1 partial vote of 3 and no decision',
+    async (_label, extra) => {
+      const panel = makePanel([ANSWERING_MODEL]);
+      const { vote, cancel } = handlers(panel);
+      const jobId = await dispatch(vote, extra);
+
+      await untilParked(panel, QUICK_PANEL_SIZE - 1);
+      expect(panel.answered).toBe(1);
+      expect(panel.parked).toHaveLength(QUICK_PANEL_SIZE - 1);
+
+      await cancel({ jobId }, CTX);
+      await settleWithin(1_000);
+      expect(getInFlight('consensus_vote')).toBe(0);
+
+      const record = readJobResult(jobId);
+      expect(record?.status).toBe('cancelled');
+      expect(record?.cancelledPartial).toMatchObject({
+        partialVotes: [{ source: 'llm', vote: { decision: 'approve' } }],
+        seatsCast: 1,
+        panelSize: QUICK_PANEL_SIZE,
+      });
+      expect(record?.cancelledPartial?.partialVotes).toHaveLength(1);
+      // No decision: no result payload, nothing reached the vote-record ledger,
+      // and the engine never tallied the partial panel.
+      expect(record).not.toHaveProperty('result');
+      expect(existsSync(ledgerPath)).toBe(false);
+      expect(logged.filter((m) => VERDICT_LOGS.includes(m))).toEqual([]);
+    }
+  );
+
   it('a cancel after every seat settled, during the contrarian check, still records no decision', async () => {
-    const panel = makePanel([ANSWERING_MODEL, 'gpt-5.5', 'gemini-3-pro']);
+    const panel = makePanel(ALL_MODELS);
     const { vote, cancel } = handlers(panel);
-    contrarian.started = 0;
+    contrarian.park = true;
     // simple_majority: skips the higher_order posterior escalation, so the
     // quick panel's approval goes straight to the contrarian check.
     const jobId = await dispatch(vote, { strategy: 'simple_majority' });
@@ -287,6 +317,8 @@ describe('a cancelled consensus_vote records its partial votes, never a decision
     expect(record?.cancelledPartial?.panelSize).toBe(QUICK_PANEL_SIZE);
     expect(record).not.toHaveProperty('result');
     expect(existsSync(ledgerPath)).toBe(false);
+    // Stopped before the tracker, not only before the ledger.
+    expect(logged).not.toContain('Recorded votes to tracker');
   });
 
   it('empty case: cancel before any seat answers records 0 of 3, not an absent field', async () => {
@@ -309,6 +341,7 @@ describe('a cancelled consensus_vote records its partial votes, never a decision
     });
     expect(record).not.toHaveProperty('result');
     expect(existsSync(ledgerPath)).toBe(false);
+    expect(logged.filter((m) => VERDICT_LOGS.includes(m))).toEqual([]);
   });
 
   it('a later complete or failed write cannot overwrite the cancelled record or its partials', async () => {
@@ -325,5 +358,68 @@ describe('a cancelled consensus_vote records its partial votes, never a decision
     writeJobFailed(jobId, 'consensus_vote', 'late failure');
 
     expect(readJobResult(jobId)).toEqual(before);
+  });
+  describe('a cancel during the ledger-lock wait appends nothing', () => {
+    /** Hold the ledger lock as a live process on this host would, so the vote waits. */
+    function holdLedgerLock(): string {
+      const lockPath = `${ledgerPath}.lock`;
+      mkdirSync(join(tmpDir, 'ledger'), { recursive: true });
+      writeFileSync(lockPath, `${hostname()}:${String(process.pid)}:deadbeef`);
+      return lockPath;
+    }
+
+    /** Run a full, all-approve vote up to the point where it waits on the held lock. */
+    async function voteParkedOnLock(extra: Record<string, unknown>): Promise<{
+      jobId: string;
+      cancel: Handler;
+      lockPath: string;
+    }> {
+      const lockPath = holdLedgerLock();
+      const panel = makePanel(ALL_MODELS);
+      const { vote, cancel } = handlers(panel);
+      const jobId = await dispatch(vote, { strategy: 'simple_majority', ...extra });
+      for (let i = 0; i < 100 && contrarian.started === 0; i++) {
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      await vi.advanceTimersByTimeAsync(500);
+      expect(panel.answered).toBe(QUICK_PANEL_SIZE);
+      expect(getInFlight('consensus_vote')).toBe(1);
+      expect(existsSync(ledgerPath)).toBe(false);
+      return { jobId, cancel, lockPath };
+    }
+
+    it.each(VARIANTS)(
+      '%s: positive control — releasing the lock without a cancel appends the record',
+      async (_label, extra) => {
+        const { jobId, lockPath } = await voteParkedOnLock(extra);
+
+        unlinkSync(lockPath);
+        await settleWithin(2_000);
+
+        expect(readJobResult(jobId)?.status).toBe('complete');
+        expect(existsSync(ledgerPath)).toBe(true);
+      }
+    );
+
+    it.each(VARIANTS)(
+      '%s: cancel during the wait leaves the ledger unwritten and the job cancelled',
+      async (_label, extra) => {
+        const { jobId, cancel, lockPath } = await voteParkedOnLock(extra);
+
+        await cancel({ jobId }, CTX);
+        unlinkSync(lockPath);
+        await settleWithin(2_000);
+        expect(getInFlight('consensus_vote')).toBe(0);
+
+        expect(existsSync(ledgerPath)).toBe(false);
+        const record = readJobResult(jobId);
+        expect(record?.status).toBe('cancelled');
+        expect(record).not.toHaveProperty('result');
+        expect(record?.cancelledPartial).toMatchObject({
+          seatsCast: QUICK_PANEL_SIZE,
+          panelSize: QUICK_PANEL_SIZE,
+        });
+      }
+    );
   });
 });

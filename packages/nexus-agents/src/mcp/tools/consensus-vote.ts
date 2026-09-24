@@ -540,6 +540,13 @@ export async function executeVoting(
   // happen. No-op when no options were declared.
   applyOptionGate(input, result);
   result.decision = resolveVoteDecision(input, result, errorCount).decision;
+  // #6735: the tracker write stays here, not after the ledger append. It runs
+  // with no `await` since the backstop above, so a cancel observed before the
+  // verdict never reaches it. A cancel that lands later (during the ledger-lock
+  // wait) leaves this observation in place on purpose: it is per-voter
+  // agreement from a panel whose every seat settled and whose verdict was
+  // computed before the cancel. It is a statistic, not a decision record, and
+  // it binds nothing. Moving it would change all five `executeVoting` callers.
   if (
     !correlationAlreadyRecorded &&
     (result.decision === 'approved' || result.decision === 'rejected')
@@ -799,6 +806,11 @@ interface DeclaredByCaller {
   readonly options: readonly string[] | undefined;
   readonly ratifies?: string;
   readonly ratifiesPr?: VoteRecordPrBinding;
+  /**
+   * The async job's cancel signal (#6735), re-checked inside the ledger lock
+   * right before the append. Absent in sync mode.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -855,6 +867,7 @@ async function recordVoteSideEffects(
     // #5130: the PR binding takes the same hop as `ratifies`; the seam test
     // (`consensus-vote-ratifies-pr.test.ts`) reads it back off the ledger.
     ...(declared.ratifiesPr !== undefined ? { ratifiesPr: declared.ratifiesPr } : {}),
+    signal: declared.signal,
   });
   // #3855: roll up + persist this decision's per-voter cost and ride it on the
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
@@ -884,9 +897,10 @@ async function recordVoteSideEffects(
 }
 
 /** What the tool input declared that the voting result does not carry. */
-function declaredByCaller(args: ConsensusVoteInput): DeclaredByCaller {
+function declaredByCaller(args: ConsensusVoteInput, signal?: AbortSignal): DeclaredByCaller {
   return {
     options: args.options,
+    signal,
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
   };
@@ -931,6 +945,16 @@ async function handleConsensusVote(
     if (result.decision === undefined) {
       throw new Error('Consensus vote completed without a resolved decision');
     }
+    // #6735: the ledger append goes first. It throws VoteCancelledError when a
+    // cancel landed during its lock wait, and a cancelled vote must not then
+    // be recorded to memory or the outcome store as a success either.
+    const { costSummary, voteRecord } = await recordVoteSideEffects(
+      args.proposal,
+      result.strategy,
+      result,
+      logger,
+      declaredByCaller(args, signal)
+    );
     recordVoteSuccess({
       proposal: args.proposal,
       strategy: result.strategy,
@@ -939,13 +963,6 @@ async function handleConsensusVote(
       approvalPercentage: result.result.approvalPercentage,
       votes: result.votes,
     });
-    const { costSummary, voteRecord } = await recordVoteSideEffects(
-      args.proposal,
-      result.strategy,
-      result,
-      logger,
-      declaredByCaller(args)
-    );
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
     emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);

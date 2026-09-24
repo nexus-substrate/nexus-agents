@@ -277,7 +277,12 @@ export const ConsensusVoteInputSchema = z
      * counted), and how many of the panel that is — `seatsCast: 0` when none
      * had. Sidecar store only; a `NEXUS_JOB_RESULT_SOURCE=task_state` read
      * does not carry it. A poll between the cancel and the body settling
-     * sees `cancelled` without the field.
+     * sees `cancelled` without the field. A cancel that lands during the
+     * ledger-lock wait also appends nothing: the signal is re-checked inside
+     * the lock, right before the append. Limitation: a cancel during a
+     * quick-mode escalation re-vote records the full re-vote panel only
+     * (`panelSize` 7). The quick-panel votes that triggered the escalation
+     * are not included.
      *
      * The key is `dispatch` (#4968); `mode` is the deprecated alias this tool
      * used to spell it with, resolved as `dispatch ?? mode` by the handler and

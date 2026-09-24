@@ -105,6 +105,18 @@ describe('attachCancelledPartial (#6735)', () => {
     expect(readJobResult('j3')?.status).toBe(status);
   });
 
+  it("does not touch another tool's cancelled record", () => {
+    writeJobPending('j6', 'orchestrate');
+    writeJobCancelled('j6', 'orchestrate');
+    const before = readJobResult('j6');
+
+    expect(attachCancelledPartial('j6', TOOL, { partialVotes: CAST, panelSize: PANEL_SIZE })).toBe(
+      false
+    );
+
+    expect(readJobResult('j6')).toEqual(before);
+  });
+
   it('does nothing for an unknown jobId', () => {
     expect(
       attachCancelledPartial('missing', TOOL, { partialVotes: CAST, panelSize: PANEL_SIZE })

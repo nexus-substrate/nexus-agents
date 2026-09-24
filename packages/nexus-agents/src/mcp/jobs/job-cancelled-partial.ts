@@ -27,7 +27,8 @@ const logger = createLogger({ component: 'job-cancelled-partial' });
  * one exception, and it is narrow by construction:
  *
  * - it acts ONLY on a record that is already `cancelled` (a pending, complete
- *   or failed record is left alone — it cannot be used to settle a job);
+ *   or failed record is left alone — it cannot be used to settle a job), and
+ *   only when the record's `toolName` is the caller's;
  * - it never changes `status`, `completedAt`, `error` or any other field — it
  *   adds `cancelledPartial` and nothing else;
  * - first write wins: a record that already carries `cancelledPartial` is not
@@ -44,7 +45,11 @@ export function attachCancelledPartial(
   partial: { readonly partialVotes: readonly unknown[]; readonly panelSize: number }
 ): boolean {
   const existing = readJobResult(jobId);
-  if (existing?.status !== 'cancelled' || existing.cancelledPartial !== undefined) {
+  if (
+    existing?.status !== 'cancelled' ||
+    existing.toolName !== toolName ||
+    existing.cancelledPartial !== undefined
+  ) {
     logger.debug('Skipping cancelled-partial write — record is not a bare cancelled record', {
       jobId,
       toolName,
