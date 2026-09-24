@@ -58,10 +58,16 @@ export type LevelOutcome =
  * are not measured — the CLI is disabled or not available, and is not run —
  * so only `serves` says anything, and it says it about the gateway model.
  */
-interface GatewayServedReadiness {
+export interface GatewayServedReadiness {
   readonly gatewayModel: string;
   /** Why the CLI does not serve the slot. */
   readonly cliState: 'disabled' | 'not-available';
+  /**
+   * The main doctor CLI list admitted this CLI, while this run's own
+   * availability check found it not available (#6781). The two are separate
+   * health checks; this records that they disagreed.
+   */
+  readonly cliListAdmitted?: true;
 }
 
 export interface CliReadiness {
@@ -136,7 +142,11 @@ function readinessSummary(readiness: CliReadiness): string {
   const g = readiness.gateway;
   if (g !== undefined) {
     const why =
-      g.cliState === 'disabled' ? 'CLI disabled by NEXUS_DISABLED_CLIS' : 'CLI not available';
+      g.cliState === 'disabled'
+        ? 'CLI disabled by NEXUS_DISABLED_CLIS'
+        : g.cliListAdmitted === true
+          ? 'CLI not available: its health/auth check failed in this live run, but the CLI list above admitted it'
+          : 'CLI not available';
     const verdict = readiness.reached === 'serves' ? 'serves' : 'not ready';
     return `served by gateway model ${g.gatewayModel} (${why}) — ${verdict}`;
   }

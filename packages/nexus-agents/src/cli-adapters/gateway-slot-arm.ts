@@ -105,6 +105,11 @@ class GatewaySlotArm implements ICliAdapter {
     };
   }
 
+  /** Make an undecided arm decide its target (the availability predicate; no completion). */
+  async decide(): Promise<void> {
+    await this.target();
+  }
+
   private get current(): ICliAdapter {
     return this.resolved ?? this.deps.cliAdapter ?? this.gatewayAdapter;
   }
@@ -178,6 +183,20 @@ class GatewaySlotArm implements ICliAdapter {
  */
 export function gatewayServedSlotOf(adapter: unknown): GatewayServedSlot | undefined {
   return adapter instanceof GatewaySlotArm ? adapter.gatewayServedSlot : undefined;
+}
+
+/**
+ * {@link gatewayServedSlotOf} after an undecided arm has decided, so the
+ * answer names the target the NEXT call goes to. The synchronous read returns
+ * `undefined` for an undecided arm, which `doctor --live` read as "the CLI
+ * serves" while its probe then went to the gateway (#6781).
+ */
+export async function resolveGatewayServedSlot(
+  adapter: unknown
+): Promise<GatewayServedSlot | undefined> {
+  if (!(adapter instanceof GatewaySlotArm)) return undefined;
+  await adapter.decide();
+  return adapter.gatewayServedSlot;
 }
 
 /**
