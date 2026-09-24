@@ -61,6 +61,11 @@ function resolvePathWithSymlinks(targetPath: string): string | null {
       if (!isEnoent(err)) {
         return null;
       }
+      // A component that exists but does not resolve is a dangling symlink.
+      // Its target can be created later, so it has no verifiable destination.
+      if (isSymlink(existing)) {
+        return null;
+      }
       const parent = dirname(existing);
       if (parent === existing) {
         return null;
@@ -68,6 +73,15 @@ function resolvePathWithSymlinks(targetPath: string): string | null {
       trailing.push(basename(existing));
       existing = parent;
     }
+  }
+}
+
+/** True when `path` itself is a symbolic link (not followed). False when absent. */
+function isSymlink(path: string): boolean {
+  try {
+    return fs.lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
   }
 }
 

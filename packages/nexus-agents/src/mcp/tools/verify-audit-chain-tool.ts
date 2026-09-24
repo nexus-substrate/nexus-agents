@@ -167,14 +167,32 @@ async function loadAuditEvents(
  *    the declared workspace root, the enclosing git repo, and cwd itself;
  *  - the directory the audit logger is configured to write
  *    (`security.audit.logDir`), which may be anywhere the operator chose.
+ *
+ * A repo-local `.nexus-agents` is part of a checkout, so it is only a root
+ * while it resolves inside the directory it hangs off; see
+ * {@link repoLocalDataRoot}.
  */
 function auditLogRoots(security: VerifyAuditChainDeps['security']): string[] {
-  const roots = [getNexusDataDir(), path.resolve('.nexus-agents')];
+  const roots = [getNexusDataDir()];
+  const parents = [process.cwd()];
   const repoRoot = getActiveWorkspaceRoot() ?? findRepoRoot(process.cwd());
-  if (repoRoot !== null) roots.push(path.join(repoRoot, '.nexus-agents'));
+  if (repoRoot !== null) parents.push(repoRoot);
+  for (const parent of parents) {
+    const root = repoLocalDataRoot(parent);
+    if (root !== null) roots.push(root);
+  }
   const configured = security?.audit?.logDir;
   if (configured !== undefined) roots.push(path.resolve(configured));
   return roots;
+}
+
+/**
+ * `<parent>/.nexus-agents`, or `null` when it resolves outside `parent`. The
+ * directory comes from the checkout, and a symlink there must not turn an
+ * arbitrary directory into an audit-log root.
+ */
+function repoLocalDataRoot(parent: string): string | null {
+  return resolveInsideRoot(path.join(parent, '.nexus-agents'), parent);
 }
 
 /**

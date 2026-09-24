@@ -15,7 +15,12 @@ import {
   registerVerifyAuditChainTool,
   type VerifyAuditChainResponse,
 } from './verify-audit-chain-tool.js';
-import { getNexusDataDir, nexusDataPath } from '../../config/nexus-data-dir.js';
+import {
+  _resetActiveWorkspaceRootForTests,
+  getNexusDataDir,
+  nexusDataPath,
+  setActiveWorkspaceRoot,
+} from '../../config/nexus-data-dir.js';
 import {
   createSymlinkEscapeFixture,
   type SymlinkEscapeFixture,
@@ -387,6 +392,35 @@ describe('verify_audit_chain logDir containment', () => {
     } finally {
       fs.rmSync(link, { force: true });
     }
+  });
+
+  describe('repo-local .nexus-agents root', () => {
+    afterEach(() => {
+      _resetActiveWorkspaceRootForTests();
+    });
+
+    it('accepts an audit dir under a real repo-local .nexus-agents', async () => {
+      const repo = path.join(fx.insideDir, 'repo-real');
+      const auditDir = path.join(repo, '.nexus-agents', 'audit');
+      fs.mkdirSync(auditDir, { recursive: true });
+      expect(setActiveWorkspaceRoot(repo)).toBe(true);
+
+      const res = await call(auditDir);
+
+      expect(res.isError).toBe(false);
+    });
+
+    it('drops a .nexus-agents that is a symlink resolving outside its repo', async () => {
+      const repo = path.join(fx.insideDir, 'repo-linked');
+      fs.mkdirSync(repo);
+      fs.symlinkSync('/', path.join(repo, '.nexus-agents'), 'dir');
+      expect(setActiveWorkspaceRoot(repo)).toBe(true);
+
+      const res = await call(fx.outsideDir);
+
+      expect(res.isError).toBe(true);
+      expect(res.text).toMatch(/logDir must be within/);
+    });
   });
 
   it('accepts the logDir the audit logger is configured to write', async () => {

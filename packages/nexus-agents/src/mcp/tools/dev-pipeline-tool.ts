@@ -16,6 +16,8 @@ import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
+import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
+import { resolve } from 'node:path';
 import type { DevPipelineResult, DevPipelineOptions } from '../../pipeline/dev-pipeline.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { createAgentStages, flushPipelineMemory } from '../../pipeline/agent-executor.js';
@@ -224,20 +226,28 @@ async function resolveTaskInput(input: DevPipelineInput): Promise<string> {
 }
 
 /**
- * Contain `workingDir` to the cwd subtree, following symlinks. It becomes the
- * security scan target, so a directory outside the server's working tree is
- * refused rather than scanned and fed into the pipeline's context.
+ * Contain `workingDir` to the cwd subtree or the MCP client's declared
+ * workspace root, following symlinks. A globally installed server runs with
+ * cwd outside the user's repo (see `mcp/workspace-roots.ts`), so the
+ * workspace root is where a legitimate `workingDir` lives. `workingDir`
+ * becomes the security scan target, so anything outside both is refused
+ * rather than scanned and fed into the pipeline's context.
  *
  * @returns the canonical path, or `undefined` when `workingDir` was omitted
- * @throws when `workingDir` resolves outside cwd
+ * @throws when `workingDir` resolves outside every allowed root
  */
 function containWorkingDir(workingDir: string | undefined): string | undefined {
   if (workingDir === undefined) return undefined;
-  const resolved = resolveInsideRoot(workingDir);
-  if (resolved === null) {
-    throw new Error(`Path traversal denied: workingDir must be within ${process.cwd()}`);
+  const roots = [process.cwd()];
+  const workspaceRoot = getActiveWorkspaceRoot();
+  if (workspaceRoot !== undefined) roots.push(workspaceRoot);
+  // Relative paths keep resolving against cwd; only the root set widens.
+  const absolute = resolve(workingDir);
+  for (const root of roots) {
+    const contained = resolveInsideRoot(absolute, root);
+    if (contained !== null) return contained;
   }
-  return resolved;
+  throw new Error(`Path traversal denied: workingDir must be within ${roots.join(' or ')}`);
 }
 
 // ============================================================================

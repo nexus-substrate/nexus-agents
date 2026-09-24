@@ -100,6 +100,21 @@ describe('resolveInsideRoot', () => {
       expect(resolveInsideRoot('external-dir/new/file.txt', workspaceDir)).toBeNull();
     });
 
+    it('rejects a dangling symlink whose target is outside root', () => {
+      symlinkSync(join(baseDir, 'not-created-yet'), join(workspaceDir, 'dangling'));
+
+      expect(resolveInsideRoot('dangling', workspaceDir)).toBeNull();
+      expect(resolveInsideRoot('dangling/child.txt', workspaceDir)).toBeNull();
+    });
+
+    it('rejects a dangling symlink even when its target would be inside root', () => {
+      // An unresolved link has no verifiable destination; refusing all of them
+      // keeps the rule independent of where the target might later appear.
+      symlinkSync(join(workspaceDir, 'later'), join(workspaceDir, 'dangling-in'));
+
+      expect(resolveInsideRoot('dangling-in', workspaceDir)).toBeNull();
+    });
+
     it('realpaths the root: a symlinked root still contains its own children', () => {
       const rootLink = join(baseDir, 'root-link');
       symlinkSync(workspaceDir, rootLink);

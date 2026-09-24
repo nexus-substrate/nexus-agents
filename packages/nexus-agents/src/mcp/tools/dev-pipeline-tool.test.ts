@@ -52,7 +52,11 @@ import {
 import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
-import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import {
+  _resetActiveWorkspaceRootForTests,
+  resetNexusDataDirCache,
+  setActiveWorkspaceRoot,
+} from '../../config/nexus-data-dir.js';
 import type { CallerInfo } from '../middleware/request-context.js';
 import { createRequestContext } from '../middleware/request-context.js';
 import type { HandlerContext } from '../middleware/secure-handler.js';
@@ -803,6 +807,39 @@ describe('run_dev_pipeline path containment', () => {
     expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ scanTarget: join(fx.insideDir, 'real') })
     );
+  });
+
+  describe('with a client-declared workspace root outside cwd', () => {
+    afterEach(() => {
+      _resetActiveWorkspaceRootForTests();
+    });
+
+    it('accepts a workingDir inside the workspace root', async () => {
+      expect(setActiveWorkspaceRoot(fx.outsideDir)).toBe(true);
+
+      const result = await captureHandler()(
+        { task: 'Build X', workingDir: fx.outsideDir },
+        STDIO_CTX
+      );
+
+      expect(result.content[0]?.text ?? '').not.toMatch(/workingDir must be within/);
+      expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ scanTarget: fx.outsideDir })
+      );
+    });
+
+    it('still rejects a workingDir outside both cwd and the workspace root', async () => {
+      expect(setActiveWorkspaceRoot(join(fx.insideDir, 'real'))).toBe(true);
+
+      const result = await captureHandler()(
+        { task: 'Build X', workingDir: fx.outsideDir },
+        STDIO_CTX
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toMatch(/workingDir must be within/);
+      expect(agentExecutor.createAgentStages).not.toHaveBeenCalled();
+    });
   });
 
   it('leaves scanTarget unset when workingDir is omitted', async () => {
