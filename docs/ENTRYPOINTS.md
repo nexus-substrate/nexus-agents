@@ -449,6 +449,13 @@ _Auto-generated from `REGISTERED_TOOL_NAMES` + `TOOL_DESCRIPTIONS` by `scripts/i
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
+**Graph workflow templates call no model.** The `run_graph_workflow` templates
+`security-audit`, `test-generation` and `documentation` run local substring and
+regex checks over the input. No node invokes a model, CLI or adapter, and no
+tokens are spent. Their `steps` are labelled `[heuristic]`. Read a result as a
+keyword scan, not as a review by any model family (#6676). They are separate from
+the `run_workflow` templates `security-audit` and `test-generation` listed below.
+
 ### Tool Schemas
 
 Full per-tool input schemas — every parameter with its type, required/optional

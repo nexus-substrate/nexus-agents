@@ -137,6 +137,8 @@ DAG-based workflow execution with checkpointing.
    |  → Looks up template name in GRAPH_TEMPLATES registry
    |  → Templates: echo, pipeline, code-review, security-scan,
    |     security-audit, test-generation, documentation
+   |  → The last three are local heuristic keyword checks; they call no
+   |     model and label their steps [heuristic] (#6676)
    |
 5. Graph construction:
    |  → GraphBuilder.addNode(id, config) for each template node

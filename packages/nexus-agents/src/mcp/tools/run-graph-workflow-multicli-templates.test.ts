@@ -1,5 +1,5 @@
 /**
- * Tests for multi-CLI graph workflow templates.
+ * Tests for the heuristic ("multi-CLI") graph workflow templates.
  *
  * (Source: Issue #866 - Specialized multi-CLI graph workflow pipelines)
  */
@@ -67,11 +67,54 @@ describe('multi-CLI template registration', () => {
     expect(names).toContain('documentation');
   });
 
-  it('each template has CLI assignments for all nodes', () => {
+  it('each template annotates an intended owner for all nodes', () => {
     for (const t of getMultiCliTemplates()) {
       expect(t.cliAssignments.length).toBe(t.metadata.nodeCount);
     }
   });
+});
+
+// ============================================================================
+// Step-label honesty guard (#6676)
+// ============================================================================
+
+/**
+ * A step label names a model family or CLI only when that node actually
+ * invoked an adapter. No node in these templates invokes one — every handler
+ * is a local keyword/regex check — so no step may name a family or CLI.
+ */
+const MODEL_OR_CLI_NAME =
+  /\b(claude|codex|gemini|opencode|openrouter|gpt|opus|sonnet|haiku|anthropic|openai)\b/i;
+
+function inputsFor(fields: readonly string[]): Record<string, unknown> {
+  const sample = 'export function run(x) { exec(x); eval(x); throw new Error("e"); }';
+  return Object.fromEntries(fields.map((f) => [f, f === 'topic' ? 'Topic' : sample]));
+}
+
+describe('step labels do not claim a model ran (#6676)', () => {
+  const templates = getMultiCliTemplates();
+
+  it('covers a non-empty template set', () => {
+    // Empty case named: a guard over zero templates would pass vacuously.
+    expect(templates.length).toBeGreaterThan(0);
+  });
+
+  for (const t of templates) {
+    it(`${t.metadata.name}: no step names a model family or CLI`, async () => {
+      const result = await runWorkflow(t.metadata.name, inputsFor(t.metadata.inputFields));
+      const steps = result.finalState['steps'] as string[];
+      expect(steps).toHaveLength(t.metadata.nodeCount);
+      for (const step of steps) {
+        expect(step, `step "${step}" names a model/CLI`).not.toMatch(MODEL_OR_CLI_NAME);
+        expect(step).toMatch(/^\[heuristic\] /);
+      }
+    });
+
+    it(`${t.metadata.name}: description says it calls no model`, () => {
+      expect(t.metadata.description).not.toMatch(MODEL_OR_CLI_NAME);
+      expect(t.metadata.description).toContain('calls no model');
+    });
+  }
 });
 
 // ============================================================================
@@ -92,14 +135,14 @@ describe('security-audit workflow', () => {
     expect(result.nodeResults).toHaveLength(4);
   });
 
-  it('records CLI assignments in steps', async () => {
+  it('labels every step as a heuristic check', async () => {
     const result = await runWorkflow('security-audit', { code: cleanCode });
     const steps = result.finalState['steps'] as string[];
     expect(steps).toHaveLength(4);
-    expect(steps[0]).toContain('[claude]');
-    expect(steps[1]).toContain('[codex]');
-    expect(steps[2]).toContain('[gemini]');
-    expect(steps[3]).toContain('[claude]');
+    expect(steps[0]).toMatch(/^\[heuristic\] /);
+    expect(steps[1]).toMatch(/^\[heuristic\] /);
+    expect(steps[2]).toMatch(/^\[heuristic\] /);
+    expect(steps[3]).toMatch(/^\[heuristic\] /);
   });
 
   it('detects threat surfaces in dangerous code', async () => {
@@ -139,13 +182,13 @@ describe('test-generation workflow', () => {
     expect(result.nodeResults).toHaveLength(4);
   });
 
-  it('records CLI assignments in steps', async () => {
+  it('labels every step as a heuristic check', async () => {
     const result = await runWorkflow('test-generation', { code });
     const steps = result.finalState['steps'] as string[];
-    expect(steps[0]).toContain('[codex]');
-    expect(steps[1]).toContain('[claude]');
-    expect(steps[2]).toContain('[gemini]');
-    expect(steps[3]).toContain('[claude]');
+    expect(steps[0]).toMatch(/^\[heuristic\] /);
+    expect(steps[1]).toMatch(/^\[heuristic\] /);
+    expect(steps[2]).toMatch(/^\[heuristic\] /);
+    expect(steps[3]).toMatch(/^\[heuristic\] /);
   });
 
   it('generates tests for each function', async () => {
@@ -183,13 +226,13 @@ describe('documentation workflow', () => {
     expect(result.nodeResults).toHaveLength(4);
   });
 
-  it('records CLI assignments in steps', async () => {
+  it('labels every step as a heuristic check', async () => {
     const result = await runWorkflow('documentation', { topic: 'Test', code });
     const steps = result.finalState['steps'] as string[];
-    expect(steps[0]).toContain('[gemini]');
-    expect(steps[1]).toContain('[claude]');
-    expect(steps[2]).toContain('[codex]');
-    expect(steps[3]).toContain('[claude]');
+    expect(steps[0]).toMatch(/^\[heuristic\] /);
+    expect(steps[1]).toMatch(/^\[heuristic\] /);
+    expect(steps[2]).toMatch(/^\[heuristic\] /);
+    expect(steps[3]).toMatch(/^\[heuristic\] /);
   });
 
   it('extracts exports and dependencies', async () => {
@@ -220,10 +263,10 @@ describe('documentation workflow', () => {
 });
 
 // ============================================================================
-// CLI Assignment Constants
+// Intended-owner annotations (design intent, not executors — #6676)
 // ============================================================================
 
-describe('CLI assignment constants', () => {
+describe('intended-owner annotation constants', () => {
   it('security-audit uses all three CLIs', () => {
     const clis = new Set(SECURITY_AUDIT_ASSIGNMENTS.map((a) => a.preferredCli));
     expect(clis).toEqual(new Set(['claude', 'codex', 'gemini']));
