@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runDoctor, printDoctorResults, doctorCommand } from './doctor.js';
-import type { DoctorResult } from './doctor.js';
+import type { CliCheckResult, DoctorResult } from './doctor.js';
 
 const { TEST_VERSION } = vi.hoisted(() => ({ TEST_VERSION: '1.0.0' }));
 
@@ -1320,6 +1320,29 @@ describe('Doctor Command', () => {
       const exitCode = await doctorCommand();
 
       expect(exitCode).toBe(0);
+    });
+
+    it('hands the measured CLI list to onResult (#6781)', async () => {
+      const healthy = {
+        healthCheck: vi.fn().mockResolvedValue({
+          healthy: true,
+          version: '2.0.76',
+          versionStatus: 'supported',
+          lastChecked: new Date(),
+        }),
+        getCapacity: vi.fn().mockRejectedValue(new Error('unsupported')),
+      };
+      vi.mocked(createAllAdapters).mockReturnValue(
+        new Map([['claude', { ...healthy, name: 'claude' }]]) as never
+      );
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      const seen: Array<readonly CliCheckResult[]> = [];
+      await doctorCommand({ onResult: (result) => seen.push(result.clis) });
+
+      expect(seen).toHaveLength(1);
+      const claude = seen[0]?.find((c) => c.name === 'claude');
+      expect(claude?.routerAdmits).toBe(true);
     });
 
     it('should return 1 when issues found', async () => {

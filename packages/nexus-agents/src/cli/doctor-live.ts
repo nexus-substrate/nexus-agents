@@ -14,7 +14,7 @@
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
-import { gatewayServedSlotOf } from '../cli-adapters/gateway-slot-arm.js';
+import { resolveGatewayServedSlot } from '../cli-adapters/gateway-slot-arm.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 import { probeCli } from './cli-auth-probe.js';
 import { detectCliBinary } from './setup-cli-detection.js';
@@ -24,6 +24,7 @@ import {
   formatReadiness,
   probeServes,
   type CliReadiness,
+  type GatewayServedReadiness,
   type LevelOutcome,
   type ServesProbeTarget,
 } from './cli-readiness.js';
@@ -49,6 +50,13 @@ export async function runLiveReadiness(
      * without the host's actual toolchain.
      */
     readonly isInstalled?: (cli: CliName) => boolean;
+    /**
+     * Whether the main doctor CLI list admitted each CLI (`routerAdmits`). Its
+     * health check and this run's are separate calls; when the live run finds
+     * the CLI unavailable after the list admitted it, the live line says so
+     * rather than letting the two disagree silently (#6781).
+     */
+    readonly cliListAdmits?: ReadonlyMap<CliName, boolean>;
   } = {}
 ): Promise<readonly CliReadiness[]> {
   // DELIBERATE raw-adapter probe — same reasoning as `doctor.ts:checkCli`
@@ -64,10 +72,15 @@ export async function runLiveReadiness(
     // #6720: a gateway-served slot — its CLI disabled or not available — is
     // measured as the gateway, and the CLI's own rungs are not run. A disabled
     // CLI's binary is never looked up, spawned or probed.
-    const served = gatewayServedSlotOf(adapter);
+    //
+    // #6781: the arm is asked to DECIDE first. An arm whose binary is on PATH
+    // is undecided until its first call, and a synchronous read of it said
+    // "not gateway-served"; the probe then made it choose the gateway, and the
+    // report credited the CLI's rungs with the gateway's completion. Deciding
+    // commits the arm, so the probe below goes to the target named here.
+    const served = await resolveGatewayServedSlot(adapter);
     if (served !== undefined) {
-      const cliState = isCliDisabled(cli) ? 'disabled' : 'not-available';
-      const gateway = { gatewayModel: served.modelId, cliState } as const;
+      const gateway = gatewayReadinessOf(cli, served.modelId, deps.cliListAdmits);
       results.push(buildGatewayReadiness(cli, gateway, await probeServes(adapter)));
       continue;
     }
@@ -75,6 +88,20 @@ export async function runLiveReadiness(
     results.push(await ladderFor(cli, adapter, authStates.get(cli), isInstalled(cli)));
   }
   return results;
+}
+
+/** Why the CLI does not serve a gateway-served slot, and whether the CLI list disagrees. */
+function gatewayReadinessOf(
+  cli: CliName,
+  gatewayModel: string,
+  cliListAdmits: ReadonlyMap<CliName, boolean> | undefined
+): GatewayServedReadiness {
+  if (isCliDisabled(cli)) return { gatewayModel, cliState: 'disabled' };
+  return {
+    gatewayModel,
+    cliState: 'not-available',
+    ...(cliListAdmits?.get(cli) === true ? { cliListAdmitted: true } : {}),
+  };
 }
 
 async function ladderFor(

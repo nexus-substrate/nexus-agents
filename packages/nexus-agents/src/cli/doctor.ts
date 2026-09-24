@@ -1144,6 +1144,11 @@ export interface DoctorOptions {
   readonly gateway?: boolean;
   /** Also send one completion per gateway family; implies `gateway`. Spends tokens. */
   readonly probe?: boolean;
+  /**
+   * Receives the measured result, so `doctor --live` can compare its own CLI
+   * availability check against the CLI list's (#6781).
+   */
+  readonly onResult?: (result: DoctorResult) => void;
 }
 
 /**
@@ -1152,6 +1157,7 @@ export interface DoctorOptions {
  */
 export async function doctorCommand(options: DoctorOptions = {}): Promise<number> {
   const result = await runDoctor({ gatewayProbe: options.probe === true });
+  options.onResult?.(result);
   printDoctorResults(result);
   if (options.gateway === true || options.probe === true) {
     const { formatGatewayReport } = await import('./doctor-gateway-report.js');

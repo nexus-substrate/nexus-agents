@@ -55,6 +55,7 @@ import {
 } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import type { VoteCommandOptions } from './cli/vote-types.js';
+import type { CliName } from './cli-adapters/types.js';
 import {
   isValidExpertListFormat,
   isValidThreshold,
@@ -533,10 +534,14 @@ export async function handleVerifyCommand(args: ParsedCliArgs): Promise<CliExitR
  * Handles doctor command (extracted for dispatch table).
  */
 export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitResult> {
+  let cliListAdmits: ReadonlyMap<CliName, boolean> | undefined;
   const exitCode = await doctorCommand({
     fix: args.options.fix,
     gateway: args.options.gateway,
     probe: args.options.probe,
+    onResult: (result) => {
+      cliListAdmits = new Map(result.clis.map((c) => [c.name, c.routerAdmits]));
+    },
   });
   if (args.options.deep) {
     const { runDeepDiagnostics, formatDeepDiagnostics } = await import('./cli/doctor-deep.js');
@@ -548,7 +553,7 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitR
   // the honest state rather than a pass.
   if (args.options.live) {
     const { runLiveReadiness, formatLiveReadiness } = await import('./cli/doctor-live.js');
-    const report = await runLiveReadiness();
+    const report = await runLiveReadiness(cliListAdmits !== undefined ? { cliListAdmits } : {});
     process.stdout.write(formatLiveReadiness(report) + '\n');
     // A failed live probe is a real not-ready finding, so it must reach the
     // exit code — a level that reports and cannot fail is not a check.
