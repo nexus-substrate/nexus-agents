@@ -223,6 +223,7 @@ function countTechniquesByStatus(
     'in-progress': 0,
     'not-started': 0,
     rejected: 0,
+    retired: 0,
   };
 
   for (const technique of techniques) {
@@ -235,6 +236,7 @@ function countTechniquesByStatus(
     inProgress: counts['in-progress'],
     notStarted: counts['not-started'],
     rejected: counts['rejected'],
+    retired: counts['retired'],
   };
 }
 

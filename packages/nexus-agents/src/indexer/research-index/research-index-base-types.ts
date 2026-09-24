@@ -37,6 +37,7 @@ export const TechniqueStatusSchema = z.enum([
   'in-progress',
   'not-started',
   'rejected',
+  'retired',
 ]);
 export type TechniqueStatus = z.infer<typeof TechniqueStatusSchema>;
 

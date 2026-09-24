@@ -6,9 +6,18 @@
  * @see Issue #367 - Deterministic RESEARCH_INDEX.md generation
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as yaml from 'yaml';
 import { describe, it, expect } from 'vitest';
-import { parseResearchIndexArgs, getResearchIndexHelp } from './research-index-command.js';
-import type { ResearchIndexOptions } from './research-index-command.js';
+import {
+  parseResearchIndexArgs,
+  getResearchIndexHelp,
+  researchIndexCommand,
+  type ResearchIndexOptions,
+} from './research-index-command.js';
+import { TechniquesRegistrySchema, generateIndexMarkdown } from '../research/index.js';
 
 // ============================================================================
 // Argument Parsing Tests
@@ -185,3 +194,45 @@ describe('ResearchIndexOptions type', () => {
     expect(options.format).toBeUndefined();
   });
 });
+
+// ============================================================================
+// Issue #6694: Committed Registry & Retired Status
+// ============================================================================
+
+describe('Issue #6694 - committed techniques.yaml with retired status', () => {
+  const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
+  const techniquesPath = path.join(repoRoot, 'docs/research/registry/techniques.yaml');
+
+  it('validates committed techniques.yaml containing retired status', () => {
+    const rawContent = fs.readFileSync(techniquesPath, 'utf-8');
+    const parsed = yaml.parse(rawContent) as unknown;
+    const result = TechniquesRegistrySchema.safeParse(parsed);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.techniques['daao-difficulty-estimation']?.status).toBe('retired');
+    }
+  });
+
+  it('generates research index markdown from committed registry files containing retired status', () => {
+    const result = generateIndexMarkdown({
+      papersPath: path.join(repoRoot, 'docs/research/registry/papers.yaml'),
+      techniquesPath,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain('Nexus-Agents Research Index');
+    }
+  });
+
+  it('loads registry without schema error on retired techniques in researchIndexCommand', async () => {
+    const result = await researchIndexCommand({
+      action: 'validate',
+      checkFiles: false,
+      strict: false,
+      projectRoot: repoRoot,
+    });
+    expect(result.message).not.toContain('Invalid techniques.yaml');
+    expect(result.message).not.toContain('daao-difficulty-estimation');
+  });
+});
+

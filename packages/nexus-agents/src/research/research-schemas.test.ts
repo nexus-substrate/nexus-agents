@@ -69,7 +69,14 @@ describe('ResearchTopicSchema', () => {
 
 describe('TechniqueStatusSchema', () => {
   it('should accept valid statuses', () => {
-    const validStatuses = ['implemented', 'planned', 'in-progress', 'not-started', 'rejected'];
+    const validStatuses = [
+      'implemented',
+      'planned',
+      'in-progress',
+      'not-started',
+      'rejected',
+      'retired',
+    ];
 
     for (const status of validStatuses) {
       const result = TechniqueStatusSchema.safeParse(status);

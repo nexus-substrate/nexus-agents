@@ -34,6 +34,7 @@ function makeIndex(overrides: Partial<ResearchIndex> = {}): ResearchIndex {
         inProgress: 3,
         notStarted: 2,
         rejected: 1,
+        retired: 0,
       },
       techniquesByPriority: {
         P1: 3,

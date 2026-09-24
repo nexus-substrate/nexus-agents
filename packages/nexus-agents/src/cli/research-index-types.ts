@@ -33,6 +33,8 @@ export interface ResearchIndexOptions {
   readonly checkFiles?: boolean;
   /** Silent mode (only exit code) */
   readonly silent?: boolean;
+  /** Root directory of the project (defaults to process.cwd()) */
+  readonly projectRoot?: string;
 }
 
 /**

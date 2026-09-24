@@ -211,6 +211,22 @@ describe('research-helpers-status', () => {
       expect(result[0]?.id).toBe('tech-004');
     });
 
+    it('should filter by retired status', () => {
+      const withRetired: Record<string, TechniqueEntry> = {
+        ...techniques,
+        'tech-006': createMockTechnique({
+          name: 'Zeta Tech',
+          status: 'retired',
+          priority: 'P4',
+        }),
+      };
+      const result = filterByStatus(withRetired, 'retired');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.id).toBe('tech-006');
+      expect(result[0]?.status).toBe('retired');
+    });
+
     it('should return all techniques when status is "all"', () => {
       const result = filterByStatus(techniques, 'all');
 
@@ -291,6 +307,23 @@ describe('research-helpers-status', () => {
 
       expect(result.planned).toBe(2);
       expect(result.total).toBe(2);
+    });
+
+    it('should ignore retired techniques in active status counts', () => {
+      const techniques: Record<string, TechniqueEntry> = {
+        'tech-001': createMockTechnique({ status: 'implemented' }),
+        'tech-002': createMockTechnique({ status: 'retired' }),
+      };
+
+      const result = countByStatus(techniques);
+
+      expect(result).toEqual({
+        implemented: 1,
+        planned: 0,
+        notStarted: 0,
+        rejected: 0,
+        total: 1,
+      });
     });
 
     it('should handle empty techniques object', () => {

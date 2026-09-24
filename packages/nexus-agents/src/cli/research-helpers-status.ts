@@ -179,6 +179,8 @@ export function countByStatus(
       case 'rejected':
         rejected++;
         break;
+      case 'retired':
+        break;
     }
   }
 
