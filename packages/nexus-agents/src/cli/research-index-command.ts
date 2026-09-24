@@ -252,9 +252,10 @@ async function handleCheck(
  * Execute the research index command.
  */
 export async function researchIndexCommand(
-  options: ResearchIndexOptions
+  options: ResearchIndexOptions,
+  customProjectRoot?: string
 ): Promise<ResearchIndexResult> {
-  const projectRoot = process.cwd();
+  const projectRoot = options.projectRoot ?? customProjectRoot ?? process.cwd();
 
   switch (options.action) {
     case 'generate':

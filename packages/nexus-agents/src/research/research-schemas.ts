@@ -75,31 +75,26 @@ export { TOPIC_ALIASES } from './topic-aliases.js';
 export { normalizeTopicToCanonical } from './topic-aliases.js';
 
 /**
- * Technique implementation status.
- */
-export const TechniqueStatusSchema = z.enum([
-  'implemented',
-  'planned',
-  'in-progress',
-  'not-started',
-  'rejected',
-]);
-export type TechniqueStatus = z.infer<typeof TechniqueStatusSchema>;
-
-/**
  * Paper implementation status — import + re-export from the canonical
  * source (#2717). Previously this file declared a parallel z.enum that
  * disagreed with both `indexer/research-index/research-index-base-types.ts`
  * (the other Zod copy) and `cli/research-types.ts` (the TS type union).
  * The import binds the name in this module so the schema can be used in
  * the object below; the re-export keeps existing consumers working.
+ *
+ * Technique implementation status is likewise imported from the canonical
+ * source (#6694) to avoid drift and maintain a single source of truth.
  */
 import {
   PaperStatusSchema as _PaperStatusSchema,
   type PaperStatus as _PaperStatus,
+  TechniqueStatusSchema as _TechniqueStatusSchema,
+  type TechniqueStatus as _TechniqueStatus,
 } from '../indexer/research-index/research-index-base-types.js';
 export const PaperStatusSchema = _PaperStatusSchema;
 export type PaperStatus = _PaperStatus;
+export const TechniqueStatusSchema = _TechniqueStatusSchema;
+export type TechniqueStatus = _TechniqueStatus;
 
 /**
  * Technique priority levels.

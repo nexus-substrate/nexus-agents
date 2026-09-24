@@ -253,7 +253,10 @@ export function validateHighPriorityIssue(
 
   const { priority } = technique;
   const isHighPriority = priority === 'P1' || priority === 'P2';
-  const needsIssue = technique.status !== 'implemented' && technique.status !== 'rejected';
+  const needsIssue =
+    technique.status !== 'implemented' &&
+    technique.status !== 'rejected' &&
+    technique.status !== 'retired';
 
   if (isHighPriority && technique.implementation_issue === null && needsIssue) {
     issues.push(

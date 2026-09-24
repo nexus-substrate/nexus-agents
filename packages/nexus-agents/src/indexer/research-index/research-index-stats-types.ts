@@ -44,6 +44,8 @@ export interface TechniqueStatusStats {
   readonly notStarted: number;
   /** Number of rejected techniques */
   readonly rejected: number;
+  /** Number of retired techniques */
+  readonly retired: number;
 }
 
 /**

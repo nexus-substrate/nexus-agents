@@ -48,6 +48,7 @@ function makeStats(overrides: Partial<RegistryStats> = {}) {
       planned: 1,
       'not-started': 1,
       rejected: 0,
+      retired: 0,
     },
     topicStats: [
       { topic: 'consensus', papers: 3, techniques: 2 },

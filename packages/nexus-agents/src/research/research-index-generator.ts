@@ -132,6 +132,7 @@ function computeStats(data: ParsedData): RegistryStats {
     'in-progress': 0,
     'not-started': 0,
     rejected: 0,
+    retired: 0,
   };
 
   for (const technique of data.techniques) {
