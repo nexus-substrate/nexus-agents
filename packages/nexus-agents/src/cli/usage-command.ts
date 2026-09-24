@@ -30,19 +30,14 @@ interface UsageOptions {
 }
 
 function parseOptions(args: ParsedCliArgs): UsageOptions {
-  // The cli-types options bag is strictly typed; new flags this command
-  // accepts (`--since`, `--until`, `--model`) aren't first-class fields.
-  // Treat the bag as a record for these reads — the values are still
-  // string-checked at runtime.
-  const opts = args.options as unknown as Record<string, unknown>;
-  const formatRaw = typeof opts['format'] === 'string' ? opts['format'] : 'text';
+  const formatRaw = typeof args.options.format === 'string' ? args.options.format : 'text';
   const format: 'text' | 'json' = formatRaw === 'json' ? 'json' : 'text';
 
-  const since = typeof opts['since'] === 'string' ? opts['since'] : '';
+  const since = typeof args.options.since === 'string' ? args.options.since : '';
   const sinceIso = since === '' ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() : since;
 
-  const until = typeof opts['until'] === 'string' ? opts['until'] : undefined;
-  const model = typeof opts['model'] === 'string' ? opts['model'] : undefined;
+  const until = typeof args.options.until === 'string' ? args.options.until : undefined;
+  const model = typeof args.options.model === 'string' ? args.options.model : undefined;
 
   return { format, sinceIso, untilIso: until, modelId: model };
 }

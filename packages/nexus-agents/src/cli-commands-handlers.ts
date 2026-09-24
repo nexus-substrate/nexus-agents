@@ -473,6 +473,8 @@ export function handleValidationCommand(args: ParsedCliArgs): CliExitResult {
     {
       period: args.options.period,
       model: args.options.model,
+      taskType: args.options.taskType,
+      minSample: args.options.minSample,
     }
   );
   const exitCode = validationDashboardCommand(options);
@@ -657,8 +659,9 @@ export async function handleSessionCommand(
     process.stdout.write('  prune    Delete old sessions\n');
     process.stdout.write('\nOptions:\n');
     process.stdout.write('  --limit <n>     Limit results (default: 20)\n');
-    process.stdout.write('  --format        Output format (table|json)\n');
+    process.stdout.write('  --format        Output format (table|json|markdown)\n');
     process.stdout.write('  --output <path> Output file path\n');
+    process.stdout.write('  --markdown      Export in Markdown format\n');
     return cliExit(EXIT_CODES.INVALID_ARGS);
   }
 
@@ -671,13 +674,16 @@ export async function handleSessionCommand(
   // #3942: signal that delegation explicitly with the sentinel rather than a
   // bare `undefined`, so a dropped return on the error path above is caught.
   const remainingArgs = args.positionals.slice(2);
-  // #6677, #6678: flags consumed by the parser forward explicitly so handlers
-  // receive `--output`, `--json`, `--format`, `--dry-run`.
+  // #6677, #6678, #6693: flags consumed by the parser forward explicitly so handlers
+  // receive `--output`, `--json`, `--format`, `--dry-run`, `--limit`, `--markdown`.
+  const limit = args.options.limit !== undefined ? parseInt(args.options.limit, 10) : undefined;
   await sessionCommand(subcommand, remainingArgs, undefined, {
     dryRun: args.options.dryRun,
     json: args.options.json,
     format: args.options.format,
     output: args.options.output,
+    ...(limit !== undefined && Number.isFinite(limit) && { limit }),
+    ...(args.options.markdown === true && { markdown: true }),
   });
   return LIFECYCLE_DELEGATED;
 }

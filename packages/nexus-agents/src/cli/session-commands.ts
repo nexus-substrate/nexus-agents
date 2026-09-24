@@ -295,7 +295,7 @@ async function handleList(
   flags: SessionCommandFlags
 ): Promise<void> {
   const limitIdx = args.indexOf('--limit');
-  const limit = limitIdx >= 0 ? parseInt(args[limitIdx + 1] ?? '20', 10) : 20;
+  const limit = flags.limit ?? (limitIdx >= 0 ? parseInt(args[limitIdx + 1] ?? '20', 10) : 20);
   const isJson = flags.json === true || flags.format === 'json' || args.includes('--json');
   const format: 'table' | 'json' = isJson ? 'json' : 'table';
   const result = await sessionList({ limit, format, logger: log });
@@ -335,7 +335,9 @@ async function handleExport(
   const outputIdx = args.indexOf('--output');
   const outputPath = flags.output ?? (outputIdx >= 0 ? args[outputIdx + 1] : undefined);
   const format: 'json' | 'markdown' =
-    flags.format === 'markdown' || args.includes('--markdown') ? 'markdown' : 'json';
+    flags.markdown === true || flags.format === 'markdown' || args.includes('--markdown')
+      ? 'markdown'
+      : 'json';
   const result = await sessionExport({ sessionId, output: outputPath, format, logger: log });
   if (!result.ok) {
     throw new Error(result.error.message);
@@ -391,6 +393,8 @@ interface SessionCommandFlags {
   readonly json?: boolean | undefined;
   readonly format?: string | undefined;
   readonly output?: string | undefined;
+  readonly limit?: number | undefined;
+  readonly markdown?: boolean | undefined;
 }
 
 /** Main session command entry point. */
