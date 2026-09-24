@@ -50,6 +50,10 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { throwIfAborted } from '../../adapters/abort-utils.js';
+
+/** The `AbortError` message when a caller's signal stops discovery (#6747). */
+const DISCOVERY_ABORTED = 'Research discovery aborted';
 
 // =============================================================================
 // CONSTANTS
@@ -260,33 +264,33 @@ interface ExtendedSourceResult {
 /** Discovers from extended sources using the source providers. */
 async function discoverFromExtendedSource(
   source: string,
-  topic: string,
-  maxResults: number,
+  input: ResearchDiscoverInput,
   logger: ILogger,
-  sinceDate?: string
+  signal: AbortSignal | undefined
 ): Promise<ExtendedSourceResult> {
+  const { topic, maxResults, sinceDate } = input;
   let result;
   switch (source) {
     case 'google_ai':
-      result = await discoverGoogleAI(topic, maxResults, sinceDate);
+      result = await discoverGoogleAI(topic, maxResults, sinceDate, signal);
       break;
     case 'meta_fair':
-      result = await discoverMetaFAIR(topic, maxResults, sinceDate);
+      result = await discoverMetaFAIR(topic, maxResults, sinceDate, signal);
       break;
     case 'microsoft':
-      result = await discoverMicrosoftResearch(topic, maxResults, sinceDate);
+      result = await discoverMicrosoftResearch(topic, maxResults, sinceDate, signal);
       break;
     case 'deepmind':
-      result = await discoverDeepMind(topic, maxResults, sinceDate);
+      result = await discoverDeepMind(topic, maxResults, sinceDate, signal);
       break;
     case 'semantic_scholar':
-      result = await discoverSemanticScholar(topic, maxResults);
+      result = await discoverSemanticScholar(topic, maxResults, signal);
       break;
     case 'papers_with_code':
-      result = await discoverPapersWithCode(topic, maxResults);
+      result = await discoverPapersWithCode(topic, maxResults, signal);
       break;
     case 'openalex':
-      result = await discoverOpenAlex(topic, maxResults);
+      result = await discoverOpenAlex(topic, maxResults, undefined, signal);
       break;
     default:
       return { items: [], failed: true };
@@ -399,17 +403,13 @@ async function queryExtendedSource(
   src: string,
   input: ResearchDiscoverInput,
   logger: ILogger,
-  acc: QueryAccumulator
+  acc: QueryAccumulator,
+  signal: AbortSignal | undefined
 ): Promise<void> {
+  throwIfAborted(signal, DISCOVERY_ABORTED);
   acc.sources.push(src);
   try {
-    const result = await discoverFromExtendedSource(
-      src,
-      input.topic,
-      input.maxResults,
-      logger,
-      input.sinceDate
-    );
+    const result = await discoverFromExtendedSource(src, input, logger, signal);
     if (result.failed) acc.failedSources.push(src);
     acc.items = acc.items.concat(result.items);
   } catch (error: unknown) {
@@ -418,18 +418,24 @@ async function queryExtendedSource(
   }
 }
 
-/** Query all requested sources and collect items. */
+/**
+ * Query all requested sources and collect items. `signal` (#6747) ends the
+ * fetch in flight and starts no further source: the call rejects with an
+ * `AbortError` rather than returning a partial set as if it were complete.
+ */
 async function queryAllSources(
   input: ResearchDiscoverInput,
-  logger: ILogger
+  logger: ILogger,
+  signal: AbortSignal | undefined
 ): Promise<QueryAccumulator> {
   const acc: QueryAccumulator = { sources: [], failedSources: [], items: [] };
   const isAll = input.source === 'all';
   const shouldQuery = (src: string): boolean => isAll || input.source === src;
 
   if (shouldQuery('arxiv')) {
+    throwIfAborted(signal, DISCOVERY_ABORTED);
     acc.sources.push('arxiv');
-    const r = await discoverArxiv(input.topic, input.maxResults, input.sinceDate);
+    const r = await discoverArxiv(input.topic, input.maxResults, input.sinceDate, signal);
     if (r.ok) acc.items = acc.items.concat(toDiscoveredItems(r.value));
     else {
       acc.failedSources.push('arxiv');
@@ -439,12 +445,15 @@ async function queryAllSources(
 
   // Org sources: skip when 'all' (identical to arxiv); query individually
   for (const src of ARXIV_ORG_SOURCES) {
-    if (!isAll && input.source === src) await queryExtendedSource(src, input, logger, acc);
+    if (!isAll && input.source === src) {
+      await queryExtendedSource(src, input, logger, acc, signal);
+    }
   }
 
   if (shouldQuery('github')) {
+    throwIfAborted(signal, DISCOVERY_ABORTED);
     acc.sources.push('github');
-    const r = await discoverGitHubRepos(input.topic, input.maxResults);
+    const r = await discoverGitHubRepos(input.topic, input.maxResults, signal);
     if (r.ok) acc.items = acc.items.concat(toDiscoveredItems(r.value));
     else {
       acc.failedSources.push('github');
@@ -453,8 +462,10 @@ async function queryAllSources(
   }
 
   for (const src of INDEPENDENT_SOURCES) {
-    if (shouldQuery(src)) await queryExtendedSource(src, input, logger, acc);
+    if (shouldQuery(src)) await queryExtendedSource(src, input, logger, acc, signal);
   }
+  // The last source may have been cut short: its failure is the abort's, not the source's.
+  throwIfAborted(signal, DISCOVERY_ABORTED);
   return acc;
 }
 
@@ -473,10 +484,14 @@ async function queryAllSources(
  *
  * Callers render the structured `ResearchDiscoverResponse` however suits
  * their context (MCP → `toolSuccessStructured`, CLI → terminal output).
+ *
+ * `signal` (#6747), when given, ends the source fetch in flight and stops the
+ * fan-out; the call then rejects with an `AbortError` and records nothing.
  */
 export async function executeDiscovery(
   rawInput: ResearchDiscoverInput,
-  logger: ILogger
+  logger: ILogger,
+  signal?: AbortSignal
 ): Promise<ResearchDiscoverResponse> {
   // Normalize topic to canonical form (Issue #1576 Wave 4)
   const input: ResearchDiscoverInput = {
@@ -488,7 +503,7 @@ export async function executeDiscovery(
     sources: sourcesToQuery,
     failedSources,
     items: allItems,
-  } = await queryAllSources(input, logger);
+  } = await queryAllSources(input, logger, signal);
   markExistingItems(allItems, registry.ids);
 
   const totalFound = allItems.length;

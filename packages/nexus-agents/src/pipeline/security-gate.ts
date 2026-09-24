@@ -28,6 +28,7 @@ import { queryOsvBatch } from '../security/osv-lookup.js';
 import type { OsvVulnerability } from '../security/osv-lookup.js';
 import type { SecurityFinding } from '../security/sarif-types.js';
 import { createLogger } from '../core/index.js';
+import { throwIfAborted } from '../adapters/abort-utils.js';
 
 const logger = createLogger({ component: 'security-gate' });
 
@@ -55,14 +56,20 @@ export function checkSecurityScan(
   rulesets: readonly string[] = ['p/default'],
   config: SecurityGateConfig = {}
 ): GateCheckFn {
-  return async (): Promise<GateCheckResult> => {
+  return async (signal?: AbortSignal): Promise<GateCheckResult> => {
     const start = Date.now();
-    const result = await executeSecurityScan({
-      target: targetDir,
-      scanner: 'auto',
-      rulesets: [...rulesets],
-      maxFindings: 50,
-    });
+    const result = await executeSecurityScan(
+      {
+        target: targetDir,
+        scanner: 'auto',
+        rulesets: [...rulesets],
+        maxFindings: 50,
+      },
+      signal
+    );
+    // #6747: an aborted scan measured nothing. Rejecting keeps it from being
+    // reported as a `skip`, and keeps the OSV lookups from starting.
+    throwIfAborted(signal, 'Security scan aborted');
 
     if ('error' in result) {
       logger.warn('Security scan skipped', { error: result.error });
@@ -74,7 +81,7 @@ export function checkSecurityScan(
       };
     }
 
-    return runSecurityPipeline(result, targetDir, config, start);
+    return runSecurityPipeline(result, targetDir, config, start, signal);
   };
 }
 
@@ -95,10 +102,13 @@ async function runSecurityPipeline(
   },
   targetDir: string,
   config: SecurityGateConfig,
-  start: number
+  start: number,
+  signal: AbortSignal | undefined
 ): Promise<GateCheckResult> {
   // OSV dependency check (#1773)
-  const osv = await runOsvCheck(targetDir, config.enableOsv ?? true);
+  const osv = await runOsvCheck(targetDir, config.enableOsv ?? true, signal);
+  // A batch cut short by the abort covers only some dependencies; no verdict.
+  throwIfAborted(signal, 'Security scan aborted');
   const osvVulns = osv.vulnerabilities;
 
   // Assess: a finding blocks because its severity blocks. Nothing filters.
@@ -179,7 +189,11 @@ const OSV_CHECK_FAILED: OsvCheckResult = { ...OSV_EMPTY, checkFailed: true };
 /** Dependencies queried per run. The cap is disclosed in the scan summary. */
 const OSV_DEPENDENCY_CAP = 20;
 
-async function runOsvCheck(targetDir: string, enabled: boolean): Promise<OsvCheckResult> {
+async function runOsvCheck(
+  targetDir: string,
+  enabled: boolean,
+  signal: AbortSignal | undefined
+): Promise<OsvCheckResult> {
   if (!enabled) return OSV_EMPTY;
   try {
     const fs = await import('node:fs');
@@ -197,7 +211,7 @@ async function runOsvCheck(targetDir: string, enabled: boolean): Promise<OsvChec
         version: version.replace(/^[\^~>=<]+/, ''),
       }));
     if (deps.length === 0) return OSV_EMPTY;
-    const results = await queryOsvBatch(deps);
+    const results = await queryOsvBatch(deps, undefined, signal);
     return {
       vulnerabilities: results.flatMap((r) => [...r.vulnerabilities]),
       // The half that used to be dropped: a 503 or a timeout yields an empty

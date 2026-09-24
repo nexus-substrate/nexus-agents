@@ -98,6 +98,8 @@ interface FetchSourceOptions {
   readonly source: string;
   readonly headers?: Record<string, string>;
   readonly timeoutMs?: number;
+  /** Caller abort (#6747): ends the request in flight, as the timeout does. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** Builds a typed error from a non-ok HTTP response.
@@ -123,9 +125,12 @@ function buildHttpErrorResult(status: number, source: string): DiscoverError {
 export async function fetchSource(
   options: FetchSourceOptions
 ): Promise<Result<Response, DiscoverError>> {
-  const { url, source, headers, timeoutMs = SOURCE_API_TIMEOUT_MS } = options;
+  const { url, source, headers, timeoutMs = SOURCE_API_TIMEOUT_MS, signal } = options;
   try {
-    const fetchInit: RequestInit = { signal: AbortSignal.timeout(timeoutMs) };
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const fetchInit: RequestInit = {
+      signal: signal === undefined ? timeout : AbortSignal.any([timeout, signal]),
+    };
     if (headers !== undefined) fetchInit.headers = headers;
     const response = await fetch(url, fetchInit);
     if (!response.ok) {
@@ -179,7 +184,8 @@ function parseGitHubRepos(data: z.infer<typeof GitHubSearchResponseSchema>): Dis
  */
 export async function discoverGitHubRepos(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   // GitHub's search API parses bare `OR` as a top-level operator, which
   // splits the query into two unrelated clauses and zeroes out matches
@@ -201,7 +207,7 @@ export async function discoverGitHubRepos(
     headers['Authorization'] = `Bearer ${tokenResult.value.value}`;
   }
 
-  const fetchResult = await fetchSource({ url, source: 'github', headers });
+  const fetchResult = await fetchSource({ url, source: 'github', headers, signal });
   if (!fetchResult.ok) return fetchResult;
 
   let raw: unknown;
@@ -271,18 +277,16 @@ export function buildArxivUrl(opts: ArxivQueryOptions): string {
  * Microsoft Research, and DeepMind discovery functions.
  */
 async function discoverFromArxiv(
-  topic: string,
-  authorFilter: string,
   source: string,
-  maxResults: number,
-  sinceDate?: string
+  query: ArxivQueryOptions,
+  signal: AbortSignal | undefined
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  const url = buildArxivUrl({ topic, authorFilter, maxResults, sinceDate });
-  const fetchResult = await fetchSource({ url, source });
+  const url = buildArxivUrl(query);
+  const fetchResult = await fetchSource({ url, source, signal });
   if (!fetchResult.ok) return fetchResult;
 
   const xml = await fetchResult.value.text();
-  const items = parseArxivEntries(xml, source, topic);
+  const items = parseArxivEntries(xml, source, query.topic);
   return { ok: true, value: items };
 }
 
@@ -302,9 +306,10 @@ async function discoverFromArxiv(
 export async function discoverArxiv(
   topic: string,
   maxResults = 10,
-  sinceDate?: string
+  sinceDate?: string,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(topic, '', 'arxiv', maxResults, sinceDate);
+  return discoverFromArxiv('arxiv', { topic, authorFilter: '', maxResults, sinceDate }, signal);
 }
 
 // =============================================================================
@@ -321,11 +326,12 @@ export async function discoverArxiv(
 export async function discoverGoogleAI(
   topic: string,
   maxResults = 10,
-  sinceDate?: string
+  sinceDate?: string,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   // arXiv au: field only searches author names, not affiliations.
   // Drop author filter — use topic-only search (same quality as direct arxiv).
-  return discoverFromArxiv(topic, '', 'google_ai', maxResults, sinceDate);
+  return discoverFromArxiv('google_ai', { topic, authorFilter: '', maxResults, sinceDate }, signal);
 }
 
 // =============================================================================
@@ -342,11 +348,12 @@ export async function discoverGoogleAI(
 export async function discoverMetaFAIR(
   topic: string,
   maxResults = 10,
-  sinceDate?: string
+  sinceDate?: string,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   // arXiv au: field only searches author names, not affiliations.
   // Drop author filter — use topic-only search (same quality as direct arxiv).
-  return discoverFromArxiv(topic, '', 'meta_fair', maxResults, sinceDate);
+  return discoverFromArxiv('meta_fair', { topic, authorFilter: '', maxResults, sinceDate }, signal);
 }
 
 // =============================================================================
@@ -363,11 +370,12 @@ export async function discoverMetaFAIR(
 export async function discoverMicrosoftResearch(
   topic: string,
   maxResults = 10,
-  sinceDate?: string
+  sinceDate?: string,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   // arXiv au: field only searches author names, not affiliations.
   // Drop author filter — use topic-only search (same quality as direct arxiv).
-  return discoverFromArxiv(topic, '', 'microsoft', maxResults, sinceDate);
+  return discoverFromArxiv('microsoft', { topic, authorFilter: '', maxResults, sinceDate }, signal);
 }
 
 // =============================================================================
@@ -384,11 +392,12 @@ export async function discoverMicrosoftResearch(
 export async function discoverDeepMind(
   topic: string,
   maxResults = 10,
-  sinceDate?: string
+  sinceDate?: string,
+  signal?: AbortSignal
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   // arXiv au: field only searches author names, not affiliations.
   // Drop author filter — use topic-only search (same quality as direct arxiv).
-  return discoverFromArxiv(topic, '', 'deepmind', maxResults, sinceDate);
+  return discoverFromArxiv('deepmind', { topic, authorFilter: '', maxResults, sinceDate }, signal);
 }
 
 // =============================================================================

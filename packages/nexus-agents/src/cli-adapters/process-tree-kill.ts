@@ -317,3 +317,38 @@ export function signalTrackedProcessTrees(
   }
   return count;
 }
+
+/**
+ * Grace period before a SIGTERMed tree is SIGKILLed (#3026 finding 1). 5 s
+ * gives a well-behaved child time to flush state and exit, and bounds how long
+ * one that ignores SIGTERM keeps running.
+ */
+export const SIGKILL_GRACE_MS = 5_000;
+
+/**
+ * SIGTERM the child and its descendants, then SIGKILL whatever of that tree is
+ * still the same running process after `graceMs` (#6680, #6747). `onEscalate`
+ * runs just before the SIGKILL, for the caller's log line. The escalation timer
+ * is unref'd: a server exiting inside the grace window still reaches a tracked
+ * tree through the exit hook. Returns the descendants signalled.
+ */
+export function terminateProcessTree(
+  child: ChildProcess,
+  graceMs: number = SIGKILL_GRACE_MS,
+  onEscalate?: () => void
+): KnownProcess[] {
+  const tree = signalProcessTree(child, 'SIGTERM', []);
+  const timer = setTimeout(() => {
+    if (!isProcessTreeAlive(child, tree)) return;
+    onEscalate?.();
+    signalProcessTree(child, 'SIGKILL', tree);
+  }, graceMs);
+  timer.unref();
+  // A descendant can outlive the child's close, so only an empty tree cancels the check.
+  if (tree.length === 0) {
+    child.once('close', () => {
+      clearTimeout(timer);
+    });
+  }
+  return tree;
+}

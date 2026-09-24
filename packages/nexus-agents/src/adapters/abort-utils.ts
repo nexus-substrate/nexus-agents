@@ -24,6 +24,17 @@ export class AbortError extends Error {
 }
 
 /**
+ * Throw an {@link AbortError} with `message` once `signal` has fired (#6747).
+ * Unlike `signal.throwIfAborted()`, which throws the raw reason (a bare string
+ * from `cancel_job`), the error type is fixed, so a caller can tell an abort
+ * from a failure. Read through a call: TypeScript narrows `signal.aborted`
+ * after one check, which is unsound across `await`s.
+ */
+export function throwIfAborted(signal: AbortSignal | undefined, message: string): void {
+  if (signal?.aborted === true) throw new AbortError(message);
+}
+
+/**
  * Whether an error records a call its caller cancelled (#6691): its `cause` is
  * an {@link AbortError}. A cancel says nothing about the adapter's health, so
  * circuit breakers skip it and retry loops stop on it. Accepts both a

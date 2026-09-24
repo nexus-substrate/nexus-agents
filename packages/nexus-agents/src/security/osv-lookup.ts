@@ -137,12 +137,15 @@ function normalizeVuln(vuln: OsvApiVuln): OsvVulnerability {
  * @param packageName - npm package name (e.g., 'lodash')
  * @param packageVersion - Package version (e.g., '4.17.20')
  * @param config - Lookup configuration
+ * @param signal - Caller abort (#6747): ends the request in flight, as the
+ *   timeout does. The lookup then reports an `error`, never an empty result.
  * @returns Lookup result with vulnerabilities or error
  */
 export async function queryOsv(
   packageName: string,
   packageVersion: string,
-  config: OsvLookupConfig = DEFAULT_OSV_CONFIG
+  config: OsvLookupConfig = DEFAULT_OSV_CONFIG,
+  signal?: AbortSignal
 ): Promise<OsvLookupResult> {
   const body = JSON.stringify({
     version: packageVersion,
@@ -154,12 +157,14 @@ export async function queryOsv(
     const timeout = setTimeout(() => {
       controller.abort();
     }, config.timeoutMs);
+    const requestSignal =
+      signal === undefined ? controller.signal : AbortSignal.any([controller.signal, signal]);
 
     const response = await fetch(OSV_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
-      signal: controller.signal,
+      signal: requestSignal,
     });
 
     clearTimeout(timeout);
@@ -186,20 +191,29 @@ export async function queryOsv(
   }
 }
 
+/** Read through a call: TypeScript narrows `signal.aborted` across `await`s unsoundly. */
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
 /**
  * Query OSV for multiple packages in batch.
  *
  * @param packages - Array of {name, version} pairs
  * @param config - Lookup configuration
+ * @param signal - Caller abort (#6747): the lookup in flight ends and no later
+ *   package is queried, so the result holds only the packages attempted.
  * @returns Array of lookup results
  */
 export async function queryOsvBatch(
   packages: ReadonlyArray<{ name: string; version: string }>,
-  config: OsvLookupConfig = DEFAULT_OSV_CONFIG
+  config: OsvLookupConfig = DEFAULT_OSV_CONFIG,
+  signal?: AbortSignal
 ): Promise<OsvLookupResult[]> {
   const results: OsvLookupResult[] = [];
   for (const pkg of packages) {
-    const result = await queryOsv(pkg.name, pkg.version, config);
+    if (isAborted(signal)) break;
+    const result = await queryOsv(pkg.name, pkg.version, config, signal);
     results.push(result);
   }
   return results;

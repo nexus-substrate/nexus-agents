@@ -13,6 +13,7 @@ import { parseSarif } from '../../security/sarif-parser.js';
 import type { SarifParseResult } from '../../security/sarif-types.js';
 import { createLogger } from '../../core/index.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
+import { execFileTree } from '../../cli-adapters/exec-file-tree.js';
 
 const logger = createLogger({ component: 'security-scan' });
 
@@ -20,29 +21,31 @@ const logger = createLogger({ component: 'security-scan' });
 const SCAN_TIMEOUT_MS = 300_000;
 
 /** Check if semgrep is available. */
-async function isSemgrepAvailable(): Promise<boolean> {
+async function isSemgrepAvailable(signal: AbortSignal | undefined): Promise<boolean> {
   try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const exec = promisify(execFile);
-    await exec('semgrep', ['--version'], { timeout: 10_000 });
+    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal });
     return true;
   } catch {
     return false;
   }
 }
 
-/** Run semgrep and return raw SARIF JSON output. */
-async function runSemgrep(targetDir: string, rulesets: readonly string[]): Promise<string> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const exec = promisify(execFile);
-
+/**
+ * Run semgrep and return raw SARIF JSON output. The timeout and the abort end
+ * semgrep's whole process tree (#6747): it runs its analysis in child
+ * processes, which killing semgrep alone would leave running.
+ */
+async function runSemgrep(
+  targetDir: string,
+  rulesets: readonly string[],
+  signal: AbortSignal | undefined
+): Promise<string> {
   const args = ['--sarif', '--quiet', ...rulesets.flatMap((r) => ['--config', r]), targetDir];
 
-  const { stdout } = await exec('semgrep', args, {
-    timeout: SCAN_TIMEOUT_MS,
+  const { stdout } = await execFileTree('semgrep', args, {
+    timeoutMs: SCAN_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024, // 10MB for large SARIF output
+    signal,
   });
 
   return stdout;
@@ -69,10 +72,13 @@ function validateTargetPath(target: string): string {
  * Execute a security scan against a local codebase.
  *
  * @param input - Scan configuration
+ * @param signal - Caller abort (#6747): ends the scanner's process tree and
+ *   returns an `error` saying the scan was aborted, not a result.
  * @returns Parsed SARIF findings or error message
  */
 export async function executeSecurityScan(
-  input: SecurityScanInput
+  input: SecurityScanInput,
+  signal?: AbortSignal
 ): Promise<SarifParseResult | { error: string }> {
   let targetDir: string;
   try {
@@ -87,7 +93,9 @@ export async function executeSecurityScan(
     rulesets: input.rulesets,
   });
 
-  const available = await isSemgrepAvailable();
+  const available = await isSemgrepAvailable(signal);
+  // An abort during the probe is not a missing scanner.
+  if (signal?.aborted === true) return { error: 'Scan aborted before semgrep ran' };
   if (!available) {
     return {
       error: 'semgrep is not installed. Install with: pip install semgrep',
@@ -95,7 +103,7 @@ export async function executeSecurityScan(
   }
 
   try {
-    const sarifOutput = await runSemgrep(targetDir, input.rulesets);
+    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal);
     const result = parseSarif(sarifOutput, input.maxFindings);
 
     logger.info('Security scan completed', {
