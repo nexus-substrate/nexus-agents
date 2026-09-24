@@ -2,10 +2,16 @@
  * Tests for Pipeline Graph Compiler (#1735, Phase 2)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { compilePipelineGraph, findMissingStages } from './pipeline-graph.js';
 import type { IPipelineStage, PipelineTemplate, StageOutput } from './stage-types.js';
 import { PIPELINE_STATE_KEYS } from './stage-types.js';
+import {
+  GRAPH_TIMEOUTS,
+  VOTE_TIMEOUTS,
+  classOverrideEnvVar,
+  resolveClassGuardMs,
+} from '../config/timeouts.js';
 import {
   DEV_PIPELINE_TEMPLATE,
   GREENFIELD_PIPELINE_TEMPLATE,
@@ -202,5 +208,59 @@ describe('compilePipelineGraph', () => {
     expect(result.ok).toBe(true);
     // The graph exists and has nodes — execution is tested at integration level
     expect(result.graph).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Per-stage node deadlines (#6730)
+// ============================================================================
+
+describe('compilePipelineGraph stage deadlines (#6730)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function nodeTimeout(stageTimeoutMs: number | undefined, stageId: string): number | undefined {
+    const stages = makeStageRegistry([...DEV_PIPELINE_TEMPLATE.stages]);
+    const result = compilePipelineGraph(
+      DEV_PIPELINE_TEMPLATE,
+      stages,
+      stageTimeoutMs === undefined ? undefined : { stageTimeoutMs }
+    );
+    expect(result.ok).toBe(true);
+    // The executor reads `node.timeout` before any executor-level default, so
+    // this is the deadline the stage actually runs under.
+    return result.graph?.nodes.get(stageId)?.timeout;
+  }
+
+  it('gives the vote node a panel-sized default, at least the per-voter deadline', () => {
+    const voteTimeout = nodeTimeout(undefined, 'vote');
+    expect(voteTimeout).toBe(resolveClassGuardMs('multi-llm-panel'));
+    expect(voteTimeout).toBeGreaterThanOrEqual(VOTE_TIMEOUTS.defaultMs);
+    // The defect: the vote ran under the generic graph default.
+    expect(voteTimeout).toBeGreaterThan(GRAPH_TIMEOUTS.defaultMs);
+  });
+
+  it('keeps the graph default for non-panel stages', () => {
+    expect(nodeTimeout(undefined, 'plan')).toBe(GRAPH_TIMEOUTS.defaultMs);
+  });
+
+  it('applies an explicit stageTimeoutMs to every stage, the vote included', () => {
+    const requested = 450_000;
+    expect(nodeTimeout(requested, 'plan')).toBe(requested);
+    expect(nodeTimeout(requested, 'vote')).toBe(requested);
+  });
+
+  it('clamps an explicit stageTimeoutMs to the pipeline class guard', () => {
+    const pipelineCeiling = 400_000;
+    vi.stubEnv(classOverrideEnvVar('pipeline'), String(pipelineCeiling));
+    expect(nodeTimeout(600_000, 'plan')).toBe(pipelineCeiling);
+  });
+
+  it('clamps the panel-sized vote default to the pipeline class guard', () => {
+    const pipelineCeiling = 400_000;
+    vi.stubEnv(classOverrideEnvVar('pipeline'), String(pipelineCeiling));
+    vi.stubEnv(classOverrideEnvVar('multi-llm-panel'), '1200000');
+    expect(nodeTimeout(undefined, 'vote')).toBe(pipelineCeiling);
   });
 });

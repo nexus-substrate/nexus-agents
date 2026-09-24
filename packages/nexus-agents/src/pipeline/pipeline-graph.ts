@@ -11,6 +11,7 @@ import { GraphBuilder } from '../orchestration/graph/graph-builder.js';
 import type { CompiledGraph } from '../orchestration/graph/graph-types.js';
 import { START, END, formatCompileError } from '../orchestration/graph/graph-types.js';
 import { createLogger } from '../core/index.js';
+import { GRAPH_TIMEOUTS, resolveClassGuardMs } from '../config/timeouts.js';
 import type { IPipelineStage, PipelineTemplate, PipelineContext } from './stage-types.js';
 import { PIPELINE_STATE_KEYS } from './stage-types.js';
 
@@ -29,6 +30,17 @@ export interface PipelineGraphResult {
 
 /** Map of stage ID → stage implementation. */
 export type StageRegistry = ReadonlyMap<string, IPipelineStage>;
+
+/** Options for {@link compilePipelineGraph}. */
+export interface PipelineGraphCompileOptions {
+  /**
+   * Deadline for EACH stage node, in ms (#6730). Replaces every stage's default,
+   * including the vote stage's panel-sized one, and is clamped to the
+   * `pipeline` class guard. Absent: the vote stage gets the `multi-llm-panel`
+   * class guard and every other stage `GRAPH_TIMEOUTS.defaultMs`.
+   */
+  readonly stageTimeoutMs?: number | undefined;
+}
 
 /**
  * Thrown by a node handler when its stage reported `success: false` (#4362).
@@ -64,7 +76,8 @@ export class StageFailureError extends Error {
  */
 export function compilePipelineGraph(
   template: PipelineTemplate,
-  stages: StageRegistry
+  stages: StageRegistry,
+  options?: PipelineGraphCompileOptions
 ): PipelineGraphResult {
   const missing = findMissingStages(template, stages);
   if (missing.length > 0) {
@@ -81,7 +94,7 @@ export function compilePipelineGraph(
 
   const builder = new GraphBuilder();
   registerStateFields(builder);
-  registerNodes(builder, template, stages);
+  registerNodes(builder, template, stages, options?.stageTimeoutMs);
   registerEdges(builder, template);
 
   const result = builder.compile();
@@ -137,13 +150,40 @@ function registerStateFields(builder: GraphBuilder): void {
 function registerNodes(
   builder: GraphBuilder,
   template: PipelineTemplate,
-  stages: StageRegistry
+  stages: StageRegistry,
+  stageTimeoutMs: number | undefined
 ): void {
   for (const stageId of template.stages) {
     const stage = stages.get(stageId);
     if (stage === undefined) continue;
-    builder.addNode(stageId, createNodeHandler(stage, template));
+    builder.addNode(stageId, createNodeHandler(stage, template), {
+      timeout: resolveStageTimeoutMs(stageId, stageTimeoutMs),
+    });
   }
+}
+
+/**
+ * Stages that run a multi-voter panel. Their default deadline is the panel's
+ * own runaway-guard, not the generic graph default: a full 7-seat vote took
+ * 190 s live, and the graph default is 120 s (#6730).
+ */
+const PANEL_STAGE_IDS: ReadonlySet<string> = new Set(['vote']);
+
+/**
+ * The deadline one stage's node runs under.
+ *
+ * An explicit `stageTimeoutMs` applies to every stage, the vote included.
+ * Without one, a panel stage gets the `multi-llm-panel` class guard (which is
+ * above `VOTE_TIMEOUTS.defaultMs`, and above the consensus engine's own overall
+ * deadline, so the engine returns partial results before this guard fires) and
+ * every other stage gets `GRAPH_TIMEOUTS.defaultMs`. Either way the result is
+ * clamped to the `pipeline` class guard: no stage may outlive the run.
+ */
+function resolveStageTimeoutMs(stageId: string, stageTimeoutMs: number | undefined): number {
+  const stageDefault = PANEL_STAGE_IDS.has(stageId)
+    ? resolveClassGuardMs('multi-llm-panel')
+    : GRAPH_TIMEOUTS.defaultMs;
+  return Math.min(stageTimeoutMs ?? stageDefault, resolveClassGuardMs('pipeline'));
 }
 
 /** Create a GraphBuilder NodeHandler from an IPipelineStage. */
