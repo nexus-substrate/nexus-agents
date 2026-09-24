@@ -53,9 +53,22 @@ export type LevelOutcome =
   /** Not run. Carries why, so the report can distinguish opt-out from error. */
   | { readonly status: 'not-attempted'; readonly reason: string };
 
+/**
+ * The slot is served by a gateway model, not the CLI (#6720). Its CLI levels
+ * are not measured — the CLI is disabled or not available, and is not run —
+ * so only `serves` says anything, and it says it about the gateway model.
+ */
+interface GatewayServedReadiness {
+  readonly gatewayModel: string;
+  /** Why the CLI does not serve the slot. */
+  readonly cliState: 'disabled' | 'not-available';
+}
+
 export interface CliReadiness {
   readonly cli: CliName;
   readonly levels: Readonly<Record<ReadinessLevel, LevelOutcome>>;
+  /** Present when a gateway model serves the slot; the levels then describe it. */
+  readonly gateway?: GatewayServedReadiness;
   /**
    * The strongest level actually VERIFIED, or undefined when even `installed`
    * failed. Never inferred from a level that was not attempted.
@@ -100,6 +113,37 @@ export function buildReadiness(
 }
 
 /**
+ * Readiness of a slot a gateway model serves (#6720). `installed` and
+ * `authenticated` are the CLI's rungs and were not run — the CLI is not what
+ * serves — so they are `not-attempted` with that reason, and `reached` is
+ * `serves` exactly when the gateway model's completion came back.
+ */
+export function buildGatewayReadiness(
+  cli: CliName,
+  gateway: GatewayServedReadiness,
+  serves: LevelOutcome
+): CliReadiness {
+  const notRun: LevelOutcome = {
+    status: 'not-attempted',
+    reason: `the CLI is not run: gateway model ${gateway.gatewayModel} serves this slot`,
+  };
+  const levels = { installed: notRun, authenticated: notRun, serves };
+  return { cli, levels, gateway, ...(serves.status === 'verified' ? { reached: 'serves' } : {}) };
+}
+
+/** The header of one readiness entry. */
+function readinessSummary(readiness: CliReadiness): string {
+  const g = readiness.gateway;
+  if (g !== undefined) {
+    const why =
+      g.cliState === 'disabled' ? 'CLI disabled by NEXUS_DISABLED_CLIS' : 'CLI not available';
+    const verdict = readiness.reached === 'serves' ? 'serves' : 'not ready';
+    return `served by gateway model ${g.gatewayModel} (${why}) — ${verdict}`;
+  }
+  return readiness.reached === undefined ? 'not ready' : `ready through "${readiness.reached}"`;
+}
+
+/**
  * Render one CLI's ladder, naming every level's state.
  *
  * Every level is printed, including the ones that did not run. A report that
@@ -131,10 +175,7 @@ export function formatReadiness(readiness: CliReadiness): string {
     return `      ${icon(outcome)} ${level}${detail}`;
   });
 
-  const summary =
-    readiness.reached === undefined ? 'not ready' : `ready through "${readiness.reached}"`;
-
-  return [`  ${readiness.cli}: ${summary}`, ...lines].join('\n');
+  return [`  ${readiness.cli}: ${readinessSummary(readiness)}`, ...lines].join('\n');
 }
 
 /** The minimal adapter surface the `serves` probe needs. */

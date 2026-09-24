@@ -96,6 +96,7 @@ vi.mock('./doctor-gateway.js', async (importOriginal) => {
 });
 
 import { createAllAdapters } from '../cli-adapters/factory.js';
+import { probeCli } from './cli-auth-probe.js';
 import { checkGatewayHealth, type GatewayHealth } from './doctor-gateway.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
 import { probeClaudePinnedModel } from './doctor-claude-model.js';
@@ -116,6 +117,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
         versionStatus: 'supported',
         authenticated: true,
         authState: 'authenticated',
+        routerAdmits: true,
         authMethod: 'CLI auth',
       },
       {
@@ -125,6 +127,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
         versionStatus: 'supported',
         authenticated: true,
         authState: 'authenticated',
+        routerAdmits: true,
         authMethod: 'ADC/CLI auth',
       },
       {
@@ -134,6 +137,7 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
         versionStatus: 'supported',
         authenticated: true,
         authState: 'authenticated',
+        routerAdmits: true,
         authMethod: 'CLI auth',
       },
     ],
@@ -738,6 +742,34 @@ describe('Doctor Command', () => {
       expect(result.mcpClientReady).toBe(false);
     });
 
+    it('reports routerAdmits from the router predicate, not the printed fields (#6720)', async () => {
+      // Unhealthy with unknown auth: installed, supported, auth "unverified" —
+      // fields that read as usable — yet the router does not admit it.
+      const mockAdapters = new Map([
+        [
+          'claude',
+          {
+            name: 'claude',
+            healthCheck: vi.fn().mockResolvedValue({
+              healthy: false,
+              version: '2.0.76',
+              versionStatus: 'supported',
+              lastChecked: new Date(),
+            }),
+            getCapacity: vi.fn().mockRejectedValue(new Error('n/a')),
+          },
+        ],
+      ]);
+      vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
+      vi.mocked(probeCli).mockResolvedValueOnce({ cli: 'claude', state: 'unknown' } as never);
+
+      const claude = (await runDoctor()).clis.find((c) => c.name === 'claude');
+
+      expect(claude?.installed).toBe(true);
+      expect(claude?.authState).toBe('unverified');
+      expect(claude?.routerAdmits).toBe(false);
+    });
+
     it('should use CLI auth method instead of hardcoded OAuth', async () => {
       const mockAdapters = new Map([
         [
@@ -1098,6 +1130,7 @@ describe('Doctor Command', () => {
             versionStatus: 'unsupported',
             authenticated: false,
             authState: 'not-authenticated',
+            routerAdmits: false,
             error: 'Not found in PATH',
             fix: 'npm install -g @anthropic-ai/claude-code',
           },
@@ -1108,6 +1141,7 @@ describe('Doctor Command', () => {
             versionStatus: 'supported',
             authenticated: true,
             authState: 'authenticated',
+            routerAdmits: true,
           },
           {
             name: 'codex',
@@ -1116,6 +1150,7 @@ describe('Doctor Command', () => {
             versionStatus: 'supported',
             authenticated: true,
             authState: 'authenticated',
+            routerAdmits: true,
           },
         ],
         allHealthy: false,
@@ -1143,6 +1178,7 @@ describe('Doctor Command', () => {
             versionStatus: 'supported',
             authenticated: true,
             authState: 'authenticated',
+            routerAdmits: true,
             capacity: {
               remainingTokens: 100000,
               remainingRequests: 100,
@@ -1161,6 +1197,7 @@ describe('Doctor Command', () => {
             versionStatus: 'supported',
             authenticated: true,
             authState: 'authenticated',
+            routerAdmits: true,
           },
           {
             name: 'codex',
@@ -1169,6 +1206,7 @@ describe('Doctor Command', () => {
             versionStatus: 'supported',
             authenticated: true,
             authState: 'authenticated',
+            routerAdmits: true,
           },
         ],
       });
@@ -1193,6 +1231,7 @@ describe('Doctor Command', () => {
             versionStatus: 'unsupported',
             authenticated: false,
             authState: 'not-authenticated',
+            routerAdmits: false,
             error: 'Not found',
           },
           {
@@ -1202,6 +1241,7 @@ describe('Doctor Command', () => {
             versionStatus: 'unsupported',
             authenticated: false,
             authState: 'not-authenticated',
+            routerAdmits: false,
             error: 'Not found',
           },
           {
@@ -1211,6 +1251,7 @@ describe('Doctor Command', () => {
             versionStatus: 'unsupported',
             authenticated: false,
             authState: 'not-authenticated',
+            routerAdmits: false,
             error: 'Not found',
           },
         ],
@@ -1706,8 +1747,9 @@ describe('doctor with a gateway (#6609)', () => {
     const text = output.join('');
     expect(text).toContain('Checking gateway (doctor --gateway)');
     expect(text).toContain('Models: 24 listed, 12 chat models after the chat filter');
-    expect(text).toContain(
-      'claude → claude_4_5_opus, codex → gpt-5.2, gemini → gemini-3-pro-preview'
-    );
+    // No CLI is installed here, so the gateway serves every family slot.
+    expect(text).toContain('claude → claude_4_5_opus (gateway; CLI not available)');
+    expect(text).toContain('codex → gpt-5.2 (gateway; CLI not available)');
+    expect(text).toContain('gemini → gemini-3-pro-preview (gateway; CLI not available)');
   });
 });

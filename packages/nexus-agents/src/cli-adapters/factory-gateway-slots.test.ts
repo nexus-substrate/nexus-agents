@@ -4,7 +4,7 @@
  * adapter boundary, so nothing reaches the network.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -295,6 +295,59 @@ describe('createAllAdapters gateway family slots (#6604)', () => {
       if (savedCost === undefined) Reflect.deleteProperty(process.env, 'NEXUS_GATEWAY_COST');
       else process.env['NEXUS_GATEWAY_COST'] = savedCost;
     }
+  });
+
+  describe('a CLI disabled by NEXUS_DISABLED_CLIS is transport-scoped (#6720)', () => {
+    let savedDisabled: string | undefined;
+    beforeEach(() => {
+      savedDisabled = process.env['NEXUS_DISABLED_CLIS'];
+      process.env['NEXUS_DISABLED_CLIS'] = 'claude';
+    });
+    afterEach(() => {
+      if (savedDisabled === undefined) Reflect.deleteProperty(process.env, 'NEXUS_DISABLED_CLIS');
+      else process.env['NEXUS_DISABLED_CLIS'] = savedDisabled;
+    });
+
+    /** An installed claude that records every run in a marker file. */
+    function installRecordingClaude(): string {
+      const marker = join(emptyBin, 'claude-ran');
+      const path = join(emptyBin, 'claude');
+      writeFileSync(path, `#!/bin/sh\necho ran >> '${marker}'\nexit 0\n`);
+      chmodSync(path, 0o755);
+      return marker;
+    }
+
+    it('serves the slot from the gateway family model, never spawning or probing the CLI', async () => {
+      setGatewaySlotCatalog(THREE_FAMILY.map((id) => fakeGatewayModel(id)));
+      const marker = installRecordingClaude();
+      // Were the CLI consulted it would win: installed, healthy, authenticated.
+      claudeHealthMock.mockResolvedValue(HEALTHY);
+      probeCliMock.mockResolvedValue(AUTHENTICATED);
+      const arm = createAllAdapters(undefined, 'subprocess').get('claude');
+
+      expect(arm?.name).toBe('claude');
+      const res = await arm?.execute({ content: 'hi' });
+      expect(res?.ok === true ? res.value.model : undefined).toBe('claude-sonnet-4-6');
+      expect(gatewayServedSlotOf(arm)?.modelId).toBe('claude-sonnet-4-6');
+      expect(claudeHealthMock).not.toHaveBeenCalled();
+      expect(claudeExecuteMock).not.toHaveBeenCalled();
+      expect(probeCliMock).not.toHaveBeenCalled();
+      expect(existsSync(marker)).toBe(false);
+    });
+
+    it('gives the slot no arm when the gateway has no model of its family', () => {
+      setGatewaySlotCatalog(['gpt-5.5', 'gemini-2.5-pro'].map((id) => fakeGatewayModel(id)));
+      installRecordingClaude();
+      const arms = createAllAdapters(undefined, 'subprocess');
+      expect(arms.has('claude')).toBe(false);
+      expect(gatewayServedSlotOf(arms.get('codex'))?.modelId).toBe('gpt-5.5');
+    });
+
+    it('is unchanged with no gateway catalogue: the disabled CLI has no arm', () => {
+      installRecordingClaude();
+      const arms = createAllAdapters(undefined, 'subprocess');
+      expect([...arms.keys()]).toEqual(['gemini', 'codex', 'opencode']);
+    });
   });
 
   it('is unchanged with no gateway catalogue: every slot is its subprocess arm', () => {

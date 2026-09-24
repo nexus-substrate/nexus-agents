@@ -185,16 +185,19 @@ async function tryPreferredCli(
 
 /**
  * The gateway selection for a pinned slot whose CLI is not available (#6604).
- * `undefined` keeps the pre-#6604 path: no pinned slot, a disabled one, or no
+ * A CLI disabled by `NEXUS_DISABLED_CLIS` counts as not available (#6720:
+ * the variable is transport-scoped), so its family's gateway model serves
+ * the slot. `undefined` keeps the pre-#6604 path: no pinned slot, or no
  * gateway catalogue. A slot whose family the gateway does not serve is served
  * by a direct API key of the SAME family when one is set (#6604 review, item
- * 4: before the gateway existed that key served it); otherwise it THROWS, so
+ * 4: before the gateway existed that key served it) — unless its CLI is
+ * disabled, which never falls back to an API key (#6720); otherwise it THROWS, so
  * the resilient adapter reports it unavailable instead of substituting the
  * first installed CLI, another family's key or `NEXUS_CUSTOM_MODEL`.
  */
 function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSelection | undefined {
   const preferredCli = config.preferredCli;
-  if (preferredCli === undefined || isCliDisabled(preferredCli)) return undefined;
+  if (preferredCli === undefined) return undefined;
   if (preferredCli === 'opencode' && hasGatewaySlotCatalog()) {
     // #6626: opencode is multi-vendor, not a family. Serving it with the
     // gateway default would record the default's outcomes under the opencode
@@ -206,6 +209,14 @@ function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSele
   const slot = resolveGatewaySlot(preferredCli, process.env, logger);
   if (slot.kind === 'inactive') return undefined;
   if (slot.kind === 'unavailable') {
+    // #6720 review: a DISABLED CLI's slot is served by the gateway family model
+    // only. A same-family API key would be new API spend the operator did not
+    // ask for, and doctor and the fallback chain both call this slot unavailable.
+    if (isCliDisabled(preferredCli)) {
+      throw new Error(
+        `The '${preferredCli}' slot is unavailable: its CLI is disabled by NEXUS_DISABLED_CLIS and the gateway serves no ${slot.family} model`
+      );
+    }
     const sameFamily = buildApiSelectionForVendor(slot.family, logger, config);
     if (sameFamily !== null) {
       return sameFamily;

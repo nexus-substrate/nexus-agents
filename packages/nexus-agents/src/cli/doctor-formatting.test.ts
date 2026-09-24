@@ -45,7 +45,9 @@ vi.mock('../utils/text-utils.js', () => ({
 }));
 
 // Mock DEFAULT_CAPABILITIES
-vi.mock('../cli-adapters/types.js', () => ({
+vi.mock('../cli-adapters/types.js', async (importOriginal) => ({
+  // The real type guards: `isCliDisabled` reads `isCliName` (#6720).
+  isCliName: (await importOriginal<typeof import('../cli-adapters/types.js')>()).isCliName,
   DEFAULT_CAPABILITIES: {
     claude: {
       reasoning: 95,
@@ -139,6 +141,7 @@ describe('doctor-formatting', () => {
     installed,
     authenticated,
     authState: options.authState ?? (authenticated ? 'authenticated' : 'not-authenticated'),
+    routerAdmits: authenticated,
     versionStatus,
     version: options.version ?? '',
     ...(options.authMethod !== undefined && { authMethod: options.authMethod }),
@@ -755,6 +758,7 @@ describe('doctor-formatting', () => {
         installed: false,
         authenticated: false,
         authState: 'unverified',
+        routerAdmits: false,
         version: 'N/A',
         versionStatus: 'unsupported',
       });

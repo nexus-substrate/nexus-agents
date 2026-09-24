@@ -42,7 +42,7 @@ import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getAdaptiveBonus } from './weather-report.js';
 import { getAvailabilityCache, resolveFallback } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
-import { isCliDisabled } from '../../cli-adapters/disabled-clis.js';
+import { isDisabledSlotUnserved } from '../../cli-adapters/gateway-slot-arm.js';
 
 /**
  * Checks if any keyword from list is in the text.
@@ -303,8 +303,9 @@ export function scoreAllModels(
     Object.entries(MODEL_CAPABILITIES)
       .filter(([name]) => eligible === null || eligible.has(name))
       .filter(([name]) => !availCache.isKnownUnavailable(name as ModelId))
-      // #6590: a model served by a CLI disabled via NEXUS_DISABLED_CLIS is not a candidate.
-      .filter(([name]) => !isCliDisabled(getCliForModel(name)))
+      // #6590/#6720: a model whose CLI is disabled via NEXUS_DISABLED_CLIS is a
+      // candidate only when its family's gateway model serves that slot.
+      .filter(([name]) => !isDisabledSlotUnserved(getCliForModel(name)))
       .map(([name, profile]) => {
         const cap = lookupInTreeCapability(name);
         const opts: ScoreModelOptions = {
