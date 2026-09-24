@@ -877,7 +877,6 @@ describe('ClaudeAdapter', () => {
       const adapter = new ClaudeAdapter(validConfig);
 
       await expect(async () => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         for await (const _ of adapter.stream({
           messages: [{ role: 'user', content: 'Hi!' }],
         })) {
