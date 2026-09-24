@@ -19,6 +19,13 @@ import {
   createOutcomeStorage,
   sanitizeErrorMessage,
 } from './outcome-storage.js';
+import {
+  FAKE_GITHUB_PAT,
+  FAKE_GITHUB_OAUTH,
+  FAKE_GITHUB_USER_TOKEN,
+  FAKE_GITHUB_APP_TOKEN,
+  FAKE_GITHUB_FINE_GRAINED_PAT,
+} from '../testing/test-secrets.js';
 
 describe('sanitizeErrorMessage — secret redaction (security hardening)', () => {
   it('redacts the original sk- and keyword=value forms', () => {
@@ -957,5 +964,57 @@ describe('SQLiteOutcomeStorage', () => {
     it('should throw for invalid config', () => {
       expect(() => createOutcomeStorage({ dbPath: '' })).toThrow('Invalid OutcomeStorageConfig');
     });
+  });
+});
+
+describe('sanitizeErrorMessage — GitHub token formats and URL userinfo', () => {
+  const tokens = [
+    FAKE_GITHUB_PAT,
+    FAKE_GITHUB_OAUTH,
+    FAKE_GITHUB_USER_TOKEN,
+    FAKE_GITHUB_APP_TOKEN,
+    FAKE_GITHUB_FINE_GRAINED_PAT,
+  ];
+  for (const token of tokens) {
+    it(`redacts ${token.slice(0, 11)}…`, () => {
+      const out = sanitizeErrorMessage(`push failed with ${token} for org`);
+      expect(out).not.toContain(token);
+      expect(out).toContain('[REDACTED]');
+      expect(out).toContain('push failed with');
+    });
+  }
+
+  it('leaves near-miss token prefixes that are too short', () => {
+    for (const text of ['label ghs_short here', 'label ghu_short here', 'see github_pat_short']) {
+      expect(sanitizeErrorMessage(text)).toBe(text);
+    }
+  });
+
+  it('redacts user:pass userinfo and keeps the scheme and host', () => {
+    const out = sanitizeErrorMessage(
+      'clone https://svc-user:TESTFAKE-pass@git.example.com/org/repo failed'
+    );
+    expect(out).not.toContain('TESTFAKE-pass');
+    expect(out).not.toContain('svc-user');
+    expect(out).toContain('https://[REDACTED]@git.example.com/org/repo');
+  });
+
+  it('redacts token-only and password-only userinfo on any scheme', () => {
+    const tokenOnly = sanitizeErrorMessage('fetch https://TESTFAKEtoken0000@git.example.com/x');
+    expect(tokenOnly).not.toContain('TESTFAKEtoken0000');
+    expect(tokenOnly).toContain('@git.example.com/x');
+    const passOnly = sanitizeErrorMessage('connect redis://:TESTFAKE-pass@cache.example:6379/0');
+    expect(passOnly).not.toContain('TESTFAKE-pass');
+    expect(passOnly).toContain('redis://[REDACTED]@cache.example:6379/0');
+  });
+
+  it('leaves near-miss URLs without userinfo unchanged', () => {
+    for (const text of [
+      'see https://host.example:8443/path/@handle?q=a@b.example',
+      'remote git@github.com:org/repo.git',
+      'mail dev@example.com or mailto:dev@example.com',
+    ]) {
+      expect(sanitizeErrorMessage(text)).toBe(text);
+    }
   });
 });

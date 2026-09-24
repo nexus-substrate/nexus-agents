@@ -47,7 +47,8 @@ import {
   CONTENT_FILTERED,
   type NonAnswer,
 } from './openai-mappers.js';
-import { sanitizeErrorDetails } from '../security/output-sanitizer.js';
+import { REDACTED_KEY_PLACEHOLDER, sanitizeErrorDetails } from '../security/output-sanitizer.js';
+import { redactGatewaySecrets, type GatewaySecretSource } from './gateway-redaction.js';
 
 // Re-export types and constants for public API
 export { OPENAI_MODELS, OPENAI_MODEL_ALIASES, type OpenAIAdapterConfig } from './openai-types.js';
@@ -100,7 +101,19 @@ function kvTag(key: string, val: string | number | null | undefined): string {
   return val === null || val === undefined || val === '' ? '' : `${key}=${String(val)}`;
 }
 
-function describeOpenAIApiError(v: ApiErrorView, apiKey?: string): string {
+/**
+ * Error text with the configured credentials removed: the key and every
+ * header value by exact match (a gateway's custom auth header and extra
+ * headers have no vendor shape), then the pattern sanitizer.
+ */
+function redactErrorText(text: string, secrets: GatewaySecretSource): string {
+  return sanitizeErrorDetails(
+    redactGatewaySecrets(text, secrets, REDACTED_KEY_PLACEHOLDER),
+    secrets.apiKey
+  );
+}
+
+function describeOpenAIApiError(v: ApiErrorView, secrets: GatewaySecretSource): string {
   const tags = [
     `HTTP ${String(v.status ?? 'unknown')}`,
     kvTag('type', v.type),
@@ -117,7 +130,7 @@ function describeOpenAIApiError(v: ApiErrorView, apiKey?: string): string {
       body = ' body=<unserializable>';
     }
   }
-  return sanitizeErrorDetails(`${tags.join(' ')}: ${v.message ?? ''}${body}`, apiKey);
+  return redactErrorText(`${tags.join(' ')}: ${v.message ?? ''}${body}`, secrets);
 }
 
 /** Cap the surfaced gateway error body so a huge response can't bloat logs/messages. */
@@ -127,6 +140,8 @@ export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
   private readonly resolvedModelId: string;
   private readonly apiKey: string | undefined;
+  /** Headers sent on every request; each value is redacted from error text. */
+  private readonly headers: OpenAIAdapterConfig['defaultHeaders'];
 
   /**
    * Creates a new OpenAIAdapter instance.
@@ -160,6 +175,7 @@ export class OpenAIAdapter extends BaseAdapter {
     super(baseConfig);
 
     this.apiKey = config.apiKey;
+    this.headers = config.defaultHeaders;
     this.resolvedModelId = resolvedModelId;
 
     // Validate API key presence
@@ -260,11 +276,11 @@ export class OpenAIAdapter extends BaseAdapter {
       probe.cause = error;
       const classified = super.transformError(probe);
       // Surface the full diagnostic detail in the final message (code/cause kept).
-      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v, this.apiKey)}`;
+      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v, { apiKey: this.apiKey, headers: this.headers })}`;
       return classified;
     }
     const err = super.transformError(error);
-    err.message = sanitizeErrorDetails(err.message, this.apiKey);
+    err.message = redactErrorText(err.message, { apiKey: this.apiKey, headers: this.headers });
     return err;
   }
 

@@ -33,6 +33,7 @@ import {
   type GatewayHostStatus,
 } from '../adapters/gateway-host-status.js';
 import { gatewayProxyUrl } from '../adapters/gateway-http.js';
+import { redactGatewaySecrets } from '../adapters/gateway-redaction.js';
 import {
   gatewayModelFamily,
   gatewaySlotMapping,
@@ -273,10 +274,7 @@ async function probeOne(
 
 /** `message` with the key and every extra header value replaced. */
 function redact(message: string, config: OpenAICompatConfig): string {
-  const secrets = [config.apiKey, ...Object.values(config.extraHeaders ?? {})];
-  return secrets
-    .filter((s) => s !== '')
-    .reduce((text, secret) => text.replaceAll(secret, '<redacted>'), message);
+  return redactGatewaySecrets(message, { apiKey: config.apiKey, headers: config.extraHeaders });
 }
 
 /** A vendor slot the gateway can serve: one per family. */

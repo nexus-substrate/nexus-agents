@@ -91,6 +91,11 @@ import {
   defaultCollisionEnvelope,
   type JobEnvelopeBuilders,
 } from '../jobs/run-as-job.js';
+import {
+  attachPartialsOnCancel,
+  throwIfVoteCancelled,
+  VoteCancelledError,
+} from './consensus-vote-cancelled.js';
 import { randomUUID } from 'node:crypto';
 import type {
   VotingStrategy,
@@ -512,6 +517,9 @@ export async function executeVoting(
   // live result, so an `unverifiable` seat is diagnosable without stderr.
   const panelWorkspace = resolvePanelWorkspace(opts?.workspace);
   const result = await executeVotingInner(input, logger, { ...opts, project, panelWorkspace });
+  // #6735 backstop: a cancel that landed after the seats settled (during the
+  // contrarian check or escalation) must not stamp or record a decision either.
+  throwIfVoteCancelled(opts?.signal, result.votes, result.votes.length);
   result.project = project;
   // A simulated panel pointed no seat at a directory, so it names none.
   if (!input.simulateVotes) result.workspace = panelWorkspace;
@@ -532,6 +540,13 @@ export async function executeVoting(
   // happen. No-op when no options were declared.
   applyOptionGate(input, result);
   result.decision = resolveVoteDecision(input, result, errorCount).decision;
+  // #6735: the tracker write stays here, not after the ledger append. It runs
+  // with no `await` since the backstop above, so a cancel observed before the
+  // verdict never reaches it. A cancel that lands later (during the ledger-lock
+  // wait) leaves this observation in place on purpose: it is per-voter
+  // agreement from a panel whose every seat settled and whose verdict was
+  // computed before the cancel. It is a statistic, not a decision record, and
+  // it binds nothing. Moving it would change all five `executeVoting` callers.
   if (
     !correlationAlreadyRecorded &&
     (result.decision === 'approved' || result.decision === 'rejected')
@@ -630,6 +645,9 @@ async function executeVotingInner(
     signal: opts.signal,
     onVoteCollected: opts.onVoteCollected,
   });
+  // #6735: a cancelled vote stops here, before the engine, with only the
+  // seats that cast a vote — no verdict is computed from a partial panel.
+  throwIfVoteCancelled(opts.signal, votes, roles.length);
 
   // Error-policy gate (#2630): hard floor + fail_closed + reduce_denominator /
   // count_as_abstain transformation. Engine sees the resulting shape.
@@ -788,6 +806,11 @@ interface DeclaredByCaller {
   readonly options: readonly string[] | undefined;
   readonly ratifies?: string;
   readonly ratifiesPr?: VoteRecordPrBinding;
+  /**
+   * The async job's cancel signal (#6735), re-checked inside the ledger lock
+   * right before the append. Absent in sync mode.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -844,6 +867,7 @@ async function recordVoteSideEffects(
     // #5130: the PR binding takes the same hop as `ratifies`; the seam test
     // (`consensus-vote-ratifies-pr.test.ts`) reads it back off the ledger.
     ...(declared.ratifiesPr !== undefined ? { ratifiesPr: declared.ratifiesPr } : {}),
+    signal: declared.signal,
   });
   // #3855: roll up + persist this decision's per-voter cost and ride it on the
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
@@ -873,9 +897,10 @@ async function recordVoteSideEffects(
 }
 
 /** What the tool input declared that the voting result does not carry. */
-function declaredByCaller(args: ConsensusVoteInput): DeclaredByCaller {
+function declaredByCaller(args: ConsensusVoteInput, signal?: AbortSignal): DeclaredByCaller {
   return {
     options: args.options,
+    signal,
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
   };
@@ -920,6 +945,16 @@ async function handleConsensusVote(
     if (result.decision === undefined) {
       throw new Error('Consensus vote completed without a resolved decision');
     }
+    // #6735: the ledger append goes first. It throws VoteCancelledError when a
+    // cancel landed during its lock wait, and a cancelled vote must not then
+    // be recorded to memory or the outcome store as a success either.
+    const { costSummary, voteRecord } = await recordVoteSideEffects(
+      args.proposal,
+      result.strategy,
+      result,
+      logger,
+      declaredByCaller(args, signal)
+    );
     recordVoteSuccess({
       proposal: args.proposal,
       strategy: result.strategy,
@@ -928,18 +963,14 @@ async function handleConsensusVote(
       approvalPercentage: result.result.approvalPercentage,
       votes: result.votes,
     });
-    const { costSummary, voteRecord } = await recordVoteSideEffects(
-      args.proposal,
-      result.strategy,
-      result,
-      logger,
-      declaredByCaller(args)
-    );
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
     emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);
     return { ok: true, value: buildResponse(args, result, costSummary, voteRecord) };
   } catch (error) {
+    // #6735: a cancel is not a vote failure — it reaches the async dispatcher,
+    // which attaches the cast seats to the cancelled record.
+    if (error instanceof VoteCancelledError) throw error;
     const message = getErrorMessage(error);
     const cause = error instanceof Error ? error : new Error(message);
     logger.error('Consensus vote failed', cause);
@@ -966,7 +997,9 @@ type ConsensusVoteToolResponse = ToolResult;
  * also reaches every seat's adapter call, combined with the seat's deadline, so
  * a voter in flight is aborted rather than left to run for the length of its
  * slowest seat while the job holds its concurrency slot. The job record stays
- * `cancelled` with no vote payload (the terminal writers no-op, #4022).
+ * `cancelled` (the terminal writers no-op, #4022). Since #6735 the body stops
+ * before any verdict and the seats that had cast a vote are attached to that
+ * record as `cancelledPartial` — never as a decision, and never on the ledger.
  *
  * Concurrency cap is enforced via `tryAcquire('consensus_vote')`
  * (default 2; voting is 7-fan-out so caps multiply adapter load fast).
@@ -1007,6 +1040,8 @@ function dispatchAsyncConsensusVote(
     // #5066: structured envelopes — this tool declares an outputSchema, and
     // the SDK rejects a non-error result that carries no structured content.
     toEnvelope: ASYNC_ENVELOPES,
+    // #6735: on a cancel the body throws VoteCancelledError; the seats it had
+    // cast are attached to the `cancelled` record, which keeps its status.
     // #4362: `handleConsensusVote`'s `{ ok: false }` used to flow into the job
     // record verbatim, and `runAsJob` records `complete` for anything its `run`
     // callback RESOLVES — so a dead voter panel produced a job a caller polling
@@ -1018,8 +1053,11 @@ function dispatchAsyncConsensusVote(
     // `progress` is the liveness heartbeat, fired as each seat settles, so a
     // panel allowed past the standard MCP ceiling is never called wedged while
     // its seats keep landing.
-    run: (_jobId, input, signal, progress) =>
-      unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress)),
+    run: (jobId, input, signal, progress) =>
+      attachPartialsOnCancel(
+        jobId,
+        unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress))
+      ),
     ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });
 }

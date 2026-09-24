@@ -1,5 +1,47 @@
 # nexus-agents
 
+## 8.108.1
+
+### Patch Changes
+
+- [#6755](https://github.com/nexus-substrate/nexus-agents/pull/6755) [`bf115c9`](https://github.com/nexus-substrate/nexus-agents/commit/bf115c95a96c24224226f808f4c5d22b1d3f7de3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Error messages and job records now redact configured gateway header values and more GitHub token formats; the code-PR path guard covers more repository-control paths.
+
+  - Gateway errors (model discovery, per-model adapter errors and `doctor --gateway`) redact the key and every `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS` value through one shared helper.
+  - The output, logger and outcome-storage sanitizers redact `ghs_`, `ghu_` and `github_pat_` tokens, and the credentials in URL userinfo (`scheme://user:pass@host`), keeping the scheme and host.
+  - Completed async job records sanitize every string value of the stored result, as failed records already did. Keys and non-string values are unchanged.
+  - The code-PR sensitive-path classifier treats `.git` (the path and anything under it), `.husky/**`, `.gitattributes` and `.github/actions/**` as sensitive. `.gitignore` stays allowed.
+  - CI withholds secrets from `nexus-codepr/` branches as it does from `auto-remediation/` branches.
+
+## 8.108.0
+
+### Minor Changes
+
+- [#6749](https://github.com/nexus-substrate/nexus-agents/pull/6749) [`c709ea7`](https://github.com/nexus-substrate/nexus-agents/commit/c709ea700d52a621796ef1dac838918cadc9d41c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - A cancelled async `consensus_vote` now records the votes cast before the cancel, and no longer records a decision.
+
+  - When `cancel_job` lands mid-vote, the job record keeps `status: 'cancelled'` and gains a `cancelledPartial` field once the vote body settles: `{ partialVotes, seatsCast, panelSize }`. `partialVotes` holds the seats that had cast a vote. A seat aborted by the cancel or never launched is not counted. `seatsCast` is always the length of `partialVotes`, so a cancel before any seat answered reads `seatsCast: 0` of `panelSize`, not an absent field. The field is written only to the sidecar job store. A read through `NEXUS_JOB_RESULT_SOURCE=task_state` does not carry it, and a poll between the cancel and the body settling sees `cancelled` without it.
+  - Fixes a fidelity bug. Before this change, the cancelled body carried on after the cancel. It tallied whatever seats had answered, computed a decision from that partial panel, recorded it to the voter-correlation tracker, and appended it to the runtime vote-record ledger (`vote-records.jsonl`). The job record itself showed none of this. Now the vote stops before any tally: no verdict is computed from a cancelled panel, and nothing is appended to the ledger or the tracker. This includes a cancel that lands after every seat has answered but before the verdict, for example during the quick-mode contrarian check. It also includes a cancel that lands while the vote waits for the ledger's file lock: the signal is re-checked inside the lock, immediately before the append. So a `ratifiesPr` vote cancelled there leaves no ratification record. In that last case the voter-correlation tracker keeps its observation, because the panel was complete and the verdict computed before the cancel. The vote is no longer recorded to memory or the outcome store as a success.
+  - When the runaway guard, rather than `cancel_job`, stops a vote, the error now says the vote timed out. It no longer says the vote was cancelled.
+  - If a cancel lands during a quick-mode escalation re-vote, `cancelledPartial` describes only the full re-vote panel. The quick-panel votes are not included.
+  - A later complete or failed write still cannot change a cancelled record ([#4022](https://github.com/nexus-substrate/nexus-agents/issues/4022)). The new writer (`attachCancelledPartial`) acts only on a record that is already `cancelled` and does not yet carry partials. It adds that one field and never changes the status.
+  - The `run` tool's `consensus` strategy now rejects with `VoteCancelledError` on a cancel instead of returning a verdict computed from the partial panel.
+
+## 8.107.0
+
+### Minor Changes
+
+- [#6748](https://github.com/nexus-substrate/nexus-agents/pull/6748) [`a841139`](https://github.com/nexus-substrate/nexus-agents/commit/a841139c27df70eb6d26765bed0226fabca92716) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `run_dev_pipeline` now honors `timeoutMs`. Each stage runs under a deadline, and a stage that runs past its deadline has its model calls aborted.
+
+  - `timeoutMs` is a deadline for EACH stage call, not a budget for the whole run. Every plan/vote and implement/QA iteration gets its own deadline. The tool accepted this field before but never read it, and `runDevPipeline` had no per-stage deadline at all. It now applies to every stage, the vote included, and is clamped to the `pipeline` operation-class guard.
+  - If you don't set `timeoutMs`, the vote stage runs under the `multi-llm-panel` class guard (900 s), which fits a full 7-seat panel. Every other stage runs under the `pipeline` class guard (1800 s). `NEXUS_TIMEOUT_CLASS_*_MS` and `NEXUS_TIMEOUT_MULTIPLIER` adjust both. The longest stage default is below the `async-job-body` guard, so on an async run a stuck stage fails with its own timeout before the whole-job guard ends the job.
+  - A stage that runs past its deadline fails the run with `Dev pipeline <stage> stage timed out after <ms>ms`. An implement call that times out is recorded as a failed task, and the other tasks continue. The stage's signal is aborted with a `TimeoutError` reason, so the CLI subprocess or the voter seats stop. A `cancel_job` now also aborts the stage that is running, not just the stages after it.
+  - An aborted expert call is no longer recorded as the model's failure.
+  - The research, quality-gate and security-scan stages do not yet pass the signal to their underlying work ([#6747](https://github.com/nexus-substrate/nexus-agents/issues/6747)). They still fail at the deadline.
+  - New optional API:
+    - `DevPipelineOptions.stageTimeoutMs`.
+    - A trailing `signal?: AbortSignal` on every `DevPipelineStages` method.
+    - `executeExpert(..., { signal })`.
+    - `CompositeRouter.executeTask(task, options?)` and `executeDecision(decision, task, runTask?, options?)`, which pass `ExecutionOptions` to the routed adapter.
+
 ## 8.106.1
 
 ### Patch Changes

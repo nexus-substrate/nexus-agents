@@ -69,6 +69,7 @@ import {
 import { readCodePrGuardsGreenSoak } from './codepr-soak-store.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { hasStringProperty, redactCredentials } from './codepr-credentials.js';
+import type { CODEPR_BRANCH_PREFIX } from './auto-remediation-branch.js';
 
 export { redactCredentials } from './codepr-credentials.js';
 
@@ -83,8 +84,13 @@ export { redactCredentials } from './codepr-credentials.js';
  */
 export const CODEPR_TOKEN_ENV = 'NEXUS_CODEPR_TOKEN' as const;
 
-/** The MANDATORY feature-branch prefix. A push is confined to `nexus-codepr/<runId>`. */
-export const CODEPR_PUSH_BRANCH_PREFIX = 'nexus-codepr/' as const;
+/**
+ * The MANDATORY feature-branch prefix. A push is confined to `nexus-codepr/<runId>`.
+ * Typed as {@link CODEPR_BRANCH_PREFIX} — the entry in the list of bot branch
+ * prefixes CI runs secret-less — so the two cannot drift: a different literal
+ * here is a compile error.
+ */
+export const CODEPR_PUSH_BRANCH_PREFIX: typeof CODEPR_BRANCH_PREFIX = 'nexus-codepr/';
 
 /** Zero usage snapshot used for the pre-push guard re-check when none supplied. */
 const PUSH_USAGE_ZERO: ResourceUsage = { wallClockMs: 0, tokens: 0, toolCalls: 0 };

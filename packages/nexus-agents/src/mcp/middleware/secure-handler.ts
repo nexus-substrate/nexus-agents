@@ -31,7 +31,7 @@ import {
 import type { IAuditLogger, AuditOutcome } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
-import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
+import { sanitizeErrorDetails, sanitizeStringLeaves } from '../../security/output-sanitizer.js';
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { getGlobalExecutionMode } from './policy-registry.js';
 import { runPolicyCheck, getRegisteredAuditLogger } from './policy-check.js';
@@ -204,20 +204,6 @@ function sanitizeOutput(text: string, logger?: ILogger): string {
   return sanitized;
 }
 
-/** Recursively sanitize string fields in structured values (#6484). */
-function sanitizeDeep(value: unknown, logger?: ILogger): unknown {
-  if (typeof value === 'string') {
-    return sanitizeOutput(value, logger);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeDeep(item, logger));
-  }
-  if (typeof value === 'object' && value !== null) {
-    return sanitizeDeepRecord(value as Record<string, unknown>, logger);
-  }
-  return value;
-}
-
 /** Recursively sanitize record entries (#6484). */
 function sanitizeDeepRecord(
   obj: Record<string, unknown>,
@@ -225,7 +211,7 @@ function sanitizeDeepRecord(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj)) {
-    result[key] = sanitizeDeep(val, logger);
+    result[key] = sanitizeStringLeaves(val, (text) => sanitizeOutput(text, logger));
   }
   return result;
 }
