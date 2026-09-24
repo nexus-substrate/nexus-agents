@@ -79,7 +79,7 @@ const WORKFLOW_METADATA: readonly GraphWorkflowInfo[] = [
   },
 ];
 
-/** Returns metadata about all available graph workflows (built-in + multi-CLI + security setup). */
+/** Returns metadata about all available graph workflows (built-in + heuristic "multi-CLI" templates + security setup). */
 export function getGraphWorkflowList(): readonly GraphWorkflowInfo[] {
   return [
     ...WORKFLOW_METADATA,
@@ -88,7 +88,7 @@ export function getGraphWorkflowList(): readonly GraphWorkflowInfo[] {
   ];
 }
 
-/** Registry of all predefined graph workflows (built-in + multi-CLI + security setup). */
+/** Registry of all predefined graph workflows (built-in + heuristic "multi-CLI" templates + security setup). */
 export function getGraphRegistry(): ReadonlyMap<string, GraphFactory> {
   return new Map<string, GraphFactory>([
     ['echo', createEchoGraph],

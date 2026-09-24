@@ -1,11 +1,18 @@
 /**
- * nexus-agents/mcp - Multi-CLI Graph Workflow Templates
+ * nexus-agents/mcp - Heuristic Graph Workflow Templates
  *
- * Specialized pipelines that assign each graph node to a preferred CLI
- * based on model strengths:
- * - security-audit: Claude (threats) -> Codex (code) -> Gemini (docs)
- * - test-generation: Codex (tests) -> Claude (review) -> Gemini (edge cases)
- * - documentation: Gemini (research) -> Claude (write) -> Codex (examples)
+ * Three four-node graph templates whose every node is a LOCAL heuristic:
+ * substring and regex checks over the input text. No node calls a model,
+ * a CLI or an adapter, and no tokens are spent (#6676).
+ * - security-audit: threat surfaces -> static patterns -> doc gaps -> report
+ * - test-generation: test stubs -> coverage gaps -> edge cases -> report
+ * - documentation: export/import scan -> skeleton -> example stubs -> assemble
+ *
+ * Step labels are prefixed `[heuristic]` so a caller reading `steps` does
+ * not mistake a keyword scan for a model review. The `cliAssignments`
+ * metadata names the model family each node was DESIGNED for (the intended
+ * owner if these nodes are ever made model-backed); it is not an executor
+ * and nothing routes on it.
  *
  * @module mcp/tools/run-graph-workflow-multicli-templates
  * (Source: Issue #866 - Specialized multi-CLI graph workflow pipelines)
@@ -21,13 +28,17 @@ import type { GraphWorkflowInfo } from './run-graph-workflow-templates.js';
 
 type GraphFactory = () => CompiledGraph | undefined;
 
-/** CLI assignment for a single graph node. */
+/**
+ * Intended owner of a graph node: the CLI family the node was designed for.
+ * NOT an executor — the node runs a local heuristic and invokes no CLI (#6676).
+ */
 export interface CliAssignment {
   readonly node: string;
+  /** The family intended to own this node if it becomes model-backed. Nothing routes on it. */
   readonly preferredCli: 'claude' | 'codex' | 'gemini';
 }
 
-/** Multi-CLI template with workflow metadata and CLI routing assignments. */
+/** Heuristic template with workflow metadata and intended-owner annotations (not routing). */
 export interface MultiCliTemplate {
   readonly factory: GraphFactory;
   readonly metadata: GraphWorkflowInfo;
@@ -35,7 +46,7 @@ export interface MultiCliTemplate {
 }
 
 // ============================================================================
-// CLI Routing Assignments
+// Intended-owner annotations (design intent only; nothing routes on these)
 // ============================================================================
 
 export const SECURITY_AUDIT_ASSIGNMENTS: readonly CliAssignment[] = [
@@ -60,7 +71,7 @@ export const DOCUMENTATION_ASSIGNMENTS: readonly CliAssignment[] = [
 ];
 
 // ============================================================================
-// Security Audit — Claude -> Codex -> Gemini -> synthesis
+// Security Audit — heuristic keyword checks -> concatenated report
 // ============================================================================
 
 function threatModelHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
@@ -75,7 +86,7 @@ function threatModelHandler(state: Readonly<GraphState>): Promise<Partial<GraphS
   if (threats.length === 0) threats.push('No significant threat surfaces');
   return Promise.resolve({
     threat_model: `Threat model: ${threats.join('; ')}`,
-    steps: [`[claude] Threat modeling: ${String(threats.length)} surfaces identified`],
+    steps: [`[heuristic] Threat surfaces: ${String(threats.length)} identified`],
   });
 }
 
@@ -90,7 +101,7 @@ function codeAnalysisHandler(state: Readonly<GraphState>): Promise<Partial<Graph
   if (findings.length === 0) findings.push('No static analysis issues');
   return Promise.resolve({
     code_analysis: `Code analysis: ${findings.join('; ')}`,
-    steps: [`[codex] Static analysis: ${String(findings.length)} findings`],
+    steps: [`[heuristic] Static patterns: ${String(findings.length)} findings`],
   });
 }
 
@@ -103,7 +114,7 @@ function docReviewHandler(state: Readonly<GraphState>): Promise<Partial<GraphSta
   if (gaps.length === 0) gaps.push('Documentation adequate');
   return Promise.resolve({
     doc_review: `Doc review: ${gaps.join('; ')}`,
-    steps: [`[gemini] Documentation review: ${String(gaps.length)} gaps found`],
+    steps: [`[heuristic] Doc-tag check: ${String(gaps.length)} gaps found`],
   });
 }
 
@@ -112,7 +123,7 @@ function synthesizeAuditHandler(state: Readonly<GraphState>): Promise<Partial<Gr
   const ca = String(state['code_analysis']);
   const dr = String(state['doc_review']);
   const report = `Security Audit Report\n---\n${tm}\n${ca}\n${dr}`;
-  return Promise.resolve({ report, steps: ['[claude] Synthesized audit report'] });
+  return Promise.resolve({ report, steps: ['[heuristic] Concatenated audit report'] });
 }
 
 function createSecurityAuditGraph(): CompiledGraph | undefined {
@@ -137,7 +148,7 @@ function createSecurityAuditGraph(): CompiledGraph | undefined {
 }
 
 // ============================================================================
-// Test Generation — Codex -> Claude -> Gemini -> compilation
+// Test Generation — heuristic stub + gap checks -> concatenated report
 // ============================================================================
 
 function generateTestsHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
@@ -151,7 +162,7 @@ function generateTestsHandler(state: Readonly<GraphState>): Promise<Partial<Grap
   if (tests.length === 0) tests.push('// No functions found to test');
   return Promise.resolve({
     tests: tests.join('\n'),
-    steps: [`[codex] Generated ${String(tests.length)} test(s)`],
+    steps: [`[heuristic] Test stubs: ${String(tests.length)} generated`],
   });
 }
 
@@ -165,7 +176,7 @@ function reviewCoverageHandler(state: Readonly<GraphState>): Promise<Partial<Gra
   if (gaps.length === 0) gaps.push('Coverage appears adequate');
   return Promise.resolve({
     review: `Coverage review: ${gaps.join('; ')}`,
-    steps: [`[claude] Coverage review: ${String(gaps.length)} gap(s)`],
+    steps: [`[heuristic] Coverage keyword check: ${String(gaps.length)} gap(s)`],
   });
 }
 
@@ -178,7 +189,7 @@ function researchEdgeCasesHandler(state: Readonly<GraphState>): Promise<Partial<
   if (edges.length === 0) edges.push('No obvious edge cases');
   return Promise.resolve({
     edge_cases: `Edge cases: ${edges.join('; ')}`,
-    steps: [`[gemini] Researched ${String(edges.length)} edge case(s)`],
+    steps: [`[heuristic] Edge-case keyword check: ${String(edges.length)} edge case(s)`],
   });
 }
 
@@ -187,7 +198,7 @@ function compileTestReportHandler(state: Readonly<GraphState>): Promise<Partial<
   const review = String(state['review']);
   const edgeCases = String(state['edge_cases']);
   const report = `Test Generation Report\n---\n${tests}\n${review}\n${edgeCases}`;
-  return Promise.resolve({ report, steps: ['[claude] Compiled test report'] });
+  return Promise.resolve({ report, steps: ['[heuristic] Concatenated test report'] });
 }
 
 function createTestGenerationGraph(): CompiledGraph | undefined {
@@ -212,7 +223,7 @@ function createTestGenerationGraph(): CompiledGraph | undefined {
 }
 
 // ============================================================================
-// Documentation — Gemini -> Claude -> Codex -> assembly
+// Documentation — heuristic export scan + skeleton -> assembly
 // ============================================================================
 
 function researchGatherHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
@@ -225,7 +236,7 @@ function researchGatherHandler(state: Readonly<GraphState>): Promise<Partial<Gra
   if (imports.length > 0) research.push(`Dependencies: ${String(imports.length)} imports`);
   return Promise.resolve({
     research: research.join('; '),
-    steps: [`[gemini] Gathered research on "${topic}"`],
+    steps: [`[heuristic] Export/import scan for "${topic}"`],
   });
 }
 
@@ -240,7 +251,7 @@ function writeStructureHandler(state: Readonly<GraphState>): Promise<Partial<Gra
   ];
   return Promise.resolve({
     content: sections.join('\n\n'),
-    steps: [`[claude] Structured documentation for "${topic}"`],
+    steps: [`[heuristic] Documentation skeleton for "${topic}"`],
   });
 }
 
@@ -255,7 +266,7 @@ function codeExamplesHandler(state: Readonly<GraphState>): Promise<Partial<Graph
   if (examples.length === 0) examples.push('```typescript\n// No exported functions found\n```');
   return Promise.resolve({
     examples: examples.join('\n\n'),
-    steps: [`[codex] Generated ${String(examples.length)} code example(s)`],
+    steps: [`[heuristic] Example stubs: ${String(examples.length)} generated`],
   });
 }
 
@@ -263,7 +274,7 @@ function assembleDocHandler(state: Readonly<GraphState>): Promise<Partial<GraphS
   const content = String(state['content']);
   const examples = String(state['examples']);
   const output = `${content}\n\n## Code Examples\n\n${examples}`;
-  return Promise.resolve({ output, steps: ['[claude] Assembled final documentation'] });
+  return Promise.resolve({ output, steps: ['[heuristic] Assembled documentation'] });
 }
 
 function createDocumentationGraph(): CompiledGraph | undefined {
@@ -292,7 +303,10 @@ function createDocumentationGraph(): CompiledGraph | undefined {
 // Registration
 // ============================================================================
 
-/** Returns all multi-CLI graph workflow templates with CLI assignments. */
+/**
+ * Returns the heuristic graph workflow templates with their intended-owner
+ * annotations. The templates call no model (#6676).
+ */
 export function getMultiCliTemplates(): readonly MultiCliTemplate[] {
   return [
     {
@@ -300,7 +314,7 @@ export function getMultiCliTemplates(): readonly MultiCliTemplate[] {
       metadata: {
         name: 'security-audit',
         description:
-          'Multi-CLI security audit: Claude (threats) -> Codex (code) -> Gemini (docs) -> synthesis',
+          'Heuristic security audit (local keyword checks, calls no model): threat surfaces -> static patterns -> doc gaps -> report',
         inputFields: ['code'],
         nodeCount: 4,
         hasConditionalEdges: false,
@@ -312,7 +326,7 @@ export function getMultiCliTemplates(): readonly MultiCliTemplate[] {
       metadata: {
         name: 'test-generation',
         description:
-          'Multi-CLI test gen: Codex (tests) -> Claude (review) -> Gemini (edges) -> report',
+          'Heuristic test gen (local keyword checks, calls no model): test stubs -> coverage gaps -> edge cases -> report',
         inputFields: ['code'],
         nodeCount: 4,
         hasConditionalEdges: false,
@@ -324,7 +338,7 @@ export function getMultiCliTemplates(): readonly MultiCliTemplate[] {
       metadata: {
         name: 'documentation',
         description:
-          'Multi-CLI docs: Gemini (research) -> Claude (write) -> Codex (examples) -> assemble',
+          'Heuristic docs (local regex scan, calls no model): exports/imports -> skeleton -> example stubs -> assemble',
         inputFields: ['topic', 'code'],
         nodeCount: 4,
         hasConditionalEdges: false,
@@ -334,7 +348,7 @@ export function getMultiCliTemplates(): readonly MultiCliTemplate[] {
   ];
 }
 
-/** Returns graph factories for multi-CLI templates, keyed by name. */
+/** Returns graph factories for the heuristic templates, keyed by name. */
 export function getMultiCliRegistry(): ReadonlyMap<string, GraphFactory> {
   const templates = getMultiCliTemplates();
   return new Map(templates.map((t) => [t.metadata.name, t.factory]));

@@ -274,7 +274,7 @@ async function handleRunGraphWorkflow(
 // ============================================================================
 
 const GRAPH_WORKFLOW_DESCRIPTION =
-  "Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Checkpoints drive the executor in-process recovery (crash-resume + selective node retry) and inspection — the MCP call is fire-and-forget with NO caller resume input, and the checkpoint store is in-memory (not durable across process restarts). For straight linear templates, use `run_workflow` instead. Supports dispatch: 'async' — returns a jobId immediately; poll get_job_result.";
+  "Run a DAG-shaped workflow with per-node checkpoints, event streaming, and an audit trail. Checkpoints drive the executor in-process recovery (crash-resume + selective node retry) and inspection — the MCP call is fire-and-forget with NO caller resume input, and the checkpoint store is in-memory (not durable across process restarts). For straight linear templates, use `run_workflow` instead. The security-audit, test-generation and documentation templates run local heuristic keyword checks and call no model. Their steps are labelled `[heuristic]` (#6676). Supports dispatch: 'async' — returns a jobId immediately; poll get_job_result.";
 
 const GRAPH_WORKFLOW_SCHEMA = {
   workflow: z
