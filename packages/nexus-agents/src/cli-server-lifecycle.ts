@@ -13,7 +13,7 @@ import {
   type StdinLifecycleMonitor,
 } from './adapters/stdin-lifecycle.js';
 import { EXIT_CODES } from './cli-types.js';
-import { signalTrackedProcessTrees } from './cli-adapters/process-tree-kill.js';
+import { signalTrackedProcessTreesAsync } from './cli-adapters/process-tree-kill.js';
 import type { ILogger } from './core/index.js';
 import { getTimeProvider } from './core/index.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
@@ -228,9 +228,13 @@ export function createGracefulShutdown(options: GracefulShutdownOptions): Shutdo
     logger.info('Received shutdown signal', { signal: reason });
     // #6680: a signal to the server's PID alone does not reach its CLI
     // subprocesses. SIGTERM each one with its descendants; the exit hook in
-    // process-tree-kill SIGKILLs anything still running when we exit.
-    const cliTrees = signalTrackedProcessTrees('SIGTERM');
-    if (cliTrees > 0) logger.info('Signalled CLI subprocesses', { count: cliTrees });
+    // process-tree-kill SIGKILLs anything still running when we exit. On Linux
+    // the SIGTERMs go out before this call returns. Off Linux each tree is
+    // first collected by an async `ps` (#6718), so the signalling runs beside
+    // the cleanup and inside the same bound instead of blocking the loop.
+    const cliSignalled = signalTrackedProcessTreesAsync('SIGTERM').then((cliTrees) => {
+      if (cliTrees > 0) logger.info('Signalled CLI subprocesses', { count: cliTrees });
+    });
 
     let timer: NodeJS.Timeout | undefined;
     const timedOut = new Promise<'timeout'>((resolve) => {
@@ -242,7 +246,10 @@ export function createGracefulShutdown(options: GracefulShutdownOptions): Shutdo
     });
 
     try {
-      const outcome = await Promise.race([cleanup().then(() => 'done' as const), timedOut]);
+      const outcome = await Promise.race([
+        Promise.all([cleanup(), cliSignalled]).then(() => 'done' as const),
+        timedOut,
+      ]);
       if (outcome === 'timeout') {
         logger.error(
           'Shutdown cleanup timed out; exiting without completing it',
