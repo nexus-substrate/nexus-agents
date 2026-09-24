@@ -407,6 +407,31 @@ describe('resolveDefaultModelAdapter (#4040)', () => {
     expect(resolveDefaultModelAdapter(undefined, registry)).toBe(registryDefault);
     expect(resolveDefaultModelAdapter([], registry)).toBe(registryDefault);
   });
+
+  // #6651: with a catalogue registered, the server default is the ranked
+  // `resolveGatewayDefault` choice — the registry default's rule — not the
+  // gateway's listing order.
+  describe('with a gateway catalogue registered (#6651)', () => {
+    afterEach(() => {
+      _resetGatewaySlotCatalog();
+    });
+
+    it('takes the ranked flagship over a mini listed first', () => {
+      const gw = ['gpt-5.5-mini', 'claude-haiku-4-5', 'claude-opus-4-6'].map(makeMockAdapter);
+      setGatewaySlotCatalog(gw);
+      expect(resolveDefaultModelAdapter(gw, registry).modelId).toBe('claude-opus-4-6');
+    });
+
+    it('keeps the primary gateway adapter when the catalogue holds no chat model', () => {
+      const gw = ['gpt-image-1', 'gpt-realtime'].map(makeMockAdapter);
+      setGatewaySlotCatalog(gw);
+      expect(resolveDefaultModelAdapter(gw, registry)).toBe(gw[0]);
+    });
+
+    it('still uses the registry default when no gateway adapters are wired', () => {
+      expect(resolveDefaultModelAdapter(undefined, registry)).toBe(registryDefault);
+    });
+  });
 });
 
 // #4392 increment 2 step 2: the discovered models become ONE `api:<endpoint>`

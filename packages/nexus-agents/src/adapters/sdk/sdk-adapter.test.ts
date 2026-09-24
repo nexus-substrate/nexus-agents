@@ -30,8 +30,16 @@ vi.mock('@ai-sdk/anthropic', () => ({
   createAnthropic: vi.fn(() => (modelId: string) => ({ modelId })),
 }));
 
+// The provider is callable (the SDK's default surface, the Responses API) and
+// also exposes `.chat` / `.responses`; each model records which one built it
+// so the surface a path chose is observable (#6645).
 vi.mock('@ai-sdk/openai', () => ({
-  createOpenAI: vi.fn(() => (modelId: string) => ({ modelId })),
+  createOpenAI: vi.fn(() =>
+    Object.assign((modelId: string) => ({ modelId, surface: 'provider-default' }), {
+      chat: (modelId: string) => ({ modelId, surface: 'chat' }),
+      responses: (modelId: string) => ({ modelId, surface: 'responses' }),
+    })
+  ),
 }));
 
 vi.mock('@ai-sdk/google', () => ({
@@ -1164,5 +1172,85 @@ describe('toErrorResult redacts the resolved key (#4392 inc 3 review, MEDIUM 1)'
     expect(logged?.name).toBe('GatewayAuthError');
     expect(logged?.message).not.toContain(KEY);
     expect(logged?.stack ?? '').not.toContain(KEY);
+  });
+});
+
+// #6645: OpenAI-spec gateways commonly serve /chat/completions only, so the
+// custom-openai path builds its model on the chat surface unless the operator
+// opts into the Responses API. The direct OpenAI adapter keeps the SDK default.
+describe('OpenAI API surface selection (#6645)', () => {
+  const NAMES = ['NEXUS_OPENAI_COMPAT_URL', 'NEXUS_OPENAI_COMPAT_KEY', 'NEXUS_CUSTOM_API_SURFACE'];
+  const saved = new Map<string, string | undefined>();
+
+  beforeEach(async () => {
+    dnsLookupMock.mockReset();
+    dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    for (const name of NAMES) {
+      saved.set(name, process.env[name]);
+      Reflect.deleteProperty(process.env, name);
+    }
+    process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
+    process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-surface-NOT-REAL-0000';
+    const { generateText } = await import('ai');
+    vi.mocked(generateText).mockResolvedValue({
+      text: 'ok',
+      finishReason: 'stop',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      response: { id: 'r', timestamp: new Date(), modelId: 'gpt-5.5' },
+    } as unknown as Awaited<ReturnType<typeof generateText>>);
+  });
+
+  afterEach(async () => {
+    for (const name of NAMES) {
+      const prev = saved.get(name);
+      if (prev === undefined) Reflect.deleteProperty(process.env, name);
+      else process.env[name] = prev;
+    }
+    const { generateText } = await import('ai');
+    vi.mocked(generateText).mockReset();
+  });
+
+  async function surfaceUsed(adapter: SdkAdapter): Promise<unknown> {
+    const result = await adapter.complete(TEST_REQUEST);
+    expect(result.ok).toBe(true);
+    const { generateText } = await import('ai');
+    const options = vi.mocked(generateText).mock.calls.at(-1)?.[0] as
+      { model?: { surface?: unknown } } | undefined;
+    return options?.model?.surface;
+  }
+
+  it('custom-openai builds its model on the chat-completions surface by default', async () => {
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' });
+    expect(await surfaceUsed(adapter)).toBe('chat');
+  });
+
+  it('custom-openai uses the Responses API only when NEXUS_CUSTOM_API_SURFACE=responses', async () => {
+    process.env['NEXUS_CUSTOM_API_SURFACE'] = 'responses';
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' });
+    expect(await surfaceUsed(adapter)).toBe('responses');
+  });
+
+  it('custom-openai accepts an explicit NEXUS_CUSTOM_API_SURFACE=chat', async () => {
+    process.env['NEXUS_CUSTOM_API_SURFACE'] = 'chat';
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' });
+    expect(await surfaceUsed(adapter)).toBe('chat');
+  });
+
+  it('refuses an unrecognised NEXUS_CUSTOM_API_SURFACE at construction instead of guessing', () => {
+    process.env['NEXUS_CUSTOM_API_SURFACE'] = 'completions';
+    expect(() => new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' })).toThrow(
+      /NEXUS_CUSTOM_API_SURFACE.*responses.*chat/
+    );
+  });
+
+  it('leaves the direct OpenAI adapter on the SDK default surface with no config', async () => {
+    const adapter = new SdkAdapter({ providerId: 'openai', modelId: 'gpt-5.5', apiKey: 'k' });
+    expect(await surfaceUsed(adapter)).toBe('provider-default');
+  });
+
+  it('does not apply NEXUS_CUSTOM_API_SURFACE to the direct OpenAI adapter', async () => {
+    process.env['NEXUS_CUSTOM_API_SURFACE'] = 'chat';
+    const adapter = new SdkAdapter({ providerId: 'openai', modelId: 'gpt-5.5', apiKey: 'k' });
+    expect(await surfaceUsed(adapter)).toBe('provider-default');
   });
 });

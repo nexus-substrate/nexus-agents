@@ -235,6 +235,16 @@ const NexusEnvSchema = z.object({
   NEXUS_CUSTOM_API_BASE_URL: z.string().optional(),
   NEXUS_CUSTOM_API_KEY: z.string().optional(),
   NEXUS_CUSTOM_MODEL: z.string().optional(),
+  // #6645: the OpenAI API surface the single-model custom-openai adapter calls.
+  // Default `chat` (/chat/completions); `responses` opts into /responses. The
+  // reader (adapters/sdk/gateway-env.ts) trims and lower-cases, then refuses
+  // anything else at construction.
+  NEXUS_CUSTOM_API_SURFACE: z
+    .string()
+    .refine((v) => ['', 'chat', 'responses'].includes(v.trim().toLowerCase()), {
+      message: 'Must be one of: responses, chat',
+    })
+    .optional(),
   // #6604: pin the gateway model a family slot (claude/codex/gemini) uses.
   // Any model id is legal here; the one reader (adapters/gateway-family-slots.ts)
   // validates it against the discovered catalogue and warns on a miss.

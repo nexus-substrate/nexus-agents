@@ -25,7 +25,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { ConfigError, createLogger } from '../../core/index.js';
 import {
   DEPRECATED_GATEWAY_ENV_ALIASES,
   OPENAI_COMPAT_KEY_ENV,
@@ -153,6 +153,29 @@ export function readGatewayEnv(
   const resolved = resolveGatewayEnv(env);
   if (resolved.deprecated.length > 0) warnDeprecatedGatewayEnvOnce(env, logger);
   return resolved;
+}
+
+/**
+ * The OpenAI API surface the single-model `custom-openai` path calls (#6645):
+ * `chat` is `POST <base>/chat/completions`, `responses` is `POST <base>/responses`.
+ */
+type CustomApiSurface = 'chat' | 'responses';
+
+const CUSTOM_API_SURFACE_ENV = 'NEXUS_CUSTOM_API_SURFACE';
+
+/**
+ * Read `NEXUS_CUSTOM_API_SURFACE` (#6645). Unset or empty means `chat`: the
+ * AI SDK's default is the Responses API, but OpenAI-spec gateways commonly
+ * serve `/chat/completions` only, so `responses` is the opt-in. Any other
+ * value throws a `ConfigError` rather than guessing a surface.
+ */
+export function readCustomApiSurface(env: NodeJS.ProcessEnv = process.env): CustomApiSurface {
+  const raw = env[CUSTOM_API_SURFACE_ENV]?.trim().toLowerCase() ?? '';
+  if (raw === '' || raw === 'chat') return 'chat';
+  if (raw === 'responses') return 'responses';
+  throw new ConfigError(
+    `${CUSTOM_API_SURFACE_ENV} must be one of: responses, chat (default chat); got an unrecognised value`
+  );
 }
 
 /**
