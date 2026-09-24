@@ -45,6 +45,7 @@ const base = {
   scratchSpace: [scratch('ok')],
   clis: [healthyCli],
   gateway: 'absent' as const,
+  gatewayCoveredClis: [],
 };
 
 describe('isAllHealthy', () => {
@@ -141,8 +142,17 @@ describe('isAllHealthy with a gateway (#6609)', () => {
     expect(isAllHealthy({ ...base, gateway: 'fail' })).toBe(false);
   });
 
-  it('still fails an installed CLI that is not authenticated, gateway or not', () => {
+  it('still fails an installed CLI that is not authenticated when the gateway does not serve its slot', () => {
     const clis = [{ ...healthyCli, authenticated: false }];
     expect(isAllHealthy({ ...base, clis, gateway: 'pass' })).toBe(false);
+  });
+
+  it('passes a broken installed CLI whose slot the gateway serves (#6782)', () => {
+    const clis = [{ ...healthyCli, versionStatus: 'unsupported' as const }];
+    expect(isAllHealthy({ ...base, clis, gateway: 'pass', gatewayCoveredClis: ['claude'] })).toBe(
+      true
+    );
+    // The pair: the same CLI with its slot unserved still fails.
+    expect(isAllHealthy({ ...base, clis, gateway: 'pass', gatewayCoveredClis: [] })).toBe(false);
   });
 });

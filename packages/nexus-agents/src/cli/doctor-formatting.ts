@@ -11,7 +11,8 @@ import { DEFAULT_CAPABILITIES, type CapacityStatus } from '../cli-adapters/types
 import { formatScratchFilesystems } from './doctor-scratch-space.js';
 import { formatClaudeModelLine } from './doctor-claude-model.js';
 import { printVoterTransportCheck } from './doctor-voter-transport.js';
-import { printCliListNotes } from './doctor-disabled-clis.js';
+import { cliHeaderState, printCliListNotes } from './doctor-disabled-clis.js';
+import { gatewayCoveredClis } from './doctor-gateway-slots.js';
 import { formatMcpClientLine } from './doctor-mcp-client.js';
 import type {
   CliCheckResult,
@@ -28,7 +29,7 @@ import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import * as installFreshness from './doctor-install-freshness.js';
-import { failingVerdictTerms, unmeasuredVerdictSections } from './doctor-verdict-terms.js';
+import { failingVerdictTerms, summaryNotes } from './doctor-verdict-terms.js';
 import { NODE_ENGINE_RANGE } from '../version.js';
 
 /**
@@ -100,9 +101,8 @@ function printInstalledCliDetails(cli: CliCheckResult): void {
 /**
  * Prints a single CLI result.
  */
-function printCliResult(cli: CliCheckResult): void {
-  const status = cli.installed && cli.authenticated;
-  const warn = cli.installed && (!cli.authenticated || cli.versionStatus === 'outdated');
+function printCliResult(cli: CliCheckResult, gatewayCovered: boolean): void {
+  const { status, warn } = cliHeaderState(cli, gatewayCovered);
 
   writeLine(
     `${formatStatus(status, warn)} ${colors.bold}${capitalize(cli.name)} CLI${colors.reset}`
@@ -399,12 +399,7 @@ function printSandbox(check: DoctorResult['sandbox']): void {
 /** Prints the summary line with issue count. */
 function printDoctorSummary(result: DoctorResult): void {
   const terms = failingVerdictTerms(result);
-  // #6782: sections that could not be measured are named, never counted and
-  // never silent — the one rule for every section that feeds the verdict.
-  const unmeasured = unmeasuredVerdictSections(result);
-  const freshnessNote =
-    installFreshness.describeInstallFreshnessSummary(result.installFreshness) +
-    (unmeasured.length > 0 ? ` — unmeasured: ${unmeasured.join(', ')}` : '');
+  const freshnessNote = summaryNotes(result);
   // Name the terms, don't just count them (#6011). `doctor` marks several lines
   // with a warning glyph, and only some of them are counted — the API-keys note
   // is advisory because CLI auth already satisfies `hasAuthMethod`. A bare count
@@ -445,7 +440,8 @@ export function printDoctorResults(result: DoctorResult): void {
 
   writeLine(`${colors.cyan}Checking CLI installations...${colors.reset}`);
   writeLine('');
-  for (const cli of result.clis) printCliResult(cli);
+  const covered = gatewayCoveredClis(result.gateway, result.clis).map((c) => c.cli);
+  for (const cli of result.clis) printCliResult(cli, covered.includes(cli.name));
   printCliListNotes(result);
   // #6120: the pinned voter model, MEASURED with one call, not inferred.
   writeLine(formatClaudeModelLine(result.claudeModel));

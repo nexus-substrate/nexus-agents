@@ -48,7 +48,8 @@ vi.mock('./doctor-gateway.js', async (importOriginal) => {
   };
 });
 
-import { runDoctor } from './doctor.js';
+import { doctorCommand, runDoctor } from './doctor.js';
+import { checkGatewayHealth, type GatewayHealth } from './doctor-gateway.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import { buildGatewaySlotRouterArm } from '../cli-adapters/gateway-slot-arm.js';
 import { isCliBinaryOnPath } from '../cli-adapters/cli-binary-on-path.js';
@@ -130,5 +131,60 @@ describe('doctor CLI list on a cli-or-gateway slot (#6782)', () => {
 
     expect(claude?.installed).toBe(false);
     expect(claude?.routerAdmits).toBe(false);
+  });
+
+  describe('verdict for a broken installed CLI (#6782)', () => {
+    const gatewayWith = (claudeSlot: string): GatewayHealth => ({
+      state: 'healthy',
+      host: 'gw.example',
+      listedCount: 2,
+      chatCount: 2,
+      allowlistActive: false,
+      census: { anthropic: 1, openai: 1, google: 0, unknown: 0 },
+      // codex keeps the gateway passing in both cases; only claude's slot varies.
+      slots: { claude: claudeSlot, codex: 'gpt-5.2', gemini: 'unavailable' },
+      proxy: { kind: 'direct' },
+      probes: 'skipped',
+    });
+
+    async function runWith(claudeSlot: string): Promise<{ code: number; out: string }> {
+      vi.mocked(createAllAdapters).mockReturnValue(
+        new Map([['claude', armWithUnhealthyBinary()]]) as never
+      );
+      vi.mocked(checkGatewayHealth).mockResolvedValue(gatewayWith(claudeSlot));
+      const writes: string[] = [];
+      const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        writes.push(String(chunk));
+        return true;
+      });
+      try {
+        const code = await doctorCommand();
+        return { code, out: writes.join('') };
+      } finally {
+        spy.mockRestore();
+      }
+    }
+
+    it('warns, names it in the summary and exits 0 when the gateway serves its slot', async () => {
+      const { code, out } = await runWith('claude-sonnet-4-6');
+
+      expect(out).toContain(
+        `claude CLI installed but unhealthy (${BINARY_HEALTH.message ?? ''}); slot served by gateway model claude-sonnet-4-6`
+      );
+      expect(out).toContain('NEXUS_DISABLED_CLIS');
+      const summary = out.split('\n').find((l) => l.includes('Status: Ready'));
+      expect(summary).toMatch(/claude CLI unhealthy, slot served by gateway/);
+      expect(code).toBe(0);
+    });
+
+    it('fails with ✗ and exits 1 when nothing serves its slot', async () => {
+      const { code, out } = await runWith('unavailable');
+
+      expect(out).not.toContain('slot served by gateway model');
+      const summary = out.split('\n').find((l) => l.includes('issue(s) found'));
+      expect(summary).toContain('CLI claude');
+      expect(out).toMatch(/✗[^\n]*Claude CLI/);
+      expect(code).toBe(1);
+    });
   });
 });

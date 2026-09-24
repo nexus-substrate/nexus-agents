@@ -278,16 +278,20 @@ describe('cliFailsVerdict', () => {
   };
 
   it('does not count a missing CLI when the gateway passes', () => {
-    expect(cliFailsVerdict(missing, 'pass')).toBe(false);
+    expect(cliFailsVerdict(missing, 'pass', false)).toBe(false);
   });
 
   it('counts a missing CLI when there is no passing gateway', () => {
-    expect(cliFailsVerdict(missing, 'absent')).toBe(true);
-    expect(cliFailsVerdict(missing, 'fail')).toBe(true);
+    expect(cliFailsVerdict(missing, 'absent', false)).toBe(true);
+    expect(cliFailsVerdict(missing, 'fail', false)).toBe(true);
   });
 
-  it('still counts an installed CLI that is not authenticated', () => {
-    expect(cliFailsVerdict(unauthenticated, 'pass')).toBe(true);
+  it('still counts an installed CLI that is not authenticated when nothing serves its slot', () => {
+    expect(cliFailsVerdict(unauthenticated, 'pass', false)).toBe(true);
+  });
+
+  it('does not count it when the gateway serves its slot (#6782)', () => {
+    expect(cliFailsVerdict(unauthenticated, 'pass', true)).toBe(false);
   });
 });
 
@@ -364,7 +368,7 @@ describe('slot coverage in the verdict (#6658)', () => {
     const warnings = gatewaySlotWarnings(health, allClis);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatch(/^opencode slot unavailable: /);
-    expect(cliFailsVerdict(missing('opencode'), gatewayVerdict(health))).toBe(false);
+    expect(cliFailsVerdict(missing('opencode'), gatewayVerdict(health), false)).toBe(false);
   });
 
   it('names no slot whose CLI is installed', async () => {

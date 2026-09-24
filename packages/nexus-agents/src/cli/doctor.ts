@@ -83,6 +83,7 @@ import {
   type GatewayHealth,
   type GatewayVerdict,
 } from './doctor-gateway.js';
+import { gatewayCoveredClis } from './doctor-gateway-slots.js';
 
 /** API key environment variable names. */
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
@@ -1015,6 +1016,12 @@ export interface HealthVerdictInput {
    * missing CLI acceptable, because its slot is served by the gateway.
    */
   readonly gateway: GatewayVerdict;
+  /**
+   * Installed-but-broken CLIs whose slot the gateway actually serves (#6782),
+   * from `gatewayCoveredClis`. They do not fail the verdict; the report names
+   * them with ⚠.
+   */
+  readonly gatewayCoveredClis: readonly CliName[];
 }
 
 /**
@@ -1040,7 +1047,11 @@ export function isAllHealthy(input: HealthVerdictInput): boolean {
     scratchSeverityIsAcceptable(worstSeverity(input.scratchSpace)) &&
     // whenEmpty: zero detected CLIs is not a healthy install (#4581) — unless
     // a passing gateway serves the slots (#6609), as on a gateway-only host.
-    allOf(input.clis, (c) => !cliFailsVerdict(c, input.gateway), input.gateway === 'pass')
+    allOf(
+      input.clis,
+      (c) => !cliFailsVerdict(c, input.gateway, input.gatewayCoveredClis.includes(c.name)),
+      input.gateway === 'pass'
+    )
   );
 }
 
@@ -1112,17 +1123,17 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
   const sandbox = checkSandbox();
   const env = collectEnvironmentChecks();
   const gateway = await measureGateway(deps.checkGateway, deps.gatewayProbe);
-  const gatewayTerm = gatewayVerdict(gateway);
   const registryAdvisory = buildRegistryAdvisory(clis, disabledClis, gateway);
 
   const allHealthy = isAllHealthy({
     nodeSupported: nodeVersion.supported,
-    hasAuthMethod: hasAnyAuthMethod(apiKeys, clis, gatewayTerm),
+    hasAuthMethod: hasAnyAuthMethod(apiKeys, clis, gatewayVerdict(gateway)),
     mcpServerReady,
     installFreshness: env.installFreshness,
     scratchSpace: env.scratchSpace,
     clis,
-    gateway: gatewayTerm,
+    gateway: gatewayVerdict(gateway),
+    gatewayCoveredClis: gatewayCoveredClis(gateway, clis).map((c) => c.cli),
   });
 
   return {

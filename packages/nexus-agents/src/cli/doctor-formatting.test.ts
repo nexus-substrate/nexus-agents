@@ -1161,6 +1161,35 @@ describe('doctor-formatting', () => {
       expect(getCalls().some((call) => call.includes('issue(s) found'))).toBe(false);
     });
 
+    it('does not count a broken CLI the gateway serves around as an issue (#6782)', () => {
+      const gateway: DoctorResult['gateway'] = {
+        state: 'healthy',
+        host: 'gw.example',
+        listedCount: 1,
+        chatCount: 1,
+        allowlistActive: false,
+        census: { anthropic: 1, openai: 0, google: 0, unknown: 0 },
+        slots: { claude: 'claude-sonnet-4-6', codex: 'unavailable', gemini: 'unavailable' },
+        proxy: { kind: 'direct' },
+        probes: 'skipped',
+      };
+      const result = {
+        ...createDoctorResult({
+          allHealthy: false,
+          nodeVersion: createNodeVersionCheck(false, 'v18.0.0'),
+          // Not authenticated, so routerAdmits is false: the gateway serves the slot.
+          clis: [createCliCheckResult('claude', true, false, 'unsupported')],
+        }),
+        gateway,
+      };
+
+      printDoctorResults(result);
+
+      const summary = getCalls().find((call) => call.includes('issue(s) found'));
+      expect(summary).toContain('1 issue(s) found (node version)');
+      expect(summary).toContain('claude CLI unhealthy, slot served by gateway');
+    });
+
     it('names an unreadable scratch filesystem in the summary (#6782)', () => {
       const result = createDoctorResult({
         allHealthy: true,
