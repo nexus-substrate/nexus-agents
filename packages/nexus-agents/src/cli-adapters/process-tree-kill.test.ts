@@ -18,12 +18,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  isProcessTreeAlive,
-  signalProcessTree,
-  signalTrackedProcessTrees,
-  trackProcessTree,
-} from './process-tree-kill.js';
+import { EventEmitter } from 'node:events';
+import { isProcessTreeAlive, signalProcessTree } from './process-tree-kill.js';
 import { parseProcStatStartTime } from './proc-start-time.js';
 
 /** The seam `signalProcessTree` takes for its OS operations. */
@@ -34,14 +30,43 @@ type KnownProcess = ReturnType<typeof signalProcessTree>[number];
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..');
 
-/** Only ESRCH proves a process is gone; EPERM means it exists but is not ours. */
+/**
+ * True for a zombie on Linux: dead, but not yet reaped. A container whose
+ * PID 1 never reaps orphans leaves them in this state for good.
+ */
+function isZombie(pid: number): boolean {
+  if (process.platform !== 'linux') return false;
+  try {
+    const stat = readFileSync(`/proc/${String(pid)}/stat`, 'utf8');
+    return stat
+      .slice(stat.lastIndexOf(')') + 1)
+      .trim()
+      .startsWith('Z');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Only ESRCH proves a process is gone; EPERM means it exists but is not ours.
+ * A zombie has already died, so it counts as gone.
+ */
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error: unknown) {
     return (error as NodeJS.ErrnoException).code !== 'ESRCH';
   }
+  return !isZombie(pid);
+}
+
+/**
+ * A fresh copy of the module, so a test that tracks trees starts with none
+ * left over from another test (the tracked set is module-global).
+ */
+async function freshTreeKillModule(): Promise<typeof import('./process-tree-kill.js')> {
+  vi.resetModules();
+  return import('./process-tree-kill.js');
 }
 
 async function waitFor(predicate: () => boolean, what: string, limitMs: number): Promise<void> {
@@ -246,6 +271,11 @@ describe('PID identity before signalling a tree (#6714)', () => {
     expect(parseProcStatStartTime('1 (short) S 1 2')).toBeUndefined();
   });
 
+  it('reads a zombie as gone: it has died and only awaits its reaper', () => {
+    const zombie = `1 (z) ${STAT_FIELDS_3_TO_21.replace(/^S/, 'Z')} 42`;
+    expect(parseProcStatStartTime(zombie)).toBeUndefined();
+  });
+
   it("does not walk an exited child's PID: its reused PID's children are not signalled", () => {
     const unrelated = 9_999;
     const grandchild: KnownProcess = { pid: 777, startTime: '5' };
@@ -299,6 +329,52 @@ describe('PID identity before signalling a tree (#6714)', () => {
     const tree = signalProcessTree(fakeSpawnedChild(false), 'SIGTERM', [], ops);
     expect(tree).toEqual([{ pid: 801, startTime: undefined }]);
     expect(ops.kill).toHaveBeenCalledWith(801, 'SIGTERM');
+  });
+
+  /** A tracked stand-in that the tree kill walks, then exits and closes on demand. */
+  function closableChild(): { child: ChildProcess; close: () => void } {
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4343,
+      spawnfile: 'node',
+      spawnargs: ['node'],
+      exitCode: null as number | null,
+      signalCode: null,
+      kill: vi.fn(),
+    });
+    const close = (): void => {
+      child.exitCode = 0;
+      child.emit('close', 0);
+    };
+    return { child: child as unknown as ChildProcess, close };
+  }
+
+  it('without start times a closed tree is forgotten, so a reused PID is never SIGKILLed', async () => {
+    const mod = await freshTreeKillModule();
+    // PID 801 looks alive forever: without a start time, a reused PID reads the same.
+    const ops: FakeOps = { ...fakeOps([801], {}), hasStartTimes: false };
+    const { child, close } = closableChild();
+    mod.trackProcessTree(child, ops);
+    mod.signalProcessTree(child, 'SIGTERM', [], ops);
+    close();
+
+    expect(mod.signalTrackedProcessTrees('SIGKILL', ops)).toBe(0);
+    expect(ops.kill).not.toHaveBeenCalledWith(801, 'SIGKILL');
+  });
+
+  it('with start times a closed tree is kept while its descendant is the same process', async () => {
+    const mod = await freshTreeKillModule();
+    const startTimes: Record<number, string> = { 801: '5' };
+    const ops = fakeOps([801], startTimes);
+    const { child, close } = closableChild();
+    mod.trackProcessTree(child, ops);
+    mod.signalProcessTree(child, 'SIGTERM', [], ops);
+    close();
+
+    expect(mod.signalTrackedProcessTrees('SIGKILL', ops)).toBe(1);
+    expect(ops.kill).toHaveBeenCalledWith(801, 'SIGKILL');
+    // Once the descendant is gone the tree is forgotten.
+    delete startTimes[801];
+    expect(mod.signalTrackedProcessTrees('SIGKILL', ops)).toBe(0);
   });
 });
 
@@ -365,19 +441,20 @@ describe.skipIf(process.platform !== 'linux')(
     }, 20_000);
 
     it('a shutdown after the CLI closed still reaches the grandchild (grace-window gap)', async () => {
+      const mod = await freshTreeKillModule();
       const { cli, grandchild } = await spawnCliWithStubbornGrandchild();
-      trackProcessTree(cli);
+      mod.trackProcessTree(cli);
       const closed = new Promise((r) => cli.once('close', r));
 
-      signalProcessTree(cli, 'SIGTERM', []);
+      mod.signalProcessTree(cli, 'SIGTERM', []);
       await closed;
       expect(isAlive(grandchild)).toBe(true);
 
       // The server-shutdown exit hook, inside the SIGKILL grace window.
-      expect(signalTrackedProcessTrees('SIGKILL')).toBe(1);
+      expect(mod.signalTrackedProcessTrees('SIGKILL')).toBe(1);
       await waitFor(() => !isAlive(grandchild), `grandchild ${String(grandchild)} to die`, 5_000);
       // Once its descendants are gone the tree is forgotten.
-      expect(signalTrackedProcessTrees('SIGKILL')).toBe(0);
+      expect(mod.signalTrackedProcessTrees('SIGKILL')).toBe(0);
     }, 20_000);
   }
 );

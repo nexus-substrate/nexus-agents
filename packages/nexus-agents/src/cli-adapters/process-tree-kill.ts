@@ -251,26 +251,45 @@ export function isProcessTreeAlive(
   return tree.some((entry) => isSameProcess(entry, ops));
 }
 
-/** Forget every tracked tree whose child and known descendants have all exited. */
-function pruneFinishedTrees(): void {
+/**
+ * True once a tracked tree can be forgotten: its child has exited and no known
+ * descendant is still the process that was collected. Without start times
+ * (non-Linux) a live PID cannot be told from a reused one, so there a tree is
+ * finished as soon as its child exits, as before #6714; retaining it could
+ * leave a reused PID for the exit hook to SIGKILL.
+ */
+function isFinishedTree(
+  child: ChildProcess,
+  known: readonly KnownProcess[],
+  ops: ProcessTreeOps
+): boolean {
+  if (!hasExited(child)) return false;
+  return !ops.hasStartTimes || !isProcessTreeAlive(child, known, ops);
+}
+
+/** Forget every tracked tree that is finished. */
+function pruneFinishedTrees(ops: ProcessTreeOps): void {
   for (const [child, known] of liveTrees) {
-    if (!isProcessTreeAlive(child, known)) liveTrees.delete(child);
+    if (isFinishedTree(child, known, ops)) liveTrees.delete(child);
   }
 }
 
 /**
- * Track a spawned CLI, returning it. Only real spawns are tracked. The tree
- * stays tracked past the child's `close` while a descendant a signal already
- * collected is still running, so a shutdown inside the SIGKILL grace window
- * still reaches a grandchild that ignored the SIGTERM (#6714).
+ * Track a spawned CLI, returning it. Only real spawns are tracked. On Linux
+ * the tree stays tracked past the child's `close` while a descendant a signal
+ * already collected is still the same running process, so a shutdown inside
+ * the SIGKILL grace window still reaches a grandchild that ignored the
+ * SIGTERM (#6714). Elsewhere it is forgotten on `close`, as before.
  */
-export function trackProcessTree<T extends ChildProcess>(child: T): T {
+export function trackProcessTree<T extends ChildProcess>(
+  child: T,
+  ops: ProcessTreeOps = defaultOps
+): T {
   if (!isSpawnedProcess(child)) return child;
-  pruneFinishedTrees();
+  pruneFinishedTrees(ops);
   liveTrees.set(child, []);
   child.once('close', () => {
-    const known = liveTrees.get(child) ?? [];
-    if (!isProcessTreeAlive(child, known)) liveTrees.delete(child);
+    if (isFinishedTree(child, liveTrees.get(child) ?? [], ops)) liveTrees.delete(child);
   });
   if (!exitHookInstalled) {
     exitHookInstalled = true;
@@ -286,11 +305,14 @@ export function trackProcessTree<T extends ChildProcess>(child: T): T {
  * Each tree's collected descendants are remembered, so the exit hook's SIGKILL
  * still reaches a grandchild whose parent died on the shutdown SIGTERM.
  */
-export function signalTrackedProcessTrees(signal: NodeJS.Signals): number {
-  pruneFinishedTrees();
+export function signalTrackedProcessTrees(
+  signal: NodeJS.Signals,
+  ops: ProcessTreeOps = defaultOps
+): number {
+  pruneFinishedTrees(ops);
   let count = 0;
   for (const [child, known] of [...liveTrees]) {
-    signalProcessTree(child, signal, known);
+    signalProcessTree(child, signal, known, ops);
     count++;
   }
   return count;

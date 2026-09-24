@@ -14,7 +14,10 @@ const START_TIME_INDEX = 22 - 3;
 /**
  * Field 22 (starttime) of a `/proc/<pid>/stat` line, or undefined when it
  * does not parse. Field 2 (comm) is parenthesised and may itself contain
- * spaces and `)`, so the fields are split after the LAST `)`.
+ * spaces and `)`, so the fields are split after the LAST `)`. A zombie
+ * (state `Z`) has already died and only awaits its reaper, so it reads as
+ * gone too: signalling it does nothing, and waiting on it would keep an
+ * escalation armed where PID 1 never reaps orphans.
  */
 export function parseProcStatStartTime(stat: string): string | undefined {
   const close = stat.lastIndexOf(')');
@@ -23,6 +26,7 @@ export function parseProcStatStartTime(stat: string): string | undefined {
     .slice(close + 1)
     .trim()
     .split(/\s+/);
+  if (fields[0] === 'Z') return undefined;
   const startTime = fields[START_TIME_INDEX];
   return startTime !== undefined && /^\d+$/.test(startTime) ? startTime : undefined;
 }
