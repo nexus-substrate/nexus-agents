@@ -87,7 +87,10 @@ describe('MCP path guards follow symlinks', () => {
         { filePath: join(fx.linkIn, 'a.ts') },
         makeCtx('extract_symbols')
       );
-      expect(textOf(result)).not.toMatch(/Path traversal denied/);
+      expect(result.isError).not.toBe(true);
+      const text = textOf(result);
+      expect(text).toContain(join(fx.insideDir, 'real', 'a.ts'));
+      expect(text).toMatch(/— 1 symbols\nexport variable a \(L1-1\)/);
     });
   });
 
@@ -111,11 +114,24 @@ describe('MCP path guards follow symlinks', () => {
     });
 
     it('accepts a dir through an inside symlink', async () => {
+      writeFileSync(
+        join(fx.insideDir, 'real', 'b.ts'),
+        "import { a } from './a.js';\nconsole.log(a);\n"
+      );
       const result = await searchUsages.searchUsagesHandler(
         { symbol: 'a', dir: fx.linkIn },
         makeCtx('search_usages')
       );
-      expect(textOf(result)).not.toMatch(/Path traversal denied/);
+      expect(result.isError).not.toBe(true);
+      const body = JSON.parse(textOf(result)) as {
+        filesScanned: number;
+        results: Array<{ file: string; kind: string }>;
+      };
+      expect(body.filesScanned).toBe(2);
+      expect(body.results.map((r) => `${r.file}:${r.kind}`)).toEqual([
+        'b.ts:import',
+        'b.ts:reference',
+      ]);
     });
   });
 
@@ -126,7 +142,9 @@ describe('MCP path guards follow symlinks', () => {
     });
 
     it('accepts an inside symlink', () => {
-      expect('dir' in searchCodebase.resolveSearchDir(fx.linkIn)).toBe(true);
+      expect(searchCodebase.resolveSearchDir(fx.linkIn)).toEqual({
+        dir: join(fx.insideDir, 'real'),
+      });
     });
   });
 
@@ -150,7 +168,7 @@ describe('MCP path guards follow symlinks', () => {
     });
 
     it('accepts an inside symlink', () => {
-      expect(() => securityScan.validateTargetPath(fx.linkIn)).not.toThrow();
+      expect(securityScan.validateTargetPath(fx.linkIn)).toBe(join(fx.insideDir, 'real'));
     });
   });
 
