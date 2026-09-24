@@ -20,6 +20,7 @@ const healthyCli: CliCheckResult = {
   installed: true,
   authenticated: true,
   authState: 'authenticated',
+  routerAdmits: true,
   version: '1.0.0',
   versionStatus: 'supported',
 };
@@ -109,6 +110,7 @@ describe('isAllHealthy with a gateway (#6609)', () => {
     installed: false,
     authenticated: false,
     authState: 'unverified',
+    routerAdmits: false,
     version: 'N/A',
     versionStatus: 'unsupported',
   });

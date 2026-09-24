@@ -141,6 +141,7 @@ describe('doctor-formatting', () => {
     installed,
     authenticated,
     authState: options.authState ?? (authenticated ? 'authenticated' : 'not-authenticated'),
+    routerAdmits: authenticated,
     versionStatus,
     version: options.version ?? '',
     ...(options.authMethod !== undefined && { authMethod: options.authMethod }),
@@ -757,6 +758,7 @@ describe('doctor-formatting', () => {
         installed: false,
         authenticated: false,
         authState: 'unverified',
+        routerAdmits: false,
         version: 'N/A',
         versionStatus: 'unsupported',
       });

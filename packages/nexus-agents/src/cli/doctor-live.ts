@@ -13,9 +13,13 @@
 
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName } from '../cli-adapters/types.js';
-import { probeAllClis } from './cli-auth-probe.js';
+import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
+import { gatewayServedSlotOf } from '../cli-adapters/gateway-slot-arm.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
+import { probeCli } from './cli-auth-probe.js';
 import { detectCliBinary } from './setup-cli-detection.js';
 import {
+  buildGatewayReadiness,
   buildReadiness,
   formatReadiness,
   probeServes,
@@ -57,6 +61,17 @@ export async function runLiveReadiness(
 
   const results: CliReadiness[] = [];
   for (const [cli, adapter] of adapters) {
+    // #6720: a gateway-served slot — its CLI disabled or not available — is
+    // measured as the gateway, and the CLI's own rungs are not run. A disabled
+    // CLI's binary is never looked up, spawned or probed.
+    const served = gatewayServedSlotOf(adapter);
+    if (served !== undefined) {
+      const cliState = isCliDisabled(cli) ? 'disabled' : 'not-available';
+      const gateway = { gatewayModel: served.modelId, cliState } as const;
+      results.push(buildGatewayReadiness(cli, gateway, await probeServes(adapter)));
+      continue;
+    }
+    if (isCliDisabled(cli)) continue;
     results.push(await ladderFor(cli, adapter, authStates.get(cli), isInstalled(cli)));
   }
   return results;
@@ -99,11 +114,15 @@ async function ladderFor(
   return buildReadiness(cli, { installed, authenticated, serves: await probeServes(adapter) });
 }
 
-/** Collapse the auth probe's states into what the ladder needs. */
+/**
+ * Collapse the auth probe's states into what the ladder needs. A CLI disabled
+ * by `NEXUS_DISABLED_CLIS` is not probed (#6720): some probes spawn the binary.
+ */
 async function readAuthStates(): Promise<
   ReadonlyMap<CliName, 'authenticated' | 'unknown' | 'not-ok'>
 > {
-  const probes = await probeAllClis();
+  const enabled = CLI_NAMES.filter((cli) => !isCliDisabled(cli));
+  const probes = await Promise.all(enabled.map((cli) => probeCli(cli)));
   const states = new Map<CliName, 'authenticated' | 'unknown' | 'not-ok'>();
   for (const probe of probes) {
     if (probe.state === 'authenticated') states.set(probe.cli, 'authenticated');

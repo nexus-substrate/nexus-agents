@@ -265,6 +265,7 @@ describe('cliFailsVerdict', () => {
     installed: false,
     authenticated: false,
     authState: 'unverified',
+    routerAdmits: false,
     version: 'N/A',
     versionStatus: 'unsupported',
   };
@@ -296,6 +297,7 @@ describe('slot coverage in the verdict (#6658)', () => {
     installed: false,
     authenticated: false,
     authState: 'unverified',
+    routerAdmits: false,
     version: 'N/A',
     versionStatus: 'unsupported',
   });
@@ -415,6 +417,7 @@ describe('slot serving under NEXUS_DISABLED_CLIS (#6720)', () => {
     installed,
     authenticated,
     authState: authenticated ? 'authenticated' : 'not-authenticated',
+    routerAdmits: authenticated,
     version: installed ? '1.0.0' : 'N/A',
     versionStatus: installed ? 'supported' : 'unsupported',
   });
@@ -456,6 +459,20 @@ describe('slot serving under NEXUS_DISABLED_CLIS (#6720)', () => {
     expect(gatewaySlotWarnings(health, clis)).toEqual([
       'claude slot unavailable: disabled by NEXUS_DISABLED_CLIS, and the gateway has no anthropic model',
     ]);
+  });
+
+  it('follows the router predicate where the CLI fields alone would say CLI', async () => {
+    const health = healthy(await checkGatewayHealth());
+    // Installed, supported version, auth unverified — but the health check
+    // failed, so `isCliAdmitted` (the router's predicate) rejects it.
+    const unhealthyClaude: CliCheckResult = {
+      ...cli('claude', true),
+      authenticated: false,
+      authState: 'unverified',
+      routerAdmits: false,
+    };
+
+    expect(gatewaySlotServing(health, [unhealthyClaude])[0]?.serving).toBe('gateway');
   });
 
   it('reports an installed, logged-out CLI as gateway-served, as the router probe decides', async () => {

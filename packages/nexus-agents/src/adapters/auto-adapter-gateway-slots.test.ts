@@ -24,6 +24,19 @@ vi.mock('../cli-adapters/factory.js', () => ({
   getAvailableClis: vi.fn().mockReturnValue(Promise.resolve(['claude'])),
 }));
 
+// Counts every direct-API SDK adapter constructed, so a test can prove none was.
+const { sdkAdapterCtor } = vi.hoisted(() => ({ sdkAdapterCtor: vi.fn() }));
+vi.mock('./sdk/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./sdk/index.js')>();
+  class SdkAdapter extends actual.SdkAdapter {
+    constructor(...args: ConstructorParameters<typeof actual.SdkAdapter>) {
+      super(...args);
+      sdkAdapterCtor(...args);
+    }
+  }
+  return { ...actual, SdkAdapter };
+});
+
 vi.mock('../cli-adapters/cli-to-model-adapter.js', () => ({
   createCliToModelAdapter: vi.fn().mockReturnValue({
     providerId: 'cli-claude',
@@ -232,6 +245,24 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
       await expect(
         createAutoAdapter({ preferredCli: 'claude', enableCache: false })
       ).rejects.toThrow(/claude.*unavailable.*anthropic/);
+    });
+
+    it('never lets a same-family API key serve a disabled CLI slot', async () => {
+      process.env['NEXUS_DISABLED_CLIS'] = 'codex';
+      process.env['OPENAI_API_KEY'] = FAKE_OPENAI_KEY;
+      setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6')]);
+      sdkAdapterCtor.mockClear();
+      await expect(
+        createAutoAdapter({ preferredCli: 'codex', enableCache: false })
+      ).rejects.toThrow(/codex.*unavailable.*openai/);
+      expect(sdkAdapterCtor).not.toHaveBeenCalled();
+    });
+
+    it('still lets a same-family API key serve an ENABLED CLI slot', async () => {
+      process.env['OPENAI_API_KEY'] = FAKE_OPENAI_KEY;
+      setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6')]);
+      const s = await createAutoAdapter({ preferredCli: 'codex', enableCache: false });
+      expect(s.name).toBe('openai');
     });
 
     it('keeps the pre-#6720 path with no gateway catalogue: another installed CLI', async () => {

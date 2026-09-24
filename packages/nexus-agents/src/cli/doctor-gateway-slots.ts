@@ -39,16 +39,6 @@ export interface GatewaySlotServing {
 }
 
 /**
- * Whether the router's availability probe (`isCliAvailable`: health AND auth)
- * would admit this CLI. `unverified` auth is admitted, as the probe admits it.
- */
-function probeAdmits(cli: CliCheckResult): boolean {
-  return (
-    cli.installed && cli.authState !== 'not-authenticated' && cli.versionStatus !== 'unsupported'
-  );
-}
-
-/**
  * Each family slot's serving target on a healthy gateway; empty for any other
  * state, which has no slot mapping. A CLI absent from `clis` counts as not
  * installed: doctor checks every CLI it does not skip as disabled.
@@ -68,7 +58,9 @@ export function gatewaySlotServing(
       gateway: model === 'unavailable' ? 'unavailable' : 'resolved',
     });
     if (decided !== 'cli-or-gateway') return { slot, family, model, serving: decided, disabled };
-    const serving = check !== undefined && probeAdmits(check) ? 'cli' : 'gateway';
+    // `routerAdmits` is the router's own predicate (`isCliAdmitted`) over
+    // doctor's health check and auth probe, so this is the target it picks.
+    const serving = check?.routerAdmits === true ? 'cli' : 'gateway';
     return { slot, family, model, serving, disabled };
   });
 }

@@ -21,6 +21,7 @@ import type { ILogger } from '../core/index.js';
 import type { ICliDetectionCache } from './cli-detection-cache.js';
 import { CliDetectionCache, createCliDetectionCache } from './cli-detection-cache.js';
 import { probeCli } from '../cli/cli-auth-probe.js';
+import { cliAuthBlocks, isCliAdmitted } from './cli-admission.js';
 import { getCliCircuitBreakerSnapshot } from './cli-circuit-breaker.js';
 import { isCliDisabled } from './disabled-clis.js';
 import { buildGatewaySlotRouterArm } from './gateway-slot-arm.js';
@@ -223,16 +224,8 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
     // call failed with an opaque subprocess error. Auth must agree with the
     // probe doctor already uses (cli-auth-probe.ts, #2447).
     const [health, auth] = await Promise.all([adapter.healthCheck(), probeCli(cli)]);
-    // #4391: `unknown` is ADMITTED, not excluded. Some gateways expose no
-    // auth signal we can read — agy has no non-interactive auth check at all,
-    // and its `models` subcommand hangs without a TTY (#4393). Treating an
-    // absence of evidence as a failure is what excluded a working agy arm from
-    // routing (#4346); treating it as success is how the retired gemini CLI
-    // stayed selectable while failing every call (#4318). We admit it and let
-    // real invocation failures do the excluding, via the circuit breaker the
-    // adapters now feed (#4330).
-    const authBlocks = auth.state === 'needs-login' || auth.state === 'not-installed';
-    const available = health.healthy && !authBlocks;
+    const authBlocks = cliAuthBlocks(auth);
+    const available = isCliAdmitted(health, auth);
 
     // Store in cache if provided. Synthesize a degraded health record when
     // the binary is healthy but auth failed, so downstream consumers see

@@ -690,6 +690,7 @@ describe('doctor --gateway on a gateway-only host (#6609)', () => {
     installed: false,
     authenticated: false,
     authState: 'unverified',
+    routerAdmits: false,
     version: 'N/A',
     versionStatus: 'unsupported',
   });
