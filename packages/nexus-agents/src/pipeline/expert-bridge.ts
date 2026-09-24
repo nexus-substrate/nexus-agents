@@ -116,7 +116,11 @@ interface RoutedAttribution {
 
 /** Minimal router interface for the bridge. */
 interface RouterLike {
-  executeTask(task: { content: string; options?: Record<string, unknown> | undefined }): Promise<{
+  executeTask(
+    task: { content: string; options?: Record<string, unknown> | undefined },
+    /** #6736: aborts the routed CLI call (stage deadline, job cancel). */
+    execution?: { signal?: AbortSignal | undefined }
+  ): Promise<{
     ok: boolean;
     value: RoutedAttribution & {
       text: string;
@@ -260,23 +264,15 @@ function adaptCompositeRouter(
   compositeRouter: import('../cli-adapters/composite-router.js').ICompositeRouter
 ): RouterLike {
   return {
-    async executeTask(task): Promise<{
-      ok: boolean;
-      value: RoutedAttribution & {
-        text: string;
-        tokensUsed?: number;
-        model?: string;
-        tokensIn?: number;
-        tokensOut?: number;
-        gatewayArm?: EndpointArmId;
-      };
-      error: RoutedAttribution & { message: string };
-    }> {
+    async executeTask(task, execution): ReturnType<RouterLike['executeTask']> {
       const cliTask: import('../cli-adapters/types.js').CliTask = {
         content: task.content,
         ...(task.options !== undefined ? { options: task.options } : {}),
       };
-      const result = await compositeRouter.executeTask(cliTask);
+      const result =
+        execution?.signal === undefined
+          ? await compositeRouter.executeTask(cliTask)
+          : await compositeRouter.executeTask(cliTask, { signal: execution.signal });
       if (result.ok) {
         // #2823: surface which CLI actually executed so callers writing to
         // OutcomeStore don't have to hardcode 'claude' (the bug #1154 fixed
@@ -447,11 +443,15 @@ async function dispatchWithRateLimitRetry(
   router: RouterLike,
   task: { content: string; options?: Record<string, unknown> | undefined },
   expertType: BuiltInExpertType,
-  start: number
+  start: number,
+  signal: AbortSignal | undefined
 ): Promise<ExpertBridgeResult> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const result = await router.executeTask(task);
+    const result =
+      signal === undefined
+        ? await router.executeTask(task)
+        : await router.executeTask(task, { signal });
     const durationMs = getTimeProvider().now() - start;
 
     if (result.ok) {
@@ -464,7 +464,8 @@ async function dispatchWithRateLimitRetry(
     }
 
     const isRateLimit = isRateLimitText(result.error.message);
-    if (isRateLimit && attempt < maxAttempts - 1) {
+    // #6736: an aborted call is not retried — the stage it served has ended.
+    if (isRateLimit && attempt < maxAttempts - 1 && signal?.aborted !== true) {
       const backoffMs = RATE_LIMIT_BASE_DELAY_MS * (attempt + 1);
       logger.warn('Expert rate limited, retrying', { expertType, attempt: attempt + 1, backoffMs });
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
@@ -511,13 +512,20 @@ export function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string,
   // eslint-disable-next-line @typescript-eslint/unified-signatures -- Preserve the published two-argument API signature.
-  options: { workDir?: string | undefined }
+  options: {
+    workDir?: string | undefined;
+    /** Aborts the routed CLI call (#6736): a stage deadline or a job cancel. */
+    signal?: AbortSignal | undefined;
+  }
 ): Promise<ExpertBridgeResult>;
-/** Execute with an optional working directory for the expert's CLI subprocess. */
+/**
+ * Execute with an optional working directory for the expert's CLI subprocess,
+ * and an optional signal that aborts the routed call (#6736).
+ */
 export async function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string,
-  options?: { workDir?: string | undefined }
+  options?: { workDir?: string | undefined; signal?: AbortSignal | undefined }
 ): Promise<ExpertBridgeResult> {
   const start = getTimeProvider().now();
   try {
@@ -559,7 +567,7 @@ export async function executeExpert(
       task.options = { ...task.options, workDir: options.workDir };
     }
 
-    return await dispatchWithRateLimitRetry(router, task, expertType, start);
+    return await dispatchWithRateLimitRetry(router, task, expertType, start, options?.signal);
   } catch (error) {
     const durationMs = getTimeProvider().now() - start;
     const msg = error instanceof Error ? error.message : String(error);

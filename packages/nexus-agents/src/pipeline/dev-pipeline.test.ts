@@ -131,13 +131,15 @@ describe('runDevPipeline', () => {
     expect(result.planStatus).toBeUndefined();
     expect(result.securityPassed).toBe(true);
     expect(result.tasks).toHaveLength(2);
-    expect(stages.research).toHaveBeenCalledWith('Build feature X');
+    // #6736: each stage call also receives its own abort signal.
+    expect(stages.research).toHaveBeenCalledWith('Build feature X', expect.any(AbortSignal));
     expect(stages.implement).toHaveBeenCalledTimes(2);
     expect(stages.qaReview).toHaveBeenCalledTimes(2);
     // #3258: vote() must receive the research context (not decide blind).
     expect(stages.vote).toHaveBeenCalledWith(
       expect.any(String),
-      'Research findings: relevant context gathered'
+      'Research findings: relevant context gathered',
+      expect.any(AbortSignal)
     );
   });
 
@@ -390,13 +392,29 @@ describe('runDevPipeline', () => {
     expect(stages.plan).toHaveBeenCalledWith(
       'Build feature X',
       'Research findings: relevant context gathered',
-      undefined
+      undefined,
+      expect.any(AbortSignal)
     );
     expect(vote).toHaveBeenCalledTimes(3);
     const unchangedPlan = 'Implementation plan: step 1, step 2, step 3';
-    expect(vote).toHaveBeenNthCalledWith(1, unchangedPlan, expect.any(String));
-    expect(vote).toHaveBeenNthCalledWith(2, unchangedPlan, expect.any(String));
-    expect(vote).toHaveBeenNthCalledWith(3, unchangedPlan, expect.any(String));
+    expect(vote).toHaveBeenNthCalledWith(
+      1,
+      unchangedPlan,
+      expect.any(String),
+      expect.any(AbortSignal)
+    );
+    expect(vote).toHaveBeenNthCalledWith(
+      2,
+      unchangedPlan,
+      expect.any(String),
+      expect.any(AbortSignal)
+    );
+    expect(vote).toHaveBeenNthCalledWith(
+      3,
+      unchangedPlan,
+      expect.any(String),
+      expect.any(AbortSignal)
+    );
     expect(stages.decompose).not.toHaveBeenCalled();
     expect(stages.implement).not.toHaveBeenCalled();
     expect(stages.qaReview).not.toHaveBeenCalled();

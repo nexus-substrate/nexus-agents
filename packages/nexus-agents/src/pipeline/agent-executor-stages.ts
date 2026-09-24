@@ -105,7 +105,7 @@ export function createPlanStage({
   guard,
   startStage,
 }: StageDeps): DevPipelineStages['plan'] {
-  return async (task, research, feedback) => {
+  return async (task, research, feedback, signal) => {
     startStage('plan');
     const outcomeCtx = getOutcomeContext();
     const trendCtx = getTrendContext();
@@ -116,7 +116,7 @@ export function createPlanStage({
         ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\n${contextBlock}`
         : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
     await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-    const r = await runExpert(guard, 'architecture', prompt, 'plan');
+    const r = await runExpert(guard, 'architecture', prompt, 'plan', signal);
     // model: real per-model failure attribution for the feedback bridge (#4194)
     emitStageEvent('plan', r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -147,14 +147,15 @@ export function createDecomposeStage({
   guard,
   startStage,
 }: StageDeps): DevPipelineStages['decompose'] {
-  return async (plan) => {
+  return async (plan, signal) => {
     startStage('decompose');
     await postProgress(config, 'PM', 'PM expert decomposing...');
     const r = await runExpert(
       guard,
       'pm',
       `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
-      'decompose'
+      'decompose',
+      signal
     );
     const tasks = parseTasksFromResponse(r.text, plan);
     emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
@@ -173,7 +174,7 @@ export function createImplementStage({
   guard,
   startStage,
 }: StageDeps): DevPipelineStages['implement'] {
-  return async (task) => {
+  return async (task, signal) => {
     startStage(`impl-${task.id}`);
     await postProgress(config, `Code [${task.id}]`, task.title);
     const fb = task.feedback !== undefined ? `\n\nQA feedback: ${task.feedback}` : '';
@@ -181,7 +182,8 @@ export function createImplementStage({
       guard,
       'code',
       `Implement:\n\n${task.title}\n${task.description}${fb}`,
-      task.id
+      task.id,
+      signal
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -212,11 +214,11 @@ export function createQaReviewStage({
   guard,
   startStage,
 }: StageDeps): DevPipelineStages['qaReview'] {
-  return async (task, implementation) => {
+  return async (task, implementation, signal) => {
     startStage(`qa-${task.id}`);
     await postProgress(config, `QA [${task.id}]`, 'QA expert reviewing...');
     const { prompt, coverage } = buildQaPrompt(task.title, implementation);
-    const r = await runExpert(guard, 'qa', prompt, task.id);
+    const r = await runExpert(guard, 'qa', prompt, task.id, signal);
     const parsed = parseQaFromResponse(r.text);
     const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;
     emitStageEvent(`qa-${task.id}`, review.verdict === 'pass' ? 'completed' : 'failed', {

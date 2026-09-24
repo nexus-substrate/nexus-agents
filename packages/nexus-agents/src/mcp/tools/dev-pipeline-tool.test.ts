@@ -720,6 +720,29 @@ describe('run_dev_pipeline iteration caps are wired (#4939)', () => {
   });
 });
 
+describe('run_dev_pipeline timeoutMs is wired (#6736)', () => {
+  // Advertised as "Max time per stage" since the tool shipped; nothing read it.
+  beforeEach(() => {
+    runDevPipelineMock.mockClear();
+  });
+
+  it('passes timeoutMs through as the per-stage deadline', async () => {
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X', timeoutMs: 45_000 }, STDIO_CTX);
+
+    const options = runDevPipelineMock.mock.calls[0]?.[2] as
+      { stageTimeoutMs?: number } | undefined;
+    expect(options?.stageTimeoutMs).toBe(45_000);
+  });
+
+  it('leaves the deadline to the stage defaults when the caller sets none', async () => {
+    const handler = captureHandler();
+    await handler({ task: 'Build feature X' }, STDIO_CTX);
+
+    expect(runDevPipelineMock.mock.calls[0]?.[2]).not.toHaveProperty('stageTimeoutMs');
+  });
+});
+
 describe('runDevPipelineForGoal — dryRun reaches the pipeline (#4806)', () => {
   beforeEach(() => runDevPipelineMock.mockClear());
 

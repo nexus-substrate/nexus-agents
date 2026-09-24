@@ -44,6 +44,7 @@ import type {
   CliTask,
   CliResponse,
   CliError,
+  ExecutionOptions,
 } from './types.js';
 import { routingArmDisplaySlot } from './types.js';
 import type {
@@ -151,7 +152,10 @@ const DEFAULT_TOKEN_ESTIMATE = 1000;
 /** Composite router interface for dependency injection. */
 export interface ICompositeRouter {
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
-  executeTask(task: CliTask): Promise<Result<CliResponse, CliError | CompositeRoutingError>>;
+  executeTask(
+    task: CliTask,
+    options?: ExecutionOptions
+  ): Promise<Result<CliResponse, CliError | CompositeRoutingError>>;
   /**
    * Run a decision `route()` returned and feed the outcome back, exactly as
    * {@link executeTask} does after routing (#6533). Optional so existing
@@ -160,7 +164,8 @@ export interface ICompositeRouter {
   executeDecision?(
     decision: CompositeRoutingDecision,
     task: CliTask,
-    runTask?: CliTask
+    runTask?: CliTask,
+    options?: ExecutionOptions
   ): Promise<Result<CliResponse, CliError>>;
   /** Record a routing outcome for a distinct routing arm (CLI slot or api:* arm) (#3422). */
   recordOutcome(cliName: RoutingArmId, task: CliTask, reward: number, success?: boolean): void;
@@ -576,14 +581,19 @@ export class CompositeRouter implements ICompositeRouter {
    * Use this for most cases; use route() when you need decision details without execution.
    *
    * @param task - Task to execute
+   * @param options - Execution options for the routed arm, e.g. an abort
+   *   `signal` (#6736); passed to the adapter unchanged.
    * @returns Result with CLI response or error
    */
-  async executeTask(task: CliTask): Promise<Result<CliResponse, CliError | CompositeRoutingError>> {
+  async executeTask(
+    task: CliTask,
+    options?: ExecutionOptions
+  ): Promise<Result<CliResponse, CliError | CompositeRoutingError>> {
     const routeResult = await this.route(task);
     if (!routeResult.ok) {
       return err(routeResult.error);
     }
-    return this.executeDecision(routeResult.value, task);
+    return this.executeDecision(routeResult.value, task, task, options);
   }
 
   /**
@@ -593,13 +603,15 @@ export class CompositeRouter implements ICompositeRouter {
    * route-time model to the task) before running it. `task` must be the object
    * passed to `route()`: route-time attribution is keyed on it. `runTask` is
    * what the arm executes when it differs from `task` (defaults to `task`).
+   * `options` reaches the arm's `execute` unchanged (#6736).
    * The result names the arm that ran (`routedCli`) and its own run time
    * (`routedDurationMs`), on success and on failure.
    */
   async executeDecision(
     decision: CompositeRoutingDecision,
     task: CliTask,
-    runTask: CliTask = task
+    runTask: CliTask = task,
+    options?: ExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
     const startTime = getTimeProvider().now();
 
@@ -615,7 +627,10 @@ export class CompositeRouter implements ICompositeRouter {
     this.recordToOrchestrationObserver(decision, task);
 
     const armStart = getTimeProvider().now();
-    const executeResult = await decision.adapter.execute(runTask);
+    const executeResult =
+      options === undefined
+        ? await decision.adapter.execute(runTask)
+        : await decision.adapter.execute(runTask, options);
     const armDurationMs = getTimeProvider().now() - armStart;
 
     const durationMs = getTimeProvider().now() - startTime;

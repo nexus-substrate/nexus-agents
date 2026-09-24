@@ -133,14 +133,20 @@ export const DevPipelineInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Use 3 agents instead of 6 for faster consensus voting'),
-  /** Maximum execution time per stage in milliseconds (min 30s, max 600s). */
+  /**
+   * Deadline for EACH stage call in milliseconds (min 30s, max 600s), not a
+   * budget for the whole run (#6736). Replaces every stage's default, the
+   * vote's included; clamped to the `pipeline` class guard.
+   */
   timeoutMs: z
     .number()
     .int()
     .min(30_000)
     .max(600_000)
     .optional()
-    .describe('Max time per stage in ms (30000-600000). Default: varies by stage complexity'),
+    .describe(
+      'Max time for EACH stage call in ms (30000-600000), not for the whole run; applies to every stage, the vote included, and to each plan/vote and implement/QA iteration. A stage past it fails with a timeout and its model calls are aborted. Default: the vote stage gets the multi-LLM panel guard (900000 unless overridden), other stages the pipeline guard (1800000 unless overridden)'
+    ),
   /**
    * Pipeline execution mode — a REAL field on this tool, unrelated to async
    * dispatch. A caller who learned `mode: 'async'` elsewhere gets an error
@@ -402,6 +408,9 @@ function buildPipelineOptions(
     // shipped, and neither was ever read off `parsed.data`.
     maxVoteIterations: input.maxVoteIterations,
     maxQaIterations: input.maxQaIterations,
+    // #6736: advertised as a per-stage deadline since the tool shipped, and
+    // never read.
+    ...(input.timeoutMs !== undefined ? { stageTimeoutMs: input.timeoutMs } : {}),
     ...(trustTier !== undefined ? { trustTier } : {}),
     // #3710: thread the server's durable audit logger so the consensus→execute
     // policy gate persists decisions to the shared hash chain.
