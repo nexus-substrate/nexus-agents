@@ -40,11 +40,43 @@ const REMEDY =
  * OPEN on a DNS error (a flaky resolver must not break a legitimate gateway),
  * so `allowed` means "not refused", not "reachable".
  */
-export async function checkGatewayHost(baseUrl: string): Promise<GatewayHostStatus> {
+export async function checkGatewayHost(
+  baseUrl: string,
+  options: { readonly lookupTimeoutMs?: number } = {}
+): Promise<GatewayHostStatus> {
   const host = hostnameOf(baseUrl);
-  const guard = await assertCustomApiHostResolvesPublic(host);
-  if (guard.ok) return { state: 'allowed', host };
+  const guard = await withLookupTimeout(
+    assertCustomApiHostResolvesPublic(host),
+    options.lookupTimeoutMs ?? GATEWAY_HOST_LOOKUP_TIMEOUT_MS
+  );
+  // A lookup that does not answer in time is a resolver failure, which the
+  // guard already treats as fail-open (see above); the connection itself
+  // then fails or succeeds under the discovery request's own timeout.
+  if (guard === 'timed_out' || guard.ok) return { state: 'allowed', host };
   return { state: 'refused_private_host', host, reason: guard.error.message, remedy: REMEDY };
+}
+
+/**
+ * Upper bound on the guard's DNS lookup (#6671 review). `dns.lookup` has no
+ * timeout of its own, and discovery (at boot and on lazy re-discovery) runs
+ * the guard before its bounded HTTP request, so an unresponsive resolver
+ * would otherwise hold discovery open indefinitely.
+ */
+const GATEWAY_HOST_LOOKUP_TIMEOUT_MS = 5_000;
+
+async function withLookupTimeout<T>(work: Promise<T>, ms: number): Promise<T | 'timed_out'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timed_out'>((resolve) => {
+    timer = setTimeout(() => {
+      resolve('timed_out');
+    }, ms);
+    timer.unref();
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Discovery's refusal when {@link checkGatewayHost} says `refused_private_host`. */

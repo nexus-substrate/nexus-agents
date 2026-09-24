@@ -953,7 +953,7 @@ describe('a gateway down at boot and up later, with no vote run (#6659)', () => 
   });
 
   it('a slot adapter detected before the gateway came up is re-detected after it does', async () => {
-    await bootWhileDown();
+    const live = await bootWhileDown();
     const slot = getGlobalRegistry().getAdapterForCli('claude');
     clock.setTime(BOOT + 10_000); // inside the 60 s floor: no discovery yet
     await slot.complete(ask);
@@ -962,7 +962,17 @@ describe('a gateway down at boot and up later, with no vote run (#6659)', () => 
     expect(servedModels()).not.toContain(FAMILY_SLOT_MODEL.claude);
     gateway.clearRequests();
 
+    // Past the floor: this call starts discovery but does not wait on it —
+    // the slot already serves, on the path it detected before.
     clock.setTime(BOOT + 61_000);
+    await slot.complete(ask);
+    expect(servedModels()).not.toContain(FAMILY_SLOT_MODEL.claude);
+    // That call's own attempt fills the live list; nothing else triggers one.
+    await vi.waitFor(() => {
+      expect(live.length).toBeGreaterThan(0);
+    });
+    gateway.clearRequests();
+
     const after = await slot.complete(ask);
 
     expect(after.ok).toBe(true);
@@ -973,14 +983,26 @@ describe('a gateway down at boot and up later, with no vote run (#6659)', () => 
     const live = await bootWhileDown();
     const registry = getGlobalRegistry();
     const defaultAdapter = resolveDefaultModelAdapter(live, registry);
+    const requested = (): string[] =>
+      gateway.requests.flatMap((r) => {
+        const model: unknown = (r.body as { model?: unknown } | undefined)?.model;
+        return typeof model === 'string' ? [model] : [];
+      });
+    // Detected before the gateway is back: the default is NOT the gateway default.
+    clock.setTime(BOOT + 10_000);
+    await defaultAdapter.complete(ask);
+    expect(requested()).not.toContain(FAMILY_SLOT_MODEL.claude);
+
+    // Past the floor: this call starts discovery without waiting on it.
     clock.setTime(BOOT + 61_000);
+    await defaultAdapter.complete(ask);
+    await vi.waitFor(() => {
+      expect(live.length).toBeGreaterThan(0);
+    });
+    gateway.clearRequests();
 
     await defaultAdapter.complete(ask);
 
-    const requested = gateway.requests.flatMap((r) => {
-      const model: unknown = (r.body as { model?: unknown } | undefined)?.model;
-      return typeof model === 'string' ? [model] : [];
-    });
-    expect(new Set(requested)).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
+    expect(new Set(requested())).toEqual(new Set([FAMILY_SLOT_MODEL.claude]));
   });
 });

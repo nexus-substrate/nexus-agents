@@ -50,6 +50,7 @@ vi.mock('./rate-limit-detector.js', () => ({
 
 import { createAutoAdapter } from './auto-adapter.js';
 import { ResilientAdapter } from './resilient-adapter.js';
+import { GatewayRediscovery, setGatewayRediscovery } from './gateway-rediscovery.js';
 import {
   isRateLimitLikeError,
   isDurableCapacityError,
@@ -807,3 +808,74 @@ describe('ResilientAdapter', () => {
     });
   });
 });
+
+describe('gateway re-discovery on an already-detected adapter (#6659, #6671 review)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  it('a detected adapter serves a call without waiting on a blackholed discovery', async () => {
+    const adapter = new ResilientAdapter({ preferredCli: 'claude' });
+    await adapter.complete({ messages: [] }); // detected: the CLI slot serves
+    // A blackholed gateway: the discovery attempt never settles.
+    const discover = vi.fn(() => new Promise<undefined>(() => {}));
+    setGatewayRediscovery(
+      new GatewayRediscovery({ target: [], discover, logger: silentLog(), lastAttemptAt: 0 })
+    );
+    try {
+      const outcome = await Promise.race([
+        adapter.complete({ messages: [] }).then(() => 'served'),
+        new Promise((resolve) =>
+          setTimeout(() => {
+            resolve('waited on discovery');
+          }, 200)
+        ),
+      ]);
+      expect(outcome).toBe('served');
+      expect(discover).toHaveBeenCalledTimes(1); // it was still triggered
+    } finally {
+      setGatewayRediscovery(undefined);
+      adapter.dispose();
+    }
+  });
+
+  it('an adapter with nothing detected yet waits for the discovery', async () => {
+    const adapter = new ResilientAdapter({ preferredCli: 'claude' });
+    let settle: ((v: undefined) => void) | undefined;
+    const discover = vi.fn(
+      () =>
+        new Promise<undefined>((resolve) => {
+          settle = resolve;
+        })
+    );
+    setGatewayRediscovery(
+      new GatewayRediscovery({ target: [], discover, logger: silentLog(), lastAttemptAt: 0 })
+    );
+    try {
+      const call = adapter.complete({ messages: [] });
+      await vi.waitFor(() => {
+        expect(discover).toHaveBeenCalledTimes(1);
+      });
+      expect(createAutoAdapter).not.toHaveBeenCalled();
+      settle?.(undefined);
+      await call;
+      expect(createAutoAdapter).toHaveBeenCalledTimes(1);
+    } finally {
+      setGatewayRediscovery(undefined);
+      adapter.dispose();
+    }
+  });
+});
+
+function silentLog(): ILogger {
+  const log = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    setLevel: vi.fn(),
+    child: (): ILogger => log,
+  } as unknown as ILogger;
+  return log;
+}

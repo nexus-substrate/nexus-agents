@@ -253,7 +253,15 @@ export class ResilientAdapter implements IResilientAdapter {
     // Once one is found, an adapter detected before it re-detects ONCE, so the
     // default and the family slots move onto the gateway. Not a failover: the
     // adapter left behind did not fail.
-    await ensureGatewayDiscovered();
+    // An adapter that already serves calls never waits on discovery: it fires
+    // the attempt and keeps serving, and the generation check below switches
+    // it on a LATER call. Only an adapter with nothing to serve yet waits,
+    // since the discovery may be what gives it something (#6671 review).
+    if (this.currentAdapter === undefined) {
+      await ensureGatewayDiscovered();
+    } else {
+      void ensureGatewayDiscovered();
+    }
     if (
       this.currentAdapter !== undefined &&
       this.detectedAtGeneration !== gatewayDiscoveryGeneration()
