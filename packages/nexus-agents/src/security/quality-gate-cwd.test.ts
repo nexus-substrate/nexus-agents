@@ -24,10 +24,14 @@ vi.mock('node:child_process', () => ({
     cmd: string,
     args: readonly string[],
     opts: unknown,
-    cb: (e: unknown, r: unknown) => void
+    cb: (e: unknown, stdout: string, stderr: string) => void
   ) => {
     execFileMock(cmd, args, opts);
-    cb(null, { stdout: '', stderr: '' });
+    queueMicrotask(() => {
+      cb(null, '', '');
+    });
+    // A stand-in child for `execFileTree` (#6747); no PID, so it is never signalled.
+    return {};
   },
 }));
 

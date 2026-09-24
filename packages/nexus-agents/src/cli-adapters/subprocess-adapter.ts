@@ -26,7 +26,13 @@ import type {
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { buildChildEnv } from './subprocess-env.js';
-import { isProcessTreeAlive, signalProcessTree, trackProcessTree } from './process-tree-kill.js';
+import {
+  isProcessTreeAlive,
+  SIGKILL_GRACE_MS,
+  signalProcessTree,
+  terminateProcessTree,
+  trackProcessTree,
+} from './process-tree-kill.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { isRateLimitText, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import {
@@ -179,11 +185,10 @@ export const TIMEOUT_RETRY_MULTIPLIER = 1.5;
 
 /**
  * Grace period before escalating SIGTERM to SIGKILL on timeout (#3026
- * finding 1). 5s gives well-behaved children time to flush state and
- * exit cleanly while bounding zombie-process accumulation when a child
- * ignores SIGTERM. Exported so tests can assert against the threshold.
+ * finding 1). Defined beside the tree kill, which every subprocess runner
+ * shares (#6747); re-exported so tests can assert against the threshold.
  */
-export const SIGKILL_GRACE_MS = 5_000;
+export { SIGKILL_GRACE_MS };
 
 /**
  * Checks whether a CliErrorCode represents a transient failure.
@@ -380,26 +385,15 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   ): void {
     const onAbort = (): void => {
       if (child.exitCode === null && child.signalCode === null) {
-        // #6680: the child and its descendants, so a relaunched CLI worker is not orphaned.
-        const tree = signalProcessTree(child, 'SIGTERM', []);
-        // #6680: same escalation as the timeout path — a tree that ignores
-        // SIGTERM is force-reaped rather than left running after the cancel.
-        const sigkillTimer = setTimeout(() => {
-          if (isProcessTreeAlive(child, tree)) {
-            this.logger.warn('Child ignored SIGTERM after abort, escalating to SIGKILL', {
-              cli: this.name,
-              sigkillGraceMs: SIGKILL_GRACE_MS,
-            });
-            signalProcessTree(child, 'SIGKILL', tree);
-          }
-        }, SIGKILL_GRACE_MS);
-        sigkillTimer.unref();
-        // A descendant can outlive the child's close, so only an empty tree cancels the check.
-        if (tree.length === 0) {
-          child.once('close', () => {
-            clearTimeout(sigkillTimer);
+        // #6680: the child and its descendants, so a relaunched CLI worker is
+        // not orphaned; a tree that ignores SIGTERM is force-reaped rather than
+        // left running after the cancel.
+        terminateProcessTree(child, SIGKILL_GRACE_MS, () => {
+          this.logger.warn('Child ignored SIGTERM after abort, escalating to SIGKILL', {
+            cli: this.name,
+            sigkillGraceMs: SIGKILL_GRACE_MS,
           });
-        }
+        });
       }
       // #6691: the adapter's own watchdog is the timer in `spawnSubprocess`,
       // not this listener, so a caller abort is a cancel unless its reason

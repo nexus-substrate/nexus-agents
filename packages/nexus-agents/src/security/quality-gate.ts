@@ -8,6 +8,8 @@
  */
 
 import { resolveCheckCommand, type ScriptedCheck } from './quality-gate-commands.js';
+import { execFileTree } from '../cli-adapters/exec-file-tree.js';
+import { throwIfAborted } from '../adapters/abort-utils.js';
 import type {
   PipelineStage,
   GateCheckResult,
@@ -19,26 +21,33 @@ import type {
 // Gate Check Functions
 // ============================================================================
 
-/** A single quality check function. */
-export type GateCheckFn = () => Promise<GateCheckResult>;
+/**
+ * A single quality check function. `signal` (#6747), when given, stops the
+ * check's work: a check that runs a subprocess ends its process tree and
+ * rejects rather than reporting a verdict it never reached.
+ */
+export type GateCheckFn = (signal?: AbortSignal) => Promise<GateCheckResult>;
+
+/** Runaway guard for one check's command. */
+const CHECK_TIMEOUT_MS = 120_000;
 
 /** Run a shell command and return pass/fail based on exit code. */
 async function runCommandCheck(
   name: string,
   command: string,
   args: readonly string[],
-  cwd: string
+  cwd: string,
+  signal: AbortSignal | undefined
 ): Promise<GateCheckResult> {
   const start = Date.now();
   try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const exec = promisify(execFile);
     // #4355: `cwd` was never set, so every check ran in the MCP server's own
     // working directory. Three checks partly hid it by passing projectDir as
     // an argument; `pnpm build` passed nothing and built whatever project sat
     // at that cwd — arbitrary under a global install.
-    await exec(command, [...args], { timeout: 120_000, cwd });
+    // #6747: `<pm> run <script>` spawns the script's own processes, so the
+    // timeout and the abort end the whole tree, not only the package manager.
+    await execFileTree(command, args, { timeoutMs: CHECK_TIMEOUT_MS, cwd, signal });
     return {
       name,
       verdict: 'pass',
@@ -46,6 +55,8 @@ async function runCommandCheck(
       durationMs: Date.now() - start,
     };
   } catch (error: unknown) {
+    // An abort also lands here; `runQualityGate` rejects on it before this
+    // result can become a verdict.
     const msg = error instanceof Error ? error.message : String(error);
     return {
       name,
@@ -75,7 +86,7 @@ async function runCommandCheck(
  * cannot be read as a pass.
  */
 function scriptedCheck(name: string, check: ScriptedCheck, projectDir: string): GateCheckFn {
-  return async () => {
+  return async (signal) => {
     const resolved = resolveCheckCommand(projectDir, check);
     if (resolved.kind === 'unconfigured') {
       return {
@@ -85,7 +96,7 @@ function scriptedCheck(name: string, check: ScriptedCheck, projectDir: string): 
         durationMs: 0,
       };
     }
-    return runCommandCheck(name, resolved.command, resolved.args, projectDir);
+    return runCommandCheck(name, resolved.command, resolved.args, projectDir, signal);
   };
 }
 
@@ -185,18 +196,25 @@ function generateFeedback(checks: readonly GateCheckResult[]): string {
  * @param stage - Which pipeline stage is being evaluated
  * @param checks - Array of check functions to execute
  * @param iteration - Current iteration number (1-based)
+ * @param signal - Stops the gate (#6747): the running check ends its work, no
+ *   later check starts, and the call rejects with an `AbortError` instead of
+ *   returning a verdict over checks that never finished.
  * @returns Aggregate result with verdict, feedback, and per-check details
  */
 export async function runQualityGate(
   stage: PipelineStage,
   checks: readonly GateCheckFn[],
-  iteration = 1
+  iteration = 1,
+  signal?: AbortSignal
 ): Promise<QualityGateResult> {
   const results: GateCheckResult[] = [];
   for (const check of checks) {
-    const result = await check();
+    throwIfAborted(signal, 'Quality gate aborted');
+    const result = await check(signal);
     results.push(result);
   }
+  // A check that ignores the signal still must not yield a verdict for an aborted gate.
+  throwIfAborted(signal, 'Quality gate aborted');
 
   const { verdict, summary } = aggregateResults(results);
   return {

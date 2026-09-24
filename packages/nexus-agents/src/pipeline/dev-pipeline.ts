@@ -295,9 +295,10 @@ export interface DevPipelineResult {
  * Every method takes a trailing optional `signal` (#6736). `runDevPipeline`
  * passes each call its own signal, which aborts when the run is cancelled or
  * the stage's deadline passes; an implementation should hand it to its model
- * calls so the work stops. One that ignores it still fails at the deadline,
- * but its work runs on in the background — as the built-in research,
- * qualityGate and securityScan stages do today (#6747).
+ * calls, fetches and subprocesses so the work stops. One that ignores it still
+ * fails at the deadline, but its work runs on in the background. The built-in
+ * stages all honour it: research ends its source fetches, and qualityGate and
+ * securityScan end their subprocess trees (#6747).
  */
 export interface DevPipelineStages {
   /**

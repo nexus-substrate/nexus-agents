@@ -14,6 +14,8 @@ import { runQualityGate, checkTypeCheck, checkLint, checkTests } from '../securi
 import { executeDiscovery, ResearchDiscoverInputSchema } from '../mcp/tools/research-discover.js';
 import { analyzeGaps } from '../mcp/tools/research-analyze.js';
 import { buildResearchContext, researchContextFromText } from './research-context.js';
+import { stageAbortError } from './dev-pipeline-deadlines.js';
+import { throwIfAborted } from '../adapters/abort-utils.js';
 import {
   type StageDeps,
   emitStageEvent,
@@ -38,11 +40,50 @@ import { parseQaFromResponse, parseTasksFromResponse } from './agent-executor-pa
 
 const logger = createLogger({ component: 'agent-executor' });
 
+/**
+ * Run a stage's work and, once `signal` has fired, throw the stage's abort
+ * error (#6747) — whether the work rejected on the abort or returned a result
+ * it reached anyway. A scan or gate that stopped part-way returns a `skip` or
+ * `fail` that measured nothing; reporting it as the stage's verdict would
+ * record an outcome for work that never finished.
+ */
+async function rethrowAsStageAbort<T>(
+  stage: string,
+  signal: AbortSignal | undefined,
+  work: () => Promise<T>
+): Promise<T> {
+  let value: T;
+  try {
+    value = await work();
+  } catch (error: unknown) {
+    if (signal?.aborted === true) throw stageAbortError(stage, signal);
+    throw error;
+  }
+  if (signal?.aborted === true) throw stageAbortError(stage, signal);
+  return value;
+}
+
+/** Discovery plus gap analysis for `topic`, stopping on `signal` (#6747). */
+async function gatherResearch(
+  topic: string,
+  signal: AbortSignal | undefined
+): Promise<ReturnType<typeof buildResearchContext>> {
+  const discoverInput = ResearchDiscoverInputSchema.parse({ topic });
+  // The signal ends the source fetch in flight and stops the fan-out.
+  const discover = await executeDiscovery(discoverInput, logger, signal);
+  // `analyzeGaps` reads the local registries only; it has no network or
+  // subprocess to stop, so the abort is checked around it instead.
+  throwIfAborted(signal, 'Research aborted');
+  const analyze = await analyzeGaps(topic);
+  throwIfAborted(signal, 'Research aborted');
+  return buildResearchContext(discover, analyze, topic);
+}
+
 export function createResearchStage({
   config,
   startStage,
 }: StageDeps): DevPipelineStages['research'] {
-  return async (task) => {
+  return async (task, signal) => {
     // #3372 Option A (7/7 vote): call the research tools DIRECTLY for structured
     // data instead of routing through an LLM expert that discards it. The text
     // returned here is DERIVED from that same structure (single source of truth);
@@ -54,10 +95,7 @@ export function createResearchStage({
     try {
       // Seed with prior learnings from memory (#1716) — appended to the text.
       const memoryCtx = await getMemoryContext(task);
-      const discoverInput = ResearchDiscoverInputSchema.parse({ topic });
-      const discover = await executeDiscovery(discoverInput, logger);
-      const analyze = await analyzeGaps(topic);
-      const ctx = buildResearchContext(discover, analyze, topic);
+      const ctx = await gatherResearch(topic, signal);
       const durationMs = getTimeProvider().now() - start;
       emitStageEvent('research', 'completed', { durationMs });
       // Direct tool calls consume no routed CLI — recordOutcome (CLI-keyed)
@@ -89,6 +127,9 @@ export function createResearchStage({
       const text = memoryCtx ? `${ctx.text}${memoryCtx}` : ctx.text;
       return { text, metadata: ctx.metadata };
     } catch (error: unknown) {
+      // An aborted stage is ended, not degraded: continuing on the minimal
+      // context would carry a cancelled run on into planning.
+      if (signal?.aborted === true) throw stageAbortError('research', signal);
       const durationMs = getTimeProvider().now() - start;
       emitStageEvent('research', 'failed', { durationMs });
       logger.debug('Research stage failed; continuing with minimal context', {
@@ -252,17 +293,22 @@ export function createQualityGateStage({
   config,
   startStage,
 }: StageDeps): NonNullable<DevPipelineStages['qualityGate']> {
-  return async () => {
+  return async (signal) => {
     startStage('quality-gate');
     const start = getTimeProvider().now();
     const target = config.scanTarget ?? process.cwd();
     await postProgress(config, 'QualityGate', `Typecheck/lint/tests on ${target}...`);
     // Reuse the canonical #1684 engine + check factories — no new check logic.
-    const result = await runQualityGate('qa', [
-      checkTypeCheck(target),
-      checkLint(target),
-      checkTests(target),
-    ]);
+    // #6747: the signal ends the running check's process tree; an aborted
+    // gate throws rather than recording an outcome it never measured.
+    const result = await rethrowAsStageAbort('qualityGate', signal, () =>
+      runQualityGate(
+        'qa',
+        [checkTypeCheck(target), checkLint(target), checkTests(target)],
+        1,
+        signal
+      )
+    );
     // #4355: `=== 'pass'`, NOT `!== 'fail'`. The gate reports three states,
     // and `skip` means no check actually ran — every declared script was
     // missing. Reading that as passed lets a blocking gate ship code with
@@ -297,13 +343,14 @@ export function createSecurityScanStage({
   config,
   startStage,
 }: StageDeps): DevPipelineStages['securityScan'] {
-  return async () => {
+  return async (signal) => {
     startStage('security');
     const start = getTimeProvider().now();
     const target = config.scanTarget ?? process.cwd();
     await postProgress(config, 'Security', `Scanning ${target}...`);
     const check = checkSecurityScan(target);
-    const result = await check();
+    // #6747: the signal ends the scanner's process tree and the OSV lookups.
+    const result = await rethrowAsStageAbort('securityScan', signal, () => check(signal));
     // #4355: same tri-state discipline as the quality gate above. This one
     // predates that change: `checkSecurityScan` returns `skip` when the scan
     // itself ERRORED (security-gate.ts:99-102), so a scanner that failed to

@@ -16,16 +16,32 @@
  */
 
 import { resolveClassGuardMs } from '../config/timeouts.js';
+import { isTimeoutAbortReason } from '../adapters/abort-utils.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
 import { resolveStageTimeoutMs } from './stage-deadline.js';
 import type { DevPipelineStages } from './dev-pipeline.js';
 
-/** Raised at a stage boundary once the run's cancel signal has fired (#6305). */
+/**
+ * Raised once the run's cancel signal has fired: at a stage boundary (#6305),
+ * or from inside a stage that stopped its work on it (`'during'`, #6747).
+ */
 export class DevPipelineCancelledError extends Error {
-  constructor(stage: string) {
-    super(`Dev pipeline cancelled before the ${stage} stage`);
+  constructor(stage: string, when: 'before' | 'during' = 'before') {
+    super(`Dev pipeline cancelled ${when} the ${stage} stage`);
     this.name = 'DevPipelineCancelledError';
   }
+}
+
+/**
+ * The error a stage throws once its signal has fired mid-work (#6747). The
+ * reason decides it, with the same rule as `isTimeoutAbortReason` (#6691,
+ * #6709): a `TimeoutError` reason is the stage's deadline, rethrown as is so
+ * its message names the stage and the limit; any other reason is a cancel.
+ */
+export function stageAbortError(stage: string, signal: AbortSignal): Error {
+  const reason: unknown = signal.reason;
+  if (isTimeoutAbortReason(reason) && reason instanceof Error) return reason;
+  return new DevPipelineCancelledError(stage, 'during');
 }
 
 /** Raised when one stage call outlives its deadline (#6736). */
