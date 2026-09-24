@@ -27,7 +27,11 @@ import {
 } from './adapters/gateway-host-status.js';
 import { GatewayRediscovery, setGatewayRediscovery } from './adapters/gateway-rediscovery.js';
 import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
-import { logGatewaySlotMapping, setGatewaySlotCatalog } from './adapters/gateway-family-slots.js';
+import {
+  logGatewaySlotMapping,
+  resolveGatewayDefault,
+  setGatewaySlotCatalog,
+} from './adapters/gateway-family-slots.js';
 import { gatewayEndpointRejection } from './adapters/sdk/gateway-cost.js';
 import { hostnameOf, warnDeprecatedGatewayEnvOnce } from './adapters/sdk/gateway-env.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
@@ -163,15 +167,23 @@ export function _resetCliSubprocessFallbackNotice(): void {
 }
 
 /**
- * The default model adapter: the primary in-process gateway model when a gateway
- * is configured (#2502/#4040), else the CLI-registry default. The registry is
- * typed structurally so this stays free of the adapter-registry import.
+ * The default model adapter. With a gateway configured (#2502/#4040) it is the
+ * catalogue's ranked default, `resolveGatewayDefault` (#6651) — the same rule
+ * the registry's unpinned default uses, so the two cannot name different
+ * models, and listing order (arbitrary, #6606) does not decide it. When that
+ * rule resolves nothing (no catalogue registered, or no chat model in it) the
+ * primary gateway model is kept, as before. With no gateway it is the
+ * CLI-registry default. The registry is typed structurally so this stays free
+ * of the adapter-registry import.
  */
 export function resolveDefaultModelAdapter(
   gatewayAdapters: readonly IModelAdapter[] | undefined,
   adapterRegistry: { getDefault(): IModelAdapter }
 ): IModelAdapter {
-  return gatewayAdapters?.[0] ?? adapterRegistry.getDefault();
+  const primary = gatewayAdapters?.[0];
+  if (primary === undefined) return adapterRegistry.getDefault();
+  const ranked = resolveGatewayDefault();
+  return ranked.kind === 'resolved' ? ranked.adapter : primary;
 }
 
 /**
