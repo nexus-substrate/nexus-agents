@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, list_available_models]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Probe every model-discovery transport (#3406, epic #3403) — the OpenRouter live catalog + the opencode/claude/codex/gemini CLI adapters — and return a per-transport health report { transport, ok, modelCount, sampleModelIds, error }. A one-call validation that the CLIs and APIs are wired and reachable. includeModelIds returns the full id list; includeOpenRouter (default true) toggles the catalog probe. Existence only — the in-tree registry stays authoritative for pricing/capability. Read-only; changes no routing.
+Probe every model-discovery transport (#3406, epic #3403) — the OpenRouter live catalog + the opencode/claude/codex/gemini CLI adapters — and return a per-transport health report { transport, ok, modelCount, sampleModelIds, error, breakerOpen }. breakerOpen (CLI transports only, #6769) says the shared circuit breaker is open, so the router refuses that CLI whatever its probe said. A one-call validation that the CLIs and APIs are wired and reachable. includeModelIds returns the full id list; includeOpenRouter (default true) toggles the catalog probe. Existence only — the in-tree registry stays authoritative for pricing/capability. Read-only; changes no routing.
 
 ## Parameters
 

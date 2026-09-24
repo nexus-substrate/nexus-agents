@@ -223,6 +223,14 @@ export default defineConfig([
     files: [
       'packages/nexus-agents/src/pipeline/expert-bridge.ts',
       'packages/nexus-agents/src/cli/orchestrate-command.ts',
+      // Not router construction, but the same arm-set operation: it
+      // enumerates the arm set with per-CLI provenance (#6769, panel A). The
+      // registry cannot serve it — `ResilientAdapter` has no `listModels` and
+      // can fail over to another CLI, so a catalogue read through it is not
+      // attributable to the transport it is reported under. The panel's
+      // concern (do not advertise what the router refuses) is met by
+      // reporting the SHARED breaker state per CLI instead.
+      'packages/nexus-agents/src/mcp/tools/list-available-models-tool.ts',
     ],
     // Both rules: `expert-bridge.ts` reaches `createAllAdapters` through a
     // DYNAMIC import, so it is caught by `no-restricted-syntax` rather than
@@ -293,7 +301,7 @@ export default defineConfig([
     },
   },
 
-  // The four existing call sites, visible at `warn` rather than silenced.
+  // The remaining call sites, visible at `warn` rather than silenced.
   // Same shape as the vacuous-verdict exemption above: an explicit named block
   // that keeps the debt in every lint run until #5191 migrates them, instead of
   // an `off` or a directory-wide skip that would hide it.
@@ -307,22 +315,11 @@ export default defineConfig([
       'packages/nexus-agents/src/cli/doctor.ts',
       'packages/nexus-agents/src/cli/doctor-live.ts',
       'packages/nexus-agents/src/cli/demo-command.ts',
-      // #5313: surfaced by the new dynamic-import rule, which the static rule
-      // could not see. This one is NOT a probe exemption despite resembling
-      // doctor. A 7-voter panel (audit #138) put the two side by side, and all
-      // five approvers landed on migrating it: doctor's consumer is a human
-      // asking "is this CLI alive right now", so bypassing the breaker is the
-      // point; `list_available_models` is a DISCOVERY surface consumed by
-      // agents choosing where to route, and for that consumer an open breaker
-      // is signal rather than staleness — advertising a transport the router
-      // will refuse to use makes the agent rediscover a failure the substrate
-      // already knew about.
-      //
-      // `warn`, not `off`: the migration changes what the tool measures (raw
-      // transport reachability → router-usable availability) and needs its own
-      // change with tests and a description update. Kept visible in every lint
-      // run until then rather than silenced.
-      'packages/nexus-agents/src/mcp/tools/list-available-models-tool.ts',
+      // `list-available-models-tool.ts` left this block in #6769: the audit
+      // #138 panel wanted it migrated so an open breaker reads as signal; the
+      // registry could not serve the per-CLI enumeration, so panel A kept the
+      // factory and added the shared breaker state to the report instead. It is
+      // now listed under router-construction-operation-5191.
     ],
     rules: { 'no-restricted-imports': 'warn', 'no-restricted-syntax': 'warn' },
   },
