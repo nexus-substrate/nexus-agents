@@ -1,5 +1,23 @@
 # nexus-agents
 
+## 8.104.2
+
+### Patch Changes
+
+- [#6690](https://github.com/nexus-substrate/nexus-agents/pull/6690) [`2f8881d`](https://github.com/nexus-substrate/nexus-agents/commit/2f8881de01818ec7ab77e164c6a93273693c4a9e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The `api:custom-openai` routing arm is now priced at the model it actually sends. In gateway mode that arm sends the gateway's ranked default model, which is not `NEXUS_CUSTOM_MODEL` when the catalogue does not list it. Under `NEXUS_GATEWAY_COST=priced` the budget filter and the task-class cost ceiling priced the arm at `NEXUS_CUSTOM_MODEL`'s registry rate anyway. They now use the model the arm sends. When the registry has no price for that model, the arm is unpriced and fails closed, and the reason names the model.
+
+  Removed four internal helpers that nothing called: `tryWireGatewayAdapter` (use `tryWireGatewayAdapters`), `getAvailableAdapters`, `createOpenCodeAdapter` (use `new OpenCodeCliAdapter()`), and the unused `cli-adapters` response cache (`InMemoryResponseCache`, `createResponseCache`, `withCache` and their types). None of them was part of the published API surface.
+
+- [#6689](https://github.com/nexus-substrate/nexus-agents/pull/6689) [`14f0209`](https://github.com/nexus-substrate/nexus-agents/commit/14f0209141a9ab92c5300572edd54de610503ee7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix CLI global parser swallowing command flags across session, orchestrate, validation, research index, usage, and memory-benchmark, and make vote command refuse invalid enum and timeout values with errors.
+
+  - `session export <id> --output <file>` and `session list --json` / `--format json`: forward parsed output and format flags to the session handlers rather than attempting to read stripped positionals.
+  - `orchestrate -t/--task "<task>"`: forward parsed task flag to orchestrate handler so `--task` works without requiring positionals.
+  - `validation --period=7d --model=a,b`: forward parsed period and model strings to `parseValidationArgs` to prevent unfiltered output.
+  - `research index --validate`, `-o/--output`, `--format json`: forward parsed validate, output, and format options to `parseResearchIndexArgs`.
+  - `usage --model=<id>`: preserve arbitrary model identifiers in `options.model` instead of discarding non-CLI names.
+  - `memory-benchmark --validate` and `--quick`: recognize `--validate` and `--quick` flags in benchmark options.
+  - `vote --error-policy`, `--threshold`, `--on-no-quorum`, and `--timeout`: refuse invalid values with descriptive error messages listing valid options, preventing governance votes from silently defaulting to weaker policies.
+
 ## 8.104.1
 
 ### Patch Changes
