@@ -5388,6 +5388,7 @@ TypeAliasDeclaration JobResultSource
 TypeAliasDeclaration JobStatus
   = z.infer<typeof JobStatusSchema>
 InterfaceDeclaration JobSummary
+  readonly abandoned?: boolean | undefined
   readonly completedAt?: string | undefined
   readonly createdAt: string
   readonly hasError: boolean
@@ -5552,7 +5553,7 @@ TypeAliasDeclaration ListJobsDeps
 TypeAliasDeclaration ListJobsInput
   = z.infer<typeof ListJobsInputSchema>
 VariableDeclaration ListJobsInputSchema
-  : z.ZodObject<{ limit: z.ZodOptional<z.ZodNumber>; status: z.ZodOptional<z.ZodEnum<{ cancelled: "cancelled"; complete: "complete"; failed: "failed"; pending: "pending"; }>>; toolName: z.ZodOptional<z.ZodString>; }, z.core.$strip>
+  : z.ZodObject<{ abandoned: z.ZodOptional<z.ZodBoolean>; limit: z.ZodOptional<z.ZodNumber>; status: z.ZodOptional<z.ZodEnum<{ cancelled: "cancelled"; complete: "complete"; failed: "failed"; pending: "pending"; }>>; toolName: z.ZodOptional<z.ZodString>; }, z.core.$strip>
 InterfaceDeclaration ListJobsResponse
   readonly count: number
   readonly jobs: readonly JobSummary[]

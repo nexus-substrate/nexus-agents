@@ -3,11 +3,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, chmodSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, chmodSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ListJobsInputSchema, registerListJobsTool } from './list-jobs-tool.js';
+import { registerGetJobResultTool } from './get-job-result-tool.js';
+import { initTaskState, updateStage, appendResult } from '../../context/structured-task-state.js';
 import {
   writeJobPending,
   writeJobComplete,
@@ -242,5 +244,148 @@ describe('list_jobs heartbeat disclosure (#6162)', () => {
     expect(yes?.['lastProgressAt']).toBe('2026-09-16T12:34:56.000Z');
     expect(no).toBeDefined();
     expect(no).not.toHaveProperty('lastProgressAt');
+  });
+});
+
+describe('list_jobs and get_job_result report the same job the same way (#6726)', () => {
+  type SdkCallback = (args: unknown) => Promise<{ content: readonly { text: string }[] }>;
+  const originalSource = process.env['NEXUS_JOB_RESULT_SOURCE'];
+  /** Three runaway guards old: past the abandoned bound under any default. */
+  const STALE_AGE_MS = 3 * 3_600_000;
+
+  /** Register a tool against a stub server and return its real callback. */
+  function registeredCallback(
+    register: (server: never, deps: { rateLimiter: RateLimiter }) => void
+  ): SdkCallback {
+    let registered: SdkCallback | undefined;
+    const server = {
+      registerTool: (_name: string, _config: unknown, callback: SdkCallback): void => {
+        registered = callback;
+      },
+    };
+    register(server as never, { rateLimiter: new RateLimiter({ capacity: 100, refillRate: 100 }) });
+    if (registered === undefined) throw new Error('tool registered no callback');
+    return registered;
+  }
+
+  async function callTool(
+    register: (server: never, deps: { rateLimiter: RateLimiter }) => void,
+    args: unknown
+  ): Promise<Record<string, unknown>> {
+    const result = await registeredCallback(register)(args);
+    return JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>;
+  }
+
+  async function listed(args: Record<string, unknown> = {}): Promise<Record<string, unknown>[]> {
+    const body = await callTool(registerListJobsTool, args);
+    return body['jobs'] as Record<string, unknown>[];
+  }
+
+  /** What each tool says about one job: status and the abandoned flag. */
+  async function bothViews(jobId: string): Promise<{
+    list: { status: unknown; abandoned: unknown } | undefined;
+    detail: { status: unknown; abandoned: unknown };
+  }> {
+    const row = (await listed()).find((j) => j['jobId'] === jobId);
+    const detail = await callTool(registerGetJobResultTool, { jobId });
+    const record = detail['record'] as Record<string, unknown> | undefined;
+    return {
+      list: row === undefined ? undefined : { status: row['status'], abandoned: row['abandoned'] },
+      detail: { status: record?.['status'], abandoned: detail['abandoned'] },
+    };
+  }
+
+  /** An async task-state log still in `executing` — maps to `pending`. */
+  function writeExecutingTaskState(taskId: string): void {
+    initTaskState({
+      taskId,
+      stage: 'executing',
+      decisions: [],
+      blockers: [],
+      position: { currentStep: 'run' },
+      dispatch: 'async',
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  /** Backdate a sidecar record's createdAt so it has outlived the guard. */
+  function backdateSidecar(jobId: string): void {
+    const path = join(tmpDir, 'jobs', `result-${jobId}.json`);
+    const record = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    const stale = new Date(Date.now() - STALE_AGE_MS).toISOString();
+    writeFileSync(path, JSON.stringify({ ...record, createdAt: stale }));
+  }
+
+  afterEach(() => {
+    if (originalSource === undefined) delete process.env['NEXUS_JOB_RESULT_SOURCE'];
+    else process.env['NEXUS_JOB_RESULT_SOURCE'] = originalSource;
+  });
+
+  describe.each(['sidecar', 'task_state'] as const)('NEXUS_JOB_RESULT_SOURCE=%s', (source) => {
+    beforeEach(() => {
+      process.env['NEXUS_JOB_RESULT_SOURCE'] = source;
+    });
+
+    it('a terminal sidecar over a still-pending task-state log', async () => {
+      // An orchestrate past its overall deadline: `ok` partial written to the
+      // sidecar, no terminal stage set, so task state still says executing.
+      writeJobPending('orch-parity-1', 'orchestrate');
+      writeJobComplete('orch-parity-1', 'orchestrate', { ok: true, partial: true });
+      writeExecutingTaskState('orch-parity-1');
+
+      const { list, detail } = await bothViews('orch-parity-1');
+
+      expect(detail.status).toBe('complete');
+      expect(list).toEqual(detail);
+      const completeOnly = await listed({ status: 'complete' });
+      expect(completeOnly.map((j) => j['jobId'])).toContain('orch-parity-1');
+      const pendingOnly = await listed({ status: 'pending' });
+      expect(pendingOnly.map((j) => j['jobId'])).not.toContain('orch-parity-1');
+    });
+
+    it('a terminal task-state log over a pending sidecar', async () => {
+      writeJobPending('orch-parity-2', 'orchestrate');
+      writeExecutingTaskState('orch-parity-2');
+      updateStage('orch-parity-2', 'complete', new Date().toISOString());
+      appendResult('orch-parity-2', { ok: true }, new Date().toISOString());
+
+      const { list, detail } = await bothViews('orch-parity-2');
+
+      // Under the sidecar source the task-state log is not read at all.
+      expect(detail.status).toBe(source === 'task_state' ? 'complete' : 'pending');
+      expect(list).toEqual(detail);
+    });
+
+    it('an abandoned job is flagged in both views, kept under status:pending, and filterable', async () => {
+      writeJobPending('orch-parity-dead', 'orchestrate');
+      backdateSidecar('orch-parity-dead');
+      writeJobPending('orch-parity-live', 'orchestrate');
+
+      const dead = await bothViews('orch-parity-dead');
+      expect(dead.detail).toEqual({ status: 'pending', abandoned: true });
+      expect(dead.list).toEqual(dead.detail);
+      const live = await bothViews('orch-parity-live');
+      expect(live.detail).toEqual({ status: 'pending', abandoned: undefined });
+      expect(live.list).toEqual(live.detail);
+
+      const pending = (await listed({ status: 'pending' })).map((j) => j['jobId']);
+      expect(pending).toEqual(expect.arrayContaining(['orch-parity-dead', 'orch-parity-live']));
+      const liveOnly = (await listed({ status: 'pending', abandoned: false })).map(
+        (j) => j['jobId']
+      );
+      expect(liveOnly).toEqual(['orch-parity-live']);
+      const deadOnly = (await listed({ abandoned: true })).map((j) => j['jobId']);
+      expect(deadOnly).toEqual(['orch-parity-dead']);
+    });
+  });
+
+  it('a settled job is never flagged abandoned however old it is', async () => {
+    writeJobPending('orch-parity-old-done', 'orchestrate');
+    writeJobComplete('orch-parity-old-done', 'orchestrate', { ok: true });
+    backdateSidecar('orch-parity-old-done');
+
+    const { list, detail } = await bothViews('orch-parity-old-done');
+    expect(detail).toEqual({ status: 'complete', abandoned: undefined });
+    expect(list).toEqual(detail);
   });
 });

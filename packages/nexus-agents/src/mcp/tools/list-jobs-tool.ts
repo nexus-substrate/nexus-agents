@@ -10,9 +10,17 @@
  * `TASK_RESULT_MAX_BYTES` cap), and this tool is meant for discovery,
  * not retrieval. Callers fetch full records via `get_job_result(jobId)`.
  *
- * Filters: optional `toolName` (exact match) and `status`
- * (`pending | complete | failed | cancelled`). Both applied client-side
- * after the directory walk so the store stays filter-free.
+ * Filters: optional `toolName` (exact match), `status`
+ * (`pending | complete | failed | cancelled`) and `abandoned`. All applied
+ * client-side after the directory walk so the store stays filter-free.
+ *
+ * Parity with `get_job_result` (#6726): each job's status is resolved by the
+ * same precedence rule (`preferJobRecord`), and a `pending` job that has
+ * outlived the runaway guard carries `abandoned: true` from the same
+ * `isAbandonedJob` predicate. An abandoned job still matches
+ * `status: 'pending'` — that is what its record says, and hiding it would make
+ * the list disagree with the detail view in a new way — but it is flagged, and
+ * `abandoned: false` filters it out for a caller that wants only live work.
  *
  * Sort order: newest `createdAt` first — matches the typical "what just
  * happened" discovery flow.
@@ -32,12 +40,22 @@ import {
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
-import { JobStatusSchema, type JobSummary } from '../jobs/job-result-store.js';
+import { isAbandonedJob, JobStatusSchema, type JobSummary } from '../jobs/job-result-store.js';
 import { resolveJobListing } from '../jobs/task-state-source.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { getTimeProvider } from '../../core/index.js';
 
 /** Hard cap on returned summaries — prevents huge directory walks blocking the response. */
 const MAX_LIST_JOBS_RESULTS = 200;
+
+/** Description shared by the Zod input schema and the registered tool schema. */
+const ABANDONED_FILTER_DESCRIPTION =
+  'true: only abandoned jobs (pending past the runaway guard); false: exclude them. Omit for all.';
+
+/** Flag a summary abandoned with the predicate `get_job_result` uses (#6726). */
+function withAbandonedFlag(summary: JobSummary, nowMs: number): JobSummary {
+  return isAbandonedJob(summary, nowMs) ? { ...summary, abandoned: true } : summary;
+}
 
 export const ListJobsInputSchema = z.object({
   /**
@@ -52,6 +70,11 @@ export const ListJobsInputSchema = z.object({
   status: JobStatusSchema.optional().describe(
     'Filter to pending | complete | failed | cancelled. Omit for all.'
   ),
+  /**
+   * Filter on the abandoned flag (#6726): `true` keeps only abandoned jobs,
+   * `false` drops them. Omit to list both. Composes with `status`.
+   */
+  abandoned: z.boolean().optional().describe(ABANDONED_FILTER_DESCRIPTION),
   /**
    * Maximum summaries to return — capped at MAX_LIST_JOBS_RESULTS (200).
    * Newest jobs are returned first, so a smaller limit shows the most
@@ -95,16 +118,18 @@ function listJobsHandler(args: unknown): Promise<ToolResult> {
       })
     );
   }
-  const { toolName, status, limit } = parsed.data;
+  const { toolName, status, abandoned, limit } = parsed.data;
   // Directory walk first — the store doesn't push the filter logic down
   // because tools change shape but the store doesn't. #3693: dual-read — with
   // NEXUS_JOB_RESULT_SOURCE=task_state this unions the Stage-2 task-state log;
   // sidecar-only by default (unchanged).
   const listing = resolveJobListing();
-  const all = listing.jobs;
+  const nowMs = getTimeProvider().now();
+  const all = listing.jobs.map((j) => withAbandonedFlag(j, nowMs));
   const filtered = all.filter((j) => {
     if (toolName !== undefined && j.toolName !== toolName) return false;
     if (status !== undefined && j.status !== status) return false;
+    if (abandoned !== undefined && (j.abandoned === true) !== abandoned) return false;
     return true;
   });
   const cap = limit ?? MAX_LIST_JOBS_RESULTS;
@@ -134,6 +159,7 @@ export function registerListJobsTool(server: McpServer, deps: ListJobsDeps): voi
     status: JobStatusSchema.optional().describe(
       'Filter to pending | complete | failed | cancelled. Omit for all.'
     ),
+    abandoned: z.boolean().optional().describe(ABANDONED_FILTER_DESCRIPTION),
     limit: z
       .number()
       .int()
@@ -146,7 +172,9 @@ export function registerListJobsTool(server: McpServer, deps: ListJobsDeps): voi
   const description =
     'List async-mode jobs (cross-session discovery). Returns summaries — jobId, toolName, ' +
     "status, timestamps, and lastProgressAt (the body's last heartbeat, when it sent one; " +
-    '#6162) — newest first. Filter by toolName / status / limit. Result payloads ' +
+    '#6162), and abandoned: true on a pending job past the runaway guard, as ' +
+    'get_job_result reports it — newest first. Filter by toolName / status / ' +
+    'abandoned / limit. Result payloads ' +
     'excluded; fetch via get_job_result(jobId). Stage 5 of epic #2631.';
 
   const secureHandler = createSecureHandler(listJobsHandler, {
