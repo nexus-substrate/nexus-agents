@@ -641,6 +641,7 @@ describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
       { task: 'Build feature X' },
       { requestContext: { trustTier: '1', caller: { transport: 'stdio' } } }
     );
+    expect(runDevPipelineMock).toHaveBeenCalledTimes(1);
     expect(runDevPipelineMock.mock.calls[0]?.[2]).not.toHaveProperty('sourceTrustTier');
   });
 
