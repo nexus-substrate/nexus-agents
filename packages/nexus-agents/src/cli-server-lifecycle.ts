@@ -226,9 +226,9 @@ export function createGracefulShutdown(options: GracefulShutdownOptions): Shutdo
     }
     isShuttingDown = true;
     logger.info('Received shutdown signal', { signal: reason });
-    // #6680: CLI children run in their own process groups, so a signal to the
-    // server's group no longer reaches them. SIGTERM them first; the exit hook
-    // in process-tree-kill SIGKILLs anything still running when we exit.
+    // #6680: a signal to the server's PID alone does not reach its CLI
+    // subprocesses. SIGTERM each one with its descendants; the exit hook in
+    // process-tree-kill SIGKILLs anything still running when we exit.
     const cliTrees = signalTrackedProcessTrees('SIGTERM');
     if (cliTrees > 0) logger.info('Signalled CLI subprocesses', { count: cliTrees });
 

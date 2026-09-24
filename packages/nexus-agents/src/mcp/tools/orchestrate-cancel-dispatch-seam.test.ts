@@ -314,8 +314,10 @@ async function waitFor(predicate: () => boolean, what: string, limitMs = 10_000)
  * A subprocess CLI whose binary is `node` running a script that records its
  * PID and then idles forever — a CLI call that only a kill can end. With
  * `grandchild`, it first relaunches itself as a child the way gemini-cli does
- * and records that PID too; `ignore-sigterm` makes the grandchild ignore
- * SIGTERM, so only a SIGKILL of the whole group ends it.
+ * and records that PID too. `ignore-sigterm` makes the grandchild ignore
+ * SIGTERM and detach its stdio, so the CLI's `close` fires once the parent
+ * dies while the grandchild runs on; only the SIGKILL escalation to the
+ * descendants collected at SIGTERM time ends it.
  */
 class LongRunningFakeCli extends SubprocessCliAdapter {
   override readonly name = 'claude' as const;
@@ -335,14 +337,17 @@ class LongRunningFakeCli extends SubprocessCliAdapter {
   protected getCommand(_task: CliTask): CommandConfig {
     this.spawnCount++;
     const idle = 'setInterval(() => {}, 1000);';
+    const ignores = this.grandchild?.mode === 'ignore-sigterm';
+    // The grandchild writes its own PID once its SIGTERM handler is installed,
+    // so a test that waits for the file never signals it before it is ready.
     const relaunch =
       this.grandchild === undefined
         ? ''
-        : `const g = require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(
-            (this.grandchild.mode === 'ignore-sigterm' ? "process.on('SIGTERM', () => {});" : '') +
+        : `require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(
+            (ignores ? "process.on('SIGTERM', () => {});" : '') +
+              `require('fs').writeFileSync(${JSON.stringify(this.grandchild.pidFile)}, String(process.pid));` +
               idle
-          )}], { stdio: 'inherit' });` +
-          `require('fs').writeFileSync(${JSON.stringify(this.grandchild.pidFile)}, String(g.pid));`;
+          )}], { stdio: ${ignores ? "'ignore'" : "'inherit'"} });`;
     const script =
       relaunch +
       `require('fs').writeFileSync(${JSON.stringify(this.pidFile)}, String(process.pid));` +
@@ -471,9 +476,12 @@ describe('cancel_job interrupts orchestrate inside worker dispatch (#6680)', () 
     const { orchestrate, cancel } = handlers(adapter);
     const jobId = await startJob(orchestrate);
 
-    // The parent writes its own PID after the grandchild's, so both exist now.
     await waitFor(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '', 'fake CLI');
     const pid = readPid(pidFile);
+    await waitFor(
+      () => existsSync(grandchildPidFile) && readFileSync(grandchildPidFile, 'utf8') !== '',
+      'grandchild'
+    );
     const grandchildPid = readPid(grandchildPidFile);
     expect(isAlive(grandchildPid)).toBe(true);
 
@@ -489,6 +497,39 @@ describe('cancel_job interrupts orchestrate inside worker dispatch (#6680)', () 
     expect(readJobResult(jobId)?.status).toBe('cancelled');
   }, 20_000);
 
+  it('a cancelled CLI call SIGKILLs a grandchild that ignores SIGTERM', async () => {
+    const pidFile = join(tmpDir, 'fake-cli.pid');
+    const grandchildPidFile = join(tmpDir, 'fake-cli-grandchild.pid');
+    const cli = new NoRetryFakeCli(pidFile, {
+      pidFile: grandchildPidFile,
+      mode: 'ignore-sigterm',
+    });
+    const controller = new AbortController();
+
+    const done = cli.execute(
+      { content: 'x' },
+      { timeoutMs: 60_000, allowRetry: false, signal: controller.signal }
+    );
+    await waitFor(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '', 'fake CLI');
+    const pid = readPid(pidFile);
+    await waitFor(
+      () => existsSync(grandchildPidFile) && readFileSync(grandchildPidFile, 'utf8') !== '',
+      'grandchild'
+    );
+    const grandchildPid = readPid(grandchildPidFile);
+    controller.abort();
+    const result = await done;
+    expect(result.ok).toBe(false);
+
+    await waitFor(() => !isAlive(pid), `fake CLI pid ${String(pid)} to exit`, 3_000);
+    // The grandchild outlives SIGTERM and its parent; only the SIGKILL escalation ends it.
+    await waitFor(
+      () => !isAlive(grandchildPid),
+      `grandchild pid ${String(grandchildPid)} to exit`,
+      SIGKILL_GRACE_MS + 3_000
+    );
+  }, 20_000);
+
   it('a CLI timeout SIGKILLs a grandchild that ignores SIGTERM', async () => {
     const pidFile = join(tmpDir, 'fake-cli.pid');
     const grandchildPidFile = join(tmpDir, 'fake-cli-grandchild.pid');
@@ -500,12 +541,16 @@ describe('cancel_job interrupts orchestrate inside worker dispatch (#6680)', () 
     const done = cli.execute({ content: 'x' }, { timeoutMs: 1_000, allowRetry: false });
     await waitFor(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8') !== '', 'fake CLI');
     const pid = readPid(pidFile);
+    await waitFor(
+      () => existsSync(grandchildPidFile) && readFileSync(grandchildPidFile, 'utf8') !== '',
+      'grandchild'
+    );
     const grandchildPid = readPid(grandchildPidFile);
     const result = await done;
     expect(result.ok).toBe(false);
 
     await waitFor(() => !isAlive(pid), `fake CLI pid ${String(pid)} to exit`, 3_000);
-    // The grandchild outlives SIGTERM; only the group SIGKILL after the grace window ends it.
+    // The grandchild outlives SIGTERM and its parent; only the SIGKILL escalation ends it.
     await waitFor(
       () => !isAlive(grandchildPid),
       `grandchild pid ${String(grandchildPid)} to exit`,
