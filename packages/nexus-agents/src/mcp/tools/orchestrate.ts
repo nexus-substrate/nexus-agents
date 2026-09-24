@@ -110,6 +110,8 @@ import {
   defaultBusyEnvelope,
 } from '../jobs/run-as-job.js';
 import { heartbeatJob } from '../jobs/job-result-store.js';
+import { measuredTrustTier } from '../middleware/request-context.js';
+import { resolveContentTrustTier } from '../../security/content-trust-tier.js';
 
 // Re-export types and values for consumers
 export {
@@ -902,14 +904,17 @@ function recordTaskStateFailure(taskId: string, message: string, logger: ILogger
 }
 
 /** Fire-and-forget V2 pipeline instrumentation (Phase E, Issue #924).
- * `trustTier` is threaded in so the V2 policy-engine's `trust-tier` rule
+ * A tier is threaded in so the V2 policy-engine's `trust-tier` rule
  * actually gates the pipeline (#2957). Pre-#2957 this defaulted to undefined
- * which bypassed enforcement. */
+ * which bypassed enforcement. It is the CONTENT tier of the task text, not the
+ * caller's (#6795): orchestrate takes no provenance declaration, so the text is
+ * Tier 3 however trusted the caller, and an unmeasured caller stays absent. */
 function instrumentV2Orchestrate(
   input: { task: string },
   logger: ILogger,
-  trustTier: string | undefined
+  callerTrustTier: string | undefined
 ): void {
+  const trustTier = resolveContentTrustTier(callerTrustTier, [], undefined);
   const tc = orchestrateInputToTaskContract(input, trustTier !== undefined ? { trustTier } : {});
   void executeOrchestratePipeline(tc)
     .then((m) => {
@@ -1161,7 +1166,7 @@ async function runOrchestratePipeline(params: {
   readonly deps: OrchestrateDeps;
   readonly notifier: ReturnType<typeof createMcpNotifier>;
   readonly logger: ILogger;
-  readonly trustTier?: string;
+  readonly trustTier?: string | undefined;
   /** #3091: pre-minted taskId (async mode) so jobId === taskId. */
   readonly taskId?: string;
   /**
@@ -1301,7 +1306,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
           deps,
           notifier,
           logger: ctx.logger,
-          trustTier: ctx.requestContext.trustTier,
+          trustTier: measuredTrustTier(ctx.requestContext),
         }),
         [modeWarning]
       );
@@ -1315,7 +1320,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
           notifier,
           logger: ctx.logger,
           // Threaded from the secure-handler RequestContext (#2957).
-          trustTier: ctx.requestContext.trustTier,
+          trustTier: measuredTrustTier(ctx.requestContext),
         })
       );
       return withWarnings(result, [modeWarning]);
@@ -1363,7 +1368,7 @@ function dispatchAsyncOrchestrate(params: {
   readonly deps: OrchestrateDeps;
   readonly notifier: ReturnType<typeof createMcpNotifier>;
   readonly logger: ILogger;
-  readonly trustTier?: string;
+  readonly trustTier?: string | undefined;
 }): ToolResult {
   // #3729: the shared `runAsJob` dispatcher performs the EXACT sequence this
   // hand-rolled function used to (idempotency → busy-on-cap → pending +
@@ -1410,7 +1415,7 @@ export async function runOrchestratePipelineAsJob(
     readonly deps: OrchestrateDeps;
     readonly notifier: ReturnType<typeof createMcpNotifier>;
     readonly logger: ILogger;
-    readonly trustTier?: string;
+    readonly trustTier?: string | undefined;
   },
   /** `cancel_job`'s signal (#6305); a cancel rejects at the next stage boundary. */
   signal?: AbortSignal
@@ -1460,7 +1465,7 @@ export async function runOrchestrateInBackground(
     readonly deps: OrchestrateDeps;
     readonly notifier: ReturnType<typeof createMcpNotifier>;
     readonly logger: ILogger;
-    readonly trustTier?: string;
+    readonly trustTier?: string | undefined;
   }
 ): Promise<void> {
   await runJobInBackground(jobId, {

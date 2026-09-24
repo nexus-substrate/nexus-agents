@@ -32,7 +32,7 @@ import { assertDryRunSupported, classifyDispatchError } from './run-tool-dry-run
 import { describeIncompletePipeline } from './run-tool-incomplete.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import type { RequestContext } from '../middleware/request-context.js';
+import { measuredTrustTier, type RequestContext } from '../middleware/request-context.js';
 import {
   assertExecutePolicy,
   RunPolicyDeniedError,
@@ -73,6 +73,7 @@ import {
   type DispatchMode,
 } from '../../orchestration/authority-tier-guard.js';
 import { assertDispatchNotCancelled, buildDefaultExecutors } from './run-tool-executors.js';
+import { TaskSourceTrustTierSchema } from './task-source-trust-tier.js';
 // #3732 / epic #2631: async-mode dispatch via the shared `runAsJob` helper.
 import { runAsJob } from '../jobs/run-as-job.js';
 import { heartbeatJob } from '../jobs/job-result-store.js';
@@ -142,6 +143,12 @@ export const RunInputSchema = z.object({
    * `get_job_result({ jobId })`. Ignored for read-only routing (execute:false).
    */
   ...asyncDispatchInput('Only with execute:true.'),
+  /**
+   * Declared provenance of the goal text (#6795). Read only when the
+   * dev-pipeline strategy runs: that is the one strategy whose
+   * consensus→execute gate consumes a content tier. Omitted means '3'.
+   */
+  sourceTrustTier: TaskSourceTrustTierSchema,
 });
 
 export type RunInput = z.infer<typeof RunInputSchema>;
@@ -387,7 +394,7 @@ export async function executeGoal(
       buildDefaultExecutors(
         opts.trustTier,
         opts.gatewayAdapters,
-        input.dryRun,
+        { dryRun: input.dryRun, sourceTrustTier: input.sourceTrustTier },
         opts.onProgress,
         opts.signal
       ),
@@ -582,7 +589,10 @@ export function registerRunTool(server: McpServer, deps: RunToolDeps): void {
       runHandler(
         args,
         logger,
-        ctx.requestContext.trustTier,
+        // #6795: the MEASURED caller tier. The raw field is a '3' fallback when
+        // nothing was measured, which the gate record would report as a tier;
+        // undefined keeps it unmeasured and the seam fail-closes to 4.
+        measuredTrustTier(ctx.requestContext),
         deps.gatewayAdapters,
         ctx.requestContext
       ),

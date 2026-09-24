@@ -24,6 +24,8 @@ import { VERSION } from '../version.js';
 import { getTaskStore } from './task-store.js';
 import { claimGlobalRegistry } from '../adapters/unified-registry.js';
 import { initDataDirectories } from '../cli/setup-data-dir.js';
+import { recordServerTransport, type McpServerTransport } from './middleware/request-context.js';
+import { parseBoolEnv } from '../config/defaults-env.js';
 
 /**
  * Server configuration options.
@@ -135,6 +137,16 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
 }
 
 /**
+ * The transport kind the server can vouch for (#6795). stdio is local-only (the
+ * client spawned this process), which `deriveTrustTier` maps to tier 1.
+ * Anything else is `undefined`: this tree ships no network transport, and
+ * guessing one would record a tier nobody measured.
+ */
+function identifyTransport(transport: Transport): McpServerTransport | undefined {
+  return transport instanceof StdioServerTransport ? 'stdio' : undefined;
+}
+
+/**
  * Connects the server to a transport.
  *
  * @param server - The MCP server instance
@@ -155,12 +167,23 @@ export async function connectTransport(
   // whichever tool is invoked first.
   claimGlobalRegistry(log);
 
+  // Record the transport BEFORE connecting (#6795): the first request can be
+  // dispatched as soon as `connect` starts reading, and it must see the tier.
+  // Only a transport the server can identify is recorded; any other one stays
+  // unmeasured, so its requests fall to the authentication branch.
+  // A child server (spawned for an expert CLI, #6795) is called by a model, not
+  // the operator: its stdio caller is recorded as unmeasured, never tier 1.
+  const transportKind = parseBoolEnv('NEXUS_MCP_CHILD', false)
+    ? undefined
+    : identifyTransport(transport);
+  recordServerTransport(transportKind);
   try {
-    log.info('Connecting server to transport');
+    log.info('Connecting server to transport', { transport: transportKind ?? 'unidentified' });
     await server.connect(transport);
     log.debug('Server connected to transport successfully');
     return ok(undefined);
   } catch (error) {
+    recordServerTransport(undefined);
     const errorMessage = getErrorMessage(error);
     log.error('Failed to connect to transport', error instanceof Error ? error : undefined);
     return err(

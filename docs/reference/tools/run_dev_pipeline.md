@@ -17,6 +17,7 @@ Run the multi-agent development pipeline. Accepts direct task instructions, a pl
 | Parameter | Type | Required | Constraints | Description |
 | --------- | ---- | -------- | ----------- | ----------- |
 | `task` | string | no | maxLength 10000 | Direct task instructions (what to build) |
+| `sourceTrustTier` | enum | no | one of: 1 \| 2 \| 3 \| 4 | Trust tier ('1'-'4') of where the task text came from, per .rules/untrusted-input.md: '1' only for text the caller authored or took from repo files, '3' for issue/PR/web text. Omitted means '3'. Can only lower trust: the effective tier is the least-trusted of this, the measured caller tier and every source the run fetched. Recorded with the caller tier at the consensus→execute policy gate. |
 | `planFile` | string | no | maxLength 500 | Path to a plan/spec file to use as input |
 | `dryRun` | boolean | no | default false | If true, stop after plan+vote (no implementation) |
 | `maxVoteIterations` | integer | no | min 1; max 5; default 3 | Max plan→vote iterations |

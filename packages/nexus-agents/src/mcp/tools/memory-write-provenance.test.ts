@@ -30,9 +30,9 @@ vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => memory,
 }));
 
-// The registered handler has no caller-info producer, so the request tier is
-// always the unmeasured fallback. Controlling the measured tier here lets the
-// test state a caller tier explicitly.
+// Called without a connected server, the request tier is the unmeasured
+// fallback. Controlling the measured tier here lets the test state a caller
+// tier explicitly (a stdio server measures '1', #6795).
 vi.mock('../middleware/request-context.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../middleware/request-context.js')>()),
   measuredTrustTier: () => measured.tier,
@@ -40,6 +40,8 @@ vi.mock('../middleware/request-context.js', async (importOriginal) => ({
 
 import { registerMemoryWriteTool } from './memory-write.js';
 import { RateLimiter } from '../middleware/rate-limiter.js';
+import { summarizeContextForPrompt, type UnifiedContext } from '../../context/context-retriever.js';
+import { MemoryImportance } from '../../context/memory-backend-types.js';
 
 type SdkCallback = (args: unknown) => Promise<{ content: readonly { text: string }[] }>;
 
@@ -100,10 +102,53 @@ describe('memory_write redacts credentials before storing (#6751)', () => {
 });
 
 describe('memory_write records the content trust tier (#6751)', () => {
-  it('keeps the caller tier for caller-provided content', async () => {
+  it('stores an undeclared write from a tier-1 caller as tier 3 (#6795)', async () => {
+    // Unknown provenance is untrusted however trusted the caller.
     measured.tier = '1';
-    await callMemoryWrite({ key: uniqueKey(), content: 'caller fact', backend: 'belief' });
+    await callMemoryWrite({ key: uniqueKey(), content: 'pasted text', backend: 'belief' });
+    expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('3');
+  });
+
+  it('keeps tier 1 for content a tier-1 caller declares as its own (#6795)', async () => {
+    measured.tier = '1';
+    await callMemoryWrite({
+      key: uniqueKey(),
+      content: 'caller fact',
+      backend: 'belief',
+      sourceTrustTier: '1',
+    });
     expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('1');
+  });
+
+  it('clamps a declaration above the caller tier to the caller tier (#6795)', async () => {
+    measured.tier = '2';
+    await callMemoryWrite({
+      key: uniqueKey(),
+      content: 'caller fact',
+      backend: 'belief',
+      sourceTrustTier: '1',
+    });
+    expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('2');
+  });
+
+  it('caps an unmeasured caller declaring 1 at tier 3 — nothing measured vouches for it', async () => {
+    await callMemoryWrite({
+      key: uniqueKey(),
+      content: 'declared fact',
+      backend: 'belief',
+      sourceTrustTier: '1',
+    });
+    expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('3');
+  });
+
+  it('keeps a declared 4 for an unmeasured caller (a declaration can always lower trust)', async () => {
+    await callMemoryWrite({
+      key: uniqueKey(),
+      content: 'hostile fact',
+      backend: 'belief',
+      sourceTrustTier: '4',
+    });
+    expect(memory.recordBelief.mock.calls[0]?.[4]).toBe('4');
   });
 
   it('records the external source tier when the content is flagged as external', async () => {
@@ -134,9 +179,53 @@ describe('memory_write records the content trust tier (#6751)', () => {
     expect(memory.storeTyped.mock.calls[0]?.[3]).toBeUndefined();
   });
 
+  it('keeps an undeclared tier-1 write out of privileged prompts unless allowed (#6795)', async () => {
+    measured.tier = '1';
+    await callMemoryWrite({ key: uniqueKey(), content: 'pasted issue text', backend: 'agentic' });
+    const { tags } = memory.recordKnowledge.mock.calls[0]?.[2] as { tags: string[] };
+    expect(tags).toContain('trust-tier:3');
+
+    // Feed the entry exactly as stored into the prompt-prefix renderer.
+    const entry: UnifiedContext['recentLearnings'][number] = {
+      entry: {
+        key: 'k',
+        value: 'pasted issue text',
+        metadata: { importance: MemoryImportance.MEDIUM, tags },
+        createdAt: new Date('2026-06-01'),
+        accessedAt: new Date('2026-06-01'),
+      },
+      priority: { score: 0.5, components: { recency: 0.5, importance: 0.5, relevance: 0.5 } },
+    };
+    const ctx: UnifiedContext = {
+      beliefs: [],
+      similarMemories: [],
+      recentLearnings: [entry],
+      experiencePatterns: [],
+      outcomes: null,
+      priorStrategies: [],
+      researchInsights: [],
+      rankedMemories: [],
+    };
+    const previousRanked = process.env['NEXUS_CONTEXT_RANKED'];
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    try {
+      expect(summarizeContextForPrompt(ctx)).not.toContain('pasted issue text');
+      expect(summarizeContextForPrompt(ctx, undefined, { allowUntrustedMemory: true })).toContain(
+        '[tier 3] pasted issue text'
+      );
+    } finally {
+      if (previousRanked !== undefined) process.env['NEXUS_CONTEXT_RANKED'] = previousRanked;
+    }
+  });
+
   it('carries the tier on session learnings', async () => {
     measured.tier = '2';
-    await callMemoryWrite({ key: uniqueKey(), content: 'session fact', backend: 'session' });
+    await callMemoryWrite({
+      key: uniqueKey(),
+      content: 'session fact',
+      backend: 'session',
+      sourceTrustTier: '2',
+    });
     const learning = memory.recordLearning.mock.calls[0]?.[0] as { trustTier?: string };
     expect(learning.trustTier).toBe('2');
   });

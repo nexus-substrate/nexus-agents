@@ -162,6 +162,37 @@ export function deriveTrustTier(caller: CallerInfo): TrustTier {
 }
 
 /**
+ * The MCP transports this server can identify (#6795). Only stdio ships in
+ * this tree; a transport the server cannot identify is not recorded at all, so
+ * its requests stay on the authentication branch of {@link deriveTrustTier}.
+ */
+export type McpServerTransport = 'stdio';
+
+/**
+ * The transport the server connected, recorded by `connectTransport` (#6795).
+ * Process-wide because an MCP server process connects one transport, and the
+ * request context is built per call by middleware that never sees it.
+ */
+let serverTransport: McpServerTransport | undefined;
+
+/**
+ * Record the transport the server is connected over, or `undefined` to clear
+ * it (an unidentified transport, a failed connect, or test cleanup).
+ */
+export function recordServerTransport(transport: McpServerTransport | undefined): void {
+  serverTransport = transport;
+}
+
+/**
+ * The caller information the server itself measured for every request: the
+ * transport it arrived over (#6795). Empty when no transport was recorded, which
+ * {@link measuredTrustTier} reports as unmeasured rather than as a tier.
+ */
+export function serverCallerInfo(): CallerInfo {
+  return serverTransport === undefined ? {} : { transport: serverTransport };
+}
+
+/**
  * Creates an immutable request context for an MCP tool invocation.
  *
  * @param options - Context creation options
@@ -247,49 +278,6 @@ export function getCurrentRequestContext(): RequestContext | undefined {
 }
 
 /**
- * Extracts caller info from MCP transport metadata.
- * Currently supports extracting from request headers or environment.
- *
- * @param metadata - Optional transport metadata
- * @returns Caller information
- */
-export function extractCallerInfo(metadata?: Record<string, unknown>): CallerInfo {
-  const caller: CallerInfo = {};
-
-  if (metadata !== undefined) {
-    // Extract all available fields from metadata
-    const extracted: CallerInfo = {
-      ...caller,
-      ...(typeof metadata['clientId'] === 'string' ? { clientId: metadata['clientId'] } : {}),
-      ...(typeof metadata['userAgent'] === 'string' ? { userAgent: metadata['userAgent'] } : {}),
-      ...(typeof metadata['sessionId'] === 'string' ? { sessionId: metadata['sessionId'] } : {}),
-    };
-
-    // If any metadata was extracted, return it directly
-    if (
-      typeof metadata['clientId'] === 'string' ||
-      typeof metadata['userAgent'] === 'string' ||
-      typeof metadata['sessionId'] === 'string'
-    ) {
-      return extracted;
-    }
-  }
-
-  // Fallback to environment variables for known CLI tools
-  const claudeSession = process.env['CLAUDE_SESSION_ID'];
-  if (claudeSession !== undefined) {
-    return { ...caller, clientId: 'claude-cli', sessionId: claudeSession };
-  }
-
-  const geminiSession = process.env['GEMINI_SESSION_ID'];
-  if (geminiSession !== undefined) {
-    return { ...caller, clientId: 'gemini-cli', sessionId: geminiSession };
-  }
-
-  return caller;
-}
-
-/**
  * Formats request context for logging.
  * Extracts essential fields for log context.
  *
@@ -331,14 +319,13 @@ export function isRequestContext(value: unknown): value is RequestContext {
  *
  * `createRequestContext` falls back to `caller = {}`, and `deriveTrustTier({})`
  * returns `'3'` — so an absent caller is indistinguishable from a genuinely
- * untrusted one at the reading end. Nothing in this tree supplies `callerInfo`
- * today (its only references are the declaration and one forward in
- * `secure-handler.ts`), so every tier is that fallback.
+ * untrusted one at the reading end. Since #6795 the middleware chain supplies
+ * the transport the server connected ({@link serverCallerInfo}), so a stdio
+ * server measures tier 1; a context built with no recorded transport and no
+ * authentication fact is still that fallback.
  *
  * Returning `undefined` for the fallback lets a consumer record `unmeasured`
- * rather than a constant that reads as a measurement. When a real
- * `callerInfo` producer lands this starts returning values without further
- * change.
+ * rather than a constant that reads as a measurement.
  *
  * NOTE this is caller AUTHENTICATION (transport / authenticated / clientId),
  * not content provenance. A trusted client can submit hostile content. Consumers
@@ -353,18 +340,14 @@ export function measuredTrustTier(context: RequestContext): string | undefined {
   if (typeof caller !== 'object' || caller === null) return undefined;
 
   // Gate on the fields `deriveTrustTier` actually reads, not on "the object has
-  // any key at all" (#4738 review). `extractCallerInfo` can return
-  // `{ sessionId }` or `{ userAgent }` alone; neither feeds the derivation, so
-  // a non-empty check would have called the '3' fallback a measurement as soon
-  // as a producer supplied only those — reintroducing the constant this
+  // any key at all" (#4738 review). A caller carrying only `sessionId` or
+  // `userAgent` feeds nothing into the derivation, so a non-empty check would
+  // call the '3' fallback a measurement — reintroducing the constant this
   // function exists to prevent, in the function that prevents it.
-  // `clientId` is NOT sufficient, and including it was a bug in the previous
-  // version of this guard: `deriveTrustTier` reads `clientId` only INSIDE the
-  // `authenticated === true` branch, so `{ clientId: 'claude-cli' }` returns
-  // the same '3' fallback as `{}`. The one in-tree producer,
-  // `extractCallerInfo`, returns exactly that shape on its CLAUDE_SESSION_ID
-  // path — so wiring it would have relabelled the constant as a measurement,
-  // inside the function written to prevent exactly that.
+  // `clientId` is NOT sufficient either: `deriveTrustTier` reads `clientId`
+  // only INSIDE the `authenticated === true` branch, so
+  // `{ clientId: 'claude-cli' }` returns the same '3' fallback as `{}`. (The
+  // removed env-sniffing `extractCallerInfo` produced exactly that shape.)
   const info = caller as Partial<CallerInfo>;
   // `authenticated: false` counts: it is a measured fact ("we checked, they
   // are not authenticated"), which is different from the field being absent.

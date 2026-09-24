@@ -7,6 +7,8 @@ import { researchContextFromText } from './research-context.js';
 import { runDevPipeline, isApproved, createVoteResult, getVoteFeedback } from './dev-pipeline.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { PolicyBlockedError } from './policy-evaluator.js';
+import type { PipelineStateSnapshot } from './policy-engine.js';
+import { getGlobalLogLevel, setGlobalLogLevel } from '../core/logger.js';
 import type {
   DevPipelineStages,
   PipelineTask,
@@ -938,19 +940,31 @@ describe('runDevPipeline — trustTier threading into the policy snapshot (#3712
   });
 
   // A caller-only run: `researchOverride` supplies the research text, so no
-  // external source feeds the run and the caller tier is the content tier (#6751).
+  // external source feeds the run (#6751).
   const CALLER_ONLY = { researchOverride: 'caller-supplied research' } as const;
 
-  it("trusted trustTier '1', caller-only content, under block mode → COMPLETES", async () => {
+  it("caller '1' + declared '1', caller-only content, under block mode → COMPLETES (#6795)", async () => {
     process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
     const stages = createMockStages();
     const result = await runDevPipeline('Build feature X', stages, {
       ...CALLER_ONLY,
       trustTier: '1',
+      sourceTrustTier: '1',
     });
     expect(stages.research).not.toHaveBeenCalled();
     expect(stages.decompose).toHaveBeenCalledTimes(1);
     expect(result.completed).toBe(true);
+  });
+
+  it("caller '1' with NO declaration, caller-only content, under block mode → THROWS (#6795)", async () => {
+    // The task text's provenance is unknown, so it is Tier 3 even from a
+    // tier-1 caller: the gate escalates as it did before.
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'block';
+    const stages = createMockStages();
+    await expect(
+      runDevPipeline('Build feature X', stages, { ...CALLER_ONLY, trustTier: '1' })
+    ).rejects.toBeInstanceOf(PolicyBlockedError);
+    expect(stages.decompose).not.toHaveBeenCalled();
   });
 
   it("untrusted trustTier '3' under block mode → THROWS (rule blocks tier>=3 on execute)", async () => {
@@ -972,21 +986,28 @@ describe('runDevPipeline — trustTier threading into the policy snapshot (#3712
 
 describe('runDevPipeline — content tier, not caller tier, reaches the policy gate (#6751)', () => {
   /** Replace the default engine with one rule that records the tier it sees. */
-  async function captureGateTier(): Promise<{ seen: unknown[]; restore: () => void }> {
+  async function captureGateTier(): Promise<{
+    seen: unknown[];
+    snapshots: PipelineStateSnapshot[];
+    restore: () => void;
+  }> {
     const mod = await import('./policy-engine.js');
     const seen: unknown[] = [];
+    const snapshots: PipelineStateSnapshot[] = [];
     const engine = new mod.PolicyEngine();
     engine.registerRule({
       id: 'capture-tier',
       priority: 1,
       evaluate(context) {
         seen.push(context.pipelineState.trustTier);
+        snapshots.push(context.pipelineState);
         return { allow: true };
       },
     });
     const spy = vi.spyOn(mod, 'createDefaultPolicyEngine').mockReturnValue(engine);
     return {
       seen,
+      snapshots,
       restore: () => {
         spy.mockRestore();
       },
@@ -1010,13 +1031,14 @@ describe('runDevPipeline — content tier, not caller tier, reaches the policy g
     }
   });
 
-  it("a caller-only run (researchOverride) keeps the caller's tier '1'", async () => {
+  it("a caller-only run (researchOverride) declared '1' by a tier-1 caller reaches the gate as '1'", async () => {
     process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
     const cap = await captureGateTier();
     try {
       const stages = createMockStages();
       await runDevPipeline('Build feature X', stages, {
         trustTier: '1',
+        sourceTrustTier: '1',
         researchOverride: 'caller-supplied research',
       });
       expect(stages.research).not.toHaveBeenCalled();
@@ -1024,6 +1046,107 @@ describe('runDevPipeline — content tier, not caller tier, reaches the policy g
     } finally {
       cap.restore();
     }
+  });
+
+  it("an omitted declaration makes a tier-1 caller's own task text tier '3' (#6795)", async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const cap = await captureGateTier();
+    try {
+      await runDevPipeline('Build feature X', createMockStages(), {
+        trustTier: '1',
+        researchOverride: 'caller-supplied research',
+      });
+      expect(cap.seen).toEqual(['3']);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("declared '1' with a fresh research source still reaches the gate as '3' (#6795)", async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const cap = await captureGateTier();
+    try {
+      const stages = createMockStages();
+      await runDevPipeline('Build feature X', stages, { trustTier: '1', sourceTrustTier: '1' });
+      expect(stages.research).toHaveBeenCalledTimes(1);
+      expect(cap.seen).toEqual(['3']);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it('a declaration above the caller tier is clamped, and the snapshot records it (#6795)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const cap = await captureGateTier();
+    try {
+      await runDevPipeline('Build feature X', createMockStages(), {
+        trustTier: '2',
+        sourceTrustTier: '1',
+        researchOverride: 'caller-supplied research',
+      });
+      expect(cap.seen).toEqual(['2']);
+      expect(cap.snapshots[0]?.trustProvenance).toEqual({
+        callerTier: '2',
+        declaredSourceTier: '1',
+        taskContentTier: '2',
+        declarationClamped: true,
+        sourceTiers: [],
+        contentTier: '2',
+      });
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it('an unmeasured caller keeps the gate tier absent but still records the declaration (#6795)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const cap = await captureGateTier();
+    try {
+      await runDevPipeline('Build feature X', createMockStages(), {
+        sourceTrustTier: '1',
+        researchOverride: 'caller-supplied research',
+      });
+      expect(cap.seen).toEqual([undefined]);
+      expect(cap.snapshots[0]?.trustProvenance?.declaredSourceTier).toBe('1');
+      expect(cap.snapshots[0]?.trustProvenance?.callerTier).toBeUndefined();
+      // Nothing measured vouches for the declaration: capped at 3, recorded.
+      expect(cap.snapshots[0]?.trustProvenance?.taskContentTier).toBe('3');
+      expect(cap.snapshots[0]?.trustProvenance?.declarationClamped).toBe(true);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it('the debug log records the declaration and the measured caller tier (#6795)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const previousLevel = getGlobalLogLevel();
+    setGlobalLogLevel('debug');
+    const lines: string[] = [];
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    try {
+      await runDevPipeline('Build feature X', createMockStages(), {
+        trustTier: '1',
+        sourceTrustTier: '2',
+        researchOverride: 'caller-supplied research',
+      });
+    } finally {
+      write.mockRestore();
+      setGlobalLogLevel(previousLevel);
+    }
+    const entry = lines
+      .filter((line) => line.includes('Consensus→execute content trust tier'))
+      .map((line) => JSON.parse(line) as { message?: string; context?: Record<string, unknown> })
+      .find((e) => e.message === 'Consensus→execute content trust tier');
+    expect(entry).toBeDefined();
+    expect(entry?.context).toMatchObject({
+      callerTier: '1',
+      declaredSourceTier: '2',
+      declarationClamped: false,
+      contentTier: '2',
+    });
   });
 
   it("a less-trusted caller is never upgraded by the research tier (caller '4' stays '4')", async () => {
@@ -1097,6 +1220,40 @@ describe('runDevPipeline — durable policy-audit persistence (#3710)', () => {
     // The persisted chain verifies.
     expect(verifyChain(events).ok).toBe(true);
 
+    await auditLogger.close();
+  });
+
+  it('durable records and the bus event carry the trust provenance (#6795)', async () => {
+    process.env['NEXUS_POLICY_GATE_MODE'] = 'warn';
+    const storage = new InMemoryAuditStorage();
+    const auditLogger = new AuditLogger(hashChainConfig(), storage);
+    const busEvents: unknown[] = [];
+    const off = getPipelineEventBus().subscribe({ type: 'policy.evaluated' }, (e) => {
+      if (e.type === 'policy.evaluated') busEvents.push(e.trustProvenance);
+    });
+    try {
+      // Caller measured '1', declaration omitted → task text '3' → violation.
+      await runDevPipeline('Build feature X', createMockStages(), {
+        auditLogger,
+        trustTier: '1',
+        researchOverride: 'caller-supplied research',
+      });
+      await auditLogger.flush();
+    } finally {
+      off();
+    }
+    const expected = {
+      callerTier: '1',
+      declaredSourceTier: 'undeclared',
+      taskContentTier: '3',
+      declarationClamped: false,
+      sourceTiers: [],
+      contentTier: '3',
+    };
+    const policyGate = storage.getAll().filter((e) => e.action === 'security.policy_gate');
+    expect(policyGate.length).toBeGreaterThan(0);
+    for (const rec of policyGate) expect(rec.metadata?.['trustProvenance']).toEqual(expected);
+    expect(busEvents).toEqual([expected]);
     await auditLogger.close();
   });
 

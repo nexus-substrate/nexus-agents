@@ -347,6 +347,10 @@ const NexusEnvSchema = z.object({
   // evaluate and log would-be denials, none is applied. #4987/#4988 described
   // this flag before it had a reader.
   NEXUS_MCP_POLICY_ENFORCE: boolLooseStr.optional(),
+  // #6795: set by the generated child MCP config (cli-adapters/child-mcp-config.ts).
+  // A nexus-agents server spawned for an expert CLI serves model-driven calls,
+  // so `connectTransport` records its stdio caller as unmeasured, not tier 1.
+  NEXUS_MCP_CHILD: boolLooseStr.optional(),
   // #6590: comma-separated CliNames to take out of service. A plain string on
   // purpose: an unknown name is warned about and ignored by the one reader
   // (cli-adapters/disabled-clis.ts), so a stricter schema would turn one typo

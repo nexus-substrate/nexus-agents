@@ -64,6 +64,14 @@ function resolveCliPath(override?: string): string {
 }
 
 /**
+ * Env marker naming a child server (#6795). The child's stdio caller is an
+ * expert CLI driven by a model, not the operator, so the child must not
+ * measure it at tier 1; `connectTransport` reads this and records the caller
+ * as unmeasured.
+ */
+const MCP_CHILD_ENV = 'NEXUS_MCP_CHILD';
+
+/**
  * Builds the MCP config object for a nexus-agents server.
  */
 function buildConfig(options?: McpConfigOptions): McpConfigFile {
@@ -72,7 +80,8 @@ function buildConfig(options?: McpConfigOptions): McpConfigFile {
   const entry: McpServerEntry = {
     command: 'node',
     args: [cliPath, '--mode=server'],
-    ...(options?.env !== undefined ? { env: options.env } : {}),
+    // The child marker is applied LAST so caller-supplied env cannot unset it.
+    env: { ...options?.env, [MCP_CHILD_ENV]: '1' },
   };
 
   return {

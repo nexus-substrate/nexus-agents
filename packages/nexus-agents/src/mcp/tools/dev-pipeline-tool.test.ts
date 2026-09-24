@@ -622,6 +622,33 @@ describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
     await handler({ task: 'Build feature X' }, { requestContext: { trustTier: '3' } });
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.trustTier).toBeUndefined();
   });
+
+  it('threads a declared sourceTrustTier with the measured caller tier (#6795)', async () => {
+    const handler = captureHandler();
+    await handler(
+      { task: 'Build feature X', sourceTrustTier: '1' },
+      { requestContext: { trustTier: '1', caller: { transport: 'stdio' } } }
+    );
+    expect(runDevPipelineMock.mock.calls[0]?.[2]).toMatchObject({
+      trustTier: '1',
+      sourceTrustTier: '1',
+    });
+  });
+
+  it('leaves an omitted sourceTrustTier omitted, for the pipeline to apply 3 (#6795)', async () => {
+    const handler = captureHandler();
+    await handler(
+      { task: 'Build feature X' },
+      { requestContext: { trustTier: '1', caller: { transport: 'stdio' } } }
+    );
+    expect(runDevPipelineMock.mock.calls[0]?.[2]).not.toHaveProperty('sourceTrustTier');
+  });
+
+  it('rejects a sourceTrustTier outside the tier enum (#6795)', () => {
+    expect(DevPipelineInputSchema.safeParse({ task: 'x', sourceTrustTier: '5' }).success).toBe(
+      false
+    );
+  });
 });
 
 describe('dev pipeline input sanitization forwarding (#4733)', () => {
@@ -766,6 +793,15 @@ describe('runDevPipelineForGoal — dryRun reaches the pipeline (#4806)', () => 
     await runDevPipelineForGoal('add retry logic', undefined, undefined);
 
     expect(runDevPipelineMock.mock.calls[0]?.[2]?.dryRun).toBeUndefined();
+  });
+
+  it("threads run's declared sourceTrustTier into the options (#6795)", async () => {
+    await runDevPipelineForGoal('add retry logic', '1', undefined, undefined, '1');
+
+    expect(runDevPipelineMock.mock.calls[0]?.[2]).toMatchObject({
+      trustTier: '1',
+      sourceTrustTier: '1',
+    });
   });
 
   it('still threads trustTier alongside it', async () => {

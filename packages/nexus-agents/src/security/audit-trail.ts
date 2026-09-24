@@ -15,6 +15,7 @@
 import { getTimeProvider } from '../core/index.js';
 import type { TrustTier } from './trust-types.js';
 import type { AgentActionType } from './action-schema.js';
+import type { ContentTrustProvenance } from './content-trust-tier.js';
 
 // ============================================================================
 // Types
@@ -99,6 +100,13 @@ export interface PolicyGateEvent extends AuditEventBase {
   readonly recordKind?: 'summary' | 'violation';
   /** #3727: number of violations in THIS evaluation (set on the summary record). */
   readonly violationCount?: number;
+  /**
+   * #6795: how the gate's content tier was reached — measured caller tier,
+   * declared source tier, whether the declaration was clamped, and the
+   * measured source tiers. Set by the dev-pipeline consensus→execute gate;
+   * absent on every other path.
+   */
+  readonly trustProvenance?: ContentTrustProvenance;
 }
 
 /** Corroboration validation result. */

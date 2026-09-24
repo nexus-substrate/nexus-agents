@@ -79,7 +79,6 @@ export {
   generateSessionId,
   createRequestContext,
   deriveTrustTier,
-  extractCallerInfo,
   contextForLogging,
   isRequestContext,
 } from './request-context.js';

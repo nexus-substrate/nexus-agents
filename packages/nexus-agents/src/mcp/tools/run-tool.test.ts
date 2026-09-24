@@ -30,7 +30,13 @@ interface FakeDevPipelineResult {
   dryRun?: true;
 }
 const runDevPipelineForGoalMock = vi.fn(
-  (_goal: string, _trustTier?: string, _dryRun?: boolean): Promise<FakeDevPipelineResult> =>
+  (
+    _goal: string,
+    _trustTier?: string,
+    _dryRun?: boolean,
+    _signal?: AbortSignal,
+    _sourceTrustTier?: string
+  ): Promise<FakeDevPipelineResult> =>
     Promise.resolve({
       completed: true,
       plan: 'plan',
@@ -43,8 +49,13 @@ const runDevPipelineForGoalMock = vi.fn(
 vi.mock('./dev-pipeline-tool.js', () => ({
   // Forwards all three parameters: a wrapper that drops `dryRun` would make the
   // #4806 forwarding assertions unfalsifiable.
-  runDevPipelineForGoal: (goal: string, trustTier?: string, dryRun?: boolean) =>
-    runDevPipelineForGoalMock(goal, trustTier, dryRun),
+  runDevPipelineForGoal: (
+    goal: string,
+    trustTier?: string,
+    dryRun?: boolean,
+    signal?: AbortSignal,
+    sourceTrustTier?: string
+  ) => runDevPipelineForGoalMock(goal, trustTier, dryRun, signal, sourceTrustTier),
 }));
 
 // #4362: drive the pipeline executor's reported success/failure. run-tool only
@@ -372,6 +383,31 @@ describe('run-path trustTier threading (#3712) — the run→dev-pipeline hole',
       { trustTier: '1' }
     );
     expect(runDevPipelineForGoalMock.mock.calls[0]?.[1]).toBe('1');
+  });
+
+  it('threads a declared sourceTrustTier to the dev-pipeline executor (#6795)', async () => {
+    await executeGoal(
+      {
+        goal: 'implement the feature',
+        forceStrategy: 'dev-pipeline',
+        execute: true,
+        sourceTrustTier: '1',
+      },
+      { trustTier: '1' }
+    );
+    expect(runDevPipelineForGoalMock.mock.calls[0]?.[4]).toBe('1');
+  });
+
+  it('leaves an omitted sourceTrustTier omitted, for the pipeline to apply 3 (#6795)', async () => {
+    await executeGoal(
+      { goal: 'implement the feature', forceStrategy: 'dev-pipeline', execute: true },
+      { trustTier: '1' }
+    );
+    expect(runDevPipelineForGoalMock.mock.calls[0]?.[4]).toBeUndefined();
+  });
+
+  it('rejects a sourceTrustTier outside the tier enum (#6795)', () => {
+    expect(RunInputSchema.safeParse({ goal: 'x', sourceTrustTier: '0' }).success).toBe(false);
   });
 
   it('resolves to undefined tier when no caller tier is supplied (seam fail-closes to 4)', async () => {
@@ -823,11 +859,11 @@ describe('run async dispatch (execute:true, #3732)', () => {
           dryRun: true,
         });
 
-        expect(runDevPipelineForGoalMock).toHaveBeenCalledWith(
+        expect(runDevPipelineForGoalMock.mock.calls[0]?.slice(0, 3)).toEqual([
           'implement the feature',
           undefined,
-          true
-        );
+          true,
+        ]);
       });
 
       it('does not call a successful dry run an engine failure', async () => {
@@ -919,11 +955,11 @@ describe('run async dispatch (execute:true, #3732)', () => {
           execute: true,
         });
 
-        expect(runDevPipelineForGoalMock).toHaveBeenCalledWith(
+        expect(runDevPipelineForGoalMock.mock.calls[0]?.slice(0, 3)).toEqual([
           'implement the feature',
           undefined,
-          undefined
-        );
+          undefined,
+        ]);
       });
 
       // The condition every voter attached, and the contrarian's whole
