@@ -58,10 +58,19 @@ describe('isAllHealthy', () => {
     expect(isAllHealthy({ ...base, installFreshness })).toBe(false);
   });
 
-  it('is UNHEALTHY when install freshness is unmeasured (#5613)', () => {
+  it('stays healthy when install freshness is unmeasured: named in the summary, not failed (#6782)', () => {
+    // #5613 asked for exactly this ("unknown → not a failure but reported as
+    // unmeasured"); the implementation failed on it. One rule now covers every
+    // verdict section, the one scratch space already follows.
     const installFreshness = { state: 'unknown' as const, reason: 'not installed' };
 
-    expect(isAllHealthy({ ...base, installFreshness })).toBe(false);
+    expect(isAllHealthy({ ...base, installFreshness })).toBe(true);
+  });
+
+  it('stays healthy when the global install is newer than this build (#6782)', () => {
+    const installFreshness = { state: 'ahead' as const, global: '8.110.1', expected: '8.110.0' };
+
+    expect(isAllHealthy({ ...base, installFreshness })).toBe(true);
   });
 
   it('is UNHEALTHY when a scratch filesystem is critical', () => {

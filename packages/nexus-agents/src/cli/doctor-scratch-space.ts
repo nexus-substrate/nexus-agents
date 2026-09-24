@@ -31,6 +31,7 @@ import { statSync, statfsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 import { getNexusTmpDir } from '../config/nexus-tmp-dir.js';
+import { anyOf } from '../utils/verdict-aggregation.js';
 
 const MIB = 1024 * 1024;
 const GIB = 1024 * 1024 * 1024;
@@ -111,7 +112,11 @@ function grade(freeBytes: number): ScratchSpaceSeverity {
  *
  * Never throws: a platform without `statfs` support reports `available: false`
  * and grades `ok`, because an unreadable filesystem is not evidence of a full
- * one and doctor must not fail closed on a diagnostic.
+ * one and doctor must not fail closed on a diagnostic. That is doctor's one
+ * rule for an unmeasured section that feeds the verdict (#6782): the line
+ * shows ⚠, the summary names it ({@link scratchSpaceIsUnmeasured}), and it
+ * does not fail the exit code by itself. Install freshness follows the same
+ * rule.
  *
  * @param root - Scratch root to measure; defaults to the configured tmp dir.
  * @param statfs - Injection seam for tests.
@@ -227,6 +232,17 @@ export function worstSeverity(checks: readonly ScratchSpaceCheck[]): ScratchSpac
         : worst,
     'ok'
   );
+}
+
+/**
+ * Whether any scratch filesystem went unmeasured (#6782): none could be
+ * identified, or one could not be read. The verdict grades such a reading
+ * `ok` ({@link worstSeverity}); this is what keeps that default from being
+ * reported as a measurement — the summary names the section as unmeasured.
+ */
+export function scratchSpaceIsUnmeasured(checks: readonly ScratchSpaceCheck[]): boolean {
+  // whenEmpty: no filesystem identified is unmeasured, not measured-and-fine.
+  return anyOf(checks, (check) => !check.available, true);
 }
 
 /** Render every measured filesystem, one line each. */

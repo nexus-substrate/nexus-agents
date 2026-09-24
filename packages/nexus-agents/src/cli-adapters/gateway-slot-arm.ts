@@ -105,6 +105,11 @@ class GatewaySlotArm implements ICliAdapter {
     };
   }
 
+  /** The CLI's subprocess adapter; undefined when its binary is not on PATH. */
+  get cliBinaryAdapter(): ICliAdapter | undefined {
+    return this.deps.cliAdapter;
+  }
+
   /** Make an undecided arm decide its target (the availability predicate; no completion). */
   async decide(): Promise<void> {
     await this.target();
@@ -183,6 +188,17 @@ class GatewaySlotArm implements ICliAdapter {
  */
 export function gatewayServedSlotOf(adapter: unknown): GatewayServedSlot | undefined {
   return adapter instanceof GatewaySlotArm ? adapter.gatewayServedSlot : undefined;
+}
+
+/**
+ * The CLI binary's own adapter behind `adapter`, for a check that measures the
+ * CLI rather than the slot (#6782). A gateway slot arm answers `healthCheck`
+ * from whichever target it picks, so `doctor`'s CLI list credited a CLI with
+ * the gateway model's health. For a gateway slot arm this is its CLI adapter,
+ * or `undefined` when the binary is not on PATH; any other adapter IS the CLI.
+ */
+export function cliBinaryAdapterOf(adapter: ICliAdapter): ICliAdapter | undefined {
+  return adapter instanceof GatewaySlotArm ? adapter.cliBinaryAdapter : adapter;
 }
 
 /**

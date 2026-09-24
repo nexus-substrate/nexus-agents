@@ -28,7 +28,7 @@ import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import * as installFreshness from './doctor-install-freshness.js';
-import { failingVerdictTerms } from './doctor-verdict-terms.js';
+import { failingVerdictTerms, unmeasuredVerdictSections } from './doctor-verdict-terms.js';
 import { NODE_ENGINE_RANGE } from '../version.js';
 
 /**
@@ -399,7 +399,12 @@ function printSandbox(check: DoctorResult['sandbox']): void {
 /** Prints the summary line with issue count. */
 function printDoctorSummary(result: DoctorResult): void {
   const terms = failingVerdictTerms(result);
-  const freshnessNote = installFreshness.describeInstallFreshnessSummary(result.installFreshness);
+  // #6782: sections that could not be measured are named, never counted and
+  // never silent — the one rule for every section that feeds the verdict.
+  const unmeasured = unmeasuredVerdictSections(result);
+  const freshnessNote =
+    installFreshness.describeInstallFreshnessSummary(result.installFreshness) +
+    (unmeasured.length > 0 ? ` — unmeasured: ${unmeasured.join(', ')}` : '');
   // Name the terms, don't just count them (#6011). `doctor` marks several lines
   // with a warning glyph, and only some of them are counted — the API-keys note
   // is advisory because CLI auth already satisfies `hasAuthMethod`. A bare count

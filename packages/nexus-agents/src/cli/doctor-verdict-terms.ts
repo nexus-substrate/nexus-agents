@@ -10,7 +10,11 @@
  * @module cli/doctor-verdict-terms
  */
 
-import { scratchSeverityIsAcceptable, worstSeverity } from './doctor-scratch-space.js';
+import {
+  scratchSeverityIsAcceptable,
+  scratchSpaceIsUnmeasured,
+  worstSeverity,
+} from './doctor-scratch-space.js';
 import * as installFreshness from './doctor-install-freshness.js';
 import type { DoctorResult } from './doctor.js';
 import { cliFailsVerdict, gatewayVerdict, type GatewayVerdict } from './doctor-gateway.js';
@@ -35,7 +39,7 @@ export function failingVerdictTerms(result: DoctorResult): string[] {
   const terms: string[] = gatewayTerms(result.gateway, gateway);
   if (!result.nodeVersion.supported) terms.push('node version');
   if (!result.mcpServerReady) terms.push('MCP server');
-  if (!installFreshness.installFreshnessIsHealthy(result.installFreshness)) {
+  if (installFreshness.installFreshnessFailsVerdict(result.installFreshness)) {
     terms.push('install freshness');
   }
   if (!scratchSeverityIsAcceptable(worstSeverity(result.scratchSpace))) terms.push('scratch space');
@@ -57,6 +61,23 @@ export function failingVerdictTerms(result: DoctorResult): string[] {
   // API-key-only setup with no CLI reads as unhealthy with nothing counted.
   if (result.clis.length === 0 && gateway !== 'pass') terms.push('no CLIs detected');
   return terms;
+}
+
+/**
+ * The verdict sections that could not be measured (#6782), named.
+ *
+ * One rule for every section that feeds the verdict: unmeasured renders ⚠,
+ * is named here for the summary, and does not fail the exit code by itself —
+ * doctor must not fail closed on a diagnostic it could not run, and must not
+ * report a default as a measurement either.
+ */
+export function unmeasuredVerdictSections(result: DoctorResult): string[] {
+  const sections: string[] = [];
+  if (installFreshness.installFreshnessIsUnmeasured(result.installFreshness)) {
+    sections.push('install freshness');
+  }
+  if (scratchSpaceIsUnmeasured(result.scratchSpace)) sections.push('scratch space');
+  return sections;
 }
 
 /** A failing gateway's term, naming its host (#6609); none otherwise. */

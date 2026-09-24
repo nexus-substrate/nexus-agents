@@ -192,7 +192,7 @@ The gateway's verdict:
 | Discovery answered but no family slot has a model                                     | fail    | `doctor` exits 1                                                                                                  |
 | `--probe` and any family's completion failed                                          | fail    | `doctor` exits 1                                                                                                  |
 
-`doctor` exits 0 only when every term passes (Node version, an auth method, the MCP server, install freshness, scratch space, the CLIs and the gateway), and 1 otherwise.
+`doctor` exits 0 only when every term passes (Node version, an auth method, the MCP server, install freshness, scratch space, the CLIs and the gateway), and 1 otherwise. A term that could not be measured (install freshness with no readable global version, a scratch filesystem that could not be read) is shown with ⚠ and named in the summary as `unmeasured`, but does not fail the exit code by itself. The CLI list reports each CLI binary's own health; a slot the gateway serves is reported in the gateway section, not credited to the CLI.
 
 ## Troubleshooting
 
