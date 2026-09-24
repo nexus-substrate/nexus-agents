@@ -17,15 +17,17 @@ import type { ResearchIndexOptions, ParseState } from './research-index-types.js
  * @returns true if the argument was an action flag
  */
 export function parseActionArg(arg: string, state: ParseState): boolean {
-  if (arg === '--generate' || arg === '-g') {
+  // The bare words are the positional spelling (`research index check`,
+  // #2761), which the parser used to accept by ignoring every argument.
+  if (arg === '--generate' || arg === '-g' || arg === 'generate') {
     state.action = 'generate';
     return true;
   }
-  if (arg === '--validate' || arg === '-v') {
+  if (arg === '--validate' || arg === '-v' || arg === 'validate') {
     state.action = 'validate';
     return true;
   }
-  if (arg === '--check' || arg === '-c') {
+  if (arg === '--check' || arg === '-c' || arg === 'check') {
     state.action = 'check';
     return true;
   }
@@ -113,23 +115,38 @@ export function createInitialParseState(): ParseState {
 // CLI Argument Parser
 // ============================================================================
 
+/** `--output=x` → `['--output', 'x']`; any other argument is returned as-is. */
+function splitInlineValue(arg: string): string[] {
+  const eq = arg.indexOf('=');
+  return arg.startsWith('--') && eq > 0 ? [arg.slice(0, eq), arg.slice(eq + 1)] : [arg];
+}
+
 /**
  * Parse CLI arguments for the research index command.
+ *
+ * This is the ONE definition of the `research index` flags: the CLI forwards
+ * everything after `research` here verbatim (#6678, see `FLAG_OWNERS` in
+ * `cli.ts`). An argument it does not recognise is therefore refused rather
+ * than ignored — nothing else will read it.
+ *
+ * @throws Error on an unrecognised argument
  */
 export function parseResearchIndexArgs(args: readonly string[]): ResearchIndexOptions {
   const state = createInitialParseState();
+  const tokens = args.flatMap(splitInlineValue);
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  for (let i = 0; i < tokens.length; i++) {
+    const arg = tokens[i];
     if (arg === undefined) continue;
 
     if (parseActionArg(arg, state)) continue;
     if (parseBooleanFlags(arg, state)) continue;
 
-    const consumed = parseValueArg(arg, args, i, state);
-    if (consumed > 0) {
-      i += consumed - 1; // -1 because the loop will increment i
+    const consumed = parseValueArg(arg, tokens, i, state);
+    if (consumed === 0) {
+      throw new Error(`Unknown research index argument '${arg}'.\n\n${getResearchIndexHelp()}`);
     }
+    i += consumed - 1; // -1 because the loop will increment i
   }
 
   return buildOptionsFromState(state);

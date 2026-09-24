@@ -14,12 +14,13 @@ import { ValidationDashboard } from '../observability/validation-dashboard.js';
 import type {
   DashboardFilter,
   DashboardRenderOptions,
+  TimePeriod,
 } from '../observability/validation-dashboard-types.js';
 import type {
   ValidationDashboardOptions,
   ValidationDashboardResult,
 } from './validation-dashboard-types.js';
-import { isValidPeriod } from './validation-dashboard-types.js';
+import { isValidPeriod, VALID_PERIODS } from './validation-dashboard-types.js';
 
 const logger = createLogger({ component: 'validation-dashboard-command' });
 
@@ -136,53 +137,40 @@ export function validationDashboardCommand(options: ValidationDashboardOptions =
   }
 }
 
-/** Parse --period=X from positionals. */
-function parsePeriod(positionals: readonly string[]): string | undefined {
-  const arg = positionals.find((p) => p.startsWith('--period='))?.split('=')[1];
-  return isValidPeriod(arg) ? arg : undefined;
+/** The parsed CLI flags the validation dashboard reads (#6678). */
+interface ValidationCliFlags {
+  /** `--period` as typed; one of {@link VALID_PERIODS}. */
+  readonly rawPeriod?: string | undefined;
+  /** `--model` as typed; a comma-separated list of model ids. */
+  readonly rawModel?: string | undefined;
+  readonly format: string;
+  readonly verbose: boolean;
 }
 
-/** Parse --model=X,Y from positionals. */
-function parseModels(positionals: readonly string[]): string[] | undefined {
-  const arg = positionals.find((p) => p.startsWith('--model='))?.split('=')[1];
-  const models = arg?.split(',').filter((m) => m.length > 0);
-  return models !== undefined && models.length > 0 ? models : undefined;
-}
-
-/** Parse --task-type=X,Y from positionals. */
-function parseTaskTypes(positionals: readonly string[]): string[] | undefined {
-  const arg = positionals.find((p) => p.startsWith('--task-type='))?.split('=')[1];
-  const types = arg?.split(',').filter((t) => t.length > 0);
-  return types !== undefined && types.length > 0 ? types : undefined;
-}
-
-/** Parse --min-sample=N from positionals. */
-function parseMinSample(positionals: readonly string[]): number | undefined {
-  const arg = positionals.find((p) => p.startsWith('--min-sample='))?.split('=')[1];
-  const value = arg !== undefined ? parseInt(arg, 10) : undefined;
-  return Number.isFinite(value) ? value : undefined;
+function requirePeriod(value: string): TimePeriod {
+  if (!isValidPeriod(value)) {
+    throw new Error(`--period must be one of ${VALID_PERIODS.join(', ')}; got '${value}'`);
+  }
+  return value;
 }
 
 /**
- * Parses CLI positionals to extract validation options.
+ * Maps the parsed CLI flags onto the dashboard options.
+ *
+ * #6678: this used to re-parse `--period=`/`--model=` out of the positionals,
+ * which the CLI parser had already consumed, so both filters were dropped and
+ * the dashboard came back unfiltered. An invalid period is refused rather
+ * than dropped for the same reason.
+ *
+ * @throws Error when `--period` is not one of {@link VALID_PERIODS}
  */
-export function parseValidationArgs(
-  positionals: readonly string[],
-  format: string,
-  verbose: boolean
-): Record<string, unknown> {
-  const options: Record<string, unknown> = {
-    format: format === 'json' ? 'json' : 'ascii',
-    verbose,
+export function parseValidationArgs(flags: ValidationCliFlags): ValidationDashboardOptions {
+  const { rawPeriod, rawModel } = flags;
+  const models = rawModel?.split(',').filter((m) => m.length > 0) ?? [];
+  return {
+    format: flags.format === 'json' ? 'json' : 'ascii',
+    verbose: flags.verbose,
+    ...(rawPeriod !== undefined && { period: requirePeriod(rawPeriod) }),
+    ...(models.length > 0 && { models }),
   };
-  const period = parsePeriod(positionals);
-  const models = parseModels(positionals);
-  const taskTypes = parseTaskTypes(positionals);
-  const minSampleSize = parseMinSample(positionals);
-
-  if (period !== undefined) options['period'] = period;
-  if (models !== undefined) options['models'] = models;
-  if (taskTypes !== undefined) options['taskTypes'] = taskTypes;
-  if (minSampleSize !== undefined) options['minSampleSize'] = minSampleSize;
-  return options;
 }

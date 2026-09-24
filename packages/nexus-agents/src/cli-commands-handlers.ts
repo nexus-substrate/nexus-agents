@@ -458,7 +458,14 @@ export async function handleRegistryCommand(args: ParsedCliArgs): Promise<CliExi
  * (Source: Issue #273)
  */
 export function handleValidationCommand(args: ParsedCliArgs): CliExitResult {
-  const options = parseValidationArgs(args.positionals, args.options.format, args.options.verbose);
+  let options: ReturnType<typeof parseValidationArgs>;
+  try {
+    options = parseValidationArgs(args.options);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    process.stderr.write(`Error: ${message}\n`);
+    return cliExit(EXIT_CODES.INVALID_ARGS, message);
+  }
   const exitCode = validationDashboardCommand(options);
   return cliExitFromStatus(exitCode);
 }
@@ -652,10 +659,13 @@ export async function handleSessionCommand(
   // #3942: signal that delegation explicitly with the sentinel rather than a
   // bare `undefined`, so a dropped return on the error path above is caught.
   const remainingArgs = args.positionals.slice(2);
-  // #6677: `--dry-run` was consumed by the parser, so forward it explicitly —
-  // it is not in the positionals, and prune used to delete under --dry-run.
+  // #6677/#6678: the parser consumed these flags, so forward them explicitly —
+  // they are not in the positionals. Prune used to delete under --dry-run,
+  // export printed to stdout under --output, and list printed a table under --json.
   await sessionCommand(subcommand, remainingArgs, undefined, {
     dryRun: args.options.dryRun,
+    json: args.options.json === true || args.options.format === 'json',
+    output: args.options.output,
   });
   return LIFECYCLE_DELEGATED;
 }

@@ -32,6 +32,7 @@ import {
   type ParsedCliArgs,
 } from './cli-types.js';
 import { dispatchCommand } from './cli-commands.js';
+import { findFlagOwner, type FlagOwner } from './cli-flag-owners.js';
 import { isDirectRun } from './cli-direct-run.js';
 import { formatCommandHelp } from './cli-command-help.js';
 import { catalogCommandNames, formatUnknownCommandMessage } from './cli-command-suggester.js';
@@ -114,6 +115,7 @@ interface ParsedValues {
   'bandit-stats': boolean;
   setup: boolean;
   'skip-checks': boolean;
+  task?: string;
   model?: string;
   'max-tokens'?: string;
   'max-cost-usd'?: string;
@@ -194,6 +196,8 @@ function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> 
   const engine = parseOrchestrateEngine(values.engine);
   const maxSteps = parseNumericOption(values['max-steps']);
   return {
+    // #6678: `-t`/`--task` was parsed and never forwarded.
+    ...(values.task !== undefined && { task: values.task }),
     ...(model !== undefined && { model }),
     ...(maxTokens !== undefined && { maxTokens }),
     ...(maxCostUsd !== undefined && { maxCostUsd }),
@@ -338,6 +342,8 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...(values.source !== undefined && { source: values.source }),
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
+    ...(values.model !== undefined && { rawModel: values.model }),
+    ...(values.period !== undefined && { rawPeriod: values.period }),
     ...buildOrchestrateOptions(values),
     ...buildVoteOptions(values),
     ...buildLearningMetricsOptions(values),
@@ -397,22 +403,12 @@ function buildInitOptions(values: ParsedValues): {
   };
 }
 
-const HOOKS_COMMAND = 'hooks';
 const HELP_FLAGS: ReadonlySet<string> = new Set(['--help', '-h']);
 
-/**
- * `hooks` owns its flags (#6679). `parseHookArgs` in `cli/hooks/hook-router.ts`
- * is the one definition of `--tool`, `--validate`, `--track-metrics`,
- * `--check-tasks` and the rest, so the strict global parser must not see them:
- * it rejected the ones it did not know (every `setup`-installed hook exited 3)
- * and consumed-and-dropped the ones it did (`--validate`, `--source`, #6678).
- * Everything after `hooks` is therefore forwarded verbatim as positionals,
- * which `handleHooksCommand` hands to the hook router. Only `--help`/`-h` is
- * read here, so per-command help keeps working.
- */
-function parseHooksPassthrough(args: string[]): ParsedCliArgs {
-  const hookArgs = args.slice(1);
-  const wantsHelp = hookArgs.some((arg) => HELP_FLAGS.has(arg));
+/** See `cli-flag-owners.ts`. Only `--help`/`-h` is read here, so per-command help works. */
+function parseFlagOwnerPassthrough(owner: FlagOwner, args: string[]): ParsedCliArgs {
+  const commandArgs = args.slice(1);
+  const wantsHelp = commandArgs.some((arg) => HELP_FLAGS.has(arg));
   const { values } = parseArgs({
     options: PARSE_ARGS_CONFIG.options,
     allowPositionals: PARSE_ARGS_CONFIG.allowPositionals,
@@ -420,9 +416,9 @@ function parseHooksPassthrough(args: string[]): ParsedCliArgs {
     args: wantsHelp ? ['--help'] : [],
   });
   const result: ParsedCliArgs = {
-    command: HOOKS_COMMAND,
+    command: owner.command,
     options: buildOptions(values),
-    positionals: [HOOKS_COMMAND, ...hookArgs.filter((arg) => !HELP_FLAGS.has(arg))],
+    positionals: [owner.command, ...commandArgs.filter((arg) => !HELP_FLAGS.has(arg))],
   };
   const subcommand = result.positionals[1];
   if (subcommand !== undefined) result.subcommand = subcommand;
@@ -436,7 +432,8 @@ function parseHooksPassthrough(args: string[]): ParsedCliArgs {
  * @returns Parsed CLI arguments with command and options
  */
 export function parseCliArgs(args: string[] = process.argv.slice(2)): ParsedCliArgs {
-  if (args[0] === HOOKS_COMMAND) return parseHooksPassthrough(args);
+  const flagOwner = findFlagOwner(args);
+  if (flagOwner !== undefined) return parseFlagOwnerPassthrough(flagOwner, args);
   const { values, positionals } = parseArgs({
     options: PARSE_ARGS_CONFIG.options,
     allowPositionals: PARSE_ARGS_CONFIG.allowPositionals,

@@ -114,8 +114,16 @@ function isValidOrchestrateEngine(value: string): value is 'router' | 'puppeteer
  * (Source: Issue #386 - PuppeteerOrchestrator integration)
  */
 export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<CliExitResult> {
-  // Get task from positionals (orchestrate <task>)
-  const task = args.positionals[1];
+  // The task is `orchestrate <task>` or `orchestrate -t/--task <task>` (#6678:
+  // the flag was parsed and never read). Both at once is refused, not resolved
+  // by dropping one of them.
+  const positionalTask = args.positionals[1];
+  if (positionalTask !== undefined && args.options.task !== undefined) {
+    const message = 'Give the task either as an argument or with --task, not both.';
+    process.stderr.write(`Error: ${message}\n`);
+    return cliExit(EXIT_CODES.INVALID_ARGS, message);
+  }
+  const task = args.options.task ?? positionalTask;
   if (task === undefined) {
     printOrchestrateUsage();
     return cliExit(EXIT_CODES.INVALID_ARGS);

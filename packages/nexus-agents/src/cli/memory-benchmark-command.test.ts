@@ -85,7 +85,7 @@ function createMockBenchmarkResult() {
     orphanedRefCount: 0,
     growthRateBytesPerOp: 1500,
     decayConsistencyScore: 0.97,
-      decayItemsChecked: 10,
+    decayItemsChecked: 10,
     promotionRetentionRate: 0.92,
     decayRegretScore: 0.2,
   };
@@ -198,8 +198,11 @@ describe('memory-benchmark-command', () => {
       );
     });
 
-    it('should validate when --validate positional present', async () => {
-      const args = createMockArgs({ positionals: ['--validate'] });
+    // #6678: the parser consumes `--validate` into `options.validate`; it is
+    // never a positional, so the old `positionals: ['--validate']` fixture
+    // modelled an input the CLI cannot produce.
+    it('should validate when the --validate option is set', async () => {
+      const args = createMockArgs({ options: { validate: true } });
 
       await handleMemoryBenchmarkCommand(args);
 

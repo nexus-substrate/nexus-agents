@@ -289,10 +289,18 @@ export async function sessionPrune(
 // CLI Entry Point (split into handlers)
 // ============================================================================
 
-async function handleList(args: string[], log: ILogger): Promise<void> {
+/**
+ * JSON output was asked for: the parsed `--json` / `--format json` (#6678), or
+ * `--json` in `args` for direct callers of the exported `sessionCommand`.
+ */
+function wantsJson(args: readonly string[], flags: SessionCommandFlags): boolean {
+  return flags.json === true || args.includes('--json');
+}
+
+async function handleList(args: string[], log: ILogger, flags: SessionCommandFlags): Promise<void> {
   const limitIdx = args.indexOf('--limit');
   const limit = limitIdx >= 0 ? parseInt(args[limitIdx + 1] ?? '20', 10) : 20;
-  const format: 'table' | 'json' = args.includes('--json') ? 'json' : 'table';
+  const format: 'table' | 'json' = wantsJson(args, flags) ? 'json' : 'table';
   const result = await sessionList({ limit, format, logger: log });
   if (!result.ok) {
     throw new Error(result.error.message);
@@ -300,12 +308,12 @@ async function handleList(args: string[], log: ILogger): Promise<void> {
   printSessionList(result.value, format);
 }
 
-async function handleShow(args: string[], log: ILogger): Promise<void> {
+async function handleShow(args: string[], log: ILogger, flags: SessionCommandFlags): Promise<void> {
   const sessionId = args[0];
   if (sessionId === undefined) {
     throw new Error('Session ID required');
   }
-  const format: 'text' | 'json' = args.includes('--json') ? 'json' : 'text';
+  const format: 'text' | 'json' = wantsJson(args, flags) ? 'json' : 'text';
   const result = await sessionShow({ sessionId, format, logger: log });
   if (!result.ok) {
     throw new Error(result.error.message);
@@ -313,13 +321,18 @@ async function handleShow(args: string[], log: ILogger): Promise<void> {
   printSessionShow(result.value, format);
 }
 
-async function handleExport(args: string[], log: ILogger): Promise<void> {
+async function handleExport(
+  args: string[],
+  log: ILogger,
+  flags: SessionCommandFlags
+): Promise<void> {
   const sessionId = args[0];
   if (sessionId === undefined) {
     throw new Error('Session ID required');
   }
   const outputIdx = args.indexOf('--output');
-  const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined;
+  // #6678: the CLI parser consumes `--output`/`-o`, so it arrives as `flags.output`.
+  const outputPath = flags.output ?? (outputIdx >= 0 ? args[outputIdx + 1] : undefined);
   const format: 'json' | 'markdown' = args.includes('--markdown') ? 'markdown' : 'json';
   const result = await sessionExport({ sessionId, output: outputPath, format, logger: log });
   if (!result.ok) {
@@ -369,6 +382,10 @@ async function handlePrune(
  */
 interface SessionCommandFlags {
   readonly dryRun?: boolean | undefined;
+  /** `--json` or `--format json` (#6678). */
+  readonly json?: boolean | undefined;
+  /** `--output`/`-o` (#6678). */
+  readonly output?: string | undefined;
 }
 
 /** Main session command entry point. */

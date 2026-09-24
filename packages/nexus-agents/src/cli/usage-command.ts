@@ -21,6 +21,8 @@
 import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
 import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { loadUsageEvents, rollupByModel, type ModelRollup } from '../learning/usage-log.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
+import { getErrorMessage } from '../core/index.js';
 
 interface UsageOptions {
   readonly format: 'text' | 'json';
@@ -31,7 +33,7 @@ interface UsageOptions {
 
 function parseOptions(args: ParsedCliArgs): UsageOptions {
   // The cli-types options bag is strictly typed; new flags this command
-  // accepts (`--since`, `--until`, `--model`) aren't first-class fields.
+  // accepts (`--since`, `--until`) aren't first-class fields.
   // Treat the bag as a record for these reads — the values are still
   // string-checked at runtime.
   const opts = args.options as unknown as Record<string, unknown>;
@@ -42,13 +44,40 @@ function parseOptions(args: ParsedCliArgs): UsageOptions {
   const sinceIso = since === '' ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() : since;
 
   const until = typeof opts['until'] === 'string' ? opts['until'] : undefined;
-  const model = typeof opts['model'] === 'string' ? opts['model'] : undefined;
+  const { rawModel } = args.options;
+  if (rawModel !== undefined) requireKnownModelId(rawModel);
 
-  return { format, sinceIso, untilIso: until, modelId: model };
+  return { format, sinceIso, untilIso: until, modelId: rawModel };
+}
+
+/**
+ * `--model` takes a model id (#6678). It used to be read through the
+ * orchestrate parse, which keeps only CLI names (`claude`, `codex`), so a real
+ * id became `undefined` and the report came back unfiltered. It is now
+ * validated against the model registry — an exact id or alias, or a decorated
+ * gateway id the registry resolves to a canonical entry — and an id the
+ * registry can only guess at is refused, because a typo would otherwise filter
+ * the report down to nothing and read as "no usage".
+ */
+function requireKnownModelId(modelId: string): void {
+  const registry = getDefaultRegistry();
+  if (registry.hasAuthoritative(modelId)) return;
+  if (registry.getEntry(modelId).matchedVia !== undefined) return;
+  throw new Error(
+    `--model '${modelId}' is not a model id the model registry knows ` +
+      '(an id, an alias, or a gateway id it resolves to one).'
+  );
 }
 
 export async function handleUsageCommand(args: ParsedCliArgs): Promise<CliExitResult> {
-  const opts = parseOptions(args);
+  let opts: UsageOptions;
+  try {
+    opts = parseOptions(args);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    console.error(`Error: ${message}`);
+    return cliExit(EXIT_CODES.INVALID_ARGS, message);
+  }
 
   const loadOpts: Parameters<typeof loadUsageEvents>[0] = { sinceIso: opts.sinceIso };
   if (opts.untilIso !== undefined) {

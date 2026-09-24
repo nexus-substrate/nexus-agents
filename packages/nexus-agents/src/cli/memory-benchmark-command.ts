@@ -172,9 +172,11 @@ async function runBenchmark(options: MemoryBenchmarkOptions): Promise<MemoryBenc
 /** Parses options from CLI args. */
 function parseOptions(args: ParsedCliArgs): MemoryBenchmarkOptions {
   return {
-    quick: args.subcommand === 'quick' || args.options.dryRun,
+    // #6678: `--quick` and `--validate` are parsed options; they never reach
+    // the positionals, so `positionals.includes('--validate')` could not fire.
+    quick: args.subcommand === 'quick' || args.options.quick || args.options.dryRun,
     format: args.options.format === 'json' ? 'json' : 'text',
-    validate: args.subcommand === 'validate' || args.positionals.includes('--validate'),
+    validate: args.subcommand === 'validate' || args.options.validate === true,
   };
 }
 

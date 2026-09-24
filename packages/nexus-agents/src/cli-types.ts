@@ -241,6 +241,15 @@ export interface ParsedCliArgs {
     options?: string[];
     /** #6110 — `--project`, the project the panel judges (replaces `nexus-agents` in the prompts). */
     project?: string;
+    /**
+     * #6678 — the text of `--model` and `--period` exactly as typed. The typed
+     * parses (`model`: a CLI name for orchestrate; `period`: hours for
+     * learning-metrics) drop any other command's spelling, so a command whose
+     * flag means something else — `usage --model <model id>`,
+     * `validation --period 7d --model a,b` — reads the text and validates it.
+     */
+    rawModel?: string;
+    rawPeriod?: string;
     // Learning-metrics command options
     period?: number;
     export?: string;
