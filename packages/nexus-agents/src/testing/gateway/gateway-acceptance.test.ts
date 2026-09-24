@@ -30,6 +30,7 @@ import {
   resetGlobalRegistry,
 } from '../../adapters/unified-registry.js';
 import { _resetGatewaySlotCatalog } from '../../adapters/gateway-family-slots.js';
+import { SdkAdapter } from '../../adapters/sdk/sdk-adapter.js';
 import {
   ROLE_TO_TASK_CATEGORY,
   resolveAdapterForRole,
@@ -640,9 +641,13 @@ describe('the unpinned default and the opencode slot with no CLIs installed (#66
     expect(bootLogger.warnings.join('\n')).toContain(
       'NEXUS_CUSTOM_MODEL: ignored: the model is not in the gateway catalogue'
     );
-    // TODAY: the custom-openai adapter posts to /v1/responses, which this
-    // chat-only gateway does not serve, so the call fails. #6645 changes it.
-    expect(result.ok ? 'ok' : result.error.message).toContain('/v1/responses');
+    // The custom-openai adapter calls chat completions by default (#6645).
+    expect(gateway.requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'POST /v1/chat/completions',
+    ]);
+    expect(result.ok ? result.value.content : result.error.message).toEqual([
+      { type: 'text', text: `reply from ${FAMILY_SLOT_MODEL.claude}` },
+    ]);
   });
 
   it('refuses a pinned opencode slot with no binary instead of running another model', async () => {
@@ -720,5 +725,31 @@ describe('doctor --gateway on a gateway-only host (#6609)', () => {
     } finally {
       vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', gateway.baseUrl);
     }
+  });
+});
+
+// ============================================================================
+// 7. The single-model custom-openai adapter's API surface (#6645)
+// ============================================================================
+
+describe('the single-model custom-openai adapter over HTTP (#6645)', () => {
+  const id = 'gpt-5.2';
+  const routes = (): string[] => gateway.requests.map((r) => `${r.method} ${r.path}`);
+
+  afterEach(() => {
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', undefined);
+  });
+
+  // The default (chat completions) is asserted end to end by section 5's
+  // unpinned-default case; this one covers the opt-in.
+  it('posts to /v1/responses only when NEXUS_CUSTOM_API_SURFACE=responses', async () => {
+    vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', 'responses');
+    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: id }, silentLogger());
+
+    const result = await adapter.complete(ask);
+
+    // This fake gateway serves chat completions only, so the opted-in surface 404s.
+    expect(routes()).toEqual(['POST /v1/responses']);
+    expect(result.ok ? 'ok' : result.error.message).toContain('/v1/responses');
   });
 });
