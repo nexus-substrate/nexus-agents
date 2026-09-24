@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { NEAR_MISS_SAMPLES, SHARED_SHAPE_SAMPLES } from '../core/__tests__/credential-corpus.js';
+import { NEAR_MISS_SAMPLES, SHARED_SHAPE_SAMPLES } from '../testing/credential-corpus.js';
 
 import {
   FAKE_OPENAI_KEY,

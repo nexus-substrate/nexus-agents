@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { NEAR_MISS_SAMPLES, SHARED_SHAPE_SAMPLES } from './__tests__/credential-corpus.js';
+import { NEAR_MISS_SAMPLES, SHARED_SHAPE_SAMPLES } from '../testing/credential-corpus.js';
 import { sanitize, sanitizeDeep } from './logger.js';
 import {
   FAKE_OPENAI_KEY,
