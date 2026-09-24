@@ -123,6 +123,10 @@ Spawned CLI subprocesses get an allowlisted environment, not yours. The allowlis
 
 To point a spawned CLI at the gateway, name the variables in `NEXUS_SUBPROCESS_EXTRA_ENV`, e.g. `OPENAI_BASE_URL,ANTHROPIC_BASE_URL`. `NEXUS_SUBPROCESS_ENV_ALLOWLIST=false` turns the filter off entirely; prefer the narrower variable.
 
+### The direct OpenAI adapter and `OPENAI_BASE_URL`
+
+The direct OpenAI adapter (`OPENAI_API_KEY`) sends requests to the host in `OPENAI_BASE_URL` when that variable is set. If the host is anything other than `api.openai.com`, the adapter treats it as an OpenAI-compatible gateway and posts to `<base>/chat/completions` (#6654). Set `NEXUS_CUSTOM_API_SURFACE=responses` if the host serves the Responses API (`<base>/responses`). With `OPENAI_BASE_URL` unset, or set to `api.openai.com`, the adapter uses the Responses API as before and ignores `NEXUS_CUSTOM_API_SURFACE`.
+
 ## How discovery works
 
 At startup the server calls `GET $NEXUS_OPENAI_COMPAT_URL/models` (10 s timeout, one retry), then:
