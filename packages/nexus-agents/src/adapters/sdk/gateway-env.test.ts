@@ -14,6 +14,7 @@ import type { ILogger } from '../../core/index.js';
 import {
   _resetDeprecatedGatewayEnvWarning,
   hostnameOf,
+  readDirectOpenAiSurface,
   readGatewayEnv,
   resolveGatewayEnv,
   warnDeprecatedGatewayEnvOnce,
@@ -259,5 +260,28 @@ describe('hostnameOf (#4392 inc 3 — no-logging parity)', () => {
   it('returns a placeholder rather than the raw string when the URL does not parse', () => {
     // The raw string is exactly what a pasted `key@host` mistake would leak.
     expect(hostnameOf('not a url')).toBe('<unparseable url>');
+  });
+});
+
+describe('readDirectOpenAiSurface (#6654)', () => {
+  it.each([
+    ['unset', {}],
+    ['blank', { OPENAI_BASE_URL: '  ' }],
+    ['api.openai.com', { OPENAI_BASE_URL: 'https://api.openai.com/v1' }],
+    ['api.openai.com in upper case', { OPENAI_BASE_URL: 'https://API.OPENAI.COM/v1' }],
+  ])('keeps the provider default when OPENAI_BASE_URL is %s', (_label, env) => {
+    // An override that would throw proves the override is not even read.
+    expect(readDirectOpenAiSurface({ ...env, NEXUS_CUSTOM_API_SURFACE: 'bogus' })).toBeUndefined();
+  });
+
+  it('uses chat completions for any other host, and honours the override', () => {
+    const gateway = { OPENAI_BASE_URL: 'https://llm.corp.example/v1' };
+    expect(readDirectOpenAiSurface(gateway)).toBe('chat');
+    expect(readDirectOpenAiSurface({ ...gateway, NEXUS_CUSTOM_API_SURFACE: 'responses' })).toBe(
+      'responses'
+    );
+    expect(() =>
+      readDirectOpenAiSurface({ ...gateway, NEXUS_CUSTOM_API_SURFACE: 'bogus' })
+    ).toThrow(/NEXUS_CUSTOM_API_SURFACE/);
   });
 });
