@@ -9,6 +9,7 @@
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, sep } from 'node:path';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 
 // =============================================================================
 // Path Utility Functions
@@ -27,16 +28,10 @@ export function isPathSafe(targetPath: string, allowedPaths: readonly string[]):
   // and the rule admitted `/etc/shadow` and `~/.ssh/id_ed25519`. A raw string
   // prefix also has no separator boundary, so a root of `/work` admitted
   // `/work-secrets`. Resolve both sides against cwd and require either an
-  // exact match or a path-separator boundary.
+  // exact match or a path-separator boundary. The containment check follows
+  // symlinks, so a link inside a root whose target is outside it is refused.
   const resolvedTarget = resolve(targetPath);
-
-  for (const allowed of allowedPaths) {
-    const root = resolve(allowed);
-    if (resolvedTarget === root) return true;
-    if (resolvedTarget.startsWith(root.endsWith(sep) ? root : root + sep)) return true;
-  }
-
-  return false;
+  return allowedPaths.some((allowed) => resolveInsideRoot(resolvedTarget, allowed) !== null);
 }
 
 // Common path field names in priority order

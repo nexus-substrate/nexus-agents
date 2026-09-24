@@ -124,5 +124,20 @@ describe('resolveInsideRoot', () => {
       );
       expect(resolveInsideRoot(join(rootLink, 'child.txt'), rootLink)).not.toBeNull();
     });
+
+    it('accepts a child of a not-yet-existing root reached through a symlinked ancestor', () => {
+      // e.g. a runs dir not created yet, under a repo path with a symlinked ancestor.
+      const rootLink = join(baseDir, 'root-link');
+      symlinkSync(workspaceDir, rootLink);
+      const futureRoot = join(rootLink, 'runs');
+      expect(resolveInsideRoot(join(futureRoot, 'r1', 'trace.jsonl'), futureRoot)).toBe(
+        join(realpathSync(workspaceDir), 'runs', 'r1', 'trace.jsonl')
+      );
+    });
+
+    it('still rejects an escape from a not-yet-existing root', () => {
+      const futureRoot = join(workspaceDir, 'runs');
+      expect(resolveInsideRoot(join(futureRoot, '..', '..', 'secret.txt'), futureRoot)).toBeNull();
+    });
   });
 });

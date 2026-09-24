@@ -35,7 +35,7 @@
 
 import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, registerDynamicLanguage } from '@ast-grep/napi';
 import type { NapiConfig } from '@ast-grep/napi';
@@ -47,6 +47,7 @@ import pythonLangRegistration from '@ast-grep/lang-python';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { createLogger, SecurityError, ValidationError, formatZodError } from '../core/index.js';
+import { resolveInsideRoot } from './safe-path.js';
 
 // ============================================================================
 // Dynamic language registration (@experimental, call-once)
@@ -199,18 +200,18 @@ export function getBuiltInAstRulesPath(): string {
 }
 
 // ============================================================================
-// Path-traversal guard (copied from mcp/tools/search-usages-tool.ts —
-// keep in sync if that guard changes)
+// Path-traversal guard (same shape as mcp/tools/search-usages-tool.ts)
 // ============================================================================
 
-/** Resolve a caller path against a path-traversal guard (must stay within cwd). */
+/**
+ * Resolve a caller path against a path-traversal guard (must stay within cwd).
+ * Realpath-aware: a symlink inside cwd whose target is outside it is refused,
+ * and the returned path is the canonical one the scan then walks.
+ */
 function resolveWithinCwd(target: string): { resolved: string } | { error: string } {
-  const resolved = resolve(target);
-  const cwdRoot = resolve('.');
-  // The `+ sep` is load-bearing: a sibling dir whose name starts with the cwd
-  // basename bypasses a bare startsWith. Matches security/safe-path.ts.
-  if (resolved !== cwdRoot && !resolved.startsWith(cwdRoot + sep)) {
-    return { error: `Path traversal denied: scope must be within ${cwdRoot}` };
+  const resolved = resolveInsideRoot(target);
+  if (resolved === null) {
+    return { error: `Path traversal denied: scope must be within ${process.cwd()}` };
   }
   return { resolved };
 }

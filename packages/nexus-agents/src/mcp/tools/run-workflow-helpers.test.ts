@@ -6,7 +6,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import {
+  setActiveWorkspaceRoot,
+  _resetActiveWorkspaceRootForTests,
+} from '../../config/nexus-data-dir.js';
 import { SecurityError } from '../../core/index.js';
 import {
   isFilePath,
@@ -228,6 +234,43 @@ describe('getAllowedWorkflowDirs', () => {
     const dirs = getAllowedWorkflowDirs(deps);
 
     expect(dirs).toContain(process.cwd());
+  });
+
+  it('also allows the active workspace root when no security config is set', () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'nexus-wf-root-')));
+    try {
+      expect(setActiveWorkspaceRoot(workspace)).toBe(true);
+      const dirs = getAllowedWorkflowDirs({
+        workflowEngine: mockWorkflowEngine,
+        resolveExecutionEngine: () => mockWorkflowEngine,
+        rateLimiter: mockRateLimiter,
+      });
+      expect(dirs).toContain(workspace);
+    } finally {
+      _resetActiveWorkspaceRootForTests();
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('does not widen an explicit security allowlist with the workspace root', () => {
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'nexus-wf-root-')));
+    try {
+      expect(setActiveWorkspaceRoot(workspace)).toBe(true);
+      const dirs = getAllowedWorkflowDirs({
+        workflowEngine: mockWorkflowEngine,
+        resolveExecutionEngine: () => mockWorkflowEngine,
+        rateLimiter: mockRateLimiter,
+        security: {
+          allowedPaths: ['/custom/templates'],
+          blockedPatterns: [],
+          rateLimit: { enabled: false, requestsPerMinute: 100 },
+        },
+      });
+      expect(dirs).not.toContain(workspace);
+    } finally {
+      _resetActiveWorkspaceRootForTests();
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 });
 

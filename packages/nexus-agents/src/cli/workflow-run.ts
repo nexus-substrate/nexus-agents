@@ -19,6 +19,7 @@ import {
 } from '../workflows/index.js';
 import type { WorkflowDefinition, InputDefinition } from '../core/index.js';
 import { SecurityError, getErrorMessage } from '../core/index.js';
+import { resolveInsideRoot } from '../security/safe-path.js';
 
 // Re-export types and formatters
 export type { WorkflowRunOptions, WorkflowRunResult, ParsedInputs } from './workflow-run-types.js';
@@ -30,20 +31,19 @@ import { printWorkflowRunResult, printWorkflowTemplateList } from './workflow-ru
 
 /**
  * Validates that a file path is within the allowed root directory.
- * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd), following
+ * symlinks: a link inside the root whose target is outside it is refused.
  *
  * @param userPath - The user-provided file path
  * @param allowedRoot - The root directory that paths must be within
- * @returns The validated absolute path
+ * @returns The validated canonical absolute path
  * @throws SecurityError if path traversal is detected
  */
 function validateInputPath(userPath: string, allowedRoot: string): string {
-  const resolvedRoot = path.resolve(allowedRoot);
-  const resolved = path.resolve(allowedRoot, userPath);
-
-  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+  const resolved = resolveInsideRoot(path.resolve(allowedRoot, userPath), allowedRoot);
+  if (resolved === null) {
     throw new SecurityError('Path traversal detected: input file path escapes allowed directory', {
-      context: { userPath, allowedRoot: resolvedRoot },
+      context: { userPath, allowedRoot: path.resolve(allowedRoot) },
     });
   }
   return resolved;

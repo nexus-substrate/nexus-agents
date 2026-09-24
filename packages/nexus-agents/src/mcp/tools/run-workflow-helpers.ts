@@ -8,12 +8,14 @@
  * (Source: Issue #339)
  */
 
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { toolError, toolStructuredError, toolSuccess } from './tool-result.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
 import { WorkflowError, SecurityError } from '../../core/index.js';
 import { getBuiltInTemplatesPath } from '../../workflows/template-loader.js';
+import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import type { StepResultSummary, DryRunResult, RunWorkflowDeps } from './run-workflow-types.js';
 import type { ErrorCategory } from '../error-envelope.js';
 
@@ -44,11 +46,12 @@ export function isFilePath(template: string): boolean {
 
 /**
  * Validates that a file path is within one of the allowed root directories.
- * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd), following
+ * symlinks: a link inside a root whose target is outside every root is refused.
  *
  * @param userPath - The user-provided file path
  * @param allowedRoots - Array of allowed root directories
- * @returns Result with validated absolute path or SecurityError
+ * @returns Result with the canonical absolute path or SecurityError
  */
 export function validateWorkflowPath(
   userPath: string,
@@ -63,15 +66,13 @@ export function validateWorkflowPath(
     };
   }
 
-  // Resolve the user path to an absolute path
+  // Relative paths resolve against cwd; each root is then checked in turn.
   const resolvedPath = resolve(userPath);
 
-  // Check if the resolved path is within any of the allowed roots
   for (const root of allowedRoots) {
-    const resolvedRoot = resolve(root);
-    // Path must be exactly the root OR start with root + separator
-    if (resolvedPath === resolvedRoot || resolvedPath.startsWith(resolvedRoot + sep)) {
-      return { ok: true, value: resolvedPath };
+    const contained = resolveInsideRoot(resolvedPath, root);
+    if (contained !== null) {
+      return { ok: true, value: contained };
     }
   }
 
@@ -101,8 +102,13 @@ export function getAllowedWorkflowDirs(deps: RunWorkflowDeps): string[] {
   if (securityPaths !== undefined && securityPaths.length > 0) {
     allowedDirs.push(...securityPaths);
   } else {
-    // Fall back to current working directory if no explicit config
+    // Fall back to current working directory if no explicit config. A globally
+    // installed server runs with cwd outside the user's repo, so the MCP
+    // client's declared workspace root is allowed too (mirrors dev-pipeline's
+    // workingDir containment).
     allowedDirs.push(process.cwd());
+    const workspaceRoot = getActiveWorkspaceRoot();
+    if (workspaceRoot !== undefined) allowedDirs.push(workspaceRoot);
   }
 
   return allowedDirs;

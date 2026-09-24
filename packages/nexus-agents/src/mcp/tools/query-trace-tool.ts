@@ -8,11 +8,12 @@
  */
 
 import { readFile, stat } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { getDefaultRunsDir } from '../../pipeline/pipeline-runner.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -217,13 +218,11 @@ export async function queryTraceFromDisk(
   runsDir?: string
 ): Promise<QueryTraceResponse> {
   const dir = runsDir ?? getDefaultRunsDir();
-  const tracePath = join(dir, input.runId, 'trace.jsonl');
 
-  // Path traversal guard: resolved path must stay within runs directory.
-  // Guards against sibling-prefix bypass (#1816): dir=/foo must not accept /foobar.
-  const resolvedDir = resolve(dir);
-  const resolvedTrace = resolve(tracePath);
-  if (!resolvedTrace.startsWith(resolvedDir + sep) && resolvedTrace !== resolvedDir) {
+  // Path traversal guard: the trace must stay within the runs directory after
+  // following symlinks, and the canonical path is what gets read.
+  const tracePath = resolveInsideRoot(join(dir, input.runId, 'trace.jsonl'), dir);
+  if (tracePath === null) {
     return { runId: input.runId, ...EMPTY_RESPONSE };
   }
 
