@@ -37,7 +37,7 @@ import {
 import { executeExpert } from '../../pipeline/expert-bridge.js';
 import { createDefaultDeps, registerCreateExpertTool } from '../../mcp/tools/create-expert.js';
 import { registerExecuteExpertTool } from '../../mcp/tools/execute-expert.js';
-import { wireGateway } from '../../cli-server-gateway.js';
+import { wireGateway, resolveDefaultModelAdapter } from '../../cli-server-gateway.js';
 import { ErrorCode, type ILogger, type IModelAdapter } from '../../core/index.js';
 import { loadUsageEvents } from '../../learning/usage-log.js';
 import { createServer } from '../../mcp/server.js';
@@ -654,6 +654,14 @@ describe('the unpinned default and the opencode slot with no CLIs installed (#66
     // that no model was sent (before #6626, NEXUS_CUSTOM_MODEL was).
     expect(result.ok).toBe(false);
     expect(requestedModels()).toEqual([]);
+  });
+
+  it('MCP server default adapter resolves to the ranked default, not listing order (#6651)', () => {
+    const registry = createUnifiedRegistry({ logger: silentLogger() });
+    // The fake gateway catalog has gpt-5.2 first in listing order, but
+    // resolveDefaultModelAdapter now follows resolveGatewayDefault to claude_4_5_opus.
+    const defaultAdapter = resolveDefaultModelAdapter(undefined, registry);
+    expect(defaultAdapter.modelId).toBe(FAMILY_SLOT_MODEL.claude);
   });
 });
 

@@ -394,18 +394,54 @@ describe('CLI subprocess fallback notice (#4255)', () => {
   });
 });
 
-describe('resolveDefaultModelAdapter (#4040)', () => {
+describe('resolveDefaultModelAdapter (#4040 / #6651)', () => {
   const registryDefault = makeMockAdapter('cli-default');
   const registry = { getDefault: () => registryDefault };
 
-  it('prefers the primary gateway adapter when present', () => {
+  beforeEach(() => {
+    _resetGatewaySlotCatalog();
+  });
+
+  afterEach(() => {
+    _resetGatewaySlotCatalog();
+  });
+
+  it('falls back to the primary gateway adapter when no catalogue is registered', () => {
     const gw = [makeMockAdapter('gw-a'), makeMockAdapter('gw-b')];
     expect(resolveDefaultModelAdapter(gw, registry)).toBe(gw[0]);
   });
 
-  it('falls back to the registry default when no gateway adapters', () => {
+  it('falls back to the registry default when no gateway adapters and no catalogue', () => {
     expect(resolveDefaultModelAdapter(undefined, registry)).toBe(registryDefault);
     expect(resolveDefaultModelAdapter([], registry)).toBe(registryDefault);
+  });
+
+  it('uses the ranked default over listing order when catalogue is registered (#6651)', () => {
+    // Listing order puts gpt-4o-mini first, but claude-3-7-sonnet is a tier 3 flagship.
+    const mini = makeMockAdapter('gpt-4o-mini');
+    const sonnet = makeMockAdapter('claude-3-7-sonnet');
+    const gw = [mini, sonnet];
+    setGatewaySlotCatalog(gw);
+
+    expect(resolveDefaultModelAdapter(gw, registry)).toBe(sonnet);
+  });
+
+  it('honours NEXUS_CUSTOM_MODEL override when catalogue lists it (#6651)', () => {
+    const mini = makeMockAdapter('gpt-4o-mini');
+    const sonnet = makeMockAdapter('claude-3-7-sonnet');
+    const gw = [mini, sonnet];
+    setGatewaySlotCatalog(gw);
+
+    const env = { NEXUS_CUSTOM_MODEL: 'gpt-4o-mini' };
+    expect(resolveDefaultModelAdapter(gw, registry, env)).toBe(mini);
+  });
+
+  it('falls back to registry default when catalogue holds no chat models (#6651)', () => {
+    const whisper = makeMockAdapter('whisper-1');
+    const gw = [whisper];
+    setGatewaySlotCatalog(gw);
+
+    expect(resolveDefaultModelAdapter(gw, registry)).toBe(registryDefault);
   });
 });
 

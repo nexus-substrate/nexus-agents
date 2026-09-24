@@ -324,7 +324,12 @@ async function initializeAndRegisterTools(
   // declaration, later routing) — in any billing mode. The per-model adapters
   // still go to the tools below.
   const gatewayAdapters = await wireGateway(logger, adapterRegistry);
-  const modelAdapter = resolveDefaultModelAdapter(gatewayAdapters, adapterRegistry);
+  const modelAdapter = resolveDefaultModelAdapter(
+    gatewayAdapters,
+    adapterRegistry,
+    process.env,
+    logger
+  );
   const policyVals = getPolicyValues(config);
   const allowedPaths = config.security?.allowedPaths;
   const securityConfig = config.security;

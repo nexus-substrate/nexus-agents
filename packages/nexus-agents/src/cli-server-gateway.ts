@@ -27,7 +27,11 @@ import {
 } from './adapters/gateway-host-status.js';
 import { GatewayRediscovery, setGatewayRediscovery } from './adapters/gateway-rediscovery.js';
 import { setGatewayCatalog } from './adapters/sdk/gateway-catalog.js';
-import { logGatewaySlotMapping, setGatewaySlotCatalog } from './adapters/gateway-family-slots.js';
+import {
+  logGatewaySlotMapping,
+  resolveGatewayDefault,
+  setGatewaySlotCatalog,
+} from './adapters/gateway-family-slots.js';
 import { gatewayEndpointRejection } from './adapters/sdk/gateway-cost.js';
 import { hostnameOf, warnDeprecatedGatewayEnvOnce } from './adapters/sdk/gateway-env.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
@@ -163,14 +167,25 @@ export function _resetCliSubprocessFallbackNotice(): void {
 }
 
 /**
- * The default model adapter: the primary in-process gateway model when a gateway
- * is configured (#2502/#4040), else the CLI-registry default. The registry is
- * typed structurally so this stays free of the adapter-registry import.
+ * The default model adapter: the ranked in-process gateway default when a
+ * catalogue is registered (#6626/#6651), falling back to the primary gateway
+ * adapter when provided without a catalogue, else the CLI-registry default.
+ * The registry is typed structurally so this stays free of the adapter-registry
+ * import.
  */
 export function resolveDefaultModelAdapter(
   gatewayAdapters: readonly IModelAdapter[] | undefined,
-  adapterRegistry: { getDefault(): IModelAdapter }
+  adapterRegistry: { getDefault(): IModelAdapter },
+  env: NodeJS.ProcessEnv = process.env,
+  logger?: ILogger
 ): IModelAdapter {
+  const resolution = resolveGatewayDefault(env, logger);
+  if (resolution.kind === 'resolved') {
+    return resolution.adapter;
+  }
+  if (resolution.kind === 'unavailable') {
+    return adapterRegistry.getDefault();
+  }
   return gatewayAdapters?.[0] ?? adapterRegistry.getDefault();
 }
 
