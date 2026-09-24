@@ -386,6 +386,21 @@ describe('discoverModels (#2468)', () => {
       expect(result.error.message).toContain('<redacted>');
     });
 
+    it('redacts an error body that echoes an extra header value', async () => {
+      const headerValue = 'tenant-TESTFAKE-header-0001';
+      const withHeaders: OpenAICompatConfig = {
+        ...secretConfig,
+        extraHeaders: { 'X-Tenant-Token': headerValue },
+      };
+      mockList.mockRejectedValue(new Error(`403 Forbidden: tenant "${headerValue}" not allowed`));
+      const result = await discoverModels(withHeaders);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).not.toContain(headerValue);
+      expect(result.error.message).toContain('403 Forbidden');
+      expect(result.error.message).toContain('<redacted>');
+    });
+
     it('names the host, not the URL with userinfo', async () => {
       mockList.mockRejectedValue(new Error('connect ECONNREFUSED'));
       const result = await discoverModels(secretConfig);

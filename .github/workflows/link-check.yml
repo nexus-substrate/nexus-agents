@@ -39,7 +39,8 @@ jobs:
     # push/schedule/dispatch are unaffected (no untrusted PR head ref).
     if: |
       github.event_name != 'pull_request' ||
-      !startsWith(github.event.pull_request.head.ref, 'auto-remediation/')
+      (!startsWith(github.event.pull_request.head.ref, 'auto-remediation/') &&
+       !startsWith(github.event.pull_request.head.ref, 'nexus-codepr/'))
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

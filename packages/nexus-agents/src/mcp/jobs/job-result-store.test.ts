@@ -244,6 +244,46 @@ describe('job-result-store', () => {
       expect(fileContent).not.toContain('secret');
       expect(fileContent).toContain(REDACTED_KEY_PLACEHOLDER);
     });
+
+    it('sanitizes string leaves of a writeJobComplete result on disk', () => {
+      const jobId = 'job-complete-redact';
+      writeJobPending(jobId, 'orchestrate');
+      writeJobComplete(jobId, 'orchestrate', {
+        summary: `worker echoed ${FAKE_ANTHROPIC_KEY}`,
+        steps: [{ output: `clone https://bot:TESTFAKE-pass@git.example.com/r` }],
+      });
+
+      const fileContent = readFileSync(nexusDataPath('jobs', `result-${jobId}.json`), 'utf8');
+      expect(fileContent).not.toContain(FAKE_ANTHROPIC_KEY);
+      expect(fileContent).not.toContain('TESTFAKE-pass');
+
+      const record = readJobResult(jobId);
+      expect(record?.status).toBe('complete');
+      expect(record?.result).toEqual({
+        summary: `worker echoed ${REDACTED_KEY_PLACEHOLDER}`,
+        steps: [{ output: `clone https://${REDACTED_KEY_PLACEHOLDER}@git.example.com/r` }],
+      });
+    });
+
+    it('leaves the structure and non-string values of a complete result intact', () => {
+      const jobId = 'job-complete-shape';
+      writeJobPending(jobId, 'orchestrate');
+      const at = new Date('2026-01-02T03:04:05.000Z');
+      writeJobComplete(jobId, 'orchestrate', {
+        count: 42,
+        ok: true,
+        missing: null,
+        nested: { list: [1, 'two', { three: false }], empty: [] },
+        at,
+      });
+      expect(readJobResult(jobId)?.result).toEqual({
+        count: 42,
+        ok: true,
+        missing: null,
+        nested: { list: [1, 'two', { three: false }], empty: [] },
+        at: '2026-01-02T03:04:05.000Z',
+      });
+    });
   });
 
   it('readJobResult returns null for unknown jobId', () => {

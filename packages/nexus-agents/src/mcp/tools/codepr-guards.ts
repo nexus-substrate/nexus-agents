@@ -217,7 +217,8 @@ export type SensitiveCategory =
   | 'authority'
   | 'audit'
   | 'self_guard'
-  | 'dependency_manifest';
+  | 'dependency_manifest'
+  | 'repo_control';
 
 /** Classification of a single relative path. */
 export type PathClassification =
@@ -279,6 +280,15 @@ function isSelfGuardPath(relPathPosix: string): boolean {
 }
 
 /**
+ * True iff some segment of `p` is exactly `segment`: the path IS that entry
+ * (`.git`, `sub/.git`) or lies under it (`.git/hooks/x`, `sub/.husky/pre-push`).
+ * A longer name that merely starts with it (`.gitignore`) is not a match.
+ */
+function isUnderSegment(p: string, segment: string): boolean {
+  return p.split('/').includes(segment);
+}
+
+/**
  * The explicit, exported, reviewable sensitive-path ruleset. Order is not
  * load-bearing for the verdict (any match → sensitive) but earlier matches win
  * the reported `category`. Self-guard and dependency-manifest rules implement
@@ -297,8 +307,12 @@ export const SENSITIVE_PATH_RULES: readonly SensitivePathRule[] = [
   },
   {
     category: 'workflow',
-    description: '.github/workflows/** — CI/CD definitions',
-    match: (p) => p.startsWith('.github/workflows/') || p.includes('/.github/workflows/'),
+    description: '.github/workflows/** and .github/actions/** — CI/CD definitions',
+    match: (p) =>
+      p.startsWith('.github/workflows/') ||
+      p.includes('/.github/workflows/') ||
+      p.startsWith('.github/actions/') ||
+      p.includes('/.github/actions/'),
   },
   {
     category: 'codeowners',
@@ -316,6 +330,17 @@ export const SENSITIVE_PATH_RULES: readonly SensitivePathRule[] = [
     description: 'auth/authority code: **/authority-*, **/auth/**',
     match: (p) =>
       basenamePosix(p).startsWith('authority-') || p.includes('/auth/') || p.startsWith('auth/'),
+  },
+  {
+    category: 'repo_control',
+    // `.gitattributes` is in: it sets how files diff, merge and render in
+    // review. `.gitignore` is out: it only affects untracked files, and code
+    // changes legitimately touch it.
+    description: 'repository control: .git (file or directory), .husky/**, .gitattributes',
+    match: (p) =>
+      isUnderSegment(p, '.git') ||
+      isUnderSegment(p, '.husky') ||
+      basenamePosix(p) === '.gitattributes',
   },
   {
     category: 'dependency_manifest',

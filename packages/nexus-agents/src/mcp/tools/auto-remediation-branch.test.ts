@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   AUTO_REMEDIATION_BRANCH_PREFIX,
+  CODEPR_BRANCH_PREFIX,
   isAutoRemediationBranch,
   autoRemediationBranchName,
 } from './auto-remediation-branch.js';
@@ -60,14 +61,22 @@ describe('Rule-of-Two CI leg: secret-bearing PR-triggered workflows guard auto-r
   // gets secrets on untrusted-signal-derived content (the CI leg of Rule-of-Two).
   const SECRET_PR_WORKFLOWS = ['ci.yml', 'pr-review.yml', 'self-dogfood.yml', 'link-check.yml'];
 
+  // Every bot branch prefix CI must run secret-less.
+  const BOT_BRANCH_PREFIXES = [AUTO_REMEDIATION_BRANCH_PREFIX, CODEPR_BRANCH_PREFIX];
+
   for (const wf of SECRET_PR_WORKFLOWS) {
-    it(`${wf} guards auto-remediation branches with the canonical prefix`, () => {
-      const src = readFileSync(join(WORKFLOWS_DIR, wf), 'utf-8');
-      // A negated startsWith on the canonical prefix must be present (github.head_ref
-      // or github.event.pull_request.head.ref forms both accepted).
-      expect(src).toMatch(
-        new RegExp(`!startsWith\\([^)]*head[._]ref[^)]*,\\s*'${AUTO_REMEDIATION_BRANCH_PREFIX}'\\)`)
-      );
-    });
+    for (const prefix of BOT_BRANCH_PREFIXES) {
+      it(`${wf} guards ${prefix} branches with the canonical prefix`, () => {
+        const src = readFileSync(join(WORKFLOWS_DIR, wf), 'utf-8');
+        // A negated startsWith on the canonical prefix must be present (github.head_ref
+        // or github.event.pull_request.head.ref forms both accepted), once per
+        // job-level `if:` that carries the auto-remediation exclusion.
+        const guard = (p: string): RegExp =>
+          new RegExp(`!startsWith\\([^)]*head[._]ref[^)]*,\\s*'${p}'\\)`, 'g');
+        const expected = src.match(guard(AUTO_REMEDIATION_BRANCH_PREFIX))?.length ?? 0;
+        expect(expected).toBeGreaterThan(0);
+        expect(src.match(guard(prefix))?.length ?? 0).toBe(expected);
+      });
+    }
   }
 });

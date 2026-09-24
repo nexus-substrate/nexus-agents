@@ -350,11 +350,12 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v5
         # #3614: don't expose CODECOV_TOKEN to auto-remediation bot branches
-        # (secret-less CI for the auto-PR path). Prefix kept in sync with
-        # AUTO_REMEDIATION_BRANCH_PREFIX in src/mcp/tools/auto-remediation-branch.ts.
+        # (secret-less CI for the auto-PR path). Prefixes kept in sync with
+        # src/mcp/tools/auto-remediation-branch.ts.
         if: >-
           github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' &&
-          !startsWith(github.head_ref, 'auto-remediation/')
+          !startsWith(github.head_ref, 'auto-remediation/') &&
+          !startsWith(github.head_ref, 'nexus-codepr/')
         with:
           files: ./packages/nexus-agents/coverage/lcov.info
           fail_ci_if_error: false
