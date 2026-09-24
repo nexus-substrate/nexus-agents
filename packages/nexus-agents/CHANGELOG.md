@@ -1,5 +1,26 @@
 # nexus-agents
 
+## 8.102.0
+
+### Minor Changes
+
+- [#6650](https://github.com/nexus-substrate/nexus-agents/pull/6650) [`8be1b87`](https://github.com/nexus-substrate/nexus-agents/commit/8be1b87d120baea31736c0c8d2367ccd0950a4ea) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - With a discovered OpenAI-compatible gateway, the unpinned default adapter (`registry.getDefault()`, reached for unknown models, uncategorised tasks and unmapped roles, and the `api:custom-openai` router arm) now sends a model from the gateway catalogue instead of the unchecked `NEXUS_CUSTOM_MODEL` (default `gpt-5.5`). The default is the highest-tier top model across the Anthropic, OpenAI and Google families, so a flagship wins over a mid-tier model; a tier tie goes to Anthropic, then OpenAI, then Google, the order the direct-API fallback already uses. Models of no known family are considered only when the gateway serves none of the three.
+
+  `NEXUS_CUSTOM_MODEL` still names the default when the catalogue lists it. When it names a model the catalogue does not list, a warning is logged once and the model is never sent. The startup slot mapping log now includes the `default` model.
+
+  A pinned `opencode` slot whose binary is not installed is now unavailable in gateway mode instead of falling through to another CLI or to `NEXUS_CUSTOM_MODEL`. opencode is multi-vendor, not a model family, so no gateway model stands in for it.
+
+  With no gateway catalogue (no gateway, or discovery failed), both paths behave exactly as before.
+
+### Patch Changes
+
+- [#6655](https://github.com/nexus-substrate/nexus-agents/pull/6655) [`5988c9c`](https://github.com/nexus-substrate/nexus-agents/commit/5988c9c7193b0f694f8479fd7d6060db67c5c54b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - CLI circuit breaker: exclude caller-input CLI errors and prevent double-counting ([#6613](https://github.com/nexus-substrate/nexus-agents/issues/6613)).
+
+  - `CliCircuitBreakerIntegration.executeWithBreaker` checks `canExecute()` directly instead of throwing and double-counting failures.
+  - Standard CLI failures now increment `failureCount` exactly once per failure.
+  - Caller-input errors (`isCallerInputCliError`) are excluded from breaker success and failure counts, keeping the breaker closed when bad inputs or unsupported model preferences occur.
+  - Caller-input errors during half-open recovery release the half-open probe request budget via `releaseHalfOpenProbe()`.
+
 ## 8.101.0
 
 ### Minor Changes
