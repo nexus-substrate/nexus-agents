@@ -44,6 +44,7 @@ import {
   topRankedWithinBudget,
   assembleClampedContext,
   renderLegacyLearningSections,
+  renderLegacyMemorySections,
   renderDisclosedSection,
   type RankedBudgetFit,
   renderLegacyResearchSection,
@@ -53,6 +54,11 @@ import { createTokenCounter } from './token-counter.js';
 import { getTokenLedger } from './token-ledger.js';
 import { getRepoMapForTask, REPO_MAP_FLAG } from './repo-map.js';
 import { tokenizeFiltered } from '../utils/text-utils.js';
+import {
+  rankedItemTrustTier,
+  trustTierLabel,
+  withoutUntrustedMemory,
+} from './memory-trust-tier.js';
 
 /**
  * What we know about a task, derived from every shared memory backend.
@@ -485,11 +491,14 @@ const MAX_SUMMARY_FIELD = 200;
  *
  * Defense-in-depth (#3471): every section below renders backend strings into an
  * LLM system-prompt prefix. Without this, a value containing a newline could
- * inject extra un-prefixed lines that escape the `- ` data-framing — a weak
- * prompt-injection vector. Current sources are all T1 repo/internal data so
- * nothing reachable exploits it today, but collapsing + capping makes the
- * framing a local guarantee rather than a cross-module trust inference, and
- * mirrors the hardening already applied to dev-pipeline hindsight recall (#3257).
+ * inject extra un-prefixed lines that escape the `- ` data-framing. The sources
+ * are NOT all internal: belief, agentic and adaptive entries are writable through
+ * the `memory_write` tool, whose content may come from outside the repo (#6751).
+ * Collapsing + capping makes the framing a local guarantee rather than a
+ * cross-module trust inference, and mirrors the hardening already applied to
+ * dev-pipeline hindsight recall (#3257). Trust is handled separately: lines carry
+ * their recorded tier, and recorded Tier 3+ entries are excluded by
+ * {@link summarizeContextForPrompt} unless the caller opts in.
  */
 function oneLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, MAX_SUMMARY_FIELD);
@@ -526,13 +535,22 @@ function oneLine(value: string): string {
  * repo-map portions are recorded separately after the final clamp. Memory
  * entries carry `variant: 'ranked' | 'legacy'`; repo-map entries retain their
  * source tag so the #4251 A/B can compare their actual prompt cost.
+ *
+ * **Trust tiers (#6751):** memory lines with a recorded tier are labelled
+ * `[tier N]`, and entries with a recorded Tier 3+ are left out of the block
+ * unless `options.allowUntrustedMemory` is true. Unlabelled entries (written
+ * before tiers were recorded, or by internal producers) are kept unlabelled.
  */
 export function summarizeContextForPrompt(
   ctx: UnifiedContext,
-  budgetTokens: number = DEFAULT_CONTEXT_BUDGET_TOKENS
+  budgetTokens: number = DEFAULT_CONTEXT_BUDGET_TOKENS,
+  // `allowUntrustedMemory` (#6751): include recorded Tier 3+ entries. Default
+  // false — a prompt prefix is privileged context.
+  options: { readonly allowUntrustedMemory?: boolean } = {}
 ): string {
   const ranked = process.env[CONTEXT_RANKED_FLAG] === '1';
-  const memoryBlock = ranked ? summarizeRankedContext(ctx) : summarizeLegacyContext(ctx);
+  const visible = options.allowUntrustedMemory === true ? ctx : withoutUntrustedMemory(ctx);
+  const memoryBlock = ranked ? summarizeRankedContext(visible) : summarizeLegacyContext(visible);
   const emitted = assembleClampedContext(
     memoryBlock,
     ctx.repoMap ?? '',
@@ -587,36 +605,7 @@ const CLIP_NOTICE_RESERVE_TOKENS = 30;
 function summarizeLegacyContext(ctx: UnifiedContext): string {
   const sections: string[] = [];
 
-  if (ctx.beliefs.length > 0) {
-    sections.push(
-      renderDisclosedSection(
-        '### Beliefs',
-        ctx.beliefs.map(
-          (b) =>
-            `- ${oneLine(b.subject)} ${oneLine(b.predicate)} ${oneLine(b.object)} (confidence: ${b.confidence})`
-        ),
-        contextTokenCounter
-      )
-    );
-  }
-
-  // #5850: these two were `.slice(0, 3)` under a bare heading while their four
-  // siblings disclosed their cut, so a heading without counts read as "nothing
-  // was dropped" — and the default retrieval limit is 5, so two items went
-  // missing on the ordinary path. The cut happens before the outer clamp, so
-  // the trailing clip notice never covered it either. Every section now goes
-  // through the same renderer, which is what keeps them from drifting apart
-  // again.
-  if (ctx.similarMemories.length > 0) {
-    sections.push(
-      renderDisclosedSection(
-        '### Similar prior work',
-        ctx.similarMemories.map((m) => `- ${oneLine(m.attributes.contextDescription)}`),
-        contextTokenCounter
-      )
-    );
-  }
-
+  sections.push(...renderLegacyMemorySections(ctx, contextTokenCounter, oneLine));
   sections.push(...renderLegacyLearningSections(ctx, contextTokenCounter, oneLine));
 
   if (ctx.experiencePatterns.length > 0) {
@@ -674,7 +663,7 @@ function summarizeRankedContext(ctx: UnifiedContext): string {
   if (fit.kept.length === 0) return '';
   const lines = fit.kept.map(
     (r) =>
-      `- [${RANKED_SOURCE_LABEL[r.source]}] ${oneLine(r.text)} (relevance: ${r.relevanceScore.toFixed(2)})`
+      `- [${RANKED_SOURCE_LABEL[r.source]}] ${trustTierLabel(rankedItemTrustTier(r))}${oneLine(r.text)} (relevance: ${r.relevanceScore.toFixed(2)})`
   );
   return `## Prior Context (Nexus Memory)\n### Most relevant prior context\n${lines.join('\n')}${rankedOmissionNotice(fit)}`;
 }

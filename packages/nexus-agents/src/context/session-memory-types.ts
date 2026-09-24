@@ -8,6 +8,8 @@
  */
 
 import { z } from 'zod';
+import { TrustTierSchema } from '../security/trust-types.js';
+import type { TrustTier } from '../security/trust-types.js';
 import type { ILogger } from '../core/logger.js';
 
 // ============================================================================
@@ -28,6 +30,11 @@ export interface SessionLearning {
   readonly source?: string;
   /** ISO timestamp assigned by SessionMemory when the learning is recorded */
   readonly recordedAt?: string;
+  /**
+   * Trust tier of the content's source ('1'–'4'), when the writer knows it
+   * (#6751). Carried onto the belief derived from a high-confidence learning.
+   */
+  readonly trustTier?: TrustTier;
 }
 
 export const SessionLearningSchema = z.object({
@@ -36,6 +43,7 @@ export const SessionLearningSchema = z.object({
   confidence: z.number().min(0).max(1),
   source: z.string().optional(),
   recordedAt: z.iso.datetime().optional(),
+  trustTier: TrustTierSchema.optional(),
 });
 
 // ============================================================================

@@ -28,6 +28,7 @@ import type { ScoredMemoryEntry } from './adaptive-memory-types.js';
 import type { ExperienceEntry } from './mobimem-types.js';
 import type { DistilledRule } from '../learning/strategy-distiller-types.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
+import { beliefTrustTier, memoryEntryTrustTier, trustTierLabel } from './memory-trust-tier.js';
 
 /** The discriminated set of cross-rankable backends (the aggregate `outcomes` is excluded). */
 export type RankedMemorySource =
@@ -252,6 +253,38 @@ export function renderLegacyResearchSection(
   return [renderDisclosedSection('### Prior research on this topic', lines, counter)];
 }
 
+/**
+ * Render the belief and similar-work sections for the legacy prompt path. Each
+ * line carries its recorded trust tier (#6751); unlabelled entries render as
+ * before.
+ */
+export function renderLegacyMemorySections(
+  ctx: UnifiedContext,
+  counter: { readonly estimate: (text: string) => number },
+  sanitize: (value: string) => string
+): readonly string[] {
+  const sections: string[] = [];
+  if (ctx.beliefs.length > 0) {
+    const lines = ctx.beliefs.map(
+      (b) =>
+        `- ${trustTierLabel(beliefTrustTier(b))}${sanitize(b.subject)} ${sanitize(b.predicate)} ${sanitize(b.object)} (confidence: ${b.confidence})`
+    );
+    sections.push(renderDisclosedSection('### Beliefs', lines, counter));
+  }
+  // #5850: this was `.slice(0, 3)` under a bare heading while its siblings
+  // disclosed their cut, so a heading without counts read as "nothing was
+  // dropped". Every section goes through the same renderer so they cannot
+  // drift apart again.
+  if (ctx.similarMemories.length > 0) {
+    const lines = ctx.similarMemories.map(
+      (m) =>
+        `- ${trustTierLabel(memoryEntryTrustTier(m))}${sanitize(m.attributes.contextDescription)}`
+    );
+    sections.push(renderDisclosedSection('### Similar prior work', lines, counter));
+  }
+  return sections;
+}
+
 /** Render adaptive-memory and distilled-strategy sections for the legacy prompt path. */
 export function renderLegacyLearningSections(
   ctx: UnifiedContext,
@@ -262,7 +295,7 @@ export function renderLegacyLearningSections(
   if (ctx.recentLearnings.length > 0) {
     const lines = ctx.recentLearnings.map(({ entry }) => {
       const value = typeof entry.value === 'string' ? entry.value : entry.key;
-      return `- ${sanitize(value)}`;
+      return `- ${trustTierLabel(memoryEntryTrustTier(entry))}${sanitize(value)}`;
     });
     sections.push(renderDisclosedSection('### Recent learnings', lines, counter));
   }

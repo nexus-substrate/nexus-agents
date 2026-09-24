@@ -36,6 +36,7 @@ import { createLogger, getTimeProvider } from '../../core/index.js';
 import { nexusDataPath, nexusDataPathEnsure } from '../../config/nexus-data-dir.js';
 import { resolveClassGuardMs, type OperationClassName } from '../../config/timeouts.js';
 import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
+import { assertValidJobId } from './job-id.js';
 import { VERSION } from '../../version.js';
 import { readIndexEntry } from './job-idempotency.js';
 import {
@@ -250,8 +251,13 @@ function isAbandonedAt(record: AbandonedProbe, nowMs: number, abandonedAfter: nu
   return nowMs - startedMs > abandonedAfter;
 }
 
-/** Resolve the sidecar path for a given jobId. */
+/**
+ * Resolve the sidecar path for a given jobId. Throws for an id outside the
+ * minted format: writers only ever receive minted ids, so one that is not is a
+ * defect, not a path to build.
+ */
 function jobResultPath(jobId: string): string {
+  assertValidJobId(jobId);
   const primary =
     candidateJobResultPaths(jobId)[0] ?? nexusDataPathEnsure('jobs', `result-${jobId}.json`);
   mkdirSync(dirname(primary), { recursive: true });

@@ -16,5 +16,5 @@ Mark an async-mode job as cancelled (#3042 Stage 1b / epic #2631). Same-process 
 
 | Parameter | Type | Required | Constraints | Description |
 | --------- | ---- | -------- | ----------- | ----------- |
-| `jobId` | string | yes | minLength 1; maxLength 128 | Job ID returned by orchestrate / run_workflow / consensus_vote in async mode |
+| `jobId` | string | yes | minLength 1; maxLength 128; pattern `^[A-Za-z0-9_-]{1,128}$` | Job ID returned by orchestrate / run_workflow / consensus_vote in async mode |
 | `reason` | string | no | maxLength 1000 | Optional human-readable note (e.g. "user clicked cancel"). |

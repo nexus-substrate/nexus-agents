@@ -19,6 +19,7 @@ import { nexusDataPath, nexusSharedPath } from '../../config/nexus-data-dir.js';
 import { findRepoRoot } from '../../config/repo-root-detection.js';
 import type { ILogger } from '../../core/index.js';
 import { JobResultSchema, type JobResult } from './job-result-store.js';
+import { isValidJobId } from './job-id.js';
 
 type CandidatePathsResolver = (jobId: string) => readonly string[] | undefined;
 let candidatePathsResolverForTests: CandidatePathsResolver | undefined;
@@ -55,6 +56,9 @@ export function candidateJobResultPaths(
   resolveShared: (subdir: string, ...segments: string[]) => string = nexusSharedPath,
   repoRootFinder: (start: string) => string | null = findRepoRoot
 ): readonly string[] {
+  // A job id is interpolated into a file name: an id outside the minted format
+  // has no candidate path, so readers report it as not found.
+  if (!isValidJobId(jobId)) return [];
   if (candidatePathsResolverForTests !== undefined) {
     const overridden = candidatePathsResolverForTests(jobId);
     if (overridden !== undefined) return overridden;

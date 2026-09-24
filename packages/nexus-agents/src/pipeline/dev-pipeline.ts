@@ -30,6 +30,11 @@ import {
 import { createLogger, withStep } from '../core/index.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
+import {
+  EXTERNAL_CONTENT_TRUST_TIER,
+  resolveContentTrustTier,
+} from '../security/content-trust-tier.js';
+import type { TrustTier } from '../security/trust-types.js';
 import type { PolicyContext } from './policy-engine.js';
 import {
   evaluatePipelinePolicy,
@@ -435,15 +440,19 @@ export interface DevPipelineOptions {
    */
   readonly researchOverride?: string | undefined;
   /**
-   * Content-provenance trust tier ('1'–'4') threaded into the consensus→execute
-   * policy snapshot (#3712). Trust here is about the PROVENANCE of the content
-   * that reached this run (the goal/research), not the caller's identity. The MCP
-   * `run_dev_pipeline` handler and the `run` entry point thread the caller's real
-   * `RequestContext.trustTier`; the auto-remediation IMPLEMENT path may pass `'1'`
-   * only because #3643's typed RemediationPlan + CapabilityLedger confine
-   * untrusted input upstream. **When undefined the seam behaves as before
-   * (#3704): the engine defaults the missing tier to untrusted (4), fail-closed.**
-   * Absence anywhere = untrusted; never infer a trusted tier from missing context.
+   * The CALLER's trust tier ('1'–'4') — who invoked the run, not where its
+   * content came from (#3712, #6751). The MCP `run_dev_pipeline` handler and the
+   * `run` entry point thread `RequestContext.trustTier`; the auto-remediation
+   * IMPLEMENT path may pass `'1'` only because #3643's typed RemediationPlan +
+   * CapabilityLedger confine untrusted input upstream (it also sets
+   * {@link researchOverride}, so no external source feeds that run).
+   *
+   * The consensus→execute policy snapshot does NOT receive this value directly.
+   * It receives the CONTENT tier: the least-trusted of this caller tier and each
+   * source that fed a stage — fresh or resumed research counts as external
+   * ({@link EXTERNAL_CONTENT_TRUST_TIER}); a `researchOverride` adds no source.
+   * **When undefined the snapshot stays empty and the engine defaults to
+   * untrusted (4), fail-closed** — never infer a trusted tier from absence.
    */
   readonly trustTier?: string | undefined;
   /**
@@ -520,7 +529,12 @@ async function runDevPipelineInner(
   const { beliefMemory: bm, auditLogger, trustTier } = options ?? {};
 
   // Phases 1-2: Research + Plan/Vote
-  const { planResult, researchMaturity } = await runPlanningPhase(task, stages, prior, options);
+  const { planResult, researchMaturity, researchSourceTiers } = await runPlanningPhase(
+    task,
+    stages,
+    prior,
+    options
+  );
 
   // DRY RUN: stop after plan+vote, return partial result (#1717)
   if (options?.dryRun === true) {
@@ -539,7 +553,10 @@ async function runDevPipelineInner(
   // here — this seam closes that gap. Reuses evaluatePipelinePolicy (no 4th
   // evaluator); emits policy.evaluated BEFORE any throw so blocked runs are
   // audited. WARN by default (block opt-in via NEXUS_POLICY_GATE_MODE).
-  enforceConsensusExecutePolicy(sid, trustTier, auditLogger);
+  // The gate receives the CONTENT tier, not the caller's (#6751).
+  const contentTier = resolveContentTrustTier(trustTier, researchSourceTiers);
+  logger.debug('Consensus→execute content trust tier', { callerTier: trustTier, contentTier });
+  enforceConsensusExecutePolicy(sid, contentTier, auditLogger);
 
   // Phase 3: Decompose
   const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, {
@@ -587,11 +604,12 @@ async function runDevPipelineInner(
  * (#3704 cond. 1).
  *
  * Mode resolves via `getGateEnforcementMode()`: WARN by default, block/off
- * opt-in via `NEXUS_POLICY_GATE_MODE`. The `trustTier` is the content-provenance
- * tier threaded from the caller (#3712) — the MCP handler and `run` entry point
- * pass the real `RequestContext.trustTier`. **When undefined (no caller threaded
- * a tier), the snapshot stays empty, so the engine defaults the missing tier to
- * untrusted (4), fail-closed** — never infer a trusted tier from absence. Under
+ * opt-in via `NEXUS_POLICY_GATE_MODE`. The `trustTier` is the CONTENT tier from
+ * {@link resolveContentTrustTier} (#6751): the least-trusted of the caller's
+ * `RequestContext.trustTier` (#3712) and each source that fed the run.
+ * **When undefined (no caller threaded a tier), the snapshot stays empty, so the
+ * engine defaults the missing tier to untrusted (4), fail-closed** — never infer
+ * a trusted tier from absence. Under
  * WARN a violation logs + continues (cond. 3); under block it throws
  * {@link PolicyBlockedError} and aborts the run (cond. 2).
  */
@@ -611,7 +629,7 @@ function enforceConsensusExecutePolicy(
     taskId: sessionId ?? 'dev-pipeline',
     stageId: 'consensus-to-execute',
     stageType: 'execute',
-    // Inline narrowing of the threaded tier into the typed snapshot (#3712):
+    // Inline narrowing of the content tier into the typed snapshot (#3712):
     // only a real string tier populates it; undefined keeps the snapshot empty
     // so the engine fail-closes to untrusted (4). Absence = untrusted.
     pipelineState: typeof trustTier === 'string' ? { trustTier } : {},
@@ -744,23 +762,35 @@ async function resolveResearch(
   task: string,
   stages: DevPipelineStages,
   options: DevPipelineOptions | undefined
-): Promise<ResearchContext> {
+): Promise<{ research: ResearchContext; sourceTiers: readonly TrustTier[] }> {
   // #3234: the checkpoint persists research as text only, so a RESUMED run has no
   // structured metadata — wrap the text with empty metadata (degrades cleanly).
+  // The checkpoint does not persist where the text came from either, so it is
+  // labelled external (#6751, fail-closed).
   if (prior?.research !== undefined) {
     logger.info('Resuming from checkpoint', { stage: 'research' });
-    return researchContextFromText(prior.research);
+    return {
+      research: researchContextFromText(prior.research),
+      sourceTiers: [EXTERNAL_CONTENT_TRUST_TIER],
+    };
   }
   const override = options?.researchOverride;
   if (override !== undefined) {
-    return researchContextFromText(override);
+    // Caller-supplied text: no source beyond the caller (#6751).
+    return { research: researchContextFromText(override), sourceTiers: [] };
   }
   options?.untrustedInputGuard?.();
-  return withStep({ name: 'research', attrs: { task: task.slice(0, 100) } }, async (ctx) => {
-    const rc = await stages.research(task);
-    ctx.setSummary(`${String(rc.text.length)} chars`);
-    return rc;
-  });
+  const research = await withStep(
+    { name: 'research', attrs: { task: task.slice(0, 100) } },
+    async (ctx) => {
+      const rc = await stages.research(task);
+      ctx.setSummary(`${String(rc.text.length)} chars`);
+      return rc;
+    }
+  );
+  // The research stage is the untrusted-read chokepoint (#3643): its output is
+  // external content (#6751).
+  return { research, sourceTiers: [EXTERNAL_CONTENT_TRUST_TIER] };
 }
 
 async function runPlanningPhase(
@@ -772,10 +802,17 @@ async function runPlanningPhase(
   planResult: PlanVoteResult;
   /** #3234: research-maturity of this run, attached to decomposed tasks. */
   researchMaturity: number;
+  /** #6751: trust tiers of the sources that fed the research stage. */
+  researchSourceTiers: readonly TrustTier[];
 }> {
   const sid = options?.sessionId;
   const bm = options?.beliefMemory;
-  const research = await resolveResearch(prior, task, stages, options);
+  const { research, sourceTiers: researchSourceTiers } = await resolveResearch(
+    prior,
+    task,
+    stages,
+    options
+  );
   // #3234: a deterministic research-maturity score (RECORD + measure; see #3815
   // for the gated live-routing use). Fresh-run scoped — a resumed run has empty
   // metadata → 0, degrading cleanly.
@@ -806,7 +843,7 @@ async function runPlanningPhase(
       iterations: planResult.iterations,
     });
   }
-  return { planResult, researchMaturity };
+  return { planResult, researchMaturity, researchSourceTiers };
 }
 
 /** Build result for harness mode — tasks returned for external implementation. */

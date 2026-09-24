@@ -15,6 +15,7 @@
  */
 
 import { z } from 'zod';
+import { jobIdSchema } from '../jobs/job-id.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { createLogger, formatZodError } from '../../core/index.js';
@@ -36,11 +37,9 @@ import { getToolAnnotations } from '../tool-annotations.js';
 import { getTimeProvider } from '../../core/index.js';
 
 export const GetJobResultInputSchema = z.object({
-  jobId: z
-    .string()
-    .min(1)
-    .max(128)
-    .describe('Job ID returned by any tool called with dispatch: "async" (e.g. orchestrate)'),
+  jobId: jobIdSchema(
+    'Job ID returned by any tool called with dispatch: "async" (e.g. orchestrate)'
+  ),
 });
 export type GetJobResultInput = z.infer<typeof GetJobResultInputSchema>;
 
@@ -132,11 +131,9 @@ function getJobResultHandler(args: unknown): Promise<ToolResult> {
 export function registerGetJobResultTool(server: McpServer, deps: GetJobResultDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'get_job_result' });
   const toolSchema = {
-    jobId: z
-      .string()
-      .min(1)
-      .max(128)
-      .describe('Job ID returned by any tool called with dispatch: "async" (e.g. orchestrate)'),
+    jobId: jobIdSchema(
+      'Job ID returned by any tool called with dispatch: "async" (e.g. orchestrate)'
+    ),
   };
 
   const description =

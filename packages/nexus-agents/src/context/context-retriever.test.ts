@@ -1334,3 +1334,90 @@ describe('belief recall for a real task description (#4845)', () => {
     expect(ctx.beliefs.some((b) => b.subject === 'arXiv:2502.12110')).toBe(true);
   });
 });
+
+// ============================================================================
+// summarizeContextForPrompt — recorded trust tiers (#6751)
+// ============================================================================
+
+describe('summarizeContextForPrompt — recorded trust tiers (#6751)', () => {
+  const previousRanked = process.env['NEXUS_CONTEXT_RANKED'];
+
+  afterEach(() => {
+    if (previousRanked === undefined) delete process.env['NEXUS_CONTEXT_RANKED'];
+    else process.env['NEXUS_CONTEXT_RANKED'] = previousRanked;
+  });
+
+  function belief(object: string, trustTier?: string): UnifiedContext['beliefs'][number] {
+    return {
+      beliefId: `b-${object}`,
+      subject: 'topic',
+      predicate: 'has_knowledge',
+      object,
+      confidence: BeliefConfidence.HIGH,
+      sourceType: BeliefSourceType.OBSERVATION,
+      version: 1,
+      createdAt: new Date('2026-06-01'),
+      updatedAt: new Date('2026-06-01'),
+      superseded: false,
+      ...(trustTier !== undefined ? { metadata: { trustTier } } : {}),
+    };
+  }
+
+  function learning(value: string, tags: string[]): UnifiedContext['recentLearnings'][number] {
+    return {
+      entry: {
+        key: `k-${value}`,
+        value,
+        metadata: { importance: MemoryImportance.MEDIUM, tags },
+        createdAt: new Date('2026-06-01'),
+        accessedAt: new Date('2026-06-01'),
+      },
+      priority: { score: 0.5, components: { recency: 0.5, importance: 0.5, relevance: 0.5 } },
+    };
+  }
+
+  it('labels lines with their recorded tier and leaves unlabelled entries unlabelled', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = summarizeContextForPrompt(
+      emptyContext({
+        beliefs: [belief('caller fact', '1'), belief('legacy fact')],
+        recentLearnings: [learning('caller learning', ['memory_write_tool', 'trust-tier:2'])],
+      })
+    );
+    expect(out).toContain('- [tier 1] topic has_knowledge caller fact');
+    expect(out).toContain('- topic has_knowledge legacy fact');
+    expect(out).toContain('- [tier 2] caller learning');
+  });
+
+  it('excludes recorded Tier 3+ entries from the prompt prefix by default', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = summarizeContextForPrompt(
+      emptyContext({
+        beliefs: [belief('kept fact', '1'), belief('external fact', '3')],
+        recentLearnings: [learning('hostile learning', ['trust-tier:4'])],
+      })
+    );
+    expect(out).toContain('kept fact');
+    expect(out).not.toContain('external fact');
+    expect(out).not.toContain('hostile learning');
+  });
+
+  it('includes and labels Tier 3+ entries only when explicitly allowed', () => {
+    delete process.env['NEXUS_CONTEXT_RANKED'];
+    const out = summarizeContextForPrompt(
+      emptyContext({ beliefs: [belief('external fact', '3')] }),
+      undefined,
+      { allowUntrustedMemory: true }
+    );
+    expect(out).toContain('- [tier 3] topic has_knowledge external fact');
+  });
+
+  it('applies the same exclusion and labels on the ranked rendering path', () => {
+    process.env['NEXUS_CONTEXT_RANKED'] = '1';
+    const out = summarizeContextForPrompt(
+      emptyContext({ beliefs: [belief('ranked kept', '2'), belief('ranked external', '3')] })
+    );
+    expect(out).toContain('[tier 2] topic has_knowledge ranked kept');
+    expect(out).not.toContain('ranked external');
+  });
+});

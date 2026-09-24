@@ -26,10 +26,20 @@ import {
 import { getToolMemory } from './tool-memory.js';
 import type { MemoryStoreOutcome } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+import { sanitizeErrorDetails } from '../../security/output-sanitizer.js';
+import { TrustTierSchema } from '../../security/trust-types.js';
+import type { TrustTier } from '../../security/trust-types.js';
+import { leastTrustedTier } from '../../security/content-trust-tier.js';
+import { measuredTrustTier } from '../middleware/request-context.js';
+import { memoryTrustTierTag } from '../../context/memory-trust-tier.js';
 
 // ============================================================================
 // Schema & Types
 // ============================================================================
+
+const SOURCE_TRUST_TIER_DESCRIPTION =
+  "Trust tier ('1'-'4') of the content's original source when it did not come from the caller, " +
+  "e.g. '3' for external web content. The stored tier is the least-trusted of this and the caller's tier.";
 
 /**
  * Input schema for memory_write tool.
@@ -52,6 +62,7 @@ export const MemoryWriteInputSchema = z.object({
     .record(z.string().max(100), z.string().max(500))
     .optional()
     .describe('Optional key-value metadata tags'),
+  sourceTrustTier: TrustTierSchema.optional().describe(SOURCE_TRUST_TIER_DESCRIPTION),
 });
 
 /**
@@ -90,7 +101,8 @@ export interface MemoryWriteResponse {
 function writeToSession(
   key: string,
   content: string,
-  confidence: 'high' | 'medium' | 'low'
+  confidence: 'high' | 'medium' | 'low',
+  trustTier: TrustTier | undefined
 ): MemoryWriteResponse {
   const toolMemory = getToolMemory();
   const numericConfidence = confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.4;
@@ -104,6 +116,7 @@ function writeToSession(
     context: key,
     confidence: numericConfidence,
     source: 'memory_write_tool',
+    ...(trustTier !== undefined ? { trustTier } : {}),
   });
   if (!outcome.persisted) {
     return { success: false, backend: 'session', key, error: outcome.reason };
@@ -118,7 +131,8 @@ function writeToSession(
 async function writeToBelief(
   key: string,
   content: string,
-  confidence: 'high' | 'medium' | 'low'
+  confidence: 'high' | 'medium' | 'low',
+  trustTier: TrustTier | undefined
 ): Promise<MemoryWriteResponse> {
   const toolMemory = getToolMemory();
   const countBefore = toolMemory.getBeliefCount();
@@ -126,7 +140,8 @@ async function writeToBelief(
     key,
     'has_knowledge',
     content,
-    confidence
+    confidence,
+    trustTier
   );
   if (!outcome.persisted) {
     return { success: false, backend: 'belief', key, error: outcome.reason };
@@ -145,7 +160,8 @@ async function writeToAgentic(
   key: string,
   content: string,
   confidence: 'high' | 'medium' | 'low',
-  metadata?: Record<string, string>
+  metadata: Record<string, string> | undefined,
+  trustTier: TrustTier | undefined
 ): Promise<MemoryWriteResponse> {
   const toolMemory = getToolMemory();
   if (!toolMemory.isAgenticMemoryAvailable()) {
@@ -158,7 +174,10 @@ async function writeToAgentic(
   }
   const outcome: MemoryStoreOutcome = await toolMemory.recordKnowledge(key, content, {
     importance: confidence,
-    tags: metadata !== undefined ? Object.keys(metadata) : [],
+    tags: [
+      ...(metadata !== undefined ? Object.keys(metadata) : []),
+      ...(trustTier !== undefined ? [memoryTrustTierTag(trustTier)] : []),
+    ],
   });
   if (!outcome.persisted) {
     return { success: false, backend: 'agentic', key, error: outcome.reason };
@@ -172,7 +191,8 @@ async function writeToAgentic(
 async function writeToAdaptive(
   key: string,
   content: string,
-  confidence: 'high' | 'medium' | 'low'
+  confidence: 'high' | 'medium' | 'low',
+  trustTier: TrustTier | undefined
 ): Promise<MemoryWriteResponse> {
   const toolMemory = getToolMemory();
   if (!toolMemory.isAdaptiveMemoryAvailable()) {
@@ -184,7 +204,12 @@ async function writeToAdaptive(
     };
   }
   const importance = confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.5;
-  const outcome: MemoryStoreOutcome = await toolMemory.storeAdaptive(key, content, importance);
+  const outcome: MemoryStoreOutcome = await toolMemory.storeAdaptive(
+    key,
+    content,
+    importance,
+    trustTier
+  );
   if (!outcome.persisted) {
     return { success: false, backend: 'adaptive', key, error: outcome.reason };
   }
@@ -197,7 +222,8 @@ async function writeToAdaptive(
 async function writeToTyped(
   key: string,
   content: string,
-  confidence: 'high' | 'medium' | 'low'
+  confidence: 'high' | 'medium' | 'low',
+  trustTier: TrustTier | undefined
 ): Promise<MemoryWriteResponse> {
   const toolMemory = getToolMemory();
   if (!toolMemory.isTypedMemoryAvailable()) {
@@ -209,7 +235,12 @@ async function writeToTyped(
     };
   }
   const importance = confidence === 'high' ? 'high' : confidence === 'medium' ? 'medium' : 'low';
-  const outcome: MemoryStoreOutcome = await toolMemory.storeTyped(key, content, importance);
+  const outcome: MemoryStoreOutcome = await toolMemory.storeTyped(
+    key,
+    content,
+    importance,
+    trustTier
+  );
   if (!outcome.persisted) {
     return { success: false, backend: 'typed', key, error: outcome.reason };
   }
@@ -233,7 +264,9 @@ function dedupCacheKey(input: MemoryWriteInput): string {
   // #4997: the backend is part of the identity. Without it, writing the same
   // key+content to `session` and then to `belief` reported the second as
   // `deduplicated: true` while the belief store never received it.
-  return `${input.backend}::${input.key}::${input.content}`;
+  // #6751: the source tier is part of the identity too, so a write that would
+  // store a different tier is not reported as already stored.
+  return `${input.backend}::${input.sourceTrustTier ?? ''}::${input.key}::${input.content}`;
 }
 
 function isDuplicateWrite(input: MemoryWriteInput): boolean {
@@ -256,10 +289,36 @@ function rememberWrite(input: MemoryWriteInput): void {
   recentWriteKeys.set(dedupCacheKey(input), new Date().toISOString());
 }
 
+/**
+ * Redact credentials from the text before it is stored (#6751 hardening), with
+ * the shared credential redactor the job-result write path also uses.
+ */
+function redactMemoryInput(input: MemoryWriteInput): MemoryWriteInput {
+  return {
+    ...input,
+    key: sanitizeErrorDetails(input.key),
+    content: sanitizeErrorDetails(input.content),
+  };
+}
+
+/**
+ * Redact, resolve the content tier, then write.
+ *
+ * The stored tier is the least-trusted of the caller's MEASURED tier and
+ * `input.sourceTrustTier`. `callerTrustTier` is `undefined` when the request
+ * context only holds the no-caller-info fallback (see `measuredTrustTier`):
+ * recording that fallback would label every entry Tier 3 as if measured. With
+ * neither tier known the entry is stored unlabelled.
+ */
 async function executeMemoryWrite(
-  input: MemoryWriteInput,
-  logger: ILogger
+  rawInput: MemoryWriteInput,
+  logger: ILogger,
+  callerTrustTier: TrustTier | undefined
 ): Promise<MemoryWriteResponse> {
+  const input = redactMemoryInput(rawInput);
+  const trustTier = leastTrustedTier(
+    [callerTrustTier, input.sourceTrustTier].filter((t): t is TrustTier => t !== undefined)
+  );
   // Session-level dedup: skip if the same key+content reached this backend
   if (isDuplicateWrite(input)) {
     logger.debug('Skipping duplicate memory write', { key: input.key, backend: input.backend });
@@ -272,7 +331,7 @@ async function executeMemoryWrite(
     contentLength: input.content.length,
   });
 
-  const response = await dispatchWrite(input);
+  const response = await dispatchWrite(input, trustTier);
   // Only a write that landed is worth deduplicating against.
   if (response.success) rememberWrite(input);
   return response;
@@ -292,7 +351,10 @@ async function executeMemoryWrite(
  * Awaited once at the dispatch seam rather than inside each writer, so a new
  * backend cannot be added without inheriting the wait.
  */
-async function dispatchWrite(input: MemoryWriteInput): Promise<MemoryWriteResponse> {
+async function dispatchWrite(
+  input: MemoryWriteInput,
+  trustTier: TrustTier | undefined
+): Promise<MemoryWriteResponse> {
   try {
     await getToolMemory().awaitBackendInitialization();
   } catch {
@@ -301,15 +363,15 @@ async function dispatchWrite(input: MemoryWriteInput): Promise<MemoryWriteRespon
   }
   switch (input.backend) {
     case 'session':
-      return writeToSession(input.key, input.content, input.confidence);
+      return writeToSession(input.key, input.content, input.confidence, trustTier);
     case 'belief':
-      return writeToBelief(input.key, input.content, input.confidence);
+      return writeToBelief(input.key, input.content, input.confidence, trustTier);
     case 'agentic':
-      return writeToAgentic(input.key, input.content, input.confidence, input.metadata);
+      return writeToAgentic(input.key, input.content, input.confidence, input.metadata, trustTier);
     case 'adaptive':
-      return writeToAdaptive(input.key, input.content, input.confidence);
+      return writeToAdaptive(input.key, input.content, input.confidence, trustTier);
     case 'typed':
-      return writeToTyped(input.key, input.content, input.confidence);
+      return writeToTyped(input.key, input.content, input.confidence, trustTier);
   }
 }
 
@@ -326,7 +388,12 @@ async function memoryWriteHandler(args: unknown, ctx: HandlerContext): Promise<T
   }
 
   return withToolError('Memory write failed', ctx.logger, async () => {
-    const result = await executeMemoryWrite(validationResult.data, ctx.logger);
+    const measured = TrustTierSchema.safeParse(measuredTrustTier(ctx.requestContext));
+    const result = await executeMemoryWrite(
+      validationResult.data,
+      ctx.logger,
+      measured.success ? measured.data : undefined
+    );
     if (!result.success) {
       return toolStructuredError({
         errorCategory: 'internal',
@@ -368,6 +435,7 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
       .record(z.string().max(100), z.string().max(500))
       .optional()
       .describe('Optional key-value metadata tags'),
+    sourceTrustTier: TrustTierSchema.optional().describe(SOURCE_TRUST_TIER_DESCRIPTION),
   };
 
   const description =

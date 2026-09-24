@@ -34,6 +34,7 @@
  */
 
 import { z } from 'zod';
+import { jobIdSchema } from '../jobs/job-id.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { createLogger, formatZodError, type ILogger } from '../../core/index.js';
@@ -53,11 +54,9 @@ import { appendCancellation, readTaskState } from '../../context/structured-task
 const defaultLogger = createLogger({ tool: 'cancel_job' });
 
 export const CancelJobInputSchema = z.object({
-  jobId: z
-    .string()
-    .min(1)
-    .max(128)
-    .describe('Job ID returned by orchestrate / run_workflow / consensus_vote in async mode'),
+  jobId: jobIdSchema(
+    'Job ID returned by orchestrate / run_workflow / consensus_vote in async mode'
+  ),
   reason: z
     .string()
     .max(1000)
@@ -171,11 +170,9 @@ function cancelPendingJob(
 export function registerCancelJobTool(server: McpServer, deps: CancelJobDeps): void {
   const logger = deps.logger ?? defaultLogger;
   const toolSchema = {
-    jobId: z
-      .string()
-      .min(1)
-      .max(128)
-      .describe('Job ID returned by orchestrate / run_workflow / consensus_vote in async mode'),
+    jobId: jobIdSchema(
+      'Job ID returned by orchestrate / run_workflow / consensus_vote in async mode'
+    ),
     reason: z
       .string()
       .max(1000)
