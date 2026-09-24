@@ -305,6 +305,38 @@ export interface ParsedCliArgs {
     minSampleSize?: string;
     'fitness-floor'?: string;
     fitnessFloor?: string;
+    // Subcommand flags the usage text advertised but the parser rejected (#6693).
+    /** `session list --limit <n>`. */
+    limit?: number;
+    /** `session export --markdown`. */
+    markdown?: boolean;
+    /** `usage --since=<iso>` / `--until=<iso>`. */
+    since?: string;
+    until?: string;
+    /** `validation --task-type=<a,b>` / `--min-sample=<n>`. */
+    taskType?: string;
+    minSample?: number;
+    /** `sprint --vote`, `research review|prioritize --vote`. */
+    vote?: boolean;
+    /** `research discover|review|prioritize|autofile --topic=<t>`. */
+    topic?: string;
+    /** `research status --status=<s>`. */
+    status?: string;
+    /** `research review --create-issues`. */
+    createIssues?: boolean;
+    /** `research autofile --max=<n>`. */
+    max?: number;
+    /** `research index --generate | --check`. */
+    generate?: boolean;
+    check?: boolean;
+    /** `research index --validate --strict`, `release-validate --strict`. */
+    strict?: boolean;
+    /** `research index --silent`. */
+    silent?: boolean;
+    /** `research index --no-check-files`. */
+    noCheckFiles?: boolean;
+    /** `release-validate --skip <validator>` (repeatable). */
+    skip?: string[];
   };
   positionals: string[];
 }
@@ -627,6 +659,27 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // #6693 — subcommand flags that usage text advertised and handlers read,
+    // but that this strict parser rejected as `Unknown option`. Forwarded by
+    // `buildSubcommandFlagOptions` (cli/subcommand-flag-options.ts). No short
+    // letters: a short letter is global (see the note on `threshold`).
+    limit: { type: 'string' as const },
+    markdown: { type: 'boolean' as const, default: false },
+    since: { type: 'string' as const },
+    until: { type: 'string' as const },
+    'task-type': { type: 'string' as const },
+    'min-sample': { type: 'string' as const },
+    vote: { type: 'boolean' as const, default: false },
+    topic: { type: 'string' as const },
+    status: { type: 'string' as const },
+    'create-issues': { type: 'boolean' as const, default: false },
+    max: { type: 'string' as const },
+    generate: { type: 'boolean' as const, default: false },
+    check: { type: 'boolean' as const, default: false },
+    strict: { type: 'boolean' as const, default: false },
+    silent: { type: 'boolean' as const, default: false },
+    'no-check-files': { type: 'boolean' as const, default: false },
+    skip: { type: 'string' as const, multiple: true as const },
   },
   allowPositionals: true,
   strict: true,

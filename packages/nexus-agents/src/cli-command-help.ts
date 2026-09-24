@@ -273,18 +273,9 @@ const RESEARCH_HELP: CommandHelpEntry = {
 
 const FITNESS_AUDIT_HELP: CommandHelpEntry = {
   command: 'fitness-audit',
-  examples: [
-    'nexus-agents fitness-audit',
-    'nexus-agents fitness-audit --format=json',
-    'nexus-agents fitness-audit --min-severity=warning',
-  ],
+  examples: ['nexus-agents fitness-audit', 'nexus-agents fitness-audit --format=json'],
   flags: [
     { flag: '--format=<fmt>', description: 'Output format: json, text', defaultValue: 'text' },
-    {
-      flag: '--min-severity=<sev>',
-      description: 'Filter: info, warning, critical',
-      defaultValue: 'all',
-    },
   ],
 };
 

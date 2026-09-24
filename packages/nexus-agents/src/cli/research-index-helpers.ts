@@ -113,10 +113,15 @@ export function createInitialParseState(): ParseState {
 // CLI Argument Parser
 // ============================================================================
 
-/** Apply options forwarded from global parser (#6678). */
+/** Apply options forwarded from global parser (#6678, #6693). */
 function applyForwardedOptions(state: ParseState, options?: Record<string, unknown>): void {
   if (options === undefined) return;
+  if (options['check'] === true) state.action = 'check';
+  if (options['generate'] === true) state.action = 'generate';
   if (options['validate'] === true) state.action = 'validate';
+  if (options['strict'] === true) state.strict = true;
+  if (options['silent'] === true) state.silent = true;
+  if (options['noCheckFiles'] === true) state.checkFiles = false;
   if (typeof options['output'] === 'string') state.output = options['output'];
   if (options['format'] === 'json') state.format = 'json';
 }
@@ -158,14 +163,14 @@ export function getResearchIndexHelp(): string {
   return `Usage: nexus-agents research index [options]
 
 Options:
-  --generate, -g    Generate RESEARCH_INDEX.md from registry files
-  --validate, -v    Validate registry consistency (cross-references, files)
-  --check, -c       Check if index is up to date (default)
+  --generate        Generate RESEARCH_INDEX.md from registry files
+  --validate        Validate registry consistency (cross-references, files)
+  --check           Check if index is up to date (default)
   --output, -o      Output path for generate (default: docs/research/RESEARCH_INDEX.md)
-  --format, -f      Output format for validate: text or json (default: text)
+  --format          Output format for validate: text or json (default: text)
   --strict          Treat warnings as errors in validate
   --no-check-files  Skip integration file existence checks
-  --silent, -s      Silent mode (only exit code, for CI)
+  --silent          Silent mode (only exit code, for CI)
 
 Examples:
   nexus-agents research index --generate

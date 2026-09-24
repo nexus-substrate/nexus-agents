@@ -382,6 +382,30 @@ export async function handleIndexCommand(args: ParsedCliArgs): Promise<CliExitRe
  * Handles the research command for research registry management.
  * (Source: Issue #237, Epic #225, Epic #261)
  */
+/** Research flags the global parser consumes (#6693), under the keys the subcommand handlers read. */
+const RESEARCH_FORWARDED_OPTIONS = [
+  'topic',
+  'status',
+  'max',
+  'createIssues',
+  'vote',
+  'generate',
+  'check',
+  'strict',
+  'silent',
+  'noCheckFiles',
+] as const;
+
+/** Copies each given research flag; the parser leaves absent ones `undefined`. */
+function researchSubcommandOptions(opts: ParsedCliArgs['options']): Record<string, unknown> {
+  return Object.fromEntries(
+    RESEARCH_FORWARDED_OPTIONS.filter((key) => opts[key] !== undefined).map((key) => [
+      key,
+      opts[key],
+    ])
+  );
+}
+
 export async function handleResearchCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   const subcommand = args.subcommand;
   if (!isValidResearchSubcommand(subcommand)) {
@@ -404,6 +428,7 @@ export async function handleResearchCommand(args: ParsedCliArgs): Promise<CliExi
   if (args.options.dryRun) {
     options['dryRun'] = true;
   }
+  Object.assign(options, researchSubcommandOptions(args.options));
   if (args.options.source !== undefined) {
     const source = ResearchDiscoverInputSchema.shape.source.safeParse(args.options.source);
     if (!source.success) {
@@ -466,15 +491,12 @@ export async function handleRegistryCommand(args: ParsedCliArgs): Promise<CliExi
  * (Source: Issue #273)
  */
 export function handleValidationCommand(args: ParsedCliArgs): CliExitResult {
-  const options = parseValidationArgs(
-    args.positionals,
-    args.options.format,
-    args.options.verbose,
-    {
-      period: args.options.period,
-      model: args.options.model,
-    }
-  );
+  const options = parseValidationArgs(args.positionals, args.options.format, args.options.verbose, {
+    period: args.options.period,
+    model: args.options.model,
+    taskType: args.options.taskType,
+    minSample: args.options.minSample,
+  });
   const exitCode = validationDashboardCommand(options);
   return cliExitFromStatus(exitCode);
 }
@@ -622,6 +644,9 @@ export async function handleSprintCommand(args: ParsedCliArgs): Promise<CliExitR
     subcommand,
     format: args.options.format === 'json' ? 'json' : 'text',
   };
+  if (args.options.vote === true) {
+    sprintOpts.vote = true;
+  }
   if (args.options.createIssue) {
     sprintOpts.vote = true;
     sprintOpts.createIssue = true;
@@ -657,6 +682,7 @@ export async function handleSessionCommand(
     process.stdout.write('  prune    Delete old sessions\n');
     process.stdout.write('\nOptions:\n');
     process.stdout.write('  --limit <n>     Limit results (default: 20)\n');
+    process.stdout.write('  --markdown      Export as markdown (export)\n');
     process.stdout.write('  --format        Output format (table|json)\n');
     process.stdout.write('  --output <path> Output file path\n');
     return cliExit(EXIT_CODES.INVALID_ARGS);
@@ -678,6 +704,8 @@ export async function handleSessionCommand(
     json: args.options.json,
     format: args.options.format,
     output: args.options.output,
+    limit: args.options.limit,
+    markdown: args.options.markdown,
   });
   return LIFECYCLE_DELEGATED;
 }

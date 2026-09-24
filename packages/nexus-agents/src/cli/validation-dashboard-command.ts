@@ -140,6 +140,10 @@ export function validationDashboardCommand(options: ValidationDashboardOptions =
 interface ValidationParsedFlags {
   readonly period?: string | undefined;
   readonly model?: string | undefined;
+  /** `--task-type=a,b`, forwarded by the global parser (#6693). */
+  readonly taskType?: string | undefined;
+  /** `--min-sample=<n>`, already validated as a positive integer (#6693). */
+  readonly minSample?: number | undefined;
 }
 
 /** Parse --period=X from positionals or forwarded flag. */
@@ -156,15 +160,22 @@ function parseModels(positionals: readonly string[], flagModel?: string): string
   return models !== undefined && models.length > 0 ? models : undefined;
 }
 
-/** Parse --task-type=X,Y from positionals. */
-function parseTaskTypes(positionals: readonly string[]): string[] | undefined {
-  const arg = positionals.find((p) => p.startsWith('--task-type='))?.split('=')[1];
+/** Parse --task-type=X,Y from positionals or forwarded flag. */
+function parseTaskTypes(
+  positionals: readonly string[],
+  flagTaskType?: string
+): string[] | undefined {
+  const arg = flagTaskType ?? positionals.find((p) => p.startsWith('--task-type='))?.split('=')[1];
   const types = arg?.split(',').filter((t) => t.length > 0);
   return types !== undefined && types.length > 0 ? types : undefined;
 }
 
-/** Parse --min-sample=N from positionals. */
-function parseMinSample(positionals: readonly string[]): number | undefined {
+/** Parse --min-sample=N from positionals or forwarded flag. */
+function parseMinSample(
+  positionals: readonly string[],
+  flagMinSample?: number
+): number | undefined {
+  if (flagMinSample !== undefined) return flagMinSample;
   const arg = positionals.find((p) => p.startsWith('--min-sample='))?.split('=')[1];
   const value = arg !== undefined ? parseInt(arg, 10) : undefined;
   return Number.isFinite(value) ? value : undefined;
@@ -185,8 +196,8 @@ export function parseValidationArgs(
   };
   const period = parsePeriod(positionals, flags?.period);
   const models = parseModels(positionals, flags?.model);
-  const taskTypes = parseTaskTypes(positionals);
-  const minSampleSize = parseMinSample(positionals);
+  const taskTypes = parseTaskTypes(positionals, flags?.taskType);
+  const minSampleSize = parseMinSample(positionals, flags?.minSample);
 
   if (period !== undefined) options['period'] = period;
   if (models !== undefined) options['models'] = models;

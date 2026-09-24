@@ -30,21 +30,17 @@ interface UsageOptions {
 }
 
 function parseOptions(args: ParsedCliArgs): UsageOptions {
-  // The cli-types options bag is strictly typed; new flags this command
-  // accepts (`--since`, `--until`, `--model`) aren't first-class fields.
-  // Treat the bag as a record for these reads — the values are still
-  // string-checked at runtime.
-  const opts = args.options as unknown as Record<string, unknown>;
-  const formatRaw = typeof opts['format'] === 'string' ? opts['format'] : 'text';
-  const format: 'text' | 'json' = formatRaw === 'json' ? 'json' : 'text';
-
-  const since = typeof opts['since'] === 'string' ? opts['since'] : '';
+  // #6693: `--since` / `--until` are registered in the global parser and
+  // arrive typed; before that the parser rejected both as unknown options.
+  const format: 'text' | 'json' = args.options.format === 'json' ? 'json' : 'text';
+  const since = args.options.since ?? '';
   const sinceIso = since === '' ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() : since;
-
-  const until = typeof opts['until'] === 'string' ? opts['until'] : undefined;
-  const model = typeof opts['model'] === 'string' ? opts['model'] : undefined;
-
-  return { format, sinceIso, untilIso: until, modelId: model };
+  return {
+    format,
+    sinceIso,
+    untilIso: args.options.until,
+    modelId: args.options.model,
+  };
 }
 
 export async function handleUsageCommand(args: ParsedCliArgs): Promise<CliExitResult> {

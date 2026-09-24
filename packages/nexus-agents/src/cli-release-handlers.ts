@@ -57,7 +57,9 @@ export async function handleReleaseValidateCommand(args: ParsedCliArgs): Promise
     options: {
       ...(version !== undefined && { version }),
       verbose: args.options.verbose,
-      strict: args.options.force, // Reuse force flag for strict mode
+      // `--strict` is the documented spelling (#6693); `--force` stays an alias.
+      strict: args.options.strict === true || args.options.force,
+      ...(args.options.skip !== undefined && { skip: args.options.skip }),
     },
   });
   // #3942: RETURN the exit code; dispatcher owns process.exit (0 → SUCCESS, non-0 → 1).

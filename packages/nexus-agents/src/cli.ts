@@ -38,6 +38,7 @@ import { catalogCommandNames, formatUnknownCommandMessage } from './cli-command-
 import { ErrorPolicySchema, type ErrorPolicy } from './mcp/tools/consensus-vote-types.js';
 import type { NoQuorumPolicy } from './cli/vote-types.js';
 import { parseVoteBarFlags } from './cli/vote-bar-flags.js';
+import { buildSubcommandFlagOptions } from './cli/subcommand-flag-options.js';
 
 // Re-export types and constants for external use
 export { EXIT_CODES, type CliCommand, type ParsedCliArgs } from './cli-types.js';
@@ -87,8 +88,10 @@ function parseOrchestrateEngine(value: string | undefined): 'router' | 'puppetee
   return undefined;
 }
 
-/** Parsed values from parseArgs. */
-interface ParsedValues {
+type SubcommandFlagValues = Parameters<typeof buildSubcommandFlagOptions>[0];
+
+/** Parsed values from parseArgs; the #6693 subcommand flags come from the builder's input type. */
+interface ParsedValues extends SubcommandFlagValues {
   help: boolean;
   version: boolean;
   verbose: boolean;
@@ -220,9 +223,7 @@ function parseNoQuorumPolicy(value: string | undefined): NoQuorumPolicy | undefi
   if (value === 'fail' || value === 'exit2' || value === 'retry') {
     return value;
   }
-  throw new Error(
-    `--on-no-quorum must be one of ${NO_QUORUM_POLICIES.join(', ')}; got '${value}'`
-  );
+  throw new Error(`--on-no-quorum must be one of ${NO_QUORUM_POLICIES.join(', ')}; got '${value}'`);
 }
 
 /**
@@ -355,6 +356,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...buildSetupOptions(values),
     ...buildInitOptions(values),
     ...buildImprovementReviewOptions(values),
+    ...buildSubcommandFlagOptions(values),
   };
 }
 
