@@ -1,5 +1,18 @@
 # nexus-agents
 
+## 8.104.5
+
+### Patch Changes
+
+- [#6705](https://github.com/nexus-substrate/nexus-agents/pull/6705) [`56b32f6`](https://github.com/nexus-substrate/nexus-agents/commit/56b32f6a15370fede0ac379f3bc989cf00922118) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Register documented CLI flags rejected by strict parser ([#6693](https://github.com/nexus-substrate/nexus-agents/issues/6693)).
+
+  - Register `--limit`, `--markdown`, `--since`, `--until`, `--task-type`, and `--min-sample` in `PARSE_ARGS_CONFIG.options` in `cli-types.ts`.
+  - Forward `taskType` and `minSample` in `validation-dashboard-command.ts`.
+  - Forward `limit` and `markdown` in `session-commands.ts`.
+  - Update `usage-command.ts` to read `--since` and `--until` from typed CLI options.
+  - Extract `buildOptions` helpers into `cli/cli-options-builders.ts` to keep `cli.ts` within complexity and module line limits.
+  - Add comprehensive test coverage in `cli-parser-global-flags.test.ts` for all documented flags.
+
 ## 8.104.4
 
 ### Patch Changes
