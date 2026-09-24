@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.104.3
+
+### Patch Changes
+
+- [#6697](https://github.com/nexus-substrate/nexus-agents/pull/6697) [`3c3d99a`](https://github.com/nexus-substrate/nexus-agents/commit/3c3d99ade86cf0cb7d741d14c6b87f14d9d517de) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Removed two internal routing modules that no production path used: `AgreementCascadeRouter` (with `createAgreementCascadeRouter`, `createDefaultCascadeStages`, `AgreementCascadeConfigSchema`, `DEFAULT_CASCADE_CONFIG` and their types) and the `router-scoring` constants (`CAPABILITY_MATRIX`, `SCORING_WEIGHTS`, `SCORING_THRESHOLDS`). Routing goes through `CompositeRouter`, which never read either. Agreement-based early close for consensus votes lives in the consensus engine and is unchanged. Neither module was part of the published API surface.
+
 ## 8.104.2
 
 ### Patch Changes
