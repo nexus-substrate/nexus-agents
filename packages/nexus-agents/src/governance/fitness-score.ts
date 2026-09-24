@@ -305,16 +305,25 @@ export class FitnessScoreCalculator {
   /**
    * Check canonical paths: penalize duplicate router implementations.
    *
-   * The current minimum is 6 (raised from 5 in #2063 after an audit):
+   * Counts files in `cli-adapters/` matching `/router\.ts$/`. Five exist, each
+   * a distinct CompositeRouter stage:
    *   1. composite-router — pipeline orchestrator
    *   2. budget-router — budget/cost filtering
    *   3. zero-router — hard-constraint exclusion
    *   4. preference-router — user/task preference application
    *   5. topsis-router — TOPSIS multi-criteria scoring
-   *   6. agreement-cascade-router — agreement-based cascade retry
    *
-   * Each stage is distinct per CLAUDE.md's documented pipeline:
-   * Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → Agreement → Model
+   * The documented chain is Task → BudgetRouter → ZeroRouter →
+   * PreferenceRouter → TopsisRouter → LinUCB → Model. LinUCB is
+   * `linucb-bandit.ts`, which this pattern does not count. The full stage order,
+   * including QualityConstraint and CategoryOverride, is in the
+   * `composite-router.ts` header.
+   *
+   * Why the threshold is 6: #2063 raised it from 5 to fit a sixth file,
+   * agreement-cascade-router, which was never wired into routing and was
+   * deleted in #6688. The threshold was left at 6, so it now allows one file
+   * of headroom over the five above. Only a count ABOVE the threshold costs
+   * points.
    */
   private checkCanonicalPaths(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
