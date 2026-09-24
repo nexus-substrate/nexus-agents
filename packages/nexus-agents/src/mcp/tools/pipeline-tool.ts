@@ -89,19 +89,25 @@ export const PipelineInputSchema = z.object({
     .describe(
       'Voting strategy for plan approval. simple_majority (default), supermajority (67%), unanimous, higher_order (Bayesian), proof_of_learning, opinion_wise'
     ),
-  /** Use 3 agents instead of 6 for faster voting. */
+  /** Use 3 agents instead of 7 for faster voting. */
   quickMode: z
     .boolean()
     .default(false)
-    .describe('Use 3 agents instead of 6 for faster consensus voting'),
-  /** Maximum execution time per stage in milliseconds (min 30s, max 600s). */
+    .describe('Use 3 agents instead of 7 for faster consensus voting'),
+  /**
+   * Deadline for EACH stage in milliseconds (min 30s, max 600s), not a budget
+   * for the whole run (#6730). Replaces every stage's default, the vote's
+   * included; clamped to the `pipeline` class guard.
+   */
   timeoutMs: z
     .number()
     .int()
     .min(30_000)
     .max(600_000)
     .optional()
-    .describe('Max time per stage in ms (30000-600000). Default: varies by stage complexity'),
+    .describe(
+      'Max time for EACH stage in ms (30000-600000), not for the whole run; applies to every stage, the vote included. Default: the vote stage gets the multi-LLM panel guard (900000 unless overridden), other stages 120000'
+    ),
   /** Stop after planning/voting (no implementation). */
   dryRun: z.boolean().default(false).describe('Stop after vote stage (no implementation)'),
   /**
@@ -258,6 +264,27 @@ export async function runPipelineForGoal(
   return runAdaptiveOrchestrator(goal, { stages, ...(signal !== undefined ? { signal } : {}) });
 }
 
+/** Per-run settings {@link executePipelineBody} hands to the orchestrator. */
+interface PipelineRunOptions {
+  readonly templateId: string | undefined;
+  readonly dryRun: boolean;
+  readonly simulated: boolean;
+  /** The caller's `timeoutMs`: a deadline for EACH stage (#6730). */
+  readonly stageTimeoutMs: number | undefined;
+  /** `cancel_job`'s signal on the async path (#6305); absent on the sync path. */
+  readonly signal?: AbortSignal;
+}
+
+/** The run settings a validated input asks for (the signal is added per path). */
+function pipelineRunOptions(input: PipelineInput, simulated: boolean): PipelineRunOptions {
+  return {
+    templateId: input.template,
+    dryRun: input.dryRun,
+    simulated,
+    stageTimeoutMs: input.timeoutMs,
+  };
+}
+
 /**
  * Run the adaptive-orchestrator body + shape the structured success envelope.
  * The sync handler awaits this inline; the async dispatcher backgrounds it via
@@ -268,19 +295,14 @@ export async function runPipelineForGoal(
 async function executePipelineBody(
   task: string,
   stages: ReturnType<typeof selectStageRegistry>,
-  run: {
-    readonly templateId: string | undefined;
-    readonly dryRun: boolean;
-    readonly simulated: boolean;
-    /** `cancel_job`'s signal on the async path (#6305); absent on the sync path. */
-    readonly signal?: AbortSignal;
-  }
+  run: PipelineRunOptions
 ): Promise<ToolResult> {
-  const { templateId, dryRun, simulated, signal } = run;
+  const { templateId, dryRun, simulated, stageTimeoutMs, signal } = run;
   const result = await runAdaptiveOrchestrator(task, {
     stages,
     templateId,
     dryRun,
+    stageTimeoutMs,
     ...(signal !== undefined ? { signal } : {}),
   });
   const output = buildOutput(result, simulated);
@@ -338,7 +360,7 @@ async function runPipelineHandler(
       budget: resolveRunBudget(task, input.template, logger),
     });
     const stages = selectStageRegistry(input.template, task, agentStages);
-    const body = { templateId: input.template, dryRun: input.dryRun, simulated };
+    const body = pipelineRunOptions(input, simulated);
 
     // #3730: async dispatch for real (non-dryRun) runs — a full adaptive
     // pipeline can exceed the 900s MCP request timeout. dryRun ALWAYS stays

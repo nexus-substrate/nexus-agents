@@ -20,8 +20,8 @@ Single unified entry point for all pipeline templates (dev/research/audit/greenf
 | `specFile` | string | no | maxLength 500 | Path to a spec file — content prepended to task for greenfield projects |
 | `template` | string | no | maxLength 50 | Pipeline template override. Available: dev, audit, greenfield, general |
 | `votingStrategy` | enum | no | one of: simple_majority \| supermajority \| unanimous \| higher_order \| proof_of_learning \| opinion_wise | Voting strategy for plan approval. simple_majority (default), supermajority (67%), unanimous, higher_order (Bayesian), proof_of_learning, opinion_wise |
-| `quickMode` | boolean | no | default false | Use 3 agents instead of 6 for faster consensus voting |
-| `timeoutMs` | integer | no | min 30000; max 600000 | Max time per stage in ms (30000-600000). Default: varies by stage complexity |
+| `quickMode` | boolean | no | default false | Use 3 agents instead of 7 for faster consensus voting |
+| `timeoutMs` | integer | no | min 30000; max 600000 | Max time for EACH stage in ms (30000-600000), not for the whole run; applies to every stage, the vote included. Default: the vote stage gets the multi-LLM panel guard (900000 unless overridden), other stages 120000 |
 | `dryRun` | boolean | no | default false | Stop after vote stage (no implementation) |
 | `dispatch` | enum | no | one of: sync \| async; default sync | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). Ignored for dryRun. |
 | `mode` | never | no | — | Not an input of this tool. The async switch is `dispatch`; `mode: 'async'` is rejected (#4968). |

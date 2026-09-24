@@ -10,11 +10,12 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
+import { resolveClassGuardMs } from '../config/timeouts.js';
 import type { CompiledGraph, NodeResult } from '../orchestration/graph/graph-types.js';
 import { compilePipelineGraph } from './pipeline-graph.js';
 import type { PipelineTemplate } from './stage-types.js';
 import { PIPELINE_STATE_KEYS as K } from './stage-types.js';
-import type { StageRegistry } from './pipeline-graph.js';
+import type { PipelineGraphCompileOptions, StageRegistry } from './pipeline-graph.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
 
 const logger = createLogger({ component: 'graph-pipeline-runner' });
@@ -40,6 +41,15 @@ export interface GraphPipelineOptions {
    * run is not cancellable.
    */
   readonly signal?: AbortSignal | undefined;
+  /**
+   * Deadline for EACH stage, in ms (#6730) — not a budget for the whole run.
+   * Replaces every stage's default, the vote stage's panel-sized one included,
+   * clamped to the `pipeline` class guard. Absent: the vote stage runs under the
+   * `multi-llm-panel` class guard, every other stage under
+   * `GRAPH_TIMEOUTS.defaultMs`. The run as a whole is bounded by the `pipeline`
+   * class guard either way.
+   */
+  readonly stageTimeoutMs?: PipelineGraphCompileOptions['stageTimeoutMs'];
 }
 
 /** Result of a graph-based pipeline execution. */
@@ -122,7 +132,9 @@ function compileEffectiveGraph(
   | { graph: CompiledGraph; coverage: StageCoverage; error?: undefined }
   | { graph?: undefined; coverage?: undefined; error: string } {
   const effective = resolveEffectiveTemplate(template, options);
-  const compiled = compilePipelineGraph(effective, stages);
+  const compiled = compilePipelineGraph(effective, stages, {
+    stageTimeoutMs: options?.stageTimeoutMs,
+  });
   if (!compiled.ok || compiled.graph === undefined) {
     return { error: compiled.error ?? 'Compilation failed' };
   }
@@ -165,6 +177,12 @@ async function executeAndReport(args: ExecuteAndReportArgs): Promise<GraphPipeli
     { [K.TASK]: task },
     {
       maxSteps: options?.maxSteps ?? DEFAULT_MAX_STEPS,
+      // The executor's `timeout` is also the RUN-level deadline, checked before
+      // every super-step. Left unset it was `GRAPH_TIMEOUTS.defaultMs` (120 s),
+      // so any run whose stages together passed two minutes was cut off
+      // between stages (#6730). Each node carries its own deadline from
+      // `compilePipelineGraph`; the run is bounded by the pipeline class guard.
+      timeout: resolveClassGuardMs('pipeline'),
       ...(options?.signal !== undefined ? { signal: options.signal } : {}),
     }
   );

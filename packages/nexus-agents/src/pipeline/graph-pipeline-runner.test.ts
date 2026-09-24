@@ -2,7 +2,8 @@
  * Tests for Graph Pipeline Runner (#1735, Phase 2)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { GRAPH_TIMEOUTS } from '../config/timeouts.js';
 import { researchContextFromText, type ResearchContext } from './research-context.js';
 import { extractStateValue, runGraphPipeline } from './graph-pipeline-runner.js';
 import type { DevPipelineStages, VoteResult, QaReviewResult } from './dev-pipeline.js';
@@ -351,5 +352,89 @@ describe('extractStateValue (#5771)', () => {
     expect(extractStateValue({ n: 0, s: '', b: false, nul: null }, 's')).toBe('');
     expect(extractStateValue({ n: 0, s: '', b: false, nul: null }, 'b')).toBe(false);
     expect(extractStateValue({ n: 0, s: '', b: false, nul: null }, 'nul')).toBeNull();
+  });
+});
+
+// ============================================================================
+// Stage deadlines reach the executor (#6730)
+// ============================================================================
+
+describe('stage deadlines (#6730)', () => {
+  /** Longer than the 120 s graph default, shorter than a panel-sized deadline. */
+  const SLOW_VOTE_MS = GRAPH_TIMEOUTS.defaultMs + 30_000;
+
+  let voteStarted = false;
+
+  beforeEach(() => {
+    voteStarted = false;
+    // setImmediate stays real: runWithClock yields on it while earlier stages run.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function stagesWithSlowVote(): DevPipelineStages {
+    const stages = createMockStages();
+    stages.vote = vi.fn<(plan: string) => Promise<VoteResult>>(
+      () =>
+        new Promise<VoteResult>((resolve) => {
+          voteStarted = true;
+          setTimeout(() => {
+            resolve({ kind: 'approved', approvalPercentage: 100 });
+          }, SLOW_VOTE_MS);
+        })
+    );
+    return stages;
+  }
+
+  async function runWithClock(
+    stages: DevPipelineStages,
+    options?: Parameters<typeof runGraphPipeline>[3]
+  ): ReturnType<typeof runGraphPipeline> {
+    const pending = runGraphPipeline(
+      'Build feature',
+      DEV_PIPELINE_TEMPLATE,
+      createDevStageRegistry(stages),
+      options
+    );
+    let settled = false;
+    void pending.finally(() => {
+      settled = true;
+    });
+    // Hold the fake clock until the vote is running, so only the vote's
+    // deadline is exercised; then step it until the run settles.
+    // `performance` is not faked, so this bound is real wall time.
+    const waitUntil = performance.now() + 20_000;
+    while (!voteStarted && !settled && performance.now() < waitUntil) {
+      await new Promise((r) => setImmediate(r));
+    }
+    if (!voteStarted) throw new Error('vote stage never started');
+    for (let i = 0; i < 200 && !settled; i++) await vi.advanceTimersByTimeAsync(5_000);
+    if (!settled) throw new Error('runGraphPipeline never settled');
+    return pending;
+  }
+
+  it('completes a vote slower than the graph default, and the stages after it', async () => {
+    const stages = stagesWithSlowVote();
+
+    const result = await runWithClock(stages);
+
+    expect(result.error).toBeUndefined();
+    expect(result.success).toBe(true);
+    // decompose runs AFTER the slow vote: the run-level deadline must not
+    // have expired at the graph default between super-steps either.
+    expect(stages.decompose).toHaveBeenCalled();
+    expect(stages.securityScan).toHaveBeenCalled();
+  });
+
+  it('runs the vote under an explicit stageTimeoutMs', async () => {
+    const stageTimeoutMs = 60_000;
+
+    const result = await runWithClock(stagesWithSlowVote(), { stageTimeoutMs });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(`vote: Node timed out after ${String(stageTimeoutMs)}ms`);
   });
 });
