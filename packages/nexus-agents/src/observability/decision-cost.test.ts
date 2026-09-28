@@ -316,6 +316,7 @@ describe('DecisionCostSummarySchema (#4032 — pins the MCP cost-summary shape)'
       'outputTokens',
       'priceBasis',
       'role',
+      'tokenUsageMeasured',
       'totalTokens',
       'unmeasured',
     ]);
