@@ -59,6 +59,8 @@ describe('DecisionCostStore', () => {
     expect(record.summary.voterCount).toBe(2);
     expect(record.summary.measuredVoters).toBe(1);
     expect(record.summary.unmeasuredVoters).toBe(1);
+    expect(record.summary.tokenMeasuredVoters).toBe(1);
+    expect(record.summary.tokenUnmeasuredVoters).toBe(1);
     expect(record.summary.totalCostUsd).toBeCloseTo(0.006, 9);
     expect(store.size).toBe(1);
   });
@@ -87,6 +89,30 @@ describe('DecisionCostStore', () => {
     const planRec = reader.all().find((r) => r.decisionId === 'd2');
     expect(planRec?.summary.totalCostUsd).toBe(0);
     expect(planRec?.summary.totalTokens).toBe(1200);
+    expect(planRec?.summary.tokenMeasuredVoters).toBe(1);
+  });
+
+  it('hydrates legacy rows without inventing token coverage', () => {
+    const writer = new DecisionCostStore({ filePath: file, dataDir: dir });
+    writer.record({
+      decisionId: 'legacy',
+      gate: 'consensus_vote',
+      voters: VOTERS,
+      billingMode: 'api',
+      timestamp: TS,
+    });
+    const raw = JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>;
+    const summary = raw['summary'] as Record<string, unknown>;
+    delete summary['tokenMeasuredVoters'];
+    delete summary['tokenUnmeasuredVoters'];
+    for (const line of summary['perVoter'] as Record<string, unknown>[]) {
+      delete line['tokenUsageMeasured'];
+    }
+    writeFileSync(file, `${JSON.stringify(raw)}\n`, 'utf-8');
+
+    const record = new DecisionCostStore({ filePath: file, dataDir: dir }).all()[0];
+    expect(record?.summary.tokenMeasuredVoters).toBeUndefined();
+    expect(record?.summary.perVoter[0]?.tokenUsageMeasured).toBeUndefined();
   });
 
   it('skips corrupt lines on hydrate (graceful degradation)', () => {
