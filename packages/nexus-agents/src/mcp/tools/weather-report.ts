@@ -49,12 +49,14 @@ import { getRateLimitStats } from '../../adapters/rate-limit-detector.js';
 import { getToolStats } from '../middleware/tool-metrics.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import type { AgentHealthSummary, AgentSessionEntry, CostSection } from './weather-report-types.js';
-import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 import { aggregateDecisionCosts } from '../../observability/decision-cost-aggregate.js';
+import { summarizeConsensusDecisionTokens } from '../../observability/consensus-decision-tokens.js';
+import type { LinkedVote } from '../../observability/consensus-decision-tokens.js';
 import {
-  DecisionCostStore,
-  type DecisionCostRecord,
-} from '../../observability/decision-cost-store.js';
+  resolveWeatherDecisionCosts,
+  resolveWeatherVoteRecords,
+} from './weather-report-cost-inputs.js';
+import type { DecisionCostRecord } from '../../observability/decision-cost-store.js';
 import { strategyCostProfiles } from '../../orchestration/strategy-manifest-registry.js';
 import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 import { ROUTED_ARMS, rowsOfSlot } from './weather-report-arms.js';
@@ -78,6 +80,8 @@ export interface WeatherReportDeps {
    * persistence is enabled (no store is constructed when it is off).
    */
   readonly decisionCostRecords?: readonly DecisionCostRecord[];
+  /** Pre-resolved vote verdicts for deterministic join tests; no ledger read when supplied. */
+  readonly voteRecords?: readonly LinkedVote[];
 }
 
 /** Collect non-empty optional sections into a spread-friendly object. */
@@ -217,30 +221,17 @@ function buildRecentWindow(cfg: WeatherReportConfig): WeatherReportResponse['rec
  */
 function buildCostSection(cfg: WeatherReportConfig, deps?: WeatherReportDeps): CostSection {
   const windowMs = cfg.outcomeLookbackMs;
-  const records = resolveDecisionCostRecords(windowMs, deps);
+  const records = resolveWeatherDecisionCosts(windowMs, deps?.decisionCostRecords);
+  const votes = resolveWeatherVoteRecords(
+    windowMs,
+    deps?.voteRecords,
+    deps?.decisionCostRecords !== undefined
+  );
   return {
     decisionCosts: aggregateDecisionCosts(records, windowMs),
+    consensusDecisionTokens: summarizeConsensusDecisionTokens(records, votes),
     strategyCostProfiles: strategyCostProfiles(),
   };
-}
-
-/**
- * Resolves the decision-cost records to aggregate: the injected set when
- * present, else the durable store windowed to the lookback (all history when
- * `windowMs <= 0`). Returns `[]` when persistence is off so no store is built.
- */
-function resolveDecisionCostRecords(
-  windowMs: number,
-  deps?: WeatherReportDeps
-): readonly DecisionCostRecord[] {
-  if (deps?.decisionCostRecords !== undefined) return deps.decisionCostRecords;
-  // Only construct the store when persistence is on — its constructor touches the
-  // learning dir, which a persistence-off (or test-mocked) context lacks.
-  if (!isPersistenceEnabled()) return [];
-  const store = new DecisionCostStore();
-  if (windowMs <= 0) return store.all();
-  const since = new Date(Date.now() - windowMs).toISOString();
-  return store.query({ since });
 }
 
 /** Builds rate limit report from tracked events (Issue #996). */
