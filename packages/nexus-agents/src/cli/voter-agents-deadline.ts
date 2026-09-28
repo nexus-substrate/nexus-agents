@@ -16,6 +16,43 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { AgentVoteResult, SeatAttemptTiming, VoterRole } from './vote-types.js';
 import { createErrorVoteResult, delay } from './voter-execution.js';
 import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
+import { getMcpSafeDeadlineMs, VOTE_TIMEOUTS } from '../config/timeouts.js';
+
+/** Worst-case legitimate vote time plus stagger and buffer (#1871). */
+export function computeOverallConsensusDeadlineMs(
+  timeoutMs: number,
+  maxRetries: number,
+  roleCount: number,
+  interDelayMs: number
+): number {
+  const perVoteBudget = timeoutMs * (maxRetries + 1);
+  const staggerBudget = Math.max(0, roleCount - 1) * interDelayMs;
+  return perVoteBudget + staggerBudget + VOTE_TIMEOUTS.overallDeadlineBufferMs;
+}
+
+/** One deadline for first pass, backoff, and retry; clamped below the MCP wrapper (#2105). */
+export function resolvePanelDeadline(
+  timeoutMs: number,
+  maxRetries: number,
+  roleCount: number,
+  interDelayMs: number,
+  logger: ILogger
+): { overallDeadlineMs: number; deadlineAtMs: number } {
+  const computedDeadlineMs = computeOverallConsensusDeadlineMs(
+    timeoutMs,
+    maxRetries,
+    roleCount,
+    interDelayMs
+  );
+  const overallDeadlineMs = getMcpSafeDeadlineMs(computedDeadlineMs, 'consensus_vote');
+  if (overallDeadlineMs < computedDeadlineMs) {
+    logger.debug('Consensus deadline clamped to MCP wrapper timeout', {
+      computedDeadlineMs,
+      overallDeadlineMs,
+    });
+  }
+  return { overallDeadlineMs, deadlineAtMs: Date.now() + overallDeadlineMs };
+}
 
 export interface VoteOptions {
   readonly timeoutMs: number;
@@ -42,6 +79,8 @@ export interface LaunchVotesInput {
   readonly voteOptions: VoteOptions;
   readonly interDelay: number;
   readonly overallDeadlineMs: number;
+  /** Absolute wall-clock cutoff shared with an optional per-role retry pass. */
+  readonly deadlineAtMs?: number;
   /** Vote launcher (injected by caller — typically executeAgentVote). */
   readonly voteFn: VoteFn;
   /**
@@ -217,9 +256,12 @@ async function launchRoleVote(
   role: VoterRole,
   index: number,
   input: LaunchVotesInput,
-  voteOnAdapter: VoteOnAdapter
+  voteOnAdapter: VoteOnAdapter,
+  deadlineAtMs: number
 ): Promise<AgentVoteResult> {
-  if (index > 0 && input.interDelay > 0) await delay(input.interDelay);
+  // A retry can begin with less time left than the nominal stagger delay.
+  const staggerWaitMs = Math.min(input.interDelay, Math.max(0, deadlineAtMs - Date.now()));
+  if (index > 0 && staggerWaitMs > 0) await delay(staggerWaitMs);
   const adapter = input.roleAdapters.get(role) ?? input.fallbackAdapter;
   const pinnedModel = adapter.modelId;
   const assignedKey = adapterCliKey(adapter);
@@ -260,7 +302,7 @@ export async function launchVotesWithOverallDeadline(
 ): Promise<readonly AgentVoteResult[]> {
   const { roles, proposal, logger, voteOptions, overallDeadlineMs, voteFn } = input;
 
-  const startedAt = Date.now();
+  const deadlineAtMs = input.deadlineAtMs ?? Date.now() + overallDeadlineMs;
   const serialize = createKeyedSerializer();
 
   // One serialized, deadline-bounded vote attempt on a specific adapter.
@@ -279,12 +321,17 @@ export async function launchVotesWithOverallDeadline(
     // starts, so a queued role still gets a correct remaining budget.
     return serialize(cli, async () => {
       const runStartedAt = Date.now();
-      const remaining = Math.max(1, overallDeadlineMs - (runStartedAt - startedAt));
-      const result = await raceWithDeadline(
-        voteFn(role, proposal, adapter, logger, { ...voteOptions, signal: input.signal }),
-        role,
-        remaining
-      );
+      const remaining = deadlineAtMs - runStartedAt;
+      // A role can wait past the cutoff in a stagger or serialized CLI lane.
+      // Record absence as an error; do not start an adapter with a fresh 1 ms.
+      const result =
+        remaining <= 0
+          ? createErrorVoteResult(role, DEADLINE_MESSAGE, overallDeadlineMs)
+          : await raceWithDeadline(
+              voteFn(role, proposal, adapter, logger, { ...voteOptions, signal: input.signal }),
+              role,
+              remaining
+            );
       const attempt: SeatAttemptTiming = {
         cli,
         queuedMs: runStartedAt - enqueuedAt,
@@ -296,7 +343,7 @@ export async function launchVotesWithOverallDeadline(
   };
 
   const wrapped = roles.map((role, index) =>
-    launchRoleVote(role, index, input, voteOnAdapter).then((result) => {
+    launchRoleVote(role, index, input, voteOnAdapter, deadlineAtMs).then((result) => {
       input.onVoteCollected?.(result);
       return result;
     })

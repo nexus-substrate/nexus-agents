@@ -37,6 +37,18 @@ function producedOutputs(jobBody: string, stepId: string): Set<string> {
   for (const m of stepBody.matchAll(/["']([A-Za-z_][A-Za-z0-9_-]*)<</g)) {
     produced.add(m[1] as string);
   }
+  // A direct call to a literal repo-local bash script may write step outputs.
+  // Require a command line so a commented call or quoted mention cannot count.
+  for (const call of stepBody.matchAll(
+    /^[ \t]*(?:run:[ \t]*)?bash[ \t]+(scripts\/[A-Za-z0-9_/-]+\.sh)(?=[ \t]|$)/gm
+  )) {
+    const script = readFileSync(join(process.cwd(), call[1] as string), 'utf8');
+    for (const output of script.matchAll(
+      /^\s*echo\s+["']([A-Za-z_][A-Za-z0-9_-]*)=[^\n]*?["']\s*>>\s*["']?\$GITHUB_OUTPUT\b/gm
+    )) {
+      produced.add(output[1] as string);
+    }
+  }
   return produced;
 }
 
@@ -147,6 +159,42 @@ describe('workflow step-output wiring (#4698)', () => {
     ].join('\n');
     expect(declaresStep(job, 'mine')).toBe(true);
     expect(producedOutputs(job, 'mine').has('thing')).toBe(true);
+  });
+
+  it('finds outputs in a statically invoked local script without inventing missing outputs', () => {
+    const job = [
+      '  publish-smoke:',
+      '    steps:',
+      '      - id: publish-path',
+      '        run: bash scripts/decide-publish-smoke.sh "$GITHUB_SHA"',
+    ].join('\n');
+    const outputs = producedOutputs(job, 'publish-path');
+    expect(outputs.has('will_publish')).toBe(true);
+    expect(outputs.has('memory_ahead')).toBe(true);
+    // The script has this shell variable, but never publishes it as a step output.
+    expect(outputs.has('local_version')).toBe(false);
+    expect(outputs.has('not_written')).toBe(false);
+  });
+
+  it('does not credit an invocation commented out in a run block', () => {
+    const job = [
+      '  publish-smoke:',
+      '    steps:',
+      '      - id: publish-path',
+      '        run: |',
+      '          # bash scripts/decide-publish-smoke.sh "$GITHUB_SHA"',
+    ].join('\n');
+    expect(producedOutputs(job, 'publish-path').has('will_publish')).toBe(false);
+  });
+
+  it('does not credit a script name printed as quoted prose', () => {
+    const job = [
+      '  publish-smoke:',
+      '    steps:',
+      '      - id: publish-path',
+      '        run: echo "bash scripts/decide-publish-smoke.sh $GITHUB_SHA"',
+    ].join('\n');
+    expect(producedOutputs(job, 'publish-path').has('will_publish')).toBe(false);
   });
 
   it('a COMMENT naming a reference is a mention, not a reference (#6029)', () => {
