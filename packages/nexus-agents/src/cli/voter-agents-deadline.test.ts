@@ -67,7 +67,7 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
         voteFn,
       });
 
-      await vi.advanceTimersByTimeAsync(20);
+      await vi.advanceTimersByTimeAsync(10);
       const results = await pending;
 
       expect(voteFn).toHaveBeenCalledTimes(1);

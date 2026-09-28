@@ -256,9 +256,12 @@ async function launchRoleVote(
   role: VoterRole,
   index: number,
   input: LaunchVotesInput,
-  voteOnAdapter: VoteOnAdapter
+  voteOnAdapter: VoteOnAdapter,
+  deadlineAtMs: number
 ): Promise<AgentVoteResult> {
-  if (index > 0 && input.interDelay > 0) await delay(input.interDelay);
+  // A retry can begin with less time left than the nominal stagger delay.
+  const staggerWaitMs = Math.min(input.interDelay, Math.max(0, deadlineAtMs - Date.now()));
+  if (index > 0 && staggerWaitMs > 0) await delay(staggerWaitMs);
   const adapter = input.roleAdapters.get(role) ?? input.fallbackAdapter;
   const pinnedModel = adapter.modelId;
   const assignedKey = adapterCliKey(adapter);
@@ -340,7 +343,7 @@ export async function launchVotesWithOverallDeadline(
   };
 
   const wrapped = roles.map((role, index) =>
-    launchRoleVote(role, index, input, voteOnAdapter).then((result) => {
+    launchRoleVote(role, index, input, voteOnAdapter, deadlineAtMs).then((result) => {
       input.onVoteCollected?.(result);
       return result;
     })
