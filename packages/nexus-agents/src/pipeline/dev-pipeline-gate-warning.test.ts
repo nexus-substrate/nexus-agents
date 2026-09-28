@@ -20,7 +20,12 @@ vi.mock('../context/context-retriever.js', () => ({
   getResearchInsightsForTask: (): Promise<readonly TechniqueStatusSummary[]> => Promise.resolve([]),
 }));
 
-const WORKSPACE = { accessMode: 'workspace-edit', directory: '/srv/repo-under-test' } as const;
+const WORKSPACE = { accessMode: 'workspace-edit', directory: process.cwd() } as const;
+const TRUSTED = {
+  trustTier: '1',
+  sourceTrustTier: '1',
+  researchOverride: 'Operator plan',
+} as const;
 
 function stages(overrides?: Partial<DevPipelineStages>): DevPipelineStages {
   return {
@@ -55,7 +60,10 @@ describe('quality gate over a workspace-edit implement directory (#6792)', () =>
   it.each(['advisory', 'blocking'] as const)(
     'warns on the result when the gate runs in %s mode',
     async (mode) => {
-      const result = await runDevPipeline('Build feature X', stages(), { qualityGate: mode });
+      const result = await runDevPipeline('Build feature X', stages(), {
+        ...TRUSTED,
+        qualityGate: mode,
+      });
 
       expect(result.warnings).toHaveLength(1);
       const [warning] = result.warnings ?? [];
@@ -69,7 +77,7 @@ describe('quality gate over a workspace-edit implement directory (#6792)', () =>
     const result = await runDevPipeline(
       'Build feature X',
       stages({ qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: 'tsc' }) }),
-      { qualityGate: 'blocking' }
+      { ...TRUSTED, qualityGate: 'blocking' }
     );
 
     expect(result.completed).toBe(false);
@@ -77,28 +85,108 @@ describe('quality gate over a workspace-edit implement directory (#6792)', () =>
   });
 
   it('does not warn when the gate is off (control)', async () => {
-    const result = await runDevPipeline('Build feature X', stages(), { qualityGate: 'off' });
+    const s = stages();
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      qualityGate: 'off',
+    });
 
     expect(result.warnings).toBeUndefined();
+    expect(s.qualityGate).not.toHaveBeenCalled();
   });
 
   it('does not warn when implement does not declare workspace-edit', async () => {
     const result = await runDevPipeline(
       'Build feature X',
       stages({ implementWorkspace: { accessMode: 'default', directory: '/x' } }),
-      { qualityGate: 'advisory' }
+      { ...TRUSTED, qualityGate: 'advisory' }
     );
 
     expect(result.warnings).toBeUndefined();
   });
 
   it('does not warn when no task reached implement', async () => {
-    const result = await runDevPipeline(
-      'Build feature X',
-      stages({ decompose: vi.fn().mockResolvedValue([]) }),
-      { qualityGate: 'advisory' }
-    );
+    const s = stages({ decompose: vi.fn().mockResolvedValue([]) });
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      qualityGate: 'advisory',
+    });
 
     expect(result.warnings).toBeUndefined();
+    expect(s.implement).not.toHaveBeenCalled();
+    expect(s.qualityGate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('quality gate refuses untrusted content in the real workspace (#6802)', () => {
+  it.each([
+    ['3', 'advisory'],
+    ['3', 'blocking'],
+    ['4', 'blocking'],
+  ] as const)('refuses tier %s with a %s gate', async (tier, mode) => {
+    const s = stages();
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      sourceTrustTier: tier,
+      qualityGate: mode,
+    });
+
+    expect(s.implement).toHaveBeenCalledTimes(1);
+    expect(s.qualityGate).not.toHaveBeenCalled();
+    expect(s.securityScan).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+    expect(result.securityRan).toBe(false);
+    expect(result.warnings?.join(' ')).toMatch(/quality gate.*refused.*tier/i);
+  });
+
+  it('refuses an unmeasured caller even when the task declares tier 1', async () => {
+    const s = stages();
+    const result = await runDevPipeline('Build feature X', s, {
+      researchOverride: 'Operator plan',
+      sourceTrustTier: '1',
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+    expect(result.warnings?.join(' ')).toMatch(/quality gate.*refused.*unmeasured/i);
+  });
+
+  it('refuses when external research lowers a declared tier 1 task', async () => {
+    const s = stages();
+    const result = await runDevPipeline('Build feature X', s, {
+      trustTier: '1',
+      sourceTrustTier: '1',
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+    expect(result.warnings?.join(' ')).toMatch(/quality gate.*refused.*tier 3/i);
+  });
+
+  it('allows the gate when implement used a separate scratch directory', async () => {
+    const s = stages({
+      implementWorkspace: { accessMode: 'workspace-edit', directory: '/separate/scratch' },
+    });
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      sourceTrustTier: '3',
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
+  });
+
+  it('runs the gate for a measured tier 1 task without lower-trust research', async () => {
+    const s = stages();
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).toHaveBeenCalledTimes(1);
+    expect(result.completed).toBe(true);
   });
 });
