@@ -777,7 +777,9 @@ describe.skipIf(process.platform !== 'linux')(
       await runTimedOutCli(await import('./subprocess-adapter.js'));
     }, 30_000);
 
-    it('the adapter timeout path, loaded as darwin, does the same through the async ps', async () => {
+    // Checks only that the tree dies when the adapter is loaded as darwin.
+    // That the async `ps` walk ran is the next test's check (#6718).
+    it('the adapter timeout path, loaded as darwin, kills the tree', async () => {
       const platform = Object.getOwnPropertyDescriptor(process, 'platform');
       Object.defineProperty(process, 'platform', { value: 'darwin' });
       let adapterModule: typeof import('./subprocess-adapter.js');

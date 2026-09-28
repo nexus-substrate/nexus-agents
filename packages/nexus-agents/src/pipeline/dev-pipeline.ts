@@ -19,6 +19,8 @@
  */
 
 import { nexusDataPath } from '../config/nexus-data-dir.js';
+import { realpathSync } from 'node:fs';
+import { isAbsolute, relative, sep } from 'node:path';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
 import {
@@ -612,6 +614,7 @@ async function runDevPipelineInner(
     sid,
     qualityGateMode: options?.qualityGate ?? 'off',
     limits: resolveIterationLimits(options),
+    contentTier: provenance.contentTier,
   });
 
   // Apply hindsight with actual pipeline outcome (#1720)
@@ -939,14 +942,30 @@ async function runImplSecurityPhase(
   planResult: { plan: string; iterations: number },
   tasks: PipelineTask[],
   stages: DevPipelineStages,
-  run: { sid: string | undefined; qualityGateMode: QualityGateMode; limits: IterationLimits }
+  run: {
+    sid: string | undefined;
+    qualityGateMode: QualityGateMode;
+    limits: IterationLimits;
+    contentTier: TrustTier | undefined;
+  }
 ): Promise<DevPipelineResult> {
-  const { sid, qualityGateMode, limits } = run;
+  const { sid, qualityGateMode, limits, contentTier } = run;
   const implResult = await implementQaLoop(tasks, stages, limits);
   if (sid !== undefined)
     saveStageCheckpoint(sid, 'implement', { type: 'implement', tasks: implResult.completedTasks });
 
   const { allTasksDone, taskStatus } = deriveTaskAggregate(tasks, implResult.completedTasks);
+
+  const refusal = refuseUnsafeQualityGate({
+    planResult,
+    tasks,
+    stages,
+    qualityGateMode,
+    contentTier,
+    implResult,
+    taskStatus,
+  });
+  if (refusal !== undefined) return refusal;
 
   // Local pre-ship quality gate (#3356). In 'blocking' mode a red gate fails
   // the phase before the security scan even runs — same posture as a blocking
@@ -956,29 +975,10 @@ async function runImplSecurityPhase(
   const implRan = implResult.totalIterations > 0;
   const warnings = gateWorkspaceWarningFields(stages, qualityGateMode, implRan);
   if (qualityGateMode === 'blocking' && !qaGate.passed) {
-    return {
-      completed: false,
-      plan: planResult.plan,
-      tasks: implResult.completedTasks.length > 0 ? implResult.completedTasks : tasks,
-      voteIterations: planResult.iterations,
-      qaIterations: implResult.totalIterations,
-      // The gate short-circuited before the scan — absence, not a verdict.
-      securityPassed: false,
-      securityRan: false,
-      taskStatus,
-      ...warnings,
-    };
+    return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, ...warnings });
   }
 
-  const security = await withStep({ name: 'security-scan' }, async (ctx) => {
-    const r = await stages.securityScan();
-    ctx.setSummary(r.passed ? 'passed' : 'FAILED');
-    return r;
-  });
-  if (sid !== undefined) {
-    saveStageCheckpoint(sid, 'security', { type: 'security', passed: security.passed });
-    if (security.passed) cleanupCheckpoint(sid);
-  }
+  const security = await runSecurityScanStage(stages, sid);
 
   return {
     completed: allTasksDone && security.passed,
@@ -992,6 +992,104 @@ async function runImplSecurityPhase(
     ...(security.verdict === 'skip' ? { securityNote: security.feedback } : {}),
     ...warnings,
   };
+}
+
+/** A stopped gate has no security verdict because no scan ran. */
+function blockedAfterImplement(input: {
+  planResult: { plan: string; iterations: number };
+  tasks: PipelineTask[];
+  implResult: ImplLoopResult;
+  taskStatus: 'all_done' | 'partial' | 'none';
+  warnings?: readonly string[];
+}): DevPipelineResult {
+  const { planResult, tasks, implResult, taskStatus, warnings } = input;
+  return {
+    completed: false,
+    plan: planResult.plan,
+    tasks: implResult.completedTasks.length > 0 ? implResult.completedTasks : tasks,
+    voteIterations: planResult.iterations,
+    qaIterations: implResult.totalIterations,
+    securityPassed: false,
+    securityRan: false,
+    taskStatus,
+    ...(warnings !== undefined ? { warnings } : {}),
+  };
+}
+
+/** Scan after the quality gate and checkpoint the measured result. */
+async function runSecurityScanStage(
+  stages: DevPipelineStages,
+  sid: string | undefined
+): ReturnType<DevPipelineStages['securityScan']> {
+  const security = await withStep({ name: 'security-scan' }, async (ctx) => {
+    const r = await stages.securityScan();
+    ctx.setSummary(r.passed ? 'passed' : 'FAILED');
+    return r;
+  });
+  if (sid !== undefined) {
+    saveStageCheckpoint(sid, 'security', { type: 'security', passed: security.passed });
+    if (security.passed) cleanupCheckpoint(sid);
+  }
+  return security;
+}
+
+/** Refuse a gate that would execute files an untrusted expert may have edited. */
+function refuseUnsafeQualityGate(input: {
+  planResult: { plan: string; iterations: number };
+  tasks: PipelineTask[];
+  stages: DevPipelineStages;
+  qualityGateMode: QualityGateMode;
+  contentTier: TrustTier | undefined;
+  implResult: ImplLoopResult;
+  taskStatus: 'all_done' | 'partial' | 'none';
+}): DevPipelineResult | undefined {
+  const { planResult, tasks, stages, qualityGateMode, contentTier, implResult, taskStatus } = input;
+  // #6802: an absent tier is unmeasured, never permission to run scripts.
+  if (!isUnsafeQualityGate(stages, qualityGateMode, implResult, contentTier)) return undefined;
+  const reason = `Quality gate refused: content tier ${contentTier ?? 'unmeasured'} has no verified isolated implement workspace; quality gate and security scan did not run.`;
+  logger.warn(reason);
+  return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, warnings: [reason] });
+}
+
+/** An untrusted gate requires evidence of an isolated, restricted implement workspace. */
+function isUnsafeQualityGate(
+  stages: DevPipelineStages,
+  mode: QualityGateMode,
+  implResult: ImplLoopResult,
+  contentTier: TrustTier | undefined
+): boolean {
+  return (
+    mode !== 'off' &&
+    stages.qualityGate !== undefined &&
+    implResult.totalIterations > 0 &&
+    contentTier !== '1' &&
+    !hasIsolatedImplementWorkspace(stages.implementWorkspace)
+  );
+}
+
+/** Missing or unresolvable workspace claims fail closed; overlapping paths are unsafe. */
+function hasIsolatedImplementWorkspace(
+  workspace: DevPipelineStages['implementWorkspace']
+): boolean {
+  if (workspace?.accessMode !== 'workspace-edit') return false;
+  try {
+    const implementPath = realpathSync(workspace.directory);
+    const gatePath = realpathSync(process.cwd());
+    return !isWithin(implementPath, gatePath) && !isWithin(gatePath, implementPath);
+  } catch {
+    return false;
+  }
+}
+
+/** Whether child is the same as, or inside, parent after path canonicalization. */
+function isWithin(parent: string, child: string): boolean {
+  const pathFromParent = relative(parent, child);
+  return (
+    pathFromParent === '' ||
+    (pathFromParent !== '..' &&
+      !pathFromParent.startsWith(`..${sep}`) &&
+      !isAbsolute(pathFromParent))
+  );
 }
 
 /** Result of the optional pre-ship quality gate (#3356). */

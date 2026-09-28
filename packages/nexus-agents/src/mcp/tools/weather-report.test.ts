@@ -803,6 +803,8 @@ function makeDecisionCostRecord(
     voterCount?: number;
     measuredVoters?: number;
     unmeasuredVoters?: number;
+    tokenMeasuredVoters?: number;
+    tokenUnmeasuredVoters?: number;
     totalTokens?: number;
     totalCostUsd?: number;
   } = {}
@@ -818,17 +820,86 @@ function makeDecisionCostRecord(
       voterCount,
       measuredVoters,
       unmeasuredVoters: over.unmeasuredVoters ?? voterCount - measuredVoters,
+      ...(over.tokenMeasuredVoters !== undefined
+        ? { tokenMeasuredVoters: over.tokenMeasuredVoters }
+        : {}),
+      ...(over.tokenUnmeasuredVoters !== undefined
+        ? { tokenUnmeasuredVoters: over.tokenUnmeasuredVoters }
+        : {}),
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalTokens: over.totalTokens ?? 0,
       totalCostUsd: over.totalCostUsd ?? 0,
-      perVoter: [],
+      perVoter: Array.from({ length: voterCount }, (_, i) => ({
+        role: `voter-${String(i)}`,
+        model: 'test-model',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        costUsd: 0,
+        unmeasured: true,
+        ...(over.tokenMeasuredVoters !== undefined && over.tokenUnmeasuredVoters !== undefined
+          ? { tokenUsageMeasured: i < over.tokenMeasuredVoters }
+          : {}),
+      })),
       perModel: [],
     },
   };
 }
 
 describe('weather report cost section (#3856)', () => {
+  it('joins injected consensus costs to vote verdicts without treating no_quorum as success', () => {
+    const approved = makeDecisionCostRecord('consensus_vote', {
+      voterCount: 1,
+      tokenMeasuredVoters: 1,
+      tokenUnmeasuredVoters: 0,
+      totalTokens: 10,
+    });
+    const failed = makeDecisionCostRecord('consensus_vote', {
+      voterCount: 1,
+      tokenMeasuredVoters: 0,
+      tokenUnmeasuredVoters: 1,
+      totalTokens: 4,
+    });
+    const records = [
+      {
+        ...approved,
+        decisionId: 'ok',
+        summary: {
+          ...approved.summary,
+          totalInputTokens: 10,
+          perVoter: [{ ...approved.summary.perVoter[0]!, inputTokens: 10, totalTokens: 10 }],
+        },
+      },
+      {
+        ...failed,
+        decisionId: 'failed',
+        summary: {
+          ...failed.summary,
+          totalInputTokens: 4,
+          perVoter: [{ ...failed.summary.perVoter[0]!, inputTokens: 4, totalTokens: 4 }],
+        },
+      },
+    ];
+    const report = generateWeatherReport({}, undefined, {
+      decisionCostRecords: records,
+      voteRecords: [
+        { correlationId: 'ok', decision: 'approved' },
+        { correlationId: 'failed', decision: 'no_quorum' },
+      ],
+    });
+
+    expect(report.costSection?.consensusDecisionTokens).toMatchObject({
+      matchedQuorumDecisions: 1,
+      matchedNoQuorumDecisions: 1,
+      totalReportedFinalSeatTokens: 14,
+      noQuorumReportedFinalSeatTokens: 4,
+      reportedTokensPerMatchedQuorumDecision: 14,
+      tokenCoverage: 0.5,
+      measurement: 'lower-bound-final-seats',
+    });
+  });
+
   it('always surfaces strategy cost profiles from the manifest registry', () => {
     const report = generateWeatherReport({});
     expect(report.costSection).toBeDefined();
@@ -850,6 +921,8 @@ describe('weather report cost section (#3856)', () => {
     const records = [
       makeDecisionCostRecord('consensus_vote', {
         voterCount: 7,
+        tokenMeasuredVoters: 6,
+        tokenUnmeasuredVoters: 1,
         totalTokens: 1000,
         totalCostUsd: 0.06,
       }),
@@ -871,6 +944,10 @@ describe('weather report cost section (#3856)', () => {
     expect(consensus?.decisionCount).toBe(2);
     expect(consensus?.avgCostUsd).toBeCloseTo(0.09, 6);
     expect(consensus?.avgVoters).toBe(6);
+    // The other consensus record is legacy: its five seats are unmeasured.
+    expect(consensus?.tokenMeasuredVoters).toBe(6);
+    expect(consensus?.tokenUnmeasuredVoters).toBe(6);
+    expect(consensus?.tokenCoverage).toBe(0.5);
     expect(report.costSection?.decisionCosts.totalDecisions).toBe(3);
   });
 });

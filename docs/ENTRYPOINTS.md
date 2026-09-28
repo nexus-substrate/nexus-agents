@@ -67,7 +67,7 @@ prints flags and examples for any of them.
 | `hello`       | Show welcome message and quick start (no API keys needed)                           |
 | `setup`       | Configure CLI integration (MCP + .rules + data dirs)                                |
 | `verify`      | Check install health (sqlite, adapters, config)                                     |
-| `doctor`      | Detailed system/adapter health check                                                |
+| `doctor`      | Detailed health check; no model completions by default; --live probes models        |
 | `config`      | Manage configuration (init, get, set, list, export, import)                         |
 | `orchestrate` | Execute a task via CLI tools (standalone mode)                                      |
 | `vote`        | Run consensus vote on a proposal (7 agents; --quick uses 3)                         |

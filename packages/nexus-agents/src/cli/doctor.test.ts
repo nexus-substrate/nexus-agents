@@ -349,7 +349,7 @@ describe('Doctor Command', () => {
         })
       );
 
-      const result = await runDoctor({ probeClaudeModel: probe });
+      const result = await runDoctor({ live: true, probeClaudeModel: probe });
 
       // No adapters → claude is not installed → the probe is told so, and its
       // verdict (not an inferred one) is what the report carries.
@@ -361,13 +361,57 @@ describe('Doctor Command', () => {
       });
     });
 
-    it('reaches the real probe when no override is supplied (#6120)', async () => {
-      vi.mocked(createAllAdapters).mockReturnValue(new Map() as never);
+    it('leaves the pinned Claude model unmeasured without --live (#6814)', async () => {
+      vi.mocked(createAllAdapters).mockReturnValue(
+        new Map([
+          [
+            'claude',
+            {
+              healthCheck: vi.fn().mockResolvedValue({
+                healthy: true,
+                version: '2.0.76',
+                versionStatus: 'supported',
+                lastChecked: new Date(),
+              }),
+              getCapacity: vi.fn().mockResolvedValue(undefined),
+            },
+          ],
+        ]) as never
+      );
 
       const result = await runDoctor();
 
-      expect(probeClaudePinnedModel).toHaveBeenCalledWith({ installed: false });
-      expect(result.claudeModel.status).toBe('not-probed');
+      expect(result.clis.find((cli) => cli.name === 'claude')?.installed).toBe(true);
+      expect(probeClaudePinnedModel).not.toHaveBeenCalled();
+      expect(result.claudeModel).toEqual({
+        alias: 'fable',
+        status: 'not-probed',
+        reason: 'pass --live to test the pinned model',
+      });
+    });
+
+    it('reaches the real probe when --live is supplied (#6120, #6814)', async () => {
+      vi.mocked(createAllAdapters).mockReturnValue(
+        new Map([
+          [
+            'claude',
+            {
+              healthCheck: vi.fn().mockResolvedValue({
+                healthy: true,
+                version: '2.0.76',
+                versionStatus: 'supported',
+                lastChecked: new Date(),
+              }),
+              getCapacity: vi.fn().mockResolvedValue(undefined),
+            },
+          ],
+        ]) as never
+      );
+
+      const result = await runDoctor({ live: true });
+
+      expect(probeClaudePinnedModel).toHaveBeenCalledWith({ installed: true });
+      expect(result.claudeModel.status).toBe('available');
     });
 
     it('should include API key checks without exposing values', async () => {

@@ -86,7 +86,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     command: 'doctor',
-    description: 'Detailed system/adapter health check',
+    description: 'Detailed health check; no model completions by default; --live probes models',
     audience: 'essential',
   },
   {
