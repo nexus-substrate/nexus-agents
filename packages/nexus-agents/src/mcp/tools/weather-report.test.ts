@@ -830,7 +830,18 @@ function makeDecisionCostRecord(
       totalOutputTokens: 0,
       totalTokens: over.totalTokens ?? 0,
       totalCostUsd: over.totalCostUsd ?? 0,
-      perVoter: [],
+      perVoter: Array.from({ length: voterCount }, (_, i) => ({
+        role: `voter-${String(i)}`,
+        model: 'test-model',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        costUsd: 0,
+        unmeasured: true,
+        ...(over.tokenMeasuredVoters !== undefined && over.tokenUnmeasuredVoters !== undefined
+          ? { tokenUsageMeasured: i < over.tokenMeasuredVoters }
+          : {}),
+      })),
       perModel: [],
     },
   };

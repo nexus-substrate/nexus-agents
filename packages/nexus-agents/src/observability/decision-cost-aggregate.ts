@@ -102,6 +102,24 @@ function emptyAcc(): GateAcc {
   };
 }
 
+/** Persisted summary counts are evidence only when every seat corroborates them. */
+function hasValidTokenCoverage(summary: DecisionCostRecord['summary']): boolean {
+  const {
+    tokenMeasuredVoters: measured,
+    tokenUnmeasuredVoters: unmeasured,
+    voterCount,
+    perVoter,
+  } = summary;
+  if (measured === undefined || unmeasured === undefined || voterCount === 0) return false;
+  if (measured + unmeasured !== voterCount || perVoter.length !== voterCount) return false;
+  let reported = 0;
+  for (const voter of perVoter) {
+    if (voter.tokenUsageMeasured === undefined) return false;
+    if (voter.tokenUsageMeasured) reported++;
+  }
+  return reported === measured;
+}
+
 /** Fold one record's summary into its gate accumulator. */
 function foldRecord(acc: GateAcc, record: DecisionCostRecord): void {
   const s = record.summary;
@@ -112,9 +130,9 @@ function foldRecord(acc: GateAcc, record: DecisionCostRecord): void {
   acc.measured += s.measuredVoters;
   acc.unmeasured += s.unmeasuredVoters;
   // Legacy rows lack provenance; count every seat as unmeasured.
-  if (s.tokenMeasuredVoters !== undefined && s.tokenUnmeasuredVoters !== undefined) {
-    acc.tokenMeasured += s.tokenMeasuredVoters;
-    acc.tokenUnmeasured += s.tokenUnmeasuredVoters;
+  if (hasValidTokenCoverage(s)) {
+    acc.tokenMeasured += s.tokenMeasuredVoters ?? 0;
+    acc.tokenUnmeasured += s.tokenUnmeasuredVoters ?? 0;
   } else {
     acc.tokenUnmeasured += s.voterCount;
   }
