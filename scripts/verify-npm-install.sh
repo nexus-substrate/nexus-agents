@@ -277,12 +277,20 @@ server.stdout.on('data', (chunk) => {
     catch { return fail('MCP server returned malformed or incomplete JSON'); }
     if (response?.jsonrpc !== '2.0') return fail('MCP server returned invalid JSON-RPC');
     if (response.id === 1) {
-      if (!response.result || response.error) return fail('MCP initialize failed');
+      const result = response.result;
+      if (response.error ||
+          typeof result?.protocolVersion !== 'string' || !result.protocolVersion ||
+          typeof result.capabilities !== 'object' || result.capabilities === null || Array.isArray(result.capabilities) ||
+          typeof result.serverInfo?.name !== 'string' || !result.serverInfo.name ||
+          typeof result.serverInfo.version !== 'string' || !result.serverInfo.version) {
+        return fail('MCP initialize failed');
+      }
       initialized = true;
       continue;
     }
     if (response.id !== 2) continue;
     if (!initialized) return fail('MCP tools/list arrived without initialization');
+    if (response.error) return fail('MCP tools/list failed');
     const tools = response.result?.tools;
     if (!Array.isArray(tools) || tools.some((tool) => typeof tool?.name !== 'string' || !tool.name)) {
       return fail('MCP tools/list response is invalid');
