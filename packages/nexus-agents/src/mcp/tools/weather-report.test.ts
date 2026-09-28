@@ -803,6 +803,8 @@ function makeDecisionCostRecord(
     voterCount?: number;
     measuredVoters?: number;
     unmeasuredVoters?: number;
+    tokenMeasuredVoters?: number;
+    tokenUnmeasuredVoters?: number;
     totalTokens?: number;
     totalCostUsd?: number;
   } = {}
@@ -818,6 +820,12 @@ function makeDecisionCostRecord(
       voterCount,
       measuredVoters,
       unmeasuredVoters: over.unmeasuredVoters ?? voterCount - measuredVoters,
+      ...(over.tokenMeasuredVoters !== undefined
+        ? { tokenMeasuredVoters: over.tokenMeasuredVoters }
+        : {}),
+      ...(over.tokenUnmeasuredVoters !== undefined
+        ? { tokenUnmeasuredVoters: over.tokenUnmeasuredVoters }
+        : {}),
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalTokens: over.totalTokens ?? 0,
@@ -850,6 +858,8 @@ describe('weather report cost section (#3856)', () => {
     const records = [
       makeDecisionCostRecord('consensus_vote', {
         voterCount: 7,
+        tokenMeasuredVoters: 6,
+        tokenUnmeasuredVoters: 1,
         totalTokens: 1000,
         totalCostUsd: 0.06,
       }),
@@ -871,6 +881,10 @@ describe('weather report cost section (#3856)', () => {
     expect(consensus?.decisionCount).toBe(2);
     expect(consensus?.avgCostUsd).toBeCloseTo(0.09, 6);
     expect(consensus?.avgVoters).toBe(6);
+    // The other consensus record is legacy: its five seats are unmeasured.
+    expect(consensus?.tokenMeasuredVoters).toBe(6);
+    expect(consensus?.tokenUnmeasuredVoters).toBe(6);
+    expect(consensus?.tokenCoverage).toBe(0.5);
     expect(report.costSection?.decisionCosts.totalDecisions).toBe(3);
   });
 });

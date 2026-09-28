@@ -50,6 +50,28 @@ describe('aggregateDecisionCosts', () => {
     expect(report.windowMs).toBe(1000);
   });
 
+  it('does not treat legacy rows without token provenance as measured', () => {
+    const report = aggregateDecisionCosts(
+      [
+        record('consensus_vote', { voterCount: 2, measuredVoters: 2 }),
+        record('consensus_vote', {
+          voterCount: 3,
+          tokenMeasuredVoters: 2,
+          tokenUnmeasuredVoters: 1,
+        }),
+      ],
+      7 * 24 * 60 * 60 * 1000
+    );
+    expect(report.byGate[0]?.tokenMeasuredVoters).toBe(2);
+    expect(report.byGate[0]?.tokenUnmeasuredVoters).toBe(3);
+    expect(report.byGate[0]?.tokenCoverage).toBe(2 / 5);
+  });
+
+  it('marks a zero-seat decision window as unmeasured, not zero coverage', () => {
+    const report = aggregateDecisionCosts([record('consensus_vote')], 1000);
+    expect(report.byGate[0]?.tokenCoverage).toBeNull();
+  });
+
   it('averages cost, tokens, and voters per gate over the decision count', () => {
     const records: DecisionCostRecord[] = [
       record('consensus_vote', {
