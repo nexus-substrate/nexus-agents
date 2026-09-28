@@ -10,7 +10,7 @@
  * createErrorVoteResult('overall consensus deadline exceeded'), so partial
  * results always come back within a bounded wall-clock time.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
@@ -49,6 +49,68 @@ function makeOkVote(role: VoterRole): AgentVoteResult {
 }
 
 describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
+  it('does not call a staggered voter after the shared absolute deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-28T00:00:00Z'));
+      const voteFn = vi.fn((role: VoterRole) => Promise.resolve(makeOkVote(role)));
+      const pending = launchVotesWithOverallDeadline({
+        roles: ['architect', 'security'],
+        proposal: 'test',
+        roleAdapters: new Map(),
+        fallbackAdapter: stubAdapter,
+        logger: silentLogger,
+        voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+        interDelay: 20,
+        overallDeadlineMs: 1_000,
+        deadlineAtMs: Date.now() + 10,
+        voteFn,
+      });
+
+      await vi.advanceTimersByTimeAsync(20);
+      const results = await pending;
+
+      expect(voteFn).toHaveBeenCalledTimes(1);
+      expect(voteFn.mock.calls[0]?.[0]).toBe('architect');
+      expect(results[1]?.source).toBe('error');
+      expect(results[1]?.error).toBe('overall consensus deadline exceeded');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not call a voter queued behind a stuck same-CLI seat after expiry', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-28T00:00:00Z'));
+      const voteFn = vi.fn((role: VoterRole): Promise<AgentVoteResult> => {
+        if (role === 'architect') return new Promise(() => undefined);
+        return Promise.resolve(makeOkVote(role));
+      });
+      const pending = launchVotesWithOverallDeadline({
+        roles: ['architect', 'security'],
+        proposal: 'test',
+        roleAdapters: new Map(),
+        fallbackAdapter: stubAdapter,
+        logger: silentLogger,
+        voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+        interDelay: 0,
+        overallDeadlineMs: 100,
+        deadlineAtMs: Date.now() + 10,
+        voteFn,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      const results = await pending;
+
+      expect(voteFn).toHaveBeenCalledTimes(1);
+      expect(results.map((r) => r.source)).toEqual(['error', 'error']);
+      expect(results[1]?.error).toBe('overall consensus deadline exceeded');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('returns partial results when one role never settles before the deadline', async () => {
     const roles: readonly VoterRole[] = ['architect', 'security', 'pm'];
 
@@ -61,7 +123,9 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
     const results = await launchVotesWithOverallDeadline({
       roles,
       proposal: 'test proposal',
-      roleAdapters: new Map(),
+      // Keep the stuck seat off the other roles' serialized CLI lane: those
+      // roles really can finish before the shared deadline.
+      roleAdapters: new Map([['security', makeCliAdapter('security-cli')]]),
       fallbackAdapter: stubAdapter,
       logger: silentLogger,
       voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
