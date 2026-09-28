@@ -20,6 +20,9 @@ function runMcpPhase(
     | 'silent'
     | 'empty-initialize'
     | 'result-and-error'
+    | 'initialize-null-error'
+    | 'tools-null-error'
+    | 'paginated-tools'
     | 'duplicate-tools'
 ): SpawnSyncReturns<string> {
   const root = mkdtempSync(join(tmpdir(), 'nexus-mcp-smoke-'));
@@ -43,7 +46,9 @@ process.stdin.on('data', (chunk) => {
     if (mode === 'requires-open-stdin' && ended) { process.exit(0); }
     const tools = [{ name: 'orchestrate' }, ...Array.from({ length: 30 }, (_, i) => ({ name: 'tool_' + String.fromCharCode(97 + Math.floor(i / 26)) + String.fromCharCode(97 + i % 26) }))];
     const init = mode === 'empty-initialize' ? {} : { protocolVersion: '2025-11-25', capabilities: {}, serverInfo: { name: 'fake', version: '1' } };
-    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 1, result: init }) + '\\n');
+    const initResponse = { jsonrpc: '2.0', id: 1, result: init };
+    if (mode === 'initialize-null-error') initResponse.error = null;
+    process.stdout.write(JSON.stringify(initResponse) + '\\n');
     if (mode === 'truncated') {
       process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools } }).slice(0, -4));
       process.exit(0);
@@ -51,6 +56,8 @@ process.stdin.on('data', (chunk) => {
     if (mode === 'duplicate-tools') tools.push({ name: 'orchestrate' });
     const response = { jsonrpc: '2.0', id: 2, result: { tools } };
     if (mode === 'result-and-error') response.error = { code: -32603, message: 'server failed' };
+    if (mode === 'tools-null-error') response.error = null;
+    if (mode === 'paginated-tools') response.result.nextCursor = 'another-page';
     process.stdout.write(JSON.stringify(response) + '\\n');
     setTimeout(() => process.exit(0), 100);
   }, 20);
@@ -117,6 +124,24 @@ describe('npm install MCP smoke phase', () => {
     const result = runMcpPhase('result-and-error');
     expect(result.status).toBe(6);
     expect(result.stderr).toContain('MCP tools/list failed');
+  });
+
+  it('rejects initialize result plus an explicit null error field', () => {
+    const result = runMcpPhase('initialize-null-error');
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('MCP initialize failed');
+  });
+
+  it('rejects tools/list result plus an explicit null error field', () => {
+    const result = runMcpPhase('tools-null-error');
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('MCP tools/list failed');
+  });
+
+  it('rejects a partial tools/list page rather than reporting its count as complete', () => {
+    const result = runMcpPhase('paginated-tools');
+    expect(result.status).toBe(6);
+    expect(result.stderr).toMatch(/partial|paginated/i);
   });
 
   it('rejects duplicate tool names', () => {
