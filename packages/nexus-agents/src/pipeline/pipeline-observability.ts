@@ -8,14 +8,14 @@
  */
 
 import { getPipelineEventBus } from './event-bus.js';
-import type { IEventBus } from './event-types.js';
+import type { IEventBus, StageStartProvenance } from './event-types.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /** Options for emitting a stage started event. */
-export interface StageStartedOptions {
+export interface StageStartedOptions extends StageStartProvenance {
   readonly bus?: IEventBus | undefined;
   readonly executionId: string;
   readonly stageId: string;
@@ -82,6 +82,14 @@ export function emitStageStarted(options: StageStartedOptions): void {
     executionId: options.executionId,
     stageId: options.stageId,
     pluginId: options.pluginId ?? options.stageId,
+    ...(options.callerTrustTier !== undefined ? { callerTrustTier: options.callerTrustTier } : {}),
+    ...(options.trustTier !== undefined ? { trustTier: options.trustTier } : {}),
+    ...(options.inputSanitization !== undefined
+      ? { inputSanitization: options.inputSanitization }
+      : {}),
+    ...(options.inputSanitizationCounts !== undefined
+      ? { inputSanitizationCounts: options.inputSanitizationCounts }
+      : {}),
   });
 }
 
@@ -141,6 +149,41 @@ export function emitModelCalled(options: ModelCalledOptions): void {
  * Convenience wrapper matching agent-executor's original signature.
  * Emits stage events using the global event bus with a prefixed executionId.
  */
+function isSanitization(
+  value: unknown
+): value is NonNullable<StageStartProvenance['inputSanitization']> {
+  return value === 'unmeasured' || value === 'unmodified' || value === 'modified';
+}
+
+function isSanitizationCounts(
+  value: unknown
+): value is NonNullable<StageStartProvenance['inputSanitizationCounts']> {
+  if (value === null || typeof value !== 'object') return false;
+  return (
+    'tagsRemoved' in value &&
+    typeof value.tagsRemoved === 'number' &&
+    'commentsRemoved' in value &&
+    typeof value.commentsRemoved === 'number' &&
+    'fieldsModified' in value &&
+    typeof value.fieldsModified === 'number'
+  );
+}
+
+function stageStartProvenance(details?: Record<string, unknown>): StageStartProvenance {
+  const callerTrustTier = details?.['callerTrustTier'];
+  const trustTier = details?.['trustTier'];
+  const inputSanitization = details?.['inputSanitization'];
+  const counts = details?.['inputSanitizationCounts'];
+  return {
+    ...(typeof callerTrustTier === 'string' ? { callerTrustTier } : {}),
+    ...(typeof trustTier === 'string' ? { trustTier } : {}),
+    ...(isSanitization(inputSanitization) ? { inputSanitization } : {}),
+    ...(inputSanitization === 'modified' && isSanitizationCounts(counts)
+      ? { inputSanitizationCounts: counts }
+      : {}),
+  };
+}
+
 export function emitPipelineStageEvent(
   prefix: string,
   stage: string,
@@ -149,7 +192,7 @@ export function emitPipelineStageEvent(
 ): void {
   const executionId = `${prefix}-${stage}`;
   if (status === 'started') {
-    emitStageStarted({ executionId, stageId: stage });
+    emitStageStarted({ executionId, stageId: stage, ...stageStartProvenance(details) });
   } else if (status === 'completed') {
     emitStageCompleted({
       executionId,

@@ -102,7 +102,19 @@ interface PipelineCheckpointEvent extends BaseEvent {
 }
 
 /** Stage lifecycle events. */
-interface StageStartedEvent extends BaseEvent {
+export interface StageStartProvenance {
+  readonly callerTrustTier?: string;
+  /** Deprecated alias retained for existing stage-entry consumers. */
+  readonly trustTier?: string;
+  readonly inputSanitization?: 'unmeasured' | 'unmodified' | 'modified';
+  readonly inputSanitizationCounts?: {
+    readonly tagsRemoved: number;
+    readonly commentsRemoved: number;
+    readonly fieldsModified: number;
+  };
+}
+
+interface StageStartedEvent extends BaseEvent, StageStartProvenance {
   readonly type: 'stage.started';
   readonly executionId: string;
   readonly stageId: string;
