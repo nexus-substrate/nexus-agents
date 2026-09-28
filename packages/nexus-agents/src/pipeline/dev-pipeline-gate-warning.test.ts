@@ -140,6 +140,7 @@ describe('quality gate refuses untrusted content in the real workspace (#6802)',
     expect(result.completed).toBe(false);
     expect(result.securityRan).toBe(false);
     expect(result.warnings?.join(' ')).toMatch(/quality gate.*refused.*tier/i);
+    expect(result.warnings?.join(' ')).toContain('quality gate and security scan did not run');
   });
 
   it('refuses an unmeasured caller even when the task declares tier 1', async () => {

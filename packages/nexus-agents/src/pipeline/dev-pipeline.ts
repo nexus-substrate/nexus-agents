@@ -1046,7 +1046,7 @@ function refuseUnsafeQualityGate(input: {
   const { planResult, tasks, stages, qualityGateMode, contentTier, implResult, taskStatus } = input;
   // #6802: an absent tier is unmeasured, never permission to run scripts.
   if (!isUnsafeQualityGate(stages, qualityGateMode, implResult, contentTier)) return undefined;
-  const reason = `Quality gate refused: content tier ${contentTier ?? 'unmeasured'} has no verified isolated implement workspace; no checks were run.`;
+  const reason = `Quality gate refused: content tier ${contentTier ?? 'unmeasured'} has no verified isolated implement workspace; quality gate and security scan did not run.`;
   logger.warn(reason);
   return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, warnings: [reason] });
 }
