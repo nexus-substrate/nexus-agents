@@ -146,6 +146,8 @@ export interface VoterCostBreakdown {
    * placeholder, not a measured $0.
    */
   readonly unmeasured: boolean;
+  /** True only when the adapter explicitly reported both token counters. */
+  readonly tokenUsageMeasured?: boolean | undefined;
   /**
    * What kind of rate `costUsd` rests on, when the caller stated one (#4406).
    * Omitted when it did not — absent is not a claim, the same discipline the
@@ -187,6 +189,10 @@ export interface DecisionCostSummary {
    * which reported no token counts at all (#4430). Counted, not zeroed-as-fact.
    */
   readonly unmeasuredVoters: number;
+  /** Voters with both input and output counters reported, independent of price. */
+  readonly tokenMeasuredVoters?: number | undefined;
+  /** Voters missing either token counter. */
+  readonly tokenUnmeasuredVoters?: number | undefined;
   readonly totalInputTokens: number;
   readonly totalOutputTokens: number;
   readonly totalTokens: number;
@@ -261,6 +267,8 @@ export const DecisionCostSummarySchema = z.object({
   voterCount: z.number(),
   measuredVoters: z.number(),
   unmeasuredVoters: z.number(),
+  tokenMeasuredVoters: z.number().optional(),
+  tokenUnmeasuredVoters: z.number().optional(),
   totalInputTokens: z.number(),
   totalOutputTokens: z.number(),
   totalTokens: z.number(),
@@ -278,6 +286,7 @@ export const DecisionCostSummarySchema = z.object({
       cacheCreationInputTokens: z.number().optional(),
       costUsd: z.number(),
       unmeasured: z.boolean(),
+      tokenUsageMeasured: z.boolean().optional(),
       priceBasis: PriceBasisSchema.optional(),
     })
   ),
@@ -317,6 +326,11 @@ function isMeasured(v: VoterCostInput): boolean {
   // demanding both would newly discard voters that were previously counted.
   const reportedTokens = v.inputTokens !== undefined || v.outputTokens !== undefined;
   return v.costUsd !== undefined && reportedTokens;
+}
+
+/** Complete usage requires both counters; an explicit zero is still reported. */
+function hasCompleteTokenUsage(v: VoterCostInput): boolean {
+  return v.inputTokens !== undefined && v.outputTokens !== undefined;
 }
 
 /** Round to micro-USD so summaries don't drift to floating-point noise. */
@@ -360,6 +374,7 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
       : {}),
     costUsd,
     unmeasured: !measured,
+    tokenUsageMeasured: hasCompleteTokenUsage(v),
     // Plan mode forced `costUsd` to 0, so this row's money figure rests on no
     // price — the same reasoning the decision total applies (#4406 review).
     // Echoing 'list' here would attribute a $0 to a rate that produced nothing,
@@ -405,10 +420,12 @@ export function rollupDecisionCost(
   let totalOutputTokens = 0;
   let totalCostUsd = 0;
   let measuredVoters = 0;
+  let tokenMeasuredVoters = 0;
 
   for (const v of voters) {
     const line = toVoterBreakdown(v, isPlan);
     if (!line.unmeasured) measuredVoters++;
+    if (line.tokenUsageMeasured === true) tokenMeasuredVoters++;
     totalInputTokens += line.inputTokens;
     totalOutputTokens += line.outputTokens;
     totalCostUsd += line.costUsd;
@@ -429,6 +446,8 @@ export function rollupDecisionCost(
     voterCount: voters.length,
     measuredVoters,
     unmeasuredVoters: voters.length - measuredVoters,
+    tokenMeasuredVoters,
+    tokenUnmeasuredVoters: voters.length - tokenMeasuredVoters,
     totalInputTokens,
     totalOutputTokens,
     totalTokens: totalInputTokens + totalOutputTokens,

@@ -265,6 +265,7 @@ async function completeOnAdapter(opts: AdapterExecutionOptions): Promise<WorkerR
   } = opts;
   const prompt = composeWorkerPrompt({
     entry,
+    accessMode: WORKER_ACCESS_MODE,
     taskDescription,
     ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
     ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),

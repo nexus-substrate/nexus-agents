@@ -1,5 +1,5 @@
 /**
- * An errored voter seat is retried once before the tally (#5578).
+ * A retryable errored voter seat is retried once before the tally (#5578).
  *
  * The panel launches once and a voter at `source: 'error'` is dropped. Under
  * `reduce_denominator` — the default for every strategy but `unanimous` — its
@@ -9,7 +9,8 @@
  * for one failure.
  *
  * Design panel on #5578 chose option (b), 6 of 6 approvers: one bounded retry
- * of the errored roles under every error policy.
+ * of the errored roles under every error policy. A seat that exhausted the
+ * overall panel deadline prevents the entire retry pass (#6811).
  */
 import { describe, it, expect, vi } from 'vitest';
 
@@ -88,6 +89,31 @@ describe('retryErroredRoles (#5578)', () => {
 
     expect(relaunch).not.toHaveBeenCalled();
     expect(merged).toBe(first);
+  });
+
+  it('does not restart a seat after the overall consensus deadline', async () => {
+    const deadline = { ...errored('security'), error: 'overall consensus deadline exceeded' };
+    const first = [ok('architect'), deadline, ok('scope_steward')];
+    const relaunch = vi.fn(() => Promise.resolve([ok('security')]));
+
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+
+    expect(relaunch).not.toHaveBeenCalled();
+    expect(merged).toBe(first);
+    expect(merged[1]).toBe(deadline); // seat stays errored for absolute_quorum
+  });
+
+  it('does not restart any seat once the panel deadline expired', async () => {
+    const deadline = { ...errored('security'), error: 'overall consensus deadline exceeded' };
+    const first = [deadline, errored('pm')];
+    const relaunch = vi.fn(() => Promise.resolve([ok('pm')]));
+
+    const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+
+    expect(relaunch).not.toHaveBeenCalled();
+    expect(merged).toBe(first);
+    expect(merged[0]).toBe(deadline);
+    expect(merged[1]?.source).toBe('error');
   });
 
   it('keeps the errored result when the retry errors again', async () => {

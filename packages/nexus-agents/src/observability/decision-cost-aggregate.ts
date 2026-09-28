@@ -47,6 +47,12 @@ export interface GateCostAggregate {
   readonly measuredVoters: number;
   /** Total voters that reported no usage across the window. */
   readonly unmeasuredVoters: number;
+  /** Voters with both usage counters reported, independent of price. */
+  readonly tokenMeasuredVoters: number;
+  /** Missing or legacy-unmeasured usage seats. */
+  readonly tokenUnmeasuredVoters: number;
+  /** Fraction of voter seats with complete usage; null when no seats exist. */
+  readonly tokenCoverage: number | null;
   /**
    * True when `unmeasuredVoters > 0` — the averages understate true spend
    * because some voter calls reported no usage and were folded in as 0.
@@ -79,10 +85,39 @@ interface GateAcc {
   voters: number;
   measured: number;
   unmeasured: number;
+  tokenMeasured: number;
+  tokenUnmeasured: number;
 }
 
 function emptyAcc(): GateAcc {
-  return { decisions: 0, cost: 0, tokens: 0, voters: 0, measured: 0, unmeasured: 0 };
+  return {
+    decisions: 0,
+    cost: 0,
+    tokens: 0,
+    voters: 0,
+    measured: 0,
+    unmeasured: 0,
+    tokenMeasured: 0,
+    tokenUnmeasured: 0,
+  };
+}
+
+/** Persisted summary counts are evidence only when every seat corroborates them. */
+function hasValidTokenCoverage(summary: DecisionCostRecord['summary']): boolean {
+  const {
+    tokenMeasuredVoters: measured,
+    tokenUnmeasuredVoters: unmeasured,
+    voterCount,
+    perVoter,
+  } = summary;
+  if (measured === undefined || unmeasured === undefined || voterCount === 0) return false;
+  if (measured + unmeasured !== voterCount || perVoter.length !== voterCount) return false;
+  let reported = 0;
+  for (const voter of perVoter) {
+    if (voter.tokenUsageMeasured === undefined) return false;
+    if (voter.tokenUsageMeasured) reported++;
+  }
+  return reported === measured;
 }
 
 /** Fold one record's summary into its gate accumulator. */
@@ -94,6 +129,13 @@ function foldRecord(acc: GateAcc, record: DecisionCostRecord): void {
   acc.voters += s.voterCount;
   acc.measured += s.measuredVoters;
   acc.unmeasured += s.unmeasuredVoters;
+  // Legacy rows lack provenance; count every seat as unmeasured.
+  if (hasValidTokenCoverage(s)) {
+    acc.tokenMeasured += s.tokenMeasuredVoters ?? 0;
+    acc.tokenUnmeasured += s.tokenUnmeasuredVoters ?? 0;
+  } else {
+    acc.tokenUnmeasured += s.voterCount;
+  }
 }
 
 /** Turn a gate accumulator into its reported aggregate (means + floor flag). */
@@ -109,6 +151,9 @@ function toAggregate(gate: DecisionGate, acc: GateAcc): GateCostAggregate {
     totalTokens: acc.tokens,
     measuredVoters: acc.measured,
     unmeasuredVoters: acc.unmeasured,
+    tokenMeasuredVoters: acc.tokenMeasured,
+    tokenUnmeasuredVoters: acc.tokenUnmeasured,
+    tokenCoverage: acc.voters > 0 ? acc.tokenMeasured / acc.voters : null,
     costIsFloor: acc.unmeasured > 0,
   };
 }
