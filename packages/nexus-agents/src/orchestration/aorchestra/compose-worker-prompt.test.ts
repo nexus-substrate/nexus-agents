@@ -277,6 +277,28 @@ describe('composeWorkerPrompt — tool restrictions', () => {
     expect(prompt).toContain('Bash');
   });
 
+  it('allows file edits but no shell commands for a workspace-edit code worker', () => {
+    const prompt = composeWorkerPrompt({
+      entry: makeEntry('code'),
+      taskDescription: 'Implement feature X',
+      accessMode: 'workspace-edit',
+    });
+    const toolBlock = prompt.match(/## Tool Restrictions[\s\S]*?(?=\n## |$)/)?.[0];
+    expect(toolBlock).toContain('Read, Grep, Glob, Edit, Write.');
+    expect(toolBlock).not.toMatch(/\bBash\b|run shell commands/);
+  });
+
+  it('keeps a read-only role read-only under workspace-edit mode', () => {
+    const prompt = composeWorkerPrompt({
+      entry: makeEntry('architecture'),
+      taskDescription: 'Review the system design',
+      accessMode: 'workspace-edit',
+    });
+    const toolBlock = prompt.match(/## Tool Restrictions[\s\S]*?(?=\n## |$)/)?.[0];
+    expect(toolBlock).toContain('Read, Grep, Glob.');
+    expect(toolBlock).not.toMatch(/\b(?:Edit|Write|Bash)\b/);
+  });
+
   it('includes allowed tools list', () => {
     const prompt = composeWorkerPrompt({
       entry: makeEntry('security'),

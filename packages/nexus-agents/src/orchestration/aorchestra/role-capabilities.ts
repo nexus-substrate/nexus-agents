@@ -119,6 +119,19 @@ export function buildToolRestrictionBlock(role: string, accessMode?: ExecutionAc
     ].join('\n');
   }
   const cap = getRoleCapability(role);
+  if (accessMode === 'workspace-edit') {
+    const tools = cap.allowedTools.filter((tool) => tool !== 'Bash' && !tool.startsWith('Bash '));
+    const restriction =
+      cap.tier === 'write' || cap.tier === 'full'
+        ? 'You may read and edit files in the working directory. Shell, network and MCP tools are unavailable.'
+        : 'You are read-only. Analyze and report without modifying files or running shell commands.';
+    return [
+      '## Tool Restrictions',
+      '',
+      restriction,
+      `Only permitted tools, if available: ${tools.join(', ')}.`,
+    ].join('\n');
+  }
   if (cap.tier === 'full') return '';
 
   const tools = cap.allowedTools.join(', ');
