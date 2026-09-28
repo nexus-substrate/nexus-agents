@@ -30,6 +30,27 @@ const voter = (over: Partial<VoterCostInput> = {}): VoterCostInput => ({
 });
 
 describe('isMeasured requires token evidence (#4430)', () => {
+  it('counts complete token usage independently of price, including explicit zero', () => {
+    const out = rollupDecisionCost(
+      [
+        voter({ inputTokens: 0, outputTokens: 0, costUsd: undefined }),
+        voter({ inputTokens: undefined }),
+        voter({ outputTokens: undefined }),
+        voter({ inputTokens: undefined, outputTokens: undefined }),
+      ],
+      'api'
+    );
+
+    expect(out.tokenMeasuredVoters).toBe(1);
+    expect(out.tokenUnmeasuredVoters).toBe(3);
+    expect(out.perVoter.map((line) => line.tokenUsageMeasured)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+    expect(out.perVoter[0]?.unmeasured).toBe(true); // no price, despite complete usage
+  });
   it('flags a voter that reported no tokens as unmeasured, even with a cost', () => {
     // The live shape: reasoning returned, usage absent, cost supplied.
     const out = rollupDecisionCost(

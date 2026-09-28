@@ -47,6 +47,8 @@ const VoterCostBreakdownSchema = z.object({
   cacheCreationInputTokens: z.number().int().nonnegative().optional(),
   costUsd: z.number().nonnegative(),
   unmeasured: z.boolean(),
+  // Optional only for pre-#6809 records: absence is unmeasured, never zero usage.
+  tokenUsageMeasured: z.boolean().optional(),
   // #4406 — optional: records written before the basis existed carry no
   // provenance at all, and absent must stay absent rather than becoming the
   // positive claim 'unknown'.
@@ -67,6 +69,8 @@ const DecisionCostSummarySchema = z.object({
   voterCount: z.number().int().nonnegative(),
   measuredVoters: z.number().int().nonnegative(),
   unmeasuredVoters: z.number().int().nonnegative(),
+  tokenMeasuredVoters: z.number().int().nonnegative().optional(),
+  tokenUnmeasuredVoters: z.number().int().nonnegative().optional(),
   totalInputTokens: z.number().int().nonnegative(),
   totalOutputTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
