@@ -110,6 +110,12 @@ describe('formatCommandHelp', () => {
     expect(help).toContain('nexus-agents doctor');
   });
 
+  it('discloses the default Claude completion and additional --live probes', () => {
+    const help = formatCommandHelp('doctor')!;
+    expect(help).toContain('default runs a pinned Claude model completion (may use quota)');
+    expect(help).toContain('Additionally verify each adapter serves a completion (spends quota)');
+  });
+
   it('formats setup command with all skip flags', () => {
     const help = formatCommandHelp('setup')!;
     expect(help).toContain('--skip-mcp');
