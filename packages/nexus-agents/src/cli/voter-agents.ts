@@ -88,31 +88,13 @@ import {
   executeWithRetries,
   type VoteOutcome,
 } from './voter-execution.js';
-import { resolveVoteTimeout, VOTE_TIMEOUTS, getMcpSafeDeadlineMs } from '../config/timeouts.js';
-import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
+import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
+import { launchVotesWithOverallDeadline, resolvePanelDeadline } from './voter-agents-deadline.js';
 import { resolvePanelWorkspace } from './panel-workspace.js';
 import { ensureGatewayDiscovered } from '../adapters/gateway-rediscovery.js';
 
-/**
- * Computes an overall wall-clock deadline for a consensus vote call (#1871).
- *
- * Acts as a safety net above per-vote timeouts: even if executeAgentVote's
- * internal withTimeout race fails to resolve (e.g. subprocess adapter hang),
- * this deadline bounds total wall time and lets partial results return.
- *
- * Formula: worst-case legitimate completion (timeoutMs * (maxRetries+1))
- * plus staggered launch headroom, plus `VOTE_TIMEOUTS.overallDeadlineBufferMs`.
- */
-export function computeOverallConsensusDeadlineMs(
-  timeoutMs: number,
-  maxRetries: number,
-  roleCount: number,
-  interDelayMs: number
-): number {
-  const perVoteBudget = timeoutMs * (maxRetries + 1);
-  const staggerBudget = Math.max(0, roleCount - 1) * interDelayMs;
-  return perVoteBudget + staggerBudget + VOTE_TIMEOUTS.overallDeadlineBufferMs;
-}
+// Preserve the established public import while the deadline owner lives beside the launcher.
+export { computeOverallConsensusDeadlineMs } from './voter-agents-deadline.js';
 
 // ============================================================================
 // Agent Vote Execution
@@ -557,33 +539,19 @@ interface StaggeredVoteInput {
  * and an overall wall-clock deadline to prevent indefinite hangs (Issue #1871).
  */
 async function launchStaggeredVotes(
-  input: StaggeredVoteInput
+  input: StaggeredVoteInput,
+  overallDeadlineMs: number,
+  deadlineAtMs: number
 ): Promise<readonly AgentVoteResult[]> {
-  const { roles, logger, voteOptions, interDelay } = input;
-  // Raw "worst legitimate completion" estimate — retained unchanged so the
-  // formula still answers "how long could this vote take in principle?".
-  const computedDeadlineMs = computeOverallConsensusDeadlineMs(
-    voteOptions.timeoutMs,
-    voteOptions.maxRetries,
-    roles.length,
-    interDelay
-  );
-  // Clamp below the outer MCP tool-wrapper timeout. Without this, the
-  // middleware kills the promise chain before launchVotesWithOverallDeadline
-  // can produce structured partial results — clients see a naked timeout
-  // error instead of a `source: 'error' / error: 'overall consensus deadline
-  // exceeded'` vote per stuck role. (Issue #2105)
-  const overallDeadlineMs = getMcpSafeDeadlineMs(computedDeadlineMs, 'consensus_vote');
-  if (overallDeadlineMs < computedDeadlineMs) {
-    logger.debug('Consensus deadline clamped to MCP wrapper timeout', {
-      computedDeadlineMs,
-      overallDeadlineMs,
-    });
-  }
   // `StaggeredVoteInput` is `LaunchVotesInput` minus the deadline and the
   // launcher, so the input passes through whole — including `signal` (#5393)
   // and `onVoteCollected` (#6162).
-  return launchVotesWithOverallDeadline({ ...input, overallDeadlineMs, voteFn: executeAgentVote });
+  return launchVotesWithOverallDeadline({
+    ...input,
+    overallDeadlineMs,
+    deadlineAtMs,
+    voteFn: executeAgentVote,
+  });
 }
 
 /**
@@ -653,15 +621,24 @@ export async function collectRealVotes(
     signal: options.signal,
     onVoteCollected: options.onVoteCollected,
   };
-  const firstPass = await launchStaggeredVotes(launchInput);
+  // Clamp once, then share the same cutoff across both passes and backoff (#6811).
+  const { overallDeadlineMs, deadlineAtMs } = resolvePanelDeadline(
+    voteOptions.timeoutMs,
+    voteOptions.maxRetries,
+    roles.length,
+    interDelay,
+    logger
+  );
+  const firstPass = await launchStaggeredVotes(launchInput, overallDeadlineMs, deadlineAtMs);
   // #5578: recover an errored seat with one extra call rather than losing it
   // (reduce_denominator) or replaying the whole panel (absolute_quorum).
   const results = await retryErroredRoles(
     firstPass,
-    (retryRoles) => launchStaggeredVotes({ ...launchInput, roles: retryRoles }),
+    (retryRoles) =>
+      launchStaggeredVotes({ ...launchInput, roles: retryRoles }, overallDeadlineMs, deadlineAtMs),
     logger,
     options.erroredRoleBackoffMs ?? DEFAULT_ERRORED_ROLE_BACKOFF_MS,
-    options.signal
+    { signal: options.signal, deadlineAtMs }
   );
 
   // #4983/#5546: this is the only point the question is answerable. Assess the
