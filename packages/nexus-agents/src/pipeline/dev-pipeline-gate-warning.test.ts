@@ -11,6 +11,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { researchContextFromText } from './research-context.js';
 import { runDevPipeline } from './dev-pipeline.js';
 import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
@@ -152,6 +155,83 @@ describe('quality gate refuses untrusted content in the real workspace (#6802)',
     expect(result.warnings?.join(' ')).toMatch(/quality gate.*refused.*unmeasured/i);
   });
 
+  it('refuses tier 2 content in the real workspace', async () => {
+    const s = stages();
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      sourceTrustTier: '2',
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+    expect(result.warnings?.join(' ')).toMatch(/quality gate.*refused.*tier 2/i);
+  });
+
+  it.each([undefined, { accessMode: 'default', directory: process.cwd() }] as const)(
+    'refuses undeclared or non-enforcing workspace metadata: %j',
+    async (implementWorkspace) => {
+      const s = stages(implementWorkspace === undefined ? {} : { implementWorkspace });
+      if (implementWorkspace === undefined) Reflect.deleteProperty(s, 'implementWorkspace');
+      const result = await runDevPipeline('Build feature X', s, {
+        ...TRUSTED,
+        sourceTrustTier: '3',
+        qualityGate: 'blocking',
+      });
+
+      expect(s.qualityGate).not.toHaveBeenCalled();
+      expect(result.completed).toBe(false);
+      expect(result.warnings?.join(' ')).toMatch(/quality gate.*refused/i);
+    }
+  );
+
+  it('refuses a symlink alias of the real workspace', async () => {
+    const temp = mkdtempSync(join(tmpdir(), 'nexus-6802-alias-'));
+    try {
+      const alias = join(temp, 'repo');
+      symlinkSync(process.cwd(), alias, 'dir');
+      const s = stages({ implementWorkspace: { accessMode: 'workspace-edit', directory: alias } });
+      const result = await runDevPipeline('Build feature X', s, {
+        ...TRUSTED,
+        sourceTrustTier: '3',
+        qualityGate: 'blocking',
+      });
+
+      expect(s.qualityGate).not.toHaveBeenCalled();
+      expect(result.completed).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a trailing-slash alias of the real workspace', async () => {
+    const s = stages({
+      implementWorkspace: { accessMode: 'workspace-edit', directory: `${process.cwd()}/.` },
+    });
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      sourceTrustTier: '3',
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+  });
+
+  it('refuses an unresolvable claimed workspace', async () => {
+    const temp = mkdtempSync(join(tmpdir(), 'nexus-6802-missing-'));
+    rmSync(temp, { recursive: true });
+    const s = stages({ implementWorkspace: { accessMode: 'workspace-edit', directory: temp } });
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      sourceTrustTier: '3',
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+  });
+
   it('refuses when external research lowers a declared tier 1 task', async () => {
     const s = stages();
     const result = await runDevPipeline('Build feature X', s, {
@@ -166,17 +246,22 @@ describe('quality gate refuses untrusted content in the real workspace (#6802)',
   });
 
   it('allows the gate when implement used a separate scratch directory', async () => {
-    const s = stages({
-      implementWorkspace: { accessMode: 'workspace-edit', directory: '/separate/scratch' },
-    });
-    const result = await runDevPipeline('Build feature X', s, {
-      ...TRUSTED,
-      sourceTrustTier: '3',
-      qualityGate: 'blocking',
-    });
+    const scratch = mkdtempSync(join(tmpdir(), 'nexus-6802-scratch-'));
+    try {
+      const s = stages({
+        implementWorkspace: { accessMode: 'workspace-edit', directory: scratch },
+      });
+      const result = await runDevPipeline('Build feature X', s, {
+        ...TRUSTED,
+        sourceTrustTier: '3',
+        qualityGate: 'blocking',
+      });
 
-    expect(s.qualityGate).toHaveBeenCalledTimes(1);
-    expect(result.completed).toBe(true);
+      expect(s.qualityGate).toHaveBeenCalledTimes(1);
+      expect(result.completed).toBe(true);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it('runs the gate for a measured tier 1 task without lower-trust research', async () => {

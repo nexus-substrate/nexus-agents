@@ -19,6 +19,7 @@
  */
 
 import { nexusDataPath } from '../config/nexus-data-dir.js';
+import { realpathSync } from 'node:fs';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
 import {
@@ -1044,12 +1045,12 @@ function refuseUnsafeQualityGate(input: {
   const { planResult, tasks, stages, qualityGateMode, contentTier, implResult, taskStatus } = input;
   // #6802: an absent tier is unmeasured, never permission to run scripts.
   if (!isUnsafeQualityGate(stages, qualityGateMode, implResult, contentTier)) return undefined;
-  const reason = `Quality gate refused: content tier ${contentTier ?? 'unmeasured'} may have edited scripts in the real repository; no checks were run.`;
+  const reason = `Quality gate refused: content tier ${contentTier ?? 'unmeasured'} has no verified isolated implement workspace; no checks were run.`;
   logger.warn(reason);
   return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, warnings: [reason] });
 }
 
-/** The only unsafe combination: an enabled gate over an untrusted real workspace. */
+/** An untrusted gate requires evidence of an isolated, restricted implement workspace. */
 function isUnsafeQualityGate(
   stages: DevPipelineStages,
   mode: QualityGateMode,
@@ -1060,10 +1061,21 @@ function isUnsafeQualityGate(
     mode !== 'off' &&
     stages.qualityGate !== undefined &&
     implResult.totalIterations > 0 &&
-    stages.implementWorkspace?.accessMode === 'workspace-edit' &&
-    stages.implementWorkspace.directory === process.cwd() &&
-    !['1', '2'].includes(contentTier ?? '4')
+    contentTier !== '1' &&
+    !hasIsolatedImplementWorkspace(stages.implementWorkspace)
   );
+}
+
+/** Missing or unresolvable workspace claims fail closed; aliases resolve to one path. */
+function hasIsolatedImplementWorkspace(
+  workspace: DevPipelineStages['implementWorkspace']
+): boolean {
+  if (workspace?.accessMode !== 'workspace-edit') return false;
+  try {
+    return realpathSync(workspace.directory) !== realpathSync(process.cwd());
+  } catch {
+    return false;
+  }
 }
 
 /** Result of the optional pre-ship quality gate (#3356). */
