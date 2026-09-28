@@ -1,11 +1,10 @@
 /**
- * nexus-agents/cli - Pinned claude model probe for `doctor` (#6120)
+ * nexus-agents/cli - Pinned claude model probe for `doctor --live` (#6120, #6814)
  *
- * `doctor` reported the claude CLI healthy on a host whose pinned voter model
- * (`fable`, the adapter's default) was out of usage credits: it checked the
- * binary and its auth and inferred the model from those. Meanwhile every
- * claude voter seat failed and fell over to another CLI. This probe measures
- * the model itself with one short request.
+ * `doctor --live` reports when the claude CLI's pinned voter model
+ * (`fable`, the adapter's default) is out of usage credits. Binary and auth
+ * checks alone cannot measure that. The default doctor path skips this
+ * quota-spending request and reports `not-probed`.
  *
  * Three answers a presence check cannot give, and one honest non-answer:
  * `available` (content came back), `out-of-credits` (the CLI's durable
@@ -57,6 +56,15 @@ export interface ClaudeModelProbeTarget {
 function pinnedClaudeAlias(): string {
   const modelId = getDefaultModelForCli('claude');
   return getDefaultRegistry().getEntry(modelId).cliAlias ?? getCliModelName(modelId);
+}
+
+/** Describe the pinned model without spending quota on a completion. */
+export function unprobedClaudeModel(installed: boolean): ClaudeModelProbe {
+  return {
+    alias: pinnedClaudeAlias(),
+    status: 'not-probed',
+    reason: installed ? 'pass --live to test the pinned model' : 'claude CLI not installed',
+  };
 }
 
 /**

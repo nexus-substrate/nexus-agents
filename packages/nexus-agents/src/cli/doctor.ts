@@ -63,7 +63,11 @@ import {
 import { printDoctorResults } from './doctor-formatting.js';
 import { disabledCliModelReason } from './doctor-disabled-clis.js';
 import { probeCli } from './cli-auth-probe.js';
-import { probeClaudePinnedModel, type ClaudeModelProbe } from './doctor-claude-model.js';
+import {
+  probeClaudePinnedModel,
+  unprobedClaudeModel,
+  type ClaudeModelProbe,
+} from './doctor-claude-model.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
 import { checkHarnessAlignment } from './doctor-harness-alignment.js';
 import type { HarnessAlignmentCheck } from './doctor-harness-alignment.js';
@@ -376,9 +380,8 @@ export interface DoctorResult {
   /**
    * Whether the pinned claude voter model answers a one-line request (#6120).
    *
-   * Measured, not inferred from the CLI's presence: a host whose pinned model
-   * was out of usage credits passed every other check here while every claude
-   * voter seat failed.
+   * Measured only with `--live`; otherwise `not-probed` states why no
+   * completion was sent (#6814).
    */
   readonly claudeModel: ClaudeModelProbe;
   /**
@@ -1069,6 +1072,15 @@ function probeClaudeModelFor(
   return probe(claudeCheck?.installed === true);
 }
 
+/** Keep the quota-spending pinned-model check on the explicit live path. */
+function claudeModelForDoctor(
+  clis: readonly CliCheckResult[],
+  deps: RunDoctorDeps
+): Promise<ClaudeModelProbe> | ClaudeModelProbe {
+  if (deps.live === true) return probeClaudeModelFor(clis, deps.probeClaudeModel);
+  return unprobedClaudeModel(clis.find((c) => c.name === 'claude')?.installed === true);
+}
+
 /** At least one API key configured, one CLI authenticated, or a passing gateway (#6609). */
 function hasAnyAuthMethod(
   apiKeys: readonly ApiKeyCheck[],
@@ -1097,6 +1109,8 @@ type GatewayCheck = (options: { readonly probe: boolean }) => Promise<GatewayHea
 interface RunDoctorDeps {
   /** The pinned-model probe seam (#6120), injectable so the suite spends no quota. */
   readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe>;
+  /** Opt in to the pinned Claude completion probe (`--live`). */
+  readonly live?: boolean;
   /** The gateway measurement seam (#6609). */
   readonly checkGateway?: GatewayCheck;
   /** Send one completion per gateway family (`--probe`). Spends tokens. */
@@ -1110,7 +1124,7 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
   const clis = await Promise.all(
     allClis.filter((cli) => !isCliDisabled(cli)).map((cli) => checkCli(cli))
   );
-  const claudeModel = await probeClaudeModelFor(clis, deps.probeClaudeModel);
+  const claudeModel = await claudeModelForDoctor(clis, deps);
   const nodeVersion = checkNodeVersion();
   const apiKeys = checkApiKeys();
   const configFile = checkConfigFile();
@@ -1165,6 +1179,8 @@ export interface DoctorOptions {
   readonly gateway?: boolean;
   /** Also send one completion per gateway family; implies `gateway`. Spends tokens. */
   readonly probe?: boolean;
+  /** Probe the pinned Claude model with a real completion. Spends quota. */
+  readonly live?: boolean;
   /**
    * Receives the measured result, so `doctor --live` can compare its own CLI
    * availability check against the CLI list's (#6781).
@@ -1177,7 +1193,10 @@ export interface DoctorOptions {
  * Returns exit code (0 = healthy, 1 = issues found).
  */
 export async function doctorCommand(options: DoctorOptions = {}): Promise<number> {
-  const result = await runDoctor({ gatewayProbe: options.probe === true });
+  const result = await runDoctor({
+    gatewayProbe: options.probe === true,
+    live: options.live === true,
+  });
   options.onResult?.(result);
   printDoctorResults(result);
   if (options.gateway === true || options.probe === true) {
