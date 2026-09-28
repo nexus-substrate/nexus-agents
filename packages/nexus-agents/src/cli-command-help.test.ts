@@ -110,14 +110,13 @@ describe('formatCommandHelp', () => {
     expect(help).toContain('nexus-agents doctor');
   });
 
-  it('discloses the default Claude completion and additional --live probes', () => {
+  it('discloses that completions require --live', () => {
     const help = formatCommandHelp('doctor')!;
+    expect(help).toContain('no model completions by default');
     expect(help).toContain(
-      'default probes pinned Claude model if CLI enabled/installed (completion may use quota)'
+      'Probe pinned Claude and eligible adapters with real completions (may use quota)'
     );
-    expect(help).toContain(
-      'Additionally probe eligible adapters with real completions (may use quota)'
-    );
+    expect(help).not.toContain('default probes pinned Claude');
   });
 
   it('formats setup command with all skip flags', () => {
