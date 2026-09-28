@@ -240,21 +240,69 @@ fi
 ok "doctor ran (output length: ${#DOCTOR_OUT} chars)"
 
 step "Phase 6: MCP stdio server starts + responds to tools/list"
-HANDSHAKE=$(printf '%s\n' \
-  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"verify-npm-install","version":"1.0"}}}' \
-  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
+# Keep the server's stdin open until its complete response arrives. Closing it
+# immediately can cut a large tools/list JSON line at a pipe-buffer boundary;
+# grepping that partial line previously certified the install as healthy (#6824).
+if ! node <<'NODE'
+const { spawn } = require('node:child_process');
+const server = spawn('nexus-agents', ['--mode=server'], { stdio: ['pipe', 'pipe', 'ignore'] });
+let buffer = '';
+let initialized = false;
+let finished = false;
+const deadline = setTimeout(() => fail('MCP tools/list timed out'), 10_000);
 
-# 10s budget for full handshake. nexus-agents stdio server should respond fast.
-RESPONSE=$(printf '%s\n' "$HANDSHAKE" | timeout 10 nexus-agents --mode=server 2>/dev/null || true)
-if ! printf '%s' "$RESPONSE" | grep -q '"orchestrate"'; then
-  printf 'first 500 chars of response:\n%s\n' "$(printf '%s' "$RESPONSE" | head -c 500)" >&2
-  fail "MCP server did not advertise the orchestrate tool in tools/list response" 6
-fi
-TOOL_COUNT=$(printf '%s' "$RESPONSE" | grep -oE '"name":"[a-z_]+"' | sort -u | wc -l)
-ok "MCP server responded; advertised $TOOL_COUNT distinct tools (expected ≥ 25)"
-if [[ "$TOOL_COUNT" -lt 25 ]]; then
-  fail "MCP tool count below sanity floor of 25 (got $TOOL_COUNT)" 6
+function finish(message, success = false) {
+  if (finished) return;
+  finished = true;
+  clearTimeout(deadline);
+  server.kill('SIGKILL');
+  const stream = success ? process.stdout : process.stderr;
+  stream.write(`${message}\n`, () => process.exit(success ? 0 : 1));
+}
+function fail(message) { finish(message); }
+
+server.on('error', (error) => fail(`MCP server could not start: ${error.message}`));
+server.on('close', () => fail('MCP server exited with an incomplete tools/list response'));
+server.stdout.setEncoding('utf8');
+server.stdout.on('data', (chunk) => {
+  buffer += chunk;
+  if (buffer.length > 4_000_000) return fail('MCP response exceeded 4 MB');
+  let newline;
+  while (!finished && (newline = buffer.indexOf('\n')) !== -1) {
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
+    if (!line) continue;
+    let response;
+    try { response = JSON.parse(line); }
+    catch { return fail('MCP server returned malformed or incomplete JSON'); }
+    if (response?.jsonrpc !== '2.0') return fail('MCP server returned invalid JSON-RPC');
+    if (response.id === 1) {
+      if (!response.result || response.error) return fail('MCP initialize failed');
+      initialized = true;
+      continue;
+    }
+    if (response.id !== 2) continue;
+    if (!initialized) return fail('MCP tools/list arrived without initialization');
+    const tools = response.result?.tools;
+    if (!Array.isArray(tools) || tools.some((tool) => typeof tool?.name !== 'string' || !tool.name)) {
+      return fail('MCP tools/list response is invalid');
+    }
+    const names = new Set(tools.map((tool) => tool.name));
+    if (names.size !== tools.length) return fail('MCP tools/list contains duplicate names');
+    if (!names.has('orchestrate')) return fail('MCP tools/list omitted orchestrate');
+    if (names.size < 25) return fail(`MCP tool count below sanity floor of 25 (got ${names.size})`);
+    return finish(`MCP server responded; advertised ${names.size} distinct tools (expected ≥ 25)`, true);
+  }
+});
+
+for (const message of [
+  { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'verify-npm-install', version: '1.0' } } },
+  { jsonrpc: '2.0', method: 'notifications/initialized' },
+  { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+]) server.stdin.write(`${JSON.stringify(message)}\n`);
+NODE
+then
+  fail "MCP stdio handshake failed" 6
 fi
 
 step "Phase 7: SQLite is actually usable (#5388)"
