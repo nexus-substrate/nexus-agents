@@ -5,8 +5,9 @@
  * `executeExpert` chain and inspects the `CliTask` the composite router
  * receives, so a break at any link (the stage not asking, `runExpert` not
  * forwarding, the bridge still attaching the MCP config) fails here. The
- * implement stage is the contrast case: it keeps its MCP config and its
- * default access mode.
+ * decompose stage is the contrast case: it keeps its MCP config and its
+ * default access mode. (The implement stage runs in workspace-edit mode since
+ * #6792; see `implement-workspace-edit.test.ts`.)
  *
  * @module pipeline/qa-review-read-only.test
  */
@@ -45,7 +46,7 @@ vi.mock('./agent-executor-memory.js', () => ({
   recordRoutingExperience: vi.fn(),
 }));
 
-import { createImplementStage, createQaReviewStage } from './agent-executor-stages.js';
+import { createDecomposeStage, createQaReviewStage } from './agent-executor-stages.js';
 import { createBudgetGuard } from './budget-guard.js';
 import type { PipelineTask } from './dev-pipeline.js';
 import type { StageDeps } from './agent-executor-core.js';
@@ -94,11 +95,11 @@ describe('QA review stage access mode (#6768)', () => {
   });
 });
 
-describe('implement stage keeps its tools (#6768 contrast)', () => {
+describe('decompose stage keeps its tools (#6768 contrast)', () => {
   it('keeps the MCP config and the default access mode', async () => {
-    executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'done' } });
+    executeTaskMock.mockResolvedValue({ ok: true, value: { text: '[]' } });
 
-    await createImplementStage(deps())(TASK);
+    await createDecomposeStage(deps())('the plan');
 
     const task = routedTask();
     expect(task['options']).toEqual({ mcpConfigPath: '/tmp/qa-seam-mcp.json' });

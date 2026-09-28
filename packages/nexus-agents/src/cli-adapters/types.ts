@@ -17,6 +17,7 @@ export type {
   CliTransport,
   TokenUsage,
   CliResponse,
+  CliPermissionDenial,
   CliErrorCode,
   CliError,
   VersionStatus,

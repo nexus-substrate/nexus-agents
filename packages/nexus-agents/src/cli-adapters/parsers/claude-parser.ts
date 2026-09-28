@@ -8,7 +8,7 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
-import type { ICliResponseParser, TokenUsage } from '../types.js';
+import type { CliPermissionDenial, ICliResponseParser, TokenUsage } from '../types.js';
 import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
 import { createLogger } from '../../core/index.js';
 
@@ -160,6 +160,29 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
         : result;
     } catch {
       logger.debug('Skipped malformed output line', { snippet: raw.slice(0, 100) });
+      return null;
+    }
+  }
+
+  /**
+   * The tool calls claude's permission layer refused (#6792), from the
+   * result envelope's `permission_denials`. `null` when the field is absent
+   * or empty, or the output is not JSON; an entry without a tool name is
+   * skipped rather than invented.
+   */
+  extractPermissionDenials(raw: string): CliPermissionDenial[] | null {
+    try {
+      const denials = asRecord(JSON.parse(raw))?.permission_denials;
+      if (!Array.isArray(denials)) return null;
+      const parsed = denials.flatMap((entry: unknown): CliPermissionDenial[] => {
+        const record = asRecord(entry);
+        const toolName = record?.tool_name;
+        if (typeof toolName !== 'string' || toolName === '') return [];
+        const filePath = asRecord(record?.tool_input)?.file_path;
+        return [{ toolName, ...(typeof filePath === 'string' && { filePath }) }];
+      });
+      return parsed.length > 0 ? parsed : null;
+    } catch {
       return null;
     }
   }

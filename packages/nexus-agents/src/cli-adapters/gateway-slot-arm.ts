@@ -139,6 +139,13 @@ class GatewaySlotArm implements ICliAdapter {
     return cliEnforces && this.gatewayAdapter.enforcesReadOnlyAnalysis === true;
   }
 
+  /** Whether this arm enforces workspace-edit mode (#6792); composed the same way. */
+  get enforcesWorkspaceEdit(): boolean {
+    const cliEnforces =
+      this.deps.cliAdapter === undefined || this.deps.cliAdapter.enforcesWorkspaceEdit === true;
+    return cliEnforces && this.gatewayAdapter.enforcesWorkspaceEdit === true;
+  }
+
   private target(): Promise<ICliAdapter> {
     if (this.resolved !== undefined) return Promise.resolve(this.resolved);
     const cliAdapter = this.deps.cliAdapter;

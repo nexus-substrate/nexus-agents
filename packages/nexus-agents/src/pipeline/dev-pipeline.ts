@@ -28,6 +28,8 @@ import {
 } from './research-context.js';
 
 import { createLogger, withStep } from '../core/index.js';
+import type { ExecutionAccessMode } from '../core/index.js';
+import { gateWorkspaceWarningFields } from './dev-pipeline-warnings.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
 import {
@@ -245,6 +247,12 @@ export interface DevPipelineResult {
   /** Security-stage feedback explaining why a skipped scan did not run. */
   readonly securityNote?: string;
   /**
+   * Conditions the caller should know about that do not change the verdict
+   * (#6792), e.g. a quality gate that ran scripts in the directory the
+   * implement expert edited. Absent when there are none.
+   */
+  readonly warnings?: readonly string[];
+  /**
    * Terminal planning-gate state. Absent means the panel approved a usable plan.
    * `'empty'` means the planner returned nothing; `'no_quorum'` means the retry
    * budget ended without a valid panel; `'unapproved'` means every permitted
@@ -331,6 +339,16 @@ export interface DevPipelineStages {
   decompose(plan: string, signal?: AbortSignal): Promise<PipelineTask[]>;
   /** Code expert implements a task. Returns the work product. */
   implement(task: PipelineTask, signal?: AbortSignal): Promise<string>;
+  /**
+   * Where and how {@link implement} edits files (#6792), when the stages
+   * declare it: the access mode its expert runs under and the directory it
+   * runs in. The pipeline reads it to warn when a quality gate will then run
+   * scripts in that directory. Absent means undeclared: no warning.
+   */
+  readonly implementWorkspace?: {
+    readonly accessMode: ExecutionAccessMode;
+    readonly directory: string;
+  };
   /** QA expert reviews implementation. */
   qaReview(
     task: PipelineTask,
@@ -934,6 +952,9 @@ async function runImplSecurityPhase(
   // the phase before the security scan even runs — same posture as a blocking
   // security finding. In 'advisory' mode we record feedback but never fail.
   const qaGate = await runQualityGateStage(stages, qualityGateMode);
+  // #6792: the gate ran scripts where the implement expert edited files.
+  const implRan = implResult.totalIterations > 0;
+  const warnings = gateWorkspaceWarningFields(stages, qualityGateMode, implRan);
   if (qualityGateMode === 'blocking' && !qaGate.passed) {
     return {
       completed: false,
@@ -945,6 +966,7 @@ async function runImplSecurityPhase(
       securityPassed: false,
       securityRan: false,
       taskStatus,
+      ...warnings,
     };
   }
 
@@ -968,6 +990,7 @@ async function runImplSecurityPhase(
     securityRan: security.verdict !== 'skip',
     taskStatus,
     ...(security.verdict === 'skip' ? { securityNote: security.feedback } : {}),
+    ...warnings,
   };
 }
 

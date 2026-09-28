@@ -126,6 +126,8 @@ async function failClosedVote(
     cli: undefined,
     routedBy: undefined,
     served: undefined,
+    accessMode: undefined,
+    requestedAccessMode: undefined,
     success: false,
     durationMs: getTimeProvider().now() - start,
   });
@@ -178,6 +180,8 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
         cli: undefined,
         routedBy: undefined,
         served: undefined,
+        accessMode: undefined,
+        requestedAccessMode: undefined,
         success: vote.kind === 'approved',
         durationMs: ms,
       });

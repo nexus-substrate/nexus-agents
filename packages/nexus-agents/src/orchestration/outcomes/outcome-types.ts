@@ -14,6 +14,7 @@ import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { createLogger } from '../../core/index.js';
+import type { ExecutionAccessMode } from '../../core/index.js';
 import { PriceBasisSchema } from '../../core/price-basis.js';
 
 const logger = createLogger({ component: 'outcome-error-taxonomy' });
@@ -468,6 +469,22 @@ export function outcomeFailureFields(
     failureCategory: categorizeOutcomeErrorMessage(error),
     errorMessage: error.slice(0, 500),
   };
+}
+
+/**
+ * The quality signal that records an outcome's access mode (#6792). One
+ * spelling for every writer, so a reader can filter on it:
+ * - `access-mode:<mode>` (`'enforced'`): the mode the arm that served the call
+ *   reported enforcing;
+ * - `access-mode-requested:<mode>` (`'requested'`): only what the caller asked
+ *   for, when no served arm reported a mode (the call failed before an arm
+ *   ran, or the path cannot observe enforcement).
+ */
+export function accessModeSignal(
+  mode: ExecutionAccessMode,
+  kind: 'enforced' | 'requested'
+): string {
+  return kind === 'enforced' ? `access-mode:${mode}` : `access-mode-requested:${mode}`;
 }
 
 /** Aggregated stats for a group of outcomes. */

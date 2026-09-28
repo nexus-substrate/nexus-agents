@@ -28,6 +28,7 @@ import {
 } from '../adapters/rate-limit-detector.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { toCliTokenUsage } from './token-usage-bridge.js';
+import { withEnforcedAccessMode } from './access-mode.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -93,6 +94,14 @@ export class ModelToCliAdapter implements ICliAdapter {
    * enforcement or refuses.
    */
   readonly enforcesReadOnlyAnalysis = true;
+  /**
+   * Workspace-edit mode is satisfied by construction too (#6792), for the same
+   * reason: no tool definitions, so the model runs no command, fetches nothing
+   * and loads no MCP server. It edits no file either, which is narrower than
+   * the mode allows, never wider. The mode is forwarded on the request so a
+   * wrapped CLI applies its own enforcement or refuses.
+   */
+  readonly enforcesWorkspaceEdit = true;
 
   private readonly modelAdapter: IModelAdapter;
 
@@ -219,7 +228,12 @@ export class ModelToCliAdapter implements ICliAdapter {
       this.recordQuotaSignal(cliError);
       return err(cliError);
     }
-    const response = this.toCliResponse(result.value);
+    // #6792: no tools were sent, so the call ran nothing on the host; the
+    // response says so and states the mode it was served under.
+    const response: CliResponse = {
+      ...withEnforcedAccessMode(this.toCliResponse(result.value), task),
+      textOnly: true,
+    };
     // A served request is direct evidence the provider is serving; the tracker
     // uses it both to count the window and to retire a stale assertion.
     this.capacityTracker.recordUsage(response.usage);

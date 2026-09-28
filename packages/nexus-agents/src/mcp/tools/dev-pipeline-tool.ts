@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage, formatZodError, type ILogger } from '../../core/index.js';
 import { runDevPipeline } from '../../pipeline/dev-pipeline.js';
+import { buildStructuredOutput } from './dev-pipeline-output.js';
 import { checkSimulationAllowed, simulationDeniedResult } from './simulation-guard.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
@@ -341,50 +342,6 @@ export async function runDevPipelineForGoal(
 // ============================================================================
 // Tool Registration
 // ============================================================================
-
-/** Build structured JSON output for harness consumption (#1700). */
-function buildStructuredOutput(
-  result: DevPipelineResult,
-  simulated: boolean
-): Record<string, unknown> {
-  return {
-    // #4170: stamped only on an explicit NEXUS_ALLOW_SIMULATE=1 opt-in run so
-    // a random demo panel can never pass as a real decision.
-    ...(simulated ? { simulated: true } : {}),
-    completed: result.completed,
-    securityPassed: result.securityPassed,
-    // #4772: these two are what make `completed: false` legible. Without them a
-    // caller cannot tell a failed planner from a successful dry run, or a
-    // security rejection from a gate that never ran — which is the whole point
-    // of the fields. They were added to DevPipelineResult and then not listed
-    // here, so they never reached the MCP surface.
-    ...(result.harnessMode !== undefined ? { harnessMode: result.harnessMode } : {}),
-    ...(result.securityRan !== undefined ? { securityRan: result.securityRan } : {}),
-    ...(result.planStatus !== undefined ? { planStatus: result.planStatus } : {}),
-    ...(result.planVoteReason !== undefined ? { planVoteReason: result.planVoteReason } : {}),
-    ...(result.planVoteApprovalPercentage !== undefined
-      ? { planVoteApprovalPercentage: result.planVoteApprovalPercentage }
-      : {}),
-    ...(result.planVoteFeedback !== undefined ? { planVoteFeedback: result.planVoteFeedback } : {}),
-    // #4993 added `dryRun` to DevPipelineResult for exactly the reason above —
-    // it says `completed: false` was the request, not a fault — and then did
-    // not list it here either. Same omission, same function, under the comment
-    // describing it. A live `run_dev_pipeline({ dryRun: true })` came back with
-    // no way to tell a successful dry run from a failed pipeline.
-    ...(result.dryRun !== undefined ? { dryRun: result.dryRun } : {}),
-    ...(result.taskStatus !== undefined ? { taskStatus: result.taskStatus } : {}),
-    voteIterations: result.voteIterations,
-    qaIterations: result.qaIterations,
-    plan: result.plan,
-    tasks: result.tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      status: t.status,
-      implementation: t.implementation ?? null,
-      feedback: t.feedback ?? null,
-    })),
-  };
-}
 
 const RUN_DEV_PIPELINE_DESCRIPTION =
   "Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only). Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.";

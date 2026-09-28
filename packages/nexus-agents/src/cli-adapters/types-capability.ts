@@ -84,8 +84,8 @@ export interface CliTask {
   readonly options?: Record<string, unknown>;
   /**
    * Host access this task may use (#6754). Absent means `'default'`. Under
-   * `'read-only-analysis'` an adapter must apply its CLI's own read-only
-   * enforcement, or refuse the task when it cannot.
+   * `'read-only-analysis'` or `'workspace-edit'` (#6792) an adapter must apply
+   * its CLI's own enforcement of that mode, or refuse the task when it cannot.
    */
   readonly accessMode?: ExecutionAccessMode;
 }
@@ -151,6 +151,13 @@ export interface ICliAdapter {
    * mode must be refused rather than run with the adapter's defaults.
    */
   readonly enforcesReadOnlyAnalysis?: boolean;
+  /**
+   * True only when this adapter enforces `accessMode: 'workspace-edit'`
+   * (#6792): edits confined to the working directory, no command, network or
+   * MCP tool. Absent or false means it cannot, and a caller that asks for the
+   * mode must be refused. Declaring read-only analysis does not imply it.
+   */
+  readonly enforcesWorkspaceEdit?: boolean;
 
   /**
    * Executes a task on the CLI.

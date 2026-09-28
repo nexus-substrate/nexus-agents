@@ -1,8 +1,9 @@
 /**
  * Access-mode arm filter for CompositeRouter (#6768).
  *
- * A task that asks for `accessMode: 'read-only-analysis'` may only be routed
- * to an arm that enforces the mode. Each adapter refuses such a task on its
+ * A task that asks for a restricted access mode (`'read-only-analysis'`, or
+ * `'workspace-edit'` since #6792) may only be routed to an arm that declares
+ * that mode. Each adapter refuses such a task on its
  * own when it cannot enforce it (#6754), but the router does not fail over at
  * execution time, so letting selection pick a non-enforcing arm would turn a
  * routable task into a refusal. The router therefore removes those arms
@@ -16,35 +17,30 @@
 import type { Result } from '../core/index.js';
 import { ok, err } from '../core/index.js';
 import type { CliTask, ICliAdapter, RoutingArmId } from './types.js';
-import { isReadOnlyAnalysis } from './read-only-analysis.js';
+import { accessModeLabel, adapterEnforces, restrictedAccessMode } from './access-mode.js';
 import { CompositeRoutingError } from './composite-router-types.js';
 
 /** The `CompositeRoutingError.stage` of an access-mode routing failure. */
 const ACCESS_MODE_STAGE = 'access-mode';
 
-/** Whether `adapter` may serve `task` under the task's access mode. */
-function armServes(task: Pick<CliTask, 'accessMode'>, adapter: ICliAdapter | undefined): boolean {
-  if (!isReadOnlyAnalysis(task)) return true;
-  return adapter?.enforcesReadOnlyAnalysis === true;
-}
-
 /**
- * The candidate arms that may serve `task`. A task without read-only analysis
- * mode keeps every arm. A read-only task keeps only arms whose adapter
- * declares `enforcesReadOnlyAnalysis: true`; when none does, the route fails
- * rather than falling back to the full set.
+ * The candidate arms that may serve `task`. A default-mode task keeps every
+ * arm. A restricted task keeps only arms whose adapter declares that mode
+ * (`enforcesReadOnlyAnalysis` / `enforcesWorkspaceEdit` exactly `true`);
+ * when none does, the route fails rather than falling back to the full set.
  */
 export function armsForAccessMode(
   task: Pick<CliTask, 'accessMode'>,
   arms: readonly RoutingArmId[],
   adapters: ReadonlyMap<RoutingArmId, ICliAdapter>
 ): Result<RoutingArmId[], CompositeRoutingError> {
-  if (!isReadOnlyAnalysis(task)) return ok([...arms]);
-  const enforcing = arms.filter((arm) => armServes(task, adapters.get(arm)));
+  const mode = restrictedAccessMode(task);
+  if (mode === undefined) return ok([...arms]);
+  const enforcing = arms.filter((arm) => adapterEnforces(adapters.get(arm), task));
   if (enforcing.length > 0) return ok(enforcing);
   return err(
     new CompositeRoutingError(
-      `No routing arm enforces read-only analysis mode (candidates: ${arms.join(', ') || 'none'}); the task was not run`,
+      `No routing arm enforces ${accessModeLabel(mode)} mode (candidates: ${arms.join(', ') || 'none'}); the task was not run`,
       ACCESS_MODE_STAGE
     )
   );
