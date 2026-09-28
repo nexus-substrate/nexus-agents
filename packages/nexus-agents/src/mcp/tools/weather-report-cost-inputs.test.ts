@@ -63,4 +63,27 @@ describe('resolveWeatherDecisionCosts', () => {
 
     expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
   });
+
+  it('remains incomplete across reopen when over-cap retention meets a malformed duplicate', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'weather-cost-ledger-'));
+    dirs.push(dir);
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    const path = getDecisionCostFile();
+    const { record } = new DecisionCostStore().record({
+      decisionId: 'decision-0',
+      gate: 'consensus_vote',
+      voters: [{ role: 'reviewer', model: 'test-model', inputTokens: 1, outputTokens: 1 }],
+      billingMode: 'plan',
+      timestamp: new Date().toISOString(),
+    });
+    const validLines = Array.from({ length: 5001 }, (_, i) =>
+      JSON.stringify({ ...record, decisionId: `decision-${String(i)}` })
+    );
+    const corruptDuplicate = JSON.stringify({ ...record, summary: 'corrupt' });
+    writeFileSync(path, `${[...validLines, corruptDuplicate].join('\n')}\n`);
+
+    expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
+    expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
+  });
 });

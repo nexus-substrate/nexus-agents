@@ -123,6 +123,27 @@ describe('JsonlStore', () => {
     writeFileSync(flat, lines.join('\n') + '\n', 'utf-8');
     const store = new JsonlStore<Rec>({ filePath: flat, schema: RecordSchema, maxRecords: 8 });
     expect(store.count()).toBe(8);
+    expect(store.hydrationComplete).toBe(true);
     expect(store.all()[0]?.id).toBe(12);
+    expect(readFileSync(flat, 'utf-8').trim().split('\n')).toHaveLength(8);
+  });
+
+  it('preserves corrupt over-cap files and refuses further writes with explicit failure', () => {
+    const flat = join(dir, 'corrupt.jsonl');
+    const validLines = Array.from({ length: 3 }, (_, i) =>
+      JSON.stringify({ id: i, name: `n${String(i)}` })
+    );
+    const original = `${[...validLines, '{ not json'].join('\n')}\n`;
+    writeFileSync(flat, original, 'utf-8');
+
+    const store = new JsonlStore<Rec>({ filePath: flat, schema: RecordSchema, maxRecords: 2 });
+    expect(store.hydrationComplete).toBe(false);
+    expect(store.count()).toBe(2);
+    expect(readFileSync(flat, 'utf-8')).toBe(original);
+    expect(store.append({ id: 3, name: 'new' })).toBe(false);
+    expect(readFileSync(flat, 'utf-8')).toBe(original);
+    expect(
+      new JsonlStore<Rec>({ filePath: flat, schema: RecordSchema, maxRecords: 2 }).hydrationComplete
+    ).toBe(false);
   });
 });
