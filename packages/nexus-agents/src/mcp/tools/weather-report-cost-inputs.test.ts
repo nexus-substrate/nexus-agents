@@ -1,9 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { resolveWeatherVoteRecords } from './weather-report-cost-inputs.js';
+import { getDecisionCostFile } from '../../config/learning-persistence.js';
+import { DecisionCostStore } from '../../observability/decision-cost-store.js';
+import {
+  resolveWeatherDecisionCosts,
+  resolveWeatherVoteRecords,
+} from './weather-report-cost-inputs.js';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -25,5 +30,37 @@ describe('resolveWeatherVoteRecords', () => {
 
   it('does not read the host ledger for an injected cost snapshot', () => {
     expect(resolveWeatherVoteRecords(0, undefined, true)).toEqual([]);
+  });
+});
+
+describe('resolveWeatherDecisionCosts', () => {
+  it('refuses a durable valid-plus-schema-invalid duplicate instead of joining the surviving row', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'weather-cost-ledger-'));
+    dirs.push(dir);
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    const path = getDecisionCostFile();
+    const writer = new DecisionCostStore();
+    const { record } = writer.record({
+      decisionId: 'duplicated-decision',
+      gate: 'consensus_vote',
+      voters: [{ role: 'reviewer', model: 'test-model', inputTokens: 1, outputTokens: 1 }],
+      billingMode: 'plan',
+      timestamp: new Date().toISOString(),
+    });
+    appendFileSync(path, `${JSON.stringify({ ...record, summary: 'corrupt' })}\n`);
+
+    expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
+  });
+
+  it('refuses malformed JSONL rather than reporting surviving cost rows', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'weather-cost-ledger-'));
+    dirs.push(dir);
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    new DecisionCostStore();
+    appendFileSync(getDecisionCostFile(), '{ not json\n');
+
+    expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
   });
 });

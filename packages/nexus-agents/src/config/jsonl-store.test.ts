@@ -69,6 +69,7 @@ describe('JsonlStore', () => {
     );
     const reopened = makeStore();
     expect(reopened.count()).toBe(2);
+    expect(reopened.hydrationComplete).toBe(false);
     expect(reopened.all().map((r) => r.id)).toEqual([1, 2]);
   });
 

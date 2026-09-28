@@ -18,6 +18,7 @@ export function resolveWeatherDecisionCosts(
   if (injected !== undefined) return injected;
   if (!isPersistenceEnabled()) return [];
   const store = new DecisionCostStore();
+  if (!store.hydrationComplete) throw new Error('invalid persisted decision cost lines');
   if (windowMs <= 0) return store.all();
   const since = new Date(Date.now() - windowMs).toISOString();
   return store.query({ since });

@@ -144,6 +144,11 @@ export class DecisionCostStore {
     return this.store.count();
   }
 
+  /** False when any persisted row could not be loaded, including invalid JSON. */
+  get hydrationComplete(): boolean {
+    return this.store.hydrationComplete;
+  }
+
   /**
    * Roll up one decision's per-voter costs and persist the summary. Returns the
    * persisted record so the caller can attach `record.summary` to the existing

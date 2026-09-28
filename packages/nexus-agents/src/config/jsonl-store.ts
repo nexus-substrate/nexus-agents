@@ -60,6 +60,7 @@ export class JsonlStore<T> {
   private readonly maxRecords: number;
   private readonly logger: ILogger;
   private readonly records: T[] = [];
+  private hydrateComplete = true;
 
   constructor(config: JsonlStoreConfig<T>) {
     this.filePath = config.filePath;
@@ -107,6 +108,11 @@ export class JsonlStore<T> {
     return this.records.length;
   }
 
+  /** Whether every persisted line was read and schema-valid at construction. */
+  get hydrationComplete(): boolean {
+    return this.hydrateComplete;
+  }
+
   // ==========================================================================
   // Private
   // ==========================================================================
@@ -147,12 +153,14 @@ export class JsonlStore<T> {
         }
       }
     } catch (error: unknown) {
+      this.hydrateComplete = false;
       this.logger.warn('Failed to hydrate JSONL store from disk', {
         error: getErrorMessage(error),
         path: this.filePath,
       });
       return;
     }
+    if (skipped > 0) this.hydrateComplete = false;
     // Enforce the bound on hydrate too — a file grown past the cap out-of-band
     // (e.g. an older build with a larger cap) is trimmed back on first load.
     if (this.records.length > this.maxRecords) {
