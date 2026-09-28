@@ -11,8 +11,9 @@ import type { Vote } from '../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { getRandomProvider } from '../core/index.js';
-import { delay, withTimeout } from '../utils/async-utils.js';
+import { withTimeout } from '../utils/async-utils.js';
 import { cancelledSeat, isCancelled, seatSignal, unlessCancelled } from './voter-cancel.js';
+import { waitForVoteRetry } from './voter-cancel.js';
 import { getVoterPrompts, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 import {
   buildVotePrompt,
@@ -556,7 +557,7 @@ export async function executeWithRetries(
       const baseDelay = isRateLimit ? RATE_LIMIT_RETRY_DELAY_MS : INITIAL_RETRY_DELAY_MS;
       const delayMs = baseDelay * Math.pow(2, attempt - 1);
       logger.debug('Retrying vote execution', { role, attempt, delayMs, isRateLimit });
-      await delay(delayMs);
+      if (!(await waitForVoteRetry(delayMs, opts.signal))) return cancelledSeat(lastError);
     }
 
     // #2472: per-attempt timing breakdown so investigators can see which

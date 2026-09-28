@@ -10,6 +10,7 @@
  * @module cli/voter-cancel
  */
 import { raceAbort } from '../adapters/abort-utils.js';
+import { delay } from '../utils/async-utils.js';
 
 /** The error a seat records when the panel was cancelled before or during its attempts. */
 const SEAT_CANCELLED_MESSAGE = 'cancelled while this voter was in flight';
@@ -24,9 +25,10 @@ export function isCancelled(signal: AbortSignal | undefined): boolean {
 
 /**
  * The signal a seat's adapter call runs under: its own deadline and, when the
- * panel has one, the caller's cancel. `AbortSignal.any` keeps the reason of
- * whichever source fired — a `TimeoutError` for the deadline, the caller's
- * reason for a cancel — so the adapter's classifier (#6709,
+ * panel has one, its upstream abort (caller cancel or overall cutoff).
+ * `AbortSignal.any` keeps the reason of whichever source fired — a
+ * `TimeoutError` for either deadline, the caller's reason for a cancel — so
+ * the adapter's classifier (#6709,
  * `isTimeoutAbortReason`) records a cancel as a cancel and a deadline as a
  * timeout.
  */
@@ -36,13 +38,27 @@ export function seatSignal(timeoutMs: number, cancel: AbortSignal | undefined): 
 }
 
 /**
- * Await an adapter call unless the panel is cancelled first. The signal is
+ * Await an adapter call unless the upstream signal aborts first. The signal is
  * also handed to the adapter, which stops its subprocess or request; this
  * covers an adapter that ignores it, so a cancelled seat is never awaited to
  * completion. Absent signal ⇒ a plain await.
  */
 export function unlessCancelled<T>(call: Promise<T>, cancel: AbortSignal | undefined): Promise<T> {
   return raceAbort(call, cancel);
+}
+
+/** Stop retry backoff promptly when the upstream panel deadline/cancel fires. */
+export async function waitForVoteRetry(
+  delayMs: number,
+  signal: AbortSignal | undefined
+): Promise<boolean> {
+  try {
+    await unlessCancelled(delay(delayMs), signal);
+    return !isCancelled(signal);
+  } catch (error: unknown) {
+    if (isCancelled(signal)) return false;
+    throw error;
+  }
 }
 
 /** The failed-attempt result for a cancelled seat, keeping the last real error when there was one. */
