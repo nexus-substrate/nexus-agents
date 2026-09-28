@@ -11,6 +11,7 @@ import { clipForRecord } from '../audit/vote-record.js';
 import { sleep } from '../utils/async-utils.js';
 import { isAbsentSeat } from './voter-unverifiable.js';
 import { isCancelled } from './voter-cancel.js';
+import { DEADLINE_MESSAGE } from './voter-agents-deadline.js';
 
 /**
  * C0 and C1 control characters, DEL included (#6246, security seat; the C1
@@ -48,7 +49,7 @@ function retriedFromOf(first: AgentVoteResult): RetriedFrom {
 export const DEFAULT_ERRORED_ROLE_BACKOFF_MS = 3000;
 
 /**
- * Re-launch ONLY the roles that errored, once, and merge the results (#5578).
+ * Re-launch absent roles once, unless the panel deadline was exhausted.
  *
  * The panel launches once. A voter that errors is dropped: under
  * `reduce_denominator` its seat silently leaves the denominator, and under
@@ -56,9 +57,10 @@ export const DEFAULT_ERRORED_ROLE_BACKOFF_MS = 3000;
  * all N voters for a single failure. Retrying just the errored roles recovers
  * the seat for one extra call instead of N.
  *
- * The empty case is the common one and is named here: a panel with no errored
- * voter issues no retry and returns its results untouched, so a healthy vote
- * costs exactly what it did before.
+ * The empty case is named: a panel with no absent voter issues no retry and
+ * returns its results untouched. When any seat exhausts the shared overall
+ * deadline, no seat gets a fresh whole-panel budget (#6811); their first-pass
+ * results remain for the same quorum policy to decide.
  *
  * A role that errors again keeps its first-attempt result, so the existing
  * error policy still sees an errored seat and decides unchanged. This recovers
@@ -75,7 +77,11 @@ function rolesToRetry(
   first: readonly AgentVoteResult[],
   signal: AbortSignal | undefined
 ): VoterRole[] {
-  return isCancelled(signal) ? [] : first.filter(isAbsentSeat).map((v) => v.role);
+  if (first.length === 0 || isCancelled(signal)) return [];
+  // The launcher spent the shared overall budget; another pass would start a
+  // fresh whole-panel deadline even for a different errored seat (#6811).
+  if (first.some((v) => v.source === 'error' && v.error === DEADLINE_MESSAGE)) return [];
+  return first.filter(isAbsentSeat).map((v) => v.role);
 }
 
 export async function retryErroredRoles(
