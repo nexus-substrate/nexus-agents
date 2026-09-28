@@ -32,11 +32,18 @@ vi.mock('./cli/index.js', async (importOriginal) => {
     helloCommand: vi.fn().mockReturnValue(0),
     researchCommand: vi.fn().mockResolvedValue({ text: 'ok', exitCode: 0 }),
     voteCommand: vi.fn().mockResolvedValue(0),
+    doctorCommand: vi.fn().mockResolvedValue(0),
   };
 });
 
+vi.mock('./cli/doctor-live.js', () => ({
+  runLiveReadiness: vi.fn().mockResolvedValue([]),
+  formatLiveReadiness: vi.fn().mockReturnValue('no adapters configured'),
+}));
+
 import {
   handleConfigCommand,
+  handleDoctorCommand,
   handleExpertCommand,
   handleHelloCommand,
   handleResearchCommand,
@@ -46,6 +53,7 @@ import {
 import {
   configCommand,
   configInitCommand,
+  doctorCommand,
   expertListCommand,
   helloCommand,
   researchCommand,
@@ -97,6 +105,24 @@ function createMockArgs(overrides: Partial<ParsedCliArgs> = {}): ParsedCliArgs {
     ...overrides,
   };
 }
+
+describe('handleDoctorCommand probe consent (#6814)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('passes --live to the doctor collector before running live readiness', async () => {
+    await handleDoctorCommand(
+      createMockArgs({
+        command: 'doctor',
+        positionals: ['doctor'],
+        options: { ...createMockArgs().options, live: true },
+      })
+    );
+
+    expect(doctorCommand).toHaveBeenCalledWith(expect.objectContaining({ live: true }));
+  });
+});
 
 describe('handleConfigCommand routing', () => {
   beforeEach(() => {

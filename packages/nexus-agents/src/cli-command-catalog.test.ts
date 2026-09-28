@@ -239,6 +239,13 @@ describe('cli-command-catalog (#2135)', () => {
       }
     });
 
+    it('describes default doctor as no-completion and --live as the probe opt-in', () => {
+      const description = getCommandDescription('doctor');
+      expect(description).toContain('no model completions by default');
+      expect(description).toContain('--live probes models');
+      expect(description).not.toContain('default probes pinned Claude');
+    });
+
     it('per-command help renders the catalog description (formatCommandHelp)', () => {
       for (const entry of COMMAND_HELP) {
         const help = formatCommandHelp(entry.command);

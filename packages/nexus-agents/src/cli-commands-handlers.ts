@@ -539,6 +539,7 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitR
     fix: args.options.fix,
     gateway: args.options.gateway,
     probe: args.options.probe,
+    live: args.options.live,
     onResult: (result) => {
       cliListAdmits = new Map(result.clis.map((c) => [c.name, c.routerAdmits]));
     },
