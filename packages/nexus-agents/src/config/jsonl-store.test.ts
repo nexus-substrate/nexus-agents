@@ -34,6 +34,16 @@ function makeStore(maxRecords = 100): JsonlStore<Rec> {
 }
 
 describe('JsonlStore', () => {
+  it('treats an absent or empty file as a complete zero-record hydration', () => {
+    const absent = makeStore();
+    expect(absent.hydrationComplete).toBe(true);
+    expect(absent.count()).toBe(0);
+    writeFileSync(filePath, '', 'utf-8');
+    const empty = makeStore();
+    expect(empty.hydrationComplete).toBe(true);
+    expect(empty.count()).toBe(0);
+  });
+
   it('round-trips: append N then reconstruct preserving order + fidelity', () => {
     const store = makeStore();
     for (let i = 0; i < 5; i++) store.append({ id: i, name: `n${String(i)}` });
