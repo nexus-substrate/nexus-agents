@@ -13,7 +13,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { researchContextFromText } from './research-context.js';
 import { runDevPipeline } from './dev-pipeline.js';
 import type { DevPipelineStages, PipelineTask, QaReviewResult } from './dev-pipeline.js';
@@ -218,6 +218,21 @@ describe('quality gate refuses untrusted content in the real workspace (#6802)',
     expect(result.completed).toBe(false);
   });
 
+  it.each([
+    ['parent', dirname(process.cwd())],
+    ['child', join(process.cwd(), 'src')],
+  ])('refuses a %s workspace that overlaps the real repository', async (_name, directory) => {
+    const s = stages({ implementWorkspace: { accessMode: 'workspace-edit', directory } });
+    const result = await runDevPipeline('Build feature X', s, {
+      ...TRUSTED,
+      sourceTrustTier: '3',
+      qualityGate: 'blocking',
+    });
+
+    expect(s.qualityGate).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+  });
+
   it('refuses an unresolvable claimed workspace', async () => {
     const temp = mkdtempSync(join(tmpdir(), 'nexus-6802-missing-'));
     rmSync(temp, { recursive: true });
@@ -246,7 +261,7 @@ describe('quality gate refuses untrusted content in the real workspace (#6802)',
   });
 
   it('allows the gate when implement used a separate scratch directory', async () => {
-    const scratch = mkdtempSync(join(tmpdir(), 'nexus-6802-scratch-'));
+    const scratch = mkdtempSync(join(dirname(process.cwd()), 'nexus-6802-scratch-'));
     try {
       const s = stages({
         implementWorkspace: { accessMode: 'workspace-edit', directory: scratch },

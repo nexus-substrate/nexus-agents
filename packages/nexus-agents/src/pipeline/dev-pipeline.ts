@@ -20,6 +20,7 @@
 
 import { nexusDataPath } from '../config/nexus-data-dir.js';
 import { realpathSync } from 'node:fs';
+import { isAbsolute, relative, sep } from 'node:path';
 
 import { runQaLoop } from '../orchestration/qa-loop.js';
 import {
@@ -1066,16 +1067,29 @@ function isUnsafeQualityGate(
   );
 }
 
-/** Missing or unresolvable workspace claims fail closed; aliases resolve to one path. */
+/** Missing or unresolvable workspace claims fail closed; overlapping paths are unsafe. */
 function hasIsolatedImplementWorkspace(
   workspace: DevPipelineStages['implementWorkspace']
 ): boolean {
   if (workspace?.accessMode !== 'workspace-edit') return false;
   try {
-    return realpathSync(workspace.directory) !== realpathSync(process.cwd());
+    const implementPath = realpathSync(workspace.directory);
+    const gatePath = realpathSync(process.cwd());
+    return !isWithin(implementPath, gatePath) && !isWithin(gatePath, implementPath);
   } catch {
     return false;
   }
+}
+
+/** Whether child is the same as, or inside, parent after path canonicalization. */
+function isWithin(parent: string, child: string): boolean {
+  const pathFromParent = relative(parent, child);
+  return (
+    pathFromParent === '' ||
+    (pathFromParent !== '..' &&
+      !pathFromParent.startsWith(`..${sep}`) &&
+      !isAbsolute(pathFromParent))
+  );
 }
 
 /** Result of the optional pre-ship quality gate (#3356). */
