@@ -278,7 +278,7 @@ server.stdout.on('data', (chunk) => {
     if (response?.jsonrpc !== '2.0') return fail('MCP server returned invalid JSON-RPC');
     if (response.id === 1) {
       const result = response.result;
-      if (response.error ||
+      if (Object.hasOwn(response, 'error') ||
           typeof result?.protocolVersion !== 'string' || !result.protocolVersion ||
           typeof result.capabilities !== 'object' || result.capabilities === null || Array.isArray(result.capabilities) ||
           typeof result.serverInfo?.name !== 'string' || !result.serverInfo.name ||
@@ -290,11 +290,12 @@ server.stdout.on('data', (chunk) => {
     }
     if (response.id !== 2) continue;
     if (!initialized) return fail('MCP tools/list arrived without initialization');
-    if (response.error) return fail('MCP tools/list failed');
+    if (Object.hasOwn(response, 'error')) return fail('MCP tools/list failed');
     const tools = response.result?.tools;
     if (!Array.isArray(tools) || tools.some((tool) => typeof tool?.name !== 'string' || !tool.name)) {
       return fail('MCP tools/list response is invalid');
     }
+    if (Object.hasOwn(response.result, 'nextCursor')) return fail('MCP tools/list is paginated; partial listing cannot be certified');
     const names = new Set(tools.map((tool) => tool.name));
     if (names.size !== tools.length) return fail('MCP tools/list contains duplicate names');
     if (!names.has('orchestrate')) return fail('MCP tools/list omitted orchestrate');
