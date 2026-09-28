@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "fetchedAt": "2026-09-21",
+  "fetchedAt": "2026-09-28",
   "sourceUrl": "https://models.dev/api.json",
   "entries": [
     {
@@ -1079,6 +1079,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "qwen3.5-flash",
+      "vendor": "qwen",
+      "family": "qwen",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-qwen",
+      "source": "models-dev",
+      "displayName": "Qwen3.5 Flash",
+      "verifiedAt": "2026-02-23",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 65536,
+      "inputModalities": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.1,
+        "outputPer1M": 0.4
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "qwen3.5-plus",
       "vendor": "qwen",
       "family": "qwen",
@@ -1223,6 +1247,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "qwen3.7-flash",
+      "vendor": "qwen",
+      "family": "qwen",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-qwen",
+      "source": "models-dev",
+      "displayName": "Qwen3.7 Flash",
+      "verifiedAt": "2026-07-15",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text", "image", "video"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.03,
+        "outputPer1M": 0.13
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "qwen3.7-max",
       "vendor": "qwen",
       "family": "qwen",
@@ -1237,7 +1285,7 @@
       "displayName": "Qwen3.7 Max",
       "verifiedAt": "2026-05-21",
       "contextWindow": 1000000,
-      "maxOutputTokens": 65536,
+      "maxOutputTokens": 131072,
       "inputModalities": ["text"],
       "outputModalities": ["text"],
       "pricing": {
@@ -1261,12 +1309,12 @@
       "displayName": "Qwen3.7 Plus",
       "verifiedAt": "2026-06-04",
       "contextWindow": 1000000,
-      "maxOutputTokens": 65536,
+      "maxOutputTokens": 131072,
       "inputModalities": ["text", "image", "video"],
       "outputModalities": ["text"],
       "pricing": {
-        "inputPer1M": 0.5,
-        "outputPer1M": 3
+        "inputPer1M": 0.4,
+        "outputPer1M": 1.6
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -1315,6 +1363,30 @@
       "pricing": {
         "inputPer1M": 2,
         "outputPer1M": 6
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "qwen3.8-omni-flash",
+      "vendor": "qwen",
+      "family": "qwen",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-qwen",
+      "source": "models-dev",
+      "displayName": "Qwen3.8 Omni Flash",
+      "verifiedAt": "2026-09-17",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 131072,
+      "inputModalities": ["text", "image", "audio", "video"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.15,
+        "outputPer1M": 0.47
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -1579,6 +1651,30 @@
       "pricing": {
         "inputPer1M": 5,
         "outputPer1M": 25
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "claude-opus-5-5",
+      "vendor": "anthropic",
+      "family": "claude-opus",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-anthropic",
+      "source": "models-dev",
+      "displayName": "Claude Opus 5.5",
+      "verifiedAt": "2026-09-22",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 4,
+        "outputPer1M": 20
       },
       "toolCapabilities": ["function-calling"]
     },
@@ -2008,7 +2104,7 @@
       "displayName": "DeepSeek V4.1 Flash",
       "verifiedAt": "2026-09-10",
       "contextWindow": 1000000,
-      "maxOutputTokens": 384000,
+      "maxOutputTokens": 393216,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
@@ -2032,7 +2128,7 @@
       "displayName": "DeepSeek V4 Flash",
       "verifiedAt": "2026-09-10",
       "contextWindow": 1000000,
-      "maxOutputTokens": 384000,
+      "maxOutputTokens": 393216,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
@@ -2056,7 +2152,7 @@
       "displayName": "DeepSeek V4 Flash Vision Exp",
       "verifiedAt": "2026-09-10",
       "contextWindow": 1000000,
-      "maxOutputTokens": 384000,
+      "maxOutputTokens": 393216,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
@@ -2080,7 +2176,7 @@
       "displayName": "DeepSeek V4 Pro",
       "verifiedAt": "2026-08-22",
       "contextWindow": 1000000,
-      "maxOutputTokens": 384000,
+      "maxOutputTokens": 393216,
       "inputModalities": ["text"],
       "outputModalities": ["text"],
       "pricing": {
@@ -2151,8 +2247,8 @@
       "source": "models-dev",
       "displayName": "Gemini 2.5 Computer Use Preview 10-2025",
       "verifiedAt": "2025-10-07",
-      "contextWindow": 131072,
-      "maxOutputTokens": 65536,
+      "contextWindow": 128000,
+      "maxOutputTokens": 64000,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text"],
       "pricing": {
@@ -2340,7 +2436,7 @@
       "source": "models-dev",
       "displayName": "Nano Banana Pro",
       "verifiedAt": "2026-05-28",
-      "contextWindow": 131072,
+      "contextWindow": 65536,
       "maxOutputTokens": 32768,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text", "image"],
@@ -2386,8 +2482,8 @@
       "source": "models-dev",
       "displayName": "Nano Banana 2",
       "verifiedAt": "2026-05-28",
-      "contextWindow": 65536,
-      "maxOutputTokens": 65536,
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
       "inputModalities": ["text", "image", "video", "pdf"],
       "outputModalities": ["text", "image"],
       "pricing": {
@@ -2457,7 +2553,7 @@
       "displayName": "Nano Banana 2 Lite",
       "verifiedAt": "2026-06-30",
       "contextWindow": 65536,
-      "maxOutputTokens": 65536,
+      "maxOutputTokens": 4096,
       "inputModalities": ["text", "image"],
       "outputModalities": ["text", "image"],
       "pricing": {
@@ -3201,6 +3297,30 @@
       "toolCapabilities": ["function-calling"]
     },
     {
+      "id": "claude-opus-5-5@default",
+      "vendor": "google",
+      "family": "claude-opus",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-google",
+      "source": "models-dev",
+      "displayName": "Claude Opus 5.5",
+      "verifiedAt": "2026-09-22",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 4,
+        "outputPer1M": 20
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
       "id": "claude-opus-5@default",
       "vendor": "google",
       "family": "claude-opus",
@@ -3430,7 +3550,7 @@
       "displayName": "Gemini 2.5 Flash-Lite",
       "verifiedAt": "2025-06-17",
       "contextWindow": 1048576,
-      "maxOutputTokens": 65536,
+      "maxOutputTokens": 65535,
       "inputModalities": ["text", "image", "audio", "video", "pdf"],
       "outputModalities": ["text"],
       "pricing": {
@@ -3953,7 +4073,7 @@
       "displayName": "GPT OSS 120B",
       "verifiedAt": "2025-08-05",
       "contextWindow": 131072,
-      "maxOutputTokens": 32768,
+      "maxOutputTokens": 131072,
       "inputModalities": ["text"],
       "outputModalities": ["text"],
       "pricing": {
@@ -4191,9 +4311,9 @@
       "profileId": "models-dev-google",
       "source": "models-dev",
       "displayName": "GLM-5",
-      "verifiedAt": "2026-02-11",
-      "contextWindow": 202752,
-      "maxOutputTokens": 131072,
+      "verifiedAt": "2026-02-12",
+      "contextWindow": 200000,
+      "maxOutputTokens": 128000,
       "inputModalities": ["text"],
       "outputModalities": ["text"],
       "pricing": {
@@ -8459,6 +8579,102 @@
       "pricing": {
         "inputPer1M": 10,
         "outputPer1M": 50
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-6-luna",
+      "vendor": "openai",
+      "family": "gpt-luna",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-6 Luna",
+      "verifiedAt": "2026-09-22",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 0.1,
+        "outputPer1M": 0.5
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-6-sol",
+      "vendor": "openai",
+      "family": "gpt-sol",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "GPT-6 Sol",
+      "verifiedAt": "2026-09-22",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 2,
+        "outputPer1M": 10
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-daybreak-blue-latest",
+      "vendor": "openai",
+      "family": "gpt-sol",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "Daybreak Blue",
+      "verifiedAt": "2026-08-07",
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image", "pdf"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 4,
+        "outputPer1M": 20
+      },
+      "toolCapabilities": ["function-calling"]
+    },
+    {
+      "id": "gpt-daybreak-red-latest",
+      "vendor": "openai",
+      "family": "gpt",
+      "parallelToolCalls": false,
+      "promptCaching": "none",
+      "toolDefinitionFormat": "openai",
+      "maxRecommendedTurnBudget": 10,
+      "strictJson": true,
+      "quirks": [],
+      "profileId": "models-dev-openai",
+      "source": "models-dev",
+      "displayName": "Daybreak Red",
+      "verifiedAt": "2026-08-07",
+      "contextWindow": 400000,
+      "maxOutputTokens": 128000,
+      "inputModalities": ["text", "image"],
+      "outputModalities": ["text"],
+      "pricing": {
+        "inputPer1M": 12.5,
+        "outputPer1M": 75
       },
       "toolCapabilities": ["function-calling"]
     },
