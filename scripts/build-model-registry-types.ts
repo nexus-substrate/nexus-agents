@@ -186,6 +186,15 @@ export const GeneratedModelEntrySchema = z.object({
   maxOutputTokens: z.number().int().positive().optional(),
   deprecated: z.boolean().optional(),
   provenance: GeneratedProvenanceSchema,
+  // The catalog may supply model metadata while an official announcement
+  // supplies a narrower participant-only price. Keep those sources distinct.
+  pricingProvenance: z
+    .object({
+      source: z.literal('anthropic'),
+      scope: z.literal('project-glasswing-participants'),
+      upstreamUrl: z.url(),
+    })
+    .optional(),
 });
 
 export type GeneratedModelEntry = z.infer<typeof GeneratedModelEntrySchema>;

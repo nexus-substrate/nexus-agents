@@ -39,6 +39,22 @@ describe('loadModelsDevSnapshot', () => {
     expect(typeof result.fetchedAt).toBe('string');
   });
 
+  it('requires a pricing/provenance review if a future sync adds a Mythos Preview id', () => {
+    const snapshot = loadModelsDevSnapshot();
+    expect(snapshot.status).toBe('loaded');
+    // An empty/missing snapshot cannot prove that no higher-priority entry shadows the rate.
+    expect(snapshot.entries.length).toBeGreaterThan(0);
+
+    // The snapshot may use an unprefixed id, unlike the generated catalog.
+    const overlaps = snapshot.entries
+      .map((entry) => entry.id)
+      .filter((id) => id.toLowerCase().includes('mythos-preview'));
+    expect(
+      overlaps,
+      'models.dev now shadows official Mythos Preview pricing; review price and provenance before syncing'
+    ).toEqual([]);
+  });
+
   it('returns missing status when the file is absent', () => {
     const result = loadModelsDevSnapshot({ path: join(tempDir, 'absent.json') });
     expect(result.status).toBe('missing');
