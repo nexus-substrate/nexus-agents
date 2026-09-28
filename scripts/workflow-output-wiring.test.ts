@@ -37,6 +37,16 @@ function producedOutputs(jobBody: string, stepId: string): Set<string> {
   for (const m of stepBody.matchAll(/["']([A-Za-z_][A-Za-z0-9_-]*)<</g)) {
     produced.add(m[1] as string);
   }
+  // A literal repo-local bash script may write the step outputs. Count only
+  // writes to GITHUB_OUTPUT, not shell variables or prose in the script.
+  for (const call of stepBody.matchAll(/\bbash\s+(scripts\/[A-Za-z0-9_/-]+\.sh)(?=\s|$)/g)) {
+    const script = readFileSync(join(process.cwd(), call[1] as string), 'utf8');
+    for (const output of script.matchAll(
+      /^\s*echo\s+["']([A-Za-z_][A-Za-z0-9_-]*)=[^\n]*?["']\s*>>\s*["']?\$GITHUB_OUTPUT\b/gm
+    )) {
+      produced.add(output[1] as string);
+    }
+  }
   return produced;
 }
 
@@ -147,6 +157,21 @@ describe('workflow step-output wiring (#4698)', () => {
     ].join('\n');
     expect(declaresStep(job, 'mine')).toBe(true);
     expect(producedOutputs(job, 'mine').has('thing')).toBe(true);
+  });
+
+  it('finds outputs in a statically invoked local script without inventing missing outputs', () => {
+    const job = [
+      '  publish-smoke:',
+      '    steps:',
+      '      - id: publish-path',
+      '        run: bash scripts/decide-publish-smoke.sh "$GITHUB_SHA"',
+    ].join('\n');
+    const outputs = producedOutputs(job, 'publish-path');
+    expect(outputs.has('will_publish')).toBe(true);
+    expect(outputs.has('memory_ahead')).toBe(true);
+    // The script has this shell variable, but never publishes it as a step output.
+    expect(outputs.has('local_version')).toBe(false);
+    expect(outputs.has('not_written')).toBe(false);
   });
 
   it('a COMMENT naming a reference is a mention, not a reference (#6029)', () => {
