@@ -443,7 +443,7 @@ export function printDoctorResults(result: DoctorResult): void {
   const covered = gatewayCoveredClis(result.gateway, result.clis).map((c) => c.cli);
   for (const cli of result.clis) printCliResult(cli, covered.includes(cli.name));
   printCliListNotes(result);
-  // #6120: the pinned voter model, MEASURED with one call, not inferred.
+  // #6120/#6814: the pinned voter model is measured only with --live.
   writeLine(formatClaudeModelLine(result.claudeModel));
   writeLine('');
 

@@ -848,6 +848,58 @@ function makeDecisionCostRecord(
 }
 
 describe('weather report cost section (#3856)', () => {
+  it('joins injected consensus costs to vote verdicts without treating no_quorum as success', () => {
+    const approved = makeDecisionCostRecord('consensus_vote', {
+      voterCount: 1,
+      tokenMeasuredVoters: 1,
+      tokenUnmeasuredVoters: 0,
+      totalTokens: 10,
+    });
+    const failed = makeDecisionCostRecord('consensus_vote', {
+      voterCount: 1,
+      tokenMeasuredVoters: 0,
+      tokenUnmeasuredVoters: 1,
+      totalTokens: 4,
+    });
+    const records = [
+      {
+        ...approved,
+        decisionId: 'ok',
+        summary: {
+          ...approved.summary,
+          totalInputTokens: 10,
+          perVoter: [{ ...approved.summary.perVoter[0]!, inputTokens: 10, totalTokens: 10 }],
+        },
+      },
+      {
+        ...failed,
+        decisionId: 'failed',
+        summary: {
+          ...failed.summary,
+          totalInputTokens: 4,
+          perVoter: [{ ...failed.summary.perVoter[0]!, inputTokens: 4, totalTokens: 4 }],
+        },
+      },
+    ];
+    const report = generateWeatherReport({}, undefined, {
+      decisionCostRecords: records,
+      voteRecords: [
+        { correlationId: 'ok', decision: 'approved' },
+        { correlationId: 'failed', decision: 'no_quorum' },
+      ],
+    });
+
+    expect(report.costSection?.consensusDecisionTokens).toMatchObject({
+      matchedQuorumDecisions: 1,
+      matchedNoQuorumDecisions: 1,
+      totalReportedFinalSeatTokens: 14,
+      noQuorumReportedFinalSeatTokens: 4,
+      reportedTokensPerMatchedQuorumDecision: 14,
+      tokenCoverage: 0.5,
+      measurement: 'lower-bound-final-seats',
+    });
+  });
+
   it('always surfaces strategy cost profiles from the manifest registry', () => {
     const report = generateWeatherReport({});
     expect(report.costSection).toBeDefined();

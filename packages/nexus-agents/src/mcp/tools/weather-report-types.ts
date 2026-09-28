@@ -13,6 +13,7 @@ import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { GroupStats } from '../../orchestration/outcomes/outcome-types.js';
 import { CLI_NAMES, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 import type { DecisionCostReport } from '../../observability/decision-cost-aggregate.js';
+import type { ConsensusDecisionTokenReport } from '../../observability/consensus-decision-tokens.js';
 import type { StrategyCostProfileEntry } from '../../orchestration/strategy-manifest-registry.js';
 
 // ============================================================================
@@ -285,6 +286,8 @@ export interface TriageStats {
 export interface CostSection {
   /** Measured per-gate-type cost aggregates over the lookback window (#3855/#3856). */
   readonly decisionCosts: DecisionCostReport;
+  /** Joined consensus final-seat tokens per quorum-backed decision, a lower bound (#6809). */
+  readonly consensusDecisionTokens: ConsensusDecisionTokenReport;
   /** Each strategy's declared coarse cost profile from the manifest registry. */
   readonly strategyCostProfiles: readonly StrategyCostProfileEntry[];
 }
