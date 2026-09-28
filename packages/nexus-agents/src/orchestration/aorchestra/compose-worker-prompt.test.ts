@@ -267,13 +267,14 @@ describe('composeWorkerPrompt — tool restrictions', () => {
     expect(prompt).toContain('NOT modify');
   });
 
-  it('includes tool restrictions for write roles', () => {
+  it('preserves role-based write tools for callers that omit accessMode', () => {
     const prompt = composeWorkerPrompt({
       entry: makeEntry('code'),
       taskDescription: 'Implement feature X',
     });
     expect(prompt).toContain('Tool Restrictions');
     expect(prompt).toContain('Edit');
+    expect(prompt).toContain('Bash');
   });
 
   it('includes allowed tools list', () => {

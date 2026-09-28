@@ -8,6 +8,8 @@
  * @module orchestration/aorchestra/role-capabilities
  */
 
+import type { ExecutionAccessMode } from '../../core/index.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -104,10 +106,18 @@ export function getRoleCapability(role: string): RoleCapability {
 }
 
 /**
- * Build a tool restriction prompt block for a worker role.
- * Returns empty string if the role has full access.
+ * Build a tool restriction prompt block for a worker role and its enforced mode.
+ * An omitted mode retains the role-based block; full-access roles then return empty.
  */
-export function buildToolRestrictionBlock(role: string): string {
+export function buildToolRestrictionBlock(role: string, accessMode?: ExecutionAccessMode): string {
+  if (accessMode === 'read-only-analysis') {
+    return [
+      '## Tool Restrictions',
+      '',
+      'You are read-only. Analyze and report without modifying files or running shell commands.',
+      'Only permitted tools, if available: Read, Grep, Glob.',
+    ].join('\n');
+  }
   const cap = getRoleCapability(role);
   if (cap.tier === 'full') return '';
 
