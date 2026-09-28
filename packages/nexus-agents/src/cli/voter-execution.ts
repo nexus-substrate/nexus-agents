@@ -11,8 +11,9 @@ import type { Vote } from '../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { getRandomProvider } from '../core/index.js';
-import { delay, withTimeout } from '../utils/async-utils.js';
+import { withTimeout } from '../utils/async-utils.js';
 import { cancelledSeat, isCancelled, seatSignal, unlessCancelled } from './voter-cancel.js';
+import { waitForVoteRetry } from './voter-cancel.js';
 import { getVoterPrompts, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 import {
   buildVotePrompt,
@@ -268,7 +269,8 @@ function buildVoteRequest({
     temperature: 0.3, // Low temperature for consistent evaluations
     // Thread the vote budget so the CLI timeout doesn't fire first (#3304); pass
     // signal too for CLI-vs-API cancellation parity (#3036/#3304). #6729: the
-    // signal also carries the panel's cancel, so `cancel_job` ends the call.
+    // signal also carries panel cancel and the overall cutoff, so neither
+    // leaves the underlying adapter running after the seat is discarded.
     timeoutMs,
     ...(workspace !== undefined && workspace.trim() !== '' ? { workDir: workspace } : {}),
     // #6754: every seat — consensus_vote, pr_review and the other panels that
@@ -327,7 +329,7 @@ interface VoteCompletionArgs {
    */
   readonly workspace: string | undefined;
   readonly workspaceSha?: string | undefined;
-  /** The panel's cancel (#6729), combined with the seat deadline; absent ⇒ deadline only. */
+  /** Panel cancel or overall cutoff, combined with the per-attempt deadline. */
   readonly signal?: AbortSignal | undefined;
 }
 
@@ -492,8 +494,8 @@ export interface RetryOptions {
   readonly workspace?: string | undefined;
   readonly workspaceSha?: string | undefined;
   /**
-   * The panel's cancel (#6729). Reaches the adapter call in flight, combined
-   * with the per-attempt deadline, and stops further attempts once it fires.
+   * Panel cancel or overall cutoff. Reaches the adapter call in flight,
+   * combined with the per-attempt deadline, and stops further attempts.
    */
   readonly signal?: AbortSignal | undefined;
 }
@@ -555,7 +557,7 @@ export async function executeWithRetries(
       const baseDelay = isRateLimit ? RATE_LIMIT_RETRY_DELAY_MS : INITIAL_RETRY_DELAY_MS;
       const delayMs = baseDelay * Math.pow(2, attempt - 1);
       logger.debug('Retrying vote execution', { role, attempt, delayMs, isRateLimit });
-      await delay(delayMs);
+      if (!(await waitForVoteRetry(delayMs, opts.signal))) return cancelledSeat(lastError);
     }
 
     // #2472: per-attempt timing breakdown so investigators can see which

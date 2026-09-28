@@ -758,6 +758,39 @@ describe('voter-execution', () => {
       expect(mockAdapter.complete).toHaveBeenCalledTimes(2);
     });
 
+    it('stops waiting in backoff when the overall deadline aborts', async () => {
+      const controller = new AbortController();
+      vi.mocked(mockAdapter.complete).mockResolvedValue({
+        ok: false,
+        error: new ModelError('Temporary failure'),
+      });
+      let enteredBackoff: (() => void) | undefined;
+      const backoffStarted = new Promise<void>((resolve) => {
+        enteredBackoff = resolve;
+      });
+      vi.mocked(delay).mockImplementationOnce(() => {
+        enteredBackoff?.();
+        return new Promise<void>(() => undefined);
+      });
+
+      const pending = executeWithRetries({
+        role: 'devex',
+        proposal: 'Proposal',
+        adapter: mockAdapter,
+        logger: mockLogger,
+        timeoutMs: 5000,
+        maxRetries: 1,
+        signal: controller.signal,
+      });
+      await backoffStarted;
+      controller.abort(new DOMException('overall consensus deadline exceeded', 'TimeoutError'));
+      const result = await pending;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain('cancelled');
+      expect(mockAdapter.complete).toHaveBeenCalledTimes(1);
+    });
+
     it('should fail after max retries', async () => {
       const failResponse: MockCompletionResult = {
         ok: false,
