@@ -58,7 +58,7 @@ export interface VoteOptions {
   readonly timeoutMs: number;
   readonly maxRetries: number;
   readonly allowSimulation: boolean;
-  /** The panel's cancel (#6729), handed to each seat's adapter call. */
+  /** The panel's cancel (#6729); combined with this seat's overall cutoff at launch. */
   readonly signal?: AbortSignal | undefined;
 }
 
@@ -208,17 +208,27 @@ function createKeyedSerializer(): <T>(key: string, fn: () => Promise<T>) => Prom
 }
 
 function raceWithDeadline(
-  p: Promise<AgentVoteResult>,
+  run: (signal: AbortSignal) => Promise<AgentVoteResult>,
   role: VoterRole,
-  deadlineMs: number
+  deadlineMs: number,
+  cancel: AbortSignal | undefined
 ): Promise<AgentVoteResult> {
+  const deadlineController = new AbortController();
+  const signal =
+    cancel === undefined
+      ? deadlineController.signal
+      : AbortSignal.any([deadlineController.signal, cancel]);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutP = new Promise<AgentVoteResult>((resolve) => {
     timer = setTimeout(() => {
       resolve(createErrorVoteResult(role, DEADLINE_MESSAGE, deadlineMs));
+      // Resolve the recorded deadline error first: an adapter that reacts to
+      // abort immediately must not turn this seat into a cancellation result.
+      deadlineController.abort(new DOMException(DEADLINE_MESSAGE, 'TimeoutError'));
     }, deadlineMs);
   });
-  return Promise.race([p, timeoutP]).finally(() => {
+  const voteP = Promise.resolve().then(() => run(signal));
+  return Promise.race([voteP, timeoutP]).finally(() => {
     if (timer !== undefined) clearTimeout(timer);
   });
 }
@@ -251,6 +261,25 @@ type VoteOnAdapter = (
   adapter: IModelAdapter,
   fallback: boolean
 ) => Promise<AgentVoteResult>;
+
+/** Start a seat only while the shared cutoff still has time. */
+function voteBeforeDeadline(
+  input: LaunchVotesInput,
+  role: VoterRole,
+  adapter: IModelAdapter,
+  remaining: number
+): Promise<AgentVoteResult> {
+  if (remaining <= 0) {
+    return Promise.resolve(createErrorVoteResult(role, DEADLINE_MESSAGE, input.overallDeadlineMs));
+  }
+  return raceWithDeadline(
+    (signal) =>
+      input.voteFn(role, input.proposal, adapter, input.logger, { ...input.voteOptions, signal }),
+    role,
+    remaining,
+    input.signal
+  );
+}
 
 async function launchRoleVote(
   role: VoterRole,
@@ -300,7 +329,7 @@ async function launchRoleVote(
 export async function launchVotesWithOverallDeadline(
   input: LaunchVotesInput
 ): Promise<readonly AgentVoteResult[]> {
-  const { roles, proposal, logger, voteOptions, overallDeadlineMs, voteFn } = input;
+  const { roles, logger, overallDeadlineMs } = input;
 
   const deadlineAtMs = input.deadlineAtMs ?? Date.now() + overallDeadlineMs;
   const serialize = createKeyedSerializer();
@@ -324,14 +353,7 @@ export async function launchVotesWithOverallDeadline(
       const remaining = deadlineAtMs - runStartedAt;
       // A role can wait past the cutoff in a stagger or serialized CLI lane.
       // Record absence as an error; do not start an adapter with a fresh 1 ms.
-      const result =
-        remaining <= 0
-          ? createErrorVoteResult(role, DEADLINE_MESSAGE, overallDeadlineMs)
-          : await raceWithDeadline(
-              voteFn(role, proposal, adapter, logger, { ...voteOptions, signal: input.signal }),
-              role,
-              remaining
-            );
+      const result = await voteBeforeDeadline(input, role, adapter, remaining);
       const attempt: SeatAttemptTiming = {
         cli,
         queuedMs: runStartedAt - enqueuedAt,

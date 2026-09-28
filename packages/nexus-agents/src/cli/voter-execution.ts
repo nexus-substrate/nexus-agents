@@ -268,7 +268,8 @@ function buildVoteRequest({
     temperature: 0.3, // Low temperature for consistent evaluations
     // Thread the vote budget so the CLI timeout doesn't fire first (#3304); pass
     // signal too for CLI-vs-API cancellation parity (#3036/#3304). #6729: the
-    // signal also carries the panel's cancel, so `cancel_job` ends the call.
+    // signal also carries panel cancel and the overall cutoff, so neither
+    // leaves the underlying adapter running after the seat is discarded.
     timeoutMs,
     ...(workspace !== undefined && workspace.trim() !== '' ? { workDir: workspace } : {}),
     // #6754: every seat — consensus_vote, pr_review and the other panels that
@@ -327,7 +328,7 @@ interface VoteCompletionArgs {
    */
   readonly workspace: string | undefined;
   readonly workspaceSha?: string | undefined;
-  /** The panel's cancel (#6729), combined with the seat deadline; absent ⇒ deadline only. */
+  /** Panel cancel or overall cutoff, combined with the per-attempt deadline. */
   readonly signal?: AbortSignal | undefined;
 }
 
@@ -492,8 +493,8 @@ export interface RetryOptions {
   readonly workspace?: string | undefined;
   readonly workspaceSha?: string | undefined;
   /**
-   * The panel's cancel (#6729). Reaches the adapter call in flight, combined
-   * with the per-attempt deadline, and stops further attempts once it fires.
+   * Panel cancel or overall cutoff. Reaches the adapter call in flight,
+   * combined with the per-attempt deadline, and stops further attempts.
    */
   readonly signal?: AbortSignal | undefined;
 }
