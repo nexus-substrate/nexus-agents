@@ -100,6 +100,36 @@ describe('orchestrate worker access mode (#6792)', () => {
     ]);
   });
 
+  it.each([
+    'code',
+    'testing',
+    'devops',
+    'documentation',
+    'security',
+    'pm',
+    'infrastructure',
+    'qa',
+    'data-visualization',
+  ])('the %s worker prompt grants no write or shell tools under read-only mode', async (role) => {
+    const { adapter, requests } = recordingAdapter();
+
+    await executeWorkerDispatch({
+      agentPlan: plan([role]),
+      taskDescription: 'Analyze the task and report findings',
+      modelAdapter: adapter,
+      logger,
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.accessMode).toBe('read-only-analysis');
+    const prompt = requests[0]?.messages[0]?.content;
+    if (typeof prompt !== 'string') throw new Error('expected a text worker prompt');
+    const toolBlock = prompt.match(/## Tool Restrictions[\s\S]*?(?=\n## |$)/)?.[0];
+    expect(toolBlock).toContain('Only permitted tools, if available: Read, Grep, Glob.');
+    expect(toolBlock).not.toMatch(/\b(?:Edit|Write|Bash)\b/);
+    expect(toolBlock).not.toContain('run shell commands');
+  });
+
   it('records the mode on each worker outcome row', async () => {
     const { adapter } = recordingAdapter();
     const result = await executeWorkerDispatch({
