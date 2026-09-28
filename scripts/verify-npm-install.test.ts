@@ -12,7 +12,15 @@ afterEach(() => {
 });
 
 function runMcpPhase(
-  mode: 'valid' | 'truncated' | 'absent' | 'requires-open-stdin' | 'silent'
+  mode:
+    | 'valid'
+    | 'truncated'
+    | 'absent'
+    | 'requires-open-stdin'
+    | 'silent'
+    | 'empty-initialize'
+    | 'result-and-error'
+    | 'duplicate-tools'
 ): SpawnSyncReturns<string> {
   const root = mkdtempSync(join(tmpdir(), 'nexus-mcp-smoke-'));
   roots.push(root);
@@ -34,12 +42,16 @@ process.stdin.on('data', (chunk) => {
   setTimeout(() => {
     if (mode === 'requires-open-stdin' && ended) { process.exit(0); }
     const tools = [{ name: 'orchestrate' }, ...Array.from({ length: 30 }, (_, i) => ({ name: 'tool_' + String.fromCharCode(97 + Math.floor(i / 26)) + String.fromCharCode(97 + i % 26) }))];
-    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-11-25', capabilities: {}, serverInfo: { name: 'fake', version: '1' } } }) + '\\n');
+    const init = mode === 'empty-initialize' ? {} : { protocolVersion: '2025-11-25', capabilities: {}, serverInfo: { name: 'fake', version: '1' } };
+    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 1, result: init }) + '\\n');
     if (mode === 'truncated') {
       process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools } }).slice(0, -4));
       process.exit(0);
     }
-    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools } }) + '\\n');
+    if (mode === 'duplicate-tools') tools.push({ name: 'orchestrate' });
+    const response = { jsonrpc: '2.0', id: 2, result: { tools } };
+    if (mode === 'result-and-error') response.error = { code: -32603, message: 'server failed' };
+    process.stdout.write(JSON.stringify(response) + '\\n');
     setTimeout(() => process.exit(0), 100);
   }, 20);
 });
@@ -94,4 +106,22 @@ describe('npm install MCP smoke phase', () => {
     expect(result.status).toBe(6);
     expect(result.stderr).toContain('MCP tools/list timed out');
   }, 15_000);
+
+  it('rejects an initialize response without the required fields', () => {
+    const result = runMcpPhase('empty-initialize');
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('MCP initialize failed');
+  });
+
+  it('rejects a tools/list response containing both result and error', () => {
+    const result = runMcpPhase('result-and-error');
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('MCP tools/list failed');
+  });
+
+  it('rejects duplicate tool names', () => {
+    const result = runMcpPhase('duplicate-tools');
+    expect(result.status).toBe(6);
+    expect(result.stderr).toContain('duplicate names');
+  });
 });
