@@ -2849,6 +2849,8 @@ InterfaceDeclaration DecisionCostSummary
   readonly perModel: readonly ModelCostBreakdown[]
   readonly perVoter: readonly VoterCostBreakdown[]
   readonly priceBasis?: "list" | "unknown" | undefined
+  readonly tokenMeasuredVoters?: number | undefined
+  readonly tokenUnmeasuredVoters?: number | undefined
   readonly totalCostUsd: number
   readonly totalInputTokens: number
   readonly totalOutputTokens: number
@@ -4087,6 +4089,9 @@ InterfaceDeclaration GateCostAggregate
   readonly decisionCount: number
   readonly gate: "consensus_vote" | "pr_review"
   readonly measuredVoters: number
+  readonly tokenCoverage: null | number
+  readonly tokenMeasuredVoters: number
+  readonly tokenUnmeasuredVoters: number
   readonly totalCostUsd: number
   readonly totalTokens: number
   readonly unmeasuredVoters: number
@@ -10277,6 +10282,7 @@ InterfaceDeclaration VoterCostBreakdown
   readonly outputTokens: number
   readonly priceBasis?: "list" | "unknown" | undefined
   readonly role: string
+  readonly tokenUsageMeasured?: boolean | undefined
   readonly totalTokens: number
   readonly unmeasured: boolean
 InterfaceDeclaration VoteRejectedSignalEvent
@@ -10459,7 +10465,7 @@ InterfaceDeclaration WaveTaskResult
 TypeAliasDeclaration WeatherReportConfig
   = z.infer<typeof WeatherReportConfigSchema>
 InterfaceDeclaration WeatherReportDeps @mcp/tools/weather-report
-  readonly decisionCostRecords?: readonly { decisionId: string; gate: "consensus_vote" | "pr_review"; summary: { billingMode: "api" | "plan"; measuredVoters: number; perModel: readonly { costUsd: number; inputTokens: number; model: string; outputTokens: number; totalTokens: number; voterCount: number; }[]; perVoter: readonly { cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; costUsd: number; inputTokens: number; model: string; outputTokens: number; priceBasis?: "list" | "unknown" | undefined; role: string; totalTokens: number; unmeasured: boolean; }[]; priceBasis?: "list" | "unknown" | undefined; totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number; unmeasuredVoters: number; voterCount: number; }; timestamp: string; undeclaredOptionsDetector?: undefined | { declaredOptionCount: number; excerpt?: string | undefined; fired: boolean; pattern?: string | undefined; }; }[] | undefined
+  readonly decisionCostRecords?: readonly { decisionId: string; gate: "consensus_vote" | "pr_review"; summary: { billingMode: "api" | "plan"; measuredVoters: number; perModel: readonly { costUsd: number; inputTokens: number; model: string; outputTokens: number; totalTokens: number; voterCount: number; }[]; perVoter: readonly { cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; costUsd: number; inputTokens: number; model: string; outputTokens: number; priceBasis?: "list" | "unknown" | undefined; role: string; tokenUsageMeasured?: boolean | undefined; totalTokens: number; unmeasured: boolean; }[]; priceBasis?: "list" | "unknown" | undefined; tokenMeasuredVoters?: number | undefined; tokenUnmeasuredVoters?: number | undefined; totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number; unmeasuredVoters: number; voterCount: number; }; timestamp: string; undeclaredOptionsDetector?: undefined | { declaredOptionCount: number; excerpt?: string | undefined; fired: boolean; pattern?: string | undefined; }; }[] | undefined
 TypeAliasDeclaration WeatherReportDeps @mcp/tools/weather-report-tool
   = BaseMcpToolDeps
 VariableDeclaration WeatherReportInputSchema

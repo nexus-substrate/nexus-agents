@@ -18,6 +18,19 @@ import type { DecisionCostSummary } from './decision-cost.js';
 
 /** Build a minimal decision-cost summary for a record fixture. */
 function summary(over: Partial<DecisionCostSummary> = {}): DecisionCostSummary {
+  const voterCount = over.voterCount ?? 0;
+  const perVoter = Array.from({ length: voterCount }, (_, i) => ({
+    role: `voter-${String(i)}`,
+    model: 'test-model',
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    unmeasured: true,
+    ...(over.tokenMeasuredVoters !== undefined && over.tokenUnmeasuredVoters !== undefined
+      ? { tokenUsageMeasured: i < over.tokenMeasuredVoters }
+      : {}),
+  }));
   return {
     billingMode: 'api',
     voterCount: 0,
@@ -27,7 +40,7 @@ function summary(over: Partial<DecisionCostSummary> = {}): DecisionCostSummary {
     totalOutputTokens: 0,
     totalTokens: 0,
     totalCostUsd: 0,
-    perVoter: [],
+    perVoter,
     perModel: [],
     ...over,
   };
@@ -48,6 +61,78 @@ describe('aggregateDecisionCosts', () => {
     expect(report.totalDecisions).toBe(0);
     expect(report.totalCostUsd).toBe(0);
     expect(report.windowMs).toBe(1000);
+  });
+
+  it('does not treat legacy rows without token provenance as measured', () => {
+    const report = aggregateDecisionCosts(
+      [
+        record('consensus_vote', { voterCount: 2, measuredVoters: 2 }),
+        record('consensus_vote', {
+          voterCount: 3,
+          tokenMeasuredVoters: 2,
+          tokenUnmeasuredVoters: 1,
+        }),
+      ],
+      7 * 24 * 60 * 60 * 1000
+    );
+    expect(report.byGate[0]?.tokenMeasuredVoters).toBe(2);
+    expect(report.byGate[0]?.tokenUnmeasuredVoters).toBe(3);
+    expect(report.byGate[0]?.tokenCoverage).toBe(2 / 5);
+  });
+
+  it('marks a zero-seat decision window as unmeasured, not zero coverage', () => {
+    const report = aggregateDecisionCosts([record('consensus_vote')], 1000);
+    expect(report.byGate[0]?.tokenCoverage).toBeNull();
+  });
+
+  it('treats inconsistent persisted coverage counts as unmeasured', () => {
+    const report = aggregateDecisionCosts(
+      [
+        record('consensus_vote', {
+          voterCount: 1,
+          tokenMeasuredVoters: 2,
+          tokenUnmeasuredVoters: 0,
+        }),
+        record('consensus_vote', {
+          voterCount: 2,
+          tokenMeasuredVoters: 1,
+          tokenUnmeasuredVoters: 0,
+        }),
+        record('consensus_vote', {
+          voterCount: 3,
+          tokenMeasuredVoters: 2,
+          tokenUnmeasuredVoters: 1,
+        }),
+      ],
+      1000
+    );
+    expect(report.byGate[0]?.tokenMeasuredVoters).toBe(2);
+    expect(report.byGate[0]?.tokenUnmeasuredVoters).toBe(4);
+    expect(report.byGate[0]?.tokenCoverage).toBe(2 / 6);
+  });
+
+  it('rejects summary coverage that contradicts per-voter provenance', () => {
+    const inconsistent = record('consensus_vote', {
+      voterCount: 1,
+      tokenMeasuredVoters: 1,
+      tokenUnmeasuredVoters: 0,
+      perVoter: [
+        {
+          role: 'security',
+          model: 'test-model',
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          costUsd: 0,
+          unmeasured: false,
+          tokenUsageMeasured: false,
+        },
+      ],
+    });
+    const report = aggregateDecisionCosts([inconsistent], 1000);
+    expect(report.byGate[0]?.tokenMeasuredVoters).toBe(0);
+    expect(report.byGate[0]?.tokenUnmeasuredVoters).toBe(1);
+    expect(report.byGate[0]?.tokenCoverage).toBe(0);
   });
 
   it('averages cost, tokens, and voters per gate over the decision count', () => {

@@ -65,7 +65,7 @@ export interface LaunchVotesInput {
   readonly signal?: AbortSignal | undefined;
 }
 
-const DEADLINE_MESSAGE = 'overall consensus deadline exceeded';
+export const DEADLINE_MESSAGE = 'overall consensus deadline exceeded';
 /**
  * #5393: reported for a voter the panel never launched. An ERROR result, never
  * a default decision — a cancelled voter returning `approve` would manufacture

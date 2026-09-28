@@ -617,6 +617,13 @@ describe('runDevPipeline — hindsight seam into dev-pipeline-context (#3257, #1
 });
 
 describe('runDevPipeline — quality gate (#3356)', () => {
+  // The gate executes repository scripts only for an explicitly Tier 1 plan.
+  const trustedGateOptions = {
+    trustTier: '1',
+    sourceTrustTier: '1',
+    researchOverride: 'Operator plan',
+  } as const;
+
   it("does NOT run the quality gate when mode is 'off' (default)", async () => {
     const stages = createMockStages();
     const result = await runDevPipeline('Build feature X', stages);
@@ -641,7 +648,10 @@ describe('runDevPipeline — quality gate (#3356)', () => {
     const stages = createMockStages({
       qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: '2 check(s) failed' }),
     });
-    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'advisory' });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...trustedGateOptions,
+      qualityGate: 'advisory',
+    });
 
     expect(stages.qualityGate).toHaveBeenCalledTimes(1);
     // Advisory: red gate recorded but does not block — security still runs and passes.
@@ -652,7 +662,10 @@ describe('runDevPipeline — quality gate (#3356)', () => {
 
   it("runs the gate and ships when it passes in 'advisory' mode", async () => {
     const stages = createMockStages();
-    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'advisory' });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...trustedGateOptions,
+      qualityGate: 'advisory',
+    });
 
     expect(stages.qualityGate).toHaveBeenCalledTimes(1);
     expect(result.completed).toBe(true);
@@ -662,7 +675,10 @@ describe('runDevPipeline — quality gate (#3356)', () => {
     const stages = createMockStages({
       qualityGate: vi.fn().mockResolvedValue({ passed: false, feedback: 'lint failed' }),
     });
-    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'blocking' });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...trustedGateOptions,
+      qualityGate: 'blocking',
+    });
 
     expect(stages.qualityGate).toHaveBeenCalledTimes(1);
     // Blocking red gate short-circuits before the security scan, like a security block.
@@ -678,7 +694,10 @@ describe('runDevPipeline — quality gate (#3356)', () => {
 
   it("proceeds to ship on a green gate in 'blocking' mode", async () => {
     const stages = createMockStages();
-    const result = await runDevPipeline('Build feature X', stages, { qualityGate: 'blocking' });
+    const result = await runDevPipeline('Build feature X', stages, {
+      ...trustedGateOptions,
+      qualityGate: 'blocking',
+    });
 
     expect(stages.qualityGate).toHaveBeenCalledTimes(1);
     expect(stages.securityScan).toHaveBeenCalledTimes(1);
