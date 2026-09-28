@@ -166,7 +166,7 @@ const DOCTOR_HELP: CommandHelpEntry = {
     { flag: '--deep', description: 'Learning-loop, data-sufficiency and routing diagnostics' },
     {
       flag: '--live',
-      description: 'Verify each adapter actually serves a completion (spends quota)',
+      description: 'Additionally probe eligible adapters with real completions (may use quota)',
     },
     { flag: '--fix', description: 'Auto-fix correctable issues (data dirs, config)' },
     {

@@ -61,20 +61,20 @@ prints flags and examples for any of them.
 
 ### Essential — install, configure, run
 
-| Command       | Description                                                                         |
-| ------------- | ----------------------------------------------------------------------------------- |
-| `(default)`   | Start MCP server with stdio transport                                               |
-| `hello`       | Show welcome message and quick start (no API keys needed)                           |
-| `setup`       | Configure CLI integration (MCP + .rules + data dirs)                                |
-| `verify`      | Check install health (sqlite, adapters, config)                                     |
-| `doctor`      | Detailed system/adapter health check                                                |
-| `config`      | Manage configuration (init, get, set, list, export, import)                         |
-| `orchestrate` | Execute a task via CLI tools (standalone mode)                                      |
-| `vote`        | Run consensus vote on a proposal (7 agents; --quick uses 3)                         |
-| `workflow`    | Manage and run workflow templates (list, run)                                       |
-| `expert`      | Manage expert agents (list, create, execute)                                        |
-| `research`    | Manage research registry (status, add, stats, refresh)                              |
-| `auth`        | Manage authentication: init/show/rotate MCP tokens; status shows per-CLI auth state |
+| Command       | Description                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `(default)`   | Start MCP server with stdio transport                                                                         |
+| `hello`       | Show welcome message and quick start (no API keys needed)                                                     |
+| `setup`       | Configure CLI integration (MCP + .rules + data dirs)                                                          |
+| `verify`      | Check install health (sqlite, adapters, config)                                                               |
+| `doctor`      | Detailed health check; default probes pinned Claude model if CLI enabled/installed (completion may use quota) |
+| `config`      | Manage configuration (init, get, set, list, export, import)                                                   |
+| `orchestrate` | Execute a task via CLI tools (standalone mode)                                                                |
+| `vote`        | Run consensus vote on a proposal (7 agents; --quick uses 3)                                                   |
+| `workflow`    | Manage and run workflow templates (list, run)                                                                 |
+| `expert`      | Manage expert agents (list, create, execute)                                                                  |
+| `research`    | Manage research registry (status, add, stats, refresh)                                                        |
+| `auth`        | Manage authentication: init/show/rotate MCP tokens; status shows per-CLI auth state                           |
 
 ### Advanced — day-to-day extras
 

@@ -13,6 +13,7 @@
 
 import type { AgentPlanEntry } from './agent-planner.js';
 import type { WorkerResult } from './worker-dispatcher.js';
+import type { ExecutionAccessMode } from '../../core/index.js';
 import { BUILT_IN_EXPERTS } from '../../agents/experts/expert-config.js';
 import {
   PromptComposer,
@@ -46,6 +47,8 @@ export interface WorkerLearning {
 export interface ComposeWorkerPromptInput {
   /** The agent plan entry (role + sub-task) */
   readonly entry: AgentPlanEntry;
+  /** Enforced mode for this worker call; omitted callers retain role defaults. */
+  readonly accessMode?: ExecutionAccessMode;
   /** Original task description */
   readonly taskDescription: string;
   /** Optional relevant file paths for context */
@@ -105,6 +108,7 @@ export function buildLearningsBlock(learnings: readonly WorkerLearning[], role: 
 export function composeWorkerPrompt(input: ComposeWorkerPromptInput): string {
   const {
     entry,
+    accessMode,
     taskDescription,
     relevantFiles,
     maxOutputChars,
@@ -136,8 +140,8 @@ export function composeWorkerPrompt(input: ComposeWorkerPromptInput): string {
     ...(relevantFiles !== undefined ? { relevantFiles: [...relevantFiles] } : {}),
   });
 
-  // Build tool restriction block for role-based capability scoping (#1510)
-  const toolRestriction = buildToolRestrictionBlock(entry.role);
+  // Match the enforced access mode when supplied; preserve role defaults otherwise.
+  const toolRestriction = buildToolRestrictionBlock(entry.role, accessMode);
 
   // Combine task context with prior wave context, learnings, and tool restrictions
   const contextParts = [taskContextLines, priorWaveBlock, learningsBlock, toolRestriction].filter(

@@ -116,6 +116,48 @@ describe('retryErroredRoles (#5578)', () => {
     expect(merged[1]?.source).toBe('error');
   });
 
+  it('preserves the first-pass error when backoff crosses the shared deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-28T00:00:00Z'));
+      const first = [ok('architect'), errored('security')];
+      const relaunch = vi.fn(() => Promise.resolve([ok('security')]));
+      const deadlineAtMs = Date.now() + 20;
+
+      const pending = retryErroredRoles(first, relaunch, mockLogger(), 30, { deadlineAtMs });
+      // The panel returns at the shared cutoff, not after the full backoff.
+      await vi.advanceTimersByTimeAsync(20);
+      const merged = await pending;
+
+      expect(relaunch).not.toHaveBeenCalled();
+      expect(merged).toBe(first);
+      expect(merged[1]?.source).toBe('error');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still retries a transient seat when backoff leaves time', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-28T00:00:00Z'));
+      const first = [errored('security')];
+      const relaunch = vi.fn(() => Promise.resolve([ok('security')]));
+      const pending = retryErroredRoles(first, relaunch, mockLogger(), 10, {
+        deadlineAtMs: Date.now() + 20,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      const merged = await pending;
+
+      expect(relaunch).toHaveBeenCalledExactlyOnceWith(['security']);
+      expect(merged[0]?.source).toBe('llm');
+      expect(merged[0]?.retried).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the errored result when the retry errors again', async () => {
     // The retry recovers seats; it never manufactures one. A role that fails
     // twice stays errored so the existing error policy decides unchanged.
