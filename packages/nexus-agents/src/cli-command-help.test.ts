@@ -112,8 +112,12 @@ describe('formatCommandHelp', () => {
 
   it('discloses the default Claude completion and additional --live probes', () => {
     const help = formatCommandHelp('doctor')!;
-    expect(help).toContain('default runs a pinned Claude model completion (may use quota)');
-    expect(help).toContain('Additionally verify each adapter serves a completion (spends quota)');
+    expect(help).toContain(
+      'default probes pinned Claude model if CLI enabled/installed (completion may use quota)'
+    );
+    expect(help).toContain(
+      'Additionally probe eligible adapters with real completions (may use quota)'
+    );
   });
 
   it('formats setup command with all skip flags', () => {

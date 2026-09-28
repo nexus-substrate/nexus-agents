@@ -87,7 +87,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     command: 'doctor',
     description:
-      'Detailed health check; default runs a pinned Claude model completion (may use quota)',
+      'Detailed health check; default probes pinned Claude model if CLI enabled/installed (completion may use quota)',
     audience: 'essential',
   },
   {
