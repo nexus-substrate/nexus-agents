@@ -102,6 +102,13 @@ export type EntrySource = 'in-tree' | 'models-dev' | 'manifest' | 'derived' | 'g
  */
 export type MatchedVia = 'normalized' | 'identity';
 
+/** An official rate that applies only within the named participant program. */
+export interface ModelPricingProvenance {
+  readonly source: 'anthropic';
+  readonly scope: 'project-glasswing-participants';
+  readonly upstreamUrl: string;
+}
+
 /**
  * One model's full metadata. Combines what was previously split
  * across `ModelCapability` (capability/pricing/quality) and
@@ -141,6 +148,8 @@ export interface ModelEntry {
   readonly toolCapabilities?: readonly ToolCapability[];
   readonly specialFeatures?: readonly SpecialFeature[];
   readonly pricing?: Pricing;
+  /** Present when pricing has a narrower scope than generic provider billing. */
+  readonly pricingProvenance?: ModelPricingProvenance;
   readonly qualityScores?: QualityScores;
   readonly notes?: string;
   /**

@@ -25,7 +25,12 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 import { SRC_ROOT } from './script-paths.js';
-import { mergeEntries, parseLiteLlm, parseModelsDev } from './build-model-registry-helpers.js';
+import {
+  applyPublishedPricingOverrides,
+  mergeEntries,
+  parseLiteLlm,
+  parseModelsDev,
+} from './build-model-registry-helpers.js';
 import type {
   GeneratedModelEntry,
   GeneratedRegistry,
@@ -165,7 +170,7 @@ async function run(options: RunOptions): Promise<number> {
     `[registry-build] parsed: models.dev=${String(modelsDevEntries.length)} litellm=${String(liteLlmEntries.length)}`
   );
 
-  const merged = mergeEntries(modelsDevEntries, liteLlmEntries);
+  const merged = applyPublishedPricingOverrides(mergeEntries(modelsDevEntries, liteLlmEntries));
   console.log(
     `[registry-build] merged: ${String(merged.length)} entries (models.dev wins collisions)`
   );

@@ -293,6 +293,7 @@ export {
 } from './model-registry.js';
 export type {
   ModelEntry,
+  ModelPricingProvenance,
   ModelRegistryOptions,
   EntrySource,
   ToolDefinitionFormat,

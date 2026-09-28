@@ -25,7 +25,7 @@ import { createLogger } from '../core/index.js';
 import { nexusDataPath } from './nexus-data-dir.js';
 import { resolveModelIdentitySync } from './model-identity.js';
 import { deriveEntry } from './model-derivation.js';
-import type { ModelEntry } from './model-registry.js';
+import type { ModelEntry, ModelPricingProvenance } from './model-registry.js';
 
 /** Shape of a record in `model-registry.generated.json`'s `entries` array. */
 interface GeneratedRecord {
@@ -39,6 +39,7 @@ interface GeneratedRecord {
     readonly cacheReadPer1M?: unknown;
     readonly cacheWritePer1M?: unknown;
   };
+  readonly pricingProvenance?: unknown;
 }
 
 interface GeneratedShape {
@@ -125,12 +126,32 @@ function extractPricing(
   return { inputPer1M, outputPer1M, ...cacheRates(rec) };
 }
 
+/** Keep the pricing caveat only when its official source and scope are intact. */
+function extractPricingProvenance(raw: unknown): ModelPricingProvenance | undefined {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
+  const value = raw as Record<string, unknown>;
+  if (
+    value['source'] !== 'anthropic' ||
+    value['scope'] !== 'project-glasswing-participants' ||
+    value['upstreamUrl'] !== 'https://www.anthropic.com/project/glasswing'
+  ) {
+    return undefined;
+  }
+  return {
+    source: 'anthropic',
+    scope: 'project-glasswing-participants',
+    upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+  };
+}
+
 /** Convert one raw catalog record into a `ModelEntry` (derived base + overlay). */
 function toModelEntry(rec: GeneratedRecord): ModelEntry | undefined {
   if (typeof rec.id !== 'string' || rec.id === '') return undefined;
   const id = rec.id;
   const base = deriveEntry(id, resolveModelIdentitySync(id));
   const pricing = extractPricing(rec, id);
+  const pricingProvenance =
+    pricing === undefined ? undefined : extractPricingProvenance(rec.pricingProvenance);
   return {
     ...base,
     source: 'generated',
@@ -138,6 +159,7 @@ function toModelEntry(rec: GeneratedRecord): ModelEntry | undefined {
     ...(typeof rec.contextWindow === 'number' ? { contextWindow: rec.contextWindow } : {}),
     ...(typeof rec.maxOutputTokens === 'number' ? { maxOutputTokens: rec.maxOutputTokens } : {}),
     ...(pricing !== undefined ? { pricing } : {}),
+    ...(pricingProvenance !== undefined ? { pricingProvenance } : {}),
   };
 }
 
