@@ -84,6 +84,17 @@ describe('resolveWeatherDecisionCosts', () => {
     writeFileSync(path, `${[...validLines, corruptDuplicate].join('\n')}\n`);
 
     expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
+    const damagedWriter = new DecisionCostStore();
+    expect(damagedWriter.hydrationComplete).toBe(false);
+    expect(
+      damagedWriter.record({
+        decisionId: 'later-decision',
+        gate: 'consensus_vote',
+        voters: [{ role: 'reviewer', model: 'test-model', inputTokens: 1, outputTokens: 1 }],
+        billingMode: 'plan',
+        timestamp: new Date().toISOString(),
+      }).persisted
+    ).toBe(false);
     expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
   });
 });

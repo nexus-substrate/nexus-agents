@@ -128,7 +128,7 @@ describe('JsonlStore', () => {
     expect(readFileSync(flat, 'utf-8').trim().split('\n')).toHaveLength(8);
   });
 
-  it('preserves corrupt over-cap files and refuses further writes with explicit failure', () => {
+  it('preserves corrupt over-cap files on hydration', () => {
     const flat = join(dir, 'corrupt.jsonl');
     const validLines = Array.from({ length: 3 }, (_, i) =>
       JSON.stringify({ id: i, name: `n${String(i)}` })
@@ -140,10 +140,18 @@ describe('JsonlStore', () => {
     expect(store.hydrationComplete).toBe(false);
     expect(store.count()).toBe(2);
     expect(readFileSync(flat, 'utf-8')).toBe(original);
-    expect(store.append({ id: 3, name: 'new' })).toBe(false);
-    expect(readFileSync(flat, 'utf-8')).toBe(original);
     expect(
       new JsonlStore<Rec>({ filePath: flat, schema: RecordSchema, maxRecords: 2 }).hydrationComplete
     ).toBe(false);
+  });
+
+  it('continues best-effort generic appends after a malformed historical line', () => {
+    const store = makeStore();
+    store.append({ id: 1, name: 'before' });
+    writeFileSync(filePath, `${JSON.stringify({ id: 1, name: 'before' })}\n{ not json\n`);
+    const reopened = makeStore();
+    expect(reopened.hydrationComplete).toBe(false);
+    expect(reopened.append({ id: 2, name: 'after' })).toBe(true);
+    expect(readFileSync(filePath, 'utf-8')).toContain('"name":"after"');
   });
 });

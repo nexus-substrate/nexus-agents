@@ -157,8 +157,9 @@ export class DecisionCostStore {
    * The boolean `persisted` flag (#3910) tells the caller whether the rollup was
    * durably written: the underlying {@link JsonlStore} never throws on an fs/
    * validation failure (an observability sink must not break the decision), so
-   * `false` is the ONLY signal that billing data was dropped — the recording
-   * bridge logs + counts it rather than letting it vanish silently.
+   * `false` is the ONLY signal that billing data was dropped (including an
+   * incompletely hydrated cost file) — the recording bridge logs + counts it
+   * rather than letting it vanish silently.
    */
   record(input: RecordDecisionCostInput): { record: DecisionCostRecord; persisted: boolean } {
     const summary = rollupDecisionCost(input.voters, input.billingMode);
@@ -172,7 +173,9 @@ export class DecisionCostStore {
         ? { undeclaredOptionsDetector: input.undeclaredOptionsDetector }
         : {}),
     };
-    const persisted = this.store.append(record);
+    // Do not let generic append/retention rewrite erase malformed historical
+    // cost rows: a later report must still know the provenance is incomplete.
+    const persisted = this.store.hydrationComplete && this.store.append(record);
     return { record, persisted };
   }
 

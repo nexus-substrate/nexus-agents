@@ -51,8 +51,8 @@ export interface JsonlStoreConfig<T> {
  *   oldest in memory and rewrites the file so it stays bounded. Returns whether
  *   the record was durably persisted so callers that must NOT silently drop
  *   data (e.g. billing telemetry, #3910) can log/count a dropped record.
- * - Incomplete hydration preserves the damaged file and refuses subsequent
- *   appends, returning false so callers can observe dropped records.
+ * - Incomplete hydration preserves the damaged file at construction. The
+ *   generic store retains its best-effort append behavior for telemetry sinks.
  * - All fs failures are caught and logged; persistence never throws into the
  *   caller (an observability sink must not break the operation it observes).
  */
@@ -82,12 +82,6 @@ export class JsonlStore<T> {
    * dropped data (billing telemetry, #3910) can act on `false`.
    */
   append(record: T): boolean {
-    if (!this.hydrateComplete) {
-      this.logger.warn('Refusing to append to incompletely hydrated JSONL store', {
-        path: this.filePath,
-      });
-      return false;
-    }
     const result = this.schema.safeParse(record);
     if (!result.success) {
       this.logger.warn('Refusing to persist invalid JSONL record', {
