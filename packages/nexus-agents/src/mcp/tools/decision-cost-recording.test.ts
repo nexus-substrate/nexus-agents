@@ -9,15 +9,25 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { ILogger } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { computeCostDetail } from '../../learning/usage-log.js';
+import {
+  ModelRegistry,
+  peekDefaultRegistry,
+  setDefaultRegistry,
+} from '../../config/model-registry.js';
+import { loadGeneratedRegistryEntries } from '../../config/models-generated-loader.js';
 import { DecisionCostStore } from '../../observability/decision-cost-store.js';
-import { rollupDecisionCost, UNKNOWN_MODEL } from '../../observability/decision-cost.js';
+import {
+  DecisionCostSummarySchema,
+  rollupDecisionCost,
+  UNKNOWN_MODEL,
+} from '../../observability/decision-cost.js';
 import {
   votesToCostInputs,
   recordDecisionCost,
@@ -237,6 +247,102 @@ describe('votesToCostInputs for a gateway seat (#4392 inc 2 step 4)', () => {
     ]);
     expect(Object.keys(inputs[0] ?? {})).not.toContain('costUsd');
     expect(Object.keys(inputs[0] ?? {})).not.toContain('priceBasis');
+  });
+});
+
+describe('catalog price scope persistence (#6830)', () => {
+  let dir: string;
+  let file: string;
+  let previousRegistry: ModelRegistry | undefined;
+  const mythos = 'anthropic/claude-mythos-preview';
+  const pricingProvenance = {
+    source: 'anthropic',
+    scope: 'project-glasswing-participants',
+    upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+  } as const;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'decision-cost-scope-'));
+    file = join(dir, 'decision-costs.jsonl');
+    previousRegistry = peekDefaultRegistry();
+    const catalog = join(dir, 'catalog.json');
+    writeFileSync(
+      catalog,
+      JSON.stringify({
+        version: 1,
+        entries: [
+          { id: mythos, pricing: { inputPer1M: 25, outputPer1M: 125 }, pricingProvenance },
+          { id: 'claude-sonnet', pricing: { inputPer1M: 3, outputPer1M: 15 } },
+        ],
+      })
+    );
+    setDefaultRegistry(
+      new ModelRegistry({
+        generatedEntries: loadGeneratedRegistryEntries({ path: catalog }).entries,
+      })
+    );
+  });
+
+  afterEach(() => {
+    setDefaultRegistry(previousRegistry);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('retains Mythos Preview participant scope into an API-mode persisted record', () => {
+    const summary = recordDecisionCost({
+      decisionId: 'scoped-price',
+      gate: 'consensus_vote',
+      votes: [vote({ model: mythos, inputTokens: 1000, outputTokens: 500 })],
+      store: new DecisionCostStore({ filePath: file, dataDir: dir }),
+      billingMode: 'api',
+    });
+
+    expect(summary.totalCostUsd).toBe(0.0875);
+    expect(summary.perVoter[0]).toMatchObject({ priceBasis: 'list', pricingProvenance });
+    expect(DecisionCostSummarySchema.parse(summary).perVoter[0]).toHaveProperty(
+      'pricingProvenance',
+      pricingProvenance
+    );
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.hydrationComplete).toBe(true);
+    expect(reader.query()[0]?.summary.perVoter[0]).toMatchObject({
+      costUsd: 0.0875,
+      priceBasis: 'list',
+      pricingProvenance,
+    });
+  });
+
+  it('persists the same ordinary catalog cost without a pricing scope', () => {
+    recordDecisionCost({
+      decisionId: 'ordinary-price',
+      gate: 'consensus_vote',
+      votes: [vote({ model: 'claude-sonnet', inputTokens: 1000, outputTokens: 500 })],
+      store: new DecisionCostStore({ filePath: file, dataDir: dir }),
+      billingMode: 'api',
+    });
+
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.query()[0]?.summary.perVoter[0]).toMatchObject({
+      costUsd: 0.0105,
+      priceBasis: 'list',
+      unmeasured: false,
+    });
+    expect(reader.query()[0]?.summary.perVoter[0]).not.toHaveProperty('pricingProvenance');
+  });
+
+  it('omits catalog provenance from a plan-mode zero cost', () => {
+    const summary = recordDecisionCost({
+      decisionId: 'plan-price',
+      gate: 'consensus_vote',
+      votes: [vote({ model: mythos, inputTokens: 1000, outputTokens: 500 })],
+      store: new DecisionCostStore({ filePath: file, dataDir: dir }),
+      billingMode: 'plan',
+    });
+
+    expect(summary.totalCostUsd).toBe(0);
+    expect(summary.perVoter[0]).not.toHaveProperty('pricingProvenance');
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.query()[0]?.summary.perVoter[0]).not.toHaveProperty('pricingProvenance');
   });
 });
 

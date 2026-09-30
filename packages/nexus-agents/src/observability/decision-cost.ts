@@ -38,6 +38,7 @@
  */
 
 import { z } from 'zod';
+import type { ModelPricingProvenance } from '../config/model-registry.js';
 
 // `core/price-basis` is a dependency-free leaf module (zod only), so importing
 // it at RUNTIME here is safe: the cycle this import used to close — via
@@ -107,6 +108,8 @@ export interface VoterCostInput {
    * is the positive claim that the chain resolved no price for the model.
    */
   readonly priceBasis?: PriceBasis | undefined;
+  /** Catalog rate source and scope, when recorded; absent means unknown scope. */
+  readonly pricingProvenance?: ModelPricingProvenance | undefined;
 }
 
 /** Per-voter line in the decision rollup. */
@@ -158,6 +161,8 @@ export interface VoterCostBreakdown {
    * as {@link DecisionCostSummary.priceBasis}, applied at the row level.
    */
   readonly priceBasis?: PriceBasis | undefined;
+  /** Catalog rate provenance; absent when unrecorded or cost was zeroed in plan mode. */
+  readonly pricingProvenance?: ModelPricingProvenance | undefined;
 }
 
 /** Per-model rollup line within a single decision. */
@@ -252,6 +257,13 @@ export const UndeclaredOptionsDetectorSchema = z.object({
 });
 export type UndeclaredOptionsDetectorRecord = z.infer<typeof UndeclaredOptionsDetectorSchema>;
 
+/** Catalog provenance only; it does not establish the operator's contract rate. */
+export const PricingProvenanceSchema = z.object({
+  source: z.literal('anthropic'),
+  scope: z.literal('project-glasswing-participants'),
+  upstreamUrl: z.url(),
+}) satisfies z.ZodType<ModelPricingProvenance>;
+
 /**
  * Zod schema for {@link DecisionCostSummary} — the single source of truth for
  * the cost-rollup shape when it rides an MCP tool's `outputSchema`. `consensus_vote`
@@ -288,6 +300,7 @@ export const DecisionCostSummarySchema = z.object({
       unmeasured: z.boolean(),
       tokenUsageMeasured: z.boolean().optional(),
       priceBasis: PriceBasisSchema.optional(),
+      pricingProvenance: PricingProvenanceSchema.optional(),
     })
   ),
   perModel: z.array(
@@ -380,7 +393,19 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
     // Echoing 'list' here would attribute a $0 to a rate that produced nothing,
     // and since `plan` is the DEFAULT billing mode that fiction would be on
     // most persisted rows. `billingMode` already explains the zero.
-    ...(isPlan ? {} : basisField(v.priceBasis)),
+    ...voterPriceFields(v, isPlan),
+  };
+}
+
+/** Plan-mode zeros have no rate provenance; otherwise keep only recorded fields. */
+function voterPriceFields(
+  v: VoterCostInput,
+  isPlan: boolean
+): Pick<VoterCostBreakdown, 'priceBasis' | 'pricingProvenance'> {
+  if (isPlan) return {};
+  return {
+    ...basisField(v.priceBasis),
+    ...(v.pricingProvenance !== undefined ? { pricingProvenance: v.pricingProvenance } : {}),
   };
 }
 

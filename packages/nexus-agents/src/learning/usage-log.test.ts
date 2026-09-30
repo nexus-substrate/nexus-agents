@@ -113,6 +113,56 @@ describe('computeCostDetail (#4165)', () => {
       expect(detail.matchedVia).toBeUndefined();
     });
 
+    it('retains the catalog pricing source and participant scope (#6830)', () => {
+      const pricingProvenance = {
+        source: 'anthropic',
+        scope: 'project-glasswing-participants',
+        upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+      } as const;
+      setDefaultRegistry(
+        new ModelRegistry({
+          inTreeEntries: [{ ...opus48Canonical, pricingProvenance }],
+        })
+      );
+
+      expect(computeCostDetail('Claude_Opus_4.8_hardened', 1000, 500)).toMatchObject({
+        costUsd: 0.0175,
+        priced: true,
+        resolvedId: 'claude-opus-4-8',
+        matchedVia: 'identity',
+        pricingProvenance,
+      });
+    });
+
+    it('keeps ordinary catalog cost unchanged with pricing scope absent (#6830)', () => {
+      const detail = computeCostDetail('claude-opus-4-8', 1000, 500);
+      expect(detail.costUsd).toBe(0.0175);
+      expect(detail).not.toHaveProperty('pricingProvenance');
+    });
+
+    it('does not attribute a scope when the entry has no price (#6830)', () => {
+      const unpricedEntry = { ...opus48Canonical, id: 'unpriced-scoped-model' };
+      delete unpricedEntry.pricing;
+      setDefaultRegistry(
+        new ModelRegistry({
+          inTreeEntries: [
+            {
+              ...unpricedEntry,
+              pricingProvenance: {
+                source: 'anthropic',
+                scope: 'project-glasswing-participants',
+                upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+              },
+            },
+          ],
+        })
+      );
+
+      const detail = computeCostDetail('unpriced-scoped-model', 1000, 500);
+      expect(detail.priced).toBe(false);
+      expect(detail).not.toHaveProperty('pricingProvenance');
+    });
+
     it('reports priced: false with costUsd 0 for an unknown model', () => {
       const detail = computeCostDetail('mystery-model-xyz', 1000, 500);
       expect(detail.costUsd).toBe(0);

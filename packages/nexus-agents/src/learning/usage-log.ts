@@ -35,7 +35,11 @@ import { createLogger } from '../core/logger.js';
 // be CALLED at module scope (#3185 bootstrap hazard: first construction reads
 // the manifest overlay/snapshot from disk). All calls happen at invocation
 // time inside computeCostDetail.
-import { getDefaultRegistry, type MatchedVia } from '../config/model-registry.js';
+import {
+  getDefaultRegistry,
+  type MatchedVia,
+  type ModelPricingProvenance,
+} from '../config/model-registry.js';
 import type { PriceBasis } from '../core/price-basis.js';
 
 export interface UsageEvent {
@@ -96,6 +100,8 @@ export interface CostDetail {
   readonly resolvedId: string;
   /** Fuzzy-resolution provenance (#4164), passed through from the entry. */
   readonly matchedVia?: MatchedVia;
+  /** Catalog rate source and scope, when recorded; absent means unknown scope. */
+  readonly pricingProvenance?: ModelPricingProvenance;
 }
 
 /**
@@ -133,7 +139,15 @@ export function computeCostDetail(
     { input: inputTokens, output: outputTokens },
     { inputPer1M: entry.pricing.inputPer1M, outputPer1M: entry.pricing.outputPer1M }
   );
-  return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId, ...provenance };
+  return {
+    costUsd: roundToMicroUsd(costUsd),
+    priced: true,
+    resolvedId,
+    ...provenance,
+    ...(entry.pricingProvenance !== undefined
+      ? { pricingProvenance: entry.pricingProvenance }
+      : {}),
+  };
 }
 
 /**
