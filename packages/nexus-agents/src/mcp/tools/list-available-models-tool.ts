@@ -21,6 +21,7 @@ import { createLogger, formatZodError, type ILogger } from '../../core/index.js'
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler } from '../middleware/secure-handler.js';
 import { buildDefaultModelSources } from '../../config/register-model-sources.js';
+import { MODELSDEV_CATALOGUE_CAVEATS } from '../../config/models-dev-by-vendor.js';
 import type { AvailableModelsSource } from '../../config/available-models-cache.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../../cli-adapters/cli-circuit-breaker.js';
@@ -85,6 +86,13 @@ export interface TransportReport {
    * this transport (openrouter, gateway) — never a default `false`.
    */
   readonly breakerOpen?: boolean;
+  /**
+   * Why this transport's model list is not the set it can run (#5086) — e.g.
+   * codex reports the models.dev `openai` catalogue, a superset of what the
+   * codex CLI serves. Absent when no such caveat is known for the transport;
+   * absence is not a claim that the list was verified against the CLI.
+   */
+  readonly catalogueCaveat?: string;
 }
 
 export interface ListAvailableModelsResponse {
@@ -167,6 +175,15 @@ function withBreakerState(report: TransportReport): TransportReport {
   };
 }
 
+/** Attach the known catalogue caveat for this transport, if any (#5086). */
+function withCatalogueCaveat(report: TransportReport): TransportReport {
+  // Own-key lookup: a transport named like an Object.prototype member gets no caveat.
+  const caveat = Object.hasOwn(MODELSDEV_CATALOGUE_CAVEATS, report.transport)
+    ? MODELSDEV_CATALOGUE_CAVEATS[report.transport]
+    : undefined;
+  return caveat === undefined ? report : { ...report, catalogueCaveat: caveat };
+}
+
 /** The transport name the gateway catalogue is reported under (#6609). */
 const GATEWAY_TRANSPORT = 'gateway';
 
@@ -240,7 +257,7 @@ export async function listAvailableModelsHandler(
       : await defaultSources(includeOpenRouter, deps.adaptersFactory);
 
   const probed = await Promise.all(sources.map((s) => probeSource(s, includeModelIds)));
-  const transports = probed.map(withBreakerState);
+  const transports = probed.map((r) => withCatalogueCaveat(withBreakerState(r)));
   const response: ListAvailableModelsResponse = {
     transports,
     healthyTransports: transports.filter((t) => t.servesModels).length,
@@ -251,7 +268,8 @@ export async function listAvailableModelsHandler(
     note:
       'Probe results — existence only; the in-tree registry remains authoritative for pricing/capability. ' +
       'healthyTransports counts transports that can serve a model; reachableTransports counts probes that merely succeeded. ' +
-      'breakerOpen marks a CLI transport the router is currently refusing (shared circuit breaker open), whatever its probe said.',
+      'breakerOpen marks a CLI transport the router is currently refusing (shared circuit breaker open), whatever its probe said. ' +
+      'catalogueCaveat marks a transport whose list is not the set it can run (codex: a vendor-catalogue superset).',
   };
   logger.debug('list_available_models probed transports', {
     healthy: response.healthyTransports,

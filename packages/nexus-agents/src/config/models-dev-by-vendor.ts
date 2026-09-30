@@ -28,6 +28,27 @@ export const CLI_TO_MODELSDEV_VENDOR: Readonly<Record<string, string>> = {
   gemini: 'google',
 };
 
+/**
+ * CLIs whose models.dev vendor catalogue is known NOT to be the set the CLI
+ * serves, with the caveat a report must carry beside that catalogue (#5086).
+ *
+ * codex serves a curated subset of the `openai` catalogue (7 of 47 at the
+ * #5086 audit), so the vendor list over-advertises. The panel on #5086 chose to
+ * keep the superset and label it rather than enumerate from codex's private
+ * cache: nothing selects an individual model from this list today, and
+ * `getCandidateCliNames` only tests non-emptiness, which a superset cannot flip.
+ * #5090 tracks the trigger that reverses that choice.
+ *
+ * claude is absent on purpose: the Claude CLI takes Anthropic API ids, so the
+ * `anthropic` catalogue is its vocabulary.
+ */
+export const MODELSDEV_CATALOGUE_CAVEATS: Readonly<Record<string, string>> = {
+  codex:
+    'Vendor-catalogue superset (models.dev `openai`), not the runnable set: codex serves only ' +
+    'the visibility:list slugs in its own models cache (see the `nexus-agents verify` codex models ' +
+    'check), so most ids listed here are rejected by `codex -m` (#5086, #5090).',
+};
+
 interface VendoredId {
   readonly id: string;
   readonly vendor: string;
