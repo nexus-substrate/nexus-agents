@@ -37,6 +37,11 @@ vi.mock('../cli-adapters/codex-mcp-server-probe.js', async (importOriginal) => {
   return { ...actual, codexMcpServerAvailable: vi.fn(() => true) };
 });
 
+// The sandbox preflight is model-free, but unit tests must not spawn Codex.
+vi.mock('../cli-adapters/codex-sandbox-preflight.js', () => ({
+  codexSandboxPreflight: vi.fn(() => Promise.resolve({ status: 'ok' as const })),
+}));
+
 // The pinned-model probe (#6120) spends a real claude call; stub it here and
 // keep the formatter real. doctor.ts imports the probe directly, so the spread
 // form intercepts it (no internal sibling indirection).
@@ -241,6 +246,56 @@ describe('Doctor Command', () => {
   });
 
   describe('runDoctor()', () => {
+    it.each([
+      { status: 'ok' as const },
+      { status: 'broken' as const, reason: 'bubblewrap cannot isolate app-server sockets' },
+      { status: 'unknown' as const, reason: 'Codex sandbox probe timed out' },
+    ])('records the Codex sandbox preflight: $status (#6841)', async (measurement) => {
+      vi.mocked(createAllAdapters).mockReturnValue(
+        new Map([
+          [
+            'codex',
+            {
+              healthCheck: vi.fn().mockResolvedValue({
+                healthy: true,
+                version: '0.159.2',
+                versionStatus: 'supported',
+                lastChecked: new Date(),
+              }),
+              getCapacity: vi.fn().mockRejectedValue(new Error('n/a')),
+            },
+          ],
+        ]) as never
+      );
+      const probeCodexSandbox = vi.fn(() => Promise.resolve(measurement));
+
+      const result = await runDoctor({ probeCodexSandbox });
+
+      expect(probeCodexSandbox).toHaveBeenCalledOnce();
+      expect(result.codexSandbox).toEqual(measurement);
+    });
+
+    it.each(['missing', 'disabled'] as const)(
+      'does not probe the Codex sandbox when Codex is %s (#6841)',
+      async (state) => {
+        const saved = process.env['NEXUS_DISABLED_CLIS'];
+        if (state === 'disabled') process.env['NEXUS_DISABLED_CLIS'] = 'codex';
+        else delete process.env['NEXUS_DISABLED_CLIS'];
+        try {
+          vi.mocked(createAllAdapters).mockReturnValue(new Map() as never);
+          const probeCodexSandbox = vi.fn(() => Promise.resolve({ status: 'ok' as const }));
+
+          const result = await runDoctor({ probeCodexSandbox });
+
+          expect(probeCodexSandbox).not.toHaveBeenCalled();
+          expect(result.codexSandbox).toBeUndefined();
+        } finally {
+          if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
+          else process.env['NEXUS_DISABLED_CLIS'] = saved;
+        }
+      }
+    );
+
     it('should return healthy result when all CLIs are available', async () => {
       const mockAdapter = {
         name: 'claude',

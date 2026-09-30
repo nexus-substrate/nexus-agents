@@ -28,6 +28,7 @@ import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
 import { accessModeConflict, isReadOnlyAnalysis } from '../access-mode.js';
 import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
+import { codexSandboxPreflight, createCodexSandboxGuard } from '../codex-sandbox-preflight.js';
 
 import {
   type CodexAdapterOptions,
@@ -70,6 +71,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
 
   private readonly model: string;
   private readonly platform: NodeJS.Platform;
+  private readonly sandboxRefusal: () => CliError | undefined;
   private client: Client | undefined;
   private mcpTransport: StdioClientTransport | undefined;
   private connected = false;
@@ -87,6 +89,10 @@ export class CodexMcpAdapter extends BaseCliAdapter {
     super(options?.logger ?? createLogger({ component: 'codex-mcp-adapter' }));
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
     this.platform = options?.platform ?? process.platform;
+    this.sandboxRefusal = createCodexSandboxGuard(
+      options?.sandboxProbe ?? codexSandboxPreflight,
+      this.logger
+    );
   }
 
   /**
@@ -248,15 +254,15 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   /** #6754: a continued session cannot be pinned to the read-only sandbox. */
   protected override accessModeRefusal(task: CliTask): CliError | undefined {
     const base = super.accessModeRefusal(task);
-    if (base !== undefined || !isReadOnlyAnalysis(task)) return base;
-    if (task.sessionId !== undefined && task.sessionId !== '') {
+    if (base !== undefined) return base;
+    if (isReadOnlyAnalysis(task) && task.sessionId !== undefined && task.sessionId !== '') {
       return accessModeConflict(
         this.name,
         'read-only-analysis',
         'a continued codex session carries no sandbox setting'
       );
     }
-    return undefined;
+    return this.sandboxRefusal();
   }
 
   /**

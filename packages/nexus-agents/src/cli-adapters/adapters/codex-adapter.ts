@@ -15,7 +15,8 @@
 import { writeFileSync, rmSync } from 'node:fs';
 import { nexusMkdtempSync } from '../../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
-import type { ICliResponseParser, CliTask, ModelInfo, CliName } from '../types.js';
+import type { ICliResponseParser, CliTask, ModelInfo, CliName, CliError } from '../types.js';
+import { codexSandboxPreflight, createCodexSandboxGuard } from '../codex-sandbox-preflight.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
@@ -60,11 +61,21 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
 
   private readonly model: string;
   private readonly platform: NodeJS.Platform;
+  private readonly sandboxRefusal: () => CliError | undefined;
 
   constructor(options?: CodexAdapterOptions) {
     super(options?.logger);
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
     this.platform = options?.platform ?? process.platform;
+    this.sandboxRefusal = createCodexSandboxGuard(
+      options?.sandboxProbe ?? codexSandboxPreflight,
+      this.logger
+    );
+  }
+
+  /** The adapter always executes under read-only, including default-mode tasks. */
+  protected override accessModeRefusal(task: CliTask): CliError | undefined {
+    return super.accessModeRefusal(task) ?? this.sandboxRefusal();
   }
 
   /** Key-free model enumeration via the models.dev snapshot (#3405). */

@@ -10,6 +10,7 @@
 import { DEFAULT_CAPABILITIES, type CapacityStatus } from '../cli-adapters/types.js';
 import { formatScratchFilesystems } from './doctor-scratch-space.js';
 import { formatClaudeModelLine } from './doctor-claude-model.js';
+import { formatCodexSandboxLine } from './doctor-codex-sandbox.js';
 import { printVoterTransportCheck } from './doctor-voter-transport.js';
 import { cliHeaderState, printCliListNotes } from './doctor-disabled-clis.js';
 import { gatewayCoveredClis } from './doctor-gateway-slots.js';
@@ -445,6 +446,8 @@ export function printDoctorResults(result: DoctorResult): void {
   printCliListNotes(result);
   // #6120/#6814: the pinned voter model is measured only with --live.
   writeLine(formatClaudeModelLine(result.claudeModel));
+  const codexSandboxLine = formatCodexSandboxLine(result.codexSandbox);
+  if (codexSandboxLine !== undefined) writeLine(codexSandboxLine);
   writeLine('');
 
   writeLine(`${colors.cyan}Checking MCP configuration...${colors.reset}`);

@@ -719,6 +719,41 @@ describe('doctor-formatting', () => {
       }
     });
 
+    it.each([
+      {
+        measurement: { status: 'broken' as const, reason: 'bubblewrap cannot isolate sockets' },
+        expected: 'Codex read-only sandbox: unavailable — bubblewrap cannot isolate sockets',
+      },
+      {
+        measurement: { status: 'unknown' as const, reason: 'Codex sandbox probe timed out' },
+        expected:
+          'Codex read-only sandbox: unknown — Codex sandbox probe timed out; read-only execution proceeds with the configured sandbox',
+      },
+    ])('warns with the Codex sandbox cause: $measurement.status (#6841)', (tc) => {
+      printDoctorResults({ ...createDoctorResult(), codexSandbox: tc.measurement });
+
+      expect(getCalls().some((line) => line.includes(tc.expected))).toBe(true);
+      expect(
+        getCalls().some((line) => line.includes('\x1b[33m') && line.includes(tc.expected))
+      ).toBe(true);
+    });
+
+    it('prints a measured healthy Codex sandbox (#6841)', () => {
+      printDoctorResults({ ...createDoctorResult(), codexSandbox: { status: 'ok' } });
+
+      expect(getCalls().some((line) => line.includes('Codex read-only sandbox: available'))).toBe(
+        true
+      );
+    });
+
+    it('does not claim a healthy Codex sandbox without a measurement (#6841)', () => {
+      printDoctorResults(createDoctorResult());
+
+      expect(getCalls().some((line) => line.includes('Codex read-only sandbox: available'))).toBe(
+        false
+      );
+    });
+
     // #6119: the client-mode line is MEASURED. codex installed without the
     // `mcp-server` subcommand (codex-cli >=0.154) must say so and name the
     // transport actually in use — not print "Ready" off the install alone.

@@ -9,6 +9,7 @@ import type { BaseAdapterOptions, CliError, CliName, TokenUsage, CliResponse } f
 import { createCliError as sharedCreateCliError } from '../cli-error-helpers.js';
 import type { ILogger } from '../../core/logger.js';
 import { resolveCliModelName } from '../../config/model-config-helpers.js';
+import type { CodexSandboxPreflightResult } from '../codex-sandbox-preflight.js';
 
 // -----------------------------------------------------------------------------
 // Legacy Fallback Defaults (for non-canonical models)
@@ -43,6 +44,8 @@ export const CODEX_LEGACY_DEFAULTS = {
 
 /** Options accepted by both codex transports (subprocess and MCP). */
 export interface CodexAdapterOptions extends BaseAdapterOptions {
+  /** Injectable model-free sandbox preflight; the default is shared process-wide. */
+  readonly sandboxProbe?: () => CodexSandboxPreflightResult;
   /**
    * Host platform the sandbox arguments are chosen for. Defaults to
    * `process.platform`; injectable so a test can exercise the Linux and

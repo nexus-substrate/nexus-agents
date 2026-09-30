@@ -20,6 +20,12 @@ import {
 } from './voter-unverifiable.js';
 import type { AgentVoteResult } from './vote-types.js';
 
+it('recognizes the codex filesystem-restricted bubblewrap panic as structured sandbox evidence (#6841)', () => {
+  const cliStderr =
+    'filesystem-restricted execution requires bubblewrap to isolate app-server sockets';
+  expect(classifyUnverifiable({ cliStderr, reasoning: 'Approve.' })).toBe('stderr');
+});
+
 const LEDGER_FIXTURES: readonly string[] = [
   // 269 scope_steward
   "I cannot ratify the specified artifact: the checkout reports HEAD e04c6d210a, not cd5896888e. Subsequent source reads failed with 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted'; no alternative repository resource was available.",
