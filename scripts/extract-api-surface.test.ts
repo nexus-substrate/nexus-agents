@@ -72,6 +72,32 @@ describe('extractSurface', () => {
     expect(out).toContain('secret: string');
   });
 
+  it('follows an in-package type named by an inline import', () => {
+    const out = surfaceOf({
+      '/types.ts': 'export interface Hidden { marker: string; }',
+      '/index.ts': 'export interface Exposed { readonly value: import("./types.js").Hidden; }',
+    });
+
+    expect(out).toContain('InterfaceDeclaration Exposed');
+    expect(out).toContain('InterfaceDeclaration Hidden');
+    expect(out).toContain('  marker: string');
+  });
+
+  it('does not follow an inline import outside the package', () => {
+    const project = new Project({ useInMemoryFileSystem: true, compilerOptions: { strict: true } });
+    project.createSourceFile('/outside.ts', 'export interface Foreign { leaked: string; }');
+    const entry = project.createSourceFile(
+      `${SRC}/index.ts`,
+      'export interface Exposed { readonly value: import("/outside.js").Foreign; }'
+    );
+
+    const out = renderSurface(extractSurface(entry));
+
+    expect(out).toContain('InterfaceDeclaration Exposed');
+    expect(out).not.toContain('InterfaceDeclaration Foreign');
+    expect(out).not.toContain('leaked: string');
+  });
+
   it('is byte-identical across two extractions of the same source', () => {
     // Nondeterminism in a snapshot gate is indistinguishable from a real
     // surface change, and would make every PR red for no reason.
