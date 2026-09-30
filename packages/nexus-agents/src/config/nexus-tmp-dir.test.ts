@@ -19,6 +19,13 @@ import { getNexusTmpDir, nexusMkdtempSync, nexusMkdtemp } from './nexus-tmp-dir.
 
 const ENV_KEY = 'NEXUS_TMPDIR';
 
+/** The data dir vitest.config.ts sets for every test process. */
+function testDataDir(): string {
+  const dir = process.env['NEXUS_DATA_DIR'];
+  if (dir === undefined || dir === '') throw new Error('vitest config must set NEXUS_DATA_DIR');
+  return dir;
+}
+
 describe('getNexusTmpDir (#4412)', () => {
   const saved = process.env[ENV_KEY];
   const scratch = join(tmpdir(), `nexus-tmp-dir-test-${String(process.pid)}`);
@@ -38,10 +45,13 @@ describe('getNexusTmpDir (#4412)', () => {
     expect(existsSync(getNexusTmpDir())).toBe(true);
   });
 
-  it('lands under the gitignored .nexus-agents tree by default', () => {
-    // `.nexus-agents/` is already in .gitignore, so scratch is ignored by
-    // construction rather than by a second entry someone has to maintain.
-    expect(getNexusTmpDir()).toContain(`.nexus-agents${sep}`);
+  it('lands in the data dir by default', () => {
+    // Scratch lives under the data dir, which defaults to the gitignored
+    // `.nexus-agents/` tree, so it is ignored by construction. vitest always
+    // sets NEXUS_DATA_DIR, and that dir is outside `.nexus-agents` when the
+    // checkout path is too long for tsx's IPC socket (#6615), so assert
+    // against the data dir rather than the directory name.
+    expect(getNexusTmpDir()).toBe(join(testDataDir(), 'tmp'));
   });
 
   it('is a tmp/ subdir, not the data root', () => {
@@ -68,7 +78,7 @@ describe('getNexusTmpDir (#4412)', () => {
     // a request to mkdtemp into the process CWD.
     process.env[ENV_KEY] = '   ';
 
-    expect(getNexusTmpDir()).toContain('.nexus-agents');
+    expect(getNexusTmpDir()).toBe(join(testDataDir(), 'tmp'));
   });
 
   it('falls back to the OS tmpdir when the target cannot be created', () => {
