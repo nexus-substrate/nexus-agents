@@ -23,7 +23,11 @@ import { z } from 'zod';
 import { JsonlStore } from '../config/jsonl-store.js';
 import { ensureLearningDir, getDecisionCostFile } from '../config/learning-persistence.js';
 import { PriceBasisSchema } from '../core/price-basis.js';
-import { rollupDecisionCost, UndeclaredOptionsDetectorSchema } from './decision-cost.js';
+import {
+  PricingProvenanceSchema,
+  rollupDecisionCost,
+  UndeclaredOptionsDetectorSchema,
+} from './decision-cost.js';
 import type {
   DecisionBillingMode,
   DecisionCostSummary,
@@ -53,6 +57,10 @@ const VoterCostBreakdownSchema = z.object({
   // provenance at all, and absent must stay absent rather than becoming the
   // positive claim 'unknown'.
   priceBasis: PriceBasisSchema.optional(),
+  // Absent on legacy/unscoped rows: scope was not recorded, never inferred.
+  // A scope this reader has no literal for drops only this decorative field,
+  // never the cost record it rides on (#6830).
+  pricingProvenance: PricingProvenanceSchema.optional().catch(undefined),
 });
 
 const ModelCostBreakdownSchema = z.object({

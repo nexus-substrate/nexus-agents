@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { PriceBasisSchema } from '../core/price-basis.js';
-import { DecisionCostStore } from './decision-cost-store.js';
+import { DecisionCostRecordSchema, DecisionCostStore } from './decision-cost-store.js';
 import type { VoterCostInput } from './decision-cost.js';
 
 const TS = '2026-06-17T00:00:00.000Z';
@@ -113,6 +113,93 @@ describe('DecisionCostStore', () => {
     const record = new DecisionCostStore({ filePath: file, dataDir: dir }).all()[0];
     expect(record?.summary.tokenMeasuredVoters).toBeUndefined();
     expect(record?.summary.perVoter[0]?.tokenUsageMeasured).toBeUndefined();
+  });
+
+  it('parses and reports legacy pricing scope as absent without inferring it (#6830)', () => {
+    const legacy = {
+      decisionId: 'legacy-scope',
+      gate: 'consensus_vote',
+      timestamp: TS,
+      summary: {
+        billingMode: 'api',
+        voterCount: 1,
+        measuredVoters: 1,
+        unmeasuredVoters: 0,
+        totalInputTokens: 1000,
+        totalOutputTokens: 500,
+        totalTokens: 1500,
+        totalCostUsd: 0.0875,
+        priceBasis: 'list',
+        perVoter: [
+          {
+            role: 'architect',
+            model: 'anthropic/claude-mythos-preview',
+            inputTokens: 1000,
+            outputTokens: 500,
+            totalTokens: 1500,
+            costUsd: 0.0875,
+            unmeasured: false,
+            priceBasis: 'list',
+          },
+        ],
+        perModel: [],
+      },
+    };
+    const parsed = DecisionCostRecordSchema.parse(legacy);
+    expect(parsed.summary.perVoter[0]?.pricingProvenance).toBeUndefined();
+    expect(parsed.summary.perVoter[0]).not.toHaveProperty('pricingProvenance');
+    writeFileSync(file, `${JSON.stringify(legacy)}\n`, 'utf-8');
+
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.hydrationComplete).toBe(true);
+    expect(reader.size).toBe(1);
+    expect(reader.query()[0]?.summary.perVoter[0]).not.toHaveProperty('pricingProvenance');
+    expect(reader.query()[0]?.summary.perVoter[0]?.pricingProvenance).toBeUndefined();
+    expect(reader.query()[0]?.summary.totalCostUsd).toBe(0.0875);
+  });
+
+  it('keeps a record whose pricing scope this version does not recognise (#6830)', () => {
+    // A newer writer may record a scope this reader has no literal for. The
+    // provenance is decorative: dropping it must not drop the cost it rides on.
+    const newer = {
+      decisionId: 'newer-scope',
+      gate: 'consensus_vote',
+      timestamp: TS,
+      summary: {
+        billingMode: 'api',
+        voterCount: 1,
+        measuredVoters: 1,
+        unmeasuredVoters: 0,
+        totalInputTokens: 1000,
+        totalOutputTokens: 500,
+        totalTokens: 1500,
+        totalCostUsd: 0.0875,
+        perVoter: [
+          {
+            role: 'architect',
+            model: 'anthropic/claude-mythos-preview',
+            inputTokens: 1000,
+            outputTokens: 500,
+            totalTokens: 1500,
+            costUsd: 0.0875,
+            unmeasured: false,
+            pricingProvenance: {
+              source: 'anthropic',
+              scope: 'some-future-participant-program',
+              upstreamUrl: 'https://example.com/pricing',
+            },
+          },
+        ],
+        perModel: [],
+      },
+    };
+    writeFileSync(file, `${JSON.stringify(newer)}\n`, 'utf-8');
+
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.size).toBe(1);
+    const voter = reader.query()[0]?.summary.perVoter[0];
+    expect(voter?.costUsd).toBe(0.0875);
+    expect(voter?.pricingProvenance).toBeUndefined();
   });
 
   it('skips corrupt lines on hydrate (graceful degradation)', () => {

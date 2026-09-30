@@ -109,6 +109,9 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
       ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
       ...reportedTokenFields(v),
       ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
+      ...(detail?.pricingProvenance !== undefined
+        ? { pricingProvenance: detail.pricingProvenance }
+        : {}),
       // #4406 — state what kind of rate the cost rests on, but only when we
       // actually consulted the registry. No lookup ⇒ no claim (absent), which
       // is distinct from 'unknown' ("we looked and there is no price").
