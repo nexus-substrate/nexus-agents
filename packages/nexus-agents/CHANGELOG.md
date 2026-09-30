@@ -1,5 +1,57 @@
 # nexus-agents
 
+## 8.114.0
+
+### Minor Changes
+
+- [#6829](https://github.com/nexus-substrate/nexus-agents/pull/6829) [`eef6aaa`](https://github.com/nexus-substrate/nexus-agents/commit/eef6aaa3113d7fc0f4be957452216af2f110218d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Apply Anthropic's published $25/$125-per-million Project Glasswing participant rate to the five Claude Mythos Preview catalog IDs, while exposing the price's participant-only provenance separately from model-metadata provenance. Unpublished cache rates remain unpriced; this is not a universal Bedrock billing guarantee.
+
+- [#6818](https://github.com/nexus-substrate/nexus-agents/pull/6818) [`23f9607`](https://github.com/nexus-substrate/nexus-agents/commit/23f9607e9283ec83b122c8f4fac952a481546065) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add a lower-bound weather-report measure of reported final-seat tokens per quorum-backed consensus decision. The joined measure includes matched `no_quorum` token cost in its numerator, exposes join and usage coverage, and does not claim to account for discarded retry or fallback attempts.
+
+- [#6827](https://github.com/nexus-substrate/nexus-agents/pull/6827) [`9dc494b`](https://github.com/nexus-substrate/nexus-agents/commit/9dc494bb874b9967d32c1e5d512719aeb0afd89d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve measured and explicitly unmeasured caller trust and input-sanitization provenance on pipeline stage-start events. This does not yet provide a durable invocation-level trust-tier distribution or enforce policy.
+
+- [#6801](https://github.com/nexus-substrate/nexus-agents/pull/6801) [`7a8beee`](https://github.com/nexus-substrate/nexus-agents/commit/7a8beeeb5b631553284edaf67279742fad9d2b7e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The dev pipeline's implement ("code") expert now runs in a new `'workspace-edit'` access mode with no nexus-agents MCP tools. Its prompt derives from issue text, which may be untrusted. The expert may read files and edit files inside its working directory, but may not run commands, fetch from the network or load MCP servers. It used to inherit whatever the operator's own claude permission settings allowed, including `auto` mode.
+
+  **The working directory is the MCP server's current working directory**, normally the real repository: the implement stage passes no `workDir`. Workspace-edit stops the expert from running commands, but files it edits can still be executed by the pipeline. When `qualityGate` is `advisory` or `blocking`, the gate runs the package manager's typecheck, lint and test scripts in that directory, including any `package.json` script or test file the expert edited. In that case the pipeline result (`DevPipelineResult.warnings`, and `warnings` in the `run_dev_pipeline` output) now says so. The fix is running implement in a scratch worktree ([#6794](https://github.com/nexus-substrate/nexus-agents/issues/6794)).
+
+  `ExecutionAccessMode` gains `'workspace-edit'`. The claude adapter maps it to `--permission-mode acceptEdits --tools Read,Grep,Glob,Edit,Write --strict-mcp-config --disallowedTools Bash,NotebookEdit,WebFetch,WebSearch`. It refuses the mode when the task also asks to skip permissions or names an MCP config. Verified live on claude 2.1.281:
+
+  - edits inside the working directory are applied;
+  - writes outside it are refused, whether by absolute path or through a symlink;
+  - edits to `.claude/settings.local.json` inside it are refused;
+  - Bash and WebSearch are not offered.
+
+  Adapters declare the mode with a new `enforcesWorkspaceEdit` flag, separate from `enforcesReadOnlyAnalysis`, so enforcing one does not qualify an adapter for the other. The opencode, agy (gemini) and codex adapters do not declare it and refuse such a task. Direct-API and gateway arms declare it, since they send no tools. `CompositeRouter` routes a workspace-edit task only to declaring arms, and fails with a `CompositeRoutingError` at stage `access-mode` when none qualifies. As a result, the implement stage now runs only on the claude CLI or an API/gateway arm.
+
+  When an API or gateway arm serves implement, nothing is applied to the workspace. The stage result is prefixed with a note saying so, and the outcome row carries `implement:text-only`. Tool calls claude's permission layer refused (its `permission_denials`) are now surfaced on `CliResponse.permissionDenials`, in the implement stage result and as `implement:permission-denials:<n>`.
+
+  Orchestrate workers now run in `'read-only-analysis'` mode. Their output is consumed as text only.
+
+  Access modes are now recorded:
+
+  - Adapters stamp the mode they enforced on the response (`CliResponse.accessMode`; API/gateway arms also set `textOnly`).
+  - `executeExpert` results carry the served arm's `accessMode`, the caller's `requestedAccessMode`, `textOnly` and `permissionDenials`.
+  - Dev-pipeline outcome rows record `access-mode:<mode>` when the served arm reported enforcement. Otherwise they record `access-mode-requested:<mode>`, for example on a failed call, never an enforced mode that no arm reported.
+  - Orchestrate-worker rows record `access-mode-requested:read-only-analysis`.
+
+- [#6813](https://github.com/nexus-substrate/nexus-agents/pull/6813) [`dedb84a`](https://github.com/nexus-substrate/nexus-agents/commit/dedb84a30f1be039730453cdbe6b9b7910036425) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report complete adapter-reported token coverage for consensus voter seats in the existing decision-cost ledger and weekly weather report. A seat is measured only when both input and output counters are reported, including explicit zero. Partial, missing, and legacy records remain unmeasured. This coverage is separate from price-based cost measurement and does not claim tokens per successful task.
+
+### Patch Changes
+
+- [#6820](https://github.com/nexus-substrate/nexus-agents/pull/6820) [`fb41702`](https://github.com/nexus-substrate/nexus-agents/commit/fb41702bdd0ef91e6cf935eb0ecf3bcd09ae5aac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Signal an in-flight voter adapter to cancel when the overall consensus deadline wins its race, while recording the existing deadline error and preserving caller cancellation. Adapters that cannot cancel remote work still stop being awaited locally.
+
+- [#6816](https://github.com/nexus-substrate/nexus-agents/pull/6816) [`152e777`](https://github.com/nexus-substrate/nexus-agents/commit/152e7773f4767fa4b84e9b515b94dbc8ba6a01fc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Do not relaunch any consensus voter seat after the shared overall panel deadline has expired. First-pass errors remain for the existing quorum policy; transient errors and unverifiable seats retain their bounded retry when no seat exhausted that deadline.
+
+- [#6812](https://github.com/nexus-substrate/nexus-agents/pull/6812) [`fad1142`](https://github.com/nexus-substrate/nexus-agents/commit/fad1142697c20583a84e4b8276bafccd54054b52) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make orchestrate worker prompts match their enforced read-only access mode so workers do not attempt unavailable file edits or shell commands.
+
+- [#6815](https://github.com/nexus-substrate/nexus-agents/pull/6815) [`f6f2f26`](https://github.com/nexus-substrate/nexus-agents/commit/f6f2f26b9ac13ffc5d5adc70598cd2c44411d51c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Clarify in `doctor --help` that plain doctor makes no model completions and `--live` probes the pinned Claude model and eligible adapters, which may use quota.
+
+- [#6819](https://github.com/nexus-substrate/nexus-agents/pull/6819) [`0cb30b0`](https://github.com/nexus-substrate/nexus-agents/commit/0cb30b09849c17f4795f2719d4b24fd24dd0a203) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep the pinned Claude model completion probe behind `doctor --live`. Plain doctor reports the model as not probed and does not spend generation quota.
+
+- [#6810](https://github.com/nexus-substrate/nexus-agents/pull/6810) [`e6ece38`](https://github.com/nexus-substrate/nexus-agents/commit/e6ece38d37a23d7f287a93190216ec3d0fcbaf4f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refuse quality-gate scripts after an untrusted dev-pipeline implement stage edits the real repository. The result records the refusal without claiming that checks or the security scan ran ([#6802](https://github.com/nexus-substrate/nexus-agents/issues/6802)).
+
+- [#6817](https://github.com/nexus-substrate/nexus-agents/pull/6817) [`6ceac6e`](https://github.com/nexus-substrate/nexus-agents/commit/6ceac6ed48f4af74196be0022c125cabf58a0f16) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep one wall-clock deadline across consensus voter passes and retry backoff. Expired staggered or queued seats no longer start adapters, while transient errors still retry within the remaining panel budget.
+
 ## 8.113.0
 
 ### Minor Changes
