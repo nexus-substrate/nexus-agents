@@ -545,7 +545,12 @@ function referencedDeclarations(node: Node): Node[] {
   const names = node
     .getDescendantsOfKind(SyntaxKind.TypeReference)
     .map((ref) => ref.getTypeName().getSymbol());
-  for (const symbol of [...bases, ...names]) {
+  // `import('./types.js').Hidden` is an ImportType, not a TypeReference.
+  // Its qualifier names the declaration reachable through the public type.
+  const inlineImports = node
+    .getDescendantsOfKind(SyntaxKind.ImportType)
+    .map((ref) => ref.getQualifier()?.getSymbol());
+  for (const symbol of [...bases, ...names, ...inlineImports]) {
     if (symbol === undefined) continue;
     for (const decl of symbol.getDeclarations()) {
       // Check the resolved declaration, not an in-package import specifier:
