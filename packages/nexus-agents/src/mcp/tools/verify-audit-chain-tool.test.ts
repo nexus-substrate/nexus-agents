@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import type { AuditEvent } from '../../audit/audit-types.js';
 import {
@@ -28,8 +27,13 @@ import {
 
 let tmpDir: string;
 
+// Under the data dir, the one audit-log root that holds in every checkout:
+// `os.tmpdir()` sits inside the cwd-local `.nexus-agents` root only when the
+// runner keeps TMPDIR in-repo, which a long checkout path prevents (#6615), and
+// the handler then refuses the fixture dir before reading it.
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-verify-audit-'));
+  fs.mkdirSync(getNexusDataDir(), { recursive: true });
+  tmpDir = fs.mkdtempSync(path.join(getNexusDataDir(), 'nexus-verify-audit-'));
 });
 
 afterEach(() => {
