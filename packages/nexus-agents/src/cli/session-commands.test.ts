@@ -7,6 +7,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { join } from 'node:path';
 
 // Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
 const mocks = vi.hoisted(() => {
@@ -91,10 +92,12 @@ describe('session-commands', () => {
   });
 
   describe('getDefaultDbPath', () => {
-    it('should return path in home directory', () => {
-      const path = getDefaultDbPath();
-      expect(path).toContain('.nexus-agents');
-      expect(path).toContain('sessions.db');
+    it('should return sessions/sessions.db under the data dir', () => {
+      // vitest.config.ts always sets NEXUS_DATA_DIR; it sits outside
+      // `.nexus-agents` when the checkout path is long (#6615).
+      const dataDir = process.env['NEXUS_DATA_DIR'];
+      expect(dataDir, 'vitest config must set NEXUS_DATA_DIR').toBeTruthy();
+      expect(getDefaultDbPath()).toBe(join(dataDir ?? '', 'sessions', 'sessions.db'));
     });
   });
 
