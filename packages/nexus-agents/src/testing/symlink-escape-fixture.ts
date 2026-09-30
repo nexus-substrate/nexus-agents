@@ -6,6 +6,11 @@
  * A lexical `path.resolve` + `startsWith` guard accepts both; a realpath-aware
  * guard (`security/safe-path.ts`) must reject the first and accept the second.
  *
+ * The inside dir is created under `<cwd>/.nexus-agents/tmp` (gitignored), not
+ * under `os.tmpdir()`: the runner points `TMPDIR` at the in-repo scratch root
+ * only when tsx's socket path fits under it, and a long checkout path moves it
+ * to the system temp dir (#6615), which is outside cwd.
+ *
  * The preconditions are asserted, not assumed: if the scratch dir were not
  * inside cwd, or the outside dir were not outside it, an "is rejected" test
  * would pass for the wrong reason.
@@ -14,7 +19,6 @@
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, relative, isAbsolute } from 'node:path';
 
 export interface SymlinkEscapeFixture {
@@ -41,7 +45,9 @@ function isInside(root: string, target: string): boolean {
  */
 export function createSymlinkEscapeFixture(): SymlinkEscapeFixture {
   const cwd = realpathSync(process.cwd());
-  const insideDir = realpathSync(mkdtempSync(join(tmpdir(), 'nexus-symlink-in-')));
+  const insideBase = join(cwd, '.nexus-agents', 'tmp');
+  mkdirSync(insideBase, { recursive: true });
+  const insideDir = realpathSync(mkdtempSync(join(insideBase, 'nexus-symlink-in-')));
   const systemTmp = process.env['VITEST_SYSTEM_TMPDIR'] ?? '/tmp';
   const outsideDir = realpathSync(mkdtempSync(join(systemTmp, 'nexus-symlink-out-')));
   if (!isInside(cwd, insideDir) || isInside(cwd, outsideDir)) {
