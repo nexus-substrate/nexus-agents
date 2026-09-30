@@ -67,12 +67,16 @@ function makeVotesMap(
 // ============================================================================
 
 describe('getCorrelationDataPath', () => {
-  it('should return a path containing .nexus-agents/voting/correlations.json', () => {
+  it('should return voting/correlations.json under the data dir', () => {
+    // vitest.config.ts always sets NEXUS_DATA_DIR. It lives under `.nexus-agents`
+    // only when the in-repo scratch root is short enough for tsx's IPC socket;
+    // a long checkout path falls back to the system temp dir (#6615).
+    const dataDir = process.env['NEXUS_DATA_DIR'];
+    expect(dataDir, 'vitest config must set NEXUS_DATA_DIR').toBeTruthy();
+
     const result = getCorrelationDataPath();
 
-    expect(result).toContain('.nexus-agents');
-    expect(result).toContain('voting');
-    expect(result).toContain('correlations.json');
+    expect(result).toBe(path.join(dataDir ?? '', 'voting', 'correlations.json'));
     expect(path.isAbsolute(result)).toBe(true);
   });
 });
