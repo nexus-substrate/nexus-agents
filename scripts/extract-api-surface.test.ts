@@ -120,6 +120,42 @@ describe('extractSurface', () => {
   });
 });
 
+describe('reference aliases at the package boundary (#6834)', () => {
+  it('does not record external declarations imported into public or private class members', () => {
+    const out = surfaceOf({
+      '/../../../external.ts':
+        'export class ExternalPublic { value = "public"; }\n' +
+        'export class ExternalPrivate { value = "private"; }',
+      '/index.ts':
+        "import type { ExternalPublic, ExternalPrivate } from '../../../external.js';\n" +
+        'export class PublicClient {\n' +
+        '  public request!: ExternalPublic;\n' +
+        '  private client!: ExternalPrivate;\n' +
+        '}',
+    });
+
+    expect(out).toContain('ClassDeclaration PublicClient');
+    expect(out).toContain('  request: ExternalPublic');
+    expect(out).not.toContain('ClassDeclaration ExternalPublic');
+    expect(out).not.toContain('ClassDeclaration ExternalPrivate');
+  });
+
+  it('retains in-package aliases reached through a public inferred signature', () => {
+    const out = surfaceOf({
+      '/detail.ts': 'export interface Detail { value: string; }',
+      '/index.ts':
+        "import type { Detail } from './detail.js';\n" +
+        'export class PublicClient {\n' +
+        '  private detail!: Detail;\n' +
+        '  public getDetail() { return this.detail; }\n' +
+        '}',
+    });
+
+    expect(out).toContain('getDetail() => Detail');
+    expect(out).toContain('InterfaceDeclaration Detail');
+  });
+});
+
 describe('cross-module name collisions (#5224)', () => {
   it('keeps two same-named declarations from different modules apart', () => {
     // The exact shape found in the real surface: one side exported directly,
