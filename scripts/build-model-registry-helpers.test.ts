@@ -12,6 +12,7 @@ import type { LiteLlmResponse, ModelsDevResponse } from './build-model-registry-
 import {
   ALLOWED_MODELS_DEV_PROVIDERS,
   LITELLM_PROVIDER_CANONICAL,
+  applyPublishedPricingOverrides,
   mapLiteLlmEntry,
   mapModelsDevEntry,
   mergeEntries,
@@ -23,6 +24,94 @@ import {
 } from './build-model-registry-helpers.js';
 
 const CTX = { fetchedAt: '2026-04-22T22:00:00-04:00' };
+
+const MYTHOS_PREVIEW_IDS = [
+  'amazon-bedrock/anthropic.claude-mythos-preview',
+  'amazon-bedrock/apac.anthropic.claude-mythos-preview',
+  'amazon-bedrock/au.anthropic.claude-mythos-preview',
+  'amazon-bedrock/us.anthropic.claude-mythos-preview',
+  'anthropic/claude-mythos-preview',
+] as const;
+
+describe('applyPublishedPricingOverrides', () => {
+  it('uses Anthropic Project Glasswing participant rates for the five exact Preview ids', () => {
+    const upstream = MYTHOS_PREVIEW_IDS.map((id) => ({
+      id,
+      displayName: id,
+      provider: id.startsWith('amazon-bedrock/') ? 'amazon-bedrock' : 'anthropic',
+      contextWindow: 1_000_000,
+      pricing: {
+        inputPer1M: 27.5,
+        outputPer1M: 137.5,
+        cacheReadPer1M: 2.75,
+        cacheWritePer1M: 34.375,
+      },
+      provenance: {
+        source: 'litellm' as const,
+        fetchedAt: CTX.fetchedAt,
+        upstreamUrl:
+          'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json',
+      },
+    }));
+
+    const corrected = applyPublishedPricingOverrides(upstream);
+
+    expect(corrected).toHaveLength(5);
+    for (const entry of corrected) {
+      expect(entry.pricing).toEqual({ inputPer1M: 25, outputPer1M: 125 });
+      expect(entry.pricingProvenance).toEqual({
+        source: 'anthropic',
+        scope: 'project-glasswing-participants',
+        upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+      });
+      expect(entry.provenance).toEqual(upstream.find((row) => row.id === entry.id)?.provenance);
+    }
+  });
+
+  it('keeps models.dev metadata while overriding a Preview price after merge', () => {
+    const id = MYTHOS_PREVIEW_IDS[0];
+    const modelsDev = mapModelsDevEntry(
+      'amazon-bedrock',
+      {
+        id: 'anthropic.claude-mythos-preview',
+        limit: { context: 900_000 },
+        cost: { input: 7, output: 35 },
+      },
+      CTX
+    );
+    const liteLlm = mapLiteLlmEntry(
+      'anthropic.claude-mythos-preview',
+      {
+        litellm_provider: 'bedrock',
+        max_input_tokens: 1_000_000,
+        input_cost_per_token: 0.0000275,
+        output_cost_per_token: 0.0001375,
+      },
+      CTX
+    );
+    expect(modelsDev?.id).toBe(id);
+    expect(liteLlm?.id).toBe(id);
+    if (modelsDev === undefined || liteLlm === undefined) throw new Error('fixture did not map');
+
+    const corrected = applyPublishedPricingOverrides(mergeEntries([modelsDev], [liteLlm]));
+
+    expect(corrected).toHaveLength(1);
+    expect(corrected[0]?.contextWindow).toBe(900_000);
+    expect(corrected[0]?.provenance.source).toBe('models.dev');
+    expect(corrected[0]?.pricing).toEqual({ inputPer1M: 25, outputPer1M: 125 });
+  });
+
+  it('leaves unrelated model pricing and provenance untouched', () => {
+    const unrelated = mapModelsDevEntry(
+      'anthropic',
+      { id: 'claude-mythos-5', limit: { context: 1_000_000 }, cost: { input: 10, output: 50 } },
+      CTX
+    );
+    expect(unrelated).toBeDefined();
+    if (unrelated === undefined) throw new Error('fixture did not map');
+    expect(applyPublishedPricingOverrides([unrelated])).toEqual([unrelated]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // shouldIncludeModelsDevEntry

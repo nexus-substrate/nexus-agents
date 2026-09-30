@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { loadGeneratedRegistryEntries } from './models-generated-loader.js';
+import { ModelRegistry } from './model-registry.js';
 import { resetNexusDataDirCache, nexusDataPath } from './nexus-data-dir.js';
 
 describe('models-generated-loader data-dir precedence (#3707)', () => {
@@ -63,6 +64,71 @@ describe('models-generated-loader data-dir precedence (#3707)', () => {
     const result = loadGeneratedRegistryEntries({ path: explicit });
     expect(result.path).toBe(explicit);
     expect(result.status).toBe('loaded');
+  });
+
+  it('carries participant-only pricing provenance into a runtime registry entry', () => {
+    const path = nexusDataPath('model-registry.generated.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        entries: [
+          {
+            id: 'anthropic/claude-mythos-preview',
+            pricing: { inputPer1M: 25, outputPer1M: 125 },
+            pricingProvenance: {
+              source: 'anthropic',
+              scope: 'project-glasswing-participants',
+              upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+            },
+          },
+        ],
+      })
+    );
+
+    const entry = loadGeneratedRegistryEntries().entries[0];
+    expect(entry?.pricing).toEqual({ inputPer1M: 25, outputPer1M: 125 });
+    expect(entry?.pricingProvenance).toEqual({
+      source: 'anthropic',
+      scope: 'project-glasswing-participants',
+      upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+    });
+    if (entry === undefined) throw new Error('fixture did not load');
+    expect(
+      new ModelRegistry({ generatedEntries: [entry] }).getEntry(entry.id).pricingProvenance
+    ).toEqual(entry.pricingProvenance);
+  });
+
+  it('does not attach a pricing caveat without matching source or present pricing', () => {
+    const path = nexusDataPath('model-registry.generated.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        entries: [
+          {
+            id: 'anthropic/claude-mythos-preview',
+            pricing: { inputPer1M: 25, outputPer1M: 125 },
+            pricingProvenance: {
+              source: 'litellm',
+              scope: 'project-glasswing-participants',
+              upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+            },
+          },
+          {
+            id: 'amazon-bedrock/anthropic.claude-mythos-preview',
+            pricingProvenance: {
+              source: 'anthropic',
+              scope: 'project-glasswing-participants',
+              upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+            },
+          },
+        ],
+      })
+    );
+
+    const entries = loadGeneratedRegistryEntries().entries;
+    expect(entries.map((entry) => entry.pricingProvenance)).toEqual([undefined, undefined]);
   });
 });
 

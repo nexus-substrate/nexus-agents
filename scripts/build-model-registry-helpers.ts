@@ -300,6 +300,34 @@ export function mergeEntries(
   return sorted;
 }
 
+/** Official Project Glasswing participant rates override stale catalog prices. */
+const MYTHOS_PREVIEW_IDS = new Set([
+  'amazon-bedrock/anthropic.claude-mythos-preview',
+  'amazon-bedrock/apac.anthropic.claude-mythos-preview',
+  'amazon-bedrock/au.anthropic.claude-mythos-preview',
+  'amazon-bedrock/us.anthropic.claude-mythos-preview',
+  'anthropic/claude-mythos-preview',
+]);
+
+export function applyPublishedPricingOverrides(
+  entries: readonly GeneratedModelEntry[]
+): readonly GeneratedModelEntry[] {
+  return entries.map((entry) =>
+    MYTHOS_PREVIEW_IDS.has(entry.id)
+      ? {
+          ...entry,
+          // No official cache price was published; absence means unpriced.
+          pricing: { inputPer1M: 25, outputPer1M: 125 },
+          pricingProvenance: {
+            source: 'anthropic',
+            scope: 'project-glasswing-participants',
+            upstreamUrl: 'https://www.anthropic.com/project/glasswing',
+          },
+        }
+      : entry
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Sanity rails
 // ---------------------------------------------------------------------------

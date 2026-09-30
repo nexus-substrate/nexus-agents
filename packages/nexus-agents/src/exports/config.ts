@@ -64,6 +64,7 @@ export {
   getDefaultAvailableModelsCache,
   setDefaultAvailableModelsCache,
   type ModelEntry,
+  type ModelPricingProvenance,
   type ModelRegistryOptions,
   type EntrySource,
   type ToolDefinitionFormat,
