@@ -548,10 +548,11 @@ function referencedDeclarations(node: Node): Node[] {
   for (const symbol of [...bases, ...names]) {
     if (symbol === undefined) continue;
     for (const decl of symbol.getDeclarations()) {
-      // Only follow into this package's own source; node_modules and lib types
-      // are not ours to version.
-      if (decl.getSourceFile().getFilePath().includes('/packages/nexus-agents/src/')) {
-        found.push(decl);
+      // Check the resolved declaration, not an in-package import specifier:
+      // the latter can alias a node_modules type that is not ours to version.
+      const resolved = resolveAlias(decl);
+      if (resolved.getSourceFile().getFilePath().includes('/packages/nexus-agents/src/')) {
+        found.push(resolved);
       }
     }
   }
