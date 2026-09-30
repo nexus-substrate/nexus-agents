@@ -24,6 +24,7 @@ function parse(text: string): {
   healthyTransports: number;
   reachableTransports: number;
   totalModels: number;
+  note: string;
   breakerOpenTransports: string[];
   transports: {
     transport: string;
@@ -34,6 +35,7 @@ function parse(text: string): {
     modelIds?: string[];
     error?: string;
     breakerOpen?: boolean;
+    catalogueCaveat?: string;
   }[];
 } {
   return JSON.parse(text) as ReturnType<typeof parse>;
@@ -279,5 +281,34 @@ describe('list_available_models breaker state (#6769)', () => {
 
     expect(data.transports[0]).toMatchObject({ transport: 'codex', breakerOpen: false });
     expect(data.breakerOpenTransports).toEqual([]);
+  });
+});
+
+describe('the codex row is labelled a vendor-catalogue superset (#5086)', () => {
+  async function report(): Promise<ReturnType<typeof parse>> {
+    const sourcesFactory = (): AvailableModelsSource[] => [
+      src('codex', ['gpt-5.5', 'gpt-4']),
+      src('claude', ['claude-x']),
+      src('opencode', ['o-1']),
+    ];
+    const res = await listAvailableModelsHandler({}, { sourcesFactory }, logger);
+    return parse(res.content[0]?.text ?? '');
+  }
+
+  it('attaches a superset caveat to the codex transport', async () => {
+    const codex = (await report()).transports.find((t) => t.transport === 'codex');
+    expect(codex?.catalogueCaveat).toMatch(/superset/i);
+    expect(codex?.catalogueCaveat).toMatch(/not the runnable set/i);
+  });
+
+  it('leaves transports whose catalogue is what they serve uncaveated', async () => {
+    const byName = new Map((await report()).transports.map((t) => [t.transport, t]));
+    // Absent, not an empty string: no known caveat applies to these catalogues.
+    expect(byName.get('claude')).not.toHaveProperty('catalogueCaveat');
+    expect(byName.get('opencode')).not.toHaveProperty('catalogueCaveat');
+  });
+
+  it('points readers at the per-transport caveat in the top-level note', async () => {
+    expect((await report()).note).toMatch(/catalogueCaveat/);
   });
 });
