@@ -1,10 +1,13 @@
 /**
  * Read-only join of persisted consensus cost rollups and vote verdicts (#6809).
- * Cost rows contain final-seat usage, not discarded retry/fallback attempts.
+ * The legacy totals are final-seat usage. Rows written since #6821 also carry
+ * observed outer-attempt usage (retries, parse failures, fallbacks), reported
+ * separately in {@link ConsensusDecisionTokenReport.observedAttemptUsage}.
  */
 import type { VoteRecordDecision } from '../audit/vote-record.js';
 import { aggregateDecisionCosts } from './decision-cost-aggregate.js';
 import { DecisionCostRecordSchema, type DecisionCostRecord } from './decision-cost-store.js';
+import type { ObservedAttemptUsage } from './attempt-usage.js';
 
 /** The two persisted vote fields needed by the read-only cost join. */
 export interface LinkedVote {
@@ -29,8 +32,37 @@ export interface ConsensusDecisionTokenReport {
   readonly tokenMeasuredVoters: number;
   readonly tokenUnmeasuredVoters: number;
   readonly tokenCoverage: number | null;
-  /** Discarded retries/fallbacks are not persisted; every token total is a floor. */
+  /** The final-seat totals above exclude retries/fallbacks; every one is a floor. */
   readonly measurement: 'lower-bound-final-seats';
+  /**
+   * Outer-attempt usage summed over the matched decisions that recorded it
+   * (#6821); `decisions` of the matched total did. Never added to the
+   * final-seat totals. A floor when `incompleteSeats > 0`; null when no
+   * matched decision recorded any — not observed, never zero.
+   */
+  readonly observedAttemptUsage: (ObservedAttemptUsage & { readonly decisions: number }) | null;
+}
+
+/** Sum the observed attempt usage of the matched records that carry it. */
+function sumObservedAttempts(
+  records: readonly DecisionCostRecord[]
+): ConsensusDecisionTokenReport['observedAttemptUsage'] {
+  const observed = records.flatMap((r) =>
+    r.summary.observedAttemptUsage !== undefined ? [r.summary.observedAttemptUsage] : []
+  );
+  if (observed.length === 0) return null;
+  const sum = (key: keyof ObservedAttemptUsage): number =>
+    observed.reduce((total, o) => total + o[key], 0);
+  return {
+    decisions: observed.length,
+    seats: sum('seats'),
+    incompleteSeats: sum('incompleteSeats'),
+    completions: sum('completions'),
+    reportedCompletions: sum('reportedCompletions'),
+    inputTokens: sum('inputTokens'),
+    outputTokens: sum('outputTokens'),
+    totalTokens: sum('totalTokens'),
+  };
 }
 
 /** Count IDs without turning duplicates into independent decisions. */
@@ -185,5 +217,6 @@ export function summarizeConsensusDecisionTokens(
     tokenUnmeasuredVoters: coverage?.tokenUnmeasuredVoters ?? 0,
     tokenCoverage: coverage?.tokenCoverage ?? null,
     measurement: 'lower-bound-final-seats',
+    observedAttemptUsage: sumObservedAttempts(joined.records),
   };
 }

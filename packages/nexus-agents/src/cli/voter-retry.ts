@@ -12,6 +12,7 @@ import { sleep } from '../utils/async-utils.js';
 import { isAbsentSeat } from './voter-unverifiable.js';
 import { isCancelled } from './voter-cancel.js';
 import { DEADLINE_MESSAGE } from './voter-agents-deadline.js';
+import { carryAttemptUsage } from './voter-attempt-usage.js';
 
 /**
  * C0 and C1 control characters, DEL included (#6246, security seat; the C1
@@ -155,14 +156,16 @@ export async function retryErroredRoles(
     const prior = firstByRole.get(r.role);
     const from = prior !== undefined && isAbsentSeat(prior) ? retriedFromOf(prior) : undefined;
     recovered.set(r.role, {
-      ...r,
+      // #6821: the replaced first pass billed its completions too.
+      ...carryAttemptUsage(prior, r),
       retried: true,
       ...(from !== undefined ? { retriedFrom: from } : {}),
     });
   }
+  const kept = keepFailedRetryUsage(first, retriedResults);
   if (recovered.size === 0) {
     logger.warn('Per-role retry recovered no voter — the panel stays degraded', { erroredRoles });
-    return first;
+    return kept;
   }
   logger.info('Per-role retry recovered voters', {
     recoveredRoles: [...recovered.values()].filter((v) => v.source === 'llm').map((v) => v.role),
@@ -171,5 +174,21 @@ export async function retryErroredRoles(
       .map((v) => v.role),
     stillErrored: erroredRoles.filter((r) => !recovered.has(r)),
   });
-  return first.map((v) => recovered.get(v.role) ?? v);
+  return kept.map((v) => recovered.get(v.role) ?? v);
+}
+
+/**
+ * The first pass, with the usage of each retry that errored again folded into
+ * its seat (#6821): the seat keeps its first result, but the failed retry's
+ * settled completions were billed all the same.
+ */
+function keepFailedRetryUsage(
+  first: readonly AgentVoteResult[],
+  retried: readonly AgentVoteResult[]
+): readonly AgentVoteResult[] {
+  const failedByRole = new Map(retried.filter((r) => r.source === 'error').map((r) => [r.role, r]));
+  return first.map((v) => {
+    const failed = failedByRole.get(v.role);
+    return failed === undefined ? v : carryAttemptUsage(failed, v);
+  });
 }

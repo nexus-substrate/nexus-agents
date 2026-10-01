@@ -430,6 +430,66 @@ describe('launchVotesWithOverallDeadline (Issue #1871)', () => {
     expect(seen).toEqual(['badcli', 'goodcli']); // tried diverse, then fallback
   });
 
+  // #6821: the failed primary's settled completions were billed; a seat that
+  // fell over must not drop them when the fallback answers.
+  it('a fallback seat keeps the attempt usage of the primary it fell over from', async () => {
+    const roleAdapters = new Map<VoterRole, IModelAdapter>([
+      ['architect', makeCliAdapter('badcli')],
+    ]);
+    const voteFn = (
+      role: VoterRole,
+      _p: string,
+      adapter: IModelAdapter
+    ): Promise<AgentVoteResult> => {
+      const name = (adapter as { name?: string }).name ?? adapter.providerId;
+      if (name === 'badcli') {
+        return Promise.resolve({
+          role,
+          vote: { decision: 'abstain', confidence: 0, reasoning: '[Error] parse' },
+          error: 'Vote parsing failed: no JSON',
+          processingTimeMs: 5,
+          source: 'error',
+          cli: name,
+          attemptUsage: { completions: 2, reportedCompletions: 1, inputTokens: 500 },
+        });
+      }
+      return Promise.resolve({
+        ...makeOkVote(role),
+        inputTokens: 40,
+        outputTokens: 10,
+        attemptUsage: {
+          completions: 1,
+          reportedCompletions: 1,
+          inputTokens: 40,
+          outputTokens: 10,
+        },
+      });
+    };
+
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect'],
+      proposal: 'test',
+      roleAdapters,
+      fallbackAdapter: makeCliAdapter('goodcli'),
+      logger: silentLogger,
+      voteOptions: { timeoutMs: 1_000, maxRetries: 0, allowSimulation: false },
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteFn,
+    });
+
+    expect(results[0]?.source).toBe('llm');
+    // The answering completion's own usage is unchanged …
+    expect(results[0]?.inputTokens).toBe(40);
+    // … and the seat's attempt usage now includes the primary's.
+    expect(results[0]?.attemptUsage).toEqual({
+      completions: 3,
+      reportedCompletions: 2,
+      inputTokens: 540,
+      outputTokens: 10,
+    });
+  });
+
   it('does not retry when the failing adapter IS the fallback (no loop)', async () => {
     // architect uses the fallback directly; a failure must not re-invoke it.
     const fallback = makeCliAdapter('only');

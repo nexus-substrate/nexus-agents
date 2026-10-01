@@ -354,6 +354,67 @@ That's my vote.`;
       expect(result.error).toBeUndefined();
     });
 
+    // #6821: the seat result carries the usage of every settled completion.
+    describe('attempt usage on the seat (#6821)', () => {
+      const usage = { inputTokens: 100, outputTokens: 50, totalTokens: 150 };
+
+      it('a voting seat carries its attempt usage beside the answer’s own', async () => {
+        const adapter = createMockAdapter({
+          response: {
+            ok: true,
+            value: {
+              content: JSON.stringify({
+                decision: 'approve',
+                reasoning: 'Good technical design that follows patterns.',
+                confidence: 0.9,
+              }) as unknown as CompletionResponse['content'],
+              usage,
+              stopReason: 'end_turn' as const,
+              model: 'test',
+            },
+          },
+        });
+        const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
+          timeoutMs: 5000,
+          maxRetries: 0,
+        });
+        expect(result.inputTokens).toBe(100);
+        expect(result.attemptUsage).toEqual({
+          completions: 1,
+          reportedCompletions: 1,
+          inputTokens: 100,
+          outputTokens: 50,
+        });
+      });
+
+      it('an errored seat keeps the usage its parse-failed completion billed', async () => {
+        const adapter = createMockAdapter({
+          response: {
+            ok: true,
+            value: {
+              content: 'no vote here' as unknown as CompletionResponse['content'],
+              usage,
+              stopReason: 'end_turn' as const,
+              model: 'test',
+            },
+          },
+        });
+        const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
+          timeoutMs: 5000,
+          maxRetries: 0,
+        });
+        expect(result.source).toBe('error');
+        // The legacy fields describe an answering completion; there was none.
+        expect(result.inputTokens).toBeUndefined();
+        expect(result.attemptUsage).toEqual({
+          completions: 1,
+          reportedCompletions: 1,
+          inputTokens: 100,
+          outputTokens: 50,
+        });
+      });
+    });
+
     // #4392 inc 2 step 4: the seat carries the gateway arm it answered on, so
     // the cost rollup prices it by the arm's declaration. Without this the
     // rollup falls back to the model id's vendor list price — the misreport.

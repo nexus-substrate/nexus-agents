@@ -444,3 +444,31 @@ describe('DecisionCostStore undeclared-options detector verdict (#5422)', () => 
     expect(persisted).toBe(false);
   });
 });
+
+describe('DecisionCostStore attempt usage (#6821)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'decision-cost-attempts-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('persists and re-reads the observed attempt usage', () => {
+    const file = join(dir, 'decision-costs.jsonl');
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    const attemptUsage = { completions: 2, reportedCompletions: 1, inputTokens: 90 };
+    const { persisted } = store.record({
+      decisionId: 'd-attempts',
+      gate: 'consensus_vote',
+      voters: [{ ...VOTERS[0]!, attemptUsage }],
+      billingMode: 'api',
+      timestamp: TS,
+    });
+    expect(persisted).toBe(true);
+    const line = JSON.parse(readFileSync(file, 'utf8').trim()) as unknown;
+    const reread = DecisionCostRecordSchema.parse(line);
+    expect(reread.summary.perVoter[0]?.attemptUsage).toEqual(attemptUsage);
+    expect(reread.summary.observedAttemptUsage?.incompleteSeats).toBe(1);
+  });
+});

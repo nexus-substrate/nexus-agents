@@ -466,3 +466,54 @@ describe('price basis (#4406 — a list-derived cost is not a contract-accurate 
     expect(Object.keys(summary)).not.toContain('priceBasis');
   });
 });
+
+// #6821: observed outer-attempt usage rides beside the answering-completion
+// totals; it is never summed into them.
+describe('observed attempt usage (#6821)', () => {
+  const retried: VoterCostInput = {
+    role: 'architect',
+    model: 'claude-sonnet',
+    inputTokens: 100,
+    outputTokens: 20,
+    costUsd: 0.001,
+    attemptUsage: { completions: 3, reportedCompletions: 3, inputTokens: 300, outputTokens: 60 },
+  };
+
+  it('leaves the answering-completion totals unchanged', () => {
+    const summary = rollupDecisionCost([retried], 'api');
+    expect(summary.totalInputTokens).toBe(100);
+    expect(summary.totalOutputTokens).toBe(20);
+    expect(summary.perVoter[0]?.attemptUsage).toEqual(retried.attemptUsage);
+  });
+
+  it('totals the observed attempts separately and counts incomplete seats', () => {
+    const summary = rollupDecisionCost(
+      [
+        retried,
+        {
+          role: 'pm',
+          model: 'gpt-5.5',
+          attemptUsage: { completions: 2, reportedCompletions: 0 },
+        },
+        { role: 'security', model: 'gemini-flash' },
+      ],
+      'api'
+    );
+    expect(summary.observedAttemptUsage).toEqual({
+      seats: 2,
+      incompleteSeats: 1,
+      completions: 5,
+      reportedCompletions: 3,
+      inputTokens: 300,
+      outputTokens: 60,
+      totalTokens: 360,
+    });
+    expect(() => DecisionCostSummarySchema.strict().parse(summary)).not.toThrow();
+  });
+
+  it('omits the observed total when no seat carried attempt usage', () => {
+    const summary = rollupDecisionCost([{ role: 'security', model: 'gemini-flash' }], 'plan');
+    expect(summary).not.toHaveProperty('observedAttemptUsage');
+    expect(summary.perVoter[0]).not.toHaveProperty('attemptUsage');
+  });
+});

@@ -178,3 +178,37 @@ describe('summarizeConsensusDecisionTokens', () => {
     expect(report.invalidCostRecords).toBe(1);
   });
 });
+
+// #6821: observed outer-attempt usage is reported beside the final-seat totals.
+describe('observed attempt usage in the decision-token report (#6821)', () => {
+  function withAttempts(
+    record: DecisionCostRecord,
+    observed: NonNullable<DecisionCostRecord['summary']['observedAttemptUsage']>
+  ): DecisionCostRecord {
+    return { ...record, summary: { ...record.summary, observedAttemptUsage: observed } };
+  }
+  const observed = {
+    seats: 1,
+    incompleteSeats: 1,
+    completions: 3,
+    reportedCompletions: 2,
+    inputTokens: 90,
+    outputTokens: 10,
+    totalTokens: 100,
+  };
+
+  it('is null when no matched decision observed attempt usage', () => {
+    const report = summarizeConsensusDecisionTokens([cost('a', 4)], [vote('a', 'approved')]);
+    expect(report.observedAttemptUsage).toBeNull();
+  });
+
+  it('totals matched decisions that observed attempts, separately from final seats', () => {
+    const report = summarizeConsensusDecisionTokens(
+      [withAttempts(cost('a', 40), observed), withAttempts(cost('b', 9), observed), cost('c', 1)],
+      [vote('a', 'approved'), vote('c', 'rejected')]
+    );
+    // `b` is unmatched and `c` is legacy: only `a` contributes.
+    expect(report.observedAttemptUsage).toEqual({ decisions: 1, ...observed });
+    expect(report.totalReportedFinalSeatTokens).toBe(41);
+  });
+});
