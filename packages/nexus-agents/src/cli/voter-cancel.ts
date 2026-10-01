@@ -67,3 +67,8 @@ export function cancelledSeat(lastError: string): { ok: false; error: string } {
     lastError !== '' ? `${SEAT_CANCELLED_MESSAGE}: ${lastError}` : SEAT_CANCELLED_MESSAGE;
   return { ok: false, error };
 }
+
+/** True for an error that {@link cancelledSeat} produced, with or without a carried last error. */
+export function isCancelledSeatError(error: string | undefined): boolean {
+  return error?.startsWith(SEAT_CANCELLED_MESSAGE) === true;
+}

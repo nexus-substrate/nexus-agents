@@ -12,6 +12,7 @@ import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { getRandomProvider } from '../core/index.js';
 import { withTimeout } from '../utils/async-utils.js';
+import { trackVoterCompletion } from './voter-late-settlement.js';
 import { cancelledSeat, isCancelled, seatSignal, unlessCancelled } from './voter-cancel.js';
 import { waitForVoteRetry } from './voter-cancel.js';
 import { getVoterPrompts, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -330,7 +331,10 @@ async function runVoteCompletion(
   args: VoteCompletionArgs
 ): Promise<Omit<VoteAttemptSuccess, 'vote'> | VoteAttemptFailure> {
   const timeoutResult = await withTimeout(
-    unlessCancelled(args.adapter.complete(buildVoteRequest(args)), args.signal),
+    unlessCancelled(
+      trackVoterCompletion(args.adapter.complete(buildVoteRequest(args)), args.signal),
+      args.signal
+    ),
     args.timeoutMs,
     `Vote timeout after ${String(args.timeoutMs)}ms for role: ${args.role}`
   );
