@@ -2,7 +2,7 @@
  * nexus-agents/mcp - Query Trace MCP Tool (Epic #952, Phase 5)
  *
  * Read-only MCP tool that queries execution traces from disk
- * (./runs/{runId}/trace.jsonl) written by TraceWriter.
+ * (runs/{runId}/trace.jsonl, with a legacy traces/ fallback) written by TraceWriter.
  *
  * @module mcp/tools/query-trace-tool
  */
@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { nexusDataPath } from '../../config/nexus-data-dir.js';
 import { getDefaultRunsDir } from '../../pipeline/pipeline-runner.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -60,6 +61,8 @@ export interface QueryTraceResponse {
   readonly totalEvents: number;
   readonly truncated: boolean;
   readonly source: 'disk' | 'not_found';
+  /** Data subdirectory read; omitted for missing traces and explicit directory overrides. */
+  readonly sourceDirectory?: 'runs' | 'traces';
   /**
    * Lines the reader could not parse, omitted when none.
    *
@@ -212,14 +215,28 @@ function readTraceResponse(
   };
 }
 
-/** Read trace events from disk for a given run_id. */
+/** Read runs/ first, then legacy traces/ only when absent. Overrides use a single root. */
 export async function queryTraceFromDisk(
   input: QueryTraceInput,
   runsDir?: string
 ): Promise<QueryTraceResponse> {
-  const dir = runsDir ?? getDefaultRunsDir();
+  if (runsDir !== undefined) return readTraceFromDirectory(input, runsDir);
 
-  // Path traversal guard: the trace must stay within the runs directory after
+  const primary = await readTraceFromDirectory(input, getDefaultRunsDir());
+  if (primary.errorCategory !== 'not_found') {
+    return primary.source === 'disk' ? { ...primary, sourceDirectory: 'runs' } : primary;
+  }
+
+  const legacy = await readTraceFromDirectory(input, nexusDataPath('traces'));
+  return legacy.source === 'disk' ? { ...legacy, sourceDirectory: 'traces' } : legacy;
+}
+
+/** Read a trace within one directory, preserving the path guard and read limits. */
+async function readTraceFromDirectory(
+  input: QueryTraceInput,
+  dir: string
+): Promise<QueryTraceResponse> {
+  // Path traversal guard: the trace must stay within its directory after
   // following symlinks, and the canonical path is what gets read.
   const tracePath = resolveInsideRoot(join(dir, input.runId, 'trace.jsonl'), dir);
   if (tracePath === null) {

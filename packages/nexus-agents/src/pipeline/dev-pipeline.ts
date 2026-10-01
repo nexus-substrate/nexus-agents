@@ -18,7 +18,6 @@
  * @module pipeline/dev-pipeline
  */
 
-import { nexusDataPath } from '../config/nexus-data-dir.js';
 import { realpathSync } from 'node:fs';
 import { isAbsolute, relative, sep } from 'node:path';
 
@@ -53,6 +52,7 @@ import {
 } from './pipeline-checkpoint.js';
 import type { PipelineCheckpointState } from './pipeline-checkpoint.js';
 import { TraceWriter } from './trace-writer.js';
+import { getDefaultRunsDir } from './pipeline-runner.js';
 import { createAuditTrail } from '../security/audit-trail.js';
 import type { AuditTrail } from '../security/audit-trail.js';
 import { createDurableAuditSink } from '../security/audit-bridge.js';
@@ -722,9 +722,8 @@ function buildPolicyAuditTrail(auditLogger: IAuditLogger | undefined): AuditTrai
 function createTraceWriter(sessionId: string | undefined): TraceWriter | null {
   if (sessionId === undefined) return null;
   try {
-    const tracesDir = nexusDataPath('traces');
     return new TraceWriter(getPipelineEventBus(), {
-      runsDir: tracesDir,
+      runsDir: getDefaultRunsDir(),
       runId: `pipeline-${sessionId}`,
     });
   } catch (error: unknown) {
