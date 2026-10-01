@@ -212,7 +212,7 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     expect(readVoteRecords(ledger).records).toHaveLength(0);
   });
 
-  it('keeps an empty panel distinct from all-error and records the existing resolved decision', async () => {
+  it('keeps the empty-panel decision but refuses a ledger record with no attribution', async () => {
     voters.empty = true;
     const vote = await createAgentStages({
       votingStrategy: 'simple_majority',
@@ -223,10 +223,9 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     expect(vote.kind).toBe('rejected');
     const costs = new DecisionCostStore().all();
     expect(costs).toHaveLength(1);
-    expect(readVoteRecords(ledger).records[0]).toMatchObject({
-      correlationId: costs[0]?.decisionId,
-      decision: 'rejected',
-    });
+    // Previously this asserted persistence with zero attribution (#5120).
+    // The decision and cost reporting stay intact; the ledger refuses it.
+    expect(readVoteRecords(ledger).records).toHaveLength(0);
     expect(getOutcomeStore().query({ source: 'consensus' })).toHaveLength(0);
   });
 });

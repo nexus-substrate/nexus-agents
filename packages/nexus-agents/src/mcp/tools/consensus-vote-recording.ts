@@ -135,8 +135,9 @@ function toRecordStrategy(strategy: string): VoteRecord['strategy'] {
  * resolves to a writable `.nexus-agents/governance/` location — so the normal
  * case is `persisted: true`. The former `'no-repo-root'` reason is OBSOLETE
  * (there is always a homedir/sandbox/repo fallback): a non-persist is now either
- * `'all-simulated'` (skipped by design) or `'write-failed'` (the data dir was
- * unwritable, or a fail-closed traversal rejection). Observability only.
+ * `'empty-panel'` or `'all-simulated'` (skipped by design), `'write-failed'`
+ * (the data dir was unwritable, or a fail-closed traversal rejection), or
+ * `'read-back-missed'` (the appended record could not be read back).
  */
 export type VoteRecordPersistOutcome =
   | {
@@ -151,7 +152,7 @@ export type VoteRecordPersistOutcome =
        * `read-back-missed` (#6531): the append returned, but the record is not
        * on the ledger under its id and hash. Never reported as written.
        */
-      readonly reason: 'all-simulated' | 'write-failed' | 'read-back-missed';
+      readonly reason: 'empty-panel' | 'all-simulated' | 'write-failed' | 'read-back-missed';
       readonly detail: string;
     };
 
@@ -159,7 +160,9 @@ export type VoteRecordPersistOutcome =
  * Persist an authentic, self-hashed vote record (tamper-evident record set +
  * monotonic sequence, #3927) at vote time (#3897). Best-effort: a persist
  * failure must never fail the vote, so the store swallows + logs. Skips
- * all-simulated runs (random output must not seed a committed record).
+ * empty panels (no seat attribution) and all-simulated runs (random output
+ * must not seed a committed record). Errored seats remain attributed in the
+ * input array, so an all-errored panel can still persist its no-quorum record.
  *
  * RUNTIME LEDGER (#3991, design vote 7-0 Option B): the path routes through
  * `nexusDataPath('governance', ...)`, landing in a writable
@@ -167,6 +170,7 @@ export type VoteRecordPersistOutcome =
  * `persisted: true` is the normal case. Returns a structured
  * {@link VoteRecordPersistOutcome} so the caller can surface a non-persist to MCP
  * clients:
+ *  - `empty-panel` — no seats were attributed; persistence is refused;
  *  - `all-simulated` — every vote was simulated; a committed record would seed
  *    governance from random output (#2319);
  *  - `write-failed` — the data dir was unwritable (or a fail-closed traversal
@@ -224,7 +228,13 @@ interface RecordAuthenticVoteArgs {
 export async function recordAuthenticVote(
   args: RecordAuthenticVoteArgs
 ): Promise<VoteRecordPersistOutcome> {
-  const allSimulated = args.votes.length > 0 && args.votes.every((v) => v.source === 'simulation');
+  if (args.votes.length === 0) {
+    const detail = 'Authentic vote record NOT persisted: empty panel has no voter attribution.';
+    logger.warn(detail);
+    return { persisted: false, reason: 'empty-panel', detail };
+  }
+  // Non-empty here (refused above), so `every` cannot answer the empty case.
+  const allSimulated = args.votes.every((v) => v.source === 'simulation');
   if (allSimulated) {
     logger.debug('Skipping authentic vote record — all votes simulated');
     return {

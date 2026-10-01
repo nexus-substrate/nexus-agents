@@ -26,6 +26,11 @@
  * needed for a payload that gets rejected.
  */
 
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, it, expect, vi } from 'vitest';
 
 import { createSecureHandler, type SecurityTier } from './secure-handler.js';
@@ -33,6 +38,8 @@ import { registerIssueTriageTool } from '../tools/issue-triage-tool.js';
 import { registerResearchAddSourceTool } from '../tools/research-add-source.js';
 import { registerOrchestrateTool } from '../tools/orchestrate.js';
 import { registerPrReviewTool } from '../tools/pr-review-tool.js';
+
+const TOOLS_DIRECTORY = fileURLToPath(new URL('../tools', import.meta.url));
 
 /**
  * A real injection payload, taken from the `INJECTION_DETECTORS` table in
@@ -86,6 +93,110 @@ function makeDeps(): unknown {
     rateLimiter: { tryAcquire: vi.fn().mockReturnValue(true) },
   };
 }
+
+// This table drives real registration tests and supplies their coverage set.
+const EXTERNAL_TOOL_CASES = [
+  {
+    fileName: 'issue-triage-tool.ts',
+    register: registerIssueTriageTool,
+    input: {
+      issueUrl: 'https://github.com/owner/repo/issues/1',
+      context: INJECTION_PAYLOAD,
+    },
+  },
+  {
+    fileName: 'pr-review-tool.ts',
+    register: registerPrReviewTool,
+    input: { prDiff: 'diff --git a/a.ts b/a.ts', prDescription: INJECTION_PAYLOAD },
+  },
+  {
+    fileName: 'research-add-source.ts',
+    register: registerResearchAddSourceTool,
+    input: { url: 'https://example.com/paper', title: INJECTION_PAYLOAD },
+  },
+];
+
+/** Parse declarations, excluding comments and test fixtures from the scan. */
+function findExternalToolFiles(toolsDirectory: string): string[] {
+  const externalFiles: string[] = [];
+  const files = ts.sys.readDirectory(toolsDirectory, ['.ts'], ['**/*.test.ts', '**/*.spec.ts']);
+  for (const file of files) {
+    const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest);
+    let declaresExternal = false;
+    function visit(node: ts.Node): void {
+      if (
+        ts.isPropertyAssignment(node) &&
+        (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
+        node.name.text === 'securityTier' &&
+        ts.isStringLiteral(node.initializer) &&
+        node.initializer.text === 'external'
+      ) {
+        declaresExternal = true;
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    if (declaresExternal) externalFiles.push(relative(toolsDirectory, file));
+  }
+  return externalFiles.sort();
+}
+
+function assertExternalToolsCovered(toolsDirectory: string): void {
+  const externalFiles = findExternalToolFiles(toolsDirectory);
+  if (externalFiles.length === 0) throw new Error('No external-tier tools declared');
+  const coveredFiles = new Set(EXTERNAL_TOOL_CASES.map(({ fileName }) => fileName));
+  const missingFiles = externalFiles.filter((file) => !coveredFiles.has(file));
+  if (missingFiles.length > 0) {
+    throw new Error(`External-tier tools missing seam coverage: ${missingFiles.join(', ')}`);
+  }
+}
+
+describe('external-tier seam coverage stays complete', () => {
+  it('covers every production tool declaring the external tier', () => {
+    assertExternalToolsCovered(TOOLS_DIRECTORY);
+  });
+
+  it('names an uncovered declaration added to a temporary source copy', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'security-tier-seam-'));
+    try {
+      cpSync(TOOLS_DIRECTORY, directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'uncovered-tool.ts'),
+        "const config = { securityTier: 'external' };"
+      );
+      expect(() => {
+        assertExternalToolsCovered(directory);
+      }).toThrow('External-tier tools missing seam coverage: uncovered-tool.ts');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not count comments or test-only declarations as production tools', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'security-tier-seam-'));
+    try {
+      writeFileSync(join(directory, 'comment.ts'), "// securityTier: 'external'\n");
+      writeFileSync(
+        join(directory, 'fixture.test.ts'),
+        "const config = { securityTier: 'external' };"
+      );
+      expect(findExternalToolFiles(directory)).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to certify an empty declaration set', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'security-tier-seam-'));
+    try {
+      expect(() => {
+        assertExternalToolsCovered(directory);
+      }).toThrow('No external-tier tools declared');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 // ============================================================================
 // Consumer half — the middleware, with the real sanitizer
@@ -142,25 +253,6 @@ describe('checkSecurityTier, driven through the real middleware', () => {
 // ============================================================================
 
 describe('untrusted-input tools declare a non-standard tier (#5120 item 4)', () => {
-  it('issue_triage rejects an injection payload before reaching its handler', async () => {
-    // Crosses the seam: the real `registerIssueTriageTool` supplies the tier,
-    // and the real middleware acts on it. Deleting `securityTier: 'external'`
-    // from that file fails this test — which nothing did before.
-    //
-    // No GITHUB_TOKEN is needed: the tier check runs in `runPreChecks`, so a
-    // rejected payload never reaches the SCM call.
-    const { server, getHandler } = captureRegisteredHandler();
-    registerIssueTriageTool(server as never, makeDeps() as never);
-
-    const result = await getHandler()({
-      issueUrl: `https://github.com/owner/repo/issues/1`,
-      context: INJECTION_PAYLOAD,
-    });
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);
-  });
-
   it('orchestrate rejects an injection payload before reaching its handler', async () => {
     // Added because mutation testing found this producer unpinned: deleting
     // `securityTier: 'user-facing'` from orchestrate.ts left the other two
@@ -184,38 +276,16 @@ describe('untrusted-input tools declare a non-standard tier (#5120 item 4)', () 
     expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);
   });
 
-  it('pr_review rejects an injection payload before reaching its handler', async () => {
-    // pr_review had NO securityTier, so it took the permissive default while
-    // interpolating caller-supplied text straight into the voter prompt:
-    // `buildPrompt` pushes `input.prDescription` unfenced, three lines above
-    // the instruction "Decide: should it be merged as-is? APPROVE if ...".
-    // Attacker-controlled PR body text therefore sat next to the verdict
-    // instruction on a merge-decision path, in front of five model voters.
-    // `.rules/untrusted-input.md` names PR bodies Tier 2/3 explicitly.
-    const { server, getHandler } = captureRegisteredHandler();
-    registerPrReviewTool(server as never, makeDeps() as never);
-
-    const result = await getHandler()({
-      prDiff: 'diff --git a/a.ts b/a.ts',
-      prDescription: INJECTION_PAYLOAD,
-    });
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);
-  });
-
-  it('research_add_source rejects an injection payload before reaching its handler', async () => {
-    const { server, getHandler } = captureRegisteredHandler();
-    registerResearchAddSourceTool(server as never, makeDeps() as never);
-
-    const result = await getHandler()({
-      url: 'https://example.com/paper',
-      title: INJECTION_PAYLOAD,
-    });
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);
-  });
+  it.each(EXTERNAL_TOOL_CASES)(
+    '$fileName rejects an injection payload before reaching its handler',
+    async ({ register, input }) => {
+      const { server, getHandler } = captureRegisteredHandler();
+      register(server as never, makeDeps() as never);
+      const result = await getHandler()(input);
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain(DETECTED_PATTERN_NAME);
+    }
+  );
 });
 
 // ============================================================================
