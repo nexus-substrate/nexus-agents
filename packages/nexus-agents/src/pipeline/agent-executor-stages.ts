@@ -84,10 +84,8 @@ async function gatherResearch(
   return buildResearchContext(discover, analyze, topic);
 }
 
-export function createResearchStage({
-  config,
-  startStage,
-}: StageDeps): DevPipelineStages['research'] {
+export function createResearchStage(deps: StageDeps): DevPipelineStages['research'] {
+  const { config, startStage } = deps;
   return async (task, signal) => {
     // #3372 Option A (7/7 vote): call the research tools DIRECTLY for structured
     // data instead of routing through an LLM expert that discards it. The text
@@ -106,6 +104,7 @@ export function createResearchStage({
       // Direct tool calls consume no routed CLI — recordOutcome (CLI-keyed)
       // no-ops gracefully on undefined cli; research perf is no longer a CLI outcome.
       recordOutcome({
+        sessionId: config.sessionId,
         taskId: 'research',
         category: 'research',
         cli: undefined,
@@ -171,6 +170,7 @@ export function createPlanStage({
       model: r.model,
     });
     recordOutcome({
+      sessionId: config.sessionId,
       taskId: 'plan',
       category: 'architecture',
       ...outcomeFieldsFromBridge(r),
@@ -208,6 +208,7 @@ export function createDecomposeStage({
     const tasks = parseTasksFromResponse(r.text, plan);
     emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
     recordOutcome({
+      sessionId: config.sessionId,
       taskId: 'decompose',
       category: 'planning',
       ...outcomeFieldsFromBridge(r),
@@ -241,6 +242,7 @@ export function createImplementStage({
     });
     const signals = implementQualitySignals(r);
     recordOutcome({
+      sessionId: config.sessionId,
       taskId: task.id,
       category: 'code_generation',
       ...outcomeFieldsFromBridge(r),
@@ -321,6 +323,7 @@ export function createQaReviewStage({
       model: r.model,
     });
     recordOutcome({
+      sessionId: config.sessionId,
       taskId: task.id,
       category: 'code_review',
       // #6521 I2: the row scores the reviewer's CALL; the verdict judges the
@@ -381,6 +384,7 @@ export function createQualityGateStage({
     const ms = getTimeProvider().now() - start;
     emitStageEvent('quality-gate', passed ? 'completed' : 'failed', { durationMs: ms });
     recordOutcome({
+      sessionId: config.sessionId,
       taskId: 'quality-gate',
       category: 'code_review',
       cli: undefined,
@@ -426,6 +430,7 @@ export function createSecurityScanStage({
     // security scan is a deterministic local check (no CLI dispatch),
     // so it has no `cli` to attribute the outcome to. Skip the record.
     recordOutcome({
+      sessionId: config.sessionId,
       taskId: 'security',
       category: 'security_review',
       cli: undefined,

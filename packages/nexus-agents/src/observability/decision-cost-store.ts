@@ -97,8 +97,10 @@ const DecisionCostSummarySchema = z.object({
 
 /** One persisted per-decision cost rollup. */
 export const DecisionCostRecordSchema = z.object({
-  /** Stable id for the decision (correlation id / jobId / minted decision id). */
+  /** Stable decision correlation id, independent of the async job id. */
   decisionId: z.string().min(1).max(160),
+  /** Actual async job id; malformed metadata drops only this field. */
+  jobId: z.string().min(1).max(200).optional().catch(undefined),
   /** Which gate type incurred the cost. */
   gate: DecisionGateSchema,
   /** ISO 8601 timestamp the rollup was recorded. */
@@ -123,6 +125,8 @@ export interface DecisionCostStoreConfig {
 }
 
 export interface RecordDecisionCostInput {
+  /** Actual async job id; omitted for synchronous decisions. */
+  readonly jobId?: string;
   readonly decisionId: string;
   readonly gate: DecisionGate;
   readonly voters: readonly VoterCostInput[];
@@ -179,6 +183,7 @@ export class DecisionCostStore {
     const summary = rollupDecisionCost(input.voters, input.billingMode);
     const record: DecisionCostRecord = {
       decisionId: input.decisionId,
+      ...(input.jobId !== undefined ? { jobId: input.jobId } : {}),
       gate: input.gate,
       timestamp: input.timestamp,
       summary,

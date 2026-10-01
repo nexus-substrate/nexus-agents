@@ -712,6 +712,15 @@ describe('dev pipeline input sanitization forwarding (#4733)', () => {
     }
   );
 
+  it('threads the caller session to the stage executor and trace options (#6858)', async () => {
+    const sessionId = 'session-6858-tool-unusual';
+    await captureHandler()({ task: 'Build feature X', sessionId });
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ sessionId })
+    );
+    expect(runDevPipelineMock.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ sessionId }));
+  });
+
   it('names absent HandlerContext as unmeasured', async () => {
     await captureHandler()({ task: 'Build feature X' });
 

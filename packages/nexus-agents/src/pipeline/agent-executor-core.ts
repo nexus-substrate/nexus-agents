@@ -16,7 +16,12 @@ import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
 import type { BuiltInExpertType } from '../agents/experts/expert-config.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
-import { accessModeSignal, outcomeFailureFields } from '../orchestration/outcomes/outcome-types.js';
+import {
+  accessModeSignal,
+  outcomeFailureFields,
+  TRACE_ID_MAX_LENGTH,
+} from '../orchestration/outcomes/outcome-types.js';
+import { pipelineRunId } from './pipeline-run-id.js';
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
 import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
 import type { RoutingArmId } from '../cli-adapters/types-core.js';
@@ -24,6 +29,18 @@ import {
   servedOutcomeFields,
   type ServedCall,
 } from '../orchestration/outcomes/outcome-served-model.js';
+
+/**
+ * The run id a stage outcome joins its trace on (#6858). Absent when there is no
+ * session, or when the id would exceed the persisted cap: an over-long traceId
+ * makes the whole row fail validation on reload, so the row is kept and simply
+ * counted as unmatched.
+ */
+function pipelineTraceId(sessionId: string | undefined): { traceId?: string } {
+  if (sessionId === undefined) return {};
+  const traceId = pipelineRunId(sessionId);
+  return traceId.length <= TRACE_ID_MAX_LENGTH ? { traceId } : {};
+}
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -49,6 +66,8 @@ export function emitStageEvent(
 
 /** Options bundle for {@link recordOutcome} (collapses to satisfy max-params). */
 interface RecordOutcomeArgs {
+  /** Reachable pipeline session; absent means this row cannot join a run trace. */
+  sessionId: string | undefined;
   taskId: string;
   category: string;
   /**
@@ -162,6 +181,7 @@ export function recordOutcome(args: RecordOutcomeArgs): void {
     const qualitySignals = outcomeQualitySignals(args);
     getOutcomeStore().append({
       id: `pipeline-${args.taskId}-${String(nowMs)}`,
+      ...pipelineTraceId(args.sessionId),
       cli: args.cli,
       category: args.category as 'code_generation',
       model: 'pipeline',
@@ -201,6 +221,8 @@ function accessModeSignals(args: RecordOutcomeArgs): string[] {
 
 /** Configuration for the agent executor. */
 export interface AgentExecutorConfig {
+  /** Pipeline checkpoint session, also used by the run trace; absent means unscoped. */
+  readonly sessionId?: string | undefined;
   readonly scanTarget?: string | undefined;
   readonly simulateVotes?: boolean | undefined;
   /** Voting strategy for consensus stages (default: higher_order). */
