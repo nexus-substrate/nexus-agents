@@ -1,5 +1,21 @@
 # nexus-agents
 
+## 8.118.0
+
+### Minor Changes
+
+- [#6861](https://github.com/nexus-substrate/nexus-agents/pull/6861) [`e7ea8e6`](https://github.com/nexus-substrate/nexus-agents/commit/e7ea8e625568528a2236fb78f61503a236ebead0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Consensus seat outcomes now carry the decision ID shared by their cost and vote records in `traceId`. The existing consensus decision token report adds optional counts for matched decisions, matched and unmatched outcome rows, and LLM-answered seats, plus outcome join coverage. The weather report includes these counts within its cost-section lookback window.
+
+  Coverage is unmeasured (`null`) when there are no consensus outcome rows or no matched decisions. It measures whether a decision has at least one outcome row, not complete panel coverage. An outcome's `success` means the seat answered (`source === 'llm'`), not that the answer was validated. Older outcome rows without `traceId` remain readable and count as unmatched.
+
+### Patch Changes
+
+- [#6863](https://github.com/nexus-substrate/nexus-agents/pull/6863) [`a6116e6`](https://github.com/nexus-substrate/nexus-agents/commit/a6116e604f02fa5f0ad88734d5a7d1910bad5866) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Discover the OpenAI-compatible gateway in every process, not only the MCP server. Before this, a process that never started the server (`nexus-agents orchestrate`, or any direct `createAutoAdapter` caller) had no gateway catalogue: with `NEXUS_OPENAI_COMPAT_URL` / `NEXUS_OPENAI_COMPAT_KEY` set, the custom-openai adapter sent `NEXUS_CUSTOM_MODEL` or the built-in default `gpt-5.5`, which a gateway that does not list that model rejects as model-not-found, and gateway family slots stayed unavailable. `nexus-agents orchestrate` also refused to start on a host with no agent CLI even when a gateway model could serve a slot; it now counts gateway-served slots as runnable arms. Now the first adapter selection runs one `GET /v1/models` per process (shared with the server bootstrap, which never probes twice) and uses the same catalogue the server does. With no gateway configured, or with only the deprecated `NEXUS_CUSTOM_API_*` names, nothing is probed and behaviour is unchanged. When discovery fails, the configured model is still sent, because some gateways serve models without a working `/v1/models` endpoint and refusing would break them. A warning and the selection reason returned by `createAutoAdapter` say the model is unverified, and `doctor --gateway` names the model that will be sent. The flag does not yet reach adapter health or outcome records.
+
+- [#6860](https://github.com/nexus-substrate/nexus-agents/pull/6860) [`6c01f1a`](https://github.com/nexus-substrate/nexus-agents/commit/6c01f1a07ae6bc7aac9e9f7514e027c454942a87) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `query_trace` so it can read development-pipeline execution traces. New development-pipeline traces use the shared `runs/` directory; historical traces in `traces/` remain readable through a fallback when the run is absent from `runs/`. Disk results include `sourceDirectory` (`runs` or `traces`), and `runs/` takes precedence if both directories contain the same run ID. A trace missing from both directories retains the existing `not_found` response.
+
+  Traces that dev-pipeline sessions wrote before this release stay readable from `traces/`. A session resumed after upgrading writes its new events to `runs/`, which takes precedence. The older part of that session's trace in `traces/` is then no longer returned.
+
 ## 8.117.0
 
 ### Minor Changes
