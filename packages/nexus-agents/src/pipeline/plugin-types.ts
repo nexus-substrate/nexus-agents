@@ -69,6 +69,12 @@ export type StageResult = z.infer<typeof StageResultSchema>;
  * Plugins communicate only via artifacts and events.
  */
 export interface StageContext {
+  /** Stage identity; populated by compilePlan, optional for external callers. */
+  readonly stageId?: string;
+  /** Plugin identity; populated by compilePlan, optional for external callers. */
+  readonly pluginId?: string;
+  /** Plan taskId; populated by compilePlan, optional for external callers. */
+  readonly pipelineId?: string;
   /** Abort signal for cancellation. */
   readonly signal: AbortSignal;
   /** Task contract for reference (read-only). */
