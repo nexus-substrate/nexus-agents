@@ -61,7 +61,7 @@ jobs:
         shell: bash
         # The decision lives in a script so it is unit-tested (#6804):
         # scripts/decide-publish-smoke.test.ts.
-        run: bash scripts/decide-publish-smoke.sh "$GITHUB_SHA"
+        run: pnpm exec tsx scripts/publish-env.ts bash scripts/decide-publish-smoke.sh "$GITHUB_SHA"
 
       - name: Build and pack the tarball the publish will ship
         if: steps.publish-path.outputs.will_publish == 'true'
@@ -127,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           local_version=$(jq -r '.version' packages/nexus-agents/package.json)
-          published_version=$(npm view nexus-agents version 2>/dev/null || echo "0.0.0")
+          published_version=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-agents version 2>/dev/null || echo "0.0.0")
           # The sentinel is not a measurement: 0.0.0 sorts below every real
           # version, so the npm-ahead branch below could never fire when the
           # registry did not answer and the step printed "Version sync OK"
@@ -194,13 +194,13 @@ jobs:
           # the install scripts it is describing (see scripts/install-script-allowlist.json).
           # No --omit=optional: optionalDependencies install by default, so they
           # are part of what a consumer receives.
-          npm install --prefix "$SCRATCH/tree" --ignore-scripts "$TARBALL"
+          pnpm exec tsx scripts/publish-env.ts npm install --prefix "$SCRATCH/tree" --ignore-scripts "$TARBALL"
 
           # Written OUTSIDE the checkout. This step runs before the changesets
           # action, and that action commits whatever is in the working tree into
           # the version-PR branch — the first run after #5434 put sbom.cdx.json
           # into "Version Packages" PR #5440 as a new tracked file.
-          npx -y @cyclonedx/cdxgen@12.3.1 \
+          pnpm exec tsx scripts/publish-env.ts npx -y @cyclonedx/cdxgen@12.3.1 \
             -t npm \
             --spec-version 1.6 \
             -o "$SCRATCH/sbom.cdx.json" \
@@ -369,7 +369,7 @@ jobs:
           # "local is ahead" and — with no changesets pending — walked straight
           # into `pnpm release` on a registry outage (#4927 finding 4). The
           # sentinel was only caught on the pending-changesets branch.
-          if ! published_version=$(npm view nexus-agents version 2>"$RUNNER_TEMP/npm-view.err"); then
+          if ! published_version=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-agents version 2>"$RUNNER_TEMP/npm-view.err"); then
             echo "::error::npm view nexus-agents version failed (or the package has never been published), so the publish-race skew is unmeasured. package.json is at $local_version. Not force-publishing; re-run once the registry answers. npm said: $(tr '\n' ' ' <"$RUNNER_TEMP/npm-view.err")"
             exit 1
           fi
@@ -410,7 +410,7 @@ jobs:
             # `npm view` already failed the step above, so the walk below can
             # never be asked to find a 0.0.0 sentinel on main's first-parent line.
             set +e
-            unpublished_list=$(pnpm exec tsx scripts/count-unpublished-bumps.ts "$GITHUB_SHA" "$published_version")
+            unpublished_list=$(pnpm exec tsx scripts/publish-env.ts tsx scripts/count-unpublished-bumps.ts "$GITHUB_SHA" "$published_version")
             bumps_status=$?
             set -e
             if [ "$bumps_status" -eq 2 ]; then
@@ -660,7 +660,7 @@ jobs:
 
       - name: Publish packages (dry run)
         if: ${{ inputs.dry_run == true }}
-        run: env -u npm_config_node_linker -u npm_config_verify_deps_before_run pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks --dry-run
+        run: pnpm exec tsx scripts/publish-env.ts pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks --dry-run
         env:
           NEXUS_PUBLISH_NODE_LINKER: hoisted
           # OIDC trusted publishing — see the comment on the changesets/action
@@ -669,7 +669,7 @@ jobs:
 
       - name: Publish packages
         if: ${{ inputs.dry_run != true }}
-        run: env -u npm_config_node_linker -u npm_config_verify_deps_before_run pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks
+        run: pnpm exec tsx scripts/publish-env.ts pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks
         env:
           NEXUS_PUBLISH_NODE_LINKER: hoisted
           NPM_CONFIG_PROVENANCE: true

@@ -271,6 +271,7 @@ describe('release publish invocation', () => {
             ...process.env,
             PATH: `${dir}:${process.env.PATH ?? ''}`,
             SPAWN_RECORD: record,
+            npm_config_strict_dep_builds: 'true',
             npm_config_node_linker: 'isolated',
             npm_config_verify_deps_before_run: 'false',
           },
@@ -280,15 +281,15 @@ describe('release publish invocation', () => {
         args: string[];
         env: Record<string, string>;
       };
+      expect(spawned.env).not.toHaveProperty('npm_config_strict_dep_builds');
       expect(spawned.env).not.toHaveProperty('npm_config_node_linker');
       expect(spawned.env).not.toHaveProperty('npm_config_verify_deps_before_run');
       expect(spawned.env['NEXUS_PUBLISH_NODE_LINKER']).toBe('hoisted');
       expect(spawned.args).toEqual([
         '--config.node-linker=hoisted',
         'exec',
-        'env',
-        '-u',
-        'npm_config_verify_deps_before_run',
+        'tsx',
+        'scripts/publish-env.ts',
         'changeset',
         'publish',
         '--tag',
