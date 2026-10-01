@@ -133,7 +133,7 @@ jobs:
           # registry did not answer and the step printed "Version sync OK"
           # over a failed lookup. Same guard as the manual-publish job.
           if [ "$published_version" = "0.0.0" ]; then
-            echo "::error::npm view nexus-agents version failed (or the package has never been published), so the npm-ahead skew is unmeasured — not OK. Re-run once the registry answers."
+            echo "::error::npm view nexus-agents version failed — the registry did not answer, the npm config listing in scripts/publish-env.ts failed, or the package has never been published. The npm-ahead skew is unmeasured — not OK. Check registry access and the npm config listing before re-running."
             exit 1
           fi
           larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
@@ -370,7 +370,7 @@ jobs:
           # into `pnpm release` on a registry outage (#4927 finding 4). The
           # sentinel was only caught on the pending-changesets branch.
           if ! published_version=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-agents version 2>"$RUNNER_TEMP/npm-view.err"); then
-            echo "::error::npm view nexus-agents version failed (or the package has never been published), so the publish-race skew is unmeasured. package.json is at $local_version. Not force-publishing; re-run once the registry answers. npm said: $(tr '\n' ' ' <"$RUNNER_TEMP/npm-view.err")"
+            echo "::error::npm view nexus-agents version failed — the registry did not answer, the npm config listing in scripts/publish-env.ts failed, or the package has never been published. The publish-race skew is unmeasured. package.json is at $local_version. Not force-publishing; check registry access and the npm config listing before re-running. npm/publish-env said: $(tr '\n' ' ' <"$RUNNER_TEMP/npm-view.err")"
             exit 1
           fi
           if [ -z "$published_version" ]; then
@@ -431,7 +431,7 @@ jobs:
           fi
 
           echo "::warning::Detected publish-race version skew. package.json=$local_version, npm=$published_version, no pending changesets. Force-publishing $local_version from main ($GITHUB_SHA)."
-          pnpm release
+          pnpm exec tsx scripts/publish-env.ts pnpm release
 
           # `changeset publish` (inside `pnpm release`) creates the git tag
           # LOCALLY but does not push it, and the GitHub Release is normally the
