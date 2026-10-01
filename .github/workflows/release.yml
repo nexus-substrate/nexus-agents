@@ -660,18 +660,18 @@ jobs:
 
       - name: Publish packages (dry run)
         if: ${{ inputs.dry_run == true }}
-        run: pnpm -r publish --access public --no-git-checks --dry-run
+        run: env -u npm_config_node_linker -u npm_config_verify_deps_before_run pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks --dry-run
         env:
-          npm_config_node_linker: hoisted
+          NEXUS_PUBLISH_NODE_LINKER: hoisted
           # OIDC trusted publishing — see the comment on the changesets/action
           # step above. Manual workflow_dispatch uses the same auth path.
           NPM_CONFIG_PROVENANCE: true
 
       - name: Publish packages
         if: ${{ inputs.dry_run != true }}
-        run: pnpm -r publish --access public --no-git-checks
+        run: env -u npm_config_node_linker -u npm_config_verify_deps_before_run pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks
         env:
-          npm_config_node_linker: hoisted
+          NEXUS_PUBLISH_NODE_LINKER: hoisted
           NPM_CONFIG_PROVENANCE: true
 
       # #6525: Poll for the published tarball on the registry until HTTP 200,

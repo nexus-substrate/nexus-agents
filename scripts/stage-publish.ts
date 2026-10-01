@@ -51,6 +51,7 @@ import {
   type ParsedFloors,
 } from './stage-publish-floors.js';
 import { assertSamePacklist, pnpmPackedFileList } from './stage-publish-packlist.js';
+import { publishEnv } from './publish-env.js';
 
 const PACKAGE_DIR = join(ROOT, 'packages/nexus-agents');
 
@@ -185,7 +186,12 @@ function packedFileList(stageDir: string): string[] {
 }
 
 function run(cmd: string, args: string[], cwd: string): string {
-  return execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  return execFileSync(cmd, args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+    env: publishEnv(process.env),
+  });
 }
 
 /**

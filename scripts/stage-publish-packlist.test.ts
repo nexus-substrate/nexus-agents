@@ -1,6 +1,46 @@
-import { describe, expect, it } from 'vitest';
+import * as childProcess from 'node:child_process';
 
-import { assertSamePacklist, pnpmPackReportFiles } from './stage-publish-packlist.js';
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+  assertSamePacklist,
+  pnpmPackedFileList,
+  pnpmPackReportFiles,
+} from './stage-publish-packlist.js';
+
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
+
+describe('pnpmPackedFileList', () => {
+  it('uses the pnpm-only hoisted flag without leaking inherited npm config', () => {
+    vi.stubEnv('npm_config_node_linker', 'isolated');
+    vi.stubEnv('npm_config_verify_deps_before_run', 'false');
+    const exec = vi
+      .mocked(childProcess.execFileSync)
+      .mockReturnValue(JSON.stringify({ files: [{ path: 'package.json' }] }));
+    try {
+      expect(pnpmPackedFileList('/source-package')).toEqual(['package.json']);
+      expect(exec).toHaveBeenCalledWith(
+        'pnpm',
+        [
+          '--config.node-linker=hoisted',
+          'pack',
+          '--json',
+          '--pack-destination',
+          expect.any(String),
+        ],
+        expect.objectContaining({
+          cwd: '/source-package',
+          env: expect.not.objectContaining({ npm_config_node_linker: expect.anything() }),
+        })
+      );
+      const env = exec.mock.calls[0]?.[2]?.env;
+      expect(env).toBeDefined();
+      expect(env).not.toHaveProperty('npm_config_verify_deps_before_run');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 describe('assertSamePacklist', () => {
   it('accepts identical lists in any order', () => {

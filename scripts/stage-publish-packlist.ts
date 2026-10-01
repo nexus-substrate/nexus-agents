@@ -21,6 +21,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { publishEnv } from './publish-env.js';
+
 /** How many differing paths each direction's error names. */
 const SHOWN_DIFFERENCES = 10;
 
@@ -82,12 +84,16 @@ export function pnpmPackReportFiles(stdout: string): string[] {
 export function pnpmPackedFileList(packageDir: string): string[] {
   const dest = mkdtempSync(join(tmpdir(), 'nexus-pnpm-pack-'));
   try {
-    const stdout = execFileSync('pnpm', ['pack', '--json', '--pack-destination', dest], {
-      cwd: packageDir,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'inherit'],
-      env: { ...process.env, npm_config_node_linker: 'hoisted' },
-    });
+    const stdout = execFileSync(
+      'pnpm',
+      ['--config.node-linker=hoisted', 'pack', '--json', '--pack-destination', dest],
+      {
+        cwd: packageDir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'inherit'],
+        env: publishEnv(process.env),
+      }
+    );
     return pnpmPackReportFiles(stdout);
   } finally {
     rmSync(dest, { recursive: true, force: true });

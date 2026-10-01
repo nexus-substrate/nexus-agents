@@ -1,8 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
+
+import { ROOT } from './script-paths.js';
 
 import {
   evaluatePublishExit,
@@ -243,5 +246,56 @@ describe('teeCommand', () => {
       }
     );
     expect(seen.join('')).toBe('New tag: x@1.0.0\n');
+  });
+});
+
+describe('release publish invocation', () => {
+  it('scopes the hoisted linker to pnpm and removes legacy pnpm-only npm config', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-publish-env-'));
+    try {
+      const record = join(dir, 'spawn.json');
+      const pnpm = join(dir, 'pnpm');
+      writeFileSync(
+        pnpm,
+        `#!${process.execPath}\n` +
+          'require("node:fs").writeFileSync(process.env.SPAWN_RECORD, JSON.stringify({' +
+          'args: process.argv.slice(2), env: process.env}));\n'
+      );
+      chmodSync(pnpm, 0o755);
+      execFileSync(
+        process.execPath,
+        ['--import', 'tsx', join(ROOT, 'scripts/release-publish.ts'), '--tag', 'test'],
+        {
+          cwd: ROOT,
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH ?? ''}`,
+            SPAWN_RECORD: record,
+            npm_config_node_linker: 'isolated',
+            npm_config_verify_deps_before_run: 'false',
+          },
+        }
+      );
+      const spawned = JSON.parse(readFileSync(record, 'utf8')) as {
+        args: string[];
+        env: Record<string, string>;
+      };
+      expect(spawned.env).not.toHaveProperty('npm_config_node_linker');
+      expect(spawned.env).not.toHaveProperty('npm_config_verify_deps_before_run');
+      expect(spawned.env['NEXUS_PUBLISH_NODE_LINKER']).toBe('hoisted');
+      expect(spawned.args).toEqual([
+        '--config.node-linker=hoisted',
+        'exec',
+        'env',
+        '-u',
+        'npm_config_verify_deps_before_run',
+        'changeset',
+        'publish',
+        '--tag',
+        'test',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
