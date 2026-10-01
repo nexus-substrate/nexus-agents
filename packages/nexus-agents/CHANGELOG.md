@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.124.0
+
+### Minor Changes
+
+- [#6901](https://github.com/nexus-substrate/nexus-agents/pull/6901) [`f75510a`](https://github.com/nexus-substrate/nexus-agents/commit/f75510a94a2f7034e4d3956bdfcaf5f1db45c10d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add optional task text to feedback routing records so preference learning uses the routed task rather than the router's explanation. Call `recordRoutingDecision(decision, traceId, { query: taskText })` to supply it; preference training is skipped when task text is unavailable or blank. Feedback now retains the selected preference tier and uses consistent model display names across feedback, observer, and stored decisions.
+
 ## 8.123.0
 
 ### Minor Changes
