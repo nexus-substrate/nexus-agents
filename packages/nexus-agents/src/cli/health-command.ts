@@ -8,6 +8,7 @@
  * (Source: Issue #1403)
  */
 
+import type { ConsensusDecisionTokenReport } from '../observability/consensus-decision-tokens.js';
 import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
 import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { getTuneAdjustmentStore, type TuneDemotionStat } from '../core/index.js';
@@ -46,6 +47,8 @@ export interface HealthResult {
   /** Self-tuning loop demotion telemetry (#3323) — applied vs intended per CLI. */
   readonly tuneAdjustments: readonly TuneDemotionStat[];
   readonly timestamp: string;
+  /** Decision and pipeline join measurements, including unreadable trace counts. */
+  readonly consensusDecisionTokens?: ConsensusDecisionTokenReport;
 }
 
 // ============================================================================
@@ -54,7 +57,7 @@ export interface HealthResult {
 
 /** Collects health data from weather report. Exported for testing. */
 export function collectHealth(): HealthResult {
-  const report: WeatherReportResponse = generateWeatherReport({});
+  const report: WeatherReportResponse = generateWeatherReport({ includePipelineJoins: true });
 
   return {
     swarmHealth: report.swarmHealth,
@@ -67,6 +70,9 @@ export function collectHealth(): HealthResult {
     cliHealth: report.cliWeather.map(toCliSummary),
     tuneAdjustments: getTuneAdjustmentStore().demotionStats(),
     timestamp: new Date().toISOString(),
+    ...(report.costSection !== undefined
+      ? { consensusDecisionTokens: report.costSection.consensusDecisionTokens }
+      : {}),
   };
 }
 
@@ -189,6 +195,18 @@ function renderTable(health: HealthResult): void {
   );
   w(`  Total Tasks:   ${c.cyan}${String(health.totalTasks)}${c.reset}\n`);
   w(`  Active CLIs:   ${c.cyan}${String(health.cliCount)}${c.reset}\n\n`);
+
+  const tokens = health.consensusDecisionTokens;
+  if (tokens !== undefined) {
+    const coverage = tokens.pipelineOutcomeJoinCoverage;
+    const reading =
+      coverage === null || coverage === undefined
+        ? 'unmeasured'
+        : `${(coverage * 100).toFixed(1)}%`;
+    w(
+      `  Pipeline Join Coverage: ${reading} (unreadable traces: ${String(tokens.unreadablePipelineTraces ?? 0)})\n\n`
+    );
+  }
 
   // Per-CLI performance
   if (health.cliHealth.length > 0) {

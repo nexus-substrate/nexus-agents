@@ -1991,11 +1991,14 @@ InterfaceDeclaration ConsensusDecisionTokenReport
   readonly matchedLlmAnsweredOutcomeRows?: number | undefined
   readonly matchedNoQuorumDecisions: number
   readonly matchedOutcomeRows?: number | undefined
+  readonly matchedPipelineOutcomeRows?: number | undefined
+  readonly matchedPipelineRuns?: number | undefined
   readonly matchedQuorumDecisions: number
   readonly measurement: "lower-bound-final-seats"
   readonly noQuorumReportedFinalSeatTokens: number
   readonly observedAttemptUsage?: (ObservedAttemptUsage & { readonly decisions: number; }) | null | undefined
   readonly outcomeJoinCoverage?: null | number | undefined
+  readonly pipelineOutcomeJoinCoverage?: null | number | undefined
   readonly reportedTokensPerMatchedQuorumDecision: null | number
   readonly tokenCoverage: null | number
   readonly tokenMeasuredVoters: number
@@ -2004,7 +2007,9 @@ InterfaceDeclaration ConsensusDecisionTokenReport
   readonly unmatchedCostRecords: number
   readonly unmatchedNoQuorumVoteRecords: number
   readonly unmatchedOutcomeRows?: number | undefined
+  readonly unmatchedPipelineOutcomeRows?: number | undefined
   readonly unmatchedQuorumVoteRecords: number
+  readonly unreadablePipelineTraces?: number | undefined
 ClassDeclaration ConsensusEngine
   clearCache() => void
   close(proposalId: ProposalId) => Promise<Result<ConsensusResult, ConsensusError>>
@@ -10354,6 +10359,7 @@ TypeAliasDeclaration WeatherReportConfig
   = z.infer<typeof WeatherReportConfigSchema>
 InterfaceDeclaration WeatherReportDeps @mcp/tools/weather-report
   readonly decisionCostRecords?: readonly { decisionId: string; gate: "consensus_vote" | "dev_pipeline_vote" | "pr_review"; jobId?: string | undefined; summary: { billingMode: "api" | "plan"; measuredVoters: number; observedAttemptUsage?: undefined | { completions: number; incompleteSeats: number; inputTokens: number; outputTokens: number; reportedCompletions: number; seats: number; totalTokens: number; }; perModel: readonly { costUsd: number; inputTokens: number; model: string; outputTokens: number; totalTokens: number; voterCount: number; }[]; perVoter: readonly { attemptUsage?: undefined | { cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; completions: number; inputTokens?: number | undefined; outputTokens?: number | undefined; reportedCompletions: number; }; cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; costUsd: number; inputTokens: number; model: string; outputTokens: number; priceBasis?: "list" | "unknown" | undefined; pricingProvenance?: undefined | { scope: "project-glasswing-participants"; source: "anthropic"; upstreamUrl: string; }; role: string; tokenUsageMeasured?: boolean | undefined; totalTokens: number; unmeasured: boolean; }[]; priceBasis?: "list" | "unknown" | undefined; tokenMeasuredVoters?: number | undefined; tokenUnmeasuredVoters?: number | undefined; totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number; unmeasuredVoters: number; voterCount: number; }; timestamp: string; undeclaredOptionsDetector?: undefined | { declaredOptionCount: number; excerpt?: string | undefined; fired: boolean; pattern?: string | undefined; }; }[] | undefined
+  readonly pipelineRunIds?: readonly string[] | undefined
   readonly voteRecords?: readonly LinkedVote[] | undefined
 TypeAliasDeclaration WeatherReportDeps @mcp/tools/weather-report-tool
   = BaseMcpToolDeps
@@ -10364,6 +10370,7 @@ InterfaceDeclaration WeatherReportOptions
   readonly cli?: "claude" | "codex" | "gemini" | "opencode" | undefined
   readonly includeAdaptive?: boolean | undefined
   readonly includeModelWeather?: boolean | undefined
+  readonly includePipelineJoins?: boolean | undefined
 InterfaceDeclaration WeatherReportResponse
   readonly adaptiveBonuses: readonly AdaptiveBonus[]
   readonly agentHealth?: AgentHealthSummary | undefined
