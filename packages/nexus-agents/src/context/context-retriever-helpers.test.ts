@@ -286,6 +286,60 @@ describe('rankMemories — scoring monotonicity', () => {
   });
 });
 
+describe('rankMemories — research evidence tiers (#4296)', () => {
+  it('orders otherwise identical high evidence above low evidence with a higher score', () => {
+    const low = makeResearch({ evidenceTier: 'low' });
+    const high = makeResearch({ evidenceTier: 'high' });
+    const ranked = rankMemories(
+      emptyCtx({ researchInsights: [low, high] }),
+      'authentication token refresh',
+      { now: RANK_NOW }
+    );
+
+    expect(ranked.map((r) => r.item)).toEqual([high, low]);
+    // Equal confidence would still put high first via the text-length tie-break.
+    // Require a score difference so the constant-0.6 mutation cannot pass.
+    expect(ranked[0]?.relevanceScore).toBeGreaterThan(ranked[1]?.relevanceScore ?? 1);
+  });
+
+  it('preserves high > medium > low > absent with documented confidence values', () => {
+    const techniques = [
+      makeResearch(),
+      makeResearch({ evidenceTier: 'low' }),
+      makeResearch({ evidenceTier: 'medium' }),
+      makeResearch({ evidenceTier: 'high' }),
+    ];
+    const ranked = rankMemories(
+      emptyCtx({ researchInsights: techniques }),
+      'authentication token refresh',
+      { now: RANK_NOW }
+    );
+
+    expect(ranked.map((r) => r.item)).toEqual([...techniques].reverse());
+    expect(ranked.map((r) => r.sourceConfidence)).toEqual([0.9, 0.8, 0.7, 0.6]);
+  });
+
+  it('keeps a no-tier technique byte-identical to its previous normalized shape', () => {
+    const technique = makeResearch();
+    const ranked = rankMemories(
+      emptyCtx({ researchInsights: [technique] }),
+      'authentication token refresh',
+      { now: RANK_NOW }
+    );
+
+    expect(ranked).toEqual([
+      {
+        source: 'research',
+        relevanceScore: 0.955,
+        item: technique,
+        text: 'token refresh strategy authentication implemented',
+        ageMs: 0,
+        sourceConfidence: 0.6,
+      },
+    ]);
+  });
+});
+
 describe('rankMemories — cross-source ordering', () => {
   it('can rank an old high-confidence experience pattern above a recent low-text belief', () => {
     const strongOldPattern = makeExperience({

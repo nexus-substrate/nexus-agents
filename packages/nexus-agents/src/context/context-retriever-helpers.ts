@@ -433,6 +433,27 @@ const BELIEF_CONFIDENCE: Readonly<Record<string, number>> = {
   speculative: 0.15,
 };
 
+/**
+ * Shared evidence-tier rank for legacy selection and ranked confidence
+ * (#4287, #4296): high > medium > low > absent. Without joined tiers the
+ * legacy stable sort preserves insertion order.
+ *
+ * Explicit branches guarantee a finite rank for undefined and unexpected
+ * out-of-enum values from unvalidated papers.yaml (both default to 0).
+ */
+export function evidenceRank(t: TechniqueStatusSummary): number {
+  switch (t.evidenceTier) {
+    case 'high':
+      return 3;
+    case 'medium':
+      return 2;
+    case 'low':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
 function normalizeBelief(b: Belief, now: number): RankedMemoryItem {
   return {
     source: 'belief',
@@ -490,14 +511,17 @@ function normalizeStrategy(r: DistilledRule, now: number): RankedMemoryItem {
 }
 
 function normalizeResearch(t: TechniqueStatusSummary, now: number): RankedMemoryItem {
+  const evidence = t.evidenceTier !== undefined ? `, evidence: ${t.evidenceTier}` : '';
   return {
     source: 'research',
     relevanceScore: 0,
     item: t,
     // Research summaries carry no timestamp; treat as neutral-recency (ageMs 0).
-    text: oneLine(`${t.name} ${t.topic} ${t.status}`),
+    text: oneLine(`${t.name} ${t.topic} ${t.status}${evidence}`),
     ageMs: ageFrom(undefined, now),
-    sourceConfidence: 0.6,
+    // (6 + rank) / 10: high 0.9, medium 0.8, low 0.7, absent/unknown 0.6.
+    // Preserve the legacy tier order and the pre-#4296 no-tier baseline.
+    sourceConfidence: (6 + evidenceRank(t)) / 10,
   };
 }
 

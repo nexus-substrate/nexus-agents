@@ -40,6 +40,7 @@ import { loadPersistedRules } from '../learning/strategy-distiller-persistence.j
 import { getResearchStatus } from '../cli/research-helpers.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import {
+  evidenceRank,
   rankMemories,
   topRankedWithinBudget,
   assembleClampedContext,
@@ -200,29 +201,6 @@ export async function getContextForTask(options: ContextRetrieverOptions): Promi
 
 /** Tokens shorter than this are too generic to anchor research relevance. */
 const MIN_RELEVANCE_TOKEN = 4;
-
-/**
- * Evidence-tier rank for the read-time weighting (#4287): higher wins. A
- * technique with no joined tier (papers.yaml absent / ids unresolved) sorts
- * last, preserving the pre-#4287 ordering when no evidence data exists.
- *
- * Explicit branches (rather than a map lookup) guarantee a finite numeric rank
- * for `undefined` AND for any unexpected out-of-enum value — the sort
- * comparator can never see a NaN, so ordering stays deterministic even though
- * the tier originates from unvalidated papers.yaml.
- */
-function evidenceRank(t: TechniqueStatusSummary): number {
-  switch (t.evidenceTier) {
-    case 'high':
-      return 3;
-    case 'medium':
-      return 2;
-    case 'low':
-      return 1;
-    default:
-      return 0;
-  }
-}
 
 /**
  * Pure relevance filter: select research techniques whose `topic` or `name`
