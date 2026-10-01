@@ -3,7 +3,7 @@
  *
  * TDD: Tests define the contract for PlanContract → CompiledGraph conversion.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import { compilePlan } from './plan-compiler.js';
 import { createCorePluginRegistry } from './core-plugins.js';
@@ -22,6 +22,7 @@ import type { Result } from '../core/index.js';
 import { ok } from '../core/index.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
 import type { PipelineStateSnapshot } from './policy-engine.js';
+import type { StageContext } from './plugin-types.js';
 
 // ============================================================================
 // Fixtures
@@ -63,6 +64,61 @@ function makePlan(overrides: Partial<PlanContract> = {}): PlanContract {
 // ============================================================================
 
 describe('compilePlan', () => {
+  it.each(['pipeline-alpha', 'pipeline-beta'])(
+    'passes each stage identity to its plugin in %s (#3178)',
+    async (taskId) => {
+      const execute = vi.fn((_stage: StageSpec, _ctx: StageContext) =>
+        Promise.resolve({ success: true, outputArtifacts: [], metadata: {} })
+      );
+      const registry = new PluginRegistry();
+      const stages = [
+        makeStage({ id: 'analyze', pluginId: 'test:analyzer' }),
+        makeStage({
+          id: 'execute',
+          type: 'execute',
+          pluginId: 'test:executor',
+          dependencies: ['analyze'],
+        }),
+      ];
+      for (const stage of stages) {
+        expect(
+          registry.register({
+            manifest: {
+              id: stage.pluginId,
+              version: '1.0.0',
+              description: 'Records stage context',
+              stages: [stage.type],
+              requiredCapabilities: [],
+              trustLevel: 'core',
+              experimental: false,
+            },
+            execute,
+            validateConfig: () => ok(undefined),
+          }).ok
+        ).toBe(true);
+      }
+      const plan = makePlan({ taskId, stages });
+      const compiled = compilePlan(plan, { pluginRegistry: registry });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+
+      const result = await executeGraph(compiled.value, {}, { timeout: 5000 });
+      expect(result.ok).toBe(true);
+      expect(execute).toHaveBeenCalledTimes(stages.length);
+      stages.forEach((stage, index) => {
+        expect(execute).toHaveBeenNthCalledWith(
+          index + 1,
+          stage,
+          expect.objectContaining({
+            stageId: stage.id,
+            pluginId: stage.pluginId,
+            pipelineId: plan.taskId,
+          })
+        );
+      });
+    }
+  );
+
   it('compiles a single-stage plan', () => {
     const plan = makePlan();
     const result = compilePlan(plan);
@@ -199,8 +255,7 @@ describe('compilePlan', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const stageResults = result.value.finalState['stageResults'] as
-      | ReadonlyArray<Record<string, unknown>>
-      | undefined;
+      ReadonlyArray<Record<string, unknown>> | undefined;
     const placeholderResult = stageResults?.find((s) => s['stageId'] === 'custom');
     expect(placeholderResult).toBeDefined();
     expect(placeholderResult?.['placeholder']).toBe(true);
