@@ -312,6 +312,10 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   private feedbackToPreferenceRouter(decision: RoutingDecision, outcome: TaskOutcome): void {
     if (decision.routerType !== 'preference' || this.preferenceRouter === undefined) return;
 
+    // Missing task text is an empty string in the published RoutingDecision contract.
+    // Skip preference training rather than learn from a router explanation or blank task.
+    if (decision.query.trim().length === 0) return;
+
     const strongModelPreferred = decision.selectedTier === 'strong' && outcome.success;
 
     this.preferenceRouter.recordPreference(

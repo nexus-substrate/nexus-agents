@@ -129,7 +129,9 @@ describe('End-to-End Multi-Subsystem Orchestration', () => {
       const routeDecision = assertOk(routeResult);
 
       // 3. Record routing decision
-      const decisionId = feedback.recordRoutingDecision(routeDecision);
+      const decisionId = feedback.recordRoutingDecision(routeDecision, undefined, {
+        query: task.content,
+      });
 
       // 4. Record agent interactions
       observer.recordInteraction({
@@ -188,7 +190,9 @@ describe('End-to-End Multi-Subsystem Orchestration', () => {
     const routeResult = await router.route(task);
     const routeDecision = assertOk(routeResult);
 
-    const decisionId = feedback.recordRoutingDecision(routeDecision);
+    const decisionId = feedback.recordRoutingDecision(routeDecision, undefined, {
+      query: task.content,
+    });
 
     // Record failure outcome
     feedback.recordOutcome({
@@ -237,7 +241,7 @@ describe('Performance: Cross-Subsystem Latency', () => {
     const { ms } = await measureLatency(async () => {
       const result = await router.route(task);
       const decision = assertOk(result);
-      const id = feedback.recordRoutingDecision(decision);
+      const id = feedback.recordRoutingDecision(decision, undefined, { query: task.content });
       feedback.recordOutcome({
         routingDecisionId: id,
         success: true,

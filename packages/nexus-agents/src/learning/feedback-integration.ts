@@ -13,16 +13,13 @@ import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import type { StepResult } from '../core/types/workflow.js';
 import type { RoutingArmId } from '../cli-adapters/types.js';
-import { routingArmDisplaySlot } from '../cli-adapters/types.js';
 import type {
   CompositeRoutingDecision,
   ICompositeRouter,
 } from '../cli-adapters/composite-router.js';
-import type { TaskProfile } from '../core/task-analysis/task-profile-adapter.js';
 import type { TraceId } from '../observability/swarm-observer-types.js';
 import type {
   IOutcomeFeedback,
-  RoutingDecision,
   TaskOutcome,
   ComputedReward,
   FeedbackLoopStats,
@@ -30,7 +27,11 @@ import type {
   RouterType,
   OutcomeClass,
 } from './outcome-feedback-types.js';
-import { OutcomeFeedbackCollector, createRoutingDecision } from './outcome-feedback.js';
+import { OutcomeFeedbackCollector } from './outcome-feedback.js';
+import {
+  mapFeedbackRoutingDecision,
+  mapStoredRoutingDecision,
+} from './routing-decision-mappers.js';
 import type {
   RecordOutcomeParams,
   FeedbackIntegrationConfig,
@@ -40,12 +41,7 @@ import {
   DEFAULT_DECISION_TTL_MS,
   DEFAULT_FEEDBACK_INTEGRATION_CONFIG,
 } from './feedback-integration-types.js';
-import type {
-  IOutcomeStorage,
-  StoredRoutingDecision,
-  StoredTaskOutcome,
-  StoredReward,
-} from './outcome-storage-types.js';
+import type { IOutcomeStorage, StoredTaskOutcome, StoredReward } from './outcome-storage-types.js';
 
 /**
  * Step quality scoring thresholds.
@@ -136,58 +132,6 @@ interface DecisiveRouter {
 }
 
 /**
- * Build the SQLite row for a routing decision.
- *
- * `routerTypeMeasured` is persisted as of #5915, which added the guarded ALTER
- * this comment used to say was missing. Before that the row carried the same
- * unqualified `routerType` it always did, so a persisted decision could not
- * distinguish a measured TOPSIS choice from an unattributable one and any
- * offline read of the store still saw the inflated count that #5812 removed
- * from the live stats.
- */
-function buildStoredDecision(
-  id: string,
-  traceId: TraceId,
-  routerType: RouterType,
-  decision: CompositeRoutingDecision,
-  routerTypeMeasured: boolean
-): StoredRoutingDecision {
-  return {
-    id,
-    traceId,
-    timestamp: getTimeProvider().nowIso(),
-    routerType,
-    // Persisted telemetry is slot-level; collapse the distinct arm (#3422).
-    selectedModel: routingArmDisplaySlot(decision.cliName),
-    alternativeModels: decision.alternatives.map(routingArmDisplaySlot),
-    confidence: decision.confidence,
-    reason: decision.reason,
-    taskProfile: serializeTaskProfile(decision.taskProfile),
-    routerTypeMeasured,
-  };
-}
-
-/**
- * Safely serializes a TaskProfile to a plain Record for SQLite storage.
- * Replaces the unsafe `as unknown as Record<string, unknown>` double-cast.
- * (Source: Issue #667 - Unsafe double-cast patterns)
- */
-function serializeTaskProfile(profile: TaskProfile): Record<string, unknown> {
-  return {
-    contextRequired: profile.contextRequired,
-    reasoningComplexity: profile.reasoningComplexity,
-    codeGeneration: profile.codeGeneration,
-    multimodal: profile.multimodal,
-    parallelizable: profile.parallelizable,
-    budgetSensitive: profile.budgetSensitive,
-    taskType: profile.taskType,
-    ...(profile.detectedProductType !== undefined && {
-      detectedProductType: profile.detectedProductType,
-    }),
-  };
-}
-
-/**
  * Feedback integration implementation.
  * Bridges OutcomeFeedbackCollector with workflow execution and CLI routing.
  */
@@ -241,7 +185,11 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     });
   }
 
-  recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId): string {
+  recordRoutingDecision(
+    decision: CompositeRoutingDecision,
+    traceId?: TraceId,
+    options?: { readonly query?: string | undefined }
+  ): string {
     const id = randomUUID();
     const trace = traceId ?? randomUUID();
     const now = getTimeProvider().now();
@@ -265,33 +213,20 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     // collector and the persisted row disagree.
     const decisive = getDecisiveRouterType(decision);
 
-    // Create RoutingDecision for collector
-    const routingDecision: RoutingDecision = createRoutingDecision({
+    const context = {
+      id,
       traceId: trace,
+      timestamp: getTimeProvider().nowIso(),
       routerType: decisive.routerType,
       routerTypeMeasured: decisive.measured,
-      selectedModel: decision.cliName,
-      confidence: decision.confidence,
-      query: decision.reason,
-      // Optional LinUCB fields
-      armIndex: undefined,
-      banditContext: undefined,
-      selectedTier: undefined,
-    });
-
-    // Override the ID to match our tracking
-    const decisionWithId = { ...routingDecision, id };
-    this.collector.recordRoutingDecision(decisionWithId);
+    };
+    this.collector.recordRoutingDecision(
+      mapFeedbackRoutingDecision(decision, { ...context, query: options?.query })
+    );
 
     // Persist to SQLite storage if enabled (Issue #560)
     if (this.outcomeStorage !== undefined) {
-      const storedDecision = buildStoredDecision(
-        id,
-        trace,
-        decisive.routerType,
-        decision,
-        decisive.measured
-      );
+      const storedDecision = mapStoredRoutingDecision(decision, context);
       this.outcomeStorage.storeDecision(storedDecision).catch((error: unknown) => {
         this.logger.warn('Failed to persist routing decision to SQLite', { id, error });
       });

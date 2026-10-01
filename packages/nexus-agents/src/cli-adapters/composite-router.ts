@@ -46,12 +46,10 @@ import type {
   CliError,
   ExecutionOptions,
 } from './types.js';
+import { mapObserverRoutingDecision } from '../learning/routing-decision-mappers.js';
 import { routingArmDisplaySlot } from './types.js';
 import { armsForAccessMode } from './composite-router-access-mode.js';
-import type {
-  IOrchestrationObserver,
-  RoutingDecision,
-} from '../agents/observability/orchestration-observer-types.js';
+import type { IOrchestrationObserver } from '../agents/observability/orchestration-observer-types.js';
 import { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
 import type { TopsisConfig } from './topsis-types.js';
@@ -948,24 +946,11 @@ export class CompositeRouter implements ICompositeRouter {
       return;
     }
 
-    // Convert CompositeRoutingDecision to RoutingDecision for observer.
-    // The observer is slot-level; collapse the distinct arm + alternatives to
-    // their display slots (#3422).
-    const routingDecision: RoutingDecision = {
+    const routingDecision = mapObserverRoutingDecision(decision, {
       timestamp: new Date().toISOString(),
       taskId: `task-${getRandomProvider().uuid()}`,
-      taskDescription:
-        task.content.length > 100 ? task.content.substring(0, 100) + '...' : task.content,
-      selectedCli: routingArmDisplaySlot(decision.cliName),
-      confidence: decision.confidence,
-      reason: decision.reason,
-      alternatives: decision.alternatives.map(routingArmDisplaySlot),
-      stagesExecuted: decision.stagesExecuted,
-      decisionTimeMs: decision.decisionTimeMs,
-      withinBudget: decision.withinBudget,
-      topsisScore: decision.topsisScore,
-      ucbScore: decision.ucbScore,
-    };
+      query: task.content,
+    });
 
     this.orchestrationObserver.recordRoutingDecision(routingDecision);
     this.logger.debug('Recorded routing decision to OrchestrationObserver', {
