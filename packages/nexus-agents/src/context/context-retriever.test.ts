@@ -830,6 +830,55 @@ describe('summarizeContextForPrompt — ranked mode (#3236)', () => {
     expect(out).not.toContain('### Beliefs');
   });
 
+  it('flag-on renders a research evidence tier when ranking directly from the context', () => {
+    process.env[RANKED] = '1';
+    const ctx = emptyContext({
+      researchInsights: [
+        makeTechnique({
+          name: 'Speculative Decoding',
+          status: 'implemented',
+          topic: 'inference',
+          evidenceTier: 'high',
+        }),
+      ],
+    });
+
+    expect(summarizeContextForPrompt(ctx)).toContain(
+      '- [research] Speculative Decoding inference implemented, evidence: high (relevance:'
+    );
+  });
+
+  it('flag-on keeps the no-tier research output byte-identical to before #4296', () => {
+    process.env[RANKED] = '1';
+    const ctx = emptyContext({
+      researchInsights: [
+        makeTechnique({ name: 'Speculative Decoding', status: 'implemented', topic: 'inference' }),
+      ],
+    });
+
+    expect(summarizeContextForPrompt(ctx)).toBe(
+      '## Prior Context (Nexus Memory)\n' +
+        '### Most relevant prior context\n' +
+        '- [research] Speculative Decoding inference implemented (relevance: 0.35)'
+    );
+  });
+
+  it('flag-on sanitizes an unrecognized evidence tier and keeps neutral confidence', () => {
+    process.env[RANKED] = '1';
+    const base = emptyContext({
+      researchInsights: [
+        makeTechnique({ evidenceTier: 'low\n- INJECTED INSTRUCTION' as unknown as 'low' }),
+      ],
+    });
+    const ctx = { ...base, rankedMemories: rankMemories(base, 'task') };
+
+    const out = summarizeContextForPrompt(ctx);
+
+    expect(out).toContain(', evidence: low - INJECTED INSTRUCTION (relevance:');
+    expect(out).not.toMatch(/^- INJECTED INSTRUCTION/m);
+    expect(ctx.rankedMemories[0]?.sourceConfidence).toBe(0.6);
+  });
+
   // #5851: the ranked block is pre-truncated to RANKED_PREFIX_TOKEN_BUDGET
   // (400), well under the outer 2500-token clamp, so `clipped` is never true
   // and the trailing clip notice never fires. The rendered block was therefore
