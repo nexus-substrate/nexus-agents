@@ -16,6 +16,9 @@ describe('pnpmPackedFileList', () => {
     vi.stubEnv('npm_config_verify_deps_before_run', 'false');
     const exec = vi
       .mocked(childProcess.execFileSync)
+      .mockReturnValueOnce(
+        JSON.stringify({ registry: '', userconfig: '', cache: '', provenance: false })
+      )
       .mockReturnValue(JSON.stringify({ files: [{ path: 'package.json' }] }));
     try {
       expect(pnpmPackedFileList('/source-package')).toEqual(['package.json']);
@@ -33,7 +36,7 @@ describe('pnpmPackedFileList', () => {
           env: expect.not.objectContaining({ npm_config_node_linker: expect.anything() }),
         })
       );
-      const env = exec.mock.calls[0]?.[2]?.env;
+      const env = exec.mock.calls.at(-1)?.[2]?.env;
       expect(env).toBeDefined();
       expect(env).not.toHaveProperty('npm_config_verify_deps_before_run');
     } finally {

@@ -157,15 +157,12 @@ export function teeCommand(
 async function main(argv: readonly string[]): Promise<number> {
   const { exitCode, output } = await teeCommand(
     'pnpm',
-    // pnpm exec regenerates the legacy verification variable after publishEnv
-    // cleans the inherited environment. Drop it again before Changesets starts
-    // (release CI runs on Linux); pnpm's own equivalent remains inherited.
+    // Clean after pnpm exec regenerates npm_config_* in its child env.
     [
       '--config.node-linker=hoisted',
       'exec',
-      'env',
-      '-u',
-      'npm_config_verify_deps_before_run',
+      'tsx',
+      'scripts/publish-env.ts',
       'changeset',
       'publish',
       ...argv,
