@@ -1988,7 +1988,7 @@ InterfaceDeclaration ConsensusDecisionTokenReport
   readonly matchedQuorumDecisions: number
   readonly measurement: "lower-bound-final-seats"
   readonly noQuorumReportedFinalSeatTokens: number
-  readonly observedAttemptUsage: (ObservedAttemptUsage & { readonly decisions: number; }) | null
+  readonly observedAttemptUsage?: (ObservedAttemptUsage & { readonly decisions: number; }) | null | undefined
   readonly reportedTokensPerMatchedQuorumDecision: null | number
   readonly tokenCoverage: null | number
   readonly tokenMeasuredVoters: number
