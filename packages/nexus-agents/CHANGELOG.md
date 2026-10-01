@@ -1,5 +1,76 @@
 # nexus-agents
 
+## 8.122.0
+
+### Minor Changes
+
+- [#6866](https://github.com/nexus-substrate/nexus-agents/pull/6866) [`5784392`](https://github.com/nexus-substrate/nexus-agents/commit/5784392917412a3080ed08d1657b42d2368675ed) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Register `gpt-6.1-sol` as a routable Codex model and change the Codex default from
+  `gpt-5.6-sol` to `gpt-6.1-sol`, following the 7-seat supermajority panel decision
+  (6–1), record `vote-1790834581155-7b39b83` ([#6842](https://github.com/nexus-substrate/nexus-agents/issues/6842)).
+
+  The model remains unpriced until OpenAI publishes pricing. Usage accounting records
+  `priced:false`; outcomes retain `servedModel`, report `priceBasis: 'unknown'`, and
+  omit `costUsd`. Budget filters estimate an unpriced default at the highest known
+  input and output rates among priced models of the same CLI — for Codex, `gpt-5.5`'s
+  $5/$30 per 1M — so the estimate is never cheaper than a priced sibling such as
+  `gpt-5.6-sol` ($4/$20). Each side (input, output) is bounded separately, so a
+  sibling with free input but paid output still bounds the output rate; the static
+  per-CLI table, whose Codex row is now $5/$30, is used only for a side no priced
+  sibling bounds. The runtime budget estimate counts in-tree models and operator
+  manifest overlay entries, including a new overlay model under the CLI its declared
+  `vendor` routes it to; models.dev and generated catalogue entries do not count. The
+  cost-weighted scoring tables are built at load time from in-tree prices only.
+  Configured task-class cost ceilings exclude models with unknown pricing, so under
+  `NEXUS_BILLING_MODE=api` with a ceiling configured, the Codex default drops out of
+  ceiling-bound routing until it is priced. The default `plan` billing mode is
+  unaffected. Context and capability values are carried over from `gpt-5.6-sol`, not
+  measured for the new model. Compare before/after outcomes by `servedModel`.
+
+  `getModelPricing` now reads the same registry chain as usage accounting, so an
+  operator overlay price is used by the budget estimate, the cost ceiling and the
+  ledger alike; previously an overlay that priced a model was billed by the ledger
+  while budget and ceiling treated it as unpriced. It can now also return a
+  models.dev or generated catalogue price for an id that has no in-tree entry.
+
+  A model's CLI is now read from its registry entry rather than inferred from the
+  current default and the fallback chains: the entry's `cliName`, else the in-tree
+  owner of the entry the id resolves to or of an id that entry aliases, so an
+  overlay that re-prices a model, adds an alias for it, or aliases an in-tree id
+  (which re-points that id, the CLI default included, to the overlay model) keeps
+  the CLI. An overlay whose aliases belong to two CLIs has no owner. A pinned `gpt-5.6-sol` or `gpt-5.5` keeps its
+  Codex attribution and, when unavailable, falls back along the Codex chain;
+  `gemini-3.5-flash` and the two OpenRouter models gain the same mapping.
+  `getCliForModelId`, `resolveCliSlot`, swarm-health signals, `delegate_to_model`
+  candidate filtering and pipeline/expert outcome attribution share this answer. A
+  fuzzy-matched or unknown id has no owner; `resolveCliSlot` maps an unowned id by
+  its registry entry's `vendor` (an overlay's declared vendor, else the vendor
+  derived from the id).
+
+  To pin the old model, use the existing adapter configuration:
+  `createCliAdapter({ cli: 'codex', model: 'gpt-5.6-sol' })`. For a delegated task,
+  the documented `delegate_to_model` override is `model_hint: 'gpt-5.6-sol'`.
+
+### Patch Changes
+
+- [#6880](https://github.com/nexus-substrate/nexus-agents/pull/6880) [`30b5b95`](https://github.com/nexus-substrate/nexus-agents/commit/30b5b9556cdd5791160c05df8045d83f21b4b7ec) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Measure voter calls that settle after the panel's overall deadline cancels them.
+  Append one `voter_late_settlement` measurement to the existing monthly usage log
+  with role, CLI, model when known, milliseconds after the deadline, settlement
+  status, `settledBy: 'abort' | 'adapter'`, and token usage only when reported.
+  Caller-abort results (including immediate deadline aborts, and a voter that ended
+  with the seat-cancelled error) have `settledBy: 'abort'`; only
+  `settledBy: 'adapter'` rows represent genuine late adapter settlement. Rows for
+  subprocess CLIs also carry `stdoutBytes` and `sawFirstByte`, which tell a call
+  that had started answering when it was terminated from one that had produced no
+  output.
+
+  This is a lower-bound measurement: a promise that never settles, or a process that
+  exits before settlement, writes no event. Rows with a `kind` field, including
+  unknown or malformed measurements, are excluded from cost totals and from the
+  "unreadable rows" warning; their count is logged at debug level only, so
+  `nexus-agents usage` output is unchanged. They do not change vote verdicts, deadlines,
+  retries, or captured usage. A failing measurement is logged as a warning and cannot
+  affect the deadline path.
+
 ## 8.121.0
 
 ### Minor Changes
