@@ -1,5 +1,5 @@
 /**
- * Read-only join of persisted consensus cost rollups and vote verdicts (#6809).
+ * Read-only join of consensus cost rollups, vote verdicts and seat outcomes.
  * The legacy totals are final-seat usage. Rows written since #6821 also carry
  * observed outer-attempt usage (retries, parse failures, fallbacks), reported
  * separately in {@link ConsensusDecisionTokenReport.observedAttemptUsage}.
@@ -8,6 +8,7 @@ import type { VoteRecordDecision } from '../audit/vote-record.js';
 import { aggregateDecisionCosts } from './decision-cost-aggregate.js';
 import { DecisionCostRecordSchema, type DecisionCostRecord } from './decision-cost-store.js';
 import type { ObservedAttemptUsage } from './attempt-usage.js';
+import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
 /** The two persisted vote fields needed by the read-only cost join. */
 export interface LinkedVote {
@@ -43,6 +44,48 @@ export interface ConsensusDecisionTokenReport {
    */
   readonly observedAttemptUsage?:
     (ObservedAttemptUsage & { readonly decisions: number }) | null | undefined;
+  /** Matched cost/vote decisions with at least one consensus outcome row. */
+  readonly matchedDecisionsWithOutcomes?: number;
+  /** Consensus seat rows joined by traceId, including failed seats. */
+  readonly matchedOutcomeRows?: number;
+  /** Includes missing traceId, unknown IDs, invalid costs and ambiguous joins. */
+  readonly unmatchedOutcomeRows?: number;
+  /**
+   * Joined seats whose `success` means they answered (`source === 'llm'` at
+   * the consensus writer), not that their answers were validated.
+   */
+  readonly matchedLlmAnsweredOutcomeRows?: number;
+  /**
+   * Fraction of matched cost/vote decisions with at least one outcome row;
+   * does not measure full-panel coverage or answer validation. Null when no
+   * consensus outcomes or no matched decisions were measured.
+   */
+  readonly outcomeJoinCoverage?: number | null;
+}
+
+/** Join seat outcomes only to unambiguous, valid cost/vote decision IDs. */
+function joinOutcomes(
+  records: readonly DecisionCostRecord[],
+  outcomes: readonly TaskOutcome[]
+): Pick<
+  ConsensusDecisionTokenReport,
+  | 'matchedDecisionsWithOutcomes'
+  | 'matchedOutcomeRows'
+  | 'unmatchedOutcomeRows'
+  | 'matchedLlmAnsweredOutcomeRows'
+  | 'outcomeJoinCoverage'
+> {
+  const ids = new Set(records.map((record) => record.decisionId));
+  const consensus = outcomes.filter((row) => row.source === 'consensus');
+  const matched = consensus.filter((row) => row.traceId !== undefined && ids.has(row.traceId));
+  const decisions = new Set(matched.map((row) => row.traceId)).size;
+  return {
+    matchedDecisionsWithOutcomes: decisions,
+    matchedOutcomeRows: matched.length,
+    unmatchedOutcomeRows: consensus.length - matched.length,
+    matchedLlmAnsweredOutcomeRows: matched.filter((row) => row.success).length,
+    outcomeJoinCoverage: consensus.length === 0 || ids.size === 0 ? null : decisions / ids.size,
+  };
 }
 
 /** Sum the observed attempt usage of the matched records that carry it. */
@@ -185,12 +228,13 @@ function joinCosts(costs: readonly DecisionCostRecord[], index: VoteIndex): Join
 
 /**
  * Aggregate final-seat tokens from uniquely matched consensus decisions.
- * Both inputs must already be windowed to the same report period. The numerator
+ * All inputs must already be windowed to the same report period. The numerator
  * includes no_quorum rows; the denominator counts only approved/rejected rows.
  */
 export function summarizeConsensusDecisionTokens(
   costRecords: readonly DecisionCostRecord[],
-  voteRecords: readonly LinkedVote[]
+  voteRecords: readonly LinkedVote[],
+  outcomes: readonly TaskOutcome[] = []
 ): ConsensusDecisionTokenReport {
   const consensusCosts = costRecords.filter((r) => r.gate === 'consensus_vote');
   const validCosts = consensusCosts.filter(validCostRecord);
@@ -220,5 +264,6 @@ export function summarizeConsensusDecisionTokens(
     tokenCoverage: coverage?.tokenCoverage ?? null,
     measurement: 'lower-bound-final-seats',
     observedAttemptUsage: sumObservedAttempts(joined.records),
+    ...joinOutcomes(joined.records, outcomes),
   };
 }

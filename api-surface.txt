@@ -1984,11 +1984,15 @@ VariableDeclaration ConsensusAlgorithmSchema
 InterfaceDeclaration ConsensusDecisionTokenReport
   readonly ambiguousDecisionIds: number
   readonly invalidCostRecords: number
+  readonly matchedDecisionsWithOutcomes?: number | undefined
+  readonly matchedLlmAnsweredOutcomeRows?: number | undefined
   readonly matchedNoQuorumDecisions: number
+  readonly matchedOutcomeRows?: number | undefined
   readonly matchedQuorumDecisions: number
   readonly measurement: "lower-bound-final-seats"
   readonly noQuorumReportedFinalSeatTokens: number
   readonly observedAttemptUsage?: (ObservedAttemptUsage & { readonly decisions: number; }) | null | undefined
+  readonly outcomeJoinCoverage?: null | number | undefined
   readonly reportedTokensPerMatchedQuorumDecision: null | number
   readonly tokenCoverage: null | number
   readonly tokenMeasuredVoters: number
@@ -1996,6 +2000,7 @@ InterfaceDeclaration ConsensusDecisionTokenReport
   readonly totalReportedFinalSeatTokens: number
   readonly unmatchedCostRecords: number
   readonly unmatchedNoQuorumVoteRecords: number
+  readonly unmatchedOutcomeRows?: number | undefined
   readonly unmatchedQuorumVoteRecords: number
 ClassDeclaration ConsensusEngine
   clearCache() => void

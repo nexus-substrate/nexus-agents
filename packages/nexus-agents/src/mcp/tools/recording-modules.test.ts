@@ -18,6 +18,9 @@ import {
   OutcomeStore,
 } from '../../orchestration/outcomes/index.js';
 
+/** Differs from any default, so a dropped decisionId cannot pass by accident. */
+const TEST_DECISION_ID = 'consensus-test-decision-7f3a';
+
 // ============================================================================
 // Mocks
 // ============================================================================
@@ -68,6 +71,7 @@ describe('consensus-vote-recording', () => {
   it('recordVoteSuccess records task and learning to memory', async () => {
     const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
     recordVoteSuccess({
+      decisionId: TEST_DECISION_ID,
       proposal: 'Should we use X?',
       strategy: 'supermajority',
       decision: 'approved',
@@ -104,6 +108,7 @@ describe('consensus-vote-recording', () => {
     const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
     const longProposal = 'A'.repeat(100);
     recordVoteSuccess({
+      decisionId: TEST_DECISION_ID,
       proposal: longProposal,
       strategy: 'majority',
       decision: 'rejected',
@@ -118,6 +123,7 @@ describe('consensus-vote-recording', () => {
     const store = getOutcomeStore();
     const initialSize = store.size;
     recordVoteSuccess({
+      decisionId: TEST_DECISION_ID,
       proposal: 'Demo proposal',
       strategy: 'majority',
       decision: 'approved',
@@ -145,6 +151,7 @@ describe('consensus-vote-recording', () => {
   it('recordVoteSuccess still records when at least one vote is from an LLM', async () => {
     const { recordVoteSuccess } = await import('./consensus-vote-recording.js');
     recordVoteSuccess({
+      decisionId: TEST_DECISION_ID,
       proposal: 'Mixed proposal',
       strategy: 'majority',
       decision: 'approved',
@@ -173,20 +180,23 @@ describe('consensus-vote-recording', () => {
     const store = getOutcomeStore();
     const initialSize = store.size;
 
-    recordVoteOutcomes([
-      {
-        role: 'architect',
-        vote: { decision: 'approve', reasoning: 'Good design', confidence: 0.9 },
-        source: 'llm' as const,
-        processingTimeMs: 3000,
-      },
-      {
-        role: 'catfish',
-        vote: { decision: 'reject', reasoning: 'Simulated dissent', confidence: 0.5 },
-        source: 'simulation' as const,
-        processingTimeMs: 0,
-      },
-    ]);
+    recordVoteOutcomes(
+      [
+        {
+          role: 'architect',
+          vote: { decision: 'approve', reasoning: 'Good design', confidence: 0.9 },
+          source: 'llm' as const,
+          processingTimeMs: 3000,
+        },
+        {
+          role: 'catfish',
+          vote: { decision: 'reject', reasoning: 'Simulated dissent', confidence: 0.5 },
+          source: 'simulation' as const,
+          processingTimeMs: 0,
+        },
+      ],
+      TEST_DECISION_ID
+    );
 
     // Only LLM vote should be recorded, simulation skipped
     expect(store.size).toBe(initialSize + 1);
@@ -197,14 +207,17 @@ describe('consensus-vote-recording', () => {
     const store = getOutcomeStore();
     const initialSize = store.size;
 
-    recordVoteOutcomes([
-      {
-        role: 'architect',
-        vote: { decision: 'approve', reasoning: 'Simulated', confidence: 0.5 },
-        source: 'simulation' as const,
-        processingTimeMs: 0,
-      },
-    ]);
+    recordVoteOutcomes(
+      [
+        {
+          role: 'architect',
+          vote: { decision: 'approve', reasoning: 'Simulated', confidence: 0.5 },
+          source: 'simulation' as const,
+          processingTimeMs: 0,
+        },
+      ],
+      TEST_DECISION_ID
+    );
 
     expect(store.size).toBe(initialSize);
   });
@@ -213,15 +226,18 @@ describe('consensus-vote-recording', () => {
     const { recordVoteOutcomes } = await import('./consensus-vote-recording.js');
     const store = getOutcomeStore();
 
-    recordVoteOutcomes([
-      {
-        role: 'architect',
-        vote: { decision: 'approve', reasoning: '', confidence: 0 },
-        source: 'error' as const,
-        processingTimeMs: 500,
-        error: 'Rate limit exceeded',
-      },
-    ]);
+    recordVoteOutcomes(
+      [
+        {
+          role: 'architect',
+          vote: { decision: 'approve', reasoning: '', confidence: 0 },
+          source: 'error' as const,
+          processingTimeMs: 500,
+          error: 'Rate limit exceeded',
+        },
+      ],
+      TEST_DECISION_ID
+    );
 
     const entries = store.query();
     const last = entries[entries.length - 1];

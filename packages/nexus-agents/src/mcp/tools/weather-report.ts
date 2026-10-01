@@ -227,9 +227,11 @@ function buildCostSection(cfg: WeatherReportConfig, deps?: WeatherReportDeps): C
     deps?.voteRecords,
     deps?.decisionCostRecords !== undefined
   );
+  const since = windowMs > 0 ? new Date(Date.now() - windowMs).toISOString() : undefined;
+  const outcomes = getOutcomeStore().query({ source: 'consensus', since });
   return {
     decisionCosts: aggregateDecisionCosts(records, windowMs),
-    consensusDecisionTokens: summarizeConsensusDecisionTokens(records, votes),
+    consensusDecisionTokens: summarizeConsensusDecisionTokens(records, votes, outcomes),
     strategyCostProfiles: strategyCostProfiles(),
   };
 }

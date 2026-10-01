@@ -136,6 +136,7 @@ export const TaskOutcomeSchema = z.object({
   baselineId: z.string().min(1).max(64).optional(),
   /**
    * Distributed trace id correlating this outcome across the pipeline (#3146).
+   * Consensus rows carry the decision ID shared by cost and vote records (#6857).
    * Optional + backward-compatible: older JSONL records without it hydrate fine.
    */
   traceId: z.string().min(1).max(128).optional(),

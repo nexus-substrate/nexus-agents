@@ -49,6 +49,12 @@ import { registerConsensusVoteTool } from './consensus-vote.js';
 import { ConsensusVoteInputSchema } from './consensus-vote-types.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import {
+  getOutcomeStore,
+  OutcomeStore,
+  setOutcomeStore,
+} from '../../orchestration/outcomes/index.js';
+import { DecisionCostStore } from '../../observability/decision-cost-store.js';
 
 interface CapturedToolResult {
   isError?: boolean;
@@ -89,6 +95,7 @@ describe('ratifiesPr reaches the persisted vote record and the id reaches the ca
     process.env[VOTE_RECORDS_PATH_ENV] = ledger;
     resetNexusDataDirCache();
     resetJobConcurrency();
+    setOutcomeStore(new OutcomeStore());
     collectRealVotesMock.mockReset();
     collectRealVotesMock.mockResolvedValue([
       {
@@ -156,6 +163,24 @@ describe('ratifiesPr reaches the persisted vote record and the id reaches the ca
     // The id still travels: it is a property of persistence, not of binding.
     const response = JSON.parse(result.content[0]!.text) as { voteRecordId?: string };
     expect(response.voteRecordId).toBe(records[0]!.id);
+  });
+
+  it('uses the minted cost and vote decision ID on every consensus outcome (#6857)', async () => {
+    const result = await captureHandler()(
+      { proposal: 'Correlate this decision', strategy: 'simple_majority', quickMode: true },
+      CTX
+    );
+    expect(result.isError).not.toBe(true);
+    const { records } = parseVoteRecordsText(readFileSync(ledger, 'utf-8'));
+    expect(records).toHaveLength(1);
+    const decisionId = records[0]!.correlationId;
+    expect(decisionId).toMatch(/^consensus-/);
+    const costs = new DecisionCostStore().all();
+    expect(costs).toHaveLength(1);
+    expect(costs[0]?.decisionId).toBe(decisionId);
+    const rows = getOutcomeStore().query({ source: 'consensus' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.traceId).toBe(decisionId);
   });
 
   it('the input schema refuses an abbreviated or uppercase head sha and a non-positive PR', () => {

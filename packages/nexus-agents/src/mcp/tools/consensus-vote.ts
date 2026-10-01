@@ -835,6 +835,7 @@ async function recordVoteSideEffects(
    */
   declared: DeclaredByCaller
 ): Promise<{
+  decisionId: string;
   costSummary: ReturnType<typeof recordDecisionCost> | undefined;
   voteRecord: VoteRecordPersistOutcome;
 }> {
@@ -893,7 +894,7 @@ async function recordVoteSideEffects(
     });
     costSummary = undefined;
   }
-  return { costSummary, voteRecord };
+  return { decisionId, costSummary, voteRecord };
 }
 
 /** What the tool input declared that the voting result does not carry. */
@@ -948,7 +949,7 @@ async function handleConsensusVote(
     // #6735: the ledger append goes first. It throws VoteCancelledError when a
     // cancel landed during its lock wait, and a cancelled vote must not then
     // be recorded to memory or the outcome store as a success either.
-    const { costSummary, voteRecord } = await recordVoteSideEffects(
+    const { decisionId, costSummary, voteRecord } = await recordVoteSideEffects(
       args.proposal,
       result.strategy,
       result,
@@ -956,6 +957,7 @@ async function handleConsensusVote(
       declaredByCaller(args, signal)
     );
     recordVoteSuccess({
+      decisionId,
       proposal: args.proposal,
       strategy: result.strategy,
       decision: toRecordDecision(result.decision) ?? 'no_quorum',
