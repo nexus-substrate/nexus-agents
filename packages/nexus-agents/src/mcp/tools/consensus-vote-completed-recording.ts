@@ -133,7 +133,7 @@ export class AllVotersFailedError extends Error {
  * Detect all-error votes and return the structured error message instead of a
  * fake "rejected" (#1552); `null` when at least one seat answered. Empty case:
  * a panel with no votes at all is not "all failed" — it is `null` here and the
- * missing decision is caught by the caller.
+ * empty-panel guard in `recordCompletedVote` rejects it before recording.
  */
 function allVotersFailedError(
   votes: readonly AgentVoteResult[],
@@ -159,6 +159,9 @@ export async function recordCompletedVote(
   if (allFailed !== null) throw new AllVotersFailedError(allFailed);
   if (result.decision === undefined) {
     throw new Error('Consensus vote completed without a resolved decision');
+  }
+  if (result.votes.length === 0) {
+    throw new Error('Consensus vote completed with an empty panel (no votes received)');
   }
   const recorded = await recordVoteSideEffects(proposal, result, logger, declared);
   recordVoteSuccess({

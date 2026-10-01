@@ -212,20 +212,30 @@ describe('pipeline plan votes share durable consensus records (#6872)', () => {
     expect(readVoteRecords(ledger).records).toHaveLength(0);
   });
 
-  it('keeps the empty-panel decision but refuses a ledger record with no attribution', async () => {
+  it('fails closed for an empty panel with a stage outcome and no decision records (#6885)', async () => {
     voters.empty = true;
+    const sessionId = '6885-empty-panel';
     const vote = await createAgentStages({
+      sessionId,
       votingStrategy: 'simple_majority',
       quickMode: true,
     }).vote('Measured plan', '');
-    // The existing quick-panel resolver reports rejected for zero seats. This
-    // seam preserves that decision; it does not change protected verdict logic.
-    expect(vote.kind).toBe('rejected');
-    const costs = new DecisionCostStore().all();
-    expect(costs).toHaveLength(1);
-    // Previously this asserted persistence with zero attribution (#5120).
-    // The decision and cost reporting stay intact; the ledger refuses it.
+    // Previously this pinned the engine's default rejection and a zero-seat
+    // cost row. No votes means no measured decision, regardless of that default.
+    expect(vote).toMatchObject({ kind: 'no_quorum', approvalPercentage: 0 });
+    expect(vote.kind === 'no_quorum' && vote.reason).toMatch(/empty panel/i);
+    expect(new DecisionCostStore().all()).toHaveLength(0);
     expect(readVoteRecords(ledger).records).toHaveLength(0);
     expect(getOutcomeStore().query({ source: 'consensus' })).toHaveLength(0);
+    const stageRows = getOutcomeStore().query({ source: 'delegate' });
+    expect(stageRows).toHaveLength(1);
+    expect(stageRows[0]).toMatchObject({
+      traceId: `pipeline-${sessionId}`,
+      cli: 'unknown',
+      category: 'planning',
+      model: 'pipeline',
+      success: false,
+    });
+    expect(stageRows[0]?.id).toMatch(/^pipeline-vote-/);
   });
 });

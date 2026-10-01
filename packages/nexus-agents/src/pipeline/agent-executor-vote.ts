@@ -128,13 +128,14 @@ async function failClosedVote(
     sessionId: config.sessionId,
     taskId: 'vote',
     category: 'planning',
-    cli: undefined,
+    cli: 'unknown',
     routedBy: undefined,
     served: undefined,
     accessMode: undefined,
     requestedAccessMode: undefined,
     success: false,
     durationMs: getTimeProvider().now() - start,
+    error: msg,
   });
   await postProgress(config, 'Vote', `Error (failing closed — no quorum): ${msg.slice(0, 200)}`);
   return {

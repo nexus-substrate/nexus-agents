@@ -23,8 +23,7 @@ import {
 } from '../orchestration/outcomes/outcome-types.js';
 import { pipelineRunId } from './pipeline-run-id.js';
 import { emitPipelineStageEvent, emitModelCalled } from './pipeline-observability.js';
-import type { OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
-import type { RoutingArmId } from '../cli-adapters/types-core.js';
+import type { OutcomeCli, OutcomeRoutedBy } from '../orchestration/outcomes/outcome-types.js';
 import {
   servedOutcomeFields,
   type ServedCall,
@@ -81,8 +80,10 @@ interface RecordOutcomeArgs {
    * security scan) we *skip the record* rather than lie. The stage event
    * is still emitted; only the cli-attributed outcome that would poison
    * the routing learner is suppressed.
+   * Explicit `unknown` records a failure without attributing it to a routing
+   * arm, such as a vote stage that could not obtain a decision.
    */
-  cli: RoutingArmId | undefined;
+  cli: OutcomeCli | undefined;
   /**
    * The bridge result's `routedBy` (#6521), copied onto the outcome. Required
    * (though it may be `undefined`) so every call site states it: a stage that

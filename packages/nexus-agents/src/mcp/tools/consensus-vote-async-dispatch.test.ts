@@ -196,6 +196,35 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
     }
   );
 
+  it('returns a structured sync error for an empty panel without decision records (#6885)', async () => {
+    collectRealVotesMock.mockResolvedValue([]);
+    const result = await captureHandler()(
+      { proposal: 'Empty panel', strategy: 'simple_majority', quickMode: true, dispatch: 'sync' },
+      CTX
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toMatch(/Voting failed:.*empty panel/i);
+    expect(recordingMocks.recordAuthenticVote).not.toHaveBeenCalled();
+    expect(recordingMocks.recordVoteSuccess).not.toHaveBeenCalled();
+    expect(new DecisionCostStore().all()).toHaveLength(0);
+  });
+
+  it('records a failed async job for an empty panel without decision records (#6885)', async () => {
+    collectRealVotesMock.mockResolvedValue([]);
+    const jobId = await dispatch();
+    await vi.waitFor(
+      () => {
+        expect(readJobResult(jobId)?.status).toBe('failed');
+      },
+      { timeout: 10_000, interval: 20 }
+    );
+    const record = readJobResult(jobId);
+    expect(JSON.stringify(record)).toMatch(/Voting failed:.*empty panel/i);
+    expect(recordingMocks.recordAuthenticVote).not.toHaveBeenCalled();
+    expect(recordingMocks.recordVoteSuccess).not.toHaveBeenCalled();
+    expect(new DecisionCostStore().all()).toHaveLength(0);
+  });
+
   it('records a failed job when every voter errored', async () => {
     collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>
       Promise.resolve(erroredVotes(opts.roles))
