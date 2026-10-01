@@ -38,9 +38,11 @@ export interface ConsensusDecisionTokenReport {
    * Outer-attempt usage summed over the matched decisions that recorded it
    * (#6821); `decisions` of the matched total did. Never added to the
    * final-seat totals. A floor when `incompleteSeats > 0`; null when no
-   * matched decision recorded any — not observed, never zero.
+   * matched decision recorded any — not observed, never zero. Optional so a
+   * report built by code that predates #6821 still type-checks.
    */
-  readonly observedAttemptUsage: (ObservedAttemptUsage & { readonly decisions: number }) | null;
+  readonly observedAttemptUsage?:
+    (ObservedAttemptUsage & { readonly decisions: number }) | null | undefined;
 }
 
 /** Sum the observed attempt usage of the matched records that carry it. */
