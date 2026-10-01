@@ -39,7 +39,7 @@ jobs:
   #
   # A separate job so the tarball's code is installed and run without the
   # release job's contents/pull-requests/id-token write permissions. It packs
-  # the same way `pnpm release` does (Node 24, npm 11, `pnpm build`, then
+  # the same way `pnpm release` does (Node 24 with its bundled npm, `pnpm build`, then
   # scripts/stage-publish.ts), the same way the SBOM step below packs.
   publish-smoke:
     name: Pre-publish install smoke
@@ -55,10 +55,6 @@ jobs:
         with:
           # Same Node as the publish job (#2524).
           node-version: '24'
-
-      - name: Pin npm 11, as the publish job does (#6486)
-        shell: bash
-        run: npm install -g npm@11
 
       - name: Decide whether this run publishes
         id: publish-path
@@ -117,14 +113,6 @@ jobs:
           # composite default is 22; the publish path overrides to 24.
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-
-      # Pin npm 11.x (#6486). Changesets passes --no-git-checks through pnpm 9
-      # publish to npm. npm 11 warns on unknown cli config; npm 12 errors out
-      # with EUNKNOWNCONFIG. Pinning npm 11 prevents release failures when runner
-      # images update bundled npm until pnpm or changesets strips the flag.
-      - name: Pin npm 11 for changesets publish (#6486)
-        shell: bash
-        run: npm install -g npm@11
 
       # Bidirectional skew detection. The `Detect publish-race version skew`
       # step below recovers the package.json-AHEAD-of-npm direction (a
@@ -651,11 +639,6 @@ jobs:
           # Node 24 — see comment on the publish-job setup-node above (#2524).
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-
-      # Pin npm 11.x (#6486): npm 12 rejects --no-git-checks with EUNKNOWNCONFIG.
-      - name: Pin npm 11 for publish (#6486)
-        shell: bash
-        run: npm install -g npm@11
 
       - name: Build all packages
         run: pnpm build
