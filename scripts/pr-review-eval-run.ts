@@ -132,6 +132,8 @@ export const livePanelRunner: PanelRunner = async (input) => {
         summary: f.summary,
         location: f.location,
         severity: f.severity,
+        claim: f.claim,
+        gate: f.gate,
         verified: isFindingVerified(f.gate),
       })),
       source: r.source,

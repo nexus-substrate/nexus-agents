@@ -16,6 +16,39 @@
  */
 
 import { z } from 'zod';
+import { RawFindingSchema } from '../../cli/voter-response.js';
+
+/** Bounds a verdict's evidence independently of its full, untruncated tallies. */
+export const MAX_EVAL_FINDINGS = 100;
+
+/** Raw voter evidence or missed ground truth. TP entries are per matched bug;
+ * one voter finding may therefore appear for multiple knownBugIndex values.
+ * Excluded entries retain unverified, duplicate, unmatched and borderline flags.
+ * Missing rationale/gate means the input did not supply that evidence. */
+export const VoterEvalFindingSchema = z.object({
+  summary: RawFindingSchema.shape.summary,
+  location: RawFindingSchema.shape.location,
+  severity: RawFindingSchema.shape.severity.unwrap(),
+  rationale: RawFindingSchema.shape.claim.optional(),
+  gate: RawFindingSchema.shape.gate
+    .extend({
+      named_assertion: RawFindingSchema.shape.claim.min(0),
+    })
+    .optional(),
+  verified: z.boolean().optional(),
+  classification: z.enum(['TP', 'FP', 'FN', 'excluded']),
+  source: z.enum(['voter', 'ground_truth']),
+  /** Original index in the voter's raw findings; repeated TP evidence shares it. */
+  findingIndex: z.number().int().nonnegative().optional(),
+  knownBugIndex: z.number().int().nonnegative().optional(),
+  /** String fields shortened by the producer, never silently truncated. */
+  truncatedFields: z
+    .array(z.enum(['summary', 'location', 'rationale', 'gate.named_assertion']))
+    .max(4)
+    .optional(),
+});
+
+export type VoterEvalFinding = z.infer<typeof VoterEvalFindingSchema>;
 
 // ============================================================================
 // Voter roles (mirrors the pr_review panel — #3845)
@@ -86,6 +119,10 @@ export const VoterEvalVerdictSchema = z.object({
   falsePositives: z.number().int().nonnegative(),
   /** Known bugs this voter failed to flag. */
   falseNegatives: z.number().int().nonnegative(),
+  /** Optional for legacy records/count-only callers; [] means measured, no evidence. */
+  findings: z.array(VoterEvalFindingSchema).max(MAX_EVAL_FINDINGS).optional(),
+  /** Number of evidence entries omitted at the cap; full tallies are unchanged. */
+  findingsTruncated: z.number().int().nonnegative().optional(),
   /** Rubric version the ground truth was adjudicated under. */
   rubricVersion: z.string().min(1).max(32),
   /** ISO-8601 timestamp the verdict was recorded. */

@@ -17,6 +17,7 @@ import { join } from 'node:path';
 
 import { PrReviewEvalStore } from './pr-review-eval-store.js';
 import { computePerVoterPrecisionRecall } from './pr-review-eval-scoring.js';
+import { VoterEvalVerdictSchema } from './pr-review-eval-types.js';
 import type { VoterEvalVerdict } from './pr-review-eval-types.js';
 
 let dir: string;
@@ -50,6 +51,53 @@ afterEach(() => {
 });
 
 describe('PrReviewEvalStore (#3848 persistence)', () => {
+  it('round-trips raw finding evidence and truncation metadata through the real store', () => {
+    const record = {
+      ...verdict({}),
+      findings: [
+        {
+          summary: 'Unsafe dereference',
+          location: 'src/foo.ts:12',
+          severity: 'high' as const,
+          rationale: 'Null input reaches this dereference.',
+          classification: 'TP' as const,
+          source: 'voter' as const,
+          knownBugIndex: 0,
+          verified: true,
+          gate: {
+            reread_cited_line: 'passed' as const,
+            traced_call_path: 'passed' as const,
+            named_assertion: 'throws on null input',
+            ruled_out_language_non_issue: 'passed' as const,
+          },
+        },
+      ],
+      findingsTruncated: 2,
+    };
+    const writer = new PrReviewEvalStore({ filePath: file, dataDir: dir });
+    writer.append(record);
+    const reader = new PrReviewEvalStore({ filePath: file, dataDir: dir });
+    expect(reader.query()).toEqual([record]);
+  });
+
+  it('parses and hydrates a literal legacy verdict without inventing findings', () => {
+    const legacy = {
+      id: 'old:c:architect',
+      runId: 'old',
+      caseNumber: 'c',
+      caseClass: 'buggy',
+      role: 'architect',
+      truePositives: 1,
+      falsePositives: 0,
+      falseNegatives: 2,
+      rubricVersion: '1.0.0',
+      timestamp: '2026-06-17T00:00:00Z',
+    };
+    expect(VoterEvalVerdictSchema.parse(legacy)).toEqual(legacy);
+    writeFileSync(file, JSON.stringify(legacy) + '\n', 'utf-8');
+    expect(new PrReviewEvalStore({ filePath: file, dataDir: dir }).query()).toEqual([legacy]);
+  });
+
   it('appends verdicts to a JSONL file and queries them back in-memory', () => {
     const store = new PrReviewEvalStore({ filePath: file });
     store.append(verdict({ id: 'r1:a:security', role: 'security', caseNumber: 'a' }));

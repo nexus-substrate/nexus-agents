@@ -17,11 +17,16 @@
  * (Source: #3848 — per-voter precision/recall in the outcome store)
  */
 
-import { PR_REVIEW_EVAL_ROLES } from './pr-review-eval-types.js';
+import {
+  MAX_EVAL_FINDINGS,
+  PR_REVIEW_EVAL_ROLES,
+  VoterEvalFindingSchema,
+} from './pr-review-eval-types.js';
 import type {
   PrReviewCaseClass,
   PrReviewEvalRole,
   VoterEvalVerdict,
+  VoterEvalFinding,
   VoterPrecisionRecall,
   PerVoterPrecisionRecallReport,
 } from './pr-review-eval-types.js';
@@ -47,6 +52,8 @@ export interface ScoreVoterCaseInput {
   readonly matchedBugCount: number;
   /** Count of this voter's verified findings (gate-passed). */
   readonly verifiedFindingCount: number;
+  /** Already classified evidence from the caller's location-tolerance matching. */
+  readonly findings?: readonly VoterEvalFinding[];
   readonly rubricVersion: string;
   readonly timestamp: string;
 }
@@ -93,8 +100,55 @@ export function scoreVoterCase(input: ScoreVoterCaseInput): VoterEvalVerdict {
     truePositives,
     falsePositives,
     falseNegatives,
+    ...(input.findings === undefined
+      ? {}
+      : {
+          findings: input.findings.slice(0, MAX_EVAL_FINDINGS).map(boundFinding),
+          findingsTruncated: Math.max(0, input.findings.length - MAX_EVAL_FINDINGS),
+        }),
     rubricVersion: input.rubricVersion,
     timestamp: input.timestamp,
+  };
+}
+
+/** Apply the schema's text caps and retain explicit truncation provenance. */
+function boundFinding(finding: VoterEvalFinding): VoterEvalFinding {
+  const truncatedFields: NonNullable<VoterEvalFinding['truncatedFields']> = [
+    ...(finding.truncatedFields ?? []),
+  ];
+  const shape = VoterEvalFindingSchema.shape;
+  function bound(
+    text: string,
+    max: number | null,
+    field: (typeof truncatedFields)[number]
+  ): string {
+    if (max === null) throw new Error(`Missing eval evidence text cap: ${field}`);
+    if (text.length <= max) return text;
+    if (!truncatedFields.includes(field)) truncatedFields.push(field);
+    return text.slice(0, max);
+  }
+  return {
+    ...finding,
+    summary: bound(finding.summary, shape.summary.maxLength, 'summary'),
+    location: bound(finding.location, shape.location.maxLength, 'location'),
+    ...(finding.rationale === undefined
+      ? {}
+      : {
+          rationale: bound(finding.rationale, shape.rationale.unwrap().maxLength, 'rationale'),
+        }),
+    ...(finding.gate === undefined
+      ? {}
+      : {
+          gate: {
+            ...finding.gate,
+            named_assertion: bound(
+              finding.gate.named_assertion,
+              shape.gate.unwrap().shape.named_assertion.maxLength,
+              'gate.named_assertion'
+            ),
+          },
+        }),
+    ...(truncatedFields.length === 0 ? {} : { truncatedFields }),
   };
 }
 

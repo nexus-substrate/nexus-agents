@@ -3,7 +3,8 @@
  *
  * An append-only list of rubric-scored {@link VoterEvalVerdict} records backed
  * by an append-only JSONL file under the shared learning dir. The persisted
- * unit is TP/FP/FN tallies only — never raw diffs or model outputs.
+ * unit includes TP/FP/FN tallies and optional bounded per-finding evidence
+ * (raw claim and verification gate, plus classification). Never raw diffs.
  *
  * ## Persistence idiom (#3906)
  *
