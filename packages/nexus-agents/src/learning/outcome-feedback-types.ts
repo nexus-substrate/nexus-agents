@@ -75,7 +75,7 @@ export interface RoutingDecision {
   readonly id: string;
   /** Timestamp of decision */
   readonly timestamp: string;
-  /** Original query/task that was routed */
+  /** Original routed task text; empty means unavailable and skips preference training. */
   readonly query: string;
   /** Type of router used */
   readonly routerType: RouterType;

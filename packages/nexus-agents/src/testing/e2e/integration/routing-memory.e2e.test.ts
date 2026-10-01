@@ -83,7 +83,7 @@ describe('Routing -> Memory Integration E2E Tests', () => {
     const routeResult = await router.route(task);
 
     const decision = assertOk(routeResult);
-    const decisionId = feedback.recordRoutingDecision(decision);
+    const decisionId = feedback.recordRoutingDecision(decision, undefined, { query: task.content });
 
     expect(decisionId).toBeDefined();
     expect(typeof decisionId).toBe('string');
@@ -95,7 +95,7 @@ describe('Routing -> Memory Integration E2E Tests', () => {
     const routeResult = await router.route(task);
     const decision = assertOk(routeResult);
 
-    const decisionId = feedback.recordRoutingDecision(decision);
+    const decisionId = feedback.recordRoutingDecision(decision, undefined, { query: task.content });
 
     // Simulate successful outcome
     feedback.recordOutcome({
@@ -121,7 +121,9 @@ describe('Routing -> Memory Integration E2E Tests', () => {
     for (const task of tasks) {
       const result = await router.route(task);
       const decision = assertOk(result);
-      const decisionId = feedback.recordRoutingDecision(decision);
+      const decisionId = feedback.recordRoutingDecision(decision, undefined, {
+        query: task.content,
+      });
       feedback.recordOutcome({
         routingDecisionId: decisionId,
         success: true,

@@ -265,7 +265,9 @@ describe('routeViaCompositeRouter', () => {
     );
 
     expect(result!.routingId).toBe('routing-123');
-    expect(feedback.recordRoutingDecision).toHaveBeenCalledWith(decision);
+    expect(feedback.recordRoutingDecision).toHaveBeenCalledWith(decision, undefined, {
+      query: 'task',
+    });
   });
 
   it('logs debug message with routing id', async () => {

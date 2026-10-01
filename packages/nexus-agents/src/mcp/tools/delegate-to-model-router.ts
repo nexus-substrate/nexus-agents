@@ -135,7 +135,7 @@ export async function routeViaCompositeRouter(
   // Record routing decision for feedback if available
   let routingId: string | undefined;
   if (feedbackIntegration) {
-    routingId = feedbackIntegration.recordRoutingDecision(decision);
+    routingId = feedbackIntegration.recordRoutingDecision(decision, undefined, { query: task });
     logger.debug('Recorded routing decision', { routingId, cliName: decision.cliName });
   }
 

@@ -96,8 +96,12 @@ export const DEFAULT_FEEDBACK_INTEGRATION_CONFIG: FeedbackIntegrationConfig = {
  * Interface for feedback integration.
  */
 export interface IFeedbackIntegration {
-  /** Record a routing decision from CompositeRouter */
-  recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId): string;
+  /** Record a routing decision; omitted task text skips preference training. */
+  recordRoutingDecision(
+    decision: CompositeRoutingDecision,
+    traceId?: TraceId,
+    options?: { readonly query?: string | undefined }
+  ): string;
 
   /** Record a step outcome from workflow execution */
   recordStepOutcome(

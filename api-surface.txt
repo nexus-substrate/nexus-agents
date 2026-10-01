@@ -3805,7 +3805,7 @@ ClassDeclaration FeedbackIntegration
   implements IFeedbackIntegration
   onOutcomeProcessed(callback: OutcomeProcessedCallback) => () => void
   recordOutcome(params: RecordOutcomeParams) => void
-  recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId) => string
+  recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId, options?: { readonly query?: string | undefined; }) => string
   recordStepOutcome(routingDecisionId: string, stepResult: StepResult, durationMs: number, tokenUsage: number) => void
   registerCompositeRouter(router: ICompositeRouter) => void
   reset() => void
@@ -4751,7 +4751,7 @@ InterfaceDeclaration IFeedbackIntegration
   getStats() => FeedbackLoopStats
   onOutcomeProcessed(callback: OutcomeProcessedCallback) => () => void
   recordOutcome(params: RecordOutcomeParams) => void
-  recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId) => string
+  recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId, options?: { readonly query?: string | undefined; }) => string
   recordStepOutcome(routingDecisionId: string, stepResult: StepResult, durationMs: number, tokenUsage: number) => void
   registerCompositeRouter(router: ICompositeRouter) => void
   reset() => void
