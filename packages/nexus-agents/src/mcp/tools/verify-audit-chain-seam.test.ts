@@ -16,9 +16,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import type { ILogger } from '../../core/index.js';
 import type { AuditEvent } from '../../audit/audit-types.js';
+import { getNexusDataDir } from '../../config/nexus-data-dir.js';
+import { createSymlinkEscapeFixture } from '../../testing/symlink-escape-fixture.js';
 import {
   DEFAULT_AUDIT_FILE_PREFIX,
   initializeAuditLogger,
@@ -33,7 +34,9 @@ import {
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-audit-seam-'));
+  // TMPDIR can fall outside every audit root on long checkout paths (#6615, #6859).
+  fs.mkdirSync(getNexusDataDir(), { recursive: true });
+  tmpDir = fs.mkdtempSync(path.join(getNexusDataDir(), 'nexus-audit-seam-'));
 });
 
 afterEach(() => {
@@ -70,14 +73,15 @@ function makeSecurityConfig(logDir: string): Parameters<typeof initializeAuditLo
 }
 
 /**
- * Invokes the registered verify_audit_chain MCP tool handler on `tmpDir`.
+ * Invokes the registered verify_audit_chain MCP tool handler on the supplied `logDir`.
  */
 async function callVerifyAuditChain(args: {
   logDir: string;
   filePrefix?: string;
 }): Promise<VerifyAuditChainResponse> {
   type Captured =
-    ((a: unknown, c: unknown) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+    | ((a: unknown, c: unknown) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>)
+    | undefined;
   let captured: Captured;
   const server = {
     registerTool: (_n: string, _s: unknown, h: unknown) => {
@@ -89,12 +93,27 @@ async function callVerifyAuditChain(args: {
     throw new Error('Tool was not registered');
   }
   const res = await captured(args, {});
-  return JSON.parse(res.content[0]?.text ?? '{}') as VerifyAuditChainResponse;
+  const text = res.content[0]?.text ?? '{}';
+  if (res.isError === true) {
+    throw new Error(`verify_audit_chain failed: ${text}`);
+  }
+  return JSON.parse(text) as VerifyAuditChainResponse;
 }
 
 describe('Audit hash chain producer→consumer seam (#5120)', () => {
   it('exports DEFAULT_AUDIT_FILE_PREFIX as "audit"', () => {
     expect(DEFAULT_AUDIT_FILE_PREFIX).toBe('audit');
+  });
+
+  it('reports a containment refusal before parsing the tool response as JSON', async () => {
+    const fixture = createSymlinkEscapeFixture();
+    try {
+      await expect(callVerifyAuditChain({ logDir: fixture.outsideDir })).rejects.toThrow(
+        /^verify_audit_chain failed: logDir must be within an audit log root:/
+      );
+    } finally {
+      fixture.cleanup();
+    }
   });
 
   it('verifies a real production audit hash chain written by initializeAuditLogger', async () => {
