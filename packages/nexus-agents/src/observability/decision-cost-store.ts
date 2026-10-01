@@ -63,8 +63,8 @@ const VoterCostBreakdownSchema = z.object({
   // never the cost record it rides on (#6830).
   pricingProvenance: PricingProvenanceSchema.optional().catch(undefined),
   // #6821 — absent on rows written before attempt usage was observed: not
-  // observed, never zero attempts.
-  attemptUsage: AttemptUsageSchema.optional(),
+  // observed, never zero attempts. A malformed value drops only this field.
+  attemptUsage: AttemptUsageSchema.optional().catch(undefined),
 });
 
 const ModelCostBreakdownSchema = z.object({
@@ -90,7 +90,7 @@ const DecisionCostSummarySchema = z.object({
   // #4406 — optional for the same reason as the per-voter field above.
   priceBasis: PriceBasisSchema.optional(),
   // #6821 — absent ⇒ no seat carried attempt usage (legacy row or none observed).
-  observedAttemptUsage: ObservedAttemptUsageSchema.optional(),
+  observedAttemptUsage: ObservedAttemptUsageSchema.optional().catch(undefined),
   perVoter: z.array(VoterCostBreakdownSchema).readonly(),
   perModel: z.array(ModelCostBreakdownSchema).readonly(),
 });

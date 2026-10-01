@@ -158,6 +158,48 @@ describe('DecisionCostStore', () => {
     expect(reader.query()[0]?.summary.totalCostUsd).toBe(0.0875);
   });
 
+  it('keeps a record whose attempt usage this version rejects (#6821)', () => {
+    // A malformed or newer-shaped usage field is decorative: dropping it must
+    // not drop the final-seat cost the record carries.
+    const record = {
+      decisionId: 'malformed-attempts',
+      gate: 'consensus_vote',
+      timestamp: TS,
+      summary: {
+        billingMode: 'api',
+        voterCount: 1,
+        measuredVoters: 1,
+        unmeasuredVoters: 0,
+        totalInputTokens: 10,
+        totalOutputTokens: 5,
+        totalTokens: 15,
+        totalCostUsd: 0.01,
+        observedAttemptUsage: { seats: 0 },
+        perVoter: [
+          {
+            role: 'architect',
+            model: 'claude-sonnet',
+            inputTokens: 10,
+            outputTokens: 5,
+            totalTokens: 15,
+            costUsd: 0.01,
+            unmeasured: false,
+            attemptUsage: { completions: 1, reportedCompletions: 2 },
+          },
+        ],
+        perModel: [],
+      },
+    };
+    writeFileSync(file, `${JSON.stringify(record)}\n`, 'utf-8');
+
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.size).toBe(1);
+    const summary = reader.query()[0]?.summary;
+    expect(summary?.totalTokens).toBe(15);
+    expect(summary?.observedAttemptUsage).toBeUndefined();
+    expect(summary?.perVoter[0]?.attemptUsage).toBeUndefined();
+  });
+
   it('keeps a record whose pricing scope this version does not recognise (#6830)', () => {
     // A newer writer may record a scope this reader has no literal for. The
     // provenance is decorative: dropping it must not drop the cost it rides on.
