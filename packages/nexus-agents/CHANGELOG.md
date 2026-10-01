@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.124.1
+
+### Patch Changes
+
+- [#6905](https://github.com/nexus-substrate/nexus-agents/pull/6905) [`3e2b0b0`](https://github.com/nexus-substrate/nexus-agents/commit/3e2b0b0d2665b0ea21c990d38cc2e57d70c8a942) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Bound routing decision history queries to 256 characters while preserving full task text for pending outcome preference training and callbacks.
+
 ## 8.124.0
 
 ### Minor Changes
