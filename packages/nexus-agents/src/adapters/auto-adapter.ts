@@ -34,6 +34,8 @@ import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
+import { ensureGatewayDiscovered } from './gateway-rediscovery.js';
+import { gatewayDiscoveryStatus } from './gateway-discovery.js';
 import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
 
 /**
@@ -349,7 +351,17 @@ function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
 function customModelChoice(logger: ILogger): { modelId: string; note: string } | null {
   const d = resolveGatewayDefault(process.env, logger);
   if (d.kind === 'inactive') {
-    return { modelId: process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL, note: '' };
+    const modelId = process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL;
+    if (gatewayDiscoveryStatus() !== 'failed') return { modelId, note: '' };
+    // #4392: a gateway is configured but its catalogue could not be read, so
+    // nothing says it serves this model. Still sent (a gateway without a
+    // working /models can serve it), but never as if it were validated.
+    logger.warn(
+      `Gateway discovery failed, so the custom-openai model '${modelId}' is sent unverified; ` +
+        'set NEXUS_CUSTOM_MODEL to a model the gateway serves, or run `nexus-agents doctor --gateway`',
+      { model: modelId }
+    );
+    return { modelId, note: '; unverified: gateway discovery failed' };
   }
   if (d.kind === 'resolved')
     return { modelId: d.adapter.modelId, note: `; gateway default by ${d.via}` };
@@ -560,6 +572,10 @@ export async function createAutoAdapter(config: AutoAdapterConfig = {}): Promise
   const logger = config.logger ?? defaultLogger;
   const priority = config.priority ?? 'cli-first';
   const cache = resolveCache(config, logger);
+  // #4392: outside the MCP server nothing else discovers the gateway, so the
+  // first selection does (once per process); the family slots and the
+  // custom-openai model below then read the same catalogue the server does.
+  await ensureGatewayDiscovered();
 
   logger.info('Auto-selecting adapter', { priority, cacheEnabled: cache !== undefined });
 

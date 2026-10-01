@@ -14,6 +14,19 @@ import { isGatewayModelAdapter } from './openai-compat-adapter.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import type { ILogger } from '../core/index.js';
 
+// No network from unit tests: createAutoAdapter now runs the process's one
+// gateway discovery on first use (#4392), and these suites point the gateway
+// env at hosts that do not exist. Discovery itself is tested in
+// gateway-discovery.test.ts and over HTTP in the gateway acceptance suite.
+const gatewayDiscovery = vi.hoisted(() => ({
+  ensure: vi.fn(() => Promise.resolve()),
+  status: vi.fn((): string => 'unattempted'),
+}));
+vi.mock('./gateway-discovery.js', () => ({
+  ensureGatewayCatalogue: gatewayDiscovery.ensure,
+  gatewayDiscoveryStatus: gatewayDiscovery.status,
+}));
+
 vi.mock('../cli-adapters/factory.js', () => ({
   createCliAdapter: vi.fn().mockReturnValue({
     initialize: vi.fn().mockReturnValue(Promise.resolve()),
@@ -208,6 +221,40 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
       Reflect.deleteProperty(process.env, 'NEXUS_CUSTOM_MODEL');
       const s = await createAutoAdapter({ enableCache: false });
       expect(s.adapter.modelId).toBe(CUSTOM_API_DEFAULT_MODEL);
+    });
+
+    it('runs the process gateway discovery before selecting, so a CLI process gets the catalogue (#4392)', async () => {
+      vi.mocked(getAvailableClis).mockResolvedValueOnce([]);
+      gatewayDiscovery.ensure.mockClear();
+      // What discovery does on success: registers the catalogue. Before
+      // #4392 nothing outside the MCP server did, so this never ran.
+      gatewayDiscovery.ensure.mockImplementationOnce(() => {
+        setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6')]);
+        return Promise.resolve();
+      });
+      Reflect.deleteProperty(process.env, 'NEXUS_CUSTOM_MODEL');
+
+      const s = await createAutoAdapter({ enableCache: false });
+
+      expect(gatewayDiscovery.ensure).toHaveBeenCalledTimes(1);
+      expect(s.adapter.modelId).toBe('claude-sonnet-4-6');
+    });
+
+    it('a failed gateway discovery still sends the configured model, but says it is unverified (#4392)', async () => {
+      vi.mocked(getAvailableClis).mockResolvedValueOnce([]);
+      gatewayDiscovery.status.mockReturnValue('failed');
+      const logger = captureLogger();
+      try {
+        const s = await createAutoAdapter({ enableCache: false, logger });
+
+        expect(s.adapter.modelId).toBe('custom-fallback-model');
+        expect(s.reason).toContain('unverified: gateway discovery failed');
+        expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).toContain(
+          "'custom-fallback-model' is sent unverified"
+        );
+      } finally {
+        gatewayDiscovery.status.mockReturnValue('unattempted');
+      }
     });
 
     it('refuses a pinned opencode slot with no binary in gateway mode, never substituting', async () => {

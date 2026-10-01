@@ -24,6 +24,19 @@ const fullAiMock = (): Record<string, unknown> => ({
   // that records the input is sufficient for assertions.
   jsonSchema: vi.fn((schema: unknown) => ({ jsonSchema: schema })),
 });
+// No network from unit tests: createAutoAdapter now runs the process's one
+// gateway discovery on first use (#4392), and these suites point the gateway
+// env at hosts that do not exist. Discovery itself is tested in
+// gateway-discovery.test.ts and over HTTP in the gateway acceptance suite.
+const gatewayDiscovery = vi.hoisted(() => ({
+  ensure: vi.fn(() => Promise.resolve()),
+  status: vi.fn((): string => 'unattempted'),
+}));
+vi.mock('../gateway-discovery.js', () => ({
+  ensureGatewayCatalogue: gatewayDiscovery.ensure,
+  gatewayDiscoveryStatus: gatewayDiscovery.status,
+}));
+
 vi.mock('ai', () => fullAiMock());
 
 vi.mock('@ai-sdk/anthropic', () => ({

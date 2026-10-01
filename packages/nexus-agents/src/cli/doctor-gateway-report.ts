@@ -24,6 +24,7 @@ import {
 import { gatewayFailureReason } from './doctor-voter-transport.js';
 import { formatSlotServing, gatewaySlotServing } from './doctor-gateway-slots.js';
 import { colors, symbols } from './ansi-output.js';
+import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 
 const CHECK = `${colors.green}${symbols.check}${colors.reset}`;
 const CROSS = `${colors.red}${symbols.cross}${colors.reset}`;
@@ -51,7 +52,7 @@ export function formatGatewayReport(
   if (health.state !== 'healthy') {
     lines.push(`${CROSS} Gateway ${health.host}: FAILED — ${gatewayFailureReason(health)}`);
     if (health.state === 'refused_private_host') lines.push(`  ${health.remedy}`);
-    lines.push(`  Proxy: ${formatProxy(health.proxy)}`);
+    lines.push(`  Proxy: ${formatProxy(health.proxy)}`, unverifiedFallbackLine());
     return lines;
   }
   const filter = health.allowlistActive
@@ -122,4 +123,17 @@ function formatProbe(probe: GatewayCompletionProbe): string {
   if (probe.outcome === 'ok')
     return `    ${CHECK} ${probe.family}: ${probe.model} answered (${ms})`;
   return `    ${CROSS} ${probe.family}: ${probe.model} FAILED (${ms}) — ${probe.error ?? 'no error message'}`;
+}
+
+/**
+ * #4392: with no catalogue, the single-model custom-openai adapter still sends
+ * `NEXUS_CUSTOM_MODEL` (or the built-in default) — and nothing says the
+ * gateway serves it. Named here so the operator sees it before a call fails.
+ */
+function unverifiedFallbackLine(): string {
+  const model = process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL;
+  return (
+    `  ${WARN} No catalogue: the custom-openai fallback sends '${model}' unverified ` +
+    'and gateway family slots are unavailable'
+  );
 }

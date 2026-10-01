@@ -40,6 +40,9 @@ import { createDefaultDeps, registerCreateExpertTool } from '../../mcp/tools/cre
 import { registerExecuteExpertTool } from '../../mcp/tools/execute-expert.js';
 import { resolveDefaultModelAdapter, wireGateway } from '../../cli-server-gateway.js';
 import { setGatewayRediscovery } from '../../adapters/gateway-rediscovery.js';
+import { _resetGatewayDiscovery } from '../../adapters/gateway-discovery.js';
+import { createAutoAdapter } from '../../adapters/auto-adapter.js';
+import { CUSTOM_API_DEFAULT_MODEL } from '../../config/defaults.js';
 import {
   ErrorCode,
   FixedTimeProvider,
@@ -143,6 +146,7 @@ afterEach(resetGateway);
 /** Discover through the real bootstrap entry and return the per-model adapters. */
 async function wireFromEnv(): Promise<readonly IModelAdapter[]> {
   const logger = silentLogger();
+  _resetGatewayDiscovery(); // a fresh process boot: discovery is once per process (#4392)
   const adapters = await wireGateway(logger, createUnifiedRegistry({ logger }));
   if (adapters === undefined) {
     throw new Error(`gateway did not wire: ${logger.warnings.join(' | ')}`);
@@ -635,6 +639,7 @@ describe('the unpinned default and the opencode slot with no CLIs installed (#66
     // Registration logs the slot mapping, default included, so the operator
     // sees the warning at boot.
     _resetGatewaySlotCatalog();
+    _resetGatewayDiscovery();
     await wireGateway(bootLogger, createUnifiedRegistry({ logger: bootLogger }));
   });
 
@@ -933,6 +938,7 @@ describe('a gateway down at boot and up later, with no vote run (#6659)', () => 
   async function bootWhileDown(): Promise<readonly IModelAdapter[]> {
     gateway.setCatalog([]);
     const logger = silentLogger();
+    _resetGatewayDiscovery();
     const live = await wireGateway(logger, createUnifiedRegistry({ logger }));
     expect(live).toEqual([]);
     gateway.setCatalog(THREE_FAMILY_CATALOG);
@@ -1024,5 +1030,62 @@ describe('a gateway down at boot and up later, with no vote run (#6659)', () => 
     if (!isFamilySlot(after.cli)) return;
     expect(after.model).toBe(FAMILY_SLOT_MODEL[after.cli]);
     expect(servedModels()).toEqual([FAMILY_SLOT_MODEL[after.cli]]);
+  });
+});
+
+// ============================================================================
+// 10. A process that never ran the MCP server bootstrap (#4392)
+// ============================================================================
+
+describe('a CLI process with no server bootstrap discovers the gateway on first use (#4392)', () => {
+  beforeAll(() => {
+    for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY']) {
+      vi.stubEnv(key, undefined);
+    }
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', undefined);
+  });
+
+  // A fresh process: no discovery, no catalogue, no re-discovery armed.
+  function freshProcess(): void {
+    _resetGatewayDiscovery();
+    _resetGatewaySlotCatalog();
+    setGatewayRediscovery(undefined);
+  }
+  beforeEach(freshProcess);
+  afterEach(freshProcess);
+
+  const chatModels = (): string[] =>
+    gateway.chatRequests().map((r) => (r.body as ChatRequestBody).model);
+  const listings = (): number => gateway.requests.filter((r) => r.path === '/v1/models').length;
+
+  it('sends a model the gateway lists, not NEXUS_CUSTOM_MODEL or the built-in default', async () => {
+    const first = await createAutoAdapter({ priority: 'api-only', logger: silentLogger() });
+    const result = await first.adapter.complete(ask);
+
+    // Before #4392 this process sent CUSTOM_API_DEFAULT_MODEL, which a
+    // gateway that does not list it rejects as model-not-found.
+    expect(result.ok).toBe(true);
+    expect(chatModels()).toEqual([FAMILY_SLOT_MODEL.claude]);
+    expect(chatModels()).not.toContain(CUSTOM_API_DEFAULT_MODEL);
+  });
+
+  it('discovers once per process, however many adapters are selected', async () => {
+    await createAutoAdapter({ priority: 'api-only', logger: silentLogger() });
+    await createAutoAdapter({ priority: 'api-only', logger: silentLogger() });
+
+    expect(listings()).toBe(1);
+  });
+
+  it('a failed discovery sends the configured model marked unverified, never as validated', async () => {
+    gateway.setCatalog([]);
+    const logger = silentLogger();
+
+    const s = await createAutoAdapter({ priority: 'api-only', logger });
+
+    expect(s.adapter.modelId).toBe(CUSTOM_API_DEFAULT_MODEL);
+    expect(s.reason).toContain('unverified: gateway discovery failed');
+    expect(logger.warnings.join('\n')).toContain(
+      `'${CUSTOM_API_DEFAULT_MODEL}' is sent unverified`
+    );
   });
 });

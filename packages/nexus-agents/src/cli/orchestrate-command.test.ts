@@ -25,6 +25,22 @@ vi.mock('../cli-adapters/index.js', () => ({
       : arm,
 }));
 
+// #4392: orchestrate discovers the gateway before building its arms.
+const callOrder = vi.hoisted((): string[] => []);
+vi.mock('../adapters/gateway-rediscovery.js', () => ({
+  ensureGatewayDiscovered: vi.fn(() => {
+    callOrder.push('discover');
+    return Promise.resolve();
+  }),
+}));
+
+// #4392: a slot arm served by a gateway model is identified by the arm module.
+const gatewaySlotArms = vi.hoisted(() => new Set<unknown>());
+vi.mock('../cli-adapters/gateway-slot-arm.js', () => ({
+  gatewayServedSlotOf: (adapter: unknown) =>
+    gatewaySlotArms.has(adapter) ? { modelId: 'claude-sonnet-4-6', arm: undefined } : undefined,
+}));
+
 // Import mocked modules
 import {
   getAvailableClis,
@@ -49,6 +65,19 @@ describe('orchestrate-command', () => {
   afterEach(() => {
     consoleLogSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+  });
+
+  it('discovers the gateway BEFORE building the routing arms, so a CLI process gets the catalogue (#4392)', async () => {
+    callOrder.length = 0;
+    mockGetAvailableClis.mockResolvedValue([]);
+    mockCreateAllAdapters.mockImplementation(() => {
+      callOrder.push('createAllAdapters');
+      return new Map() as never;
+    });
+
+    await orchestrateCommand({ task: 'test task' });
+
+    expect(callOrder).toEqual(['discover', 'createAllAdapters']);
   });
 
   describe('when NO routing arm is usable (#5910)', () => {
@@ -102,6 +131,33 @@ describe('orchestrate-command', () => {
       expect(exitCode).not.toBe(1);
       const msg = consoleErrorSpy.mock.calls.map((c) => String(c[0])).join('\n');
       expect(msg).not.toContain('No routing arms available');
+    });
+
+    it('does NOT refuse when no CLI is installed but a gateway model serves a slot (#4392)', async () => {
+      // Default plan billing, no CLI binaries, a gateway configured: the
+      // claude slot arm is served by the gateway's claude model. The gate
+      // counted only CLIs and api:* arms, so it refused a runnable arm.
+      const slotArm = {
+        name: 'claude',
+        execute: vi.fn().mockResolvedValue({ ok: true, value: { text: 'OK' } }),
+        dispose: vi.fn().mockResolvedValue(undefined),
+      };
+      gatewaySlotArms.add(slotArm);
+      mockGetAvailableClis.mockResolvedValue([]);
+      mockCreateAllAdapters.mockReturnValue(new Map([['claude', slotArm as never]]) as never);
+      mockCreateCompositeRouter.mockReturnValue({
+        route: vi.fn().mockResolvedValue({
+          ok: true,
+          value: { cliName: 'claude', adapter: slotArm, confidence: 0.9, reason: 'only arm' },
+        }),
+      } as never);
+
+      const exitCode = await orchestrateCommand({ task: 'test task' });
+
+      gatewaySlotArms.clear();
+      const msg = consoleErrorSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(msg).not.toContain('No routing arms available');
+      expect(exitCode).not.toBe(1);
     });
 
     it('still refuses when construction itself failed', async () => {

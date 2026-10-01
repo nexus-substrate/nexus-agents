@@ -174,6 +174,15 @@ describe('checkGatewayHealth', () => {
     expectNoSecret(rendered(health));
   });
 
+  it('says what a failed discovery does to the custom-openai fallback: it sends an unverified model (#4392)', async () => {
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'http://127.0.0.1:1/v1');
+    vi.stubEnv('NEXUS_CUSTOM_MODEL', 'my-pinned-model');
+
+    const report = formatGatewayReport(await checkGatewayHealth()).join('\n');
+
+    expect(report).toContain("custom-openai fallback sends 'my-pinned-model' unverified");
+  });
+
   it('fails a host the private-address guard refuses, naming the host and the remedy', async () => {
     vi.stubEnv('NEXUS_CUSTOM_API_ALLOW_PRIVATE', undefined);
 
