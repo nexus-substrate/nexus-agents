@@ -7,6 +7,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { DevPipelineStages, VoteResult } from './dev-pipeline.js';
+import { recordCompletedVote } from '../mcp/tools/consensus-vote-completed-recording.js';
 import {
   type AgentExecutorConfig,
   type StageDeps,
@@ -14,6 +15,9 @@ import {
   postProgress,
   recordOutcome,
 } from './agent-executor-core.js';
+
+/** Pipeline plan votes are recorded apart from MCP consensus_vote calls (#6872). */
+const PIPELINE_VOTE = { gate: 'dev_pipeline_vote', options: undefined } as const;
 
 const logger = createLogger({ component: 'agent-executor' });
 
@@ -150,9 +154,10 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
     try {
       // DRY: use the full consensus_vote pipeline (#1694)
       const { executeVoting } = await import('../mcp/tools/consensus-vote.js');
+      const proposal = buildVoteProposal(plan, research);
       const votingResult = await executeVoting(
         {
-          proposal: buildVoteProposal(plan, research),
+          proposal,
           strategy,
           simulateVotes: config.simulateVotes ?? false,
           quickMode: config.quickMode ?? false,
@@ -164,6 +169,7 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
         // stage deadline or a job cancel.
         signal !== undefined ? { signal } : undefined
       );
+      await recordCompletedVote(proposal, votingResult, logger, { ...PIPELINE_VOTE, signal });
       // #4135: read the response-layer decision (honors a `no_quorum` void under
       // the opt-in absolute_quorum policy / an error-policy short-circuit) instead
       // of the 2-valued engine outcome. `classifyVoteStageResult` maps it to the
@@ -171,10 +177,9 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
       const { vote, label } = classifyVoteStageResult(votingResult);
       const ms = getTimeProvider().now() - start;
       emitStageEvent('vote', 'completed', { durationMs: ms });
-      // Vote is itself a consensus result, not a single CLI's output;
-      // skip the cli-attributed record — consensus_vote's executeVoting
-      // already records its own voter-role-stratified outcomes via the
-      // canonical consensus path (#2662).
+      // The shared recorder above writes the consensus decision's per-seat
+      // outcomes. This stage has no single CLI attribution; its pipeline
+      // session trace remains separate from the vote's decision ID (#6858).
       recordOutcome({
         sessionId: config.sessionId,
         taskId: 'vote',

@@ -4,6 +4,7 @@
  * @module mcp/tools/consensus-vote
  */
 
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -63,20 +64,12 @@ import {
   ConsensusVoteInputSchema,
   buildResponse,
   isHigherOrderStrategy,
-  toRecordDecision,
 } from './consensus-vote-types.js';
 import { resolveVoteDecision } from '../../consensus/decision/verdict.js';
 import { applyErrorPolicy } from './consensus-vote-error-policy.js';
 import { maybeEscalateContrarian } from './consensus-vote-contrarian.js';
-import {
-  recordVoteSuccess,
-  recordVoteError,
-  recordAuthenticVote,
-} from './consensus-vote-recording.js';
-import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
-import type { VoteRecordPrBinding } from '../../audit/vote-record.js';
-import { recordDecisionCost } from './decision-cost-recording.js';
-import { detectUndeclaredOptions } from './consensus-vote-option-detection.js';
+import { recordVoteError } from './consensus-vote-recording.js';
+import { recordCompletedVote, AllVotersFailedError } from './consensus-vote-completed-recording.js';
 import { DecisionCostSummarySchema } from '../../observability/decision-cost.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { emitVoteRejectedSignal } from './consensus-vote-signals.js';
@@ -96,7 +89,6 @@ import {
   throwIfVoteCancelled,
   VoteCancelledError,
 } from './consensus-vote-cancelled.js';
-import { randomUUID } from 'node:crypto';
 import type {
   VotingStrategy,
   ConsensusVoteInput,
@@ -797,115 +789,12 @@ function finalizeVotingResult(args: {
 }
 
 // --- Handler & Registration ---
-/**
- * Context from the tool input the record needs but the voting result does not
- * carry: the declared options (#6053) and the two ratification bindings
- * (#4004, #5130).
- */
-interface DeclaredByCaller {
-  /** Async runner provenance; omitted when no job ran the decision. */
-  readonly jobId?: string | undefined;
-  readonly options: readonly string[] | undefined;
-  readonly ratifies?: string;
-  readonly ratifiesPr?: VoteRecordPrBinding;
-  /**
-   * The async job's cancel signal (#6735), re-checked inside the ledger lock
-   * right before the append. Absent in sync mode.
-   */
-  readonly signal?: AbortSignal | undefined;
-}
-
-/**
- * Best-effort post-vote side effects, extracted to keep `handleConsensusVote`
- * under the per-function line cap. Persists the authentic hash-chained vote
- * record (#3897) and rolls up per-decision cost (#3855), sharing one decision
- * id as the correlation key. Neither must fail the vote — both are guarded.
- *
- * Returns both the cost rollup and the structured vote-record persistence
- * outcome (#3991) so the handler can surface persistence visibility in the
- * result instead of leaving a skip as a server-only WARN.
- */
-async function recordVoteSideEffects(
-  proposal: string,
-  strategy: string,
-  result: ExtendedVotingResult,
-  logger: ILogger,
-  /**
-   * Grouped rather than positional params: all answer "what did the caller
-   * declare", and the sixth positional argument tipped this past the
-   * max-params cap.
-   */
-  declared: DeclaredByCaller
-): Promise<{
-  decisionId: string;
-  costSummary: ReturnType<typeof recordDecisionCost> | undefined;
-  voteRecord: VoteRecordPersistOutcome;
-}> {
-  const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
-  // #3897: persist an authentic, hash-chained vote record to the committable
-  // governance artifact at vote time so the promotion gate/CI can rest
-  // authenticity on the chain, not on hand-transcribed YAML. #4004: bind the
-  // authority-tier ratification subject into the record when provided.
-  const voteRecord = await recordAuthenticVote({
-    proposal,
-    strategy,
-    result: result.result,
-    votes: result.votes,
-    declaredOptions: declared.options,
-    // #4053: an error-policy short-circuit voided the vote → the PERSISTED record
-    // must record `no_quorum`, matching the MCP response (not a stale `rejected`).
-    errorVoided: result.policyReason !== undefined,
-    // #4986: hand over the decision `resolveVoteDecision` already produced
-    // (stamped on the result by `executeVoting`). `errorVoided` alone cannot
-    // express an absolute_quorum void, whose reason is stamped on the response
-    // and never on the result — so the record used to say `approved` for a vote
-    // this tool reports as `no_quorum`.
-    resolvedDecision: toRecordDecision(result.decision),
-    // #6211: the EFFECTIVE policy `executeVoting` stamped, so a caller that
-    // took the per-strategy default still gets `reduce_denominator` on the
-    // ledger line rather than nothing.
-    errorPolicy: result.errorPolicy,
-    correlationId: decisionId,
-    ...(declared.ratifies !== undefined ? { ratifies: declared.ratifies } : {}),
-    // #5130: the PR binding takes the same hop as `ratifies`; the seam test
-    // (`consensus-vote-ratifies-pr.test.ts`) reads it back off the ledger.
-    ...(declared.ratifiesPr !== undefined ? { ratifiesPr: declared.ratifiesPr } : {}),
-    signal: declared.signal,
-  });
-  // #3855: roll up + persist this decision's per-voter cost and ride it on the
-  // existing response (no new MCP tool). A rollup failure must not fail the vote.
-  let costSummary: ReturnType<typeof recordDecisionCost> | undefined;
-  try {
-    costSummary = recordDecisionCost({
-      decisionId,
-      gate: 'consensus_vote',
-      ...(declared.jobId !== undefined ? { jobId: declared.jobId } : {}),
-      votes: result.votes,
-      // #5422: the detector's verdict, recorded on EVERY vote so the not-fired
-      // rows are the denominator. Computed here, where the FULL proposal is in
-      // hand — the ledger keeps a 503-char preview, which is why precision
-      // cannot be measured there. Same patterns as the `panelWarning` in
-      // `buildResponse`, so the measured precision is the warning's precision.
-      undeclaredOptionsDetector: {
-        ...detectUndeclaredOptions(proposal, declared.options),
-        declaredOptionCount: declared.options?.length ?? 0,
-      },
-    });
-  } catch (costError) {
-    logger.warn('Per-decision cost rollup failed (non-fatal)', {
-      error: getErrorMessage(costError),
-    });
-    costSummary = undefined;
-  }
-  return { decisionId, costSummary, voteRecord };
-}
-
 /** What the tool input declared that the voting result does not carry. */
 function declaredByCaller(
   args: ConsensusVoteInput,
   signal?: AbortSignal,
   jobId?: string
-): DeclaredByCaller {
+): Parameters<typeof recordCompletedVote>[3] {
   return {
     options: args.options,
     jobId,
@@ -913,25 +802,6 @@ function declaredByCaller(
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
   };
-}
-
-/**
- * Detect all-error votes and return the structured error message instead of a
- * fake "rejected" (#1552); `null` when at least one seat answered. Empty case:
- * a panel with no votes at all is not "all failed" — it is `null` here and the
- * missing decision is caught by the caller.
- */
-function allVotersFailedError(
-  votes: readonly AgentVoteResult[],
-  proposal: string,
-  logger: ILogger
-): string | null {
-  const errorVotes = votes.filter((v) => v.source === 'error');
-  if (errorVotes.length !== votes.length || votes.length === 0) return null;
-  const failures = errorVotes.map((v) => `${v.role}: ${v.error ?? 'unknown error'}`).join('; ');
-  logger.warn('All voters failed', { failureCount: errorVotes.length, failures });
-  recordVoteError(proposal, `All ${String(errorVotes.length)} voters failed: ${failures}`);
-  return `All ${String(errorVotes.length)} voters failed. Failures: ${failures}`;
 }
 
 async function handleConsensusVote(
@@ -949,36 +819,21 @@ async function handleConsensusVote(
       signal,
       onVoteCollected,
     });
-    const allFailed = allVotersFailedError(result.votes, args.proposal, logger);
-    if (allFailed !== null) return { ok: false, error: allFailed };
-
-    if (result.decision === undefined) {
-      throw new Error('Consensus vote completed without a resolved decision');
-    }
     // #6735: the ledger append goes first. It throws VoteCancelledError when a
     // cancel landed during its lock wait, and a cancelled vote must not then
     // be recorded to memory or the outcome store as a success either.
-    const { decisionId, costSummary, voteRecord } = await recordVoteSideEffects(
+    const { costSummary, voteRecord } = await recordCompletedVote(
       args.proposal,
-      result.strategy,
       result,
       logger,
       declaredByCaller(args, signal, jobId)
     );
-    recordVoteSuccess({
-      decisionId,
-      proposal: args.proposal,
-      strategy: result.strategy,
-      decision: toRecordDecision(result.decision) ?? 'no_quorum',
-      durationMs: result.totalTimeMs,
-      approvalPercentage: result.result.approvalPercentage,
-      votes: result.votes,
-    });
     // Close the self-tuning loop: a rejected vote emits signal.vote_rejected
     // onto the typed pipeline bus for the shadow TuneStage (#3147; #3289 Option 2).
     emitVoteRejectedSignal(result.result, getPipelineEventBus(), logger);
     return { ok: true, value: buildResponse(args, result, costSummary, voteRecord) };
   } catch (error) {
+    if (error instanceof AllVotersFailedError) return { ok: false, error: error.message };
     // #6735: a cancel is not a vote failure — it reaches the async dispatcher,
     // which attaches the cast seats to the cancelled record.
     if (error instanceof VoteCancelledError) throw error;
