@@ -30,6 +30,7 @@ import type {
   PrReviewCaseClass,
   PrReviewEvalRole,
   VoterEvalVerdict,
+  VoterEvalFinding,
   PerVoterPrecisionRecallReport,
   VoterPrecisionRecall,
 } from '../packages/nexus-agents/src/mcp/tools/pr-review-eval-types.js';
@@ -39,9 +40,7 @@ import type { KnownBug, PrReviewDataset } from './curate-pr-review-dataset-schem
 // Panel output shapes — the injectable seam's contract (#4311)
 // ============================================================================
 
-/** One finding as the eval harness needs it — a trimmed, verification-resolved
- * projection of `mcp/tools/pr-review-findings.ts`'s `Finding` (no raw gate
- * detail; the harness only needs whether it passed the gate). */
+/** A verification-resolved finding retaining raw evidence when supplied. */
 export interface PanelFinding {
   readonly summary: string;
   /** `path/file.ext:line` or `path/file.ext` (structural). */
@@ -50,6 +49,8 @@ export interface PanelFinding {
   /** Did all 4 verification-gate checks pass (`isFindingVerified`)? Only
    * verified findings are scored — see rubric Rules 1-4. */
   readonly verified: boolean;
+  readonly claim?: string;
+  readonly gate?: VoterEvalFinding['gate'];
 }
 
 /** One voter's outcome on one case, as the panel runner reports it. */
@@ -166,12 +167,57 @@ export function scoreCaseVoters(
         knownBugCount: input.knownBugs.length,
         matchedBugCount,
         verifiedFindingCount: verifiedFindings.length,
+        findings: classifyFindings(input, outcome.findings),
         rubricVersion: input.rubricVersion,
         timestamp: input.timestamp,
       })
     );
   }
   return verdicts;
+}
+
+/** Keep all flags; attribute catches once per known bug to mirror the rubric. */
+function classifyFindings(input: ScoreCaseInput, raw: readonly PanelFinding[]): VoterEvalFinding[] {
+  const matched = new Set<number>();
+  const findings: VoterEvalFinding[] = [];
+  for (const [findingIndex, finding] of raw.entries()) {
+    const evidence = {
+      summary: finding.summary,
+      location: finding.location,
+      severity: finding.severity,
+      verified: finding.verified,
+      source: 'voter' as const,
+      findingIndex,
+      ...(finding.claim === undefined ? {} : { rationale: finding.claim }),
+      ...(finding.gate === undefined ? {} : { gate: finding.gate }),
+    };
+    const previouslyMatched = matched.size;
+    if (input.caseClass === 'buggy' && finding.verified) {
+      input.knownBugs.forEach((bug, knownBugIndex) => {
+        if (matched.has(knownBugIndex) || !matchesKnownBug(finding, bug)) return;
+        matched.add(knownBugIndex);
+        findings.push({ ...evidence, classification: 'TP', knownBugIndex });
+      });
+    }
+    if (matched.size === previouslyMatched)
+      findings.push({
+        ...evidence,
+        classification: input.caseClass === 'clean' && finding.verified ? 'FP' : 'excluded',
+      });
+  }
+  if (input.caseClass === 'buggy')
+    input.knownBugs.forEach((bug, knownBugIndex) => {
+      if (!matched.has(knownBugIndex))
+        findings.push({
+          summary: bug.summary,
+          location: bug.location,
+          severity: bug.severity,
+          classification: 'FN',
+          source: 'ground_truth',
+          knownBugIndex,
+        });
+    });
+  return findings;
 }
 
 // ============================================================================
