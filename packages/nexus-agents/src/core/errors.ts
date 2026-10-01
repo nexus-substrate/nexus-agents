@@ -164,7 +164,10 @@ export class ConfigError extends NexusError {
  * to categorize failures more granularly (rate-limited, timeout, etc.).
  */
 export class ModelError extends NexusError {
-  constructor(message: string, options?: Partial<NexusErrorOptions>) {
+  /** Explicit adapter retryability; undefined preserves the caller's retry policy. */
+  readonly retryable: boolean | undefined;
+
+  constructor(message: string, options?: Partial<NexusErrorOptions> & { retryable?: boolean }) {
     const code = options?.code ?? ErrorCode.MODEL_ERROR;
     const nexusOpts: NexusErrorOptions = { code };
     if (options?.cause !== undefined) {
@@ -175,6 +178,7 @@ export class ModelError extends NexusError {
     }
     super(message, nexusOpts);
     this.name = 'ModelError';
+    this.retryable = options?.retryable;
   }
 }
 

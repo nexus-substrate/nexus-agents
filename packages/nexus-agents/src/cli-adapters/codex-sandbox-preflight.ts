@@ -7,7 +7,7 @@ import { codexPlatformSandboxArgs } from './adapters/codex-adapter-helpers.js';
 import { sanitizeOutput } from '../security/output-sanitizer.js';
 import type { ILogger } from '../core/logger.js';
 import type { CliError } from './types.js';
-import { createCliError } from './cli-error-helpers.js';
+import { createHostUnavailableCliError } from './cli-error-helpers.js';
 
 /** Unknown is unmeasured, never evidence that the sandbox works. */
 export type CodexSandboxPreflightResult =
@@ -106,8 +106,7 @@ export function createCodexSandboxGuard(
       }
     }
     return result.status === 'broken'
-      ? createCliError(
-          'EXECUTION_ERROR',
+      ? createHostUnavailableCliError(
           `Codex read-only sandbox unavailable: ${result.reason} (checked once per process; restart the MCP server after fixing the host)`,
           'codex'
         )

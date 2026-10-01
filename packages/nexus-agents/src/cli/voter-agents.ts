@@ -29,6 +29,7 @@ import { countDistinctModels } from '../config/model-equivalence.js';
 import { reportPanelIndependence, reportVoteIndependence } from './panel-independence.js';
 import { dealSeatsAcrossFamilies, warnIfSingleFamily } from './voter-family-dealing.js';
 import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
+import { createVoterRetryState } from './voter-retry.js';
 import {
   NoAdapterError,
   resolveAdapterOrFail,
@@ -219,6 +220,7 @@ function resolveVoteExecution(options: VoteExecutionOverrides = {}): VoteExecuti
     project: options.project,
     workspace: options.workspace,
     workspaceSha: options.workspaceSha,
+    onError: options.onError,
   };
 }
 
@@ -245,7 +247,8 @@ export async function executeAgentVote(
     return finalizeParsedVote(built, result.cliStderr, logger);
   }
 
-  // All retries exhausted
+  // Retries exhausted or explicitly refused by the adapter.
+  options?.onError?.(role, result.retryable);
   logger.error('Vote execution failed after all retries', undefined, {
     role,
     model: adapter.modelId,
@@ -504,6 +507,8 @@ export interface VoteExecutionOverrides {
   workspaceSha?: string | undefined;
   /** The panel's cancel (#6729): aborts this seat's adapter call in flight. */
   signal?: AbortSignal | undefined;
+  /** Reports failure retryability to the panel without changing the recorded seat shape. */
+  onError?: ((role: VoterRole, retryable: boolean | undefined) => void) | undefined;
 }
 
 /** Resolved per-call vote execution settings. */
@@ -517,6 +522,7 @@ interface VoteExecutionSettings {
   /** Required KEY (#6254), for the same reason. */
   workspace: string | undefined;
   workspaceSha: string | undefined;
+  onError: VoteExecutionOverrides['onError'];
 }
 
 interface StaggeredVoteInput {
@@ -607,7 +613,8 @@ export async function collectRealVotes(
   // gemini arm now also gets as --add-dir — read once so every seat of the
   // panel names the same tree in its REPOSITORY ACCESS block.
   const workspace = resolvePanelWorkspace(options.workspace);
-  const voteOptions = resolveVoteExecution({ ...options, workspace });
+  const { nonRetryableRoles, onError } = createVoterRetryState();
+  const voteOptions = resolveVoteExecution({ ...options, workspace, onError });
   const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
   const launchInput: StaggeredVoteInput = {
@@ -638,7 +645,7 @@ export async function collectRealVotes(
       launchStaggeredVotes({ ...launchInput, roles: retryRoles }, overallDeadlineMs, deadlineAtMs),
     logger,
     options.erroredRoleBackoffMs ?? DEFAULT_ERRORED_ROLE_BACKOFF_MS,
-    { signal: options.signal, deadlineAtMs }
+    { signal: options.signal, deadlineAtMs, nonRetryableRoles }
   );
 
   // #4983/#5546: this is the only point the question is answerable. Assess the

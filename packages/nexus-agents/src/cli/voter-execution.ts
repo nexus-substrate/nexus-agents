@@ -333,27 +333,19 @@ interface VoteCompletionArgs {
   readonly signal?: AbortSignal | undefined;
 }
 
-async function runVoteCompletion(args: VoteCompletionArgs): Promise<
-  | {
-      ok: true;
-      output: string;
-      usage: VoteUsage;
-      cliStderr: string | undefined;
-      fallbackFrom: string | undefined;
-      servedModel: string | undefined;
-    }
-  | { ok: false; error: string }
-> {
-  const { role, adapter, timeoutMs } = args;
-  const request = buildVoteRequest(args);
+async function runVoteCompletion(
+  args: VoteCompletionArgs
+): Promise<Omit<VoteAttemptSuccess, 'vote'> | VoteAttemptFailure> {
   const timeoutResult = await withTimeout(
-    unlessCancelled(adapter.complete(request), args.signal),
-    timeoutMs,
-    `Vote timeout after ${String(timeoutMs)}ms for role: ${role}`
+    unlessCancelled(args.adapter.complete(buildVoteRequest(args)), args.signal),
+    args.timeoutMs,
+    `Vote timeout after ${String(args.timeoutMs)}ms for role: ${args.role}`
   );
   if (!timeoutResult.ok) return { ok: false, error: timeoutResult.error };
   const response = timeoutResult.value;
-  if (!response.ok) return { ok: false, error: response.error.message };
+  if (!response.ok) {
+    return { ok: false, error: response.error.message, retryable: response.error.retryable };
+  }
   // #3910: capture the adapter-reported per-call usage so it can ride up into
   // the AgentVoteResult and feed the decision-cost rollup as MEASURED. Cast
   // through a loose shape: the type guarantees `usage`, but a real adapter (or a
@@ -426,6 +418,8 @@ interface VotePromptContext {
 interface VoteAttemptFailure {
   readonly ok: false;
   readonly error: string;
+  /** Only explicit false suppresses retries; timeout and parse errors remain retryable. */
+  readonly retryable?: boolean | undefined;
   readonly cliStderr?: string | undefined;
 }
 
@@ -448,10 +442,14 @@ export async function executeSingleVoteAttempt(
   let completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: true });
   // #3497: retry once WITHOUT responseFormat when the backend rejects the
   // tool-use-backed structured-output ask, so the panel keeps full strength.
-  if (!completion.ok && isStructuredOutputUnsupported(completion.error)) {
+  if (
+    !completion.ok &&
+    completion.retryable !== false &&
+    isStructuredOutputUnsupported(completion.error)
+  ) {
     completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: false });
   }
-  if (!completion.ok) return { ok: false, error: completion.error };
+  if (!completion.ok) return completion;
 
   try {
     // parseVoteResponse throws SyntheticVoteError if parsing fails — we only
@@ -520,7 +518,7 @@ function logAbandonedRetries(
   role: VoterRole,
   attempt: number,
   maxRetries: number,
-  cause: 'durable capacity cap' | 'auth failure'
+  cause: 'durable capacity cap' | 'auth failure' | 'non-retryable error'
 ): void {
   logger.warn(`${cause} — abandoning retries for this voter`, {
     role,
@@ -545,7 +543,7 @@ export interface VoteOutcome {
 
 export async function executeWithRetries(
   opts: RetryOptions
-): Promise<(VoteOutcome & { ok: true }) | { error: string; ok: false }> {
+): Promise<(VoteOutcome & { ok: true }) | VoteAttemptFailure> {
   const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
   let lastError = '';
 
@@ -584,10 +582,12 @@ export async function executeWithRetries(
       maxRetries,
       attemptMs,
       error: lastError,
+      retryable: result.retryable,
       cliStderr: result.cliStderr,
     });
     if (terminal !== null) {
       logAbandonedRetries(logger, role, attempt, maxRetries, terminal);
+      if (result.retryable === false) return result;
       break;
     }
   }
@@ -602,6 +602,7 @@ interface FailedAttempt {
   readonly maxRetries: number;
   readonly attemptMs: number;
   readonly error: string;
+  readonly retryable: boolean | undefined;
   /** Stderr the transport captured when the output was not a vote (#6269). */
   readonly cliStderr: string | undefined;
 }
@@ -623,12 +624,13 @@ function loggedStderrLine(cliStderr: string): string {
  * remaining attempts are futile — a DURABLE capacity cap (#5359) or an auth
  * failure (#6269: a retry on the same credential cannot clear it, and the
  * budget it would burn is what the #3587 fallback needs) — or `null` when the
- * caller should keep retrying.
+ * caller should keep retrying. Explicit non-retryable adapter errors also
+ * abandon the remaining attempts (#6846).
  */
 function logFailedAttempt(
   logger: ILogger,
   failed: FailedAttempt
-): 'durable capacity cap' | 'auth failure' | null {
+): 'durable capacity cap' | 'auth failure' | 'non-retryable error' | null {
   const { role, attempt, maxRetries, attemptMs, error, cliStderr } = failed;
   const rateLimited = isRateLimitError(error);
   const durableCap = isDurableCapacityText(error);
@@ -654,5 +656,6 @@ function logFailedAttempt(
   });
   if (durableCap) return 'durable capacity cap';
   if (authFailure) return 'auth failure';
+  if (failed.retryable === false) return 'non-retryable error';
   return null;
 }

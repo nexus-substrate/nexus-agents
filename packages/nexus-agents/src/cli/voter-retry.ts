@@ -48,8 +48,24 @@ function retriedFromOf(first: AgentVoteResult): RetriedFrom {
  */
 export const DEFAULT_ERRORED_ROLE_BACKOFF_MS = 3000;
 
+/** Keep failure retryability local to one panel, across both passes and result copies. */
+export function createVoterRetryState(): {
+  nonRetryableRoles: ReadonlySet<VoterRole>;
+  onError: (role: VoterRole, retryable: boolean | undefined) => void;
+} {
+  const nonRetryableRoles = new Set<VoterRole>();
+  return {
+    nonRetryableRoles,
+    onError: (role, retryable) => {
+      // A cross-CLI fallback can fail differently; track its latest failure.
+      if (retryable === false) nonRetryableRoles.add(role);
+      else nonRetryableRoles.delete(role);
+    },
+  };
+}
+
 /**
- * Re-launch absent roles once, unless the panel deadline was exhausted.
+ * Re-launch retryable absent roles once, unless the panel deadline was exhausted.
  *
  * The panel launches once. A voter that errors is dropped: under
  * `reduce_denominator` its seat silently leaves the denominator, and under
@@ -73,15 +89,17 @@ export const DEFAULT_ERRORED_ROLE_BACKOFF_MS = 3000;
  * the panel records one entry for the role.
  */
 /** The absent seats to relaunch — none once the panel is cancelled (#6729). */
-function rolesToRetry(
-  first: readonly AgentVoteResult[],
-  signal: AbortSignal | undefined
-): VoterRole[] {
-  if (first.length === 0 || isCancelled(signal)) return [];
+function rolesToRetry(first: readonly AgentVoteResult[], options: RetryPassOptions): VoterRole[] {
+  if (first.length === 0 || isCancelled(options.signal)) return [];
   // The launcher spent the shared overall budget; another pass would start a
   // fresh whole-panel deadline even for a different errored seat (#6811).
   if (first.some((v) => v.source === 'error' && v.error === DEADLINE_MESSAGE)) return [];
-  return first.filter(isAbsentSeat).map((v) => v.role);
+  return first
+    .filter(
+      (v) =>
+        isAbsentSeat(v) && (v.source !== 'error' || options.nonRetryableRoles?.has(v.role) !== true)
+    )
+    .map((v) => v.role);
 }
 
 interface RetryPassOptions {
@@ -89,6 +107,8 @@ interface RetryPassOptions {
   readonly signal?: AbortSignal | undefined;
   /** Shared wall-clock cutoff of both passes; absent for direct callers. */
   readonly deadlineAtMs?: number;
+  /** Panel-local failure metadata; the public vote-result shape stays unchanged. */
+  readonly nonRetryableRoles?: ReadonlySet<VoterRole>;
 }
 
 function retryWindowExpired(options: RetryPassOptions): boolean {
@@ -110,7 +130,7 @@ export async function retryErroredRoles(
   backoffMs: number,
   options: RetryPassOptions = {}
 ): Promise<readonly AgentVoteResult[]> {
-  const erroredRoles = rolesToRetry(first, options.signal);
+  const erroredRoles = rolesToRetry(first, options);
   if (erroredRoles.length === 0) return first;
 
   logger.warn('Retrying errored or unverifiable voter roles before aggregating (#5578, #6094)', {

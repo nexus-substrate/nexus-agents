@@ -28,7 +28,7 @@ import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } fr
 import { unenforcedAccessModeRefusal } from './access-mode.js';
 import type { StreamChunk } from '../core/types/model.js';
 import { toModelTokenUsage } from './token-usage-bridge.js';
-import { isCallerInputCliError } from './cli-error-helpers.js';
+import { isCallerInputCliError, isHostUnavailableCliError } from './cli-error-helpers.js';
 import { findCanonicalModel } from '../config/model-config-helpers.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
@@ -193,7 +193,10 @@ export class CliToModelAdapter implements IModelAdapter {
     // #6599: caller input (e.g. an unresolvable requested model) keeps its
     // identity across the bridge, so the breaker can decline to count it.
     const code = isCallerInputCliError(cliError) ? { code: ErrorCode.INVALID_INPUT } : {};
-    return new ModelError(cliError.message, { ...options, ...code });
+    // #6846: only a host refusal overrides the caller's retry policy. The
+    // code-derived CLI boolean also marks ordinary execution failures false.
+    const retryability = isHostUnavailableCliError(cliError) ? { retryable: false } : {};
+    return new ModelError(cliError.message, { ...options, ...code, ...retryability });
   }
 
   /**
