@@ -11,8 +11,9 @@ import type { CliError } from './types.js';
 import { createHostUnavailableCliError } from './cli-error-helpers.js';
 
 /** Unknown is unmeasured, never evidence that the sandbox works. */
-export type CodexSandboxPreflightResult =
-  { readonly status: 'ok' } | { readonly status: 'broken' | 'unknown'; readonly reason: string };
+export type CodexSandboxPreflightResult = (
+  { readonly status: 'ok' } | { readonly status: 'broken' | 'unknown'; readonly reason: string }
+) & { readonly sandboxArgs?: readonly string[] };
 
 /** Runner seam: no model call, shell interpolation, or inherited stdin. */
 export type CodexSandboxProbeExec = (
@@ -46,25 +47,18 @@ const defaultExec: CodexSandboxProbeExec = async (command, args, timeoutMs) => {
   }
 };
 
-async function probe(
+async function probeCandidate(
   exec: CodexSandboxProbeExec,
-  platform: NodeJS.Platform
+  sandboxArgs: readonly string[]
 ): Promise<CodexSandboxPreflightResult> {
   try {
     const timeoutMs = Math.min(
       CLI_SUBPROCESS_TIMEOUTS.statusProbeMs,
       resolveClassGuardMs('interactive')
     );
-    const args = [
-      'sandbox',
-      '-c',
-      'sandbox_mode="read-only"',
-      ...codexPlatformSandboxArgs(platform),
-      '--',
-      'true',
-    ];
+    const args = ['sandbox', '-c', 'sandbox_mode="read-only"', ...sandboxArgs, '--', 'true'];
     const { exitCode, stderr } = await exec('codex', args, timeoutMs);
-    if (exitCode === 0) return { status: 'ok' };
+    if (exitCode === 0) return { status: 'ok', sandboxArgs };
     const lines = sanitizeOutput(stderr)
       .split('\n')
       .map((line) => line.trim());
@@ -79,9 +73,39 @@ async function probe(
 }
 
 /**
+ * First success wins, even after a recognized failure. Without any success,
+ * ANY completed numeric failure with a recognized stderr line means broken;
+ * a null exit or runner exception alone is unmeasured. Keep the first broken
+ * cause rather than letting a later timeout hide it. Candidates are nonempty.
+ */
+async function probe(
+  exec: CodexSandboxProbeExec,
+  platform: NodeJS.Platform
+): Promise<CodexSandboxPreflightResult> {
+  const candidates = platform === 'linux' ? [[], codexPlatformSandboxArgs(platform)] : [[]];
+  let failure: { status: 'broken' | 'unknown'; reason: string } = {
+    status: 'unknown',
+    reason: 'no sandbox candidates measured',
+  };
+  let measured = false;
+  for (const sandboxArgs of candidates) {
+    const result = await probeCandidate(exec, sandboxArgs);
+    if (result.status === 'ok') return result;
+    if (!measured || (failure.status !== 'broken' && result.status === 'broken')) {
+      failure = result;
+    }
+    measured = true;
+  }
+  // Unknown uses the modern default, not the deprecated flag that panics on
+  // >=0.156.1. Older Codex gets legacy whenever that candidate actually passes;
+  // an unsupported probe cannot establish that legacy would work either.
+  return { ...failure, sandboxArgs: [] };
+}
+
+/**
  * A memoized promise with an injected runner. Concurrent callers share the
  * pending probe; all verdicts, including unknown, are cached. Seats proceed
- * on unknown under their existing read-only sandbox
+ * on unknown under the plain read-only sandbox
  * and log the reason; a recognized sandbox failure refuses execution.
  */
 export function createCodexSandboxPreflight(
@@ -98,7 +122,9 @@ export const codexSandboxPreflight = createCodexSandboxPreflight(defaultExec);
 /** Refuse before initialization; retain unknown provenance once per adapter. */
 export function createCodexSandboxGuard(
   preflight: () => CodexSandboxPreflightResult | Promise<CodexSandboxPreflightResult>,
-  logger: ILogger
+  logger: ILogger,
+  onSandboxArgs: (args: readonly string[]) => void,
+  platform: NodeJS.Platform = process.platform
 ): () => Promise<CliError | undefined> {
   let cached: Promise<CodexSandboxPreflightResult> | undefined;
   return async () => {
@@ -111,10 +137,15 @@ export function createCodexSandboxGuard(
         reason: sanitizeOutput(getErrorMessage(error)),
       }))
       .then((result) => {
+        // Old injected Result | Promise<Result> shapes omit sandboxArgs. Keep
+        // their previous platform behavior; explicit [] always means plain.
+        const sandboxArgs = result.sandboxArgs ?? codexPlatformSandboxArgs(platform);
+        onSandboxArgs(sandboxArgs);
         if (result.status === 'unknown') {
           logger.warn('Codex sandbox preflight unknown; proceeding with read-only sandbox', {
             cli: 'codex',
             reason: result.reason,
+            sandboxArgs,
           });
         }
         return result;

@@ -1684,7 +1684,7 @@ ClassDeclaration CodexResponseParser
   readonly name: "codex-parser"
   readonly supportedVersionRange: ">=0.70.0 <1.0.0"
 TypeAliasDeclaration CodexSandboxPreflightResult
-  = { readonly reason: string; readonly status: 'broken' | 'unknown'; } | { readonly status: 'ok'; }
+  = ( { readonly reason: string; readonly status: 'broken' | 'unknown'; } | { readonly status: 'ok'; } ) & { readonly sandboxArgs?: readonly string[]; }
 InterfaceDeclaration CollaborationConfig
   experts: string[]
   maxRetries?: number | undefined

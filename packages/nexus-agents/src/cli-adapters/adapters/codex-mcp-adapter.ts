@@ -30,11 +30,7 @@ import { accessModeConflict, isReadOnlyAnalysis } from '../access-mode.js';
 import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
 import { codexSandboxPreflight, createCodexSandboxGuard } from '../codex-sandbox-preflight.js';
 
-import {
-  type CodexAdapterOptions,
-  codexPlatformSandboxArgs,
-  toCodexModelSlug,
-} from './codex-adapter-helpers.js';
+import { type CodexAdapterOptions, toCodexModelSlug } from './codex-adapter-helpers.js';
 import {
   CODEX_LEGACY_DEFAULTS,
   type McpToolResult,
@@ -70,7 +66,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   readonly transport: CliTransport = 'mcp';
 
   private readonly model: string;
-  private readonly platform: NodeJS.Platform;
+  private sandboxArgs: readonly string[] = [];
   private readonly sandboxRefusal: () => Promise<CliError | undefined>;
   private client: Client | undefined;
   private mcpTransport: StdioClientTransport | undefined;
@@ -88,10 +84,13 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   constructor(options?: CodexAdapterOptions) {
     super(options?.logger ?? createLogger({ component: 'codex-mcp-adapter' }));
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
-    this.platform = options?.platform ?? process.platform;
     this.sandboxRefusal = createCodexSandboxGuard(
       options?.sandboxProbe ?? codexSandboxPreflight,
-      this.logger
+      this.logger,
+      (args) => {
+        this.sandboxArgs = args;
+      },
+      options?.platform
     );
   }
 
@@ -146,13 +145,15 @@ export class CodexMcpAdapter extends BaseCliAdapter {
     // the marker. Throws before any spawn when nested — breaking the loop.
     const childDepth = nextCodexMcpDepthOrThrow();
 
+    // initialize() also has direct callers that do not pass through execute().
+    const refusal = await this.sandboxRefusal();
+    if (refusal !== undefined) throw new Error(refusal.message);
+
     try {
-      // The `sandbox: 'read-only'` tool call below runs inside codex's Linux
-      // sandbox; on Linux, select the legacy landlock backend so it starts
-      // under AppArmor's userns restriction (#6093, codexPlatformSandboxArgs).
+      // Use the same selected backend as the read-only preflight.
       this.mcpTransport = new StdioClientTransport({
         command: 'codex',
-        args: ['mcp-server', ...codexPlatformSandboxArgs(this.platform)],
+        args: ['mcp-server', ...this.sandboxArgs],
         stderr: 'pipe',
         env: { [NEXUS_MCP_DEPTH_ENV]: childDepth },
       });

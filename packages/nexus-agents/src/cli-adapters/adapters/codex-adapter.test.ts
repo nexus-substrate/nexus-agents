@@ -526,6 +526,46 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
   });
 
+  describe('selected sandbox args (#6841 item 3)', () => {
+    it.each([
+      { status: 'ok' as const, sandboxArgs: [] },
+      { status: 'ok' as const, sandboxArgs: ['-c', 'features.use_legacy_landlock=true'] },
+      { status: 'unknown' as const, reason: 'unmeasured', sandboxArgs: [] },
+    ])('uses the selected args for $status', async (measurement) => {
+      vi.mocked(spawn).mockReturnValue(createMockProcess(COMPLETED_NDJSON));
+      const selected = new CodexCliAdapter({ platform: 'linux', sandboxProbe: () => measurement });
+      const result = await selected.execute({ content: 'review' });
+      expect(result.ok).toBe(true);
+      expect(vi.mocked(spawn).mock.calls[0]?.[1]).toEqual([
+        'exec',
+        '--json',
+        '-m',
+        EXPECTED_DEFAULT_ID,
+        '-s',
+        'read-only',
+        ...measurement.sandboxArgs,
+        '--skip-git-repo-check',
+        'review',
+      ]);
+      await selected.dispose();
+    });
+
+    it.each(['linux', 'darwin'] as const)(
+      'retains compatibility for an injected unknown without args on %s',
+      async (platform) => {
+        vi.mocked(spawn).mockReturnValue(createMockProcess(COMPLETED_NDJSON));
+        const selected = new CodexCliAdapter({
+          platform,
+          sandboxProbe: () => ({ status: 'unknown', reason: 'injected old shape' }),
+        });
+        expect((await selected.execute({ content: 'review' })).ok).toBe(true);
+        const argv = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+        expect(argv.includes('features.use_legacy_landlock=true')).toBe(platform === 'linux');
+        await selected.dispose();
+      }
+    );
+  });
+
   describe('execute()', () => {
     it('should return successful response', async () => {
       const ndjsonResponse = [

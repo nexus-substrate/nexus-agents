@@ -738,6 +738,16 @@ describe('doctor-formatting', () => {
       ).toBe(true);
     });
 
+    it.each([
+      { sandboxArgs: [], backend: process.platform === 'linux' ? 'bwrap' : 'platform default' },
+      { sandboxArgs: ['-c', 'features.use_legacy_landlock=true'], backend: 'legacy landlock' },
+    ])('prints the selected Codex sandbox backend: $backend', ({ sandboxArgs, backend }) => {
+      printDoctorResults({ ...createDoctorResult(), codexSandbox: { status: 'ok', sandboxArgs } });
+      expect(
+        getCalls().some((line) => line.includes(`Codex read-only sandbox: available (${backend})`))
+      ).toBe(true);
+    });
+
     it('prints a measured healthy Codex sandbox (#6841)', () => {
       printDoctorResults({ ...createDoctorResult(), codexSandbox: { status: 'ok' } });
 

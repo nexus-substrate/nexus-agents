@@ -1,6 +1,7 @@
 /** The model-free Codex read-only sandbox advisory (#6841). */
 import type { CodexSandboxPreflightResult } from '../cli-adapters/codex-sandbox-preflight.js';
 import { colors, symbols } from './ansi-output.js';
+import { CODEX_LEGACY_LANDLOCK_CONFIG } from '../cli-adapters/adapters/codex-adapter-helpers.js';
 
 /**
  * Unknown is a warning, never a successful measurement. Seats proceed with
@@ -12,7 +13,16 @@ export function formatCodexSandboxLine(
 ): string | undefined {
   if (result === undefined) return undefined;
   if (result.status === 'ok') {
-    return `${colors.green}${symbols.check}${colors.reset} Codex read-only sandbox: available`;
+    // Older injected results do not measure which backend ran.
+    const backend =
+      result.sandboxArgs === undefined
+        ? ''
+        : result.sandboxArgs.includes(CODEX_LEGACY_LANDLOCK_CONFIG)
+          ? ' (legacy landlock)'
+          : process.platform === 'linux'
+            ? ' (bwrap)'
+            : ' (platform default)';
+    return `${colors.green}${symbols.check}${colors.reset} Codex read-only sandbox: available${backend}`;
   }
   const text =
     result.status === 'broken'
