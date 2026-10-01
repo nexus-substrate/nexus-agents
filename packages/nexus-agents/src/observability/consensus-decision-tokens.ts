@@ -1,5 +1,5 @@
 /**
- * Read-only join of consensus cost rollups, vote verdicts and seat outcomes.
+ * Read-only join of consensus costs/votes and consensus/pipeline outcomes.
  * The legacy totals are final-seat usage. Rows written since #6821 also carry
  * observed outer-attempt usage (retries, parse failures, fallbacks), reported
  * separately in {@link ConsensusDecisionTokenReport.observedAttemptUsage}.
@@ -9,6 +9,7 @@ import { aggregateDecisionCosts } from './decision-cost-aggregate.js';
 import { DecisionCostRecordSchema, type DecisionCostRecord } from './decision-cost-store.js';
 import type { ObservedAttemptUsage } from './attempt-usage.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
+import { isPipelineRunId } from '../pipeline/pipeline-run-id.js';
 
 /** The two persisted vote fields needed by the read-only cost join. */
 export interface LinkedVote {
@@ -61,6 +62,47 @@ export interface ConsensusDecisionTokenReport {
    * consensus outcomes or no matched decisions were measured.
    */
   readonly outcomeJoinCoverage?: number | null;
+  /** Distinct traced pipeline runs with at least one joined stage outcome. */
+  readonly matchedPipelineRuns?: number;
+  /** Joined pipeline stage rows, including failed stages; no artifact validation implied. */
+  readonly matchedPipelineOutcomeRows?: number;
+  /** Pipeline stage rows with missing, noncanonical or unknown run trace IDs. */
+  readonly unmatchedPipelineOutcomeRows?: number;
+  /**
+   * Fraction of independently traced pipeline runs with a stage outcome.
+   * Zero when traced runs have no recorded outcomes. Null when no traced runs
+   * were measured or the weather reader encountered unreadable traces.
+   */
+  readonly pipelineOutcomeJoinCoverage?: number | null;
+  /** Runs whose trace could not be read/validated; excluded from joins and coverage. */
+  readonly unreadablePipelineTraces?: number;
+}
+
+/** Join pipeline stages to independently observed, windowed trace run IDs. */
+function joinPipelineOutcomes(
+  runIds: readonly string[] | null,
+  outcomes: readonly TaskOutcome[]
+): Pick<
+  ConsensusDecisionTokenReport,
+  | 'matchedPipelineRuns'
+  | 'matchedPipelineOutcomeRows'
+  | 'unmatchedPipelineOutcomeRows'
+  | 'pipelineOutcomeJoinCoverage'
+> {
+  if (runIds === null) return {};
+  const ids = new Set(runIds.filter(isPipelineRunId));
+  const pipeline = outcomes.filter(
+    (row) =>
+      row.source === 'delegate' && (row.model === 'pipeline' || isPipelineRunId(row.traceId ?? ''))
+  );
+  const matched = pipeline.filter((row) => row.traceId !== undefined && ids.has(row.traceId));
+  const runs = new Set(matched.map((row) => row.traceId)).size;
+  return {
+    matchedPipelineRuns: runs,
+    matchedPipelineOutcomeRows: matched.length,
+    unmatchedPipelineOutcomeRows: pipeline.length - matched.length,
+    pipelineOutcomeJoinCoverage: ids.size === 0 ? null : runs / ids.size,
+  };
 }
 
 /** Join seat outcomes only to unambiguous, valid cost/vote decision IDs. */
@@ -230,11 +272,15 @@ function joinCosts(costs: readonly DecisionCostRecord[], index: VoteIndex): Join
  * Aggregate final-seat tokens from uniquely matched consensus decisions.
  * All inputs must already be windowed to the same report period. The numerator
  * includes no_quorum rows; the denominator counts only approved/rejected rows.
+ * Pipeline outcome coverage joins separately to independently traced run IDs;
+ * neither join measures artifact validation. Pass null for pipelineRunIds to
+ * omit the pipeline join computation and fields (routing does not consume them).
  */
 export function summarizeConsensusDecisionTokens(
   costRecords: readonly DecisionCostRecord[],
   voteRecords: readonly LinkedVote[],
-  outcomes: readonly TaskOutcome[] = []
+  outcomes: readonly TaskOutcome[] = [],
+  pipelineRunIds: readonly string[] | null = []
 ): ConsensusDecisionTokenReport {
   const consensusCosts = costRecords.filter((r) => r.gate === 'consensus_vote');
   const validCosts = consensusCosts.filter(validCostRecord);
@@ -265,5 +311,6 @@ export function summarizeConsensusDecisionTokens(
     measurement: 'lower-bound-final-seats',
     observedAttemptUsage: sumObservedAttempts(joined.records),
     ...joinOutcomes(joined.records, outcomes),
+    ...joinPipelineOutcomes(pipelineRunIds, outcomes),
   };
 }

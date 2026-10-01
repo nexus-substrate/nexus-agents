@@ -62,6 +62,8 @@ export interface WeatherReportOptions {
    * weather_report MCP tool always opts in.
    */
   readonly includeModelWeather?: boolean;
+  /** Opt-in trace/outcome joins for MCP/health display; default off to avoid routing trace IO. */
+  readonly includePipelineJoins?: boolean;
 }
 
 // ============================================================================
