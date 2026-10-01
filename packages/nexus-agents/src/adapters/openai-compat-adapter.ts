@@ -27,26 +27,10 @@ import {
   GatewayHostRefusedError,
 } from './gateway-host-status.js';
 
-import type {
-  Result,
-  CompletionRequest,
-  CompletionResponse,
-  ILogger,
-  ModelError,
-  ModelMetadata,
-  IModelAdapter,
-} from '../core/index.js';
-import {
-  ok,
-  err,
-  ConfigError,
-  createLogger,
-  getErrorMessage,
-  getTimeProvider,
-} from '../core/index.js';
+import type { Result, ILogger, IModelAdapter } from '../core/index.js';
+import { ok, err, ConfigError, createLogger, getErrorMessage } from '../core/index.js';
 import { OpenAIAdapter } from './openai-adapter.js';
-import { recordUsageEvent } from '../learning/usage-log.js';
-import { gatewayCostDetail } from '../cli-adapters/budget-arm-cost.js';
+import { withGatewayUsageRecording } from './gateway-usage-recording.js';
 import { readOpencodeGateway } from '../config/opencode-bridge.js';
 import { isEndpointArmId, type EndpointArmId } from '../cli-adapters/types-core.js';
 import { gatewayEndpointRejection } from './sdk/gateway-cost.js';
@@ -84,6 +68,8 @@ export interface OpenAICompatConfig extends GatewayTransport {
    * the adapter cap; `*` is a wildcard. Absent or empty means no allowlist.
    */
   readonly modelAllowlist?: readonly string[];
+  /** Discovery matched this model id. Absent for a hand-built, unmeasured adapter. */
+  readonly modelVerified?: boolean;
 }
 
 /**
@@ -393,99 +379,12 @@ export function createOpenAICompatAdapter(
     verbatimModelId: true,
     ...gatewayClientOptions(config),
   });
-  const wrapped = withUsageRecording(
+  const wrapped = withGatewayUsageRecording(
     inner,
-    `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`
+    `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`,
+    config.modelVerified
   );
   return created === undefined ? wrapped : Object.assign(wrapped, { created });
-}
-
-/**
- * Wrap a gateway model adapter so that successful + failed `complete()`
- * calls append a UsageEvent to the on-disk usage log. Stream calls aren't
- * yet instrumented (a future PR can add streaming-aware recording).
- *
- * The returned object preserves the IModelAdapter contract identically;
- * downstream code can't tell the difference except that one extra JSONL
- * line gets written per call. The line is priced by `gatewayArm`'s
- * `NEXUS_GATEWAY_COST` declaration ({@link gatewayCostDetail}, #4392 step 4):
- * an undeclared gateway records `priced: false`, never the model id's vendor
- * list price.
- */
-function withUsageRecording(inner: IModelAdapter, gatewayArm: EndpointArmId): GatewayModelAdapter {
-  const wrapped: GatewayModelAdapter = {
-    gatewayArm,
-    providerId: inner.providerId,
-    modelId: inner.modelId,
-    capabilities: inner.capabilities,
-    countTokens: (text) => inner.countTokens(text),
-    validateConfig: () => inner.validateConfig(),
-    stream: (request) => inner.stream(request),
-    async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
-      const start = getTimeProvider().now();
-      const result = await inner.complete(request);
-      const latencyMs = getTimeProvider().now() - start;
-      try {
-        if (result.ok) {
-          const u = result.value.usage;
-          // No vendor usage ⇒ nothing to record. Zero-filling here would write
-          // a fabricated measurement into the usage log, which is the defect
-          // #4439 exists to remove — a lost latency datapoint is the cheaper
-          // loss than a false token count.
-          if (u === undefined) return result;
-          // Declaration-first pricing with provenance (#4165, #4392 step 4):
-          // `priced: false` marks the $0 as UNPRICED (unmeasured), not a real $0.
-          const cost = gatewayCostDetail(gatewayArm, inner.modelId, u.inputTokens, u.outputTokens);
-          recordUsageEvent({
-            timestamp: new Date().toISOString(),
-            modelId: inner.modelId,
-            providerId: inner.providerId,
-            inputTokens: u.inputTokens,
-            outputTokens: u.outputTokens,
-            usdCost: cost.costUsd,
-            latencyMs,
-            success: true,
-            priced: cost.priced,
-            ...(cost.priced ? { priceSource: cost.resolvedId } : {}),
-          });
-        } else {
-          recordFailedCall(inner, latencyMs, result.error.code);
-        }
-      } catch {
-        // Telemetry must not break user calls.
-      }
-      return result;
-    },
-  };
-  attachListModels(wrapped, inner);
-  return wrapped;
-}
-
-/** The usage line for a failed call: no tokens, no cost — the error code is the datum. */
-function recordFailedCall(inner: IModelAdapter, latencyMs: number, errorCode: string): void {
-  recordUsageEvent({
-    timestamp: new Date().toISOString(),
-    modelId: inner.modelId,
-    providerId: inner.providerId,
-    inputTokens: 0,
-    outputTokens: 0,
-    usdCost: 0,
-    latencyMs,
-    success: false,
-    errorCode,
-  });
-}
-
-/**
- * (#2540) Forward `listModels` through the wrapper when the inner adapter
- * exposes one. Only attach when defined so the wrapper's `listModels?:`
- * hint stays accurate for the resolver. The inner reference is captured
- * by closure so the forwarded call binds `this` to the inner adapter.
- */
-function attachListModels(wrapped: IModelAdapter, inner: IModelAdapter): void {
-  const list = inner.listModels?.bind(inner);
-  if (list === undefined) return;
-  wrapped.listModels = (): Promise<readonly ModelMetadata[]> => list();
 }
 
 /**
@@ -505,5 +404,9 @@ export async function buildOpenAICompatAdapters(
   if (config === null) return null;
   const discovered = await discoverModels(config, logger);
   if (!discovered.ok) return discovered;
-  return ok(discovered.value.map((m) => createOpenAICompatAdapter(m.id, config, m.created)));
+  return ok(
+    discovered.value.map((m) =>
+      createOpenAICompatAdapter(m.id, { ...config, modelVerified: true }, m.created)
+    )
+  );
 }

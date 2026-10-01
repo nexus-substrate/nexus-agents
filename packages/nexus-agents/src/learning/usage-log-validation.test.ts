@@ -97,6 +97,26 @@ describe('usage ledger validation (#5328)', () => {
     expect(loadUsageEvents().events).toHaveLength(1);
   });
 
+  it.each([false, true])('preserves modelVerified=%s through hydration', (modelVerified) => {
+    writeLog(goodLine({ modelVerified }));
+    expect(loadUsageEvents().events[0]).toHaveProperty('modelVerified', modelVerified);
+  });
+
+  it('names absent verification as unmeasured on legacy rows', () => {
+    writeLog(goodLine());
+    expect(loadUsageEvents().events).toHaveLength(1);
+    expect(loadUsageEvents().events[0]).not.toHaveProperty('modelVerified');
+  });
+
+  it.each(['true', null, 1, {}])(
+    'drops malformed verification %j without losing spend',
+    (value) => {
+      writeLog(goodLine({ modelVerified: value }));
+      expect(loadUsageEvents().events).toHaveLength(1);
+      expect(loadUsageEvents().events[0]).not.toHaveProperty('modelVerified');
+    }
+  );
+
   it('rejects a line whose usdCost is a string', () => {
     writeLog(goodLine({ usdCost: '1.5' }));
     expect(loadUsageEvents().events).toHaveLength(0);
