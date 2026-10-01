@@ -135,6 +135,8 @@ export function createCodexSandboxGuard(
       .catch((error: unknown): CodexSandboxPreflightResult => ({
         status: 'unknown',
         reason: sanitizeOutput(getErrorMessage(error)),
+        // Plain, as for any unknown: the legacy flag panics on codex-cli >= 0.156.1.
+        sandboxArgs: [],
       }))
       .then((result) => {
         // Old injected Result | Promise<Result> shapes omit sandboxArgs. Keep

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  createCodexSandboxGuard,
   createCodexSandboxPreflight,
   codexSandboxPreflight,
   type CodexSandboxProbeExec,
@@ -247,5 +248,49 @@ describe('Codex sandbox async process boundary (#6846)', () => {
     ]);
     expect(execFileAsync).toHaveBeenCalledTimes(1);
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('Codex sandbox guard arg selection (#6841)', () => {
+  const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+  it('runs a throwing injected probe with plain args, never the legacy flag', async () => {
+    // The legacy flag panics on codex-cli >= 0.156.1, so an inconclusive
+    // probe must not select it even on Linux.
+    const onSandboxArgs = vi.fn();
+    const guard = createCodexSandboxGuard(
+      () => {
+        throw new Error('probe exploded');
+      },
+      logger as never,
+      onSandboxArgs,
+      'linux'
+    );
+    expect(await guard()).toBeUndefined();
+    expect(onSandboxArgs).toHaveBeenCalledWith([]);
+  });
+
+  it('keeps the old Linux args for an injected result that omits sandboxArgs', async () => {
+    const onSandboxArgs = vi.fn();
+    const guard = createCodexSandboxGuard(
+      () => ({ status: 'ok' }),
+      logger as never,
+      onSandboxArgs,
+      'linux'
+    );
+    await guard();
+    expect(onSandboxArgs).toHaveBeenCalledWith(['-c', 'features.use_legacy_landlock=true']);
+  });
+
+  it('classifies an unrecognised plain failure plus a legacy panic as broken', async () => {
+    const exec = vi.fn<CodexSandboxProbeExec>((_cmd, args) =>
+      Promise.resolve(
+        args.includes('features.use_legacy_landlock=true')
+          ? { exitCode: 101, stderr: PANIC }
+          : { exitCode: 1, stderr: 'some unrelated failure' }
+      )
+    );
+    const result = await createCodexSandboxPreflight(exec, 'linux')();
+    expect(result.status).toBe('broken');
   });
 });
