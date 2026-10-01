@@ -31,6 +31,7 @@ import { dirname, join } from 'node:path';
 
 import { getNexusDataDir } from '../config/nexus-data-dir.js';
 import { createLogger } from '../core/logger.js';
+import type { UsageMeasurement } from './usage-measurement.js';
 // NOTE: only the FUNCTION is imported here — `getDefaultRegistry()` must never
 // be CALLED at module scope (#3185 bootstrap hazard: first construction reads
 // the manifest overlay/snapshot from disk). All calls happen at invocation
@@ -213,14 +214,16 @@ export function getUsageLogPath(date: Date = new Date()): string {
 /**
  * Append a usage event to the current month's log. Best-effort — failures
  * are silent (we don't want to fail a successful model call because we
- * couldn't write a log line).
+ * couldn't write a log line). Non-billing measurements share this file; their
+ * write failures propagate to the detached observer's catch + log boundary.
  */
-export function recordUsageEvent(event: UsageEvent): void {
+export function recordUsageEvent(event: UsageEvent | UsageMeasurement): void {
   try {
     const path = getUsageLogPath(new Date(event.timestamp));
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${JSON.stringify(event)}\n`, 'utf-8');
-  } catch {
+  } catch (error: unknown) {
+    if ('kind' in event) throw error;
     // Intentionally silent — telemetry must not break user calls.
   }
 }
@@ -348,6 +351,10 @@ interface ParsedUsageFile {
   readonly readError?: string;
 }
 
+function isMeasurementRow(raw: unknown): boolean {
+  return typeof raw === 'object' && raw !== null && Object.hasOwn(raw, 'kind');
+}
+
 function parseFileLines(filePath: string, filter: LoadFilter): ParsedUsageFile {
   let content: string;
   try {
@@ -357,6 +364,7 @@ function parseFileLines(filePath: string, filter: LoadFilter): ParsedUsageFile {
   }
   const out: UsageEvent[] = [];
   let rejected = 0;
+  let skippedMeasurements = 0;
   for (const line of content.split('\n')) {
     if (line.trim() === '') continue;
     let raw: unknown;
@@ -365,6 +373,11 @@ function parseFileLines(filePath: string, filter: LoadFilter): ParsedUsageFile {
     } catch {
       // Skip malformed line; keep reading.
       rejected++;
+      continue;
+    }
+    // Any tagged row is non-billing, even a future or malformed measurement.
+    if (isMeasurementRow(raw)) {
+      skippedMeasurements++;
       continue;
     }
     const parsed = UsageEventSchema.safeParse(raw);
@@ -379,6 +392,9 @@ function parseFileLines(filePath: string, filter: LoadFilter): ParsedUsageFile {
   // lines silently under-reports spend, and the operator has no way to tell.
   if (rejected > 0) {
     logger.warn('Usage ledger lines rejected as unreadable', { filePath, rejected });
+  }
+  if (skippedMeasurements > 0) {
+    logger.debug('Usage ledger measurement rows skipped', { filePath, skippedMeasurements });
   }
   return { events: out };
 }

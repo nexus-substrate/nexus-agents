@@ -1080,6 +1080,7 @@ TypeAliasDeclaration BudgetWarningLevel
   = 'critical' | 'info' | 'warning'
 InterfaceDeclaration BufferState
   firstByteTime: null | number
+  receivedStdoutBytes: number
   resolved: boolean
   stderr: string
   stderrBytes: number

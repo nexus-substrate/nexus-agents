@@ -36,6 +36,7 @@ import {
 } from './cli-error-envelope.js';
 import { createCallerAbortCliError, isTimeoutText } from './cli-error-helpers.js';
 import { generateHyphenId } from '../utils/id-utils.js';
+import { recordAbortObservation } from '../adapters/abort-observation.js';
 
 /** Minimum length for plaintext fallback to kick in.
  * Lowered from 100→30 to recover short but valid CLI responses (#1401). */
@@ -267,6 +268,8 @@ interface BufferState {
   stdout: string;
   stderr: string;
   stdoutBytes: number;
+  /** All stdout received, including chunks excluded by the capture cap (#6851). */
+  receivedStdoutBytes: number;
   stderrBytes: number;
   stdoutTruncated: boolean;
   stderrTruncated: boolean;
@@ -382,9 +385,14 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   private attachAbortSignal(
     child: ChildProcess,
     signal: AbortSignal,
-    resolve: (r: Result<CliResponse, CliError>) => void
+    resolve: (r: Result<CliResponse, CliError>) => void,
+    state: BufferState
   ): void {
     const onAbort = (): void => {
+      recordAbortObservation(signal.reason, {
+        stdoutBytes: state.receivedStdoutBytes,
+        sawFirstByte: state.firstByteTime !== null,
+      });
       if (child.exitCode === null && child.signalCode === null) {
         // #6680: the child and its descendants, so a relaunched CLI worker is
         // not orphaned; a tree that ignores SIGTERM is force-reaped rather than
@@ -546,9 +554,8 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         const child = spawnCliChild(this.name, cmdConfig, task.options?.['workDir']);
 
         const onProgress = options.onProgress;
-        // Called for its side effects (handlers are attached to `child`);
-        // the returned state is not needed here, so it is not bound.
-        this.setupChildProcessHandlers({
+        // Keep stdout evidence available to the caller-deadline abort path (#6851).
+        const state = this.setupChildProcessHandlers({
           child,
           startTime,
           timeoutMs: options.timeoutMs,
@@ -558,7 +565,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         });
 
         if (signal !== undefined) {
-          this.attachAbortSignal(child, signal, resolve);
+          this.attachAbortSignal(child, signal, resolve, state);
         }
 
         // Write stdin content if provided and close stdin
@@ -590,6 +597,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       stderr: '',
       resolved: false,
       stdoutBytes: 0,
+      receivedStdoutBytes: 0,
       stderrBytes: 0,
       stdoutTruncated: false,
       stderrTruncated: false,
@@ -668,6 +676,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     // stdio: ['pipe', 'pipe', 'pipe'] guarantees non-null streams
     if (child.stdout !== null) {
       child.stdout.on('data', (data: Buffer) => {
+        state.receivedStdoutBytes += data.length;
         if (state.firstByteTime === null && data.length > 0) {
           state.firstByteTime = getTimeProvider().now();
         }

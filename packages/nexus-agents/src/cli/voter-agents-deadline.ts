@@ -17,6 +17,7 @@ import type { AgentVoteResult, SeatAttemptTiming, VoterRole } from './vote-types
 import { createErrorVoteResult, delay } from './voter-execution.js';
 import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
 import { carryAttemptUsage } from './voter-attempt-usage.js';
+import { observeLateVoter } from './voter-late-settlement.js';
 import { getMcpSafeDeadlineMs, VOTE_TIMEOUTS } from '../config/timeouts.js';
 
 /** Worst-case legitimate vote time plus stagger and buffer (#1871). */
@@ -212,7 +213,8 @@ function raceWithDeadline(
   run: (signal: AbortSignal) => Promise<AgentVoteResult>,
   role: VoterRole,
   deadlineMs: number,
-  cancel: AbortSignal | undefined
+  cancel: AbortSignal | undefined,
+  afterDeadline: (vote: Promise<AgentVoteResult>, reason: DOMException, deadlineAt: number) => void
 ): Promise<AgentVoteResult> {
   const deadlineController = new AbortController();
   const signal =
@@ -223,9 +225,12 @@ function raceWithDeadline(
   const timeoutP = new Promise<AgentVoteResult>((resolve) => {
     timer = setTimeout(() => {
       resolve(createErrorVoteResult(role, DEADLINE_MESSAGE, deadlineMs));
+      const reason = new DOMException(DEADLINE_MESSAGE, 'TimeoutError');
       // Resolve the recorded deadline error first: an adapter that reacts to
       // abort immediately must not turn this seat into a cancellation result.
-      deadlineController.abort(new DOMException(DEADLINE_MESSAGE, 'TimeoutError'));
+      const deadlineAt = Date.now();
+      deadlineController.abort(reason);
+      afterDeadline(voteP, reason, deadlineAt);
     }, deadlineMs);
   });
   const voteP = Promise.resolve().then(() => run(signal));
@@ -274,12 +279,30 @@ function voteBeforeDeadline(
   if (remaining <= 0) {
     return Promise.resolve(createErrorVoteResult(role, DEADLINE_MESSAGE, input.overallDeadlineMs));
   }
+  const observer = observeLateVoter(adapter, role, input.logger);
   return raceWithDeadline(
-    (signal) =>
-      input.voteFn(role, input.proposal, adapter, input.logger, { ...input.voteOptions, signal }),
+    (signal) => {
+      observer.register(signal);
+      return input.voteFn(role, input.proposal, adapter, input.logger, {
+        ...input.voteOptions,
+        signal,
+      });
+    },
     role,
     remaining,
-    input.signal
+    input.signal,
+    (vote, reason, deadlineAt) => {
+      // A measurement must never take down the deadline path: this runs in a
+      // timer callback, where a throw is an uncaught exception (#6851).
+      try {
+        observer.afterDeadline(vote, reason, deadlineAt);
+      } catch (error) {
+        input.logger.warn('Late-settlement observer failed; deadline unaffected', {
+          role,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   );
 }
 

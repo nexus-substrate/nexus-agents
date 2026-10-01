@@ -17,6 +17,8 @@
  * @module cli-adapters/cli-error-helpers
  */
 
+import { APIUserAbortError as OpenAiAbortError } from 'openai/core/error';
+import { APIUserAbortError as AnthropicAbortError } from '@anthropic-ai/sdk/core/error';
 import { parseRetryAfterMs, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import { AbortError, isTimeoutAbortReason } from '../adapters/abort-utils.js';
 import type { CliError, CliErrorCode, CliName } from './types.js';
@@ -117,10 +119,36 @@ export function isHostUnavailableCliError(error: CliError): boolean {
   return error.cause instanceof HostUnavailableError;
 }
 
+/** Deadline abort identity, independent of operator-cancel/breaker semantics. */
+class CallerDeadlineAbortError extends Error {}
+
+/** Known caller-abort causes; an ordinary timeout is not a caller abort. */
+function isCallerAbortCause(cause: Error): boolean {
+  return (
+    cause instanceof CallerDeadlineAbortError ||
+    cause instanceof AbortError ||
+    cause instanceof OpenAiAbortError ||
+    cause instanceof AnthropicAbortError ||
+    (cause instanceof DOMException && cause.name === 'AbortError')
+  );
+}
+
+/** Follow adapter error wrappers without mistaking a cycle for abort evidence. */
+export function isCallerAbortError(error: { readonly cause?: unknown }): boolean {
+  let cause = error.cause;
+  const seen = new Set<Error>();
+  while (cause instanceof Error && !seen.has(cause)) {
+    if (isCallerAbortCause(cause)) return true;
+    seen.add(cause);
+    cause = cause.cause;
+  }
+  return false;
+}
+
 /**
  * The CliError for a call the caller's `AbortSignal` ended (#6691). A deadline
  * (`reason` named `TimeoutError`, as `AbortSignal.timeout()` produces) is a
- * real timeout and stays `TIMEOUT`. Any other reason is a cancel — e.g.
+ * real timeout and stays `TIMEOUT`, with a distinct caller-deadline cause. Any other reason is a cancel — e.g.
  * `cancel_job` — marked by an {@link AbortError} cause so breakers skip it
  * (`isCallerCancelled`), and non-retryable so no layer re-runs it.
  */
@@ -129,7 +157,9 @@ export function createCallerAbortCliError(
   message: string,
   cli: CliName
 ): CliError {
-  if (isTimeoutAbortReason(reason)) return createCliError('TIMEOUT', message, cli);
+  if (isTimeoutAbortReason(reason)) {
+    return createCliError('TIMEOUT', message, cli, new CallerDeadlineAbortError(message));
+  }
   return createCliError('EXECUTION_ERROR', message, cli, new AbortError(message));
 }
 
