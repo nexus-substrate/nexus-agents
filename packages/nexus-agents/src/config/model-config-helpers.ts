@@ -53,15 +53,24 @@ function cliAvgLatency(): Record<CliNameLiteral, number> {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a modelId to an in-tree entry via the global registry.
- * Returns undefined when no in-tree authoritative entry exists
- * (e.g. unknown id, gateway model). Routes through `getDefaultRegistry()`
- * so manifest-overlay + snapshot tiers can still influence runtime
- * behaviour. Used by single-model lookup helpers.
+ * Resolve authoritative in-tree or manifest metadata via the global registry.
+ * Manifest fields win — including the behaviour defaults the overlay loader
+ * fills in (`promptCaching`, `toolDefinitionFormat`, …), so read those from
+ * the registry entry, not here. Omitted fields inherit from the unique in-tree entry
+ * matching the resolved id or its aliases (#6873), as ownership does. New or
+ * ambiguous manifests inherit nothing. Fuzzy/derived and catalog entries stay
+ * excluded, retaining the single-model helpers' conservative defaults.
  */
 function lookupInTree(modelId: string): ModelEntry | undefined {
   const entry = getDefaultRegistry().getEntry(modelId);
-  return entry.source === 'in-tree' ? entry : undefined;
+  if (entry.source === 'in-tree') return entry;
+  if (entry.source !== 'manifest') return undefined;
+  const keys = [entry.id, ...(entry.aliases ?? [])];
+  const matches = buildInTreeEntries().filter((candidate) =>
+    keys.some((key) => candidate.id === key || (candidate.aliases ?? []).includes(key))
+  );
+  // Zero: a new model. Multiple: no unambiguous in-tree metadata to inherit.
+  return matches.length === 1 ? { ...matches[0], ...entry } : entry;
 }
 
 /**
@@ -98,10 +107,8 @@ export function getModelDisplayName(modelId: ModelId): string {
  * Unknown ids fall through to the fail-closed 8 K default (#2177) instead
  * of the previous silent 200 K fall-through — the old value silently
  * masked routing-critical metadata for Bedrock / custom endpoints / new
- * vendor releases. Callers passing through the ModelId closed enum hit
- * the canonical T1 path; the 8 K branch fires only when a caller casts a
- * raw string to ModelId (type-lying), which is the same latent bug the
- * recent codex-5.2 `cliModelName` regression surfaced.
+ * vendor releases. In-tree models and their overlays retain authoritative
+ * context metadata; new manifests without it also use the 8 K default.
  *
  * Callers that need full catalog-breadth resolution (models.dev /
  * generated tiers) should call `getDefaultRegistry().getEntry(id)`
@@ -221,14 +228,15 @@ export function getCliModelName(modelId: ModelId): string {
  *   3. aliases[] membership (legacy version names — #2199 Child 5)
  */
 export function resolveCliAlias(alias: string): ModelId | undefined {
-  const match = getDefaultRegistry()
-    .allEntries()
-    .find(
-      (e) =>
-        e.source === 'in-tree' &&
-        (e.cliAlias === alias || e.id === alias || (e.aliases?.includes(alias) ?? false))
-    );
-  return match?.id as ModelId | undefined;
+  const direct = lookupInTree(alias);
+  // Only an entry with a CLI owner names a model a CLI accepts. Overlays cannot
+  // declare one, so a bare overlay id (or an id an overlay merely aliases) would
+  // be sent to `--model` unvetted; fall through to the curated matrix (#6873).
+  if (direct?.cliName !== undefined) return direct.id as ModelId;
+  const match = getInTreeCapabilitiesMatrix().models.find(
+    (e) => e.cliAlias === alias || e.id === alias || (e.aliases?.includes(alias) ?? false)
+  );
+  return match?.id;
 }
 
 // ---------------------------------------------------------------------------
@@ -373,24 +381,23 @@ export interface ModelInfoShape {
  *
  * Returns the legacy ModelCapability shape for backward compatibility
  * with adapter consumers; values are pulled from the registry's
- * authoritative in-tree entries.
+ * authoritative in-tree entries with manifest metadata overrides.
  */
 export function findCanonicalModel(
   cli: CliNameLiteral,
   cliModelName: string
 ): ModelCapability | undefined {
-  const entry = getDefaultRegistry()
-    .allEntries()
-    .find(
-      (e) =>
-        e.source === 'in-tree' &&
-        e.cliName === cli &&
-        (e.cliModelName === cliModelName ||
-          e.cliAlias === cliModelName ||
-          e.id === cliModelName ||
-          (e.aliases?.includes(cliModelName) ?? false))
-    );
-  return entry !== undefined ? entryToCapability(entry) : undefined;
+  const direct = lookupInTree(cliModelName);
+  if (direct?.cliName === cli) return entryToCapability(direct);
+  const entry = getInTreeCapabilitiesMatrix().models.find(
+    (e) =>
+      e.cliName === cli &&
+      (e.cliModelName === cliModelName ||
+        e.cliAlias === cliModelName ||
+        e.id === cliModelName ||
+        (e.aliases?.includes(cliModelName) ?? false))
+  );
+  return entry;
 }
 
 /**
@@ -517,7 +524,9 @@ export function getInTreeCapabilitiesMatrix(): {
   const models =
     registry === undefined
       ? buildInTreeEntries().map(entryToCapability)
-      : buildInTreeEntries().map((e) => entryToCapability(registry.getEntry(e.id)));
+      : buildInTreeEntries().map((e) =>
+          entryToCapability(lookupInTree(e.id) ?? registry.getEntry(e.id))
+        );
   return {
     version: DEFAULT_MODEL_CAPABILITIES.version,
     updatedAt: DEFAULT_MODEL_CAPABILITIES.updatedAt,

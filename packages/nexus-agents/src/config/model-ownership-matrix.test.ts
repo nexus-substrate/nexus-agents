@@ -20,7 +20,24 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getDefaultRegistry, setDefaultRegistry } from './model-registry.js';
 import { getCliForModelId, resolveCliSlot } from './model-availability.js';
-import { getDefaultModelForCli, resolveCliCostPer1M } from './model-config-helpers.js';
+import {
+  buildModelInfo,
+  findCanonicalModel,
+  getCliModelName,
+  getDefaultModelForCli,
+  getInTreeCapabilitiesMatrix,
+  getModelContextWindow,
+  getModelDisplayName,
+  getModelMaxOutput,
+  getModelQualityScores,
+  lookupInTreeCapability,
+  modelSupportsAll,
+  resolveCliAlias,
+  resolveCliCostPer1M,
+  resolveCliModelName,
+} from './model-config-helpers.js';
+import { buildInTreeEntries } from './in-tree-entries.js';
+import { buildDriftSources } from './model-drift-sources.js';
 import type { CliNameLiteral, ModelId } from './model-capabilities-types.js';
 import type { CostPer1M } from './in-tree-data.js';
 import { estimateRegistryCostUsd } from '../cli-adapters/budget-arm-cost.js';
@@ -35,6 +52,15 @@ interface OverlayEntry {
   readonly family: string;
   readonly aliases?: readonly string[];
   readonly pricing?: { readonly inputPer1M: number; readonly outputPer1M: number };
+  readonly contextWindow?: number;
+  readonly displayName?: string;
+  readonly maxOutputTokens?: number;
+  readonly qualityScores?: {
+    reasoning: number;
+    codeGeneration: number;
+    speed: number;
+    cost: number;
+  };
 }
 
 interface MatrixRow {
@@ -384,5 +410,174 @@ describe('ownership of a fuzzy-matched id (#6866)', () => {
     // ...but fuzzy resolution grants metadata only, never a CLI.
     expect(getCliForModelId(decorated as ModelId)).toBeUndefined();
     expect(resolveCliSlot(decorated)).toBe('codex');
+  });
+});
+
+const METADATA_ROWS = [
+  {
+    name: 'pricing-only overlay keeps in-tree metadata',
+    target: 'gpt-5.6-sol',
+    overlay: { id: 'gpt-5.6-sol', pricing: { inputPer1M: 1, outputPer1M: 2 } },
+  },
+  {
+    name: 'explicit overlay context wins',
+    target: 'gpt-5.6-sol',
+    overlay: { id: 'gpt-5.6-sol', contextWindow: 32_768 },
+  },
+  {
+    name: 'explicit overlay display, output and quality win',
+    target: 'gpt-5.6-sol',
+    overlay: {
+      id: 'gpt-5.6-sol',
+      displayName: 'Operator Sol',
+      maxOutputTokens: 4_096,
+      qualityScores: { reasoning: 1, codeGeneration: 2, speed: 3, cost: 4 },
+    },
+  },
+  {
+    name: 'overlay keyed by an in-tree alias keeps metadata',
+    target: 'openai/gpt-6.1-sol',
+    inTreeId: 'gpt-6.1-sol',
+    overlay: { id: 'openai/gpt-6.1-sol', pricing: { inputPer1M: 1, outputPer1M: 2 } },
+  },
+  {
+    name: 'overlay alias pointing to an in-tree id keeps metadata',
+    target: 'corp-sol',
+    overlay: { id: 'corp-sol', aliases: ['gpt-5.6-sol'] },
+  },
+  {
+    name: 'overlay alias resolves to its in-tree metadata',
+    target: 'sol-pinned',
+    overlay: { id: 'gpt-5.6-sol', aliases: ['sol-pinned'] },
+  },
+];
+
+describe('metadata over real manifest overlays (#6873)', () => {
+  it.each(METADATA_ROWS)('$name', (row) => {
+    loadOverlay([{ vendor: 'openai', family: 'gpt', ...row.overlay }]);
+    const baseline = buildInTreeEntries().find((e) => e.id === (row.inTreeId ?? 'gpt-5.6-sol'));
+    expect(baseline).toBeDefined();
+    const expected = { ...baseline, ...row.overlay };
+    if (expected.contextWindow === undefined) throw new Error('fixture must declare context');
+    const target = row.target as ModelId;
+    expect(getModelContextWindow(target), 'context window').toBe(expected.contextWindow);
+    expect(getModelDisplayName(target), 'display name').toBe(expected.displayName);
+    expect(getModelMaxOutput(target), 'max output').toBe(expected.maxOutputTokens);
+    expect(getModelQualityScores(target), 'quality scores').toEqual(expected.qualityScores);
+    expect(getCliModelName(target), 'CLI model name').toBe(expected.cliModelName);
+    expect(lookupInTreeCapability(target)?.inputModalities).toEqual(expected.inputModalities);
+    expect(modelSupportsAll(target, { minContextWindow: expected.contextWindow })).toBe(true);
+  });
+
+  it('brand-new overlays keep defaults when omitted and honor explicit metadata', () => {
+    loadOverlay([
+      { id: 'acme-x1', vendor: 'mistral', family: 'acme' },
+      { id: 'acme-x2', vendor: 'mistral', family: 'acme', contextWindow: 32_768 },
+    ]);
+    expect(getModelContextWindow('acme-x1' as ModelId)).toBe(8_192);
+    expect(getModelDisplayName('acme-x1' as ModelId)).toBe('acme-x1');
+    expect(getModelMaxOutput('acme-x1' as ModelId)).toBeUndefined();
+    expect(getModelQualityScores('acme-x1' as ModelId)).toBeUndefined();
+    expect(getModelContextWindow('acme-x2' as ModelId)).toBe(32_768);
+  });
+
+  it('CLI lookup and the runtime matrix retain omitted metadata', () => {
+    loadOverlay([{ id: 'claude-opus', vendor: 'anthropic', family: 'claude' }]);
+    const baseline = buildInTreeEntries().find((e) => e.id === 'claude-opus');
+    expect(baseline).toBeDefined();
+    expect(resolveCliAlias('opus')).toBe('claude-opus');
+    expect(findCanonicalModel('claude', 'opus')?.contextWindow).toBe(baseline?.contextWindow);
+    expect(resolveCliModelName('claude', 'opus')).toBe(baseline?.cliModelName);
+    expect(buildModelInfo('claude', 'opus')?.contextWindow).toBe(baseline?.contextWindow);
+    expect(
+      getInTreeCapabilitiesMatrix().models.find((e) => e.id === 'claude-opus')?.contextWindow
+    ).toBe(baseline?.contextWindow);
+  });
+
+  it('a bare overlay claiming a CLI alias is never sent to the CLI as --model', () => {
+    // Overlays cannot declare cliName, so an overlay-only id is not a name the
+    // Claude CLI accepts; `opus` must still resolve to the curated model.
+    loadOverlay([
+      { id: 'claude-opus-corp', vendor: 'anthropic', family: 'claude', aliases: ['opus'] },
+      { id: 'sonnet', vendor: 'anthropic', family: 'claude' },
+    ]);
+    expect(resolveCliAlias('opus')).toBe('claude-opus');
+    expect(resolveCliAlias('sonnet')).toBe('claude-sonnet');
+    expect(findCanonicalModel('claude', 'opus')?.id).toBe('claude-opus');
+  });
+
+  it('ambiguous in-tree aliases do not inherit one models metadata', () => {
+    loadOverlay([
+      {
+        id: 'mixed',
+        vendor: 'google',
+        family: 'mixed',
+        aliases: ['gpt-5.6-sol', 'claude-opus'],
+        displayName: 'Mixed overlay',
+      },
+    ]);
+    expect(getModelContextWindow('mixed' as ModelId)).toBe(8_192);
+    expect(getModelMaxOutput('mixed' as ModelId)).toBeUndefined();
+    expect(getModelQualityScores('mixed' as ModelId)).toBeUndefined();
+    expect(getModelDisplayName('mixed' as ModelId)).toBe('Mixed overlay');
+  });
+
+  it('CLI helpers use an overlay keyed by an in-tree alias', () => {
+    loadOverlay([
+      {
+        id: 'openai/gpt-6.1-sol',
+        vendor: 'openai',
+        family: 'gpt',
+        contextWindow: 32_768,
+      },
+    ]);
+    expect(resolveCliAlias('openai/gpt-6.1-sol')).toBe('openai/gpt-6.1-sol');
+    expect(findCanonicalModel('codex', 'openai/gpt-6.1-sol')?.contextWindow).toBe(32_768);
+    expect(buildModelInfo('codex', 'openai/gpt-6.1-sol')?.contextWindow).toBe(32_768);
+  });
+
+  it('CLI helpers retain legacy registry aliases when an overlay supplies new aliases', () => {
+    loadOverlay([
+      {
+        id: 'gpt-6.1-sol',
+        vendor: 'openai',
+        family: 'gpt',
+        aliases: ['sol-pinned'],
+        contextWindow: 32_768,
+      },
+    ]);
+    expect(resolveCliAlias('openai/gpt-6.1-sol')).toBe('gpt-6.1-sol');
+    expect(findCanonicalModel('codex', 'openai/gpt-6.1-sol')?.contextWindow).toBe(32_768);
+  });
+
+  it('vendor discovery still constructs a lister when every vendor model is overlaid', async () => {
+    const first = buildInTreeEntries().find((e) => e.vendor === 'openai');
+    if (first === undefined) throw new Error('fixture must contain an OpenAI model');
+    loadOverlay(
+      buildInTreeEntries()
+        .filter((e) => e.vendor === 'openai')
+        .map((e) => ({
+          id: e.id,
+          vendor: e.vendor,
+          family: e.family,
+        }))
+    );
+    const adapter = await import('../adapters/openai-adapter.js');
+    const construct = vi.spyOn(adapter, 'createOpenAIAdapter').mockImplementation(() => {
+      throw new Error('lister constructed');
+    });
+    try {
+      const source = buildDriftSources({ env: { OPENAI_API_KEY: 'test-placeholder' } }).find(
+        (s) => s.name === 'openai-api'
+      );
+      expect(source).toBeDefined();
+      await expect(source?.probe()).rejects.toThrow('lister constructed');
+      expect(construct).toHaveBeenCalledWith({
+        modelId: first.cliModelName ?? first.id,
+        apiKey: 'test-placeholder',
+      });
+    } finally {
+      construct.mockRestore();
+    }
   });
 });
