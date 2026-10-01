@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.126.0
+
+### Minor Changes
+
+- [#6914](https://github.com/nexus-substrate/nexus-agents/pull/6914) [`1044a1d`](https://github.com/nexus-substrate/nexus-agents/commit/1044a1d4b40ad4b3331bf5382fcb57fab13abb2b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist optional bounded finding evidence alongside PR review eval verdicts, including raw claims and verification gates, rubric classifications, and explicit truncation metadata. Preserve legacy count-only records.
+
 ## 8.125.0
 
 ### Minor Changes
