@@ -65,6 +65,9 @@ export interface ParsedValues extends SubcommandFlagValues {
   'skip-gemini': boolean;
   'skip-codex': boolean;
   scope?: string;
+  'custom-api'?: string;
+  'custom-api-key'?: string;
+  'custom-model'?: string;
   mock: boolean;
   deep: boolean;
   live: boolean;
@@ -206,6 +209,9 @@ function buildSetupOptions(values: ParsedValues): Record<string, unknown> {
     skipGemini: values['skip-gemini'],
     skipCodex: values['skip-codex'],
     ...(scope !== undefined && { scope }),
+    ...(values['custom-api'] !== undefined && { customApi: values['custom-api'] }),
+    ...(values['custom-api-key'] !== undefined && { customApiKey: values['custom-api-key'] }),
+    ...(values['custom-model'] !== undefined && { customModel: values['custom-model'] }),
   };
 }
 
