@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
 import { getDefaultRegistry } from '../../config/model-registry.js';
 import type { DomainEvent } from '../collaboration/event-bus-types.js';
 import type {
@@ -69,16 +70,28 @@ function makeSessionMetrics(overrides: Partial<SessionMetrics> = {}): SessionMet
 // Payload Extraction Helpers
 // ============================================================================
 
+const PRICEABLE_CLIS = ['claude', 'gemini', 'codex', 'opencode'] as const;
+
 /**
- * Run `fn` with every CLI default priced, so a non-zero cost proves a code
- * path even though the codex default is unpriced (#6842).
+ * Run `fn` with each CLI's resolved default model priced, so a non-zero cost
+ * proves a code path even though the codex default is unpriced (#6842).
+ *
+ * Only the exact default ids are priced. Pricing every unpriced lookup would
+ * also price a literal `getEntry('codex')`, so a regression that skipped the
+ * CliName → default-model resolution would still return a non-zero cost.
  */
 function withPricedDefaults(fn: () => void): void {
+  const defaults = new Set<string>(PRICEABLE_CLIS.map((cli) => getDefaultModelForCli(cli)));
+  for (const cli of PRICEABLE_CLIS) {
+    // If a CLI's default id equalled the CliName, pricing it would also price
+    // the unresolved lookup and the guard below could not fail.
+    expect(defaults.has(cli), `default model id equals CliName ${cli}`).toBe(false);
+  }
   const registry = getDefaultRegistry();
   const real = registry.getEntry.bind(registry);
   const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
     const entry = real(id);
-    return entry.pricing === undefined
+    return entry.pricing === undefined && defaults.has(id)
       ? { ...entry, pricing: { inputPer1M: 1, outputPer1M: 2 } }
       : entry;
   });
@@ -388,7 +401,7 @@ describe('cost resolution reads split rates from the registry (#5180)', () => {
       // The codex default (gpt-6.1-sol) is unpriced (#6842), so give every
       // default a price here: a non-zero result must prove the resolution.
       withPricedDefaults(() => {
-        for (const cli of ['claude', 'gemini', 'codex', 'opencode']) {
+        for (const cli of PRICEABLE_CLIS) {
           expect(registryCostForModel(t(1000, 1000), cli), cli).toBeGreaterThan(0);
         }
       });
