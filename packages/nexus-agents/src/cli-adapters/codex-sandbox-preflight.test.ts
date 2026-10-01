@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  createCodexSandboxGuard,
   createCodexSandboxPreflight,
   codexSandboxPreflight,
   type CodexSandboxProbeExec,
@@ -9,6 +10,18 @@ import { createCliAdapter } from './factory.js';
 import { CLI_SUBPROCESS_TIMEOUTS, resolveClassGuardMs } from '../config/timeouts.js';
 
 const PANIC = 'filesystem-restricted execution requires bubblewrap to isolate app-server sockets';
+const PLAIN_ARGV = ['sandbox', '-c', 'sandbox_mode="read-only"', '--', 'true'];
+const LEGACY_ARGV = [
+  'sandbox',
+  '-c',
+  'sandbox_mode="read-only"',
+  '-c',
+  'features.use_legacy_landlock=true',
+  '--',
+  'true',
+];
+/** The shared default probe measures the real host: plain then legacy on Linux (#6841 item 3). */
+const HOST_CANDIDATES = process.platform === 'linux' ? 2 : 1;
 
 const { execFileAsync, closeStdin } = vi.hoisted(() => ({
   execFileAsync: vi.fn<(...args: unknown[]) => Promise<{ stdout: string; stderr: string }>>(),
@@ -32,21 +45,23 @@ describe('Codex sandbox preflight (#6841)', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it('probes the read-only seat sandbox with the exact Linux argv and a short class-bound timeout', async () => {
-    const exec = vi.fn<CodexSandboxProbeExec>(() => Promise.resolve({ exitCode: 0, stderr: '' }));
-    expect(await createCodexSandboxPreflight(exec, 'linux')()).toEqual({ status: 'ok' });
-    expect(exec).toHaveBeenCalledWith(
-      'codex',
-      [
-        'sandbox',
-        '-c',
-        'sandbox_mode="read-only"',
-        '-c',
-        'features.use_legacy_landlock=true',
-        '--',
-        'true',
-      ],
-      Math.min(CLI_SUBPROCESS_TIMEOUTS.statusProbeMs, resolveClassGuardMs('interactive'))
+    // #6841 item 3: plain first; the legacy-landlock argv only after plain fails.
+    const exec = vi
+      .fn<CodexSandboxProbeExec>()
+      .mockResolvedValueOnce({ exitCode: 101, stderr: PANIC })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '' });
+    expect(await createCodexSandboxPreflight(exec, 'linux')()).toEqual({
+      status: 'ok',
+      sandboxArgs: ['-c', 'features.use_legacy_landlock=true'],
+    });
+    const timeout = Math.min(
+      CLI_SUBPROCESS_TIMEOUTS.statusProbeMs,
+      resolveClassGuardMs('interactive')
     );
+    expect(exec.mock.calls).toEqual([
+      ['codex', PLAIN_ARGV, timeout],
+      ['codex', LEGACY_ARGV, timeout],
+    ]);
   });
 
   it('honors a shorter operation-class override', async () => {
@@ -103,25 +118,41 @@ describe('Codex sandbox preflight (#6841)', () => {
   });
 
   it('records a runner exception as unknown', async () => {
-    const probe = createCodexSandboxPreflight(() => {
+    const exec = vi.fn<CodexSandboxProbeExec>(() => {
       throw new Error('spawn codex ENOENT');
     });
-    await expect(probe()).resolves.toEqual({ status: 'unknown', reason: 'spawn codex ENOENT' });
+    const probe = createCodexSandboxPreflight(exec, 'linux');
+    await expect(probe()).resolves.toEqual({
+      status: 'unknown',
+      reason: 'spawn codex ENOENT',
+      sandboxArgs: [],
+    });
+    expect(exec.mock.calls.map((call) => call[1])).toEqual([PLAIN_ARGV, LEGACY_ARGV]);
   });
 
   it('caches an asynchronous runner rejection as unknown', async () => {
     const exec = vi.fn<CodexSandboxProbeExec>().mockRejectedValue(new Error('spawn codex ENOENT'));
     const probe = createCodexSandboxPreflight(exec, 'linux');
-    await expect(probe()).resolves.toEqual({ status: 'unknown', reason: 'spawn codex ENOENT' });
-    await expect(probe()).resolves.toEqual({ status: 'unknown', reason: 'spawn codex ENOENT' });
-    expect(exec).toHaveBeenCalledTimes(1);
+    const unknown = { status: 'unknown', reason: 'spawn codex ENOENT', sandboxArgs: [] };
+    await expect(probe()).resolves.toEqual(unknown);
+    await expect(probe()).resolves.toEqual(unknown);
+    // One selection sequence (both candidates), never repeated.
+    expect(exec).toHaveBeenCalledTimes(2);
   });
 
-  it.each([0, 101, null])('memoizes even unknown or broken results (exit %s)', (exitCode) => {
+  it.each([
+    [0, 1],
+    [101, 2],
+    [null, 2],
+  ])('memoizes even unknown or broken results (exit %s, %i probes)', async (exitCode, probes) => {
     const exec = vi.fn<CodexSandboxProbeExec>(() => Promise.resolve({ exitCode, stderr: PANIC }));
     const probe = createCodexSandboxPreflight(exec, 'linux');
-    expect(probe()).toBe(probe());
-    expect(exec).toHaveBeenCalledTimes(1);
+    const first = probe();
+    expect(probe()).toBe(first);
+    await first;
+    expect(probe()).toBe(first);
+    // Success on plain stops; a failure probes legacy once, never again.
+    expect(exec).toHaveBeenCalledTimes(probes);
   });
 
   it('shares one pending probe between concurrent first callers without blocking the event loop', async () => {
@@ -135,7 +166,8 @@ describe('Codex sandbox preflight (#6841)', () => {
     expect(first).toBeInstanceOf(Promise);
     expect(second).toBe(first);
     expect(exec).toHaveBeenCalledTimes(1);
-    await expect(first).resolves.toEqual({ status: 'ok' });
+    await expect(first).resolves.toEqual({ status: 'ok', sandboxArgs: [] });
+    expect(exec).toHaveBeenCalledTimes(1);
     expect(probe()).toBe(first);
   });
 
@@ -168,9 +200,10 @@ describe('Codex sandbox preflight (#6841)', () => {
     });
     expect(execution.ok).toBe(false);
     expect(initialize).not.toHaveBeenCalled();
-    expect(execFileAsync).toHaveBeenCalledTimes(1);
+    // One probe per candidate; the factory arm reuses the cached verdict.
+    expect(execFileAsync).toHaveBeenCalledTimes(HOST_CANDIDATES);
     expect(execFileSync).not.toHaveBeenCalled();
-    expect(closeStdin).toHaveBeenCalledTimes(1);
+    expect(closeStdin).toHaveBeenCalledTimes(HOST_CANDIDATES);
     expect(execFileAsync).toHaveBeenCalledWith('codex', expect.any(Array), {
       encoding: 'utf8',
       timeout: Math.min(CLI_SUBPROCESS_TIMEOUTS.statusProbeMs, resolveClassGuardMs('interactive')),
@@ -195,7 +228,8 @@ describe('Codex sandbox async process boundary (#6846)', () => {
     const result = await freshProbe();
     expect(result.status).toBe(expected);
     if (result.status !== 'ok') expect(result.reason.length).toBeGreaterThan(0);
-    expect(execFileAsync).toHaveBeenCalledTimes(1);
+    expect(result.sandboxArgs).toEqual([]);
+    expect(execFileAsync).toHaveBeenCalledTimes(HOST_CANDIDATES);
   });
 
   it('shares a pending successful subprocess between concurrent first callers', async () => {
@@ -209,10 +243,54 @@ describe('Codex sandbox async process boundary (#6846)', () => {
     const second = freshProbe();
     expect(second).toBe(first);
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { status: 'ok' },
-      { status: 'ok' },
+      { status: 'ok', sandboxArgs: [] },
+      { status: 'ok', sandboxArgs: [] },
     ]);
     expect(execFileAsync).toHaveBeenCalledTimes(1);
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('Codex sandbox guard arg selection (#6841)', () => {
+  const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+  it('runs a throwing injected probe with plain args, never the legacy flag', async () => {
+    // The legacy flag panics on codex-cli >= 0.156.1, so an inconclusive
+    // probe must not select it even on Linux.
+    const onSandboxArgs = vi.fn();
+    const guard = createCodexSandboxGuard(
+      () => {
+        throw new Error('probe exploded');
+      },
+      logger as never,
+      onSandboxArgs,
+      'linux'
+    );
+    expect(await guard()).toBeUndefined();
+    expect(onSandboxArgs).toHaveBeenCalledWith([]);
+  });
+
+  it('keeps the old Linux args for an injected result that omits sandboxArgs', async () => {
+    const onSandboxArgs = vi.fn();
+    const guard = createCodexSandboxGuard(
+      () => ({ status: 'ok' }),
+      logger as never,
+      onSandboxArgs,
+      'linux'
+    );
+    await guard();
+    expect(onSandboxArgs).toHaveBeenCalledWith(['-c', 'features.use_legacy_landlock=true']);
+  });
+
+  it('classifies an unrecognised plain failure plus a legacy panic as broken', async () => {
+    const exec = vi.fn<CodexSandboxProbeExec>((_cmd, args) =>
+      Promise.resolve(
+        args.includes('features.use_legacy_landlock=true')
+          ? { exitCode: 101, stderr: PANIC }
+          : { exitCode: 1, stderr: 'some unrelated failure' }
+      )
+    );
+    const result = await createCodexSandboxPreflight(exec, 'linux')();
+    expect(result.status).toBe('broken');
   });
 });

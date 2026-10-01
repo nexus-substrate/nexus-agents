@@ -24,7 +24,6 @@ import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import {
   CODEX_LEGACY_DEFAULTS,
   type CodexAdapterOptions,
-  codexPlatformSandboxArgs,
   toCodexModelSlug,
 } from './codex-adapter-helpers.js';
 import {
@@ -60,16 +59,19 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
   protected readonly parser: ICliResponseParser = new CodexResponseParser();
 
   private readonly model: string;
-  private readonly platform: NodeJS.Platform;
+  private sandboxArgs: readonly string[] = [];
   private readonly sandboxRefusal: () => Promise<CliError | undefined>;
 
   constructor(options?: CodexAdapterOptions) {
     super(options?.logger);
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
-    this.platform = options?.platform ?? process.platform;
     this.sandboxRefusal = createCodexSandboxGuard(
       options?.sandboxProbe ?? codexSandboxPreflight,
-      this.logger
+      this.logger,
+      (args) => {
+        this.sandboxArgs = args;
+      },
+      options?.platform
     );
   }
 
@@ -119,10 +121,8 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
       args.push('-m', toCodexModelSlug(model, this.logger));
     }
 
-    // Add sandbox mode for safety (read-only by default). On Linux, back it
-    // with legacy landlock so the read-only sandbox actually starts under
-    // AppArmor's userns restriction (#6093, see codexPlatformSandboxArgs).
-    args.push('-s', CODEX_EXEC_SANDBOX, ...codexPlatformSandboxArgs(this.platform));
+    // The awaited preflight selects the backend; every task stays read-only.
+    args.push('-s', CODEX_EXEC_SANDBOX, ...this.sandboxArgs);
 
     // Skip git repo check for standalone prompts
     args.push('--skip-git-repo-check');

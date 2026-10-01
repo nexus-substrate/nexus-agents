@@ -239,6 +239,68 @@ describe('CodexMcpAdapter', () => {
     });
   });
 
+  describe('selected sandbox args (#6841 item 3)', () => {
+    it.each([
+      { status: 'ok' as const, sandboxArgs: [] },
+      { status: 'ok' as const, sandboxArgs: ['-c', 'features.use_legacy_landlock=true'] },
+      { status: 'unknown' as const, reason: 'unmeasured', sandboxArgs: [] },
+    ])('uses the selected args on direct initialize for $status', async (measurement) => {
+      const selected = new CodexMcpAdapter({ platform: 'linux', sandboxProbe: () => measurement });
+      await selected.initialize();
+      expect(mocks.mockTransport.mock.calls[0]?.[0]).toMatchObject({
+        args: ['mcp-server', ...measurement.sandboxArgs],
+      });
+      await selected.dispose();
+    });
+
+    it('awaits selection before spawning on direct initialize', async () => {
+      let finish!: (result: { status: 'ok'; sandboxArgs: string[] }) => void;
+      const sandboxProbe = vi.fn(
+        () =>
+          new Promise<{ status: 'ok'; sandboxArgs: string[] }>((resolve) => {
+            finish = resolve;
+          })
+      );
+      const selected = new CodexMcpAdapter({ platform: 'linux', sandboxProbe });
+      const pending = selected.initialize();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(mocks.mockTransport).not.toHaveBeenCalled();
+      finish({ status: 'ok', sandboxArgs: [] });
+      await pending;
+      await selected.initialize();
+      expect(sandboxProbe).toHaveBeenCalledTimes(1);
+      expect(mocks.mockTransport.mock.calls[0]?.[0]).toMatchObject({ args: ['mcp-server'] });
+      await selected.dispose();
+    });
+
+    it('refuses a broken sandbox on direct initialize before spawning', async () => {
+      const selected = new CodexMcpAdapter({
+        sandboxProbe: () => ({ status: 'broken', reason: 'bubblewrap panic' }),
+      });
+      await expect(selected.initialize()).rejects.toThrow('Codex read-only sandbox unavailable');
+      expect(mocks.mockTransport).not.toHaveBeenCalled();
+      await selected.dispose();
+    });
+
+    it.each(['linux', 'darwin'] as const)(
+      'retains compatibility for an injected unknown without args on %s',
+      async (platform) => {
+        const selected = new CodexMcpAdapter({
+          platform,
+          sandboxProbe: () => ({ status: 'unknown', reason: 'injected old shape' }),
+        });
+        await selected.initialize();
+        expect(mocks.mockTransport.mock.calls[0]?.[0]).toMatchObject({
+          args: [
+            'mcp-server',
+            ...(platform === 'linux' ? ['-c', 'features.use_legacy_landlock=true'] : []),
+          ],
+        });
+        await selected.dispose();
+      }
+    );
+  });
+
   describe('execute()', () => {
     it('should call MCP tool and return response', async () => {
       const mockClient = {

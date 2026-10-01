@@ -64,8 +64,13 @@ describe.each([
   it('records unknown once and proceeds with the existing read-only execution', async () => {
     const logger = createLogger({ component: 'test' });
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
-    const exec = vi.fn(() => Promise.resolve({ exitCode: null, stderr: 'spawn codex ENOENT' }));
-    const adapter = new Adapter({ logger, sandboxProbe: createCodexSandboxPreflight(exec) });
+    const exec = vi.fn((_command: string, _args: readonly string[]) =>
+      Promise.resolve({ exitCode: null, stderr: 'spawn codex ENOENT' })
+    );
+    const adapter = new Adapter({
+      logger,
+      sandboxProbe: createCodexSandboxPreflight(exec, 'linux'),
+    });
     vi.spyOn(adapter, 'initialize').mockResolvedValue();
     const execute = vi.spyOn(adapter, 'executeTask').mockResolvedValue(ok({ text: 'reviewed' }));
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -74,13 +79,27 @@ describe.each([
       ).toBe(true);
     }
     expect(execute).toHaveBeenCalledTimes(2);
-    expect(exec).toHaveBeenCalledTimes(1);
+    // #6841 item 3: one selection sequence per process (plain, then legacy on
+    // Linux), never re-run by the second attempt.
+    expect(exec.mock.calls.map((call) => call[1])).toEqual([
+      ['sandbox', '-c', 'sandbox_mode="read-only"', '--', 'true'],
+      [
+        'sandbox',
+        '-c',
+        'sandbox_mode="read-only"',
+        '-c',
+        'features.use_legacy_landlock=true',
+        '--',
+        'true',
+      ],
+    ]);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('unknown'),
       expect.objectContaining({
         cli: 'codex',
         reason: expect.stringContaining('spawn codex ENOENT'),
+        sandboxArgs: [],
       })
     );
   });

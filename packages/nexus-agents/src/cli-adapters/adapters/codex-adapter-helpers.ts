@@ -47,12 +47,14 @@ export interface CodexAdapterOptions extends BaseAdapterOptions {
   /**
    * Injectable model-free sandbox preflight; the default is shared process-wide.
    * A synchronous probe (the 8.115.0 shape) is still accepted (#6846).
+   * Results without sandboxArgs retain the previous platform arguments:
+   * legacy landlock on Linux, plain elsewhere. Explicit [] selects plain.
    */
   readonly sandboxProbe?: () => CodexSandboxPreflightResult | Promise<CodexSandboxPreflightResult>;
   /**
-   * Host platform the sandbox arguments are chosen for. Defaults to
-   * `process.platform`; injectable so a test can exercise the Linux and
-   * non-Linux branches without mocking a global (#6093).
+   * Platform for compatibility arguments when an injected result omits them.
+   * Defaults to `process.platform`. Explicit sandboxArgs override this option;
+   * the shared default probe always measures the actual host platform.
    */
   readonly platform?: NodeJS.Platform;
 }
@@ -63,11 +65,11 @@ export interface CodexAdapterOptions extends BaseAdapterOptions {
  * names it (`use_legacy_landlock`, flagged deprecated on codex-cli 0.153.4):
  * `-c` accepts any key, so a misspelling would be silently ignored.
  */
-const CODEX_LEGACY_LANDLOCK_CONFIG = 'features.use_legacy_landlock=true';
+export const CODEX_LEGACY_LANDLOCK_CONFIG = 'features.use_legacy_landlock=true';
 
 /**
- * Extra codex argv for the host platform: `['-c', CODEX_LEGACY_LANDLOCK_CONFIG]`
- * on Linux, nothing elsewhere.
+ * Legacy candidate / compatibility argv: `['-c', CODEX_LEGACY_LANDLOCK_CONFIG]`
+ * on Linux, nothing elsewhere. Default seats use preflight-selected args.
  *
  * Why (#6093, measured on codex-cli 0.153.4 / bwrap 0.9.0): on hosts with
  * `kernel.apparmor_restrict_unprivileged_userns=1` (the Ubuntu 24.04+ default)
@@ -83,8 +85,8 @@ const CODEX_LEGACY_LANDLOCK_CONFIG = 'features.use_legacy_landlock=true';
  * `kernel.apparmor_restrict_unprivileged_userns=0` or an AppArmor profile for
  * bwrap; this flag makes the seats work without host changes.
  *
- * Shared by `CodexCliAdapter` (`codex exec`) and `CodexMcpAdapter`
- * (`codex mcp-server`) so the platform gate exists once. Both subcommands
+ * Used by the ordered preflight and the guard's old-result compatibility
+ * fallback so the platform gate exists once. Both subcommands
  * accept `-c` after the subcommand name (verified with `--help`, which rejects
  * an unknown flag in that position with exit 2).
  */
