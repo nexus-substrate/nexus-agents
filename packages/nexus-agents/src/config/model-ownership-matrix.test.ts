@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { setDefaultRegistry } from './model-registry.js';
+import { getDefaultRegistry, setDefaultRegistry } from './model-registry.js';
 import { getCliForModelId, resolveCliSlot } from './model-availability.js';
 import { getDefaultModelForCli, resolveCliCostPer1M } from './model-config-helpers.js';
 import type { CliNameLiteral, ModelId } from './model-capabilities-types.js';
@@ -48,6 +48,8 @@ interface MatrixRow {
   /** Cost-ceiling estimate for 1M input + 1M output on codex; undefined = excluded. */
   readonly codexCeiling: number | undefined;
   readonly defaultPriced: boolean;
+  /** The codex default the registry resolves to; `gpt-6.1-sol` unless an overlay re-points it. */
+  readonly resolvedDefault?: string;
 }
 
 const ROWS: readonly MatrixRow[] = [
@@ -196,8 +198,122 @@ const ROWS: readonly MatrixRow[] = [
     codexCeiling: undefined,
     defaultPriced: false,
   },
+  // ---- cliName: an in-tree cliName wins over the vendor (vendor-first is wrong).
+  {
+    name: 'cliName: in-tree model whose CLI differs from its vendor',
+    overlay: [],
+    target: 'opencode-custom-opus',
+    owner: 'opencode',
+    slot: 'opencode',
+    codexBudget: { input: 5, output: 30 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+  },
+  {
+    // The overlay drops cliName; the in-tree owner of the id, not the
+    // anthropic vendor, still decides.
+    name: 'cliName: overlay on a model whose CLI differs from its vendor',
+    overlay: [{ id: 'opencode-custom-opus', vendor: 'anthropic', family: 'claude' }],
+    target: 'opencode-custom-opus',
+    owner: 'opencode',
+    slot: 'opencode',
+    codexBudget: { input: 5, output: 30 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+  },
+  // ---- vendor: the entry's declared vendor, not the vendor guessed from the id.
+  {
+    name: 'vendor: opaque overlay id declared openai',
+    overlay: [
+      {
+        id: 'corp-prod',
+        vendor: 'openai',
+        family: 'corp',
+        pricing: { inputPer1M: 60, outputPer1M: 120 },
+      },
+    ],
+    target: 'corp-prod',
+    owner: undefined,
+    slot: 'codex',
+    codexBudget: { input: 60, output: 120 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+  },
+  {
+    // An openai-looking id declared google: the declared vendor wins.
+    name: 'vendor: openai-looking overlay id declared google',
+    overlay: [
+      {
+        id: 'gpt-lookalike',
+        vendor: 'google',
+        family: 'gemini',
+        pricing: { inputPer1M: 60, outputPer1M: 120 },
+      },
+    ],
+    target: 'gpt-lookalike',
+    owner: undefined,
+    slot: 'gemini',
+    codexBudget: { input: 5, output: 30 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+  },
+  // ---- aliases: an overlay that aliases an in-tree id takes over that id.
+  {
+    // The registry re-points the default to corp-sol (#3185) and the codex
+    // adapter sends that model through the codex binary
+    // (codex-adapter.ts: getCliModelName(getDefaultModelForCli('codex'))), so
+    // the codex owner of the aliased id follows the entry that replaced it.
+    name: 'aliases: overlay aliasing the codex default re-points it',
+    overlay: [
+      {
+        id: 'corp-sol',
+        vendor: 'mistral',
+        family: 'corp',
+        aliases: ['gpt-6.1-sol'],
+        pricing: { inputPer1M: 7, outputPer1M: 9 },
+      },
+    ],
+    target: 'gpt-6.1-sol',
+    owner: 'codex',
+    slot: 'codex',
+    codexBudget: { input: 7, output: 9 },
+    codexCeiling: 16,
+    defaultPriced: true,
+    resolvedDefault: 'corp-sol',
+  },
+  {
+    name: 'aliases: the re-pointed default by its own id',
+    overlay: [{ id: 'corp-sol', vendor: 'mistral', family: 'corp', aliases: ['gpt-6.1-sol'] }],
+    target: 'corp-sol',
+    owner: 'codex',
+    slot: 'codex',
+    codexBudget: { input: 5, output: 30 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+    resolvedDefault: 'corp-sol',
+  },
+  {
+    // Aliases owned by two CLIs: no confident owner, so the declared vendor
+    // routes it. First-alias-wins would put its $60/$120 on codex.
+    name: 'aliases: overlay aliasing models of two CLIs',
+    overlay: [
+      {
+        id: 'mixed',
+        vendor: 'google',
+        family: 'mixed',
+        aliases: ['gpt-5.5', 'claude-opus'],
+        pricing: { inputPer1M: 60, outputPer1M: 120 },
+      },
+    ],
+    target: 'mixed',
+    owner: undefined,
+    slot: 'gemini',
+    // gpt-5.5 is now an alias of `mixed`, so gpt-5.6-sol's $4/$20 is the bound.
+    codexBudget: { input: 4, output: 20 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+  },
 ];
-
 let dir: string;
 
 beforeEach(() => {
@@ -219,13 +335,16 @@ function loadOverlay(entries: readonly OverlayEntry[]): void {
   writeFileSync(path, JSON.stringify({ version: 1, models: entries }), 'utf-8');
   vi.stubEnv('NEXUS_MODELS_OVERLAY_PATH', path);
   setDefaultRegistry(undefined);
+  // Build it now, as a running server has: `getDefaultModelForCli` follows an
+  // overlay only once the singleton exists (#3185 bootstrap guard).
+  getDefaultRegistry();
 }
 
 describe('model ownership and unpriced pricing over the overlay matrix (#6866)', () => {
   it.each(ROWS)('$name', (row) => {
     loadOverlay(row.overlay);
     const codexDefault = getDefaultModelForCli('codex');
-    expect(codexDefault).toBe('gpt-6.1-sol');
+    expect(codexDefault).toBe(row.resolvedDefault ?? 'gpt-6.1-sol');
 
     expect(getCliForModelId(row.target as ModelId), 'owner').toBe(row.owner);
     expect(resolveCliSlot(row.target), 'slot').toBe(row.slot);

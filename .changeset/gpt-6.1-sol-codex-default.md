@@ -15,8 +15,8 @@ $5/$30 per 1M — so the estimate is never cheaper than a priced sibling such as
 sibling with free input but paid output still bounds the output rate; the static
 per-CLI table, whose Codex row is now $5/$30, is used only for a side no priced
 sibling bounds. The runtime budget estimate counts in-tree models and operator
-manifest overlay entries, including a new overlay model under the CLI its vendor
-routes it to; models.dev and generated catalogue entries do not count. The
+manifest overlay entries, including a new overlay model under the CLI its declared
+`vendor` routes it to; models.dev and generated catalogue entries do not count. The
 cost-weighted scoring tables are built at load time from in-tree prices only.
 Configured task-class cost ceilings exclude models with unknown pricing, so under
 `NEXUS_BILLING_MODE=api` with a ceiling configured, the Codex default drops out of
@@ -32,13 +32,17 @@ models.dev or generated catalogue price for an id that has no in-tree entry.
 
 A model's CLI is now read from its registry entry rather than inferred from the
 current default and the fallback chains: the entry's `cliName`, else the in-tree
-owner of the entry the id resolves to, so an overlay that re-prices a model or
-adds an alias for it keeps its CLI. A pinned `gpt-5.6-sol` or `gpt-5.5` keeps its
+owner of the entry the id resolves to or of an id that entry aliases, so an
+overlay that re-prices a model, adds an alias for it, or aliases an in-tree id
+(which re-points that id, the CLI default included, to the overlay model) keeps
+the CLI. An overlay whose aliases belong to two CLIs has no owner. A pinned `gpt-5.6-sol` or `gpt-5.5` keeps its
 Codex attribution and, when unavailable, falls back along the Codex chain;
 `gemini-3.5-flash` and the two OpenRouter models gain the same mapping.
 `getCliForModelId`, `resolveCliSlot`, swarm-health signals, `delegate_to_model`
 candidate filtering and pipeline/expert outcome attribution share this answer. A
-fuzzy-matched or unknown id has no owner; `resolveCliSlot` still maps it by vendor.
+fuzzy-matched or unknown id has no owner; `resolveCliSlot` maps an unowned id by
+its registry entry's `vendor` (an overlay's declared vendor, else the vendor
+derived from the id).
 
 To pin the old model, use the existing adapter configuration:
 `createCliAdapter({ cli: 'codex', model: 'gpt-5.6-sol' })`. For a delegated task,
