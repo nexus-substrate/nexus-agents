@@ -27,6 +27,8 @@ import {
   setGatewaySlotCatalog,
 } from '../../adapters/gateway-family-slots.js';
 import { fakeGatewayModel } from '../../testing/adapters/fake-gateway-model.js';
+import { ModelRegistry, setDefaultRegistry } from '../../config/model-registry.js';
+import { buildInTreeEntries } from '../../config/in-tree-entries.js';
 
 // ============================================================================
 // Test Helpers
@@ -530,5 +532,25 @@ describe('codex-5.3 model', () => {
     const caps = MODEL_CAPABILITIES['codex-5.3']!;
     expect(caps.reasoning).toBe(10);
     expect(caps.codeGeneration).toBe(10);
+  });
+});
+
+describe('getCliForModel under a manifest overlay (#6866)', () => {
+  it('keeps the in-tree owner of a model an overlay re-prices without a cliName', () => {
+    const inTree = buildInTreeEntries();
+    const base = inTree.find((e) => e.id === 'gpt-5.6-sol');
+    if (base === undefined) throw new Error('fixture base gpt-5.6-sol missing');
+    const { cliName: _owner, ...overlay } = base;
+    setDefaultRegistry(
+      new ModelRegistry({
+        inTreeEntries: inTree,
+        manifestEntries: [{ ...overlay, source: 'manifest' }],
+      })
+    );
+    try {
+      expect(getCliForModel('gpt-5.6-sol')).toBe('codex');
+    } finally {
+      setDefaultRegistry(undefined);
+    }
   });
 });

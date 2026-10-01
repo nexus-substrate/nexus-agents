@@ -11,10 +11,7 @@
 
 import { getTimeProvider } from '../core/index.js';
 import type { ModelId, CliNameLiteral } from './model-capabilities-types.js';
-import { CLI_NAMES, MODEL_IDS } from './model-capabilities-types.js';
-import { getDefaultRegistry } from './model-registry.js';
-import { DEFAULT_MODEL_CAPABILITIES } from './in-tree-data.js';
-import { resolveModelIdentitySync, type ModelVendor } from './model-identity.js';
+import { resolveCliSlot, resolveOwnerCli } from './model-ownership.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,63 +169,23 @@ export function getFallbackChain(cli: CliNameLiteral): readonly ModelId[] {
   return FALLBACK_CHAINS[cli];
 }
 
-/** Narrow a registry `cliName` string to a canonical CLI slot. */
-function isCliName(value: string | undefined): value is CliNameLiteral {
-  return value !== undefined && (CLI_NAMES as readonly string[]).includes(value);
-}
-
 /**
- * Get the CLI name for a model ID.
+ * Get the CLI that confidently serves a model ID.
  *
- * Ownership is the canonical registry entry's `cliName` (#6866). It used to be
- * inferred from `DEFAULT_MODEL_PER_CLI` plus {@link FALLBACK_CHAINS}, which is
- * a second copy of the same knowledge: flipping the codex default to
- * gpt-6.1-sol left gpt-5.6-sol in neither list, so a pinned gpt-5.6-sol lost
- * its codex attribution and its fallback. `FALLBACK_CHAINS` now only orders
- * fallbacks. An overlay entry without `cliName` keeps the in-tree owner.
- * Undefined when neither names a CLI.
+ * Delegates to {@link resolveOwnerCli}, the single ownership answer (#6866):
+ * the exactly-resolved registry entry's `cliName`, else the in-tree owner of
+ * its canonical id, so an overlay alias or a pricing-only overlay keeps its
+ * CLI. It used to be inferred from `DEFAULT_MODEL_PER_CLI` plus
+ * {@link FALLBACK_CHAINS}, which lost a pinned gpt-5.6-sol when the codex
+ * default moved; `FALLBACK_CHAINS` now only orders fallbacks. No vendor guess:
+ * callers walk this CLI's fallback chain or promise never to guess a slot
+ * (`confidentCliSlot`) — use {@link resolveCliSlot} for the routing slot.
  */
 export function getCliForModelId(modelId: ModelId): CliNameLiteral | undefined {
-  const { cliName } = getDefaultRegistry().getEntry(modelId);
-  if (isCliName(cliName)) return cliName;
-  // A manifest overlay replaces the entry and carries no cliName, so a
-  // pricing-only overlay must not erase ownership: the in-tree entry decides.
-  const inTree = DEFAULT_MODEL_CAPABILITIES.models.find(
-    (m) => m.id === modelId || (m.aliases ?? []).includes(modelId)
-  )?.cliName;
-  return isCliName(inTree) ? inTree : undefined;
+  return resolveOwnerCli(modelId);
 }
 
-/**
- * Vendor → canonical `CliName` slot, for models NOT in the curated registry
- * (brand-new releases, or API/openrouter models). Keeps the routing/outcome/
- * tune pipeline keyed on a real slot instead of dropping the outcome (#3317 /
- * #3293). `opencode` is the multi-model catch-all slot for non-big-3 vendors.
- */
-const VENDOR_TO_CLI_SLOT: Partial<Record<ModelVendor, CliNameLiteral>> = {
-  anthropic: 'claude',
-  google: 'gemini',
-  openai: 'codex',
-};
-
-/**
- * Resolve a model string to a canonical `CliName` slot for routing/outcome
- * recording. Known models resolve to their exact curated slot; **unknown**
- * models (new releases, API/openrouter models not yet in the registry) fall
- * back to the vendor-derived slot — so the routing/outcome/tune pipeline still
- * records and learns instead of silently dropping the outcome with an
- * undefined cli (#3317 / #3293). Returns undefined only for an absent model
- * (no execution happened).
- */
-export function resolveCliSlot(model: string | undefined): CliNameLiteral | undefined {
-  if (model === undefined || model === '') return undefined;
-  if ((MODEL_IDS as readonly string[]).includes(model)) {
-    const exact = getCliForModelId(model as ModelId);
-    if (exact !== undefined) return exact;
-  }
-  const { vendor } = resolveModelIdentitySync(model);
-  return VENDOR_TO_CLI_SLOT[vendor] ?? 'opencode';
-}
+export { resolveCliSlot };
 
 // ---------------------------------------------------------------------------
 // Singleton Cache (shared across the process)

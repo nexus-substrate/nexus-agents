@@ -380,6 +380,28 @@ describe('execute-expert-recording', () => {
     expect(last?.vendor).toBeDefined(); // auto-enriched from model by OutcomeStore
   });
 
+  it('attributes a model a manifest overlay re-prices without a cliName (#6866)', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+    const { ModelRegistry, setDefaultRegistry } = await import('../../config/model-registry.js');
+    const { buildInTreeEntries } = await import('../../config/in-tree-entries.js');
+    const inTree = buildInTreeEntries();
+    const base = inTree.find((e) => e.id === 'gpt-5.6-sol');
+    if (base === undefined) throw new Error('fixture base gpt-5.6-sol missing');
+    const { cliName: _owner, ...overlay } = base;
+    setDefaultRegistry(
+      new ModelRegistry({
+        inTreeEntries: inTree,
+        manifestEntries: [{ ...overlay, source: 'manifest' }],
+      })
+    );
+    try {
+      recordExpertOutcome({ task: 'x', success: true, durationMs: 1, model: 'gpt-5.6-sol' });
+      expect(getOutcomeStore().query().at(-1)?.cli).toBe('codex');
+    } finally {
+      setDefaultRegistry(undefined);
+    }
+  });
+
   it('records unknown cli/model when the model is absent/unresolvable (#3624)', async () => {
     const { recordExpertOutcome } = await import('./execute-expert-recording.js');
     const store = getOutcomeStore();

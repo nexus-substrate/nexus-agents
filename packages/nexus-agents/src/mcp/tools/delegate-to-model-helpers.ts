@@ -41,6 +41,7 @@ import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getAdaptiveBonus } from './weather-report.js';
 import { getAvailabilityCache, resolveFallback } from '../../config/model-availability.js';
+import { resolveOwnerCli } from '../../config/model-ownership.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
 import { isDisabledSlotUnserved } from '../../cli-adapters/gateway-slot-arm.js';
 
@@ -125,9 +126,9 @@ export function calcPreferenceScore(
   return bonusMap[pref];
 }
 
-/** Look up the CLI name for a model ID from the canonical registry. */
+/** The CLI that serves a model ID, from the canonical ownership resolver (#6866). */
 export function getCliForModel(modelId: string): string | undefined {
-  return lookupInTreeCapability(modelId)?.cliName;
+  return resolveOwnerCli(modelId);
 }
 
 /** Best-effort adaptive bonus lookup. Never throws. */
