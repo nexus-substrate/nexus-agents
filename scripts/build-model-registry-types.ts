@@ -133,8 +133,13 @@ export type LiteLlmResponse = z.infer<typeof LiteLlmResponseSchema>;
 export const MAX_CONTEXT_WINDOW = 10_000_000;
 export const MAX_COST_PER_1M_USD = 1_000;
 
-/** Maximum accepted raw payload size per upstream source (bytes). */
-export const MAX_UPSTREAM_PAYLOAD_BYTES = 5 * 1024 * 1024;
+/**
+ * Maximum accepted raw payload size per upstream source (bytes): a rail against
+ * a corrupted or runaway response, not an expected size. models.dev's api.json
+ * measured 5,282,033 bytes on 2026-10-01, past the old 5 MiB cap, so the weekly
+ * refresh silently degraded to LiteLLM-only. 16 MiB restores ~3x headroom.
+ */
+export const MAX_UPSTREAM_PAYLOAD_BYTES = 16 * 1024 * 1024;
 
 /** Provenance tag on each generated entry. */
 export const GeneratedProvenanceSchema = z.object({

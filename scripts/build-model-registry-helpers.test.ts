@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LiteLlmResponse, ModelsDevResponse } from './build-model-registry-types.js';
+import { MAX_UPSTREAM_PAYLOAD_BYTES } from './build-model-registry-types.js';
 import {
   ALLOWED_MODELS_DEV_PROVIDERS,
   LITELLM_PROVIDER_CANONICAL,
@@ -511,5 +512,14 @@ describe('constants', () => {
   it('maps LiteLLM vertex variants to google-vertex', () => {
     expect(LITELLM_PROVIDER_CANONICAL['vertex_ai']).toBe('google-vertex');
     expect(LITELLM_PROVIDER_CANONICAL['vertex_ai-anthropic_models']).toBe('google-vertex');
+  });
+});
+
+describe('MAX_UPSTREAM_PAYLOAD_BYTES', () => {
+  it('leaves headroom over the measured models.dev payload', () => {
+    // models.dev api.json measured 5,282,033 bytes on 2026-10-01. A cap at or
+    // near that size drops the whole source and the refresh degrades silently.
+    const measuredModelsDevBytes = 5_282_033;
+    expect(MAX_UPSTREAM_PAYLOAD_BYTES).toBeGreaterThanOrEqual(2 * measuredModelsDevBytes);
   });
 });
