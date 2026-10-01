@@ -331,6 +331,7 @@ export class ResilientAdapter implements IResilientAdapter {
       state: 'healthy',
       selectedAt: new Date(),
       failoverCount,
+      ...(selection.modelVerified !== undefined && { modelVerified: selection.modelVerified }),
     };
 
     this.logger.info('Adapter selected', {

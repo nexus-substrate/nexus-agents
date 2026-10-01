@@ -76,6 +76,8 @@ export interface UsageEvent {
    * written before this field existed.
    */
   readonly priced?: boolean;
+  /** Gateway catalogue matched the selected model. False on failed discovery; absent = unmeasured. */
+  readonly modelVerified?: boolean;
   /**
    * Pricing provenance: the canonical registry id whose pricing was applied
    * (the entry's `resolvedFrom` when the #4164 fuzzy tier matched a decorated
@@ -301,6 +303,8 @@ const UsageEventSchema = z.object({
   category: z.string().optional(),
   errorCode: z.string().optional(),
   priced: z.boolean().optional(),
+  // Decorative provenance must never discard a legacy or otherwise valid spend row.
+  modelVerified: z.boolean().optional().catch(undefined),
   priceSource: z.string().optional(),
 });
 
@@ -326,6 +330,7 @@ function toUsageEvent(v: z.infer<typeof UsageEventSchema>): UsageEvent {
     ...(v.category !== undefined && { category: v.category }),
     ...(v.errorCode !== undefined && { errorCode: v.errorCode }),
     ...(v.priced !== undefined && { priced: v.priced }),
+    ...(v.modelVerified !== undefined && { modelVerified: v.modelVerified }),
     ...(v.priceSource !== undefined && { priceSource: v.priceSource }),
   };
 }

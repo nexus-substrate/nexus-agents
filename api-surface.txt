@@ -97,6 +97,7 @@ ClassDeclaration AdapterFactory
 InterfaceDeclaration AdapterHealthInfo
   readonly failoverCount: number
   readonly lastError?: string | undefined
+  readonly modelVerified?: boolean | undefined
   readonly selectedAt: Date
   readonly source: "api" | "claude" | "codex" | "gemini" | "opencode"
   readonly state: AdapterHealthState

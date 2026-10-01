@@ -3,6 +3,12 @@
  * faked: the pinned CLI is never available, and `claude` is the one CLI that
  * IS installed, so a cross-family substitution would be visible.
  */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { SdkAdapter } from './sdk/index.js';
+import { ok, err, ModelError } from '../core/index.js';
+import { loadUsageEvents } from '../learning/usage-log.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createAutoAdapter } from './auto-adapter.js';
 import { _resetGatewaySlotCatalog, setGatewaySlotCatalog } from './gateway-family-slots.js';
@@ -70,6 +76,8 @@ const GATEWAY_ENV = [
   'OPENAI_API_KEY',
   'GOOGLE_AI_API_KEY',
   'NEXUS_DISABLED_CLIS',
+  'NEXUS_CUSTOM_API_BASE_URL',
+  'NEXUS_CUSTOM_API_KEY',
 ];
 
 describe('createAutoAdapter gateway family slots (#6604)', () => {
@@ -101,13 +109,19 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
     const served = await Promise.all(
       (['claude', 'codex', 'gemini'] as const).map(async (cli) => {
         const s = await createAutoAdapter({ preferredCli: cli, enableCache: false });
-        return [cli, s.adapter.modelId, s.adapter.providerId, s.name] as const;
+        return [
+          cli,
+          s.adapter.modelId,
+          s.adapter.providerId,
+          s.name,
+          Reflect.get(s, 'modelVerified'),
+        ] as const;
       })
     );
     expect(served).toEqual([
-      ['claude', 'claude-sonnet-4-6', 'cli-claude', 'claude'],
-      ['codex', 'gpt-5.5', 'cli-codex', 'codex'],
-      ['gemini', 'gemini-2.5-pro', 'cli-gemini', 'gemini'],
+      ['claude', 'claude-sonnet-4-6', 'cli-claude', 'claude', true],
+      ['codex', 'gpt-5.5', 'cli-codex', 'codex', true],
+      ['gemini', 'gemini-2.5-pro', 'cli-gemini', 'gemini', true],
     ]);
   });
 
@@ -124,6 +138,7 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
     const s = await createAutoAdapter({ preferredCli: 'claude', enableCache: false });
     expect(s.source).toBe('api');
     expect(s.name).toBe('anthropic');
+    expect(s).not.toHaveProperty('modelVerified');
   });
 
   it("never lets another family's API key serve the slot", async () => {
@@ -154,7 +169,127 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
     await proxy.complete({ messages: [{ role: 'user', content: 'hi' }] });
     expect(isGatewayModelAdapter(proxy)).toBe(true);
     expect(proxy.modelId).toBe('gpt-5.5');
+    expect(proxy.getHealth()).toHaveProperty('modelVerified', true);
     expect(proxy.providerId).toBe('cli-codex');
+  });
+
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+    [false, true],
+  ])('persists SDK fallback calls (success=%s, verified=%s)', async (success, modelVerified) => {
+    vi.mocked(getAvailableClis).mockResolvedValueOnce([]);
+    gatewayDiscovery.status.mockReturnValue(modelVerified ? 'discovered' : 'failed');
+    if (modelVerified) setGatewaySlotCatalog([fakeGatewayModel('custom-fallback-model')]);
+    const dir = mkdtempSync(join(tmpdir(), 'unverified-model-'));
+    const previous = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = dir;
+    const complete = vi.spyOn(SdkAdapter.prototype, 'complete').mockResolvedValueOnce(
+      success
+        ? ok({
+            content: [],
+            model: 'custom-fallback-model',
+            stopReason: 'end_turn',
+            usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+          })
+        : err(new ModelError('model not found'))
+    );
+    const proxy = createResilientAdapter();
+    try {
+      const result = await proxy.complete({ messages: [] });
+      expect(result.ok).toBe(success);
+      expect(proxy.getHealth()).toHaveProperty('modelVerified', modelVerified);
+      const events = loadUsageEvents().events;
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        modelId: 'custom-fallback-model',
+        providerId: 'sdk-custom-openai',
+        success,
+        modelVerified,
+      });
+    } finally {
+      complete.mockRestore();
+      proxy.dispose();
+      gatewayDiscovery.status.mockReturnValue('unattempted');
+      if (previous === undefined) Reflect.deleteProperty(process.env, 'NEXUS_DATA_DIR');
+      else process.env['NEXUS_DATA_DIR'] = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['discovered', 'failed'])(
+    'does not apply another gateway discovery (%s) to deprecated SDK transport',
+    async (status) => {
+      vi.mocked(getAvailableClis).mockResolvedValueOnce([]);
+      gatewayDiscovery.status.mockReturnValue(status);
+      // Discovery's catalogue can come from OpenCode while the legacy SDK
+      // transport points elsewhere. Its models say nothing about that SDK URL.
+      if (status === 'discovered')
+        setGatewaySlotCatalog([fakeGatewayModel('custom-fallback-model')]);
+      Reflect.deleteProperty(process.env, 'NEXUS_OPENAI_COMPAT_URL');
+      Reflect.deleteProperty(process.env, 'NEXUS_OPENAI_COMPAT_KEY');
+      process.env['NEXUS_CUSTOM_API_BASE_URL'] = 'https://other-gateway.example.com/v1';
+      process.env['NEXUS_CUSTOM_API_KEY'] = FAKE_OPENAI_KEY;
+      try {
+        const selection = await createAutoAdapter({ enableCache: false });
+        expect(selection.adapter.modelId).toBe('custom-fallback-model');
+        expect(selection).not.toHaveProperty('modelVerified');
+        // Pricing must not depend on verification: an unmeasured fallback is
+        // still a gateway call, priced by the gateway declaration.
+        expect(Reflect.get(selection.adapter, 'gatewayArm')).toBe('api:custom-openai');
+      } finally {
+        gatewayDiscovery.status.mockReturnValue('unattempted');
+      }
+    }
+  );
+
+  it('keeps an in-flight call unverified after refresh selects a verified model', async () => {
+    vi.mocked(getAvailableClis).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    gatewayDiscovery.status.mockReturnValue('failed');
+    const dir = mkdtempSync(join(tmpdir(), 'verification-refresh-'));
+    const previous = process.env['NEXUS_DATA_DIR'];
+    process.env['NEXUS_DATA_DIR'] = dir;
+    let finish = (): void => {
+      throw new Error('completion not pending');
+    };
+    const response = ok({
+      content: [],
+      model: 'custom-fallback-model',
+      stopReason: 'end_turn' as const,
+      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+    });
+    const delayed = new Promise<typeof response>((resolve) => {
+      finish = () => {
+        resolve(response);
+      };
+    });
+    const complete = vi.spyOn(SdkAdapter.prototype, 'complete').mockReturnValueOnce(delayed);
+    const proxy = createResilientAdapter();
+    try {
+      const inFlight = proxy.complete({ messages: [] });
+      await vi.waitFor(() => {
+        expect(complete).toHaveBeenCalledTimes(1);
+      });
+      expect(proxy.getHealth()).toHaveProperty('modelVerified', false);
+      gatewayDiscovery.status.mockReturnValue('discovered');
+      setGatewaySlotCatalog([fakeGatewayModel('custom-fallback-model')]);
+      await proxy.refresh();
+      expect(proxy.getHealth()).toHaveProperty('modelVerified', true);
+      finish();
+      expect((await inFlight).ok).toBe(true);
+      const events = loadUsageEvents().events;
+      expect(events).toHaveLength(1);
+      expect(events[0]).toHaveProperty('modelVerified', false);
+    } finally {
+      finish();
+      complete.mockRestore();
+      proxy.dispose();
+      gatewayDiscovery.status.mockReturnValue('unattempted');
+      if (previous === undefined) Reflect.deleteProperty(process.env, 'NEXUS_DATA_DIR');
+      else process.env['NEXUS_DATA_DIR'] = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   // #6626: the unpinned default and the opencode slot.
@@ -184,6 +319,7 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
       expect(s.name).toBe('custom-openai');
       expect(s.adapter.modelId).toBe('claude-opus-4-6');
       expect(s.reason).toContain('gateway default');
+      expect(s).toHaveProperty('modelVerified', true);
       const warned = logger.warn.mock.calls.map((c) => String(c[0]));
       expect(warned.some((m) => m.includes('NEXUS_CUSTOM_MODEL'))).toBe(true);
     });
@@ -214,6 +350,7 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
           'Using custom OpenAI-compatible gateway at gateway.example.com (model: custom-fallback-model)',
       });
       expect(logger.warn).not.toHaveBeenCalled();
+      expect(s).not.toHaveProperty('modelVerified');
     });
 
     it('with no gateway catalogue and no NEXUS_CUSTOM_MODEL the built-in default applies', async () => {
@@ -249,6 +386,7 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
 
         expect(s.adapter.modelId).toBe('custom-fallback-model');
         expect(s.reason).toContain('unverified: gateway discovery failed');
+        expect(s).toHaveProperty('modelVerified', false);
         expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).toContain(
           "'custom-fallback-model' is sent unverified"
         );

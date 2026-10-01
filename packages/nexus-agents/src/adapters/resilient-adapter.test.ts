@@ -134,6 +134,26 @@ describe('ResilientAdapter', () => {
     });
   });
 
+  describe('model verification provenance (#6862)', () => {
+    it.each([false, true])('carries explicit %s into health', async (modelVerified) => {
+      vi.mocked(createAutoAdapter).mockResolvedValueOnce({ ...makeSelection(), modelVerified });
+      await adapter.complete({ messages: [] });
+      expect(adapter.getHealth()).toHaveProperty('modelVerified', modelVerified);
+    });
+
+    it('leaves an unmeasured selection absent and clears previous verification', async () => {
+      expect(adapter.getHealth()).toBeUndefined();
+      vi.mocked(createAutoAdapter).mockResolvedValueOnce({
+        ...makeSelection(),
+        modelVerified: false,
+      });
+      await adapter.complete({ messages: [] });
+      expect(adapter.getHealth()).toHaveProperty('modelVerified', false);
+      await adapter.refresh();
+      expect(adapter.getHealth()).not.toHaveProperty('modelVerified');
+    });
+  });
+
   describe('caching', () => {
     it('reuses cached adapter on subsequent calls', async () => {
       await adapter.complete({ messages: [] });

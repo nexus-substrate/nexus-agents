@@ -27,6 +27,8 @@ export interface AdapterHealthInfo {
   readonly state: AdapterHealthState;
   readonly selectedAt: Date;
   readonly failoverCount: number;
+  /** Gateway catalogue matched the selected model. False on failed discovery; absent = unmeasured. */
+  readonly modelVerified?: boolean;
   readonly lastError?: string;
 }
 
