@@ -1,5 +1,6 @@
 /** Model-free, process-cached check of the sandbox used by Codex seats (#6841). */
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { getErrorMessage } from '../core/index.js';
 import { CLI_SUBPROCESS_TIMEOUTS, resolveClassGuardMs } from '../config/timeouts.js';
 import { UNVERIFIABLE_STDERR_RE } from '../cli/voter-unverifiable.js';
@@ -18,21 +19,25 @@ export type CodexSandboxProbeExec = (
   command: string,
   args: readonly string[],
   timeoutMs: number
-) => { readonly exitCode: number | null; readonly stderr: string };
+) => Promise<{ readonly exitCode: number | null; readonly stderr: string }>;
 
-const defaultExec: CodexSandboxProbeExec = (command, args, timeoutMs) => {
+const execFileAsync = promisify(execFile);
+
+const defaultExec: CodexSandboxProbeExec = async (command, args, timeoutMs) => {
   try {
-    execFileSync(command, [...args], {
+    const execution = execFileAsync(command, [...args], {
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
     });
+    // execFile pipes stdin; close it so the probe cannot wait for input.
+    execution.child.stdin?.end();
+    await execution;
     return { exitCode: 0, stderr: '' };
   } catch (error: unknown) {
-    const failure = error as { status?: unknown; stderr?: unknown };
+    const failure = error as { code?: unknown; stderr?: unknown };
     return {
-      exitCode: typeof failure.status === 'number' ? failure.status : null,
+      exitCode: typeof failure.code === 'number' ? failure.code : null,
       stderr:
         typeof failure.stderr === 'string' && failure.stderr.trim() !== ''
           ? failure.stderr
@@ -41,10 +46,10 @@ const defaultExec: CodexSandboxProbeExec = (command, args, timeoutMs) => {
   }
 };
 
-function probe(
+async function probe(
   exec: CodexSandboxProbeExec,
   platform: NodeJS.Platform
-): CodexSandboxPreflightResult {
+): Promise<CodexSandboxPreflightResult> {
   try {
     const timeoutMs = Math.min(
       CLI_SUBPROCESS_TIMEOUTS.statusProbeMs,
@@ -58,7 +63,7 @@ function probe(
       '--',
       'true',
     ];
-    const { exitCode, stderr } = exec('codex', args, timeoutMs);
+    const { exitCode, stderr } = await exec('codex', args, timeoutMs);
     if (exitCode === 0) return { status: 'ok' };
     const lines = sanitizeOutput(stderr)
       .split('\n')
@@ -74,15 +79,16 @@ function probe(
 }
 
 /**
- * A memoized probe with an injected runner. All verdicts, including unknown,
- * are cached. Seats proceed on unknown under their existing read-only sandbox
+ * A memoized promise with an injected runner. Concurrent callers share the
+ * pending probe; all verdicts, including unknown, are cached. Seats proceed
+ * on unknown under their existing read-only sandbox
  * and log the reason; a recognized sandbox failure refuses execution.
  */
 export function createCodexSandboxPreflight(
   exec: CodexSandboxProbeExec,
   platform: NodeJS.Platform = process.platform
-): () => CodexSandboxPreflightResult {
-  let cached: CodexSandboxPreflightResult | undefined;
+): () => Promise<CodexSandboxPreflightResult> {
+  let cached: Promise<CodexSandboxPreflightResult> | undefined;
   return () => (cached ??= probe(exec, platform));
 }
 
@@ -91,20 +97,29 @@ export const codexSandboxPreflight = createCodexSandboxPreflight(defaultExec);
 
 /** Refuse before initialization; retain unknown provenance once per adapter. */
 export function createCodexSandboxGuard(
-  preflight: () => CodexSandboxPreflightResult,
+  preflight: () => CodexSandboxPreflightResult | Promise<CodexSandboxPreflightResult>,
   logger: ILogger
-): () => CliError | undefined {
-  let result: CodexSandboxPreflightResult | undefined;
-  return () => {
-    if (result === undefined) {
-      result = preflight();
-      if (result.status === 'unknown') {
-        logger.warn('Codex sandbox preflight unknown; proceeding with read-only sandbox', {
-          cli: 'codex',
-          reason: result.reason,
-        });
-      }
-    }
+): () => Promise<CliError | undefined> {
+  let cached: Promise<CodexSandboxPreflightResult> | undefined;
+  return async () => {
+    // The async wrapper turns a synchronous throw into a rejection, and the
+    // catch turns any rejection into unknown: a memoized rejection would make
+    // every later call on this adapter throw instead of proceeding.
+    cached ??= (async () => preflight())()
+      .catch((error: unknown): CodexSandboxPreflightResult => ({
+        status: 'unknown',
+        reason: sanitizeOutput(getErrorMessage(error)),
+      }))
+      .then((result) => {
+        if (result.status === 'unknown') {
+          logger.warn('Codex sandbox preflight unknown; proceeding with read-only sandbox', {
+            cli: 'codex',
+            reason: result.reason,
+          });
+        }
+        return result;
+      });
+    const result = await cached;
     return result.status === 'broken'
       ? createHostUnavailableCliError(
           `Codex read-only sandbox unavailable: ${result.reason} (checked once per process; restart the MCP server after fixing the host)`,

@@ -30,6 +30,13 @@ const mockExecAsync = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
   exec: vi.fn(),
+  execFile: vi.fn(),
+}));
+
+// Transport tests use a measured healthy host; sandbox behavior has its own suite.
+vi.mock('../codex-sandbox-preflight.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../codex-sandbox-preflight.js')>()),
+  codexSandboxPreflight: () => Promise.resolve({ status: 'ok' as const }),
 }));
 
 // Mock util.promisify to return our controlled async mock

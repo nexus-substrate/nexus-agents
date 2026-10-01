@@ -61,7 +61,7 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
 
   private readonly model: string;
   private readonly platform: NodeJS.Platform;
-  private readonly sandboxRefusal: () => CliError | undefined;
+  private readonly sandboxRefusal: () => Promise<CliError | undefined>;
 
   constructor(options?: CodexAdapterOptions) {
     super(options?.logger);
@@ -74,8 +74,8 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
   }
 
   /** The adapter always executes under read-only, including default-mode tasks. */
-  protected override accessModeRefusal(task: CliTask): CliError | undefined {
-    return super.accessModeRefusal(task) ?? this.sandboxRefusal();
+  protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
+    return (await super.accessModeRefusal(task)) ?? this.sandboxRefusal();
   }
 
   /** Key-free model enumeration via the models.dev snapshot (#3405). */

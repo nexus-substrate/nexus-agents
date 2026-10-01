@@ -144,6 +144,9 @@ describe('SubprocessCliAdapter', () => {
 
       await adapter.initialize();
       const promise = adapter.execute({ content: 'test' }, { timeoutMs: 42_000 });
+      await vi.waitFor(() => {
+        expect(mockSpawn).toHaveBeenCalledOnce();
+      });
       stdout.push('response\n');
       stdout.push(null);
       mockChild.emit('close', 0);
@@ -165,6 +168,9 @@ describe('SubprocessCliAdapter', () => {
 
       await adapter.initialize();
       const promise = adapter.execute({ content: 'test', timeoutMs: 7_000 }, { timeoutMs: 42_000 });
+      await vi.waitFor(() => {
+        expect(mockSpawn).toHaveBeenCalledOnce();
+      });
       stdout.push('response\n');
       stdout.push(null);
       mockChild.emit('close', 0);
@@ -182,6 +188,9 @@ describe('SubprocessCliAdapter', () => {
       await adapter.initialize();
 
       const promise = adapter.execute({ content: 'test', options: { workDir } });
+      await vi.waitFor(() => {
+        expect(mockSpawn).toHaveBeenCalledOnce();
+      });
       stdout.push('response\n');
       stdout.push(null);
       mockChild.emit('close', 0);
@@ -205,6 +214,9 @@ describe('SubprocessCliAdapter', () => {
         content: 'test',
         ...(options === undefined ? {} : { options }),
       });
+      await vi.waitFor(() => {
+        expect(mockSpawn).toHaveBeenCalledOnce();
+      });
       stdout.push('response\n');
       stdout.push(null);
       mockChild.emit('close', 0);
@@ -224,6 +236,9 @@ describe('SubprocessCliAdapter', () => {
       mockSpawn.mockReturnValue(mockChild);
 
       const promise = adapter.execute(task);
+      await vi.waitFor(() => {
+        expect(mockSpawn).toHaveBeenCalledOnce();
+      });
       stdout.push('response\n');
       stdout.push(null);
       mockChild.emit('close', 0);

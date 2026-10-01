@@ -1645,7 +1645,7 @@ InterfaceDeclaration CodeExpertOptions
 InterfaceDeclaration CodexAdapterOptions
   extends BaseAdapterOptions
   readonly platform?: NodeJS.Platform | undefined
-  readonly sandboxProbe?: (() => CodexSandboxPreflightResult) | undefined
+  readonly sandboxProbe?: (() => CodexSandboxPreflightResult | Promise<CodexSandboxPreflightResult>) | undefined
 ClassDeclaration CodexCliAdapter
   extends SubprocessCliAdapter
   getModelInfo() => ModelInfo

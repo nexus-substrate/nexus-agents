@@ -297,8 +297,8 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
    * #6754/#6792: a permission bypass would defeat either restricted mode, so
    * the combination is refused rather than resolved one way silently.
    */
-  protected override accessModeRefusal(task: CliTask): CliError | undefined {
-    const base = super.accessModeRefusal(task);
+  protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
+    const base = await super.accessModeRefusal(task);
     const mode = restrictedAccessMode(task);
     if (base !== undefined || mode === undefined) return base;
     if (task.options?.['skipPermissions'] === true) {

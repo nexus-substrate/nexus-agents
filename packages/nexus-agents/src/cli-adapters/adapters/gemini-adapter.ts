@@ -213,7 +213,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   ): Promise<Result<GeminiExecutionResult, CliError>> {
     // #6754: this path bypasses the base execute, so it applies the same
     // fail-closed access-mode check first.
-    const refusal = this.accessModeRefusal(task);
+    const refusal = await this.accessModeRefusal(task);
     if (refusal !== undefined) return err(refusal);
     const circuitCheckResult = this.checkCircuitBreaker();
     if (circuitCheckResult !== null) {
