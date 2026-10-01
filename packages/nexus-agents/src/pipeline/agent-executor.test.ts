@@ -104,6 +104,12 @@ vi.mock('../mcp/tools/consensus-vote.js', () => ({
   executeVoting: mockExecuteVoting,
 }));
 
+// Classification fixtures omit the complete voting result. Durable recording
+// is exercised with real results in agent-executor-vote-recording.test.ts (#6872).
+vi.mock('../mcp/tools/consensus-vote-completed-recording.js', () => ({
+  recordCompletedVote: vi.fn(),
+}));
+
 import { createAgentStages, buildVoteProposal } from './agent-executor.js';
 
 describe('createAgentStages — central workflow hub', () => {

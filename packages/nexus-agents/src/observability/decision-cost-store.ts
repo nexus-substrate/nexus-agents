@@ -37,7 +37,12 @@ import type {
 } from './decision-cost.js';
 
 /** Decision surface that incurred the cost — the gate type (#3854). */
-export const DecisionGateSchema = z.enum(['consensus_vote', 'pr_review']);
+/**
+ * Which caller made the decision. `dev_pipeline_vote` is the dev pipeline's
+ * plan vote (#6872), kept apart from MCP `consensus_vote` calls so reports do
+ * not merge the two populations.
+ */
+export const DecisionGateSchema = z.enum(['consensus_vote', 'pr_review', 'dev_pipeline_vote']);
 export type DecisionGate = z.infer<typeof DecisionGateSchema>;
 
 const VoterCostBreakdownSchema = z.object({
