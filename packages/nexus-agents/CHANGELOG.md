@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.122.3
+
+### Patch Changes
+
+- [#6892](https://github.com/nexus-substrate/nexus-agents/pull/6892) [`1f580e0`](https://github.com/nexus-substrate/nexus-agents/commit/1f580e03cef066b42318331e213b261d46edef5c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `nexus-agents setup --custom-api <url>` to configure the custom endpoint instead of silently running the normal setup wizard. Forward `--custom-api-key` and `--custom-model` to custom endpoint setup when supplied.
+
 ## 8.122.2
 
 ### Patch Changes
