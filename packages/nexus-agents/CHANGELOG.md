@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.125.0
+
+### Minor Changes
+
+- [#6911](https://github.com/nexus-substrate/nexus-agents/pull/6911) [`89732e4`](https://github.com/nexus-substrate/nexus-agents/commit/89732e43580cc7df1adb4f69c05b4d2b207c3a11) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Expose stage, plugin, and pipeline identity in StageContext. Compiled handlers populate stageId, pluginId, and pipelineId (the plan's taskId); these fields remain optional for compatibility with externally constructed contexts.
+
+### Patch Changes
+
+- [#6912](https://github.com/nexus-substrate/nexus-agents/pull/6912) [`7564f0c`](https://github.com/nexus-substrate/nexus-agents/commit/7564f0c4db4de00fd416bf096ab9f8c037aeef1c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve research evidence tier annotations and confidence ordering in ranked context when `NEXUS_CONTEXT_RANKED=1`. Techniques without a tier retain their previous text and confidence.
+
 ## 8.124.1
 
 ### Patch Changes
