@@ -31,6 +31,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { ROOT } from './script-paths.js';
+import { publishEnv } from './publish-env.js';
 
 export interface PublishFailure {
   readonly name: string;
@@ -156,8 +157,20 @@ export function teeCommand(
 async function main(argv: readonly string[]): Promise<number> {
   const { exitCode, output } = await teeCommand(
     'pnpm',
-    ['exec', 'changeset', 'publish', ...argv],
-    { ...process.env, npm_config_node_linker: 'hoisted' },
+    // pnpm exec regenerates the legacy verification variable after publishEnv
+    // cleans the inherited environment. Drop it again before Changesets starts
+    // (release CI runs on Linux); pnpm's own equivalent remains inherited.
+    [
+      '--config.node-linker=hoisted',
+      'exec',
+      'env',
+      '-u',
+      'npm_config_verify_deps_before_run',
+      'changeset',
+      'publish',
+      ...argv,
+    ],
+    publishEnv(process.env),
     { stdout: (c) => process.stdout.write(c), stderr: (c) => process.stderr.write(c) }
   );
   const verdict = evaluatePublishExit({ exitCode, output, localVersions: readLocalVersions(ROOT) });
