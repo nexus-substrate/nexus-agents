@@ -48,16 +48,10 @@ import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive
 import { getRateLimitStats } from '../../adapters/rate-limit-detector.js';
 import { getToolStats } from '../middleware/tool-metrics.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
-import type { AgentHealthSummary, AgentSessionEntry, CostSection } from './weather-report-types.js';
-import { aggregateDecisionCosts } from '../../observability/decision-cost-aggregate.js';
-import { summarizeConsensusDecisionTokens } from '../../observability/consensus-decision-tokens.js';
+import type { AgentHealthSummary, AgentSessionEntry } from './weather-report-types.js';
 import type { LinkedVote } from '../../observability/consensus-decision-tokens.js';
-import {
-  resolveWeatherDecisionCosts,
-  resolveWeatherVoteRecords,
-} from './weather-report-cost-inputs.js';
+import { buildWeatherCostSection } from './weather-report-cost-inputs.js';
 import type { DecisionCostRecord } from '../../observability/decision-cost-store.js';
-import { strategyCostProfiles } from '../../orchestration/strategy-manifest-registry.js';
 import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
 import { ROUTED_ARMS, rowsOfSlot } from './weather-report-arms.js';
 
@@ -82,6 +76,8 @@ export interface WeatherReportDeps {
   readonly decisionCostRecords?: readonly DecisionCostRecord[];
   /** Pre-resolved vote verdicts for deterministic join tests; no ledger read when supplied. */
   readonly voteRecords?: readonly LinkedVote[];
+  /** Independently observed, windowed pipeline trace IDs; no host scan when supplied. */
+  readonly pipelineRunIds?: readonly string[];
 }
 
 /** Collect non-empty optional sections into a spread-friendly object. */
@@ -148,7 +144,7 @@ export function generateWeatherReport(
     adaptiveBonuses: includeAdaptive ? computeAdaptiveBonuses(cfg) : [],
     tierRecommendations: buildTierRecommendations(summary),
     ...buildOptionalSections(input, cfg),
-    costSection: buildCostSection(cfg, deps),
+    costSection: buildWeatherCostSection(cfg, deps, input.includePipelineJoins === true),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -205,34 +201,6 @@ function buildRecentWindow(cfg: WeatherReportConfig): WeatherReportResponse['rec
     totalTasks: recent.length,
     successRate: round3(successes / recent.length),
     avgDurationMs: Math.round(totalDuration / recent.length),
-  };
-}
-
-/**
- * Builds the cost section (Epic G, #3856): MEASURED per-gate decision-cost
- * aggregates over the lookback window + each strategy's declared cost profile.
- *
- * The strategy cost profiles always come from the manifest registry (pure). The
- * decision-cost records come from `deps.decisionCostRecords` when injected
- * (tests), else from the durable {@link DecisionCostStore} — but ONLY when
- * persistence is enabled, so a persistence-off context (or a test that mocks it
- * off) never constructs the store and the section degrades to an empty
- * `decisionCosts` rather than throwing.
- */
-function buildCostSection(cfg: WeatherReportConfig, deps?: WeatherReportDeps): CostSection {
-  const windowMs = cfg.outcomeLookbackMs;
-  const records = resolveWeatherDecisionCosts(windowMs, deps?.decisionCostRecords);
-  const votes = resolveWeatherVoteRecords(
-    windowMs,
-    deps?.voteRecords,
-    deps?.decisionCostRecords !== undefined
-  );
-  const since = windowMs > 0 ? new Date(Date.now() - windowMs).toISOString() : undefined;
-  const outcomes = getOutcomeStore().query({ source: 'consensus', since });
-  return {
-    decisionCosts: aggregateDecisionCosts(records, windowMs),
-    consensusDecisionTokens: summarizeConsensusDecisionTokens(records, votes, outcomes),
-    strategyCostProfiles: strategyCostProfiles(),
   };
 }
 
