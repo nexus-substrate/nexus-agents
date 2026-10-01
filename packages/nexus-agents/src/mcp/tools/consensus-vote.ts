@@ -803,6 +803,8 @@ function finalizeVotingResult(args: {
  * (#4004, #5130).
  */
 interface DeclaredByCaller {
+  /** Async runner provenance; omitted when no job ran the decision. */
+  readonly jobId?: string | undefined;
   readonly options: readonly string[] | undefined;
   readonly ratifies?: string;
   readonly ratifiesPr?: VoteRecordPrBinding;
@@ -877,6 +879,7 @@ async function recordVoteSideEffects(
     costSummary = recordDecisionCost({
       decisionId,
       gate: 'consensus_vote',
+      ...(declared.jobId !== undefined ? { jobId: declared.jobId } : {}),
       votes: result.votes,
       // #5422: the detector's verdict, recorded on EVERY vote so the not-fired
       // rows are the denominator. Computed here, where the FULL proposal is in
@@ -898,9 +901,14 @@ async function recordVoteSideEffects(
 }
 
 /** What the tool input declared that the voting result does not carry. */
-function declaredByCaller(args: ConsensusVoteInput, signal?: AbortSignal): DeclaredByCaller {
+function declaredByCaller(
+  args: ConsensusVoteInput,
+  signal?: AbortSignal,
+  jobId?: string
+): DeclaredByCaller {
   return {
     options: args.options,
+    jobId,
     signal,
     ...(args.ratifies !== undefined ? { ratifies: args.ratifies } : {}),
     ...(args.ratifiesPr !== undefined ? { ratifiesPr: args.ratifiesPr } : {}),
@@ -931,7 +939,8 @@ async function handleConsensusVote(
   args: ConsensusVoteInput,
   signal?: AbortSignal,
   /** #6162: `runAsJob`'s heartbeat, fired per settled seat. Absent in sync mode. */
-  onVoteCollected?: (vote: AgentVoteResult) => void
+  onVoteCollected?: (vote: AgentVoteResult) => void,
+  jobId?: string
 ): Promise<{ ok: true; value: ConsensusVoteResponse } | { ok: false; error: string }> {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
   try {
@@ -954,7 +963,7 @@ async function handleConsensusVote(
       result.strategy,
       result,
       logger,
-      declaredByCaller(args, signal)
+      declaredByCaller(args, signal, jobId)
     );
     recordVoteSuccess({
       decisionId,
@@ -1059,7 +1068,7 @@ function dispatchAsyncConsensusVote(
       attachPartialsOnCancel(
         jobId,
         'consensus_vote',
-        unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress))
+        unwrapVoteOrThrow(handleConsensusVote(deps, input, signal, progress, jobId))
       ),
     ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
   });

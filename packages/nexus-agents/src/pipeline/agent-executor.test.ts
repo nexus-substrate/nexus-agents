@@ -561,6 +561,37 @@ describe('createAgentStages — central workflow hub', () => {
       return call[0] as Record<string, unknown>;
     }
 
+    it.each(['session-6858-unusual', undefined])(
+      'records each CLI stage against its reachable session %s',
+      async (sessionId) => {
+        const appendSpy = vi.fn();
+        mockGetOutcomeStore.mockReturnValue({
+          append: appendSpy,
+          query: vi.fn().mockReturnValue([]),
+        });
+        const call = { success: true, durationMs: 17, cli: 'codex' };
+        mockExecuteExpert
+          .mockResolvedValueOnce({ ...call, text: 'Plan for the seam', expertType: 'architecture' })
+          .mockResolvedValueOnce({
+            ...call,
+            expertType: 'pm',
+            text: '[{"id":"artifact-6858-unusual","title":"x","description":"y","assignedTo":"dev"}]',
+          })
+          .mockResolvedValueOnce({ ...call, text: 'implementation', expertType: 'code' })
+          .mockResolvedValueOnce({ ...call, text: 'PASS', expertType: 'qa' });
+        const stages = createAgentStages({ sessionId });
+        await stages.plan('task', 'research');
+        const tasks = await stages.decompose('plan');
+        const implementation = await stages.implement(tasks[0]!);
+        await stages.qaReview(tasks[0]!, implementation);
+        expect(appendSpy).toHaveBeenCalledTimes(4);
+        for (const [row] of appendSpy.mock.calls as [Record<string, unknown>][]) {
+          if (sessionId === undefined) expect(row).not.toHaveProperty('traceId');
+          else expect(row['traceId']).toBe(`pipeline-${sessionId}`);
+        }
+      }
+    );
+
     it('copies routedBy from a routed bridge result onto every CLI stage record', async () => {
       const appendSpy = vi.fn();
       mockGetOutcomeStore.mockReturnValue({

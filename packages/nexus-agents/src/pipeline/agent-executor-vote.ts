@@ -121,6 +121,7 @@ async function failClosedVote(
   const msg = error instanceof Error ? error.message : String(error);
   emitStageEvent('vote', 'failed', { error: msg });
   recordOutcome({
+    sessionId: config.sessionId,
     taskId: 'vote',
     category: 'planning',
     cli: undefined,
@@ -175,6 +176,7 @@ export function createVoteStage({ config, startStage }: StageDeps): DevPipelineS
       // already records its own voter-role-stratified outcomes via the
       // canonical consensus path (#2662).
       recordOutcome({
+        sessionId: config.sessionId,
         taskId: 'vote',
         category: 'planning',
         cli: undefined,

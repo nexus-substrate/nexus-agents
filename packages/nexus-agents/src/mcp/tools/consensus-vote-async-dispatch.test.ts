@@ -20,6 +20,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
 
+// The collector is stubbed; adapter discovery must not probe installed CLIs.
+vi.mock('../../cli-adapters/factory.js', () => ({
+  createAllAdapters: () => new Map(),
+  getAvailableClis: () => Promise.resolve([]),
+  isCliAvailable: () => Promise.resolve(false),
+  createCliAdapter: () => {
+    throw new Error('Unexpected real adapter construction');
+  },
+}));
+
 // Every voter errors — the realistic shape of a dead voter panel (expired auth,
 // adapter outage), and the exact input for which `handleConsensusVote` returns
 // `{ ok: false }` rather than manufacturing a "rejected" verdict (#1552).
@@ -66,6 +76,7 @@ import {
   runConsensusForGoal,
   unwrapVoteOrThrow,
 } from './consensus-vote.js';
+import { DecisionCostStore } from '../../observability/decision-cost-store.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { WARNINGS_META_KEY } from './async-dispatch-input.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
@@ -146,6 +157,44 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
     }
     return jobId;
   }
+
+  it.each(['async', 'sync'] as const)(
+    'records only the actual %s job id on costs (#6858)',
+    async (dispatch) => {
+      collectRealVotesMock.mockImplementation(({ roles }) =>
+        Promise.resolve(
+          roles.map((role) => ({
+            role,
+            vote: { decision: 'approve', reasoning: 'approve fixture', confidence: 0.9 },
+            processingTimeMs: 17,
+            source: 'llm',
+            cli: 'codex',
+            model: 'fixture-model',
+          }))
+        )
+      );
+      const handler = captureHandler();
+      const result = await handler({ proposal: 'job cost seam', quickMode: true, dispatch }, CTX);
+      const envelope = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+      const jobId = envelope['jobId'] as string | undefined;
+      if (dispatch === 'async') {
+        expect(jobId).toMatch(/^job-vote-/);
+        // The default 1s budget flakes when the suite runs under load.
+        await vi.waitFor(
+          () => {
+            expect(readJobResult(jobId!)?.status).toBe('complete');
+          },
+          { timeout: 10_000, interval: 20 }
+        );
+      }
+      const records = new DecisionCostStore().all();
+      expect(records).toHaveLength(1);
+      if (dispatch === 'async') {
+        expect(records[0]?.jobId).toBe(jobId);
+        expect(records[0]?.decisionId).not.toBe(jobId);
+      } else expect(records[0]).not.toHaveProperty('jobId');
+    }
+  );
 
   it('records a failed job when every voter errored', async () => {
     collectRealVotesMock.mockImplementation((opts: { roles: readonly VoterRole[] }) =>

@@ -41,6 +41,7 @@ import { applyPartialCoverageGate, type PrReviewCoverage } from './pr-review-dif
 import { summarizeReviews } from './pr-review-result-mapping.js';
 import { ERROR_ENVELOPE_META_KEY } from '../error-envelope.js';
 import { persistReviewRecord } from './pr-review-record-producer.js';
+import { DecisionCostStore } from '../../observability/decision-cost-store.js';
 import { readJobResult } from '../jobs/job-result-store.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
@@ -814,6 +815,26 @@ describe('pr_review async dispatch (#3731)', () => {
     resetJobConcurrency();
     rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it.each(['async', 'sync'] as const)(
+    'joins costs to only the actual %s review job (#6858)',
+    async (dispatch) => {
+      const env = envelope(await captureHandler()({ ...ASYNC_ARGS, dispatch }, TEST_CTX));
+      const jobId = env['jobId'] as string | undefined;
+      if (dispatch === 'async') {
+        expect(jobId).toMatch(/^pr-/);
+        await vi.waitFor(() => {
+          expect(readJobResult(jobId!)?.status).toBe('complete');
+        });
+      }
+      const records = new DecisionCostStore().query({ gate: 'pr_review' });
+      expect(records).toHaveLength(1);
+      if (dispatch === 'async') {
+        expect(records[0]?.jobId).toBe(jobId);
+        expect(records[0]?.decisionId).not.toBe(jobId);
+      } else expect(records[0]).not.toHaveProperty('jobId');
+    }
+  );
 
   it("returns { status: 'pending', jobId } and mints a pr-<uuid> id", async () => {
     const handler = captureHandler();
