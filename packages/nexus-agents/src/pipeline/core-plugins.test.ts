@@ -186,6 +186,9 @@ describe('core plugin execute (no-op stubs)', () => {
       config: {},
     };
     const ctx = {
+      stageId: stage.id,
+      pluginId: stage.pluginId,
+      pipelineId: 'test',
       signal: AbortSignal.timeout(5000),
       task: {
         id: 'test',

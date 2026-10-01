@@ -8878,7 +8878,10 @@ InterfaceDeclaration StageCompletedOptions
   readonly success?: boolean | undefined
 InterfaceDeclaration StageContext
   readonly config: Record<string, unknown>
+  readonly pipelineId?: string | undefined
+  readonly pluginId?: string | undefined
   readonly signal: AbortSignal
+  readonly stageId?: string | undefined
   readonly task: Readonly<{ analysis: { ambiguityScore: number; complexity: string; taskType: string; }; artifacts: { id: string; type: "analysis" | "code" | "plan" | "report" | "review" | "spec" | "test" | "vote"; }[]; capabilityGaps: { allSatisfied: boolean; available: { experts: string[]; tools: string[]; }; gaps: unknown[]; gapsMeasured: boolean; }; completedAt?: number | undefined; constraints: { quality?: string | undefined; scope: string[]; time?: string | undefined; }; createdAt: number; description: string; error?: string | undefined; id: string; metadata: Record<string, unknown>; parentId?: string | undefined; requiredCapabilities: { experts: string[]; tools: string[]; }; status: "approved" | "clarifying" | "done" | "executing" | "failed" | "intake" | "planning" | "validating"; updatedAt: number; }>
 InterfaceDeclaration StageDependencies
   budgetRouter: BudgetRouter | undefined

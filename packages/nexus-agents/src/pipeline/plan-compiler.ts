@@ -13,7 +13,7 @@ import { START, END } from '../orchestration/graph/graph-types.js';
 import { formatCompileError } from '../orchestration/graph/graph-types.js';
 import type { CompiledGraph, GraphState } from '../orchestration/graph/graph-types.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
-import type { IPluginRegistry, StageResult } from './plugin-types.js';
+import type { IPluginRegistry, StageContext, StageResult } from './plugin-types.js';
 import { enforceGatePolicy, type PolicyEvalResult } from './policy-evaluator.js';
 import type { GatePolicyEnforcement } from './policy-evaluator.js';
 import { NETWORK_FETCH_TIMEOUT_MS } from '../config/timeouts.js';
@@ -73,7 +73,7 @@ export function compilePlan(plan: PlanContract, options?: PlanCompileOptions): C
 
   const builder = new GraphBuilder();
   addPipelineState(builder);
-  addStageNodes(builder, plan.stages, options?.pluginRegistry);
+  addStageNodes(builder, plan, options?.pluginRegistry);
   addGateNodes(builder, plan.policyGates, plan, options?.policyEnforcement);
   addEdges(builder, plan.stages, plan.policyGates);
 
@@ -122,13 +122,18 @@ function buildStageResult(stageId: string, result: StageResult): Record<string, 
  */
 function createStageHandler(
   stage: StageSpec,
+  plan: PlanContract,
   registry?: IPluginRegistry
 ): (state: Readonly<GraphState>) => Promise<Partial<GraphState>> {
   const plugin = registry?.resolve(stage.pluginId);
   if (plugin !== undefined) {
     return async (_state: Readonly<GraphState>) => {
-      const ctx = {
+      const ctx: StageContext = {
+        stageId: stage.id,
+        pluginId: stage.pluginId,
+        pipelineId: plan.taskId,
         signal: AbortSignal.timeout(NETWORK_FETCH_TIMEOUT_MS),
+        // Placeholder until #6910 threads the real TaskContract through execution.
         task: {} as never,
         config: stage.config,
       };
@@ -226,20 +231,18 @@ function buildGateResult(gateId: string, verdict: PolicyEvalResult): Record<stri
     status: violated ? 'warned' : 'passed',
     policyEvaluated: verdict.mode !== 'off',
     policyMode: verdict.mode,
-    ...(violated
-      ? { violations: verdict.violations.map((v) => `${v.ruleId}: ${v.reason}`) }
-      : {}),
+    ...(violated ? { violations: verdict.violations.map((v) => `${v.ruleId}: ${v.reason}`) } : {}),
   };
 }
 
 /** Adds stage nodes to the graph builder. */
 function addStageNodes(
   builder: GraphBuilder,
-  stages: readonly StageSpec[],
+  plan: PlanContract,
   registry?: IPluginRegistry
 ): void {
-  for (const stage of stages) {
-    builder.addNode(stage.id, createStageHandler(stage, registry));
+  for (const stage of plan.stages) {
+    builder.addNode(stage.id, createStageHandler(stage, plan, registry));
   }
 }
 
