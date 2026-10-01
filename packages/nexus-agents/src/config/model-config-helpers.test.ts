@@ -28,6 +28,12 @@ import {
   resolveCliCostPer1M,
 } from './model-config-helpers.js';
 import type { ModelId } from './model-capabilities-types.js';
+import {
+  DEFAULT_MODEL_CAPABILITIES,
+  STATIC_CLI_COST_PER_1M,
+  unpricedCliCostPer1M,
+} from './in-tree-data.js';
+import type { ModelCapability } from './model-capabilities-types.js';
 
 // ============================================================================
 // Single-Model Lookups
@@ -370,10 +376,83 @@ describe('resolveModelCostPer1M', () => {
 describe('resolveCliCostPer1M', () => {
   it('maps each CLI to default registry pricing or the unpriced fallback (per-1M)', () => {
     // claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
-    // codex→unpriced gpt-6.1-sol uses the $2.5/$10 fallback (#6842).
+    // codex→unpriced gpt-6.1-sol uses codex's highest known rates, gpt-5.5's
+    // $5/$30 (#6866), never a figure below a priced sibling.
     expect(resolveCliCostPer1M('claude')).toEqual({ input: 10.0, output: 50.0 });
     expect(resolveCliCostPer1M('gemini')).toEqual({ input: 2.0, output: 12.0 });
-    expect(resolveCliCostPer1M('codex')).toEqual({ input: 2.5, output: 10.0 });
+    expect(resolveCliCostPer1M('codex')).toEqual({ input: 5.0, output: 30.0 });
+  });
+
+  // #6866 panel (catfish): the unpriced codex default fell back to the static
+  // $2.5/$10, which undercut priced gpt-5.6-sol ($4/$20) and made the unknown
+  // model look CHEAPER to budget filters and cost-weighted TOPSIS.
+  it('never estimates an unpriced default below any priced model of the same CLI', () => {
+    for (const cli of CLI_NAMES) {
+      if (getModelPricing(getDefaultModelForCli(cli)) !== undefined) continue;
+      const est = resolveCliCostPer1M(cli);
+      for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+        if (m.cliName !== cli || m.pricing === undefined) continue;
+        expect(est.input, `${cli} input vs ${m.id}`).toBeGreaterThanOrEqual(m.pricing.inputPer1M);
+        expect(est.output, `${cli} output vs ${m.id}`).toBeGreaterThanOrEqual(
+          m.pricing.outputPer1M
+        );
+      }
+    }
+  });
+
+  it('estimates gpt-6.1-sol at no less than priced gpt-5.6-sol', () => {
+    expect(getModelPricing('gpt-6.1-sol')).toBeUndefined();
+    const sol = getModelPricing('gpt-5.6-sol');
+    const est = resolveCliCostPer1M('codex');
+    expect(est.input + est.output).toBeGreaterThanOrEqual(
+      (sol?.inputPer1M ?? Infinity) + (sol?.outputPer1M ?? Infinity)
+    );
+  });
+
+  it('keeps the static codex row at or above every priced codex model', () => {
+    for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+      if (m.cliName !== 'codex' || m.pricing === undefined) continue;
+      expect(STATIC_CLI_COST_PER_1M.codex.input).toBeGreaterThanOrEqual(m.pricing.inputPer1M);
+      expect(STATIC_CLI_COST_PER_1M.codex.output).toBeGreaterThanOrEqual(m.pricing.outputPer1M);
+    }
+  });
+
+  describe('unpricedCliCostPer1M empty case (#6866)', () => {
+    const codexModel = (id: string, pricing?: ModelCapability['pricing']): ModelCapability => {
+      const base = DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === 'gpt-5.6-sol');
+      if (base === undefined) throw new Error('fixture base gpt-5.6-sol missing');
+      const { pricing: _drop, ...rest } = base;
+      return { ...rest, id: id as ModelId, ...(pricing !== undefined ? { pricing } : {}) };
+    };
+
+    it('uses the static row when the CLI has no priced model', () => {
+      expect(unpricedCliCostPer1M('codex', [])).toEqual(STATIC_CLI_COST_PER_1M.codex);
+      expect(unpricedCliCostPer1M('codex', [codexModel('a')])).toEqual(
+        STATIC_CLI_COST_PER_1M.codex
+      );
+    });
+
+    it('uses the static row, not $0, when the only priced sibling is free', () => {
+      const free = codexModel('a', { inputPer1M: 0, outputPer1M: 0 });
+      expect(unpricedCliCostPer1M('codex', [free])).toEqual(STATIC_CLI_COST_PER_1M.codex);
+    });
+
+    it('takes the highest input and output rate independently', () => {
+      const models = [
+        codexModel('a', { inputPer1M: 9, outputPer1M: 1 }),
+        codexModel('b', { inputPer1M: 1, outputPer1M: 40 }),
+      ];
+      expect(unpricedCliCostPer1M('codex', models)).toEqual({ input: 9, output: 40 });
+      expect(unpricedCliCostPer1M('claude', models)).toEqual(STATIC_CLI_COST_PER_1M.claude);
+    });
+  });
+
+  it('TOPSIS prices an unpriced default exactly as the budget policy does', () => {
+    for (const profile of buildTopsisProfiles()) {
+      const est = resolveCliCostPer1M(profile.cliName);
+      expect(profile.costPerMillionInput, profile.cliName).toBe(est.input);
+      expect(profile.costPerMillionOutput, profile.cliName).toBe(est.output);
+    }
   });
 
   it('every CLI resolves to a non-$0 cost (no fail-open in budget gates)', () => {

@@ -23,6 +23,7 @@
 
 import type {
   ModelCapabilitiesMatrix,
+  ModelCapability,
   ModelId,
   CliNameLiteral,
 } from './model-capabilities-types.js';
@@ -248,7 +249,8 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       // including context/output limits, quality scores and parameter support,
       // are CARRIED-OVER from gpt-5.6-sol, NOT measured for gpt-6.1-sol.
       // No pricing field: accounting reports priced:false until OpenAI
-      // publishes pricing; budget filters use STATIC_CLI_COST_PER_1M.
+      // publishes pricing; budget filters and TOPSIS estimate it at codex's
+      // highest known rates via unpricedCliCostPer1M (#6866).
       // Listed first so equal-scoring selections prefer the new default.
       id: 'gpt-6.1-sol',
       aliases: ['openai/gpt-6.1-sol'],
@@ -602,11 +604,14 @@ export interface CostPer1M {
  * duplicated in `budget-utils.TOKEN_COSTS`, `budget-stage`'s
  * `COST_PER_1K_TOKENS`, and `test-metrics`).
  *
- * It is a FALLBACK, not the primary source: a priced model always upgrades to
- * real registry data via `resolveModelCostPer1M`. The unpriced codex default
- * gpt-6.1-sol (#6842) actively uses this map in budget/TOPSIS gates. These
- * fallback rates are estimates, not measured prices, and keep an UNPRICED
+ * It is the LAST resort, not the primary source: a priced model always upgrades
+ * to real registry data via `resolveModelCostPer1M`, and an unpriced model is
+ * estimated at its CLI's highest known rates by {@link unpricedCliCostPer1M}.
+ * This row is read only when that CLI has no positively-priced model at all.
+ * These rates are estimates, not measured prices, and keep an UNPRICED
  * candidate CONSERVATIVE (never $0) — a $0 fails OPEN and gets the unknown model over-selected (#4168 cond. 2).
+ * Each row is kept at or above every priced model of its CLI (#6866), so the
+ * last resort cannot undercut a known price either.
  *
  * Lives in this leaf data module (not `model-config-helpers`) so the
  * module-load-time `buildTopsisProfiles` call reads it after initialization,
@@ -615,6 +620,39 @@ export interface CostPer1M {
 export const STATIC_CLI_COST_PER_1M: Record<CliNameLiteral, CostPer1M> = {
   claude: { input: 3.0, output: 15.0 },
   gemini: { input: 0.075, output: 0.3 },
-  codex: { input: 2.5, output: 10.0 },
+  // gpt-5.5's $5/$30, the highest priced codex model (#6866).
+  codex: { input: 5.0, output: 30.0 },
   opencode: { input: 2.0, output: 8.0 },
 };
+
+/**
+ * Conservative per-1M estimate for an UNPRICED model served by `cli` (#6866):
+ * the highest input and the highest output rate among that CLI's models with a
+ * positive registry price. An unknown price must never look CHEAPER than a
+ * known price on the same CLI — the static $2.5/$10 codex row undercut priced
+ * gpt-5.6-sol ($4/$20), so budget filters and cost-weighted TOPSIS over-selected
+ * the unpriced codex default. Only the estimate changes: usage accounting still
+ * records the model as `priced:false`.
+ *
+ * Empty case: a CLI with no positively-priced model (none priced, or only
+ * explicit $0 entries, which would make the estimate free) falls back to
+ * {@link STATIC_CLI_COST_PER_1M}.
+ *
+ * Reads the in-tree matrix directly, not the registry singleton, so the
+ * module-load-time builders (`buildTopsisProfiles`, `readCliModelData`) and
+ * the runtime budget path share one definition without the TDZ hazard.
+ * `models` exists so the empty case can be tested.
+ */
+export function unpricedCliCostPer1M(
+  cli: CliNameLiteral,
+  models: readonly ModelCapability[] = DEFAULT_MODEL_CAPABILITIES.models
+): CostPer1M {
+  let input = 0;
+  let output = 0;
+  for (const model of models) {
+    if (model.cliName !== cli || model.pricing === undefined) continue;
+    input = Math.max(input, model.pricing.inputPer1M);
+    output = Math.max(output, model.pricing.outputPer1M);
+  }
+  return input > 0 && output > 0 ? { input, output } : STATIC_CLI_COST_PER_1M[cli];
+}

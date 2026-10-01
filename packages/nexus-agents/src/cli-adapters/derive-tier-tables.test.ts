@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
 import {
   readCliModelData,
   buildQualityRank,
@@ -50,6 +51,11 @@ describe('derive-tier-tables (#4195)', () => {
       // gemini default (gemini-3-pro) r10/cg9 → 9.5; 2+12=14.
       expect(data.gemini.quality).toBe(9.5);
       expect(data.gemini.price).toBe(14);
+    });
+
+    it('blends an unpriced default at the budget policy rate, not the static row (#6866)', () => {
+      const est = resolveCliCostPer1M('codex');
+      expect(readCliModelData().codex.price).toBe(est.input + est.output);
     });
   });
 

@@ -4,7 +4,8 @@
  * Token costs are NO LONGER hardcoded here: `estimateCost` resolves per-CLI
  * pricing from the model registry via `resolveCliCostPer1M` (#4168), so the
  * `ModelEntry.pricing` chain is the single authoritative source. Unpriced
- * models fall back to the conservative `STATIC_CLI_COST_PER_1M` map (never $0).
+ * models are estimated at their CLI's highest known rates (`unpricedCliCostPer1M`,
+ * #6866), never $0 and never below a priced model of the same CLI.
  *
  * @module cli-adapters/budget-utils
  * (Source: Issue #102, arXiv:2508.21141 - EMNLP 2025)

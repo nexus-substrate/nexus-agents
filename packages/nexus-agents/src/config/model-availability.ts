@@ -11,8 +11,8 @@
 
 import { getTimeProvider } from '../core/index.js';
 import type { ModelId, CliNameLiteral } from './model-capabilities-types.js';
-import { MODEL_IDS } from './model-capabilities-types.js';
-import { DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
+import { CLI_NAMES, MODEL_IDS } from './model-capabilities-types.js';
+import { getDefaultRegistry } from './model-registry.js';
 import { resolveModelIdentitySync, type ModelVendor } from './model-identity.js';
 
 // ---------------------------------------------------------------------------
@@ -171,16 +171,24 @@ export function getFallbackChain(cli: CliNameLiteral): readonly ModelId[] {
   return FALLBACK_CHAINS[cli];
 }
 
+/** Narrow a registry `cliName` string to a canonical CLI slot. */
+function isCliName(value: string | undefined): value is CliNameLiteral {
+  return value !== undefined && (CLI_NAMES as readonly string[]).includes(value);
+}
+
 /**
  * Get the CLI name for a model ID.
+ *
+ * Ownership is the canonical registry entry's `cliName` (#6866). It used to be
+ * inferred from `DEFAULT_MODEL_PER_CLI` plus {@link FALLBACK_CHAINS}, which is
+ * a second copy of the same knowledge: flipping the codex default to
+ * gpt-6.1-sol left gpt-5.6-sol in neither list, so a pinned gpt-5.6-sol lost
+ * its codex attribution and its fallback. `FALLBACK_CHAINS` now only orders
+ * fallbacks. Undefined when the registry entry names no CLI.
  */
 export function getCliForModelId(modelId: ModelId): CliNameLiteral | undefined {
-  for (const [cli, defaultModel] of Object.entries(DEFAULT_MODEL_PER_CLI)) {
-    const chain = FALLBACK_CHAINS[cli as CliNameLiteral];
-    if (chain.includes(modelId)) return cli as CliNameLiteral;
-    if (defaultModel === modelId) return cli as CliNameLiteral;
-  }
-  return undefined;
+  const { cliName } = getDefaultRegistry().getEntry(modelId);
+  return isCliName(cliName) ? cliName : undefined;
 }
 
 /**

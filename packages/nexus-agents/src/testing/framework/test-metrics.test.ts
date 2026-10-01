@@ -140,7 +140,7 @@ describe('createEmptyMetrics', () => {
 
 // #4168: costs resolve from registry pricing for each CLI's default model
 // (claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
-// codex→unpriced gpt-6.1-sol uses the $2.5/$10 fallback since #6842) —
+// codex→unpriced gpt-6.1-sol uses codex's highest known rates since #6866) —
 // numbers updated deliberately.
 describe('estimateCost', () => {
   it('calculates cost for Claude', () => {
@@ -157,8 +157,8 @@ describe('estimateCost', () => {
 
   it('calculates cost for Codex', () => {
     const cost = estimateCost('codex', { inputTokens: 1_000_000, outputTokens: 1_000_000 });
-    // Unpriced gpt-6.1-sol: fallback 2.5 + 10.0 = 12.5 (#6842).
-    expect(cost).toBeCloseTo(12.5);
+    // Unpriced gpt-6.1-sol: codex's highest known rates 5 + 30 = 35 (#6866).
+    expect(cost).toBeCloseTo(35);
   });
 
   it('returns 0 for zero tokens', () => {

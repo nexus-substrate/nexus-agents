@@ -18,7 +18,7 @@ import { buildInTreeEntries } from './in-tree-entries.js';
 import {
   DEFAULT_MODEL_CAPABILITIES,
   DEFAULT_MODEL_PER_CLI,
-  STATIC_CLI_COST_PER_1M,
+  unpricedCliCostPer1M,
   type CostPer1M,
 } from './in-tree-data.js';
 import type {
@@ -174,12 +174,13 @@ export function resolveModelCostPer1M(modelId: ModelId, fallback: CostPer1M): Co
 
 /**
  * Resolve per-1M-token USD pricing for a CLI's default model (#4168):
- * `CliName → getDefaultModelForCli → registry pricing`, with the CLI's
- * {@link STATIC_CLI_COST_PER_1M} entry as the conservative fallback when the
- * resolved model is unpriced. Single source for the former per-CLI $ tables.
+ * `CliName → getDefaultModelForCli → registry pricing`. An unpriced default is
+ * estimated at the CLI's highest known rates ({@link unpricedCliCostPer1M},
+ * #6866), never below a priced sibling. Single source for the former per-CLI
+ * $ tables; usage accounting still records the model as unpriced.
  */
 export function resolveCliCostPer1M(cli: CliNameLiteral): CostPer1M {
-  return resolveModelCostPer1M(getDefaultModelForCli(cli), STATIC_CLI_COST_PER_1M[cli]);
+  return resolveModelCostPer1M(getDefaultModelForCli(cli), unpricedCliCostPer1M(cli));
 }
 
 /** Get the model name the CLI binary expects (e.g., 'gemini-2.5-pro'). */
@@ -301,9 +302,7 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
     // to avoid re-entering `lookupInTree` at module-load time (TDZ hazard).
     const p = entry.pricing;
     const price: CostPer1M =
-      p !== undefined
-        ? { input: p.inputPer1M, output: p.outputPer1M }
-        : STATIC_CLI_COST_PER_1M[cli];
+      p !== undefined ? { input: p.inputPer1M, output: p.outputPer1M } : unpricedCliCostPer1M(cli);
     profiles.push({
       cliName: cli,
       capabilities: {
