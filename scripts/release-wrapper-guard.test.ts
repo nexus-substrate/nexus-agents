@@ -65,15 +65,32 @@ function shellCommands(run: string): string[] {
 function invokesNpm(command: string): boolean {
   const invocation = command.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)+/, '');
   if (/^(?:pnpm exec\s+)?(?:npm|npx)(?:\s|$)/.test(invocation)) return true;
-  if (
-    /^pnpm(?:\s+(?:(?:--filter|-F|--dir|-C)\s+\S+|--?\S+))*\s+(?:publish|release)(?:\s|$)/.test(
-      invocation
-    )
-  )
-    return true;
+  if (isPnpmPublishOrRelease(invocation)) return true;
   return /^(?:pnpm exec\s+)?(?:(?:tsx|node)\s+)?scripts\/release-publish\.ts(?:\s|$)/.test(
     invocation
   );
+}
+
+/** Options that take a value, so the token after them is not the subcommand. */
+const PNPM_VALUE_OPTIONS = new Set(['--filter', '-F', '--dir', '-C']);
+
+/**
+ * True for `pnpm [options] publish|release`. A token walk, not a regex: the
+ * equivalent nested-quantifier regex backtracks exponentially (CodeQL js/redos).
+ */
+function isPnpmPublishOrRelease(invocation: string): boolean {
+  const tokens = invocation.split(/\s+/).filter((token) => token.length > 0);
+  if (tokens[0] !== 'pnpm') return false;
+  for (let index = 1; index < tokens.length; index++) {
+    const token = tokens[index] ?? '';
+    if (PNPM_VALUE_OPTIONS.has(token)) {
+      index++;
+      continue;
+    }
+    if (token.startsWith('-')) continue;
+    return token === 'publish' || token === 'release';
+  }
+  return false;
 }
 
 interface Inspection {
