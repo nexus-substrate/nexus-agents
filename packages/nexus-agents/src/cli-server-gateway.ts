@@ -21,6 +21,7 @@ import {
   buildOpenAICompatAdapters,
 } from './adapters/openai-compat-adapter.js';
 import { createGatewayArmAdapter } from './adapters/gateway-arm-adapter.js';
+import { discoverGatewayOnce } from './adapters/gateway-discovery.js';
 import {
   GatewayHostRefusedError,
   type GatewayHostRefused,
@@ -93,7 +94,9 @@ async function wireGatewayOnce(logger: ILogger): Promise<WiringOutcome> {
     return { adapters: undefined, retryable: false };
   }
 
-  const result = await buildOpenAICompatAdapters(logger);
+  // The process's one probe (#4392): a lazy discovery that ran first is
+  // reused, never repeated, and a later lazy call reuses this one.
+  const result = await discoverGatewayOnce(logger);
   if (result === null) {
     // env-was-set guard; build contract allows it
     noticeCliSubprocessFallback(logger);

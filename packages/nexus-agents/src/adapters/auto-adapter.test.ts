@@ -17,6 +17,19 @@ import { ok, type ILogger, type IModelAdapter } from '../core/index.js';
 // ============================================================================
 
 // Mock CLI factory
+// No network from unit tests: createAutoAdapter now runs the process's one
+// gateway discovery on first use (#4392), and these suites point the gateway
+// env at hosts that do not exist. Discovery itself is tested in
+// gateway-discovery.test.ts and over HTTP in the gateway acceptance suite.
+const gatewayDiscovery = vi.hoisted(() => ({
+  ensure: vi.fn(() => Promise.resolve()),
+  status: vi.fn((): string => 'unattempted'),
+}));
+vi.mock('./gateway-discovery.js', () => ({
+  ensureGatewayCatalogue: gatewayDiscovery.ensure,
+  gatewayDiscoveryStatus: gatewayDiscovery.status,
+}));
+
 vi.mock('../cli-adapters/factory.js', () => ({
   createCliAdapter: vi.fn().mockReturnValue({
     initialize: vi.fn().mockReturnValue(Promise.resolve()),

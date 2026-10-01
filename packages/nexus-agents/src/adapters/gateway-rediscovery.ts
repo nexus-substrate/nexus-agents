@@ -31,6 +31,7 @@
 
 import type { ILogger, IModelAdapter } from '../core/index.js';
 import { getErrorMessage, getTimeProvider } from '../core/index.js';
+import { ensureGatewayCatalogue } from './gateway-discovery.js';
 
 /** Minimum spacing between discovery attempts, the boot attempt included. */
 const GATEWAY_REDISCOVERY_INTERVAL_MS = 60_000;
@@ -135,10 +136,18 @@ export function setGatewayRediscovery(rediscovery: GatewayRediscovery | undefine
 }
 
 /**
- * Called on the gateway-needing paths before they read gateway state. A
- * no-op when no re-discovery is armed: no gateway configured, it wired at
- * boot, or it was refused for a reason retrying cannot fix.
+ * Called on the gateway-needing paths before they read gateway state. With a
+ * re-discovery armed (the server's boot probe failed retryably) it runs that.
+ * Otherwise it makes sure this process has tried discovery at all (#4392):
+ * outside the MCP server nothing else does, so the first call runs the one
+ * memoized probe (`gateway-discovery.ts`) and registers the catalogue; every
+ * later call, and every call in a server whose bootstrap probed, is a settled
+ * promise. No gateway configured probes nothing.
  */
 export async function ensureGatewayDiscovered(): Promise<void> {
-  await active?.ensure();
+  if (active !== undefined) {
+    await active.ensure();
+    return;
+  }
+  await ensureGatewayCatalogue();
 }

@@ -32,6 +32,8 @@ import {
   type CliTask,
 } from '../cli-adapters/index.js';
 import { getConfig, adaptRoutingConfig } from '../config/index.js';
+import { ensureGatewayDiscovered } from '../adapters/gateway-rediscovery.js';
+import { gatewayServedSlotOf } from '../cli-adapters/gateway-slot-arm.js';
 import { executeWithPuppeteer } from './orchestrate-puppeteer.js';
 import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 import { buildDryRunReport, renderDryRunText, type DryRunReport } from './orchestrate-dry-run.js';
@@ -348,15 +350,15 @@ function noRoutingArmsMessage(): string {
  */
 function reportRoutingArms(
   availableClis: readonly string[],
-  apiArms: readonly string[],
+  binarylessArms: readonly string[],
   verbose: boolean
 ): boolean {
-  if (availableClis.length === 0 && apiArms.length === 0) {
+  if (availableClis.length === 0 && binarylessArms.length === 0) {
     console.error(noRoutingArmsMessage());
     return false;
   }
   if (verbose) {
-    console.log(`Available routing arms: ${[...availableClis, ...apiArms].join(', ')}`);
+    console.log(`Available routing arms: ${[...availableClis, ...binarylessArms].join(', ')}`);
   }
   return true;
 }
@@ -384,6 +386,11 @@ export async function orchestrateCommand(options: OrchestrateOptions): Promise<n
   // refused to start even when `createAllAdapters` would have produced usable
   // `api:*` arms from a provider key under `NEXUS_BILLING_MODE=api` (#3422).
   // The gate now asks the question it means to ask: is any routing arm usable?
+  // #4392: a CLI process never runs the MCP server bootstrap, and
+  // `createAllAdapters` is synchronous, so the gateway catalogue its family
+  // slots and `api:custom-openai` arm read must exist before it is called.
+  // One probe per process; a no-op with no gateway configured.
+  await ensureGatewayDiscovered();
   const adapters = createAllAdapters(logger, codexTransport);
   if (adapters.size === 0) {
     // A DIFFERENT failure from "no arms usable" below, and kept separate on
@@ -393,8 +400,15 @@ export async function orchestrateCommand(options: OrchestrateOptions): Promise<n
     return 1;
   }
 
-  const apiArms = [...adapters.keys()].filter((id) => id.startsWith('api:'));
-  if (!reportRoutingArms(availableClis, apiArms, options.verbose === true)) return 1;
+  // Arms that run without a CLI binary: direct-API arms, and (#4392) a vendor
+  // slot served by its family's gateway model. Not counting the latter
+  // refused a gateway-only host whose slot arms were runnable.
+  const binarylessArms = [...adapters].flatMap(([id, adapter]) => {
+    if (id.startsWith('api:')) return [id];
+    const served = gatewayServedSlotOf(adapter);
+    return served === undefined ? [] : [`${id} (gateway ${served.modelId})`];
+  });
+  if (!reportRoutingArms(availableClis, binarylessArms, options.verbose === true)) return 1;
 
   let result: OrchestrationResult | PuppeteerOrchestrationResult;
 

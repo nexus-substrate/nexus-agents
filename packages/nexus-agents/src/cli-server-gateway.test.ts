@@ -41,8 +41,14 @@ import {
   setGatewaySlotCatalog,
 } from './adapters/gateway-family-slots.js';
 import { createUnifiedRegistry } from './adapters/unified-registry.js';
+import { _resetGatewayDiscovery } from './adapters/gateway-discovery.js';
 import type { EndpointArmId } from './cli-adapters/types.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
+
+// Discovery runs once per process (#4392); every test here is a fresh boot.
+beforeEach(() => {
+  _resetGatewayDiscovery();
+});
 
 function makeMockAdapter(modelId: string): IModelAdapter {
   return {
@@ -537,6 +543,21 @@ describe('wireGateway (#4392 inc 2 step 2 — discovery + arm in one call)', () 
     expect(registry.registerApiArm).toHaveBeenCalledTimes(1);
     expect(registry.registerApiArm.mock.calls[0]?.[0]).toBe('api:corp-proxy');
     expect(getGatewayCatalog('api:corp-proxy')).toEqual(['gw-a', 'gw-b']);
+  });
+
+  it('shares the process probe: a later first-use discovery does not probe again (#4392)', async () => {
+    setGatewayRediscovery(undefined);
+    readOpenAICompatEnvMock.mockReturnValue({ baseUrl: 'https://gw/v1', apiKey: 'sk' });
+    buildOpenAICompatAdaptersMock.mockResolvedValue(ok([makeMockAdapter('gw-a')]));
+    const registry = {
+      registerApiArm: vi.fn<(arm: EndpointArmId, adapter: IResilientAdapter) => void>(),
+      getLogger: () => makeMockLogger(),
+    };
+
+    await wireGateway(makeMockLogger(), registry);
+    await ensureGatewayDiscovered();
+
+    expect(buildOpenAICompatAdaptersMock).toHaveBeenCalledTimes(1);
   });
 
   it('registers nothing and returns undefined when no gateway is configured', async () => {
