@@ -121,6 +121,12 @@ function mockLogger(): { logger: ILogger; warn: Mock<ILogger['warn']> } {
 }
 
 describe('toCodexModelSlug', () => {
+  it('resolves gpt-6.1-sol without the unknown-model warning (#6842)', () => {
+    const { logger, warn } = mockLogger();
+    expect(toCodexModelSlug('gpt-6.1-sol', logger)).toBe('gpt-6.1-sol');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('translates a canonical registry id to the slug codex accepts, without warning', () => {
     const { logger, warn } = mockLogger();
     expect(toCodexModelSlug('codex-5.3', logger)).toBe('gpt-5.6-terra');

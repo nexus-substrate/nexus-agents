@@ -94,10 +94,10 @@ describe('checkCodexModels', () => {
     expect(result.reason).toBeNull();
   });
 
-  it('passes against the 2026-09-23 served-list SNAPSHOT (codex-cli 0.155.1)', () => {
+  it('warns that the frozen 2026-09-23 snapshot lacks the newly registered gpt-6.1-sol (#6842)', () => {
     // A FROZEN copy of the visibility=list slugs in ~/.codex/models_cache.json
-    // on 2026-09-23 (codex-cli 0.155.1). It pins that the registry matched the
-    // binary on that date; it is NOT the drift gate. The live gate is
+    // on 2026-09-23 (codex-cli 0.155.1). It preserves the served list on that
+    // date; it is NOT the live drift gate. The live gate is
     // `nexus-agents verify` (Codex Models), which reads the installed cache.
     // Hidden rows (gpt-reserve, codex-auto-review) are not offered by codex.
     const SERVED_2026_09_23 = [
@@ -114,6 +114,26 @@ describe('checkCodexModels', () => {
 
     const result = checkCodexModels(file);
 
+    // Keep the historical artifact intact: the new slug was not in this snapshot.
+    expect(result.missing.map((entry) => entry.cliModelName)).toEqual(['gpt-6.1-sol']);
+    expect(result.status).toBe('warn');
+  });
+
+  it('passes against the 2026-10-01 served-list snapshot (codex-cli 0.159.3, #6842)', () => {
+    // Read from the installed cache after the live PONG check on 2026-10-01.
+    const file = join(dir, 'models_cache.json');
+    const served = [
+      'gpt-6.1-sol',
+      'gpt-6-astra',
+      'gpt-6-sol',
+      'gpt-6-luna',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.5',
+    ];
+    writeFileSync(file, cacheJson(served));
+    const result = checkCodexModels(file);
     expect(result.missing).toEqual([]);
     expect(result.status).toBe('pass');
   });

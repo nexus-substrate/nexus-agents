@@ -30,6 +30,12 @@ import { computeTokenCost } from '../learning/token-cost-core.js';
 import { computeCostDetail, priceBasisOf } from '../learning/usage-log.js';
 
 describe('estimateBudgetArmCostUsd (#6393)', () => {
+  it('uses the codex fallback for budgets but fails closed for cost ceilings (#6842)', () => {
+    expect(estimateBudgetArmCostUsd('codex', 1_000_000, 1_000_000)).toBe(12.5);
+    expect(estimateRegistryCostUsd('codex', 1_000_000, 1_000_000)).toBeUndefined();
+    expect(estimateArmCostUsd('api:openai', 1_000_000, 1_000_000)).toBeUndefined();
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
   });

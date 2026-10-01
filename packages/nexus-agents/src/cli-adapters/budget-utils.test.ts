@@ -5,7 +5,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveModelCostPer1M } from '../config/model-config-helpers.js';
+import {
+  getDefaultModelForCli,
+  getModelPricing,
+  resolveModelCostPer1M,
+} from '../config/model-config-helpers.js';
 import type { ModelId } from '../config/model-capabilities-types.js';
 import type { CliName } from './types.js';
 import { STATIC_CLI_COST_PER_1M } from '../config/in-tree-data.js';
@@ -15,7 +19,7 @@ import { resolveCliCostPer1M } from '../config/model-config-helpers.js';
 describe('budget-utils', () => {
   // #4168: the former hardcoded `TOKEN_COSTS` table now resolves through the
   // registry via `resolveCliCostPer1M` (single authoritative source). These
-  // assertions preserve the original intent (each CLI is priced, output > input).
+  // assertions preserve the original intent (non-zero estimates, output > input).
   describe('per-CLI token costs (registry-backed)', () => {
     it('has cost data for claude', () => {
       const c = resolveCliCostPer1M('claude');
@@ -73,10 +77,8 @@ describe('budget-utils', () => {
     });
   });
 
-  // #4168: costs now come from registry pricing for each CLI's default model
-  // (claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
-  // codex→gpt-5.6-sol $4/$20 per 1M since #6516), not the old static table —
-  // numbers updated deliberately.
+  // #4168: priced defaults use registry rates; unpriced defaults use the
+  // static fallback. #6842 activates that fallback for codex gpt-6.1-sol.
   describe('estimateCost', () => {
     it('calculates cost for claude', () => {
       // 1M input at $10.00 + 1M output at $50.00 = $60.00 (claude-fable-5)
@@ -91,9 +93,9 @@ describe('budget-utils', () => {
     });
 
     it('calculates cost for codex', () => {
-      // 1M input at $4.00 + 1M output at $20.00 = $24.00 (gpt-5.6-sol, #6516)
+      // Unpriced gpt-6.1-sol: fallback $2.50 input + $10.00 output (#6842).
       const cost = estimateCost('codex', 1_000_000, 1_000_000);
-      expect(cost).toBe(24.0);
+      expect(cost).toBe(12.5);
     });
 
     it('scales linearly with tokens', () => {
@@ -165,8 +167,8 @@ describe('budget-gate invariant: an unpriced candidate is never free (#5122 incr
   const PINNED: readonly { cli: CliName; est: number }[] = [
     { cli: 'claude', est: 60 },
     { cli: 'gemini', est: 14 },
-    // #6516: the codex default moved gpt-5.5 ($5/$30) → gpt-5.6-sol ($4/$20).
-    { cli: 'codex', est: 24 },
+    // #6842: unpriced gpt-6.1-sol activates the $2.5/$10 fallback.
+    { cli: 'codex', est: 12.5 },
     { cli: 'opencode', est: 18 },
   ];
 
@@ -180,16 +182,21 @@ describe('budget-gate invariant: an unpriced candidate is never free (#5122 incr
     }
   });
 
+  it('resolves the unpriced codex default through the live fallback (#6842)', () => {
+    const model = getDefaultModelForCli('codex');
+    expect(model).toBe('gpt-6.1-sol');
+    expect(getModelPricing(model)).toBeUndefined();
+    const resolved = resolveCliCostPer1M('codex');
+    expect(resolved).toEqual(STATIC_CLI_COST_PER_1M.codex);
+    expect(resolved.input).toBeGreaterThan(0);
+    expect(resolved.output).toBeGreaterThan(0);
+    expect(estimateCost('codex', 1_000_000, 1_000_000)).toBe(12.5);
+  });
+
   it('resolves an UNPRICED model to the conservative fallback, not to zero', () => {
-    // The test above cannot detect the trap on its own, and I nearly shipped it
-    // believing it could. Every DEFAULT_MODEL_PER_CLI entry is priced today
-    // (`in-tree-data.ts:475` says so explicitly), so the fallback branch never
-    // runs through `resolveCliCostPer1M` and the assertion passes because the
-    // REGISTRY has rates — not because the safety net works. Mutating the
-    // fallback to `{0, 0}` left every test green.
-    //
-    // The net is dormant by design, which is exactly why it needs a direct
-    // test: a guard nothing exercises is indistinguishable from a broken one.
+    // The codex default now exercises the live fallback (#6842). Keep this
+    // independent missing-id test so an arbitrary fallback is also covered;
+    // unknown models must not become free budget candidates.
     const fallback = { input: 7, output: 11 };
     const resolved = resolveModelCostPer1M('definitely-not-a-real-model-xyz' as ModelId, fallback);
     expect(resolved).toEqual(fallback);

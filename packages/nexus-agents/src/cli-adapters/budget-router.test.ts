@@ -401,8 +401,8 @@ describe('BudgetRouter task-class cost ceiling (#4196)', () => {
   // Registry pricing of per-CLI default models (in-tree-data):
   //   claude → claude-fable-5 ($10/$50 per 1M)
   //   gemini → gemini-3-pro   ($2/$12 per 1M)
-  //   codex  → gpt-5.6-sol    ($4/$20 per 1M, #6516)
-  // With maxTokens 10_000 output: claude ≈ $0.50, codex ≈ $0.20, gemini ≈ $0.12.
+  //   codex  → gpt-6.1-sol    (unpriced, #6842; cost ceiling fails closed)
+  // With maxTokens 10_000 output: claude ≈ $0.50, gemini ≈ $0.12.
   const ceilingTask: CliTask = { content: 'implement a function', maxTokens: 10_000 };
   const candidates: CliName[] = ['claude', 'gemini', 'codex'];
 
@@ -454,11 +454,11 @@ describe('BudgetRouter task-class cost ceiling (#4196)', () => {
     r.dispose();
   });
 
-  it('keeps every candidate under a generous ceiling', () => {
+  it('keeps priced candidates under a generous ceiling and excludes unpriced codex', () => {
     const r = new BudgetRouter(makeAdapters(), {
       taskClassCostCeilings: { code_generation: 5.0 },
     });
-    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(candidates);
+    expect(r.filterByTaskClassCeiling(ceilingTask, candidates)).toEqual(['claude', 'gemini']);
     r.dispose();
   });
 

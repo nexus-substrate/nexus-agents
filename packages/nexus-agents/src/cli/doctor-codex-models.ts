@@ -329,7 +329,7 @@ export interface CodexModelsVerifyCheckOptions {
    */
   readonly userPinnedSlug?: string | undefined;
   /**
-   * Active default model name (e.g. 'gpt-5.6-sol').
+   * Active default model name (e.g. 'gpt-6.1-sol').
    */
   readonly defaultModel?: string | undefined;
 }

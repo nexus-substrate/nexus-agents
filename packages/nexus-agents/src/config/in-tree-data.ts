@@ -243,7 +243,41 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     // ----- OpenAI Codex -----
     {
-      // #6516 (panel option A): the codex default since gpt-5.5 retires.
+      // #6842, panel vote-1790834581155-7b39b83 (option A): register the served
+      // slug and make it the codex default. All capability values below,
+      // including context/output limits, quality scores and parameter support,
+      // are CARRIED-OVER from gpt-5.6-sol, NOT measured for gpt-6.1-sol.
+      // No pricing field: accounting reports priced:false until OpenAI
+      // publishes pricing; budget filters use STATIC_CLI_COST_PER_1M.
+      // Listed first so equal-scoring selections prefer the new default.
+      id: 'gpt-6.1-sol',
+      aliases: ['openai/gpt-6.1-sol'],
+      displayName: 'GPT-6.1 Sol',
+      provider: 'openai',
+      contextWindow: 1_050_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'file_operations',
+        'structured_output',
+        'apply_patch',
+        'computer_use',
+      ],
+      specialFeatures: ['streaming'],
+      notes:
+        'GPT-6.1 Sol; codex default per #6842 (panel option A). Context window, output limit, modalities, tools, features, quality scores and parameter support are CARRIED-OVER from gpt-5.6-sol, NOT measured. Unpriced until OpenAI publishes pricing.',
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
+      maxOutputTokens: 128_000,
+      cliName: 'codex',
+      cliModelName: 'gpt-6.1-sol',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
+    },
+    {
+      // #6516 (panel option A): the former codex default; kept routable for pins.
       // ~/.codex/models_cache.json (codex-cli 0.155.1, read 2026-09-23) puts
       // an `upgrade` record on the gpt-5.5 row: retirement_at
       // 2026-10-14T19:00:00Z, upgrade.model gpt-5.6-sol. The id equals the
@@ -281,7 +315,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       ],
       specialFeatures: ['streaming'],
       notes:
-        'GPT-5.6 Sol (models.dev 2026-09-21; codex catalog: "older coding model for complex work"); codex default and gpt-5.5 successor per the codex cache; served by codex-cli 0.155.1; reasoning low..ultra; 1.05M context (codex cache default window 272K)',
+        'GPT-5.6 Sol (models.dev 2026-09-21; codex catalog: "older coding model for complex work"); former codex default and gpt-5.5 successor per the codex cache; served by codex-cli 0.155.1; reasoning low..ultra; 1.05M context (codex cache default window 272K)',
       pricing: { inputPer1M: 4.0, outputPer1M: 20.0 },
       qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
       maxOutputTokens: 128_000,
@@ -548,11 +582,10 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
  */
 export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
   // #4176: fable/gpt-5.5 were strongest per CLI; gemini-3.5-flash is flash-tier, not default.
-  // #6516: codex moves to gpt-5.6-sol, the upgrade target the codex cache names
-  // for gpt-5.5 (retiring 2026-10-14).
+  // #6842: option A; revert this default to gpt-5.6-sol in one line if needed.
   claude: 'claude-fable-5',
   gemini: 'gemini-3-pro',
-  codex: 'gpt-5.6-sol',
+  codex: 'gpt-6.1-sol',
   opencode: 'opencode-default',
 };
 
@@ -570,10 +603,10 @@ export interface CostPer1M {
  * `COST_PER_1K_TOKENS`, and `test-metrics`).
  *
  * It is a FALLBACK, not the primary source: a priced model always upgrades to
- * real registry data via `resolveModelCostPer1M`. Because every current
- * `DEFAULT_MODEL_PER_CLI` entry is priced, this map is dormant today; it exists
- * so an UNPRICED candidate stays CONSERVATIVE (never $0) in budget/TOPSIS gates
- * — a $0 fails OPEN and gets the unknown model over-selected (#4168 cond. 2).
+ * real registry data via `resolveModelCostPer1M`. The unpriced codex default
+ * gpt-6.1-sol (#6842) actively uses this map in budget/TOPSIS gates. These
+ * fallback rates are estimates, not measured prices, and keep an UNPRICED
+ * candidate CONSERVATIVE (never $0) — a $0 fails OPEN and gets the unknown model over-selected (#4168 cond. 2).
  *
  * Lives in this leaf data module (not `model-config-helpers`) so the
  * module-load-time `buildTopsisProfiles` call reads it after initialization,
