@@ -18,7 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { getDefaultRegistry, setDefaultRegistry } from './model-registry.js';
+import { DEFAULT_ENTRY, getDefaultRegistry, setDefaultRegistry } from './model-registry.js';
+import * as snapshotLoader from './models-dev-snapshot-loader.js';
+import * as generatedLoader from './models-generated-loader.js';
 import { getCliForModelId, resolveCliSlot } from './model-availability.js';
 import { getDefaultModelForCli, resolveCliCostPer1M } from './model-config-helpers.js';
 import type { CliNameLiteral, ModelId } from './model-capabilities-types.js';
@@ -37,9 +39,19 @@ interface OverlayEntry {
   readonly pricing?: { readonly inputPer1M: number; readonly outputPer1M: number };
 }
 
+// Deliberately exceeds every in-tree codex price; the id has no in-tree owner.
+const TIER_ENTRY = {
+  id: 'gpt-tier-matrix-sentinel',
+  vendor: 'openai',
+  family: 'gpt',
+  pricing: { inputPer1M: 1_000, outputPer1M: 2_000 },
+} as const satisfies OverlayEntry;
+
 interface MatrixRow {
   readonly name: string;
   readonly overlay: readonly OverlayEntry[];
+  /** Stub both catalog loaders for the tier rows, including the empty control. */
+  readonly catalogTier?: 'models-dev' | 'generated' | 'empty';
   /** The model id the ownership columns are read for. */
   readonly target: string;
   readonly owner: CliNameLiteral | undefined;
@@ -60,6 +72,29 @@ const ROWS: readonly MatrixRow[] = [
     owner: 'codex',
     slot: 'codex',
     codexBudget: { input: 5, output: 30 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+  },
+  // ---- tier: catalog vendor slots must never inflate an unpriced CLI bound.
+  ...(['models-dev', 'generated'] as const).map((catalogTier): MatrixRow => ({
+    name: `tier: ${catalogTier} entry does not bound codex (#6876)`,
+    overlay: [],
+    catalogTier,
+    target: TIER_ENTRY.id,
+    owner: undefined,
+    slot: 'codex',
+    codexBudget: { input: 5, output: 30 },
+    codexCeiling: undefined,
+    defaultPriced: false,
+  })),
+  {
+    name: 'tier: same entry as manifest bounds codex with empty catalogs (#6876)',
+    overlay: [TIER_ENTRY],
+    catalogTier: 'empty',
+    target: TIER_ENTRY.id,
+    owner: undefined,
+    slot: 'codex',
+    codexBudget: { input: TIER_ENTRY.pricing.inputPer1M, output: TIER_ENTRY.pricing.outputPer1M },
     codexCeiling: undefined,
     defaultPriced: false,
   },
@@ -324,12 +359,33 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   setDefaultRegistry(undefined);
   rmSync(dir, { recursive: true, force: true });
 });
 
-function loadOverlay(entries: readonly OverlayEntry[]): void {
+function stubCatalogTier(tier: NonNullable<MatrixRow['catalogTier']>): void {
+  const entry = { ...DEFAULT_ENTRY, ...TIER_ENTRY, profileId: 'tier-matrix' };
+  // The other catalog is empty, so neither the host snapshot nor the generated
+  // catalog can supply an incidental expensive OpenAI sibling (#6876).
+  vi.spyOn(snapshotLoader, 'loadModelsDevSnapshot').mockReturnValue({
+    status: 'loaded',
+    path: 'stub-models-dev',
+    entries: tier === 'models-dev' ? [{ ...entry, source: 'models-dev' }] : [],
+  });
+  vi.spyOn(generatedLoader, 'loadGeneratedRegistryEntries').mockReturnValue({
+    status: 'loaded',
+    path: 'stub-generated',
+    entries: tier === 'generated' ? [{ ...entry, source: 'generated' }] : [],
+  });
+}
+
+function loadOverlay(
+  entries: readonly OverlayEntry[],
+  catalogTier?: MatrixRow['catalogTier']
+): void {
+  if (catalogTier !== undefined) stubCatalogTier(catalogTier);
   const path = join(dir, 'models-manifest.yaml');
   // JSON is valid YAML; the loader parses either.
   writeFileSync(path, JSON.stringify({ version: 1, models: entries }), 'utf-8');
@@ -342,7 +398,17 @@ function loadOverlay(entries: readonly OverlayEntry[]): void {
 
 describe('model ownership and unpriced pricing over the overlay matrix (#6866)', () => {
   it.each(ROWS)('$name', (row) => {
-    loadOverlay(row.overlay);
+    loadOverlay(row.overlay, row.catalogTier);
+    if (row.catalogTier !== undefined) {
+      const entry = getDefaultRegistry()
+        .allEntries()
+        .find((entry) => entry.id === TIER_ENTRY.id);
+      expect(entry, 'tier fixture loaded').toMatchObject({
+        ...TIER_ENTRY,
+        source: row.catalogTier === 'empty' ? 'manifest' : row.catalogTier,
+      });
+      expect(entry?.cliName, 'tier fixture has no CLI owner').toBeUndefined();
+    }
     const codexDefault = getDefaultModelForCli('codex');
     expect(codexDefault).toBe(row.resolvedDefault ?? 'gpt-6.1-sol');
 
