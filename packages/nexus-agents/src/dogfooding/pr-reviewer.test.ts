@@ -598,6 +598,54 @@ describe('PRReviewer', () => {
       expect(result.value.reviewCoverage).toBe('none');
     });
 
+    it('skips a non-dry-run post when every expert errored despite available patches (#5796)', async () => {
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const result = await new PRReviewer(
+        { dryRun: false, experts: ['security', 'testing'] },
+        erroredReviewAdapter()
+      ).reviewPR('owner/repo#123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.expertReviews).toHaveLength(2);
+      expect(result.value.expertReviews.map((review) => review.errored)).toEqual([true, true]);
+      expect(result.value.filesWithPatch).toBe(1);
+      expect(result.value.filesReviewed).toBe(0);
+      expect(result.value.reviewCoverage).toBe('none');
+      expect(result.value.decision).toBe('comment'); // #5012 remains unchanged.
+      expect(result.value.postOutcome).toEqual({
+        status: 'skipped',
+        reason: 'Policy gate: NO_REVIEW_COVERAGE',
+      });
+      expect(mockCreateReview).not.toHaveBeenCalled();
+    });
+
+    it('skips a non-dry-run post when no files reached a successful expert (#5796)', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        ok(
+          createMockPRDetail({
+            files: [{ filename: 'src/a.ts', status: 'modified', additions: 1, deletions: 0 }],
+          })
+        )
+      );
+      const { PRReviewer } = await import('./pr-reviewer.js');
+      const result = await new PRReviewer(
+        { dryRun: false, experts: ['code_quality'] },
+        successfulReviewAdapter()
+      ).reviewPR('owner/repo#123');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.filesWithPatch).toBe(0);
+      expect(result.value.filesReviewed).toBe(0);
+      expect(result.value.reviewCoverage).toBe('none');
+      expect(result.value.postOutcome).toEqual({
+        status: 'skipped',
+        reason: 'Policy gate: NO_REVIEW_COVERAGE',
+      });
+      expect(mockCreateReview).not.toHaveBeenCalled();
+    });
+
     it('reports full file coverage when every file has a patch and an expert succeeds', async () => {
       mockGetPullRequestDetail.mockResolvedValue(
         ok({

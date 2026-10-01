@@ -15,6 +15,7 @@ import { validateAgentAction, type SourceCitation } from '../security/action-sch
 import type { FirewallProcessOptions } from '../security/firewall/firewall-types.js';
 import type { TrustTier } from '../security/trust-types.js';
 import { reportUnverifiedCorroboration } from './pr-review-citations.js';
+import type { PRReviewDraft } from './pr-review-types.js';
 import type { ReviewPostingVerdict } from './pr-reviewer-helpers.js';
 import type {
   FirewallCorroborationDecision,
@@ -52,10 +53,24 @@ function corroborationViolation(
   ];
 }
 
+/** No expert-reviewed files means no review may be posted under our identity (#5796). */
+function coverageViolation(
+  reviewCoverage: PRReviewDraft['reviewCoverage']
+): ReviewPostingVerdict['violations'] {
+  if (reviewCoverage !== 'none') return [];
+  return [
+    {
+      rule: 'NO_REVIEW_COVERAGE',
+      message: 'Review coverage is none: no files were reviewed by a successful expert.',
+    },
+  ];
+}
+
 /**
  * Builds the DraftReply for `body` and `sources`, runs it through the
  * firewall's policy gate and corroboration stage, and folds both into the
- * posting verdict.
+ * posting verdict together with review coverage. Coverage is optional for
+ * existing callers; the PR-review producer always supplies its measured value.
  *
  * Every way the run can END WITHOUT a decision — an invalid action, or a
  * firewall call that failed closed (a non-policy error, a policy or
@@ -66,7 +81,11 @@ function corroborationViolation(
  * the caller enforces `allowed`.
  */
 export function auditReviewAction(
-  draft: { readonly body: string; readonly sources: readonly SourceCitation[] },
+  draft: {
+    readonly body: string;
+    readonly sources: readonly SourceCitation[];
+    readonly reviewCoverage: PRReviewDraft['reviewCoverage'];
+  },
   input: FirewallActionInput,
   gate: Pick<FirewallProcessOptions, 'context' | 'reputation'> & {
     readonly enforcedTier: TrustTier;
@@ -85,9 +104,15 @@ export function auditReviewAction(
   const corroboration = validateActionCorroboration(validated.value);
   if (!corroboration.ok) return notEvaluated('FIREWALL_ERROR', corroboration.error.message);
   if (!corroboration.value.refused) reportUnverifiedCorroboration(corroboration.value, log);
+  const coverageViolations = coverageViolation(draft.reviewCoverage);
   return {
-    allowed: decision.value.allowed && corroboration.value.satisfied,
+    allowed:
+      decision.value.allowed && corroboration.value.satisfied && coverageViolations.length === 0,
     hasRuleOfTwoViolation: decision.value.violations.some((v) => v.rule === 'RULE_OF_TWO'),
-    violations: [...decision.value.violations, ...corroborationViolation(corroboration.value)],
+    violations: [
+      ...decision.value.violations,
+      ...corroborationViolation(corroboration.value),
+      ...coverageViolations,
+    ],
   };
 }

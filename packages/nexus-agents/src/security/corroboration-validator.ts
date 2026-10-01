@@ -186,6 +186,10 @@ const ACTION_CORROBORATION_RULES: Readonly<Record<AgentActionType, readonly Corr
           hasPolicyDocRef(s),
       },
     ],
+    // For the PR-review producer, every cited repoFile clears this floor:
+    // it records provenance through existsOnBaseRef, not review coverage.
+    // The failing conditions are the policy gate, the action schema's
+    // requiresApproval constraint, and the posting coverage predicate (#5796).
     DraftReply: TIER_1_FLOOR_RULES,
     GeneratePatchPlan: [
       {

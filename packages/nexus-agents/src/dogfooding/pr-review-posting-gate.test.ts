@@ -17,7 +17,7 @@ import { auditReviewAction } from './pr-review-posting-gate.js';
 import { reviewPostingBlock } from './pr-reviewer-helpers.js';
 import { _setUntrustedInputFirewallForTests } from './untrusted-input-firewall.js';
 
-/** An OWNER author: tier 1, so the policy stage allows and only corroboration can block. */
+/** An OWNER author: tier 1, so the policy stage allows. */
 const owner: GitHubInput = {
   type: 'pull_request',
   username: 'owner',
@@ -39,6 +39,8 @@ const MISSING = 'At least one Tier 1 source citation';
 const draft = (sources: readonly SourceCitation[]): Parameters<typeof auditReviewAction>[0] => ({
   body: 'Ordinary review body',
   sources,
+  // A fully covered review, so these tests isolate the corroboration rules.
+  reviewCoverage: 'full',
 });
 
 function firewallWith(overrides: Partial<FirewallConfig> = {}): HostileInputFirewall {
@@ -57,6 +59,48 @@ describe('auditReviewAction — corroboration runs inside the firewall (#6309)',
     _setUntrustedInputFirewallForTests(undefined);
     log.warn.mockReset();
   });
+
+  it.each(['off', 'audit', 'enforce'] as const)(
+    'refuses no review coverage under %s even when corroboration is satisfied (#5796)',
+    (policyMode) => {
+      _setUntrustedInputFirewallForTests(firewallWith({ policyMode }));
+
+      const verdict = auditReviewAction(
+        { ...draft(corroborated), reviewCoverage: 'none' },
+        owner,
+        gate,
+        log
+      );
+
+      expect(verdict).toEqual({
+        allowed: false,
+        hasRuleOfTwoViolation: false,
+        violations: [
+          {
+            rule: 'NO_REVIEW_COVERAGE',
+            message: expect.stringContaining('no files were reviewed'),
+          },
+        ],
+      });
+      expect(reviewPostingBlock(verdict)?.reason).toBe('Policy gate: NO_REVIEW_COVERAGE');
+    }
+  );
+
+  it.each(['partial', 'full'] as const)(
+    'allows %s review coverage without a coverage violation (#5796)',
+    (reviewCoverage) => {
+      _setUntrustedInputFirewallForTests(firewallWith({ policyMode: 'off' }));
+
+      const verdict = auditReviewAction(
+        { ...draft(corroborated), reviewCoverage },
+        owner,
+        gate,
+        log
+      );
+
+      expect(verdict).toEqual({ allowed: true, hasRuleOfTwoViolation: false, violations: [] });
+    }
+  );
 
   it('under off: the same verdict as the direct validateCorroboration call — INSUFFICIENT_CORROBORATION, not posted', () => {
     _setUntrustedInputFirewallForTests(firewallWith({ policyMode: 'off' }));

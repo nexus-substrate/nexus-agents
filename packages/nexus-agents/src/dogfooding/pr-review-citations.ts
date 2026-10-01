@@ -8,11 +8,14 @@
  * same change — the mislabel class #4667 fixed for issue bodies, on the PR
  * path.
  *
- * A 7-voter panel chose to MARK the citations rather than tighten the
- * corroboration floor (option D, 5/6 approvers): dropping added-file paths
- * would leave an add-only PR with zero citations, and `DraftReplyAction.sources`
- * is `.min(1)`, so a legitimate review would be refused posting. The floor
- * therefore still cannot fail; #5796 tracks that half.
+ * For the PR-review producer, every repoFile citation clears the DraftReply
+ * floor, so the floor records provenance through `existsOnBaseRef` rather
+ * than proving review coverage. Added-file citations remain valid: dropping
+ * them would leave an add-only PR below `DraftReplyAction.sources`' `.min(1)`.
+ * The failing conditions are the policy gate, the action schema's
+ * `requiresApproval` constraint, and the posting coverage predicate (#5796,
+ * option E). The poster supplies `requiresApproval: true`; coverage `none`
+ * independently refuses posting under `NO_REVIEW_COVERAGE`.
  *
  * @module dogfooding/pr-review-citations
  */
