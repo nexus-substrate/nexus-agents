@@ -64,6 +64,12 @@ export default defineConfig({
       NEXUS_TMPDIR: TEST_TMP,
       NEXUS_DATA_DIR: TEST_DATA_DIR,
       VITEST_SYSTEM_TMPDIR: tmpdir(),
+      // Blank (read as unset) so a developer's gateway credentials never reach
+      // a real GET /v1/models: since #4392 any adapter selection may run
+      // gateway discovery. Tests that need a gateway set these themselves.
+      NEXUS_OPENAI_COMPAT_URL: '',
+      NEXUS_OPENAI_COMPAT_KEY: '',
+      NEXUS_OPENCODE_CONFIG: '',
     },
 
     // Test file patterns
