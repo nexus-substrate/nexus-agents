@@ -13,6 +13,7 @@ import { getTimeProvider } from '../core/index.js';
 import type { ModelId, CliNameLiteral } from './model-capabilities-types.js';
 import { CLI_NAMES, MODEL_IDS } from './model-capabilities-types.js';
 import { getDefaultRegistry } from './model-registry.js';
+import { DEFAULT_MODEL_CAPABILITIES } from './in-tree-data.js';
 import { resolveModelIdentitySync, type ModelVendor } from './model-identity.js';
 
 // ---------------------------------------------------------------------------
@@ -184,11 +185,16 @@ function isCliName(value: string | undefined): value is CliNameLiteral {
  * a second copy of the same knowledge: flipping the codex default to
  * gpt-6.1-sol left gpt-5.6-sol in neither list, so a pinned gpt-5.6-sol lost
  * its codex attribution and its fallback. `FALLBACK_CHAINS` now only orders
- * fallbacks. Undefined when the registry entry names no CLI.
+ * fallbacks. An overlay entry without `cliName` keeps the in-tree owner.
+ * Undefined when neither names a CLI.
  */
 export function getCliForModelId(modelId: ModelId): CliNameLiteral | undefined {
   const { cliName } = getDefaultRegistry().getEntry(modelId);
-  return isCliName(cliName) ? cliName : undefined;
+  if (isCliName(cliName)) return cliName;
+  // A manifest overlay replaces the entry and carries no cliName, so a
+  // pricing-only overlay must not erase ownership: the in-tree entry decides.
+  const inTree = DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === modelId)?.cliName;
+  return isCliName(inTree) ? inTree : undefined;
 }
 
 /**

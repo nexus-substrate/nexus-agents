@@ -17,6 +17,7 @@ import {
   resolveCliSlot,
 } from './model-availability.js';
 import type { ProbeResult } from './model-availability.js';
+import { getDefaultRegistry } from './model-registry.js';
 import type { ModelId } from './model-capabilities-types.js';
 import { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
 
@@ -200,6 +201,20 @@ describe('getFallbackChain', () => {
 });
 
 describe('getCliForModelId', () => {
+  it('keeps in-tree ownership when an overlay entry omits cliName (#6866)', () => {
+    // A manifest overlay replaces the registry entry and has no cliName key,
+    // so a pricing-only overlay for a pinned model must not erase its CLI.
+    const registry = getDefaultRegistry();
+    const real = registry.getEntry('gpt-5.6-sol');
+    const { cliName: _dropped, ...overlaid } = real;
+    const spy = vi.spyOn(registry, 'getEntry').mockReturnValue(overlaid);
+    try {
+      expect(getCliForModelId('gpt-5.6-sol')).toBe('codex');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('resolves claude models', () => {
     expect(getCliForModelId('claude-opus')).toBe('claude');
     expect(getCliForModelId('claude-sonnet')).toBe('claude');
