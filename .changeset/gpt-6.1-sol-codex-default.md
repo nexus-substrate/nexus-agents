@@ -11,8 +11,12 @@ The model remains unpriced until OpenAI publishes pricing. Usage accounting reco
 omit `costUsd`. Budget filters and cost-weighted TOPSIS estimate an unpriced model
 at the highest known input and output rates among priced models of the same CLI —
 for Codex, `gpt-5.5`'s $5/$30 per 1M — so the estimate is never cheaper than a
-priced sibling such as `gpt-5.6-sol` ($4/$20). The static per-CLI table is used
-only when a CLI has no priced model, and its Codex row is now $5/$30. Configured task-class cost ceilings exclude models with unknown pricing, so under
+priced sibling such as `gpt-5.6-sol` ($4/$20). Each side (input, output) is bounded
+separately, so a sibling with free input but paid output still bounds the output
+rate. The runtime budget estimate also reads operator manifest overlay prices; the
+cost-weighted scoring tables are built at load time from in-tree prices only. The
+static per-CLI table is used only for a side no priced sibling bounds, and its Codex
+row is now $5/$30. Configured task-class cost ceilings exclude models with unknown pricing, so under
 `NEXUS_BILLING_MODE=api` with a ceiling configured, the Codex default drops out of
 ceiling-bound routing until it is priced. The default `plan` billing mode is
 unaffected. Context

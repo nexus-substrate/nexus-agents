@@ -23,7 +23,6 @@
 
 import type {
   ModelCapabilitiesMatrix,
-  ModelCapability,
   ModelId,
   CliNameLiteral,
 } from './model-capabilities-types.js';
@@ -643,9 +642,15 @@ export const STATIC_CLI_COST_PER_1M: Record<CliNameLiteral, CostPer1M> = {
  * the runtime budget path share one definition without the TDZ hazard.
  * `models` exists so the empty case can be tested.
  */
+/** The fields {@link unpricedCliCostPer1M} reads: an owner and an optional price. */
+export interface PricedSibling {
+  readonly cliName?: string | undefined;
+  readonly pricing?: { readonly inputPer1M: number; readonly outputPer1M: number } | undefined;
+}
+
 export function unpricedCliCostPer1M(
   cli: CliNameLiteral,
-  models: readonly ModelCapability[] = DEFAULT_MODEL_CAPABILITIES.models
+  models: readonly PricedSibling[] = DEFAULT_MODEL_CAPABILITIES.models
 ): CostPer1M {
   let input = 0;
   let output = 0;

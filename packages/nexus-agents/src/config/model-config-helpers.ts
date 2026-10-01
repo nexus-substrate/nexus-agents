@@ -20,6 +20,7 @@ import {
   DEFAULT_MODEL_PER_CLI,
   unpricedCliCostPer1M,
   type CostPer1M,
+  type PricedSibling,
 } from './in-tree-data.js';
 import type {
   ModelId,
@@ -180,7 +181,29 @@ export function resolveModelCostPer1M(modelId: ModelId, fallback: CostPer1M): Co
  * $ tables; usage accounting still records the model as unpriced.
  */
 export function resolveCliCostPer1M(cli: CliNameLiteral): CostPer1M {
-  return resolveModelCostPer1M(getDefaultModelForCli(cli), unpricedCliCostPer1M(cli));
+  return resolveModelCostPer1M(
+    getDefaultModelForCli(cli),
+    unpricedCliCostPer1M(cli, registryPricedSiblings())
+  );
+}
+
+/**
+ * Every registry entry with its owning CLI, so the runtime estimate sees
+ * operator-overlay prices (#6866). An overlay entry carries no `cliName`;
+ * its owner is the in-tree entry's, as in `getCliForModelId`. The load-time
+ * scoring tables cannot read the registry (TDZ) and stay on in-tree prices.
+ */
+function registryPricedSiblings(): readonly PricedSibling[] {
+  return getDefaultRegistry()
+    .allEntries()
+    .map((entry) => ({
+      cliName:
+        entry.cliName ??
+        DEFAULT_MODEL_CAPABILITIES.models.find(
+          (m) => m.id === entry.id || (m.aliases ?? []).includes(entry.id)
+        )?.cliName,
+      pricing: entry.pricing,
+    }));
 }
 
 /** Get the model name the CLI binary expects (e.g., 'gemini-2.5-pro'). */

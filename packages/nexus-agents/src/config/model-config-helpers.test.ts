@@ -5,7 +5,8 @@
  * (Source: Issue #807 - Centralized Model Registry)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { getDefaultRegistry } from './model-registry.js';
 import { CLI_NAMES } from './model-capabilities-types.js';
 import {
   getModelPricing,
@@ -374,6 +375,22 @@ describe('resolveModelCostPer1M', () => {
 });
 
 describe('resolveCliCostPer1M', () => {
+  it('bounds an unpriced default by overlay pricing the registry reports (#6866)', () => {
+    // A manifest overlay outranks in-tree data and may raise a sibling's price;
+    // the runtime estimate must follow the registry, not the in-tree matrix.
+    const registry = getDefaultRegistry();
+    const entries = registry.allEntries();
+    const raised = entries.map((e) =>
+      e.id === 'gpt-5.5' ? { ...e, pricing: { inputPer1M: 50, outputPer1M: 100 } } : e
+    );
+    const spy = vi.spyOn(registry, 'allEntries').mockReturnValue(raised);
+    try {
+      expect(resolveCliCostPer1M('codex')).toEqual({ input: 50, output: 100 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('maps each CLI to default registry pricing or the unpriced fallback (per-1M)', () => {
     // claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
     // codex→unpriced gpt-6.1-sol uses codex's highest known rates, gpt-5.5's
