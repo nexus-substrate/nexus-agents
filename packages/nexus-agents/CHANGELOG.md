@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.116.0
+
+### Minor Changes
+
+- [#6848](https://github.com/nexus-substrate/nexus-agents/pull/6848) [`a0de06c`](https://github.com/nexus-substrate/nexus-agents/commit/a0de06ce61684b796f4fe1b6a7381005778c3dda) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Stop retrying voter seats for host-unavailable refusals from the Codex sandbox preflight. Carry the typed host refusal across the CLI-to-model adapter bridge and skip those failed seats in the errored-role retry pass, retaining their original error reason and vote-result shape. Ordinary CLI failures preserve the caller's retry policy, including the structured-output fallback without responseFormat; shared panel deadlines remain unchanged.
+
 ## 8.115.0
 
 ### Minor Changes
