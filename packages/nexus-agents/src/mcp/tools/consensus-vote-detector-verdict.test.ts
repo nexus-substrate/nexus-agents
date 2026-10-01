@@ -110,6 +110,28 @@ describe('the detector verdict reaches the decision-cost record on every vote (#
     return new DecisionCostStore({ filePath: getDecisionCostFile(), dataDir: tmpDir });
   }
 
+  it('does not persist a cost record for an all-simulated panel (#6872)', async () => {
+    collectRealVotesMock.mockResolvedValue([
+      {
+        role: 'architect',
+        vote: { decision: 'approve', confidence: 0.9, reasoning: 'simulated' },
+        source: 'simulation',
+        processingTimeMs: 1,
+      } satisfies AgentVoteResult,
+    ]);
+    const result = await captureHandler()(
+      {
+        proposal: 'Simulated decision',
+        strategy: 'simple_majority',
+        quickMode: true,
+        simulateVotes: true,
+      },
+      CTX
+    );
+    expect(result.isError).not.toBe(true);
+    expect(readStore().all()).toHaveLength(0);
+  });
+
   it('writes a NOT-FIRED verdict on an ordinary proposal — the denominator row', async () => {
     const handler = captureHandler();
     const result = await handler(
