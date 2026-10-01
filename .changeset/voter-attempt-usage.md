@@ -1,5 +1,0 @@
----
-'nexus-agents': minor
----
-
-Record the token usage of every voter attempt, not only the one whose answer was kept. A seat's completions that failed vote parsing, earlier retry attempts, the first pass replaced by the per-role retry, and the primary of a cross-CLI fallback were billed but dropped, so a seat that answered on its third try reported one try's tokens. Each `AgentVoteResult` now carries an optional `attemptUsage` (`completions`, `reportedCompletions` and summed token counters), the decision-cost per-voter line carries it through, the cost summary adds an optional `observedAttemptUsage` total, and the weather-report consensus token section adds `observedAttemptUsage` (null when no matched decision recorded one). The existing token fields and totals are unchanged and still describe the answering completion; the new figures are reported beside them, never added in. Absent means no completion settled, never zero; a counter no completion reported stays absent; `reportedCompletions < completions` marks the total as a lower bound. Adapter errors, timeouts, completions still in flight at the panel deadline and retries inside an adapter are not observed.

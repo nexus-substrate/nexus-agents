@@ -1,5 +1,33 @@
 # nexus-agents
 
+## 8.117.0
+
+### Minor Changes
+
+- [#6855](https://github.com/nexus-substrate/nexus-agents/pull/6855) [`60d535c`](https://github.com/nexus-substrate/nexus-agents/commit/60d535ceb64323bf64a2e597bc8cf0098fa28a16) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Select a working Codex read-only sandbox backend before starting CLI or MCP seats.
+  On Linux, the async, process-memoized preflight tries plain arguments first, then
+  the legacy landlock flag needed by some older Codex installations. The first
+  successful candidate supplies the arguments for both transports, and doctor
+  reports the selected backend. This avoids the legacy-flag panic on modern Codex
+  hosts where bubblewrap already works.
+
+  If neither candidate succeeds, a numeric nonzero exit with a recognized sandbox
+  diagnostic from either candidate marks the sandbox broken and refuses execution;
+  timeouts, spawn failures, and unrecognized diagnostics alone remain unknown.
+  Unknown default probes proceed read-only with plain arguments because legacy is
+  deprecated and panics on modern Codex; older installations use legacy when that
+  candidate is verified. Injected synchronous or asynchronous probe results that
+  omit sandboxArgs preserve the previous platform arguments (legacy on Linux,
+  plain elsewhere), while explicit empty arguments select the modern default.
+
+- [#6852](https://github.com/nexus-substrate/nexus-agents/pull/6852) [`3a96a39`](https://github.com/nexus-substrate/nexus-agents/commit/3a96a3985cb0ffd765f66e831c693d35dcf0bc54) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record the token usage of every voter attempt, not only the one whose answer was kept. A seat's completions that failed vote parsing, earlier retry attempts, the first pass replaced by the per-role retry, and the primary of a cross-CLI fallback were billed but dropped, so a seat that answered on its third try reported one try's tokens. Each `AgentVoteResult` now carries an optional `attemptUsage` (`completions`, `reportedCompletions` and summed token counters), the decision-cost per-voter line carries it through, the cost summary adds an optional `observedAttemptUsage` total, and the weather-report consensus token section adds `observedAttemptUsage` (null when no matched decision recorded one). The existing token fields and totals are unchanged and still describe the answering completion; the new figures are reported beside them, never added in. Absent means no completion settled, never zero; a counter no completion reported stays absent; `reportedCompletions < completions` marks the total as a lower bound. Adapter errors, timeouts, completions still in flight at the panel deadline and retries inside an adapter are not observed.
+
+### Patch Changes
+
+- [#6850](https://github.com/nexus-substrate/nexus-agents/pull/6850) [`7527667`](https://github.com/nexus-substrate/nexus-agents/commit/7527667f5351837944b193fd69b02b8d346dd887) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Run the Codex read-only sandbox preflight asynchronously so the first Codex call does not block the MCP server event loop while other voter seats are running. Concurrent callers share one process-lifetime probe promise, and both Codex transports await its verdict before initialization. The sandbox command, timeout limits, failure classification, and host-unavailable refusal message remain unchanged; healthy or unknown probes continue to allow execution.
+
+- [#6854](https://github.com/nexus-substrate/nexus-agents/pull/6854) [`e511bd6`](https://github.com/nexus-substrate/nexus-agents/commit/e511bd652620e4936e76fef8030a4619eebd4196) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refuse to post GitHub PR reviews when no files were reviewed by a successful expert, including when every expert errored. These reviews now return a skipped post outcome with the distinct `NO_REVIEW_COVERAGE` reason; all-errored panels still produce a `comment` review decision. Partial and full coverage remain eligible for posting subject to the existing gates. Clarify that PR-derived file citations record provenance rather than prove review coverage.
+
 ## 8.116.0
 
 ### Minor Changes
