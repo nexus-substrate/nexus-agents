@@ -19,7 +19,6 @@ import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import {
   createGatewaySlotAdapter,
   hasGatewaySlotCatalog,
-  resolveGatewayDefault,
   resolveGatewaySlot,
 } from './gateway-family-slots.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
@@ -27,15 +26,13 @@ import { createModelToCliAdapter } from '../cli-adapters/model-to-cli-adapter.js
 import { createClaudeAdapter } from './claude-adapter.js';
 import { SdkAdapter } from './sdk/index.js';
 import { warnIfGatewayCostUndeclared } from './sdk/gateway-cost.js';
-import { hostnameOf, readGatewayEnv } from './sdk/gateway-env.js';
 import type { CliName, ICliAdapter, ApiVendor, ApiArmId } from '../cli-adapters/types.js';
 import { apiArmId } from '../cli-adapters/types.js';
 import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
-import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import { ensureGatewayDiscovered } from './gateway-rediscovery.js';
-import { gatewayDiscoveryStatus } from './gateway-discovery.js';
+import { tryCustomOpenAiAdapter } from './auto-adapter-gateway.js';
 import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
 
 /**
@@ -79,6 +76,8 @@ export interface AdapterSelection {
   readonly name: string;
   /** Why this adapter was selected */
   readonly reason: string;
+  /** Gateway catalogue matched the selected model. False on failed discovery; absent = unmeasured. */
+  readonly modelVerified?: boolean;
   /** The cache used for CLI detection (for reuse) */
   readonly cache?: ICliDetectionCache | undefined;
 }
@@ -234,6 +233,7 @@ function tryGatewaySlot(config: AutoAdapterConfig, logger: ILogger): AdapterSele
     source: 'api',
     name: preferredCli,
     reason: `CLI '${preferredCli}' is not available; gateway ${slot.family} model '${modelId}' serves the slot (${slot.via})`,
+    modelVerified: true,
   };
 }
 
@@ -302,70 +302,6 @@ function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelec
   if (custom !== null) return custom;
 
   logger.info('No API keys available for any provider');
-  return null;
-}
-
-/**
- * Tries the custom-openai SDK adapter if the gateway URL and key are both
- * set: `NEXUS_OPENAI_COMPAT_URL` / `NEXUS_OPENAI_COMPAT_KEY`, or their
- * deprecated aliases `NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY`
- * (#4392 increment 3; the resolver warns once when an alias is in use). The
- * adapter constructor runs the base URL through an SSRF guard (see
- * adapters/sdk/custom-api-validation.ts). Epic #2119.
- *
- * Only the hostname reaches the log and the reason string: a base URL can
- * carry userinfo.
- */
-function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
-  const { baseUrl: customBaseUrl, apiKey: customKey } = readGatewayEnv(process.env, logger);
-  if (customKey === undefined || customBaseUrl === undefined) return null;
-  const choice = customModelChoice(logger);
-  if (choice === null) return null;
-  const { modelId: customModelId, note } = choice;
-  const host = hostnameOf(customBaseUrl);
-  logger.info('Using custom-openai SDK adapter', { model: customModelId, host });
-  return {
-    // The caller's logger reaches the adapter, so what it logs on a failed
-    // call is observable where the selection was made (#4392 inc 3 review).
-    adapter: new SdkAdapter(
-      {
-        providerId: 'custom-openai',
-        modelId: customModelId,
-        apiKey: customKey,
-        baseUrl: customBaseUrl,
-      },
-      logger
-    ),
-    source: 'api',
-    name: 'custom-openai',
-    reason: `Using custom OpenAI-compatible gateway at ${host} (model: ${customModelId}${note})`,
-  };
-}
-
-/**
- * The model the custom-openai adapter sends. With no gateway catalogue it is
- * `NEXUS_CUSTOM_MODEL` or the built-in default, exactly as before #6626. In
- * gateway mode it is a catalogue model (`resolveGatewayDefault`), never an
- * unvalidated id; null when the catalogue holds no chat model.
- */
-function customModelChoice(logger: ILogger): { modelId: string; note: string } | null {
-  const d = resolveGatewayDefault(process.env, logger);
-  if (d.kind === 'inactive') {
-    const modelId = process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL;
-    if (gatewayDiscoveryStatus() !== 'failed') return { modelId, note: '' };
-    // #4392: a gateway is configured but its catalogue could not be read, so
-    // nothing says it serves this model. Still sent (a gateway without a
-    // working /models can serve it), but never as if it were validated.
-    logger.warn(
-      `Gateway discovery failed, so the custom-openai model '${modelId}' is sent unverified; ` +
-        'set NEXUS_CUSTOM_MODEL to a model the gateway serves, or run `nexus-agents doctor --gateway`',
-      { model: modelId }
-    );
-    return { modelId, note: '; unverified: gateway discovery failed' };
-  }
-  if (d.kind === 'resolved')
-    return { modelId: d.adapter.modelId, note: `; gateway default by ${d.via}` };
-  logger.warn('Gateway catalogue has no chat model; the custom-openai default is unavailable');
   return null;
 }
 

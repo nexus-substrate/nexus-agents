@@ -496,12 +496,14 @@ function resolveAggregate(
  */
 function rollUpDecisionCost(
   voteResults: Parameters<typeof recordDecisionCost>[0]['votes'],
-  logger: ILogger
+  logger: ILogger,
+  jobId?: string
 ): DecisionCostSummary | undefined {
   try {
     return recordDecisionCost({
       decisionId: `pr-${randomUUID().slice(0, 8)}`,
       gate: 'pr_review',
+      ...(jobId !== undefined ? { jobId } : {}),
       votes: voteResults,
     });
   } catch (costError) {
@@ -517,6 +519,8 @@ async function executePrReviewBody(
   logger: ILogger,
   opts: {
     gatewayAdapters?: readonly IModelAdapter[];
+    /** Actual async runner id; omitted for synchronous reviews. */
+    jobId?: string;
     /**
      * The middleware's pre-sanitization view (#5385). Grouped, and absent rather
      * than zero-filled when this call did not come through the secure handler:
@@ -547,7 +551,7 @@ async function executePrReviewBody(
   const reviews = voteResults.map(toPrReviewVote);
   const counts = summarizeReviews(reviews);
   const aggregate = resolveAggregate(reviews, input, counts, panel.coverage, logger);
-  const costSummary = rollUpDecisionCost(voteResults, logger);
+  const costSummary = rollUpDecisionCost(voteResults, logger, opts.jobId);
 
   // #4031: best-effort Option-C audit-record persistence. The producer surfaces
   // every non-persist (binding absent / simulated / no quorum / write-failed) as
@@ -657,11 +661,11 @@ function makePrReviewHandler(gatewayAdapters?: readonly IModelAdapter[]) {
           // taking the signal is what makes the job record say cancellation
           // works — the claim follows the capability. The signal reaches
           // `collectRealVotes`, so `cancel_job` stops the seats not yet launched.
-          run: (jobId, _input, signal, progress) =>
+          run: (jobId, _input, signal, onVoteCollected) =>
             attachPartialsOnCancel(
               jobId,
               'pr_review',
-              executePrReviewBody(input, ctx.logger, { ...opts, signal, onVoteCollected: progress })
+              executePrReviewBody(input, ctx.logger, { ...opts, jobId, signal, onVoteCollected })
             ),
           logger: ctx.logger,
         });

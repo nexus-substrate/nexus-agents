@@ -88,6 +88,9 @@ const OutcomeRoutedBySchema = z.enum(['composite-router']);
  */
 const OutcomeCategorySourceSchema = z.enum(['detected', 'defaulted']);
 
+/** Longest `traceId` a persisted outcome row accepts; a longer id fails the row on reload. */
+export const TRACE_ID_MAX_LENGTH = 128;
+
 /** Schema for a single recorded task outcome. */
 export const TaskOutcomeSchema = z.object({
   id: z.string().min(1),
@@ -139,7 +142,7 @@ export const TaskOutcomeSchema = z.object({
    * Consensus rows carry the decision ID shared by cost and vote records (#6857).
    * Optional + backward-compatible: older JSONL records without it hydrate fine.
    */
-  traceId: z.string().min(1).max(128).optional(),
+  traceId: z.string().min(1).max(TRACE_ID_MAX_LENGTH).optional(),
   /** Request id correlating this outcome to its originating invocation (#3146). */
   requestId: z.string().min(1).max(128).optional(),
   /**

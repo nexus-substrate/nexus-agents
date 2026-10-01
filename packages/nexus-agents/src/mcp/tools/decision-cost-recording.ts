@@ -124,7 +124,9 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
 }
 
 export interface RecordDecisionCostOptions {
-  /** Stable id for the decision (correlation id / jobId / proposal hash). */
+  /** Actual async job id; omitted for synchronous decisions. */
+  readonly jobId?: string;
+  /** Stable decision correlation id, independent of the async job id. */
   readonly decisionId: string;
   /** Which gate type incurred the cost. */
   readonly gate: DecisionGate;
@@ -243,6 +245,7 @@ export function recordDecisionCost(options: RecordDecisionCostOptions): Decision
   const timestamp = new Date(getTimeProvider().now()).toISOString();
   const { record, persisted } = store.record({
     decisionId: options.decisionId,
+    ...(options.jobId !== undefined ? { jobId: options.jobId } : {}),
     gate: options.gate,
     voters,
     billingMode,

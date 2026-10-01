@@ -65,6 +65,49 @@ describe('DecisionCostStore', () => {
     expect(store.size).toBe(1);
   });
 
+  it('round-trips a job join key independently of its decision id (#6858)', () => {
+    const writer = new DecisionCostStore({ filePath: file, dataDir: dir });
+    const input = {
+      decisionId: 'decision-6858-unusual',
+      jobId: 'job-vote-6858-unusual',
+      gate: 'consensus_vote' as const,
+      voters: VOTERS,
+      billingMode: 'api' as const,
+      timestamp: TS,
+    };
+    const result = writer.record(input);
+    expect(result.persisted).toBe(true);
+    expect(result.record).toMatchObject({ decisionId: input.decisionId, jobId: input.jobId });
+    expect(new DecisionCostStore({ filePath: file, dataDir: dir }).all()[0]).toMatchObject({
+      decisionId: input.decisionId,
+      jobId: input.jobId,
+    });
+  });
+
+  it.each([undefined, 42, {}, '', 'x'.repeat(201)])(
+    'preserves the cost row when jobId is absent or malformed: %s',
+    (jobId) => {
+      const writer = new DecisionCostStore({ filePath: file, dataDir: dir });
+      const { record } = writer.record({
+        decisionId: 'legacy-job-6858',
+        gate: 'pr_review',
+        voters: VOTERS,
+        billingMode: 'api',
+        timestamp: TS,
+      });
+      expect(record).not.toHaveProperty('jobId');
+      writeFileSync(file, `${JSON.stringify({ ...record, jobId })}\n`, 'utf-8');
+      const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+      expect(reader.hydrationComplete).toBe(true);
+      expect(reader.size).toBe(1);
+      expect(reader.all()[0]).toMatchObject({
+        decisionId: record.decisionId,
+        summary: record.summary,
+      });
+      expect(reader.all()[0]?.jobId).toBeUndefined();
+    }
+  );
+
   it('round-trips through disk: a fresh store hydrates the same records', () => {
     const writer = new DecisionCostStore({ filePath: file, dataDir: dir });
     writer.record({

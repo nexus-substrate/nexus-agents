@@ -393,6 +393,21 @@ describe('recordDecisionCost', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('passes the actual job id through the recording bridge (#6858)', () => {
+    const store = new DecisionCostStore({ filePath: join(dir, 'dc.jsonl'), dataDir: dir });
+    recordDecisionCost({
+      decisionId: 'decision-6858-bridge',
+      jobId: 'job-6858-bridge',
+      gate: 'consensus_vote',
+      votes: [vote({})],
+      store,
+    });
+    expect(store.all()[0]).toMatchObject({
+      decisionId: 'decision-6858-bridge',
+      jobId: 'job-6858-bridge',
+    });
+  });
+
   it('rolls up + persists and returns the summary for the response', () => {
     const store = new DecisionCostStore({ filePath: join(dir, 'dc.jsonl'), dataDir: dir });
     const summary = recordDecisionCost({

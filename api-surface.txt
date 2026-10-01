@@ -97,6 +97,7 @@ ClassDeclaration AdapterFactory
 InterfaceDeclaration AdapterHealthInfo
   readonly failoverCount: number
   readonly lastError?: string | undefined
+  readonly modelVerified?: boolean | undefined
   readonly selectedAt: Date
   readonly source: "api" | "claude" | "codex" | "gemini" | "opencode"
   readonly state: AdapterHealthState
@@ -235,6 +236,7 @@ InterfaceDeclaration AgentExecutorConfig
   readonly quickMode?: boolean | undefined
   readonly repo?: string | undefined
   readonly scanTarget?: string | undefined
+  readonly sessionId?: string | undefined
   readonly simulateVotes?: boolean | undefined
   readonly tracker?: ITaskTracker | undefined
   readonly trustTier?: string | undefined
@@ -10350,7 +10352,7 @@ InterfaceDeclaration WaveTaskResult
 TypeAliasDeclaration WeatherReportConfig
   = z.infer<typeof WeatherReportConfigSchema>
 InterfaceDeclaration WeatherReportDeps @mcp/tools/weather-report
-  readonly decisionCostRecords?: readonly { decisionId: string; gate: "consensus_vote" | "pr_review"; summary: { billingMode: "api" | "plan"; measuredVoters: number; observedAttemptUsage?: undefined | { completions: number; incompleteSeats: number; inputTokens: number; outputTokens: number; reportedCompletions: number; seats: number; totalTokens: number; }; perModel: readonly { costUsd: number; inputTokens: number; model: string; outputTokens: number; totalTokens: number; voterCount: number; }[]; perVoter: readonly { attemptUsage?: undefined | { cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; completions: number; inputTokens?: number | undefined; outputTokens?: number | undefined; reportedCompletions: number; }; cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; costUsd: number; inputTokens: number; model: string; outputTokens: number; priceBasis?: "list" | "unknown" | undefined; pricingProvenance?: undefined | { scope: "project-glasswing-participants"; source: "anthropic"; upstreamUrl: string; }; role: string; tokenUsageMeasured?: boolean | undefined; totalTokens: number; unmeasured: boolean; }[]; priceBasis?: "list" | "unknown" | undefined; tokenMeasuredVoters?: number | undefined; tokenUnmeasuredVoters?: number | undefined; totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number; unmeasuredVoters: number; voterCount: number; }; timestamp: string; undeclaredOptionsDetector?: undefined | { declaredOptionCount: number; excerpt?: string | undefined; fired: boolean; pattern?: string | undefined; }; }[] | undefined
+  readonly decisionCostRecords?: readonly { decisionId: string; gate: "consensus_vote" | "pr_review"; jobId?: string | undefined; summary: { billingMode: "api" | "plan"; measuredVoters: number; observedAttemptUsage?: undefined | { completions: number; incompleteSeats: number; inputTokens: number; outputTokens: number; reportedCompletions: number; seats: number; totalTokens: number; }; perModel: readonly { costUsd: number; inputTokens: number; model: string; outputTokens: number; totalTokens: number; voterCount: number; }[]; perVoter: readonly { attemptUsage?: undefined | { cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; completions: number; inputTokens?: number | undefined; outputTokens?: number | undefined; reportedCompletions: number; }; cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; costUsd: number; inputTokens: number; model: string; outputTokens: number; priceBasis?: "list" | "unknown" | undefined; pricingProvenance?: undefined | { scope: "project-glasswing-participants"; source: "anthropic"; upstreamUrl: string; }; role: string; tokenUsageMeasured?: boolean | undefined; totalTokens: number; unmeasured: boolean; }[]; priceBasis?: "list" | "unknown" | undefined; tokenMeasuredVoters?: number | undefined; tokenUnmeasuredVoters?: number | undefined; totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number; unmeasuredVoters: number; voterCount: number; }; timestamp: string; undeclaredOptionsDetector?: undefined | { declaredOptionCount: number; excerpt?: string | undefined; fired: boolean; pattern?: string | undefined; }; }[] | undefined
   readonly voteRecords?: readonly LinkedVote[] | undefined
 TypeAliasDeclaration WeatherReportDeps @mcp/tools/weather-report-tool
   = BaseMcpToolDeps

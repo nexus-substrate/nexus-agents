@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.119.0
+
+### Minor Changes
+
+- [#6868](https://github.com/nexus-substrate/nexus-agents/pull/6868) [`6225114`](https://github.com/nexus-substrate/nexus-agents/commit/62251145228517aef363cdf7fe397f57e30b5bb4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Link dev-pipeline stage outcomes to their `pipeline-<sessionId>` run trace: outcome rows now carry the same run id the trace is written under. Stages without a reachable session, or whose run id would exceed the 128-character trace id limit, leave `traceId` absent and stay unmatched instead of being lost on reload. A coverage report for pipeline joins is tracked separately ([#6867](https://github.com/nexus-substrate/nexus-agents/issues/6867)).
+
+  Add optional `jobId` metadata to decision cost records for asynchronous consensus votes and PR reviews, preserving the separate decision ID. Synchronous and legacy records omit the field; malformed persisted job IDs drop only that metadata and retain the cost row.
+
 ## 8.118.0
 
 ### Minor Changes

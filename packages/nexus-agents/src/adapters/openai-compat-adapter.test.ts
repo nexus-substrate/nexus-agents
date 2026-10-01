@@ -599,6 +599,30 @@ describe('gateway cost in the usage log (#4392 inc 2 step 4)', () => {
     vi.unstubAllEnvs();
   });
 
+  it.each([false, true])(
+    'records explicit modelVerified=%s on success and failure',
+    async (modelVerified) => {
+      const adapter = createOpenAICompatAdapter('claude-sonnet-4-6', { ...gateway, modelVerified });
+      mockChatCreate.mockResolvedValueOnce(completion(1000, 200));
+      await adapter.complete({ messages: [] });
+      expect(mockRecordUsageEvent.mock.calls[0]?.[0]).toHaveProperty(
+        'modelVerified',
+        modelVerified
+      );
+      mockChatCreate.mockRejectedValueOnce(new Error('model not found'));
+      await adapter.complete({ messages: [] });
+      expect(mockRecordUsageEvent.mock.calls[1]?.[0]).toHaveProperty(
+        'modelVerified',
+        modelVerified
+      );
+      expect(mockRecordUsageEvent.mock.calls[1]?.[0].success).toBe(false);
+    }
+  );
+
+  it('does not certify a hand-built adapter without discovery', async () => {
+    expect(await recordedEvent()).not.toHaveProperty('modelVerified');
+  });
+
   it('marks the adapter with the arm it registers under, defaulting the endpoint', () => {
     const defaulted = createOpenAICompatAdapter('any-model', gateway);
     expect(isGatewayModelAdapter(defaulted)).toBe(true);
@@ -702,6 +726,24 @@ describe('buildOpenAICompatAdapters (#2468)', () => {
       undefined,
     ]);
     expect(result.value.map((a) => 'created' in a)).toEqual([true, false]);
+  });
+
+  it('records successful discovery matches as verified', async () => {
+    mockAssertHostPublic.mockResolvedValueOnce({ ok: true });
+    process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
+    process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE';
+    mockList.mockResolvedValueOnce({ data: [{ id: 'claude-sonnet-4-6' }] });
+    mockRecordUsageEvent.mockReset();
+    mockChatCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'ok', role: 'assistant' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      model: 'claude-sonnet-4-6',
+    });
+    const result = await buildOpenAICompatAdapters();
+    if (result?.ok !== true || result.value[0] === undefined)
+      throw new Error('no discovered model');
+    await result.value[0].complete({ messages: [] });
+    expect(mockRecordUsageEvent.mock.calls[0]?.[0]).toHaveProperty('modelVerified', true);
   });
 
   it('propagates discovery errors', async () => {

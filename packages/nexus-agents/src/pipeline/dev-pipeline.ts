@@ -52,6 +52,7 @@ import {
 } from './pipeline-checkpoint.js';
 import type { PipelineCheckpointState } from './pipeline-checkpoint.js';
 import { TraceWriter } from './trace-writer.js';
+import { pipelineRunId } from './pipeline-run-id.js';
 import { getDefaultRunsDir } from './pipeline-runner.js';
 import { createAuditTrail } from '../security/audit-trail.js';
 import type { AuditTrail } from '../security/audit-trail.js';
@@ -724,7 +725,7 @@ function createTraceWriter(sessionId: string | undefined): TraceWriter | null {
   try {
     return new TraceWriter(getPipelineEventBus(), {
       runsDir: getDefaultRunsDir(),
-      runId: `pipeline-${sessionId}`,
+      runId: pipelineRunId(sessionId),
     });
   } catch (error: unknown) {
     logger.warn('Failed to create TraceWriter', { error: String(error) });
