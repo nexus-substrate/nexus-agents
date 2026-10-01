@@ -61,7 +61,7 @@ jobs:
         shell: bash
         # The decision lives in a script so it is unit-tested (#6804):
         # scripts/decide-publish-smoke.test.ts.
-        run: pnpm exec tsx scripts/publish-env.ts bash scripts/decide-publish-smoke.sh "$GITHUB_SHA"
+        run: bash scripts/decide-publish-smoke.sh "$GITHUB_SHA"
 
       - name: Build and pack the tarball the publish will ship
         if: steps.publish-path.outputs.will_publish == 'true'
