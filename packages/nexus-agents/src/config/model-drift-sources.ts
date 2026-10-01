@@ -33,7 +33,7 @@ import {
 } from '../adapters/openai-compat-adapter.js';
 import type { ConfigError, Result } from '../core/index.js';
 import type { ModelMetadata } from '../core/types/model.js';
-import { getDefaultRegistry } from './model-registry.js';
+import { getCliModelName, getInTreeCapabilitiesMatrix } from './model-config-helpers.js';
 import type { ModelVendor } from './model-identity.js';
 import type { DriftProbe, DriftSource, ListedModel } from './model-drift.js';
 import {
@@ -79,11 +79,9 @@ function unmeasured(reason: string): DriftProbe {
  * Take one from the registry rather than writing a model string here.
  */
 function registryModelIdFor(vendor: ModelVendor): string {
-  const entry = getDefaultRegistry()
-    .allEntries()
-    .find((e) => e.source === 'in-tree' && e.vendor === vendor);
+  const entry = getInTreeCapabilitiesMatrix().models.find((e) => e.provider === vendor);
   if (entry === undefined) throw new Error(`no in-tree ${vendor} model to construct a lister`);
-  return entry.cliModelName ?? entry.id;
+  return getCliModelName(entry.id);
 }
 
 function defaultVendorLister(vendor: DriftVendorApi, apiKey: string): ModelLister {
