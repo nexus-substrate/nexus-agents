@@ -47,6 +47,10 @@ import { isCliAdmitted } from '../cli-adapters/cli-admission.js';
 import { cliBinaryAdapterOf } from '../cli-adapters/gateway-slot-arm.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
+import {
+  codexSandboxPreflight,
+  type CodexSandboxPreflightResult,
+} from '../cli-adapters/codex-sandbox-preflight.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
@@ -350,6 +354,8 @@ export interface DoctorResult {
    * means the subprocess transport (`codex exec`) is in use.
    */
   readonly mcpClientReady: boolean;
+  /** Model-free read-only sandbox measurement; absent when Codex is disabled or missing. */
+  readonly codexSandbox?: CodexSandboxPreflightResult;
   /** Model registry advisory — which models are available (#890). */
   readonly registryAdvisory: RegistryAdvisory;
   /** Learning persistence health check (#1017). */
@@ -1107,6 +1113,8 @@ type GatewayCheck = (options: { readonly probe: boolean }) => Promise<GatewayHea
 
 /** Seams and switches for {@link runDoctor}. */
 interface RunDoctorDeps {
+  /** The shared model-free Codex sandbox probe, injectable without spawning a CLI. */
+  readonly probeCodexSandbox?: () => Promise<CodexSandboxPreflightResult>;
   /** The pinned-model probe seam (#6120), injectable so the suite spends no quota. */
   readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe>;
   /** Opt in to the pinned Claude completion probe (`--live`). */
@@ -1115,6 +1123,18 @@ interface RunDoctorDeps {
   readonly checkGateway?: GatewayCheck;
   /** Send one completion per gateway family (`--probe`). Spends tokens. */
   readonly gatewayProbe?: boolean;
+}
+
+/** Probe only an installed, enabled Codex CLI; an absent measurement is not success. */
+async function codexChecksForDoctor(
+  clis: readonly CliCheckResult[],
+  deps: RunDoctorDeps
+): Promise<Pick<DoctorResult, 'mcpClientReady' | 'codexSandbox'>> {
+  const installed = clis.find((cli) => cli.name === 'codex')?.installed === true;
+  if (!installed) return { mcpClientReady: false };
+  const mcpClientReady = codexMcpServerAvailable();
+  const codexSandbox = await (deps.probeCodexSandbox ?? codexSandboxPreflight)();
+  return { mcpClientReady, codexSandbox };
 }
 
 /** Runs the complete doctor check. */
@@ -1129,8 +1149,7 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
   const apiKeys = checkApiKeys();
   const configFile = checkConfigFile();
   const mcpServerReady = checkMcpServerReady();
-  const codexCheck = clis.find((c) => c.name === 'codex');
-  const mcpClientReady = (codexCheck?.installed ?? false) && codexMcpServerAvailable();
+  const codexChecks = await codexChecksForDoctor(clis, deps);
   const learningPersistence = checkLearningPersistence();
   const sqliteCheck = await checkSqlite();
   const dataDirectory = checkDataDirectory();
@@ -1157,7 +1176,7 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
     apiKeys,
     configFile,
     mcpServerReady,
-    mcpClientReady,
+    ...codexChecks,
     registryAdvisory,
     learningPersistence,
     sqliteCheck,

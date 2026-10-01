@@ -27,7 +27,7 @@ import type { AgentVoteResult, UnverifiableSignal } from './vote-types.js';
  * `apparmor_restrict_unprivileged_userns=1` (Ubuntu 24.04+ default, #6093).
  */
 export const UNVERIFIABLE_STDERR_RE =
-  /\bbwrap: |RTM_NEWADDR|\bsandbox\b[^\n]*\b(?:denied|failed|not permitted)\b/i;
+  /\bbwrap: |RTM_NEWADDR|filesystem-restricted execution requires bubblewrap|\b(?:sandbox|landlock)\b[^\n]*\b(?:denied|failed|not permitted)\b/i;
 
 /**
  * The fallback's error strings: the seat's own reasoning quotes a failed read.
