@@ -251,6 +251,14 @@ describe('ConfigError', () => {
 });
 
 describe('ModelError', () => {
+  it('leaves retryability unspecified when the adapter did not report it', () => {
+    expect(new ModelError('Model unavailable').retryable).toBeUndefined();
+  });
+
+  it.each([false, true])('preserves explicit retryable: %s', (retryable) => {
+    expect(new ModelError('Model unavailable', { retryable }).retryable).toBe(retryable);
+  });
+
   it('has correct name and code', () => {
     const error = new ModelError('Model unavailable');
 

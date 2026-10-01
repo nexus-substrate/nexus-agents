@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ok, createLogger } from '../../core/index.js';
 import { CodexCliAdapter } from './codex-adapter.js';
 import { CodexMcpAdapter } from './codex-mcp-adapter.js';
+import { isHostUnavailableCliError } from '../cli-error-helpers.js';
 import { createCodexSandboxPreflight } from '../codex-sandbox-preflight.js';
 
 const PANIC = 'filesystem-restricted execution requires bubblewrap to isolate app-server sockets';
@@ -18,6 +19,7 @@ describe.each([
     const result = await adapter.execute({ content: 'review', accessMode: 'read-only-analysis' });
     expect(result.ok).toBe(false);
     if (!result.ok) {
+      expect(isHostUnavailableCliError(result.error)).toBe(true);
       expect(result.error).toMatchObject({
         cli: 'codex',
         code: 'EXECUTION_ERROR',

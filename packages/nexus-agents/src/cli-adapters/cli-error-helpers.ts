@@ -20,7 +20,7 @@
 import { parseRetryAfterMs, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
 import { AbortError, isTimeoutAbortReason } from '../adapters/abort-utils.js';
 import type { CliError, CliErrorCode, CliName } from './types.js';
-import { ValidationError } from '../core/errors.js';
+import { ConfigError, ValidationError } from '../core/errors.js';
 
 /** Error codes the retry machinery treats as transient. */
 export const RETRYABLE_ERROR_CODES: ReadonlySet<CliErrorCode> = new Set<CliErrorCode>([
@@ -90,6 +90,31 @@ export function createCliError(
  */
 export function createCallerInputCliError(message: string, cli: CliName): CliError {
   return createCliError('EXECUTION_ERROR', message, cli, new ValidationError(message));
+}
+
+/**
+ * The cause that marks a host-unavailable refusal. A dedicated subclass, not
+ * plain {@link ConfigError}: adapters forward arbitrary caught errors as the
+ * cause, and a stray ConfigError must not read as a host refusal.
+ */
+class HostUnavailableError extends ConfigError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HostUnavailableError';
+  }
+}
+
+/**
+ * A host/environment condition that cannot change within this process (#6846),
+ * so no layer should re-run it. Marked by a {@link HostUnavailableError} cause.
+ */
+export function createHostUnavailableCliError(message: string, cli: CliName): CliError {
+  return createCliError('EXECUTION_ERROR', message, cli, new HostUnavailableError(message));
+}
+
+/** Whether `error` was built by {@link createHostUnavailableCliError}. */
+export function isHostUnavailableCliError(error: CliError): boolean {
+  return error.cause instanceof HostUnavailableError;
 }
 
 /**
