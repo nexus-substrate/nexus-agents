@@ -144,7 +144,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(caps.contextWindow).toBe(1_050_000);
       expect(caps.codeGeneration).toBe(10);
       expect(caps.speed).toBe(7);
-      // gpt-5.6-sol (codex default since #6516) carries gpt-5.5's cost score 4.
+      // gpt-6.1-sol carries gpt-5.6-sol's unmeasured cost score 4 (#6842).
       expect(caps.cost).toBe(4);
     });
   });
@@ -153,18 +153,18 @@ describe('CodexCliAdapter (Subprocess)', () => {
     it('should return correct model info for default model (from registry)', () => {
       const info = adapter.getModelInfo();
 
-      // Default model is derived from canonical registry (gpt-5.6-sol → 'gpt-5.6-sol', #6516)
+      // Default model is derived from canonical registry (gpt-6.1-sol → 'gpt-6.1-sol', #6842)
       expect(info.id).toBe(EXPECTED_DEFAULT_ID);
       expect(info.contextWindow).toBe(1_050_000);
       expect(info.maxOutput).toBe(128_000);
     });
 
-    it('should return registry-derived cost info for default model', () => {
+    it('should omit unknown cost info for the unpriced default model', () => {
       const info = adapter.getModelInfo();
 
-      // Default gpt-5.6-sol in registry (#6516): models.dev pricing {4.0, 20.0}
-      expect(info.costPerMillionInput).toBe(4.0);
-      expect(info.costPerMillionOutput).toBe(20.0);
+      // #6842: gpt-6.1-sol has no published rates; model info stays unpriced.
+      expect(info.costPerMillionInput).toBeUndefined();
+      expect(info.costPerMillionOutput).toBeUndefined();
     });
 
     it('should return correct info for gpt-6-luna model (from registry)', () => {

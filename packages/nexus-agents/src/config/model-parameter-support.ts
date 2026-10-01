@@ -197,9 +197,12 @@ export const KNOWN_PARAMETER_INCOMPATIBILITIES: readonly KnownParameterIncompati
   // #4176 — GPT-5.5 (frontier reasoning) rejects temperature and expects `max_completion_tokens`; registry-encoded, mirroring codex-5.3.
   { modelId: 'gpt-5.5', param: 'temperature', issue: 4176 },
   { modelId: 'gpt-5.5', maxTokensParam: 'max_completion_tokens', issue: 4176 },
-  // #6516 — GPT-5.6 Sol (codex default, gpt-5.5 successor) carries the same registry encoding.
+  // #6516 — GPT-5.6 Sol (former codex default, gpt-5.5 successor) carries the same registry encoding.
   { modelId: 'gpt-5.6-sol', param: 'temperature', issue: 6516 },
   { modelId: 'gpt-5.6-sol', maxTokensParam: 'max_completion_tokens', issue: 6516 },
+  // #6842 — GPT-6.1 Sol carries gpt-5.6-sol parameter support; registry data covers GPT-6 without broadening the regex.
+  { modelId: 'gpt-6.1-sol', param: 'temperature', issue: 6842 },
+  { modelId: 'gpt-6.1-sol', maxTokensParam: 'max_completion_tokens', issue: 6842 },
   // #4049 — OpenAI reasoning models expect `max_completion_tokens`, not `max_tokens` (codex via registry; o-series via fallback).
   { modelId: 'codex-5.3', maxTokensParam: 'max_completion_tokens', issue: 4049 },
   { modelId: 'o3-mini', maxTokensParam: 'max_completion_tokens', issue: 4049 },

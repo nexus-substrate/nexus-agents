@@ -21,8 +21,7 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
-import { CliNameSchema } from '../../config/model-capabilities-types.js';
-import { getDefaultRegistry } from '../../config/model-registry.js';
+import { resolveOwnerCli } from '../../config/model-ownership.js';
 import { resolveOutcomeCategory } from '../../orchestration/outcomes/outcome-types.js';
 import type { OutcomeCli } from '../../orchestration/outcomes/outcome-types.js';
 import { getToolMemory } from './tool-memory.js';
@@ -84,9 +83,9 @@ const UNATTRIBUTED_MODELS: ReadonlySet<string> = new Set([
  */
 function resolveExpertCli(model: string | undefined): OutcomeCli {
   if (model === undefined || UNATTRIBUTED_MODELS.has(model)) return 'unknown';
-  const cliName = getDefaultRegistry().getEntry(model).cliName;
-  const parsed = cliName !== undefined ? CliNameSchema.safeParse(cliName) : undefined;
-  return parsed?.success === true ? parsed.data : 'unknown';
+  // The canonical ownership resolver (#6866): an overlay entry carries no
+  // cliName, so reading the entry directly recorded 'unknown' for it.
+  return resolveOwnerCli(model) ?? 'unknown';
 }
 
 /**

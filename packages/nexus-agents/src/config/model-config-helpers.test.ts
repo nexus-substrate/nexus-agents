@@ -5,7 +5,8 @@
  * (Source: Issue #807 - Centralized Model Registry)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { getDefaultRegistry } from './model-registry.js';
 import { CLI_NAMES } from './model-capabilities-types.js';
 import {
   getModelPricing,
@@ -28,6 +29,12 @@ import {
   resolveCliCostPer1M,
 } from './model-config-helpers.js';
 import type { ModelId } from './model-capabilities-types.js';
+import {
+  DEFAULT_MODEL_CAPABILITIES,
+  STATIC_CLI_COST_PER_1M,
+  unpricedCliCostPer1M,
+} from './in-tree-data.js';
+import type { ModelCapability } from './model-capabilities-types.js';
 
 // ============================================================================
 // Single-Model Lookups
@@ -368,12 +375,110 @@ describe('resolveModelCostPer1M', () => {
 });
 
 describe('resolveCliCostPer1M', () => {
-  it('maps each CLI to its default model registry pricing (per-1M)', () => {
+  it('bounds an unpriced default by overlay pricing the registry reports (#6866)', () => {
+    // A manifest overlay outranks in-tree data and may raise a sibling's price;
+    // the runtime estimate must follow the registry, not the in-tree matrix.
+    const registry = getDefaultRegistry();
+    const entries = registry.allEntries();
+    const raised = entries.map((e) =>
+      e.id === 'gpt-5.5' ? { ...e, pricing: { inputPer1M: 50, outputPer1M: 100 } } : e
+    );
+    const spy = vi.spyOn(registry, 'allEntries').mockReturnValue(raised);
+    try {
+      expect(resolveCliCostPer1M('codex')).toEqual({ input: 50, output: 100 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('maps each CLI to default registry pricing or the unpriced fallback (per-1M)', () => {
     // claude→claude-fable-5 $10/$50, gemini→gemini-3-pro $2/$12,
-    // codex→gpt-5.6-sol $4/$20 (#6516; was gpt-5.5 $5/$30).
+    // codex→unpriced gpt-6.1-sol uses codex's highest known rates, gpt-5.5's
+    // $5/$30 (#6866), never a figure below a priced sibling.
     expect(resolveCliCostPer1M('claude')).toEqual({ input: 10.0, output: 50.0 });
     expect(resolveCliCostPer1M('gemini')).toEqual({ input: 2.0, output: 12.0 });
-    expect(resolveCliCostPer1M('codex')).toEqual({ input: 4.0, output: 20.0 });
+    expect(resolveCliCostPer1M('codex')).toEqual({ input: 5.0, output: 30.0 });
+  });
+
+  // #6866 panel (catfish): the unpriced codex default fell back to the static
+  // $2.5/$10, which undercut priced gpt-5.6-sol ($4/$20) and made the unknown
+  // model look CHEAPER to budget filters and cost-weighted TOPSIS.
+  it('never estimates an unpriced default below any priced model of the same CLI', () => {
+    for (const cli of CLI_NAMES) {
+      if (getModelPricing(getDefaultModelForCli(cli)) !== undefined) continue;
+      const est = resolveCliCostPer1M(cli);
+      for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+        if (m.cliName !== cli || m.pricing === undefined) continue;
+        expect(est.input, `${cli} input vs ${m.id}`).toBeGreaterThanOrEqual(m.pricing.inputPer1M);
+        expect(est.output, `${cli} output vs ${m.id}`).toBeGreaterThanOrEqual(
+          m.pricing.outputPer1M
+        );
+      }
+    }
+  });
+
+  it('estimates gpt-6.1-sol at no less than priced gpt-5.6-sol', () => {
+    expect(getModelPricing('gpt-6.1-sol')).toBeUndefined();
+    const sol = getModelPricing('gpt-5.6-sol');
+    const est = resolveCliCostPer1M('codex');
+    expect(est.input + est.output).toBeGreaterThanOrEqual(
+      (sol?.inputPer1M ?? Infinity) + (sol?.outputPer1M ?? Infinity)
+    );
+  });
+
+  it('keeps the static codex row at or above every priced codex model', () => {
+    for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+      if (m.cliName !== 'codex' || m.pricing === undefined) continue;
+      expect(STATIC_CLI_COST_PER_1M.codex.input).toBeGreaterThanOrEqual(m.pricing.inputPer1M);
+      expect(STATIC_CLI_COST_PER_1M.codex.output).toBeGreaterThanOrEqual(m.pricing.outputPer1M);
+    }
+  });
+
+  describe('unpricedCliCostPer1M empty case (#6866)', () => {
+    const codexModel = (id: string, pricing?: ModelCapability['pricing']): ModelCapability => {
+      const base = DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === 'gpt-5.6-sol');
+      if (base === undefined) throw new Error('fixture base gpt-5.6-sol missing');
+      const { pricing: _drop, ...rest } = base;
+      return { ...rest, id: id as ModelId, ...(pricing !== undefined ? { pricing } : {}) };
+    };
+
+    it('uses the static row when the CLI has no priced model', () => {
+      expect(unpricedCliCostPer1M('codex', [])).toEqual(STATIC_CLI_COST_PER_1M.codex);
+      expect(unpricedCliCostPer1M('codex', [codexModel('a')])).toEqual(
+        STATIC_CLI_COST_PER_1M.codex
+      );
+    });
+
+    it('uses the static row, not $0, when the only priced sibling is free', () => {
+      const free = codexModel('a', { inputPer1M: 0, outputPer1M: 0 });
+      expect(unpricedCliCostPer1M('codex', [free])).toEqual(STATIC_CLI_COST_PER_1M.codex);
+    });
+
+    it('never undercuts a known rate when a sibling prices one side at $0', () => {
+      // PricingSchema allows free input with paid output. Falling back the whole
+      // pair to the static row would drop the known $40 output rate (#6866).
+      const freeInput = codexModel('a', { inputPer1M: 0, outputPer1M: 40 });
+      const estimate = unpricedCliCostPer1M('codex', [freeInput]);
+      expect(estimate.output).toBe(40);
+      expect(estimate.input).toBe(STATIC_CLI_COST_PER_1M.codex.input);
+    });
+
+    it('takes the highest input and output rate independently', () => {
+      const models = [
+        codexModel('a', { inputPer1M: 9, outputPer1M: 1 }),
+        codexModel('b', { inputPer1M: 1, outputPer1M: 40 }),
+      ];
+      expect(unpricedCliCostPer1M('codex', models)).toEqual({ input: 9, output: 40 });
+      expect(unpricedCliCostPer1M('claude', models)).toEqual(STATIC_CLI_COST_PER_1M.claude);
+    });
+  });
+
+  it('TOPSIS prices an unpriced default exactly as the budget policy does', () => {
+    for (const profile of buildTopsisProfiles()) {
+      const est = resolveCliCostPer1M(profile.cliName);
+      expect(profile.costPerMillionInput, profile.cliName).toBe(est.input);
+      expect(profile.costPerMillionOutput, profile.cliName).toBe(est.output);
+    }
   });
 
   it('every CLI resolves to a non-$0 cost (no fail-open in budget gates)', () => {
@@ -486,15 +591,36 @@ describe('codex registry entries (#5091)', () => {
     }
   });
 
-  describe('gpt-5.6-sol as the codex default (#6516)', () => {
-    // codex-cli 0.155.1's cache announces gpt-5.5's retirement on 2026-10-14
-    // with upgrade.model gpt-5.6-sol. Panel option A: add the successor as its
-    // own entry and make it the default; gpt-5.5 stays routable until the
-    // removal tracked in #6526.
-    it('is the codex CLI default', () => {
-      expect(getDefaultModelForCli('codex')).toBe('gpt-5.6-sol');
+  describe('gpt-6.1-sol as the codex default (#6842)', () => {
+    it('is the default and has id equal to its served slug', () => {
+      expect(getDefaultModelForCli('codex')).toBe('gpt-6.1-sol');
+      const sol = codexEntry('gpt-6.1-sol');
+      expect(sol.id).toBe('gpt-6.1-sol');
+      expect(sol.cliModelName).toBe('gpt-6.1-sol');
+      expect(sol.displayName).toBe('GPT-6.1 Sol');
     });
 
+    it('is unpriced and labels its carried-over capabilities', () => {
+      const sol = codexEntry('gpt-6.1-sol');
+      const previous = codexEntry('gpt-5.6-sol');
+      expect(sol.pricing).toBeUndefined();
+      expect(sol.notes).toContain('CARRIED-OVER');
+      expect(sol.contextWindow).toBe(previous.contextWindow);
+      expect(sol.maxOutputTokens).toBe(previous.maxOutputTokens);
+      expect(sol.qualityScores).toEqual(previous.qualityScores);
+      expect(sol.inputModalities).toEqual(previous.inputModalities);
+      expect(sol.outputModalities).toEqual(previous.outputModalities);
+      expect(sol.toolCapabilities).toEqual(previous.toolCapabilities);
+      expect(sol.unsupportedParameters).toEqual(previous.unsupportedParameters);
+      expect(sol.maxTokensParam).toBe('max_completion_tokens');
+    });
+  });
+
+  describe('gpt-5.6-sol remains routable (#6516)', () => {
+    // codex-cli 0.155.1's cache announces gpt-5.5's retirement on 2026-10-14
+    // with upgrade.model gpt-5.6-sol. Panel option A originally made it the
+    // default; #6842 keeps it routable for pins. gpt-5.5 stays until the
+    // removal tracked in #6526.
     it('has id equal to its served slug', () => {
       expect(getCliModelName('gpt-5.6-sol')).toBe('gpt-5.6-sol');
       expect(findCanonicalModel('codex', 'gpt-5.6-sol')?.id).toBe('gpt-5.6-sol');

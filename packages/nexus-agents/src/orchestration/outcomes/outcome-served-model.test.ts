@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { servedOutcomeFields } from './outcome-served-model.js';
 import { TaskOutcomeSchema } from './outcome-types.js';
+import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
 
 describe('servedOutcomeFields (#6624)', () => {
   afterEach(() => {
@@ -19,6 +20,15 @@ describe('servedOutcomeFields (#6624)', () => {
       outputTokens: 2_000,
     });
     expect(fields).toEqual({ servedModel: 'claude-sonnet', costUsd: 0.033, priceBasis: 'list' });
+  });
+
+  it('distinguishes the codex defaults before/after #6842 without inventing a measured cost', () => {
+    const usage = { inputTokens: 1_000, outputTokens: 2_000 };
+    const before = servedOutcomeFields({ model: 'gpt-5.6-sol', ...usage });
+    const after = servedOutcomeFields({ model: getDefaultModelForCli('codex'), ...usage });
+    expect(before).toEqual({ servedModel: 'gpt-5.6-sol', costUsd: 0.044, priceBasis: 'list' });
+    expect(after).toEqual({ servedModel: 'gpt-6.1-sol', priceBasis: 'unknown' });
+    expect('costUsd' in after).toBe(false);
   });
 
   it('records an unpriced model as an unknown cost, never $0', () => {

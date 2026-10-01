@@ -4,6 +4,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { getDefaultModelForCli } from '../../config/model-config-helpers.js';
+import { getDefaultRegistry } from '../../config/model-registry.js';
 import type { DomainEvent } from '../collaboration/event-bus-types.js';
 import type {
   RoutingDecision,
@@ -67,6 +69,38 @@ function makeSessionMetrics(overrides: Partial<SessionMetrics> = {}): SessionMet
 // ============================================================================
 // Payload Extraction Helpers
 // ============================================================================
+
+const PRICEABLE_CLIS = ['claude', 'gemini', 'codex', 'opencode'] as const;
+
+/**
+ * Run `fn` with each CLI's resolved default model priced, so a non-zero cost
+ * proves a code path even though the codex default is unpriced (#6842).
+ *
+ * Only the exact default ids are priced. Pricing every unpriced lookup would
+ * also price a literal `getEntry('codex')`, so a regression that skipped the
+ * CliName → default-model resolution would still return a non-zero cost.
+ */
+function withPricedDefaults(fn: () => void): void {
+  const defaults = new Set<string>(PRICEABLE_CLIS.map((cli) => getDefaultModelForCli(cli)));
+  for (const cli of PRICEABLE_CLIS) {
+    // If a CLI's default id equalled the CliName, pricing it would also price
+    // the unresolved lookup and the guard below could not fail.
+    expect(defaults.has(cli), `default model id equals CliName ${cli}`).toBe(false);
+  }
+  const registry = getDefaultRegistry();
+  const real = registry.getEntry.bind(registry);
+  const spy = vi.spyOn(registry, 'getEntry').mockImplementation((id) => {
+    const entry = real(id);
+    return entry.pricing === undefined && defaults.has(id)
+      ? { ...entry, pricing: { inputPer1M: 1, outputPer1M: 2 } }
+      : entry;
+  });
+  try {
+    fn();
+  } finally {
+    spy.mockRestore();
+  }
+}
 
 describe('extractStringField', () => {
   it('returns string value', () => {
@@ -364,9 +398,18 @@ describe('cost resolution reads split rates from the registry (#5180)', () => {
       // without this resolution every model would report $0 — a 100%
       // understatement replacing a 3x one. Any non-zero result proves the
       // resolution happened.
-      for (const cli of ['claude', 'gemini', 'codex', 'opencode']) {
-        expect(registryCostForModel(t(1000, 1000), cli), cli).toBeGreaterThan(0);
-      }
+      // The codex default (gpt-6.1-sol) is unpriced (#6842), so give every
+      // default a price here: a non-zero result must prove the resolution.
+      withPricedDefaults(() => {
+        for (const cli of PRICEABLE_CLIS) {
+          expect(registryCostForModel(t(1000, 1000), cli), cli).toBeGreaterThan(0);
+        }
+      });
+    });
+
+    it('contributes the documented 0 floor for an unpriced default, not a guess', () => {
+      // gpt-6.1-sol, the codex default, has no published price (#6842).
+      expect(registryCostForModel(t(1000, 1000), 'codex')).toBe(0);
     });
 
     it('fails SOFT on an unrecognised name rather than throwing', () => {
@@ -394,12 +437,14 @@ describe('cost resolution reads split rates from the registry (#5180)', () => {
     ] as const)(
       'keeps the slot path for %s (display slot %s) — unchanged by the gateway declaration',
       (arm, slot) => {
-        const expected = registryCostForModel(t(1000, 1000), slot);
-        expect(expected).toBeGreaterThan(0);
-        expect(observedArmCostUsd(t(1000, 1000), arm, {})).toBe(expected);
-        expect(observedArmCostUsd(t(1000, 1000), arm, { NEXUS_GATEWAY_COST: 'free' })).toBe(
-          expected
-        );
+        withPricedDefaults(() => {
+          const expected = registryCostForModel(t(1000, 1000), slot);
+          expect(expected).toBeGreaterThan(0);
+          expect(observedArmCostUsd(t(1000, 1000), arm, {})).toBe(expected);
+          expect(observedArmCostUsd(t(1000, 1000), arm, { NEXUS_GATEWAY_COST: 'free' })).toBe(
+            expected
+          );
+        });
       }
     );
 

@@ -26,7 +26,7 @@ import type { PipelineEvent, Unsubscribe, IEventBus } from './event-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { categorizeOutcomeErrorMessage } from '../orchestration/outcomes/outcome-types.js';
-import { lookupInTreeCapability } from '../config/model-config-helpers.js';
+import { resolveOwnerCli } from '../config/model-ownership.js';
 
 const logger = createLogger({ component: 'FeedbackSubscriber' });
 
@@ -87,7 +87,7 @@ function recordStageFailed(
   // The model IS carried when the emitter knows it (#4194), so the CLI is
   // recoverable for a real CLI stage. When it is not, no record is written:
   // an unattributable failure teaches the routing learner nothing true.
-  const cli = event.model === undefined ? undefined : lookupInTreeCapability(event.model)?.cliName;
+  const cli = event.model === undefined ? undefined : resolveOwnerCli(event.model);
   if (cli === undefined) {
     logger.debug('Skipping stage-failure outcome — no attributable CLI', {
       stageId: event.stageId,

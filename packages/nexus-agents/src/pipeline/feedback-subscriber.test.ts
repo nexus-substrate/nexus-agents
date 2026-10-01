@@ -11,6 +11,8 @@ import { EventBus } from './event-bus.js';
 import { createFeedbackSubscriber } from './feedback-subscriber.js';
 import { OutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { PipelineEvent } from './event-types.js';
+import { ModelRegistry, setDefaultRegistry } from '../config/model-registry.js';
+import { buildInTreeEntries } from '../config/in-tree-entries.js';
 
 // ============================================================================
 // Setup
@@ -110,6 +112,36 @@ describe('createFeedbackSubscriber', () => {
 
     expect(store.size).toBe(1);
     expect(store.query({})[0]?.model).toBe('claude-opus-4');
+  });
+
+  it('attributes a model a manifest overlay re-prices without a cliName (#6866)', () => {
+    // An overlay replaces the whole entry and carries no cliName; the in-tree
+    // owner must still attribute the failure instead of dropping the record.
+    const inTree = buildInTreeEntries();
+    const base = inTree.find((e) => e.id === 'claude-opus');
+    if (base === undefined) throw new Error('fixture base claude-opus missing');
+    const { cliName: _owner, ...overlay } = base;
+    setDefaultRegistry(
+      new ModelRegistry({
+        inTreeEntries: inTree,
+        manifestEntries: [{ ...overlay, source: 'manifest' }],
+      })
+    );
+    try {
+      createFeedbackSubscriber(bus, store);
+      bus.emit({
+        type: 'stage.failed',
+        executionId: 'exec-overlay',
+        stageId: 'impl-t1',
+        error: 'boom',
+        model: 'claude-opus-4',
+        timestamp: Date.now(),
+      });
+      expect(store.size).toBe(1);
+      expect(store.query({})[0]?.cli).toBe('claude');
+    } finally {
+      setDefaultRegistry(undefined);
+    }
   });
 
   it('ignores model.called events — that event has no producer (#3179)', () => {

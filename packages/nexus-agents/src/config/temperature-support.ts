@@ -14,8 +14,9 @@
  *    non-reasoning `gpt-5-chat` variant. This repo routes codex-5.3→gpt-5.6-terra,
  *    codex-5.2→gpt-5.6-luna, codex-5.1-mini→gpt-6-luna (#5091, remapped
  *    2026-09-23), so gateway voters at the default 0.3 400 on all of them. The
- *    regex fallback does not match `gpt-6-*`; those slugs are covered by the
- *    registry's `unsupportedParameters` data.
+ *    regex fallback does not match `gpt-6-*`; those slugs, including the
+ *    gpt-6.1-sol default (#6842), use registry `unsupportedParameters` data
+ *    (gpt-6.1-sol's parameter support is carried over, not measured).
  *
  * {@link temperatureUnsupportedForModel} is the single source of truth both the
  * native Claude adapter and the OpenAI-compatible gateway adapter consult before

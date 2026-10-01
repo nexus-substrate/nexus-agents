@@ -22,14 +22,14 @@
  *  4. Every ordering is deterministic: value-keyed with stable, explicit
  *     tie-breaks (never `qualityScores`-NaN-sorted, never Map/insertion order).
  *
- * Leaf-only imports (in-tree data + static fallback) mirror `buildTopsisProfiles`
+ * Leaf-only imports (in-tree data + unpriced estimate) mirror `buildTopsisProfiles`
  * so this evaluates safely at module-load time without touching the
  * filesystem-backed registry singleton (TDZ / circular-load safe).
  *
  * @module cli-adapters/derive-tier-tables
  */
 import { buildInTreeEntries } from '../config/in-tree-entries.js';
-import { DEFAULT_MODEL_PER_CLI, STATIC_CLI_COST_PER_1M } from '../config/in-tree-data.js';
+import { DEFAULT_MODEL_PER_CLI, unpricedCliCostPer1M } from '../config/in-tree-data.js';
 import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
 import type { ModelTier } from './zero-router-types.js';
 
@@ -77,14 +77,15 @@ export function readCliModelData(): Record<CliNameLiteral, CliModelData> {
   for (const cli of CLI_ORDER) {
     const entry = byId.get(DEFAULT_MODEL_PER_CLI[cli]);
     const q = entry?.qualityScores;
-    // Registry `Pricing` is {inputPer1M,outputPer1M}; the static fallback is
+    // Registry `Pricing` is {inputPer1M,outputPer1M}; the unpriced estimate is
     // CostPer1M {input,output}. Blend each in its own shape (mirrors
     // buildTopsisProfiles) — an UNPRICED default stays conservative (#4168).
     const pricing = entry?.pricing;
+    const estimate = unpricedCliCostPer1M(cli);
     const blended =
       pricing !== undefined
         ? pricing.inputPer1M + pricing.outputPer1M
-        : STATIC_CLI_COST_PER_1M[cli].input + STATIC_CLI_COST_PER_1M[cli].output;
+        : estimate.input + estimate.output;
     out[cli] = {
       quality: q !== undefined ? compositeQuality(q.reasoning, q.codeGeneration) : undefined,
       price: normalizeBlendedPrice(blended),

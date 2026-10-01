@@ -243,7 +243,42 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     // ----- OpenAI Codex -----
     {
-      // #6516 (panel option A): the codex default since gpt-5.5 retires.
+      // #6842, panel vote-1790834581155-7b39b83 (option A): register the served
+      // slug and make it the codex default. All capability values below,
+      // including context/output limits, quality scores and parameter support,
+      // are CARRIED-OVER from gpt-5.6-sol, NOT measured for gpt-6.1-sol.
+      // No pricing field: accounting reports priced:false until OpenAI
+      // publishes pricing; budget filters and TOPSIS estimate it at codex's
+      // highest known rates via unpricedCliCostPer1M (#6866).
+      // Listed first so equal-scoring selections prefer the new default.
+      id: 'gpt-6.1-sol',
+      aliases: ['openai/gpt-6.1-sol'],
+      displayName: 'GPT-6.1 Sol',
+      provider: 'openai',
+      contextWindow: 1_050_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'file_operations',
+        'structured_output',
+        'apply_patch',
+        'computer_use',
+      ],
+      specialFeatures: ['streaming'],
+      notes:
+        'GPT-6.1 Sol; codex default per #6842 (panel option A). Context window, output limit, modalities, tools, features, quality scores and parameter support are CARRIED-OVER from gpt-5.6-sol, NOT measured. Unpriced until OpenAI publishes pricing.',
+      qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
+      maxOutputTokens: 128_000,
+      cliName: 'codex',
+      cliModelName: 'gpt-6.1-sol',
+      unsupportedParameters: ['temperature'],
+      maxTokensParam: 'max_completion_tokens',
+    },
+    {
+      // #6516 (panel option A): the former codex default; kept routable for pins.
       // ~/.codex/models_cache.json (codex-cli 0.155.1, read 2026-09-23) puts
       // an `upgrade` record on the gpt-5.5 row: retirement_at
       // 2026-10-14T19:00:00Z, upgrade.model gpt-5.6-sol. The id equals the
@@ -281,7 +316,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       ],
       specialFeatures: ['streaming'],
       notes:
-        'GPT-5.6 Sol (models.dev 2026-09-21; codex catalog: "older coding model for complex work"); codex default and gpt-5.5 successor per the codex cache; served by codex-cli 0.155.1; reasoning low..ultra; 1.05M context (codex cache default window 272K)',
+        'GPT-5.6 Sol (models.dev 2026-09-21; codex catalog: "older coding model for complex work"); former codex default and gpt-5.5 successor per the codex cache; served by codex-cli 0.155.1; reasoning low..ultra; 1.05M context (codex cache default window 272K)',
       pricing: { inputPer1M: 4.0, outputPer1M: 20.0 },
       qualityScores: { reasoning: 10, codeGeneration: 10, speed: 7, cost: 4 },
       maxOutputTokens: 128_000,
@@ -548,11 +583,10 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
  */
 export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
   // #4176: fable/gpt-5.5 were strongest per CLI; gemini-3.5-flash is flash-tier, not default.
-  // #6516: codex moves to gpt-5.6-sol, the upgrade target the codex cache names
-  // for gpt-5.5 (retiring 2026-10-14).
+  // #6842: option A; revert this default to gpt-5.6-sol in one line if needed.
   claude: 'claude-fable-5',
   gemini: 'gemini-3-pro',
-  codex: 'gpt-5.6-sol',
+  codex: 'gpt-6.1-sol',
   opencode: 'opencode-default',
 };
 
@@ -569,11 +603,14 @@ export interface CostPer1M {
  * duplicated in `budget-utils.TOKEN_COSTS`, `budget-stage`'s
  * `COST_PER_1K_TOKENS`, and `test-metrics`).
  *
- * It is a FALLBACK, not the primary source: a priced model always upgrades to
- * real registry data via `resolveModelCostPer1M`. Because every current
- * `DEFAULT_MODEL_PER_CLI` entry is priced, this map is dormant today; it exists
- * so an UNPRICED candidate stays CONSERVATIVE (never $0) in budget/TOPSIS gates
- * — a $0 fails OPEN and gets the unknown model over-selected (#4168 cond. 2).
+ * It is the LAST resort, not the primary source: a priced model always upgrades
+ * to real registry data via `resolveModelCostPer1M`, and an unpriced model is
+ * estimated at its CLI's highest known rates by {@link unpricedCliCostPer1M}.
+ * This row is read only when that CLI has no positively-priced model at all.
+ * These rates are estimates, not measured prices, and keep an UNPRICED
+ * candidate CONSERVATIVE (never $0) — a $0 fails OPEN and gets the unknown model over-selected (#4168 cond. 2).
+ * Each row is kept at or above every priced model of its CLI (#6866), so the
+ * last resort cannot undercut a known price either.
  *
  * Lives in this leaf data module (not `model-config-helpers`) so the
  * module-load-time `buildTopsisProfiles` call reads it after initialization,
@@ -582,6 +619,51 @@ export interface CostPer1M {
 export const STATIC_CLI_COST_PER_1M: Record<CliNameLiteral, CostPer1M> = {
   claude: { input: 3.0, output: 15.0 },
   gemini: { input: 0.075, output: 0.3 },
-  codex: { input: 2.5, output: 10.0 },
+  // gpt-5.5's $5/$30, the highest priced codex model (#6866).
+  codex: { input: 5.0, output: 30.0 },
   opencode: { input: 2.0, output: 8.0 },
 };
+
+/**
+ * Conservative per-1M estimate for an UNPRICED model served by `cli` (#6866):
+ * the highest input and the highest output rate among that CLI's models with a
+ * positive registry price. An unknown price must never look CHEAPER than a
+ * known price on the same CLI — the static $2.5/$10 codex row undercut priced
+ * gpt-5.6-sol ($4/$20), so budget filters and cost-weighted TOPSIS over-selected
+ * the unpriced codex default. Only the estimate changes: usage accounting still
+ * records the model as `priced:false`.
+ *
+ * Empty case: a CLI with no positively-priced model (none priced, or only
+ * explicit $0 entries, which would make the estimate free) falls back to
+ * {@link STATIC_CLI_COST_PER_1M}.
+ *
+ * Reads the in-tree matrix directly, not the registry singleton, so the
+ * module-load-time builders (`buildTopsisProfiles`, `readCliModelData`) and
+ * the runtime budget path share one definition without the TDZ hazard.
+ * `models` exists so the empty case can be tested.
+ */
+/** The fields {@link unpricedCliCostPer1M} reads: an owner and an optional price. */
+export interface PricedSibling {
+  readonly cliName?: string | undefined;
+  readonly pricing?: { readonly inputPer1M: number; readonly outputPer1M: number } | undefined;
+}
+
+export function unpricedCliCostPer1M(
+  cli: CliNameLiteral,
+  models: readonly PricedSibling[] = DEFAULT_MODEL_CAPABILITIES.models
+): CostPer1M {
+  let input = 0;
+  let output = 0;
+  for (const model of models) {
+    if (model.cliName !== cli || model.pricing === undefined) continue;
+    input = Math.max(input, model.pricing.inputPer1M);
+    output = Math.max(output, model.pricing.outputPer1M);
+  }
+  // Per component: a known positive rate wins, so a free-input/paid-output
+  // sibling still bounds the output side; otherwise the static row (#6866).
+  const fallback = STATIC_CLI_COST_PER_1M[cli];
+  return {
+    input: input > 0 ? input : fallback.input,
+    output: output > 0 ? output : fallback.output,
+  };
+}

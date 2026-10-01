@@ -96,6 +96,8 @@ describe('temperatureUnsupportedForModel (#4061)', () => {
       'gpt-5.6-terra',
       'gpt-5.6-luna',
       'gpt-6-luna',
+      'gpt-6.1-sol',
+      'openai/gpt-6.1-sol',
       'gpt-5.2-codex',
       'codex-5.3', // internal id; resolves to gpt-5.6-terra but match either way
       'openai/o3-mini', // provider-prefixed → last segment matched

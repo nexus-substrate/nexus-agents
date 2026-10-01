@@ -18,8 +18,9 @@ import { buildInTreeEntries } from './in-tree-entries.js';
 import {
   DEFAULT_MODEL_CAPABILITIES,
   DEFAULT_MODEL_PER_CLI,
-  STATIC_CLI_COST_PER_1M,
+  unpricedCliCostPer1M,
   type CostPer1M,
+  type PricedSibling,
 } from './in-tree-data.js';
 import type {
   ModelId,
@@ -34,6 +35,7 @@ import type {
   ToolCapability,
 } from './model-capabilities-types.js';
 import { getDefaultRegistry, peekDefaultRegistry, type ModelEntry } from './model-registry.js';
+import { pricingSiblingCli } from './model-ownership.js';
 
 /**
  * Average latency estimates per CLI (ms). Returned by a function (not
@@ -73,9 +75,16 @@ function inTreeById(): Map<string, ModelEntry> {
   return new Map(buildInTreeEntries().map((e) => [e.id, e] as const));
 }
 
-/** Get pricing for a model, or undefined if not set. */
+/**
+ * Get pricing for a model, or undefined if not set. Reads the same registry
+ * chain as the usage ledger (`computeCostDetail`), so an operator overlay that
+ * prices a model is seen by the budget estimate, the cost ceiling and the
+ * ledger alike (#6866). It used to read in-tree entries only, so an overlay
+ * pricing the codex default was billed by the ledger while the ceiling still
+ * excluded the model as unpriced.
+ */
 export function getModelPricing(modelId: ModelId): Pricing | undefined {
-  return lookupInTree(modelId)?.pricing;
+  return getDefaultRegistry().getEntry(modelId).pricing;
 }
 
 /** Get display name for a model. Falls back to the modelId string. */
@@ -174,12 +183,28 @@ export function resolveModelCostPer1M(modelId: ModelId, fallback: CostPer1M): Co
 
 /**
  * Resolve per-1M-token USD pricing for a CLI's default model (#4168):
- * `CliName → getDefaultModelForCli → registry pricing`, with the CLI's
- * {@link STATIC_CLI_COST_PER_1M} entry as the conservative fallback when the
- * resolved model is unpriced. Single source for the former per-CLI $ tables.
+ * `CliName → getDefaultModelForCli → registry pricing`. An unpriced default is
+ * estimated at the CLI's highest known rates ({@link unpricedCliCostPer1M},
+ * #6866), never below a priced sibling. Single source for the former per-CLI
+ * $ tables; usage accounting still records the model as unpriced.
  */
 export function resolveCliCostPer1M(cli: CliNameLiteral): CostPer1M {
-  return resolveModelCostPer1M(getDefaultModelForCli(cli), STATIC_CLI_COST_PER_1M[cli]);
+  return resolveModelCostPer1M(
+    getDefaultModelForCli(cli),
+    unpricedCliCostPer1M(cli, registryPricedSiblings())
+  );
+}
+
+/**
+ * Every registry entry with the CLI its price bounds (`pricingSiblingCli`), so
+ * the runtime estimate sees operator-overlay prices, including a brand-new
+ * overlay model routed to the CLI by vendor (#6866). The load-time scoring
+ * tables cannot read the registry (TDZ) and stay on in-tree prices.
+ */
+function registryPricedSiblings(): readonly PricedSibling[] {
+  return getDefaultRegistry()
+    .allEntries()
+    .map((entry) => ({ cliName: pricingSiblingCli(entry), pricing: entry.pricing }));
 }
 
 /** Get the model name the CLI binary expects (e.g., 'gemini-2.5-pro'). */
@@ -301,9 +326,7 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
     // to avoid re-entering `lookupInTree` at module-load time (TDZ hazard).
     const p = entry.pricing;
     const price: CostPer1M =
-      p !== undefined
-        ? { input: p.inputPer1M, output: p.outputPer1M }
-        : STATIC_CLI_COST_PER_1M[cli];
+      p !== undefined ? { input: p.inputPer1M, output: p.outputPer1M } : unpricedCliCostPer1M(cli);
     profiles.push({
       cliName: cli,
       capabilities: {

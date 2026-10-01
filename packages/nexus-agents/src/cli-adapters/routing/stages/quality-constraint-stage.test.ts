@@ -59,7 +59,7 @@ describe('QualityConstraintStage', () => {
 
     it('filters low quality candidates', async () => {
       // Derived from registry (#4176): claude=1.0 (claude-fable-5),
-      // gemini=0.95 (gemini-3-pro), codex=1.0 (gpt-5.6-sol, #6516)
+      // gemini=0.95 (gemini-3-pro), codex=1.0 (gpt-6.1-sol, carried over per #6842)
       // At minQuality=0.96, claude and codex pass
       const strictStage = new QualityConstraintStage({ minQuality: 0.96 });
       const ctx = createContext('test task');

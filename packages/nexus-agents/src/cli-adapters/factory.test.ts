@@ -345,13 +345,19 @@ describe('model info', () => {
     expect(info.maxOutput).toBe(128000);
   });
 
-  it('should return cost info for all adapters', () => {
+  it('returns prices for priced adapters and omits the unpriced Codex default (#6842)', () => {
     const claude = createCliAdapter({ cli: 'claude' });
     const gemini = createCliAdapter({ cli: 'gemini' });
     const codex = createCliAdapter({ cli: 'codex' });
 
     expect(claude.getModelInfo().costPerMillionInput).toBeGreaterThan(0);
     expect(gemini.getModelInfo().costPerMillionInput).toBeGreaterThan(0);
-    expect(codex.getModelInfo().costPerMillionInput).toBeGreaterThan(0);
+    expect(codex.getModelInfo().id).toBe('gpt-6.1-sol');
+    expect(codex.getModelInfo().costPerMillionInput).toBeUndefined();
+    expect(codex.getModelInfo().costPerMillionOutput).toBeUndefined();
+    const pinned = createCliAdapter({ cli: 'codex', model: 'gpt-5.6-sol' });
+    expect(pinned.getModelInfo().id).toBe('gpt-5.6-sol');
+    expect(pinned.getModelInfo().costPerMillionInput).toBe(4);
+    expect(pinned.getModelInfo().costPerMillionOutput).toBe(20);
   });
 });

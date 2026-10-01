@@ -45,13 +45,13 @@ describe('resolveModelForTier (#3394)', () => {
     expect(resolveModelForTier('codex', 'fast')).toBe('codex-5.1-mini');
   });
 
-  it('picks codex-5.3 for the codex powerful tier despite gpt-5.6-sol being the CLI default (#4176, #6516)', () => {
-    // Deliberate tension, mirroring the claude pin above: gpt-5.6-sol,
+  it('picks codex-5.3 for the codex powerful tier despite gpt-6.1-sol being the CLI default (#6842)', () => {
+    // Deliberate tension, mirroring the claude pin above: gpt-6.1-sol, gpt-5.6-sol,
     // gpt-5.5 and codex-5.3 tie at reasoning 10, so the tier resolver's
     // tie-break (cheaper — higher cost score — first) picks codex-5.3 (cost 5
-    // vs 4), while DEFAULT_MODEL_PER_CLI.codex is the frontier gpt-5.6-sol.
+    // vs 4), while DEFAULT_MODEL_PER_CLI.codex is gpt-6.1-sol (#6842).
     expect(resolveModelForTier('codex', 'powerful')).toBe('codex-5.3');
-    expect(getDefaultModelForCli('codex')).toBe('gpt-5.6-sol');
+    expect(getDefaultModelForCli('codex')).toBe('gpt-6.1-sol');
   });
 
   it('picks the highest-speed model for the fast tier', () => {

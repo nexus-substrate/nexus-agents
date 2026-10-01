@@ -17,7 +17,9 @@ import {
   resolveCliSlot,
 } from './model-availability.js';
 import type { ProbeResult } from './model-availability.js';
+import { getDefaultRegistry } from './model-registry.js';
 import type { ModelId } from './model-capabilities-types.js';
+import { DEFAULT_MODEL_CAPABILITIES, DEFAULT_MODEL_PER_CLI } from './in-tree-data.js';
 
 describe('AvailabilityCache', () => {
   let cache: AvailabilityCache;
@@ -122,6 +124,12 @@ describe('resolveFallback', () => {
     cache = new AvailabilityCache();
   });
 
+  it('resolves a codex fallback for an unavailable pinned non-default codex model (#6866)', () => {
+    cache.markUnavailable('gpt-5.6-sol', 'down');
+    const fb = resolveFallback('gpt-5.6-sol', cache);
+    expect(fb?.modelId).toBe(getFallbackChain('codex')[0]);
+  });
+
   it('returns next model in chain when primary is down', () => {
     cache.markUnavailable('claude-opus', 'down');
     const fb = resolveFallback('claude-opus', cache);
@@ -193,6 +201,35 @@ describe('getFallbackChain', () => {
 });
 
 describe('getCliForModelId', () => {
+  it('keeps in-tree ownership for a model named by one of its aliases (#6866)', () => {
+    const entry = DEFAULT_MODEL_CAPABILITIES.models.find((m) => (m.aliases ?? []).length > 0);
+    if (entry === undefined) throw new Error('fixture: no in-tree model has an alias');
+    const alias = (entry.aliases ?? [])[0] as ModelId;
+    const registry = getDefaultRegistry();
+    const real = registry.getEntry(entry.id);
+    const { cliName: _dropped, ...overlaid } = real;
+    const spy = vi.spyOn(registry, 'getEntry').mockReturnValue(overlaid);
+    try {
+      expect(getCliForModelId(alias)).toBe(entry.cliName);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('keeps in-tree ownership when an overlay entry omits cliName (#6866)', () => {
+    // A manifest overlay replaces the registry entry and has no cliName key,
+    // so a pricing-only overlay for a pinned model must not erase its CLI.
+    const registry = getDefaultRegistry();
+    const real = registry.getEntry('gpt-5.6-sol');
+    const { cliName: _dropped, ...overlaid } = real;
+    const spy = vi.spyOn(registry, 'getEntry').mockReturnValue(overlaid);
+    try {
+      expect(getCliForModelId('gpt-5.6-sol')).toBe('codex');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('resolves claude models', () => {
     expect(getCliForModelId('claude-opus')).toBe('claude');
     expect(getCliForModelId('claude-sonnet')).toBe('claude');
@@ -205,6 +242,25 @@ describe('getCliForModelId', () => {
 
   it('resolves codex models', () => {
     expect(getCliForModelId('codex-5.3')).toBe('codex');
+  });
+
+  // #6866 panel: ownership was inferred from the current default + fallback
+  // chain only, so flipping the codex default orphaned the former default.
+  it('resolves a codex model that is neither the default nor in a fallback chain', () => {
+    expect(DEFAULT_MODEL_PER_CLI.codex).not.toBe('gpt-5.6-sol');
+    expect(getFallbackChain('codex')).not.toContain('gpt-5.6-sol');
+    expect(getCliForModelId('gpt-5.6-sol')).toBe('codex');
+    expect(getCliForModelId('gpt-5.5')).toBe('codex');
+  });
+
+  it('maps every registered model to its registry cliName', () => {
+    for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+      expect(getCliForModelId(model.id), model.id).toBe(model.cliName);
+    }
+  });
+
+  it('returns undefined for an id the registry does not know', () => {
+    expect(getCliForModelId('not-a-model' as ModelId)).toBeUndefined();
   });
 
   it('resolves opencode custom models', () => {
