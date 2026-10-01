@@ -27,6 +27,7 @@ import {
 } from '../mcp/tools/remediation-review.js';
 import { runAutoRemediationCycle } from '../mcp/tools/auto-remediation-cycle.js';
 import { buildAutoRemediationDeps } from '../mcp/tools/auto-remediation-deps.js';
+import type { EnforceReadinessEvidence } from '../mcp/tools/improvement-enforce-readiness.js';
 import type { ImprovementSignal } from '../mcp/tools/improvement-review.js';
 import { FixedTimeProvider, resetTimeProvider, setTimeProvider } from '../core/time-provider.js';
 
@@ -321,12 +322,12 @@ describe('harmfulRate', () => {
  * p1–p4 records carry no `dryRunResult` (`requiresDryRun` is p0-only) and so can
  * never be judged, failing `minJudgedRate`. This pins the end-to-end path the
  * operator actually uses: the tool produces a p2 record in audit mode → `list`
- * shows it → `mark` accepts it → `readiness` counts it as judged. Judgeability
+ * shows it → `mark` accepts it → CLI and enforce readiness count it as judged. Judgeability
  * is a named-evaluator act over the soak ref and must never depend on a dry-run
  * having been captured.
  */
 describe('a p2 record produced by the tool is judgeable (#4279 Gap 2)', () => {
-  it('audit cycle → list → mark → readiness counts the p2 selection as judged', async () => {
+  it('audit cycle → list → mark → sign-off → CLI and enforce readiness agree on the p2 evidence', async () => {
     const deps = buildAutoRemediationDeps({
       voteRunner: async () => Promise.resolve({ approved: true, approvalPercentage: 100 }),
     });
@@ -360,19 +361,31 @@ describe('a p2 record produced by the tool is judgeable (#4279 Gap 2)', () => {
     await handleRemediationReviewCommand(args('mark', { evaluator: 'alice', sound: true }, [ref]));
     expect(output()).toContain(`marked ${ref} as SOUND by alice`);
 
+    out.mockClear();
+    await handleRemediationReviewCommand(args('sign-off', { owner: 'carol' }));
+    expect(output()).toContain('owner sign-off recorded by carol across 1 selection(s)');
+
     _resetRemediationReviewStoreForTests();
     out.mockClear();
     await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
     const parsed = JSON.parse(output()) as {
-      evidence: { shadowSelections: number; judgedSelections: number; judgedSound: number };
+      evidence: EnforceReadinessEvidence;
       criteria: { name: string; met: boolean }[];
     };
     expect(parsed.evidence).toMatchObject({
       shadowSelections: 1,
       judgedSelections: 1,
       judgedSound: 1,
+      evaluator: 'alice',
+      owner: 'carol',
     });
     // judged-coverage is 100% ≥ 80% on the strength of the p2 record alone.
     expect(parsed.criteria.find((c) => c.name === 'judged-coverage')?.met).toBe(true);
+
+    // Independently reload the files through the provider consumed by ENFORCE.
+    _resetRemediationSoakSinkForTests();
+    _resetRemediationReviewStoreForTests();
+    const enforceEvidence = await buildAutoRemediationDeps().readinessEvidence();
+    expect(enforceEvidence).toEqual(parsed.evidence);
   });
 });
