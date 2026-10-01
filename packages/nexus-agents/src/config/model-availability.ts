@@ -193,7 +193,9 @@ export function getCliForModelId(modelId: ModelId): CliNameLiteral | undefined {
   if (isCliName(cliName)) return cliName;
   // A manifest overlay replaces the entry and carries no cliName, so a
   // pricing-only overlay must not erase ownership: the in-tree entry decides.
-  const inTree = DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === modelId)?.cliName;
+  const inTree = DEFAULT_MODEL_CAPABILITIES.models.find(
+    (m) => m.id === modelId || (m.aliases ?? []).includes(modelId)
+  )?.cliName;
   return isCliName(inTree) ? inTree : undefined;
 }
 

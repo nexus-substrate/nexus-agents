@@ -654,5 +654,11 @@ export function unpricedCliCostPer1M(
     input = Math.max(input, model.pricing.inputPer1M);
     output = Math.max(output, model.pricing.outputPer1M);
   }
-  return input > 0 && output > 0 ? { input, output } : STATIC_CLI_COST_PER_1M[cli];
+  // Per component: a known positive rate wins, so a free-input/paid-output
+  // sibling still bounds the output side; otherwise the static row (#6866).
+  const fallback = STATIC_CLI_COST_PER_1M[cli];
+  return {
+    input: input > 0 ? input : fallback.input,
+    output: output > 0 ? output : fallback.output,
+  };
 }

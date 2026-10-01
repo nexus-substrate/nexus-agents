@@ -437,6 +437,15 @@ describe('resolveCliCostPer1M', () => {
       expect(unpricedCliCostPer1M('codex', [free])).toEqual(STATIC_CLI_COST_PER_1M.codex);
     });
 
+    it('never undercuts a known rate when a sibling prices one side at $0', () => {
+      // PricingSchema allows free input with paid output. Falling back the whole
+      // pair to the static row would drop the known $40 output rate (#6866).
+      const freeInput = codexModel('a', { inputPer1M: 0, outputPer1M: 40 });
+      const estimate = unpricedCliCostPer1M('codex', [freeInput]);
+      expect(estimate.output).toBe(40);
+      expect(estimate.input).toBe(STATIC_CLI_COST_PER_1M.codex.input);
+    });
+
     it('takes the highest input and output rate independently', () => {
       const models = [
         codexModel('a', { inputPer1M: 9, outputPer1M: 1 }),

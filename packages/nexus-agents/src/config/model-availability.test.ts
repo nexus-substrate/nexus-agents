@@ -201,6 +201,21 @@ describe('getFallbackChain', () => {
 });
 
 describe('getCliForModelId', () => {
+  it('keeps in-tree ownership for a model named by one of its aliases (#6866)', () => {
+    const entry = DEFAULT_MODEL_CAPABILITIES.models.find((m) => (m.aliases ?? []).length > 0);
+    if (entry === undefined) throw new Error('fixture: no in-tree model has an alias');
+    const alias = (entry.aliases ?? [])[0] as ModelId;
+    const registry = getDefaultRegistry();
+    const real = registry.getEntry(entry.id);
+    const { cliName: _dropped, ...overlaid } = real;
+    const spy = vi.spyOn(registry, 'getEntry').mockReturnValue(overlaid);
+    try {
+      expect(getCliForModelId(alias)).toBe(entry.cliName);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('keeps in-tree ownership when an overlay entry omits cliName (#6866)', () => {
     // A manifest overlay replaces the registry entry and has no cliName key,
     // so a pricing-only overlay for a pinned model must not erase its CLI.
