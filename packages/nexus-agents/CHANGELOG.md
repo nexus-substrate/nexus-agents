@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.122.1
+
+### Patch Changes
+
+- [#6884](https://github.com/nexus-substrate/nexus-agents/pull/6884) [`5b1988e`](https://github.com/nexus-substrate/nexus-agents/commit/5b1988e137ceaefe2c6a6e38edc6b80f3d00a1e2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve in-tree context windows, display names, output limits, quality scores, and CLI metadata when a model manifest overlay omits them. Explicit overlay values still take precedence, including overlays resolved through model aliases. New models without context metadata retain the conservative 8,192-token default.
+
+- [#6887](https://github.com/nexus-substrate/nexus-agents/pull/6887) [`0bbf4ac`](https://github.com/nexus-substrate/nexus-agents/commit/0bbf4ace8f8c1b48bf7f98d5563977ccbd2fd0d0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refuse to persist consensus vote records with no voter attribution, returning an `empty-panel` reason and logging a warning. Panels whose voters all errored still retain their no-quorum records and failure coverage.
+
 ## 8.122.0
 
 ### Minor Changes
