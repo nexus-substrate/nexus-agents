@@ -70,6 +70,9 @@ export default defineConfig({
       NEXUS_OPENAI_COMPAT_URL: '',
       NEXUS_OPENAI_COMPAT_KEY: '',
       NEXUS_OPENCODE_CONFIG: '',
+      // Blank (read as unset) so a developer's model overlays never alter tests.
+      NEXUS_MODELS_OVERLAY_PATH: '',
+      NEXUS_MODEL_REGISTRY_OVERLAY: '',
     },
 
     // Test file patterns
