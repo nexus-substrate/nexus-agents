@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.115.0
+
+### Minor Changes
+
+- [#6839](https://github.com/nexus-substrate/nexus-agents/pull/6839) [`35c2a83`](https://github.com/nexus-substrate/nexus-agents/commit/35c2a83a7ef9ea85a502f37320cadbdce9cbbf1c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - API-mode decision cost records now retain catalog pricing source, participant scope, and source URL when available, including Mythos Preview's Project Glasswing participant rates. Ordinary and legacy records keep pricing scope absent when it was not recorded. These figures remain catalog-based estimates and do not establish actual contract billing.
+
+### Patch Changes
+
+- [#6843](https://github.com/nexus-substrate/nexus-agents/pull/6843) [`f76c7a8`](https://github.com/nexus-substrate/nexus-agents/commit/f76c7a86c6a7d7a48942c948fd7664bf422b4db3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `list_available_models` now labels the codex transport's model list as a vendor-catalogue superset. The codex row is the models.dev `openai` catalogue — dozens of OpenAI API ids — while the codex CLI serves only the few slugs marked `visibility: list` in its own models cache, so most listed ids are rejected by `codex -m`. The codex transport report carries a new optional `catalogueCaveat` string saying so, and the top-level `note` points at the field. Transports whose list is their own vocabulary (opencode, openrouter, claude, gemini) carry no caveat. The list itself is unchanged: routing only checks that an arm reports some model, which a superset cannot change. To see what the installed codex actually serves, run `nexus-agents verify`, whose codex models check reads that cache.
+
+- [#6847](https://github.com/nexus-substrate/nexus-agents/pull/6847) [`71231e9`](https://github.com/nexus-substrate/nexus-agents/commit/71231e93557d9a34f288e0b1d37acd6a66ed9dfb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Check Codex's read-only filesystem sandbox before executing a CLI seat or routing arm. Hosts with a confirmed sandbox failure now return an attributed execution error before spending a model call, and `nexus-agents doctor` reports the cause as a warning. The model-free check runs once per process with a short timeout. Missing Codex, timeouts, and unrecognized probe failures are recorded as unknown; execution proceeds under the existing read-only sandbox without relaxing permissions. The verdict is cached for the process lifetime, so restart a running MCP server after repairing the host sandbox.
+
 ## 8.114.0
 
 ### Minor Changes
