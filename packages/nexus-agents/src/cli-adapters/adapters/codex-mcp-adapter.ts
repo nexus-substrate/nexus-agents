@@ -71,7 +71,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
 
   private readonly model: string;
   private readonly platform: NodeJS.Platform;
-  private readonly sandboxRefusal: () => CliError | undefined;
+  private readonly sandboxRefusal: () => Promise<CliError | undefined>;
   private client: Client | undefined;
   private mcpTransport: StdioClientTransport | undefined;
   private connected = false;
@@ -252,8 +252,8 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   }
 
   /** #6754: a continued session cannot be pinned to the read-only sandbox. */
-  protected override accessModeRefusal(task: CliTask): CliError | undefined {
-    const base = super.accessModeRefusal(task);
+  protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
+    const base = await super.accessModeRefusal(task);
     if (base !== undefined) return base;
     if (isReadOnlyAnalysis(task) && task.sessionId !== undefined && task.sessionId !== '') {
       return accessModeConflict(

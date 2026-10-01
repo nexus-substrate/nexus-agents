@@ -167,7 +167,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
     // #6754/#6792: checked before anything else runs, so a refused restricted task
     // never initializes, spawns or counts against the breaker.
-    const refusal = this.accessModeRefusal(task);
+    const refusal = await this.accessModeRefusal(task);
     if (refusal !== undefined) return err(refusal);
 
     const effectiveTimeout = this.computeTimeout(task, options);
@@ -195,8 +195,8 @@ export abstract class BaseCliAdapter implements ICliAdapter {
    * mode, or `undefined` (#6754). Adapters override it to add conflicts their
    * own options can create, and call `super` first.
    */
-  protected accessModeRefusal(task: CliTask): CliError | undefined {
-    return unenforcedAccessModeRefusal(this, task);
+  protected accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
+    return Promise.resolve(unenforcedAccessModeRefusal(this, task));
   }
 
   /**

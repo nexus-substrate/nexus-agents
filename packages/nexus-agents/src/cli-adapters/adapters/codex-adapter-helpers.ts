@@ -44,8 +44,11 @@ export const CODEX_LEGACY_DEFAULTS = {
 
 /** Options accepted by both codex transports (subprocess and MCP). */
 export interface CodexAdapterOptions extends BaseAdapterOptions {
-  /** Injectable model-free sandbox preflight; the default is shared process-wide. */
-  readonly sandboxProbe?: () => CodexSandboxPreflightResult;
+  /**
+   * Injectable model-free sandbox preflight; the default is shared process-wide.
+   * A synchronous probe (the 8.115.0 shape) is still accepted (#6846).
+   */
+  readonly sandboxProbe?: () => CodexSandboxPreflightResult | Promise<CodexSandboxPreflightResult>;
   /**
    * Host platform the sandbox arguments are chosen for. Defaults to
    * `process.platform`; injectable so a test can exercise the Linux and
