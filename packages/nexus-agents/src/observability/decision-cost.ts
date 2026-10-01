@@ -49,6 +49,13 @@ import type { ModelPricingProvenance } from '../config/model-registry.js';
 // not catch a member being ADDED, and an unrecognised value makes JsonlStore
 // reject the whole decision record. One definition, so nothing can drift.
 import { PriceBasisSchema, type PriceBasis } from '../core/price-basis.js';
+import {
+  AttemptUsageSchema,
+  ObservedAttemptUsageSchema,
+  summarizeAttemptUsage,
+  type AttemptUsage,
+  type ObservedAttemptUsage,
+} from './attempt-usage.js';
 
 /** Billing mode in effect for a decision. Mirrors `NEXUS_BILLING_MODE`. */
 export type DecisionBillingMode = 'plan' | 'api';
@@ -110,6 +117,12 @@ export interface VoterCostInput {
   readonly priceBasis?: PriceBasis | undefined;
   /** Catalog rate source and scope, when recorded; absent means unknown scope. */
   readonly pricingProvenance?: ModelPricingProvenance | undefined;
+  /**
+   * Usage over every outer completion the seat settled (#6821). Reported
+   * BESIDE the token fields above, which describe the answering completion,
+   * and never summed into them. Absent ⇒ no completion was observed.
+   */
+  readonly attemptUsage?: AttemptUsage | undefined;
 }
 
 /** Per-voter line in the decision rollup. */
@@ -163,6 +176,8 @@ export interface VoterCostBreakdown {
   readonly priceBasis?: PriceBasis | undefined;
   /** Catalog rate provenance; absent when unrecorded or cost was zeroed in plan mode. */
   readonly pricingProvenance?: ModelPricingProvenance | undefined;
+  /** The seat's observed attempt usage (#6821), passed through; see {@link VoterCostInput}. */
+  readonly attemptUsage?: AttemptUsage | undefined;
 }
 
 /** Per-model rollup line within a single decision. */
@@ -218,6 +233,13 @@ export interface DecisionCostSummary {
    * it `'list'` would credit a rate that produced nothing.
    */
   readonly priceBasis?: PriceBasis | undefined;
+  /**
+   * Usage over every outer completion of the seats that carried one (#6821),
+   * kept SEPARATE from the totals above (which count answering completions
+   * only) so nothing is double-counted. A floor when `incompleteSeats > 0`.
+   * Absent when no seat carried attempt usage — not observed, never zero.
+   */
+  readonly observedAttemptUsage?: ObservedAttemptUsage | undefined;
   /** Per-voter breakdown, in input order. */
   readonly perVoter: readonly VoterCostBreakdown[];
   /** Per-model breakdown, sorted by total cost desc then total tokens desc. */
@@ -286,6 +308,7 @@ export const DecisionCostSummarySchema = z.object({
   totalTokens: z.number(),
   totalCostUsd: z.number(),
   priceBasis: PriceBasisSchema.optional(),
+  observedAttemptUsage: ObservedAttemptUsageSchema.optional(),
   perVoter: z.array(
     z.object({
       role: z.string(),
@@ -301,6 +324,7 @@ export const DecisionCostSummarySchema = z.object({
       tokenUsageMeasured: z.boolean().optional(),
       priceBasis: PriceBasisSchema.optional(),
       pricingProvenance: PricingProvenanceSchema.optional(),
+      attemptUsage: AttemptUsageSchema.optional(),
     })
   ),
   perModel: z.array(
@@ -394,6 +418,7 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
     // and since `plan` is the DEFAULT billing mode that fiction would be on
     // most persisted rows. `billingMode` already explains the zero.
     ...voterPriceFields(v, isPlan),
+    ...(v.attemptUsage !== undefined ? { attemptUsage: v.attemptUsage } : {}),
   };
 }
 
@@ -465,6 +490,7 @@ export function rollupDecisionCost(
   }
 
   const perModel = buildPerModelBreakdowns(modelAcc);
+  const observedAttemptUsage = summarizeAttemptUsage(voters.map((v) => v.attemptUsage));
 
   return {
     billingMode,
@@ -480,6 +506,7 @@ export function rollupDecisionCost(
     // Plan mode's $0 is pre-covered spend, not a priced figure — no basis to
     // report, so the field stays off rather than crediting a rate.
     ...(isPlan ? {} : basisField(decisionPriceBasis(voters))),
+    ...(observedAttemptUsage !== undefined ? { observedAttemptUsage } : {}),
     perVoter,
     perModel,
   };

@@ -29,9 +29,8 @@ import {
   validateTimeout as _validateTimeout,
 } from '../config/timeouts.js';
 import { CLI_NAMES, type CliNameLiteral } from '../config/model-capabilities-types.js';
-import { isAuthFailureText } from '../cli-adapters/cli-error-envelope.js';
-import { sanitizeOutput } from '../security/output-sanitizer.js';
 import { extractTextFromResponse, isStructuredOutputUnsupported } from './voter-response-text.js';
+import { foldCompletionUsage, type AttemptUsage } from '../observability/attempt-usage.js';
 
 export { extractTextFromResponse };
 
@@ -61,16 +60,10 @@ const INITIAL_RETRY_DELAY_MS = 1_000;
  */
 export const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
 
-/**
- * Detects whether an error message indicates a rate-limit condition.
- * Delegates to canonical rate-limit-detector (DRY consolidation Issue #1596).
- */
-import { isRateLimitLikeError, isDurableCapacityText } from '../adapters/rate-limit-detector.js';
-
-/** @see isRateLimitLikeError — re-exported for backward compatibility */
-export function isRateLimitError(message: string): boolean {
-  return isRateLimitLikeError(new Error(message));
-}
+// Rate-limit detection and failed-attempt logging live in a sibling (#6821
+// made room here); `isRateLimitError` stays exported from this module.
+import { isRateLimitError, logAbandonedRetries, logFailedAttempt } from './voter-attempt-log.js';
+export { isRateLimitError };
 
 /**
  * Validates and clamps timeout to `[VOTE_TIMEOUTS.minMs, VOTE_TIMEOUTS.maxMs]`.
@@ -421,6 +414,16 @@ interface VoteAttemptFailure {
   /** Only explicit false suppresses retries; timeout and parse errors remain retryable. */
   readonly retryable?: boolean | undefined;
   readonly cliStderr?: string | undefined;
+  /**
+   * Parse-failure branch only (#6821): the transport completed and billed, so
+   * its reported usage rides on the failure instead of being discarded.
+   */
+  readonly usage?: VoteUsage | undefined;
+  /**
+   * Set by {@link executeWithRetries} (#6821): usage summed over every attempt
+   * that settled with a response. Absent when none did.
+   */
+  readonly attemptUsage?: AttemptUsage | undefined;
 }
 
 export async function executeSingleVoteAttempt(
@@ -470,6 +473,7 @@ export async function executeSingleVoteAttempt(
         ok: false,
         error: `Vote parsing failed: ${error.message}`,
         cliStderr: completion.cliStderr,
+        usage: completion.usage,
       };
     }
     throw error; // Re-throw unexpected errors
@@ -499,35 +503,6 @@ export interface RetryOptions {
 }
 
 /**
- * Executes vote attempts with retry logic.
- * Returns the error message from last failed attempt, or undefined if successful.
- */
-/**
- * Record that a voter gave up its remaining attempts (#5359).
- *
- * A DURABLE capacity cap — a spend or usage ceiling on the credential — does
- * not clear in seconds, so the remaining attempts are guaranteed-futile. The
- * waste is not local either: `computeOverallConsensusDeadlineMs` budgets
- * `timeoutMs * (maxRetries + 1)` as a SHARED wall-clock deadline across the
- * panel, so burning it here starved a healthy voter on a different adapter in
- * four consecutive live runs. Failing fast hands the remaining budget to the
- * #3587 fallback, which is what actually recovers the voice.
- */
-function logAbandonedRetries(
-  logger: ILogger,
-  role: VoterRole,
-  attempt: number,
-  maxRetries: number,
-  cause: 'durable capacity cap' | 'auth failure' | 'non-retryable error'
-): void {
-  logger.warn(`${cause} — abandoning retries for this voter`, {
-    role,
-    attempt: attempt + 1,
-    remainingAttemptsSkipped: maxRetries - attempt,
-  });
-}
-
-/**
  * What a successful vote attempt hands the result builder: the parsed vote,
  * its usage, the transport's stderr (#6094) and any in-family model
  * substitution (#6120, disclosed as a fallback by #6115).
@@ -539,23 +514,64 @@ export interface VoteOutcome {
   readonly fallbackFrom: string | undefined;
   /** The model the adapter reported answering (#6660); undefined when it reported none. */
   readonly servedModel: string | undefined;
+  /**
+   * Usage summed over EVERY attempt of this seat that settled with a response,
+   * the answering one included (#6821). `usage` stays the answering
+   * completion's own report.
+   */
+  readonly attemptUsage: AttemptUsage;
 }
 
+/** Fold an attempt's reported usage, when the transport returned a response. */
+function foldAttempt(
+  acc: AttemptUsage | undefined,
+  usage: VoteUsage | undefined
+): AttemptUsage | undefined {
+  return usage === undefined ? acc : foldCompletionUsage(acc, usage);
+}
+
+/** A failure carrying the seat's attempt usage, when any attempt settled. */
+function withAttemptUsage(
+  failure: VoteAttemptFailure,
+  attemptUsage: AttemptUsage | undefined
+): VoteAttemptFailure {
+  const { usage: _single, ...rest } = failure;
+  return attemptUsage === undefined ? rest : { ...rest, attemptUsage };
+}
+
+/** The success a retry loop returns: the answer plus every attempt's usage (#6821). */
+function toOutcome(
+  result: VoteAttemptSuccess,
+  prior: AttemptUsage | undefined
+): VoteOutcome & { ok: true } {
+  const { vote, usage, cliStderr, fallbackFrom, servedModel } = result;
+  const attemptUsage = foldCompletionUsage(prior, usage);
+  return { vote, usage, cliStderr, fallbackFrom, servedModel, attemptUsage, ok: true };
+}
+
+/**
+ * Executes vote attempts with retry logic. A failure carries the last
+ * attempt's error; both outcomes carry the usage of every settled attempt.
+ */
 export async function executeWithRetries(
   opts: RetryOptions
 ): Promise<(VoteOutcome & { ok: true }) | VoteAttemptFailure> {
   const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
   let lastError = '';
+  // #6821: every settled completion is billed, so every one is recorded.
+  let attemptUsage: AttemptUsage | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // #6729: a cancelled panel makes no further adapter call, first or retry.
-    if (isCancelled(opts.signal)) return cancelledSeat(lastError);
+    if (isCancelled(opts.signal)) return withAttemptUsage(cancelledSeat(lastError), attemptUsage);
     if (attempt > 0) {
       const isRateLimit = isRateLimitError(lastError);
       const baseDelay = isRateLimit ? RATE_LIMIT_RETRY_DELAY_MS : INITIAL_RETRY_DELAY_MS;
       const delayMs = baseDelay * Math.pow(2, attempt - 1);
       logger.debug('Retrying vote execution', { role, attempt, delayMs, isRateLimit });
-      if (!(await waitForVoteRetry(delayMs, opts.signal))) return cancelledSeat(lastError);
+      if (!(await waitForVoteRetry(delayMs, opts.signal))) {
+        return withAttemptUsage(cancelledSeat(lastError), attemptUsage);
+      }
     }
 
     // #2472: per-attempt timing breakdown so investigators can see which
@@ -571,10 +587,10 @@ export async function executeWithRetries(
         attemptMs,
         succeeded: true,
       });
-      const { vote, usage, cliStderr, fallbackFrom, servedModel } = result;
-      return { vote, usage, cliStderr, fallbackFrom, servedModel, ok: true };
+      return toOutcome(result, attemptUsage);
     }
 
+    attemptUsage = foldAttempt(attemptUsage, result.usage);
     lastError = result.error;
     const terminal = logFailedAttempt(logger, {
       role,
@@ -587,75 +603,11 @@ export async function executeWithRetries(
     });
     if (terminal !== null) {
       logAbandonedRetries(logger, role, attempt, maxRetries, terminal);
-      if (result.retryable === false) return result;
+      if (result.retryable === false) return withAttemptUsage(result, attemptUsage);
       break;
     }
   }
 
-  return { error: lastError !== '' ? lastError : 'Unknown error after all retries', ok: false };
-}
-
-/** One failed attempt, as {@link logFailedAttempt} reports it. */
-interface FailedAttempt {
-  readonly role: VoterRole;
-  readonly attempt: number;
-  readonly maxRetries: number;
-  readonly attemptMs: number;
-  readonly error: string;
-  readonly retryable: boolean | undefined;
-  /** Stderr the transport captured when the output was not a vote (#6269). */
-  readonly cliStderr: string | undefined;
-}
-
-/** Longest stderr excerpt carried on the `Vote attempt failed` line (#6269). */
-const LOGGED_STDERR_MAX_CHARS = 200;
-
-/**
- * The first non-blank stderr line, secret-redacted and clipped: enough to name
- * the cause (an auth line, a sandbox failure) without a stack trace (#6269).
- */
-function loggedStderrLine(cliStderr: string): string {
-  const first = cliStderr.split('\n').find((line) => line.trim() !== '') ?? '';
-  return sanitizeOutput(first.trim()).slice(0, LOGGED_STDERR_MAX_CHARS);
-}
-
-/**
- * Log one failed attempt's timing and classification. Returns the reason the
- * remaining attempts are futile — a DURABLE capacity cap (#5359) or an auth
- * failure (#6269: a retry on the same credential cannot clear it, and the
- * budget it would burn is what the #3587 fallback needs) — or `null` when the
- * caller should keep retrying. Explicit non-retryable adapter errors also
- * abandon the remaining attempts (#6846).
- */
-function logFailedAttempt(
-  logger: ILogger,
-  failed: FailedAttempt
-): 'durable capacity cap' | 'auth failure' | 'non-retryable error' | null {
-  const { role, attempt, maxRetries, attemptMs, error, cliStderr } = failed;
-  const rateLimited = isRateLimitError(error);
-  const durableCap = isDurableCapacityText(error);
-  const authFailure = isAuthFailureText(error);
-  logger.info('Vote attempt timing', {
-    role,
-    attempt: attempt + 1,
-    attemptMs,
-    succeeded: false,
-    rateLimited,
-  });
-  logger.warn('Vote attempt failed', {
-    role,
-    attempt: attempt + 1,
-    maxRetries: maxRetries + 1,
-    error,
-    ...(rateLimited ? { rateLimited: true } : {}),
-    ...(durableCap ? { durableCap: true } : {}),
-    ...(authFailure ? { authFailure: true } : {}),
-    ...(cliStderr !== undefined && cliStderr !== ''
-      ? { cliStderr: loggedStderrLine(cliStderr) }
-      : {}),
-  });
-  if (durableCap) return 'durable capacity cap';
-  if (authFailure) return 'auth failure';
-  if (failed.retryable === false) return 'non-retryable error';
-  return null;
+  const error = lastError !== '' ? lastError : 'Unknown error after all retries';
+  return withAttemptUsage({ error, ok: false }, attemptUsage);
 }

@@ -16,6 +16,7 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { AgentVoteResult, SeatAttemptTiming, VoterRole } from './vote-types.js';
 import { createErrorVoteResult, delay } from './voter-execution.js';
 import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
+import { carryAttemptUsage } from './voter-attempt-usage.js';
 import { getMcpSafeDeadlineMs, VOTE_TIMEOUTS } from '../config/timeouts.js';
 
 /** Worst-case legitimate vote time plus stagger and buffer (#1871). */
@@ -249,7 +250,8 @@ function withPrimaryAttempts(
   recovered: AgentVoteResult
 ): AgentVoteResult {
   return {
-    ...recovered,
+    // #6821: the failed primary's settled completions were billed too.
+    ...carryAttemptUsage(primary, recovered),
     timing: {
       attempts: [...(primary.timing?.attempts ?? []), ...(recovered.timing?.attempts ?? [])],
     },

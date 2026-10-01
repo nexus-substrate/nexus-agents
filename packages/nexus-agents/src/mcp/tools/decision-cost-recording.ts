@@ -108,6 +108,8 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
       // #6115: the assignment beside the model that answered.
       ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
       ...reportedTokenFields(v),
+      // #6821: every settled completion, beside the answering one's counters.
+      ...(v.attemptUsage !== undefined ? { attemptUsage: v.attemptUsage } : {}),
       ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
       ...(detail?.pricingProvenance !== undefined
         ? { pricingProvenance: detail.pricingProvenance }

@@ -375,4 +375,61 @@ describe('a recovered seat carries what it recovered from (#6246)', () => {
     expect(carried).toBe('Vote parsing failed 31m: fake end ');
     expect(/[\x80-\x9f]/.test(carried)).toBe(false);
   });
+
+  // #6821: the first pass a retry replaced still billed its completions.
+  describe('attempt usage across the per-role retry (#6821)', () => {
+    const firstPass = { completions: 1, reportedCompletions: 1, inputTokens: 70, outputTokens: 5 };
+    const retryPass = { completions: 1, reportedCompletions: 1, inputTokens: 9, outputTokens: 2 };
+
+    it('a recovered seat carries the replaced first pass’s usage too', async () => {
+      const first = [ok('architect'), { ...errored('pm'), attemptUsage: firstPass }];
+      const relaunch = vi.fn(() => Promise.resolve([{ ...ok('pm'), attemptUsage: retryPass }]));
+      const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+      expect(merged.find((v) => v.role === 'pm')?.attemptUsage).toEqual({
+        completions: 2,
+        reportedCompletions: 2,
+        inputTokens: 79,
+        outputTokens: 7,
+      });
+    });
+
+    it('a seat whose retry errored again keeps its first pass plus the retry’s usage', async () => {
+      const first = [ok('architect'), { ...errored('pm'), attemptUsage: firstPass }];
+      const relaunch = vi.fn(() =>
+        Promise.resolve([{ ...errored('pm'), attemptUsage: retryPass }])
+      );
+      const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+      const pm = merged.find((v) => v.role === 'pm');
+      expect(pm?.retried).toBeUndefined();
+      expect(pm?.attemptUsage).toEqual({
+        completions: 2,
+        reportedCompletions: 2,
+        inputTokens: 79,
+        outputTokens: 7,
+      });
+    });
+
+    it('keeps a failed retry’s usage even when another seat recovered', async () => {
+      const first = [
+        { ...errored('architect'), attemptUsage: firstPass },
+        { ...errored('pm'), attemptUsage: firstPass },
+      ];
+      const relaunch = vi.fn(() =>
+        Promise.resolve([
+          { ...ok('architect'), attemptUsage: retryPass },
+          { ...errored('pm'), attemptUsage: retryPass },
+        ])
+      );
+      const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+      expect(merged.find((v) => v.role === 'architect')?.retried).toBe(true);
+      expect(merged.find((v) => v.role === 'pm')?.attemptUsage?.completions).toBe(2);
+    });
+
+    it('leaves a seat with no settled completion on either pass without attempt usage', async () => {
+      const first = [ok('architect'), errored('pm')];
+      const relaunch = vi.fn(() => Promise.resolve([errored('pm')]));
+      const merged = await retryErroredRoles(first, relaunch, mockLogger(), 0);
+      expect(merged.find((v) => v.role === 'pm')).not.toHaveProperty('attemptUsage');
+    });
+  });
 });

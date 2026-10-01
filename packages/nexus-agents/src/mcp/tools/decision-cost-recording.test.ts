@@ -122,6 +122,25 @@ describe('votesToCostInputs', () => {
 // #6663: a seat is priced by the model that ANSWERED (`servedModel`), not the
 // alias it requested (`model`). The claude adapter's in-family substitution
 // after an out-of-credits envelope (#6120) is the known case where they differ.
+describe('votesToCostInputs carries attempt usage (#6821)', () => {
+  it('passes the seat’s attempt usage through unchanged', () => {
+    const attemptUsage = {
+      completions: 2,
+      reportedCompletions: 2,
+      inputTokens: 9,
+      outputTokens: 3,
+    };
+    const [input] = votesToCostInputs([vote({ inputTokens: 5, outputTokens: 1, attemptUsage })]);
+    expect(input?.attemptUsage).toEqual(attemptUsage);
+    expect(input?.inputTokens).toBe(5);
+  });
+
+  it('omits attempt usage on a seat that settled no completion', () => {
+    const [input] = votesToCostInputs([vote({})]);
+    expect(input).not.toHaveProperty('attemptUsage');
+  });
+});
+
 describe('votesToCostInputs prices the served model (#6663)', () => {
   const REQUESTED = 'claude-fable-5';
   const SERVED = 'claude-sonnet';

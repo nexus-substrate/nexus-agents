@@ -158,6 +158,48 @@ describe('DecisionCostStore', () => {
     expect(reader.query()[0]?.summary.totalCostUsd).toBe(0.0875);
   });
 
+  it('keeps a record whose attempt usage this version rejects (#6821)', () => {
+    // A malformed or newer-shaped usage field is decorative: dropping it must
+    // not drop the final-seat cost the record carries.
+    const record = {
+      decisionId: 'malformed-attempts',
+      gate: 'consensus_vote',
+      timestamp: TS,
+      summary: {
+        billingMode: 'api',
+        voterCount: 1,
+        measuredVoters: 1,
+        unmeasuredVoters: 0,
+        totalInputTokens: 10,
+        totalOutputTokens: 5,
+        totalTokens: 15,
+        totalCostUsd: 0.01,
+        observedAttemptUsage: { seats: 0 },
+        perVoter: [
+          {
+            role: 'architect',
+            model: 'claude-sonnet',
+            inputTokens: 10,
+            outputTokens: 5,
+            totalTokens: 15,
+            costUsd: 0.01,
+            unmeasured: false,
+            attemptUsage: { completions: 1, reportedCompletions: 2 },
+          },
+        ],
+        perModel: [],
+      },
+    };
+    writeFileSync(file, `${JSON.stringify(record)}\n`, 'utf-8');
+
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.size).toBe(1);
+    const summary = reader.query()[0]?.summary;
+    expect(summary?.totalTokens).toBe(15);
+    expect(summary?.observedAttemptUsage).toBeUndefined();
+    expect(summary?.perVoter[0]?.attemptUsage).toBeUndefined();
+  });
+
   it('keeps a record whose pricing scope this version does not recognise (#6830)', () => {
     // A newer writer may record a scope this reader has no literal for. The
     // provenance is decorative: dropping it must not drop the cost it rides on.
@@ -442,5 +484,33 @@ describe('DecisionCostStore undeclared-options detector verdict (#5422)', () => 
       },
     });
     expect(persisted).toBe(false);
+  });
+});
+
+describe('DecisionCostStore attempt usage (#6821)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'decision-cost-attempts-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('persists and re-reads the observed attempt usage', () => {
+    const file = join(dir, 'decision-costs.jsonl');
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    const attemptUsage = { completions: 2, reportedCompletions: 1, inputTokens: 90 };
+    const { persisted } = store.record({
+      decisionId: 'd-attempts',
+      gate: 'consensus_vote',
+      voters: [{ ...VOTERS[0]!, attemptUsage }],
+      billingMode: 'api',
+      timestamp: TS,
+    });
+    expect(persisted).toBe(true);
+    const line = JSON.parse(readFileSync(file, 'utf8').trim()) as unknown;
+    const reread = DecisionCostRecordSchema.parse(line);
+    expect(reread.summary.perVoter[0]?.attemptUsage).toEqual(attemptUsage);
+    expect(reread.summary.observedAttemptUsage?.incompleteSeats).toBe(1);
   });
 });

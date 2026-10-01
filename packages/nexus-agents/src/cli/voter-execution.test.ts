@@ -906,4 +906,125 @@ describe('voter-execution', () => {
       expect(mockLogger.warn).toHaveBeenCalled();
     });
   });
+
+  // #6821: every outer completion a seat settled is billed, so every one is
+  // recorded — not only the answer that was kept.
+  describe('attempt-level usage (#6821)', () => {
+    const adapter = { complete: vi.fn() } as unknown as IModelAdapter;
+    const logger: ILogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+    };
+    const VOTE = JSON.stringify({ decision: 'approve', reasoning: 'Looks fine', confidence: 0.7 });
+
+    function answer(text: string, usage: Record<string, number>): MockCompletionResult {
+      return {
+        ok: true,
+        value: {
+          content: [{ type: 'text', text }],
+          usage: usage as unknown as NonNullable<CompletionResponse['usage']>,
+          stopReason: 'end_turn',
+          model: 'test-model',
+        },
+      };
+    }
+    const run = (maxRetries = 2): ReturnType<typeof executeWithRetries> =>
+      executeWithRetries({
+        role: 'architect',
+        proposal: 'Proposal',
+        adapter,
+        logger,
+        timeoutMs: 5000,
+        maxRetries,
+      });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('a parse-failed completion carries the usage the transport reported', async () => {
+      vi.mocked(adapter.complete).mockResolvedValue(
+        answer('not a vote', { inputTokens: 900, outputTokens: 30 })
+      );
+      const result = await executeSingleVoteAttempt('architect', 'Proposal', adapter, 5000);
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected a parse failure');
+      expect(result.usage).toEqual({ inputTokens: 900, outputTokens: 30 });
+    });
+
+    it('sums a parse-failed attempt with the retry that answered', async () => {
+      vi.mocked(adapter.complete)
+        .mockResolvedValueOnce(answer('not a vote', { inputTokens: 900, outputTokens: 30 }))
+        .mockResolvedValueOnce(answer(VOTE, { inputTokens: 1000, outputTokens: 50 }));
+      const result = await run();
+      if (!result.ok) throw new Error(`expected success: ${result.error}`);
+      // The kept answer's usage is unchanged and still identifiable.
+      expect(result.usage).toEqual({ inputTokens: 1000, outputTokens: 50 });
+      expect(result.attemptUsage).toEqual({
+        completions: 2,
+        reportedCompletions: 2,
+        inputTokens: 1900,
+        outputTokens: 80,
+      });
+    });
+
+    it('keeps the usage of a seat whose every attempt failed to parse', async () => {
+      vi.mocked(adapter.complete).mockResolvedValue(
+        answer('still not a vote', { inputTokens: 10, outputTokens: 4 })
+      );
+      const result = await run(2);
+      expect(result.ok).toBe(false);
+      expect(result.attemptUsage).toEqual({
+        completions: 3,
+        reportedCompletions: 3,
+        inputTokens: 30,
+        outputTokens: 12,
+      });
+    });
+
+    it('does not count a transport error as a completion', async () => {
+      vi.mocked(adapter.complete)
+        .mockResolvedValueOnce({ ok: false, error: new ModelError('Failure') })
+        .mockResolvedValueOnce(answer(VOTE, { inputTokens: 7, outputTokens: 3 }));
+      const result = await run();
+      if (!result.ok) throw new Error(`expected success: ${result.error}`);
+      expect(result.attemptUsage).toEqual({
+        completions: 1,
+        reportedCompletions: 1,
+        inputTokens: 7,
+        outputTokens: 3,
+      });
+    });
+
+    it('marks a seat whose earlier completion reported nothing as a lower bound', async () => {
+      vi.mocked(adapter.complete)
+        .mockResolvedValueOnce(answer('not a vote', {}))
+        .mockResolvedValueOnce(answer(VOTE, { inputTokens: 7, outputTokens: 3 }));
+      const result = await run();
+      if (!result.ok) throw new Error(`expected success: ${result.error}`);
+      expect(result.attemptUsage?.completions).toBe(2);
+      expect(result.attemptUsage?.reportedCompletions).toBe(1);
+      expect(result.attemptUsage?.inputTokens).toBe(7);
+    });
+
+    it('leaves the counters absent, not 0, when no completion reported usage', async () => {
+      vi.mocked(adapter.complete).mockResolvedValue(answer('not a vote', {}));
+      const result = await run(1);
+      expect(result.attemptUsage).toEqual({ completions: 2, reportedCompletions: 0 });
+    });
+
+    it('carries no attempt usage when no completion settled', async () => {
+      vi.mocked(adapter.complete).mockResolvedValue({
+        ok: false,
+        error: new ModelError('Failure'),
+      });
+      const result = await run(1);
+      expect(result.ok).toBe(false);
+      expect(result).not.toHaveProperty('attemptUsage');
+    });
+  });
 });

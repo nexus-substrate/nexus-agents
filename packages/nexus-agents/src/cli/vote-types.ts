@@ -14,6 +14,7 @@ import type {
 } from '../mcp/tools/consensus-vote-types.js';
 import type { VoteRecordPrBinding } from '../audit/vote-record.js';
 import type { EndpointArmId } from '../cli-adapters/types-core.js';
+import type { AttemptUsage } from '../observability/attempt-usage.js';
 import type { VoterRole } from './voter-roles.js';
 
 /**
@@ -314,6 +315,18 @@ export interface AgentVoteResult {
    * roughly 1.25x the uncached rate — the opposite end from a cache read.
    */
   readonly cacheCreationInputTokens?: number | undefined;
+  /**
+   * Usage summed over EVERY outer completion this seat settled (#6821): the
+   * answering one, parse-failed attempts, the first pass the per-role retry
+   * replaced (#5578) and the primary of a cross-CLI fallback (#3587). The
+   * token fields above stay the ANSWERING completion's own report.
+   *
+   * Absent when no completion settled — never a zero record. Counters are a
+   * lower bound when `reportedCompletions < completions`. Adapter errors,
+   * timeouts, completions still in flight at the panel deadline and retries
+   * inside an adapter are not observed.
+   */
+  readonly attemptUsage?: AttemptUsage | undefined;
   /** Error message if vote fell back to simulation or encountered an error */
   readonly error?: string;
 }

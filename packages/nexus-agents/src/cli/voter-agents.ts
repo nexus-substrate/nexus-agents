@@ -21,7 +21,6 @@ import { resolveVoterModelOverrides } from './voter-model-overrides.js';
 import { VOTER_ROLES } from './voter-roles.js';
 import { createLogger, getTimeProvider, type IModelAdapter, type ILogger } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
-import { isGatewayModelAdapter } from '../adapters/openai-compat-adapter.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
 import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
@@ -40,7 +39,7 @@ import {
   markUnverifiable,
   type UnverifiableReasoningRule,
 } from './voter-unverifiable.js';
-import { inFamilyFallback } from './voter-fallback.js';
+import { buildLlmVoteResult, carryAttemptUsage } from './voter-attempt-usage.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
 export { NoAdapterError };
@@ -87,7 +86,6 @@ import {
   createSimulationVoteResult,
   createSimulatedVotes,
   executeWithRetries,
-  type VoteOutcome,
 } from './voter-execution.js';
 import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
 import { launchVotesWithOverallDeadline, resolvePanelDeadline } from './voter-agents-deadline.js';
@@ -126,51 +124,6 @@ export interface VoterAgentOptions {
 export type { AgentVoteResult };
 
 const defaultLogger = createLogger({ component: 'voter-agents' });
-
-/**
- * Builds the successful LLM `AgentVoteResult`, propagating the adapter-reported
- * per-call tokens so the decision-cost rollup attributes this voter as MEASURED,
- * not unmeasured (#3910). Only attaches a token field when the adapter actually
- * reported it — an absent count stays absent (⇒ unmeasured), never a fabricated 0.
- */
-function buildLlmVoteResult(
-  role: VoterRole,
-  { vote, usage, fallbackFrom, servedModel }: VoteOutcome,
-  adapter: IModelAdapter,
-  processingTimeMs: number
-): AgentVoteResult {
-  return {
-    role,
-    vote,
-    processingTimeMs,
-    source: 'llm',
-    cli: adapter.providerId,
-    model: adapter.modelId,
-    // #6660: the model that answered, as the adapter reported it — the
-    // outcome row names and prices this one, not the requested `model`.
-    ...(servedModel !== undefined ? { servedModel } : {}),
-    // #4392 step 4: which gateway arm served the seat, so the cost rollup
-    // prices it by the arm's declaration and not the model id's list price.
-    ...(isGatewayModelAdapter(adapter) ? { gatewayArm: adapter.gatewayArm } : {}),
-    // #6115: the CLI answered on another model of its family (#6120) — a
-    // capacity fallback by construction, disclosed on the seat.
-    ...(fallbackFrom !== undefined
-      ? { fallback: inFamilyFallback(adapter.providerId, fallbackFrom) }
-      : {}),
-    // #4472: surface the voter's choice at the result level, where the tally
-    // and the record read it. Absent when no options were declared or the
-    // selection matched none of them.
-    ...(vote.selectedOption !== undefined ? { selectedOption: vote.selectedOption } : {}),
-    ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
-    ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
-    ...(usage.cachedInputTokens !== undefined
-      ? { cachedInputTokens: usage.cachedInputTokens }
-      : {}),
-    ...(usage.cacheCreationInputTokens !== undefined
-      ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
-      : {}),
-  };
-}
 
 /**
  * The parsed vote, or — when the seat could not read the artifact — the same
@@ -257,7 +210,8 @@ export async function executeAgentVote(
 
   if (allowSimulation) {
     logger.warn('Falling back to simulation (allowSimulation=true)', { role });
-    return createSimulationVoteResult(role, proposal, processingTimeMs, result.error);
+    const simulated = createSimulationVoteResult(role, proposal, processingTimeMs, result.error);
+    return carryAttemptUsage(result, simulated);
   }
 
   // #3350: a stale-OAuth failure (e.g. codex "refresh token already used")
@@ -266,7 +220,8 @@ export async function executeAgentVote(
   // semantics are unchanged — this is still an error (abstain) vote.
   const remediation = authRemediation(result.error, adapter.providerId);
   const errorText = remediation === null ? result.error : `${result.error}\n\n${remediation}`;
-  return createErrorVoteResult(role, errorText, processingTimeMs, adapter.providerId);
+  const errored = createErrorVoteResult(role, errorText, processingTimeMs, adapter.providerId);
+  return carryAttemptUsage(result, errored);
 }
 
 // ============================================================================
