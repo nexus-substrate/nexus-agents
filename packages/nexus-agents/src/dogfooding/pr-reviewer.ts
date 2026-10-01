@@ -408,17 +408,14 @@ Provide a structured review with:
    * that "the review itself is our internal analysis, not content from the
    * untrusted PR author".
    *
-   * Measured: for the action `auditReviewAction` builds, the two are currently
-   * EQUIVALENT — tiers 1-2 produce no violations, and tiers 3-4 produce
-   * INSUFFICIENT_TRUST + UNTRUSTED_INFLUENCE + RULE_OF_TWO together. So this
-   * changes no behaviour today. It makes the equivalence guaranteed rather
-   * than accidental: it holds only because the context below hardcodes
-   * `hasWriteAccess` and `hasSecretAccess` to true, which is what makes
-   * `checkRuleOfTwo` fire at tier 3+. Make either conditional and RULE_OF_TWO
-   * stops firing while the other two blocking rules still do.
+   * For this action's policy decision alone, tiers 1-2 produce no violations
+   * and tiers 3-4 produce INSUFFICIENT_TRUST + UNTRUSTED_INFLUENCE + RULE_OF_TWO
+   * together. The posting verdict also checks corroboration and refuses
+   * `reviewCoverage: 'none'` under NO_REVIEW_COVERAGE (#5796), even when the
+   * policy decision allows. The review decision itself remains unchanged.
    *
    * `requiresApproval` deliberately does NOT gate: it is true exactly when
-   * `allowed` is true (DraftReply is always approval-required), so blocking on
+   * `policy.allowed` is true (DraftReply is always approval-required), so blocking on
    * it would refuse every review that passed.
    * (Source: Issue #828 — Wire policy gate into production pipeline)
    */
@@ -437,7 +434,7 @@ Provide a structured review with:
     const body = truncateText(formattedBody, DRAFT_REPLY_BODY_MAX_LENGTH, '…[review truncated]');
     const sources: SourceCitation[] = buildReviewCitations(pr.files);
     const policyResult = auditReviewAction(
-      { body, sources },
+      { body, sources, reviewCoverage: result.reviewCoverage },
       context.firewallResult ?? firewallInputFor('pull_request', pr),
       {
         context: REVIEW_ACCESS_CONTEXT,

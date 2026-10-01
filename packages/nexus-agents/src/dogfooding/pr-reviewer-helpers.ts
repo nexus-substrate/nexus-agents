@@ -522,14 +522,10 @@ export interface ReviewPostingVerdict {
  * condition. The caller previously blocked on `hasRuleOfTwoViolation` alone
  * while `evaluatePolicy` had already computed `allowed`.
  *
- * For the action `auditReviewAction` builds, the two are currently EQUIVALENT:
- * tiers 1-2 yield no violations, tiers 3-4 yield INSUFFICIENT_TRUST +
- * UNTRUSTED_INFLUENCE + RULE_OF_TWO together. So this changes no behaviour
- * today. It makes the equivalence guaranteed rather than accidental — it holds
- * only because that context hardcodes `hasWriteAccess` and `hasSecretAccess`
- * to true, which is what makes `checkRuleOfTwo` fire at tier 3+. Make either
- * conditional and RULE_OF_TWO stops firing while the other two blocking rules
- * still do, and a review would post against `allowed: false`.
+ * For that action's policy decision alone, tiers 1-2 yield no violations and
+ * tiers 3-4 yield INSUFFICIENT_TRUST + UNTRUSTED_INFLUENCE + RULE_OF_TWO
+ * together. The posting verdict additionally checks corroboration and coverage
+ * (#5796); either can block without a Rule-of-Two violation.
  *
  * Returns `undefined` when posting may proceed. Rule of Two keeps its own
  * label: it is the distinctive condition (untrusted input + write access +
