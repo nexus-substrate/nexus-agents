@@ -50,6 +50,7 @@ const logger = createLogger({ tool: 'consensus-vote' });
  * measured no verdict to learn from or feed into adaptive routing (#5544).
  */
 export function recordVoteSuccess(args: {
+  decisionId: string;
   proposal: string;
   strategy: string;
   decision: VoteRecord['decision'];
@@ -93,7 +94,7 @@ export function recordVoteSuccess(args: {
   // recordVoteOutcomes already filters per-vote `source === 'simulation'`,
   // but we keep the all-simulated guard above to skip the memory writes too.
   if (args.votes !== undefined) {
-    recordVoteOutcomes(args.votes);
+    recordVoteOutcomes(args.votes, args.decisionId);
   }
 }
 
@@ -369,10 +370,11 @@ export function recordVoteError(proposal: string, errorMessage: string): void {
 
 /**
  * Records per-vote outcomes to the outcome store for adaptive routing.
- * Each successful LLM vote contributes a sample to its CLI×category pair.
+ * `success` means the seat answered (`source === 'llm'`), not that its answer
+ * was validated. The decision ID joins these rows to the cost and vote records.
  * (Issue #1134 — cold start mitigation)
  */
-export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
+export function recordVoteOutcomes(votes: readonly AgentVoteResult[], decisionId: string): void {
   try {
     const store = getOutcomeStore();
     const now = new Date().toISOString();
@@ -392,6 +394,8 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
         durationMs: vote.processingTimeMs,
         timestamp: now,
         source: 'consensus',
+        // #6822 — joins this row to its DecisionCostRecord and VoteRecord.
+        traceId: decisionId,
         // #2662 — carry the voter role so the stratified outcome report
         // can break consensus results down by role.
         voterRole: vote.role,

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { summarizeConsensusDecisionTokens } from './consensus-decision-tokens.js';
 import type { DecisionCostRecord } from './decision-cost-store.js';
 import type { VoteRecord } from '../audit/vote-record.js';
+import { TaskOutcomeSchema, type TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
 type LinkedVote = Pick<VoteRecord, 'correlationId' | 'decision'>;
 
@@ -52,6 +53,112 @@ function cost(
 function vote(id: string | undefined, decision: VoteRecord['decision']): LinkedVote {
   return { ...(id !== undefined ? { correlationId: id } : {}), decision };
 }
+
+function outcome(
+  traceId?: string,
+  success = true,
+  source: TaskOutcome['source'] = 'consensus'
+): TaskOutcome {
+  return TaskOutcomeSchema.parse({
+    id: 'seat-row',
+    cli: 'claude',
+    category: 'planning',
+    model: 'consensus',
+    success,
+    durationMs: 10,
+    timestamp: '2026-09-28T00:00:00.000Z',
+    source,
+    ...(traceId !== undefined ? { traceId } : {}),
+  });
+}
+
+describe('consensus outcome join coverage (#6857)', () => {
+  it('counts decisions once and separates answered seats from failed seats and unmatched rows', () => {
+    const report = summarizeConsensusDecisionTokens(
+      [cost('supplied-a', 4), cost('supplied-b', 6), cost('missing-seats', 2)],
+      [
+        vote('supplied-a', 'rejected'),
+        vote('supplied-b', 'no_quorum'),
+        vote('missing-seats', 'approved'),
+      ],
+      [
+        outcome('supplied-a'),
+        outcome('supplied-a', false),
+        outcome('supplied-b', false),
+        outcome('orphan'),
+      ]
+    );
+    expect(report).toMatchObject({
+      matchedDecisionsWithOutcomes: 2,
+      matchedOutcomeRows: 3,
+      matchedLlmAnsweredOutcomeRows: 1,
+      unmatchedOutcomeRows: 1,
+    });
+    expect(report.outcomeJoinCoverage).toBeCloseTo(2 / 3);
+  });
+
+  it('keeps legacy, ambiguous, invalid and unjoined outcome rows unmatched', () => {
+    const damaged = { ...cost('bad', 9), summary: { ...cost('bad', 9).summary, totalTokens: -9 } };
+    const legacy = outcome();
+    expect(legacy.traceId).toBeUndefined();
+    const report = summarizeConsensusDecisionTokens(
+      [
+        cost('cost-dup', 4),
+        cost('cost-dup', 4),
+        cost('vote-dup', 2),
+        damaged,
+        cost('cost-only', 1),
+        cost('good', 3),
+      ],
+      [
+        vote('cost-dup', 'approved'),
+        vote('vote-dup', 'approved'),
+        vote('vote-dup', 'rejected'),
+        vote('bad', 'approved'),
+        vote('vote-only', 'approved'),
+        vote('good', 'approved'),
+      ],
+      [
+        legacy,
+        outcome('cost-dup'),
+        outcome('vote-dup'),
+        outcome('bad'),
+        outcome('cost-only'),
+        outcome('vote-only'),
+      ]
+    );
+    expect(report).toMatchObject({
+      matchedDecisionsWithOutcomes: 0,
+      matchedOutcomeRows: 0,
+      matchedLlmAnsweredOutcomeRows: 0,
+      unmatchedOutcomeRows: 6,
+      outcomeJoinCoverage: 0,
+    });
+  });
+
+  it('reports zero outcomes as unmeasured even with matched decisions', () => {
+    for (const rows of [[], [outcome('joined', true, 'delegate')]]) {
+      const report = summarizeConsensusDecisionTokens(
+        [cost('joined', 4)],
+        [vote('joined', 'approved')],
+        rows
+      );
+      expect(report).toMatchObject({
+        matchedDecisionsWithOutcomes: 0,
+        matchedOutcomeRows: 0,
+        unmatchedOutcomeRows: 0,
+        outcomeJoinCoverage: null,
+      });
+    }
+    expect(summarizeConsensusDecisionTokens([], []).outcomeJoinCoverage).toBeNull();
+  });
+
+  it('reports rows without matched decisions as unmatched with an unmeasured decision ratio', () => {
+    const report = summarizeConsensusDecisionTokens([], [], [outcome('unknown')]);
+    expect(report.unmatchedOutcomeRows).toBe(1);
+    expect(report.outcomeJoinCoverage).toBeNull();
+  });
+});
 
 describe('summarizeConsensusDecisionTokens', () => {
   it('includes failed no-quorum final-seat tokens in the numerator but not the success denominator', () => {

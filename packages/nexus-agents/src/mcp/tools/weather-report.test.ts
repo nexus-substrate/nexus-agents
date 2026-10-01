@@ -848,6 +848,44 @@ function makeDecisionCostRecord(
 }
 
 describe('weather report cost section (#3856)', () => {
+  it('joins consensus outcomes within the cost-section lookback without older-row fallback (#6857)', () => {
+    const record = {
+      ...makeDecisionCostRecord('consensus_vote', { voterCount: 1 }),
+      decisionId: 'windowed',
+    };
+    seedOutcomes(1, { source: 'consensus', traceId: 'windowed' });
+    seedOutcomes(1, { source: 'consensus', traceId: 'orphan' });
+    seedOutcomes(1, { source: 'delegate', traceId: 'windowed' });
+    seedOutcomes(1, { source: 'consensus', traceId: 'old', timestamp: '2020-01-01T00:00:00.000Z' });
+    const deps = {
+      decisionCostRecords: [record],
+      voteRecords: [{ correlationId: 'windowed', decision: 'approved' as const }],
+    };
+    const report = generateWeatherReport({}, undefined, deps);
+    expect(report.costSection?.consensusDecisionTokens).toMatchObject({
+      matchedDecisionsWithOutcomes: 1,
+      matchedOutcomeRows: 1,
+      unmatchedOutcomeRows: 1,
+      outcomeJoinCoverage: 1,
+    });
+    const allTime = generateWeatherReport(
+      {},
+      { ...createDefaultWeatherConfig(), outcomeLookbackMs: 0 },
+      deps
+    );
+    expect(allTime.costSection?.consensusDecisionTokens.unmatchedOutcomeRows).toBe(2);
+    resetOutcomeStore();
+    seedOutcomes(1, {
+      source: 'consensus',
+      traceId: 'windowed',
+      timestamp: '2020-01-01T00:00:00.000Z',
+    });
+    expect(
+      generateWeatherReport({}, undefined, deps).costSection?.consensusDecisionTokens
+        .outcomeJoinCoverage
+    ).toBeNull();
+  });
+
   it('joins injected consensus costs to vote verdicts without treating no_quorum as success', () => {
     const approved = makeDecisionCostRecord('consensus_vote', {
       voterCount: 1,

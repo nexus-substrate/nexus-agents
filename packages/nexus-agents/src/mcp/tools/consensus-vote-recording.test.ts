@@ -44,6 +44,9 @@ import {
   recordVoteSuccess,
 } from './consensus-vote-recording.js';
 
+/** Differs from any default, so a dropped decisionId cannot pass by accident. */
+const TEST_DECISION_ID = 'consensus-test-decision-7f3a';
+
 // #3991: the runtime ledger resolves via nexusDataPath (governance category)
 // instead of findRepoRoot. Mock the resolver so each test pins the data root.
 vi.mock('../../config/nexus-data-dir.js', () => ({
@@ -101,6 +104,7 @@ describe('recordVoteSuccess decision fidelity (#5544)', () => {
     ];
 
     recordVoteSuccess({
+      decisionId: TEST_DECISION_ID,
       proposal: 'Require every voter',
       strategy: 'unanimous',
       decision: 'no_quorum',
@@ -119,6 +123,7 @@ describe('recordVoteSuccess decision fidelity (#5544)', () => {
     const votes = [agentVote('architect', 'approve')];
 
     recordVoteSuccess({
+      decisionId: TEST_DECISION_ID,
       proposal: 'Ship it',
       strategy: 'simple_majority',
       decision: 'approved',
@@ -142,14 +147,17 @@ describe('recordVoteOutcomes CLI attribution (#5529)', () => {
   });
 
   it('attributes a failed codex voter without changing a successful LLM voter', () => {
-    recordVoteOutcomes([
-      { ...agentVote('architect', 'approve'), cli: 'gemini' },
-      {
-        ...agentVote('security', 'abstain', 'error'),
-        cli: 'codex',
-        error: 'Codex failed',
-      },
-    ]);
+    recordVoteOutcomes(
+      [
+        { ...agentVote('architect', 'approve'), cli: 'gemini' },
+        {
+          ...agentVote('security', 'abstain', 'error'),
+          cli: 'codex',
+          error: 'Codex failed',
+        },
+      ],
+      TEST_DECISION_ID
+    );
 
     const outcomes = getOutcomeStore().query();
     expect(outcomes).toHaveLength(2);
@@ -158,16 +166,53 @@ describe('recordVoteOutcomes CLI attribution (#5529)', () => {
   });
 
   it('attributes an error vote with no CLI to unknown, never claude', () => {
-    recordVoteOutcomes([
-      {
-        ...agentVote('security', 'abstain', 'error'),
-        error: 'Unattributed failure',
-      },
-    ]);
+    recordVoteOutcomes(
+      [
+        {
+          ...agentVote('security', 'abstain', 'error'),
+          error: 'Unattributed failure',
+        },
+      ],
+      TEST_DECISION_ID
+    );
 
     const outcome = getOutcomeStore().query()[0];
     expect(outcome?.cli).toBe('unknown');
     expect(outcome?.cli).not.toBe('claude');
+  });
+});
+
+describe('consensus outcome decision correlation (#6857)', () => {
+  beforeEach(() => {
+    setOutcomeStore(new OutcomeStore());
+  });
+
+  it('threads the supplied decision ID through recordVoteSuccess to every recorded seat', () => {
+    const decisionId = 'consensus-supplied-6857';
+    recordVoteSuccess({
+      decisionId,
+      proposal: 'Reject the proposal',
+      strategy: 'simple_majority',
+      decision: 'rejected',
+      durationMs: 10,
+      votes: [
+        agentVote('architect', 'reject'),
+        { ...agentVote('security', 'abstain', 'error'), error: 'timeout' },
+        agentVote('catfish', 'approve', 'simulation'),
+      ],
+    });
+
+    const rows = getOutcomeStore().query();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.traceId)).toEqual([decisionId, decisionId]);
+    // Answering is measured here; a rejection is still an LLM answer.
+    expect(rows.map((row) => row.success)).toEqual([true, false]);
+    expect(rows.map((row) => row.id)).not.toContain(decisionId);
+  });
+
+  it('uses the decision ID supplied directly to recordVoteOutcomes', () => {
+    recordVoteOutcomes([agentVote('pm', 'approve')], 'consensus-direct-6857');
+    expect(getOutcomeStore().query()[0]?.traceId).toBe('consensus-direct-6857');
   });
 });
 
@@ -182,35 +227,38 @@ describe('recordVoteOutcomes served model and cost (#6624)', () => {
 
   it('records one row per seat, each with the model that sat it and its cost', () => {
     vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:1,2');
-    recordVoteOutcomes([
-      // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
-      {
-        ...agentVote('architect', 'approve'),
-        cli: 'claude',
-        model: 'claude-sonnet',
-        servedModel: 'claude-sonnet',
-        inputTokens: 1_000,
-        outputTokens: 2_000,
-      },
-      // The same model through a declared gateway: $1 / $2 per 1M = 0.005.
-      {
-        ...agentVote('security', 'approve'),
-        cli: 'claude',
-        model: 'claude-sonnet',
-        servedModel: 'claude-sonnet',
-        gatewayArm: 'api:custom-openai',
-        inputTokens: 1_000,
-        outputTokens: 2_000,
-      },
-      {
-        ...agentVote('devex', 'reject'),
-        cli: 'opencode',
-        model: 'acme-unpriced-model-xyz',
-        servedModel: 'acme-unpriced-model-xyz',
-        inputTokens: 1_000,
-        outputTokens: 2_000,
-      },
-    ]);
+    recordVoteOutcomes(
+      [
+        // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
+        {
+          ...agentVote('architect', 'approve'),
+          cli: 'claude',
+          model: 'claude-sonnet',
+          servedModel: 'claude-sonnet',
+          inputTokens: 1_000,
+          outputTokens: 2_000,
+        },
+        // The same model through a declared gateway: $1 / $2 per 1M = 0.005.
+        {
+          ...agentVote('security', 'approve'),
+          cli: 'claude',
+          model: 'claude-sonnet',
+          servedModel: 'claude-sonnet',
+          gatewayArm: 'api:custom-openai',
+          inputTokens: 1_000,
+          outputTokens: 2_000,
+        },
+        {
+          ...agentVote('devex', 'reject'),
+          cli: 'opencode',
+          model: 'acme-unpriced-model-xyz',
+          servedModel: 'acme-unpriced-model-xyz',
+          inputTokens: 1_000,
+          outputTokens: 2_000,
+        },
+      ],
+      TEST_DECISION_ID
+    );
 
     const [architect, security, devex] = getOutcomeStore().query();
     expect(architect).toMatchObject({
@@ -226,7 +274,10 @@ describe('recordVoteOutcomes served model and cost (#6624)', () => {
   });
 
   it('records no served fields for a seat that never reached a model', () => {
-    recordVoteOutcomes([{ ...agentVote('pm', 'abstain', 'error'), error: 'spawn failed' }]);
+    recordVoteOutcomes(
+      [{ ...agentVote('pm', 'abstain', 'error'), error: 'spawn failed' }],
+      TEST_DECISION_ID
+    );
     const row = getOutcomeStore().query()[0] as unknown as Record<string, unknown>;
     expect(row['model']).toBe('consensus');
     for (const key of ['servedModel', 'costUsd', 'priceBasis']) {
@@ -281,7 +332,7 @@ describe('recordVoteOutcomes records the model that answered, not the one reques
     });
     expect(seat.source).toBe('llm');
 
-    recordVoteOutcomes([seat]);
+    recordVoteOutcomes([seat], TEST_DECISION_ID);
 
     const [row] = getOutcomeStore().query();
     // claude-sonnet is $3 / $15 per 1M: 1000 in + 2000 out = 0.033.
