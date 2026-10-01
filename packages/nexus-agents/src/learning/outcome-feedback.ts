@@ -10,6 +10,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import { clamp01 } from '../utils/math-utils.js';
+import { truncateText } from '../utils/text-utils.js';
 import type {
   FeedbackCollectorConfig,
   RoutingDecision,
@@ -37,6 +38,9 @@ import {
 export { createRoutingDecision, createTaskOutcome } from './outcome-feedback-helpers.js';
 
 const logger = createLogger({ component: 'OutcomeFeedback' });
+
+/** Bound retained task text; full queries live only in pending decisions (#6900). */
+const MAX_HISTORY_QUERY_LENGTH = 256;
 
 /**
  * Outcome feedback collector implementation.
@@ -119,7 +123,11 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     }
 
     this.pendingDecisions.set(decision.traceId, decision);
-    this.decisionHistory.push(decision);
+    this.decisionHistory.push({
+      ...decision,
+      // Materialize the prefix: V8 sliced strings can retain the full task's backing store.
+      query: truncateText(decision.query, MAX_HISTORY_QUERY_LENGTH).split('').join(''),
+    });
     this.trimHistory();
 
     logger.debug('Routing decision recorded', {
@@ -347,7 +355,13 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   }
 
   private findDecisionByRoutingId(routingDecisionId: string): RoutingDecision | undefined {
-    return this.decisionHistory.find((d) => d.id === routingDecisionId);
+    const history = this.decisionHistory.find((d) => d.id === routingDecisionId);
+    if (history === undefined) return undefined;
+
+    // Preserve full text for immediate feedback while retaining history-only lookups.
+    // A trace can be reused, so only select the pending entry when its id matches.
+    const pending = this.pendingDecisions.get(history.traceId);
+    return pending?.id === routingDecisionId ? pending : history;
   }
 
   private findOldestPendingDecision(): TraceId | undefined {
