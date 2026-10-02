@@ -1083,6 +1083,12 @@ function claudeModelForDoctor(
   clis: readonly CliCheckResult[],
   deps: RunDoctorDeps
 ): Promise<ClaudeModelProbe> | ClaudeModelProbe {
+  if (deps.skipClaudeModelProbe === true) {
+    return {
+      ...unprobedClaudeModel(clis.find((c) => c.name === 'claude')?.installed === true),
+      reason: 'adapter serving is measured in live readiness; no separate pinned-model call',
+    };
+  }
   if (deps.live === true) return probeClaudeModelFor(clis, deps.probeClaudeModel);
   return unprobedClaudeModel(clis.find((c) => c.name === 'claude')?.installed === true);
 }
@@ -1119,6 +1125,8 @@ interface RunDoctorDeps {
   readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe>;
   /** Opt in to the pinned Claude completion probe (`--live`). */
   readonly live?: boolean;
+  /** The CLI live ladder measures serving; suppress a duplicate pinned-model completion. */
+  readonly skipClaudeModelProbe?: boolean;
   /** The gateway measurement seam (#6609). */
   readonly checkGateway?: GatewayCheck;
   /** Send one completion per gateway family (`--probe`). Spends tokens. */
@@ -1200,6 +1208,8 @@ export interface DoctorOptions {
   readonly probe?: boolean;
   /** Probe the pinned Claude model with a real completion. Spends quota. */
   readonly live?: boolean;
+  /** The CLI live ladder measures serving; suppress a duplicate pinned-model completion. */
+  readonly skipClaudeModelProbe?: boolean;
   /**
    * Receives the measured result, so `doctor --live` can compare its own CLI
    * availability check against the CLI list's (#6781).
@@ -1215,6 +1225,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<number
   const result = await runDoctor({
     gatewayProbe: options.probe === true,
     live: options.live === true,
+    skipClaudeModelProbe: options.skipClaudeModelProbe === true,
   });
   options.onResult?.(result);
   printDoctorResults(result);

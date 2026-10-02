@@ -540,6 +540,7 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitR
     gateway: args.options.gateway,
     probe: args.options.probe,
     live: args.options.live,
+    skipClaudeModelProbe: args.options.live,
     onResult: (result) => {
       cliListAdmits = new Map(result.clis.map((c) => [c.name, c.routerAdmits]));
     },
@@ -558,6 +559,8 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitR
     process.stdout.write(formatLiveReadiness(report) + '\n');
     // A failed live probe is a real not-ready finding, so it must reach the
     // exit code — a level that reports and cannot fail is not a check.
+    // Empty means no live measurement: preserve the local doctor's status.
+    if (report.length === 0) return cliExitFromStatus(exitCode);
     if (report.some((r) => r.levels.serves.status === 'failed')) {
       return cliExitFromStatus(1);
     }

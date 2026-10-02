@@ -416,6 +416,17 @@ describe('Doctor Command', () => {
       });
     });
 
+    it('suppresses the duplicate pinned call when the live adapter ladder will measure serving', async () => {
+      const probe = vi
+        .fn()
+        .mockResolvedValue({ alias: 'fable', status: 'available', reason: null });
+      const deps = { live: true, skipClaudeModelProbe: true, probeClaudeModel: probe };
+      const result = await runDoctor(deps);
+      expect(probe).not.toHaveBeenCalled();
+      expect(result.claudeModel.status).toBe('not-probed');
+      expect(result.claudeModel.reason).toContain('live readiness');
+    });
+
     it('leaves the pinned Claude model unmeasured without --live (#6814)', async () => {
       vi.mocked(createAllAdapters).mockReturnValue(
         new Map([

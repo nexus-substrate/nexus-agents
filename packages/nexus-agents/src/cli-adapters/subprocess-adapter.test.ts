@@ -1636,6 +1636,16 @@ describe('SubprocessCliAdapter - nested retry layers (#2824)', () => {
     expect(mockSpawn).toHaveBeenCalledTimes(3);
   });
 
+  it('honors no-retry live probes even when the inner retry layer is enabled (#4376)', async () => {
+    const adapter = new RetryEnabledAdapter();
+    spawnAlwaysExits(137);
+
+    const result = await adapter.execute({ content: 'test' }, { allowRetry: false, maxRetries: 0 });
+
+    expect(result.ok).toBe(false);
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry a call its caller aborted (#6680)', async () => {
     const adapter = new RetryEnabledAdapter();
     const delaySpy = vi.spyOn(adapter as unknown as { delay: () => Promise<void> }, 'delay');

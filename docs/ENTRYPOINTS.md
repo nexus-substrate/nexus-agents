@@ -276,14 +276,49 @@ Options available for all commands:
 | `--format`       | enum   | `yaml`  | Output format: `yaml`, `json` |
 | `-o`, `--output` | string | -       | Custom output path            |
 
+### Doctor readiness
+
+`nexus-agents doctor` checks local installation, configuration, and credentials;
+it makes no model completions. These checks do not prove an adapter can serve.
+`doctor --deep` adds learning-loop and routing diagnostics without model calls.
+
+`nexus-agents doctor --live` sends one tiny prompt with a 16-token output hint
+(where the adapter supports it) through each eligible adapter in the existing
+doctor enumeration. Each completion uses the central `interactive` operation-class
+timeout, also passed to the adapter. Reaching the deadline bounds the wait and
+signals cancellation to supporting adapters, including CLI subprocesses. Retries
+and Claude's in-family model fallback are disabled, and Claude is not probed a
+second time.
+Live checks spend generation quota and report:
+
+- `ok (<latency>ms)` when nonempty content comes back.
+- `failed (<class>): <message>` for auth, quota (including "Key limit exceeded"),
+  timeout, sandbox, or other execution failures. Empty content also fails.
+- `skipped (not configured)` when the CLI is absent, or
+  `skipped (credentials unavailable)` when its local credential check prevents a
+  probe. Neither result measures serving.
+
+Failure messages are sanitized; completion content and credentials are not
+printed. Any failed live completion makes the exit code nonzero. When nothing is
+probed, the report says so and preserves the local doctor's exit status. Skipping
+an adapter is not evidence that it serves. A live result measures readiness at
+that moment; it is not cached or a guarantee about the next call.
+
+Gateway-served slots retain their gateway attribution; their completion proves
+the named gateway model serves, rather than certifying an unavailable CLI.
+`--gateway --probe` remains a separate opt-in probe of gateway model families.
+
 ### Usage Examples
 
 ```bash
 # Start MCP server (default)
 nexus-agents
 
-# Health check
+# Local health check (no model completions)
 nexus-agents doctor
+
+# Verify serving with one tiny completion per configured adapter (uses quota)
+nexus-agents doctor --live
 
 # Generate config
 nexus-agents config init

@@ -98,3 +98,17 @@ describe('--timeout defaults to VOTE_TIMEOUTS.defaultMs (#6236)', () => {
     expect(values.timeout).toBe(String(VOTE_TIMEOUTS.defaultMs / 1000));
   });
 });
+
+describe('doctor live opt-in (#4376)', () => {
+  it.each([
+    [['doctor'], false],
+    [['doctor', '--live'], true],
+  ] as const)('parses %j as live=%s', (args, live) => {
+    const { values } = parseArgs({
+      args: [...args],
+      options: PARSE_ARGS_CONFIG.options,
+      allowPositionals: true,
+    });
+    expect(values.live).toBe(live);
+  });
+});
