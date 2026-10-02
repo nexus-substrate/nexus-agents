@@ -1564,6 +1564,8 @@
 
 ## 8.59.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 8.59.1.
+
 ### Minor Changes
 
 - [#6297](https://github.com/nexus-substrate/nexus-agents/pull/6297) [`5492665`](https://github.com/nexus-substrate/nexus-agents/commit/549266552f7a1679092e521e29be3d43ac22d304) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): `HostileInputFirewall.process()` runs the full `evaluatePolicy` set, not Rule of Two alone ([#5380](https://github.com/nexus-substrate/nexus-agents/issues/5380))
@@ -4843,6 +4845,8 @@ bridge.forwarded()` was read during init, before any pipeline event could exist,
 
 ## 8.1.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 8.1.1.
+
 ### Minor Changes
 
 - [#5387](https://github.com/nexus-substrate/nexus-agents/pull/5387) [`9719f8d`](https://github.com/nexus-substrate/nexus-agents/commit/9719f8db4d712bda2657fef3110ded48403cb47b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): add the firewall policy rollout gate, defaulting to off ([#5382](https://github.com/nexus-substrate/nexus-agents/issues/5382))
@@ -5402,6 +5406,8 @@ undefined` and a consensus panel rejected that at the unanimous bar: naming the
 
 ## 6.3.16
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 6.3.17.
+
 ### Patch Changes
 
 - [#5374](https://github.com/nexus-substrate/nexus-agents/pull/5374) [`0f15a6a`](https://github.com/nexus-substrate/nexus-agents/commit/0f15a6a624acadcb29a3bb6488c6d06d38f135a1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(governance): give the version stamp one writer ([#5218](https://github.com/nexus-substrate/nexus-agents/issues/5218))
@@ -5695,6 +5701,8 @@ ZodType<T>, ...)` is published API, so a consumer's call is typed against it.
   instance of: "absence of a reading is not a reading."
 
 ## 6.3.8
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 6.3.9.
 
 ### Patch Changes
 
@@ -6817,6 +6825,8 @@ for high exploration ratio`, asserted `'exploiting'`, and carried a comment
   and asserts the exact value.
 
 ## 5.0.2
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 5.0.3.
 
 ### Patch Changes
 
@@ -8597,6 +8607,8 @@ dist/workflows/` nests when `dist/workflows/` already exists and copies the
 
 ## 4.26.2
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.26.3.
+
 ### Patch Changes
 
 - [#5079](https://github.com/nexus-substrate/nexus-agents/pull/5079) [`5af24e4`](https://github.com/nexus-substrate/nexus-agents/commit/5af24e4ef38e2482e9b82459e21440077eab63a6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(ops): surface issues whose blockers have all closed
@@ -8649,6 +8661,8 @@ dist/workflows/` nests when `dist/workflows/` already exists and copies the
   stay open.
 
 ## 4.26.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.26.1.
 
 ### Minor Changes
 
@@ -8706,6 +8720,8 @@ dist/workflows/` nests when `dist/workflows/` already exists and copies the
 
 ## 4.25.1
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.26.1.
+
 ### Patch Changes
 
 - [#5070](https://github.com/nexus-substrate/nexus-agents/pull/5070) [`ffaf766`](https://github.com/nexus-substrate/nexus-agents/commit/ffaf76654cd4edc434e5e8fca530bc62bf61e6f6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(mcp): round-trip async dispatch, not just each tool's ordinary response
@@ -8755,6 +8771,8 @@ dist/workflows/` nests when `dist/workflows/` already exists and copies the
   Closes [#5017](https://github.com/nexus-substrate/nexus-agents/issues/5017).
 
 ## 4.25.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.26.1.
 
 ### Minor Changes
 
@@ -8852,6 +8870,8 @@ dist/workflows/` nests when `dist/workflows/` already exists and copies the
   survived: it exercised the one path production never takes.
 
 ## 4.24.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.26.1.
 
 ### Minor Changes
 
@@ -9076,6 +9096,8 @@ dist/workflows/` nests when `dist/workflows/` already exists and copies the
 
 ## 4.22.6
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.23.0.
+
 ### Patch Changes
 
 - [#5036](https://github.com/nexus-substrate/nexus-agents/pull/5036) [`153d615`](https://github.com/nexus-substrate/nexus-agents/commit/153d615318592f20970d04390a9dd8e1d17d2141) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - test(adapters): pin the load-bearing half of the circuit-breaker recovery fix
@@ -9113,6 +9135,8 @@ dist/workflows/` nests when `dist/workflows/` already exists and copies the
   and falls back to cwd when it is not.
 
 ## 4.22.5
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.23.0.
 
 ### Patch Changes
 
@@ -9533,6 +9557,8 @@ whenEmpty: false)` ([#4581](https://github.com/nexus-substrate/nexus-agents/issu
   and it makes signal adoption measurable instead of assumed.
 
 ## 4.19.1
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.20.0.
 
 ### Patch Changes
 
@@ -10519,6 +10545,8 @@ creative | general`, which shares **no values** with the `TASK_CATEGORIES` a rul
 
 ## 4.5.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.5.1.
+
 ### Minor Changes
 
 - [#4855](https://github.com/nexus-substrate/nexus-agents/pull/4855) [`4599209`](https://github.com/nexus-substrate/nexus-agents/commit/4599209ed939b23f39d33f12cd8fa809d0e2fa06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - stop reporting a perfect confidence for a session that never measured one
@@ -10812,6 +10840,8 @@ creative | general`, which shares **no values** with the `TASK_CATEGORIES` a rul
 
 ## 4.2.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.2.1.
+
 ### Minor Changes
 
 - [#4808](https://github.com/nexus-substrate/nexus-agents/pull/4808) [`8989424`](https://github.com/nexus-substrate/nexus-agents/commit/89894249f658068048aa4b6825a4de9743a8fdcb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - let `run` request a dry run, and refuse where it cannot be honoured
@@ -10941,6 +10971,8 @@ defaults`, so the change is one line with two deliberate test updates.
   the scan executes. Fixes [#4782](https://github.com/nexus-substrate/nexus-agents/issues/4782).
 
 ## 4.1.2
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 4.1.3.
 
 ### Patch Changes
 
@@ -11634,6 +11666,8 @@ false` still counts, because "we checked and they are not authenticated" is a
 
 ## 3.13.6
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 3.14.0.
+
 ### Patch Changes
 
 - [#4721](https://github.com/nexus-substrate/nexus-agents/pull/4721) [`8d8777c`](https://github.com/nexus-substrate/nexus-agents/commit/8d8777c3b3d0a578dd8526beacffb18c0202eeb2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(observability): report the dashboard health score as unmeasured instead of a constant 0.8
@@ -11752,6 +11786,8 @@ false` still counts, because "we checked and they are not authenticated" is a
   missing measurement entering an expression as the best possible value.
 
 ## 3.13.1
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 3.13.2.
 
 ### Patch Changes
 
@@ -11887,6 +11923,8 @@ false` still counts, because "we checked and they are not authenticated" is a
 
 ## 3.11.2
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 3.12.0.
+
 ### Patch Changes
 
 - [#4689](https://github.com/nexus-substrate/nexus-agents/pull/4689) [`2dd6b21`](https://github.com/nexus-substrate/nexus-agents/commit/2dd6b21f14ce412524d8027dbb0315040b2c0d34) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - fix(security): never let an agent propose a label that grants privilege or skips review
@@ -11928,6 +11966,8 @@ false` still counts, because "we checked and they are not authenticated" is a
   assert the guard message, so the gap is a test failure rather than a comment.
 
 ## 3.11.1
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 3.12.0.
 
 ### Patch Changes
 
@@ -11985,6 +12025,8 @@ false` still counts, because "we checked and they are not authenticated" is a
   escalate on everything.
 
 ## 3.10.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 3.11.0.
 
 ### Minor Changes
 
@@ -13691,6 +13733,8 @@ not creating PR` branch), while the fallback stood down logging "the next
 
 ## 2.177.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.177.1.
+
 ### Minor Changes
 
 - [#4433](https://github.com/nexus-substrate/nexus-agents/pull/4433) [`5157900`](https://github.com/nexus-substrate/nexus-agents/commit/51579007c6bb85f24a1df6c4251ec4b88a0d99e1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Close out the model-lifecycle epic: delete the remaining substitution surface ([#4408](https://github.com/nexus-substrate/nexus-agents/issues/4408), [#4420](https://github.com/nexus-substrate/nexus-agents/issues/4420))
@@ -14567,6 +14611,8 @@ registerDynamicLanguage` throws if called more than once. Both grammar
 
 ## 2.166.1
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.166.2.
+
 ### Patch Changes
 
 - [#4245](https://github.com/nexus-substrate/nexus-agents/pull/4245) [`8bbbffc`](https://github.com/nexus-substrate/nexus-agents/commit/8bbbffcb511998f249e25c1ca793313b1c50d55d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix two indexer bugs: default exclude globs (`**/*.test.ts`, `**/*.d.ts`) were never actually applied because `shouldExcludeFile` stripped `*`/`**` from patterns before matching, leaving a broken substring check that couldn't match real file paths — test files and `.d.ts` files were being indexed. Excludes are now passed as negated globs directly to ts-morph's `addSourceFilesAtPaths`, which resolves them correctly.
@@ -14826,6 +14872,8 @@ registerDynamicLanguage` throws if called more than once. Both grammar
 - [#4206](https://github.com/nexus-substrate/nexus-agents/pull/4206) [`bc19143`](https://github.com/nexus-substrate/nexus-agents/commit/bc191439820e76611ef7d1ba92e8501ba4914ab5) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove three never-wired env-var declarations from the env-schema ([#4180](https://github.com/nexus-substrate/nexus-agents/issues/4180), same silent-no-op class as [#2977](https://github.com/nexus-substrate/nexus-agents/issues/2977)): `NEXUS_TEST_TIMEOUT_MS` had no production reader, and `NEXUS_TIMEOUT_CLISIMPLE` / `NEXUS_TIMEOUT_CLICOMPLEX` fed only `getTimeout('cliSimpleMs'/'cliComplexMs')`, which has zero production call sites — per-complexity CLI timeouts flow through `TIMEOUT_PROFILES` / `getTimeoutForCli`. The equally unread `DEFAULTS.TIMEOUT_DEFAULTS.cliSimpleMs` / `cliComplexMs` keys are removed with them (internal surface only; not exported from the package entry point). Setting the removed vars now produces an unknown-variable warning from `validateNexusEnv` instead of silently doing nothing.
 
 ## 2.160.1
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.160.2.
 
 ### Patch Changes
 
@@ -17464,6 +17512,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
 
 ## 2.128.1
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.128.2.
+
 ### Patch Changes
 
 - [#3791](https://github.com/nexus-substrate/nexus-agents/pull/3791) [`2c5941d`](https://github.com/nexus-substrate/nexus-agents/commit/2c5941daeb3f712490b49203e6f9005155c48cbe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - security(capability-loop): the pre-push diff-secret-scan now catches newer OpenAI key prefixes (`sk-proj-`/`sk-svcacct-`/`sk-admin-`, whose hyphen broke the classic `sk-[A-Za-z0-9]{32,}` class) and base64 credential values with `=` padding (the generic-credential value class omitted `=`). This scanner is the fail-closed pre-push gate that must be solid before Option A ([#3670](https://github.com/nexus-substrate/nexus-agents/issues/3670)) pushes attacker-influenceable diffs. ([#3752](https://github.com/nexus-substrate/nexus-agents/issues/3752))
@@ -17812,6 +17862,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
 
 ## 2.125.28
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.29.
+
 ### Patch Changes
 
 - [#3705](https://github.com/nexus-substrate/nexus-agents/pull/3705) [`973ec86`](https://github.com/nexus-substrate/nexus-agents/commit/973ec86be7b4b15dda66ac8d80c63472149cd097) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(pipeline): activate [#3177](https://github.com/nexus-substrate/nexus-agents/issues/3177) stage-boundary policy enforcement in production (default WARN, [#3703](https://github.com/nexus-substrate/nexus-agents/issues/3703))
@@ -17894,6 +17946,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
 
 ## 2.125.23
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.24.
+
 ### Patch Changes
 
 - [#3679](https://github.com/nexus-substrate/nexus-agents/pull/3679) [`6261529`](https://github.com/nexus-substrate/nexus-agents/commit/62615299595bff8c98af5f50efb94a726935d121) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): pre-push secret scan for auto-remediation diffs ([#3669](https://github.com/nexus-substrate/nexus-agents/issues/3669))
@@ -17907,6 +17961,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
   findings report pattern + line only, never the secret value.
 
 ## 2.125.22
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.24.
 
 ### Patch Changes
 
@@ -17934,6 +17990,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
   - real readiness land. Signal source + deps are injectable for tests.
 
 ## 2.125.20
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.21.
 
 ### Patch Changes
 
@@ -17976,6 +18034,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
 
 ## 2.125.17
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.18.
+
 ### Patch Changes
 
 - [#3663](https://github.com/nexus-substrate/nexus-agents/pull/3663) [`08dc7f4`](https://github.com/nexus-substrate/nexus-agents/commit/08dc7f43cc9bf0e5a0794eacf385a8863b57facf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): wire circuit-breaker + protected-paths into the enforce orchestrator ([#3653](https://github.com/nexus-substrate/nexus-agents/issues/3653))
@@ -17989,6 +18049,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
   auth / secrets) — a correct decline, neutral for the breaker.
 
 ## 2.125.16
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.18.
 
 ### Patch Changes
 
@@ -18013,6 +18075,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
 
 ## 2.125.15
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.18.
+
 ### Patch Changes
 
 - [#3658](https://github.com/nexus-substrate/nexus-agents/pull/3658) [`2326d56`](https://github.com/nexus-substrate/nexus-agents/commit/2326d56f876d29a3f325ebbfbcc4eddf2aff1926) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(capability-loop): p0–p4 priority labels on auto-filed issues ([#3653](https://github.com/nexus-substrate/nexus-agents/issues/3653))
@@ -18025,6 +18089,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
   deduped, rate-limited, no-shell filing path (DRY) rather than forking.
 
 ## 2.125.14
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.18.
 
 ### Patch Changes
 
@@ -18046,6 +18112,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
   default; PR-only; runaway guard + atomic lease unchanged.
 
 ## 2.125.13
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.125.18.
 
 ### Patch Changes
 
@@ -19032,6 +19100,8 @@ ratificationVoteRef? }`. It is emitted via `AuditLogger.logTierTransition(...)`
 
 ## 2.109.2
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.109.3.
+
 ### Patch Changes
 
 - [#3442](https://github.com/nexus-substrate/nexus-agents/pull/3442) [`370e23a`](https://github.com/nexus-substrate/nexus-agents/commit/370e23a83dc325d449d6410bbbaca10e631d33e1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add a DNS-resolve-time SSRF guard for the custom-openai gateway ([#3426](https://github.com/nexus-substrate/nexus-agents/issues/3426)). A public
@@ -19089,6 +19159,8 @@ VOTE_JSON_SCHEMA}` on the vote request, so voters backed by Claude (tool_use),
 
 ## 2.108.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.109.0.
+
 ### Minor Changes
 
 - [#3435](https://github.com/nexus-substrate/nexus-agents/pull/3435) [`b0414fe`](https://github.com/nexus-substrate/nexus-agents/commit/b0414feaf2706d2ee97a93b423fa4666274c1b7c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(claude): honor responseFormat via forced tool_use ([#3433](https://github.com/nexus-substrate/nexus-agents/issues/3433) Phases 0+1)
@@ -19132,6 +19204,8 @@ VOTE_JSON_SCHEMA}` on the vote request, so voters backed by Claude (tool_use),
     downstream re-assemblers.
 
 ## 2.107.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.107.1.
 
 ### Minor Changes
 
@@ -20629,6 +20703,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
 
 ## 2.83.2
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.84.0.
+
 ### Patch Changes
 
 - [#3031](https://github.com/nexus-substrate/nexus-agents/pull/3031) [`99a9285`](https://github.com/nexus-substrate/nexus-agents/commit/99a9285597c23e53a76104293faecfdb11aa4980) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **test(cli):** cover the `login`/`auth status` exit-code truth table (closes [#2953](https://github.com/nexus-substrate/nexus-agents/issues/2953)).
@@ -21638,6 +21714,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   Unblocks OIDC publishes for `nexus-agents` and `nexus-memory` (the latter's bootstrap `0.1.0` was a local publish via the granular `NPM_TOKEN`; subsequent versions need OIDC because the token is being retired — see [#2814](https://github.com/williamzujkowski/nexus-agents/issues/2814)).
 
 ## 2.79.2
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.79.3.
 
 ### Patch Changes
 
@@ -22656,6 +22734,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
 
 ## 2.66.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.67.0.
+
 ### Minor Changes
 
 - [#2372](https://github.com/williamzujkowski/nexus-agents/pull/2372) [`6353f24`](https://github.com/williamzujkowski/nexus-agents/commit/6353f247d828e5d02dbcd785d2b22ae89c96f0e7) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - **Breaking (TypeScript-typed only)**: Remove deprecated public-barrel types from the MCP entry points (Batch C of [#2368](https://github.com/williamzujkowski/nexus-agents/issues/2368), completes [#1986](https://github.com/williamzujkowski/nexus-agents/issues/1986) partial).
@@ -22727,6 +22807,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   Patch-level break: `setState` was a `protected` method — internal-only. No public consumer impact.
 
 ## 2.65.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.67.0.
 
 ### Minor Changes
 
@@ -23428,6 +23510,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
 
 ## 2.51.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.52.0.
+
 ### Minor Changes
 
 - [#2064](https://github.com/williamzujkowski/nexus-agents/pull/2064) [`982d0fb`](https://github.com/williamzujkowski/nexus-agents/commit/982d0fb86f2f68ee784cbaa747576e90baae4b0e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat: flip ClawGuard and structured-task-state to default-on (user-visible)
@@ -23491,6 +23575,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   free.
 
 ## 2.49.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.50.0.
 
 ### Minor Changes
 
@@ -23704,6 +23790,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
 
 ## 2.43.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.44.0.
+
 ### Minor Changes
 
 - [#2038](https://github.com/williamzujkowski/nexus-agents/pull/2038) [`6fae6a3`](https://github.com/williamzujkowski/nexus-agents/commit/6fae6a3174f3cdc69c42011815b75361b0a40f6a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(orchestration): topological wave assignment for agent plans ([#2034](https://github.com/williamzujkowski/nexus-agents/issues/2034))
@@ -23729,6 +23817,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   Child of [#1574](https://github.com/williamzujkowski/nexus-agents/issues/1574) (SWE-bench Verified prep) via [#2030](https://github.com/williamzujkowski/nexus-agents/issues/2030) breakdown.
 
 ## 2.42.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.44.0.
 
 ### Minor Changes
 
@@ -23934,6 +24024,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
 
 ## 2.39.1
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.40.0.
+
 ### Patch Changes
 
 - [#2009](https://github.com/williamzujkowski/nexus-agents/pull/2009) [`4f9f9bc`](https://github.com/williamzujkowski/nexus-agents/commit/4f9f9bc764082fc91604aa59a347e9fb22067ff1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - docs: refresh stale Last Updated timestamps (closes [#2004](https://github.com/williamzujkowski/nexus-agents/issues/2004))
@@ -23942,6 +24034,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   to 4 docs needing content refresh.
 
 ## 2.39.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.40.0.
 
 ### Minor Changes
 
@@ -24037,6 +24131,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
 
 ## 2.38.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.40.0.
+
 ### Minor Changes
 
 - [#2001](https://github.com/williamzujkowski/nexus-agents/pull/2001) [`7e22b2f`](https://github.com/williamzujkowski/nexus-agents/commit/7e22b2fcfe5e527b71b2af3373e0d7f407831abf) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): clawguard mcp dispatch wiring ([#1977](https://github.com/williamzujkowski/nexus-agents/issues/1977) final piece)
@@ -24101,6 +24197,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   - Audit log schema for `access-policy: audit violation` / denied events
 
 ## 2.37.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.40.0.
 
 ### Minor Changes
 
@@ -24168,6 +24266,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
 
 ## 2.36.0
 
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.40.0.
+
 ### Minor Changes
 
 - [#1997](https://github.com/williamzujkowski/nexus-agents/pull/1997) [`f75fcb4`](https://github.com/williamzujkowski/nexus-agents/commit/f75fcb4a208ec240da543b6d3f8a5657b61617ea) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - feat(security): ClawGuard denylist + policy cache ([#1977](https://github.com/williamzujkowski/nexus-agents/issues/1977) partial)
@@ -24211,6 +24311,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   - TypeDoc regenerated
 
 ## 2.35.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.40.0.
 
 ### Minor Changes
 
@@ -24764,6 +24866,8 @@ floor to ≈ -5 max). Gated by `NEXUS_TUNE_ENFORCE` — empty/no-op by default, 
   - Removed vestigial content and outdated references
 
 ## 2.7.0
+
+> **Not published to npm.** This version was superseded before release; its changes shipped in 2.26.0.
 
 ### Features
 
