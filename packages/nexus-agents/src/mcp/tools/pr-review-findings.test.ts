@@ -198,6 +198,16 @@ describe('pr-review-findings', () => {
   });
 
   describe('parseFindings', () => {
+    it('extracts the first fenced block and ignores an unterminated one (alert 255)', () => {
+      const block = '- location: src/a.ts:10\n  issue: x';
+      expect(parseFindings('pre\n```yaml findings\n```yaml findings\n')).toEqual([]);
+      expect(parseFindings('```yaml findings\n\n```')).toEqual([]);
+      expect(parseFindings('```yaml findings\n'.repeat(1000))).toEqual([]);
+      expect(parseFindings(`intro\n\`\`\`yaml findings\n${block}\n\`\`\`\nafter`)).toEqual(
+        parseFindings(`\`\`\`yaml findings\n${block}\n\`\`\``)
+      );
+    });
+
     it('returns empty array when no findings block present', () => {
       const reasoning = 'I approve this PR. The diff looks correct and well-tested.';
       expect(parseFindings(reasoning)).toEqual([]);
