@@ -420,7 +420,11 @@ describe('pr_review tool', () => {
     });
 
     it('returns abstain on empty input', () => {
-      expect(aggregatePrDecisions([])).toEqual({ decision: 'abstain', verified: true });
+      expect(aggregatePrDecisions([])).toEqual({
+        decision: 'abstain',
+        verified: false,
+        reason: 'incomplete panel: 0 of 0 voters responded',
+      });
     });
 
     it('summarizeReviews keeps an unverifiable seat OUT of abstainCount (#6094)', () => {

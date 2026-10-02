@@ -900,6 +900,25 @@ describe('#4131 voter-output resilience', () => {
       });
     });
 
+    // #6957: live pr_review raw output (claude-fable-5, architect seat) on a
+    // diff that touched ```yaml findings parsing. The reasoning QUOTES the old
+    // regex, so a ``` sits inside a JSON string. The lazy ```json fence match
+    // ended there, the truncation repair closed the object after "reasoning",
+    // and the seat was rejected for a missing confidence on all 3 attempts.
+    const FENCE_IN_REASONING =
+      '```json\n{\n  "decision": "approve",\n  "reasoning": "The old pattern /```yaml findings\\\\n([\\\\s\\\\S]*?)\\\\n```/ captured from the first opener to the first close; indexOf computes the same span.",\n  "confidence": 0.88\n}\n```';
+
+    it('keeps a ``` inside a JSON string inside a ```json fence (#6957)', () => {
+      const parsed = parseVoteResponse(FENCE_IN_REASONING, 'architect');
+      expect(parsed.confidence).toBe(0.88);
+      expect(parsed.reasoning).toContain('```yaml findings');
+    });
+
+    it('keeps a ``` inside a JSON string inside an unlabelled fence (#6957)', () => {
+      const text = FENCE_IN_REASONING.replace('```json', '```');
+      expect(parseVoteResponse(text, 'architect').confidence).toBe(0.88);
+    });
+
     it('repairs a truncated object (repro: position 7181 mid-JSON cut)', () => {
       // decision/reasoning/confidence emitted before a findings array cut off mid-value.
       const truncated =

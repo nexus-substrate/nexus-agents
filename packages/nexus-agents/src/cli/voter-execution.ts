@@ -423,6 +423,8 @@ interface VoteAttemptFailure {
    * its reported usage rides on the failure instead of being discarded.
    */
   readonly usage?: VoteUsage | undefined;
+  /** Parse-failure branch only (#6957): the answer that was not a vote, for the failure log. */
+  readonly rawOutput?: string | undefined;
   /**
    * Set by {@link executeWithRetries} (#6821): usage summed over every attempt
    * that settled with a response. Absent when none did.
@@ -478,6 +480,7 @@ export async function executeSingleVoteAttempt(
         error: `Vote parsing failed: ${error.message}`,
         cliStderr: completion.cliStderr,
         usage: completion.usage,
+        rawOutput: error.rawOutput,
       };
     }
     throw error; // Re-throw unexpected errors
@@ -539,7 +542,7 @@ function withAttemptUsage(
   failure: VoteAttemptFailure,
   attemptUsage: AttemptUsage | undefined
 ): VoteAttemptFailure {
-  const { usage: _single, ...rest } = failure;
+  const { usage: _single, rawOutput: _raw, ...rest } = failure;
   return attemptUsage === undefined ? rest : { ...rest, attemptUsage };
 }
 
@@ -604,6 +607,7 @@ export async function executeWithRetries(
       error: lastError,
       retryable: result.retryable,
       cliStderr: result.cliStderr,
+      rawOutput: result.rawOutput,
     });
     if (terminal !== null) {
       logAbandonedRetries(logger, role, attempt, maxRetries, terminal);
