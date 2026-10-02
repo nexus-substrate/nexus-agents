@@ -140,16 +140,20 @@ The gate checks a record's **contents**, not how they were produced:
 - panel coverage and the model-family floor (#6601) over each counted seat's
   `voters[].model`.
 
-Those fields are produced by ordinary code outside the governor section:
+Most of those fields come from ordinary code outside the governor section:
 
 - `packages/nexus-agents/src/cli/voter-attempt-usage.ts` sets each seat's
   `model` from the adapter's configured id;
 - `voter-response.ts` parses each seat's decision;
-- `voter-agents*.ts` assembles the panel;
-- the voting engine computes the record's overall `decision`.
+- `voter-agents*.ts` assembles the panel.
 
-The governed audit builder (`src/audit/`) hashes and signs whatever it is
-given.
+The overall `decision` is computed by the governed verdict function
+(`resolveVoteDecision`, `src/consensus/decision/verdict.ts`), but the ordinary
+orchestration in `src/mcp/tools/consensus-vote.ts` calls it and forwards its
+result. The governed audit builder (`src/audit/vote-record-store.ts`) validates
+the record's shape, drops fields its schema does not carry, and derives
+aggregates such as panel coverage and the option tally. It cannot verify that
+the per-seat values it receives are true.
 
 What follows:
 
