@@ -12,8 +12,15 @@ import {
   summarizeRemediationSoak,
   getRemediationSoakFile,
   _resetRemediationSoakSinkForTests,
+  createRemediationSoakSink,
+  getRemediationSoakSink,
+  readRemediationSoakSummary,
 } from './improvement-remediation-shadow.js';
-import { evaluateEnforceReadiness } from './improvement-enforce-readiness.js';
+import {
+  DEFAULT_ENFORCE_READINESS_CONFIG,
+  evaluateEnforceReadiness,
+} from './improvement-enforce-readiness.js';
+import { buildAutoRemediationDeps } from './auto-remediation-deps.js';
 import { handleRemediationReviewCommand } from '../../cli/remediation-review-command.js';
 import { parseCliArgs } from '../../cli.js';
 import { buildEnforceReadinessEvidence } from './remediation-readiness-collector.js';
@@ -111,6 +118,290 @@ afterEach(() => {
 function persist(record: VoteRecord): void {
   writeFileSync(ledger, JSON.stringify(record) + '\n');
 }
+
+function seedFreshnessEvidence(): { sample: review.ReviewSample; mark: review.ReviewRecord } {
+  persist(vote());
+  createRemediationSoakSink().record(RemediationSoakRecordSchema.parse(JSON.parse(raw)));
+  // Panel provenance binds the exact bytes, including JSON field order.
+  writeFileSync(getRemediationSoakFile(), raw + '\n');
+  expect(review.createRemediationReviewStore().record(panel(), raw)).toBe(true);
+  const sample = {
+    ...review.drawRemediationReviewSample([panel()], 1, 'Owner', 'seed'),
+    sampledAt: '2026-09-30T01:00:00.000Z',
+  };
+  expect(review.createRemediationReviewSampleStore().record(sample)).toBe(true);
+  const mark: review.ReviewRecord = {
+    judgeKind: 'owner-sample',
+    sampleId: sample.id,
+    soakRef: panel().soakRef,
+    reviewedAt: '2026-09-30T02:00:00.000Z',
+    reviewed: true,
+    sound: true,
+    evaluator: sample.owner,
+    owner: sample.owner,
+    ownerSignedOff: true,
+  };
+  expect(review.createRemediationReviewStore().record(mark)).toBe(true);
+  return { sample, mark };
+}
+
+describe('call-time readiness evidence', () => {
+  for (const source of ['summary', 'provider'] as const) {
+    function reader(): () => Promise<ReturnType<typeof evaluateEnforceReadiness>> {
+      const deps = buildAutoRemediationDeps();
+      return async () => {
+        const evidence =
+          source === 'provider'
+            ? await deps.readinessEvidence()
+            : buildEnforceReadinessEvidence(
+                readRemediationSoakSummary(),
+                review.readRemediationReviewSummary()
+              );
+        return evaluateEnforceReadiness(evidence, {
+          ...DEFAULT_ENFORCE_READINESS_CONFIG,
+          minShadowSelections: 1,
+          minOwnerSample: 1,
+        });
+      };
+    }
+
+    it(`${source} sees owner unsound sample marks from a separate store`, async () => {
+      const { mark } = seedFreshnessEvidence();
+      const read = reader();
+      expect((await read()).ready).toBe(true);
+      expect(
+        review.createRemediationReviewStore().record({
+          ...mark,
+          sound: false,
+          ownerSignedOff: false,
+          reviewedAt: '2026-09-30T03:00:00.000Z',
+        })
+      ).toBe(true);
+      const verdict = await read();
+      expect(verdict.ready).toBe(false);
+      expect(verdict.criteria.find((c) => c.name === 'owner-agreement')?.detail).toContain(
+        '1 unresolved owner disagreements'
+      );
+    });
+
+    it(`${source} sees human unsound marks from a separate store`, async () => {
+      seedFreshnessEvidence();
+      const read = reader();
+      expect((await read()).ready).toBe(true);
+      expect(
+        review.createRemediationReviewStore().record({
+          soakRef: panel().soakRef,
+          judgeKind: 'human',
+          reviewed: true,
+          sound: false,
+          evaluator: 'Human',
+          ownerSignedOff: false,
+          reviewedAt: '2026-09-30T03:00:00.000Z',
+        })
+      ).toBe(true);
+      const verdict = await read();
+      expect(verdict.ready).toBe(false);
+      expect(verdict.criteria.find((c) => c.name === 'soundness')).toMatchObject({
+        met: false,
+        detail: expect.stringContaining('0% of reviewed judged sound'),
+      });
+    });
+
+    it(`${source} sees sign-off from a separate store`, async () => {
+      const { mark } = seedFreshnessEvidence();
+      expect(
+        review.createRemediationReviewStore().record({
+          ...mark,
+          ownerSignedOff: false,
+          reviewedAt: '2026-09-30T03:00:00.000Z',
+        })
+      ).toBe(true);
+      const read = reader();
+      expect((await read()).ready).toBe(false);
+      expect(
+        review.createRemediationReviewStore().record({
+          ...mark,
+          ownerSignedOff: true,
+          reviewedAt: '2026-09-30T03:00:00.000Z',
+        })
+      ).toBe(true);
+      expect((await read()).ready).toBe(true);
+    });
+  }
+
+  it('sees a separate-process sample redraw on the next readiness read', async () => {
+    const { sample } = seedFreshnessEvidence();
+    const deps = buildAutoRemediationDeps();
+    expect((await deps.readinessEvidence()).sampleFresh).toBe(true);
+    expect(
+      review.createRemediationReviewSampleStore().record({
+        ...sample,
+        id: 'later-draw',
+        sampledAt: '2026-09-30T03:00:00.000Z',
+      })
+    ).toBe(true);
+    const evidence = await deps.readinessEvidence();
+    expect(evidence.sample).toEqual({ n: 0, disagreements: 0 });
+    expect(evidence.owner).toBeUndefined();
+  });
+
+  it('sees separate-store soak appends on the same provider', async () => {
+    seedFreshnessEvidence();
+    const deps = buildAutoRemediationDeps();
+    expect((await deps.readinessEvidence()).shadowSelections).toBe(1);
+    createRemediationSoakSink().record({
+      ...RemediationSoakRecordSchema.parse(JSON.parse(raw)),
+      signalKey: 'testing:coverage:later',
+    });
+    expect((await deps.readinessEvidence()).shadowSelections).toBe(2);
+  });
+
+  it('fresh reads see appends through the cached review and soak instances', () => {
+    seedFreshnessEvidence();
+    const reviews = review.getRemediationReviewStore();
+    const soak = getRemediationSoakSink();
+    expect(review.readRemediationReviewSummary().human.n).toBe(0);
+    expect(readRemediationSoakSummary().total).toBe(1);
+    expect(
+      reviews.record({
+        soakRef: panel().soakRef,
+        reviewedAt: '2026-09-30T03:00:00.000Z',
+        reviewed: true,
+        sound: false,
+        evaluator: 'Human',
+      })
+    ).toBe(true);
+    soak.record({
+      ...RemediationSoakRecordSchema.parse(JSON.parse(raw)),
+      signalKey: 'testing:coverage:cached',
+    });
+    expect(review.readRemediationReviewSummary().human).toEqual({ n: 1, disagreements: 1 });
+    expect(readRemediationSoakSummary().total).toBe(2);
+  });
+
+  it('record reads see separate-store judgments without resetting the reader', () => {
+    seedFreshnessEvidence();
+    expect(
+      review.readRemediationReviewRecords().filter((r) => r.judgeKind === 'human')
+    ).toHaveLength(0);
+    expect(
+      review.createRemediationReviewStore().record({
+        soakRef: panel().soakRef,
+        reviewedAt: '2026-09-30T03:00:00.000Z',
+        reviewed: true,
+        sound: false,
+        evaluator: 'Human',
+      })
+    ).toBe(true);
+    expect(review.readRemediationReviewRecords().find((r) => r.judgeKind === 'human')?.sound).toBe(
+      false
+    );
+  });
+
+  it('CLI sign-off reads separately appended owner dissent before copying judgments', async () => {
+    const { mark } = seedFreshnessEvidence();
+    review.getRemediationReviewStore(); // Long-lived append instance predates the CLI mark.
+    expect(
+      review.createRemediationReviewStore().record({
+        ...mark,
+        sound: false,
+        ownerSignedOff: false,
+        reviewedAt: '2026-09-30T03:00:00.000Z',
+      })
+    ).toBe(true);
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await handleRemediationReviewCommand(
+      parseCliArgs(['remediation-review', 'sign-off', '--owner', 'Owner', '--format', 'json'])
+    );
+    const result = JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join(''));
+    expect(result.summary.sample.disagreements).toBe(1);
+    expect(review.createRemediationReviewStore().getRecords().at(-1)).toMatchObject({
+      sound: false,
+      ownerSignedOff: true,
+    });
+  });
+});
+
+describe('CLI call-time evidence', () => {
+  it('readiness sees human dissent and subsequent sign-off in the same process', async () => {
+    const soak = createRemediationSoakSink();
+    const reviews = review.createRemediationReviewStore();
+    for (let i = 0; i < DEFAULT_ENFORCE_READINESS_CONFIG.minShadowSelections; i++) {
+      const record = {
+        ...RemediationSoakRecordSchema.parse(JSON.parse(raw)),
+        signalKey: `testing:coverage:${String(i)}`,
+      };
+      soak.record(record);
+      expect(
+        reviews.record({
+          soakRef: review.soakRefOf(record),
+          reviewedAt: '2026-09-30T02:00:00.000Z',
+          reviewed: true,
+          sound: true,
+          evaluator: 'Human',
+          owner: 'Owner',
+          ownerSignedOff: true,
+        })
+      ).toBe(true);
+    }
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    type CliReadiness = {
+      ready: boolean;
+      evidence: { human: { disagreements: number }; owner: string };
+      criteria: { name: string; met: boolean }[];
+    };
+    const read = async (): Promise<CliReadiness> => {
+      stdout.mockClear();
+      await handleRemediationReviewCommand(
+        parseCliArgs(['remediation-review', 'readiness', '--format', 'json'])
+      );
+      return JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join('')) as CliReadiness;
+    };
+    expect((await read()).ready).toBe(true);
+    const dissent = {
+      ...reviews.getRecords()[0]!,
+      sound: false,
+      ownerSignedOff: false,
+      reviewedAt: '2026-09-30T03:00:00.000Z',
+    };
+    const dissentCount =
+      Math.ceil(
+        reviews.getRecords().length * (1 - DEFAULT_ENFORCE_READINESS_CONFIG.minSoundnessRate)
+      ) + 1;
+    // Exceed the configured soundness tolerance by at least one dissenting mark.
+    const separate = review.createRemediationReviewStore();
+    for (const record of reviews.getRecords().slice(0, dissentCount))
+      expect(separate.record({ ...dissent, soakRef: record.soakRef })).toBe(true);
+    const rejected = await read();
+    expect(rejected.ready).toBe(false);
+    expect(rejected.evidence.human.disagreements).toBe(dissentCount);
+    expect(rejected.criteria.find((c) => c.name === 'soundness')?.met).toBe(false);
+    expect(
+      review
+        .createRemediationReviewStore()
+        .record({ ...dissent, owner: 'New owner', ownerSignedOff: true })
+    ).toBe(true);
+    expect((await read()).evidence.owner).toBe('New owner');
+  });
+
+  it('mark validates a separately appended soak selection with a cached sink present', async () => {
+    getRemediationSoakSink();
+    const record = RemediationSoakRecordSchema.parse(JSON.parse(raw));
+    createRemediationSoakSink().record(record);
+    vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await handleRemediationReviewCommand(
+      parseCliArgs([
+        'remediation-review',
+        'mark',
+        review.soakRefOf(record),
+        '--unsound',
+        '--evaluator',
+        'Human',
+      ])
+    );
+    expect(review.createRemediationReviewStore().getRecords().at(-1)?.sound).toBe(false);
+  });
+});
 
 describe('panel ledger verification', () => {
   it('uses a schema-valid realistic soak artifact', () => {

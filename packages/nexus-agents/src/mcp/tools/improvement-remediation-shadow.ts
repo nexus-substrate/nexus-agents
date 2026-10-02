@@ -338,7 +338,7 @@ export function createRemediationSoakSink(
 
 let soakSingleton: IRecordingRemediationSoakSink | undefined;
 
-/** Process-wide durable soak sink (lazily constructed, hydrates from disk). */
+/** Cached append sink; evidence readers construct a fresh sink per call. */
 export function getRemediationSoakSink(): IRecordingRemediationSoakSink {
   soakSingleton ??= createRemediationSoakSink();
   return soakSingleton;
@@ -454,12 +454,12 @@ export function filterPlausibleSoakRecords(
 }
 
 /**
- * Read + summarize the durable soak evidence from disk (convenience for #3764).
+ * Read + summarize fresh durable soak evidence; injected sinks are caller-owned snapshots.
  * Filters out structurally-implausible records first (#3932) so junk fixtures
  * that may have leaked into the file can't inflate the readiness volume count.
  */
 export function readRemediationSoakSummary(
-  sink: IRecordingRemediationSoakSink = getRemediationSoakSink()
+  sink: IRecordingRemediationSoakSink = createRemediationSoakSink()
 ): RemediationSoakSummary {
   return summarizeRemediationSoak(filterPlausibleSoakRecords(sink.getRecords()));
 }

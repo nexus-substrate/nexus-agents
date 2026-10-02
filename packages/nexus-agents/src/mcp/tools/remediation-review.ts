@@ -175,7 +175,7 @@ export function createRemediationReviewStore(
 
 let reviewSingleton: RemediationReviewStore | undefined;
 
-/** Process-wide durable review store (lazily constructed, hydrates from disk). */
+/** Cached append store; evidence readers construct a fresh store per call. */
 export function getRemediationReviewStore(): RemediationReviewStore {
   reviewSingleton ??= createRemediationReviewStore();
   return reviewSingleton;
@@ -344,9 +344,9 @@ function sampleOverrideDetails(
   return reason === undefined ? {} : { sampleFresh: false, sampleFreshnessReason: reason };
 }
 
-/** Read + summarize the durable review evidence from disk (convenience for #3764). */
+/** Read + summarize fresh durable review evidence; injected stores are caller-owned snapshots. */
 export function readRemediationReviewSummary(
-  store: RemediationReviewStore = getRemediationReviewStore(),
+  store: RemediationReviewStore = createRemediationReviewStore(),
   samples: RemediationReviewSampleStore = getRemediationReviewSampleStore(),
   rawSoakLines: readonly string[] = readRawSoakLines()
 ): RemediationReviewSummary {
@@ -375,9 +375,9 @@ export function readRemediationReviewSummary(
   };
 }
 
-/** Current primary evidence only, plus retained owner marks from every sample. */
+/** Fresh current primary evidence, plus retained owner marks; injected stores are snapshots. */
 export function readRemediationReviewRecords(
-  store: RemediationReviewStore = getRemediationReviewStore(),
+  store: RemediationReviewStore = createRemediationReviewStore(),
   rawSoakLines: readonly string[] = readRawSoakLines(),
   indexedSoakLines?: ReadonlyMap<string, string>,
   retainOverriddenRejections = false

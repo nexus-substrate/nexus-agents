@@ -9,7 +9,7 @@ import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
 import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { getTimeProvider } from '../core/index.js';
 import {
-  getRemediationSoakSink,
+  createRemediationSoakSink,
   readRemediationSoakSummary,
   type RemediationSoakRecord,
 } from '../mcp/tools/improvement-remediation-shadow.js';
@@ -39,7 +39,7 @@ import {
 
 /** Soak records, projected to the minimal ref-able shape. */
 function soakSelections(): readonly Pick<RemediationSoakRecord, 'signalKey' | 'timestamp'>[] {
-  return getRemediationSoakSink().getRecords();
+  return createRemediationSoakSink().getRecords();
 }
 
 /** `remediation-review list` — print the pending (un-reviewed) selections. */
@@ -263,7 +263,7 @@ function runSignOff(args: ParsedCliArgs): void {
     throw new Error('remediation-review sign-off: a named --owner is required');
   }
   const store = getRemediationReviewStore();
-  const existing = readRemediationReviewRecords(store);
+  const existing = readRemediationReviewRecords();
   if (existing.length === 0) {
     throw new Error('remediation-review sign-off: no reviews to sign off (mark selections first)');
   }
@@ -274,7 +274,7 @@ function runSignOff(args: ParsedCliArgs): void {
       throw new Error('Sign-off persistence failed');
     count++;
   }
-  const summary = readRemediationReviewSummary(store);
+  const summary = readRemediationReviewSummary();
   if (args.options.format === 'json') {
     process.stdout.write(`${JSON.stringify({ owner, signedOff: count, summary }, null, 2)}\n`);
     return;
