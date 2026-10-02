@@ -277,7 +277,7 @@ describe('MCP Server Integration', () => {
       // ever escapes.
       const asyncResult = await ctx.client.callTool({
         name: 'consensus_vote',
-        arguments: { proposal: 'Approve this change', simulateVotes: true, mode: 'async' },
+        arguments: { proposal: 'Approve this change', simulateVotes: true, dispatch: 'async' },
       });
       expect(asyncResult.isError).toBe(true);
       const asyncText = (asyncResult.content as Array<{ text: string }>)[0]?.text ?? '';
