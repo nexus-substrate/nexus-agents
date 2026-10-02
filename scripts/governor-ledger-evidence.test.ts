@@ -1077,6 +1077,38 @@ describe('isLedgerOnlyTip / acceptedHeadShas', () => {
   });
 });
 
+describe('ledger fork reporting (#3927)', () => {
+  function forkedLedger(): string {
+    return ledgerText([
+      record('fork-a', { sequence: 0, errorPolicy: 'absolute_quorum' }),
+      record('fork-b', { sequence: 0, pr: PR + 1, errorPolicy: 'absolute_quorum' }),
+    ]);
+  }
+
+  it('prints a harmless set fork naming both record ids', () => {
+    const evidence = evaluateLedgerEvidence({ ledgerText: forkedLedger(), pr: PR, head: AT_HEAD });
+    expect(formatLedgerEvidence(evidence)).toContain(
+      'ledger forks: sequence 0 (2 records: fork-a, fork-b) — harmless set fork, all records set-verified'
+    );
+  });
+
+  it('still ratifies a forked but otherwise valid ledger', () => {
+    const evidence = evaluateLedgerEvidence({ ledgerText: forkedLedger(), pr: PR, head: AT_HEAD });
+    expect(evidence.kind).toBe('ratified');
+    expect(formatLedgerEvidence(evidence)).not.toContain('::error::');
+  });
+
+  it('prints no fork line for an unforked ledger', () => {
+    const evidence = evaluateLedgerEvidence({
+      ledgerText: ledgerText([record('v0', { sequence: 0, errorPolicy: 'absolute_quorum' })]),
+      pr: PR,
+      head: AT_HEAD,
+    });
+    expect(evidence.kind).toBe('ratified');
+    expect(formatLedgerEvidence(evidence)).not.toContain('ledger forks:');
+  });
+});
+
 describe('formatLedgerEvidence', () => {
   it('renders ratified as a notice naming the record id, and every other kind as a ::error:: (#5131)', () => {
     const r = record('v0', { sequence: 0 });
@@ -1154,6 +1186,26 @@ describe('ledgerEvidenceFromEnv', () => {
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('prints the fork notice through the gate reporter without changing its pass result', () => {
+    const path = join(dir, 'vote-records.jsonl');
+    writeFileSync(
+      path,
+      signedLedgerText([
+        record('fork-a', { sequence: 0, errorPolicy: 'absolute_quorum' }),
+        record('fork-b', { sequence: 0, pr: PR + 1, errorPolicy: 'absolute_quorum' }),
+      ])
+    );
+    const output = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const env = { PR_NUMBER: String(PR), PR_HEAD_SHA: HEAD, ...SIGNERS_ENV };
+    expect(ledgerEvidenceFromEnv(env, path, REPO_ROOT).kind).toBe('ratified');
+    expect(reportLedgerEvidence(env, path, REPO_ROOT)).toBe(true);
+    expect(output).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'ledger forks: sequence 0 (2 records: fork-a, fork-b) — harmless set fork, all records set-verified'
+      )
+    );
   });
 
   it('the real ratification gate changes when only the target default ledger changes', () => {
@@ -1996,7 +2048,7 @@ describe('the committed ledger: the first real record (PR #6241, #5131 acceptanc
       pr: PR_6241,
       head: { sha: OTHER, commitFiles: ['scripts/governor-ledger-evidence.ts'] },
     });
-    expect(e).toEqual({
+    expect(e).toMatchObject({
       kind: 'sha-mismatch',
       accepted: [OTHER],
       found: [PR_6241_HEAD],
