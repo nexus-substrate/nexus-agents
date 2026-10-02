@@ -230,6 +230,7 @@ VariableDeclaration AgentEventSchema
 InterfaceDeclaration AgentExecutorConfig
   readonly budget?: AgentBudgetConfig | undefined
   readonly callerTrustTier?: string | undefined
+  readonly dryRun?: boolean | undefined
   readonly inputSanitization?: "modified" | "unmeasured" | "unmodified" | undefined
   readonly inputSanitizationCounts?: undefined | { readonly commentsRemoved: number; readonly fieldsModified: number; readonly tagsRemoved: number; }
   readonly issueNumber?: number | undefined

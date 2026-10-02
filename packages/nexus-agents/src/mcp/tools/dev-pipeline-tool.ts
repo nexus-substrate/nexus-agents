@@ -282,6 +282,7 @@ async function createStages(
       ? createTaskTracker({ backend, repo: input.repo, labels: input.labels })
       : undefined;
   return createAgentStages({
+    dryRun: input.dryRun,
     ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
     ...(trustTier !== undefined ? { callerTrustTier: trustTier, trustTier } : {}),
     ...inputSanitization,

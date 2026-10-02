@@ -321,6 +321,20 @@ async function executePipelineBody(
   return toolSuccessStructured(output);
 }
 
+/** Wire caller observations and pipeline execution modes into the agent stages. */
+function createPipelineAgentStages(
+  input: PipelineInput,
+  config: AgentExecutorConfig
+): ReturnType<typeof createAgentStages> {
+  return createAgentStages({
+    dryRun: input.dryRun,
+    simulateVotes: input.simulateVotes,
+    votingStrategy: input.votingStrategy,
+    quickMode: input.quickMode,
+    ...config,
+  });
+}
+
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */
 async function runPipelineHandler(
   args: unknown,
@@ -350,10 +364,7 @@ async function runPipelineHandler(
     // Sync prelude — fast: input resolution + stage wiring. Only the
     // orchestrator BODY backgrounds in async mode (#3730).
     const task = await resolveTask(input.task, input.specFile);
-    const agentStages = createAgentStages({
-      simulateVotes: input.simulateVotes,
-      votingStrategy: input.votingStrategy,
-      quickMode: input.quickMode,
+    const agentStages = createPipelineAgentStages(input, {
       callerTrustTier,
       trustTier: callerTrustTier,
       ...sanitization,

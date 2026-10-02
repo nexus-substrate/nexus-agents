@@ -2,7 +2,7 @@
  * How the dev-pipeline implement stage reports what its expert call did on
  * the host (#6792).
  *
- * The implement expert runs in workspace-edit mode. What it actually changed
+ * Outside dry runs, the implement expert runs in workspace-edit mode. What it changed
  * depends on the arm that served it: a claude CLI arm can edit files in its
  * working directory, while a direct-API or gateway arm runs nothing on the
  * host and only returns text. The stage result and the outcome row say
