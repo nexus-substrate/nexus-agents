@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.127.1
+
+### Patch Changes
+
+- [#6968](https://github.com/nexus-substrate/nexus-agents/pull/6968) [`2791b80`](https://github.com/nexus-substrate/nexus-agents/commit/2791b80a104a8c658207b678ee37ee72e1c1dc77) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `doctor --live` summaries to use the live probe results: served completions verify adapters, failed probes name their error class, and runs with no adapters explicitly report that nothing was probed. The summary appears after the live results and agrees with the exit status; plain `doctor` behavior is unchanged.
+
 ## 8.127.0
 
 ### Minor Changes
