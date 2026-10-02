@@ -98,6 +98,7 @@ export {
   buildPrReviewProposal,
   mapVoteDecisionToPrDecision,
   aggregatePrDecisions,
+  toPrReviewVote,
   MAX_DIFF_LENGTH,
   type PrReviewInput,
   type PrReviewDecision,

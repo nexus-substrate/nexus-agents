@@ -18,8 +18,10 @@
 # That label doesn't exist by default — adding it is the explicit opt-in.
 #
 # Aggregate decision tiers (per #2251 + #2254):
-#   ❌ verified blocker — ≥1 voter has ≥1 verified finding (4-point gate
-#      passed with substantive named_assertion). Strict block.
+#   ❌ verified blocker — two different roles have verified findings at the
+#      same file within ±3 lines (4-point gate passed with substantive
+#      named_assertion). Strict block. A lone finding is an unconfirmed ❌
+#      that still requests changes.
 #   ⚠️  soft blocker — ≥3 of 5 non-error voters voted request_changes,
 #      but no verified findings. Reviewers apply the gate themselves.
 #   ✅ approve — all non-error voters approved.
@@ -139,7 +141,7 @@ jobs:
           # we'll add a `nexus-agents pr-review` CLI command.
           node --input-type=module -e "$(cat <<'NODE_EOF'
             import { collectRealVotes } from './packages/nexus-agents/dist/index.js';
-            import { buildPrReviewProposal, mapVoteDecisionToPrDecision, aggregatePrDecisions, PR_REVIEW_ROLES } from './packages/nexus-agents/dist/index.js';
+            import { buildPrReviewProposal, toPrReviewVote, aggregatePrDecisions, PR_REVIEW_ROLES } from './packages/nexus-agents/dist/index.js';
             import * as fs from 'node:fs/promises';
 
             const input = {
@@ -158,14 +160,7 @@ jobs:
               simulate: false,
             });
 
-            const reviews = voteResults.map((r) => ({
-              role: r.role,
-              decision: mapVoteDecisionToPrDecision(r.vote.decision),
-              confidence: r.vote.confidence,
-              reasoning: r.vote.reasoning,
-              source: r.source,
-              cli: r.cli,
-            }));
+            const reviews = voteResults.map(toPrReviewVote);
             const aggregate = aggregatePrDecisions(reviews);
 
             // Detect "all voters errored" case — signals a broken setup
@@ -176,12 +171,12 @@ jobs:
             if (allErrored) {
               const firstErr = reviews[0]?.reasoning ?? 'unknown';
               console.error('All voters errored — likely auth or network failure.');
-              console.error('First voter\\'s error: ' + firstErr.slice(0, 500));
-              await fs.writeFile('pr-review-result.json', JSON.stringify({ summary: aggregate.decision, verified: aggregate.verified, reviews, allErrored: true }, null, 2));
+              console.error("First voter's error: " + firstErr.slice(0, 500));
+              await fs.writeFile('pr-review-result.json', JSON.stringify({ summary: aggregate.decision, verified: aggregate.verified, reason: aggregate.reason, reviews, allErrored: true }, null, 2));
               process.exit(1);
             }
 
-            await fs.writeFile('pr-review-result.json', JSON.stringify({ summary: aggregate.decision, verified: aggregate.verified, reviews }, null, 2));
+            await fs.writeFile('pr-review-result.json', JSON.stringify({ summary: aggregate.decision, verified: aggregate.verified, reason: aggregate.reason, reviews }, null, 2));
             console.log('Summary:', aggregate.decision, '(verified=' + aggregate.verified + ')');
             console.log('Per-voter:', reviews.map((r) => r.role + '=' + r.decision).join(', '));
           NODE_EOF
@@ -196,17 +191,17 @@ jobs:
             let body;
             try {
               const result = JSON.parse(fs.readFileSync('pr-review-result.json', 'utf8'));
-              // Three icons: ✅ approve, ❌ verified-blocker, ⚠️ soft-block (majority dissent without verified findings — apply gate yourself), ➖ abstain.
+              // Icons: ✅ approve, ❌ verified-blocker, ⚠️ unconfirmed finding or majority dissent, ➖ abstain.
               const isSoftBlock = result.summary === 'request_changes' && result.verified === false;
               const icon = isSoftBlock
                 ? '⚠️'
                 : ({ approve: '✅', request_changes: '❌', abstain: '➖' }[result.summary] || '❓');
-              const tag = isSoftBlock ? 'REQUEST CHANGES (UNVERIFIED — majority dissent)' : result.summary.toUpperCase();
+              const tag = isSoftBlock ? `REQUEST CHANGES (UNVERIFIED — ${result.reason ?? 'majority dissent'})` : result.summary.toUpperCase();
               const lines = [
                 `## ${icon} Multi-voter PR Review`,
                 '',
                 `**Overall:** ${tag}`,
-                ...(isSoftBlock
+                ...(isSoftBlock && result.reason === undefined
                   ? ['', '> ⚠️ Majority of voters requested changes but none produced a verified finding. Apply the verification gate (`.rules/discovered-issues.md`) before acting on these concerns — they may be false positives.']
                   : []),
                 '',

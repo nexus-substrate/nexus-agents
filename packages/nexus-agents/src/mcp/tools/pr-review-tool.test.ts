@@ -158,7 +158,7 @@ describe('pr_review tool', () => {
       expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'approve', verified: true });
     });
 
-    it('triggers VERIFIED request_changes when a voter has a verified finding (#2225)', () => {
+    it('keeps one verified finding as unconfirmed request_changes (#4334)', () => {
       const reviews = [
         makeReview('architect', 'approve'),
         makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
@@ -166,8 +166,44 @@ describe('pr_review tool', () => {
       ];
       expect(aggregatePrDecisions(reviews)).toEqual({
         decision: 'request_changes',
-        verified: true,
+        verified: false,
+        reason: 'unconfirmed: 1 reviewer (security) at `src/a.ts:10`; needs second reviewer',
       });
+    });
+
+    it('fences and bounds a multiline, control- and backtick-containing location', () => {
+      const location = 'src/`unsafe`\n\r\t\u0000\u007f\u0085\u2028\u2029' + 'x'.repeat(5000);
+      const result = aggregatePrDecisions([
+        makeReview('security', 'request_changes', {
+          findings: [{ ...VERIFIED_FINDING, location }],
+        }),
+      ]);
+      expect(result.reason).toBeDefined();
+      expect(result.reason!.length).toBeLessThanOrEqual(500);
+      expect(result.reason).toMatch(/^unconfirmed: 1 reviewer \(security\) at `src\/\\`unsafe\\` /);
+      expect(result.reason).toMatch(/`; needs second reviewer$/);
+      expect(result.reason!.split(/\r\n|[\n\r\u0085\u2028\u2029]/)).toHaveLength(1);
+      expect(result.reason).not.toContain('\u0000');
+      expect(result.reason).not.toContain('\u007f');
+      const fenced = result.reason!.slice(
+        result.reason!.indexOf(' at `') + 5,
+        -'; needs second reviewer'.length - 1
+      );
+      expect(fenced.length).toBeLessThanOrEqual(120);
+    });
+
+    it('caps a many-role reason at 500 characters while keeping every location fenced', () => {
+      const result = aggregatePrDecisions(
+        PR_REVIEW_ROLES.map((role) =>
+          makeReview(role, 'request_changes', {
+            findings: [{ ...VERIFIED_FINDING, location: `src/${role}/${'x'.repeat(5000)}` }],
+          })
+        )
+      );
+      expect(result.reason).toBeDefined();
+      expect(result.reason!.length).toBeLessThanOrEqual(500);
+      expect(result.reason?.match(/ at `[^`]*`/g)).toHaveLength(PR_REVIEW_ROLES.length);
+      expect(result.reason).toMatch(/found non-overlapping issues; needs agreement$/);
     });
 
     it('does NOT trigger request_changes when ONE voter dissents without verified finding', () => {
@@ -208,7 +244,7 @@ describe('pr_review tool', () => {
       expect(aggregatePrDecisions(reviews)).toEqual({ decision: 'abstain', verified: true });
     });
 
-    it('verified blocker beats soft block — even 1 verified finding wins', () => {
+    it('a lone verified finding still requests changes despite four approvals', () => {
       const reviews = [
         makeReview('architect', 'request_changes', { findings: [VERIFIED_FINDING] }),
         makeReview('security', 'approve'),
@@ -216,11 +252,11 @@ describe('pr_review tool', () => {
         makeReview('catfish', 'approve'),
         makeReview('scope_steward', 'approve'),
       ];
-      // Even with 4 approves, a single verified finding triggers
-      // verified=true request_changes — the gate's intent is preserved.
+      // A lone finding blocks approval without claiming corroboration (#4334).
       expect(aggregatePrDecisions(reviews)).toEqual({
         decision: 'request_changes',
-        verified: true,
+        verified: false,
+        reason: 'unconfirmed: 1 reviewer (architect) at `src/a.ts:10`; needs second reviewer',
       });
     });
 
@@ -232,8 +268,97 @@ describe('pr_review tool', () => {
       ];
       expect(aggregatePrDecisions(reviews)).toEqual({
         decision: 'request_changes',
+        verified: false,
+        reason: 'unconfirmed: 1 reviewer (security) at `src/a.ts:10`; needs second reviewer',
+      });
+    });
+
+    it('verifies agreement between two roles within ±3 lines', () => {
+      const reviews = [
+        makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
+        makeReview('architect', 'request_changes', {
+          findings: [{ ...VERIFIED_FINDING, location: './src/a.ts:13' }],
+        }),
+      ];
+      expect(aggregatePrDecisions(reviews)).toEqual({
+        decision: 'request_changes',
         verified: true,
       });
+    });
+
+    it.each(['src/b.ts:10', 'src/a.ts:14'])(
+      'keeps different locations unconfirmed (%s)',
+      (location) => {
+        const reviews = [
+          makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
+          makeReview('architect', 'request_changes', {
+            findings: [{ ...VERIFIED_FINDING, location }],
+          }),
+        ];
+        expect(aggregatePrDecisions(reviews)).toEqual({
+          decision: 'request_changes',
+          verified: false,
+          reason: `unconfirmed: 2 reviewers (security at \`src/a.ts:10\`, architect at \`${location}\`) found non-overlapping issues; needs agreement`,
+        });
+      }
+    );
+
+    it('counts distinct roles rather than duplicate votes or findings in the reason', () => {
+      const security = makeReview('security', 'request_changes', {
+        findings: [VERIFIED_FINDING, { ...VERIFIED_FINDING, location: 'src/c.ts:20' }],
+      });
+      const architect = makeReview('architect', 'request_changes', {
+        findings: [{ ...VERIFIED_FINDING, location: 'src/b.ts:10' }],
+      });
+      expect(aggregatePrDecisions([security, security, architect])).toEqual({
+        decision: 'request_changes',
+        verified: false,
+        reason:
+          'unconfirmed: 2 reviewers (security at `src/a.ts:10`, architect at `src/b.ts:10`) found non-overlapping issues; needs agreement',
+      });
+    });
+
+    it('does not corroborate multiple findings or duplicate votes from one role', () => {
+      const vote = makeReview('security', 'request_changes', {
+        findings: [VERIFIED_FINDING, { ...VERIFIED_FINDING, location: 'src/a.ts:11' }],
+      });
+      expect(aggregatePrDecisions([vote, vote])).toEqual({
+        decision: 'request_changes',
+        verified: false,
+        reason: 'unconfirmed: 1 reviewer (security) at `src/a.ts:10`; needs second reviewer',
+      });
+    });
+
+    it.each(['approve', 'request_changes', 'abstain'] as const)(
+      'a one-voter panel never approves (%s)',
+      (decision) => {
+        expect(aggregatePrDecisions([makeReview('security', decision)]).decision).not.toBe(
+          'approve'
+        );
+      }
+    );
+
+    it.each(['error', 'unverifiable'] as const)(
+      'does not corroborate an absent role (%s)',
+      (source) => {
+        const reviews = [
+          makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
+          makeReview('architect', 'request_changes', { source, findings: [VERIFIED_FINDING] }),
+        ];
+        expect(aggregatePrDecisions(reviews)).toEqual({
+          decision: 'request_changes',
+          verified: false,
+          reason: 'unconfirmed: 1 reviewer (security) at `src/a.ts:10`; needs second reviewer',
+        });
+      }
+    );
+
+    it('does not corroborate findings from an approving voter', () => {
+      const reviews = [
+        makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
+        makeReview('architect', 'approve', { findings: [VERIFIED_FINDING] }),
+      ];
+      expect(aggregatePrDecisions(reviews).verified).toBe(false);
     });
 
     it('ignores findings on error votes', () => {
@@ -244,12 +369,11 @@ describe('pr_review tool', () => {
         }),
         makeReview('architect', 'approve'),
       ];
-      // The DECISION still ignores the error vote's findings (#2233). The
-      // panel-completeness claim now reflects that a voter was missing (#5017).
+      // Error findings cannot confirm a block; one surviving voter cannot approve.
       expect(aggregatePrDecisions(reviews)).toEqual({
-        decision: 'approve',
+        decision: 'abstain',
         verified: false,
-        reason: 'incomplete panel: 1 of 2 voters responded',
+        reason: 'insufficient reviewers: 1 reviewer; needs second reviewer',
       });
     });
 
@@ -375,7 +499,7 @@ describe('pr_review tool', () => {
       it('a genuine verified blocker still wins under absolute_quorum (Tier 1 runs first)', () => {
         const reviews = [
           makeReview('architect', 'request_changes', { findings: [VERIFIED_FINDING] }),
-          makeReview('security', 'approve'),
+          makeReview('security', 'request_changes', { findings: [VERIFIED_FINDING] }),
           makeReview('devex', 'approve', { source: 'error' }),
           makeReview('catfish', 'approve'),
           makeReview('scope_steward', 'approve'),

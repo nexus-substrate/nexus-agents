@@ -347,6 +347,19 @@ describe('analyzeGovernorReview — binding conditions', () => {
     if (outcome.kind === 'fail') expect(outcome.message).toContain('request_changes');
   });
 
+  it('fails closed on an unconfirmed request_changes record (#4334)', () => {
+    const unconfirmed = record({
+      verdict: 'request_changes',
+      verified: false,
+      reason: 'unconfirmed: 1 reviewer (security) at src/a.ts:10; needs second reviewer',
+      summary: 'request_changes (4 approve / 1 request_changes / 0 abstain) — review',
+      voteCounts: { approve: 4, request_changes: 1, abstain: 0, error: 0, total: 5 },
+    });
+    const outcome = analyzeGovernorReview(inputs({ records: [unconfirmed] }));
+    expect(outcome.kind).toBe('fail');
+    if (outcome.kind === 'fail') expect(outcome.message).toContain('request_changes');
+  });
+
   it('(v2) WARNS on an abstain record — nothing affirmed, nothing refused', () => {
     // Abstain carries no signal either way, so it sits with absence under the
     // warn-first posture rather than blocking ahead of the #4058 flip.

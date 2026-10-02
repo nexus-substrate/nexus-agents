@@ -502,3 +502,36 @@ describe('coverage and bindingBounds as structured, hash-covered fields (#6190)'
     expect(verifyPrReviewRecordSet([rec]).ok).toBe(true);
   });
 });
+
+describe('optional aggregate reason (#4334)', () => {
+  const reason = 'unconfirmed: 1 reviewer (security) at src/a.ts:10; needs second reviewer';
+
+  it('parses a reason at the top level of a record', () => {
+    const rec = { ...makeRecord(4334, 0), reason };
+    expect(PrReviewRecordSchema.safeParse(rec).success).toBe(true);
+  });
+
+  it.each([{}, { reason: undefined }])('omits an absent reason key (%j)', (optional) => {
+    const rec = buildPrReviewRecord({ ...makeRecord(4334, 0), ...optional });
+    expect(rec).not.toHaveProperty('reason');
+    expect(verifyPrReviewRecordSet([rec]).ok).toBe(true);
+  });
+
+  it('preserves the reason through the record builder', () => {
+    const input = { ...makeRecord(4334, 0), reason };
+    expect(buildPrReviewRecord(input)).toHaveProperty('reason', reason);
+  });
+
+  it.each(['replace', 'remove'] as const)('detects reason tampering: %s', (operation) => {
+    const payload = { ...makeRecord(4334, 0), reason };
+    const rec = { ...payload, hash: computePrReviewRecordHash(payload) };
+    const { reason: originalReason, ...withoutReason } = rec;
+    expect(originalReason).toBe(reason);
+    const tampered =
+      operation === 'replace' ? { ...rec, reason: 'majority dissent' } : withoutReason;
+    expect(verifyPrReviewRecordSet([tampered])).toMatchObject({
+      ok: false,
+      reason: 'hash_mismatch',
+    });
+  });
+});

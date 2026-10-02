@@ -310,9 +310,15 @@ async function runReview(prNumber: number): Promise<ReviewResult> {
 // Comment formatting
 // ============================================================================
 
-function formatHeader(summary: string, verified: boolean): { icon: string; tag: string } {
+function formatHeader(
+  summary: string,
+  verified: boolean,
+  reason?: string
+): { icon: string; tag: string } {
   const isSoftBlock = summary === 'request_changes' && !verified;
-  if (isSoftBlock) return { icon: '⚠️', tag: 'REQUEST CHANGES (UNVERIFIED — majority dissent)' };
+  if (isSoftBlock) {
+    return { icon: '⚠️', tag: `REQUEST CHANGES (UNVERIFIED — ${reason ?? 'majority dissent'})` };
+  }
   const icons: Record<string, string> = { approve: '✅', request_changes: '❌', abstain: '➖' };
   return { icon: icons[summary] ?? '❓', tag: summary.toUpperCase() };
 }
@@ -352,19 +358,21 @@ function formatReasoningDetails(reviews: readonly VoterResult[]): string[] {
   return lines;
 }
 
-function formatComment(result: {
+export function formatComment(result: {
   summary: string;
   verified: boolean;
   reviews: VoterResult[];
+  aggregate: PrReviewAggregate;
 }): string {
-  const { icon, tag } = formatHeader(result.summary, result.verified);
+  const { icon, tag } = formatHeader(result.summary, result.verified, result.aggregate.reason);
   const isSoftBlock = result.summary === 'request_changes' && !result.verified;
-  const softNote = isSoftBlock
-    ? [
-        '',
-        '> ⚠️ Majority of voters requested changes but none produced a verified finding. Apply the verification gate (`.rules/discovered-issues.md`) before acting on these concerns — they may be false positives.',
-      ]
-    : [];
+  const softNote =
+    isSoftBlock && result.aggregate.reason === undefined
+      ? [
+          '',
+          '> ⚠️ Majority of voters requested changes but none produced a verified finding. Apply the verification gate (`.rules/discovered-issues.md`) before acting on these concerns — they may be false positives.',
+        ]
+      : [];
   return [
     `## ${icon} Multi-voter PR Review [bot]`,
     '',
