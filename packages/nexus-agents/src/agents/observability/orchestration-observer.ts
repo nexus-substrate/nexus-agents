@@ -494,7 +494,3 @@ export function createOrchestrationObserver(
 ): IOrchestrationObserver {
   return new OrchestrationObserver(eventBus, options);
 }
-
-// Backward compat aliases — will be removed in v3.0
-export const SwarmObserver = OrchestrationObserver;
-export const createSwarmObserver = createOrchestrationObserver;

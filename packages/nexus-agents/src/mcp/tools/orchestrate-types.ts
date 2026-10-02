@@ -182,14 +182,6 @@ export interface OrchestrateDeps extends BaseMcpToolDeps {
   modelAdapter?: import('../../core/index.js').IModelAdapter | undefined;
   /** MCP notifier for client-visible logging (Issue #974) */
   notifier?: IMcpNotifier | undefined;
-  /**
-   * Durable, hash-chained audit logger (#4097). Its only reader was the
-   * access-constraint deriver's ALS audit trail, deleted in #5108; nothing in
-   * the orchestrate tool consumes it today. Kept because `OrchestrateDeps` is
-   * published — dropping the member is a breaking change for the next major
-   * (#6319).
-   */
-  auditLogger?: import('../../audit/audit-types.js').IAuditLogger;
 }
 
 // ============================================================================
