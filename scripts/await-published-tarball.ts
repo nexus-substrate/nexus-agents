@@ -5,7 +5,7 @@
  * may 404 on the registry CDN for several minutes before becoming available.
  * This script polls the tarball URL until it returns HTTP 200, logs the delay,
  * appends a summary line to GITHUB_STEP_SUMMARY, and fails with an error if
- * the bounded timeout (default 30 min) is exceeded.
+ * the bounded timeout (default 90 min) is exceeded.
  *
  * @module scripts/await-published-tarball
  * (Source: Issue #6525)
@@ -15,7 +15,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const DEFAULT_REGISTRY = 'https://registry.npmjs.org';
-export const DEFAULT_TIMEOUT_SECONDS = 1800; // 30 minutes
+export const DEFAULT_TIMEOUT_SECONDS = 5400; // 90 minutes: npm staging has exceeded an hour (#6514).
 export const DEFAULT_POLL_INTERVAL_SECONDS = 15;
 export const DEFAULT_PACKAGE_NAME = 'nexus-agents';
 
@@ -335,7 +335,7 @@ function reportOutcome(result: PollTarballResult, packageName: string, version: 
     return 0;
   }
   console.error(
-    `::error::Tarball for ${packageName}@${version} did not become available at ${result.url} within ${String(result.durationSeconds)}s: ${result.reason}`
+    `::error::Tarball for ${packageName}@${version} did not become available at ${result.url} within ${String(result.durationSeconds)}s: ${result.reason}. Promotion is skipped; previous latest is preserved.`
   );
   return 1;
 }

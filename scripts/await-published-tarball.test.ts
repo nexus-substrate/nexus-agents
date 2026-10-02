@@ -7,8 +7,9 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_TIMEOUT_SECONDS,
   buildTarballUrl,
   formatJobSummary,
   main,
@@ -299,5 +300,34 @@ describe('main', () => {
     const content = readFileSync(tempSummaryFile, 'utf8');
     expect(content).toContain('Unavailable (Timed out)');
     rmSync(tempSummaryFile, { force: true });
+  });
+});
+
+describe('safe promotion gate (#6514)', () => {
+  it('allows 90 minutes for npm staging', () => {
+    expect(DEFAULT_TIMEOUT_SECONDS).toBe(5400);
+  });
+
+  it('states that timeout skips promotion and preserves previous latest', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(
+      await main(
+        ['--version', '8.125.0'],
+        {},
+        {
+          pollFn: () =>
+            Promise.resolve({
+              ok: false,
+              reason: 'Timed out',
+              durationSeconds: 5400,
+              attempts: 360,
+              url: 'https://registry.npmjs.org/pkg.tgz',
+            }),
+        }
+      )
+    ).toBe(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.stringMatching(/::error::.*[Pp]romotion.*previous latest/)
+    );
   });
 });
