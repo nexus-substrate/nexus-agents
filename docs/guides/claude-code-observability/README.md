@@ -7,16 +7,23 @@ when running via Claude Code.
 
 nexus-agents provides three layers of observability for Claude Code users:
 
-| Layer           | Mechanism                          | What You See                                      |
-| --------------- | ---------------------------------- | ------------------------------------------------- |
-| **MCP Logging** | `notifications/message` (built-in) | Structured events in Claude Code's verbose output |
-| **Hooks**       | Claude Code hooks config           | Tool invocation logging to a state file           |
-| **Status Line** | Claude Code status line            | 2-line dashboard with swarm health and weather    |
+| Layer             | Mechanism                | What You See                                       |
+| ----------------- | ------------------------ | -------------------------------------------------- |
+| **Operator logs** | Server stderr (built-in) | Orchestration events in the MCP host's server logs |
+| **Hooks**         | Claude Code hooks config | Tool invocation logging to a state file            |
+| **Status Line**   | Claude Code status line  | 2-line dashboard with swarm health and weather     |
 
-## Layer 1: MCP Logging Notifications (Built-in)
+## Layer 1: Operator Logs (Built-in)
 
-nexus-agents automatically sends structured log events via the MCP `notifications/message`
-protocol. These appear in Claude Code's verbose mode (`--verbose` flag or `/verbose` command).
+nexus-agents writes operator events to stderr through its existing logger. View them
+in your MCP host's server logs or capture the server's stderr. The server no longer
+advertises the MCP Logging capability or sends `notifications/message`, so clients
+no longer receive these events through MCP verbose output.
+
+Real `notifications/progress` heartbeats remain available when a client supplies a
+progress token; they reset client request timeouts when `resetTimeoutOnProgress`
+is enabled. Structured telemetry
+continues on the existing trace/OTel path.
 
 Events emitted by tool:
 
@@ -29,7 +36,9 @@ Events emitted by tool:
 | `run_workflow`       | `workflow_start`, `workflow_complete`             |
 | `run_graph_workflow` | `graph_workflow_start`, `graph_workflow_complete` |
 
-No configuration required. This works out of the box.
+Info and warning events use the default log level. Set `NEXUS_LOG_LEVEL=debug` to
+include detailed execution steps and operator heartbeat logs. stdout is reserved
+for the MCP JSON-RPC stream.
 
 ## Layer 2: Hooks Configuration
 
@@ -212,8 +221,8 @@ Line 2 only appears when a nexus-agents hook state file exists.
 
 ## Combining All Three
 
-For maximum observability, use all three layers together. MCP logging provides
-detailed events for debugging, hooks capture tool lifecycle data, and the status
+For maximum observability, use all three layers together. Server stderr provides
+detailed operator events for debugging, hooks capture tool lifecycle data, and the status
 line gives at-a-glance awareness of session health and the multi-agent swarm.
 
 ## Files in This Directory

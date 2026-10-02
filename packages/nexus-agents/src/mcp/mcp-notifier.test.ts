@@ -5,7 +5,8 @@
  * (Source: Issue #974 — Claude Code Observability)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { getGlobalLogLevel, setGlobalLogLevel } from '../core/logger.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from './mcp-notifier.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -25,80 +26,103 @@ function createMockServer(sendFn?: (...args: unknown[]) => Promise<void>) {
 // ============================================================================
 
 describe('createMcpNotifier', () => {
-  it('sends info-level notification', () => {
+  const originalLevel = getGlobalLogLevel();
+
+  beforeEach(() => {
+    setGlobalLogLevel('debug');
+  });
+
+  afterEach(() => {
+    setGlobalLogLevel(originalLevel);
+    vi.restoreAllMocks();
+  });
+
+  it.each(['info', 'debug', 'warn'] as const)('writes %s operator events to stderr', (level) => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const notifier = createMcpNotifier(createMockServer());
+
+    notifier[level]('workflow', { event: 'step_started', step: 'analyze' });
+
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(stderr.mock.calls[0]?.[0]))).toMatchObject({
+      level,
+      message: 'workflow',
+      context: { event: 'step_started', step: 'analyze' },
+    });
+    expect(stdout).not.toHaveBeenCalled();
+  });
+
+  it.each(['info', 'debug', 'warn'] as const)('never sends %s through MCP Logging', (level) => {
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     const sendFn = vi.fn(() => Promise.resolve());
-    const server = createMockServer(sendFn);
-    const notifier = createMcpNotifier(server);
+    const notifier = createMcpNotifier(createMockServer(sendFn));
 
-    notifier.info('delegate', { event: 'model_selected', model: 'claude-opus' });
+    notifier[level]('workflow', { event: 'step_started' });
 
-    expect(sendFn).toHaveBeenCalledWith({
-      level: 'info',
-      logger: 'delegate',
-      data: { event: 'model_selected', model: 'claude-opus' },
+    expect(sendFn).not.toHaveBeenCalled();
+  });
+
+  it('logs empty context as an operator message', () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    createMcpNotifier(createMockServer()).info('workflow', {});
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(stderr.mock.calls[0]?.[0]))).toMatchObject({ message: 'workflow' });
+  });
+
+  it('uses logger redaction for sensitive event fields', () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    createMcpNotifier(createMockServer()).warn('workflow', { password: 'TEST_FAKE_PASSWORD' });
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(stderr.mock.calls[0]?.[0]))).toMatchObject({
+      context: { password: '[REDACTED]' },
     });
   });
 
-  it('sends debug-level notification', () => {
-    const sendFn = vi.fn(() => Promise.resolve());
-    const server = createMockServer(sendFn);
-    const notifier = createMcpNotifier(server);
-
-    notifier.debug('consensus', { event: 'vote_collected', role: 'architect' });
-
-    expect(sendFn).toHaveBeenCalledWith({
-      level: 'debug',
-      logger: 'consensus',
-      data: { event: 'vote_collected', role: 'architect' },
-    });
+  it('respects the operator log level', () => {
+    setGlobalLogLevel('info');
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const notifier = createMcpNotifier(createMockServer());
+    notifier.debug('workflow', { event: 'heartbeat' });
+    notifier.info('workflow', { event: 'completed' });
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(String(stderr.mock.calls[0]?.[0])).toContain('completed');
   });
 
-  it('sends warning-level notification', () => {
-    const sendFn = vi.fn(() => Promise.resolve());
-    const server = createMockServer(sendFn);
-    const notifier = createMcpNotifier(server);
-
-    notifier.warn('workflow', { event: 'step_failed', step: 'analyze' });
-
-    expect(sendFn).toHaveBeenCalledWith({
-      level: 'warning',
-      logger: 'workflow',
-      data: { event: 'step_failed', step: 'analyze' },
+  it('does not break tool execution when stderr is unavailable', () => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => {
+      throw new Error('stderr unavailable');
     });
-  });
-
-  it('does not throw when sendLoggingMessage rejects', () => {
-    const sendFn = vi.fn(() => Promise.reject(new Error('not connected')));
-    const server = createMockServer(sendFn);
-    const notifier = createMcpNotifier(server);
-
-    // Should not throw
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const notifier = createMcpNotifier(createMockServer());
     expect(() => {
-      notifier.info('test', { event: 'test' });
+      notifier.info('workflow', { event: 'started' });
     }).not.toThrow();
+    expect(stdout).not.toHaveBeenCalled();
   });
 
-  it('does not throw when sendLoggingMessage throws synchronously', () => {
-    const sendFn = vi.fn(() => {
-      throw new Error('server not initialized');
-    });
-    const server = createMockServer(sendFn);
-    const notifier = createMcpNotifier(server);
-
-    // Should not throw — caught by try/catch wrapper
+  it('reports an event serialization failure through the logger', () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const data = {
+      get event(): string {
+        throw new Error('unreadable event');
+      },
+    };
+    const notifier = createMcpNotifier(createMockServer());
     expect(() => {
-      notifier.info('test', { event: 'test' });
+      notifier.info('workflow', data);
     }).not.toThrow();
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(String(stderr.mock.calls[0]?.[0])).toContain('unreadable event');
   });
 
-  it('does not throw when server lacks sendLoggingMessage', () => {
-    const server = {} as unknown as McpServer;
-    const notifier = createMcpNotifier(server);
-
-    // Should not throw
+  it('works without a connected MCP server', () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const notifier = createMcpNotifier({} as unknown as McpServer);
     expect(() => {
-      notifier.info('test', { event: 'test' });
+      notifier.info('workflow', { event: 'started' });
     }).not.toThrow();
+    expect(stderr).toHaveBeenCalledTimes(1);
   });
 });
 
