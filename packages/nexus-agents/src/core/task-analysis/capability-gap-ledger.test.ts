@@ -2,7 +2,9 @@
  * Tests for the Capability Gap Ledger (#3555).
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   createCapabilityGapLedger,
   getGapLedger,
@@ -25,6 +27,20 @@ function report(
     allSatisfied: gaps.length === 0,
   };
 }
+
+let testDataDir: string;
+beforeEach(() => {
+  const root = join(process.cwd(), '.nexus-agents');
+  mkdirSync(root, { recursive: true });
+  testDataDir = mkdtempSync(join(root, 'gap-ledger-test-'));
+  vi.stubEnv('NEXUS_DATA_DIR', testDataDir);
+  resetGapLedger();
+});
+afterEach(() => {
+  resetGapLedger();
+  vi.unstubAllEnvs();
+  rmSync(testDataDir, { recursive: true, force: true });
+});
 
 describe('CapabilityGapLedger', () => {
   it('starts empty', () => {
@@ -172,4 +188,16 @@ describe('recordRoutingGaps', () => {
     expect(getGapLedger()).not.toBe(first);
     expect(getGapLedger().size()).toBe(first.size());
   });
+});
+
+it('persists the default ledger only to this test temporary data directory (#6930)', () => {
+  recordRoutingGaps(
+    { capabilityGaps: report({ type: 'tool', name: 'deploy' }) },
+    { goal: 'isolated goal' }
+  );
+  const lines = readFileSync(join(testDataDir, 'capability-gaps.jsonl'), 'utf8').trim().split('\n');
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain('isolated goal');
+  resetGapLedger();
+  expect(getGapLedger().size()).toBe(1);
 });

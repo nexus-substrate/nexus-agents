@@ -11,6 +11,8 @@
  * @module core/task-analysis/task-analysis-advocate
  */
 
+import { SUPPORTED_EXTENSIONS } from '../../indexer/supported-extensions.js';
+import { toolRefusalGapName } from './tool-refusal-gap.js';
 import type { TaskTypeCategory, TaskCapabilities } from './shared-task-analyzer.js';
 import {
   VAGUE_VERBS,
@@ -217,13 +219,92 @@ const TASK_TYPE_TO_EXPERTS: Record<TaskTypeCategory, readonly string[]> = {
   general: ['pm_expert'],
 };
 
+/** Known source-language aliases, including languages not yet supported. */
+const SYMBOL_LANGUAGE_EXTENSIONS: Readonly<Record<string, string>> = {
+  python: '.py',
+  go: '.go',
+  golang: '.go',
+  rust: '.rs',
+  ruby: '.rb',
+  java: '.java',
+  typescript: '.ts',
+  javascript: '.js',
+  php: '.php',
+  swift: '.swift',
+  kotlin: '.kt',
+  scala: '.scala',
+  lua: '.lua',
+  c: '.c',
+  cpp: '.cpp',
+  csharp: '.cs',
+};
+
+/** Source extensions only: data, configuration, docs and TLDs are not capabilities. */
+const SOURCE_EXTENSIONS = new Set([
+  ...SUPPORTED_EXTENSIONS,
+  ...Object.values(SYMBOL_LANGUAGE_EXTENSIONS),
+]);
+const SYMBOL_LANGUAGES = Object.keys(SYMBOL_LANGUAGE_EXTENSIONS).join('|');
+const SYMBOL_EXTRACTION_REQUEST = new RegExp(
+  `\\bextract(?:\\s+(?:class(?:es)?|functions?|and|all|exported|${SYMBOL_LANGUAGES})){0,6}\\s+symbols?\\b` +
+    '|(?:^|\\b(?:run|call|invoke|use)\\s+)extract_symbols\\b' +
+    '|\\b(?:perform|run)\\s+symbol\\s+extraction\\b|\\bsymbol\\s+table\\s+for\\b'
+);
+const SYMBOL_NEGATION =
+  /(?<![\w./-])(?:not|avoid|except|exclude|without|skip|never|don't)(?![\w./-])/;
+
+/** Extract only language aliases in explicit source/object positions. */
+function sourceExtensions(target: string): string[] {
+  // URLs and reference notes are not source targets, even when a TLD is .rs/.py.
+  const source = target.replace(
+    /\b(?:https?:\/\/|www\.)[^\s)]+|\((?:see|docs?|documentation|references?)\b[^)]*\)|\b(?:docs?|documentation|references?)\s+(?:at|on)\s+\S+/g,
+    ''
+  );
+  const extensions = new Set<string>();
+  for (const match of source.matchAll(/\.([a-z][a-z0-9]*)\b(?!\.)/g)) {
+    if (SOURCE_EXTENSIONS.has(match[0])) extensions.add(match[0]);
+  }
+  const aliases = new RegExp(
+    `\\b(?:from|for|in)\\s+(?:the\\s+)?(${SYMBOL_LANGUAGES})\\b(?![./-])` +
+      `|\\b(${SYMBOL_LANGUAGES})\\s+(?:files?|code|source|(?:class\\s+|function\\s+)?symbols?)\\b`,
+    'g'
+  );
+  for (const match of source.matchAll(aliases)) {
+    const extension = SYMBOL_LANGUAGE_EXTENSIONS[match[1] ?? match[2] ?? ''];
+    if (extension !== undefined) extensions.add(extension);
+  }
+  return [...extensions];
+}
+
+/** Require extraction and its source in the same, non-negated clause. */
+function symbolExtractionRequirements(content: string): string[] {
+  const extensions = new Set<string>();
+  const clauses = content
+    .toLowerCase()
+    .split(
+      /\.(?:\s+|$)|[!?;\n]|(?<![\w./-])(?:then|next)(?![\w./-])|\band\s+(?:fix|update|refactor|go)\b/
+    );
+  for (const clause of clauses) {
+    const match = SYMBOL_EXTRACTION_REQUEST.exec(clause);
+    if (match === null) continue;
+    const prefix = clause.slice(0, match.index);
+    if (SYMBOL_NEGATION.test(prefix) || /^\s*(?:explain|describe|document|discuss)\b/.test(prefix))
+      continue;
+    // A negated suffix names exclusions, not requested extraction targets.
+    const target = clause.slice(match.index).split(SYMBOL_NEGATION)[0] ?? '';
+    for (const extension of sourceExtensions(target)) extensions.add(extension);
+  }
+  return [...extensions].map((extension) => toolRefusalGapName('extract_symbols', extension));
+}
+
 /**
  * Infer required capabilities from task analysis signals.
  */
 export function inferRequiredCapabilities(
   taskType: TaskTypeCategory,
   capabilities: TaskCapabilities,
-  signals: string[]
+  signals: string[],
+  content = ''
 ): RequiredCapabilities {
   const tools = [...TASK_TYPE_TO_TOOLS[taskType]];
   const experts = [...TASK_TYPE_TO_EXPERTS[taskType]];
@@ -237,6 +318,8 @@ export function inferRequiredCapabilities(
   if (capabilities.codeGeneration && !experts.includes('testing_expert')) {
     experts.push('testing_expert');
   }
+
+  tools.push(...symbolExtractionRequirements(content));
 
   signals.push('required:tools(' + String(tools.length) + ')');
   signals.push('required:experts(' + String(experts.length) + ')');

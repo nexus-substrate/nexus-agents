@@ -40,14 +40,20 @@ import { dirname } from 'node:path';
 
 import { getTimeProvider } from '../time-provider.js';
 import { CAPABILITY_GAP_TYPES } from './capability-gap-detector.js';
-import type { CapabilityGapReport, CapabilityGapType } from './capability-gap-detector.js';
+import type {
+  CapabilityGap,
+  CapabilityGapReport,
+  CapabilityGapType,
+} from './capability-gap-detector.js';
 import type { GapContext, GapSummary, ICapabilityGapLedger } from './capability-gap-ledger.js';
 
-/** One persisted occurrence. Mirrors the in-memory entry, plus nothing. */
+/** One persisted occurrence, including optional provenance for legacy compatibility. */
 interface PersistedGapEntry {
   readonly type: CapabilityGapType;
   readonly name: string;
   readonly suggestion: string;
+  /** Absent on legacy rows; unspecified provenance is never relabeled. */
+  readonly origin?: CapabilityGap['origin'];
   readonly goal?: string | undefined;
   readonly timestamp: string;
 }
@@ -122,7 +128,8 @@ function isEntry(value: unknown): value is PersistedGapEntry {
     (CAPABILITY_GAP_TYPES as readonly string[]).includes(v['type']) &&
     typeof v['name'] === 'string' &&
     typeof v['suggestion'] === 'string' &&
-    typeof v['timestamp'] === 'string'
+    typeof v['timestamp'] === 'string' &&
+    (v['origin'] === undefined || v['origin'] === 'inferred' || v['origin'] === 'observed')
   );
 }
 
@@ -304,6 +311,7 @@ export function createPersistentCapabilityGapLedger(
           type: gap.type,
           name: gap.name,
           suggestion: gap.suggestion,
+          origin: gap.origin,
           goal: context?.goal,
           timestamp,
         };

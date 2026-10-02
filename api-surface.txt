@@ -1206,6 +1206,7 @@ FunctionDeclaration canProceed
   : (actionType: "ClassifyIssue" | "DraftReply" | "GeneratePatchPlan" | "HandoffMessage" | "IdentifyDuplicates" | "ProposeLabels" | "RefuseAction" | "RequestHumanApproval" | "SummarizeIssue", inputTrustTier: "1" | "2" | "3" | "4") => boolean
 InterfaceDeclaration CapabilityGap
   readonly name: string
+  readonly origin?: "inferred" | "observed" | undefined
   readonly suggestion: string
   readonly type: "expert" | "tool" | "tool_refusal"
 InterfaceDeclaration CapabilityGapReport

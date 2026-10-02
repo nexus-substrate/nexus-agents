@@ -10,6 +10,7 @@
  */
 
 import type { RequiredCapabilities } from './task-analysis-advocate.js';
+import { SUPPORTED_EXTENSIONS } from '../../indexer/supported-extensions.js';
 import { TOOL_MANIFEST } from '../../mcp/tools/tool-manifest.js';
 
 // ============================================================================
@@ -59,9 +60,8 @@ export interface CapabilityGap {
    *
    * `tool` and `expert` are *registry* gaps — a task required something the
    * registry does not contain. They are produced by {@link detectCapabilityGaps},
-   * which is currently unable to emit one: `requiredCapabilities` is drawn from
-   * static lookup tables whose every entry is already available, so the required
-   * set is a subset of the available set by construction (#4651).
+   * including qualified requirements such as `extract_symbols:.py` whose
+   * tool exists but does not support the requested extension (#6930).
    *
    * `tool_refusal` is a *capability* gap of a different kind — a tool that
    * exists, ran, and declined the work for a reason it can name. It is not
@@ -72,6 +72,12 @@ export interface CapabilityGap {
   readonly type: CapabilityGapType;
   readonly name: string;
   readonly suggestion: string;
+  /**
+   * Inferred requirements versus refusals observed during execution.
+   * Undefined means legacy/unspecified provenance, retained by the recording
+   * flag filter without being relabeled as observed.
+   */
+  readonly origin?: 'inferred' | 'observed';
 }
 
 // ============================================================================
@@ -127,6 +133,19 @@ const EXPERT_SUGGESTIONS: Readonly<Record<string, string>> = {
 // Gap Detection
 // ============================================================================
 
+/** Qualified requirements need both a registered tool and supported qualifier. */
+function isToolAvailable(requirement: string): boolean {
+  const separator = requirement.indexOf(':');
+  if (separator === -1) return AVAILABLE_TOOLS.has(requirement);
+  const tool = requirement.slice(0, separator);
+  const qualifier = requirement.slice(separator + 1);
+  return (
+    AVAILABLE_TOOLS.has(tool) &&
+    tool === 'extract_symbols' &&
+    SUPPORTED_EXTENSIONS.includes(qualifier)
+  );
+}
+
 /**
  * Detect capability gaps by comparing required vs available.
  */
@@ -136,11 +155,12 @@ export function detectCapabilityGaps(required: RequiredCapabilities): Capability
   const gaps: CapabilityGap[] = [];
 
   for (const tool of required.tools) {
-    if (AVAILABLE_TOOLS.has(tool)) {
+    if (isToolAvailable(tool)) {
       availableTools.push(tool);
     } else {
       gaps.push({
         type: 'tool',
+        origin: 'inferred',
         name: tool,
         suggestion:
           TOOL_SUGGESTIONS[tool] ?? 'No direct equivalent — consider orchestrate for complex tasks',
@@ -154,6 +174,7 @@ export function detectCapabilityGaps(required: RequiredCapabilities): Capability
     } else {
       gaps.push({
         type: 'expert',
+        origin: 'inferred',
         name: expert,
         suggestion: EXPERT_SUGGESTIONS[expert] ?? 'Use create_expert with a custom configuration',
       });
@@ -163,6 +184,7 @@ export function detectCapabilityGaps(required: RequiredCapabilities): Capability
   return {
     available: { tools: availableTools, experts: availableExperts },
     gaps,
+    // No declared requirements means no unmet requirements.
     allSatisfied: gaps.length === 0,
   };
 }
