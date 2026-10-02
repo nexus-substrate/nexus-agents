@@ -149,6 +149,7 @@ describe('MCP Server', () => {
       const serverInfo = client.getServerVersion();
       expect(serverInfo).toBeDefined();
       expect(serverInfo?.name).toBe('nexus-agents');
+      expect(client.getServerCapabilities()).not.toHaveProperty('logging');
 
       // Clean up
       await client.close();
