@@ -97,6 +97,7 @@ export interface AutoRemediationAuditEvent {
   readonly step: string;
   readonly signalKey?: string;
   readonly detail: string;
+  readonly planSteps?: RemediationPlan['steps'];
 }
 
 /** A completed remediation (enforce mode). */
@@ -461,6 +462,7 @@ async function executeOne(
     step: 'plan',
     signalKey: signal.signalKey,
     detail: `${String(plan.steps.length)} steps`,
+    planSteps: plan.steps,
   });
 
   // Best-effort plan observer (#3670 Stage 2.5): drives the AUDIT-mode dry-run

@@ -512,10 +512,10 @@ and asserts it before running, and the cycle entry point structurally withholds
 >   lives only in `actions/cache` (evicted after 7 idle days). The readiness gate
 >   reads the operator store (`~/.nexus-agents/learning/remediation-soak.jsonl`);
 >   nothing bridges the two, and 43 green runs moved the gate by zero records.
-> - **Un-judged by construction.** Readiness requires a NAMED evaluator and owner
->   (`remediation-review mark` / `sign-off`) — human acts. A bridged CI corpus
->   would arrive with `judgedSelections: 0` and fail `judged-coverage`,
->   `named-evaluator` and `named-owner` regardless of its volume.
+> - **Un-judged by construction.** A bridged CI corpus arrives with no soundness
+>   judgments. It needs human reviews or live `remediation-review panel-judge`
+>   judgments, owner checks of a random panel sample, and a named owner sign-off;
+>   volume alone cannot satisfy readiness.
 > - **Self-authorship.** Letting the job commit its records would widen the
 >   cron-triggered token to `contents: write` so the automation seeking enforce
 >   authority could author the evidence that grants it.
@@ -529,21 +529,73 @@ from **your real `~/.nexus-agents` telemetry**, not a clean CI runner: a fresh
 checkout has little of your outcome/decision-cost telemetry, so the
 `improvement_review` signals it collects are thin and near-identical day to day.
 If you operate nexus-agents day-to-day, schedule the audit cycle _locally_ where
-that telemetry lives. Audit mode is the default, so a bare invocation is soak-only
-with zero writes:
+that telemetry lives. Audit mode is the default: the cycle appends soak evidence
+without applying remediation changes. Create `~/.nexus-agents/logs` before installing
+the cron entry, and retain the output so failures are visible:
 
 ```cron
 # crontab -e — daily audit-mode soak against your real ~/.nexus-agents telemetry
-17 7 * * * cd /path/to/your/repo && NEXUS_AUTO_REMEDIATE=audit nexus-agents auto-remediate >/dev/null 2>&1
+17 7 * * * cd /path/to/your/repo && NEXUS_AUTO_REMEDIATE=audit nexus-agents auto-remediate >>~/.nexus-agents/logs/auto-remediate.log 2>&1
 ```
 
 Or as a systemd timer (`~/.config/systemd/user/nexus-soak.service` +
 `nexus-soak.timer` with `OnCalendar=daily`) running the same command.
 
-After a soak window, judge a batch with `nexus-agents remediation-review` and the
-readiness gate reflects **genuine** soundness over real, plan-bearing selections.
-Every tier's record is judgeable — `mark` keys on the soak ref, never on whether a
-dry-run was captured (#4279 Gap 2).
+After a soak window, judge pending selections with a live panel, draw an owner
+sample, review those records, then sign off:
+
+```bash
+nexus-agents remediation-review panel-judge --batch 100
+nexus-agents remediation-review sample --n 10 --owner '<owner>' --format json
+# Read each sampled soak record and judge it independently; use the emitted ID/ref.
+nexus-agents remediation-review mark '<soakRef>' --sample '<sampleId>' --evaluator '<owner>' --sound
+# Use --unsound for an unsound selection. Repeat mark for every sampled ref.
+nexus-agents remediation-review sign-off --owner '<owner>'
+nexus-agents remediation-review readiness
+```
+
+`panel-judge` runs one live `higher_order` vote per pending record with
+`absolute_quorum`, using the full seven-seat panel by default (`--quick` uses
+three). The proposal allows signal identity, category, priority, severity,
+title, description and evidence, plus the selected remediation steps and their
+count. Earlier vote reasons/results and future fields are excluded. New soak
+records retain the signal and plan content before voting. Each judgment retains
+its vote record ID, the absolute ledger path returned by persistence, and the
+SHA256 hash of the original stored line. Quorum failures and errors record no
+judgment and are reported per ref. Malformed lines and duplicate references are
+skipped and reported; the batch parses one soak snapshot. Readiness verifies
+against exactly the recorded ledger path, checking decision, proposal hash/text
+and self-hash. Missing, unreadable or malformed ledgers and duplicate soak
+references make panel evidence unverifiable. The readiness criteria and text
+name each ref's cause (missing ledger path, unreadable ledger, record ID not
+found, or hash mismatch) and say: "re-judge the ref by a human or re-run panel-judge".
+A later human judgment supersedes the earlier panel row, removing its verification
+failure while retaining the superseded count.
+
+`sample` requires `--owner` and persists that name at draw time with a
+crypto-generated seed and the panel judgments selected for owner review; `--seed S` reproduces the draw over the same panel-judged corpus.
+The latest draw is the active sample; previous draws remain in the audit history.
+Sign-off refuses an incomplete active sample and preserves panel provenance.
+Readiness reports human, panel and sampled owner counts separately. Its existing
+100-selection, 80%-judged and 90%-sound thresholds remain unchanged, with an
+additional owner-agreement criterion requiring at least 10 fully measured sample
+refs drawn strictly after the latest current panel judgment. Disagreements across
+all draws block readiness until a later agreeing owner-sample mark on the same
+ref is made by that sample's recorded owner (`--evaluator` and `--owner`
+must match the name saved at draw time). Only that evaluator's sampled marks
+count as owner judgments; other evaluators' marks are ordinary human judgments
+and cannot resolve owner disagreements. Sign-off must also use the recorded
+owner name. Names are free text, at the same trust level as the existing
+named-evaluator and named-owner criteria: this binds consistency, not identity.
+Human primary judgments do not resolve owner disagreements. Review/sample histories
+do not rotate automatically; damaged stores block readiness and refuse appends.
+Panel IDs never qualify as named evaluators, and owner annotations require
+explicit sign-off. Owner agreement is `n/a` only when the raw review store has
+zero non-superseded panel rows and zero owner-sample rows. Superseded panel
+rows remain reported as a count. Unverifiable or evicted active panels block
+owner agreement and judged coverage with named reasons. Human-only review can
+still reach READY. Every tier's record is judgeable — `mark` keys on the soak
+ref, never on whether a dry-run was captured (#4279 Gap 2).
 
 **Watch the store, not the CI job.** `nexus-agents remediation-review readiness`
 prints a `Soak store:` line beside the verdict (#4279): `UNMEASURED` when the

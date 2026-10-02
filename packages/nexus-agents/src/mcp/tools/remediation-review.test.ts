@@ -3,11 +3,12 @@
  * secret-scrub, and the summarize surface the readiness collector (#3764) reads.
  */
 
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as review from './remediation-review.js';
 
 import {
   ReviewRecordSchema,
@@ -60,7 +61,7 @@ describe('scrubReviewRecord', () => {
 describe('createRemediationReviewStore round-trip', () => {
   let dir: string;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'review-store-'));
+    dir = mkdtempSync(join(process.cwd(), '.review-store-'));
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -75,6 +76,15 @@ describe('createRemediationReviewStore round-trip', () => {
     const reloaded = createRemediationReviewStore(path);
     expect(reloaded.getRecords()).toHaveLength(1);
     expect(reloaded.getRecords()[0]?.soakRef).toBe('sig-1::t1');
+  });
+
+  it('does not expose a judgment when its durable append fails', () => {
+    const path = join(dir, 'directory.jsonl');
+    mkdirSync(path);
+    const store = createRemediationReviewStore(path);
+    expect(store.record(mkRecord())).toBe(false);
+    expect(store.getRecords()).toEqual([]);
+    expect(summarizeRemediationReviews(store.getRecords()).judgedSelections).toBe(0);
   });
 
   it('scrubs a secret in the note before it hits disk', () => {
@@ -140,5 +150,199 @@ describe('summarizeRemediationReviews', () => {
     const summary = summarizeRemediationReviews(records);
     expect(summary.judgedSelections).toBe(1);
     expect(summary.judgedSound).toBe(1);
+  });
+});
+
+describe('panel and owner-sample fidelity', () => {
+  const raw = JSON.stringify({
+    signalKey: 'a',
+    timestamp: 't',
+    category: 'testing',
+    priority: 'p2',
+    severity: 'warning',
+    planStepCount: 3,
+    reason: 'higher_order: approved (100%)',
+    voteOutcome: { approved: true, approvalPercentage: 100 },
+  });
+  function panel(over: Record<string, unknown> = {}): ReviewRecord {
+    return {
+      ...mkRecord({ soakRef: 'a::t' }),
+      judgeKind: 'panel',
+      voteRecordId: 'vote-1',
+      soakRecordHash: createHash('sha256').update(raw).digest('hex'),
+      evaluator: 'panel:vote-1',
+      ...over,
+    };
+  }
+
+  it('reads legacy rows as human', () => {
+    expect(ReviewRecordSchema.parse(mkRecord()).judgeKind).toBe('human');
+  });
+
+  it('rejects a panel row without voteRecordId', () => {
+    expect(ReviewRecordSchema.safeParse({ ...panel(), voteRecordId: undefined }).success).toBe(
+      false
+    );
+  });
+
+  it('rejects panel owners and evaluator impersonation', () => {
+    expect(ReviewRecordSchema.safeParse(panel({ owner: 'owner' })).success).toBe(false);
+    expect(ReviewRecordSchema.safeParse(panel({ evaluator: 'human' })).success).toBe(false);
+  });
+
+  it('never counts a panel row or owner sample as a human judgment', () => {
+    const sample = review.drawRemediationReviewSample([panel()], 1, 'alice', 'seed');
+    const summary = summarizeRemediationReviews(
+      [
+        panel(),
+        mkRecord({ soakRef: 'a::t', judgeKind: 'owner-sample', sampleId: sample.id, sound: false }),
+      ],
+      sample
+    );
+    expect(summary.human).toEqual({ n: 0, disagreements: 0 });
+    expect(summary.panel).toEqual({ n: 1, disagreements: 0 });
+    expect(summary.sample).toEqual({ n: 1, disagreements: 1 });
+    expect(summary.judgedSelections).toBe(1);
+    expect(summary.judgedSound).toBe(1);
+  });
+
+  it('rejects a soak hash mismatch without appending', () => {
+    const dir = mkdtempSync(join(process.cwd(), '.review-hash-'));
+    try {
+      const store = createRemediationReviewStore(join(dir, 'reviews.jsonl'));
+      expect(() => store.record(panel(), raw + ' ')).toThrow('soak hash mismatch');
+      expect(store.getRecords()).toHaveLength(0);
+      expect(store.record(panel(), raw)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a panel judgment attached to a different soak ref', () => {
+    const dir = mkdtempSync(join(process.cwd(), '.review-ref-'));
+    try {
+      const store = createRemediationReviewStore(join(dir, 'reviews.jsonl'));
+      expect(() => store.record(panel({ soakRef: 'different::t' }), raw)).toThrow(
+        'soak reference mismatch'
+      );
+      expect(store.getRecords()).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps human precedence even with stale or unverifiable later panel evidence', () => {
+    const validRaw = JSON.stringify({
+      signalKey: 'a',
+      timestamp: 't',
+      category: 'testing',
+      priority: 'p2',
+      severity: 'medium',
+      planStepCount: 1,
+      reason: 'higher_order: approved (100%)',
+    });
+    const records = [
+      mkRecord({ soakRef: 'a::t' }),
+      panel({ soakRecordHash: review.hashSoakRecordLine(validRaw) }),
+    ];
+    const store: review.RemediationReviewStore = { record: () => false, getRecords: () => records };
+    // Human outranks panel: a later unverifiable panel cannot revoke the human judgment.
+    expect(review.readRemediationReviewRecords(store, [validRaw])).toEqual([records[0]]);
+    expect(review.readRemediationReviewRecords(store, [validRaw + ' '])).toEqual([records[0]]);
+    expect(
+      review.pendingSoakSelections(
+        [{ signalKey: 'a', timestamp: 't' }],
+        review.readRemediationReviewRecords(store, [validRaw + ' '])
+      )
+    ).toHaveLength(0);
+    const sample = review.drawRemediationReviewSample([records[1]!], 1, 'alice', 'seed');
+    const samples: review.RemediationReviewSampleStore = {
+      record: () => false,
+      getRecords: () => [sample],
+    };
+    expect(review.readRemediationReviewSummary(store, samples, [validRaw + ' ']).panel.n).toBe(0);
+  });
+
+  it('does not count historical human reviews of refs absent from the current soak', () => {
+    const record = mkRecord();
+    const store: review.RemediationReviewStore = {
+      record: () => false,
+      getRecords: () => [record],
+    };
+    expect(review.readRemediationReviewRecords(store, [])).toEqual([]);
+    expect(review.ReviewRecordSchema.parse(record).judgeKind).toBe('human');
+  });
+
+  it('requires the active sample itself to carry complete consistent owner sign-off', () => {
+    const panels = [panel(), panel({ soakRef: 'b::t' })];
+    const sample = review.drawRemediationReviewSample(panels, 2, 'active-owner', 'seed');
+    const oldOwner = mkRecord({ soakRef: 'historical', owner: 'old-owner' });
+    const marks = sample.refs.map((soakRef) =>
+      mkRecord({
+        soakRef,
+        judgeKind: 'owner-sample',
+        sampleId: sample.id,
+        evaluator: 'active-owner',
+      })
+    );
+    expect(
+      summarizeRemediationReviews([...panels, oldOwner, ...marks], sample).owner
+    ).toBeUndefined();
+    const signed = marks.map((mark) => ({ ...mark, owner: 'active-owner', ownerSignedOff: true }));
+    expect(summarizeRemediationReviews([...panels, oldOwner, ...signed], sample).owner).toBe(
+      'active-owner'
+    );
+    expect(
+      summarizeRemediationReviews([...panels, oldOwner, signed[0]!], sample).owner
+    ).toBeUndefined();
+    expect(
+      summarizeRemediationReviews(
+        [...panels, oldOwner, signed[0]!, { ...signed[1]!, owner: 'other-owner' }],
+        sample
+      ).owner
+    ).toBeUndefined();
+  });
+
+  it('draws a reproducible distinct sample from a recorded seed', () => {
+    const panels = Array.from({ length: 20 }, (_, n) => panel({ soakRef: `ref-${String(n)}` }));
+    const first = review.drawRemediationReviewSample(panels, 10, 'alice');
+    const repeat = review.drawRemediationReviewSample(
+      [...panels].reverse(),
+      10,
+      'alice',
+      first.seed
+    );
+    expect(repeat.refs).toEqual(first.refs);
+    expect(new Set(first.refs).size).toBe(10);
+    expect(first.panels).toHaveLength(10);
+  });
+
+  it('persists samples and leaves empty samples explicitly empty', () => {
+    const dir = mkdtempSync(join(process.cwd(), '.review-sample-'));
+    try {
+      const path = join(dir, 'samples.jsonl');
+      const sample = review.drawRemediationReviewSample([], 10, 'alice', 'empty');
+      expect(sample.refs).toEqual([]);
+      expect(review.pendingSampleRefs(sample, [])).toEqual([]);
+      review.createRemediationReviewSampleStore(path).record(sample);
+      expect(review.createRemediationReviewSampleStore(path).getRecords()).toEqual([sample]);
+      expect(summarizeRemediationReviews([], sample).sample).toEqual({ n: 0, disagreements: 0 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('judges the current ref after panel replacement but excludes unrelated sample marks', () => {
+    const sample = review.drawRemediationReviewSample([panel()], 1, 'alice', 'seed');
+    const owner = mkRecord({ soakRef: 'a::t', judgeKind: 'owner-sample', sampleId: sample.id });
+    expect(
+      review.pendingSampleRefs(sample, [
+        panel({ voteRecordId: 'vote-2', evaluator: 'panel:vote-2' }),
+        owner,
+      ])
+    ).toEqual([]); // Mark follows the current row; draw freshness is checked separately.
+    expect(
+      summarizeRemediationReviews([panel(), { ...owner, sampleId: 'different' }], sample).sample.n
+    ).toBe(0);
   });
 });

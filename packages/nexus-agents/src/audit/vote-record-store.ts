@@ -107,7 +107,7 @@ const VOTE_RECORDS_FILENAME = 'vote-records.jsonl';
 export const VOTE_RECORDS_PATH_ENV = 'NEXUS_VOTE_RECORDS_PATH';
 
 /** Max proposal chars retained in the human record (full text is hashed). */
-const MAX_PROPOSAL_RECORD_CHARS = 500;
+export const MAX_PROPOSAL_RECORD_CHARS = 500;
 
 /**
  * Actionable message for a write FAILURE (#3991). Since the runtime path now

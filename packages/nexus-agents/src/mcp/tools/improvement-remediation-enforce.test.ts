@@ -46,6 +46,10 @@ function readyEvidence(): EnforceReadinessEvidence {
     judgedSound: 105, // 95.5% ≥ 90%
     evaluator: 'rev@example',
     owner: 'williamzujkowski',
+    rawPanelRows: 0,
+    rawOwnerSampleRows: 0,
+    sampleExists: true,
+    sample: { n: 10, disagreements: 0 },
   };
 }
 

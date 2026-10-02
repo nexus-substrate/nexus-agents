@@ -108,11 +108,17 @@ const READY_CONFIG: EnforceReadinessConfig = {
   minSoundnessRate: 1,
   requireNamedEvaluator: false,
   requireNamedOwner: false,
+  minOwnerSample: 10,
+  maxSampleDisagreements: 0,
 };
 const READY_EVIDENCE: EnforceReadinessEvidence = {
+  rawPanelRows: 0,
+  rawOwnerSampleRows: 0,
   shadowSelections: 1,
   judgedSelections: 1,
   judgedSound: 1,
+  sampleExists: true,
+  sample: { n: 10, disagreements: 0 },
 };
 
 const APPROVING_VOTE: AutoRemediationDeps['vote'] = async () =>
@@ -345,17 +351,23 @@ describe('enforce path — e2e against a throwaway repo (#3777)', () => {
       const deps = enforceReadyDeps();
       deps.readinessEvidence = () =>
         Promise.resolve({
+          rawPanelRows: 0,
+          rawOwnerSampleRows: 0,
+          evictedPanelRows: 0,
           shadowSelections: 120, // ≥ 100 (#4158)
           judgedSelections: 110,
           judgedSound: 105,
           evaluator: 'e2e',
           owner: 'e2e',
+          sampleExists: true,
+          sample: { n: 10, disagreements: 0 },
         });
       const r = await runAutoRemediationCycle(
         { mode: 'enforce' },
         { collectSignals: async () => Promise.resolve([signal()]), deps, soakSink: sink }
       );
       expect(r.mode).toBe('enforce');
+      expect(r.remediated).toHaveLength(1);
       expect(sink.count()).toBe(0); // enforce never wraps/flushes the soak collector
     });
 
