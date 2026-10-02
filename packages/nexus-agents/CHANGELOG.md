@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.126.1
+
+### Patch Changes
+
+- [#6918](https://github.com/nexus-substrate/nexus-agents/pull/6918) [`d44d47d`](https://github.com/nexus-substrate/nexus-agents/commit/d44d47d98b0cccb6c26670c09bce0eaea858ca82) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix CLI and MCP consensus votes using `absolute_quorum` to report `no_quorum` when requested voters return no result, including when the entire panel is missing. Missing seats now void the verdict just like errored seats.
+
 ## 8.126.0
 
 ### Minor Changes
