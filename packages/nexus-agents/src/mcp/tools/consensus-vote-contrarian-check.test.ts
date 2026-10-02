@@ -138,4 +138,28 @@ describe('contrarianCheck reports the quick-mode contrarian voice (#6111)', () =
     expect(response.decision).toBe('approved');
     expect(response.contrarianCheck).toBe('errored');
   });
+
+  it('threads 7 requested seats into the decision when only 6 return (#6889)', async () => {
+    collectRealVotesMock.mockImplementation(({ roles }) =>
+      Promise.resolve(cleanApprovals(roles.filter((role) => role !== 'scope_steward')))
+    );
+    const input = { ...QUICK_ABSOLUTE, quickMode: false };
+    const result = await executeVoting(input, logger);
+
+    expect(collectRealVotesMock.mock.calls[0]?.[0].roles).toHaveLength(7);
+    expect(result.votes).toHaveLength(6);
+    expect(result.result.outcome).toBe('approved');
+    expect(result.decision).toBe('no_quorum');
+  });
+
+  it('response recomputation threads the requested panel size (#6889)', async () => {
+    collectRealVotesMock.mockImplementation(({ roles }) =>
+      Promise.resolve(cleanApprovals(roles.filter((role) => role !== 'scope_steward')))
+    );
+    const input = { ...QUICK_ABSOLUTE, quickMode: false };
+    const result = await executeVoting(input, logger);
+    delete result.decision;
+
+    expect(buildResponse(input, result).decision).toBe('no_quorum');
+  });
 });
