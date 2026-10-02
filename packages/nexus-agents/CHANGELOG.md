@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.126.5
+
+### Patch Changes
+
+- [#6933](https://github.com/nexus-substrate/nexus-agents/pull/6933) [`4f8cf6e`](https://github.com/nexus-substrate/nexus-agents/commit/4f8cf6e5c63279b9a1f87f64735696a4bc4308ae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Populate orchestration and delegation task contracts with analyzed constraints,
+  required capabilities, and measured capability gaps. Unsupported symbol-extraction
+  requests now report inferred gaps with `allSatisfied: false`, independently of
+  ledger recording settings. The contract schema remains unchanged; unrecognized
+  scope stays empty and unrecognized time and quality constraints remain absent.
+
 ## 8.126.4
 
 ### Patch Changes
