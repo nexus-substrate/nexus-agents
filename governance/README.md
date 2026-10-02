@@ -159,7 +159,7 @@ What follows:
 
 - **Tamper-evident after recording, not proof of honest production.** Editing
   a committed record is detected. A producer change that mislabels a seat's
-  model, flips a parsed seat decision, or miscomputes the overall decision is
+  model, flips a parsed seat decision, or forwards the wrong overall decision is
   not detected by the gate. It shows up only in that producer PR's diff and
   review.
 - **The same boundary applies to every field.** The family floor reads `model`
