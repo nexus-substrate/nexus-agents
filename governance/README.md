@@ -126,6 +126,38 @@ override does not cover `head^` or a different rebased record SHA. Zero known
 families cannot be overridden; rerun a panel with measurable models instead.
 The gate reports the owner override id and exact binding when it accepts it.
 
+### What a ratification record does and does not prove (#6952)
+
+The gate checks what is **in** the record. It checks the hash chain,
+signatures, append-only history, the supermajority over `voters[].decision`,
+and the model-family floor over each seat's `servedModel ?? model`. It cannot
+check how those fields were **produced**. The producers are ordinary code
+outside the governor section:
+
+- `packages/nexus-agents/src/cli/voter-attempt-usage.ts` sets each seat's
+  `model`;
+- `voter-response.ts` parses each seat's decision;
+- `voter-agents*.ts` assembles the panel.
+
+The governed audit builder hashes and signs whatever those producers supply.
+
+What follows:
+
+- **Tamper-evident after recording, not proof of honest production.** Editing
+  a committed record is detected. A producer change that mislabels a seat's
+  model or flips a parsed decision is not detected by the gate. It shows up
+  only in the producer PR's diff and review.
+- **The same boundary applies to every field.** The family floor (#6601) adds
+  no new trust. It reads `model` from the same producers that already supply
+  `decision`.
+- **Gateway substitution** is narrowed by persisting the served model when an
+  adapter reports one (#6951). That relies on the adapter's report.
+
+A reviewer auditing a ratification should therefore also read any change to
+those producer files that merged since the last trusted panel. Whether to
+govern the producers or to verify their output independently is open in
+#6952.
+
 ### Redacting a voter's reasoning
 
 From the repository root, name the record and each voter role whose reasoning
