@@ -1,5 +1,5 @@
 /** Model-family floor and owner override for governor ratification (#6601). */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +16,10 @@ import { appendRatificationRecord } from './append-ratification-record.js';
 import { signCommitted } from './append-ratification-signing.js';
 import { evaluateLedgerEvidence, type LedgerEvidence } from './governor-ledger-evidence.js';
 import { formatLedgerEvidence } from './governor-ledger-report.js';
+import * as diversity from './governor-ledger-diversity.js';
+import * as dealing from '../packages/nexus-agents/src/cli/voter-family-dealing.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../packages/nexus-agents/src/config/in-tree-data.js';
+import { governorPathsFromCodeowners } from './governor-section.js';
 
 const DIR = mkdtempSync(join(tmpdir(), '6601-test-'));
 const OWNER_KEY = join(DIR, 'owner');
@@ -407,5 +411,86 @@ describe('governor model diversity floor (#6601)', () => {
       });
       expect(evidence.kind, r.id).toBe('ratified');
     }
+  });
+});
+
+describe('governed model-family mapping', () => {
+  it('cannot split one vendor into multiple families through the ordinary classifier', () => {
+    vi.spyOn(dealing, 'vendorFamilyOf').mockImplementation((modelId) =>
+      modelId.includes('sonnet') ? 'google' : 'openai'
+    );
+    const evidence = diversity.modelDiversityEvidence([single()], undefined);
+    expect(evidence.failures).toHaveLength(1);
+    expect(evidence.failures[0]).toMatchObject({
+      kind: 'insufficient-model-diversity',
+      families: ['anthropic'],
+    });
+  });
+
+  it('cannot count unknown vendors through the ordinary classifier', () => {
+    vi.spyOn(dealing, 'vendorFamilyOf').mockReturnValue('google');
+    const evidence = diversity.modelDiversityEvidence(
+      [record('unknown-vendor', ['new-test-vendor', 'other-test-vendor', 'new-test-vendor'])],
+      undefined
+    );
+    expect(evidence.failures).toHaveLength(1);
+    expect(evidence.failures[0]).toMatchObject({
+      kind: 'unmeasured-model-diversity',
+      families: [],
+    });
+  });
+
+  it.each([
+    ['claude-opus-4-6', 'anthropic'],
+    ['ANTHROPIC/claude_sonnet_4_6', 'anthropic'],
+    ['gpt-5', 'openai'],
+    ['o3-mini', 'openai'],
+    ['chatgpt-4o', 'openai'],
+    ['gemini-2.5-pro', 'google'],
+    ['meta-llama/llama-3', 'meta'],
+    ['qwen-3', 'qwen'],
+    ['nvidia/nemotron-super', 'nvidia'],
+    ['codestral-2501', 'mistral'],
+    ['command-r-plus', 'cohere'],
+    ['deepseek-r1', 'deepseek'],
+    ['claudia-7b', 'unknown'],
+    ['opus', 'unknown'],
+    ['', 'unknown'],
+  ])('pins %s to %s', (modelId, family) => {
+    expect(diversity.governorVendorFamilyOf(modelId)).toBe(family);
+  });
+
+  it('agrees with the ordinary classifier or is stricter for every in-tree id and alias', () => {
+    const models = DEFAULT_MODEL_CAPABILITIES.models;
+    expect(models.length, 'empty in-tree registry measures no mapping agreement').toBeGreaterThan(
+      0
+    );
+    for (const model of models) {
+      const ids = [model.id, ...(model.aliases ?? [])];
+      if (model.cliModelName !== undefined) ids.push(model.cliModelName);
+      for (const id of ids) {
+        const family = diversity.governorVendorFamilyOf(id);
+        expect(family === 'unknown' || family === dealing.vendorFamilyOf(id), id).toBe(true);
+      }
+    }
+  });
+
+  it('agrees with the ordinary classifier or is stricter for every committed ledger model', () => {
+    const text = readFileSync(join(process.cwd(), 'governance/vote-records.jsonl'), 'utf-8');
+    const { records, invalidLines } = parseVoteRecordsText(text);
+    expect(invalidLines).toEqual([]);
+    const ids = new Set(records.flatMap((r) => r.voters.flatMap((v) => v.model ?? [])));
+    expect(ids.size, 'empty ledger model set measures no mapping agreement').toBeGreaterThan(0);
+    for (const id of ids) {
+      const family = diversity.governorVendorFamilyOf(id);
+      expect(family === 'unknown' || family === dealing.vendorFamilyOf(id), id).toBe(true);
+    }
+  });
+
+  it('governs the mapping agreement test so an ordinary PR cannot remove it', () => {
+    const codeowners = readFileSync(join(process.cwd(), 'CODEOWNERS'), 'utf-8');
+    expect(governorPathsFromCodeowners(codeowners)).toContain(
+      '/scripts/governor-ledger-diversity.test.ts'
+    );
   });
 });

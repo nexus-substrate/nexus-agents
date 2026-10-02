@@ -7,8 +7,33 @@
  * owner-signed panel cannot override itself; zero known families is unmeasured.
  */
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
-import { vendorFamilyOf } from '../packages/nexus-agents/src/cli/voter-family-dealing.js';
 import type { RecordSignatureReport } from './governor-ledger-signature.js';
+
+/** Pinned inside the governor boundary; ordinary routing edits cannot change the floor. */
+const GOVERNOR_VENDOR_PATTERNS: readonly { family: string; regex: RegExp }[] = [
+  { family: 'anthropic', regex: /\b(claude|anthropic)\b/ },
+  { family: 'openai', regex: /\b(gpt|o[1-9]|chatgpt|openai)\b/ },
+  { family: 'google', regex: /\b(gemini|bison|gecko|palm|google)\b/ },
+  { family: 'meta', regex: /\b(llama|meta-llama|meta)\b/ },
+  { family: 'qwen', regex: /\b(qwen)\b/ },
+  { family: 'nvidia', regex: /\b(nemotron|nvidia)\b/ },
+  { family: 'mistral', regex: /\b(mistral|mixtral|codestral)\b/ },
+  { family: 'cohere', regex: /\b(command-r|command|cohere)\b/ },
+  { family: 'deepseek', regex: /\b(deepseek)\b/ },
+];
+
+/** Governed normalization and lookup; no mutable registry or routing fallback. */
+export function governorVendorFamilyOf(modelId: string): string {
+  const normalized = modelId
+    .toLowerCase()
+    .replace(/[_/]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  for (const { family, regex } of GOVERNOR_VENDOR_PATTERNS) {
+    if (regex.test(normalized)) return family;
+  }
+  return 'unknown';
+}
 
 /** Already-landed single-family panels at activation; closed hashes, never sequences/dates. */
 const GRANDFATHERED_DIVERSITY_HASHES: ReadonlySet<string> = new Set([
@@ -31,7 +56,7 @@ function familiesOf(record: VoteRecord): string[] {
     // Errored seats are omitted by the record builder; abstentions attest to no verdict.
     if (voter.decision !== 'approve' && voter.decision !== 'reject') continue;
     if (voter.unverifiable === true || voter.model === undefined) continue;
-    const family = vendorFamilyOf(voter.model);
+    const family = governorVendorFamilyOf(voter.model);
     if (family !== 'unknown') families.add(family);
   }
   return [...families].sort();
@@ -80,8 +105,9 @@ export function modelDiversityEvidence(
     // models on any schema are unmeasured: an author-typed version cannot
     // exempt a newly signed record by claiming it is old.
     const families = familiesOf(record);
-    // Load-bearing family mapping: src/config/model-identity.ts VENDOR_PATTERNS
-    // via cli/voter-family-dealing.ts, both outside the governor set.
+    // The floor uses only this script's governed, pinned family table.
+    // Its governed sibling test checks registry/ledger agreement with the
+    // ordinary vendorFamilyOf classifier, allowing only stricter unknowns.
     // voters[].model is the adapter's configured model; gateway substitution
     // is tracked in #6951. Unknown vendors add no family (fail closed).
     // Owner override escapes a measured single-family panel, never zero families.

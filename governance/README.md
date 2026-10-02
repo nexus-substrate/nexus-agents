@@ -82,9 +82,15 @@ do not. Multiple models from the same vendor count as one family. Zero known
 families is `unmeasured-model-diversity`; one is
 `insufficient-model-diversity`. The floor is computed from hash-covered
 `voters[].model`, the adapter's configured model. Gateway substitution is
-tracked in #6951. The family mapping in `src/config/model-identity.ts`
-(`VENDOR_PATTERNS`) via `cli/voter-family-dealing.ts` is load-bearing but
-outside the governor set.
+tracked in #6951. The floor uses only the pinned vendor-family patterns and
+normalization inside governed `scripts/governor-ledger-diversity.ts`; ordinary
+routing or registry edits cannot change its mapping. Unrecognized IDs count
+toward no family, including aliases recognized only by the ordinary registry.
+The governed sibling `scripts/governor-ledger-diversity.test.ts` checks every
+in-tree model ID (including aliases and CLI model names) and every committed
+ledger model against `vendorFamilyOf`. The pinned mapping must agree or return
+`unknown` (stricter); disagreement fails the test and requires a deliberate
+governed edit.
 
 **Legacy handling uses exact hashes.** Only the three already-landed
 single-family records for PRs #6559, #6621 and #6698 are exempt, by the closed
