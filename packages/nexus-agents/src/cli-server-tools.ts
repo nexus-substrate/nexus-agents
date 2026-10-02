@@ -81,7 +81,6 @@ import type { ILogger } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
-import { startPipelineEventBridge } from './pipeline/event-bus-bridge.js';
 import { startTuneStage } from './pipeline/tune-stage.js';
 import { configureUntrustedInputFirewall } from './dogfooding/untrusted-input-firewall.js';
 import {
@@ -849,10 +848,6 @@ function initV2PipelineSubsystems(
 ): void {
   const pluginRegistry = getPipelinePluginRegistry();
   const pipelineEventBus = getPipelineEventBus();
-  // Was `createEventBusBridge(...)` with the returned `dispose` dropped, so the
-  // V2→V1 forwarder outlived every shutdown. Now it follows the same
-  // start/shutdown shape as the tune stage and the other subsystems below.
-  startPipelineEventBridge(pipelineEventBus);
   // #5003: the EventBus → OutcomeStore bridge is GONE. `StageFailedEvent`
   // carries no `cli`, so it hardcoded `cli: 'claude'` + `category:
   // 'code_generation'` on every stage failure — the exact fabrication

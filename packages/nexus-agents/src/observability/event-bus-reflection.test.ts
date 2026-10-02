@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- verify reflection safety for explicit legacy bridge callers until 9.0 (#6291) */
 /**
- * Pins termination of the two-bus reflection cycle as an INVARIANT (#5223).
+ * Pins termination of the two-bus reflection cycle as an INVARIANT (#5223)
+ * when callers explicitly install the deprecated pipeline bridge (#5120).
  *
  * The cycle:
  *
@@ -43,7 +45,7 @@ describe('two-bus reflection terminates by construction (#5223)', () => {
     shutdownFailoverSignals();
     pipelineBus = new PipelineEventBus();
 
-    // Both legs live, wired to the same pair of buses as production.
+    // Both legs live for callers explicitly installing the retained public bridge.
     startFailoverSignals({ sourceBus: getGlobalEventBus(), pipelineBus, cooldownMs: 0 });
     bridge = createEventBusBridge({ source: pipelineBus });
   });
