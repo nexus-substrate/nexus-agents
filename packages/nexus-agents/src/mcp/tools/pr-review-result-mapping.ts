@@ -76,13 +76,16 @@ export function summarizeReviews(reviews: readonly PrReviewVote[]): {
   };
 }
 
-/** Fence model-supplied locations without retaining control characters or partial escapes. */
+/**
+ * Fence model-supplied locations as a Markdown code span. Backslashes do not
+ * escape inside a code span, so a backtick is replaced (with `'`) rather than
+ * escaped; control characters collapse to spaces.
+ */
 function formatFindingLocation(location: string, maxChars: number): string {
   const sanitized = location
     .replace(/[\p{Cc}\u2028\u2029]+/gu, ' ')
-    .replace(/`/g, '\\`')
-    .slice(0, maxChars)
-    .replace(/\\$/, '');
+    .replace(/`/g, "'")
+    .slice(0, maxChars);
   return `\`${sanitized}\``;
 }
 

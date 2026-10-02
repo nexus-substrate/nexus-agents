@@ -68,6 +68,11 @@ import {
  */
 const MINIMAL_DIFF = 'diff --git a/x.ts b/x.ts\n@@ -1 +1 @@\n-a\n+b\n';
 
+/** The code spans in a reason: any stray backtick would change this count. */
+function fencedLocations(reason: string): string[] {
+  return reason.match(/`[^`]*`/g) ?? [];
+}
+
 describe('pr_review tool', () => {
   describe('PR_REVIEW_ROLES', () => {
     it('should be exactly 5 roles per #2233 design', () => {
@@ -180,7 +185,9 @@ describe('pr_review tool', () => {
       ]);
       expect(result.reason).toBeDefined();
       expect(result.reason!.length).toBeLessThanOrEqual(500);
-      expect(result.reason).toMatch(/^unconfirmed: 1 reviewer \(security\) at `src\/\\`unsafe\\` /);
+      // A backtick cannot be escaped inside a code span, so it is replaced.
+      expect(result.reason).toMatch(/^unconfirmed: 1 reviewer \(security\) at `src\/'unsafe' /);
+      expect(fencedLocations(result.reason!)).toHaveLength(1);
       expect(result.reason).toMatch(/`; needs second reviewer$/);
       expect(result.reason!.split(/\r\n|[\n\r\u0085\u2028\u2029]/)).toHaveLength(1);
       expect(result.reason).not.toContain('\u0000');
