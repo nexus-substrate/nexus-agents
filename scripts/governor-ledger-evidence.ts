@@ -312,6 +312,7 @@ import type {
   RedactionRecord,
 } from '../packages/nexus-agents/src/audit/redaction-record.js';
 import { appendOnlyVerdict } from './governor-ledger-append-only.js';
+import { modelDiversityEvidence, type ModelDiversityFailure } from './governor-ledger-diversity.js';
 import {
   GRANDFATHERED_RECORD_HASHES,
   SIGNATURE_CUTOVER_SEQUENCE,
@@ -393,6 +394,8 @@ export interface LedgerEvidenceInputs {
  */
 interface WithSignatures {
   readonly signatures?: readonly RecordSignatureReport[];
+  /** Evaluation-time diversity exceptions; never persisted on a record. */
+  readonly diversityNotices?: readonly string[];
 }
 
 /** What the signature report needs: the verifier (if any) and the ledger's redactions (#6372). */
@@ -437,7 +440,8 @@ export type BoundRecordFailure =
    * unknown key, a signature that does not hold, or a verifier that could not
    * run (or was not supplied). Fail-closed: absence is not measured as signed.
    */
-  | SignatureRequiredFailure;
+  | SignatureRequiredFailure
+  | ModelDiversityFailure;
 
 /**
  * A refusal over the bound records: the precedence-first failure, plus EVERY
@@ -698,11 +702,8 @@ function verdictOverBound(
       if (failure !== undefined) failures.push(failure);
     }
   }
-  // #3927 item 4: computed over every bound record, attached to whichever
-  // verdict follows, never consulted for `kind` this phase.
-  // #6372: a redaction that names a bound record is reported beside it — the
-  // one sanctioned edit of the ledger is the record that most needs to say
-  // who appended it. Ledger order; an empty redaction list adds nothing.
+  // Verify every bound vote and its naming redactions (#3927, #6372).
+  // Empty redactions add nothing; signatures also authorize owner overrides.
   const boundIds = new Set(bound.map((r) => r.id));
   const naming = redactions.filter((r) => boundIds.has(r.targetId));
   const signatures: WithSignatures =
@@ -714,15 +715,18 @@ function verdictOverBound(
           })),
         }
       : {};
-  // Phase 3 (#6279): at or past the cutover the signature IS consulted for
-  // `kind`. Precedence: after the panel checks (a misconfigured run names
-  // its cause first), before `not-approved` (report order below).
+  // Signature enforcement precedes diversity; both follow the panel checks.
   failures.push(...signatureRequiredFailures(bound, signatures.signatures));
+  const { failures: diversityFailures, ...diversity } = modelDiversityEvidence(
+    bound,
+    signatures.signatures
+  );
+  failures.push(...diversityFailures);
   const first = failures[0];
   if (first !== undefined) return { ...first, failures: inReportOrder(failures), ...signatures };
   // `bound` is non-empty by the caller's construction; the reduce needs no seed.
   const latest = bound.reduce((a, b) => (b.sequence > a.sequence ? b : a));
-  return { kind: 'ratified', record: latest, ...checked, ...signatures };
+  return { kind: 'ratified', record: latest, ...checked, ...signatures, ...diversity };
 }
 
 /**
@@ -885,6 +889,7 @@ function rebasedVerdict(
     appendOnlyChecked,
     // #3927 item 4: the rebased record is a bound record; its signature code travels with it.
     ...(verdict.signatures !== undefined ? { signatures: verdict.signatures } : {}),
+    diversityNotices: verdict.diversityNotices ?? [],
   };
 }
 

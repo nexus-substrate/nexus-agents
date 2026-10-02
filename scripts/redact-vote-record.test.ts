@@ -28,6 +28,7 @@ function fixture(id = 'target', sequence = 0): VoteRecord {
     vote: { decision: 'approve', confidence: 0.8, reasoning: `because ${role}` },
     processingTimeMs: 10,
     source: 'llm',
+    model: role === 'architect' ? 'claude-opus-4-6' : 'gpt-5',
   }));
   return buildVoteRecord({
     id,

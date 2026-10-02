@@ -102,6 +102,7 @@ describe('e2e: nexus-agents vote --ratifies-pr → append script → the ledger 
           vote: { decision: 'approve', confidence: 0.9, reasoning: 'ok' },
           source: 'llm',
           cli: 'claude',
+          model: role === 'architect' ? 'claude-opus-4-6' : 'gpt-5',
           processingTimeMs: 1,
         }))
       )

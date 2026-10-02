@@ -66,6 +66,17 @@ describe('governorPathsTouchedReport', () => {
     expect(report.messages.join('\n')).toContain('1 of 2 changed file(s)');
   });
 
+  it('a PR touching only the diversity floor is a governor-path PR (#6601)', () => {
+    const real = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
+    const report = governorPathsTouchedReport(
+      { CHANGED_FILES: 'scripts/governor-ledger-diversity.ts' },
+      real
+    );
+    expect(report.exitCode).toBe(0);
+    expect(report.value).toBe('true');
+    expect(report.messages.join('\n')).toContain('1 of 1 changed file(s)');
+  });
+
   it('an EMPTY change set is `false` and says so — the empty case is named, not defaulted', () => {
     const report = governorPathsTouchedReport({ CHANGED_FILES: '\n  \n' }, CODEOWNERS);
     expect(report.exitCode).toBe(0);
