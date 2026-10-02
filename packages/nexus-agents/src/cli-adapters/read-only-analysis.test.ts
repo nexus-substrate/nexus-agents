@@ -144,27 +144,38 @@ describe('opencode maps read-only analysis to an OPENCODE_PERMISSION deny config
   });
 });
 
-describe('gemini (agy) maps read-only analysis to plan mode in a sandbox (#6754)', () => {
-  it('adds --mode plan and --sandbox, before the --print prompt', () => {
-    const { args } = new GeminiProbe().command(READ_ONLY);
-    expect(flagValue(args, '--mode')).toBe('plan');
-    expect(args).toContain('--sandbox');
-    expect(args.indexOf('--sandbox')).toBeLessThan(args.indexOf('--print'));
+describe('gemini (agy) cannot enforce read-only analysis, so it refuses it (#6962)', () => {
+  // Observed live 2026-10-02 (agy 1.2.15): `--mode plan --sandbox` wrote a new
+  // file and modified a committed one when the prompt asked it to.
+  it('does not declare the mode', () => {
+    expect(new GeminiProbe().enforcesReadOnlyAnalysis).not.toBe(true);
   });
 
-  it('the default mode carries neither flag', () => {
-    const { args } = new GeminiProbe().command(DEFAULT_MODE);
-    expect(args).not.toContain('--mode');
-    expect(args).not.toContain('--sandbox');
+  it('refuses a read-only task without running it', async () => {
+    const adapter = new GeminiProbe();
+    const spawn = vi.spyOn(adapter, 'executeTask');
+    const result = await adapter.execute(READ_ONLY, { allowRetry: false });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toMatch(/read-only analysis mode/);
+    expect(result.error.message).toMatch(/cannot enforce/);
+    expect(isCallerInputCliError(result.error)).toBe(true);
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it('executeWithMetadata applies the refusal too (it bypasses the base execute)', async () => {
-    const adapter = new GeminiProbe();
-    Object.defineProperty(adapter, 'enforcesReadOnlyAnalysis', { value: false });
-    const result = await adapter.executeWithMetadata(READ_ONLY);
+    const result = await new GeminiProbe().executeWithMetadata(READ_ONLY);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.message).toMatch(/cannot enforce/);
+  });
+
+  it('never passes the plan-mode flags it was found not to enforce', () => {
+    for (const task of [READ_ONLY, DEFAULT_MODE]) {
+      const { args } = new GeminiProbe().command(task);
+      expect(args).not.toContain('--mode');
+      expect(args).not.toContain('--sandbox');
+    }
   });
 });
 

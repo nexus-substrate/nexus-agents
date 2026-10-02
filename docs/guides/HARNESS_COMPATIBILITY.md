@@ -46,8 +46,12 @@ call per voter role. There are two ways nexus-agents can make those calls:
   whatever order the gateway lists them in; `NEXUS_VOTER_MODEL_<ROLE>` pins a
   role to one model.
 - **CLI subprocess round-robin (default when no gateway is set)** — with
-  neither env var set, voters shell out to whichever CLIs (claude/gemini/codex)
-  are installed, round-robining roles across them. This works with no extra
+  neither env var set, voters shell out to whichever CLIs (claude/codex/opencode)
+  are installed, round-robining roles across them. Only CLIs that enforce
+  read-only analysis get seats (#6962): the gemini slot (agy) cannot, so it is
+  never seated, and with claude, codex and opencode installed the 7-seat panel
+  is architect/ai_ml/scope_steward on claude, security/pm on codex and
+  devex/catfish on opencode. This works with no extra
   configuration, but each vote spawns a subprocess and inherits that CLI's own
   auth/quota, so a full panel is noticeably slower.
 

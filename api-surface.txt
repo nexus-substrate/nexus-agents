@@ -4079,7 +4079,7 @@ ClassDeclaration GeminiCliAdapter
   getCircuitBreakerSnapshot() => CircuitBreakerSnapshot | null
   getModelInfo() => ModelInfo
   listModels() => Promise<readonly CliModelInfo[]>
-  readonly enforcesReadOnlyAnalysis: true
+  readonly enforcesReadOnlyAnalysis: false
   readonly name: "claude" | "codex" | "gemini" | "opencode"
   resetCircuitBreaker() => void
 InterfaceDeclaration GeminiCliResponse

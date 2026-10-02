@@ -18,6 +18,7 @@
 
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { resolveVoterModelOverrides } from './voter-model-overrides.js';
+import { clisServingVoterSeats } from './voter-cli-access.js';
 import { VOTER_ROLES } from './voter-roles.js';
 import { createLogger, getTimeProvider, type IModelAdapter, type ILogger } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
@@ -417,6 +418,15 @@ async function resolveDiverseAdapters(
     });
     availableClis = [];
   }
+  // #6962: every seat runs read-only analysis; a CLI that cannot enforce it
+  // would refuse every seat dealt to it, so it is not dealt any.
+  const access = clisServingVoterSeats(availableClis);
+  if (access.refused.length > 0) {
+    logger.info('CLIs excluded from voter seats: cannot enforce read-only analysis', {
+      refused: access.refused,
+    });
+  }
+  availableClis = access.serving;
 
   if (availableClis.length <= 1) {
     logger.info('Using single adapter for all roles', { cliCount: availableClis.length });
