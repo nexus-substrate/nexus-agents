@@ -58,10 +58,48 @@ describe('parseStoreText', () => {
     const census = parseStoreText(
       [FIRED_A, QUIET_C, OLD_E, PR_REVIEW_F, 'not json', FIRED_B, QUIET_D, ''].join('\n')
     );
-    expect(census.total).toBe(4);
+    expect(census.total).toBe(3);
+    expect(census.notApplicable).toBe(1);
     expect(census.fired.map((r) => r.decisionId)).toEqual(['a', 'b']);
     expect(census.withoutVerdict).toBe(2);
     expect(census.unparseable).toBe(1);
+  });
+
+  it('excludes explicit and legacy declared-option rows from totals and labelled precision', () => {
+    const skipped = row('skip', { applicable: false, source: 'cli', declaredOptionCount: 2 });
+    const legacy = row('legacy', {
+      fired: true,
+      pattern: OPTION_PATTERN,
+      excerpt: 'Option A',
+      declaredOptionCount: 2,
+    });
+    const census = parseStoreText([FIRED_A, QUIET_C, QUIET_D, skipped, legacy].join('\n'));
+    expect(census.total).toBe(2);
+    expect(census.notApplicable).toBe(3);
+    expect(census.unparseable).toBe(0);
+    expect(census.fired.map((r) => r.decisionId)).toEqual(['a']);
+    expect(
+      computePrecision(
+        census.fired,
+        new Map([
+          ['a', 'tp'],
+          ['legacy', 'fp'],
+          ['skip', 'fp'],
+        ])
+      )
+    ).toMatchObject({
+      n: 1,
+      tp: 1,
+      fp: 0,
+      precision: 1,
+    });
+  });
+
+  it('names an all-not-applicable store as zero measured rows', () => {
+    const census = parseStoreText(row('skip', { applicable: false, declaredOptionCount: 2 }));
+    expect(census.total).toBe(0);
+    expect(census.notApplicable).toBe(1);
+    expect(computePrecision(census.fired, new Map([['skip', 'tp']])).kind).toBe('unmeasured');
   });
 
   it('counts a row whose verdict fails the schema as unparseable, not as not-fired', () => {
@@ -150,12 +188,43 @@ describe('renderReport', () => {
   it('lists every fired row with id, pattern, declared count and excerpt, and the fired / total ratio', () => {
     const census = parseStoreText([FIRED_A, QUIET_C, QUIET_D, OLD_E].join('\n'));
     const text = renderReport('/x/decision-costs.jsonl', census, undefined);
-    expect(text).toContain('fired / total: 1 / 3');
+    expect(text).toContain('fired / total: 1 / 2');
     expect(text).toContain('a\t');
     expect(text).toContain(OPTION_PATTERN);
     expect(text).toContain('Option A — keep it.');
     expect(text).toContain('rows without a verdict (written before #5422, or pr_review): 1');
     expect(text).toContain('precision: unmeasured (no labels file)');
+  });
+
+  it('shows CLI and MCP source counts including not-applicable rows separately', () => {
+    const cli = row('cli', {
+      fired: true,
+      source: 'cli',
+      pattern: OPTION_PATTERN,
+      excerpt: 'Option A',
+      declaredOptionCount: 0,
+    });
+    const cliSkipped = row('cli-skip', {
+      applicable: false,
+      source: 'cli',
+      declaredOptionCount: 2,
+    });
+    const text = renderReport(
+      '/x',
+      parseStoreText([cli, cliSkipped, FIRED_A, QUIET_C, QUIET_D].join('\n')),
+      undefined
+    );
+    expect(text).toContain('fired / total: 2 / 3');
+    expect(text).toContain('not-applicable rows (declared options): 2');
+    expect(text).toContain('cli fired / total: 1 / 1; not-applicable: 1');
+    expect(text).toContain('mcp fired / total: 1 / 2; not-applicable: 1');
+  });
+
+  it('reports zero measured source counts on an empty store', () => {
+    const text = renderReport('/x', parseStoreText(''), undefined);
+    expect(text).toContain('cli fired / total: 0 / 0; not-applicable: 0');
+    expect(text).toContain('mcp fired / total: 0 / 0; not-applicable: 0');
+    expect(text).toContain('precision: unmeasured (0 fired rows)');
   });
 
   it('prints a zero-hit pattern as 0, so a pattern that never fires is visible', () => {

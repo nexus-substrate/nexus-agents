@@ -11,9 +11,8 @@
  *
  * 1. lists every FIRED row (`decisionId`, pattern, declared option count,
  *    excerpt) so an operator can hand-label each as a true or false positive;
- * 2. prints `fired / total`, where `total` counts rows that carry a verdict —
- *    not-fired rows are the denominator, rows written before the field existed
- *    are reported separately, never folded in as "not fired";
+ * 2. prints `fired / total` over applicable rows, split by CLI / MCP source;
+ *    declared-option rows and rows without verdicts are counted separately;
  * 3. given a labels file (`<decisionId>,<tp|fp>` per line, `#` comments),
  *    prints precision = tp / (tp + fp) with n, and whether the promotion bar
  *    on #5422 (precision >= 0.9 over >= 30 labelled fired rows) is met.
@@ -70,13 +69,61 @@ export interface DetectorRow {
 }
 
 export interface StoreCensus {
-  /** Rows carrying a verdict — fired or not. The precision denominator. */
+  /** Applicable rows carrying a verdict — fired or not. */
   readonly total: number;
   readonly fired: readonly DetectorRow[];
+  readonly notApplicable: number;
+  readonly bySource: ReadonlyMap<string, SourceCounts>;
   /** Rows with no verdict: written before #5422, or by `pr_review`. */
   readonly withoutVerdict: number;
   /** Lines that are not JSON, or whose verdict fails the schema. */
   readonly unparseable: number;
+}
+
+interface SourceCounts {
+  total: number;
+  fired: number;
+  notApplicable: number;
+  withoutVerdict: number;
+}
+
+function parseRow(line: string): z.infer<typeof RowSchema> | undefined {
+  try {
+    const json: unknown = JSON.parse(line);
+    const parsed = RowSchema.safeParse(json);
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function countRow(
+  row: z.infer<typeof RowSchema>,
+  rows: DetectorRow[],
+  bySource: Map<string, SourceCounts>
+): 'withoutVerdict' | 'notApplicable' | 'applicable' {
+  const { undeclaredOptionsDetector: verdict, ...rest } = row;
+  const source = verdict?.source ?? (rest.gate === 'consensus_vote' ? 'mcp' : rest.gate);
+  const counts = bySource.get(source) ?? {
+    total: 0,
+    fired: 0,
+    notApplicable: 0,
+    withoutVerdict: 0,
+  };
+  bySource.set(source, counts);
+  if (verdict === undefined) {
+    counts.withoutVerdict += 1;
+    return 'withoutVerdict';
+  }
+  // Older declared-option rows said fired:false; they were never measured.
+  if (verdict.applicable === false || verdict.declaredOptionCount > 0) {
+    counts.notApplicable += 1;
+    return 'notApplicable';
+  }
+  counts.total += 1;
+  if (verdict.fired) counts.fired += 1;
+  rows.push({ ...rest, verdict });
+  return 'applicable';
 }
 
 /** Census of one JSONL store's text. Empty text is zero of everything. */
@@ -84,30 +131,27 @@ export function parseStoreText(text: string): StoreCensus {
   const rows: DetectorRow[] = [];
   let withoutVerdict = 0;
   let unparseable = 0;
+  let notApplicable = 0;
+  const bySource = new Map<string, SourceCounts>();
+  for (const source of ['cli', 'mcp']) {
+    bySource.set(source, { total: 0, fired: 0, notApplicable: 0, withoutVerdict: 0 });
+  }
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
-    let json: unknown;
-    try {
-      json = JSON.parse(line);
-    } catch {
+    const parsed = parseRow(line);
+    if (parsed === undefined) {
       unparseable += 1;
       continue;
     }
-    const parsed = RowSchema.safeParse(json);
-    if (!parsed.success) {
-      unparseable += 1;
-      continue;
-    }
-    const { undeclaredOptionsDetector: verdict, ...rest } = parsed.data;
-    if (verdict === undefined) {
-      withoutVerdict += 1;
-      continue;
-    }
-    rows.push({ ...rest, verdict });
+    const category = countRow(parsed, rows, bySource);
+    if (category === 'withoutVerdict') withoutVerdict += 1;
+    else if (category === 'notApplicable') notApplicable += 1;
   }
   return {
     total: rows.length,
-    fired: rows.filter((r) => r.verdict.fired),
+    fired: rows.filter((r) => r.verdict.fired === true),
+    notApplicable,
+    bySource,
     withoutVerdict,
     unparseable,
   };
@@ -265,6 +309,11 @@ export function renderReport(
   const lines = [
     `store: ${storePath}`,
     `fired / total: ${String(census.fired.length)} / ${String(census.total)}`,
+    `not-applicable rows (declared options): ${String(census.notApplicable)}`,
+    ...[...census.bySource].map(
+      ([source, counts]) =>
+        `${source} fired / total: ${String(counts.fired)} / ${String(counts.total)}; not-applicable: ${String(counts.notApplicable)}; without verdict: ${String(counts.withoutVerdict)}`
+    ),
     `rows without a verdict (written before #5422, or pr_review): ${String(census.withoutVerdict)}`,
     `unparseable lines: ${String(census.unparseable)}`,
     '',

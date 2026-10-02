@@ -256,8 +256,8 @@ export const UNDECLARED_OPTIONS_EXCERPT_CHARS = 120;
 
 /**
  * The undeclared-options detector's verdict on the vote this record belongs to
- * (#5422). Recorded on EVERY `consensus_vote` row, fired or not, because the
- * not-fired rows are the denominator the precision measurement needs; absent
+ * (#5422). Recorded on MCP and CLI vote rows. Declared options are explicitly
+ * not applicable; only applicable rows contribute to fired / total. Absent
  * on `pr_review` rows and on rows written before the field existed, which is a
  * different claim from "not fired".
  *
@@ -268,7 +268,9 @@ export const UNDECLARED_OPTIONS_EXCERPT_CHARS = 120;
  * excerpt is capped at {@link UNDECLARED_OPTIONS_EXCERPT_CHARS} so the store
  * never carries a whole proposal.
  */
-export const UndeclaredOptionsDetectorSchema = z.object({
+const ApplicableUndeclaredOptionsDetectorSchema = z.object({
+  applicable: z.literal(true).optional(),
+  source: z.enum(['cli', 'mcp']).optional(),
   fired: z.boolean(),
   /** The matching regex as written, flags included; absent when not fired. */
   pattern: z.string().min(1).max(200).optional(),
@@ -277,6 +279,17 @@ export const UndeclaredOptionsDetectorSchema = z.object({
   /** How many `options` the caller declared (0 when none). */
   declaredOptionCount: z.number().int().nonnegative(),
 });
+export const UndeclaredOptionsDetectorSchema = z.union([
+  ApplicableUndeclaredOptionsDetectorSchema,
+  z.object({
+    applicable: z.literal(false),
+    source: z.enum(['cli', 'mcp']).optional(),
+    fired: z.never().optional(),
+    pattern: z.never().optional(),
+    excerpt: z.never().optional(),
+    declaredOptionCount: z.number().int().positive(),
+  }),
+]);
 export type UndeclaredOptionsDetectorRecord = z.infer<typeof UndeclaredOptionsDetectorSchema>;
 
 /** Catalog provenance only; it does not establish the operator's contract rate. */

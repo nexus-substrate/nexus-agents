@@ -56,6 +56,7 @@ import {
 import { mapOutcomeToDecision } from '../consensus/decision/verdict.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
+import { recordVoteDecisionCost } from '../mcp/tools/decision-cost-recording.js';
 import { reportPersistOutcome } from './vote-audit-line.js';
 import { toCliVoteResult, type CliVoteResult } from './vote-cli-result.js';
 
@@ -577,6 +578,7 @@ async function persistToAuditChain(
   }
 ): Promise<number | undefined> {
   if (options.dryRun === true) return undefined;
+  const decisionId = `consensus-${String(getTimeProvider().now())}-${crypto.randomUUID().slice(0, 8)}`;
   const outcome = await recordAuthenticVote({
     proposal: result.proposal,
     strategy: result.strategy,
@@ -593,6 +595,15 @@ async function persistToAuditChain(
     // #6211: the policy the panel ran under, as `executeVoting` resolved it.
     errorPolicy: result.errorPolicy,
     ratifiesPr: options.ratifiesPr,
+    correlationId: decisionId,
+  });
+  recordVoteDecisionCost({
+    decisionId,
+    gate: 'consensus_vote',
+    votes: result.votes,
+    proposal: options.proposal,
+    declaredOptions: options.options,
+    source: 'cli',
   });
   return reportPersistOutcome(outcome, options.ratifiesPr, result);
 }
