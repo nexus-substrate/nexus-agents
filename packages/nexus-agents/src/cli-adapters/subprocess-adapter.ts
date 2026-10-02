@@ -433,7 +433,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     // adapter-internal correlation key.
     const requestId = generateHyphenId('cli-req', 8);
     const result = await this.spawnSubprocess(task, options, requestId);
-    if (result.ok || !this.transientRetry.enabled) return result;
+    if (result.ok || !this.transientRetry.enabled || !options.allowRetry) return result;
     if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, options, result, 0, requestId);

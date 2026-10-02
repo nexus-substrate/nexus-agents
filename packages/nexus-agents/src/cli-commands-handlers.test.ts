@@ -59,6 +59,8 @@ import {
   researchCommand,
   voteCommand,
 } from './cli/index.js';
+import { runLiveReadiness } from './cli/doctor-live.js';
+import { buildReadiness } from './cli/cli-readiness.js';
 import { printResearchUsage } from './cli-commands-usage.js';
 
 /**
@@ -120,7 +122,42 @@ describe('handleDoctorCommand probe consent (#6814)', () => {
       })
     );
 
-    expect(doctorCommand).toHaveBeenCalledWith(expect.objectContaining({ live: true }));
+    expect(doctorCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ live: true, skipClaudeModelProbe: true })
+    );
+  });
+});
+
+describe('doctor live exit status (#4376)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('does not run any completion probe for plain doctor', async () => {
+    const result = await handleDoctorCommand(createMockArgs({ command: 'doctor' }));
+    expect(result.exitCode).toBe(0);
+    expect(runLiveReadiness).not.toHaveBeenCalled();
+    expect(doctorCommand).toHaveBeenCalledWith(expect.objectContaining({ live: false }));
+  });
+
+  it('returns nonzero when a configured adapter fails to complete', async () => {
+    vi.mocked(runLiveReadiness).mockResolvedValueOnce([
+      buildReadiness('claude', {
+        installed: { status: 'verified' },
+        authenticated: { status: 'verified' },
+        serves: { status: 'failed', reason: 'Key limit exceeded' },
+      }),
+    ]);
+    const result = await handleDoctorCommand(
+      createMockArgs({ command: 'doctor', options: { ...createMockArgs().options, live: true } })
+    );
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('preserves the local exit status when no adapters were configured', async () => {
+    vi.mocked(runLiveReadiness).mockResolvedValueOnce([]);
+    const result = await handleDoctorCommand(
+      createMockArgs({ command: 'doctor', options: { ...createMockArgs().options, live: true } })
+    );
+    expect(result.exitCode).toBe(0);
   });
 });
 

@@ -184,3 +184,35 @@ describe('installed level reflects a real probe (#4840)', () => {
     expect(report[0]?.reached).toBe('serves');
   });
 });
+
+describe('live skip diagnostics (#4376)', () => {
+  it('labels an unconfigured adapter skipped and makes zero completion calls', async () => {
+    let calls = 0;
+    const report = await runLiveReadiness({
+      adapters: adapters({
+        claude: {
+          execute: () => {
+            calls++;
+            return Promise.resolve({ ok: true as const, value: { text: 'ok' } });
+          },
+        },
+      }),
+      isInstalled: () => false,
+      authStates: auth({ claude: 'not-ok' }),
+    });
+    expect(calls).toBe(0);
+    expect(formatLiveReadiness(report)).toContain('skipped (not configured)');
+  });
+});
+
+describe('live credential skip diagnostics (#4376)', () => {
+  it('does not claim missing configuration when credentials are unusable', async () => {
+    const report = await runLiveReadiness({
+      adapters: adapters({ claude: serving('ok') }),
+      ...INSTALLED,
+      authStates: auth({ claude: 'not-ok' }),
+    });
+    expect(formatLiveReadiness(report)).toContain('skipped (credentials unavailable)');
+    expect(formatLiveReadiness(report)).not.toContain('skipped (not configured)');
+  });
+});
