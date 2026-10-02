@@ -91,7 +91,6 @@ export const ReviewRecordSchema = z
     }
   });
 export type ReviewRecord = z.input<typeof ReviewRecordSchema>;
-export type NormalizedReviewRecord = z.output<typeof ReviewRecordSchema>;
 
 /**
  * Preserve judgment history: automatic eviction could erase owner disagreement.
