@@ -52,7 +52,7 @@ export const READINESS_LEVELS = ['installed', 'authenticated', 'serves'] as cons
 export type ReadinessLevel = (typeof READINESS_LEVELS)[number];
 
 /** Actionable failure category for a live completion. */
-export type ProbeErrorClass = 'auth' | 'quota' | 'timeout' | 'sandbox' | 'execution';
+type ProbeErrorClass = 'auth' | 'quota' | 'timeout' | 'sandbox' | 'execution';
 
 /** What a single level's check concluded. */
 export type LevelOutcome =
