@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.126.2
+
+### Patch Changes
+
+- [#6925](https://github.com/nexus-substrate/nexus-agents/pull/6925) [`e289648`](https://github.com/nexus-substrate/nexus-agents/commit/e28964804b83294920350c3abca777e2c2575a92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record undeclared-option detector results for CLI votes alongside MCP votes, including excerpts from the full proposal. Precision worksheets now show CLI and MCP counts separately and exclude votes with declared options from detector samples, including older records. The detector continues to warn without blocking votes.
+
 ## 8.126.1
 
 ### Patch Changes
