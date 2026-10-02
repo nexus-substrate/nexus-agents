@@ -3,7 +3,7 @@
  * Split from index.ts for file size compliance (Issue #285)
  * Added to public API per Issue #351
  *
- * Note: OrchestrationObserver is exported via agents.ts (backward compatible as SwarmObserver).
+ * Note: OrchestrationObserver is exported via agents.ts.
  * This module exports the swarm-level interaction tracking components from observability/.
  */
 

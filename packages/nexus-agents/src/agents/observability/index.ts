@@ -48,6 +48,3 @@ export {
   identifySessionsToRemove,
   calculateTokenCost,
 } from './orchestration-observer-helpers.js';
-
-// Backward compatibility: SwarmObserver was renamed to OrchestrationObserver in v2.x
-export { SwarmObserver, createSwarmObserver } from './orchestration-observer.js';

@@ -73,6 +73,8 @@ const adapter = factory.create('claude');
 
 ### Observer Naming (Swarm -> Orchestration)
 
+The orchestration implementation and barrel aliases `SwarmObserver` and `createSwarmObserver` are removed in v9.0 (#5452); their original v3.0 removal deadline was not enforced. The separate interaction observer in `observability/swarm-observer.ts` retains its own names.
+
 **Removed:** `SwarmStats`, `SwarmObserverEvent`, `SwarmObserverListener`, `SwarmObserverConfig`, `SwarmObserverConfigSchema`, `ISwarmObserver`, `SwarmObserverOptions`, `SwarmObserver`, `createSwarmObserver`
 **Replacement:** Use `Orchestration` prefix equivalents
 
@@ -81,9 +83,12 @@ const adapter = factory.create('claude');
 import type { SwarmStats, ISwarmObserver } from './orchestration-observer-types.js';
 import { createSwarmObserver } from './orchestration-observer.js';
 
-// AFTER (v3.0)
-import type { OrchestrationStats, IOrchestrationObserver } from './orchestration-observer-types.js';
-import { createOrchestrationObserver } from './orchestration-observer.js';
+// AFTER (v9.0)
+import type {
+  OrchestrationStats,
+  IOrchestrationObserver,
+} from './agents/observability/orchestration-observer-types.js';
+import { createOrchestrationObserver } from './agents/observability/orchestration-observer.js';
 ```
 
 ### Gemini Adapter Naming
@@ -204,7 +209,6 @@ const count = stats.total;
 | `createComplexityEstimator()`     | `adapters/complexity-estimator.ts:227`  | `createSharedTaskAnalyzer()`                     | v2.3  |
 | `setState()`                      | `agents/base-agent.ts:198`              | `stateMachine.transition()`                      | v2.2  |
 | `performLegacyStateTransition()`  | `agents/base-agent-state-helpers.ts:22` | `stateMachine.transition()`                      | v2.2  |
-| `createSwarmObserver`             | `orchestration-observer.ts:453`         | `createOrchestrationObserver`                    | v2.3  |
 | `createMockTechLead()`            | `mcp/tools/orchestrate.ts:420`          | `createMockOrchestrator()`                       | v2.5  |
 | ~~`executeEnhanced()`~~           | ~~`gemini-adapter.ts:195`~~             | `executeWithMetadata()` (**removed v2.6.0**)     | v2.4  |
 | ~~`createEnhancedGeminiAdapter`~~ | ~~`gemini-adapter.ts:394`~~             | `createGeminiAdapter` (**removed v2.6.0**)       | v2.4  |
@@ -227,10 +231,6 @@ const count = stats.total;
 
 | Item                            | Location                                   | Replacement                             | Since |
 | ------------------------------- | ------------------------------------------ | --------------------------------------- | ----- |
-| `outputFormat`                  | `agent-schemas.ts:44`                      | Not enforced (use prompt-level)         | v2.0  |
-| `allowedTools`                  | `agent-schemas.ts:49`                      | Not enforced (use policy firewall)      | v2.0  |
-| `outputFormat`                  | `core/types/agent.ts:86`                   | Not enforced                            | v2.0  |
-| `allowedTools`                  | `core/types/agent.ts:92`                   | Not enforced                            | v2.0  |
 | `defaultFactory`                | `adapters/factory.ts:303`                  | `new AdapterFactory()`                  | v2.3  |
 | `charsPerToken`                 | `agents/orchestration/state-manager.ts:30` | `getTokenEstimator()`                   | v2.4  |
 | `OrchestrateDeps.techLead`      | `mcp/tools/orchestrate.ts:116`             | `OrchestrateDeps.orchestrator`          | v2.5  |
@@ -240,7 +240,6 @@ const count = stats.total;
 | `COLORS`                        | `core/trace-exporter-helpers.ts:43`        | `import from 'cli/ansi-output.js'`      | v2.5  |
 | `uuidv4`                        | `utils/id-utils.ts:138`                    | `generateUUID()`                        | v2.5  |
 | ~~`EnhancedGeminiCliAdapter`~~  | ~~`gemini-adapter.ts:386`~~                | `GeminiCliAdapter` (**removed v2.6.0**) | v2.4  |
-| `SwarmObserver`                 | `orchestration-observer.ts:451`            | `OrchestrationObserver`                 | v2.3  |
 
 ### nexus-tui Package (Issue #979, Epic #973) — REMOVED
 

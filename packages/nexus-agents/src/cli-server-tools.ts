@@ -336,9 +336,6 @@ function registerExecuteExpert(ctx: ToolRegistrationContext, shared: SharedResou
     rateLimiter: ctx.rateLimiterFactory.getForTool('execute_expert'),
     cliCache: getSharedCliCache(),
     ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
-    // #4097 threaded this for the deriver's audit trail; that reader was
-    // deleted in #5108. Still passed because the deps field is published.
-    ...(ctx.auditLogger !== undefined && { auditLogger: ctx.auditLogger }),
   });
 }
 
@@ -478,9 +475,6 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
       security: ctx.securityConfig,
       // Wire model adapter for fallback orchestration path (Issue #827)
       modelAdapter: ctx.modelAdapter,
-      // #4097 threaded this for the deriver's audit trail; that reader was
-      // deleted in #5108. Still passed because the deps field is published.
-      ...(ctx.auditLogger !== undefined && { auditLogger: ctx.auditLogger }),
     });
   } catch (error) {
     const message = getErrorMessage(error);
