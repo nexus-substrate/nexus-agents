@@ -796,6 +796,22 @@ describe('StrategyDistiller', () => {
     });
   });
 
+  it('produces rules without the removed tainted field (#5867)', () => {
+    populateStore({
+      store,
+      cli: 'claude',
+      category: 'code_generation',
+      count: 40,
+      success: false,
+    });
+    distiller.distill();
+
+    const rules = distiller.getRules();
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ status: 'active', action: 'avoid' });
+    expect(rules[0]).not.toHaveProperty('tainted');
+  });
+
   describe('getStats()', () => {
     it('returns zeroed stats initially', () => {
       const stats = distiller.getStats();
@@ -824,7 +840,7 @@ describe('StrategyDistiller', () => {
      promotionConfidence are deprecated (#5004 finding 4, removal #5467);
      these tests exist to prove the deprecation is non-breaking. */
   describe('promote() — deprecated, kept callable (#5004 finding 4, removal #5467)', () => {
-    it('promotes active non-tainted rules to RoutingMemory', () => {
+    it('promotes active rules to RoutingMemory', () => {
       // 40/40 failed: support sigmoid(40) ≈ 0.88 × effect 1 clears the 0.7 gate.
       // This previously used 35/40, which the sample-size-only confidence
       // (0.88) passed but the product (0.88 × 0.6875 ≈ 0.61) does not — see
@@ -897,12 +913,6 @@ describe('StrategyDistiller', () => {
       expect(memory.storePreference).not.toHaveBeenCalled();
     });
 
-    // Was: 'does not promote tainted rules', whose own comment admitted "we
-    // can't easily create tainted rules from the public API since tainted is
-    // always false from distill()" and then asserted the positive case
-    // instead. The gate it named was removed in #5853; what the test actually
-    // exercised — that a distilled rule promotes — is kept and given its real
-    // name.
     it('promotes a rule distilled from a consistent failure pattern', () => {
       populateStore({
         store,

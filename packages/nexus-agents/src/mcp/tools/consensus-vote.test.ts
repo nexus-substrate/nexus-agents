@@ -131,39 +131,39 @@ describe('ConsensusVoteInputSchema', () => {
     });
 
     // #3045 / epic #2631 Stage 4 — async-mode schema additions.
-    it('accepts mode: "async" (#3045)', () => {
+    it('accepts dispatch: "async" (#3045)', () => {
       const result = ConsensusVoteInputSchema.safeParse({
         proposal: 'Test proposal',
-        mode: 'async',
+        dispatch: 'async',
       });
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.mode).toBe('async');
+      if (result.success) expect(result.data.dispatch).toBe('async');
     });
 
-    it('accepts mode: "sync" (#3045)', () => {
+    it('accepts dispatch: "sync" (#3045)', () => {
       const result = ConsensusVoteInputSchema.safeParse({
         proposal: 'Test proposal',
-        mode: 'sync',
+        dispatch: 'sync',
       });
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.mode).toBe('sync');
+      if (result.success) expect(result.data.dispatch).toBe('sync');
     });
 
-    it('leaves mode undefined when omitted — backward-compat invariant (#3045)', () => {
+    it('leaves dispatch undefined when omitted — backward-compat invariant (#3045)', () => {
       const result = ConsensusVoteInputSchema.safeParse({ proposal: 'Test proposal' });
       expect(result.success).toBe(true);
       if (result.success) {
         // Handler treats undefined as sync. Schema omits .default('sync')
         // so the inferred type stays optional — existing fixtures
         // continue to compile without churn.
-        expect(result.data.mode).toBeUndefined();
+        expect(result.data.dispatch).toBeUndefined();
       }
     });
 
-    it('rejects unknown mode value (#3045)', () => {
+    it('rejects unknown dispatch value (#3045)', () => {
       const result = ConsensusVoteInputSchema.safeParse({
         proposal: 'Test proposal',
-        mode: 'queue',
+        dispatch: 'queue',
       });
       expect(result.success).toBe(false);
     });
@@ -1549,7 +1549,7 @@ describe('CONSENSUS_VOTE_TOOL_SCHEMA input drift contract (#4494 follow-up)', ()
     // This assertion used to exempt `mode` and `idempotencyKey` as
     // "async-dispatch plumbing… not user-facing vote inputs". That exemption
     // contradicted the tool's own description, which tells callers
-    // `Supports async mode (mode: 'async')`, and nothing set the field on
+    // `Supports async mode (dispatch: 'async')`, and nothing set the field on
     // their behalf — so the documented async path could not be invoked at all
     // (#4969). The schema is now registered from the internal shape, so there
     // is no subset to exempt from.
@@ -1802,7 +1802,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
   });
 
   it('strictly accepts the async-dispatch envelope (#5066)', () => {
-    // The shape that used to fail every `mode: 'async'` call with -32602,
+    // The shape that used to fail every `dispatch: 'async'` call with -32602,
     // because `runAsJob`'s default envelopes carry no structured content and
     // the schema had no field they could satisfy.
     expect(() =>

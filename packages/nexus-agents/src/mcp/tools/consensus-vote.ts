@@ -6,7 +6,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import {
@@ -983,10 +982,7 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
     }
     const strategy = validationResult.data.strategy ?? 'simple_majority';
-    // #4968: `dispatch` is canonical; `mode` is the deprecated alias. A call
-    // that sent only `mode` still runs, and says so in `_meta` warnings.
-    const dispatch = resolveDispatch(validationResult.data);
-    const modeWarning = deprecatedModeWarning(validationResult.data);
+    const dispatch = validationResult.data.dispatch;
     ctx.logger.debug('Starting consensus vote', {
       strategy,
       quickMode: validationResult.data.quickMode,
@@ -1005,11 +1001,9 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
         proposalLength: validationResult.data.proposal.length,
         strategy,
       });
-      return withWarnings(asyncResult, [modeWarning]);
+      return asyncResult;
     }
-    return withWarnings(await runSyncConsensusVote(deps, notifier, validationResult.data), [
-      modeWarning,
-    ]);
+    return runSyncConsensusVote(deps, notifier, validationResult.data);
   };
 }
 
@@ -1018,7 +1012,7 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
  *
  * `runAsJob`'s defaults are text-only. Because this tool declares an
  * `outputSchema`, the SDK requires structured content on every non-error
- * result, so every `mode: 'async'` call failed with -32602 — the mode the
+ * result, so every `dispatch: 'async'` call failed with -32602 — the mode the
  * tool's own description recommends for 7-voter panels.
  */
 const ASYNC_ENVELOPES: JobEnvelopeBuilders<ToolResult> = {
@@ -1227,7 +1221,7 @@ const CONSENSUS_VOTE_DESCRIPTION =
   'is a simple tally of the panel, so correlated voters each carry full independent weight. The ' +
   'Bayesian correlation analysis is computed and feeds contrarian escalation only. Choose it for the ' +
   'escalation behaviour, not for a weighted verdict. ' +
-  "Supports async dispatch (dispatch: 'async'; `mode` is a deprecated alias) — returns a jobId to poll via get_job_result. " +
+  "Supports async dispatch (dispatch: 'async') — returns a jobId to poll via get_job_result. " +
   'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record, ' +
   'and ratifiesPr={pr, headSha} to bind a governor-path PR ratification to the head the panel saw (#5130); ' +
   'the result carries voteRecordId for the caller-commits append. ' +

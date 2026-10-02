@@ -69,7 +69,6 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
       billingMode: 'api',
       latencyScoreWeight: 0.2,
       linucbAlpha: 1.0,
-      maxDecisionTimeMs: 50,
       preferenceMinDataPoints: 10,
     },
     logger: mockLogger,
@@ -637,7 +636,6 @@ describe('runDistilledRuleStage supplies the task category (#4832)', () => {
       status: 'active',
       createdAt: 0,
       updatedAt: 0,
-      tainted: false,
     };
     const distiller = {
       getRules: vi.fn(() => [rule]),

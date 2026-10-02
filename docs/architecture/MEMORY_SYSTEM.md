@@ -27,12 +27,12 @@ This architecture is inspired by MIRIX (arXiv:2507.07957), which reports +35% ac
 
 ---
 
-## Core Interface: IMemoryBackend
+## Core Interface: IContextMemoryBackend
 
 Hybrid persistence layer with SQLite + Markdown export.
 
 ```typescript
-interface IMemoryBackend {
+interface IContextMemoryBackend {
   set<T>(key: string, value: T, metadata?: MemoryMetadata): Promise<void>;
   get<T>(key: string): Promise<T | undefined>;
   has(key: string): Promise<boolean>;

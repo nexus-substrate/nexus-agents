@@ -211,7 +211,6 @@ function makeRule(overrides: Partial<DistilledRule> = {}): DistilledRule {
     status: 'active',
     createdAt: RANK_NOW - 2 * DAY_MS,
     updatedAt: RANK_NOW - 2 * DAY_MS,
-    tainted: false,
     ...overrides,
   };
 }

@@ -56,7 +56,6 @@ import { getToolAnnotations } from '../tool-annotations.js';
 // helper (#3729).
 import { runAsJob } from '../jobs/run-as-job.js';
 import { heartbeatJob } from '../jobs/job-result-store.js';
-import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import { randomUUID } from 'node:crypto';
 
 // Re-export types for backward compatibility
@@ -453,10 +452,7 @@ function createRunWorkflowHandler(
       return errorResponse(`Validation error: ${errorMessage}`);
     }
 
-    // #4968: `dispatch` is canonical; `mode` is the deprecated alias. A call
-    // that sent only `mode` still runs, and says so in `_meta` warnings.
-    const dispatch = resolveDispatch(validated.data);
-    const modeWarning = deprecatedModeWarning(validated.data);
+    const dispatch = validated.data.dispatch;
     ctx.logger.debug('Running workflow', {
       template: validated.data.template,
       dryRun: validated.data.dryRun,
@@ -475,10 +471,10 @@ function createRunWorkflowHandler(
         event: 'workflow_dispatched_async',
         template: validated.data.template,
       });
-      return withWarnings(asyncResult, [modeWarning]);
+      return asyncResult;
     }
 
-    const result = withWarnings(await handleRunWorkflow(deps, validated.data), [modeWarning]);
+    const result = await handleRunWorkflow(deps, validated.data);
 
     // Notify on completion (only for non-error responses)
     if (result.isError !== true) {
@@ -523,7 +519,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     'run_workflow',
     {
       description:
-        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs; `mode` is a deprecated alias) — returns a jobId immediately; poll get_job_result. With NEXUS_BUDGET_ENFORCE on AND `maxTokens` set, total token spend is capped (no estimated default; otherwise `budget.status` is `not_enforced`): checked before each phase and before each step is dispatched; steps already running when the ceiling is crossed are not halted, so spend can overshoot by what those in-flight steps consume. `budget.status` is `unmeasured` when any step reported no usage.",
+        "Run a LINEAR (single-path) workflow template by name with typed inputs. For DAG-shaped workflows with branching, checkpoints, or rollback, use `run_graph_workflow` instead. Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result. With NEXUS_BUDGET_ENFORCE on AND `maxTokens` set, total token spend is capped (no estimated default; otherwise `budget.status` is `not_enforced`): checked before each phase and before each step is dispatched; steps already running when the ceiling is crossed are not halted, so spend can overshoot by what those in-flight steps consume. `budget.status` is `unmeasured` when any step reported no usage.",
       inputSchema: toolInputSchema,
 
       annotations: getToolAnnotations('run_workflow'),

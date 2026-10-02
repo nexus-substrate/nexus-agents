@@ -179,26 +179,17 @@ export const PairwiseVotingHistorySchema = z.object({
  * Configuration for higher-order voting.
  * Correlation aggregates are lifetime evidence; retained records are count-bounded
  * by `maxProposals` FIFO and `maxObservationsPerAgent`, and active history is
- * partitioned by each role's pinned model. The legacy correlation lifetime keys
- * are deprecated and ignored.
+ * partitioned by each role's pinned model.
  */
 export interface HigherOrderVotingConfig {
   /** Minimum observations before using correlation data (default: 10) */
   readonly minObservationsForCorrelation: number;
   /** Correlation threshold to consider agents correlated (default: 0.3) */
   readonly correlationThreshold: number;
-  /**
-   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
-   */
-  readonly correlationMaxAgeMs: number;
   /** Independence threshold for ISP grouping (default: 0.2) */
   readonly independenceThreshold: number;
   /** Whether to fall back to simple voting when correlation data insufficient */
   readonly fallbackToSimpleVoting: boolean;
-  /**
-   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
-   */
-  readonly observationDecayFactor: number;
   /** Maximum observations to store per agent before FIFO eviction (default: 1000) */
   readonly maxObservationsPerAgent: number;
   /** Maximum total proposals to track before evicting oldest (default: 5000) */
@@ -210,16 +201,8 @@ export interface HigherOrderVotingConfig {
 export const HigherOrderVotingConfigSchema = z.object({
   minObservationsForCorrelation: z.number().int().positive().default(10),
   correlationThreshold: z.number().min(0).max(1).default(0.3),
-  /**
-   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
-   */
-  correlationMaxAgeMs: z.number().int().positive().default(86400000), // 24 hours
   independenceThreshold: z.number().min(0).max(1).default(0.2),
   fallbackToSimpleVoting: z.boolean().default(true),
-  /**
-   * @deprecated Ignored since 8.x: correlation evidence is lifetime and partitioned by the role's pinned model (#5555); nothing reads this value. Removed in the next major (#5564).
-   */
-  observationDecayFactor: z.number().min(0).max(1).default(0.95),
   maxObservationsPerAgent: z.number().int().positive().default(1000),
   maxProposals: z.number().int().positive().default(5000),
   maxTrackedPairs: z.number().int().positive().default(100),
@@ -228,10 +211,8 @@ export const HigherOrderVotingConfigSchema = z.object({
 export const DEFAULT_HIGHER_ORDER_CONFIG: HigherOrderVotingConfig = {
   minObservationsForCorrelation: 10,
   correlationThreshold: 0.3,
-  correlationMaxAgeMs: 86400000, // 24 hours
   independenceThreshold: 0.2,
   fallbackToSimpleVoting: true,
-  observationDecayFactor: 0.95,
   maxObservationsPerAgent: 1000,
   maxProposals: 5000,
   maxTrackedPairs: 100,

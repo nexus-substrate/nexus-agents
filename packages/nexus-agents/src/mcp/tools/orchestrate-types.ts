@@ -6,10 +6,7 @@
  */
 
 import { z } from 'zod';
-import {
-  DEPRECATED_MODE_ALIAS_INPUT,
-  refineDispatchModeAgreement,
-} from './async-dispatch-input.js';
+import { asyncDispatchInput } from './async-dispatch-input.js';
 import type { Result, Task } from '../../core/index.js';
 import { ok, AgentError } from '../../core/index.js';
 import { clamp } from '../../utils/math-utils.js';
@@ -24,65 +21,58 @@ import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js
 // Input / Output Schemas
 // ============================================================================
 
-export const OrchestrateInputSchema = z
-  .object({
-    task: z.string().min(1).max(50000).describe('Task description to orchestrate'),
-    context: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .describe(
-        'Additional context for the task. `filePaths: string[]` (paths the task touches) ' +
-          'feeds the AOrchestra expert trigger table (NEXUS_AORCHESTRA, default on).'
-      ),
-    maxIterations: z
-      .number()
-      .min(1)
-      .max(50)
-      .optional()
-      .default(10)
-      .describe('Maximum iterations for orchestration'),
-    timeout: z
-      .number()
-      .min(1000)
-      .max(600000)
-      .optional()
-      .describe('Timeout in milliseconds for orchestration (default: 300000)'),
-    /**
-     * Async-mode dispatch (#3042, Stage 1 of epic #2631). Default `sync` —
-     * backward-compat invariant; existing callers see no behavior change.
-     * `async` returns `{ status: 'pending', jobId }` immediately; caller
-     * polls `get_job_result(jobId)` for the structured payload. Sidesteps
-     * the MCP-SDK 60s client-request timeout that was killing long
-     * orchestrations (#2631 evidence: 28.6% timeout-shaped errors on
-     * `run_workflow` at the gate-firing measurement).
-     *
-     * The key is `dispatch` (#4968); `mode` is the deprecated alias this tool
-     * used to spell it with, resolved as `dispatch ?? mode` by the handler and
-     * rejected when the two disagree (the `superRefine` below). Both optional
-     * (no `.default()`) so the inferred type doesn't force a value onto every
-     * existing call site / test fixture; the handler treats `undefined` as
-     * `'sync'`.
-     */
-    ...DEPRECATED_MODE_ALIAS_INPUT,
-    /**
-     * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
-     * #2631). When set: identical (key, inputs) returns the existing job;
-     * same key with different inputs fails closed with
-     * `idempotency_key_collision`. Without a key, every call gets a fresh
-     * jobId (existing behavior). Sync mode ignores this — sync calls are
-     * synchronous by definition and the caller can dedupe themselves.
-     */
-    idempotencyKey: z
-      .string()
-      .min(1)
-      .max(256)
-      .optional()
-      .describe(
-        'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId; same key + different inputs fails closed.'
-      ),
-    // #4968: `dispatch` and the deprecated `mode` alias must agree when both are sent.
-  })
-  .superRefine(refineDispatchModeAgreement);
+export const OrchestrateInputSchema = z.object({
+  task: z.string().min(1).max(50000).describe('Task description to orchestrate'),
+  context: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      'Additional context for the task. `filePaths: string[]` (paths the task touches) ' +
+        'feeds the AOrchestra expert trigger table (NEXUS_AORCHESTRA, default on).'
+    ),
+  maxIterations: z
+    .number()
+    .min(1)
+    .max(50)
+    .optional()
+    .default(10)
+    .describe('Maximum iterations for orchestration'),
+  timeout: z
+    .number()
+    .min(1000)
+    .max(600000)
+    .optional()
+    .describe('Timeout in milliseconds for orchestration (default: 300000)'),
+  /**
+   * Async-mode dispatch (#3042, Stage 1 of epic #2631). Default `sync` —
+   * backward-compat invariant; existing callers see no behavior change.
+   * `async` returns `{ status: 'pending', jobId }` immediately; caller
+   * polls `get_job_result(jobId)` for the structured payload. Sidesteps
+   * the MCP-SDK 60s client-request timeout that was killing long
+   * orchestrations (#2631 evidence: 28.6% timeout-shaped errors on
+   * `run_workflow` at the gate-firing measurement).
+   *
+   * Use `dispatch`; the former `mode` alias is rejected (#6225). Omitted
+   * dispatch runs synchronously.
+   */
+  ...asyncDispatchInput(),
+  /**
+   * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
+   * #2631). When set: identical (key, inputs) returns the existing job;
+   * same key with different inputs fails closed with
+   * `idempotency_key_collision`. Without a key, every call gets a fresh
+   * jobId (existing behavior). Sync mode ignores this — sync calls are
+   * synchronous by definition and the caller can dedupe themselves.
+   */
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId; same key + different inputs fails closed.'
+    ),
+});
 
 export type OrchestrateInput = z.infer<typeof OrchestrateInputSchema>;
 
@@ -160,7 +150,7 @@ export const ORCHESTRATE_TOOL_SCHEMA = {
     .describe('Timeout in milliseconds for orchestration (default: 300000)'),
   // #4968: the same fragment the internal schema composes, so the advertised
   // shape cannot omit `dispatch` (the SDK strips what is not advertised).
-  ...DEPRECATED_MODE_ALIAS_INPUT,
+  ...asyncDispatchInput(),
   idempotencyKey: z
     .string()
     .min(1)
