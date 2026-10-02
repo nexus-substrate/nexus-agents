@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.126.6
+
+### Patch Changes
+
+- [#6935](https://github.com/nexus-substrate/nexus-agents/pull/6935) [`8daa3d6`](https://github.com/nexus-substrate/nexus-agents/commit/8daa3d6c21f5dcae1a53aa609688a63431618a80) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make `doctor --live` report completion latency, actionable error classes, and sanitized failure messages. Bound each probe using the central timeout and signal cancellation at its deadline, disable retries, and avoid a duplicate Claude completion. Unconfigured adapters are explicitly skipped; any failed live completion exits nonzero. Plain `doctor` continues to make no model calls.
+
+- [#6936](https://github.com/nexus-substrate/nexus-agents/pull/6936) [`85c5681`](https://github.com/nexus-substrate/nexus-agents/commit/85c568136b52a005086c25e5d5453515e7566c4b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Collaboration sessions now report unresolved conflicting object fields with both experts' original values using the shared object-merge helper. Independent session patterns compare shared top-level keys; sequential and iterative refinement patterns explicitly skip comparison. Nested differences are recorded on their parent field, missing keys do not conflict, and array order matters. Finalization returns comparison failures as error results. Zero or one result explicitly reports no conflicts and no comparison; session output and quality scoring retain their existing behavior.
+
 ## 8.126.5
 
 ### Patch Changes
