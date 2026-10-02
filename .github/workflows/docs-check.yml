@@ -2,7 +2,7 @@ name: Documentation Gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'release/9.0']
   push:
     branches: [main]
     paths:
@@ -183,7 +183,7 @@ jobs:
           !contains(github.event.pull_request.body, '[skip-docs]')
         run: |
           # Get source files changed in this PR
-          CHANGED_SRC=$(git diff --name-only origin/main...HEAD -- 'packages/nexus-agents/src/**/*.ts' | grep -v '\.test\.ts$' | grep -v '\.spec\.ts$' | grep -v '/types/' || true)
+          CHANGED_SRC=$(git diff --name-only "origin/${GITHUB_BASE_REF:-main}"...HEAD -- 'packages/nexus-agents/src/**/*.ts' | grep -v '\.test\.ts$' | grep -v '\.spec\.ts$' | grep -v '/types/' || true)
           echo "Changed source files:"
           echo "$CHANGED_SRC"
 
@@ -208,7 +208,7 @@ jobs:
           steps.changed.outputs.count > 0
         run: |
           # Check if any documentation was updated
-          DOC_CHANGED=$(git diff --name-only origin/main...HEAD -- \
+          DOC_CHANGED=$(git diff --name-only "origin/${GITHUB_BASE_REF:-main}"...HEAD -- \
             'README.md' \
             'ARCHITECTURE.md' \
             'CLAUDE.md' \
@@ -234,7 +234,7 @@ jobs:
           steps.changed.outputs.count > 0
         run: |
           # Check for new index.ts files (new modules)
-          NEW_MODULES=$(git diff --name-only --diff-filter=A origin/main...HEAD -- 'packages/nexus-agents/src/**/index.ts' || true)
+          NEW_MODULES=$(git diff --name-only --diff-filter=A "origin/${GITHUB_BASE_REF:-main}"...HEAD -- 'packages/nexus-agents/src/**/index.ts' || true)
 
           UNDOCUMENTED=""
           for module_file in $NEW_MODULES; do
