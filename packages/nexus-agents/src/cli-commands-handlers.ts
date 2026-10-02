@@ -568,6 +568,9 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitR
       printDoctorSummary(doctorResult, report);
       return cliExitFromStatus(failingVerdictTerms(doctorResult, report).length === 0 ? 0 : 1);
     }
+    // No local result reached the summary: still let a failed live probe fail
+    // the run — a level that reports and cannot fail is not a check.
+    if (report.some((r) => r.levels.serves.status === 'failed')) return cliExitFromStatus(1);
   }
   return cliExitFromStatus(exitCode);
 }
