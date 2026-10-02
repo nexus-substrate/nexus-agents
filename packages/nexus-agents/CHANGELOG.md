@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.127.2
+
+### Patch Changes
+
+- [#6972](https://github.com/nexus-substrate/nexus-agents/pull/6972) [`40d7413`](https://github.com/nexus-substrate/nexus-agents/commit/40d7413c14c4a56482d0d0ebfc982c2f3038322f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The gemini (agy) adapter now refuses read-only analysis tasks instead of running them with `--mode plan --sandbox`. A live run on 2026-10-02 with agy 1.2.15 showed that argv does not prevent writes: asked to, agy created a new file and modified a committed one. Read-only callers (consensus voter seats, pr_review, orchestrate workers, planning, decompose and dry-run stages) are now routed to an arm that enforces the mode, or get a refusal.
+
+  Consensus panels on the CLI path no longer seat the gemini CLI at all. Seats are dealt round-robin only over CLIs that enforce read-only analysis (claude, codex, opencode), so the default 7-seat panel stays whole instead of losing the two seats (security and catfish) that used to land on gemini and would now refuse. With claude, codex and opencode installed the panel is architect, ai_ml and scope_steward on claude; security and pm on codex; devex and catfish on opencode. A CLI dropped for this reason is named in an info log line. The gateway path and `NEXUS_VOTER_MODEL_<ROLE>` pins are unchanged.
+
+- [#6966](https://github.com/nexus-substrate/nexus-agents/pull/6966) [`70a38b6`](https://github.com/nexus-substrate/nexus-agents/commit/70a38b6c301776aadfd993437128f6d7bc56d18f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Accept optional `servedModel` identifiers when reading vote records, validate their format, and include them in hash verification while preserving existing record hashes. Vote-record producers do not yet write this field, so existing producer behavior is unchanged.
+
+  Preserve the configured-model diversity floor for records without `servedModel`. A serving report retains a seat's known configured family only when its known family matches; mismatched or unclassifiable reports withhold credit. Bare Claude alias normalization applies only to the serving comparison. The gateway's own claim ([#6952](https://github.com/nexus-substrate/nexus-agents/issues/6952)) can never grant a new family.
+
 ## 8.127.1
 
 ### Patch Changes
