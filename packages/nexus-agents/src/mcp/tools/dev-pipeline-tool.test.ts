@@ -674,6 +674,22 @@ describe('dev pipeline input sanitization forwarding (#4733)', () => {
   beforeEach(() => vi.spyOn(agentExecutor, 'createAgentStages'));
   afterEach(() => vi.restoreAllMocks());
 
+  it.each([false, true])('threads dryRun=%s to the stage executor (#6958)', async (dryRun) => {
+    await captureHandler()({ task: 'Build feature X', dryRun }, STDIO_CTX);
+
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ dryRun })
+    );
+  });
+
+  it('threads the plain-goal dry run to the stage executor (#6958)', async () => {
+    await runDevPipelineForGoal('Build feature X', undefined, true);
+
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ dryRun: true })
+    );
+  });
+
   it.each([false, true])(
     'records middleware modification result %s with its counts',
     async (modified) => {

@@ -163,7 +163,10 @@ export function createPlanStage({
         ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\n${contextBlock}`
         : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
     await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-    const r = await runExpert(guard, 'architecture', prompt, 'plan', { signal });
+    const r = await runExpert(guard, 'architecture', prompt, 'plan', {
+      signal,
+      accessMode: 'read-only-analysis',
+    });
     // model: real per-model failure attribution for the feedback bridge (#4194)
     emitStageEvent('plan', r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -203,7 +206,7 @@ export function createDecomposeStage({
       'pm',
       `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
       'decompose',
-      { signal }
+      { signal, accessMode: 'read-only-analysis' }
     );
     const tasks = parseTasksFromResponse(r.text, plan);
     emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
@@ -233,7 +236,10 @@ export function createImplementStage({
       'code',
       `Implement:\n\n${task.title}\n${task.description}${fb}`,
       task.id,
-      { signal, accessMode: IMPLEMENT_ACCESS_MODE }
+      {
+        signal,
+        accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
+      }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,

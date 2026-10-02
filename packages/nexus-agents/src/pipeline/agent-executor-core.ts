@@ -222,6 +222,8 @@ function accessModeSignals(args: RecordOutcomeArgs): string[] {
 
 /** Configuration for the agent executor. */
 export interface AgentExecutorConfig {
+  /** Restrict every expert stage to read-only analysis during a dry run. */
+  readonly dryRun?: boolean | undefined;
   /** Pipeline checkpoint session, also used by the run trace; absent means unscoped. */
   readonly sessionId?: string | undefined;
   readonly scanTarget?: string | undefined;
@@ -294,8 +296,8 @@ interface RunExpertOptions {
    */
   readonly signal?: AbortSignal | undefined;
   /**
-   * Host access the expert's call may use (#6768). The QA review stage sets
-   * `'read-only-analysis'`; absent means the default.
+   * Host access the expert's call may use (#6768, #6958). Planning, review
+   * and dry-run stages set `'read-only-analysis'`; absent means the default.
    */
   readonly accessMode?: ExecutionAccessMode | undefined;
 }

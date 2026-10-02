@@ -81,7 +81,10 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     implement: createImplementStage(deps),
     // #6792: implement passes no workDir, so its expert edits the MCP
     // server's cwd; the pipeline warns when a quality gate then runs there.
-    implementWorkspace: { accessMode: IMPLEMENT_ACCESS_MODE, directory: process.cwd() },
+    implementWorkspace: {
+      accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
+      directory: process.cwd(),
+    },
     qaReview: createQaReviewStage(deps),
     qualityGate: createQualityGateStage(deps),
     securityScan: createSecurityScanStage(deps),
