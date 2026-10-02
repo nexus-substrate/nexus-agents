@@ -55,10 +55,10 @@ function runList(format: string): void {
   process.stdout.write(`${lines.join('\n')}\n`);
 }
 
-/** Fraction of JUDGED selections assessed unsound (= 1 − soundnessRate); 0 when nothing judged. */
-export function harmfulRate(ev: EnforceReadinessEvidence): number {
+/** Fraction of JUDGED selections assessed unsound (= 1 − soundnessRate); null (unmeasured) when nothing judged. */
+export function harmfulRate(ev: EnforceReadinessEvidence): number | null {
   return ev.judgedSelections === 0
-    ? 0
+    ? null
     : (ev.judgedSelections - ev.judgedSound) / ev.judgedSelections;
 }
 
@@ -86,18 +86,25 @@ function formatJudgments(evidence: EnforceReadinessEvidence): string {
   return `Judgments: human ${String(human.n)} (${String(human.disagreements)} unsound), panel ${String(panel.n)} (${String(panel.disagreements)} unsound), sample ${String(sample.n)} (${String(sample.disagreements)} disagreements)`;
 }
 
+/** Render measured harm without turning absent judgments into a percentage. */
+function formatHarmfulRate(harmful: number | null, judgedSelections: number): string {
+  return harmful === null
+    ? 'unmeasured (0 judged)'
+    : `${String(Math.round(harmful * 100))}% of ${String(judgedSelections)} judged sound-reviews`;
+}
+
 /** Render the text-mode readiness report (kept separate to hold `runReadiness` under the line cap). */
 function formatReadiness(
   verdict: ReturnType<typeof evaluateEnforceReadiness>,
   evidence: EnforceReadinessEvidence,
-  harmful: number,
+  harmful: number | null,
   soakStore: SoakStalenessSignal
 ): string {
   const maxPct = Math.round((1 - DEFAULT_ENFORCE_READINESS_CONFIG.minSoundnessRate) * 100);
   const lines = [
     `Enforcement readiness: ${verdict.ready ? 'READY' : 'NOT READY'}`,
     formatSoakStore(soakStore),
-    `harmful-rate: ${String(Math.round(harmful * 100))}% of ${String(evidence.judgedSelections)} judged sound-reviews (threshold ≤ ${String(maxPct)}%)`,
+    `harmful-rate: ${formatHarmfulRate(harmful, evidence.judgedSelections)} (threshold ≤ ${String(maxPct)}%)`,
     formatJudgments(evidence),
     `Excluded reviews: ${String(evidence.unverifiablePanelRows ?? 0)} unverifiable panel rows; ${String(evidence.supersededPanelRows ?? 0)} SUPERSEDED panel rows; ${String(evidence.evictedReviewRows ?? 0)} rows with evicted soak refs`,
     `${String(evidence.overriddenPanelRejections ?? 0)} panel rejections overridden by human; ${String(evidence.mootOwnerDisagreements ?? 0)} moot owner disagreements on superseded panel refs`,
