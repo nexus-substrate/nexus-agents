@@ -126,6 +126,54 @@ override does not cover `head^` or a different rebased record SHA. Zero known
 families cannot be overridden; rerun a panel with measurable models instead.
 The gate reports the owner override id and exact binding when it accepts it.
 
+### What a ratification record does and does not prove (#6952)
+
+The gate checks a record's **contents**, not how they were produced:
+
+- each record's own hash, plus sequence coverage and append-only history
+  against the base. The ledger is verified as a set; there is no
+  `previousHash` chain to walk.
+- the signature policy.
+- the record's own `decision === 'approved'` and an eligible `strategy` /
+  `errorPolicy`. The gate does **not** recompute the supermajority from
+  `voters[].decision`; it trusts the decision the record carries.
+- panel coverage and the model-family floor (#6601) over each counted seat's
+  `voters[].model`.
+
+Most of those fields come from ordinary code outside the governor section:
+
+- `packages/nexus-agents/src/cli/voter-attempt-usage.ts` sets each seat's
+  `model` from the adapter's configured id;
+- `voter-response.ts` parses each seat's decision;
+- `voter-agents*.ts` assembles the panel.
+
+The overall `decision` is computed by the governed verdict function
+(`resolveVoteDecision`, `src/consensus/decision/verdict.ts`), but the ordinary
+orchestration in `src/mcp/tools/consensus-vote.ts` calls it and forwards its
+result. The governed audit builder (`src/audit/vote-record-store.ts`) validates
+the record's shape, drops fields its schema does not carry, and derives
+aggregates such as panel coverage and the option tally. It cannot verify that
+the per-seat values it receives are true.
+
+What follows:
+
+- **Tamper-evident after recording, not proof of honest production.** Editing
+  a committed record is detected. A producer change that mislabels a seat's
+  model, flips a parsed seat decision, or forwards the wrong overall decision is
+  not detected by the gate. It shows up only in that producer PR's diff and
+  review.
+- **The same boundary applies to every field.** The family floor reads `model`
+  from the same producers that already supply the decisions. It adds a check,
+  not a new trust assumption.
+- **Gateway substitution is not detected today.** A record carries the
+  configured model, not the model a gateway actually served. #6951 tracks
+  persisting a served-model field.
+
+A reviewer auditing a ratification should therefore also read changes to those
+producer files that merged since the last trusted panel. Whether to govern the
+producers, recompute the tally in the gate, or verify the evidence
+independently is open in #6952.
+
 ### Redacting a voter's reasoning
 
 From the repository root, name the record and each voter role whose reasoning
