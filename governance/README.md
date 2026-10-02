@@ -73,6 +73,16 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
    moved-head rule (`ratified-rebased`, #6256) as long as the moved head's
    tree is the ratified patch replayed onto its base; see below.
 
+### Served model on a voter seat (#6951)
+
+The reader accepts an optional, hash-covered `voters[].servedModel` of 1–200
+characters using only letters, digits, `.`, `_`, `:`, `/`, `@`, `+` and `-`;
+malformed identifiers fail schema validation as `servedModel_invalid`. Records
+without the field retain their existing hashes. This release only reads the
+field: its producer does not write it, and no gate on this branch derives a
+verdict from it. It is the gateway's own report of what it served, not
+independent proof of the serving provider (#6952).
+
 ### Redacting a voter's reasoning
 
 From the repository root, name the record and each voter role whose reasoning
