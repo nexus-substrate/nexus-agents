@@ -141,7 +141,7 @@ describe('appendRatificationRecord', () => {
     ledgerPath = join(dir, 'governance', 'vote-records.jsonl');
   });
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it('EMPTY committed ledger → the record becomes sequence 0 with no previousHash (the first record)', () => {
@@ -444,7 +444,7 @@ describe('signing the committed record (#3927 item 4, phase 2)', () => {
     signing = { keyPath, allowedSignersPath, source: 'flag', asOwner: true };
   });
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   function allowedSigners(): string {
@@ -945,7 +945,7 @@ describe('CLI', () => {
     dir = mkdtempSync(join(tmpdir(), 'append-ratification-cli-'));
   });
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   /** Unsigned by construction: no inherited signing key, and no agent key under the pinned data dir (#6257). */
@@ -1022,9 +1022,12 @@ describe('two branches appending concurrently merge under merge=union (real git)
     // The attribute exactly as the real repo declares it (.gitattributes).
     writeFileSync(join(repo, '.gitattributes'), `${ledgerRel} merge=union\n`, 'utf-8');
     git(['init', '-q', '-b', 'main']);
+    git(['config', 'gc.auto', '0']);
+    git(['config', 'maintenance.auto', 'false']);
+    git(['config', 'gc.autoDetach', 'false']);
   });
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   function appendOnBranch(branch: string, from: string, recordId: string, seq: number): void {
