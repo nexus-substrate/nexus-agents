@@ -15,7 +15,7 @@ import { registerMcpTools } from './cli-server-tools.js';
 import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, type ILogger } from './core/index.js';
+import { createLogger, type ILogger, type LogDestination } from './core/index.js';
 import { resolveWorkspaceRootFromClient } from './mcp/workspace-roots.js';
 import { VERSION } from './version.js';
 import { warnIfVersionStale } from './cli/version-check.js';
@@ -348,8 +348,19 @@ async function initializeAndRegisterTools(
   registerMcpTools(toolsOptions);
 }
 
+/** Resolves the stdio log destination, warning once when stdout is requested. */
+function resolveStdioLogDestination(destination: LogDestination): LogDestination {
+  if (destination !== 'stdout') return destination;
+  // This startup warning must survive logging.level: error.
+  process.stderr.write(
+    'Warning: logging.destination: stdout coerced to stderr; ' +
+      'stdout carries MCP JSON-RPC in server mode.\n'
+  );
+  return 'stderr';
+}
+
 /**
- * Applies logging configuration from config file.
+ * Applies logging configuration for the stdio server, reserving stdout for MCP.
  * (Source: Issue #485 - Wire logging config)
  */
 function applyLoggingConfig(logger: ILogger, verbose: boolean, config: AppConfig): void {
@@ -367,9 +378,10 @@ function applyLoggingConfig(logger: ILogger, verbose: boolean, config: AppConfig
 
   // Wire logging destination (Issue #485)
   if (config.logging?.destination !== undefined && logger.setDestination !== undefined) {
-    logger.setDestination(config.logging.destination, config.logging.filePath);
+    const destination = resolveStdioLogDestination(config.logging.destination);
+    logger.setDestination(destination, config.logging.filePath);
     logger.debug('Log destination set from configuration', {
-      destination: config.logging.destination,
+      destination,
       filePath: config.logging.filePath,
     });
   }
