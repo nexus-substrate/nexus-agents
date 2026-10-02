@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.126.8
+
+### Patch Changes
+
+- [#6940](https://github.com/nexus-substrate/nexus-agents/pull/6940) [`782b591`](https://github.com/nexus-substrate/nexus-agents/commit/782b5918d67bba4fdbafe8e34c5a46561b123140) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep unconfirmed PR review explanations readable and bounded by sanitizing and fencing finding locations. Omit absent reasons from audit records and clarify when findings require corroboration.
+
+- [#6940](https://github.com/nexus-substrate/nexus-agents/pull/6940) [`782b591`](https://github.com/nexus-substrate/nexus-agents/commit/782b5918d67bba4fdbafe8e34c5a46561b123140) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report a single reviewer's verified finding as an unconfirmed block that still requests changes. Verified blocks now require findings from two different reviewer roles at the same file within three lines. Local review comments show the unconfirmed reason, and a one-reviewer panel cannot approve a PR.
+
+- [#6940](https://github.com/nexus-substrate/nexus-agents/pull/6940) [`782b591`](https://github.com/nexus-substrate/nexus-agents/commit/782b5918d67bba4fdbafe8e34c5a46561b123140) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Include review decision reasons in MCP responses, CI comments, and audit records. Report the number of distinct reviewers with unconfirmed findings accurately, and compare citations using repository-relative paths and line ranges while ignoring columns.
+
 ## 8.126.7
 
 ### Patch Changes
