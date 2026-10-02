@@ -22,7 +22,11 @@ import { CodexResponseParser } from '../parsers/codex-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { isReadOnlyAnalysis } from '../access-mode.js';
-import { codexMcpDisableArgs, scanCodexMcpServers } from '../codex-mcp-isolation.js';
+import {
+  CODEX_SYSTEM_CONFIG_FILES,
+  codexMcpDisableArgs,
+  scanCodexMcpServers,
+} from '../codex-mcp-isolation.js';
 import { mcpScanRefusal, scanOrThrow, subprocessScanContext } from '../mcp-config-scan.js';
 import {
   CODEX_LEGACY_DEFAULTS,
@@ -87,10 +91,21 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     const base = await super.accessModeRefusal(task);
     if (base !== undefined) return base;
     if (isReadOnlyAnalysis(task)) {
-      const scan = scanCodexMcpServers(subprocessScanContext(this.name, task));
+      const scan = scanCodexMcpServers(
+        subprocessScanContext(this.name, task),
+        this.codexSystemConfigFiles()
+      );
       if (!scan.ok) return mcpScanRefusal(this.name, scan.error);
     }
     return this.sandboxRefusal();
+  }
+
+  /**
+   * The system config files the MCP scan reads (#6970). A seam so tests can
+   * keep the host's real `/etc/codex` out of the scan.
+   */
+  protected codexSystemConfigFiles(): readonly string[] {
+    return CODEX_SYSTEM_CONFIG_FILES;
   }
 
   /**
@@ -105,7 +120,7 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     if (!isReadOnlyAnalysis(task)) return [];
     const servers = scanOrThrow(
       this.name,
-      scanCodexMcpServers(subprocessScanContext(this.name, task))
+      scanCodexMcpServers(subprocessScanContext(this.name, task), this.codexSystemConfigFiles())
     );
     return codexMcpDisableArgs(servers);
   }

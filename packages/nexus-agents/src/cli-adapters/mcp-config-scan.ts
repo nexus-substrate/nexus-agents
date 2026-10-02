@@ -15,7 +15,14 @@
  * task rather than running it with servers it could not see.
  */
 
-import { readFileSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  openSync,
+  readSync,
+  statSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -33,16 +40,64 @@ export interface McpScanContext {
 }
 
 /**
+ * The largest config file the scan reads. Real CLI configs are a few KiB; the
+ * cap keeps a hostile project file from exhausting memory in this process.
+ */
+export const MAX_CONFIG_BYTES = 1024 * 1024;
+
+/**
+ * Open flags: read-only, and non-blocking so a FIFO cannot stall the open.
+ * `O_NONBLOCK` is absent on Windows, where `| undefined` contributes 0.
+ */
+const OPEN_FLAGS = fsConstants.O_RDONLY | fsConstants.O_NONBLOCK;
+
+/** Up to `MAX_CONFIG_BYTES + 1` bytes of `fd`, so an oversized file is detectable. */
+function readCapped(fd: number): Buffer {
+  const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1);
+  let total = 0;
+  for (;;) {
+    const n = readSync(fd, buffer, total, buffer.length - total, null);
+    if (n === 0) return buffer.subarray(0, total);
+    total += n;
+    if (total === buffer.length) return buffer;
+  }
+}
+
+/**
  * The text of `path`, `undefined` when no such file exists, or an error for
  * any other failure (permission denied, a directory in its place, ...).
+ *
+ * The scan runs on untrusted project trees, so the path must resolve (after
+ * symlinks) to a regular file of at most {@link MAX_CONFIG_BYTES}. A symlink
+ * to `/dev/zero`, a FIFO or a device would otherwise hang or exhaust memory
+ * synchronously in this process. The type is checked on the opened
+ * descriptor, so the file checked is the file read.
  */
 export function readConfigIfPresent(path: string): Result<string | undefined, string> {
+  let fd: number;
   try {
-    return ok(readFileSync(path, 'utf8'));
+    fd = openSync(path, OPEN_FLAGS);
   } catch (error: unknown) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === 'ENOENT' || code === 'ENOTDIR') return ok(undefined);
     return err(`cannot read ${path}: ${code ?? String(error)}`);
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return err(`cannot read ${path}: not a regular file`);
+    if (stat.size > MAX_CONFIG_BYTES) {
+      return err(`cannot read ${path}: larger than ${String(MAX_CONFIG_BYTES)} bytes`);
+    }
+    const bytes = readCapped(fd);
+    if (bytes.length > MAX_CONFIG_BYTES) {
+      return err(`cannot read ${path}: larger than ${String(MAX_CONFIG_BYTES)} bytes`);
+    }
+    return ok(bytes.toString('utf8'));
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return err(`cannot read ${path}: ${code ?? String(error)}`);
+  } finally {
+    closeSync(fd);
   }
 }
 

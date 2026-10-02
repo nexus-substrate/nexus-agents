@@ -15,7 +15,8 @@
  * @module cli-adapters/read-only-mcp-isolation.test
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,16 +27,26 @@ import { isCallerInputCliError } from './cli-error-helpers.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 import { codexMcpDisableArgs, scanCodexMcpServers } from './codex-mcp-isolation.js';
+import { MAX_CONFIG_BYTES, readConfigIfPresent } from './mcp-config-scan.js';
 import { openCodeReadOnlyConfigContent, scanOpenCodeMcpServers } from './opencode-mcp-isolation.js';
+
+/** System config files the probes scan; tests never read the host's /etc. */
+let systemFiles: readonly string[] = [];
 
 class CodexProbe extends CodexCliAdapter {
   command(task: CliTask): CommandConfig {
     return this.getCommand(task);
   }
+  protected override codexSystemConfigFiles(): readonly string[] {
+    return systemFiles;
+  }
 }
 class OpenCodeProbe extends OpenCodeCliAdapter {
   command(task: CliTask): CommandConfig {
     return this.getCommand(task);
+  }
+  protected override openCodeManagedConfigFiles(): readonly string[] {
+    return systemFiles;
   }
 }
 
@@ -69,9 +80,12 @@ beforeEach(() => {
   mkdirSync(home, { recursive: true });
   mkdirSync(join(project, '.git'), { recursive: true });
   mkdirSync(cwd, { recursive: true });
+  systemFiles = [];
   vi.stubEnv('HOME', home);
   vi.stubEnv('XDG_CONFIG_HOME', '');
+  vi.stubEnv('XDG_DATA_HOME', '');
   vi.stubEnv('OPENCODE_CONFIG_CONTENT', '');
+  vi.stubEnv('OPENCODE_AUTH_CONTENT', '');
 });
 
 afterEach(() => {
@@ -309,5 +323,250 @@ describe('scanOpenCodeMcpServers', () => {
 
   it('an unparseable inherited OPENCODE_CONFIG_CONTENT is an error', () => {
     expect(openCodeReadOnlyConfigContent(['a'], '{').ok).toBe(false);
+  });
+});
+
+/** Run a read-only task and return its refusal message, asserting no spawn. */
+async function refusalOf(adapter: CodexProbe | OpenCodeProbe): Promise<string> {
+  const spawnPath = vi.spyOn(adapter, 'executeTask');
+  const result = await adapter.execute(readOnly(), { allowRetry: false });
+  expect(spawnPath).not.toHaveBeenCalled();
+  expect(result.ok).toBe(false);
+  if (result.ok) return '';
+  expect(result.error.message).toMatch(/read-only analysis mode/);
+  return result.error.message;
+}
+
+describe('the probes never read the host system config (#6970)', () => {
+  it('codex scans exactly the injected system files', () => {
+    const system = join(root, 'injected.toml');
+    write(system, '[mcp_servers.injected]\ncommand = "i"\n');
+    systemFiles = [system];
+    expect(mcpOverrides(new CodexProbe().command(readOnly()).args)).toEqual([
+      'mcp_servers.injected.enabled=false',
+    ]);
+  });
+
+  it('opencode scans exactly the injected managed files', () => {
+    const managed = join(root, 'managed.json');
+    write(managed, '{"mcp":{"injected":{}}}');
+    systemFiles = [managed];
+    expect(openCodeMcp(new OpenCodeProbe().command(readOnly()))).toEqual({
+      injected: { enabled: false },
+    });
+  });
+});
+
+describe('opencode: substituted keys fail closed (#6970)', () => {
+  it('the {file:} key repro: a project-root key resolving differently from sub/ is refused', async () => {
+    // opencode resolves {file:./n.txt} against the config file's directory
+    // (root: "zz"), but against the cwd inside OPENCODE_CONFIG_CONTENT
+    // (sub/: "other"), so disabling the raw name left "zz" running.
+    write(
+      join(project, 'opencode.json'),
+      '{"mcp":{"{file:./n.txt}":{"type":"local","command":["true"]}}}'
+    );
+    write(join(project, 'n.txt'), 'zz');
+    write(join(cwd, 'n.txt'), 'other');
+    expect(await refusalOf(new OpenCodeProbe())).toMatch(/\{file:\.\/n\.txt\}/);
+    expect(() => new OpenCodeProbe().command(readOnly())).toThrow(/substitution/);
+  });
+
+  it('an {env:} server name is refused', () => {
+    write(join(project, 'opencode.json'), '{"mcp":{"{env:SRV}":{"type":"local","command":["x"]}}}');
+    expect(scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
+  });
+
+  it('a substituted key that could produce "mcp" itself is refused', () => {
+    write(join(project, 'opencode.json'), '{"{env:KEY}":{"srv":{"type":"local","command":["x"]}}}');
+    expect(scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
+  });
+
+  it('an inherited OPENCODE_CONFIG_CONTENT with a substituted name is refused', () => {
+    const scan = scanOpenCodeMcpServers(
+      { env: { HOME: home, OPENCODE_CONFIG_CONTENT: '{"mcp":{"{file:x}":{}}}' }, cwd },
+      []
+    );
+    expect(scan.ok).toBe(false);
+  });
+
+  it('substitution in a VALUE is not refused: it cannot rename a server', () => {
+    write(
+      join(project, 'opencode.json'),
+      '{"mcp":{"srv":{"type":"remote","url":"{env:URL}","headers":{"a":"{file:./t}"}}}}'
+    );
+    const scan = scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []);
+    expect(scan.ok && scan.value).toEqual(['srv']);
+  });
+});
+
+describe('opencode: JSONC config is parsed like opencode parses it (#6970)', () => {
+  it('line and block comments and trailing commas', () => {
+    write(
+      join(project, 'opencode.jsonc'),
+      [
+        '// leading comment',
+        '{',
+        '  /* block */ "mcp": {',
+        '    "one": { "type": "local", "command": ["a",], }, // trailing',
+        '    "two": { "type": "remote", "url": "u" },',
+        '  },',
+        '}',
+      ].join('\n')
+    );
+    const scan = scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []);
+    expect(scan.ok && [...scan.value].sort()).toEqual(['one', 'two']);
+  });
+});
+
+describe('opencode: a wellknown remote config source fails closed (#6970)', () => {
+  const WELLKNOWN = '{"https://corp.example":{"type":"wellknown","key":"K","token":"t"}}';
+  const authFile = (): string => join(home, '.local', 'share', 'opencode', 'auth.json');
+
+  it('a wellknown credential in auth.json refuses the task', async () => {
+    write(authFile(), WELLKNOWN);
+    expect(await refusalOf(new OpenCodeProbe())).toMatch(/wellknown/);
+  });
+
+  it('an api credential is not refused', () => {
+    write(authFile(), '{"openrouter":{"type":"api","key":"k"}}');
+    expect(scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(true);
+  });
+
+  it('a v2 account.json with a nested wellknown credential is refused', () => {
+    write(
+      join(home, '.local', 'share', 'opencode', 'account.json'),
+      '{"version":2,"accounts":{"a":{"credential":{"type":"wellknown","key":"K","token":"t"}}}}'
+    );
+    expect(scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
+  });
+
+  it('honours XDG_DATA_HOME', () => {
+    write(join(root, 'data', 'opencode', 'auth.json'), WELLKNOWN);
+    const scan = scanOpenCodeMcpServers(
+      { env: { HOME: home, XDG_DATA_HOME: join(root, 'data') }, cwd },
+      []
+    );
+    expect(scan.ok).toBe(false);
+  });
+
+  it('OPENCODE_AUTH_CONTENT replaces the file, as opencode reads it', () => {
+    write(authFile(), WELLKNOWN);
+    const env = { HOME: home, OPENCODE_AUTH_CONTENT: '{"p":{"type":"api","key":"k"}}' };
+    expect(scanOpenCodeMcpServers({ env, cwd }, []).ok).toBe(true);
+    const inline = { HOME: home, OPENCODE_AUTH_CONTENT: WELLKNOWN };
+    expect(scanOpenCodeMcpServers({ env: inline, cwd }, []).ok).toBe(false);
+  });
+
+  it('an unparseable auth.json is refused: a credential cannot be ruled out', () => {
+    write(authFile(), '{"x":');
+    expect(scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
+  });
+});
+
+describe('codex: plugin and cloud-managed MCP sources fail closed (#6970)', () => {
+  const pluginDir = (): string =>
+    join(home, '.codex', 'plugins', 'cache', 'market', 'plug', '1.0.0');
+
+  it('an enabled plugins entry refuses the task', async () => {
+    write(join(home, '.codex', 'config.toml'), '[plugins."plug@market"]\nenabled = true\n');
+    expect(await refusalOf(new CodexProbe({ sandboxProbe: () => ({ status: 'ok' }) }))).toMatch(
+      /plugin "plug@market"/
+    );
+  });
+
+  it('a plugins entry set enabled = false is not refused', () => {
+    write(join(home, '.codex', 'config.toml'), '[plugins."plug@market"]\nenabled = false\n');
+    expect(scanCodexMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(true);
+  });
+
+  it('an installed plugin with a .mcp.json is refused', () => {
+    write(join(pluginDir(), '.mcp.json'), '{"mcpServers":{}}');
+    const scan = scanCodexMcpServers({ env: { HOME: home }, cwd }, []);
+    expect(!scan.ok && scan.error).toMatch(/\.mcp\.json/);
+  });
+
+  it('a plugin manifest declaring mcpServers is refused', () => {
+    write(
+      join(pluginDir(), '.claude-plugin', 'plugin.json'),
+      '{"name":"p","mcpServers":"./m.json"}'
+    );
+    expect(scanCodexMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
+  });
+
+  it('a skills-and-apps plugin (the shape installed on the dev host) is not refused', () => {
+    write(
+      join(pluginDir(), '.codex-plugin', 'plugin.json'),
+      '{"name":"sites","skills":"./skills/","apps":"./.app.json"}'
+    );
+    write(join(pluginDir(), '.app.json'), '{"apps":{}}');
+    expect(scanCodexMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(true);
+  });
+
+  it('an unparseable plugin manifest is refused', () => {
+    write(join(pluginDir(), '.codex-plugin', 'plugin.json'), '{');
+    expect(scanCodexMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
+  });
+
+  it('a cached cloud-managed config bundle is refused, under CODEX_HOME', () => {
+    write(join(root, 'ch', 'cloud-config-bundle-cache.json'), '{}');
+    const scan = scanCodexMcpServers(
+      { env: { HOME: home, CODEX_HOME: join(root, 'ch') }, cwd },
+      []
+    );
+    expect(!scan.ok && scan.error).toMatch(/cloud-managed/);
+  });
+});
+
+describe('readConfigIfPresent: only a bounded regular file is read (#6970)', () => {
+  it('a missing file is undefined', () => {
+    expect(readConfigIfPresent(join(root, 'absent'))).toEqual({ ok: true, value: undefined });
+  });
+
+  it('a file of exactly the cap is read', () => {
+    const path = join(root, 'cap.toml');
+    writeFileSync(path, 'a'.repeat(MAX_CONFIG_BYTES));
+    const read = readConfigIfPresent(path);
+    expect(read.ok && read.value?.length).toBe(MAX_CONFIG_BYTES);
+  });
+
+  it('a file one byte over the cap is refused', () => {
+    const path = join(root, 'big.toml');
+    writeFileSync(path, 'a'.repeat(MAX_CONFIG_BYTES + 1));
+    const read = readConfigIfPresent(path);
+    expect(!read.ok && read.error).toMatch(/larger than/);
+  });
+
+  it('a directory in place of the file is refused', () => {
+    mkdirSync(join(root, 'dir.toml'));
+    expect(readConfigIfPresent(join(root, 'dir.toml')).ok).toBe(false);
+  });
+
+  it.skipIf(!existsSync('/dev/zero'))(
+    'a committed symlink to /dev/zero refuses the codex task without hanging',
+    async () => {
+      mkdirSync(join(project, '.codex'), { recursive: true });
+      symlinkSync('/dev/zero', join(project, '.codex', 'config.toml'));
+      const message = await refusalOf(new CodexProbe({ sandboxProbe: () => ({ status: 'ok' }) }));
+      expect(message).toMatch(/not a regular file/);
+    }
+  );
+
+  const mkfifo = ((): boolean => {
+    try {
+      execFileSync('mkfifo', ['--version'], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  // Node's fs has no mkfifo; the coreutils binary is the portable way to make one.
+  it.skipIf(!mkfifo)('a FIFO (symlinked or not) is refused without blocking', () => {
+    const fifo = join(root, 'fifo');
+    execFileSync('mkfifo', [fifo]);
+    expect(readConfigIfPresent(fifo)).toMatchObject({ ok: false });
+    symlinkSync(fifo, join(project, 'opencode.json'));
+    expect(scanOpenCodeMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
   });
 });

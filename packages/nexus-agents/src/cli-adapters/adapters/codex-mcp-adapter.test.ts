@@ -663,10 +663,17 @@ describe('CodexMcpAdapter read-only MCP isolation (#6970)', () => {
     writeFileSync(join(home, '.codex', 'config.toml'), text);
   }
 
+  /** Keeps the host's real /etc/codex out of the scan. */
+  class HermeticCodexMcpAdapter extends CodexMcpAdapter {
+    protected override codexSystemConfigFiles(): readonly string[] {
+      return [];
+    }
+  }
+
   it('a read-only thread carries one disable per configured server in `config`', async () => {
     writeUserConfig('[mcp_servers.alpha]\ncommand = "a"\n[mcp_servers.beta]\nurl = "http://b"\n');
     const client = clientReturning();
-    const result = await new CodexMcpAdapter().execute({
+    const result = await new HermeticCodexMcpAdapter().execute({
       content: 'review',
       accessMode: 'read-only-analysis',
     });
@@ -682,14 +689,14 @@ describe('CodexMcpAdapter read-only MCP isolation (#6970)', () => {
   it('a default-mode thread carries no config', async () => {
     writeUserConfig('[mcp_servers.alpha]\ncommand = "a"\n');
     const client = clientReturning();
-    await new CodexMcpAdapter().execute({ content: 'review' });
+    await new HermeticCodexMcpAdapter().execute({ content: 'review' });
     const call = client.callTool.mock.calls[0]?.[0] as { arguments: Record<string, unknown> };
     expect(call.arguments).not.toHaveProperty('config');
   });
 
   it('an unparseable config refuses the read-only task without connecting', async () => {
     writeUserConfig('[mcp_servers.alpha\n');
-    const result = await new CodexMcpAdapter().execute({
+    const result = await new HermeticCodexMcpAdapter().execute({
       content: 'review',
       accessMode: 'read-only-analysis',
     });

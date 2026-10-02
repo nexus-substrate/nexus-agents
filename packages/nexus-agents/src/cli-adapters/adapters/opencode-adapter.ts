@@ -28,6 +28,7 @@ import { isReadOnlyAnalysis } from '../access-mode.js';
 import { mcpScanRefusal, scanOrThrow, subprocessScanContext } from '../mcp-config-scan.js';
 import {
   OPENCODE_CONFIG_CONTENT_ENV,
+  OPENCODE_MANAGED_CONFIG_FILES,
   openCodeReadOnlyConfigContent,
   scanOpenCodeMcpServers,
 } from '../opencode-mcp-isolation.js';
@@ -216,9 +217,12 @@ const OPENCODE_READ_ONLY_ENV: Readonly<Record<string, string>> = {
  * `OPENCODE_CONFIG_CONTENT`, if any, is merged in, because the command's env
  * replaces it. Throws when a config cannot be listed.
  */
-function readOnlyEnv(task: CliTask): Readonly<Record<string, string>> {
+function readOnlyEnv(
+  task: CliTask,
+  managedFiles: readonly string[]
+): Readonly<Record<string, string>> {
   const ctx = subprocessScanContext('opencode', task);
-  const names = scanOrThrow('opencode', scanOpenCodeMcpServers(ctx));
+  const names = scanOrThrow('opencode', scanOpenCodeMcpServers(ctx, managedFiles));
   if (names.length === 0) return OPENCODE_READ_ONLY_ENV;
   const content = scanOrThrow(
     'opencode',
@@ -278,8 +282,19 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
     const base = await super.accessModeRefusal(task);
     if (base !== undefined || !isReadOnlyAnalysis(task)) return base;
-    const scan = scanOpenCodeMcpServers(subprocessScanContext(this.name, task));
+    const scan = scanOpenCodeMcpServers(
+      subprocessScanContext(this.name, task),
+      this.openCodeManagedConfigFiles()
+    );
     return scan.ok ? undefined : mcpScanRefusal(this.name, scan.error);
+  }
+
+  /**
+   * The managed config files the MCP scan reads (#6970). A seam so tests can
+   * keep the host's real `/etc/opencode` out of the scan.
+   */
+  protected openCodeManagedConfigFiles(): readonly string[] {
+    return OPENCODE_MANAGED_CONFIG_FILES;
   }
 
   /** Returns true if the model is available in the OpenCode installation. */
@@ -440,7 +455,12 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
         : task.content;
 
     return isReadOnlyAnalysis(task)
-      ? { command: 'opencode', args, stdin: content, env: readOnlyEnv(task) }
+      ? {
+          command: 'opencode',
+          args,
+          stdin: content,
+          env: readOnlyEnv(task, this.openCodeManagedConfigFiles()),
+        }
       : { command: 'opencode', args, stdin: content };
   }
 

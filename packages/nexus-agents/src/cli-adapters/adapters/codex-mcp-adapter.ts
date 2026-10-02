@@ -29,7 +29,11 @@ import { BaseCliAdapter } from '../base-adapter.js';
 import { accessModeConflict, isReadOnlyAnalysis } from '../access-mode.js';
 import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
 import { codexSandboxPreflight, createCodexSandboxGuard } from '../codex-sandbox-preflight.js';
-import { codexMcpDisableConfig, scanCodexMcpServers } from '../codex-mcp-isolation.js';
+import {
+  CODEX_SYSTEM_CONFIG_FILES,
+  codexMcpDisableConfig,
+  scanCodexMcpServers,
+} from '../codex-mcp-isolation.js';
 import { type McpScanContext, mcpScanRefusal, scanOrThrow } from '../mcp-config-scan.js';
 
 import { type CodexAdapterOptions, toCodexModelSlug } from './codex-adapter-helpers.js';
@@ -280,10 +284,18 @@ export class CodexMcpAdapter extends BaseCliAdapter {
           'a continued codex session carries no sandbox setting'
         );
       }
-      const scan = scanCodexMcpServers(mcpServerScanContext());
+      const scan = scanCodexMcpServers(mcpServerScanContext(), this.codexSystemConfigFiles());
       if (!scan.ok) return mcpScanRefusal(this.name, scan.error);
     }
     return this.sandboxRefusal();
+  }
+
+  /**
+   * The system config files the MCP scan reads (#6970). A seam so tests can
+   * keep the host's real `/etc/codex` out of the scan.
+   */
+  protected codexSystemConfigFiles(): readonly string[] {
+    return CODEX_SYSTEM_CONFIG_FILES;
   }
 
   /**
@@ -294,7 +306,10 @@ export class CodexMcpAdapter extends BaseCliAdapter {
    */
   private readOnlyMcpConfig(task: CliTask): { config?: Readonly<Record<string, unknown>> } {
     if (!isReadOnlyAnalysis(task)) return {};
-    const servers = scanOrThrow(this.name, scanCodexMcpServers(mcpServerScanContext()));
+    const servers = scanOrThrow(
+      this.name,
+      scanCodexMcpServers(mcpServerScanContext(), this.codexSystemConfigFiles())
+    );
     return servers.length === 0 ? {} : { config: codexMcpDisableConfig(servers) };
   }
 
