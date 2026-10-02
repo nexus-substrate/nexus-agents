@@ -394,7 +394,7 @@ describe('buildAggregatedResult does not report an unmeasured confidence (#4831)
   function build(results: TaskResult[]): AggregatedResult {
     return buildAggregatedResult({
       pattern: 'parallel',
-      results,
+      results: new Map(results.map((result, index) => [`e${String(index + 1)}`, result])),
       participants: [makeParticipant({ status: 'submitted' })],
       votes: [],
       reviews: [],
@@ -420,18 +420,14 @@ describe('buildAggregatedResult does not report an unmeasured confidence (#4831)
   });
 
   it('keeps conflictCount consistent with the conflicts it reports', () => {
-    // Derived rather than restated, so the two cannot drift. This path still
-    // performs no conflict detection — see #4854.
+    // Derived rather than restated, so the count and list cannot drift.
     const result = build([makeTaskResult(), makeTaskResult({ taskId: 'task-2' })]);
 
     expect(result.metadata.conflictCount).toBe(result.conflicts.length);
   });
 
-  it('says the empty conflict list is unchecked, not clean (#4854)', () => {
-    // `conflicts: []` and `conflictCount: 0` are what a session with genuine
-    // agreement looks like, so this builder — which compares nothing — was
-    // indistinguishable from one that compared everything and found nothing.
-    // Two differing results must not read as consensus.
+  it('says string outputs are unchecked, not clean (#4854)', () => {
+    // The aggregator unions strings without comparing object fields.
     const result = build([
       makeTaskResult({ output: 'ship it' }),
       makeTaskResult({ taskId: 'task-2', output: 'do not ship it' }),
@@ -439,5 +435,55 @@ describe('buildAggregatedResult does not report an unmeasured confidence (#4831)
 
     expect(result.conflicts).toEqual([]);
     expect(result.metadata.conflictsDetected).toBe(false);
+  });
+});
+
+describe('buildAggregatedResult comparison scope (#4854)', () => {
+  it.each([
+    {
+      name: 'nested differences are reported on the parent field',
+      first: { config: { retries: 1 } },
+      second: { config: { retries: 2 } },
+      conflicts: [{ field: 'config', expert1Value: { retries: 1 }, expert2Value: { retries: 2 } }],
+    },
+    {
+      name: 'keys missing on one side are not conflicts',
+      first: { common: 'same', firstOnly: 1 },
+      second: { common: 'same', secondOnly: 2 },
+      conflicts: [],
+    },
+    {
+      name: 'arrays compare by order',
+      first: { steps: ['build', 'test'] },
+      second: { steps: ['test', 'build'] },
+      conflicts: [
+        { field: 'steps', expert1Value: ['build', 'test'], expert2Value: ['test', 'build'] },
+      ],
+    },
+    {
+      name: 'equal arrays do not conflict',
+      first: { steps: ['build', 'test'] },
+      second: { steps: ['build', 'test'] },
+      conflicts: [],
+    },
+  ])('$name', ({ first, second, conflicts }) => {
+    const result = buildAggregatedResult({
+      pattern: 'parallel',
+      results: new Map([
+        ['e1', makeTaskResult({ output: first })],
+        ['e2', makeTaskResult({ output: second })],
+      ]),
+      participants: [],
+      votes: [],
+      reviews: [],
+      endTime: new Date('2026-01-01T00:01:00.000Z'),
+    });
+
+    expect(result.metadata.conflictsDetected).toBe(true);
+    expect(result.metadata.conflictCount).toBe(conflicts.length);
+    expect(result.conflicts).toHaveLength(conflicts.length);
+    conflicts.forEach((conflict, index) => {
+      expect(result.conflicts[index]).toMatchObject(conflict);
+    });
   });
 });

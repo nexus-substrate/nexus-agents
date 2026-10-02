@@ -7,6 +7,7 @@
 
 import type { Result, TaskResult, AgentRole } from '../../core/index.js';
 import { summarizeTokenUsage } from './token-usage-summary.js';
+import { areAllObjects, mergeObjects } from './aggregator-helpers.js';
 import { ok, err, AgentError, getTimeProvider, formatZodError } from '../../core/index.js';
 import type {
   CollaborationConfig,
@@ -267,11 +268,44 @@ export function buildExpertResults(
  */
 export interface AggregatedResultInput {
   pattern: CollaborationPattern;
-  results: TaskResult[];
+  results: Map<string, TaskResult>;
   participants: ExpertParticipation[];
   votes: VoteMessage[];
   reviews: ReviewResponseMessage[];
   endTime: Date;
+}
+
+/** Compares independent session results using the shared object-merge detection. */
+function detectResultConflicts(
+  pattern: CollaborationPattern,
+  results: Map<string, TaskResult>
+): {
+  conflicts: ResultConflict[];
+  conflictsDetected: boolean;
+  conflictsDetectionReason?: string;
+} {
+  // Later outputs supersede earlier drafts in these patterns, so changes are
+  // refinement rather than disagreement (matching sequential_chain's rule).
+  if (['sequential', 'reflexion', 'self-refine', 'self-debug'].includes(pattern)) {
+    return {
+      conflicts: [],
+      conflictsDetected: false,
+      conflictsDetectionReason: `not compared: ${pattern} refinement`,
+    };
+  }
+  // Zero or one result has no pair to compare, so explicitly reports no conflicts.
+  if (results.size < 2) return { conflicts: [], conflictsDetected: false };
+
+  const expertResults = Array.from(results, ([expertId, result]) => ({ expertId, result }));
+  const outputs = expertResults.map((r) => r.result.output);
+  if (!areAllObjects(outputs)) return { conflicts: [], conflictsDetected: false };
+
+  // Compare shared top-level keys only: nested differences report the parent
+  // field with both original values, missing keys do not conflict, and arrays
+  // compare by order. Keep disagreement unresolved; the session retains both
+  // contributions without quality scoring or aggregation logging.
+  const { conflicts } = mergeObjects(expertResults, outputs, () => 'unresolved');
+  return { conflicts, conflictsDetected: true };
 }
 
 /**
@@ -279,20 +313,19 @@ export interface AggregatedResultInput {
  */
 export function buildAggregatedResult(input: AggregatedResultInput): AggregatedResult {
   const { pattern, results, participants, votes, reviews, endTime } = input;
-
-  // This path performs no conflict detection — see #4854. The count is
-  // derived from the list rather than restated so that wiring detection in
-  // cannot leave the two disagreeing, and `conflictsDetected` below says the
-  // empty list is unchecked rather than clean.
-  const conflicts: ResultConflict[] = [];
+  const resultList = Array.from(results.values());
+  const { conflicts, conflictsDetected, conflictsDetectionReason } = detectResultConflicts(
+    pattern,
+    results
+  );
 
   return {
-    output: aggregateOutputs(results),
+    output: aggregateOutputs(resultList),
     strategy: getAggregationStrategy(pattern),
     qualityScore: calculateQualityScore(pattern, participants, votes, reviews),
     conflicts,
     metadata: {
-      resultCount: results.length,
+      resultCount: results.size,
       conflictCount: conflicts.length,
       // Nothing reaching this builder carries a confidence signal: neither
       // TaskResult, ResultMetadata, VoteMessage nor ExpertParticipation has
@@ -301,14 +334,11 @@ export function buildAggregatedResult(input: AggregatedResultInput): AggregatedR
       // the safe direction and says it is a placeholder.
       averageConfidence: 0,
       confidenceMeasured: false,
-      // Nothing here compares results against each other: `TaskResult` carries
-      // neither the `confidence` nor the `expertId` that the sibling
-      // aggregator's conflict resolution needs. An empty list from a
-      // comparison that never ran must not read as agreement (#4854).
-      conflictsDetected: false,
+      conflictsDetected,
+      ...(conflictsDetectionReason === undefined ? {} : { conflictsDetectionReason }),
       // #4743: shared with result-aggregator so the two cannot drift — they
       // were duplicate expressions computing the same thing.
-      ...summarizeTokenUsage(results.map((r) => r.metadata)),
+      ...summarizeTokenUsage(resultList.map((r) => r.metadata)),
       aggregatedAt: endTime.toISOString(),
     },
   };

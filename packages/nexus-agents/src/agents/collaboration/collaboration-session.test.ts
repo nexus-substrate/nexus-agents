@@ -4,6 +4,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ILogger, Task, TaskResult } from '../../core/index.js';
+import { AgentError } from '../../core/index.js';
+import { ResultAggregator } from './result-aggregator.js';
 import { CollaborationSession, createCollaborationSession } from './collaboration-session.js';
 import type { CollaborationConfig } from './collaboration-types.js';
 
@@ -505,6 +507,91 @@ describe('CollaborationSession', () => {
       session.start(createTestConfig());
     });
 
+    it('reports conflicting values and their experts for the same field (#4854)', () => {
+      // Submit in reverse roster order; both results share the task ID.
+      session.submitResult('expert-2', createTestResult('test-task-1', { decision: 'reject' }));
+      session.submitResult('expert-1', createTestResult('test-task-1', { decision: 'approve' }));
+
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+      const aggregated = result.value.aggregatedResult;
+
+      expect(aggregated.conflicts).toEqual([
+        expect.objectContaining({
+          field: 'decision',
+          expert1Id: 'expert-2',
+          expert2Id: 'expert-1',
+          expert1Value: 'reject',
+          expert2Value: 'approve',
+          resolution: 'unresolved',
+        }),
+      ]);
+      expect(aggregated.metadata.conflictCount).toBe(1);
+      expect(aggregated.metadata.conflictsDetected).toBe(true);
+      expect(aggregated.conflicts[0]).not.toHaveProperty('resolutionReason');
+      expect(aggregated.metadata.confidenceMeasured).toBe(false);
+      expect(aggregated.output).toEqual([
+        { taskId: 'test-task-1', output: { decision: 'reject' } },
+        { taskId: 'test-task-1', output: { decision: 'approve' } },
+      ]);
+    });
+
+    it('reports no conflicts after comparing agreeing object results', () => {
+      session.submitResult('expert-1', createTestResult('test-task-1', { decision: 'approve' }));
+      session.submitResult('expert-2', createTestResult('test-task-1', { decision: 'approve' }));
+
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+
+      expect(result.value.aggregatedResult.conflicts).toEqual([]);
+      expect(result.value.aggregatedResult.metadata.conflictCount).toBe(0);
+      expect(result.value.aggregatedResult.metadata.conflictsDetected).toBe(true);
+    });
+
+    it('preserves non-JSON array outputs without running object conflict detection', () => {
+      session.submitResult('expert-1', createTestResult('test-task-1', [1n]));
+      session.submitResult('expert-2', createTestResult('test-task-1', [2n]));
+
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+
+      expect(result.value.aggregatedResult.output).toEqual([
+        { taskId: 'test-task-1', output: [1n] },
+        { taskId: 'test-task-1', output: [2n] },
+      ]);
+      expect(result.value.aggregatedResult.conflicts).toEqual([]);
+      expect(result.value.aggregatedResult.metadata.conflictCount).toBe(0);
+      expect(result.value.aggregatedResult.metadata.conflictsDetected).toBe(false);
+    });
+
+    it('reports no conflicts and no comparison for one result', () => {
+      session.submitResult('expert-2', createTestResult('test-task-1', { decision: 'approve' }));
+
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+
+      expect(result.value.aggregatedResult.conflicts).toEqual([]);
+      expect(result.value.aggregatedResult.metadata.conflictCount).toBe(0);
+      expect(result.value.aggregatedResult.metadata.conflictsDetected).toBe(false);
+      expect(result.value.aggregatedResult.output).toEqual({ decision: 'approve' });
+    });
+
+    it('reports no conflicts and no comparison for zero results', () => {
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+
+      expect(result.value.success).toBe(false);
+      expect(result.value.aggregatedResult.conflicts).toEqual([]);
+      expect(result.value.aggregatedResult.metadata.conflictCount).toBe(0);
+      expect(result.value.aggregatedResult.metadata.conflictsDetected).toBe(false);
+      expect(result.value.aggregatedResult.output).toBeNull();
+    });
+
     it('should return collaboration result', () => {
       session.submitResult('expert-1', createTestResult('test-task-1'));
       session.submitResult('expert-2', createTestResult('test-task-1'));
@@ -553,6 +640,90 @@ describe('CollaborationSession', () => {
       expect(session.getStatus()).toBeNull();
     });
   });
+
+  it.each(['parallel', 'review', 'consensus', 'aegean'] as const)(
+    'detects conflicting object fields in a %s session',
+    (pattern) => {
+      session.start(createTestConfig({ pattern, experts: ['expert-1', 'expert-2', 'expert-3'] }));
+      session.submitResult('expert-1', createTestResult('test-task-1', { decision: 'approve' }));
+      session.submitResult('expert-2', createTestResult('test-task-1', { decision: 'reject' }));
+
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+
+      expect(result.value.aggregatedResult.conflicts).toEqual([
+        expect.objectContaining({
+          field: 'decision',
+          expert1Id: 'expert-1',
+          expert2Id: 'expert-2',
+          expert1Value: 'approve',
+          expert2Value: 'reject',
+          resolution: 'unresolved',
+        }),
+      ]);
+      expect(result.value.aggregatedResult.metadata.conflictCount).toBe(1);
+      expect(result.value.aggregatedResult.metadata.conflictsDetected).toBe(true);
+    }
+  );
+
+  // Previously pinned sequential refinement as disagreement (#4854).
+  it.each(['sequential', 'reflexion', 'self-refine', 'self-debug'] as const)(
+    'does not compare superseding outputs in a %s session',
+    (pattern) => {
+      expect(session.start(createTestConfig({ pattern })).ok).toBe(true);
+      session.submitResult('expert-1', createTestResult('test-task-1', { draft: 'initial' }));
+      session.submitResult('expert-2', createTestResult('test-task-1', { draft: 'refined' }));
+
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+      expect(result.value.aggregatedResult.conflicts).toEqual([]);
+      expect(result.value.aggregatedResult.metadata).toMatchObject({
+        conflictCount: 0,
+        conflictsDetected: false,
+        conflictsDetectionReason: `not compared: ${pattern} refinement`,
+      });
+    }
+  );
+
+  it('compares fields without invoking aggregation scoring or logs', () => {
+    const aggregate = vi.spyOn(ResultAggregator.prototype, 'aggregate');
+    try {
+      session.start(createTestConfig());
+      session.submitResult('expert-1', createTestResult('test-task-1', { decision: 'approve' }));
+      session.submitResult('expert-2', createTestResult('test-task-1', { decision: 'reject' }));
+      const result = session.finalize();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+      expect(result.value.aggregatedResult.conflicts).toHaveLength(1);
+      expect(aggregate).not.toHaveBeenCalled();
+    } finally {
+      aggregate.mockRestore();
+    }
+  });
+
+  it.each([new AgentError('comparison failed'), new Error('comparison failed')])(
+    'returns comparison failures as Result errors (%s)',
+    (failure) => {
+      session.start(createTestConfig());
+      session.submitResult('expert-1', createTestResult('test-task-1', { decision: 'approve' }));
+      const output = {
+        get decision(): string {
+          throw failure;
+        },
+      };
+      session.submitResult('expert-2', createTestResult('test-task-1', output));
+
+      const result = session.finalize();
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('Expected comparison failure');
+      expect(result.error).toBeInstanceOf(AgentError);
+      if (failure instanceof AgentError) expect(result.error).toBe(failure);
+      else expect(result.error.cause).toBe(failure);
+      expect(mockLogger.info).not.toHaveBeenCalledWith('Session finalized', expect.anything());
+    }
+  );
 
   describe('cancel', () => {
     it('should cancel session with reason', () => {

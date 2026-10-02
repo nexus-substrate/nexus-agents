@@ -35,7 +35,7 @@ export type ConflictResolver = (
   conflict: ResultConflict,
   result1: ExpertResult,
   result2: ExpertResult
-) => 'expert1' | 'expert2' | 'merged';
+) => ResultConflict['resolution'];
 
 /**
  * Quality scorer function type.

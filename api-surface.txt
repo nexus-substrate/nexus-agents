@@ -438,6 +438,7 @@ InterfaceDeclaration AggregationMetadata
   confidenceMeasured?: boolean | undefined
   conflictCount: number
   conflictsDetected?: boolean | undefined
+  conflictsDetectionReason?: string | undefined
   resultCount: number
   totalTokensUsed: number
   unmeasuredResults?: number | undefined
@@ -1974,7 +1975,7 @@ InterfaceDeclaration ConflictOutcome
   conflicts: ResultConflict[]
   conflictsDetected: boolean
 TypeAliasDeclaration ConflictResolver
-  = ( conflict: ResultConflict, result1: ExpertResult, result2: ExpertResult ) => 'expert1' | 'expert2' | 'merged'
+  = ( conflict: ResultConflict, result1: ExpertResult, result2: ExpertResult ) => ResultConflict['resolution']
 InterfaceDeclaration ConflictWarning
   readonly recommendation: string
   readonly scanners: readonly string[]
@@ -7807,7 +7808,9 @@ InterfaceDeclaration ResultBuildOpts
 InterfaceDeclaration ResultConflict
   description: string
   expert1Id: string
+  expert1Value?: unknown
   expert2Id: string
+  expert2Value?: unknown
   field: string
   resolution: "expert1" | "expert2" | "merged" | "unresolved"
   resolutionReason?: string | undefined
