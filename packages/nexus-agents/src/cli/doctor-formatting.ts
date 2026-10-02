@@ -30,7 +30,8 @@ import { colors, symbols, writeLine } from './ansi-output.js';
 import { capitalize } from '../utils/text-utils.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import * as installFreshness from './doctor-install-freshness.js';
-import { failingVerdictTerms, summaryNotes } from './doctor-verdict-terms.js';
+import type { CliReadiness } from './cli-readiness.js';
+import { printDoctorSummary } from './doctor-summary.js';
 import { NODE_ENGINE_RANGE } from '../version.js';
 
 /**
@@ -397,25 +398,6 @@ function printSandbox(check: DoctorResult['sandbox']): void {
   writeLine('');
 }
 
-/** Prints the summary line with issue count. */
-function printDoctorSummary(result: DoctorResult): void {
-  const terms = failingVerdictTerms(result);
-  const freshnessNote = summaryNotes(result);
-  // Name the terms, don't just count them (#6011). `doctor` marks several lines
-  // with a warning glyph, and only some of them are counted — the API-keys note
-  // is advisory because CLI auth already satisfies `hasAuthMethod`. A bare count
-  // left the reader to re-derive which warning it referred to, which meant
-  // reading printDoctorSummary to find out.
-  // Parenthesised, not after an em dash: `freshnessNote` already appends its own
-  // ` — stale global install` clause, and two dash-separated clauses on one line
-  // read as a single run-on. Seen in the real output before this was changed.
-  const named = terms.length > 0 ? ` (${terms.join(', ')})` : '';
-  const summary = result.allHealthy
-    ? `${colors.green}${colors.bold}Status: Ready${colors.reset}${freshnessNote}`
-    : `${colors.yellow}${colors.bold}Summary: ${String(terms.length)} issue(s) found${named}${colors.reset}${freshnessNote}`;
-  writeLine(`${summary}\n`);
-}
-
 /** MCP server mode, then client mode (`doctor-mcp-client.ts`). */
 function printMcpModes(result: DoctorResult): void {
   const server = result.mcpServerReady ? 'Ready' : 'Not ready';
@@ -426,7 +408,11 @@ function printMcpModes(result: DoctorResult): void {
 /**
  * Prints the doctor results to stdout.
  */
-export function printDoctorResults(result: DoctorResult): void {
+export function printDoctorResults(
+  result: DoctorResult,
+  live?: readonly CliReadiness[],
+  deferSummary = false
+): void {
   writeLine('');
   writeLine(`${colors.bold}Nexus Agents Doctor${colors.reset}`);
   writeLine('===================');
@@ -480,13 +466,19 @@ export function printDoctorResults(result: DoctorResult): void {
   writeLine(formatScratchFilesystems(result.scratchSpace));
   writeLine('');
 
+  printDoctorFooter(result, live, deferSummary);
+}
+
+/** Storage-adjacent diagnostics and the optionally deferred summary. */
+function printDoctorFooter(
+  result: DoctorResult,
+  live: readonly CliReadiness[] | undefined,
+  defer: boolean
+): void {
   printSandbox(result.sandbox);
-
   printHarnessAlignment(result.harnessAlignment);
-
   printInstallFreshness(result.installFreshness);
-
-  printDoctorSummary(result);
+  if (!defer) printDoctorSummary(result, live);
 }
 
 /** Prints the global install comparison added after its verdict was not surfaced (#4767, #4959). */

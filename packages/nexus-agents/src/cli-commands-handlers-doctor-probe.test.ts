@@ -1,6 +1,7 @@
 /** CLI live readiness exercised through the existing adapter enumeration (#4376). */
 import { parseArgs } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DoctorOptions, DoctorResult } from './cli/doctor.js';
 import type { CliName, ICliAdapter } from './cli-adapters/types.js';
 import type { ServesProbeTarget } from './cli/cli-readiness.js';
 import { PARSE_ARGS_CONFIG } from './cli-types.js';
@@ -13,7 +14,26 @@ const seam = vi.hoisted(() => ({
 }));
 vi.mock('./cli/index.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./cli/index.js')>()),
-  doctorCommand: vi.fn().mockResolvedValue(0),
+  doctorCommand: vi.fn((options: DoctorOptions) => {
+    options.onResult?.({
+      allHealthy: true,
+      nodeVersion: { supported: true },
+      mcpServerReady: true,
+      gateway: { state: 'not_configured' },
+      installFreshness: { state: 'aligned', version: '1.0.0' },
+      scratchSpace: [],
+      clis: [
+        {
+          name: 'claude',
+          installed: true,
+          authenticated: true,
+          versionStatus: 'supported',
+          routerAdmits: true,
+        },
+      ],
+    } as unknown as DoctorResult);
+    return Promise.resolve(0);
+  }),
 }));
 vi.mock('./cli-adapters/factory.js', () => ({
   createAllAdapters: () =>
@@ -88,9 +108,9 @@ describe('doctor completion seam (#4376)', () => {
     expect(process.stdout.write).toHaveBeenCalledWith(expect.stringContaining('failed (timeout)'));
   });
 
-  it('skips an adapter without usable credentials without sending a completion', async () => {
+  it('reports failed live auth without sending a completion', async () => {
     seam.auth.mockResolvedValue({ cli: 'claude', state: 'needs-login' });
-    expect((await invokeDoctor(true)).exitCode).toBe(0);
+    expect((await invokeDoctor(true)).exitCode).toBe(1);
     expect(seam.execute).not.toHaveBeenCalled();
     expect(process.stdout.write).toHaveBeenCalledWith(
       expect.stringContaining('skipped (credentials unavailable)')

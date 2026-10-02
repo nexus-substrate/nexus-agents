@@ -16,6 +16,7 @@ import {
   worstSeverity,
 } from './doctor-scratch-space.js';
 import * as installFreshness from './doctor-install-freshness.js';
+import type { CliReadiness } from './cli-readiness.js';
 import type { DoctorResult } from './doctor.js';
 import { cliFailsVerdict, gatewayVerdict, type GatewayVerdict } from './doctor-gateway.js';
 import { gatewayCoveredClis } from './doctor-gateway-slots.js';
@@ -35,7 +36,10 @@ import { gatewayCoveredClis } from './doctor-gateway-slots.js';
  * in the total. Keep this in step with {@link isAllHealthy} — every `&&` there
  * needs a row here.
  */
-export function failingVerdictTerms(result: DoctorResult): string[] {
+export function failingVerdictTerms(
+  result: DoctorResult,
+  live?: readonly CliReadiness[]
+): string[] {
   const gateway = gatewayVerdict(result.gateway);
   const terms: string[] = gatewayTerms(result.gateway, gateway);
   if (!result.nodeVersion.supported) terms.push('node version');
@@ -44,6 +48,18 @@ export function failingVerdictTerms(result: DoctorResult): string[] {
     terms.push('install freshness');
   }
   if (!scratchSeverityIsAcceptable(worstSeverity(result.scratchSpace))) terms.push('scratch space');
+  terms.push(...cliVerdictTerms(result, gateway, live), ...liveFailureTerms(live));
+  return terms;
+}
+
+/** Local CLI findings remain only for adapters the live run did not measure. */
+function cliVerdictTerms(
+  result: DoctorResult,
+  gateway: GatewayVerdict,
+  live: readonly CliReadiness[] | undefined
+): string[] {
+  const terms: string[] = [];
+  const measured = new Set((live ?? []).map((r) => r.cli));
   // `hasAuthMethod` (an API key OR an installed+authenticated CLI) deliberately
   // gets NO row of its own. Whenever it fails with CLIs present, every CLI is
   // unauthenticated and the per-CLI rows below already count it; a separate row
@@ -57,12 +73,39 @@ export function failingVerdictTerms(result: DoctorResult): string[] {
   // #6782: a broken CLI whose slot the gateway serves is named, not counted.
   const covered = gatewayCoveredClis(result.gateway, result.clis).map((c) => c.cli);
   for (const c of result.clis) {
+    if (measured.has(c.name)) continue;
     if (cliFailsVerdict(c, gateway, covered.includes(c.name))) terms.push(`CLI ${c.name}`);
   }
   // `isAllHealthy` passes `whenEmpty = false` (#4581) unless a gateway passes:
   // zero detected CLIs is not a healthy install. Without this row an
   // API-key-only setup with no CLI reads as unhealthy with nothing counted.
-  if (result.clis.length === 0 && gateway !== 'pass') terms.push('no CLIs detected');
+  if (
+    result.clis.length === 0 &&
+    gateway !== 'pass' &&
+    !(live ?? []).some((r) => r.levels.serves.status === 'verified')
+  )
+    terms.push('no CLIs detected');
+  return terms;
+}
+
+/** Failure terms from the measured ladder, preserving transport attribution. */
+function liveFailureTerms(live: readonly CliReadiness[] | undefined): string[] {
+  const terms: string[] = [];
+  for (const r of live ?? []) {
+    const serving = r.levels.serves;
+    if (serving.status === 'failed') {
+      const target =
+        r.gateway === undefined
+          ? `CLI ${r.cli}`
+          : `gateway ${r.gateway.gatewayModel} (${r.cli} slot)`;
+      terms.push(`${target}: failed (${serving.errorClass ?? 'execution'})`);
+    } else if (serving.status === 'not-attempted') {
+      const failedLevel = (['installed', 'authenticated'] as const).find(
+        (level) => r.levels[level].status === 'failed'
+      );
+      if (failedLevel !== undefined) terms.push(`CLI ${r.cli}: ${failedLevel} failed`);
+    }
+  }
   return terms;
 }
 
@@ -87,19 +130,25 @@ function unmeasuredVerdictSections(result: DoctorResult): string[] {
  * Summary notes for installed-but-broken CLIs the gateway serves around
  * (#6782): not issues, since service is unaffected, but never silent.
  */
-function gatewayCoveredCliNotes(result: DoctorResult): string[] {
-  return gatewayCoveredClis(result.gateway, result.clis).map(
-    (c) => `${c.cli} CLI unhealthy, slot served by gateway`
-  );
+function gatewayCoveredCliNotes(result: DoctorResult, live?: readonly CliReadiness[]): string[] {
+  return gatewayCoveredClis(result.gateway, result.clis)
+    .filter((c) => {
+      const measured = live?.find((r) => r.cli === c.cli);
+      return (
+        measured === undefined ||
+        (measured.gateway !== undefined && measured.levels.serves.status === 'verified')
+      );
+    })
+    .map((c) => `${c.cli} CLI unhealthy, slot served by gateway`);
 }
 
 /**
  * The summary line's suffix: the freshness note, the unmeasured sections and
  * the gateway-covered CLIs (#6782). Each is named, none is counted as an issue.
  */
-export function summaryNotes(result: DoctorResult): string {
+export function summaryNotes(result: DoctorResult, live?: readonly CliReadiness[]): string {
   const unmeasured = unmeasuredVerdictSections(result);
-  const covered = gatewayCoveredCliNotes(result);
+  const covered = gatewayCoveredCliNotes(result, live);
   return (
     installFreshness.describeInstallFreshnessSummary(result.installFreshness) +
     (unmeasured.length > 0 ? ` — unmeasured: ${unmeasured.join(', ')}` : '') +
