@@ -1,5 +1,23 @@
 # nexus-agents
 
+## 8.127.0
+
+### Minor Changes
+
+- [#6963](https://github.com/nexus-substrate/nexus-agents/pull/6963) [`7d2c3e6`](https://github.com/nexus-substrate/nexus-agents/commit/7d2c3e6a584bd387cb088393745964f3bdd7af71) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Prevent development pipeline dry runs from editing workspace files by enforcing read-only expert access. Planning, task decomposition, and review always run read-only; real implementation retains workspace edit access. Adapters that cannot enforce read-only access are refused explicitly.
+
+  A real (non-dry-run) plan stage now runs read-only without the nexus MCP config, so the planner no longer has nexus tools. The gemini adapter's read-only mode (agy plan mode) has not been verified live yet; see [#6962](https://github.com/nexus-substrate/nexus-agents/issues/6962).
+
+### Patch Changes
+
+- [#6964](https://github.com/nexus-substrate/nexus-agents/pull/6964) [`9b1fa4d`](https://github.com/nexus-substrate/nexus-agents/commit/9b1fa4d5cdaa60bb797a2ccd5955522bb783c919) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Voters whose JSON answer sat in a fenced block no longer lose their vote when the reasoning quotes a triple-backtick fence. The extractor ended the fenced block at the first triple backtick, even one inside a JSON string, so the vote was cut off before `confidence`. On `pr_review` this rejected every Claude seat reviewing a diff that contained such fences. The extractor now reads the object from the fence opener with the string-aware scanner.
+
+  A vote that fails to parse now logs the first 2000 characters of the raw answer, secret-redacted, on the `Vote attempt failed` warning.
+
+  The PR-review prompt now shows complete JSON vote examples that include `confidence`. If fewer than a majority of the requested panel seats respond, the review abstains instead of approving and records the quorum shortfall in the response and the audit record. An empty panel no longer reports a verified review.
+
+- [#6965](https://github.com/nexus-substrate/nexus-agents/pull/6965) [`b135226`](https://github.com/nexus-substrate/nexus-agents/commit/b135226679af8f86f0d9f0a07c5420d0dbe75beb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report the remediation-review readiness harmful rate as `unmeasured (0 judged)` when no selections have been judged, with `harmfulRate: null` in JSON output. Readiness continues to fail the soundness criterion until judged evidence is present; measured rates are unchanged.
+
 ## 8.126.12
 
 ### Patch Changes
