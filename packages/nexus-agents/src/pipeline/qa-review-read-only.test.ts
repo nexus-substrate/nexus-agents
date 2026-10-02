@@ -95,14 +95,14 @@ describe('QA review stage access mode (#6768)', () => {
   });
 });
 
-describe('decompose stage keeps its tools (#6768 contrast)', () => {
-  it('keeps the MCP config and the default access mode', async () => {
+describe('decompose stage runs read-only (#6958)', () => {
+  it('requests read-only analysis and drops the MCP config', async () => {
     executeTaskMock.mockResolvedValue({ ok: true, value: { text: '[]' } });
 
     await createDecomposeStage(deps())('the plan');
 
     const task = routedTask();
-    expect(task['options']).toEqual({ mcpConfigPath: '/tmp/qa-seam-mcp.json' });
-    expect(task['accessMode']).toBeUndefined();
+    expect(task['options']).toBeUndefined();
+    expect(task['accessMode']).toBe('read-only-analysis');
   });
 });

@@ -220,7 +220,7 @@ describe('the effective mode is recorded for every expert call (#6792)', () => {
     ]);
   });
 
-  it('a decompose row records the default mode, which keeps its MCP config (contrast)', async () => {
+  it('a decompose row records the mode the CLI reported, and the request is read-only (#6958)', async () => {
     executeTaskMock.mockResolvedValue({
       ok: true,
       value: { text: '[]', routedCli: 'claude', accessMode: 'default' },
@@ -228,7 +228,7 @@ describe('the effective mode is recorded for every expert call (#6792)', () => {
 
     await createDecomposeStage(deps())('the plan');
 
-    expect(routedTask()['accessMode']).toBeUndefined();
+    expect(routedTask()['accessMode']).toBe('read-only-analysis');
     expect(outcomeRow('decompose')['qualitySignals']).toEqual(['access-mode:default']);
   });
 
