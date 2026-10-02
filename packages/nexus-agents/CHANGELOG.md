@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.126.4
+
+### Patch Changes
+
+- [#6931](https://github.com/nexus-substrate/nexus-agents/pull/6931) [`b2a007c`](https://github.com/nexus-substrate/nexus-agents/commit/b2a007c61b311cf8c6f84e3c4afa2fd99c876547) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report missing language support when a task explicitly requests symbol extraction for a named file extension or language. Inferred gaps appear in capability reports but stay out of the research ledger unless `NEXUS_CAPABILITY_GAP_INFERRED=1` is set; observed tool refusals continue to be recorded.
+
+  Limit inferred sources to known source-language extensions and explicit language positions in the request clause. Persist inferred and observed provenance while accepting legacy ledger rows without an origin.
+
 ## 8.126.3
 
 ### Patch Changes
