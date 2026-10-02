@@ -56,7 +56,7 @@ PR-review mode — if you are reviewing a code diff (not a proposal) AND you hav
   {
     "summary": "One-line summary",
     "location": "path/file.ext:LINE",
-    "severity": "critical" | "high" | "medium" | "low",
+    "severity": "critical" | "high" | "medium" | "low" | "info",
     "gate": {
       "reread_cited_line": "passed",
       "traced_call_path": "passed",
@@ -67,7 +67,7 @@ PR-review mode — if you are reviewing a code diff (not a proposal) AND you hav
   }
 ]
 
-A finding only triggers strict request_changes if all 4 gate fields = "passed" AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Findings missing any of those surface as informational only — they do not block on their own. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings field entirely. If reviewing a non-diff proposal, ignore this section.
+A finding only triggers strict request_changes if its severity is medium or higher, all 4 gate fields = "passed" AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Non-security low/info findings are reported but do not corroborate a verified blocker. Security-role findings are treated as at least medium. Request_changes votes still count toward soft blocking regardless of severity. Findings missing any of those gate checks surface as informational only — they do not block on their own. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings field entirely. If reviewing a non-diff proposal, ignore this section.
 
 History note: an earlier prompt asked for YAML inside reasoning; that format was lossy across JSON serialization (#2245). Use the top-level JSON array above.`;
 }

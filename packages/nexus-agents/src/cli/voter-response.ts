@@ -66,7 +66,7 @@ export interface ParsedVote extends Vote {
 export const RawFindingSchema = z.object({
   summary: z.string().min(1).max(500).describe('One-line summary of the issue'),
   location: z.string().min(1).max(200).describe('path/file.ext:line'),
-  severity: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']).default('medium'),
   gate: z.object({
     reread_cited_line: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
     traced_call_path: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
@@ -195,7 +195,7 @@ export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
             maxLength: 200,
             description: 'path/file.ext:line',
           },
-          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] },
           gate: {
             type: 'object',
             additionalProperties: false,

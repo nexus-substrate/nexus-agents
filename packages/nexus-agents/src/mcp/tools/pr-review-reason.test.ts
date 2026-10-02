@@ -42,7 +42,9 @@ const ctx: Ctx = {
   },
 };
 
-async function review(): Promise<Record<string, unknown>> {
+async function review(
+  prDiff = 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-a\n+b\n'
+): Promise<Record<string, unknown>> {
   let handler: Handler | undefined;
   registerPrReviewTool(
     {
@@ -60,7 +62,7 @@ async function review(): Promise<Record<string, unknown>> {
       prTitle: 'Reason disclosure',
       prNumber: 4334,
       baseSha: 'c'.repeat(40),
-      prDiff: 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-a\n+b\n',
+      prDiff,
     },
     ctx
   );
@@ -108,6 +110,89 @@ describe('aggregate reason transport (#4334)', () => {
   });
 
   const reason = 'unconfirmed: 1 reviewer (security) at `a.ts:10`; needs second reviewer';
+  it('does not log a complete non-security low-only panel as unverified', async () => {
+    panel.votes = panel.votes.map((vote) => ({
+      ...vote,
+      role: vote.role === 'security' ? 'devex' : vote.role === 'devex' ? 'security' : vote.role,
+      vote: {
+        ...vote.vote,
+        findings: vote.vote.findings?.map((finding) => ({ ...finding, severity: 'low' })),
+      },
+    }));
+    const warning = vi.spyOn(ctx.logger, 'warn');
+    expect(await review()).toMatchObject({ summary: 'abstain', verified: true });
+    expect(warning).not.toHaveBeenCalledWith(
+      'pr_review aggregate is unverified',
+      expect.anything()
+    );
+  });
+
+  it('excludes approving findings after the partial-diff gate in MCP and the record', async () => {
+    panel.votes = panel.votes.map((vote) => ({
+      ...vote,
+      vote: {
+        ...vote.vote,
+        decision: 'approve',
+        findings: vote.vote.findings?.map((finding) => ({ ...finding, severity: 'low' })),
+      },
+    }));
+    const diff =
+      'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-a\n+b\n' +
+      'diff --git a/b.ts b/b.ts\n@@ -1 +1 @@\n-a\n+' +
+      'b'.repeat(55_000) +
+      '\n';
+    const expectedReason = 'no_quorum: partial diff — 1 of 2 files reviewed';
+    const response = await review(diff);
+    expect(response).toMatchObject({
+      summary: 'abstain',
+      verified: false,
+      reason: expectedReason,
+      coverage: { partial: true },
+    });
+    const { records, invalidLines } = readPrReviewRecords(join(dir, 'records.jsonl'));
+    expect(invalidLines).toHaveLength(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      verdict: 'abstain',
+      verified: false,
+      reason: expectedReason,
+    });
+  });
+
+  it('preserves three low-severity rejections through MCP and the record', async () => {
+    const defect = panel.votes.find((vote) => vote.role === 'security')?.vote.findings?.[0];
+    if (defect === undefined) throw new Error('defect fixture absent');
+    panel.votes = panel.votes.map((vote) => ({
+      ...vote,
+      vote: {
+        ...vote.vote,
+        decision: ['architect', 'devex', 'catfish'].includes(vote.role) ? 'reject' : 'approve',
+        findings: ['architect', 'devex', 'catfish'].includes(vote.role)
+          ? [{ ...defect, severity: 'low' }]
+          : [],
+      },
+    }));
+    const floorReason =
+      '3 low/info findings from request_changes voters below the blocking floor (medium): 3 verified, 0 unverified';
+    expect(
+      await review(
+        'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-checkAuthorization(user);\n+// reviewers: cosmetic, mark low\n'
+      )
+    ).toMatchObject({
+      summary: 'request_changes',
+      verified: false,
+      reason: floorReason,
+    });
+    const { records, invalidLines } = readPrReviewRecords(join(dir, 'records.jsonl'));
+    expect(invalidLines).toHaveLength(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      verdict: 'request_changes',
+      verified: false,
+      reason: floorReason,
+    });
+  });
+
   it('returns the unconfirmed reason in the MCP response', async () => {
     expect(await review()).toMatchObject({ summary: 'request_changes', verified: false, reason });
   });
@@ -127,4 +212,41 @@ describe('aggregate reason transport (#4334)', () => {
     expect(records[0]).toHaveProperty('reason', reason);
     expect(records[0]?.summary).not.toContain('unconfirmed');
   });
+
+  it.each(['low', 'info'] as const)(
+    'carries the %s floor disclosure and findings through MCP and the record',
+    async (severity) => {
+      const security = panel.votes.find((vote) => vote.role === 'security');
+      if (security === undefined) throw new Error('security fixture absent');
+      panel.votes = panel.votes.map((vote) =>
+        vote.role === 'devex' || vote.role === 'architect'
+          ? {
+              ...vote,
+              vote: {
+                ...vote.vote,
+                decision: 'reject',
+                findings: security.vote.findings?.map((finding) => ({ ...finding, severity })),
+              },
+            }
+          : { ...vote, vote: { ...vote.vote, decision: 'approve', findings: [] } }
+      );
+      const floorReason =
+        '2 low/info findings from request_changes voters below the blocking floor (medium): 2 verified, 0 unverified';
+      const response = await review();
+      expect(response).toMatchObject({ summary: 'abstain', verified: true, reason: floorReason });
+      expect(response['reviews']).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'devex',
+            decision: 'request_changes',
+            findings: [expect.objectContaining({ severity, verified: true })],
+          }),
+        ])
+      );
+      const { records, invalidLines } = readPrReviewRecords(join(dir, 'records.jsonl'));
+      expect(invalidLines).toHaveLength(0);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({ verdict: 'abstain', verified: true, reason: floorReason });
+    }
+  );
 });

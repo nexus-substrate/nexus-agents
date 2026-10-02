@@ -12,7 +12,9 @@ import { MAX_SUMMARY_RECORD_CHARS } from '../../audit/pr-review-record-store.js'
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { isAbsentSeat } from '../../cli/voter-unverifiable.js';
 import {
+  BLOCKING_SEVERITY_FLOOR,
   findingsAgree,
+  isBlockingSeverity,
   isFindingVerified,
   parseFindings,
   type Finding,
@@ -124,10 +126,12 @@ export function aggregateBlockingFindings(
   const blockers = valid
     .filter((r) => r.decision === 'request_changes')
     .flatMap((r) =>
-      r.findings.filter((f) => f.verified).map((finding) => ({ role: r.role, finding }))
+      r.findings
+        .filter((f) => f.verified && isBlockingSeverity(f.severity, r.role))
+        .map((finding) => ({ role: r.role, finding }))
     );
   const first = blockers[0];
-  // No verified findings: leave the decision to the remaining tiers.
+  // No verified findings at the floor: leave the decision to the remaining tiers.
   if (first === undefined) return undefined;
   for (const [index, left] of blockers.entries()) {
     for (const right of blockers.slice(index + 1)) {
@@ -145,6 +149,45 @@ export function aggregateBlockingFindings(
     verified: false,
     reason: describeUnconfirmedFindings([...reviewers.values()]),
   };
+}
+
+/** Disclose sub-floor request_changes findings, retaining any panel or blocker reason. */
+export function discloseSeverityFloor(
+  aggregate: PrReviewAggregate,
+  valid: readonly PrReviewVote[]
+): PrReviewAggregate {
+  const findings = valid
+    .filter((r) => r.decision === 'request_changes')
+    .flatMap((r) => r.findings.filter((f) => !isBlockingSeverity(f.severity, r.role)));
+  const count = findings.length;
+  // No sub-floor request_changes findings means no severity-based change to disclose.
+  if (count === 0) return aggregate;
+  const verifiedCount = findings.filter((f) => f.verified).length;
+  const unverifiedCount = count - verifiedCount;
+  const disclosure = `${String(count)} low/info ${count === 1 ? 'finding' : 'findings'} from request_changes voters below the blocking floor (${BLOCKING_SEVERITY_FLOOR}): ${String(verifiedCount)} verified, ${String(unverifiedCount)} unverified`;
+  return {
+    ...aggregate,
+    reason: aggregate.reason === undefined ? disclosure : `${aggregate.reason}; ${disclosure}`,
+  };
+}
+
+/** Verification describes panel completeness, independently of its decision. */
+export function aggregatePanelVerdict(
+  reviews: readonly PrReviewVote[],
+  valid: readonly PrReviewVote[],
+  decision: PrReviewAggregate['decision']
+): PrReviewAggregate {
+  const complete = valid.length === reviews.length;
+  return discloseSeverityFloor(
+    complete
+      ? { decision, verified: true }
+      : {
+          decision,
+          verified: false,
+          reason: `incomplete panel: ${String(valid.length)} of ${String(reviews.length)} voters responded`,
+        },
+    valid
+  );
 }
 
 /**
