@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.126.9
+
+### Patch Changes
+
+- [#6942](https://github.com/nexus-substrate/nexus-agents/pull/6942) [`cb1e887`](https://github.com/nexus-substrate/nexus-agents/commit/cb1e88728477b6191356f0a923be0bef9e77926d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report harmless duplicate-sequence ledger forks with their record ids in governor evidence, preserving ratification outcomes. Clarify that vote-record signing is enforced from sequence 15.
+
 ## 8.126.8
 
 ### Patch Changes
