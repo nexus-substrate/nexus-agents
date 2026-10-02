@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.126.12
+
+### Patch Changes
+
+- [#6953](https://github.com/nexus-substrate/nexus-agents/pull/6953) [`1a28e51`](https://github.com/nexus-substrate/nexus-agents/commit/1a28e5116472fd8e922a7c865cc6936e3a3780b1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep MCP server stdout reserved for JSON-RPC by redirecting `logging.destination: stdout` to stderr in stdio server mode. Emit one warning explaining the redirect, even when the configured log level is error. CLI logging continues to support stdout.
+
 ## 8.126.11
 
 ### Patch Changes
