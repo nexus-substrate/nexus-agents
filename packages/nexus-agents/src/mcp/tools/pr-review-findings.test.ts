@@ -346,8 +346,8 @@ describe('pr-review-findings', () => {
       expect(FINDINGS_FORMAT_INSTRUCTIONS).toContain('substantive');
     });
 
-    it('warns that unverified findings do not block the merge', () => {
-      expect(FINDINGS_FORMAT_INSTRUCTIONS).toContain('do not block');
+    it('warns that unverified findings do not verify a blocker on their own', () => {
+      expect(FINDINGS_FORMAT_INSTRUCTIONS).toContain('do not verify a blocker on their own');
     });
 
     it('shows the exact YAML format voters must produce', () => {

@@ -72,6 +72,8 @@ import {
   summarizeReviews,
   aggregateBlockingFindings,
   absoluteQuorumApprove,
+  discloseSeverityFloor,
+  aggregatePanelVerdict,
 } from './pr-review-result-mapping.js';
 
 export type { Finding, VerificationGate, FindingSeverity } from './pr-review-findings.js';
@@ -240,8 +242,8 @@ export interface PrReviewVote {
   readonly reasoning: string;
   /** Structured findings parsed from the voter's reasoning per #2225 +
    * #2233 Child 3. Each Finding has a verification gate output and a
-   * derived `verified` boolean. Only verified findings can trigger
-   * request_changes — see aggregatePrDecisions. */
+   * derived `verified` boolean. Only verified medium-or-higher findings trigger
+   * the finding tier; all request_changes votes count in the soft tier. */
   readonly findings: readonly Finding[];
   /** Derived from the canonical union so a new seat kind (#6094) cannot be dropped here. */
   readonly source: AgentVoteResult['source'];
@@ -252,22 +254,22 @@ export interface PrReviewVote {
 
 /** Aggregate decision shape (#2250 Child 7). When `summary` is
  * `request_changes`, `verified` distinguishes high-confidence
- * blockers (two distinct roles corroborate verified findings at the same
+ * blockers (two distinct roles corroborate verified medium-or-higher findings at the same
  * file within ±3 lines) from unconfirmed findings and majority-dissent blocks.
  * Reviewers should apply the verification gate themselves on
  * unverified soft blocks. */
 export interface PrReviewAggregate {
   readonly decision: PrReviewDecision;
   readonly verified: boolean;
-  /** Explains unconfirmed findings, insufficient reviewers or incomplete panels.
+  /** Explains sub-floor findings, unconfirmed findings or panel shortfalls.
    * Under `absolute_quorum` (#4132), a degraded approval is represented by
    * `abstain` + `verified:false` + `reason` because there is no `no_quorum` state.
-   * Absent on ungated verdicts. */
+   * Absent when the verdict needs no such explanation. */
   readonly reason?: string;
 }
 
 export interface PrReviewResponse {
-  /** Why the aggregate is unconfirmed or lacks quorum, when stated. */
+  /** Discloses sub-floor findings, unconfirmed findings or quorum shortfalls. */
   readonly reason?: string;
   readonly summary: PrReviewDecision;
   /** True when the request_changes / approve outcome was driven by
@@ -340,13 +342,14 @@ const SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD = 3;
  *
  * Tiers, in order:
  *
- * 1. **Finding blocker** (`request_changes`) — verified findings from two
+ * 1. **Finding blocker** (`request_changes`) — verified medium-or-higher findings from two
  *    distinct non-error request_changes roles at the same normalized file
  *    within ±3 lines yield verified=true. A lone finding yields verified=false
- *    with an unconfirmed reason; it never becomes approval or abstention.
+ *    with an unconfirmed reason. Security-role findings are at least medium.
  * 2. **Soft blocker** (`request_changes`, verified=false) — ≥3 of 5
  *    non-error voters voted `request_changes`, but none produced a
- *    verified finding. The retest in #2241 showed voters reliably
+ *    verified finding at the floor. Severity never excludes dissent.
+ *    The retest in #2241 showed voters reliably
  *    flag diff-readable bugs at this rate even without producing the
  *    YAML structure (#2245 covers why). Tagged unverified so reviewers
  *    apply the verification gate themselves.
@@ -373,23 +376,20 @@ export function aggregatePrDecisions(
   // over a denominator that excludes voters who could have disagreed cannot
   // support it — including the empty case below, which asserted a complete
   // panel for a vote in which nobody spoke. Decided by consensus vote.
-  const complete = (): PrReviewAggregate['verified'] => valid.length === reviews.length;
-  const incompleteReason = `incomplete panel: ${String(valid.length)} of ${String(reviews.length)} voters responded`;
   const panelVerdict = (decision: PrReviewAggregate['decision']): PrReviewAggregate =>
-    complete()
-      ? { decision, verified: true }
-      : { decision, verified: false, reason: incompleteReason };
+    aggregatePanelVerdict(reviews, valid, decision);
 
   if (valid.length === 0) return panelVerdict('abstain');
 
-  // Tier 1 runs before quorum checks so even an unconfirmed defect blocks approval.
+  // Tier 1 runs before quorum checks so an unconfirmed medium+ defect blocks approval.
   const findingBlocker = aggregateBlockingFindings(valid, repoPath);
-  if (findingBlocker !== undefined) return findingBlocker;
+  if (findingBlocker !== undefined) return discloseSeverityFloor(findingBlocker, valid);
 
-  // Tier 2: soft blocker — majority dissent without verified findings.
+  // Tier 2: severity controls only finding verification/agreement, never turns
+  // a request_changes vote into abstain/approve or removes it from soft blocking.
   const requestChangesVoters = valid.filter((r) => r.decision === 'request_changes').length;
   if (requestChangesVoters >= SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD) {
-    return { decision: 'request_changes', verified: false };
+    return discloseSeverityFloor({ decision: 'request_changes', verified: false }, valid);
   }
 
   // Tier 3: unanimous approve. Under absolute_quorum (#4132) the verified-approve
@@ -400,14 +400,17 @@ export function aggregatePrDecisions(
   // errored voter from the denominator and rubber-stamp the merge.
   if (valid.every((r) => r.decision === 'approve')) {
     if (errorPolicy === 'absolute_quorum') {
-      return absoluteQuorumApprove(reviews, valid);
+      return discloseSeverityFloor(absoluteQuorumApprove(reviews, valid), valid);
     }
     if (valid.length < 2)
-      return {
-        decision: 'abstain',
-        verified: false,
-        reason: 'insufficient reviewers: 1 reviewer; needs second reviewer',
-      };
+      return discloseSeverityFloor(
+        {
+          decision: 'abstain',
+          verified: false,
+          reason: 'insufficient reviewers: 1 reviewer; needs second reviewer',
+        },
+        valid
+      );
     // The DECISION still drops the errored voter — that is what `standard`
     // means and #4132 kept it deliberately. Only the completeness claim moves.
     return panelVerdict('approve');
@@ -442,7 +445,7 @@ function resolveAggregate(
   logger: ILogger
 ): PrReviewAggregate {
   const preGate = aggregatePrDecisions(reviews, input.errorPolicy, input.repoPath);
-  if (preGate.reason !== undefined) {
+  if (!preGate.verified && preGate.reason !== undefined) {
     // #6094: the degraded-panel warning counts every absent seat, and names
     // the two kinds separately so a reader can tell a dead adapter from a
     // seat that answered blind.
@@ -460,7 +463,12 @@ function resolveAggregate(
       { reason: aggregate.reason }
     );
   }
-  return aggregate;
+  return aggregate === preGate
+    ? aggregate
+    : discloseSeverityFloor(
+        aggregate,
+        reviews.filter((r) => !isAbsentSeat(r))
+      );
 }
 
 /**
