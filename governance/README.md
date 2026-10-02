@@ -128,35 +128,47 @@ The gate reports the owner override id and exact binding when it accepts it.
 
 ### What a ratification record does and does not prove (#6952)
 
-The gate checks what is **in** the record. It checks the hash chain,
-signatures, append-only history, the supermajority over `voters[].decision`,
-and the model-family floor over each seat's `servedModel ?? model`. It cannot
-check how those fields were **produced**. The producers are ordinary code
-outside the governor section:
+The gate checks a record's **contents**, not how they were produced:
+
+- each record's own hash, plus sequence coverage and append-only history
+  against the base. The ledger is verified as a set; there is no
+  `previousHash` chain to walk.
+- the signature policy.
+- the record's own `decision === 'approved'` and an eligible `strategy` /
+  `errorPolicy`. The gate does **not** recompute the supermajority from
+  `voters[].decision`; it trusts the decision the record carries.
+- panel coverage and the model-family floor (#6601) over each counted seat's
+  `voters[].model`.
+
+Those fields are produced by ordinary code outside the governor section:
 
 - `packages/nexus-agents/src/cli/voter-attempt-usage.ts` sets each seat's
-  `model`;
+  `model` from the adapter's configured id;
 - `voter-response.ts` parses each seat's decision;
-- `voter-agents*.ts` assembles the panel.
+- `voter-agents*.ts` assembles the panel;
+- the voting engine computes the record's overall `decision`.
 
-The governed audit builder hashes and signs whatever those producers supply.
+The governed audit builder (`src/audit/`) hashes and signs whatever it is
+given.
 
 What follows:
 
 - **Tamper-evident after recording, not proof of honest production.** Editing
   a committed record is detected. A producer change that mislabels a seat's
-  model or flips a parsed decision is not detected by the gate. It shows up
-  only in the producer PR's diff and review.
-- **The same boundary applies to every field.** The family floor (#6601) adds
-  no new trust. It reads `model` from the same producers that already supply
-  `decision`.
-- **Gateway substitution** is narrowed by persisting the served model when an
-  adapter reports one (#6951). That relies on the adapter's report.
+  model, flips a parsed seat decision, or miscomputes the overall decision is
+  not detected by the gate. It shows up only in that producer PR's diff and
+  review.
+- **The same boundary applies to every field.** The family floor reads `model`
+  from the same producers that already supply the decisions. It adds a check,
+  not a new trust assumption.
+- **Gateway substitution is not detected today.** A record carries the
+  configured model, not the model a gateway actually served. #6951 tracks
+  persisting a served-model field.
 
-A reviewer auditing a ratification should therefore also read any change to
-those producer files that merged since the last trusted panel. Whether to
-govern the producers or to verify their output independently is open in
-#6952.
+A reviewer auditing a ratification should therefore also read changes to those
+producer files that merged since the last trusted panel. Whether to govern the
+producers, recompute the tally in the gate, or verify the evidence
+independently is open in #6952.
 
 ### Redacting a voter's reasoning
 
