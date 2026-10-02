@@ -11,7 +11,7 @@ import type { RecordSignatureReport } from './governor-ledger-signature.js';
 
 /** Pinned inside the governor boundary; ordinary routing edits cannot change the floor. */
 const GOVERNOR_VENDOR_PATTERNS: readonly { family: string; regex: RegExp }[] = [
-  { family: 'anthropic', regex: /\b(claude|anthropic)\b|^(sonnet|opus|haiku|fable)$/ },
+  { family: 'anthropic', regex: /\b(claude|anthropic)\b/ },
   { family: 'openai', regex: /\b(gpt|o[1-9]|chatgpt|openai)\b/ },
   { family: 'google', regex: /\b(gemini|bison|gecko|palm|google)\b/ },
   { family: 'meta', regex: /\b(llama|meta-llama|meta)\b/ },
@@ -55,14 +55,16 @@ function familiesOf(record: VoteRecord): string[] {
   for (const voter of record.voters) {
     // Errored seats are omitted by the record builder; abstentions attest to no verdict.
     if (voter.decision !== 'approve' && voter.decision !== 'reject') continue;
-    const model = voter.servedModel ?? voter.model;
-    if (voter.unverifiable === true || model === undefined) continue;
-    const servedFamily = governorVendorFamilyOf(model);
-    // Unknown serving IDs retain the configured model's family (#6951).
-    const family =
-      servedFamily === 'unknown' && voter.model !== undefined
-        ? governorVendorFamilyOf(voter.model)
-        : servedFamily;
+    if (voter.unverifiable === true || voter.model === undefined) continue;
+    const family = governorVendorFamilyOf(voter.model);
+    // A gateway's own report can only withhold configured family credit (#6952).
+    if (voter.servedModel !== undefined) {
+      const servedModel = /^(sonnet|opus|haiku|fable)$/i.test(voter.servedModel)
+        ? `claude-${voter.servedModel}`
+        : voter.servedModel;
+      const servedFamily = governorVendorFamilyOf(servedModel);
+      if (servedFamily !== family) continue;
+    }
     if (family !== 'unknown') families.add(family);
   }
   return [...families].sort();
@@ -114,8 +116,8 @@ export function modelDiversityEvidence(
     // The floor uses only this script's governed, pinned family table.
     // Its governed sibling test checks registry/ledger agreement with the
     // ordinary vendorFamilyOf classifier, allowing only stricter unknowns.
-    // Known servedModel families take precedence; unknown ones fall back to model.
-    // If both are unknown, the seat adds no family (fail closed).
+    // servedModel only retains a known configured family when its family matches.
+    // Mismatches and unknown reports withhold credit; absent reports preserve the floor.
     // Owner override escapes a measured single-family panel, never zero families.
     if (families.length >= 2) continue;
     if (families.length === 0) {

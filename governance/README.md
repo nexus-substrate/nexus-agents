@@ -81,13 +81,15 @@ abstentions, errored seats, unverifiable voters and missing or unknown models
 do not. Multiple models from the same vendor count as one family. Zero known
 families is `unmeasured-model-diversity`; one is
 `insufficient-model-diversity`. The floor is computed from hash-covered
-`voters[].servedModel ?? voters[].model`. Both identifiers are normalized
-before lookup: bare Claude fallback aliases (`sonnet`, `opus`, `haiku`,
-`fable`) map to Anthropic. If the served model's family is unknown, the floor
-falls back to the configured `model` family's lookup; when both are unknown,
-the seat counts toward no family. A gateway-reported model decides the family
-when known: the report is not independent proof of the serving provider
-(#6951 residual; #6952).
+`voters[].model`, using the unchanged configured-model classification. With
+`servedModel` absent, family credit is exactly as before; bare configured aliases
+(`sonnet`, `opus`, `haiku`, `fable`) remain unknown. With `servedModel` present,
+the seat retains credit only if the served family is known and equals the known
+configured family. Bare Claude aliases may be normalized to Anthropic **only
+for the served report's comparison**. A mismatch, an unclassifiable report, or
+an unknown configured family withholds the seat's family credit. `servedModel`
+can only withhold credit, never grant it. The report is the gateway's own claim,
+not independent proof of the serving provider (#6952).
 
 This reader-first release accepts an optional hash-covered `servedModel` of
 1–200 characters using only letters, digits, `.`, `_`, `:`, `/`, `@`, `+` and
@@ -99,13 +101,12 @@ strict readers.
 
 The floor uses only the pinned vendor-family patterns and
 normalization inside governed `scripts/governor-ledger-diversity.ts`; ordinary
-routing or registry edits cannot change its mapping. Unrecognized IDs count
-toward no family when neither served nor configured IDs have a known family,
-including aliases recognized only by the ordinary registry.
+routing or registry edits cannot change its mapping. Unrecognized configured IDs
+count toward no family, including aliases recognized only by the ordinary registry.
 The governed sibling `scripts/governor-ledger-diversity.test.ts` checks every
 in-tree model ID (including aliases and CLI model names) and every committed
-ledger model against `vendorFamilyOf`. After normalizing bare Claude fallback
-aliases, the pinned mapping must agree or return `unknown` (stricter);
+ledger model against `vendorFamilyOf`. The pinned configured-model mapping
+must agree or return `unknown` (stricter);
 disagreement fails the test and requires a deliberate governed edit.
 
 **Legacy handling uses exact hashes.** Only the three already-landed
@@ -154,7 +155,7 @@ The gate checks a record's **contents**, not how they were produced:
   `errorPolicy`. The gate does **not** recompute the supermajority from
   `voters[].decision`; it trusts the decision the record carries.
 - panel coverage and the model-family floor (#6601) over each counted seat's
-  `voters[].servedModel ?? voters[].model`.
+  configured `voters[].model`, with `servedModel` only able to withhold credit.
 
 Most of those fields come from ordinary code outside the governor section:
 
