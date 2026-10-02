@@ -919,7 +919,7 @@ export function buildResponse(
   // `resolveVoteDecision`. Reuse it so the response decision can't diverge from the
   // one pipeline consumers read; recompute only for the `degradeReason` telemetry
   // and for direct unit calls that bypass `executeVoting` (where `decision` is absent).
-  const resolved = resolveVoteDecision(input, result, errorCount, result.panelSize);
+  const resolved = resolveVoteDecision(input, result, errorCount);
   const decision = result.decision ?? resolved.decision;
 
   const response: ConsensusVoteResponse = {
