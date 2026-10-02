@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.126.7
+
+### Patch Changes
+
+- [#6938](https://github.com/nexus-substrate/nexus-agents/pull/6938) [`03a953a`](https://github.com/nexus-substrate/nexus-agents/commit/03a953a1ba017ceeabe5b34321b0b48d63d7ff24) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The server no longer republishes pipeline events onto the V1 agent event bus. No production subscriber or history reader consumed their content; they only contributed to V1 emission statistics and in-memory history. The only visible change is lower V1 event counts in the shutdown log.
+
+  The public `createEventBusBridge`, `EventBusBridgeOptions`, and `PipelineBridgeResult` exports remain available but are deprecated under [#5120](https://github.com/nexus-substrate/nexus-agents/issues/5120). Subscribe to the pipeline event bus directly; removal is scheduled for the 9.0 batch ([#6291](https://github.com/nexus-substrate/nexus-agents/issues/6291)).
+
 ## 8.126.6
 
 ### Patch Changes
