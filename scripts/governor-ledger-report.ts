@@ -58,6 +58,7 @@ import {
   isRatifiedKind,
 } from './governor-ledger-evidence.js';
 import { formatSignatures, signatureVerifierFromEnv } from './governor-ledger-signature.js';
+import { formatModelDiversityFailure } from './governor-ledger-diversity.js';
 import { gitMovedHeadProbe, isFullSha, type MovedHeadProbe } from './governor-patch-identity.js';
 
 /** The checkout this gate runs from — where policy files (allowed_signers) are read. */
@@ -135,11 +136,12 @@ function formatRatified(evidence: RatifiedEvidence): string {
       : ` REDACTED: reasoning of ${evidence.redacted.voterRoles.join(', ')} removed under ` +
         `redaction record(s) ${evidence.redacted.redactionIds.map((id) => `'${id}'`).join(', ')} ` +
         '(hash unchanged; the tally is verified).';
+  const diversity = (evidence.diversityNotices ?? []).map((notice) => ` ${notice}.`).join('');
   return (
     `::notice::${TAG} ${evidence.kind}: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
     `${sha}, decision ${evidence.record.decision}, strategy: ${evidence.record.strategy}, ` +
     `${panel}, ${policy}, ${appendOnly}, ${formatSignatures(evidence.signatures)} — enforced from sequence ` +
-    `${String(SIGNATURE_CUTOVER_SEQUENCE)} (0–${String(SIGNATURE_CUTOVER_SEQUENCE - 1)} grandfathered).${redacted}`
+    `${String(SIGNATURE_CUTOVER_SEQUENCE)} (0–${String(SIGNATURE_CUTOVER_SEQUENCE - 1)} grandfathered).${redacted}${diversity}`
   );
 }
 
@@ -154,6 +156,9 @@ function noRecordBody(recordCount: number): string {
 function boundRecordBody(evidence: BoundRecordFailure): string {
   const id = `record '${evidence.record.id}'`;
   switch (evidence.kind) {
+    case 'unmeasured-model-diversity':
+    case 'insufficient-model-diversity':
+      return formatModelDiversityFailure(evidence);
     case 'not-approved':
       return `${id} binds this PR with decision '${evidence.record.decision}'`;
     case 'wrong-error-policy':

@@ -138,7 +138,13 @@ function vote(decision: Vote['decision']): Vote {
   return { decision, confidence: 0.8, reasoning: 'because' };
 }
 function seat(role: VoterRole, decision: Vote['decision'], errored = false): AgentVoteResult {
-  return { role, vote: vote(decision), processingTimeMs: 10, source: errored ? 'error' : 'llm' };
+  return {
+    role,
+    vote: vote(decision),
+    processingTimeMs: 10,
+    source: errored ? 'error' : 'llm',
+    model: role === 'architect' ? 'claude-opus-4-6' : 'gpt-5',
+  };
 }
 function consensusResult(overrides: Partial<ConsensusResult> = {}): ConsensusResult {
   const now = '2026-09-14T00:00:00.000Z';
