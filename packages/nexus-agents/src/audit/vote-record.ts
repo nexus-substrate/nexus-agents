@@ -276,6 +276,13 @@ export const VoterSummarySchema = z
      * model or only the pending-detection placeholder.
      */
     model: z.string().min(1).max(200).optional(),
+    /** Optional adapter-reported serving model; reader-first support (#6951). */
+    servedModel: z
+      .string({ error: 'servedModel_invalid' })
+      .min(1, 'servedModel_invalid')
+      .max(200, 'servedModel_invalid')
+      .regex(/^[A-Za-z0-9._:/@+-]+$/, 'servedModel_invalid')
+      .optional(),
     /**
      * True when the seat could not read the artifact (#6094, schema 1.8).
      *
@@ -431,6 +438,8 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // byte-identically.
   'reasoningNonce',
   'reasoningDigest',
+  // #6951: appended and present-only, preserving hashes without a served model.
+  'servedModel',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
 /**

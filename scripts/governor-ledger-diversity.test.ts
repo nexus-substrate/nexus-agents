@@ -454,7 +454,12 @@ describe('governed model-family mapping', () => {
     ['command-r-plus', 'cohere'],
     ['deepseek-r1', 'deepseek'],
     ['claudia-7b', 'unknown'],
-    ['opus', 'unknown'],
+    ['opus', 'anthropic'],
+    ['sonnet', 'anthropic'],
+    ['haiku', 'anthropic'],
+    ['fable', 'anthropic'],
+    ['SONNET', 'anthropic'],
+    ['unknownvendor/sonnet', 'unknown'],
     ['', 'unknown'],
   ])('pins %s to %s', (modelId, family) => {
     expect(diversity.governorVendorFamilyOf(modelId)).toBe(family);
@@ -470,7 +475,11 @@ describe('governed model-family mapping', () => {
       if (model.cliModelName !== undefined) ids.push(model.cliModelName);
       for (const id of ids) {
         const family = diversity.governorVendorFamilyOf(id);
-        expect(family === 'unknown' || family === dealing.vendorFamilyOf(id), id).toBe(true);
+        // Bare Claude fallback aliases are pinned even when routing does not recognize them.
+        const ordinaryId = /^(sonnet|opus|haiku|fable)$/i.test(id) ? `claude-${id}` : id;
+        expect(family === 'unknown' || family === dealing.vendorFamilyOf(ordinaryId), id).toBe(
+          true
+        );
       }
     }
   });
@@ -492,5 +501,83 @@ describe('governed model-family mapping', () => {
     expect(governorPathsFromCodeowners(codeowners)).toContain(
       '/scripts/governor-ledger-diversity.test.ts'
     );
+  });
+});
+
+describe('gateway-served model diversity reader (#6951)', () => {
+  it('reads a signed gateway-substituted panel and applies the serving family floor', () => {
+    const panel = record('substituted', ['gemini-2.5-pro', 'claude-opus-4-6']);
+    const voters = panel.voters.map((v, i) =>
+      i === 0 ? { ...v, servedModel: 'claude-sonnet-4-6' } : v
+    );
+    const reported = signed(rehash(panel, { voters }));
+    const parsed = parseVoteRecordsText(JSON.stringify(reported));
+    expect(parsed.invalidLines).toEqual([]);
+    expect(parsed.records[0]?.voters[0]).toMatchObject({
+      model: 'gemini-2.5-pro',
+      servedModel: 'claude-sonnet-4-6',
+    });
+    expect(diversity.modelDiversityEvidence(parsed.records, undefined).failures).toMatchObject([
+      { kind: 'insufficient-model-diversity', families: ['anthropic'] },
+    ]);
+    expect(evaluate(parsed.records).kind).toBe('insufficient-model-diversity');
+  });
+
+  it.each([
+    ['claude-opus-4-6', 'gemini-2.5-pro', 'ratified'],
+    [undefined, 'gemini-2.5-pro', 'ratified'],
+    ['gemini-2.5-pro', 'unknownvendor/x', 'ratified'],
+    ['claude-opus-4-6', undefined, 'insufficient-model-diversity'],
+  ] as const)(
+    'uses configured %s and served %s through the pinned table',
+    (model, servedModel, expected) => {
+      const panel = record('reported-family', ['claude-opus-4-6', model]);
+      const voters = panel.voters.map((v, i) => (i === 1 ? { ...v, servedModel } : v));
+      expect(evaluate([signed(rehash(panel, { voters }))]).kind).toBe(expected);
+      if (servedModel === 'unknownvendor/x') {
+        expect(
+          diversity.modelDiversityEvidence([rehash(panel, { voters })], undefined).failures
+        ).toEqual([]);
+        expect(diversity.governorVendorFamilyOf(model)).toBe('google');
+      }
+    }
+  );
+
+  it.each(['sonnet', 'opus', 'haiku', 'fable'])(
+    'keeps bare Claude fallback alias %s in the anthropic family',
+    (servedModel) => {
+      const panel = record('claude-fallback', ['claude-opus-4-6', 'claude-sonnet-4-6']);
+      const voters = panel.voters.map((v, i) => (i === 1 ? { ...v, servedModel } : v));
+      expect(
+        diversity.modelDiversityEvidence([rehash(panel, { voters })], undefined).failures
+      ).toMatchObject([{ kind: 'insufficient-model-diversity', families: ['anthropic'] }]);
+      // A missing configured model proves the alias itself is classified.
+      const aliasOnly = record('alias-only', [undefined]);
+      const onlyVoters = aliasOnly.voters.map((v, i) => (i === 0 ? { ...v, servedModel } : v));
+      expect(
+        diversity.modelDiversityEvidence([rehash(aliasOnly, { voters: onlyVoters })], undefined)
+          .failures
+      ).toMatchObject([{ kind: 'insufficient-model-diversity', families: ['anthropic'] }]);
+    }
+  );
+
+  it.each(['abstain', 'unverifiable', 'error'] as const)(
+    'does not count a served family from a %s seat',
+    (excluded) => {
+      const panel = sevenSeatRecord(
+        excluded === 'abstain' ? 'abstain' : 'approve',
+        excluded === 'abstain' ? 'llm' : excluded
+      );
+      const voters = panel.voters.map((v, i) => (i === 6 ? { ...v, servedModel: 'gpt-5' } : v));
+      expect(
+        diversity.modelDiversityEvidence([rehash(panel, { voters })], undefined).failures
+      ).toMatchObject([{ kind: 'insufficient-model-diversity', families: ['anthropic'] }]);
+    }
+  );
+
+  it('names zero known served or configured families as unmeasured', () => {
+    const panel = record('unknown-served', ['unknownvendor/configured']);
+    const voters = panel.voters.map((v) => ({ ...v, servedModel: 'unknownvendor/x' }));
+    expect(evaluate([signed(rehash(panel, { voters }))]).kind).toBe('unmeasured-model-diversity');
   });
 });
