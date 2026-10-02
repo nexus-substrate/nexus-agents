@@ -1200,6 +1200,8 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
 
 /** Doctor command options. */
 export interface DoctorOptions {
+  /** The CLI handler prints the summary after its live report. */
+  readonly deferSummary?: boolean;
   /** Auto-fix safe issues (run setup, generate config). */
   readonly fix?: boolean;
   /** Print the gateway section: census, slots, guard, proxy (#6609). */
@@ -1228,7 +1230,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<number
     skipClaudeModelProbe: options.skipClaudeModelProbe === true,
   });
   options.onResult?.(result);
-  printDoctorResults(result);
+  printDoctorResults(result, undefined, options.deferSummary === true);
   if (options.gateway === true || options.probe === true) {
     const { formatGatewayReport } = await import('./doctor-gateway-report.js');
     for (const line of formatGatewayReport(result.gateway, result.clis)) {

@@ -8,6 +8,10 @@
  * (Source: Extracted from cli-commands.ts per Issue #285)
  */
 
+import type { DoctorResult } from './cli/doctor.js';
+import { printDoctorSummary } from './cli/doctor-summary.js';
+import { failingVerdictTerms } from './cli/doctor-verdict-terms.js';
+
 import {
   doctorCommand,
   expertListCommand,
@@ -535,13 +539,16 @@ export async function handleVerifyCommand(args: ParsedCliArgs): Promise<CliExitR
  */
 export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitResult> {
   let cliListAdmits: ReadonlyMap<CliName, boolean> | undefined;
+  let doctorResult: DoctorResult | undefined;
   const exitCode = await doctorCommand({
     fix: args.options.fix,
     gateway: args.options.gateway,
     probe: args.options.probe,
     live: args.options.live,
     skipClaudeModelProbe: args.options.live,
+    deferSummary: args.options.live,
     onResult: (result) => {
+      doctorResult = result;
       cliListAdmits = new Map(result.clis.map((c) => [c.name, c.routerAdmits]));
     },
   });
@@ -557,13 +564,13 @@ export async function handleDoctorCommand(args: ParsedCliArgs): Promise<CliExitR
     const { runLiveReadiness, formatLiveReadiness } = await import('./cli/doctor-live.js');
     const report = await runLiveReadiness(cliListAdmits !== undefined ? { cliListAdmits } : {});
     process.stdout.write(formatLiveReadiness(report) + '\n');
-    // A failed live probe is a real not-ready finding, so it must reach the
-    // exit code — a level that reports and cannot fail is not a check.
-    // Empty means no live measurement: preserve the local doctor's status.
-    if (report.length === 0) return cliExitFromStatus(exitCode);
-    if (report.some((r) => r.levels.serves.status === 'failed')) {
-      return cliExitFromStatus(1);
+    if (doctorResult !== undefined) {
+      printDoctorSummary(doctorResult, report);
+      return cliExitFromStatus(failingVerdictTerms(doctorResult, report).length === 0 ? 0 : 1);
     }
+    // No local result reached the summary: still let a failed live probe fail
+    // the run — a level that reports and cannot fail is not a check.
+    if (report.some((r) => r.levels.serves.status === 'failed')) return cliExitFromStatus(1);
   }
   return cliExitFromStatus(exitCode);
 }
