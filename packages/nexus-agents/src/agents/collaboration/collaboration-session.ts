@@ -6,7 +6,7 @@
  */
 
 import type { Result, TaskResult, ILogger, AgentRole } from '../../core/index.js';
-import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider, toError } from '../../core/index.js';
 import type {
   CollaborationConfig,
   SessionState,
@@ -299,17 +299,21 @@ export class CollaborationSession {
     if (this.state === null) return err(new AgentError('No active session'));
 
     this.clearTimeout();
-    const { config, participants, results, votes, reviews, startedAt, error } = this.state;
+    const { config, results, votes } = this.state;
 
-    const collaborationResult = buildFinalCollaborationResult({
-      config,
-      participants,
-      results,
-      votes,
-      reviews,
-      startedAt,
-      error,
-    });
+    let collaborationResult: CollaborationResult;
+    try {
+      collaborationResult = buildFinalCollaborationResult(this.state);
+    } catch (cause) {
+      return err(
+        cause instanceof AgentError
+          ? cause
+          : new AgentError('Session finalization failed', {
+              cause: toError(cause),
+              context: { sessionId: config.sessionId },
+            })
+      );
+    }
 
     this.setStatus(collaborationResult.success ? 'completed' : 'failed');
     this.state.completedAt = getTimeProvider().nowIso();
