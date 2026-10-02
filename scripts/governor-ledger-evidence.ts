@@ -259,7 +259,7 @@
  * misconfiguration. Both are non-ratified either way; only the report
  * changes. The `failures` field on a bound refusal carries that list.
  *
- * ## Signature: reported per bound record, not yet enforced (#3927 item 4)
+ * ## Signature: reported per bound record, enforced from sequence 15 (#3927 item 4)
  *
  * Since phase 1 a record may carry a `signature` — an `ssh-keygen -Y sign`
  * signature over its committed hash, outside the self-hash — and the gate
@@ -452,7 +452,7 @@ export type BoundRecordRefusal = BoundRecordFailure &
   };
 
 /** The verdict. See the module header for what each kind means. */
-export type LedgerEvidence =
+type LedgerVerdict =
   | ({
       readonly kind: 'ratified';
       readonly record: VoteRecord;
@@ -522,6 +522,14 @@ export type LedgerEvidence =
     }
   | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] };
 
+/** A benign duplicate sequence in the verified set; informational, never a refusal. */
+export interface LedgerFork {
+  readonly sequence: number;
+  readonly recordIds: readonly string[];
+}
+
+export type LedgerEvidence = LedgerVerdict & { readonly forks?: readonly LedgerFork[] };
+
 /** The kinds that pass the gate (#5131): `ratified`, and `ratified-rebased` under the #6256 rule. */
 export function isRatifiedKind(kind: LedgerEvidence['kind']): boolean {
   return kind === 'ratified' || kind === 'ratified-rebased';
@@ -549,6 +557,7 @@ type Loaded =
       redacted: ReadonlyMap<string, RedactedRecordReport>;
       /** Every redaction record in the ledger, in file order (#6372: their signatures are reported beside their targets). */
       redactions: readonly RedactionRecord[];
+      forks: readonly LedgerFork[];
     }
   | { ok: false; verdict: LedgerEvidence };
 
@@ -588,7 +597,13 @@ function loadLedger(text: string): Loaded {
   if (ambiguous.size > 0) {
     return { ok: false, verdict: { kind: 'duplicate-id', ids: [...ambiguous].sort() } };
   }
-  return { ok: true, records: [...byId.values()], redacted, redactions };
+  const members = [...records, ...redactions];
+  // No verifier forks means no informational fork report.
+  const forks = (verification.forks ?? []).map((sequence) => ({
+    sequence,
+    recordIds: members.filter((r) => r.sequence === sequence).map((r) => r.id),
+  }));
+  return { ok: true, records: [...byId.values()], redacted, redactions, forks };
 }
 
 /**
@@ -729,10 +744,11 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   }
   const loaded = loadLedger(inputs.ledgerText);
   if (!loaded.ok) return loaded.verdict;
-  return withRedaction(
+  const verdict = withRedaction(
     verdictOverLoaded(inputs, loaded.records, loaded.redactions, appendOnlyChecked),
     loaded.redacted
   );
+  return loaded.forks.length === 0 ? verdict : { ...verdict, forks: loaded.forks };
 }
 
 /** The verdict over a loaded, verified ledger; see {@link evaluateLedgerEvidence}. */

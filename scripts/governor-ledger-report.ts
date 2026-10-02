@@ -252,10 +252,22 @@ function refusalBody(evidence: Exclude<LedgerEvidence, RatifiedEvidence>): strin
  * job log.
  */
 export function formatLedgerEvidence(evidence: LedgerEvidence): string {
-  if (evidence.kind === 'ratified' || evidence.kind === 'ratified-rebased') {
-    return formatRatified(evidence);
-  }
-  return `::error::${TAG} ${refusalBody(evidence)}. ${FAIL_NOTE}`;
+  const line =
+    evidence.kind === 'ratified' || evidence.kind === 'ratified-rebased'
+      ? formatRatified(evidence)
+      : `::error::${TAG} ${refusalBody(evidence)}. ${FAIL_NOTE}`;
+  const forks = evidence.forks ?? [];
+  // Empty means no fork notice; it has no effect on the verdict.
+  if (forks.length === 0) return line;
+  return [
+    line,
+    ...forks.map(
+      ({ sequence, recordIds }) =>
+        `::notice::${TAG} ledger forks: sequence ${String(sequence)} ` +
+        `(${String(recordIds.length)} records: ${recordIds.join(', ')}) ` +
+        '— harmless set fork, all records set-verified'
+    ),
+  ].join('\n');
 }
 
 /** The ledger verdict, or an explicit "not measured" when the inputs to compute it are absent. */
