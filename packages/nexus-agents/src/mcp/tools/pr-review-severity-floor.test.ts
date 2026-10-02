@@ -262,7 +262,11 @@ describe('pr_review severity floor (#4337)', () => {
   });
 
   it('names the empty panel as abstention without a severity disclosure', () => {
-    expect(aggregatePrDecisions([])).toEqual({ decision: 'abstain', verified: true });
+    expect(aggregatePrDecisions([])).toEqual({
+      decision: 'abstain',
+      verified: false,
+      reason: 'incomplete panel: 0 of 0 voters responded',
+    });
   });
 
   it('preserves incomplete-panel evidence alongside the floor disclosure', () => {

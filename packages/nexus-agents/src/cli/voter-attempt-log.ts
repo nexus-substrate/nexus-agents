@@ -56,7 +56,12 @@ interface FailedAttempt {
   readonly retryable: boolean | undefined;
   /** Stderr the transport captured when the output was not a vote (#6269). */
   readonly cliStderr: string | undefined;
+  /** The answer that failed to parse as a vote, when the transport completed (#6957). */
+  readonly rawOutput?: string | undefined;
 }
+
+/** Longest raw-answer excerpt carried on the `Vote attempt failed` line (#6957). */
+const LOGGED_RAW_OUTPUT_MAX_CHARS = 2000;
 
 /** Longest stderr excerpt carried on the `Vote attempt failed` line (#6269). */
 const LOGGED_STDERR_MAX_CHARS = 200;
@@ -103,6 +108,10 @@ export function logFailedAttempt(
     ...(authFailure ? { authFailure: true } : {}),
     ...(cliStderr !== undefined && cliStderr !== ''
       ? { cliStderr: loggedStderrLine(cliStderr) }
+      : {}),
+    // #6957: without the answer itself a rejected vote cannot be diagnosed.
+    ...(failed.rawOutput !== undefined
+      ? { rawOutputExcerpt: sanitizeOutput(failed.rawOutput).slice(0, LOGGED_RAW_OUTPUT_MAX_CHARS) }
       : {}),
   });
   if (durableCap) return 'durable capacity cap';

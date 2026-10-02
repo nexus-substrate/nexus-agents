@@ -171,13 +171,24 @@ export function discloseSeverityFloor(
   };
 }
 
-/** Verification describes panel completeness, independently of its decision. */
+/** Standard approval requires majority coverage; verification requires completeness. */
 export function aggregatePanelVerdict(
   reviews: readonly PrReviewVote[],
   valid: readonly PrReviewVote[],
   decision: PrReviewAggregate['decision']
 ): PrReviewAggregate {
-  const complete = valid.length === reviews.length;
+  if (decision === 'approve' && valid.length <= reviews.length / 2) {
+    const quorum = Math.floor(reviews.length / 2) + 1;
+    return discloseSeverityFloor(
+      {
+        decision: 'abstain',
+        verified: false,
+        reason: `incomplete panel: ${String(valid.length)} of ${String(reviews.length)} voters responded; no_quorum: needs ${String(quorum)} reviewers`,
+      },
+      valid
+    );
+  }
+  const complete = reviews.length > 0 && valid.length === reviews.length;
   return discloseSeverityFloor(
     complete
       ? { decision, verified: true }

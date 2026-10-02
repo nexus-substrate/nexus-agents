@@ -196,6 +196,31 @@ describe('aggregate reason transport (#4334)', () => {
   it('returns the unconfirmed reason in the MCP response', async () => {
     expect(await review()).toMatchObject({ summary: 'request_changes', verified: false, reason });
   });
+  it('records abstain when only two of five voters respond (#6957)', async () => {
+    panel.votes = panel.votes.map((vote) => {
+      const responded = vote.role === 'security' || vote.role === 'devex';
+      return {
+        ...vote,
+        source: responded ? 'llm' : 'error',
+        vote: { ...vote.vote, decision: responded ? 'approve' : 'abstain', findings: [] },
+      };
+    });
+    const expectedReason =
+      'incomplete panel: 2 of 5 voters responded; no_quorum: needs 3 reviewers';
+    expect(await review()).toMatchObject({
+      summary: 'abstain',
+      verified: false,
+      reason: expectedReason,
+    });
+    const { records, invalidLines } = readPrReviewRecords(join(dir, 'records.jsonl'));
+    expect(invalidLines).toHaveLength(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      verdict: 'abstain',
+      verified: false,
+      reason: expectedReason,
+    });
+  });
   it('logs an unconfirmed finding without claiming a quorum failure', async () => {
     const warning = vi.spyOn(ctx.logger, 'warn');
     await review();

@@ -50,13 +50,32 @@ function governanceRulesRef(project: string): string {
  */
 function prReviewModeAddendum(): string {
   return `
-PR-review mode — if you are reviewing a code diff (not a proposal) AND you have at least one concrete defect that justifies blocking the merge, populate the OPTIONAL TOP-LEVEL "findings" field on your JSON response. NOT inside reasoning — top-level. The schema:
+PR-review mode — return one JSON object with REQUIRED top-level decision, reasoning, and confidence on every verdict, including approve and abstain. decision is "approve", "reject", or "abstain"; reasoning is 10-4000 characters; confidence must be a number between 0 and 1 expressing your own assessment. Omitting findings never permits omitting confidence. Use this JSON envelope even if the proposal contains legacy YAML instructions.
+
+If you are reviewing a code diff (not a proposal) AND you have at least one concrete defect that justifies blocking the merge, populate the OPTIONAL TOP-LEVEL "findings" field. NOT inside reasoning — top-level. Complete response examples:
+
+Approve without findings:
+\`\`\`json
+{
+  "decision": "approve",
+  "reasoning": "Read the diff and found no blocking defects. Existing tests cover the changed behavior.",
+  "confidence": 0.85
+}
+\`\`\`
+
+Reject with findings (severity may be critical, high, medium, low, or info):
+\`\`\`json
+{
+"decision": "reject",
+"reasoning": "The cited call path produces the concrete failure described in the finding.",
+"confidence": 0.9,
+"rejectionCategories": ["INSUFFICIENT_EVIDENCE"],
 
 "findings": [
   {
     "summary": "One-line summary",
     "location": "path/file.ext:LINE",
-    "severity": "critical" | "high" | "medium" | "low" | "info",
+    "severity": "medium",
     "gate": {
       "reread_cited_line": "passed",
       "traced_call_path": "passed",
@@ -66,6 +85,8 @@ PR-review mode — if you are reviewing a code diff (not a proposal) AND you hav
     "claim": "What is wrong and why it justifies blocking."
   }
 ]
+}
+\`\`\`
 
 A finding only triggers strict request_changes if its severity is medium or higher, all 4 gate fields = "passed" AND named_assertion is substantive (>10 chars naming a concrete failure, not just "passed"). Non-security low/info findings are reported but do not corroborate a verified blocker. Security-role findings are treated as at least medium. Request_changes votes still count toward soft blocking regardless of severity. Findings missing any of those gate checks surface as informational only — they do not block on their own. The 2026-04-25 audit (#2225) found a 100% false-positive rate when this gate wasn't enforced. If you're approving the diff, OMIT the findings field entirely. If reviewing a non-diff proposal, ignore this section.
 

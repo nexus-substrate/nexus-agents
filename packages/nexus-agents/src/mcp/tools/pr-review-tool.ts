@@ -201,8 +201,8 @@ export const PrReviewInputSchema = z.object({
     .default(false)
     .describe('Use simulated voters (testing only; never ship live with this true)'),
   /**
-   * Error policy (#4132). `standard` (default) keeps the pre-#4132 aggregation:
-   * an errored voter is simply excluded from the panel. `absolute_quorum` gates
+   * Error policy (#4132). `standard` (default) excludes absent voters but
+   * requires a majority of the requested panel to approve. `absolute_quorum` gates
    * the verified-approve verdict on a COMPLETE, error-free panel with the
    * contrarian (catfish) present and approving — any errored voter (especially
    * catfish) degrades the verdict to a recoverable `{ decision: 'abstain',
@@ -215,7 +215,7 @@ export const PrReviewInputSchema = z.object({
     .enum(['standard', 'absolute_quorum'])
     .default('standard')
     .describe(
-      "Error policy (#4132). 'standard' (default): errored voters excluded. 'absolute_quorum': any errored voter — esp. the contrarian — degrades a would-be approve to a recoverable abstain (verified:false); never manufactures a verified approve from an induced error."
+      "Error policy (#4132). 'standard' (default): absent voters excluded; approval requires a majority of the requested panel. 'absolute_quorum': any errored voter — esp. the contrarian — degrades a would-be approve to a recoverable abstain (verified:false); never manufactures a verified approve from an induced error."
     ),
   // #6123: same field as consensus_vote — the panel judges the caller's project.
   project: VoterProjectInputSchema,
@@ -353,7 +353,7 @@ const SOFT_BLOCK_REQUEST_CHANGES_THRESHOLD = 3;
  *    flag diff-readable bugs at this rate even without producing the
  *    YAML structure (#2245 covers why). Tagged unverified so reviewers
  *    apply the verification gate themselves.
- * 3. **Approve** — at least two non-error voters unanimously approve;
+ * 3. **Approve** — at least two voters and a majority of the requested panel unanimously approve;
  *    verified=true requires a complete panel.
  * 4. **Abstain** — anything else; verified reflects panel completeness.
  *
@@ -411,8 +411,7 @@ export function aggregatePrDecisions(
         },
         valid
       );
-    // The DECISION still drops the errored voter — that is what `standard`
-    // means and #4132 kept it deliberately. Only the completeness claim moves.
+    // Standard permits missing seats above quorum; a minority cannot approve.
     return panelVerdict('approve');
   }
 
