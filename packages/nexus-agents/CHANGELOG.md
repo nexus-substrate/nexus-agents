@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 8.126.11
+
+### Patch Changes
+
+- [#6948](https://github.com/nexus-substrate/nexus-agents/pull/6948) [`f52786c`](https://github.com/nexus-substrate/nexus-agents/commit/f52786c94da30260ed83b4dbe51b354110d1c0b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract the `pr_review` findings block by plain string search instead of a lazy regex that could backtrack polynomially on reasoning text with many unterminated fences (CodeQL alert 255). Parsing results are unchanged.
+
+- [#6948](https://github.com/nexus-substrate/nexus-agents/pull/6948) [`f52786c`](https://github.com/nexus-substrate/nexus-agents/commit/f52786c94da30260ed83b4dbe51b354110d1c0b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - PR reviews now require medium-or-higher findings to verify blockers and reviewer agreement. Security-role findings are treated as at least medium, and every request_changes vote still counts toward soft blocking regardless of its reported severity. Low/info findings from request_changes voters disclose verified and unverified counts separately in responses and review records. Missing or unknown severity in legacy findings defaults to medium.
+
+  Published finding severity types now include `info`. Consumers with exhaustive severity switches must handle this new member; the union expansion can break those switches at compile time.
+
+- [#6947](https://github.com/nexus-substrate/nexus-agents/pull/6947) [`9ca0e0b`](https://github.com/nexus-substrate/nexus-agents/commit/9ca0e0b3b294e23ba839a856f944758695ef53a0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - MCP clients no longer receive operator lifecycle events or debug heartbeats through `notifications/message`, and the server no longer advertises the Logging capability. These events now go through the existing logger to stderr in server mode, respecting log levels and secret redaction while keeping stdout reserved for JSON-RPC. Real `notifications/progress` heartbeats and existing trace/OTel telemetry remain available.
+
+  The server no longer advertises the MCP `logging` capability, so a client that calls `logging/setLevel` anyway now receives `-32601 Method not found`; spec-compliant clients check the capability first.
+
 ## 8.126.10
 
 ### Patch Changes
