@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.126.10
+
+### Patch Changes
+
+- [#6944](https://github.com/nexus-substrate/nexus-agents/pull/6944) [`06219ed`](https://github.com/nexus-substrate/nexus-agents/commit/06219ed7006de1de98e0d319f03dfa439f9e84dd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract the `pr_review` findings block by plain string search instead of a lazy regex that could backtrack polynomially on reasoning text with many unterminated fences (CodeQL alert 255). Parsing results are unchanged.
+
 ## 8.126.9
 
 ### Patch Changes
