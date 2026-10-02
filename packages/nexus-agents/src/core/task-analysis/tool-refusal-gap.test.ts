@@ -4,7 +4,7 @@
  * @module core/task-analysis/tool-refusal-gap.test
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createCapabilityGapLedger } from './capability-gap-ledger.js';
 import { recordToolRefusal, toolRefusalGapName } from './tool-refusal-gap.js';
@@ -22,6 +22,15 @@ describe('toolRefusalGapName', () => {
 });
 
 describe('recordToolRefusal', () => {
+  it('explicitly labels the refusal as observed evidence', () => {
+    const ledger = createCapabilityGapLedger();
+    const record = vi.spyOn(ledger, 'record');
+    recordToolRefusal({ tool: 'extract_symbols', capability: '.py', suggestion: 's' }, {}, ledger);
+    expect(record.mock.calls[0]?.[0].gaps).toEqual([
+      { type: 'tool_refusal', name: 'extract_symbols:.py', suggestion: 's', origin: 'observed' },
+    ]);
+  });
+
   it('records a gap the ledger can rank', () => {
     const ledger = createCapabilityGapLedger();
     recordToolRefusal(

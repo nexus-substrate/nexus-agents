@@ -166,7 +166,8 @@ export class SharedTaskAnalyzer implements ISharedTaskAnalyzer {
     const requiredCapabilities = inferRequiredCapabilities(
       taskType.type,
       capabilities,
-      matchedSignals
+      matchedSignals,
+      content
     );
 
     this.logger.debug('Task analyzed', {

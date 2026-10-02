@@ -184,8 +184,10 @@ export function resetGapLedger(): void {
 /**
  * Records a routing/selection decision's capability gaps to a ledger (the
  * shared singleton by default). No-op when the decision satisfied every
- * required capability or carried no gap report — keeps the live call sites a
- * single guarded line (DRY across orchestrate tool + CLI).
+ * required capability, carried no gap report, or contains only inferred gaps
+ * without NEXUS_CAPABILITY_GAP_INFERRED=1 — keeps the live call sites a
+ * single guarded line (DRY across orchestrate tool + CLI). Undefined origin is
+ * legacy/unspecified provenance: retained under either flag state, not relabeled.
  */
 export function recordRoutingGaps(
   source: { readonly capabilityGaps?: CapabilityGapReport | undefined },
@@ -193,7 +195,12 @@ export function recordRoutingGaps(
   ledger: ICapabilityGapLedger = getGapLedger()
 ): void {
   const report = source.capabilityGaps;
-  if (report !== undefined && !report.allSatisfied) {
-    ledger.record(report, context);
-  }
+  if (report === undefined || report.allSatisfied) return;
+  const gaps =
+    process.env['NEXUS_CAPABILITY_GAP_INFERRED'] === '1'
+      ? report.gaps
+      : report.gaps.filter((gap) => gap.origin !== 'inferred');
+  // A shadow-only report records no demand into the research/autofile ledger.
+  if (gaps.length === 0) return;
+  ledger.record({ ...report, gaps, allSatisfied: false }, context);
 }
