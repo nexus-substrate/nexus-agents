@@ -1,5 +1,5 @@
 ---
-'nexus-agents': patch
+'nexus-agents': minor
 ---
 
 Prevent development pipeline dry runs from editing workspace files by enforcing read-only expert access. Planning, task decomposition, and review always run read-only; real implementation retains workspace edit access. Adapters that cannot enforce read-only access are refused explicitly.
