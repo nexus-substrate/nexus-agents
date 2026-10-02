@@ -45,7 +45,7 @@ export interface PanelFinding {
   readonly summary: string;
   /** `path/file.ext:line` or `path/file.ext` (structural). */
   readonly location: string;
-  readonly severity: 'critical' | 'high' | 'medium' | 'low';
+  readonly severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   /** Did all 4 verification-gate checks pass (`isFindingVerified`)? Only
    * verified findings are scored — see rubric Rules 1-4. */
   readonly verified: boolean;
