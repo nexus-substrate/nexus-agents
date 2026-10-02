@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -352,7 +352,7 @@ describe('export ratchet end to end (#5671)', () => {
       let stdout = '';
       let status = 0;
       try {
-        stdout = execSync(`${TSX} ${SCRIPT} main`, { cwd: root, encoding: 'utf-8' });
+        stdout = execFileSync(TSX, [SCRIPT, 'main'], { cwd: root, encoding: 'utf-8' });
       } catch (err) {
         const e = err as { status?: number; stdout?: string; stderr?: string };
         status = e.status ?? 1;
@@ -401,7 +401,7 @@ describe('working tree is part of the scan (#6139)', () => {
 
   function runGate(root: string): { status: number; output: string } {
     try {
-      const stdout = execSync(`${TSX} ${SCRIPT} main`, { cwd: root, encoding: 'utf-8' });
+      const stdout = execFileSync(TSX, [SCRIPT, 'main'], { cwd: root, encoding: 'utf-8' });
       return { status: 0, output: stdout };
     } catch (err) {
       const e = err as { status?: number; stdout?: string; stderr?: string };
