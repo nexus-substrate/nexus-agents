@@ -81,16 +81,33 @@ abstentions, errored seats, unverifiable voters and missing or unknown models
 do not. Multiple models from the same vendor count as one family. Zero known
 families is `unmeasured-model-diversity`; one is
 `insufficient-model-diversity`. The floor is computed from hash-covered
-`voters[].model`, the adapter's configured model. Gateway substitution is
-tracked in #6951. The floor uses only the pinned vendor-family patterns and
+`voters[].model`, using the unchanged configured-model classification. With
+`servedModel` absent, family credit is exactly as before; bare configured aliases
+(`sonnet`, `opus`, `haiku`, `fable`) remain unknown. With `servedModel` present,
+the seat retains credit only if the served family is known and equals the known
+configured family. Bare Claude aliases may be normalized to Anthropic **only
+for the served report's comparison**. A mismatch, an unclassifiable report, or
+an unknown configured family withholds the seat's family credit. `servedModel`
+can only withhold credit, never grant it. The report is the gateway's own claim,
+not independent proof of the serving provider (#6952).
+
+This reader-first release accepts an optional hash-covered `servedModel` of
+1–200 characters using only letters, digits, `.`, `_`, `:`, `/`, `@`, `+` and
+`-`; malformed identifiers fail schema validation as `servedModel_invalid`.
+Records without the field retain their existing hashes. The producer does not
+write the field in this release. A follow-up can enable writing after base
+checkout readers accept it, avoiding rejection of an entire ledger by older
+strict readers.
+
+The floor uses only the pinned vendor-family patterns and
 normalization inside governed `scripts/governor-ledger-diversity.ts`; ordinary
-routing or registry edits cannot change its mapping. Unrecognized IDs count
-toward no family, including aliases recognized only by the ordinary registry.
+routing or registry edits cannot change its mapping. Unrecognized configured IDs
+count toward no family, including aliases recognized only by the ordinary registry.
 The governed sibling `scripts/governor-ledger-diversity.test.ts` checks every
 in-tree model ID (including aliases and CLI model names) and every committed
-ledger model against `vendorFamilyOf`. The pinned mapping must agree or return
-`unknown` (stricter); disagreement fails the test and requires a deliberate
-governed edit.
+ledger model against `vendorFamilyOf`. The pinned configured-model mapping
+must agree or return `unknown` (stricter);
+disagreement fails the test and requires a deliberate governed edit.
 
 **Legacy handling uses exact hashes.** Only the three already-landed
 single-family records for PRs #6559, #6621 and #6698 are exempt, by the closed
@@ -138,7 +155,7 @@ The gate checks a record's **contents**, not how they were produced:
   `errorPolicy`. The gate does **not** recompute the supermajority from
   `voters[].decision`; it trusts the decision the record carries.
 - panel coverage and the model-family floor (#6601) over each counted seat's
-  `voters[].model`.
+  configured `voters[].model`, with `servedModel` only able to withhold credit.
 
 Most of those fields come from ordinary code outside the governor section:
 
@@ -162,12 +179,14 @@ What follows:
   model, flips a parsed seat decision, or forwards the wrong overall decision is
   not detected by the gate. It shows up only in that producer PR's diff and
   review.
-- **The same boundary applies to every field.** The family floor reads `model`
-  from the same producers that already supply the decisions. It adds a check,
-  not a new trust assumption.
-- **Gateway substitution is not detected today.** A record carries the
-  configured model, not the model a gateway actually served. #6951 tracks
-  persisting a served-model field.
+- **The same boundary applies to every field.** The family floor reads
+  `servedModel` / `model` from the same producers that already supply the
+  decisions. It adds a check, not a new trust assumption.
+- **Gateway substitution is not detected today.** The reader accepts a
+  hash-covered `servedModel` (#6951), but the producer does not write it yet,
+  so a record still carries only the configured model. Once written, it is the
+  gateway's own report of what it served, not independent proof of the
+  serving provider.
 
 A reviewer auditing a ratification should therefore also read changes to those
 producer files that merged since the last trusted panel. Whether to govern the

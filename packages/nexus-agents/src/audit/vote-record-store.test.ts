@@ -406,11 +406,11 @@ describe('persistVoteRecord', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('a maximal built voter entry carries EVERY schema field — the builder is not a fourth source (#6057)', () => {
+  it('a maximal built voter entry carries every producer field — reader-only fields are explicit (#6057)', () => {
     // The schema-only failure mode is a compile error now; this pins the
     // builder side: a vote that is retried AND clipped produces an entry whose
-    // key set equals the schema's. Adding a field to the schema without teaching
-    // the builder to emit it fails here.
+    // key set equals the producer fields in the schema. servedModel is reader-only
+    // until base checkout readers are deployed (#6951).
     // One past the cap, derived from the constant: a literal that happened to
     // sit under it produced a fixture that was not clipped at all.
     const clipped = 'x'.repeat(MAX_VOTER_REASONING_CHARS + 1);
@@ -458,7 +458,8 @@ describe('persistVoteRecord', () => {
       error: 'Vote parsing failed',
       errorTruncated: true,
     });
-    expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
+    const { servedModel: _readerOnly, ...producerShape } = VoterSummarySchema.shape;
+    expect(Object.keys(entry).sort()).toEqual(Object.keys(producerShape).sort());
   });
 
   it('the returned record and the line on disk serialize IDENTICALLY (#6054)', () => {
@@ -1880,5 +1881,169 @@ describe('schema 1.13: the builder commits to each stored reasoning with a salte
       '1.10'
     );
     expect(build(allErrored, { errorPolicy: 'absolute_quorum' }).version).toBe('1.11');
+  });
+});
+
+describe('gateway-served voter model reader (#6951)', () => {
+  function build(servedModel?: string, model = 'gemini-2.5-pro'): VoteRecord {
+    const record = buildVoteRecord({
+      id: 'served-model',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      votes: [{ ...agentVote('architect', 'approve'), model }],
+    });
+    const voters = record.voters.map((voter) => ({
+      ...voter,
+      ...(servedModel !== undefined ? { servedModel } : {}),
+    }));
+    const withServingModel = { ...record, voters };
+    return { ...withServingModel, hash: computeVoteRecordHash(withServingModel) };
+  }
+
+  it('reads a distinct reported model through the strict schema and verifies its hash', () => {
+    const record = build('claude-sonnet-4-6');
+    const parsed = parseVoteRecordsText(JSON.stringify(record));
+    expect(parsed.invalidLines).toEqual([]);
+    expect(parsed.records).toEqual([record]);
+    expect(verifyVoteRecordSet(parsed.records).ok).toBe(true);
+    expect(parsed.records[0]?.voters[0]).toMatchObject({
+      model: 'gemini-2.5-pro',
+      servedModel: 'claude-sonnet-4-6',
+    });
+  });
+
+  it('accepts a reported model identical to the configured model', () => {
+    const record = build('gemini-2.5-pro');
+    expect(parseVoteRecordsText(JSON.stringify(record)).records).toEqual([record]);
+  });
+
+  it('keeps the producer from writing servedModel before base readers are deployed', () => {
+    const record = buildVoteRecord({
+      id: 'reader-first',
+      proposal: 'p',
+      strategy: 'supermajority',
+      result: consensusResult(),
+      declaredOptions: undefined,
+      resolvedDecision: 'approved',
+      votes: [
+        { ...agentVote('architect', 'approve'), model: 'gemini-2.5-pro', servedModel: 'sonnet' },
+      ],
+    });
+    expect(record.voters[0]).not.toHaveProperty('servedModel');
+  });
+
+  it.each(['1.12', '1.13'] as const)(
+    'hash-covers adding, changing, and removing servedModel on version %s',
+    (version) => {
+      const built = build('claude-sonnet-4-6');
+      const voters = built.voters.map(({ reasoningNonce, reasoningDigest, ...voter }) =>
+        version === '1.12' ? voter : { ...voter, reasoningNonce, reasoningDigest }
+      );
+      const unhashed = { ...built, version, voters };
+      const record = { ...unhashed, hash: computeVoteRecordHash(unhashed) };
+      expect(VoteRecordSchema.safeParse(record).success).toBe(true);
+      expect(verifyVoteRecordSet([record]).ok).toBe(true);
+      const voter = record.voters[0]!;
+      const { servedModel: _served, ...bare } = voter;
+      for (const changed of [bare, { ...voter, servedModel: 'gpt-5' }]) {
+        expect(verifyVoteRecordSet([{ ...record, voters: [changed] }])).toMatchObject({
+          ok: false,
+          reason: 'hash_mismatch',
+        });
+      }
+      const legacy = { ...record, voters: [bare] };
+      const legacyHash = computeVoteRecordHash(legacy);
+      expect(
+        verifyVoteRecordSet([
+          { ...legacy, hash: legacyHash, voters: [{ ...bare, servedModel: 'gpt-5' }] },
+        ])
+      ).toMatchObject({ ok: false, reason: 'hash_mismatch' });
+    }
+  );
+
+  it.each([{ servedModel: null }, { servedModel: 123 }, { servedModel: {} }, { servedModel: [] }])(
+    'rejects wrong-type servedModel with a named reason ($servedModel)',
+    ({ servedModel }) => {
+      const record = build();
+      const malformed = { ...record, voters: [{ ...record.voters[0], servedModel }] };
+      const parsed = VoteRecordSchema.safeParse(malformed);
+      expect(parsed.success).toBe(false);
+      if (parsed.success) throw new Error('Wrong-type servedModel was accepted');
+      expect(parsed.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ['voters', 0, 'servedModel'],
+          message: 'servedModel_invalid',
+        })
+      );
+      expect(parseVoteRecordsText(JSON.stringify(malformed))).toMatchObject({
+        records: [],
+        invalidLines: [1],
+      });
+    }
+  );
+
+  it.each([
+    '',
+    'x'.repeat(201),
+    'claude sonnet',
+    'claude\n',
+    'claude\r',
+    'claude\t',
+    'claude\u0000',
+    'claude<script>',
+    'clä ude',
+    'claude\\sonnet',
+  ])('rejects malformed servedModel with a named reason (%j)', (servedModel) => {
+    const record = build(servedModel);
+    const parsed = VoteRecordSchema.safeParse(record);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) throw new Error('Malformed servedModel was accepted');
+    expect(parsed.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ['voters', 0, 'servedModel'],
+        message: 'servedModel_invalid',
+      })
+    );
+    expect(parseVoteRecordsText(JSON.stringify(record))).toMatchObject({
+      records: [],
+      invalidLines: [1],
+    });
+  });
+
+  it.each(['x'.repeat(200), 'vendor/model.name_1:variant@tag+revision-2', 'sonnet'])(
+    'accepts bounded conservative identifiers (%s)',
+    (servedModel) => {
+      expect(
+        VoterSummarySchema.safeParse({
+          role: 'architect',
+          decision: 'approve',
+          confidence: 0.9,
+          servedModel,
+        }).success
+      ).toBe(true);
+    }
+  );
+
+  it('verifies origin/main builder records with byte-identical serialization and hashes', () => {
+    // Written by origin/main's builder AND projection at 6a81a84ad7eefb3a19747c6e6d69ce534c8cb19e.
+    const bytes = readFileSync(
+      new URL('./fixtures/served-model-legacy.jsonl', import.meta.url),
+      'utf-8'
+    );
+    const parsed = parseVoteRecordsText(bytes);
+    expect(parsed.invalidLines).toEqual([]);
+    expect(parsed.records).toHaveLength(2);
+    expect(verifyVoteRecordSet(parsed.records).ok).toBe(true);
+    for (const line of bytes.trimEnd().split('\n')) {
+      const original = JSON.parse(line) as VoteRecord;
+      expect(serializeValidatedRecord(VoteRecordSchema, original, 'vote')).toBe(line + '\n');
+    }
+    for (const record of parsed.records) {
+      expect(computeVoteRecordHash(record)).toBe(record.hash);
+      expect(record.voters[0]).not.toHaveProperty('servedModel');
+    }
   });
 });

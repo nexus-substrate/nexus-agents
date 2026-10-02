@@ -57,6 +57,14 @@ function familiesOf(record: VoteRecord): string[] {
     if (voter.decision !== 'approve' && voter.decision !== 'reject') continue;
     if (voter.unverifiable === true || voter.model === undefined) continue;
     const family = governorVendorFamilyOf(voter.model);
+    // A gateway's own report can only withhold configured family credit (#6952).
+    if (voter.servedModel !== undefined) {
+      const servedModel = /^(sonnet|opus|haiku|fable)$/i.test(voter.servedModel)
+        ? `claude-${voter.servedModel}`
+        : voter.servedModel;
+      const servedFamily = governorVendorFamilyOf(servedModel);
+      if (servedFamily !== family) continue;
+    }
     if (family !== 'unknown') families.add(family);
   }
   return [...families].sort();
@@ -108,8 +116,8 @@ export function modelDiversityEvidence(
     // The floor uses only this script's governed, pinned family table.
     // Its governed sibling test checks registry/ledger agreement with the
     // ordinary vendorFamilyOf classifier, allowing only stricter unknowns.
-    // voters[].model is the adapter's configured model; gateway substitution
-    // is tracked in #6951. Unknown vendors add no family (fail closed).
+    // servedModel only retains a known configured family when its family matches.
+    // Mismatches and unknown reports withhold credit; absent reports preserve the floor.
     // Owner override escapes a measured single-family panel, never zero families.
     if (families.length >= 2) continue;
     if (families.length === 0) {
