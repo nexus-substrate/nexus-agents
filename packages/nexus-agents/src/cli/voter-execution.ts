@@ -64,6 +64,7 @@ export const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
 // Rate-limit detection and failed-attempt logging live in a sibling (#6821
 // made room here); `isRateLimitError` stays exported from this module.
 import { isRateLimitError, logAbandonedRetries, logFailedAttempt } from './voter-attempt-log.js';
+import { VOTER_ACCESS_MODE } from './voter-cli-access.js';
 export { isRateLimitError };
 
 /**
@@ -271,7 +272,7 @@ function buildVoteRequest({
     // share this path — reads the artifact and answers; it never needs to run
     // commands, edit files or fetch. A CLI that cannot enforce that refuses
     // the seat, and the panel's error policy counts it.
-    accessMode: 'read-only-analysis',
+    accessMode: VOTER_ACCESS_MODE,
     signal: seatSignal(timeoutMs, signal),
   };
   return withResponseFormat
