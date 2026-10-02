@@ -31,6 +31,7 @@ import {
 import {
   votesToCostInputs,
   recordDecisionCost,
+  recordVoteDecisionCost,
   resolveBillingMode,
   getDroppedCostRecordCount,
   getDroppedCostWarnCount,
@@ -438,6 +439,48 @@ describe('recordDecisionCost', () => {
     expect(store.all()[0]?.undeclaredOptionsDetector).toEqual({
       fired: false,
       declaredOptionCount: 0,
+    });
+  });
+
+  it('skips an empty live panel instead of recording a detector measurement', () => {
+    const store = new DecisionCostStore({ filePath: join(dir, 'empty.jsonl'), dataDir: dir });
+    expect(
+      recordVoteDecisionCost({
+        decisionId: 'empty',
+        gate: 'consensus_vote',
+        votes: [],
+        store,
+        proposal: 'Option A',
+        declaredOptions: undefined,
+      })
+    ).toBeUndefined();
+    expect(store.all()).toHaveLength(0);
+  });
+
+  it('warns and preserves the vote when an unexpected cost-store error throws', () => {
+    const store = new DecisionCostStore({ filePath: join(dir, 'throw.jsonl'), dataDir: dir });
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } as unknown as ILogger;
+    vi.spyOn(store, 'record').mockImplementationOnce(() => {
+      throw new Error('rollup failed');
+    });
+    expect(
+      recordVoteDecisionCost({
+        decisionId: 'throw',
+        gate: 'consensus_vote',
+        votes: [vote({})],
+        store,
+        logger,
+        proposal: 'Option A',
+        declaredOptions: undefined,
+      })
+    ).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith('Per-decision cost rollup failed (non-fatal)', {
+      error: 'rollup failed',
     });
   });
 

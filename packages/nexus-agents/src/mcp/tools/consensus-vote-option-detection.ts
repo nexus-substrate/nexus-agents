@@ -17,14 +17,17 @@
  * The measurement (#5422): precision cannot be measured over the vote ledger,
  * which stores a 503-char proposal preview, so {@link detectUndeclaredOptions}
  * returns a structured verdict — fired / not-fired, the pattern, and a bounded
- * excerpt from the FULL proposal — that `consensus_vote` records on every vote
+ * excerpt from the FULL proposal — that MCP and CLI record on every vote
  * alongside the decision-cost rollup. `scripts/undeclared-options-precision.ts`
  * reads those rows back for hand-labelling.
  *
  * @module mcp/tools/consensus-vote-option-detection
  */
 
-import { UNDECLARED_OPTIONS_EXCERPT_CHARS } from '../../observability/decision-cost.js';
+import {
+  UNDECLARED_OPTIONS_EXCERPT_CHARS,
+  type UndeclaredOptionsDetectorRecord,
+} from '../../observability/decision-cost.js';
 
 /**
  * Prose shapes that name alternatives. Deliberately narrow — each must be a
@@ -58,13 +61,18 @@ export type UndeclaredOptionsCheck =
  * and `excerpt` is a window of at most {@link UNDECLARED_OPTIONS_EXCERPT_CHARS}
  * characters around the match, taken from the FULL proposal — the text the
  * ledger's preview drops. Both are absent on a not-fired verdict; the
- * not-fired row is still recorded, because it is the denominator.
+ * not-fired row is still recorded for fired / total. Declared options yield
+ * `applicable: false` with no fired verdict, since the detector did not run.
  */
-interface UndeclaredOptionsVerdict {
-  readonly fired: boolean;
-  readonly pattern?: string;
-  readonly excerpt?: string;
-}
+type UndeclaredOptionsVerdict =
+  | Omit<
+      Extract<UndeclaredOptionsDetectorRecord, { fired: boolean }>,
+      'declaredOptionCount' | 'source'
+    >
+  | Omit<
+      Extract<UndeclaredOptionsDetectorRecord, { applicable: false }>,
+      'declaredOptionCount' | 'source'
+    >;
 
 /**
  * A window of {@link UNDECLARED_OPTIONS_EXCERPT_CHARS} around `[start, end)`,
@@ -84,7 +92,7 @@ function excerptAround(text: string, start: number, end: number): string {
 /**
  * The pure verdict: does the proposal name alternatives while `options` is
  * absent, and where? Declared options (a non-empty array) mean the option-aware
- * tally is live, so the verdict is not-fired without consulting the patterns —
+ * tally is live, so the verdict is not applicable without consulting the patterns —
  * an empty array switches the tally off exactly as absence does.
  *
  * First matching pattern wins, in {@link UNDECLARED_OPTION_PATTERNS} order.
@@ -93,7 +101,7 @@ export function detectUndeclaredOptions(
   proposal: string,
   declaredOptions: readonly string[] | undefined
 ): UndeclaredOptionsVerdict {
-  if (declaredOptions !== undefined && declaredOptions.length > 0) return { fired: false };
+  if (declaredOptions !== undefined && declaredOptions.length > 0) return { applicable: false };
   if (proposal === '') return { fired: false };
   for (const pattern of UNDECLARED_OPTION_PATTERNS) {
     const match = pattern.exec(proposal);
@@ -128,7 +136,7 @@ export function checkUndeclaredOptions(
 ): UndeclaredOptionsCheck {
   // One pattern set: the warning and the recorded verdict must agree, or the
   // precision measured on the record says nothing about the warning (#5422).
-  if (!detectUndeclaredOptions(proposal, declaredOptions).fired) return { flagged: false };
+  if (detectUndeclaredOptions(proposal, declaredOptions).fired !== true) return { flagged: false };
 
   const base =
     'This proposal appears to name alternatives, but `options` was not declared, ' +
