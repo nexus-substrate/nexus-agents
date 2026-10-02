@@ -2521,7 +2521,7 @@ FunctionDeclaration createLogger
 FunctionDeclaration createMcpLogger
   : (baseContext?: McpLogContext | undefined) => ILogger
 FunctionDeclaration createMcpNotifier
-  : (server: McpServer) => IMcpNotifier
+  : (_server: McpServer) => IMcpNotifier
 InterfaceDeclaration CreateNodeInput
   readonly confidence: number
   readonly content: string
