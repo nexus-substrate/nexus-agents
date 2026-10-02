@@ -156,6 +156,64 @@ describe('resolveVoteDecision', () => {
     ).toBe('rejected');
   });
 
+  it.each([0, 6])('absolute_quorum: 7 requested, %s returned is no_quorum (#6889)', (count) => {
+    const votes = FULL_PANEL.slice(0, count).map((r) => seat(r, 'approve'));
+    const result = panelResult(votes, count === 0 ? 'rejected' : 'approved');
+    expect(resolveVoteDecision({ ...input, errorPolicy: 'absolute_quorum' }, result, 0, 7)).toEqual(
+      {
+        decision: 'no_quorum',
+        degradeReason: expect.stringContaining(
+          `${String(7 - count)} of 7 requested voter(s) missing`
+        ),
+      }
+    );
+  });
+
+  it.each(['approve', 'reject'] as const)(
+    'absolute_quorum: all 7 requested seats returning %s preserves the verdict',
+    (decision) => {
+      const votes = FULL_PANEL.map((r) => seat(r, decision));
+      const outcome = decision === 'approve' ? 'approved' : 'rejected';
+      expect(
+        resolveVoteDecision(
+          { ...input, errorPolicy: 'absolute_quorum' },
+          panelResult(votes, outcome),
+          0,
+          7
+        ).decision
+      ).toBe(outcome);
+    }
+  );
+
+  it.each([0, 6])('absolute_quorum: requestedSeats absent preserves %s returned', (count) => {
+    const votes = FULL_PANEL.slice(0, count).map((r) => seat(r, 'approve'));
+    const outcome = count === 0 ? 'rejected' : 'approved';
+    expect(
+      resolveVoteDecision(
+        { ...input, errorPolicy: 'absolute_quorum' },
+        panelResult(votes, outcome),
+        0
+      ).decision
+    ).toBe(outcome);
+  });
+
+  it('absolute_quorum: requestedSeats cannot shrink the returned panel denominator', () => {
+    const votes = [...FULL_PANEL.map((r) => seat(r, 'approve')), seat('pm', 'abstain')];
+    const result = panelResult(votes, 'approved', { strategy: 'unanimous', panelSize: 7 });
+    expect(
+      resolveVoteDecision({ ...input, errorPolicy: 'absolute_quorum' }, result, 0, 7).decision
+    ).toBe('no_quorum');
+  });
+
+  it.each(['reduce_denominator', 'count_as_abstain', 'fail_closed'] as const)(
+    '%s ignores requestedSeats and preserves the empty-panel verdict',
+    (errorPolicy) => {
+      expect(
+        resolveVoteDecision({ ...input, errorPolicy }, panelResult([], 'rejected'), 0, 7).decision
+      ).toBe('rejected');
+    }
+  );
+
   it('the previous home re-exports the SAME functions, not copies', () => {
     expect(resolveFromMcpTypes).toBe(resolveVoteDecision);
     expect(mapFromMcpTypes).toBe(mapOutcomeToDecision);

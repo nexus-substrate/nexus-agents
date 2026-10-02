@@ -531,7 +531,7 @@ export async function executeVoting(
   // response would leave the audit trail claiming an approval that did not
   // happen. No-op when no options were declared.
   applyOptionGate(input, result);
-  result.decision = resolveVoteDecision(input, result, errorCount).decision;
+  result.decision = resolveVoteDecision(input, result, errorCount, result.panelSize).decision;
   // #6735: the tracker write stays here, not after the ledger append. It runs
   // with no `await` since the backstop above, so a cancel observed before the
   // verdict never reaches it. A cancel that lands later (during the ledger-lock
