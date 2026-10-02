@@ -7,6 +7,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PassThrough } from 'node:stream';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
 const mocks = vi.hoisted(() => {
@@ -623,5 +626,76 @@ describe('CodexMcpAdapter', () => {
       // After dispose, next execute should reinitialize
       expect(adapter.transport).toBe('mcp');
     });
+  });
+});
+
+describe('CodexMcpAdapter read-only MCP isolation (#6970)', () => {
+  let home: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    home = mkdtempSync(join(tmpdir(), 'nexus-6970-mcp-'));
+    vi.stubEnv('HOME', home);
+    mocks.mockTransport.mockImplementation(function () {
+      return { close: vi.fn().mockResolvedValue(undefined) };
+    });
+    mocks.mockExecAsync.mockResolvedValue({ stdout: 'codex version 0.77.0' });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  function clientReturning(): { connect: unknown; callTool: ReturnType<typeof vi.fn> } {
+    const client = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      callTool: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] }),
+    };
+    vi.mocked(Client).mockImplementationOnce(function () {
+      return client as never;
+    });
+    return client;
+  }
+
+  function writeUserConfig(text: string): void {
+    mkdirSync(join(home, '.codex'), { recursive: true });
+    writeFileSync(join(home, '.codex', 'config.toml'), text);
+  }
+
+  it('a read-only thread carries one disable per configured server in `config`', async () => {
+    writeUserConfig('[mcp_servers.alpha]\ncommand = "a"\n[mcp_servers.beta]\nurl = "http://b"\n');
+    const client = clientReturning();
+    const result = await new CodexMcpAdapter().execute({
+      content: 'review',
+      accessMode: 'read-only-analysis',
+    });
+    expect(result.ok).toBe(true);
+    const call = client.callTool.mock.calls[0]?.[0] as { arguments: Record<string, unknown> };
+    expect(call.arguments['config']).toEqual({
+      'mcp_servers.alpha.enabled': false,
+      'mcp_servers.beta.enabled': false,
+    });
+    expect(call.arguments['sandbox']).toBe('read-only');
+  });
+
+  it('a default-mode thread carries no config', async () => {
+    writeUserConfig('[mcp_servers.alpha]\ncommand = "a"\n');
+    const client = clientReturning();
+    await new CodexMcpAdapter().execute({ content: 'review' });
+    const call = client.callTool.mock.calls[0]?.[0] as { arguments: Record<string, unknown> };
+    expect(call.arguments).not.toHaveProperty('config');
+  });
+
+  it('an unparseable config refuses the read-only task without connecting', async () => {
+    writeUserConfig('[mcp_servers.alpha\n');
+    const result = await new CodexMcpAdapter().execute({
+      content: 'review',
+      accessMode: 'read-only-analysis',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toMatch(/read-only analysis mode/);
+    expect(mocks.mockTransport).not.toHaveBeenCalled();
   });
 });

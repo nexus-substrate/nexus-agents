@@ -10,6 +10,9 @@
  * @module cli-adapters/read-only-analysis.test
  */
 
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import type { Result } from '../core/index.js';
 import { ok } from '../core/index.js';
@@ -133,7 +136,14 @@ describe('claude maps read-only analysis to disallowed tools (#6754)', () => {
 
 describe('opencode maps read-only analysis to an OPENCODE_PERMISSION deny config (#6754)', () => {
   it('sets the deny config in the child env', () => {
-    const { env } = new OpenCodeProbe().command(READ_ONLY);
+    // An empty HOME and project, so no MCP server config adds a second
+    // variable (#6970, covered in read-only-mcp-isolation.test.ts).
+    const empty = mkdtempSync(join(tmpdir(), 'nexus-6754-'));
+    mkdirSync(join(empty, '.git'));
+    vi.stubEnv('HOME', empty);
+    const { env } = new OpenCodeProbe().command({ ...READ_ONLY, options: { workDir: empty } });
+    vi.unstubAllEnvs();
+    rmSync(empty, { recursive: true, force: true });
     expect(Object.keys(env ?? {})).toEqual(['OPENCODE_PERMISSION']);
     const permission = JSON.parse(env?.['OPENCODE_PERMISSION'] ?? 'null') as unknown;
     expect(permission).toEqual({ bash: 'deny', edit: 'deny', webfetch: 'deny' });

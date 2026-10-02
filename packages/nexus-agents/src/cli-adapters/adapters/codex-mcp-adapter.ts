@@ -29,6 +29,8 @@ import { BaseCliAdapter } from '../base-adapter.js';
 import { accessModeConflict, isReadOnlyAnalysis } from '../access-mode.js';
 import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
 import { codexSandboxPreflight, createCodexSandboxGuard } from '../codex-sandbox-preflight.js';
+import { codexMcpDisableConfig, scanCodexMcpServers } from '../codex-mcp-isolation.js';
+import { type McpScanContext, mcpScanRefusal, scanOrThrow } from '../mcp-config-scan.js';
 
 import { type CodexAdapterOptions, toCodexModelSlug } from './codex-adapter-helpers.js';
 import {
@@ -45,6 +47,16 @@ import {
   getCliModelName,
   buildModelInfo,
 } from '../../config/model-config-helpers.js';
+
+/**
+ * Where the `codex mcp-server` child reads its config (#6970). The transport
+ * spawns it in this process's cwd with the SDK's default environment plus
+ * {@link NEXUS_MCP_DEPTH_ENV}; of that environment only `HOME` locates a
+ * codex config file (`CODEX_HOME` is not passed through).
+ */
+function mcpServerScanContext(): McpScanContext {
+  return { env: { HOME: process.env['HOME'] }, cwd: process.cwd() };
+}
 
 /**
  * Codex CLI adapter using MCP transport.
@@ -252,18 +264,38 @@ export class CodexMcpAdapter extends BaseCliAdapter {
     };
   }
 
-  /** #6754: a continued session cannot be pinned to the read-only sandbox. */
+  /**
+   * #6754: a continued session cannot be pinned to the read-only sandbox.
+   * #6970: nor can a read-only task run when codex's MCP config cannot be
+   * listed, since its servers run outside the sandbox.
+   */
   protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
     const base = await super.accessModeRefusal(task);
     if (base !== undefined) return base;
-    if (isReadOnlyAnalysis(task) && task.sessionId !== undefined && task.sessionId !== '') {
-      return accessModeConflict(
-        this.name,
-        'read-only-analysis',
-        'a continued codex session carries no sandbox setting'
-      );
+    if (isReadOnlyAnalysis(task)) {
+      if (task.sessionId !== undefined && task.sessionId !== '') {
+        return accessModeConflict(
+          this.name,
+          'read-only-analysis',
+          'a continued codex session carries no sandbox setting'
+        );
+      }
+      const scan = scanCodexMcpServers(mcpServerScanContext());
+      if (!scan.ok) return mcpScanRefusal(this.name, scan.error);
     }
     return this.sandboxRefusal();
+  }
+
+  /**
+   * The `config` argument of a new `codex` thread for a read-only task: the
+   * same per-server disables `codex exec` gets as `-c` (#6970). The tool
+   * applies `config` as `-c` overrides. Throws when the config cannot be
+   * listed.
+   */
+  private readOnlyMcpConfig(task: CliTask): { config?: Readonly<Record<string, unknown>> } {
+    if (!isReadOnlyAnalysis(task)) return {};
+    const servers = scanOrThrow(this.name, scanCodexMcpServers(mcpServerScanContext()));
+    return servers.length === 0 ? {} : { config: codexMcpDisableConfig(servers) };
   }
 
   /**
@@ -291,6 +323,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
           ...baseArgs,
           sandbox: 'read-only' as const,
           'approval-policy': 'never' as const,
+          ...this.readOnlyMcpConfig(task),
         };
 
     const result = await this.client.callTool({
