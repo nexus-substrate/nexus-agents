@@ -20,6 +20,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { formatComment } from './pr-review-local.js';
+
 import {
   fetchPrMeta,
   generateCanonicalReviewDiff,
@@ -251,3 +253,28 @@ function execAsyncGit(cwd: string): GhGitExec {
     return { stdout, stderr: '' };
   };
 }
+
+describe('formatComment (#4334)', () => {
+  it('shows the unconfirmed reason without labeling it majority dissent', () => {
+    const reason = 'unconfirmed: 1 reviewer (security) at src/a.ts:10; needs second reviewer';
+    const comment = formatComment({
+      summary: 'request_changes',
+      verified: false,
+      reviews: [],
+      aggregate: { decision: 'request_changes', verified: false, reason },
+    });
+    expect(comment).toContain(reason);
+    expect(comment).not.toContain('majority dissent');
+    expect(comment).not.toContain('Majority of voters');
+  });
+
+  it('still identifies majority dissent when no unconfirmed reason exists', () => {
+    const comment = formatComment({
+      summary: 'request_changes',
+      verified: false,
+      reviews: [],
+      aggregate: { decision: 'request_changes', verified: false },
+    });
+    expect(comment).toContain('majority dissent');
+  });
+});

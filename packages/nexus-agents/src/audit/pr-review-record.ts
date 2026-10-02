@@ -383,6 +383,8 @@ export const PrReviewRecordSchema = z
     voteCounts: PrReviewVoteCountsSchema,
     /** Truncated human-readable review summary for the reviewer record. */
     summary: z.string(),
+    /** Aggregate explanation; absent on older records. Hash-covered when present. */
+    reason: z.string().optional(),
     /** Optional correlation/decision id linking to the cost rollup / trace. */
     correlationId: z.string().min(1).optional(),
     /**
@@ -487,6 +489,7 @@ export function computePrReviewRecordHash(payload: PrReviewRecordPayload): strin
       total: payload.voteCounts.total,
     },
     summary: payload.summary,
+    ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
     correlationId: payload.correlationId ?? null,
     // #4459 provenance, INSIDE the hash. This projection is an explicit
     // allowlist, so a schema field omitted here would sit OUTSIDE

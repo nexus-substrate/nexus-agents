@@ -13,13 +13,16 @@
  * mark each as verified or unverified based on the gate output.
  *
  * Aggregation rule (enforced in pr-review-tool.ts):
- *   request_changes requires at least one VERIFIED finding from a
- *   non-error voter. Unverified findings surface in the response but
- *   don't trigger blocking.
+ *   A verified block requires VERIFIED findings from two distinct non-error
+ *   request_changes roles at the same normalized file within ±3 lines.
+ *   A lone verified finding still requests changes, marked unconfirmed.
+ *   Unverified findings alone do not trigger this tier.
  *
  * @module mcp/tools/pr-review-findings
  */
 
+import { posix } from 'node:path';
+import { findRepoRoot } from '../../config/repo-root-detection.js';
 import { parse as parseYaml } from 'yaml';
 
 /** The 4-point verification gate (#2225). Each check is either `passed`
@@ -54,6 +57,57 @@ export interface Finding {
   /** Derived: did all 4 gate checks pass with substance? Computed by
    * `isFindingVerified`. */
   readonly verified: boolean;
+}
+
+/** Two distinct reviewers corroborate verified findings at the same file within ±3 lines. */
+export function findingsAgree(
+  left: Finding,
+  right: Finding,
+  leftRole: string,
+  rightRole: string,
+  repoPath?: string
+): boolean {
+  if (leftRole === rightRole || !left.verified || !right.verified) return false;
+  const a = normalizeFindingLocation(left.location, repoPath);
+  const b = normalizeFindingLocation(right.location, repoPath);
+  return a !== undefined && a.file === b?.file && a.start <= b.end + 3 && b.start <= a.end + 3;
+}
+
+function normalizeFindingLocation(
+  location: string,
+  repoPath?: string
+): { file: string; start: number; end: number } | undefined {
+  const citation = location
+    .trim()
+    .replace(/^`(.*)`$/, '$1')
+    .replaceAll('\\', '/');
+  const match = /^(.+?):L?(\d+)(?:-L?(\d+))?(?::\d+)?$/.exec(citation);
+  if (match === null) return undefined;
+  const file = normalizeFindingPath(match[1]?.trim() ?? '', repoPath);
+  const lines = parseFindingLines(match[2], match[3]);
+  if (file === undefined || lines === undefined) return undefined;
+  return { file, ...lines };
+}
+
+function parseFindingLines(
+  startText: string | undefined,
+  endText: string | undefined
+): { start: number; end: number } | undefined {
+  const start = Number(startText);
+  const end = Number(endText ?? startText);
+  if (!Number.isSafeInteger(start) || start < 1 || !Number.isSafeInteger(end) || end < start)
+    return undefined;
+  return { start, end };
+}
+
+function normalizeFindingPath(path: string, repoPath?: string): string | undefined {
+  if (path === '') return undefined;
+  const root = repoPath ?? findRepoRoot(process.cwd()) ?? process.cwd();
+  const file = posix.isAbsolute(path)
+    ? posix.relative(root.replaceAll('\\', '/'), path)
+    : posix.normalize(path).replace(/^[ab]\//, '');
+  if (file === '' || file === '.' || file.endsWith('/')) return undefined;
+  return file;
 }
 
 /** Returns true if all 4 checks passed AND the named assertion is

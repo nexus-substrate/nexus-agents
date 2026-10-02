@@ -5,10 +5,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { resolve } from 'node:path';
+import { findRepoRoot } from '../../config/repo-root-detection.js';
 import {
+  findingsAgree,
   isFindingVerified,
   parseFindings,
   FINDINGS_FORMAT_INSTRUCTIONS,
+  type Finding,
   type VerificationGate,
 } from './pr-review-findings.js';
 
@@ -20,6 +24,146 @@ const ALL_PASSED_GATE: VerificationGate = {
 };
 
 describe('pr-review-findings', () => {
+  describe('findingsAgree (#4334)', () => {
+    const finding = (location: string, verified = true): Finding => ({
+      summary: 'Real bug',
+      location,
+      severity: 'high',
+      gate: ALL_PASSED_GATE,
+      claim: 'Concrete failing assertion',
+      verified,
+    });
+
+    it.each([7, 10, 13])('agrees on the same file within ±3 lines (%i)', (line) => {
+      expect(
+        findingsAgree(
+          finding('src/a.ts:10'),
+          finding(`src/a.ts:${String(line)}`),
+          'security',
+          'architect'
+        )
+      ).toBe(true);
+    });
+
+    it('normalizes whitespace, backticks, slashes and relative path segments', () => {
+      expect(
+        findingsAgree(
+          finding(' `./src/other/../a.ts:10` '),
+          finding('src\\a.ts:13'),
+          'security',
+          'architect'
+        )
+      ).toBe(true);
+    });
+
+    it.each([
+      ['src/a.ts:10-12', 'src/a.ts:15', true],
+      ['src/a.ts:10-12', 'src/a.ts:16', false],
+      ['src/a.ts:L10', 'src/a.ts:13', true],
+      ['a.ts:10:3', 'a.ts:10:6', true],
+      ['a.ts:10:3', 'a.ts:10:60', true],
+      ['a.ts:10:100', 'a.ts:13:2', true],
+      ['a.ts:10:3', 'a.ts:20:3', false],
+      ['a/src/a.ts:10', 'src/a.ts:10', true],
+      ['b/src/a.ts:10', './src/a.ts:10', true],
+      ['./a/src/a.ts:10', 'src/a.ts:10', true],
+      [
+        resolve(findRepoRoot(process.cwd()) ?? process.cwd(), 'src/a.ts') + ':10',
+        'src/a.ts:10',
+        true,
+      ],
+    ])('normalizes citation %s against %s (%s)', (left, right, agrees) => {
+      expect(findingsAgree(finding(left), finding(right), 'security', 'architect')).toBe(agrees);
+    });
+
+    it('normalizes absolute citations against the supplied repository', () => {
+      const repo = resolve(process.cwd(), 'target');
+      expect(
+        findingsAgree(
+          finding(`${repo}/src/a.ts:10`),
+          finding('src/a.ts:10'),
+          'security',
+          'architect',
+          repo
+        )
+      ).toBe(true);
+    });
+
+    it('rejects different files', () => {
+      expect(
+        findingsAgree(finding('src/a.ts:10'), finding('src/b.ts:10'), 'security', 'architect')
+      ).toBe(false);
+    });
+
+    it('rejects the same role', () => {
+      expect(
+        findingsAgree(finding('src/a.ts:10'), finding('src/a.ts:10'), 'security', 'security')
+      ).toBe(false);
+    });
+
+    it.each([6, 14])('rejects lines outside ±3 (%i)', (line) => {
+      expect(
+        findingsAgree(
+          finding('src/a.ts:10'),
+          finding(`src/a.ts:${String(line)}`),
+          'security',
+          'architect'
+        )
+      ).toBe(false);
+    });
+
+    it.each([false, true])('requires both findings to be verified (left: %s)', (left) => {
+      expect(
+        findingsAgree(
+          finding('src/a.ts:10', left),
+          finding('src/a.ts:10', !left),
+          'security',
+          'architect'
+        )
+      ).toBe(false);
+    });
+
+    it.each([
+      'src/a.ts',
+      'src/a.ts:0',
+      'src/a.ts:-1',
+      ':10',
+      'a/:10',
+      'b/:10',
+      '.:10',
+      './:10',
+      'src/a.ts:NaN',
+      'src/a.ts:12-10',
+      'src/a.ts:10-9007199254740992',
+      'src/a.ts:9007199254740992',
+    ])('rejects malformed locations (%s)', (location) => {
+      expect(findingsAgree(finding(location), finding(location), 'security', 'architect')).toBe(
+        false
+      );
+    });
+
+    it('rejects directory-only citations with different diff prefixes', () => {
+      expect(findingsAgree(finding('a/:10'), finding('b/:10'), 'security', 'architect')).toBe(
+        false
+      );
+    });
+
+    it('does not match summaries or claims semantically', () => {
+      expect(
+        findingsAgree(
+          finding('src/a.ts:10'),
+          {
+            ...finding('src/a.ts:11'),
+            summary: 'Different claim',
+            claim: 'Unrelated failure',
+          },
+          'security',
+          'architect'
+        )
+      ).toBe(true);
+    });
+  });
+
   describe('isFindingVerified', () => {
     it('returns true when all checks pass and named_assertion is substantive', () => {
       expect(isFindingVerified(ALL_PASSED_GATE)).toBe(true);
