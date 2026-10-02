@@ -231,7 +231,7 @@ export const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     command: 'remediation-review',
     description:
-      'Soundness-review audit-mode selections (#3765): list pending · mark --evaluator --sound|--unsound · sign-off --owner · readiness (enforce-readiness verdict + harmful-rate + soak-store staleness alarm, #4279).',
+      'Review audit-mode selections: list · panel-judge --batch N [--quick] · sample --n 10 [--seed S] · mark --evaluator --sound|--unsound [--sample id] · sign-off --owner · readiness (human, panel and owner-sample judgments + soak-store alarm).',
     audience: 'maintainer',
   },
 

@@ -30,33 +30,149 @@ function soak(total: number): RemediationSoakSummary {
 describe('buildEnforceReadinessEvidence', () => {
   it('maps soak total → shadowSelections and review counts/evaluator/owner', () => {
     const reviews: RemediationReviewSummary = {
+      namedEvaluatorJudgments: 1,
       judgedSelections: 18,
       judgedSound: 17,
       evaluator: 'alice',
       owner: 'carol',
+      human: { n: 0, disagreements: 0 },
+      panel: { n: 18, disagreements: 1 },
+      rawPanelRows: 18,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 10, disagreements: 0 },
+      sampleExists: true,
+      sampleFresh: true,
+      evictedReviewRows: 2,
+      unverifiablePanelRows: 3,
+      sampledSelections: 10,
     };
     const evidence = buildEnforceReadinessEvidence(soak(20), reviews);
     expect(evidence.shadowSelections).toBe(20);
     expect(evidence.judgedSelections).toBe(18);
     expect(evidence.judgedSound).toBe(17);
     expect(evidence.evaluator).toBe('alice');
+    expect(evidence.namedEvaluatorJudgments).toBe(1);
     expect(evidence.owner).toBe('carol');
+    expect(evidence.evictedReviewRows).toBe(2);
+    expect(evidence.unverifiablePanelRows).toBe(3);
+    expect(evidence.rawPanelRows).toBe(18);
+    expect(evidence.rawOwnerSampleRows).toBe(0);
+    expect(evidence.evictedPanelRows).toBe(0);
   });
 
   it('produces evidence that PASSES the readiness gate when criteria are met', () => {
     // #4158: the volume bar is now ≥100 shadow selections.
     const reviews: RemediationReviewSummary = {
+      namedEvaluatorJudgments: 1,
       judgedSelections: 110, // 91.7% ≥ 80%
       judgedSound: 105, // 95.5% ≥ 90%
       evaluator: 'alice',
       owner: 'carol',
+      human: { n: 0, disagreements: 0 },
+      panel: { n: 110, disagreements: 5 },
+      rawPanelRows: 110,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 10, disagreements: 0 },
+      sampleExists: true,
+      sampleFresh: true,
+      evictedReviewRows: 0,
+      unverifiablePanelRows: 0,
+      sampledSelections: 10,
     };
     const evidence = buildEnforceReadinessEvidence(soak(120), reviews);
     expect(evaluateEnforceReadiness(evidence).ready).toBe(true);
   });
 
+  it('keeps panel, human, and owner sample counts separate in the evidence', () => {
+    const evidence = buildEnforceReadinessEvidence(soak(120), {
+      namedEvaluatorJudgments: 1,
+      judgedSelections: 110,
+      judgedSound: 105,
+      human: { n: 30, disagreements: 1 },
+      panel: { n: 80, disagreements: 4 },
+      rawPanelRows: 80,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 10, disagreements: 0 },
+      sampleExists: true,
+      sampleFresh: true,
+      evictedReviewRows: 0,
+      unverifiablePanelRows: 0,
+      sampledSelections: 10,
+    });
+    expect(evidence.human).toEqual({ n: 30, disagreements: 1 });
+    expect(evidence.panel).toEqual({ n: 80, disagreements: 4 });
+    expect(evidence.sample).toEqual({ n: 10, disagreements: 0 });
+    expect(evidence.sampleExists).toBe(true);
+  });
+
+  it('carries stale sample evidence through to a blocked owner-agreement criterion', () => {
+    const reviews = {
+      namedEvaluatorJudgments: 1,
+      judgedSelections: 110,
+      judgedSound: 105,
+      evaluator: 'alice',
+      owner: 'carol',
+      human: { n: 0, disagreements: 0 },
+      panel: { n: 110, disagreements: 5 },
+      rawPanelRows: 110,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 10, disagreements: 0 },
+      sampleExists: true,
+      sampledSelections: 10,
+      sampleFresh: false,
+      evictedReviewRows: 0,
+      unverifiablePanelRows: 0,
+    };
+    const evidence = buildEnforceReadinessEvidence(soak(120), reviews);
+    expect(evidence).toHaveProperty('sampleFresh', false);
+    const report = evaluateEnforceReadiness(evidence);
+    expect(report.blockers).toContain('owner-agreement');
+    expect(report.criteria.find((c) => c.name === 'owner-agreement')?.detail).toContain('stale');
+  });
+
+  it('keeps all-human review ready without requiring any panel owner sample', () => {
+    const evidence = buildEnforceReadinessEvidence(soak(120), {
+      namedEvaluatorJudgments: 1,
+      judgedSelections: 110,
+      judgedSound: 105,
+      evaluator: 'alice',
+      owner: 'carol',
+      human: { n: 110, disagreements: 5 },
+      panel: { n: 0, disagreements: 0 },
+      rawPanelRows: 0,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 0, disagreements: 0 },
+      sampleExists: false,
+      sampleFresh: false,
+      evictedReviewRows: 0,
+      unverifiablePanelRows: 0,
+      sampledSelections: 0,
+    });
+    expect(evaluateEnforceReadiness(evidence).ready).toBe(true);
+  });
+
   it('FAIL-CLOSED: no reviews → judged 0 → readiness not ready', () => {
-    const reviews: RemediationReviewSummary = { judgedSelections: 0, judgedSound: 0 };
+    const reviews: RemediationReviewSummary = {
+      namedEvaluatorJudgments: 0,
+      judgedSelections: 0,
+      judgedSound: 0,
+      human: { n: 0, disagreements: 0 },
+      panel: { n: 0, disagreements: 0 },
+      rawPanelRows: 0,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 0, disagreements: 0 },
+      sampleExists: false,
+      sampleFresh: false,
+      evictedReviewRows: 0,
+      unverifiablePanelRows: 0,
+      sampledSelections: 0,
+    };
     const evidence = buildEnforceReadinessEvidence(soak(20), reviews);
     expect(evidence.judgedSelections).toBe(0);
     const report = evaluateEnforceReadiness(evidence);
@@ -66,8 +182,20 @@ describe('buildEnforceReadinessEvidence', () => {
 
   it('FAIL-CLOSED: empty soak + empty reviews → not ready', () => {
     const evidence = buildEnforceReadinessEvidence(soak(0), {
+      namedEvaluatorJudgments: 0,
       judgedSelections: 0,
       judgedSound: 0,
+      human: { n: 0, disagreements: 0 },
+      panel: { n: 0, disagreements: 0 },
+      rawPanelRows: 0,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 0, disagreements: 0 },
+      sampleExists: false,
+      sampleFresh: false,
+      evictedReviewRows: 0,
+      unverifiablePanelRows: 0,
+      sampledSelections: 0,
     });
     expect(evidence.shadowSelections).toBe(0);
     expect(evaluateEnforceReadiness(evidence).ready).toBe(false);
@@ -75,8 +203,20 @@ describe('buildEnforceReadinessEvidence', () => {
 
   it('omits evaluator/owner when reviews carry none', () => {
     const evidence = buildEnforceReadinessEvidence(soak(5), {
+      namedEvaluatorJudgments: 0,
       judgedSelections: 0,
       judgedSound: 0,
+      human: { n: 0, disagreements: 0 },
+      panel: { n: 0, disagreements: 0 },
+      rawPanelRows: 0,
+      rawOwnerSampleRows: 0,
+      evictedPanelRows: 0,
+      sample: { n: 0, disagreements: 0 },
+      sampleExists: false,
+      sampleFresh: false,
+      evictedReviewRows: 0,
+      unverifiablePanelRows: 0,
+      sampledSelections: 0,
     });
     expect(evidence.evaluator).toBeUndefined();
     expect(evidence.owner).toBeUndefined();

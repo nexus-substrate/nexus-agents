@@ -28,6 +28,10 @@ import { SECURITY_KEYWORDS } from '../gateway/gateway-keywords.js';
 import { JsonlStore } from '../../config/jsonl-store.js';
 import { nexusDataPath } from '../../config/nexus-data-dir.js';
 import { scanForSecrets, describeSecretFindings } from './diff-secret-scan.js';
+import {
+  RemediationStepSchema,
+  type RemediationStep,
+} from './improvement-remediation-capability.js';
 
 /**
  * Fail-closed security classification (#3540 inc.2e / #3615). The hard
@@ -198,7 +202,7 @@ export type SoakVoteOutcome = z.infer<typeof SoakVoteOutcomeSchema>;
  * cross-run soak evidence the enforce-by-default decision gate consumes (#3540
  * / #3762). Captures the vote/plan outcome with ZERO writes to the repo.
  *
- * Free-text fields (`reason`, `dryRunResult`) are secret-scrubbed before
+ * Free-text verdict, signal, evidence-window and plan fields are secret-scrubbed before
  * persistence (see {@link scrubSoakRecord}) — persisted evidence must never
  * carry a secret (#3669 / Security condition).
  */
@@ -213,6 +217,19 @@ export const RemediationSoakRecordSchema = z.object({
   priority: z.string(),
   /** The signal's declared severity. */
   severity: z.string(),
+  /** Signal artifact captured before the vote; absent on older soak records. */
+  signalTitle: z.string().optional(),
+  signalDescription: z.string().optional(),
+  signalEvidence: z
+    .object({
+      samples: z.number().optional(),
+      window: z.string().optional(),
+      observedValue: z.number().optional(),
+      threshold: z.number().optional(),
+    })
+    .optional(),
+  /** Selected, typed remediation steps captured before the vote. */
+  planSteps: z.array(RemediationStepSchema).max(20).optional(),
   /** Vote outcome (approved/rejected + tally), undefined if the signal never reached a vote. */
   voteOutcome: SoakVoteOutcomeSchema.optional(),
   /** Number of plan steps research produced (0 if research/plan failed). */
@@ -255,6 +272,29 @@ export function scrubSoakRecord(record: RemediationSoakRecord): RemediationSoakR
   const scrubbed: RemediationSoakRecord = {
     ...record,
     reason: scrub(record.reason),
+    ...(record.signalTitle !== undefined ? { signalTitle: scrub(record.signalTitle) } : {}),
+    ...(record.signalDescription !== undefined
+      ? { signalDescription: scrub(record.signalDescription) }
+      : {}),
+    ...(record.signalEvidence !== undefined
+      ? {
+          signalEvidence: {
+            ...record.signalEvidence,
+            ...(record.signalEvidence.window !== undefined
+              ? { window: scrub(record.signalEvidence.window) }
+              : {}),
+          },
+        }
+      : {}),
+    ...(record.planSteps !== undefined
+      ? {
+          planSteps: record.planSteps.map((step) => ({
+            ...step,
+            description: scrub(step.description),
+            ...(step.targetPath !== undefined ? { targetPath: scrub(step.targetPath) } : {}),
+          })),
+        }
+      : {}),
     ...(record.dryRunResult !== undefined ? { dryRunResult: scrub(record.dryRunResult) } : {}),
   };
   return scrubbed;
@@ -433,13 +473,17 @@ export interface SoakAuditEvent {
   readonly step: string;
   readonly signalKey?: string;
   readonly detail: string;
+  readonly planSteps?: readonly RemediationStep[];
 }
 
-/** Look up a signal's category/priority/severity for the soak record. */
+/** Look up the signal metadata and artifact for the soak record. */
 export interface SoakSignalMeta {
   readonly category: string;
   readonly priority: string;
   readonly severity: string;
+  readonly signalTitle?: string;
+  readonly signalDescription?: string;
+  readonly signalEvidence?: ImprovementSignal['evidence'];
 }
 
 /**
@@ -464,6 +508,7 @@ export interface RemediationSoakCollector {
 interface SoakDraft {
   signalKey: string;
   planStepCount: number;
+  planSteps?: readonly RemediationStep[];
   voteOutcome?: SoakVoteOutcome;
   dryRunResult?: string;
   reason: string;
@@ -493,6 +538,7 @@ function applySoakEvent(d: SoakDraft, event: SoakAuditEvent): void {
   if (event.step === 'plan') {
     const n = /(\d+)\s*steps?/.exec(event.detail);
     d.planStepCount = n?.[1] !== undefined ? Number(n[1]) : 0;
+    if (event.planSteps !== undefined) d.planSteps = event.planSteps;
     if (d.reason === '') d.reason = 'plan produced';
     return;
   }
@@ -510,6 +556,22 @@ function applySoakEvent(d: SoakDraft, event: SoakAuditEvent): void {
   if (SOAK_TERMINAL_REASON_STEPS.has(event.step)) d.reason = event.detail;
 }
 
+/** Project only the pre-vote signal and plan artifact into durable evidence. */
+function soakArtifact(
+  meta: SoakSignalMeta | undefined,
+  planSteps: readonly RemediationStep[] | undefined
+): Pick<
+  RemediationSoakRecord,
+  'signalTitle' | 'signalDescription' | 'signalEvidence' | 'planSteps'
+> {
+  return {
+    ...(meta?.signalTitle !== undefined ? { signalTitle: meta.signalTitle } : {}),
+    ...(meta?.signalDescription !== undefined ? { signalDescription: meta.signalDescription } : {}),
+    ...(meta?.signalEvidence !== undefined ? { signalEvidence: meta.signalEvidence } : {}),
+    ...(planSteps !== undefined ? { planSteps: [...planSteps] } : {}),
+  };
+}
+
 /** Project a finished draft + its signal meta into a durable soak record. */
 function draftToSoakRecord(
   d: SoakDraft,
@@ -522,6 +584,7 @@ function draftToSoakRecord(
     category: meta?.category ?? 'unknown',
     priority: meta?.priority ?? 'unknown',
     severity: meta?.severity ?? 'unknown',
+    ...soakArtifact(meta, d.planSteps),
     ...(d.voteOutcome !== undefined ? { voteOutcome: d.voteOutcome } : {}),
     planStepCount: d.planStepCount,
     ...(d.dryRunResult !== undefined ? { dryRunResult: d.dryRunResult } : {}),

@@ -40,8 +40,63 @@ export function buildEnforceReadinessEvidence(
     shadowSelections: soak.total,
     judgedSelections: reviews.judgedSelections,
     judgedSound: reviews.judgedSound,
+    human: reviews.human,
+    panel: reviews.panel,
+    sample: reviews.sample,
+    sampleExists: reviews.sampleExists,
+    sampleFresh: reviews.sampleFresh,
+    ...(reviews.namedEvaluatorJudgments !== undefined
+      ? { namedEvaluatorJudgments: reviews.namedEvaluatorJudgments }
+      : {}),
+    evictedReviewRows: reviews.evictedReviewRows,
+    unverifiablePanelRows: reviews.unverifiablePanelRows,
+    ...panelVerificationDetails(reviews),
+    ...(reviews.reviewStoreComplete !== undefined
+      ? { reviewStoreComplete: reviews.reviewStoreComplete }
+      : {}),
+    ...(reviews.sampleStoreComplete !== undefined
+      ? { sampleStoreComplete: reviews.sampleStoreComplete }
+      : {}),
+    ...(reviews.rawPanelRows !== undefined ? { rawPanelRows: reviews.rawPanelRows } : {}),
+    ...(reviews.rawOwnerSampleRows !== undefined
+      ? { rawOwnerSampleRows: reviews.rawOwnerSampleRows }
+      : {}),
+    ...(reviews.evictedPanelRows !== undefined
+      ? { evictedPanelRows: reviews.evictedPanelRows }
+      : {}),
+    sampledSelections: reviews.sampledSelections,
     ...(reviews.evaluator !== undefined ? { evaluator: reviews.evaluator } : {}),
     ...(reviews.owner !== undefined ? { owner: reviews.owner } : {}),
+  };
+}
+
+/** Preserve optional verification measurements without inventing counts or reasons. */
+function panelVerificationDetails(
+  reviews: RemediationReviewSummary
+): Pick<
+  EnforceReadinessEvidence,
+  | 'supersededPanelRows'
+  | 'unverifiablePanelReasons'
+  | 'mootOwnerDisagreements'
+  | 'overriddenPanelRejections'
+  | 'unconfirmedPanelRejections'
+> {
+  return {
+    ...(reviews.mootOwnerDisagreements !== undefined
+      ? { mootOwnerDisagreements: reviews.mootOwnerDisagreements }
+      : {}),
+    ...(reviews.overriddenPanelRejections !== undefined
+      ? { overriddenPanelRejections: reviews.overriddenPanelRejections }
+      : {}),
+    ...(reviews.unconfirmedPanelRejections !== undefined
+      ? { unconfirmedPanelRejections: reviews.unconfirmedPanelRejections }
+      : {}),
+    ...(reviews.supersededPanelRows !== undefined
+      ? { supersededPanelRows: reviews.supersededPanelRows }
+      : {}),
+    ...(reviews.unverifiablePanelReasons !== undefined
+      ? { unverifiablePanelReasons: reviews.unverifiablePanelReasons }
+      : {}),
   };
 }
 

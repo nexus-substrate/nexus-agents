@@ -296,6 +296,10 @@ export interface ParsedCliArgs {
     note?: string;
     sound?: boolean;
     unsound?: boolean;
+    batch?: string;
+    n?: string;
+    seed?: string;
+    sample?: string;
     // improvement-review command options (#2444, #6636)
     'file-issues'?: boolean;
     fileIssues?: boolean;
@@ -660,6 +664,10 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    batch: { type: 'string' as const },
+    n: { type: 'string' as const },
+    seed: { type: 'string' as const },
+    sample: { type: 'string' as const },
     // session command options (#6693)
     limit: {
       type: 'string' as const,
