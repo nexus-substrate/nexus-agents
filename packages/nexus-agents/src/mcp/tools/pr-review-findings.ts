@@ -125,7 +125,22 @@ export function isFindingVerified(gate: VerificationGate): boolean {
   return true;
 }
 
-const FINDINGS_BLOCK_RE = /```yaml findings\n([\s\S]*?)\n```/;
+const FINDINGS_OPEN = '```yaml findings\n';
+const FINDINGS_CLOSE = '\n```';
+
+/**
+ * The body of the first ```yaml findings fence, or undefined when there is
+ * none or it is unterminated. Plain index scanning, not a lazy regex: the
+ * regex backtracked polynomially on reasoning with many unterminated fences
+ * (CodeQL js/polynomial-redos, alert 255).
+ */
+function extractFindingsBlock(reasoning: string): string | undefined {
+  const open = reasoning.indexOf(FINDINGS_OPEN);
+  if (open === -1) return undefined;
+  const start = open + FINDINGS_OPEN.length;
+  const close = reasoning.indexOf(FINDINGS_CLOSE, start);
+  return close === -1 ? undefined : reasoning.slice(start, close);
+}
 
 /**
  * Extracts a YAML-fenced findings block from the voter's reasoning and
@@ -135,9 +150,7 @@ const FINDINGS_BLOCK_RE = /```yaml findings\n([\s\S]*?)\n```/;
  * "if you can't articulate what's wrong, don't file."
  */
 export function parseFindings(reasoning: string): readonly Finding[] {
-  const match = FINDINGS_BLOCK_RE.exec(reasoning);
-  if (match === null) return [];
-  const yamlBody = match[1];
+  const yamlBody = extractFindingsBlock(reasoning);
   if (yamlBody === undefined || yamlBody.trim() === '') return [];
 
   let parsed: unknown;
