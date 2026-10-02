@@ -7,7 +7,7 @@
  * #4657: Pins that the delegate plan declares no policy gate.
  * #5485: Pins that delegate execution performs no route-stage policy evaluation.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import {
   buildDelegatePlan,
@@ -20,6 +20,9 @@ import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
 import { evaluatePipelinePolicy } from './policy-evaluator.js';
 import { analyzeForContract } from './task-contract-builders.js';
+import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
+import { detectCapabilityGaps } from '../core/task-analysis/capability-gap-detector.js';
+import { TaskContractSchema } from './task-contract.js';
 import type { DelegateInputLike } from './v2-delegate.js';
 import type { TaskContract } from './task-contract.js';
 
@@ -414,5 +417,54 @@ describe('the delegate plan declares no policy gate (#4657)', () => {
     // If this description ever stops saying SKELETON, the plugin gained a real
     // handler and the no-gate decision above should be revisited.
     expect(MODEL_ROUTER_PLUGIN.manifest.description).toContain('SKELETON');
+  });
+});
+
+describe('measured task contract (#5923)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, '0', '1'])(
+    'reports an inferred extraction gap with ledger recording flag %s',
+    (flag) => {
+      vi.stubEnv('NEXUS_CAPABILITY_GAP_INFERRED', flag);
+      const task = 'Extract class and function symbols from src/parser.py';
+      const contract = delegateInputToTaskContract({ task });
+
+      expect(contract.capabilityGaps.allSatisfied).toBe(false);
+      expect(contract.capabilityGaps.gapsMeasured).toBe(true);
+      expect(contract.requiredCapabilities.tools).toContain('extract_symbols:.py');
+      expect(contract.capabilityGaps.gaps).toEqual([
+        expect.objectContaining({ type: 'tool', name: 'extract_symbols:.py', origin: 'inferred' }),
+      ]);
+      expect(TaskContractSchema.safeParse(contract).success).toBe(true);
+    }
+  );
+
+  it('reports measured requirements, availability and scope for an ordinary task', () => {
+    const task = 'Implement a production-ready API in src/api.ts by Friday';
+    const analysis = createSharedTaskAnalyzer().analyze(task);
+    const report = detectCapabilityGaps(analysis.requiredCapabilities);
+    const contract = delegateInputToTaskContract({ task });
+
+    expect(contract.requiredCapabilities).toEqual(analysis.requiredCapabilities);
+    expect(contract.requiredCapabilities.tools.length).toBeGreaterThan(0);
+    expect(contract.capabilityGaps).toEqual({ ...report, gapsMeasured: true });
+    expect(contract.capabilityGaps.available.tools.length).toBeGreaterThan(0);
+    expect(contract.constraints).toEqual(analysis.constraints);
+    expect(contract.constraints.scope).toContain('api.ts');
+    expect(contract.analysis).toEqual({
+      complexity: analysis.complexity,
+      taskType: analysis.taskType,
+      ambiguityScore: analysis.ambiguityScore,
+    });
+    expect(TaskContractSchema.safeParse(contract).success).toBe(true);
+  });
+
+  it('emits empty scope and absent time/quality when no constraints are recognized', () => {
+    const contract = delegateInputToTaskContract({ task: 'Hello' });
+    expect(contract.constraints).toEqual({ scope: [] });
+    expect(contract.constraints).not.toHaveProperty('time');
+    expect(contract.constraints).not.toHaveProperty('quality');
+    expect(contract.capabilityGaps.gapsMeasured).toBe(true);
   });
 });
