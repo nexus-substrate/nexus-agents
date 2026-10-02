@@ -1644,6 +1644,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/governor-ledger-evidence.ts',
     '/scripts/governor-ledger-append-only.ts',
     '/scripts/governor-ledger-signature-policy.ts',
+    '/scripts/governor-ledger-diversity.ts',
     '/scripts/governor-ledger-report.ts',
     '/scripts/governor-patch-identity.ts',
     '/scripts/governor-ledger-signature.ts',
@@ -1689,7 +1690,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (40 entries)', () => {
+  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (41 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1702,6 +1703,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/docs/CODEOWNERS');
     // #5130 step 2: the committed-ledger half of the ratification gate.
     expect(set).toContain('/scripts/governor-ledger-evidence.ts');
+    expect(set).toContain('/scripts/governor-ledger-diversity.ts');
     // #6256: its env reader / printed line, and the git probe the moved-head
     // rule measures with — a probe outside the set could be weakened without
     // ratification.
@@ -1717,7 +1719,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/scripts/check-required-jobs.ts');
     expect(set).toContain('/scripts/check-required-jobs.test.ts');
     expect(set).toContain('/scripts/aggregator-shape.ts');
-    expect(set).toHaveLength(40);
+    expect(set).toHaveLength(41);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

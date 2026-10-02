@@ -73,6 +73,53 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
    moved-head rule (`ratified-rebased`, #6256) as long as the moved head's
    tree is the ratified patch replayed onto its base; see below.
 
+### Model-family floor and owner override (#6601)
+
+Governor ratification requires **at least two known model vendor families**
+among verifiable `approve` or `reject` seats. Rejections count toward diversity;
+abstentions, errored seats, unverifiable voters and missing or unknown models
+do not. Multiple models from the same vendor count as one family. Zero known
+families is `unmeasured-model-diversity`; one is
+`insufficient-model-diversity`. The floor is computed from hash-covered
+`voters[].model`, the adapter's configured model. Gateway substitution is
+tracked in #6951. The family mapping in `src/config/model-identity.ts`
+(`VENDOR_PATTERNS`) via `cli/voter-family-dealing.ts` is load-bearing but
+outside the governor set.
+
+**Legacy handling uses exact hashes.** Only the three already-landed
+single-family records for PRs #6559, #6621 and #6698 are exempt, by the closed
+`GRANDFATHERED_DIVERSITY_HASHES` set in
+`scripts/governor-ledger-diversity.ts`. Changing their content voids the
+exemption. An old schema version, sequence or date grants no diversity
+exemption; missing per-voter models fail closed. Both the floor and this hash
+set are governor-owned.
+
+**An owner can override a measured single-family panel.** Run a separate live
+`consensus_vote` with `ratifiesPr: { pr, headSha }` exactly matching the
+original panel record, `strategy: "supermajority"` (or `"unanimous"`) and
+`errorPolicy: "absolute_quorum"`. It must produce a distinct, approved,
+qualifying record with whole-panel coverage. Then the human owner runs this
+exact command from the repository root, using that separate vote's record id:
+
+```bash
+pnpm exec tsx scripts/append-ratification-record.ts \
+  --record-id <ownerOverrideVoteRecordId> \
+  --ledger governance/vote-records.jsonl \
+  --as-owner --signing-key <path-to-owner-private-key>
+```
+
+The key must verify as an owner principal in the gate checkout's
+`governance/allowed_signers`; an agent signature or the flag alone cannot
+authorize an override. The command preserves the record's hash-covered
+`{pr, headSha}` binding; it does not supply or change it. Both records must
+satisfy the ordinary ratification checks, including ledger integrity,
+append-only history, strategy, approval, panel coverage and signature policy.
+A solitary owner-signed panel cannot override itself. The override applies
+only to the identical PR number and full recorded head SHA: a current-head
+override does not cover `head^` or a different rebased record SHA. Zero known
+families cannot be overridden; rerun a panel with measurable models instead.
+The gate reports the owner override id and exact binding when it accepts it.
+
 ### Redacting a voter's reasoning
 
 From the repository root, name the record and each voter role whose reasoning

@@ -80,6 +80,11 @@ export function modelDiversityEvidence(
     // models on any schema are unmeasured: an author-typed version cannot
     // exempt a newly signed record by claiming it is old.
     const families = familiesOf(record);
+    // Load-bearing family mapping: src/config/model-identity.ts VENDOR_PATTERNS
+    // via cli/voter-family-dealing.ts, both outside the governor set.
+    // voters[].model is the adapter's configured model; gateway substitution
+    // is tracked in #6951. Unknown vendors add no family (fail closed).
+    // Owner override escapes a measured single-family panel, never zero families.
     if (families.length >= 2) continue;
     if (families.length === 0) {
       failures.push({ kind: 'unmeasured-model-diversity', record, families });
