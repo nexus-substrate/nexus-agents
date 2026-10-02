@@ -42,6 +42,9 @@
  * last touched the file, never the checkout's mtime (which is "now" on a fresh
  * checkout), and a shallow clone is refused because every file in it would
  * report HEAD's time.
+ * Active Release runs on main also suppress the verdict (#6514): publishing
+ * holds the release concurrency group while awaiting tarballs for up to 90
+ * minutes (150-minute job limit), delaying the next version PR beyond grace.
  *
  * @module scripts/check-release-stuck
  * (Source: Issue #4500)
@@ -70,7 +73,8 @@ export const STALL_ISSUE_MARKER = '<!-- nexus-release-stall-detector -->';
  * push-triggered `release.yml` run's `createdAt` to the version PR's
  * `createdAt`, min 99 s, max 182 s. The bar is at least 3x the observed maximum
  * (546 s) with a floor of 30 minutes; the floor wins. The test pins both
- * conditions against the measured number.
+ * conditions against the measured number. This applies only when no Release
+ * run is active; a publish can hold release.yml's concurrency group longer.
  */
 export const DEFAULT_GRACE_SEC = 30 * 60;
 
@@ -83,6 +87,8 @@ export interface PendingChangeset {
 export interface ReleaseStallInput {
   readonly pendingChangesets: readonly PendingChangeset[];
   readonly hasOpenVersionPr: boolean;
+  /** A Release run on main is running or waiting for the concurrency group. */
+  readonly hasActiveReleaseRun: boolean;
   /** Newest-changeset age at or below this is "release.yml may still be working", not a stall. */
   readonly graceSec: number;
 }
@@ -102,7 +108,9 @@ export function pendingChangesets(entries: readonly string[]): string[] {
  *
  * An open version PR clears the verdict regardless of how many changesets are
  * queued — the PR is what consumes them, so its existence means the release is
- * moving. With no PR, the verdict is keyed on the NEWEST changeset: while it is
+ * moving. An active Release run also clears it: publishing may hold the
+ * concurrency group before a queued run can open the PR. With neither, the
+ * verdict is keyed on the NEWEST changeset: while it is
  * inside the grace period `release.yml` may still be opening the PR (#6215).
  */
 export function assessReleaseStall(input: ReleaseStallInput): ReleaseStallVerdict {
@@ -120,6 +128,12 @@ export function assessReleaseStall(input: ReleaseStallInput): ReleaseStallVerdic
       reason: `${String(count)} changeset(s) queued and a version PR is open — release is moving.`,
     };
   }
+  if (input.hasActiveReleaseRun) {
+    return {
+      stalled: false,
+      reason: `${String(count)} changeset(s) queued with no version PR, but a Release run on main is active — release.yml may still be working.`,
+    };
+  }
   const youngestSec = input.pendingChangesets.reduce(
     (min, c) => Math.min(min, c.ageSec),
     Number.POSITIVE_INFINITY
@@ -134,6 +148,31 @@ export function assessReleaseStall(input: ReleaseStallInput): ReleaseStallVerdic
     stalled: true,
     reason: `${String(count)} unconsumed changeset(s) on main with no open "chore(release): version packages" PR; the newest is ${String(youngestSec)}s old, past the ${String(input.graceSec)}s grace period.`,
   };
+}
+
+/** Read-only GitHub probe; injecting the query keeps API responses testable. */
+export function hasActiveReleaseRun(
+  query: (args: readonly string[]) => string = (args) =>
+    execFileSync('gh', [...args], { encoding: 'utf8', cwd: ROOT, timeout: 60_000 })
+): boolean {
+  // Query by status, not recency: a long-held concurrency group can leave an
+  // old active run behind many completed ones. Existence needs only one row.
+  // Check running last so a queued run starting between queries is still seen.
+  for (const status of ['requested', 'waiting', 'pending', 'queued', 'in_progress']) {
+    const count = query([
+      'api',
+      '--method',
+      'GET',
+      `repos/{owner}/{repo}/actions/workflows/release.yml/runs?branch=main&status=${status}&per_page=1`,
+      '--jq',
+      '.total_count',
+    ]).trim();
+    if (!/^\d+$/.test(count)) {
+      throw new Error(`Could not measure active Release runs with status=${status}.`);
+    }
+    if (Number(count) > 0) return true;
+  }
+  return false; // All active-status queries measured zero runs.
 }
 
 /** Runs git in `repoDir` and returns stdout. */
@@ -209,12 +248,13 @@ function main(): void {
     file,
     ageSec: changesetAgeSec(ROOT, file, nowSec),
   }));
-  // The workflow supplies the PR presence; keeping the API call out of here
-  // leaves the predicate pure and unit-testable.
+  // The workflow supplies PR presence. Probe active runs separately so the
+  // predicate stays pure; an API failure aborts before writing a stall report.
   const hasOpenVersionPr = process.env['HAS_OPEN_VERSION_PR'] === 'true';
   const verdict = assessReleaseStall({
     pendingChangesets: pending,
     hasOpenVersionPr,
+    hasActiveReleaseRun: pending.length > 0 && !hasOpenVersionPr && hasActiveReleaseRun(),
     graceSec: DEFAULT_GRACE_SEC,
   });
 

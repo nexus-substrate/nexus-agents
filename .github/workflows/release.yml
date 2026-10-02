@@ -93,7 +93,7 @@ jobs:
     # run would not publish, the smoke job passes without smoking.
     needs: publish-smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 150
     permissions:
       contents: write
       pull-requests: write
@@ -114,6 +114,11 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
+      # #6514: OIDC dist-tag requires npm >=11.21.0 and the package's
+      # trusted publisher must enable "Allow npm dist-tag" (both packages).
+      - name: Install npm for OIDC dist-tag promotion
+        run: pnpm exec tsx scripts/publish-env.ts npm install --global npm@11.21.0
+
       # Bidirectional skew detection. The `Detect publish-race version skew`
       # step below recovers the package.json-AHEAD-of-npm direction (a
       # missed publish). This step catches the INVERSE — npm AHEAD of
@@ -127,18 +132,17 @@ jobs:
         run: |
           set -euo pipefail
           local_version=$(jq -r '.version' packages/nexus-agents/package.json)
-          published_version=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-agents version 2>/dev/null || echo "0.0.0")
-          # The sentinel is not a measurement: 0.0.0 sorts below every real
-          # version, so the npm-ahead branch below could never fire when the
-          # registry did not answer and the step printed "Version sync OK"
-          # over a failed lookup. Same guard as the manual-publish job.
-          if [ "$published_version" = "0.0.0" ]; then
-            echo "::error::npm view nexus-agents version failed — the registry did not answer, the npm config listing in scripts/publish-env.ts failed, or the package has never been published. The npm-ahead skew is unmeasured — not OK. Check registry access and the npm config listing before re-running."
+          if ! versions=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-agents versions --json); then
+            echo "::error::npm view nexus-agents versions failed; npm-ahead skew is unmeasured."
+            exit 1
+          fi
+          if ! published_version=$(printf '%s' "$versions" | jq -er 'if type == "string" then [.] else . end | select(type == "array" and length > 0) | select(all(.[]; type == "string" and length > 0)) | .[]' | sort -V | tail -1); then
+            echo "::error::npm returned empty or invalid versions; npm-ahead skew is unmeasured."
             exit 1
           fi
           larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
           if [ "$published_version" != "$local_version" ] && [ "$larger" = "$published_version" ]; then
-            echo "::error::npm-ahead version skew: npm latest is $published_version but" \
+            echo "::error::npm-ahead version skew: npm greatest published version is $published_version but" \
               "packages/nexus-agents/package.json is $local_version. A 'Version Packages'" \
               "PR is likely unmerged, or a publish ran from a non-main ref. See" \
               "docs/ops/release-changeset-race.md — merge the open version PR to reconcile."
@@ -310,7 +314,7 @@ jobs:
         #
         # This step detects the skew and force-publishes when:
         #   - changesets/action did NOT publish this run (in PR mode)
-        #   - AND local package.json version > npm latest version
+        #   - AND a committed package version is absent from npm's versions list
         #   - AND no .changeset/*.md files remain on the current commit
         #     (i.e. the version commit landed cleanly; only stragglers from the
         #     just-merged release PR are gone, but new ones haven't appeared)
@@ -364,26 +368,32 @@ jobs:
           # what stops a future action version from silently voiding this guard
           # again the way v2 did.
           local_version=$(git show "$GITHUB_SHA:packages/nexus-agents/package.json" | jq -r '.version')
-          # A failed lookup is unmeasured, never a version. This used to be
-          # `|| echo "0.0.0"`, which the `larger` comparison below read as
-          # "local is ahead" and — with no changesets pending — walked straight
-          # into `pnpm release` on a registry outage (#4927 finding 4). The
-          # sentinel was only caught on the pending-changesets branch.
-          if ! published_version=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-agents version 2>"$RUNNER_TEMP/npm-view.err"); then
-            echo "::error::npm view nexus-agents version failed — the registry did not answer, the npm config listing in scripts/publish-env.ts failed, or the package has never been published. The publish-race skew is unmeasured. package.json is at $local_version. Not force-publishing; check registry access and the npm config listing before re-running. npm/publish-env said: $(tr '\n' ' ' <"$RUNNER_TEMP/npm-view.err")"
+          # #6514: latest stays on the previous release while next stages.
+          # Registry version membership, not latest, determines publication.
+          if ! versions=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-agents versions --json 2>"$RUNNER_TEMP/npm-view.err"); then
+            echo "::error::npm view nexus-agents versions failed; publish-race skew is unmeasured. Not force-publishing."
             exit 1
           fi
-          if [ -z "$published_version" ]; then
-            echo "::error::npm view nexus-agents version printed nothing, so the publish-race skew is unmeasured. Not force-publishing."
+          if ! versions=$(printf '%s' "$versions" | jq -ce 'if type == "string" then [.] else . end | select(type == "array" and length > 0) | select(all(.[]; type == "string" and length > 0))'); then
+            echo "::error::npm returned empty or invalid versions; publish-race skew is unmeasured."
             exit 1
           fi
-
-          # Use sort -V to pick the larger of the two versions.
-          larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
-          if [ "$larger" != "$local_version" ] || [ "$local_version" = "$published_version" ]; then
-            echo "Versions in sync ($local_version == $published_version) or local is behind. No fallback publish needed."
+          memory_version=$(git show "$GITHUB_SHA:packages/nexus-memory/package.json" | jq -r '.version')
+          if ! memory_versions=$(pnpm exec tsx scripts/publish-env.ts npm view nexus-memory versions --json); then
+            echo "::error::npm view nexus-memory versions failed; publication is unmeasured. Not force-publishing."
+            exit 1
+          fi
+          if ! memory_versions=$(printf '%s' "$memory_versions" | jq -ce 'if type == "string" then [.] else . end | select(type == "array" and length > 0) | select(all(.[]; type == "string" and length > 0))'); then
+            echo "::error::npm returned empty or invalid nexus-memory versions; publication is unmeasured."
+            exit 1
+          fi
+          if printf '%s' "$versions" | jq -e --arg version "$local_version" 'index($version) != null' >/dev/null && \
+             printf '%s' "$memory_versions" | jq -e --arg version "$memory_version" 'index($version) != null' >/dev/null; then
+            echo "Both committed versions are already published. Resume tarball verification and promotion without republishing."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          published_version=$(printf '%s' "$versions" | jq -r '.[]' | sort -V | tail -1)
 
           # Count NON-EMPTY changesets, matching changesets/action's own
           # `hasNonEmptyChangesets` predicate via the same @changesets/read
@@ -401,7 +411,7 @@ jobs:
             # landed meanwhile, stands down, and a fresh version PR opens. On
             # 2026-08-26 four versions went unpublished across six green runs
             # (#5077). So measure how many package.json versions main has carried
-            # since npm's latest — a walk of immutable commit objects, one bump
+            # since npm's greatest published version — a walk of immutable commit objects, one bump
             # per stand-down — and FAIL once there are two. One is the ordinary
             # race; two is a stalled loop. "Cannot measure" is its own failure,
             # never 0, and every exit path below carries an annotation.
@@ -423,10 +433,10 @@ jobs:
             unpublished=$(printf '%s\n' "$unpublished_list" | grep -c . || true)
             unpublished_csv=$(printf '%s\n' "$unpublished_list" | paste -sd ',' -)
             if [ "$unpublished" -ge 2 ]; then
-              echo "::error::Stalled release loop: npm's latest is $published_version and main has carried $unpublished version(s) since ($unpublished_csv), while $pending_changesets changeset(s) are still pending ($pending_names) — each version-PR merge is racing a new changeset. Recovery: wait for changesets/action to regenerate the version PR so it consumes every changeset on main, then merge it ALONE. docs/ops/release-changeset-race.md (#5077)"
+              echo "::error::Stalled release loop: npm's greatest published version is $published_version and main has carried $unpublished version(s) since ($unpublished_csv), while $pending_changesets changeset(s) are still pending ($pending_names) — each version-PR merge is racing a new changeset. Recovery: wait for changesets/action to regenerate the version PR so it consumes every changeset on main, then merge it ALONE. docs/ops/release-changeset-race.md (#5077)"
               exit 1
             fi
-            echo "::warning::package.json is at $local_version but npm's latest is $published_version ($unpublished version(s) since: $unpublished_csv), AND $pending_changesets non-empty changeset(s) are still pending ($pending_names), so changesets/action will open a version PR. Merge it alone once it has been regenerated; a second unpublished bump fails this step (#5077). Not force-publishing."
+            echo "::warning::package.json is at $local_version but npm's greatest published version is $published_version ($unpublished version(s) since: $unpublished_csv), AND $pending_changesets non-empty changeset(s) are still pending ($pending_names), so changesets/action will open a version PR. Merge it alone once it has been regenerated; a second unpublished bump fails this step (#5077). Not force-publishing."
             exit 0
           fi
 
@@ -590,11 +600,34 @@ jobs:
         with:
           subject-path: ${{ runner.temp }}/sbom/sbom.cdx.json
 
-      # #6525: Poll for the published tarball on the registry until HTTP 200,
-      # measuring and logging the post-publish availability window.
-      - name: Await published tarball (#6525)
-        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true'
-        run: pnpm exec tsx scripts/await-published-tarball.ts
+      # #6514: Wait concurrently for both tarballs (90 min staging budget).
+      # 150 min job timeout leaves 60 min for build/tests/artifacts and promotion.
+      # Read the commit: changesets/action can leave an uncommitted version bump.
+      - name: Await published tarballs (#6514)
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true' || steps.fallback-publish.outputs.already_published == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          agents_version=$(git show "$GITHUB_SHA:packages/nexus-agents/package.json" | jq -r '.version')
+          memory_version=$(git show "$GITHUB_SHA:packages/nexus-memory/package.json" | jq -r '.version')
+          pnpm exec tsx scripts/await-published-tarball.ts --package nexus-agents --version "$agents_version" &
+          agents_wait=$!
+          pnpm exec tsx scripts/await-published-tarball.ts --package nexus-memory --version "$memory_version" &
+          memory_wait=$!
+          status=0
+          wait "$agents_wait" || status=1
+          wait "$memory_wait" || status=1
+          exit "$status"
+
+      - name: Promote published packages to latest (#6514)
+        if: steps.changesets.outputs.published == 'true' || steps.fallback-publish.outputs.published == 'true' || steps.fallback-publish.outputs.already_published == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pkg in nexus-memory nexus-agents; do
+            version=$(git show "$GITHUB_SHA:packages/$pkg/package.json" | jq -r '.version')
+            pnpm exec tsx scripts/promote-published-package.ts "$pkg" "$version"
+          done
 
       # "Attest npm package" was removed here (#5429). It bound the digest of
       # `packages/nexus-agents/package.json`, and pnpm rewrites the workspace
@@ -616,7 +649,7 @@ jobs:
     name: Manual Publish
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 150
     permissions:
       contents: read
       id-token: write
@@ -640,6 +673,11 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
+      # #6514: OIDC dist-tag requires npm >=11.21.0 and the package's
+      # trusted publisher must enable "Allow npm dist-tag" (both packages).
+      - name: Install npm for OIDC dist-tag promotion
+        run: pnpm exec tsx scripts/publish-env.ts npm install --global npm@11.21.0
+
       - name: Build all packages
         run: pnpm build
 
@@ -660,7 +698,7 @@ jobs:
 
       - name: Publish packages (dry run)
         if: ${{ inputs.dry_run == true }}
-        run: pnpm exec tsx scripts/publish-env.ts pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks --dry-run
+        run: pnpm exec tsx scripts/publish-env.ts pnpm --config.node-linker=hoisted -r publish --tag next --access public --no-git-checks --dry-run
         env:
           NEXUS_PUBLISH_NODE_LINKER: hoisted
           # OIDC trusted publishing — see the comment on the changesets/action
@@ -669,13 +707,36 @@ jobs:
 
       - name: Publish packages
         if: ${{ inputs.dry_run != true }}
-        run: pnpm exec tsx scripts/publish-env.ts pnpm --config.node-linker=hoisted -r publish --access public --no-git-checks
+        run: pnpm exec tsx scripts/publish-env.ts pnpm --config.node-linker=hoisted -r publish --tag next --access public --no-git-checks
         env:
           NEXUS_PUBLISH_NODE_LINKER: hoisted
           NPM_CONFIG_PROVENANCE: true
 
-      # #6525: Poll for the published tarball on the registry until HTTP 200,
-      # measuring and logging the post-publish availability window.
-      - name: Await published tarball (#6525)
+      # #6514: Wait concurrently for both tarballs (90 min staging budget).
+      # 150 min job timeout leaves 60 min for build/tests/artifacts and promotion.
+      # Read the commit: changesets/action can leave an uncommitted version bump.
+      - name: Await published tarballs (#6514)
         if: ${{ inputs.dry_run != true }}
-        run: pnpm exec tsx scripts/await-published-tarball.ts
+        shell: bash
+        run: |
+          set -euo pipefail
+          agents_version=$(git show "$GITHUB_SHA:packages/nexus-agents/package.json" | jq -r '.version')
+          memory_version=$(git show "$GITHUB_SHA:packages/nexus-memory/package.json" | jq -r '.version')
+          pnpm exec tsx scripts/await-published-tarball.ts --package nexus-agents --version "$agents_version" &
+          agents_wait=$!
+          pnpm exec tsx scripts/await-published-tarball.ts --package nexus-memory --version "$memory_version" &
+          memory_wait=$!
+          status=0
+          wait "$agents_wait" || status=1
+          wait "$memory_wait" || status=1
+          exit "$status"
+
+      - name: Promote published packages to latest (#6514)
+        if: ${{ inputs.dry_run != true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pkg in nexus-memory nexus-agents; do
+            version=$(git show "$GITHUB_SHA:packages/$pkg/package.json" | jq -r '.version')
+            pnpm exec tsx scripts/promote-published-package.ts "$pkg" "$version"
+          done

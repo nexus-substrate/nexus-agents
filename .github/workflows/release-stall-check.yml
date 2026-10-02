@@ -26,6 +26,9 @@ name: Release Stall Check
 # 30-minute floor is the binding bound (~10x the max). Ages come from the commit
 # that last touched the file, which is why the checkout below is full-depth: a
 # shallow clone reports HEAD's time for every file and the script refuses it.
+# Active Release runs on main suppress the verdict too (#6514): a publish may
+# hold release.yml's concurrency group through its 90-minute tarball wait
+# (150-minute job limit), delaying the next version PR beyond the grace period.
 
 on:
   schedule:
@@ -47,6 +50,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      # Read active Release runs without changing workflow or registry state.
+      actions: read
       # Needed only to file/update the tracking issue.
       issues: write
     steps:
@@ -72,6 +77,7 @@ jobs:
         continue-on-error: true
         env:
           HAS_OPEN_VERSION_PR: ${{ steps.version-pr.outputs.has_open }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm exec tsx scripts/check-release-stuck.ts
 
       - name: File or update the tracking issue
