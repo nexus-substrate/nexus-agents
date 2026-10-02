@@ -4,7 +4,11 @@ import { isAbsolute } from 'node:path';
 import { computeVoteRecordHash, hashProposal, type VoteRecord } from '../../audit/vote-record.js';
 import { readVoteRecords, MAX_PROPOSAL_RECORD_CHARS } from '../../audit/vote-record-store.js';
 import { RemediationSoakRecordSchema } from './improvement-remediation-shadow.js';
-import { buildRemediationPanelProposal } from './remediation-review-proposal.js';
+import {
+  buildRemediationPanelProposal,
+  isRemediationPanelEligible,
+  INELIGIBLE_REMEDIATION_PANEL_REASON,
+} from './remediation-review-proposal.js';
 import {
   currentRemediationJudgments,
   isOverriddenPanelRejection,
@@ -45,6 +49,8 @@ function persistedVotes(path: string | undefined): PersistedVotes {
 
 /** Both the full proposal hash and the stored (possibly clipped) text must bind this line. */
 function panelFailure(row: ReviewRecord, raw: string, ledger: PersistedVotes): string | undefined {
+  if (!isRemediationPanelEligible(RemediationSoakRecordSchema.parse(JSON.parse(raw))))
+    return INELIGIBLE_REMEDIATION_PANEL_REASON;
   if (ledger.failure !== undefined) return ledger.failure;
   const vote = ledger.votes.get(row.voteRecordId ?? '');
   if (vote === undefined) return `record id not found: ${row.voteRecordId ?? '<absent>'}`;

@@ -20,6 +20,7 @@ import {
   evaluateOwnerSampleHistory,
   currentRemediationJudgments,
   ownerSampleIsFresh,
+  ownerSampleOverrideFailure,
   ownerSampleSignOff,
 } from './remediation-review-sample.js';
 import type { ReviewSample, RemediationReviewSampleStore } from './remediation-review-sample.js';
@@ -202,6 +203,7 @@ export interface RemediationReviewSummary {
   readonly sampleExists: boolean;
   readonly sampledSelections: number;
   readonly sampleFresh: boolean;
+  readonly sampleFreshnessReason?: string;
   readonly namedEvaluatorJudgments?: number;
   readonly evictedReviewRows: number;
   readonly unverifiablePanelRows: number;
@@ -260,7 +262,8 @@ export function summarizeRemediationReviews(
       disagreements,
     },
     ...history,
-    sampleFresh: ownerSampleIsFresh(sample, records),
+    sampleFresh: ownerSampleIsFresh(sample, records, summarySamples(sample, samples)),
+    ...sampleOverrideDetails(sample, summarySamples(sample, samples), records),
     evictedReviewRows: 0,
     unverifiablePanelRows: 0,
     rawPanelRows: records.filter((r) => r.judgeKind === 'panel').length,
@@ -332,6 +335,16 @@ function latestAttestation(
   };
 }
 
+/** Preserve raw overridden rejections when verified evidence drops superseded panels. */
+function sampleOverrideDetails(
+  sample: ReviewSample | undefined,
+  samples: readonly ReviewSample[],
+  records: readonly ReviewRecord[]
+): { sampleFresh?: false; sampleFreshnessReason?: string } {
+  const reason = ownerSampleOverrideFailure(sample, samples, records);
+  return reason === undefined ? {} : { sampleFresh: false, sampleFreshnessReason: reason };
+}
+
 /** Read + summarize the durable review evidence from disk (convenience for #3764). */
 export function readRemediationReviewSummary(
   store: RemediationReviewStore = getRemediationReviewStore(),
@@ -350,6 +363,7 @@ export function readRemediationReviewSummary(
       disagreements,
     },
     ...ownerHistory,
+    ...sampleOverrideDetails(history.at(-1), history, rawRecords),
     reviewStoreComplete: store.hydrationComplete ?? true,
     sampleStoreComplete: samples.hydrationComplete ?? true,
     rawPanelRows: rawRecords.filter((r) => r.judgeKind === 'panel').length,

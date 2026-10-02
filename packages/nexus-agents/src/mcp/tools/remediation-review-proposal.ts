@@ -1,6 +1,22 @@
 /** Independent panel evidence, with provenance bound to the exact stored soak line. */
-import { RemediationSoakRecordSchema } from './improvement-remediation-shadow.js';
+import {
+  RemediationSoakRecordSchema,
+  type RemediationSoakRecord,
+} from './improvement-remediation-shadow.js';
 import { hashSoakRecordLine } from './remediation-review.js';
+
+export const INELIGIBLE_REMEDIATION_PANEL_REASON =
+  'soak record lacks signal/plan content; panel judgment cannot cover the remediation';
+
+/** Panels need the signal artifact and actual remediation steps rendered by the allowlist. */
+export function isRemediationPanelEligible(record: RemediationSoakRecord): boolean {
+  return (
+    (record.signalTitle?.trim().length ?? 0) > 0 &&
+    (record.signalDescription?.trim().length ?? 0) > 0 &&
+    record.signalEvidence !== undefined &&
+    (record.planSteps?.length ?? 0) > 0
+  );
+}
 
 /**
  * Explicit allowlist: signalKey/timestamp identify the selection;

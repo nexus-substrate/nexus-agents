@@ -20,7 +20,10 @@
  * needs a subsequent owner confirmation in a recorded sample; a later dissent
  * in that sample revokes its confirmation. Sign-off copies preserve judgment time
  * and order, since attestation is not re-judgment. Such rejected
- * panels remain drawable for confirmation even after supersession.
+ * panels remain drawable for confirmation even after supersession. Every
+ * unconfirmed override is mandatory in addition to the n random current-panel
+ * refs; overrides never consume that quota. A draw missing a newly unconfirmed
+ * override is stale and must be redrawn to include it.
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -42,6 +45,9 @@ export const ReviewSampleSchema = z
     owner: z.string().trim().min(1),
     sampledAt: z.string(),
     refs: z.array(z.string()),
+    /** Present on new draws; legacy draws remain readable. */
+    randomRefs: z.array(z.string()).optional(),
+    mandatoryOverrideRefs: z.array(z.string()).optional(),
     panels: z.array(PanelSnapshotSchema),
   })
   .refine(
@@ -87,17 +93,24 @@ export function drawRemediationReviewSample(
   records: readonly ReviewRecord[],
   n: number,
   owner: string,
-  seed: string = randomBytes(32).toString('hex')
+  seed: string = randomBytes(32).toString('hex'),
+  samples: readonly ReviewSample[] = []
 ): ReviewSample {
   z.number().int().positive().parse(n);
   owner = z.string().trim().min(1).parse(owner);
   z.string().min(1).parse(seed);
   const current = currentRemediationJudgments(records);
   const candidates = [...current.values()].filter((r) => r.judgeKind === 'panel');
-  const overrides = overriddenPanelRejections(records, current);
-  for (const row of overrides) {
-    if (!candidates.some((candidate) => candidate.soakRef === row.soakRef)) candidates.push(row);
-  }
+  const unconfirmed = new Set(
+    evaluateOwnerSampleHistory(samples, records).unconfirmedPanelRejectionRefs
+  );
+  const overrides = [
+    ...new Map(
+      overriddenPanelRejections(records, current)
+        .filter((row) => unconfirmed.has(row.soakRef))
+        .map((row) => [row.soakRef, row])
+    ).values(),
+  ];
   const rank = (ref: string): string =>
     createHash('sha256')
       .update(JSON.stringify([seed, ref]))
@@ -105,13 +118,17 @@ export function drawRemediationReviewSample(
   candidates.sort(
     (a, b) => rank(a.soakRef).localeCompare(rank(b.soakRef)) || a.soakRef.localeCompare(b.soakRef)
   );
-  const panels = candidates.slice(0, n).map((r) => PanelSnapshotSchema.parse(r));
+  overrides.sort((a, b) => a.soakRef.localeCompare(b.soakRef));
+  const random = candidates.slice(0, n);
+  const panels = [...random, ...overrides].map((r) => PanelSnapshotSchema.parse(r));
   return {
     id: randomUUID(),
     seed,
     owner,
     sampledAt: new Date().toISOString(),
     refs: panels.map((p) => p.soakRef),
+    randomRefs: random.map((row) => row.soakRef),
+    mandatoryOverrideRefs: overrides.map((row) => row.soakRef),
     panels,
   };
 }
@@ -237,6 +254,7 @@ export interface OwnerSampleHistory {
   readonly mootOwnerDisagreements: number;
   readonly overriddenPanelRejections: number;
   readonly unconfirmedPanelRejections: number;
+  readonly unconfirmedPanelRejectionRefs: readonly string[];
 }
 
 /** Derive disagreement and override evidence from raw history, never the filtered panel set. */
@@ -272,14 +290,36 @@ export function evaluateOwnerSampleHistory(
     mootOwnerDisagreements: refs.filter((ref) => current.get(ref)?.judgeKind !== 'panel').length,
     overriddenPanelRejections: overrides.length,
     unconfirmedPanelRejections: overrides.filter((row) => !confirmedRefs.has(row.soakRef)).length,
+    unconfirmedPanelRejectionRefs: [
+      ...new Set(
+        overrides.filter((row) => !confirmedRefs.has(row.soakRef)).map((row) => row.soakRef)
+      ),
+    ],
   };
+}
+
+/** A recorded draw cannot cover an unconfirmed override it never included. */
+export function ownerSampleOverrideFailure(
+  sample: ReviewSample | undefined,
+  samples: readonly ReviewSample[],
+  records: readonly ReviewRecord[]
+): string | undefined {
+  if (sample === undefined) return undefined;
+  const missing = evaluateOwnerSampleHistory(samples, records).unconfirmedPanelRejectionRefs.filter(
+    (ref) => !sample.refs.includes(ref)
+  );
+  return missing.length === 0
+    ? undefined
+    : `stale owner sample — unconfirmed human override absent from draw: ${missing.join(', ')}`;
 }
 
 /** Strict freshness applies only to current panels; absence is handled as n/a by readiness. */
 export function ownerSampleIsFresh(
   sample: ReviewSample | undefined,
-  records: readonly ReviewRecord[]
+  records: readonly ReviewRecord[],
+  samples: readonly ReviewSample[] = []
 ): boolean {
+  if (ownerSampleOverrideFailure(sample, samples, records) !== undefined) return false;
   const panels = [...currentRemediationJudgments(records).values()].filter(
     (row) => row.judgeKind === 'panel'
   );

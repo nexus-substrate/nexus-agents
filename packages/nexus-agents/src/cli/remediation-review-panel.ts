@@ -10,8 +10,13 @@ import { recordAuthenticVote } from '../mcp/tools/consensus-vote-recording.js';
 import {
   getRemediationSoakFile,
   RemediationSoakRecordSchema,
+  type RemediationSoakRecord,
 } from '../mcp/tools/improvement-remediation-shadow.js';
-import { buildRemediationPanelProposal } from '../mcp/tools/remediation-review-proposal.js';
+import {
+  buildRemediationPanelProposal,
+  isRemediationPanelEligible,
+  INELIGIBLE_REMEDIATION_PANEL_REASON,
+} from '../mcp/tools/remediation-review-proposal.js';
 import {
   drawRemediationReviewSample,
   getRemediationReviewSampleStore,
@@ -20,6 +25,7 @@ import {
   pendingSoakSelections,
   readRemediationReviewRecords,
   soakRefOf,
+  type ReviewSample,
 } from '../mcp/tools/remediation-review.js';
 
 /** Reject missing, fractional or nonpositive batch/sample limits. */
@@ -34,7 +40,7 @@ interface SoakSnapshot {
   readonly path: string;
   readonly raw: string;
   readonly lines: Map<string, string>;
-  readonly soak: Map<string, { signalKey: string; timestamp: string }>;
+  readonly soak: Map<string, RemediationSoakRecord>;
   readonly malformedSoakLines: number;
   readonly duplicateSoakRefs: readonly string[];
 }
@@ -43,7 +49,7 @@ function soakSnapshot(): SoakSnapshot {
   const path = getRemediationSoakFile();
   const raw = existsSync(path) ? readFileSync(path, 'utf8') : '';
   const lines = new Map<string, string>();
-  const soak = new Map<string, { signalKey: string; timestamp: string }>();
+  const soak = new Map<string, RemediationSoakRecord>();
   const duplicates = new Set<string>();
   let malformedSoakLines = 0;
   for (const line of raw.split('\n')) {
@@ -126,7 +132,9 @@ export async function runPanelJudge(args: ParsedCliArgs): Promise<void> {
   const snapshot = soakSnapshot();
   const { lines, malformedSoakLines, duplicateSoakRefs } = snapshot;
   const reviews = readRemediationReviewRecords(undefined, snapshot.raw.split('\n'), snapshot.lines);
-  const pending = pendingSoakSelections([...snapshot.soak.values()], reviews).slice(0, batch);
+  const eligible = [...snapshot.soak.values()].filter(isRemediationPanelEligible);
+  const ineligibleSoakRecords = snapshot.soak.size - eligible.length;
+  const pending = pendingSoakSelections(eligible, reviews).slice(0, batch);
   const failures: { soakRef: string; error: string }[] = [];
   let judged = 0;
   // Empty pending set is explicitly zero judgments, with no engine or persistence calls.
@@ -142,13 +150,15 @@ export async function runPanelJudge(args: ParsedCliArgs): Promise<void> {
     judged,
     attempted: pending.length,
     malformedSoakLines,
+    ineligibleSoakRecords,
+    ineligibleReason: INELIGIBLE_REMEDIATION_PANEL_REASON,
     duplicateSoakRefs,
     failures,
   };
   process.stdout.write(
     args.options.format === 'json'
       ? `${JSON.stringify(result, null, 2)}\n`
-      : `${String(judged)} panel judgment(s) recorded of ${String(pending.length)} attempted\n${String(malformedSoakLines)} malformed soak line(s) skipped\n${duplicateSoakRefs.map((ref) => `${ref}: duplicate soak ref skipped\n`).join('')}${failures.map((f) => `${f.soakRef}: ${f.error}\n`).join('')}`
+      : `${String(judged)} panel judgment(s) recorded of ${String(pending.length)} attempted\n${String(malformedSoakLines)} malformed soak line(s) skipped\n${String(ineligibleSoakRecords)} ineligible soak record(s) skipped: ${INELIGIBLE_REMEDIATION_PANEL_REASON}\n${duplicateSoakRefs.map((ref) => `${ref}: duplicate soak ref skipped\n`).join('')}${failures.map((f) => `${f.soakRef}: ${f.error}\n`).join('')}`
   );
 }
 
@@ -162,7 +172,8 @@ export function runSample(args: ParsedCliArgs): void {
     readRemediationReviewRecords(undefined, undefined, undefined, true),
     n,
     owner,
-    args.options.seed
+    args.options.seed,
+    getRemediationReviewSampleStore().getRecords()
   );
   if (sample.refs.length === 0) throw new Error('No panel-judged refs to sample');
   if (!getRemediationReviewSampleStore().record(sample))
@@ -170,6 +181,11 @@ export function runSample(args: ParsedCliArgs): void {
   process.stdout.write(
     args.options.format === 'json'
       ? `${JSON.stringify({ sample }, null, 2)}\n`
-      : `Sample ${sample.id} (${String(sample.refs.length)} refs; seed ${sample.seed}):\n${sample.refs.map((ref) => `  ${ref}`).join('\n')}\n`
+      : `${sampleDescription(sample)}\n${sample.refs.map((ref) => `  ${ref}`).join('\n')}\n`
   );
+}
+
+/** Describe the random quota separately from mandatory override confirmations. */
+function sampleDescription(sample: ReviewSample): string {
+  return `Sample ${sample.id} (${String(sample.refs.length)} refs; ${String(sample.randomRefs?.length ?? 0)} random refs plus ${String(sample.mandatoryOverrideRefs?.length ?? 0)} mandatory unconfirmed overrides; seed ${sample.seed}):`;
 }

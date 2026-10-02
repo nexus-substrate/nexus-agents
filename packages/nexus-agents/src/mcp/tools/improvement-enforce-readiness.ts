@@ -96,6 +96,8 @@ export interface EnforceReadinessEvidence {
   readonly sampleExists?: boolean;
   /** True only when the sample was drawn strictly after the latest current panel judgment. */
   readonly sampleFresh?: boolean;
+  /** Named cause when an override is missing from the active draw. */
+  readonly sampleFreshnessReason?: string;
   /** Total refs in the active sample, so partial coverage cannot certify agreement. */
   readonly sampledSelections?: number;
   /** Reviews excluded because their bound soak line was evicted from the current store. */
@@ -208,7 +210,7 @@ function ownerAgreementFailure(evidence: EnforceReadinessEvidence): string | und
   if (evidence.rawPanelRows === undefined || evidence.rawOwnerSampleRows === undefined) {
     return 'unmeasured raw review-store applicability';
   }
-  return overrideConfirmationFailure(evidence);
+  return evidence.sampleFreshnessReason ?? overrideConfirmationFailure(evidence);
 }
 
 function overrideConfirmationFailure(evidence: EnforceReadinessEvidence): string | undefined {

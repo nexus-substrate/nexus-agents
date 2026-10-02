@@ -37,6 +37,10 @@ function seedSoak(index = 0): string {
     category: 'routing' as const,
     priority: 'p2' as const,
     severity: 'warning' as const,
+    signalTitle: 'Missing regression coverage',
+    signalDescription: 'The owner review flow lacks a regression test.',
+    signalEvidence: { samples: 5, observedValue: 0, threshold: 1 },
+    planSteps: [{ kind: 'add-test' as const, description: 'Cover owner review readiness' }],
     planStepCount: 3,
     reason: 'higher_order: approved (100%)',
     dryRunResult: 'higher_order: approved (100%): earlier panel approved',
@@ -164,6 +168,10 @@ describe('remediation batch panel', () => {
       priority: 'p2',
       severity: 'warning',
       planStepCount: 3,
+      signalTitle: 'Missing regression coverage',
+      signalDescription: 'The owner review flow lacks a regression test.',
+      signalEvidence: { samples: 5, observedValue: 0, threshold: 1 },
+      planSteps: [{ kind: 'add-test', description: 'Cover owner review readiness' }],
     });
     expect(recordAuthenticVote.mock.calls[0]?.[0]?.proposal).toBe(proposal);
     expect(reviews()[0]).toHaveProperty(
@@ -204,6 +212,33 @@ describe('remediation batch panel', () => {
     output = '';
     await command('panel-judge', '--batch', '3');
     expect(output).toContain('2 malformed soak line(s) skipped');
+  });
+
+  it('skips ineligible records before the batch limit and reports why in JSON and text', async () => {
+    seedSoak(0);
+    const legacy = JSON.parse(readFileSync(getRemediationSoakFile(), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    delete legacy['planSteps'];
+    writeFileSync(getRemediationSoakFile(), JSON.stringify(legacy) + '\n');
+    const eligibleRef = seedSoak(1);
+    await command('panel-judge', '--batch', '1', '--format', 'json');
+    expect(JSON.parse(output)).toMatchObject({
+      judged: 1,
+      attempted: 1,
+      ineligibleSoakRecords: 1,
+      ineligibleReason:
+        'soak record lacks signal/plan content; panel judgment cannot cover the remediation',
+    });
+    expect(reviews().map((row) => row.soakRef)).toEqual([eligibleRef]);
+    expect(executeVoting).toHaveBeenCalledTimes(1);
+    output = '';
+    await command('panel-judge', '--batch', '1');
+    expect(output).toContain(
+      '1 ineligible soak record(s) skipped: soak record lacks signal/plan content'
+    );
+    expect(executeVoting).toHaveBeenCalledTimes(1);
   });
 
   it('pins the persisted ledger while judging in repo cwd and verifies from a different cwd', async () => {
@@ -383,9 +418,13 @@ describe('remediation batch panel', () => {
       '1 panel rejections overridden by human; 1 without owner confirmation'
     );
     output = '';
+    await command('sample', '--n', '1', '--owner', 'owner');
+    expect(output).toContain('0 random refs plus 1 mandatory unconfirmed overrides');
+    output = '';
     await command('sample', '--n', '1', '--owner', 'owner', '--format', 'json');
     const { sample } = JSON.parse(output) as { sample: { id: string; refs: string[] } };
     expect(sample.refs).toEqual([ref]);
+    expect(sample).toMatchObject({ randomRefs: [], mandatoryOverrideRefs: [ref] });
     await command('mark', ref, '--sample', sample.id, '--evaluator', 'owner', '--sound');
     output = '';
     await command('readiness', '--format', 'json');

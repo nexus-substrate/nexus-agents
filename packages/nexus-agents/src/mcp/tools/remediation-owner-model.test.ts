@@ -1,13 +1,20 @@
 /** End-to-end matrix for the owner-sample model, including persisted panel verification. */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { dirname, join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { runPanelJudge } from '../../cli/remediation-review-panel.js';
+import { parseCliArgs } from '../../cli.js';
+
+const { executeVoting } = vi.hoisted(() => ({ executeVoting: vi.fn() }));
+vi.mock('./consensus-vote.js', () => ({ executeVoting }));
 import { buildVoteRecord } from '../../audit/vote-record-store.js';
 import { buildRemediationPanelProposal } from './remediation-review-proposal.js';
 import {
   RemediationSoakRecordSchema,
   summarizeRemediationSoak,
+  getRemediationSoakFile,
+  type RemediationSoakRecord,
 } from './improvement-remediation-shadow.js';
 import {
   hashSoakRecordLine,
@@ -216,17 +223,27 @@ const matrix: readonly MatrixRow[] = [
   },
 ];
 
-function fixture(dir: string, rejected: boolean): { panel: ReviewRecord; raw: string } {
+function fixture(
+  dir: string,
+  rejected: boolean,
+  content: Partial<RemediationSoakRecord> = {},
+  index = 0
+): { panel: ReviewRecord; raw: string } {
   const raw = JSON.stringify(
     RemediationSoakRecordSchema.parse({
-      signalKey: 'testing:coverage',
+      signalKey: index === 0 ? 'testing:coverage' : `testing:coverage:${String(index)}`,
       timestamp: time(0),
       category: 'testing',
       priority: 'p2',
       severity: 'warning',
+      signalTitle: 'Missing regression coverage',
+      signalDescription: 'The owner review flow lacks a regression test.',
+      signalEvidence: { samples: 5, observedValue: 0, threshold: 1 },
+      planSteps: [{ kind: 'add-test', description: 'Cover owner review readiness' }],
       planStepCount: 1,
       reason: 'review matrix',
       voteOutcome: { approved: true, approvalPercentage: 100 },
+      ...content,
     })
   );
   const proposal = buildRemediationPanelProposal(raw);
@@ -263,7 +280,7 @@ function fixture(dir: string, rejected: boolean): { panel: ReviewRecord; raw: st
       durationMs: 10,
     },
   });
-  const path = join(dir, 'votes.jsonl');
+  const path = join(dir, `votes-${String(index)}.jsonl`);
   writeFileSync(path, JSON.stringify(vote) + '\n');
   return {
     raw,
@@ -427,4 +444,287 @@ it('preserves tied judgment order through verification of a sign-off copy', () =
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+const lacksContent =
+  'soak record lacks signal/plan content; panel judgment cannot cover the remediation';
+const staleOverride = 'stale owner sample — unconfirmed human override absent from draw';
+interface RoundSixMatrixRow {
+  name: string;
+  mode: 'overrides' | 'late' | 'redraw' | 'skip' | 'legacy' | 'probe' | 'complete-probe' | 'human';
+  ready: boolean;
+  content?: Partial<RemediationSoakRecord>;
+}
+const roundSixMatrix: readonly RoundSixMatrixRow[] = [
+  {
+    name: 'n=1 plus two overrides among five candidates reaches READY',
+    mode: 'overrides',
+    ready: true,
+  },
+  {
+    name: 'override created after draw makes sample stale with named cause',
+    mode: 'late',
+    ready: false,
+  },
+  { name: 'redraw includes later override and reaches READY', mode: 'redraw', ready: true },
+  { name: 'legacy record without planSteps is skipped by panel-judge', mode: 'skip', ready: false },
+  { name: 'pre-existing panel on legacy record is unverifiable', mode: 'legacy', ready: false },
+  {
+    name: '100 accepted panels plus 10 signed metadata-only sample judgments is NOT READY',
+    mode: 'probe',
+    ready: false,
+  },
+  {
+    name: 'empty plan cannot be panel evidence',
+    mode: 'legacy',
+    ready: false,
+    content: { planSteps: [] },
+  },
+  {
+    name: 'missing signal title cannot be panel evidence',
+    mode: 'legacy',
+    ready: false,
+    content: { signalTitle: undefined },
+  },
+  {
+    name: 'missing signal description cannot be panel evidence',
+    mode: 'legacy',
+    ready: false,
+    content: { signalDescription: undefined },
+  },
+  {
+    name: 'missing signal evidence cannot be panel evidence',
+    mode: 'legacy',
+    ready: false,
+    content: { signalEvidence: undefined },
+  },
+  {
+    name: 'blank signal description cannot be panel evidence',
+    mode: 'legacy',
+    ready: false,
+    content: { signalDescription: '  ' },
+  },
+  {
+    name: '100 complete panels plus 10 signed sample judgments reaches READY',
+    mode: 'complete-probe',
+    ready: true,
+  },
+  { name: 'human marks remain allowed on metadata-only records', mode: 'human', ready: true },
+];
+
+interface ModelReport {
+  summary: ReturnType<typeof readRemediationReviewSummary>;
+  verdict: ReturnType<typeof evaluateEnforceReadiness>;
+}
+function reportModel(
+  records: ReviewRecord[],
+  samples: ReviewSample[],
+  lines: string[],
+  defaults = false
+): ModelReport {
+  const summary = readRemediationReviewSummary(
+    { getRecords: () => records, record: () => false },
+    { getRecords: () => samples, record: () => false },
+    lines
+  );
+  const evidence = buildEnforceReadinessEvidence(
+    summarizeRemediationSoak(
+      lines.map((raw) => RemediationSoakRecordSchema.parse(JSON.parse(raw)))
+    ),
+    summary
+  );
+  const verdict = evaluateEnforceReadiness(
+    evidence,
+    defaults
+      ? DEFAULT_ENFORCE_READINESS_CONFIG
+      : {
+          ...DEFAULT_ENFORCE_READINESS_CONFIG,
+          minShadowSelections: 1,
+          minJudgedRate: 1,
+          minOwnerSample: 1,
+        }
+  );
+  return { summary, verdict };
+}
+
+function confirmDraw(sample: ReviewSample, records: ReviewRecord[]): void {
+  for (const soakRef of sample.refs) {
+    records.push({
+      judgeKind: 'owner-sample',
+      sampleId: sample.id,
+      soakRef,
+      reviewedAt: time(6),
+      reviewed: true,
+      sound: true,
+      evaluator: sample.owner,
+      owner: sample.owner,
+      ownerSignedOff: true,
+    });
+  }
+}
+
+function overrideRow(panel: ReviewRecord, hour: number): ReviewRecord {
+  return { ...panel, judgeKind: 'human', sound: true, reviewedAt: time(hour), evaluator: 'Human' };
+}
+
+function overrideModel(
+  dir: string,
+  mode: 'overrides' | 'late' | 'redraw'
+): ReturnType<typeof evaluateEnforceReadiness> {
+  const artifacts = Array.from({ length: 5 }, (_, index) => fixture(dir, index < 2, {}, index));
+  const records = artifacts.map(({ panel }) => panel);
+  const overrides = artifacts.slice(0, 2).map(({ panel }) => overrideRow(panel, 3));
+  records.push(...(mode === 'overrides' ? overrides : overrides.slice(0, 1)));
+  let sample = { ...drawRemediationReviewSample(records, 1, 'Owner', 'seed'), sampledAt: time(4) };
+  const samples = [sample];
+  if (mode !== 'overrides') {
+    const later = artifacts[1]!.panel;
+    expect(sample.refs).not.toContain(later.soakRef);
+    records.push(overrideRow(later, 5));
+  }
+  if (mode === 'redraw') {
+    sample = {
+      ...drawRemediationReviewSample(records, 1, 'Owner', 'redraw'),
+      sampledAt: '2026-10-01T05:30:00.000Z',
+    };
+    samples.push(sample);
+  }
+  confirmDraw(sample, records);
+  const report = reportModel(
+    records,
+    samples,
+    artifacts.map(({ raw }) => raw)
+  );
+  if (mode === 'late') {
+    expect(report.summary.sampleFresh).toBe(false);
+    expect(report.verdict.criteria.find((row) => row.name === 'owner-agreement')?.detail).toContain(
+      staleOverride
+    );
+    expect(report.verdict.criteria.find((row) => row.name === 'owner-agreement')?.detail).toContain(
+      artifacts[1]!.panel.soakRef
+    );
+  } else {
+    expect(sample.refs).toHaveLength(3); // One random current panel + two mandatory overrides.
+    for (const row of overrides) expect(sample.refs).toContain(row.soakRef);
+    expect(report.summary.unconfirmedPanelRejections).toBe(0);
+    expect(report.summary.sample).toEqual({ n: 3, disagreements: 0 });
+    const confirmedRedraw = drawRemediationReviewSample(records, 1, 'Owner', 'confirmed', samples);
+    expect(confirmedRedraw.mandatoryOverrideRefs).toEqual([]);
+    expect(confirmedRedraw.randomRefs).toHaveLength(1);
+    expect(confirmedRedraw.refs).toHaveLength(1);
+  }
+  return report.verdict;
+}
+
+async function skipLegacyModel(dir: string, raw: string): Promise<void> {
+  vi.stubEnv('NEXUS_DATA_DIR', dir);
+  let output = '';
+  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    output += String(chunk);
+    return true;
+  });
+  try {
+    mkdirSync(dirname(getRemediationSoakFile()), { recursive: true });
+    writeFileSync(getRemediationSoakFile(), raw + '\n');
+    executeVoting.mockClear();
+    await runPanelJudge(
+      parseCliArgs(['remediation-review', 'panel-judge', '--batch', '1', '--format', 'json'])
+    );
+    expect(JSON.parse(output)).toMatchObject({
+      judged: 0,
+      attempted: 0,
+      ineligibleSoakRecords: 1,
+      ineligibleReason: lacksContent,
+    });
+    expect(executeVoting).not.toHaveBeenCalled();
+  } finally {
+    stdout.mockRestore();
+    vi.unstubAllEnvs();
+  }
+}
+
+function matrixContent(row: RoundSixMatrixRow): Partial<RemediationSoakRecord> {
+  if (row.content !== undefined) return row.content;
+  switch (row.mode) {
+    case 'complete-probe':
+      return {};
+    case 'probe':
+    case 'human':
+      return {
+        signalTitle: undefined,
+        signalDescription: undefined,
+        signalEvidence: undefined,
+        planSteps: undefined,
+      };
+    default:
+      return { planSteps: undefined };
+  }
+}
+
+function expectLegacyReport(
+  row: RoundSixMatrixRow,
+  summary: ModelReport['summary'],
+  records: ReviewRecord[]
+): void {
+  const { mode } = row;
+  if (mode !== 'human' && mode !== 'complete-probe') {
+    expect(summary.panel.n).toBe(0);
+    expect(summary.unverifiablePanelRows).toBe(mode === 'probe' ? 100 : 1);
+    expect(summary.unverifiablePanelReasons?.join('; ')).toContain(lacksContent);
+  }
+  if (mode === 'probe' || mode === 'complete-probe') {
+    expect(
+      records.filter(
+        (record) => record.judgeKind === 'owner-sample' && record.ownerSignedOff === true
+      )
+    ).toHaveLength(10);
+    expect(summary.rawOwnerSampleRows).toBe(10);
+    expect(summary.sample.n).toBe(mode === 'probe' ? 0 : 10);
+  }
+}
+
+async function legacyModel(dir: string, row: RoundSixMatrixRow): Promise<ModelReport> {
+  const { mode } = row;
+  const usesDefaults = mode === 'probe' || mode === 'complete-probe';
+  const artifacts = Array.from({ length: usesDefaults ? 100 : 1 }, (_, index) =>
+    fixture(dir, false, matrixContent(row), index)
+  );
+  const records = artifacts.map(({ panel }) => panel);
+  if (mode === 'skip') await skipLegacyModel(dir, artifacts[0]!.raw);
+  if (mode === 'human')
+    records[0] = { ...overrideRow(records[0]!, 3), owner: 'Owner', ownerSignedOff: true };
+  const sample = {
+    ...drawRemediationReviewSample(records, 10, 'Owner', 'seed'),
+    sampledAt: time(4),
+  };
+  const samples = sample.refs.length === 0 ? [] : [sample];
+  confirmDraw(sample, records);
+  const report = reportModel(
+    records,
+    samples,
+    artifacts.map(({ raw }) => raw),
+    usesDefaults
+  );
+  expectLegacyReport(row, report.summary, records);
+  if (mode !== 'human' && mode !== 'complete-probe')
+    expect(
+      report.verdict.criteria.find((criterion) => criterion.name === 'owner-agreement')?.detail
+    ).toContain(lacksContent);
+  return report;
+}
+
+describe('round 6 owner-model matrix', () => {
+  it.each(roundSixMatrix)('$name', async (row) => {
+    const { mode, ready } = row;
+    const dir = mkdtempSync(join(tmpdir(), 'owner-round-six-'));
+    try {
+      if (mode === 'overrides' || mode === 'late' || mode === 'redraw') {
+        expect(overrideModel(dir, mode).ready).toBe(ready);
+      } else {
+        expect((await legacyModel(dir, row)).verdict.ready).toBe(ready);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

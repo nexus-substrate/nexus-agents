@@ -45,6 +45,9 @@ export function buildEnforceReadinessEvidence(
     sample: reviews.sample,
     sampleExists: reviews.sampleExists,
     sampleFresh: reviews.sampleFresh,
+    ...(reviews.sampleFreshnessReason !== undefined
+      ? { sampleFreshnessReason: reviews.sampleFreshnessReason }
+      : {}),
     ...(reviews.namedEvaluatorJudgments !== undefined
       ? { namedEvaluatorJudgments: reviews.namedEvaluatorJudgments }
       : {}),
