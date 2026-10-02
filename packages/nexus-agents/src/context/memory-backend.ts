@@ -40,9 +40,6 @@ import {
 export {
   type HybridMemoryConfig,
   type IContextMemoryBackend,
-  // Deprecated alias, re-exported so the context barrel keeps it (#5142).
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- re-exporting the alias IS the deprecation path (#5142); consumers keep the old name for one major
-  type IMemoryBackend,
   type ISQLiteDatabase,
   type ISQLiteStatement,
   type MemoryEntry,

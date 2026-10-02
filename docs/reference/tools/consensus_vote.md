@@ -25,7 +25,7 @@ Execute multi-model consensus voting on a proposal. Uses 7 roles by default (or 
 | `quickMode` | boolean | no | default false | Use 3 agents instead of the full 7-role panel for faster execution |
 | `simulateVotes` | boolean | no | default false | TESTS ONLY — when true, voters return random decisions. Output must not be used for real decisions. (#2319) |
 | `dispatch` | enum | no | one of: sync \| async | Async dispatch (#4968). 'sync' (default): run inline and return the result. 'async': return { status: 'pending', jobId } immediately and run in the background; poll get_job_result({ jobId }). |
-| `mode` | enum | no | one of: sync \| async | DEPRECATED alias of `dispatch` (removed in the next major, #6225). Send `dispatch` instead; a call that sends only `mode` still works and returns a deprecation warning. |
+| `mode` | never | no | — | Not an input of this tool. The async switch is `dispatch`; `mode: 'async'` is rejected (#4968). |
 | `idempotencyKey` | string | no | minLength 1; maxLength 256 | Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId. |
 | `ratifies` | string | no | minLength 1; maxLength 256 | Authority-tier ratification subject (#4004) — the loop/strategy id this vote ratifies for an authority-ladder promotion. Bound into the authentic vote record so the promotion gate can verify it. Omit for ordinary votes. |
 | `ratifiesPr` | object | no | — | Governor-path PR ratification binding (#5130): pr is the PR number and headSha the full 40-hex head sha the panel reviewed. Bound into the authentic vote record so the committed ledger and the governor gate can verify which PR, at which head, this panel ratified. Omit for ordinary votes. |

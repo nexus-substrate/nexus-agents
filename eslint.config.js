@@ -200,8 +200,7 @@ export default defineConfig([
       'no-restricted-syntax': [
         'error',
         {
-          selector:
-            "ImportExpression[source.value=/cli-adapters\\u002F(factory|index)\\.js$/]",
+          selector: 'ImportExpression[source.value=/cli-adapters\\u002F(factory|index)\\.js$/]',
           message:
             'Dynamic import of cli-adapters/factory or /index is restricted for the same reason as the static form (#5191, #5313). Router construction is exempt — add the file to router-construction-operation-5191.',
         },
@@ -237,38 +236,6 @@ export default defineConfig([
     // `no-restricted-imports`. Exempting only the latter would have left a
     // ratified-legitimate call site failing lint (#5313).
     rules: { 'no-restricted-imports': 'off', 'no-restricted-syntax': 'off' },
-  },
-
-  // #5142: `IMemoryBackend` is a @deprecated alias of `IContextMemoryBackend`
-  // kept on the public surface for one major. Internal code must use the new
-  // name, or the ambiguity the rename removed (nexus-memory exports an
-  // unrelated `IMemoryBackend`) creeps back one import at a time. The two
-  // barrels that RE-EXPORT the alias are exports, not uses, and are ignored —
-  // same reasoning as the createAllAdapters rule above.
-  {
-    name: 'nexus-agents/deprecated-imemorybackend-alias-5142',
-    files: ['packages/nexus-agents/src/**/*.ts'],
-    ignores: [
-      'packages/nexus-agents/src/context/memory-backend-types.ts',
-      'packages/nexus-agents/src/context/index.ts',
-      'packages/nexus-agents/src/exports/benchmarks.ts',
-      '**/*.test.ts',
-    ],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['**/context/memory-backend-types', '**/context/memory-backend-types.js', '**/context', '**/context/index', '**/context/index.js'],
-              importNames: ['IMemoryBackend'],
-              message:
-                '`IMemoryBackend` (this package) is a deprecated alias of `IContextMemoryBackend` (#5142); nexus-memory exports an unrelated `IMemoryBackend`. Import `IContextMemoryBackend`.',
-            },
-          ],
-        },
-      ],
-    },
   },
 
   // #6000 step 2: a verdict site under consensus/, cli/ or mcp/tools/ reaches

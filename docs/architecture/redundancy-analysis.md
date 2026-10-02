@@ -107,12 +107,12 @@ CONSOLIDATE INTO:
 
 ### 2.3 Overlapping Persistence (4 systems)
 
-| System              | Location                      | Storage            |
-| ------------------- | ----------------------------- | ------------------ |
-| AgentMemoryState    | `agents/memory-operations.ts` | IMemoryBackend     |
-| SessionMemory       | `context/session-memory.ts`   | YAML files         |
-| HybridMemoryBackend | `context/memory-backend.ts`   | SQLite + FTS5      |
-| TypedMemory         | `context/typed-memory.ts`     | 6 separate modules |
+| System              | Location                      | Storage               |
+| ------------------- | ----------------------------- | --------------------- |
+| AgentMemoryState    | `agents/memory-operations.ts` | IContextMemoryBackend |
+| SessionMemory       | `context/session-memory.ts`   | YAML files            |
+| HybridMemoryBackend | `context/memory-backend.ts`   | SQLite + FTS5         |
+| TypedMemory         | `context/typed-memory.ts`     | 6 separate modules    |
 
 The `Task Persistence` row named `agents/base-agent-memory-helpers.ts`, removed
 in #5325. It had no importer outside its own test: the live chain runs through

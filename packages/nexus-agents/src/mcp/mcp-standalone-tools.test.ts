@@ -314,10 +314,11 @@ describe('MCP Standalone Tools Integration', () => {
   };
 
   function offersAsyncMode(tool: { inputSchema?: unknown }): boolean {
-    const mode = (
+    // #6225 (9.0): `dispatch` is the only async switch; the `mode` alias is gone.
+    const dispatch = (
       tool.inputSchema as { properties?: Record<string, { enum?: unknown[] }> } | undefined
-    )?.properties?.['mode'];
-    return mode?.enum?.includes('async') === true;
+    )?.properties?.['dispatch'];
+    return dispatch?.enum?.includes('async') === true;
   }
 
   it('async dispatch satisfies each tool outputSchema (#5066)', async () => {
@@ -335,7 +336,7 @@ describe('MCP Standalone Tools Integration', () => {
       try {
         result = await ctx.client.callTool({
           name,
-          arguments: { ...ASYNC_ARGS[name], mode: 'async' },
+          arguments: { ...ASYNC_ARGS[name], dispatch: 'async' },
         });
       } catch (error: unknown) {
         thrown = error instanceof Error ? error.message : JSON.stringify(error);
@@ -359,7 +360,7 @@ describe('MCP Standalone Tools Integration', () => {
     try {
       result = await ctx.client.callTool({
         name: 'consensus_vote',
-        arguments: { proposal: 'round trip', quickMode: true, mode: 'async' },
+        arguments: { proposal: 'round trip', quickMode: true, dispatch: 'async' },
       });
     } catch (error: unknown) {
       thrown = error instanceof Error ? error.message : JSON.stringify(error);

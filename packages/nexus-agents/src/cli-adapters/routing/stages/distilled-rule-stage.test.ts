@@ -54,7 +54,6 @@ function makeRule(overrides: Partial<DistilledRule> = {}): DistilledRule {
     status: 'active',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    tainted: false,
     ...overrides,
   };
 }

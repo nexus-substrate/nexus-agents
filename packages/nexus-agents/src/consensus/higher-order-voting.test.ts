@@ -98,49 +98,33 @@ describe('Higher-Order Types', () => {
       expect(DEFAULT_HIGHER_ORDER_CONFIG.fallbackToSimpleVoting).toBe(true);
     });
 
-    it('accepts deprecated correlation lifetime knobs as inert no-ops', () => {
-      const minimumValues = {
-        correlationMaxAgeMs: 1,
-        observationDecayFactor: 0,
-      };
-      const maximumValues = {
-        correlationMaxAgeMs: Number.MAX_SAFE_INTEGER,
-        observationDecayFactor: 1,
-      };
+    it('exposes only active correlation configuration keys after 9.0 (#5564)', () => {
       const defaults = HigherOrderVotingConfigSchema.parse({});
-      const parsedMinimums = HigherOrderVotingConfigSchema.parse(minimumValues);
-      const parsedMaximums = HigherOrderVotingConfigSchema.parse(maximumValues);
-      const minimumTracker = createCorrelationTracker({
-        minObservationsForCorrelation: 1,
-        ...minimumValues,
-      });
-      const maximumTracker = createCorrelationTracker({
-        minObservationsForCorrelation: 1,
-        ...maximumValues,
-      });
+      const activeKeys = [
+        'minObservationsForCorrelation',
+        'correlationThreshold',
+        'independenceThreshold',
+        'fallbackToSimpleVoting',
+        'maxObservationsPerAgent',
+        'maxProposals',
+        'maxTrackedPairs',
+      ];
+      expect(Object.keys(defaults)).toEqual(activeKeys);
+      expect(Object.keys(DEFAULT_HIGHER_ORDER_CONFIG)).toEqual(activeKeys);
+      expect(Object.keys(HigherOrderVotingConfigSchema.shape)).toEqual(activeKeys);
+      expect(defaults).toEqual(DEFAULT_HIGHER_ORDER_CONFIG);
+    });
+
+    it('tracks lifetime correlation evidence using the active defaults', () => {
+      const tracker = createCorrelationTracker({ minObservationsForCorrelation: 1 });
       const votes = createVoteMap([
         ['alice', 'approve'],
         ['bob', 'approve'],
       ]);
-
-      minimumTracker.recordProposalVotes('proposal-1', votes, 'approved');
-      maximumTracker.recordProposalVotes('proposal-1', votes, 'approved');
-
-      const expectedDefaults = {
-        correlationMaxAgeMs: 86400000,
-        observationDecayFactor: 0.95,
-      };
-      expect(defaults).toMatchObject(expectedDefaults);
-      expect(DEFAULT_HIGHER_ORDER_CONFIG).toMatchObject(expectedDefaults);
-      expect(parsedMinimums).toMatchObject(minimumValues);
-      expect(parsedMaximums).toMatchObject(maximumValues);
-      expect(maximumTracker.hasSufficientData(['alice', 'bob'])).toBe(
-        minimumTracker.hasSufficientData(['alice', 'bob'])
-      );
-      expect(maximumTracker.computeCorrelationMatrix()).toEqual(
-        minimumTracker.computeCorrelationMatrix()
-      );
-      expect(maximumTracker.getStats()).toEqual(minimumTracker.getStats());
+      tracker.recordProposalVotes('proposal-1', votes, 'approved');
+      expect(tracker.hasSufficientData(['alice', 'bob'])).toBe(true);
+      expect(tracker.computeCorrelationMatrix().get(createAgentPairKey('alice', 'bob'))).toBe(1);
+      expect(tracker.getStats().totalObservations).toBe(2);
     });
   });
 });

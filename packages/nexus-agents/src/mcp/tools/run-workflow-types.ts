@@ -7,10 +7,7 @@
  */
 
 import { z } from 'zod';
-import {
-  DEPRECATED_MODE_ALIAS_INPUT,
-  refineDispatchModeAgreement,
-} from './async-dispatch-input.js';
+import { asyncDispatchInput } from './async-dispatch-input.js';
 import type { IWorkflowEngine, WorkflowBudgetOutcome } from '../../core/index.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import type { BaseMcpToolDeps } from './tool-result.js';
@@ -22,82 +19,75 @@ import type { BaseMcpToolDeps } from './tool-result.js';
 /**
  * Input schema for the run_workflow tool.
  */
-export const RunWorkflowInputSchema = z
-  .object({
-    template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
-    inputs: z.record(z.string(), z.unknown()).describe('Workflow inputs as key-value pairs'),
-    dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
-    /**
-     * Per-phase execution timeout in milliseconds (closes #3017). Wins over
-     * both `workflow.timeout` (set in the template YAML) and the engine's
-     * `defaultTimeoutMs`. Use for known-long workflow templates (e.g.,
-     * security-audit over a large repo) where the default phase budget
-     * isn't enough. Bounded to [1s, 30min] to prevent both flapping
-     * cancellations and unbounded hangs that would defeat the
-     * timeout-mismatch telemetry.
-     */
-    timeoutMs: z
-      .number()
-      .int()
-      .min(1000)
-      .max(1_800_000)
-      .optional()
-      .describe('Per-phase execution timeout in ms (overrides workflow.timeout)'),
-    /**
-     * Token ceiling for the whole run (#4754). Enforced only when
-     * `NEXUS_BUDGET_ENFORCE` is on AND this is set. Unlike run_pipeline there
-     * is no estimated fallback: the input-derived estimate (~1.2k tokens/step)
-     * sits far below real step spend (2.6k p25, 10k median), so it would fail
-     * ordinary workflows. Any uncapped run reports `budget.status: 'not_enforced'`
-     * when a ceiling was requested or the flag is on.
-     */
-    maxTokens: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe(
-        'Token ceiling for the whole run. The ONLY source of a run_workflow cap: enforced when NEXUS_BUDGET_ENFORCE is on and this is set (no estimated default). Checked before each phase and before each step is dispatched; steps already running are not halted.'
-      ),
-    /**
-     * Async-mode dispatch (#3044, Stage 3 of epic #2631). Default `sync` —
-     * backward-compat invariant; existing callers see no behavior change.
-     * `async` returns `{ status: 'pending', jobId }` immediately; caller
-     * polls `get_job_result(jobId)` for the structured payload. Sidesteps
-     * the MCP-SDK 60s client-request timeout that's the #2631 root cause
-     * (per #2703 telemetry: run_workflow was the gate-firing tool at
-     * 28.6% timeout-shaped errors).
-     *
-     * Per the #3041 vote's binding staging order this lands AFTER
-     * Stage 1's protocol (#3048) was validated on orchestrate. Concurrency
-     * cap is enforced in-process via NEXUS_JOB_MAX_CONCURRENT_RUN_WORKFLOW;
-     * over-cap returns `{ status: 'busy', retryAfterMs }` synchronously.
-     *
-     * The key is `dispatch` (#4968); `mode` is the deprecated alias this tool
-     * used to spell it with, resolved as `dispatch ?? mode` by the handler and
-     * rejected when the two disagree (the `superRefine` below). Both optional
-     * (no `.default()`) so the inferred type doesn't force a value onto every
-     * existing call site / test fixture; the handler treats `undefined` as
-     * `'sync'`.
-     */
-    ...DEPRECATED_MODE_ALIAS_INPUT,
-    /**
-     * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
-     * #2631). When set: identical (key, inputs) returns the existing job;
-     * same key with different inputs fails closed with
-     * `idempotency_key_collision`. Sync mode ignores this.
-     */
-    idempotencyKey: z
-      .string()
-      .min(1)
-      .max(256)
-      .optional()
-      .describe(
-        'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
-      ),
-    // #4968: `dispatch` and the deprecated `mode` alias must agree when both are sent.
-  })
-  .superRefine(refineDispatchModeAgreement);
+export const RunWorkflowInputSchema = z.object({
+  template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
+  inputs: z.record(z.string(), z.unknown()).describe('Workflow inputs as key-value pairs'),
+  dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
+  /**
+   * Per-phase execution timeout in milliseconds (closes #3017). Wins over
+   * both `workflow.timeout` (set in the template YAML) and the engine's
+   * `defaultTimeoutMs`. Use for known-long workflow templates (e.g.,
+   * security-audit over a large repo) where the default phase budget
+   * isn't enough. Bounded to [1s, 30min] to prevent both flapping
+   * cancellations and unbounded hangs that would defeat the
+   * timeout-mismatch telemetry.
+   */
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1000)
+    .max(1_800_000)
+    .optional()
+    .describe('Per-phase execution timeout in ms (overrides workflow.timeout)'),
+  /**
+   * Token ceiling for the whole run (#4754). Enforced only when
+   * `NEXUS_BUDGET_ENFORCE` is on AND this is set. Unlike run_pipeline there
+   * is no estimated fallback: the input-derived estimate (~1.2k tokens/step)
+   * sits far below real step spend (2.6k p25, 10k median), so it would fail
+   * ordinary workflows. Any uncapped run reports `budget.status: 'not_enforced'`
+   * when a ceiling was requested or the flag is on.
+   */
+  maxTokens: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'Token ceiling for the whole run. The ONLY source of a run_workflow cap: enforced when NEXUS_BUDGET_ENFORCE is on and this is set (no estimated default). Checked before each phase and before each step is dispatched; steps already running are not halted.'
+    ),
+  /**
+   * Async-mode dispatch (#3044, Stage 3 of epic #2631). Default `sync` —
+   * backward-compat invariant; existing callers see no behavior change.
+   * `async` returns `{ status: 'pending', jobId }` immediately; caller
+   * polls `get_job_result(jobId)` for the structured payload. Sidesteps
+   * the MCP-SDK 60s client-request timeout that's the #2631 root cause
+   * (per #2703 telemetry: run_workflow was the gate-firing tool at
+   * 28.6% timeout-shaped errors).
+   *
+   * Per the #3041 vote's binding staging order this lands AFTER
+   * Stage 1's protocol (#3048) was validated on orchestrate. Concurrency
+   * cap is enforced in-process via NEXUS_JOB_MAX_CONCURRENT_RUN_WORKFLOW;
+   * over-cap returns `{ status: 'busy', retryAfterMs }` synchronously.
+   *
+   * Use `dispatch`; the former `mode` alias is rejected (#6225). Omitted
+   * dispatch runs synchronously.
+   */
+  ...asyncDispatchInput(),
+  /**
+   * Idempotency key for async-mode replay-safety (#3042 Stage 1c / epic
+   * #2631). When set: identical (key, inputs) returns the existing job;
+   * same key with different inputs fails closed with
+   * `idempotency_key_collision`. Sync mode ignores this.
+   */
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'Replay-safe key for async-mode dispatch (#3042 Stage 1c). Same (key, inputs) returns existing jobId.'
+    ),
+});
 
 export type RunWorkflowInput = z.infer<typeof RunWorkflowInputSchema>;
 

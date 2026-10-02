@@ -74,9 +74,6 @@ export {
 
 export type {
   IContextMemoryBackend,
-  // Deprecated alias kept on the public surface for one major (#5142).
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- re-exporting the alias IS the deprecation path (#5142); consumers keep the old name for one major
-  IMemoryBackend,
   MemoryMetadata,
   MemoryEntry,
   HybridMemoryConfig,

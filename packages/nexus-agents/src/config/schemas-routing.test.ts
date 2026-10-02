@@ -412,6 +412,16 @@ describe('RoutingMemoryConfigSchema', () => {
 });
 
 describe('RoutingConfigSchema', () => {
+  it('omits the removed decision timeout from LinUCB config (#5963)', () => {
+    const result = RoutingConfigSchema.parse({ linucb: { alpha: 2.0, maxDecisionTimeMs: 100 } });
+    expect(result?.linucb).toEqual({ alpha: 2.0 });
+  });
+
+  it('defaults LinUCB config to exploration only (#5963)', () => {
+    expect(RoutingConfigSchema.parse({ linucb: {} })?.linucb).toEqual({ alpha: 1.0 });
+    expect(DEFAULT_ROUTING_CONFIG.linucb).toEqual({ alpha: 1.0 });
+  });
+
   it('accepts minimal config with defaults', () => {
     const result = RoutingConfigSchema.parse({});
     expect(result).toMatchObject({
@@ -438,7 +448,7 @@ describe('RoutingConfigSchema', () => {
       zeroRouter: { enableCalibration: false, verbose: true },
       latencyTracker: { windowSize: 50, decayFactor: 0.9 },
       routingMemory: { minObservations: 10, confidenceThreshold: 0.8 },
-      linucb: { alpha: 2.0, maxDecisionTimeMs: 100 },
+      linucb: { alpha: 2.0 },
       preference: { minDataPoints: 20 },
       latencyScoreWeight: 0.5,
     };
