@@ -312,7 +312,7 @@ ${VOTE_PROMPT_EXAMPLES}`;
  * Empty string when none are declared, so a proposal without options produces
  * a prompt byte-identical to the pre-#4472 one.
  */
-function buildOptionsBlock(options?: readonly string[]): string {
+export function buildOptionsBlock(options?: readonly string[]): string {
   if (options === undefined || options.length === 0) return '';
   const list = options.map((o) => `- ${o}`).join('\n');
   return `

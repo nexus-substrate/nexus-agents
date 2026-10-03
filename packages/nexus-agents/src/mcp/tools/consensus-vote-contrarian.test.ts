@@ -190,26 +190,66 @@ describe('maybeEscalateContrarian — escalation threshold (#1799)', () => {
     expect(revote).toHaveBeenCalledWith({ ...QUICK, quickMode: false }, logger, opts);
   });
 
-  it('keeps the original contrarian prompt when no workspace is supplied', async () => {
-    executeExpertMock.mockResolvedValue({ success: true, text: '{"decision":"approve"}' });
+  it.each([undefined, []])(
+    'keeps the original contrarian prompt with no declared options (%j) or workspace',
+    async (options) => {
+      executeExpertMock.mockResolvedValue({ success: true, text: '{"decision":"approve"}' });
 
-    await maybeEscalateContrarian(QUICK, 'approved', CTX, logger);
+      await maybeEscalateContrarian({ ...QUICK, options }, 'approved', CTX, logger);
 
-    expect(executeExpertMock.mock.calls[0]?.[1]).toBe(
-      [
-        'You are a contrarian analyst. Your job is to find reasons this proposal should be REJECTED.',
-        'Look for: YAGNI (not needed), MISALIGNED (wrong tech/architecture), SECURITY_RISK, SCOPE_CREEP.',
-        '',
-        'Proposal: ship it',
-        '',
-        'If you find a strong reason to reject, respond with JSON:',
-        '{"decision":"reject","confidence":0.0-1.0,"reasoning":"your concern"}',
-        'If the proposal is sound, respond with:',
-        '{"decision":"approve","confidence":0.0-1.0,"reasoning":"why it is acceptable"}',
-      ].join('\n')
-    );
-    expect(executeExpertMock.mock.calls[0]?.[2]).toEqual({ workDir: undefined });
-  });
+      expect(executeExpertMock.mock.calls[0]?.[1]).toBe(
+        [
+          'You are a contrarian analyst. Your job is to find reasons this proposal should be REJECTED.',
+          'Look for: YAGNI (not needed), MISALIGNED (wrong tech/architecture), SECURITY_RISK, SCOPE_CREEP.',
+          '',
+          'Proposal: ship it',
+          '',
+          'If you find a strong reason to reject, respond with JSON:',
+          '{"decision":"reject","confidence":0.0-1.0,"reasoning":"your concern"}',
+          'If the proposal is sound, respond with:',
+          '{"decision":"approve","confidence":0.0-1.0,"reasoning":"why it is acceptable"}',
+        ].join('\n')
+      );
+      expect(executeExpertMock.mock.calls[0]?.[2]).toEqual({ workDir: undefined });
+    }
+  );
+
+  it.each([false, true])(
+    'a quick vote shows every declared option in full (partial proposal: %s)',
+    async (partial) => {
+      const options = Array.from({ length: 10 }, (_, index) =>
+        `#${String(7000 + index)} ${'candidate details '.repeat(12)}`.slice(0, 200)
+      );
+      const proposal = partial
+        ? 'Pick one of the declared options. '.repeat(100) + 'UNSEEN_PROPOSAL_TAIL'
+        : 'Pick one of the declared options.';
+      executeExpertMock.mockResolvedValue({ success: true, text: '{"decision":"approve"}' });
+
+      const result = await executeVoting(
+        { ...QUICK, proposal, options, strategy: 'simple_majority' },
+        logger
+      );
+
+      expect(result.contrarianCheck).toBe('ok');
+      expect(executeExpertMock).toHaveBeenCalledTimes(1);
+      const prompt = executeExpertMock.mock.calls[0]?.[1];
+      for (const option of options) expect(prompt).toContain(`- ${option}\n`);
+      expect(prompt).toContain(
+        'OPTIONS — choose exactly ONE of these and name it verbatim in `selectedOption`:'
+      );
+      if (partial) {
+        expect(prompt).toContain('partial view');
+        expect(prompt).toContain(
+          `first 2000 of ${String(proposal.length)} characters of the proposal`
+        );
+        expect(prompt).toContain(`Proposal: ${proposal.slice(0, 2000)}\n`);
+        expect(prompt).not.toContain('UNSEEN_PROPOSAL_TAIL');
+      } else {
+        expect(prompt).toContain(`Proposal: ${proposal}\n`);
+        expect(prompt).not.toContain('partial view');
+      }
+    }
+  );
 
   it('a rejection below the threshold keeps the quick-mode result', async () => {
     executeExpertMock.mockResolvedValue({
