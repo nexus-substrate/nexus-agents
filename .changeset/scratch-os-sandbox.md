@@ -8,7 +8,7 @@ and shared Git config, index, objects and hooks are read-only. Writable paths ar
 the scratch, its own worktree Git metadata (including private objects), resolved
 package caches/stores and a private TMPDIR. Network remains available for installs.
 
-Unavailable bwrap or blocked user namespaces retain best-effort execution and
+Unavailable bwrap, blocked user namespaces, or a sandbox whose setup fails after a passing probe (for example an unresolvable package cache) retain best-effort execution and
 record the reason in `changes.isolation`. Only best-effort mode retains the known
 channel where a SIGTERM-ignoring install descendant can write the source during
 the kill grace period before the shared-config snapshot. Existing hermetic Git,
