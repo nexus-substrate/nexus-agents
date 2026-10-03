@@ -154,7 +154,11 @@ describe('dev pipeline scratch worktree', () => {
       expect.stringContaining('diff --git a/packages/nexus-agents/package.json')
     );
     expect(mocks.check).toHaveBeenCalledTimes(3);
-    expect(mocks.scan).toHaveBeenCalledWith(workspace, undefined, { env: hermeticGitEnv() });
+    // The scan is contained to the scratch it was bound to, not to cwd (#6794).
+    expect(mocks.scan).toHaveBeenCalledWith(workspace, undefined, {
+      env: hermeticGitEnv(),
+      root: workspace,
+    });
     expect(
       join(
         result.changes?.worktreePath ?? '',

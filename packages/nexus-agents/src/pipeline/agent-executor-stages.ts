@@ -434,8 +434,12 @@ export function createSecurityScanStage({
     const start = getTimeProvider().now();
     const target = config.scanTarget ?? process.cwd();
     await postProgress(config, 'Security', `Scanning ${target}...`);
+    // Bound to the pipeline's own scratch (#6794): it lives outside cwd by
+    // design, so the scan is contained to the scratch rather than to cwd.
+    const scratchBound = workspaceDependencies !== undefined;
     const check = checkSecurityScan(target, undefined, {
-      env: workspaceDependencies === undefined ? undefined : hermeticGitEnv(),
+      env: scratchBound ? hermeticGitEnv() : undefined,
+      root: scratchBound ? target : undefined,
     });
     // #6747: the signal ends the scanner's process tree and the OSV lookups.
     const result = await rethrowAsStageAbort('securityScan', signal, () => check(signal));

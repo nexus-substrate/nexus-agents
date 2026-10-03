@@ -143,8 +143,10 @@ describe('scratch gate subprocess Git environments (#7007)', () => {
         { mode: 0o755 }
       );
       vi.stubEnv('PATH', `${bin}${delimiter}${process.env['PATH'] ?? ''}`);
-      // The production scanner requires its target inside cwd. Run inside the fixture.
-      process.chdir(scratch.path);
+      // No chdir: production runs the scan with cwd = the SOURCE repo, outside the
+      // scratch. Changing into the scratch here once hid that cwd containment
+      // rejected every pipeline scan (#6794 panel, final round).
+      expect(process.cwd().startsWith(scratch.path)).toBe(false);
       const before = snapshot();
 
       const result = await boundStages().securityScan?.();
