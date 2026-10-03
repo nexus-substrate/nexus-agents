@@ -210,13 +210,24 @@ function spawnCliChild(
   // #6754: a command's own variables (e.g. a read-only permission config) are
   // applied last, so an inherited value of the same name cannot override them.
   const childEnv = { ...buildChildEnv(cliName), ...cmdConfig.env };
+  const cwd = spawnCwd(workDir);
   return trackProcessTree(
     spawn(cmdConfig.command, cmdConfig.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv,
-      ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
+      ...(cwd !== undefined ? { cwd } : {}),
     })
   );
+}
+
+/**
+ * The working directory a CLI child is spawned in for a task's `workDir`
+ * option, or `undefined` when it inherits this process's cwd. Exported so a
+ * command builder that reads the child's config files resolves the same
+ * directory the spawn uses (#6970).
+ */
+export function spawnCwd(workDir: unknown): string | undefined {
+  return typeof workDir === 'string' && workDir.trim().length > 0 ? workDir : undefined;
 }
 
 /**
