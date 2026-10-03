@@ -24,7 +24,7 @@ const PATCH_PATHS = ['.', ':(exclude,glob)**/node_modules', ':(exclude,glob)**/n
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
     cwd,
-    env: hermeticGitEnv(),
+    env: { ...hermeticGitEnv(), GIT_OPTIONAL_LOCKS: '0' },
     encoding: 'utf8',
     timeout: GIT_TIMEOUT_MS,
     maxBuffer: DIFF_MAX_BYTES,
@@ -77,6 +77,26 @@ function sharedConfigWarning(before: SharedGitConfig): string | undefined {
   return `The run changed the source repository's shared git config at ${before.path}; this is not part of the returned patch. Review it with: git config --list --show-origin`;
 }
 
+/** Drop inherited directory redirects before pinning scratch-local install paths. */
+function dependencyInstallEnv(scratchPath: string): NodeJS.ProcessEnv {
+  const env = Object.fromEntries(
+    Object.entries(hermeticGitEnv()).filter(
+      ([name]) =>
+        !/^npm_config_(?:virtual_store_dir|modules_dir|lockfile_dir|dir|global_dir|prefix)$/i.test(
+          name
+        )
+    )
+  );
+  // Shared cache imports must be copies, never hardlinks into source dependencies.
+  env['npm_config_package_import_method'] = 'copy';
+  env['npm_config_enable_global_virtual_store'] = 'false';
+  env['npm_config_modules_dir'] = 'node_modules';
+  env['npm_config_virtual_store_dir'] = join(scratchPath, 'node_modules/.pnpm');
+  // Husky would otherwise change the git config shared with the source repository.
+  env['HUSKY'] = '0';
+  return env;
+}
+
 async function provisionDependencies(
   scratchPath: string,
   install: DependencyInstaller
@@ -94,16 +114,7 @@ async function provisionDependencies(
     await install(manager, [...args], {
       cwd: scratchPath,
       timeout: WORKFLOW_TIMEOUTS.stepMs,
-      env: {
-        ...hermeticGitEnv(),
-        // A shared store hardlink would permit scratch edits to change source dependencies.
-        npm_config_package_import_method: 'copy',
-        npm_config_enable_global_virtual_store: 'false',
-        npm_config_virtual_store_dir: join(scratchPath, 'node_modules/.pnpm'),
-        // A `prepare: husky` script runs `git config core.hooksPath`, and a worktree
-        // shares its config with the source repository (#6794 panel).
-        HUSKY: '0',
-      },
+      env: dependencyInstallEnv(scratchPath),
     });
     return { status: 'installed', manager };
   } catch (error: unknown) {
@@ -214,9 +225,20 @@ function captureChanges(
 }
 
 /**
- * Stages without a workspace binding are external implementations. Built-in
- * stages bind implement, QA and both gates to the same disposable checkout.
- * The operator receives a diff and cleanup status; failed removal leaves a warning.
+ * BEST-EFFORT isolation, not an OS sandbox. Built-in stages bind implement,
+ * QA and both gates to the same disposable checkout. Stages without a workspace
+ * binding are external implementations.
+ *
+ * Pipeline-owned git runs hermetically with optional index refresh disabled and
+ * source hooks disabled. Gate subprocesses receive the hermetic git environment.
+ * Installs are scratch-local with directory overrides removed and copy imports,
+ * run with HUSKY=0, and are killed as a process tree on timeout. Changes to the
+ * source repository's shared git config are reported, never reverted.
+ *
+ * Known residual channel: an install descendant that ignores SIGTERM can write
+ * during the kill grace period before the config snapshot. An OS sandbox is
+ * tracked in #7011. The operator receives a diff and cleanup status, and failed
+ * removal leaves a warning.
  */
 export async function withDevPipelineWorkspace(
   stages: DevPipelineStages,

@@ -8,6 +8,8 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -119,6 +121,78 @@ describe('hermetic pipeline subprocesses', () => {
     expect(output.changes?.diff).toContain('+new change');
     expect(output.changes?.worktreeRemoved).toBe(true);
   });
+
+  it('preserves source index bytes and mtime when tracked file stats are stale', async () => {
+    const indexPath = join(repo, '.git/index');
+    const trackedPath = join(repo, 'package.json');
+    const staleTime = new Date(Date.now() + 10_000);
+    utimesSync(trackedPath, staleTime, staleTime);
+    vi.stubEnv('GIT_OPTIONAL_LOCKS', '1');
+    const before = readFileSync(indexPath);
+    const beforeMtime = statSync(indexPath, { bigint: true }).mtimeNs;
+
+    const output = await withDevPipelineWorkspace(stages(repo), edit, vi.fn());
+
+    expect(readFileSync(indexPath)).toEqual(before);
+    expect(statSync(indexPath, { bigint: true }).mtimeNs).toBe(beforeMtime);
+    expect(output.changes?.worktreeRemoved).toBe(true);
+    // Positive control: ordinary status really refreshes this fixture's stat cache.
+    git('status', '--porcelain');
+    expect(readFileSync(indexPath)).not.toEqual(before);
+  });
+
+  it.each(['npm', 'pnpm'])(
+    'pins %s install directories despite inherited npm config redirects',
+    async (manager) => {
+      if (manager === 'pnpm') {
+        rmSync(join(repo, 'package-lock.json'));
+        writeFileSync(join(repo, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
+        git('add', '--all');
+        git(
+          '-c',
+          'core.hooksPath=/dev/null',
+          '-c',
+          'commit.gpgsign=false',
+          'commit',
+          '-m',
+          'pnpm fixture'
+        );
+      }
+      const redirects = [
+        'modules_dir',
+        'virtual_store_dir',
+        'lockfile_dir',
+        'dir',
+        'global_dir',
+        'prefix',
+      ];
+      for (const name of redirects) vi.stubEnv(`npm_config_${name}`, join(repo, name));
+      vi.stubEnv('npm_config_store_dir', join(root, 'shared-store'));
+      let received: { cwd: string; env: NodeJS.ProcessEnv } | undefined;
+      const install = vi.fn(
+        (_command: string, _args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) => {
+          received = options;
+          return Promise.resolve();
+        }
+      );
+
+      const output = await withDevPipelineWorkspace(stages(repo), edit, install);
+
+      expect(install).toHaveBeenCalledOnce();
+      expect(output.changes?.dependencies).toEqual({ status: 'installed', manager });
+      if (received === undefined) throw new Error('Installer was not called');
+      expect(received.env['npm_config_modules_dir']).toBe('node_modules');
+      expect(received.env['npm_config_virtual_store_dir']).toBe(
+        join(received.cwd, 'node_modules/.pnpm')
+      );
+      for (const name of ['lockfile_dir', 'dir', 'global_dir', 'prefix']) {
+        expect(received.env).not.toHaveProperty(`npm_config_${name}`);
+      }
+      expect(received.env['npm_config_store_dir']).toBe(join(root, 'shared-store'));
+      expect(received.env['npm_config_package_import_method']).toBe('copy');
+      expect(received.cwd).not.toBe(repo);
+    }
+  );
 
   it('removes repository-local git env from the dependency install environment', async () => {
     vi.stubEnv('GIT_DIR', join(repo, '.git'));

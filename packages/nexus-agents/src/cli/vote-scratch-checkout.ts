@@ -41,7 +41,7 @@ function runGit(options: ScratchCheckoutOptions, args: string[]): void {
     cwd: options.repoRoot,
     stdio: 'pipe',
     timeout: GIT_TIMEOUT_MS,
-    ...(hermetic ? { env: hermeticGitEnv() } : {}),
+    ...(hermetic ? { env: { ...hermeticGitEnv(), GIT_OPTIONAL_LOCKS: '0' } } : {}),
   });
 }
 

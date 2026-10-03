@@ -15,6 +15,7 @@ import { createAgentStages } from './agent-executor.js';
 import { runDevPipeline, type DevPipelineStages } from './dev-pipeline.js';
 import { buildStructuredOutput } from '../mcp/tools/dev-pipeline-output.js';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
 
 const mocks = vi.hoisted(() => ({ expert: vi.fn(), gate: vi.fn(), check: vi.fn(), scan: vi.fn() }));
 vi.mock('./expert-bridge.js', () => ({ executeExpert: mocks.expert }));
@@ -153,7 +154,7 @@ describe('dev pipeline scratch worktree', () => {
       expect.stringContaining('diff --git a/packages/nexus-agents/package.json')
     );
     expect(mocks.check).toHaveBeenCalledTimes(3);
-    expect(mocks.scan).toHaveBeenCalledWith(workspace);
+    expect(mocks.scan).toHaveBeenCalledWith(workspace, undefined, { env: hermeticGitEnv() });
     expect(
       join(
         result.changes?.worktreePath ?? '',

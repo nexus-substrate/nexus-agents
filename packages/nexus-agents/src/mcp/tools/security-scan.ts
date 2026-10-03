@@ -21,9 +21,12 @@ const logger = createLogger({ component: 'security-scan' });
 const SCAN_TIMEOUT_MS = 300_000;
 
 /** Check if semgrep is available. */
-async function isSemgrepAvailable(signal: AbortSignal | undefined): Promise<boolean> {
+async function isSemgrepAvailable(
+  signal: AbortSignal | undefined,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<boolean> {
   try {
-    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal });
+    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal, env });
     return true;
   } catch {
     return false;
@@ -38,7 +41,8 @@ async function isSemgrepAvailable(signal: AbortSignal | undefined): Promise<bool
 async function runSemgrep(
   targetDir: string,
   rulesets: readonly string[],
-  signal: AbortSignal | undefined
+  signal: AbortSignal | undefined,
+  env: NodeJS.ProcessEnv | undefined
 ): Promise<string> {
   const args = ['--sarif', '--quiet', ...rulesets.flatMap((r) => ['--config', r]), targetDir];
 
@@ -46,6 +50,7 @@ async function runSemgrep(
     timeoutMs: SCAN_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024, // 10MB for large SARIF output
     signal,
+    env,
   });
 
   return stdout;
@@ -74,11 +79,13 @@ function validateTargetPath(target: string): string {
  * @param input - Scan configuration
  * @param signal - Caller abort (#6747): ends the scanner's process tree and
  *   returns an `error` saying the scan was aborted, not a result.
+ * @param env - Optional scanner environment. Absent: inherit the caller's environment.
  * @returns Parsed SARIF findings or error message
  */
 export async function executeSecurityScan(
   input: SecurityScanInput,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  env?: NodeJS.ProcessEnv
 ): Promise<SarifParseResult | { error: string }> {
   let targetDir: string;
   try {
@@ -93,7 +100,7 @@ export async function executeSecurityScan(
     rulesets: input.rulesets,
   });
 
-  const available = await isSemgrepAvailable(signal);
+  const available = await isSemgrepAvailable(signal, env);
   // An abort during the probe is not a missing scanner.
   if (signal?.aborted === true) return { error: 'Scan aborted before semgrep ran' };
   if (!available) {
@@ -103,7 +110,7 @@ export async function executeSecurityScan(
   }
 
   try {
-    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal);
+    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal, env);
     const result = parseSarif(sarifOutput, input.maxFindings);
 
     logger.info('Security scan completed', {
