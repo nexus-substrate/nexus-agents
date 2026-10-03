@@ -30,6 +30,8 @@ import {
   type AttemptTelemetry,
 } from './attempt-usage.js';
 import {
+  DECISION_COST_MODEL_MAX_LENGTH,
+  DECISION_COST_ROLE_MAX_LENGTH,
   PricingProvenanceSchema,
   rollupDecisionCost,
   UndeclaredOptionsDetectorSchema,
@@ -51,8 +53,8 @@ export const DecisionGateSchema = z.enum(['consensus_vote', 'pr_review', 'dev_pi
 export type DecisionGate = z.infer<typeof DecisionGateSchema>;
 
 const VoterCostBreakdownSchema = z.object({
-  role: z.string().min(1).max(64),
-  model: z.string().min(1).max(120),
+  role: z.string().min(1).max(DECISION_COST_ROLE_MAX_LENGTH),
+  model: z.string().min(1).max(DECISION_COST_MODEL_MAX_LENGTH),
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
@@ -78,7 +80,7 @@ const VoterCostBreakdownSchema = z.object({
 });
 
 const ModelCostBreakdownSchema = z.object({
-  model: z.string().min(1).max(120),
+  model: z.string().min(1).max(DECISION_COST_MODEL_MAX_LENGTH),
   voterCount: z.number().int().nonnegative(),
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),

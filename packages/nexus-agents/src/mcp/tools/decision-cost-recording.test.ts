@@ -275,6 +275,7 @@ describe('catalog price scope persistence (#6830)', () => {
   let file: string;
   let previousRegistry: ModelRegistry | undefined;
   const mythos = 'anthropic/claude-mythos-preview';
+  const longModel = 'openrouter/' + 'm'.repeat(120);
   const pricingProvenance = {
     source: 'anthropic',
     scope: 'project-glasswing-participants',
@@ -293,6 +294,7 @@ describe('catalog price scope persistence (#6830)', () => {
         entries: [
           { id: mythos, pricing: { inputPer1M: 25, outputPer1M: 125 }, pricingProvenance },
           { id: 'claude-sonnet', pricing: { inputPer1M: 3, outputPer1M: 15 } },
+          { id: longModel, pricing: { inputPer1M: 2, outputPer1M: 10 } },
         ],
       })
     );
@@ -306,6 +308,36 @@ describe('catalog price scope persistence (#6830)', () => {
   afterEach(() => {
     setDefaultRegistry(previousRegistry);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('prices the full served model before persisting its truncated label (#7017)', () => {
+    const summary = recordDecisionCost({
+      decisionId: 'long-served-model',
+      gate: 'consensus_vote',
+      votes: [
+        vote({
+          model: 'claude-sonnet',
+          servedModel: longModel,
+          inputTokens: 1000,
+          outputTokens: 200,
+        }),
+      ],
+      store: new DecisionCostStore({ filePath: file, dataDir: dir }),
+      billingMode: 'api',
+    });
+
+    const reader = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(reader.all()).toHaveLength(1);
+    expect(reader.all()[0]?.summary).toEqual(summary);
+    expect(summary).toMatchObject({
+      totalInputTokens: 1000,
+      totalOutputTokens: 200,
+      totalTokens: 1200,
+      totalCostUsd: 0.004,
+      measuredVoters: 1,
+      perVoter: [{ model: longModel.slice(0, 119) + '…', costUsd: 0.004 }],
+      perModel: [{ model: longModel.slice(0, 119) + '…', totalTokens: 1200 }],
+    });
   });
 
   it('retains Mythos Preview participant scope into an API-mode persisted record', () => {
