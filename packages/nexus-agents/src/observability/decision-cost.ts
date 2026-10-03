@@ -39,6 +39,7 @@
 
 import { z } from 'zod';
 import type { ModelPricingProvenance } from '../config/model-registry.js';
+import { truncateText } from '../utils/text-utils.js';
 
 // `core/price-basis` is a dependency-free leaf module (zod only), so importing
 // it at RUNTIME here is safe: the cycle this import used to close — via
@@ -195,6 +196,12 @@ export interface ModelCostBreakdown {
 
 /** Sentinel model id for a voter call whose model is unknown. */
 export const UNKNOWN_MODEL = 'unknown';
+
+/** Maximum model label length in UTF-16 code units, shared with persistence. */
+export const DECISION_COST_MODEL_MAX_LENGTH = 120;
+
+/** Maximum voter role label length in UTF-16 code units, shared with persistence. */
+export const DECISION_COST_ROLE_MAX_LENGTH = 64;
 
 /**
  * The per-decision cost rollup. Totals are a FLOOR when `unmeasuredVoters > 0`
@@ -405,6 +412,8 @@ interface ModelAcc {
  * drops the stated price basis with it (#4406). Unmeasured voters surface zeros
  * flagged as placeholders — including the TOKEN zeros, which previously passed
  * as a measurement whenever a cost happened to be present (#4430).
+ * External model and role labels are bounded with a visible truncation marker
+ * so an overlong label cannot discard the decision's billing record (#7017).
  */
 function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdown {
   const measured = isMeasured(v);
@@ -415,8 +424,8 @@ function toVoterBreakdown(v: VoterCostInput, isPlan: boolean): VoterCostBreakdow
   // model arrives as an explicit costUsd: 0 and stays measured, #4165).
   const costUsd = isPlan ? 0 : roundUsd(v.costUsd ?? 0);
   return {
-    role: v.role,
-    model: v.model ?? UNKNOWN_MODEL,
+    role: truncateText(v.role, DECISION_COST_ROLE_MAX_LENGTH, '…'),
+    model: truncateText(v.model ?? UNKNOWN_MODEL, DECISION_COST_MODEL_MAX_LENGTH, '…'),
     ...(v.assignedCli !== undefined ? { assignedCli: v.assignedCli } : {}),
     inputTokens,
     outputTokens,
@@ -497,12 +506,14 @@ export function rollupDecisionCost(
     totalCostUsd += line.costUsd;
     perVoter.push(line);
 
-    const acc = modelAcc.get(line.model) ?? { input: 0, output: 0, cost: 0, count: 0 };
+    // Group by the full id: distinct models may share a truncated display label.
+    const model = v.model ?? UNKNOWN_MODEL;
+    const acc = modelAcc.get(model) ?? { input: 0, output: 0, cost: 0, count: 0 };
     acc.input += line.inputTokens;
     acc.output += line.outputTokens;
     acc.cost += line.costUsd;
     acc.count += 1;
-    modelAcc.set(line.model, acc);
+    modelAcc.set(model, acc);
   }
 
   const perModel = buildPerModelBreakdowns(modelAcc);
@@ -537,7 +548,7 @@ function basisField(basis: PriceBasis | undefined): { priceBasis?: PriceBasis } 
 function buildPerModelBreakdowns(modelAcc: Map<string, ModelAcc>): ModelCostBreakdown[] {
   return [...modelAcc.entries()]
     .map(([model, a]) => ({
-      model,
+      model: truncateText(model, DECISION_COST_MODEL_MAX_LENGTH, '…'),
       voterCount: a.count,
       inputTokens: a.input,
       outputTokens: a.output,
