@@ -1,8 +1,10 @@
 /** Per-run implementation checkout and operator-owned patch handoff (#6794). */
 import { execFileSync } from 'node:child_process';
 import { realpathSync, statSync, symlinkSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { createScratchCheckout, type ScratchCheckout } from '../cli/vote-scratch-checkout.js';
+import { getNexusTmpDir } from '../config/nexus-tmp-dir.js';
 import { createLogger } from '../core/index.js';
 import type { DevPipelineResult, DevPipelineStages } from './dev-pipeline.js';
 
@@ -61,6 +63,28 @@ function dirtySourceWarning(repoRoot: string, baseSha: string): string | undefin
   return `The run was based on HEAD ${baseSha}; ${String(paths)} uncommitted paths were not included.`;
 }
 
+/** Whether two canonical paths are equal or one contains the other. */
+function overlaps(a: string, b: string): boolean {
+  const inside = (parent: string, child: string): boolean => {
+    const path = relative(parent, child);
+    return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+  };
+  return inside(a, b) || inside(b, a);
+}
+
+/**
+ * The default NEXUS_TMPDIR is `<repo>/.nexus-agents/tmp`, inside the source
+ * checkout and usually the server's cwd. A scratch there fails the quality
+ * gate's isolation check, so every untrusted gate would be refused; place it
+ * under the system temp dir instead. If that overlaps too, the gate still
+ * fails closed on the isolation check.
+ */
+function scratchRoot(repoRoot: string): string {
+  const preferred = realpathSync(getNexusTmpDir());
+  const occupied = [repoRoot, realpathSync(process.cwd())];
+  return occupied.some((path) => overlaps(preferred, path)) ? tmpdir() : preferred;
+}
+
 /** Cleanup must never discard a patch or replace the run's original error. */
 function disposeWorkspace(scratch: ScratchCheckout): string | undefined {
   try {
@@ -117,7 +141,7 @@ export async function withDevPipelineWorkspace(
   const repoRoot = git(directory, ['rev-parse', '--show-toplevel']).trim();
   const baseSha = git(repoRoot, ['rev-parse', 'HEAD']).trim();
   const sourceWarning = dirtySourceWarning(repoRoot, baseSha);
-  const scratch = createScratchCheckout({ repoRoot, sha: baseSha });
+  const scratch = createScratchCheckout({ repoRoot, sha: baseSha, tmpRoot: scratchRoot(repoRoot) });
   let result: DevPipelineResult;
   let changes: NonNullable<DevPipelineResult['changes']>;
   let cleanupWarning: string | undefined;

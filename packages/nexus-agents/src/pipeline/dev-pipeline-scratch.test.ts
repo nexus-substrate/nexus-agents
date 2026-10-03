@@ -1,12 +1,20 @@
 /** Real Git isolation and artifact handoff for #6794; model/process boundaries are stubbed. */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentStages } from './agent-executor.js';
 import { runDevPipeline, type DevPipelineStages } from './dev-pipeline.js';
 import { buildStructuredOutput } from '../mcp/tools/dev-pipeline-output.js';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 
 const mocks = vi.hoisted(() => ({ expert: vi.fn(), gate: vi.fn(), check: vi.fn(), scan: vi.fn() }));
 vi.mock('./expert-bridge.js', () => ({ executeExpert: mocks.expert }));
@@ -60,7 +68,9 @@ describe('dev pipeline scratch worktree', () => {
   let writeChanges: boolean;
   beforeEach(() => {
     vi.clearAllMocks();
-    tmp = mkdtempSync(join(tmpdir(), 'dev-scratch-test-'));
+    // The vitest TMPDIR is in-repo on a short checkout path (CI); the scratch
+    // must not be, or the isolation check rightly refuses the gate.
+    tmp = mkdtempOutsideRepo('dev-scratch-test-');
     vi.stubEnv('NEXUS_TMPDIR', tmp);
     workspace = undefined;
     writeChanges = true;
@@ -193,6 +203,26 @@ describe('dev pipeline scratch worktree', () => {
     expect(buildStructuredOutput(result, false)['changes']).toBeUndefined();
     expect(mocks.expert).not.toHaveBeenCalled();
     expect(git('worktree', 'list', '--porcelain')).toBe(before);
+  });
+
+  it('allocates the scratch outside the repository when NEXUS_TMPDIR is inside it', async () => {
+    // Production default: NEXUS_TMPDIR resolves to <repo>/.nexus-agents/tmp, the server's cwd.
+    const ignored = join(repo, '.nexus-agents');
+    mkdirSync(ignored, { recursive: true });
+    const inRepo = mkdtempSync(join(ignored, 'scratch-root-test-'));
+    try {
+      vi.stubEnv('NEXUS_TMPDIR', inRepo);
+      vi.stubEnv('TMPDIR', tmp);
+      const result = await runDevPipeline('Add file', stages(), options);
+      expect(result.warnings ?? []).not.toContainEqual(
+        expect.stringContaining('Quality gate refused')
+      );
+      expect(result.completed).toBe(true);
+      expect(result.changes?.worktreePath.startsWith(join(tmp, 'vote-'))).toBe(true);
+      expect(mocks.gate).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(inRepo, { recursive: true, force: true });
+    }
   });
 
   it('keeps a symlinked repository path inside the scratch checkout', async () => {
