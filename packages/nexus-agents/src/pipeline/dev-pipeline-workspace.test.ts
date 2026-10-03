@@ -1,6 +1,15 @@
 /** Dependency provisioning, cleanup failures and HEAD provenance use real temporary repositories. */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -426,6 +435,52 @@ describe('dev pipeline workspace follow-up', () => {
     expect(mocks.paths.every((path) => !existsSync(path))).toBe(true);
     expect(mocks.warn).toHaveBeenCalledWith(
       expect.stringContaining("changed the source repository's shared git config")
+    );
+  });
+
+  // Round 5: the REPORTING step must not fail either. A malformed config makes
+  // every git command exit 128, and the check runs inside `finally`, where a
+  // throw would replace the run's own error.
+  it('keeps the original error and still reports when the run leaves the config malformed', async () => {
+    const configPath =
+      git('rev-parse', '--path-format=absolute', '--git-common-dir').trim() + '/config';
+    const original = new Error('stage threw');
+    await expect(
+      withDevPipelineWorkspace(
+        boundStages(repo),
+        () => {
+          appendFileSync(configPath, '[core\n');
+          return Promise.reject(original);
+        },
+        vi.fn()
+      )
+    ).rejects.toBe(original);
+    expect(mocks.warn).toHaveBeenCalledWith(
+      expect.stringContaining("changed the source repository's shared git config")
+    );
+    writeFileSync(configPath, readFileSync(configPath, 'utf8').replace('[core\n', ''));
+  });
+
+  it('keeps the original error and reports an unreadable config instead of throwing', async () => {
+    const configPath =
+      git('rev-parse', '--path-format=absolute', '--git-common-dir').trim() + '/config';
+    const original = new Error('stage threw');
+    try {
+      await expect(
+        withDevPipelineWorkspace(
+          boundStages(repo),
+          () => {
+            chmodSync(configPath, 0o000);
+            return Promise.reject(original);
+          },
+          vi.fn()
+        )
+      ).rejects.toBe(original);
+    } finally {
+      chmodSync(configPath, 0o644);
+    }
+    expect(mocks.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not re-read the source repository's shared git config")
     );
   });
 

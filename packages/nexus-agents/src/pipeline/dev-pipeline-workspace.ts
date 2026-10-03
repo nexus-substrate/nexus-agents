@@ -39,8 +39,13 @@ type DependencyInstaller = (
 ) => Promise<unknown>;
 
 /** Provision only the pinned checkout before implementation can edit its lockfile. */
-/** The config file every worktree of `repoRoot` shares, and its bytes now. */
-function readSharedGitConfig(repoRoot: string): { path: string; bytes: string | undefined } {
+/** The config file every worktree of `repoRoot` shares, located ONCE before the run. */
+interface SharedGitConfig {
+  readonly path: string;
+  readonly bytes: string | undefined;
+}
+
+function readSharedGitConfig(repoRoot: string): SharedGitConfig {
   const commonDir = git(repoRoot, [
     'rev-parse',
     '--path-format=absolute',
@@ -54,13 +59,20 @@ function readSharedGitConfig(repoRoot: string): { path: string; bytes: string | 
  * A scratch worktree writes `git config` into the SOURCE repository's shared
  * config, and nothing in the returned patch shows it. Reported, not reverted:
  * restoring could clobber an operator's concurrent change.
+ *
+ * Total by construction (#6794 panel, round 5): it runs inside `finally`, so a
+ * throw here would replace the run's own error. It re-reads the path resolved
+ * before the run as raw bytes and never asks git, which fails (exit 128) on the
+ * malformed config an install script may have left behind.
  */
-function sharedConfigWarning(
-  repoRoot: string,
-  before: { path: string; bytes: string | undefined }
-): string | undefined {
-  const after = readSharedGitConfig(repoRoot);
-  if (after.bytes === before.bytes) return undefined;
+function sharedConfigWarning(before: SharedGitConfig): string | undefined {
+  let after: string | undefined;
+  try {
+    after = existsSync(before.path) ? readFileSync(before.path, 'utf8') : undefined;
+  } catch (error: unknown) {
+    return `Could not re-read the source repository's shared git config at ${before.path} after the run (${String(error)}); a change made by the run would not be reported. Review it with: git config --list --show-origin`;
+  }
+  if (after === before.bytes) return undefined;
   return `The run changed the source repository's shared git config at ${before.path}; this is not part of the returned patch. Review it with: git config --list --show-origin`;
 }
 
@@ -219,7 +231,7 @@ export async function withDevPipelineWorkspace(
     // Every exit reports what the run did outside the patch: a thrown or timed-out
     // stage has no result to carry warnings, so they are logged instead (#6794 panel).
     cleanupWarning = disposeWorkspace(scratch);
-    configWarning = sharedConfigWarning(repoRoot, sharedConfig);
+    configWarning = sharedConfigWarning(sharedConfig);
     if (!completed && configWarning !== undefined) logger.warn(configWarning);
   }
   const warnings = [sourceWarning, cleanupWarning, configWarning].filter(
