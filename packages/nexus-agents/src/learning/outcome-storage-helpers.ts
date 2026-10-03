@@ -128,6 +128,9 @@ export function createIndexes(db: ISQLiteDatabase): void {
 
 /**
  * Convert a database row to a StoredRoutingDecision.
+ * Legacy `quality` maps to `unattributed`. Historical `topsis` stays `topsis`:
+ * its label cannot distinguish a measured result from the old fallback.
+ * `routerTypeMeasured` preserves the available evidence without guessing.
  */
 export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
   let alternativeModels: CliName[] = [];
@@ -146,7 +149,11 @@ export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
     id: row.id,
     traceId: row.trace_id,
     timestamp: new Date(row.timestamp).toISOString(),
-    routerType: row.router_type as StoredRoutingDecision['routerType'],
+    // Legacy quality has no producer; normalize it on read (#5914).
+    routerType:
+      row.router_type === 'quality'
+        ? 'unattributed'
+        : (row.router_type as StoredRoutingDecision['routerType']),
     selectedModel: row.selected_model as CliName,
     alternativeModels,
     confidence: row.confidence,

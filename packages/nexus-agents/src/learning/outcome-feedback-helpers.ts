@@ -49,37 +49,27 @@ export function isRouterTypeMeasured(decision: RoutingDecision): boolean {
 }
 
 /**
- * Count decisions by router type, excluding those whose router could not be
- * identified (#5812).
- *
- * `getDecisiveRouterType` labels an unattributable decision `'topsis'`, because
- * `RouterType` has no member for "no stage explains this". Counting those in
- * the `topsis` bucket inflated the exact number this function exists to report.
- * They are returned separately as `unattributed` instead — a decision belongs
- * to one or the other, never both, so the two always sum to `decisions.length`.
+ * Count every decision in one router bucket. Unmeasured legacy labels and
+ * explicit unattributed decisions use the unattributed bucket; stored labels
+ * themselves remain unchanged. Empty input returns zero in every bucket.
  */
-export function countDecisionsByRouter(decisions: readonly RoutingDecision[]): {
-  byRouter: Record<RouterType, number>;
-  unattributed: number;
-} {
+export function countDecisionsByRouter(
+  decisions: readonly RoutingDecision[]
+): Record<RouterType, number> {
   const byRouter: Record<RouterType, number> = {
     linucb: 0,
     preference: 0,
-    quality: 0,
     cascade: 0,
     topsis: 0,
+    unattributed: 0,
   };
-  let unattributed = 0;
 
   for (const decision of decisions) {
-    if (isRouterTypeMeasured(decision)) {
-      byRouter[decision.routerType]++;
-    } else {
-      unattributed++;
-    }
+    const routerType = isRouterTypeMeasured(decision) ? decision.routerType : 'unattributed';
+    byRouter[routerType]++;
   }
 
-  return { byRouter, unattributed };
+  return byRouter;
 }
 
 /**

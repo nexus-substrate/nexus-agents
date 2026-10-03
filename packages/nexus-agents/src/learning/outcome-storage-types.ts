@@ -57,10 +57,10 @@ export interface StoredRoutingDecision {
   readonly taskProfile: Record<string, unknown>;
   readonly requestId?: string | undefined; // Integration with #185 RequestContext
   /**
-   * Whether a router actually attributed this decision (#5915, closing the
-   * third step of #5812). Absent on a decision read back from a row written
-   * before the column existed, and absence reads as UNMEASURED everywhere —
-   * a legacy row carries no more evidence than the fallback does.
+   * Persisted attribution evidence (#5915), retained for legacy router labels.
+   * Old `topsis` labels stay `topsis` because they may be measured or fallback;
+   * the label alone cannot recover attribution. NULL or absent database evidence
+   * reads back as false. An omitted field on input is stored as unmeasured.
    */
   readonly routerTypeMeasured?: boolean | undefined;
 }

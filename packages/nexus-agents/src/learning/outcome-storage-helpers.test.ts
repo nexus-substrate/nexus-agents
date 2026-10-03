@@ -282,6 +282,22 @@ describe('createIndexes', () => {
 // ============================================================================
 
 describe('rowToDecision', () => {
+  it('maps stored legacy quality to unattributed with empty measurement evidence', () => {
+    const decision = rowToDecision(
+      makeDecisionRow({ router_type: 'quality', router_type_measured: null })
+    );
+    expect(decision.routerType).toBe('unattributed');
+    expect(decision.routerTypeMeasured).toBe(false);
+  });
+
+  it('preserves stored legacy topsis with empty measurement evidence', () => {
+    const decision = rowToDecision(
+      makeDecisionRow({ router_type: 'topsis', router_type_measured: null })
+    );
+    expect(decision.routerType).toBe('topsis');
+    expect(decision.routerTypeMeasured).toBe(false);
+  });
+
   it('converts row to StoredRoutingDecision', () => {
     const decision = rowToDecision(makeDecisionRow());
     expect(decision.id).toBe('dec-1');
