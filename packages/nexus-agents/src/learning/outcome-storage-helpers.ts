@@ -219,16 +219,16 @@ export const INSERT_REWARD_SQL = `
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
-/** SQL for aggregating model statistics. */
+/** SQL for aggregating model statistics; empty aggregate inputs remain null. */
 export const MODEL_STATS_SQL = `
   SELECT
     rd.selected_model as model,
     COUNT(DISTINCT rd.id) as total_decisions,
     COUNT(DISTINCT o.routing_decision_id) as total_outcomes,
-    COALESCE(AVG(r.reward), 0) as avg_reward,
-    COALESCE(AVG(o.quality_score), 0) as avg_quality_score,
-    COALESCE(AVG(o.duration_ms), 0) as avg_latency_ms,
-    COALESCE(AVG(CAST(o.success AS REAL)), 0) as success_rate
+    AVG(r.reward) as avg_reward,
+    AVG(o.quality_score) as avg_quality_score,
+    AVG(o.duration_ms) as avg_latency_ms,
+    AVG(CAST(o.success AS REAL)) as success_rate
   FROM routing_decisions rd
   LEFT JOIN task_outcomes o ON rd.id = o.routing_decision_id
   LEFT JOIN computed_rewards r ON rd.id = r.routing_decision_id

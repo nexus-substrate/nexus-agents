@@ -3518,8 +3518,7 @@ InterfaceDeclaration ExperimentResult
   readonly hasMinimumSampleSize: boolean
   readonly recommendedSampleSize: number
   readonly recommendedSampleSizeMeasured: boolean
-  readonly relativeImprovement: number
-  readonly relativeImprovementMeasured: boolean
+  readonly relativeImprovement: null | number
   readonly treatment: VariantResultSummary
 TypeAliasDeclaration ExperimentStatus
   = 'archived' | 'completed' | 'draft' | 'paused' | 'running'
@@ -5922,11 +5921,11 @@ InterfaceDeclaration ModelSelectionShadowComparison
   readonly shadowModel: string
   readonly tier: ModelTier
 InterfaceDeclaration ModelStatsRow
-  avg_latency_ms: number
-  avg_quality_score: number
-  avg_reward: number
+  avg_latency_ms: null | number
+  avg_quality_score: null | number
+  avg_reward: null | number
   model: string
-  success_rate: number
+  success_rate: null | number
   total_decisions: number
   total_outcomes: number
 InterfaceDeclaration ModelTier @cli-adapters/preference-router-types
@@ -9046,11 +9045,11 @@ InterfaceDeclaration StepResultSummary
 TypeAliasDeclaration StopReason
   = 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use'
 InterfaceDeclaration StoredModelStats
-  readonly avgLatencyMs: number
-  readonly avgQualityScore: number
-  readonly avgReward: number
+  readonly avgLatencyMs: null | number
+  readonly avgQualityScore: null | number
+  readonly avgReward: null | number
   readonly model: "claude" | "codex" | "gemini" | "opencode"
-  readonly successRate: number
+  readonly successRate: null | number
   readonly totalDecisions: number
   readonly totalOutcomes: number
 InterfaceDeclaration StoredReward

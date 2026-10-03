@@ -95,15 +95,19 @@ export interface StoredReward {
 
 /**
  * Aggregated model statistics from stored data.
+ *
+ * Each average/rate is null when its own inputs are empty. Reward can be
+ * unmeasured even when outcomes exist. Null must not be ranked as zero;
+ * exclude unmeasured values or place them after measured values.
  */
 export interface StoredModelStats {
   readonly model: CliName;
   readonly totalDecisions: number;
   readonly totalOutcomes: number;
-  readonly avgReward: number;
-  readonly avgQualityScore: number;
-  readonly avgLatencyMs: number;
-  readonly successRate: number;
+  readonly avgReward: number | null;
+  readonly avgQualityScore: number | null;
+  readonly avgLatencyMs: number | null;
+  readonly successRate: number | null;
 }
 
 // ============================================================================
@@ -174,10 +178,10 @@ export interface ModelStatsRow {
   model: string;
   total_decisions: number;
   total_outcomes: number;
-  avg_reward: number;
-  avg_quality_score: number;
-  avg_latency_ms: number;
-  success_rate: number;
+  avg_reward: number | null;
+  avg_quality_score: number | null;
+  avg_latency_ms: number | null;
+  success_rate: number | null;
 }
 
 // ============================================================================

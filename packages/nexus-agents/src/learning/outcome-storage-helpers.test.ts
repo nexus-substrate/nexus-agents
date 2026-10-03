@@ -636,8 +636,9 @@ describe('SQL constants', () => {
       expect(MODEL_STATS_SQL).toContain('ORDER BY total_decisions DESC');
     });
 
-    it('uses COALESCE for null safety', () => {
-      expect(MODEL_STATS_SQL).toContain('COALESCE');
+    it('preserves null when aggregate inputs are empty', () => {
+      // Previously pinned COALESCE, which fabricated measurements for empty input.
+      expect(MODEL_STATS_SQL).not.toContain('COALESCE');
     });
 
     it('uses COUNT(DISTINCT) for decisions', () => {
