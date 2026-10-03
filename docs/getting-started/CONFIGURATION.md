@@ -235,6 +235,23 @@ two lists so they cannot drift apart again.
 | `NEXUS_OPENCODE_CONFIG`             | Path to an `opencode.json` whose `providers.openai-compat.options.{baseURL,apiKey}` configures the OpenAI-compat adapter (fallback when the `_URL`/`_KEY` pair is unset)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `SEMANTIC_SCHOLAR_API_KEY`          | Optional. Lifts research_discover's semantic_scholar source past the unauthenticated 429 ceiling (#2234). Apply at https://www.semanticscholar.org/product/api#api-key-form                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+### Spawned CLI config locations
+
+The subprocess environment allowlist forwards `CODEX_HOME` (Codex),
+`CLAUDE_CONFIG_DIR` (Claude Code), and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+`XDG_STATE_HOME`, `XDG_CACHE_HOME` (OpenCode) when set. These variables hold paths;
+they do not require `NEXUS_SUBPROCESS_EXTRA_ENV` or disabling the allowlist.
+Unset variables remain absent, and cross-vendor credential filtering still applies.
+The Codex read-only MCP isolation scan uses the same forwarded `CODEX_HOME` as
+the spawned child, reading `$CODEX_HOME/config.toml` instead of `~/.codex/config.toml`.
+
+See the [Codex environment reference](https://developers.openai.com/codex/environment-variables),
+[Claude Code environment reference](https://code.claude.com/docs/en/env-vars), and
+[OpenCode directory resolution](https://github.com/anomalyco/opencode/blob/v1.2.0/packages/opencode/src/global/index.ts).
+[Gemini uses `GEMINI_CLI_HOME`](https://geminicli.com/docs/reference/configuration/)
+rather than these XDG variables; forward it explicitly
+with `NEXUS_SUBPROCESS_EXTRA_ENV=GEMINI_CLI_HOME` when relocating its home.
+
 ### Security Variables
 
 | Variable                         | Description                                                                                                                                                                                                                             | Default              |
