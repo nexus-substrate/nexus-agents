@@ -51,14 +51,14 @@ describe('servedOutcomeFields (#6624)', () => {
       inputTokens: 1_000,
       outputTokens: 2_000,
     });
-    expect(fields).toEqual({ servedModel: 'claude-sonnet', costUsd: 0.005, priceBasis: 'list' });
+    expect(fields).toEqual({
+      servedModel: 'claude-sonnet',
+      costUsd: 0.005,
+      priceBasis: 'declared',
+    });
   });
 
-  it('labels a declared free gateway rate list, with a measured $0 (#6660: the documented mapping)', () => {
-    // PriceBasis has no `declared` member: widening that published union is
-    // breaking under the api-surface gate, so a NEXUS_GATEWAY_COST rate maps
-    // to 'list' as core/price-basis.ts documents. The cost is the declared
-    // rate, not claude-sonnet's registry 0.033.
+  it('labels a declared free gateway rate declared, with a measured $0 (#6664)', () => {
     vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
     const fields = servedOutcomeFields({
       model: 'claude-sonnet',
@@ -66,7 +66,7 @@ describe('servedOutcomeFields (#6624)', () => {
       inputTokens: 1_000,
       outputTokens: 2_000,
     });
-    expect(fields).toEqual({ servedModel: 'claude-sonnet', costUsd: 0, priceBasis: 'list' });
+    expect(fields).toEqual({ servedModel: 'claude-sonnet', costUsd: 0, priceBasis: 'declared' });
   });
 
   it('records an undeclared gateway as an unknown cost', () => {

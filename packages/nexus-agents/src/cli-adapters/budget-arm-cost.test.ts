@@ -378,19 +378,21 @@ describe('gatewayCostDetail (#4392 inc 2 step 4)', () => {
     }
   );
 
-  it('is a MEASURED $0 for free and local, sourced to the arm', () => {
-    for (const decl of ['free', 'local', 'openai-compat=free']) {
+  it.each(['free', 'local', 'openai-compat=free'])(
+    'records declared for %s, with measured zero USD sourced to the arm',
+    (decl) => {
       const detail = gatewayCostDetail(ARM, MODEL, 1_000, 200, { NEXUS_GATEWAY_COST: decl });
-      expect(detail).toEqual({ costUsd: 0, priced: true, resolvedId: ARM });
-      expect(priceBasisOf(detail)).toBe('list');
+      expect(detail).toEqual({ costUsd: 0, priced: true, resolvedId: ARM, declared: true });
+      expect(priceBasisOf(detail)).toBe('declared');
     }
-  });
+  );
 
   it('computes the flat rate for priced:<in>,<out>, rounded like the ledger', () => {
     const detail = gatewayCostDetail(ARM, MODEL, 1_000_000, 500_000, {
       NEXUS_GATEWAY_COST: 'priced:2,10',
     });
-    expect(detail).toEqual({ costUsd: 7, priced: true, resolvedId: ARM });
+    expect(detail).toEqual({ costUsd: 7, priced: true, resolvedId: ARM, declared: true });
+    expect(priceBasisOf(detail)).toBe('declared');
     // Sub-micro-USD noise is rounded away (ledger requirement, not a cost one).
     const tiny = gatewayCostDetail(ARM, MODEL, 1, 1, { NEXUS_GATEWAY_COST: 'priced:0.3333333,0' });
     expect(tiny.costUsd).toBe(0);
@@ -400,6 +402,7 @@ describe('gatewayCostDetail (#4392 inc 2 step 4)', () => {
   it('defers bare priced to the registry entry of the MODEL that answered', () => {
     const detail = gatewayCostDetail(ARM, MODEL, 1_000, 200, { NEXUS_GATEWAY_COST: 'priced' });
     expect(detail).toEqual(computeCostDetail(MODEL, 1_000, 200));
+    expect(priceBasisOf(detail)).toBe('list');
     expect(detail.priced).toBe(true);
     // Bare priced on a model the registry cannot price stays UNKNOWN.
     const unpriced = gatewayCostDetail(ARM, 'mystery-model-xyz', 1_000, 200, {
@@ -407,6 +410,7 @@ describe('gatewayCostDetail (#4392 inc 2 step 4)', () => {
     });
     expect(unpriced.priced).toBe(false);
     expect(unpriced.costUsd).toBe(0);
+    expect(priceBasisOf(unpriced)).toBe('unknown');
   });
 
   it('is UNKNOWN for bare priced when the writer holds no model id (#6399), sourced to the arm', () => {
@@ -418,6 +422,6 @@ describe('gatewayCostDetail (#4392 inc 2 step 4)', () => {
     // A declared flat rate still prices without a model id.
     expect(
       gatewayCostDetail(ARM, undefined, 1_000_000, 500_000, { NEXUS_GATEWAY_COST: 'priced:2,10' })
-    ).toEqual({ costUsd: 7, priced: true, resolvedId: ARM });
+    ).toEqual({ costUsd: 7, priced: true, resolvedId: ARM, declared: true });
   });
 });

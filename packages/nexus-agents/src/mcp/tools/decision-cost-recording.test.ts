@@ -241,7 +241,7 @@ describe('votesToCostInputs for a gateway seat (#4392 inc 2 step 4)', () => {
     vi.stubEnv('NEXUS_GATEWAY_COST', 'openai-compat=free');
     const inputs = votesToCostInputs([gatewayVote()]);
     expect(inputs[0]?.costUsd).toBe(0);
-    expect(inputs[0]?.priceBasis).toBe('list');
+    expect(inputs[0]?.priceBasis).toBe('declared');
   });
 
   it('prices a flat-rate declaration, not the model id', () => {
@@ -249,6 +249,7 @@ describe('votesToCostInputs for a gateway seat (#4392 inc 2 step 4)', () => {
     const inputs = votesToCostInputs([gatewayVote()]);
     // 1000 in @ $2/1M + 200 out @ $10/1M — not Sonnet's $0.006.
     expect(inputs[0]?.costUsd).toBeCloseTo(0.004, 9);
+    expect(inputs[0]?.priceBasis).toBe('declared');
   });
 
   it('leaves a seat WITHOUT gatewayArm exactly as before (vendor list price)', () => {
