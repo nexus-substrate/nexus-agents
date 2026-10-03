@@ -180,10 +180,13 @@ function servedModelField(
   if (VoterSummarySchema.shape.servedModel.safeParse(v.servedModel).success) {
     return { servedModel: v.servedModel };
   }
+  // The type says string, but the value is adapter output: a null or other
+  // non-string must not throw here and lose the record it was meant to protect.
+  const reported: unknown = v.servedModel;
   const warnTo = logger ?? createLogger({ component: 'vote-record-store' });
   warnTo.warn('Omitting a reported servedModel the vote-record reader would reject', {
     role: v.role,
-    length: v.servedModel.length,
+    ...(typeof reported === 'string' ? { length: reported.length } : { type: typeof reported }),
   });
   return {};
 }

@@ -1946,47 +1946,61 @@ describe('gateway-served voter model reader (#6951)', () => {
     });
   });
 
-  it.each(['', 'x'.repeat(201), 'claude sonnet', 'claude\n', 'claude<script>'])(
-    'omits a reported value the reader would reject, with a warning (%j)',
-    (servedModel) => {
-      const dir = mkdtempSync(join(tmpdir(), 'served-model-invalid-'));
-      try {
-        const filePath = join(dir, 'governance', 'vote-records.jsonl');
-        const warn = vi.fn();
-        const logger: ILogger = {
-          debug: vi.fn(),
-          info: vi.fn(),
-          warn,
-          error: vi.fn(),
-          child: vi.fn(),
-          setLevel: vi.fn(),
-        };
-        const written = persistVoteRecord({
-          id: 'invalid-served',
-          proposal: 'p',
-          strategy: 'supermajority',
-          result: consensusResult(),
-          declaredOptions: undefined,
-          resolvedDecision: 'approved',
-          votes: [{ ...agentVote('architect', 'approve'), model: 'gemini-2.5-pro', servedModel }],
-          filePath,
-          logger,
-        });
-        expect(written).toBeDefined();
-        expect(written!.voters[0]).not.toHaveProperty('servedModel');
-        expect(written!.voters[0]?.model).toBe('gemini-2.5-pro');
-        expect(warn).toHaveBeenCalledWith(
-          expect.stringContaining('servedModel'),
-          expect.objectContaining({ role: 'architect' })
-        );
-        const parsed = readVoteRecords(filePath);
-        expect(parsed.invalidLines).toEqual([]);
-        expect(verifyVoteRecordSet(parsed.records).ok).toBe(true);
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
+  it.each<unknown>([
+    '',
+    'x'.repeat(201),
+    'claude sonnet',
+    'claude\n',
+    'claude<script>',
+    // Wrong types from adapter output must not throw in the warning path (#6992 panel).
+    null,
+    42,
+    { model: 'sonnet' },
+  ])('omits a reported value the reader would reject, with a warning (%j)', (servedModel) => {
+    const dir = mkdtempSync(join(tmpdir(), 'served-model-invalid-'));
+    try {
+      const filePath = join(dir, 'governance', 'vote-records.jsonl');
+      const warn = vi.fn();
+      const logger: ILogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn,
+        error: vi.fn(),
+        child: vi.fn(),
+        setLevel: vi.fn(),
+      };
+      const written = persistVoteRecord({
+        id: 'invalid-served',
+        proposal: 'p',
+        strategy: 'supermajority',
+        result: consensusResult(),
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        // Adapter output is untyped at runtime; the cast models that boundary.
+        votes: [
+          {
+            ...agentVote('architect', 'approve'),
+            model: 'gemini-2.5-pro',
+            servedModel: servedModel as string,
+          },
+        ],
+        filePath,
+        logger,
+      });
+      expect(written).toBeDefined();
+      expect(written!.voters[0]).not.toHaveProperty('servedModel');
+      expect(written!.voters[0]?.model).toBe('gemini-2.5-pro');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('servedModel'),
+        expect.objectContaining({ role: 'architect' })
+      );
+      const parsed = readVoteRecords(filePath);
+      expect(parsed.invalidLines).toEqual([]);
+      expect(verifyVoteRecordSet(parsed.records).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
-  );
+  });
 
   it.each(['1.12', '1.13'] as const)(
     'hash-covers adding, changing, and removing servedModel on version %s',
