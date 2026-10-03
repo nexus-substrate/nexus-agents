@@ -46,6 +46,9 @@ interface QualityProfile {
 /** Max quality score from model registry (reasoning + codeGeneration are 0-10 each). */
 const MAX_QUALITY = 10;
 
+/** Fixed quality-stage latency ceiling; no configuration consumer exists (#5842). */
+const MAX_QUALITY_LATENCY_MS = 10_000;
+
 /**
  * Derive quality profiles from the canonical model registry.
  * Quality scores normalized from 0-10 to 0-1.
@@ -119,8 +122,6 @@ export interface QualityConstraintConfig {
   readonly minQuality: number;
   /** Maximum cost per task in USD */
   readonly maxCostUsd: number;
-  /** Maximum latency in milliseconds */
-  readonly maxLatencyMs: number;
   /** Expected tokens for cost estimation */
   readonly expectedTokens: number;
   /**
@@ -139,7 +140,6 @@ export interface QualityConstraintConfig {
 const DEFAULT_CONFIG: QualityConstraintConfig = {
   minQuality: 0.7,
   maxCostUsd: 1.0,
-  maxLatencyMs: 10000,
   expectedTokens: 1500,
   allowFallback: true,
 };
@@ -251,7 +251,7 @@ export class QualityConstraintStage implements IRouterStage {
       config: {
         minQuality: this.config.minQuality,
         maxCostUsd: this.config.maxCostUsd,
-        maxLatencyMs: this.config.maxLatencyMs,
+        maxLatencyMs: MAX_QUALITY_LATENCY_MS,
       },
     };
   }
@@ -286,10 +286,10 @@ export class QualityConstraintStage implements IRouterStage {
     }
 
     // Check latency
-    if (profile.avgLatencyMs > this.config.maxLatencyMs) {
+    if (profile.avgLatencyMs > MAX_QUALITY_LATENCY_MS) {
       return {
         meets: false,
-        reason: `Latency ${String(profile.avgLatencyMs)}ms > max ${String(this.config.maxLatencyMs)}ms`,
+        reason: `Latency ${String(profile.avgLatencyMs)}ms > max ${String(MAX_QUALITY_LATENCY_MS)}ms`,
         violated: 'latency',
       };
     }

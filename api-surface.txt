@@ -7070,7 +7070,6 @@ InterfaceDeclaration QualityConstraintConfig
   readonly expectedOutputTokens?: number | undefined
   readonly expectedTokens: number
   readonly maxCostUsd: number
-  readonly maxLatencyMs: number
   readonly minQuality: number
 ClassDeclaration QualityConstraintStage
   canHandle(ctx: RoutingContext) => boolean

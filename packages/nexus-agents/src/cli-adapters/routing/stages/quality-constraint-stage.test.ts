@@ -4,12 +4,13 @@
  * @module cli-adapters/routing/stages/quality-constraint-stage.test
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   QualityConstraintStage,
   createQualityConstraintStage,
   resetQualityProfileCache,
 } from './quality-constraint-stage.js';
+import * as modelConfigHelpers from '../../../config/model-config-helpers.js';
 import type { RoutingContext } from '../router-stage.js';
 
 describe('QualityConstraintStage', () => {
@@ -18,6 +19,11 @@ describe('QualityConstraintStage', () => {
   beforeEach(() => {
     resetQualityProfileCache();
     stage = new QualityConstraintStage();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetQualityProfileCache();
   });
 
   describe('constructor', () => {
@@ -114,7 +120,6 @@ describe('QualityConstraintStage', () => {
         maxCostUsd: 0.01,
         expectedTokens: 1500,
         minQuality: 0,
-        maxLatencyMs: 100_000,
       });
       const result = await stage.route(createContext('test task'));
 
@@ -133,7 +138,6 @@ describe('QualityConstraintStage', () => {
         expectedInputTokens: 1400,
         expectedOutputTokens: 100,
         minQuality: 0,
-        maxLatencyMs: 100_000,
       });
       const result = await stage.route(createContext('test task'));
 
@@ -141,20 +145,24 @@ describe('QualityConstraintStage', () => {
       if (result.ok) expect(result.value.context.filtered.has('gemini')).toBe(false);
     });
 
-    it('filters high latency candidates', async () => {
-      // Derived from CLI_AVG_LATENCY: claude=800, gemini=400, codex=500
-      const lowLatencyStage = new QualityConstraintStage({ maxLatencyMs: 450 });
-      const ctx = createContext('test task');
-      const result = await lowLatencyStage.route(ctx);
+    it('enforces the fixed 10000ms ceiling inclusively (#5842)', async () => {
+      const profiles = modelConfigHelpers.buildTopsisProfiles();
+      const latencies = { claude: 10_001, gemini: 10_000, codex: 9_999, opencode: 9_999 };
+      vi.spyOn(modelConfigHelpers, 'buildTopsisProfiles').mockReturnValue(
+        profiles.map((profile) => ({
+          ...profile,
+          averageLatencyMs: latencies[profile.cliName],
+        }))
+      );
+      const fixedLatencyStage = new QualityConstraintStage({ allowFallback: false });
+      const result = await fixedLatencyStage.route(createContext('test task'));
 
       expect(result.ok).toBe(true);
-      if (result.ok) {
-        // Only gemini (400ms) should pass
-        const filtered = result.value.context.filtered;
-        expect(filtered.has('claude')).toBe(true);
-        expect(filtered.has('codex')).toBe(true);
-        expect(filtered.has('gemini')).toBe(false);
-      }
+      if (!result.ok) return;
+      expect(result.value.context.filtered.get('claude')).toContain('max 10000ms');
+      expect(result.value.context.filtered.has('gemini')).toBe(false);
+      expect(result.value.context.filtered.has('codex')).toBe(false);
+      expect(fixedLatencyStage.getStats()['config']).toMatchObject({ maxLatencyMs: 10_000 });
     });
 
     it('uses fallback when all filtered', async () => {
@@ -302,9 +310,9 @@ describe('QualityConstraintStage', () => {
     });
 
     it('passes config to factory function', () => {
-      const created = createQualityConstraintStage({ maxLatencyMs: 3000 });
+      const created = createQualityConstraintStage({ minQuality: 0.9 });
       const stats = created.getStats();
-      expect(stats['config']).toEqual(expect.objectContaining({ maxLatencyMs: 3000 }));
+      expect(stats['config']).toEqual(expect.objectContaining({ minQuality: 0.9 }));
     });
   });
 });
