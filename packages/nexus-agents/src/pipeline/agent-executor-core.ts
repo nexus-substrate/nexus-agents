@@ -382,6 +382,7 @@ function maybeEmitModelCalled(executionId: string | undefined, result: ExpertBri
 
 /** What every stage closure needs from the executor. */
 export interface StageDeps {
+  readonly workspaceDependencies?: import('./dev-pipeline.js').DevPipelineDependencies | undefined;
   readonly config: AgentExecutorConfig;
   /** Per-run budget guard (#3395). No-op unless config.budget is set. */
   readonly guard: BudgetGuard;

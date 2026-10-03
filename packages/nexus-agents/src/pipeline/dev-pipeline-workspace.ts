@@ -1,17 +1,24 @@
 /** Per-run implementation checkout and operator-owned patch handoff (#6794). */
-import { execFileSync } from 'node:child_process';
-import { realpathSync, statSync, symlinkSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { createScratchCheckout, type ScratchCheckout } from '../cli/vote-scratch-checkout.js';
+import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
 import { getNexusTmpDir } from '../config/nexus-tmp-dir.js';
 import { createLogger } from '../core/index.js';
-import type { DevPipelineResult, DevPipelineStages } from './dev-pipeline.js';
+import type {
+  DevPipelineDependencies,
+  DevPipelineResult,
+  DevPipelineStages,
+} from './dev-pipeline.js';
 
 const GIT_TIMEOUT_MS = 30_000;
+const execFileAsync = promisify(execFile);
 const DIFF_MAX_BYTES = 16 * 1024 * 1024;
 const logger = createLogger({ component: 'dev-pipeline-workspace' });
-// Exclude the links even when the source repository does not ignore node_modules.
+// Installed dependencies are runtime inputs, excluded even when not ignored.
 const PATCH_PATHS = ['.', ':(exclude,glob)**/node_modules', ':(exclude,glob)**/node_modules/**'];
 
 function git(cwd: string, args: string[]): string {
@@ -24,28 +31,47 @@ function git(cwd: string, args: string[]): string {
   });
 }
 
-/** Visit only tracked manifests, never searching the source tree or dependency directories. */
-function linkDependencies(repoRoot: string, scratchPath: string): number {
-  const manifests = git(scratchPath, [
-    'ls-files',
-    '-z',
-    '--',
-    'package.json',
-    ':(glob)**/package.json',
-    ':(exclude,glob)**/node_modules/**',
-  ])
-    .split('\0')
-    .filter((path) => path !== '');
-  let linked = 0;
-  for (const manifest of manifests) {
-    const directory = dirname(manifest);
-    const source = join(repoRoot, directory, 'node_modules');
-    if (statSync(source, { throwIfNoEntry: false })?.isDirectory() !== true) continue;
-    symlinkSync(source, join(scratchPath, directory, 'node_modules'), 'dir');
-    linked++;
+/** Process seam for fixture installs without a warm offline cache. */
+type DependencyInstaller = (
+  command: string,
+  args: string[],
+  options: { cwd: string; timeout: number; env: NodeJS.ProcessEnv }
+) => Promise<unknown>;
+
+/** Provision only the pinned checkout before implementation can edit its lockfile. */
+async function provisionDependencies(
+  scratchPath: string,
+  install: DependencyInstaller
+): Promise<DevPipelineDependencies> {
+  if (!existsSync(join(scratchPath, 'package.json'))) return { status: 'none' };
+  const lockfiles = [
+    ['pnpm-lock.yaml', 'pnpm', ['install', '--frozen-lockfile', '--prefer-offline']],
+    ['package-lock.json', 'npm', ['ci', '--prefer-offline']],
+    ['yarn.lock', 'yarn', ['install', '--frozen-lockfile', '--prefer-offline']],
+  ] as const;
+  const selected = lockfiles.find(([lockfile]) => existsSync(join(scratchPath, lockfile)));
+  if (selected === undefined) return { status: 'none' };
+  const [, manager, args] = selected;
+  try {
+    await install(manager, [...args], {
+      cwd: scratchPath,
+      timeout: WORKFLOW_TIMEOUTS.stepMs,
+      env: {
+        ...process.env,
+        // A shared store hardlink would permit scratch edits to change source dependencies.
+        npm_config_package_import_method: 'copy',
+        npm_config_enable_global_virtual_store: 'false',
+        npm_config_virtual_store_dir: join(scratchPath, 'node_modules/.pnpm'),
+      },
+    });
+    return { status: 'installed', manager };
+  } catch (error: unknown) {
+    return {
+      status: 'failed',
+      manager,
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
-  // No installed dependencies means zero links; quality-check behaviour is unchanged.
-  return linked;
 }
 
 /** NUL records count paths accurately, including filenames with newlines and renames. */
@@ -91,7 +117,9 @@ function disposeWorkspace(scratch: ScratchCheckout): string | undefined {
     scratch.dispose();
     return undefined;
   } catch (error: unknown) {
-    const warning = `Failed to remove scratch worktree at ${scratch.path}: ${String(error)}. Leftover path: ${scratch.path}.`;
+    const warning = existsSync(scratch.path)
+      ? `Failed to remove scratch worktree at ${scratch.path}: ${String(error)}. Leftover path: ${scratch.path}.`
+      : `Failed to prune scratch worktree registration for ${scratch.path}: ${String(error)}.`;
     logger.warn(warning, { error: String(error) });
     return warning;
   }
@@ -101,7 +129,7 @@ function disposeWorkspace(scratch: ScratchCheckout): string | undefined {
 function captureChanges(
   scratchPath: string,
   baseSha: string,
-  dependenciesLinked: number
+  dependencies: DevPipelineDependencies
 ): NonNullable<DevPipelineResult['changes']> {
   git(scratchPath, ['add', '--intent-to-add', '--all', '--', ...PATCH_PATHS]);
   const diff = git(scratchPath, [
@@ -119,7 +147,7 @@ function captureChanges(
     baseSha,
     worktreePath: scratchPath,
     worktreeRemoved: false,
-    dependenciesLinked,
+    dependencies,
     empty,
     status: empty ? 'no_changes' : 'changes',
   };
@@ -132,7 +160,8 @@ function captureChanges(
  */
 export async function withDevPipelineWorkspace(
   stages: DevPipelineStages,
-  run: (bound: DevPipelineStages) => Promise<DevPipelineResult>
+  run: (bound: DevPipelineStages) => Promise<DevPipelineResult>,
+  install: DependencyInstaller = execFileAsync
 ): Promise<DevPipelineResult> {
   if (stages.withWorkspace === undefined) return run(stages);
   const declared = stages.implementWorkspace?.directory;
@@ -146,11 +175,14 @@ export async function withDevPipelineWorkspace(
   let changes: NonNullable<DevPipelineResult['changes']>;
   let cleanupWarning: string | undefined;
   try {
-    const dependenciesLinked = linkDependencies(repoRoot, scratch.path);
+    const dependencies = await provisionDependencies(scratch.path, install);
     // Preserve a workingDir that points at a package below the repository root.
-    const bound = stages.withWorkspace(join(scratch.path, relative(repoRoot, directory)));
+    const bound = stages.withWorkspace(
+      join(scratch.path, relative(repoRoot, directory)),
+      dependencies
+    );
     result = await run(bound);
-    changes = captureChanges(scratch.path, baseSha, dependenciesLinked);
+    changes = captureChanges(scratch.path, baseSha, dependencies);
   } finally {
     cleanupWarning = disposeWorkspace(scratch);
   }
@@ -158,7 +190,7 @@ export async function withDevPipelineWorkspace(
   return {
     ...result,
     completed: result.completed && !changes.empty,
-    changes: { ...changes, worktreeRemoved: cleanupWarning === undefined },
+    changes: { ...changes, worktreeRemoved: !existsSync(scratch.path) },
     ...(warnings.length > 0 ? { warnings: [...(result.warnings ?? []), ...warnings] } : {}),
   };
 }

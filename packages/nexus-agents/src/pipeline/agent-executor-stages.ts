@@ -364,6 +364,7 @@ export function createQaReviewStage({
 export function createQualityGateStage({
   config,
   startStage,
+  workspaceDependencies,
 }: StageDeps): NonNullable<DevPipelineStages['qualityGate']> {
   return async (signal) => {
     startStage('quality-gate');
@@ -373,13 +374,18 @@ export function createQualityGateStage({
     // Reuse the canonical #1684 engine + check factories — no new check logic.
     // #6747: the signal ends the running check's process tree; an aborted
     // gate throws rather than recording an outcome it never measured.
-    const result = await rethrowAsStageAbort('qualityGate', signal, () =>
-      runQualityGate(
-        'qa',
-        [checkTypeCheck(target), checkLint(target), checkTests(target)],
-        1,
-        signal
-      )
+    const result = await rethrowAsStageAbort('qualityGate', signal, async () =>
+      workspaceDependencies?.status === 'failed'
+        ? {
+            verdict: 'skip' as const,
+            feedback: `dependencies could not be provisioned: ${workspaceDependencies.reason}`,
+          }
+        : runQualityGate(
+            'qa',
+            [checkTypeCheck(target), checkLint(target), checkTests(target)],
+            1,
+            signal
+          )
     );
     // #4355: `=== 'pass'`, NOT `!== 'fail'`. The gate reports three states,
     // and `skip` means no check actually ran — every declared script was
@@ -390,7 +396,10 @@ export function createQualityGateStage({
     // pass or fail; making `skip` reachable is what broke it.
     const passed = result.verdict === 'pass';
     const ms = getTimeProvider().now() - start;
-    emitStageEvent('quality-gate', passed ? 'completed' : 'failed', { durationMs: ms });
+    emitStageEvent('quality-gate', passed ? 'completed' : 'failed', {
+      durationMs: ms,
+      verdict: result.verdict,
+    });
     recordOutcome({
       sessionId: config.sessionId,
       taskId: 'quality-gate',
@@ -410,7 +419,8 @@ export function createQualityGateStage({
         ? `Gate unmeasured: ${result.feedback}`
         : `Gate failed: ${result.feedback}`;
     await postProgress(config, 'QualityGate', passed ? 'Passed' : verdictNote);
-    return { passed, feedback: result.feedback };
+    const feedback = result.verdict === 'skip' ? verdictNote : result.feedback;
+    return { passed, verdict: result.verdict, feedback };
   };
 }
 

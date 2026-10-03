@@ -40,7 +40,7 @@ vi.mock('../context/context-retriever.js', () => ({
   getResearchInsightsForTask: () => Promise.resolve([]),
 }));
 
-const repo = process.cwd();
+let repo: string;
 const git = (...args: string[]): string =>
   execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
 const options = { researchOverride: 'Operator plan', qualityGate: 'blocking' } as const;
@@ -64,6 +64,7 @@ function stages(directory = repo): DevPipelineStages {
 
 describe('dev pipeline scratch worktree', () => {
   let tmp: string;
+  let scratchRoot: string;
   let workspace: string | undefined;
   let writeChanges: boolean;
   beforeEach(() => {
@@ -71,7 +72,20 @@ describe('dev pipeline scratch worktree', () => {
     // The vitest TMPDIR is in-repo on a short checkout path (CI); the scratch
     // must not be, or the isolation check rightly refuses the gate.
     tmp = mkdtempOutsideRepo('dev-scratch-test-');
-    vi.stubEnv('NEXUS_TMPDIR', tmp);
+    const fixtureRoot = join(tmp, 'repo');
+    repo = join(fixtureRoot, 'packages/nexus-agents');
+    mkdirSync(repo, { recursive: true });
+    writeFileSync(join(fixtureRoot, 'package.json'), '{"name":"fixture","private":true}\n');
+    writeFileSync(join(repo, 'package.json'), '{"name":"fixture-package","private":true}\n');
+    writeFileSync(join(fixtureRoot, 'tracked.txt'), 'HEAD content\n');
+    execFileSync('git', ['init', '--quiet'], { cwd: fixtureRoot, stdio: 'pipe' });
+    git('config', 'user.name', 'Scratch Fixture');
+    git('config', 'user.email', 'scratch@example.test');
+    git('add', '--all');
+    git('-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture');
+    scratchRoot = join(tmp, 'scratch');
+    mkdirSync(scratchRoot);
+    vi.stubEnv('NEXUS_TMPDIR', scratchRoot);
     workspace = undefined;
     writeChanges = true;
     mocks.expert.mockImplementation(
@@ -80,7 +94,7 @@ describe('dev pipeline scratch worktree', () => {
         expect(opts?.workDir).toBeDefined();
         expect(opts?.workDir).not.toBe(repo);
         const cwd = opts?.workDir ?? '';
-        expect(cwd.startsWith(join(tmp, 'vote-'))).toBe(true);
+        expect(cwd.startsWith(join(scratchRoot, 'vote-'))).toBe(true);
         if (role === 'code') {
           workspace = cwd;
           if (writeChanges) {
@@ -213,6 +227,7 @@ describe('dev pipeline scratch worktree', () => {
     try {
       vi.stubEnv('NEXUS_TMPDIR', inRepo);
       vi.stubEnv('TMPDIR', tmp);
+      scratchRoot = tmp;
       const result = await runDevPipeline('Add file', stages(), options);
       expect(result.warnings ?? []).not.toContainEqual(
         expect.stringContaining('Quality gate refused')

@@ -571,7 +571,7 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
       baseSha: 'a'.repeat(40),
       worktreePath: '/tmp/removed-scratch',
       worktreeRemoved: true,
-      dependenciesLinked: 0,
+      dependencies: { status: 'none' as const },
       empty: true,
       status: 'no_changes',
     };
