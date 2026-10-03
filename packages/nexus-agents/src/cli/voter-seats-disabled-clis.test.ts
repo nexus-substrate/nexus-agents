@@ -12,8 +12,8 @@ import type { CliName, HealthStatus } from '../cli-adapters/types.js';
 import type { IModelAdapter } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
-// Each mock carries its class's real read-only declaration (#6962): gemini's
-// agy adapter declares false, the other three true.
+// Each mock carries its class's real read-only declaration: gemini's agy
+// adapter (#6962) and opencode (#6970) declare false, claude and codex true.
 function mockAdapterClass(
   enforcesReadOnlyAnalysis = true
 ): new () => { healthCheck: () => Promise<HealthStatus>; enforcesReadOnlyAnalysis: boolean } {
@@ -44,7 +44,7 @@ vi.mock('../cli-adapters/adapters/codex-mcp-adapter.js', () => ({
   CodexMcpAdapter: mockAdapterClass(),
 }));
 vi.mock('../cli-adapters/adapters/opencode-adapter.js', () => ({
-  OpenCodeCliAdapter: mockAdapterClass(),
+  OpenCodeCliAdapter: mockAdapterClass(false),
 }));
 vi.mock('./cli-auth-probe.js', () => ({
   probeCli: (cli: CliName) =>
@@ -97,9 +97,9 @@ describe('voter seat assignment honors NEXUS_DISABLED_CLIS (#6590)', () => {
     else process.env['NEXUS_DISABLED_CLIS'] = saved;
   });
 
-  it('spreads seats over the three read-only-enforcing CLIs when unset (#6962)', async () => {
+  it('spreads seats over the two read-only-enforcing CLIs when unset (#6962, #6970)', async () => {
     delete process.env['NEXUS_DISABLED_CLIS'];
-    expect(new Set(await seatClis())).toEqual(new Set(['claude', 'codex', 'opencode']));
+    expect(new Set(await seatClis())).toEqual(new Set(['claude', 'codex']));
   });
 
   it('seats no voter on gemini or codex when both are disabled', async () => {
@@ -107,11 +107,13 @@ describe('voter seat assignment honors NEXUS_DISABLED_CLIS (#6590)', () => {
     const clis = await seatClis();
     expect(clis).not.toContain('gemini');
     expect(clis).not.toContain('codex');
-    expect(new Set(clis)).toEqual(new Set(['claude', 'opencode']));
+    // Only claude still serves (opencode refuses read-only, #6970), and a
+    // single serving CLI is not a diverse panel: every seat takes the fallback.
+    expect(new Set(clis)).toEqual(new Set(['fallback']));
   });
 });
 
-describe('default panel seats only CLIs that enforce read-only analysis (#6962)', () => {
+describe('default panel seats only CLIs that enforce read-only analysis (#6962, #6970)', () => {
   const saved = process.env['NEXUS_DISABLED_CLIS'];
   afterEach(() => {
     if (saved === undefined) delete process.env['NEXUS_DISABLED_CLIS'];
@@ -119,33 +121,35 @@ describe('default panel seats only CLIs that enforce read-only analysis (#6962)'
   });
 
   // Before #6962 security and catfish were dealt to gemini, whose agy adapter
-  // refuses read-only analysis, so both seats errored on every panel.
-  it('moves security to codex and keeps no seat on gemini', async () => {
+  // refuses read-only analysis, so both seats errored on every panel; #6970
+  // did the same to opencode's devex and catfish seats.
+  it('deals every seat to claude or codex, none to gemini or opencode', async () => {
     delete process.env['NEXUS_DISABLED_CLIS'];
     expect(await seatMap()).toEqual({
       architect: 'claude',
       security: 'codex',
-      devex: 'opencode',
-      ai_ml: 'claude',
-      pm: 'codex',
-      catfish: 'opencode',
+      devex: 'claude',
+      ai_ml: 'codex',
+      pm: 'claude',
+      catfish: 'codex',
       scope_steward: 'claude',
     });
   });
 
-  it('keeps the anthropic and openai families both seated', async () => {
+  it('keeps the anthropic and openai families both seated (>=2 families)', async () => {
     delete process.env['NEXUS_DISABLED_CLIS'];
     const clis = await seatClis();
     expect(clis).toContain('claude');
     expect(clis).toContain('codex');
+    expect(new Set(clis).size).toBeGreaterThanOrEqual(2);
   });
 
-  it('quick panel seats claude, codex and opencode', async () => {
+  it('quick panel seats claude and codex', async () => {
     delete process.env['NEXUS_DISABLED_CLIS'];
     expect(await seatMap(['architect', 'security', 'scope_steward'])).toEqual({
       architect: 'claude',
       security: 'codex',
-      scope_steward: 'opencode',
+      scope_steward: 'claude',
     });
   });
 });

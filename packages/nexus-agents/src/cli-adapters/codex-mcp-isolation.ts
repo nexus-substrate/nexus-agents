@@ -28,8 +28,8 @@
  *   detectable from disk.
  */
 
-import { readdirSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { readdirSync, realpathSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 
 import type { Result } from '../core/index.js';
@@ -178,7 +178,10 @@ const PLUGIN_MANIFEST_DIRS: ReadonlySet<string> = new Set([
   '.cursor-plugin',
 ]);
 
-/** How deep the plugin walk goes: `cache/<marketplace>/<plugin>/<version>/<manifest dir>/`. */
+/**
+ * How deep the plugin walk goes before it refuses: plugin roots sit at
+ * `cache/<marketplace>/<plugin>/<version>/`, depth 4 below `plugins/`.
+ */
 const PLUGIN_WALK_DEPTH = 6;
 
 /** Whether one plugin manifest declares MCP servers; an unreadable one counts. */
@@ -215,36 +218,74 @@ function listDir(dir: string): Result<readonly string[], string> {
   }
 }
 
-/** One entry of the plugin walk: the declaring file, or `undefined`. */
-function pluginEntryMcp(
-  dir: string,
-  name: string,
-  depth: number
-): Result<string | undefined, string> {
-  const path = join(dir, name);
-  if (name === '.mcp.json') return ok(path);
-  if (name === 'plugin.json' && PLUGIN_MANIFEST_DIRS.has(basename(dir))) {
+/**
+ * The declaring file in a plugin root (a directory holding `.mcp.json` or a
+ * manifest directory), or `undefined`. The root's other content (skills,
+ * assets, scripts) is not walked: codex reads declarations only from here.
+ */
+function pluginRootMcp(dir: string, names: readonly string[]): Result<string | undefined, string> {
+  if (names.includes('.mcp.json')) return ok(join(dir, '.mcp.json'));
+  for (const name of names.filter((n) => PLUGIN_MANIFEST_DIRS.has(n))) {
+    const path = join(dir, name, 'plugin.json');
     const declares = manifestDeclaresMcp(path);
-    return declares.ok ? ok(declares.value ? path : undefined) : declares;
+    if (!declares.ok) return declares;
+    if (declares.value) return ok(path);
   }
-  if (name === 'node_modules' || !isDirectory(path)) return ok(undefined);
-  return findPluginMcp(path, depth + 1);
+  return ok(undefined);
 }
 
 /**
  * The first installed plugin file under `dir` that declares MCP servers, or
- * `undefined`. Symlinked directories are followed (codex may follow them);
- * the depth bound keeps a symlink loop finite.
+ * `undefined`. Symlinked directories are followed (codex may follow them).
+ * Fails closed: a directory deeper than {@link PLUGIN_WALK_DEPTH} without a
+ * plugin root, or a symlink loop, is an error rather than "no MCP", since a
+ * declaration past it would go unseen. `ancestors` holds the real paths on
+ * the current branch.
  */
-function findPluginMcp(dir: string, depth: number): Result<string | undefined, string> {
-  if (depth > PLUGIN_WALK_DEPTH) return ok(undefined);
+function findPluginMcp(
+  dir: string,
+  depth: number,
+  ancestors: ReadonlySet<string> = new Set()
+): Result<string | undefined, string> {
   const entries = listDir(dir);
   if (!entries.ok) return entries;
+  if (entries.value.length === 0) return ok(undefined);
+  if (entries.value.some((n) => n === '.mcp.json' || PLUGIN_MANIFEST_DIRS.has(n))) {
+    return pluginRootMcp(dir, entries.value);
+  }
+  const branch = descendBranch(dir, depth, ancestors);
+  if (!branch.ok) return branch;
   for (const name of entries.value) {
-    const found = pluginEntryMcp(dir, name, depth);
+    const path = join(dir, name);
+    if (!isDirectory(path)) continue;
+    const found = findPluginMcp(path, depth + 1, branch.value);
     if (!found.ok || found.value !== undefined) return found;
   }
   return ok(undefined);
+}
+
+/**
+ * The ancestor set for walking below `dir`, or an error when the walk must
+ * not go further: `dir` repeats an ancestor (a symlink loop) or lies past
+ * {@link PLUGIN_WALK_DEPTH}.
+ */
+function descendBranch(
+  dir: string,
+  depth: number,
+  ancestors: ReadonlySet<string>
+): Result<ReadonlySet<string>, string> {
+  let real: string;
+  try {
+    real = realpathSync(dir);
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return err(`cannot resolve ${dir}: ${code ?? String(error)}`);
+  }
+  if (ancestors.has(real)) return err(`symlink loop in the plugin tree at ${dir}`);
+  if (depth > PLUGIN_WALK_DEPTH) {
+    return err(`plugin tree deeper than ${String(PLUGIN_WALK_DEPTH)} levels at ${dir}`);
+  }
+  return ok(new Set(ancestors).add(real));
 }
 
 /**

@@ -1,14 +1,15 @@
 /**
  * Shared pieces for listing the MCP servers a spawned CLI would load (#6970).
  *
- * Why: a read-only analysis run of codex or opencode still starts every MCP
- * server the CLI's own config registers. Those servers run OUTSIDE the CLI's
- * sandbox and permission rules, so one that writes on startup (nexus-agents
- * itself writes `.gitignore` and `.nexus-agents/`) or exposes write-capable
- * tools defeats the read-only guarantee. Measured live on 2026-10-02: codex
- * `-s read-only` and opencode `OPENCODE_PERMISSION` both left `.gitignore` in
- * the tree. The fix disables each configured server by name for the run, so
- * the adapter has to know every name the CLI would load.
+ * Why: a read-only analysis run of codex still starts every MCP server the
+ * CLI's own config registers. Those servers run OUTSIDE the CLI's sandbox, so
+ * one that writes on startup (nexus-agents itself writes `.gitignore` and
+ * `.nexus-agents/`) or exposes write-capable tools defeats the read-only
+ * guarantee. Measured live on 2026-10-02: codex `-s read-only` left
+ * `.gitignore` in the tree. The fix disables each configured server by name
+ * for the run, so the adapter has to know every name the CLI would load.
+ * (opencode showed the same defect and more; it refuses read-only analysis
+ * instead, #6979.)
  *
  * Fail-closed contract: a config file that exists but cannot be read or
  * parsed is an error, never "no servers". The caller refuses the read-only

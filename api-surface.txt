@@ -6132,7 +6132,7 @@ ClassDeclaration OpenCodeCliAdapter
   getModelInfo() => ModelInfo
   initialize() => Promise<void>
   listModels() => Promise<readonly CliModelInfo[]>
-  readonly enforcesReadOnlyAnalysis: true
+  readonly enforcesReadOnlyAnalysis: false
   readonly name: "claude" | "codex" | "gemini" | "opencode"
 InterfaceDeclaration OperationBenchmark
   readonly datasetSize: number

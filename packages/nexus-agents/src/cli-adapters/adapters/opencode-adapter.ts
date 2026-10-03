@@ -24,14 +24,6 @@ import {
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
 import { createCallerInputCliError } from '../cli-error-helpers.js';
-import { isReadOnlyAnalysis } from '../access-mode.js';
-import { mcpScanRefusal, scanOrThrow, subprocessScanContext } from '../mcp-config-scan.js';
-import {
-  OPENCODE_CONFIG_CONTENT_ENV,
-  OPENCODE_MANAGED_CONFIG_FILES,
-  openCodeReadOnlyConfigContent,
-  scanOpenCodeMcpServers,
-} from '../opencode-mcp-isolation.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import { getAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
@@ -196,44 +188,19 @@ function warnIfAnthropicProvider(models: Set<string>): void {
  * as --model only when available (#1402); an explicitly requested model is
  * resolved against the probe or returned as an error (#6599).
  */
-/**
- * Child environment for a read-only analysis task (#6754). opencode reads
- * `OPENCODE_PERMISSION` as JSON and merges it into the `permission` config
- * after every config file, managed preferences included (verified in the
- * opencode 1.15.x binary; the key names and `allow`/`ask`/`deny` values are
- * documented at https://opencode.ai/docs/permissions). `bash` covers command
- * execution, `edit` every file write, `webfetch` network fetch.
- */
-const OPENCODE_READ_ONLY_ENV: Readonly<Record<string, string>> = {
-  OPENCODE_PERMISSION: JSON.stringify({ bash: 'deny', edit: 'deny', webfetch: 'deny' }),
-};
-
-/**
- * The child env for a read-only analysis task: the permission deny config,
- * plus `OPENCODE_CONFIG_CONTENT` disabling every MCP server opencode would
- * load (#6970). MCP servers are not covered by `OPENCODE_PERMISSION`;
- * measured live on opencode 1.15.13, the nexus-agents server wrote
- * `.gitignore` into the tree under the deny config. The inherited
- * `OPENCODE_CONFIG_CONTENT`, if any, is merged in, because the command's env
- * replaces it. Throws when a config cannot be listed.
- */
-function readOnlyEnv(
-  task: CliTask,
-  managedFiles: readonly string[]
-): Readonly<Record<string, string>> {
-  const ctx = subprocessScanContext('opencode', task);
-  const names = scanOrThrow('opencode', scanOpenCodeMcpServers(ctx, managedFiles));
-  if (names.length === 0) return OPENCODE_READ_ONLY_ENV;
-  const content = scanOrThrow(
-    'opencode',
-    openCodeReadOnlyConfigContent(names, ctx.env[OPENCODE_CONFIG_CONTENT_ENV])
-  );
-  return { ...OPENCODE_READ_ONLY_ENV, [OPENCODE_CONFIG_CONTENT_ENV]: content };
-}
-
 export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'opencode';
-  override readonly enforcesReadOnlyAnalysis = true;
+  // opencode cannot run read-only analysis truthfully, so it refuses those
+  // tasks (#6970, revisit in #6979). #6754 mapped the mode to an
+  // `OPENCODE_PERMISSION` deny config. Observed live on 2026-10-02 with
+  // opencode 1.15.13, under that config: MCP servers from the user's config
+  // still started outside the permission rules (the nexus-agents server wrote
+  // `.gitignore` into the tree); opencode itself rewrote the project's
+  // `opencode.json` to insert `"$schema"` on every run; and it substitutes
+  // `{env:}`/`{file:}` across the raw config text, comments and values
+  // included, before parsing, so a config scan cannot list the servers it
+  // will load (a reviewer reproduced a bypass of that scan).
+  override readonly enforcesReadOnlyAnalysis = false;
   protected readonly parser: ICliResponseParser = new OpenCodeResponseParser();
 
   /** Enable transient-error retry for OpenCode (#1456). */
@@ -273,28 +240,6 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     this.availableModels = await probeAvailableModels();
     warnIfAnthropicProvider(this.availableModels);
     await super.initialize();
-  }
-
-  /**
-   * #6970: a read-only analysis task is refused when opencode's MCP config
-   * cannot be listed, since its servers run outside the permission rules.
-   */
-  protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
-    const base = await super.accessModeRefusal(task);
-    if (base !== undefined || !isReadOnlyAnalysis(task)) return base;
-    const scan = scanOpenCodeMcpServers(
-      subprocessScanContext(this.name, task),
-      this.openCodeManagedConfigFiles()
-    );
-    return scan.ok ? undefined : mcpScanRefusal(this.name, scan.error);
-  }
-
-  /**
-   * The managed config files the MCP scan reads (#6970). A seam so tests can
-   * keep the host's real `/etc/opencode` out of the scan.
-   */
-  protected openCodeManagedConfigFiles(): readonly string[] {
-    return OPENCODE_MANAGED_CONFIG_FILES;
   }
 
   /** Returns true if the model is available in the OpenCode installation. */
@@ -454,14 +399,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
         ? `${task.systemPrompt}\n\n---\n\n${task.content}`
         : task.content;
 
-    return isReadOnlyAnalysis(task)
-      ? {
-          command: 'opencode',
-          args,
-          stdin: content,
-          env: readOnlyEnv(task, this.openCodeManagedConfigFiles()),
-        }
-      : { command: 'opencode', args, stdin: content };
+    return { command: 'opencode', args, stdin: content };
   }
 
   /**
