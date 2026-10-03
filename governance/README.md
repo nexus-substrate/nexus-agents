@@ -228,7 +228,8 @@ needs `--as-owner` and `--as-owner` refuses the agent key, exactly as
 hash (a signed and an unsigned redaction hash the same) and is verified at the
 record's `at`; the gate reports it beside the target record's own line
 (`signed:agent by …` / `unsigned-record`). With no key configured the record
-is appended UNSIGNED and the command says so. The `by` field is
+is appended UNSIGNED and the command says so — and the ratification gate
+refuses the PR that adds it (`ledger-signature-required`, #3927). The `by` field is
 operator-supplied attribution; the signature is the authenticated identity.
 
 Review and commit the ledger diff in a PR. **The PR carrying the redaction is
@@ -431,8 +432,8 @@ had`, `no non-ledger change`, `conflict resolving <path>`, the head's
   there is this kind too, naming the ratified sha it was compared against.
 - `duplicate-id` — one id names two different records.
 
-**Signature, reported per bound record, not yet enforced (#3927 item 4,
-phases 1-2).** The line also carries the signature verifier's code for every
+**Signature, reported per bound record (#3927 item 4, phases 1-2;
+enforced since phase 3, below).** The line also carries the signature verifier's code for every
 bound record, verified against `governance/allowed_signers` — distinct,
 never collapsed:
 
@@ -465,6 +466,28 @@ the pure function that supplies no verifier prints `signature: unmeasured
 (no verifier supplied)` for a grandfathered record and refuses a record past
 the cutover — absence is not measured as signed.
 
+**Not only bound records (#3927).** Enforcing the bound records alone let an
+unsigned record that no PR binds be appended and merge unrefused. The gate
+therefore also judges a signature SCOPE, named by
+`RATIFICATION_SIGNATURE_SCOPE`:
+
+- `added` — the pre-merge job: every record (vote or redaction) the head
+  ledger carries whose id+hash the base ledger does not, i.e. what the PR
+  appends, bound or not.
+- `ledger` — the post-merge backstop, and the default when the variable is
+  unset: every record in the ledger. A record that bypassed the pre-merge job
+  keeps `main` red on every governor push until it is resolved, not only on
+  the push that landed it. Any other value is `unmeasured`.
+
+The grandfathered hashes are skipped in both scopes. A record in scope that
+is not `signed` turns a ratified verdict into `ledger-signature-required`,
+naming each record id with its own code (`unsigned-record`, `unknown-signer`,
+`bad-signature`, `signature-not-measured`); under any other refusal the same
+records are named on a second `::error::` line. A PR that adds no record has
+nothing to judge here (`0 record(s) … all signed`); its bound record is still
+checked as above. An unsigned redaction record is refused like any other, so
+redact with a signing key configured.
+
 An unreadable ledger (a directory at the path, a permissions error) prints
 `unmeasured` naming the error instead of crashing the gate (#6213); so does a
 run with no PR number (a direct push to `main`), or with no head sha. The
@@ -496,7 +519,8 @@ warn-first ended when it did.
 Precedence (the verdict's `kind`): `ledger-rewritten` → `ledger-invalid` →
 `duplicate-id` → `no-record` → `sha-mismatch` → `not-approved` →
 `wrong-error-policy` → `wrong-strategy` → `unmeasured-panel` →
-`degraded-panel` → `ratified` / `ratified-rebased` (the per-record checks
+`degraded-panel` → `ledger-signature-required` (#3927, judged only once the
+bound records ratify) → `ratified` / `ratified-rebased` (the per-record checks
 run over the records bound at the moved sha exactly as over a head-bound
 set, so a dissent there is `not-approved`). **Report order differs from precedence** for
 the per-record checks (the #6219 panel's note, applied at flip time): the

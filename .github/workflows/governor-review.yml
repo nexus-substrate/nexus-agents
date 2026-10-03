@@ -471,6 +471,9 @@ jobs:
           # #6213: the ledger at the merge-base; the gate requires the head
           # ledger to be this plus appended lines (`ledger-rewritten` otherwise).
           RATIFICATION_BASE_LEDGER_PATH: ${{ steps.evidence.outputs.base_ledger_path }}
+          # #3927: every record this PR ADDS to the base ledger must be signed,
+          # bound or not (an unbound unsigned record used to merge unrefused).
+          RATIFICATION_SIGNATURE_SCOPE: added
           # #5944: lets the gate read CLAUDE.md / AGENTS.md as of base and
           # exempt a diff whose only change is inside a generated span. Absent
           # or malformed, the exemption is simply never granted — fail-closed.
@@ -745,6 +748,10 @@ jobs:
           # `before` is the null sha); what landed must be that plus appended
           # lines, the same rule the pre-merge job applies.
           RATIFICATION_BASE_LEDGER_PATH: ${{ steps.evidence.outputs.base_ledger_path }}
+          # #3927: EVERY record on main past the grandfather set must be signed,
+          # not only what this push added — a record that bypassed the
+          # pre-merge job keeps main red until it is resolved. Also the default.
+          RATIFICATION_SIGNATURE_SCOPE: ledger
           # #6029: the backstop set NO base at all, so its exemption was
           # unreachable by a second mechanism. Both jobs must grant the same
           # exemption or a stamp-only PR turns main red after merging green.

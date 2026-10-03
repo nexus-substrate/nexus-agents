@@ -1,14 +1,21 @@
 /**
  * Phase 3 of #3927 item 4 (#6279): the committed signature policy of the
  * ratification gate — which unsigned records the cutover grandfathers and
- * the refusal every other bound record earns without a verified signature.
+ * the refusal every other bound record earns without a verified signature,
+ * and (#3927, closing gap) the same requirement over every record a PR ADDS
+ * and, on the post-merge backstop, over the whole ledger — an unbound
+ * unsigned record used to merge unrefused because no PR bound it.
  * A sibling of `governor-ledger-evidence.ts` for that file's line budget;
  * governor-owned like its parent (a change here moves the bar).
  *
  * @module scripts/governor-ledger-signature-policy
  */
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
-import type { VoteRecordSignatureVerdict } from '../packages/nexus-agents/src/audit/vote-record-signature.js';
+import type {
+  SignableLedgerRecord,
+  VoteRecordSignatureVerdict,
+} from '../packages/nexus-agents/src/audit/vote-record-signature.js';
+import { parseVoteRecordsText } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 import type { RecordSignatureReport } from './governor-ledger-signature.js';
 
 /**
@@ -81,4 +88,113 @@ export function signatureRequiredFailures(
     if (verdict.code !== 'signed') failures.push({ kind: 'signature-required', record, verdict });
   }
   return failures;
+}
+
+/**
+ * #3927 (closing gap): which ledger records the signature requirement covers
+ * BEYOND the bound ones. `added` — every record (vote or redaction) the head
+ * ledger carries whose id+hash the base ledger does not: what this PR appends, the
+ * pre-merge job's scope. `ledger` — every record in the ledger: the post-merge
+ * backstop's scope, so a bypassed pre-merge gate leaves `main` red for as long
+ * as the record stays unsigned, not only on the push that landed it.
+ */
+export type LedgerSignatureScope = 'added' | 'ledger';
+
+/** The scopes, as the workflow spells them. */
+export const LEDGER_SIGNATURE_SCOPES: readonly LedgerSignatureScope[] = ['added', 'ledger'];
+
+/** What the ledger-wide signature check measured: the effective scope, how many records it judged, which failed. */
+export interface LedgerSignatureCheck {
+  readonly scope: LedgerSignatureScope;
+  /** Records judged — grandfathered hashes are excluded, so 0 is a PR that adds no record. */
+  readonly checked: number;
+  /** Every judged record whose verdict is not `signed`, in ledger order; empty when all are signed. */
+  readonly refused: readonly RecordSignatureReport[];
+}
+
+/**
+ * Run the signature requirement over the records `scope` names. `added`
+ * without a base ledger cannot say what was added, so it widens to `ledger`
+ * (fail-closed: the stricter set, and the reported scope says so). Records in
+ * {@link GRANDFATHERED_RECORD_HASHES} are skipped, by hash as for bound
+ * records. No verifier ⇒ every judged record is `signature-not-measured`.
+ * The empty case is named: a scope with no records to judge (a PR adding
+ * none) is `checked: 0` with no failures — there is nothing to sign, and the
+ * bound-record requirement still applies on its own.
+ */
+export function ledgerSignatureCheck(
+  headRecords: readonly SignableLedgerRecord[],
+  scope: LedgerSignatureScope,
+  baseText: string | undefined,
+  verify: ((record: SignableLedgerRecord) => VoteRecordSignatureVerdict) | undefined
+): LedgerSignatureCheck {
+  const effective: LedgerSignatureScope =
+    scope === 'added' && baseText === undefined ? 'ledger' : scope;
+  // Keyed by id AND hash: a base line a redaction rewrote keeps both (its
+  // hash is unchanged), while a new record reusing a base id is added.
+  const key = (r: SignableLedgerRecord): string => `${r.id}\u0000${r.hash}`;
+  const inBase = new Set<string>();
+  if (effective === 'added' && baseText !== undefined) {
+    const base = parseVoteRecordsText(baseText);
+    for (const r of [...base.records, ...base.redactions]) inBase.add(key(r));
+  }
+  const judged = headRecords.filter(
+    (r) => !GRANDFATHERED_RECORD_HASHES.has(r.hash) && !inBase.has(key(r))
+  );
+  const refused: RecordSignatureReport[] = [];
+  for (const record of judged) {
+    const verdict: VoteRecordSignatureVerdict = verify?.(record) ?? {
+      code: 'signature-not-measured',
+      reason: 'no verifier supplied; a record outside the grandfather set cannot pass unverified',
+    };
+    if (verdict.code !== 'signed') refused.push({ recordId: record.id, verdict });
+  }
+  return { scope: effective, checked: judged.length, refused };
+}
+
+/** The refusal a ratified verdict becomes when a record in scope is not `signed` (#3927). */
+export type LedgerSignatureRequired = {
+  readonly kind: 'ledger-signature-required';
+} & LedgerSignatureCheck;
+
+/** The scope-wide check a verdict carries (#3927); absent when no scope was supplied. */
+export interface WithLedgerSignatures {
+  readonly ledgerSignatures?: LedgerSignatureCheck;
+}
+
+/** The inputs the scope-wide check reads; a subset of the evidence inputs. */
+export interface SignatureScopeInputs {
+  readonly signatureScope?: LedgerSignatureScope | undefined;
+  readonly baseLedgerText?: string | undefined;
+  readonly signatureVerifier?:
+    ((record: SignableLedgerRecord) => VoteRecordSignatureVerdict) | undefined;
+}
+
+/**
+ * Fold the scope-wide check into a verdict (#3927). No scope ⇒ the verdict
+ * unchanged (the pure caller's not-checked case). A ratified verdict with a
+ * refused record becomes `ledger-signature-required`; a clean one carries the
+ * check (the line counts what was judged). Any other verdict already refuses
+ * and carries the check only when it names a record. Generic over the
+ * verdict so this module does not import the evidence module back.
+ */
+export function applySignatureScope<V extends { readonly kind: string }>(
+  verdict: V,
+  isRatified: (kind: V['kind']) => boolean,
+  ledgerRecords: readonly SignableLedgerRecord[],
+  inputs: SignatureScopeInputs
+): V | (V & WithLedgerSignatures) | LedgerSignatureRequired {
+  if (inputs.signatureScope === undefined) return verdict;
+  const check = ledgerSignatureCheck(
+    ledgerRecords,
+    inputs.signatureScope,
+    inputs.baseLedgerText,
+    inputs.signatureVerifier
+  );
+  const ratified = isRatified(verdict.kind);
+  if (check.refused.length === 0)
+    return ratified ? { ...verdict, ledgerSignatures: check } : verdict;
+  return ratified
+    ? { kind: 'ledger-signature-required', ...check }
+    : { ...verdict, ledgerSignatures: check };
 }

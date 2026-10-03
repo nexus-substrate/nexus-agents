@@ -55,6 +55,7 @@ import {
   BASE_LEDGER_PATH_ENV,
   REPO_DIR_ENV,
   PRIOR_HEADS_ENV,
+  SIGNATURE_SCOPE_ENV,
   formatLedgerEvidence,
   ledgerEvidenceFromEnv,
   reportLedgerEvidence,
@@ -123,6 +124,12 @@ function signFixture(r: VoteRecord): VoteRecord {
 /** `ledgerText` over signed fixtures — what an env-path test should write to disk. */
 function signedLedgerText(records: readonly VoteRecord[]): string {
   return ledgerText(records.map(signFixture));
+}
+/** Write a base ledger beside the target (what the workflow's evidence step does) and return its path. */
+function writeBaseLedger(dir: string, text: string): string {
+  const path = join(dir, 'base-vote-records.jsonl');
+  writeFileSync(path, text, 'utf-8');
+  return path;
 }
 const APPEND_SCRIPT = join(REPO_ROOT, 'scripts', 'append-ratification-record.ts');
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
@@ -2797,6 +2804,10 @@ describe('ratified-rebased: the head moved, the content did not (#6256, #6301 tr
       PR_BASE_SHA: baseSha,
       [REPO_DIR_ENV]: REPO_ROOT,
       ...SIGNERS_ENV,
+      // #3927: the pre-merge job's scope — OLDER is in the base, unsigned, and
+      // not this PR's to sign; the PR's own record is signed.
+      [SIGNATURE_SCOPE_ENV]: 'added',
+      [BASE_LEDGER_PATH_ENV]: writeBaseLedger(dir, ledgerText([OLDER])),
     };
     const e = ledgerEvidenceFromEnv(env, ledgerPath, dir);
     // Same env and ledger, a different checkout: its git objects cannot establish the replay.
@@ -2960,7 +2971,7 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     return { verdict: signedAs(principal), printed: `signed:${kind} by ${principal}` };
   }
 
-  it.each(['unsigned', 'agent', 'owner'] as const)(
+  it.each(['agent', 'owner'] as const)(
     'reports a %s redaction beside its target using the real verifier; the gate still ratifies (#6372)',
     (kind) => {
       const r = record('v0', { sequence: 0 });
@@ -3001,6 +3012,36 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
       }
     }
   );
+
+  it('an UNSIGNED redaction the PR adds is refused by name — every added record must be signed (#3927, closing gap; was reported-only under #6372)', () => {
+    const r = record('v0', { sequence: 0 });
+    const after = signed({ ...r, voters: redactVoterOpenings(r.voters, new Set(['security'])) });
+    const red = buildRedactionRecord({
+      id: 'red-0',
+      sequence: 1,
+      targetId: r.id,
+      targetVoterRoles: ['security'],
+      at: '2026-09-15T00:00:00.000Z',
+      by: 'claimed-owner',
+      reason: 'private quotation',
+    });
+    const path = join(dir, 'vote-records.jsonl');
+    writeFileSync(path, ledgerText([after]) + JSON.stringify(red) + '\n');
+    const env = {
+      PR_NUMBER: String(PR),
+      PR_HEAD_SHA: HEAD,
+      [ALLOWED_SIGNERS_PATH_ENV]: allowedSignersPath,
+    };
+    const evidence = ledgerEvidenceFromEnv(env, path, dir);
+    expect(evidence).toMatchObject({
+      kind: 'ledger-signature-required',
+      scope: 'ledger',
+      checked: 2,
+      refused: [{ recordId: 'red-0', verdict: { code: 'unsigned-record' } }],
+    });
+    if (evidence.kind === 'unmeasured') throw new Error('unreachable');
+    expect(formatLedgerEvidence(evidence)).toContain("record 'red-0' unsigned-record");
+  });
 
   it('no verifier supplied → a GRANDFATHERED record ratifies with no `signatures` key and a line that says unmeasured; a fixture record is refused (#6279)', () => {
     const committed = readFileSync(join(REPO_ROOT, 'governance/vote-records.jsonl'), 'utf-8');
@@ -3363,5 +3404,264 @@ describe('signature verdicts on the evidence line (#3927 item 4) — reported, n
     expect(e.kind).toBe('ratified');
     if (e.kind !== 'ratified') throw new Error('unreachable');
     expect(e.signatures?.map((s) => s.verdict.code)).toEqual(['unsigned-record']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3927 (closing gap): the signature requirement covers every record a PR
+// ADDS, not only the bound ones, and the backstop covers the whole ledger.
+// ---------------------------------------------------------------------------
+
+describe('every record in the signature scope must be signed (#3927, closing gap)', () => {
+  let dir: string;
+  let strangerKey: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'ledger-signature-scope-'));
+    strangerKey = join(dir, 'stranger_key');
+    execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'x', '-f', strangerKey], {
+      stdio: 'ignore',
+    });
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Signed by a key the fixture allowed_signers does NOT list, under the listed principal's name. */
+  function signedByStranger(r: VoteRecord): VoteRecord {
+    const listed = readFileSync(FIXTURE_SIGNERS_PATH, 'utf-8');
+    const strangerSigners = `${FIXTURE_AGENT} namespaces="${VOTE_RECORD_SIGNATURE_NAMESPACE}",valid-after="20200101" ${readFileSync(`${strangerKey}.pub`, 'utf-8')}`;
+    const out = signVoteRecordHash({
+      hash: r.hash,
+      recordedAt: r.recordedAt,
+      keyPath: strangerKey,
+      allowedSigners: strangerSigners,
+    });
+    if (!out.ok) throw new Error(out.reason);
+    expect(listed).not.toContain(readFileSync(`${strangerKey}.pub`, 'utf-8').split(' ')[1]);
+    return { ...r, signature: out.signature };
+  }
+
+  // Signed ONCE: an SSHSIG is not byte-stable across calls, and the base and
+  // head ledgers must carry the same line for append-only to hold.
+  /** The bound record this PR carries: signed, approved, whole — ratifies on its own. */
+  const BOUND = signFixture(record('v-bound', { sequence: 1 }));
+  const bound = (): VoteRecord => BOUND;
+  /** An earlier PR's signed record, already on the base. */
+  const ON_BASE = signFixture(record('v-base', { sequence: 0, pr: 1 }));
+  const onBase = (): VoteRecord => ON_BASE;
+  /** A record no PR under check binds. */
+  const unbound = (id: string, sequence = 2): VoteRecord => record(id, { sequence, bound: false });
+
+  /** Drive the REAL env path (real verifier over the fixture allowed_signers). */
+  function gate(
+    headRecords: readonly VoteRecord[],
+    baseRecords: readonly VoteRecord[] | undefined,
+    scope: string | undefined
+  ): LedgerEvidence | { kind: 'unmeasured'; reason: string } {
+    const path = join(dir, 'vote-records.jsonl');
+    writeFileSync(path, ledgerText(headRecords));
+    const env: Record<string, string> = {
+      PR_NUMBER: String(PR),
+      PR_HEAD_SHA: HEAD,
+      ...SIGNERS_ENV,
+      ...(scope !== undefined ? { [SIGNATURE_SCOPE_ENV]: scope } : {}),
+      ...(baseRecords !== undefined
+        ? { [BASE_LEDGER_PATH_ENV]: writeBaseLedger(dir, ledgerText(baseRecords)) }
+        : {}),
+    };
+    return ledgerEvidenceFromEnv(env, path, dir);
+  }
+
+  it('a PR that adds an UNSIGNED unbound record fails as ledger-signature-required, naming unsigned-record and the id', () => {
+    const e = gate([onBase(), bound(), unbound('v-stowaway')], [onBase()], 'added');
+    expect(e).toMatchObject({
+      kind: 'ledger-signature-required',
+      scope: 'added',
+      checked: 2,
+      refused: [{ recordId: 'v-stowaway', verdict: { code: 'unsigned-record' } }],
+    });
+    if (e.kind !== 'ledger-signature-required') throw new Error('unreachable');
+    const line = formatLedgerEvidence(e);
+    expect(line.startsWith('::error::')).toBe(true);
+    expect(line).toContain(
+      "ledger-signature-required: 1 of the 2 record(s) this PR adds to the base ledger outside the grandfather set not 'signed'"
+    );
+    expect(line).toContain("record 'v-stowaway' unsigned-record");
+  });
+
+  it('a PR that adds a VALIDLY SIGNED unbound record ratifies, and the line counts what was checked', () => {
+    const e = gate([onBase(), bound(), signFixture(unbound('v-signed'))], [onBase()], 'added');
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.ledgerSignatures).toEqual({ scope: 'added', checked: 2, refused: [] });
+    expect(formatLedgerEvidence(e)).toContain(
+      '2 record(s) this PR adds to the base ledger outside the grandfather set: all signed.'
+    );
+  });
+
+  it('a PR that adds an unbound record signed by an UNLISTED key fails naming unknown-signer and the id', () => {
+    const e = gate([onBase(), bound(), signedByStranger(unbound('v-forged'))], [onBase()], 'added');
+    expect(e).toMatchObject({
+      kind: 'ledger-signature-required',
+      refused: [{ recordId: 'v-forged', verdict: { code: 'unknown-signer' } }],
+    });
+    if (e.kind !== 'ledger-signature-required') throw new Error('unreachable');
+    expect(formatLedgerEvidence(e)).toContain("record 'v-forged' unknown-signer");
+  });
+
+  it('bad-signature and signature-not-measured are refused with their own codes (pure path)', () => {
+    const head = ledgerText([onBase(), bound(), unbound('v-x')]);
+    const base = ledgerText([onBase()]);
+    for (const verdict of [
+      { code: 'bad-signature', keyId: 'k', reason: 'Signature verification failed' },
+      { code: 'signature-not-measured', reason: 'spawn ssh-keygen ENOENT' },
+    ] as const) {
+      const e = evaluateLedgerEvidenceReal({
+        ledgerText: head,
+        baseLedgerText: base,
+        pr: PR,
+        head: AT_HEAD,
+        signatureScope: 'added',
+        signatureVerifier: (r) => (r.id === 'v-x' ? verdict : SIGNED_FIXTURE),
+      });
+      expect(e).toMatchObject({
+        kind: 'ledger-signature-required',
+        refused: [{ recordId: 'v-x', verdict: { code: verdict.code } }],
+      });
+    }
+  });
+
+  it('EMPTY case: a PR that adds zero records has no added-record failures (checked: 0), and the bound-record check still applies', () => {
+    // The bound record is already on the base (a ledger-only re-run): nothing added.
+    const ratified = gate([onBase(), bound()], [onBase(), bound()], 'added');
+    expect(ratified.kind).toBe('ratified');
+    if (ratified.kind !== 'ratified') throw new Error('unreachable');
+    expect(ratified.ledgerSignatures).toEqual({ scope: 'added', checked: 0, refused: [] });
+    expect(formatLedgerEvidence(ratified)).toContain(
+      '0 record(s) this PR adds to the base ledger outside the grandfather set: all signed.'
+    );
+    // An UNSIGNED bound record already on the base is not "added", and is still refused by the bound check.
+    const unsignedBound = record('v-bound', { sequence: 1 });
+    const refused = gate([onBase(), unsignedBound], [onBase(), unsignedBound], 'added');
+    expect(refused.kind).toBe('signature-required');
+    if (refused.kind === 'unmeasured' || !('failures' in refused)) throw new Error('unreachable');
+    expect(refused.ledgerSignatures).toBeUndefined();
+  });
+
+  it('GRANDFATHERED records are untouched in both scopes: the 15 committed unsigned records pass', () => {
+    const committed = parseVoteRecordsText(
+      readFileSync(join(REPO_ROOT, VOTE_RECORDS_REL_PATH), 'utf-8')
+    ).records.filter((r) => GRANDFATHERED_RECORD_HASHES.has(r.hash));
+    expect(committed).toHaveLength(SIGNATURE_CUTOVER_SEQUENCE);
+    expect(committed.every((r) => r.signature === undefined)).toBe(true);
+    const mine = signFixture(record('v-bound', { sequence: SIGNATURE_CUTOVER_SEQUENCE }));
+    for (const scope of ['added', 'ledger'] as const) {
+      const e = gate([...committed, mine], committed, scope);
+      expect(e.kind, scope).toBe('ratified');
+      if (e.kind !== 'ratified') throw new Error('unreachable');
+      expect(e.ledgerSignatures, scope).toEqual({ scope, checked: 1, refused: [] });
+    }
+  });
+
+  it('BACKSTOP (scope ledger): an unsigned post-cutover record already on main fails, though this PR did not add it', () => {
+    const legacy = unbound('v-bypassed', 0);
+    // As `added` it is the base's record, not this PR's — the pre-merge scope passes.
+    expect(gate([legacy, bound()], [legacy], 'added').kind).toBe('ratified');
+    // As `ledger` the backstop refuses it, so a bypass keeps main red until it is resolved.
+    const e = gate([legacy, bound()], [legacy], 'ledger');
+    expect(e).toMatchObject({
+      kind: 'ledger-signature-required',
+      scope: 'ledger',
+      checked: 2,
+      refused: [{ recordId: 'v-bypassed', verdict: { code: 'unsigned-record' } }],
+    });
+    if (e.kind !== 'ledger-signature-required') throw new Error('unreachable');
+    expect(formatLedgerEvidence(e)).toContain('record(s) in the whole ledger');
+  });
+
+  it('scope defaults to the STRICTER ledger scope when unset, and `added` with no base widens to ledger', () => {
+    const legacy = unbound('v-bypassed', 0);
+    expect(gate([legacy, bound()], [legacy], undefined)).toMatchObject({
+      kind: 'ledger-signature-required',
+      scope: 'ledger',
+    });
+    expect(gate([legacy, bound()], undefined, 'added')).toMatchObject({
+      kind: 'ledger-signature-required',
+      scope: 'ledger',
+    });
+  });
+
+  it('an unknown scope value is unmeasured (fail closed), never a silent default', () => {
+    const e = gate([bound()], undefined, 'bound-only');
+    expect(e.kind).toBe('unmeasured');
+    if (e.kind !== 'unmeasured') throw new Error('unreachable');
+    expect(e.reason).toContain(`${SIGNATURE_SCOPE_ENV} is 'bound-only'`);
+  });
+
+  it('a refusal for another reason still names the unsigned added record on its own error line', () => {
+    const rejected = signFixture(record('v-bound', { sequence: 1, decision: 'rejected' }));
+    const e = gate([onBase(), rejected, unbound('v-stowaway')], [onBase()], 'added');
+    expect(e.kind).toBe('not-approved');
+    if (e.kind === 'unmeasured') throw new Error('unreachable');
+    const lines = formatLedgerEvidence(e).split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toMatch(/^::error::.*record 'v-stowaway' unsigned-record/);
+  });
+
+  it('the gate exits 1 on an added unsigned record and 0 on a signed one (runRatificationGate)', () => {
+    const path = join(dir, 'vote-records.jsonl');
+    const base = writeBaseLedger(dir, ledgerText([onBase()]));
+    const env = {
+      CHANGED_FILES: VOTE_RECORDS_REL_PATH,
+      APPROVALS: 'williamzujkowski',
+      PR_LABELS: '',
+      PR_NUMBER: String(PR),
+      PR_HEAD_SHA: HEAD,
+      HEAD_COMMIT_FILES: 'scripts/x.ts',
+      RATIFICATION_LEDGER_PATH: path,
+      [BASE_LEDGER_PATH_ENV]: base,
+      [SIGNATURE_SCOPE_ENV]: 'added',
+      ...SIGNERS_ENV,
+    };
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      writeFileSync(path, ledgerText([onBase(), bound(), unbound('v-stowaway')]));
+      expect(runRatificationGate(env, dir)).toBe(1);
+      writeFileSync(path, ledgerText([onBase(), bound(), signFixture(unbound('v-stowaway'))]));
+      expect(runRatificationGate(env, dir)).toBe(0);
+    } finally {
+      err.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it('the REAL committed ledger passes the whole-ledger scope against the REAL allowed_signers', () => {
+    const ledgerPath = join(REPO_ROOT, VOTE_RECORDS_REL_PATH);
+    const { records } = parseVoteRecordsText(readFileSync(ledgerPath, 'utf-8'));
+    const latest = records.reduce((a, b) => (b.sequence > a.sequence ? b : a));
+    if (latest.ratifiesPr === undefined)
+      throw new Error('fixture: the latest record must be bound');
+    const e = ledgerEvidenceFromEnv(
+      {
+        PR_NUMBER: String(latest.ratifiesPr.pr),
+        PR_HEAD_SHA: latest.ratifiesPr.headSha,
+        [SIGNATURE_SCOPE_ENV]: 'ledger',
+      },
+      VOTE_RECORDS_REL_PATH,
+      REPO_ROOT
+    );
+    expect(e.kind).toBe('ratified');
+    if (e.kind !== 'ratified') throw new Error('unreachable');
+    expect(e.ledgerSignatures?.refused).toEqual([]);
+    expect(e.ledgerSignatures?.checked).toBe(records.length - SIGNATURE_CUTOVER_SEQUENCE);
+  });
+
+  it('the workflow sets the pre-merge scope to `added` and the backstop scope to `ledger`', () => {
+    const wf = readFileSync(join(REPO_ROOT, '.github/workflows/governor-review.yml'), 'utf-8');
+    const backstopAt = wf.indexOf('governor-ratification-backstop:');
+    expect(backstopAt).toBeGreaterThan(0);
+    expect(wf.slice(0, backstopAt)).toContain(`${SIGNATURE_SCOPE_ENV}: added`);
+    expect(wf.slice(backstopAt)).toContain(`${SIGNATURE_SCOPE_ENV}: ledger`);
   });
 });

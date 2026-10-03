@@ -822,8 +822,10 @@ export const VoteRecordSchema = z
      * re-sequences, re-hashes, then signs), so a signed 1.11 record is still a
      * 1.11 record and hashes identically with or without this field. A record
      * that lacks it is `unsigned-record` to the verifier
-     * (`vote-record-signature.ts`), and the gate reports that informationally
-     * until the phase-3 cutover constant makes it a refusal.
+     * (`vote-record-signature.ts`). Since phase 3 (#6384) the ratification
+     * gate REFUSES such a record outside the grandfathered pre-cutover set —
+     * a bound record, every record a PR adds, and (post-merge backstop) every
+     * record in the ledger (#3927).
      */
     signature: VoteRecordSignatureSchema.optional(),
     /**
