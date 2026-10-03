@@ -72,7 +72,7 @@ export interface CodexMcpServer {
  * (#6978). Never started: the same override sets `enabled = false`. `.invalid`
  * is a reserved TLD (RFC 2606), so the url cannot resolve even if it were.
  */
-export const CODEX_DISABLED_TRANSPORT_PLACEHOLDER: Readonly<Record<TransportKey, string>> = {
+const CODEX_DISABLED_TRANSPORT_PLACEHOLDER: Readonly<Record<TransportKey, string>> = {
   command: 'nexus-agents-disabled-mcp-server',
   url: 'http://disabled.invalid/',
 };
