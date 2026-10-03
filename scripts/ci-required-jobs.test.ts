@@ -205,11 +205,13 @@ describe('Security Audit is a required job (#4794 stage 2)', () => {
 /**
  * Jobs in `docs-check.yml` deliberately left out of `docs-success.needs`.
  *
- * Both already carry `continue-on-error: true`, so they cannot fail their own
+ * All of them carry `continue-on-error: true`, so they cannot fail their own
  * workflow either — listing them here records that as a decision rather than
- * an accident.
+ * an accident. `website-audit` (#6986) audits the docs site's separate
+ * lockfile; it is advisory by panel decision so a docs-only advisory with no
+ * patched release cannot block product PRs.
  */
-const DOCS_ADVISORY_JOBS = new Set(['docs-coverage', 'spell-check']);
+const DOCS_ADVISORY_JOBS = new Set(['docs-coverage', 'spell-check', 'website-audit']);
 
 const docs = parse(
   readFileSync(join(process.cwd(), '.github', 'workflows', 'docs-check.yml'), 'utf8')
