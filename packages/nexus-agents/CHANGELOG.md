@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.130.1
+
+### Patch Changes
+
+- [#7023](https://github.com/nexus-substrate/nexus-agents/pull/7023) [`208b5f3`](https://github.com/nexus-substrate/nexus-agents/commit/208b5f3fbaf19b73de1a469bc53707b06f1d0336) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Declare `weather_report`'s complete serialized output schema, so MCP clients can validate structured reports instead of receiving an undeclared shape ([#5842](https://github.com/nexus-substrate/nexus-agents/issues/5842)).
+
 ## 8.130.0
 
 ### Minor Changes
