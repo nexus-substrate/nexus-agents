@@ -27,7 +27,8 @@ import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
 import { BaseCliAdapter } from '../base-adapter.js';
 import { accessModeConflict, isReadOnlyAnalysis } from '../access-mode.js';
-import { MAX_RESPONSE_STDERR_CHARS } from '../subprocess-adapter.js';
+import { MAX_RESPONSE_STDERR_CHARS, spawnCwd } from '../subprocess-adapter.js';
+import { createCallerInputCliError } from '../cli-error-helpers.js';
 import { codexSandboxPreflight, createCodexSandboxGuard } from '../codex-sandbox-preflight.js';
 import {
   CODEX_SYSTEM_CONFIG_FILES,
@@ -269,6 +270,8 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   }
 
   /**
+   * #7012: refuse directory-bound tasks; the MCP tool's cwd support is
+   * unverified, so neither new nor continued sessions can honour workDir.
    * #6754: a continued session cannot be pinned to the read-only sandbox.
    * #6970: nor can a read-only task run when codex's MCP config cannot be
    * listed, since its servers run outside the sandbox.
@@ -276,6 +279,13 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
     const base = await super.accessModeRefusal(task);
     if (base !== undefined) return base;
+    if (spawnCwd(task.options?.['workDir']) !== undefined) {
+      return createCallerInputCliError(
+        'Refusing Codex MCP task with workDir: cwd support is unverified for the MCP tools. ' +
+          'Use the subprocess transport to honour the working directory.',
+        this.name
+      );
+    }
     if (isReadOnlyAnalysis(task)) {
       if (task.sessionId !== undefined && task.sessionId !== '') {
         return accessModeConflict(
