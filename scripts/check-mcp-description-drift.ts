@@ -23,6 +23,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { TOOL_MANIFEST } from '../packages/nexus-agents/src/mcp/tools/tool-manifest.js';
 import { TOOL_DESCRIPTIONS } from './tool-descriptions-data.js';
 
@@ -40,7 +41,15 @@ export interface DriftFinding {
   readonly docTable: string;
 }
 
+export interface EvaluatedDescription {
+  readonly text: string;
+  /** Template substitutions replaced by <dynamic>, without evaluating them. */
+  readonly elidedSubstitutions: number;
+}
+
 export interface DescriptionDriftReport {
+  /** Tools actually compared, including drifted descriptions, with elision counts. */
+  readonly compared: readonly { readonly tool: string; readonly elidedSubstitutions: number }[];
   /** Tools whose runtime vs doc-table descriptions disagree below threshold. */
   readonly drifts: readonly DriftFinding[];
   /** Manifest tools whose runtime description could not be statically parsed. */
@@ -49,82 +58,126 @@ export interface DescriptionDriftReport {
   readonly missingDocEntry: readonly string[];
 }
 
-/**
- * Concatenate the string-literal segments of a JS/TS expression, joining
- * `'a' + 'b'`-style concatenations. Returns null if no string literal is found
- * (e.g. a computed/templated expression we won't guess at — fail loud).
- */
-export function parseConcatenatedString(expr: string): string | null {
-  // A template-literal expression (the RHS *starts* with a backtick): take its
-  // static text, blanking out `${...}` interpolations (the doc-table carries the
-  // expanded form; the surrounding prose is what we compare on). Gate on the
-  // leading backtick so a markdown code-span (e.g. `tool_name`) INSIDE a
-  // single-quoted string is not mistaken for a template literal.
-  if (expr.trimStart().startsWith('`')) {
-    const tmpl = expr.match(/`((?:[^`\\]|\\.)*)`/);
-    if (tmpl?.[1] !== undefined) {
-      const text = tmpl[1].replace(/\$\{[^}]*\}/g, ' ').replace(/\\(['"`\\])/g, '$1');
-      return text.trim().length > 0 ? text : null;
+/** Reject parser recovery: incomplete syntax must never become a description. */
+function hasParseError(node: ts.Node): boolean {
+  return (
+    (node.flags & ts.NodeFlags.ThisNodeHasError) !== 0 ||
+    ts.forEachChild(node, hasParseError) === true
+  );
+}
+
+/** Parse syntax only, without executing code or resolving imports. */
+function parseSource(source: string): ts.SourceFile | null {
+  const file = ts.createSourceFile('description.ts', source, ts.ScriptTarget.Latest, true);
+  return hasParseError(file) ? null : file;
+}
+
+/** Keep complete static spans; elide only template substitutions, never execute them. */
+function evaluateStringExpression(expr: ts.Expression): EvaluatedDescription | null {
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return expr.isUnterminated === true ? null : { text: expr.text, elidedSubstitutions: 0 };
+  }
+  if (ts.isTemplateExpression(expr)) {
+    const text =
+      expr.head.text + expr.templateSpans.map((span) => '<dynamic>' + span.literal.text).join('');
+    return { text, elidedSubstitutions: expr.templateSpans.length };
+  }
+  if (ts.isParenthesizedExpression(expr)) return evaluateStringExpression(expr.expression);
+  if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = evaluateStringExpression(expr.left);
+    const right = evaluateStringExpression(expr.right);
+    return left === null || right === null
+      ? null
+      : {
+          text: left.text + right.text,
+          elidedSubstitutions: left.elidedSubstitutions + right.elidedSubstitutions,
+        };
+  }
+  return null;
+}
+
+/** Parse a whole string expression; unsupported or incomplete expressions fail loud. */
+export function parseConcatenatedString(expr: string): EvaluatedDescription | null {
+  const file = parseSource(`(${expr})`);
+  const statement = file?.statements[0];
+  if (file?.statements.length !== 1 || statement === undefined) return null;
+  return ts.isExpressionStatement(statement)
+    ? evaluateStringExpression(statement.expression)
+    : null;
+}
+
+/** Find this tool's registration config in the AST, ignoring comments and strings. */
+function findToolConfig(node: ts.Node, toolName: string): ts.ObjectLiteralExpression | undefined {
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    (node.expression.name.text === 'registerTool' ||
+      node.expression.name.text === 'registerToolTask')
+  ) {
+    const [name, config] = node.arguments;
+    if (
+      name !== undefined &&
+      ts.isStringLiteral(name) &&
+      name.text === toolName &&
+      config !== undefined &&
+      ts.isObjectLiteralExpression(config)
+    ) {
+      return config;
     }
   }
-  // Match single/double-quoted literals, honoring backslash escapes.
-  const re = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g;
-  const parts: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(expr)) !== null) {
-    const raw = m[1] ?? m[2] ?? '';
-    parts.push(raw.replace(/\\(['"\\])/g, '$1'));
-  }
-  if (parts.length === 0) return null;
-  return parts.join('');
+  return ts.forEachChild(node, (child) => findToolConfig(child, toolName));
+}
+
+/** Match the config's own description property, including quoted property names. */
+function isDescriptionProperty(property: ts.ObjectLiteralElementLike): boolean {
+  const name = property.name;
+  return (
+    name !== undefined &&
+    (ts.isIdentifier(name) || ts.isStringLiteral(name)) &&
+    name.text === 'description'
+  );
 }
 
 /**
- * Extract the runtime registerTool description for `toolName` from a tool source
- * file. Handles the two real shapes: a `const description`/`const *_DESCRIPTION`
- * declaration referenced as `description,`, and an inline `description: '...'`.
- * Returns null when it cannot be parsed (caller fails loud).
+ * Read the whole registerTool/registerToolTask description initializer, inline
+ * or referenced by a const (including shorthand). Unsupported syntax returns null.
  */
-export function extractRuntimeDescription(source: string, toolName: string): string | null {
-  // Locate the registerTool call for this tool (name as first string arg,
-  // possibly on the next line).
-  const callIdx = source.search(
-    // `server.registerTool(` or the MCP Tasks `registerToolTask(` form.
-    new RegExp(
-      `registerTool(?:Task)?\\(\\s*['"]${toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`
-    )
-  );
-  if (callIdx === -1) return null;
-  // Bound the search to the registerTool config object's description field —
-  // i.e. up to `inputSchema` (which always follows `description` in these
-  // configs). Without this bound a later `description:` (e.g. a Zod schema
-  // field) inside the call window can be grabbed by mistake.
-  const window = source.slice(callIdx, callIdx + 2000);
-  const cfgEnd = window.indexOf('inputSchema');
-  const after = cfgEnd > 0 ? window.slice(0, cfgEnd) : window;
-
-  // Inline: `description: '...'` (+ concatenations) up to the line's end.
-  const inline = after.match(
-    /description:\s*((?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")(?:\s*\+\s*(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"))*)/
-  );
-  if (inline?.[1] !== undefined) {
-    return parseConcatenatedString(inline[1]);
+export function extractRuntimeDescription(
+  source: string,
+  toolName: string
+): EvaluatedDescription | null {
+  const file = parseSource(source);
+  if (file === null) return null;
+  const config = findToolConfig(file, toolName);
+  if (config === undefined) return null;
+  for (const property of config.properties) {
+    if (!isDescriptionProperty(property)) continue;
+    if (ts.isShorthandPropertyAssignment(property)) return resolveConst(source, 'description');
+    if (!ts.isPropertyAssignment(property)) return null;
+    return ts.isIdentifier(property.initializer)
+      ? resolveConst(source, property.initializer.text)
+      : evaluateStringExpression(property.initializer);
   }
-
-  // Reference: `description: IDENT,` or shorthand `description,` → resolve const.
-  const ref = after.match(/description:\s*([A-Za-z_$][\w$]*)\s*[,}]/);
-  const ident = ref?.[1] ?? (/(?:^|[,{\s])description\s*[,}]/.test(after) ? 'description' : null);
-  if (ident === null) return null;
-  return resolveConst(source, ident);
+  return null;
 }
 
-/** Finds `const <ident> = <expr>;` and parses its string value, or null. */
-function resolveConst(source: string, ident: string): string | null {
-  const decl = source.match(
-    new RegExp(`const\\s+${ident.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*([\\s\\S]*?);`)
-  );
-  if (decl?.[1] === undefined) return null;
-  return parseConcatenatedString(decl[1]);
+/** Find a const declaration's whole initializer, rather than quoted fragments. */
+function findConstInitializer(node: ts.Node, ident: string): ts.Expression | undefined {
+  if (ts.isVariableDeclarationList(node) && (node.flags & ts.NodeFlags.Const) !== 0) {
+    for (const declaration of node.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === ident) {
+        return declaration.initializer;
+      }
+    }
+  }
+  return ts.forEachChild(node, (child) => findConstInitializer(child, ident));
+}
+
+/** Find const <ident> and evaluate its entire string initializer, or null. */
+function resolveConst(source: string, ident: string): EvaluatedDescription | null {
+  const file = parseSource(source);
+  const initializer = file === null ? undefined : findConstInitializer(file, ident);
+  return initializer === undefined ? null : evaluateStringExpression(initializer);
 }
 
 /** Normalize a description to a lowercase alphanumeric token set. */
@@ -197,6 +250,7 @@ export function buildDriftReport(
   docTable: Readonly<Record<string, string>>
 ): DescriptionDriftReport {
   const sources = loadToolSources();
+  const compared: { tool: string; elidedSubstitutions: number }[] = [];
   const drifts: DriftFinding[] = [];
   const unparseable: string[] = [];
   const missingDocEntry: string[] = [];
@@ -213,12 +267,22 @@ export function buildDriftReport(
       unparseable.push(tool);
       continue;
     }
-    const sim = similarity(runtime, docTableEntry);
+    compared.push({ tool, elidedSubstitutions: runtime.elidedSubstitutions });
+    const sim = similarity(runtime.text, docTableEntry);
     if (sim < SIMILARITY_THRESHOLD) {
-      drifts.push({ tool, similarity: sim, runtime, docTable: docTableEntry });
+      drifts.push({ tool, similarity: sim, runtime: runtime.text, docTable: docTableEntry });
     }
   }
-  return { drifts, unparseable, missingDocEntry };
+  return { compared, drifts, unparseable, missingDocEntry };
+}
+
+/** Make elided template substitutions visible for every affected comparison. */
+function printElidedSubstitutions(report: DescriptionDriftReport): void {
+  for (const { tool, elidedSubstitutions } of report.compared) {
+    if (elidedSubstitutions > 0) {
+      console.log(`  ${tool} compared with ${String(elidedSubstitutions)} elided substitutions`);
+    }
+  }
 }
 
 /** CLI gate: exits non-zero on any drift, unparseable, or missing entry. */
@@ -230,6 +294,7 @@ function main(): void {
   );
   const problems = report.drifts.length + report.unparseable.length + report.missingDocEntry.length;
 
+  if (verbose) printElidedSubstitutions(report);
   if (report.missingDocEntry.length > 0) {
     console.error(
       `✗ ${String(report.missingDocEntry.length)} tool(s) missing a TOOL_DESCRIPTIONS entry:`
@@ -260,7 +325,9 @@ function main(): void {
   }
 
   if (problems === 0) {
-    console.log(`✓ MCP description-drift check passed (${String(TOOL_MANIFEST.length)} tools).`);
+    console.log(
+      `✓ MCP description-drift check passed (${String(report.compared.length)} tools compared).`
+    );
     process.exit(0);
   }
   process.exit(1);
