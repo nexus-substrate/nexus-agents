@@ -313,15 +313,12 @@ export class AbTestTracker implements IAbTestTracker {
       control.successes,
       control.n
     );
-    // A control of 0 successes is a real measurement; the RATIO over it is the
-    // thing that does not exist. The `0` fallback sits on the same scale as a
-    // genuine result and reads as "no difference", so a change from 0% to 50%
-    // rendered as "0.0% improvement". The number is kept for compatibility and
-    // the marker says whether to believe it.
-    const relativeImprovementMeasured = control.successRate > 0;
-    const relativeImprovement = relativeImprovementMeasured
-      ? (treatment.successRate - control.successRate) / control.successRate
-      : 0;
+    // No control samples or a measured zero baseline cannot support a ratio.
+    // control.n in the returned summary distinguishes these two null cases.
+    const relativeImprovement =
+      control.n > 0 && control.successRate > 0
+        ? (treatment.successRate - control.successRate) / control.successRate
+        : null;
     // The sibling guard above proves `control.successRate` can be a default
     // rather than a measurement; this line read the same value with no such
     // check (#5857). The gate here is `n > 0`, not `successRate > 0`: a
@@ -340,7 +337,6 @@ export class AbTestTracker implements IAbTestTracker {
       treatment: this.buildVariantSummary(treatment),
       comparison,
       relativeImprovement,
-      relativeImprovementMeasured,
       hasMinimumSampleSize,
       recommendedSampleSize,
       recommendedSampleSizeMeasured,
