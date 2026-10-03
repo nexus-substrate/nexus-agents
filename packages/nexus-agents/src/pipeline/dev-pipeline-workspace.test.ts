@@ -85,6 +85,7 @@ describe('dev pipeline workspace follow-up', () => {
   let tmp: string;
   let repo: string;
   let events: StepEvent[];
+  let scratchRoot: string;
   const captureStep = (event: StepEvent): void => {
     events.push(event);
   };
@@ -115,7 +116,11 @@ describe('dev pipeline workspace follow-up', () => {
     tmp = mkdtempOutsideRepo('dev-workspace-test-');
     repo = join(tmp, 'repo');
     mkdirSync(repo);
-    vi.stubEnv('NEXUS_TMPDIR', tmp);
+    // A sibling of the fixture repo: a NEXUS_TMPDIR that CONTAINS the repo
+    // overlaps it, and production then falls back to the system temp dir.
+    scratchRoot = join(tmp, 'scratch');
+    mkdirSync(scratchRoot);
+    vi.stubEnv('NEXUS_TMPDIR', scratchRoot);
     git('init', '--quiet');
     git('config', 'user.email', 'fixture@example.test');
     git('config', 'user.name', 'Fixture');
@@ -311,6 +316,10 @@ describe('dev pipeline workspace follow-up', () => {
         },
         installer
       );
+      // Pin the placement: a fallback to the system temp dir is what CI's in-repo
+      // TMPDIR turns into a refused gate, so it must fail here, not only in CI.
+      expect(mocks.paths.every((path) => path.startsWith(scratchRoot))).toBe(true);
+      expect(mocks.paths.length).toBeGreaterThan(0);
       expect(implement).toHaveBeenCalledTimes(1);
       expect(mocks.stageEvent).toHaveBeenCalledWith(
         'quality-gate',
