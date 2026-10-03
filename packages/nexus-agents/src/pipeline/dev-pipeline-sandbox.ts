@@ -1,9 +1,19 @@
-/** One bwrap invocation profile for scratch installs and gates (#7011). */
+/** One bwrap profile for scratch experts, installs, gates and change capture (#7011). */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { execFileTree, type CommandWrapper } from '../cli-adapters/exec-file-tree.js';
+import { delimiter, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { type CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 import {
   BWRAP_READ_ONLY_ARGS,
   createBwrapPreflight,
@@ -17,22 +27,69 @@ interface SandboxPaths {
   readonly scratch: string;
   readonly gitDir: string;
   readonly temp: string;
-  readonly caches: readonly string[];
 }
 
-/** Writable mounts are explicit. Network stays in the host namespace for cache misses. */
+/** Pin the host executable before scratch code can add a bwrap alias to PATH. */
+const bwrapCommand = (() => {
+  for (const directory of (process.env['PATH'] ?? '').split(delimiter)) {
+    if (!isAbsolute(directory)) continue;
+    const binary = join(directory, 'bwrap');
+    try {
+      accessSync(binary, constants.X_OK);
+      return realpathSync(binary);
+    } catch {
+      // Try the next absolute host PATH entry. Missing bwrap is measured by preflight.
+    }
+  }
+  return '/usr/bin/bwrap';
+})();
+
+/** Drop host IPC and package cache redirects before installing private paths. */
+function sandboxEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const ipcNames = new Set([
+    'DBUS_SESSION_BUS_ADDRESS',
+    'DBUS_SYSTEM_BUS_ADDRESS',
+    'DOCKER_HOST',
+    'XDG_RUNTIME_DIR',
+    'SSH_AUTH_SOCK',
+  ]);
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([name]) =>
+        !ipcNames.has(name) &&
+        !/^npm_config_(?:store_dir|cache|cache_dir|package_import_method|enable_global_virtual_store)$/i.test(
+          name
+        ) &&
+        name.toUpperCase() !== 'YARN_CACHE_FOLDER'
+    )
+  );
+}
+
+/** Writable paths are private. Network and abstract-namespace sockets remain reachable. */
 export function buildSandboxInvocation(
   command: Parameters<CommandWrapper>[0],
   args: Parameters<CommandWrapper>[1],
   options: Parameters<CommandWrapper>[2],
   paths: SandboxPaths
 ): ReturnType<CommandWrapper> {
-  const writable = [...new Set([paths.scratch, paths.gitDir, paths.temp, ...paths.caches])];
+  const writable = [...new Set([paths.scratch, paths.gitDir, paths.temp])];
+  const socketPaths = [
+    ...new Set(
+      ['/var/run/docker.sock', '/run/docker.sock']
+        .filter(existsSync)
+        .map((path) => realpathSync(path))
+    ),
+  ];
+  const env = sandboxEnv(options.env ?? process.env);
   return {
-    command: 'bwrap',
+    command: bwrapCommand,
     args: [
       ...BWRAP_READ_ONLY_ARGS,
       ...writable.flatMap((path) => ['--bind', path, path]),
+      '--tmpfs',
+      '/run/user',
+      // Canonicalize /var/run aliases because bwrap cannot mount through that symlink.
+      ...socketPaths.flatMap((path) => ['--ro-bind', '/dev/null', path]),
       '--',
       command,
       ...args,
@@ -40,8 +97,17 @@ export function buildSandboxInvocation(
     options: {
       ...options,
       env: {
-        ...(options.env ?? process.env),
+        ...env,
         TMPDIR: paths.temp,
+        npm_config_store_dir: join(paths.temp, 'pnpm-store'),
+        npm_config_cache: join(paths.temp, 'npm-cache'),
+        npm_config_cache_dir: join(paths.temp, 'pnpm-cache'),
+        YARN_CACHE_FOLDER: join(paths.temp, 'yarn-cache'),
+        // The home dir is read-only here, and codex refuses to start without a
+        // writable home ("failed to initialize in-process app-server client").
+        CODEX_HOME: join(paths.temp, CODEX_HOME_DIR),
+        npm_config_package_import_method: 'copy',
+        npm_config_enable_global_virtual_store: 'false',
         SEMGREP_SETTINGS_FILE: join(paths.temp, 'semgrep-settings.yaml'),
         SEMGREP_LOG_FILE: join(paths.temp, 'semgrep.log'),
         SEMGREP_VERSION_CACHE_PATH: join(paths.temp, 'semgrep-version'),
@@ -59,20 +125,6 @@ function gitPath(scratch: string, flag: string): string {
       timeout: 10_000,
     }).trim()
   );
-}
-
-/** Resolve symlinked ancestors even when the cache does not exist yet. */
-function canonicalPath(path: string): string {
-  if (existsSync(path)) return realpathSync(path);
-  return join(canonicalPath(dirname(path)), relative(dirname(path), path));
-}
-
-function overlaps(a: string, b: string): boolean {
-  const contains = (parent: string, child: string): boolean => {
-    const path = relative(parent, child);
-    return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path));
-  };
-  return contains(a, b) || contains(b, a);
 }
 
 /** Drop inherited directory redirects before pinning scratch-local install paths. */
@@ -95,58 +147,49 @@ export function dependencyInstallEnv(scratchPath: string): NodeJS.ProcessEnv {
   return env;
 }
 
-function cacheQueries(scratch: string): [string, string[]][] {
-  if (existsSync(join(scratch, 'pnpm-lock.yaml')))
-    return [
-      ['pnpm', ['store', 'path']],
-      ['pnpm', ['config', 'get', 'cache-dir']],
-    ];
-  if (existsSync(join(scratch, 'package-lock.json'))) return [['npm', ['config', 'get', 'cache']]];
-  if (existsSync(join(scratch, 'yarn.lock'))) return [['yarn', ['cache', 'dir']]];
-  return []; // No supported lockfile means no package-cache mounts.
-}
-
-/** Resolve the selected manager's actual store/cache under the read-only profile. */
-async function resolveCaches(paths: SandboxPaths, source: string): Promise<string[]> {
-  const caches: string[] = [];
-  const commonDir = gitPath(paths.scratch, '--git-common-dir');
-  for (const [command, args] of cacheQueries(paths.scratch)) {
-    const { stdout } = await execFileTree(command, args, {
-      cwd: paths.scratch,
-      env: dependencyInstallEnv(paths.scratch),
-      timeoutMs: 10_000,
-      wrapper: (cmd, argv, opts) => buildSandboxInvocation(cmd, argv, opts, paths),
-    });
-    let value = stdout.trim();
-    // pnpm's Linux default metadata cache is separate from its content store.
-    if (value === 'undefined' && args.includes('cache-dir')) {
-      value = join(process.env['XDG_CACHE_HOME'] ?? join(homedir(), '.cache'), 'pnpm');
-    }
-    if (value === '' || value === 'undefined') throw new Error(`Cannot resolve ${command} cache`);
-    const cache = canonicalPath(resolve(paths.scratch, value));
-    if (overlaps(cache, source) || overlaps(cache, commonDir)) {
-      throw new Error(`Package cache overlaps protected source or git metadata: ${cache}`);
-    }
-    mkdirSync(cache, { recursive: true });
-    caches.push(cache);
-  }
-  return caches;
-}
-
 /** Allocate private temp and pin the scratch's exact worktree index directory. */
+const CODEX_HOME_DIR = 'codex-home';
+/** Only what codex needs to authenticate and keep its configured defaults. */
+const CODEX_HOME_SEED_FILES = ['auth.json', 'config.toml'] as const;
+
+/**
+ * Give a sandboxed codex a PRIVATE home seeded with copies of its auth and
+ * config. Measured (#7011): with the real home read-only, `codex exec` exits 1;
+ * with a private CODEX_HOME holding these two copies it runs. The host home is
+ * never writable, so a sandboxed process cannot plant config the host's own
+ * codex would later load; token refreshes land in the throwaway copy.
+ */
+function seedCodexHome(target: string): void {
+  mkdirSync(target, { recursive: true });
+  const configured = process.env['CODEX_HOME']?.trim() ?? '';
+  const hostHome = configured !== '' ? configured : join(homedir(), '.codex');
+  for (const name of CODEX_HOME_SEED_FILES) {
+    const from = join(hostHome, name);
+    if (existsSync(from)) copyFileSync(from, join(target, name));
+  }
+}
+
 export async function createScratchSandbox(
   scratch: string,
   source: string
 ): Promise<{ wrapper: CommandWrapper; gitEnv: NodeJS.ProcessEnv; dispose: () => void }> {
-  const temp = mkdtempSync(join(dirname(scratch), 'sandbox-tmp-'));
+  const protectedSource = await realpath(source);
+  const scratchPath = realpathSync(scratch);
+  const contains = (parent: string, child: string): boolean => {
+    const path = relative(parent, child);
+    return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+  };
+  if (contains(protectedSource, scratchPath) || contains(scratchPath, protectedSource)) {
+    throw new Error('Writable scratch path overlaps protected source');
+  }
+  const temp = mkdtempSync(join(dirname(scratchPath), 'sandbox-tmp-'));
   try {
     const paths: SandboxPaths = {
-      scratch: realpathSync(scratch),
+      scratch: scratchPath,
       gitDir: gitPath(scratch, '--git-dir'),
       temp,
-      caches: [],
     };
-    const caches = await resolveCaches(paths, realpathSync(source));
+    seedCodexHome(join(temp, CODEX_HOME_DIR));
     // Even intent-to-add creates the empty blob. Keep all object writes private.
     const objects = join(paths.gitDir, 'sandbox-objects');
     mkdirSync(objects);
@@ -163,7 +206,7 @@ export async function createScratchSandbox(
           command,
           args,
           { ...options, env: { ...(options.env ?? process.env), ...gitEnv } },
-          { ...paths, caches }
+          paths
         ),
       dispose: () => {
         rmSync(temp, { recursive: true, force: true });

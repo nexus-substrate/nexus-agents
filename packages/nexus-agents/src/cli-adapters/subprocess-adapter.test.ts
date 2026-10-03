@@ -15,6 +15,7 @@ import type { CommandConfig } from './subprocess-adapter.js';
 import { SubprocessCliAdapter, SIGKILL_GRACE_MS } from './subprocess-adapter.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
+import type { CommandWrapper } from './exec-file-tree.js';
 
 // Mock node:child_process
 vi.mock('node:child_process', async (importOriginal) => {
@@ -181,6 +182,39 @@ describe('SubprocessCliAdapter', () => {
   });
 
   describe('subprocess working directory (#6358)', () => {
+    it('wraps the actual model CLI spawn, including configuration and hooks', async () => {
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+      const wrapper = vi.fn<CommandWrapper>((command, args, options) => ({
+        command: '/trusted/bwrap',
+        args: ['--', command, ...args],
+        options: { ...options, env: { ...options.env, SANDBOX_MARKER: 'private' } },
+      }));
+      await adapter.initialize();
+      const promise = adapter.execute({
+        content: 'test',
+        options: { workDir: '/scratch/workspace' },
+        wrapper,
+      });
+      await vi.waitFor(() => {
+        expect(mockSpawn).toHaveBeenCalledOnce();
+      });
+      stdout.push('response\n');
+      stdout.push(null);
+      mockChild.emit('close', 0);
+      await promise;
+
+      expect(wrapper).toHaveBeenCalledOnce();
+      expect(mockSpawn).toHaveBeenCalledWith(
+        '/trusted/bwrap',
+        ['--', 'echo'],
+        expect.objectContaining({
+          cwd: '/scratch/workspace',
+          env: expect.objectContaining({ SANDBOX_MARKER: 'private' }),
+        })
+      );
+    });
+
     it('starts the seat in the supplied workspace, preserving spaces in its path', async () => {
       const { mockChild, stdout } = createMockChildProcess();
       mockSpawn.mockReturnValue(mockChild);

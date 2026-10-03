@@ -8,6 +8,7 @@
  */
 
 import type { Result, ILogger, ExecutionAccessMode } from '../core/index.js';
+import type { CommandWrapper } from './exec-file-tree.js';
 import type {
   CliName,
   CliTransport,
@@ -80,6 +81,8 @@ export interface CliTask {
   readonly maxTokens?: number;
   /** Timeout in milliseconds */
   readonly timeoutMs?: number;
+  /** Confine the complete subprocess, including CLI configuration and hooks. */
+  readonly wrapper?: CommandWrapper | undefined;
   /** Additional CLI-specific options */
   readonly options?: Record<string, unknown>;
   /**

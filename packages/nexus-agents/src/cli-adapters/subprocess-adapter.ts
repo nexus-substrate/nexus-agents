@@ -201,7 +201,8 @@ export function isTransientError(code: CliErrorCode): boolean {
 function spawnCliChild(
   cliName: CliName,
   cmdConfig: CommandConfig,
-  workDir: unknown
+  task: CliTask,
+  timeoutMs: number
 ): ChildProcessWithoutNullStreams {
   // Curated child env: base infrastructure vars + only this CLI's
   // own vendor credentials, so cross-vendor API keys don't leak
@@ -210,12 +211,20 @@ function spawnCliChild(
   // #6754: a command's own variables (e.g. a read-only permission config) are
   // applied last, so an inherited value of the same name cannot override them.
   const childEnv = { ...buildChildEnv(cliName), ...cmdConfig.env };
-  const cwd = spawnCwd(workDir);
+  const cwd = spawnCwd(task.options?.['workDir']);
+  const wrapped = task.wrapper?.(cmdConfig.command, cmdConfig.args, {
+    cwd,
+    env: childEnv,
+    timeoutMs,
+  });
+  const command = wrapped?.command ?? cmdConfig.command;
+  const args = wrapped?.args ?? cmdConfig.args;
+  const options = wrapped?.options ?? { cwd, env: childEnv };
   return trackProcessTree(
-    spawn(cmdConfig.command, cmdConfig.args, {
+    spawn(command, [...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: childEnv,
-      ...(cwd !== undefined ? { cwd } : {}),
+      env: options.env,
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
     })
   );
 }
@@ -562,7 +571,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         resolveOuter(r);
       };
       try {
-        const child = spawnCliChild(this.name, cmdConfig, task.options?.['workDir']);
+        const child = spawnCliChild(this.name, cmdConfig, task, options.timeoutMs);
 
         const onProgress = options.onProgress;
         // Keep stdout evidence available to the caller-deadline abort path (#6851).

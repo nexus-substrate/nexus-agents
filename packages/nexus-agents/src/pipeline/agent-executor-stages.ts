@@ -226,6 +226,7 @@ export function createImplementStage({
   config,
   guard,
   startStage,
+  wrapper,
 }: StageDeps): DevPipelineStages['implement'] {
   return async (task, signal) => {
     startStage(`impl-${task.id}`);
@@ -241,6 +242,7 @@ export function createImplementStage({
         signal,
         accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
         workDir: config.scanTarget,
+        wrapper,
       }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
@@ -312,6 +314,7 @@ export function createQaReviewStage({
   config,
   guard,
   startStage,
+  wrapper,
 }: StageDeps): DevPipelineStages['qaReview'] {
   return async (task, implementation, signal) => {
     startStage(`qa-${task.id}`);
@@ -323,6 +326,7 @@ export function createQaReviewStage({
       signal,
       accessMode: 'read-only-analysis',
       workDir: config.scanTarget,
+      wrapper,
     });
     const { review: parsed, unmeasured } = readQaReview(r);
     const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;

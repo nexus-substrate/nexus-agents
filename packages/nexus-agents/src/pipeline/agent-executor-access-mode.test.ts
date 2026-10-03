@@ -1,6 +1,7 @@
 /** Stage access modes reach the serving adapter, including dry runs (#6958). */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CliTask, ICliAdapter, RoutingArmId } from '../cli-adapters/types.js';
+import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 
 const { executeMock, recordOutcomeMock, enforcement } = vi.hoisted(() => ({
   executeMock: vi.fn<ICliAdapter['execute']>(),
@@ -89,6 +90,25 @@ beforeEach(() => {
 });
 
 describe('agent stage access modes (#6958)', () => {
+  it('confines both scratch implementation and subsequent QA CLI configuration', async () => {
+    const wrapper: CommandWrapper = (command, args, options) => ({ command, args, options });
+    const stages = createAgentStages({ quickMode: true });
+    const bound = stages.withWorkspace?.({
+      directory: '/scratch/workspace',
+      dependencies: { status: 'none' },
+      wrapper,
+    });
+    expect(bound).toBeDefined();
+    await bound?.implement(TASK);
+    await bound?.qaReview(TASK, 'code');
+
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    for (const [task] of executeMock.mock.calls) {
+      expect(task.wrapper).toBe(wrapper);
+      expect(task.options?.workDir).toBe('/scratch/workspace');
+    }
+  });
+
   it.each([false, true])('planning is read-only with dryRun=%s', async (dryRun) => {
     const stages = createAgentStages({ quickMode: true, dryRun });
     const signal = new AbortController().signal;

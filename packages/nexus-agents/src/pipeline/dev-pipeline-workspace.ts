@@ -28,14 +28,18 @@ const logger = createLogger({ component: 'dev-pipeline-workspace' });
 const PATCH_PATHS = ['.', ':(exclude,glob)**/node_modules', ':(exclude,glob)**/node_modules/**'];
 
 function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
-  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
-    cwd,
-    env: { ...hermeticGitEnv(), ...env, GIT_OPTIONAL_LOCKS: '0' },
-    encoding: 'utf8',
-    timeout: GIT_TIMEOUT_MS,
-    maxBuffer: DIFF_MAX_BYTES,
-    stdio: 'pipe',
-  });
+  return execFileSync(
+    'git',
+    ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args],
+    {
+      cwd,
+      env: { ...hermeticGitEnv(), ...env, GIT_OPTIONAL_LOCKS: '0' },
+      encoding: 'utf8',
+      timeout: GIT_TIMEOUT_MS,
+      maxBuffer: DIFF_MAX_BYTES,
+      stdio: 'pipe',
+    }
+  );
 }
 
 /** Process seam for fixture installs without a warm offline cache. */
@@ -190,31 +194,52 @@ function disposeWorkspace(scratch: ScratchCheckout | undefined): string | undefi
   }
 }
 
-/** Intent-to-add includes new files without committing or touching the source index. */
-function captureChanges(
-  scratchPath: string,
+/** Capture inside the install/gate sandbox, refusing allocation-metadata changes first. */
+async function captureChanges(
+  scratch: ScratchCheckout,
   baseSha: string,
   dependencies: DevPipelineDependencies,
   isolation: BwrapIsolation,
-  env?: NodeJS.ProcessEnv
-): NonNullable<DevPipelineResult['changes']> {
-  git(scratchPath, ['add', '--intent-to-add', '--all', '--', ...PATCH_PATHS], env);
-  const diff = git(
-    scratchPath,
-    ['diff', '--binary', '--no-ext-diff', '--no-textconv', baseSha, '--', ...PATCH_PATHS],
-    env
-  );
-  const empty = diff === '';
-  return {
-    diff,
+  sandbox: SandboxHandle
+): Promise<NonNullable<DevPipelineResult['changes']>> {
+  const provenance = {
     baseSha,
-    worktreePath: scratchPath,
+    worktreePath: scratch.path,
     worktreeRemoved: false,
     dependencies,
     isolation,
-    empty,
-    status: empty ? 'no_changes' : 'changes',
   };
+  if (scratch.gitMetadataUnchanged?.() !== true) {
+    return { ...provenance, diff: '', empty: true, status: 'tampered' };
+  }
+  const captureGit = async (args: string[]): Promise<string> => {
+    const { stdout } = await execFileTree(
+      'git',
+      ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args],
+      {
+        cwd: scratch.path,
+        env: { ...hermeticGitEnv(), ...sandbox.gitEnv, GIT_OPTIONAL_LOCKS: '0' },
+        timeoutMs: GIT_TIMEOUT_MS,
+        maxBuffer: DIFF_MAX_BYTES,
+        wrapper: sandbox.wrapper,
+      }
+    );
+    return stdout;
+  };
+  await captureGit(['add', '--intent-to-add', '--all', '--', ...PATCH_PATHS]);
+  if (!scratch.gitMetadataUnchanged())
+    return { ...provenance, diff: '', empty: true, status: 'tampered' };
+  const diff = await captureGit([
+    'diff',
+    '--binary',
+    '--no-ext-diff',
+    '--no-textconv',
+    baseSha,
+    '--',
+    ...PATCH_PATHS,
+  ]);
+  const empty = diff === '';
+  return { ...provenance, diff, empty, status: empty ? 'no_changes' : 'changes' };
 }
 
 type SandboxHandle = {
@@ -230,7 +255,7 @@ const BEST_EFFORT_SANDBOX: SandboxHandle = {
 
 /**
  * Enter the OS sandbox when the preflight says it works. A sandbox whose setup
- * then fails (an unresolvable package cache, say) falls back to best-effort and
+ * then fails (private temp allocation, for example) falls back to best-effort and
  * RECORDS why, the same as an unavailable bwrap: the run never claims a
  * sandbox it did not get, and a setup failure does not abort the run (#7011).
  */
@@ -274,6 +299,8 @@ function workspaceResult(
   notes: readonly (string | undefined)[]
 ): DevPipelineResult {
   const warnings = notes.filter((note) => note !== undefined);
+  if (changes.status === 'tampered')
+    warnings.push('Scratch git metadata was tampered with. Patch capture refused.');
   return {
     ...result,
     completed: result.completed && !changes.empty,
@@ -283,7 +310,7 @@ function workspaceResult(
 }
 
 /**
- * Scratch installs and gates use a measured OS sandbox when available, retaining
+ * Scratch experts, installs, gates and capture use a measured OS sandbox, retaining
  * hermetic Git, copy imports, HUSKY=0 and shared-config reporting in both modes.
  * Best-effort fallback records why confinement was unavailable.
  */
@@ -325,7 +352,7 @@ export async function withDevPipelineWorkspace(
       wrapper: sandbox.wrapper,
     });
     result = await run(bound);
-    changes = captureChanges(scratch.path, baseSha, dependencies, isolation, sandbox.gitEnv);
+    changes = await captureChanges(scratch, baseSha, dependencies, isolation, sandbox);
     completed = true;
   } finally {
     // Every exit reports what the run did outside the patch: a thrown or timed-out

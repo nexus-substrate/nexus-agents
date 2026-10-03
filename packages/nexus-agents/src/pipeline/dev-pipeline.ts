@@ -239,12 +239,13 @@ export interface DevPipelineResult {
     /** Provenance; a cleanup failure leaves this path for the operator to remove. */
     readonly worktreePath: string;
     readonly worktreeRemoved: boolean;
-    /** Offline provisioning outcome, scoped to this scratch checkout. */
+    /** Frozen-lockfile provisioning outcome, scoped to this scratch checkout. */
     readonly dependencies: DevPipelineDependencies;
     /** Measured subprocess isolation, with a reason when unavailable. */
     readonly isolation: { readonly mode: 'os-sandbox' | 'best-effort'; readonly reason?: string };
     readonly empty: boolean;
-    readonly status: 'no_changes' | 'changes';
+    /** Tampered metadata refuses patch capture and returns an empty diff. */
+    readonly status: 'no_changes' | 'changes' | 'tampered';
   };
   /**
    * Whether the pipeline completed successfully.
