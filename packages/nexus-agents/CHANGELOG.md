@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.127.3
+
+### Patch Changes
+
+- [#6976](https://github.com/nexus-substrate/nexus-agents/pull/6976) [`559125d`](https://github.com/nexus-substrate/nexus-agents/commit/559125de6a54dd81eba3dc8b63f411c15f3fb244) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refuse MCP tool calls when a running server's installation is upgraded or removed, with a clear restart message instead of missing lazy-import chunk failures. Cache package version reads by mtime and map missing modules within the server's own dist directory to the same recovery message.
+
 ## 8.127.2
 
 ### Patch Changes
