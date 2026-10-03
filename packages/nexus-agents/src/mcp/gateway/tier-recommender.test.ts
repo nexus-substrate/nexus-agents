@@ -202,3 +202,38 @@ describe('generateTierRecommendations — custom config', () => {
     expect(result[0]!.direction).toBe('demote');
   });
 });
+
+// ============================================================================
+// Tier step (typescript-eslint 8.71 no-unsafe-enum-assignment)
+// ============================================================================
+
+describe('generateTierRecommendations — tier step', () => {
+  const categories = [
+    'research',
+    'exploration',
+    'code_generation',
+    'code_review',
+    'architecture',
+    'security_review',
+  ];
+
+  it('promotes exactly one tier up from each category tier', () => {
+    const summary = makeSummary(Object.fromEntries(categories.map((c) => [c, makeStats(30, 0.4)])));
+    const result = generateTierRecommendations(summary);
+    expect(result.length).toBeGreaterThan(0);
+    for (const rec of result) {
+      expect(rec.direction).toBe('promote');
+      expect(rec.recommendedTier).toBe(rec.currentTier + 1);
+    }
+  });
+
+  it('demotes exactly one tier down from each category tier', () => {
+    const summary = makeSummary(Object.fromEntries(categories.map((c) => [c, makeStats(200, 1)])));
+    const result = generateTierRecommendations(summary);
+    expect(result.length).toBeGreaterThan(0);
+    for (const rec of result) {
+      expect(rec.direction).toBe('demote');
+      expect(rec.recommendedTier).toBe(rec.currentTier - 1);
+    }
+  });
+});

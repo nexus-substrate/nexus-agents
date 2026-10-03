@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { _testing } from './delegate-to-model.js';
 import { createLogger } from '../../core/index.js';
 import type { GovernanceClassification } from '../gateway/governance-enforcer.js';
+import { RequestTier } from '../gateway/tier-classifier.js';
 
 const { classifyDelegateGovernance, enrichWithGovernance } = _testing;
 const logger = createLogger({ component: 'test' });
@@ -57,7 +58,7 @@ describe('enrichWithGovernance', () => {
 
   it('returns output unchanged when not promoted', () => {
     const notPromoted: GovernanceClassification = {
-      tier: 1,
+      tier: RequestTier.DIRECT,
       promoted: false,
       domain: 'none',
       votingThreshold: null,
@@ -70,7 +71,7 @@ describe('enrichWithGovernance', () => {
 
   it('adds governance metadata when promoted', () => {
     const promoted: GovernanceClassification = {
-      tier: 3,
+      tier: RequestTier.ORCHESTRATED,
       promoted: true,
       domain: 'security',
       votingThreshold: 'supermajority',
@@ -86,7 +87,7 @@ describe('enrichWithGovernance', () => {
 
   it('preserves all original output fields', () => {
     const promoted: GovernanceClassification = {
-      tier: 3,
+      tier: RequestTier.ORCHESTRATED,
       promoted: true,
       domain: 'architecture',
       votingThreshold: 'supermajority',

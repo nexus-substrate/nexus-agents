@@ -115,7 +115,8 @@ function evaluateCategory(
 
   // Check for promotion (too many failures at current tier)
   if (failureRate > cfg.promoteFailureRate && currentTier < RequestTier.ORCHESTRATED) {
-    const recommendedTier = currentTier + 1;
+    const recommendedTier =
+      currentTier === RequestTier.DIRECT ? RequestTier.ANALYZED : RequestTier.ORCHESTRATED;
     return {
       category,
       currentTier,
@@ -133,7 +134,8 @@ function evaluateCategory(
     stats.count >= cfg.demoteMinSamples &&
     currentTier > RequestTier.DIRECT
   ) {
-    const recommendedTier = currentTier - 1;
+    const recommendedTier =
+      currentTier === RequestTier.ORCHESTRATED ? RequestTier.ANALYZED : RequestTier.DIRECT;
     return {
       category,
       currentTier,
