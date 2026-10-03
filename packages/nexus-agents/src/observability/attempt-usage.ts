@@ -174,3 +174,63 @@ export function summarizeAttemptUsage(
     totalTokens: inputTokens + outputTokens,
   };
 }
+
+/** One settled outer response, captured before parsing; snapshots are immutable. */
+export const VoterAttemptEventSchema = z
+  .object({
+    id: z.string().min(1).max(200),
+    role: z.string().min(1).max(64),
+    cli: z.string().min(1).max(120),
+    adapter: z.string().min(1).max(120),
+    model: z.string().min(1).max(120).optional(),
+    attemptKind: z.enum(['initial', 'parse_retry', 'role_retry', 'cli_fallback']),
+    outcome: z.enum(['parsed', 'parse_failed', 'superseded', 'final']),
+    usage: z.discriminatedUnion('kind', [
+      z
+        .object({ kind: z.literal('unknown') })
+        .strict()
+        .readonly(),
+      z
+        .object({
+          kind: z.literal('reported'),
+          input: z.number().int().nonnegative(),
+          output: z.number().int().nonnegative(),
+          cached: z.number().int().nonnegative().optional(),
+          reasoning: z.number().int().nonnegative().optional(),
+          cacheCreation: z.number().int().nonnegative().optional(),
+        })
+        .strict()
+        .readonly(),
+    ]),
+  })
+  .strict()
+  .readonly();
+export type VoterAttemptEvent = z.infer<typeof VoterAttemptEventSchema>;
+
+/**
+ * Started calls without responses have no event. They remain observable but
+ * unobserved, including errors/timeouts and settlement after persistence. A
+ * late response before persistence contributes exactly one event. Adapter
+ * internal retries cannot be observed at this seam.
+ */
+export const AttemptTelemetrySchema = z
+  .object({
+    events: z.array(VoterAttemptEventSchema).readonly(),
+    observableAttempts: z.number().int().nonnegative(),
+  })
+  .strict()
+  .refine((t) => t.observableAttempts >= t.events.length, {
+    message: 'observableAttempts cannot be smaller than settled response events',
+  })
+  .refine((t) => new Set(t.events.map((e) => e.id)).size === t.events.length, {
+    message: 'duplicate outer-attempt event IDs',
+  })
+  .refine(
+    (t) => {
+      const finalRoles = t.events.filter((e) => e.outcome === 'final').map((e) => e.role);
+      return new Set(finalRoles).size === finalRoles.length;
+    },
+    { message: 'multiple final response events for one role' }
+  )
+  .readonly();
+export type AttemptTelemetry = z.infer<typeof AttemptTelemetrySchema>;

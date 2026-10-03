@@ -6,6 +6,7 @@
  * (Source: Issue #212, Process Automation Epic #209)
  */
 
+import type { IModelAdapter } from '../core/index.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../consensus/types.js';
 import type {
   ErrorPolicy,
@@ -14,7 +15,8 @@ import type {
 } from '../mcp/tools/consensus-vote-types.js';
 import type { VoteRecordPrBinding } from '../audit/vote-record.js';
 import type { EndpointArmId } from '../cli-adapters/types-core.js';
-import type { AttemptUsage } from '../observability/attempt-usage.js';
+import type { AttemptTelemetry, AttemptUsage } from '../observability/attempt-usage.js';
+import type { VoterAttemptCollector, VoterAttemptKind } from './voter-attempt-events.js';
 import type { VoterRole } from './voter-roles.js';
 
 /**
@@ -327,6 +329,8 @@ export interface AgentVoteResult {
    * inside an adapter are not observed.
    */
   readonly attemptUsage?: AttemptUsage | undefined;
+  /** Immutable snapshot of settled outer responses, separate from final-seat usage. */
+  readonly attemptTelemetry?: AttemptTelemetry | undefined;
   /** Error message if vote fell back to simulation or encountered an error */
   readonly error?: string;
 }
@@ -351,4 +355,79 @@ export interface VoteHash {
   readonly role: VoterRole;
   readonly hash: string;
   readonly timestamp: string;
+}
+
+export interface VoteExecutionOverrides {
+  timeoutMs?: number;
+  maxRetries?: number;
+  allowSimulation?: boolean;
+  /** Declared options for a multi-option proposal (#4472). */
+  declaredOptions?: readonly string[] | undefined;
+  /** Target project for the system prompts (#6110); absent ⇒ `nexus-agents`. */
+  project?: string | undefined;
+  /** Working directory named in every user prompt (#6254); absent ⇒ no REPOSITORY ACCESS block. */
+  workspace?: string | undefined;
+  /** Ratified commit when workspace is a detached scratch checkout. */
+  workspaceSha?: string | undefined;
+  /** The panel's cancel (#6729): aborts this seat's adapter call in flight. */
+  signal?: AbortSignal | undefined;
+  attemptCollector?: VoterAttemptCollector | undefined;
+  attemptKind?: VoterAttemptKind | undefined;
+  /** Reports failure retryability to the panel without changing the recorded seat shape. */
+  onError?: ((role: VoterRole, retryable: boolean | undefined) => void) | undefined;
+}
+
+/** Resolved per-call vote execution settings. */
+export interface VoteExecutionSettings {
+  timeoutMs: number;
+  maxRetries: number;
+  allowSimulation: boolean;
+  declaredOptions?: readonly string[] | undefined;
+  /** Required KEY (#6110): a hop that drops the target project fails to compile. */
+  project: string | undefined;
+  /** Required KEY (#6254), for the same reason. */
+  workspace: string | undefined;
+  workspaceSha: string | undefined;
+  onError: VoteExecutionOverrides['onError'];
+  attemptKind?: VoterAttemptKind | undefined;
+}
+
+export interface VoteCompletionArgs {
+  readonly role: VoterRole;
+  readonly proposal: string;
+  readonly adapter: IModelAdapter;
+  readonly timeoutMs: number;
+  readonly withResponseFormat: boolean;
+  /** Declared options for a multi-option proposal (#4472). */
+  readonly options?: readonly string[] | undefined;
+  /**
+   * The target project named in the system prompt (#6110). Required as a KEY
+   * so a hop that forgets to pass it fails to compile; `undefined` is the
+   * `nexus-agents` default.
+   */
+  readonly project: string | undefined;
+  /**
+   * The working directory every seat's tools run in (#6254), named in the
+   * user prompt. Required as a KEY for the same reason as `project`;
+   * `undefined` renders no REPOSITORY ACCESS block.
+   */
+  readonly workspace: string | undefined;
+  readonly workspaceSha?: string | undefined;
+  /** Panel cancel or overall cutoff, combined with the per-attempt deadline. */
+  readonly signal?: AbortSignal | undefined;
+  readonly attemptCollector?: VoterAttemptCollector | undefined;
+  readonly attemptKind?: VoterAttemptKind | undefined;
+}
+
+export interface VotePromptContext {
+  readonly options?: readonly string[] | undefined;
+  /** Target project for the system prompt; omitted ⇒ `nexus-agents`. */
+  readonly project?: string | undefined;
+  /** Working directory named in the user prompt; omitted ⇒ no REPOSITORY ACCESS block. */
+  readonly workspace?: string | undefined;
+  readonly workspaceSha?: string | undefined;
+  /** The panel's cancel (#6729); aborts the adapter call in flight. */
+  readonly signal?: AbortSignal | undefined;
+  readonly attemptCollector?: VoterAttemptCollector | undefined;
+  readonly attemptKind?: VoterAttemptKind | undefined;
 }

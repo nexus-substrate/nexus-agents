@@ -54,6 +54,7 @@ import {
   ObservedAttemptUsageSchema,
   summarizeAttemptUsage,
   type AttemptUsage,
+  type AttemptTelemetry,
   type ObservedAttemptUsage,
 } from './attempt-usage.js';
 
@@ -123,6 +124,8 @@ export interface VoterCostInput {
    * and never summed into them. Absent ⇒ no completion was observed.
    */
   readonly attemptUsage?: AttemptUsage | undefined;
+  /** Immutable outer-response events; kept separately from legacy seat totals. */
+  readonly attemptTelemetry?: AttemptTelemetry | undefined;
 }
 
 /** Per-voter line in the decision rollup. */

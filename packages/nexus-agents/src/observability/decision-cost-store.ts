@@ -23,7 +23,12 @@ import { z } from 'zod';
 import { JsonlStore } from '../config/jsonl-store.js';
 import { ensureLearningDir, getDecisionCostFile } from '../config/learning-persistence.js';
 import { PriceBasisSchema } from '../core/price-basis.js';
-import { AttemptUsageSchema, ObservedAttemptUsageSchema } from './attempt-usage.js';
+import {
+  AttemptTelemetrySchema,
+  AttemptUsageSchema,
+  ObservedAttemptUsageSchema,
+  type AttemptTelemetry,
+} from './attempt-usage.js';
 import {
   PricingProvenanceSchema,
   rollupDecisionCost,
@@ -101,20 +106,34 @@ const DecisionCostSummarySchema = z.object({
 });
 
 /** One persisted per-decision cost rollup. */
-export const DecisionCostRecordSchema = z.object({
-  /** Stable decision correlation id, independent of the async job id. */
-  decisionId: z.string().min(1).max(160),
-  /** Actual async job id; malformed metadata drops only this field. */
-  jobId: z.string().min(1).max(200).optional().catch(undefined),
-  /** Which gate type incurred the cost. */
-  gate: DecisionGateSchema,
-  /** ISO 8601 timestamp the rollup was recorded. */
-  timestamp: z.string().min(1).max(40),
-  /** The rolled-up cost summary. */
-  summary: DecisionCostSummarySchema,
-  /** #5422 — optional: absent means no verdict was recorded, not "not fired". */
-  undeclaredOptionsDetector: UndeclaredOptionsDetectorSchema.optional(),
-});
+export const DecisionCostRecordSchema = z
+  .object({
+    /** Stable decision correlation id, independent of the async job id. */
+    decisionId: z.string().min(1).max(160),
+    /** Actual async job id; malformed metadata drops only this field. */
+    jobId: z.string().min(1).max(200).optional().catch(undefined),
+    /** Which gate type incurred the cost. */
+    gate: DecisionGateSchema,
+    /** ISO 8601 timestamp the rollup was recorded. */
+    timestamp: z.string().min(1).max(40),
+    /** The rolled-up cost summary. */
+    summary: DecisionCostSummarySchema,
+    /** Immutable settled-response events; malformed history rejects the whole row. */
+    attemptTelemetry: AttemptTelemetrySchema.optional(),
+    /** #5422 — optional: absent means no verdict was recorded, not "not fired". */
+    undeclaredOptionsDetector: UndeclaredOptionsDetectorSchema.optional(),
+  })
+  .refine(
+    (record) => {
+      if (record.attemptTelemetry === undefined) return true;
+      const roles = new Set(record.summary.perVoter.map((v) => v.role));
+      for (const event of record.attemptTelemetry.events) {
+        if (!roles.has(event.role)) return false;
+      }
+      return true;
+    },
+    { message: 'outer-attempt event references an absent voter role' }
+  );
 export type DecisionCostRecord = z.infer<typeof DecisionCostRecordSchema>;
 
 /** Bounded retention — keep the most recent N decision rollups. */
@@ -186,12 +205,14 @@ export class DecisionCostStore {
    */
   record(input: RecordDecisionCostInput): { record: DecisionCostRecord; persisted: boolean } {
     const summary = rollupDecisionCost(input.voters, input.billingMode);
+    const telemetry = combineAttemptTelemetry(input.voters);
     const record: DecisionCostRecord = {
       decisionId: input.decisionId,
       ...(input.jobId !== undefined ? { jobId: input.jobId } : {}),
       gate: input.gate,
       timestamp: input.timestamp,
       summary,
+      ...(telemetry !== undefined ? { attemptTelemetry: telemetry } : {}),
       // Spread conditionally so an absent verdict stays absent on disk (#5422).
       ...(input.undeclaredOptionsDetector !== undefined
         ? { undeclaredOptionsDetector: input.undeclaredOptionsDetector }
@@ -222,3 +243,15 @@ export class DecisionCostStore {
 
 /** Re-export the summary type for ergonomic consumer imports. */
 export type { DecisionCostSummary };
+
+/** Preserve response identity and count observable calls; never add legacy token sums. */
+function combineAttemptTelemetry(voters: readonly VoterCostInput[]): AttemptTelemetry | undefined {
+  const recorded = voters.flatMap((v) =>
+    v.attemptTelemetry !== undefined ? [v.attemptTelemetry] : []
+  );
+  if (recorded.length === 0) return undefined;
+  return {
+    events: recorded.flatMap((t) => t.events),
+    observableAttempts: recorded.reduce((sum, t) => sum + t.observableAttempts, 0),
+  };
+}

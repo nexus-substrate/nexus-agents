@@ -86,6 +86,8 @@ describe('non-retryable voter errors (#6846, item 1)', () => {
     );
     expect(cli.execute).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
+      // The started outer call returned only a ModelError: no response event.
+      attemptTelemetry: { events: [], observableAttempts: 1 },
       role: 'architect',
       source: 'error',
       error: REFUSAL,

@@ -12,11 +12,20 @@
  * @module cli/voter-attempt-usage
  */
 
-import { mergeAttemptUsage, type AttemptUsage } from '../observability/attempt-usage.js';
-import type { IModelAdapter } from '../core/index.js';
+import {
+  carryVoterAttemptTelemetry,
+  preserveVoterAttemptTelemetry,
+} from './voter-attempt-events.js';
+import type { AttemptTelemetry } from '../observability/attempt-usage.js';
+import {
+  mergeAttemptUsage,
+  foldCompletionUsage,
+  type AttemptUsage,
+} from '../observability/attempt-usage.js';
+import type { IModelAdapter, CompletionResponse } from '../core/index.js';
 import { isGatewayModelAdapter } from '../adapters/openai-compat-adapter.js';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
-import type { VoteOutcome } from './voter-execution.js';
+import type { VoteOutcome, VoteUsage } from './voter-execution.js';
 import { inFamilyFallback } from './voter-fallback.js';
 
 /**
@@ -24,11 +33,20 @@ import { inFamilyFallback } from './voter-fallback.js';
  * neither carried any: the empty case stays absent, never a zero record.
  */
 export function carryAttemptUsage(
-  from: { readonly attemptUsage?: AttemptUsage | undefined } | undefined,
+  from:
+    | {
+        readonly attemptUsage?: AttemptUsage | undefined;
+        readonly attemptTelemetry?: AttemptTelemetry | undefined;
+      }
+    | undefined,
   onto: AgentVoteResult
 ): AgentVoteResult {
   const attemptUsage = mergeAttemptUsage(from?.attemptUsage, onto.attemptUsage);
-  return attemptUsage === undefined ? onto : { ...onto, attemptUsage };
+  const decorated =
+    attemptUsage === undefined
+      ? onto
+      : preserveVoterAttemptTelemetry(onto, { ...onto, attemptUsage });
+  return carryVoterAttemptTelemetry(from, decorated);
 }
 
 /**
@@ -76,4 +94,43 @@ export function buildLlmVoteResult(
     // #6821: every settled completion, not only the one answering above.
     attemptUsage,
   };
+}
+
+/** Read a usage token count when the adapter actually reported a number (#3910). */
+function readTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** The answering response's legacy counters; attempt events are captured separately. */
+export function readVoteUsage(response: CompletionResponse): VoteUsage {
+  // #3910: capture the adapter-reported per-call usage so it can ride up into
+  // the AgentVoteResult and feed the decision-cost rollup as MEASURED. Cast
+  // through a loose shape: the type guarantees `usage`, but a real adapter (or a
+  // partial response) may omit the counts — read each defensively so a
+  // non-reporting call stays unmeasured rather than throwing or fabricating 0.
+  const reported = response.usage as unknown as
+    | {
+        inputTokens?: unknown;
+        outputTokens?: unknown;
+        cachedInputTokens?: unknown;
+        cacheCreationInputTokens?: unknown;
+      }
+    | undefined;
+  const usage: VoteUsage = {
+    inputTokens: readTokenCount(reported?.inputTokens),
+    outputTokens: readTokenCount(reported?.outputTokens),
+    // #4435: an `inputTokens: 2` next to 3,980 cached tokens tells a very
+    // different story than `inputTokens: 2` alone.
+    cachedInputTokens: readTokenCount(reported?.cachedInputTokens),
+    cacheCreationInputTokens: readTokenCount(reported?.cacheCreationInputTokens),
+  };
+  return usage;
+}
+
+/** Fold an attempt's reported usage, when the transport returned a response. */
+export function foldAttempt(
+  acc: AttemptUsage | undefined,
+  usage: VoteUsage | undefined
+): AttemptUsage | undefined {
+  return usage === undefined ? acc : foldCompletionUsage(acc, usage);
 }
