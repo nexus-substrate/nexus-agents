@@ -60,10 +60,13 @@ A governed decision is one panel run that fans out to multiple LLM calls:
 | `consensus_vote` | Up to a **7-voter** panel of independent perspectives | architect, security, devex, and more (strategy `consensus`, profile `high`) |
 | `pr_review`      | A **5-role** adversarial panel wrapping consensus     | architect, security, devex, catfish, scope_steward (`PR_REVIEW_EVAL_ROLES`) |
 
-Each voter is one model call. Per-call token + cost telemetry already existed (the
-usage log, `packages/nexus-agents/src/learning/usage-log.ts`). The cost-telemetry
-epic added the **aggregation** layer that rolls those per-call numbers up into one
-per-decision answer.
+Each voter seat may make several model calls. The legacy summary keeps final-seat
+usage; the response events described below retain observed attempts. Per-call token
+
+- cost telemetry already existed (the
+  usage log, `packages/nexus-agents/src/learning/usage-log.ts`). The cost-telemetry
+  epic added the **aggregation** layer that rolls those per-call numbers up into one
+  per-decision answer.
 
 The flow is:
 
@@ -157,6 +160,52 @@ the structural story rather than the dollar mean.
 Each registered strategy's declared `costProfile`, read straight off the manifest
 registry (the single source of truth — it cannot drift from the authored manifest).
 See the next section.
+
+## Observed voter attempts and final seats (#6821)
+
+The weekly `costSection.consensusDecisionTokens.attemptTelemetry` view reports
+**observed outer-attempt usage, not all physical attempts**. Its token totals
+come only from immutable response events in the existing decision-cost record,
+under the same decision ID. Legacy final-seat totals remain separate: do not add
+these two overlapping populations together. Legacy aggregate
+`observedAttemptUsage` is retained for compatibility; it is not event provenance.
+
+At `runVoteCompletion`, each started outer `adapter.complete` increments
+`observableAttempts`. A response freezes role, CLI/adapter, known model and usage
+before vote parsing. Parsing classification is maintained separately; the cost
+bridge takes an immutable snapshot with one event per response. Parse failures,
+structured-output retries, role retries and CLI fallbacks retain their events.
+Kinds identify the first call as `initial`, a subsequent call within an execution
+chain as `parse_retry` (including a transport/structured retry), a relaunched
+role's first call as `role_retry`, and a fallback chain's first call as
+`cli_fallback`. Subsequent retry calls take `parse_retry` precedence. Events are grouped by carried execution chain; array order is not a
+wall-clock chronology. Outcomes distinguish `parsed`, `parse_failed`, discarded `superseded`
+responses and the retained `final` response.
+
+Usage is `reported` only when both valid input/output counters are present;
+explicit zero is measured. Partial, missing or placeholder input counters are
+`unknown`, never measured zero. Cache-read, cache-creation and reasoning counters
+remain optional subtotals and are not added to input/output totals.
+
+A ModelError or timeout without a response records **no response event**. Because
+the outer call was observed starting, it contributes to `observableAttempts` and
+`unobservedAttempts`, not to the settled-response coverage denominator. Coverage
+is `reportedAttempts / observedAttempts`; read it with the separate unobserved
+count. Adapter-internal physical calls cannot be counted at this seam.
+
+A raw response arriving after the deadline is included as `superseded` if it
+arrives before the bridge snapshots inputs for synchronous persistence. Settlement
+after that snapshot cannot change the persisted events; it remains unobserved in
+that decision record. The observer does not wait for outstanding calls.
+
+Empty or wholly unknown cohorts report `unmeasured` with null token totals;
+coverage is null when no response events exist. Explicit reported zeros yield
+measured zero totals. Legacy records without events increment
+`decisionsLackingTelemetry`; they do not assert zero attempts. Invalid events,
+contradictory counts, duplicate identities, multiple final responses for a role,
+and responses attributed to an absent role reject durable history. Reused event
+IDs across decisions exclude all affected histories from the join and expose
+invalid-record coverage, consistent with the existing damaged-cost behavior.
 
 ## What each strategy's `costProfile` means
 

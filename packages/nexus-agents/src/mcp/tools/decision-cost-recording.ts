@@ -111,6 +111,7 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
       ...reportedTokenFields(v),
       // #6821: every settled completion, beside the answering one's counters.
       ...(v.attemptUsage !== undefined ? { attemptUsage: v.attemptUsage } : {}),
+      ...(v.attemptTelemetry !== undefined ? { attemptTelemetry: v.attemptTelemetry } : {}),
       ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
       ...(detail?.pricingProvenance !== undefined
         ? { pricingProvenance: detail.pricingProvenance }

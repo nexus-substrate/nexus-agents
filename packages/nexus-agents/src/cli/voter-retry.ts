@@ -12,6 +12,7 @@ import { sleep } from '../utils/async-utils.js';
 import { isAbsentSeat } from './voter-unverifiable.js';
 import { isCancelled } from './voter-cancel.js';
 import { DEADLINE_MESSAGE } from './voter-agents-deadline.js';
+import { preserveVoterAttemptTelemetry } from './voter-attempt-events.js';
 import { carryAttemptUsage } from './voter-attempt-usage.js';
 
 /**
@@ -155,12 +156,16 @@ export async function retryErroredRoles(
     // pass never had.
     const prior = firstByRole.get(r.role);
     const from = prior !== undefined && isAbsentSeat(prior) ? retriedFromOf(prior) : undefined;
-    recovered.set(r.role, {
-      // #6821: the replaced first pass billed its completions too.
-      ...carryAttemptUsage(prior, r),
-      retried: true,
-      ...(from !== undefined ? { retriedFrom: from } : {}),
-    });
+    const carried = carryAttemptUsage(prior, r);
+    recovered.set(
+      r.role,
+      preserveVoterAttemptTelemetry(carried, {
+        // #6821: the replaced first pass billed its completions too.
+        ...carried,
+        retried: true,
+        ...(from !== undefined ? { retriedFrom: from } : {}),
+      })
+    );
   }
   const kept = keepFailedRetryUsage(first, retriedResults);
   if (recovered.size === 0) {
@@ -189,6 +194,11 @@ function keepFailedRetryUsage(
   const failedByRole = new Map(retried.filter((r) => r.source === 'error').map((r) => [r.role, r]));
   return first.map((v) => {
     const failed = failedByRole.get(v.role);
-    return failed === undefined ? v : carryAttemptUsage(failed, v);
+    if (failed === undefined) return v;
+    const carried = carryAttemptUsage(v, failed);
+    return preserveVoterAttemptTelemetry(carried, {
+      ...v,
+      ...(carried.attemptUsage !== undefined ? { attemptUsage: carried.attemptUsage } : {}),
+    });
   });
 }

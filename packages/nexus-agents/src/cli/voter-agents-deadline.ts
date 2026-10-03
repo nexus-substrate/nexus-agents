@@ -17,6 +17,12 @@ import type { AgentVoteResult, SeatAttemptTiming, VoterRole } from './vote-types
 import { createErrorVoteResult, delay } from './voter-execution.js';
 import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
 import { carryAttemptUsage } from './voter-attempt-usage.js';
+import {
+  VoterAttemptCollector,
+  withVoterAttemptTelemetry,
+  preserveVoterAttemptTelemetry,
+  type VoterAttemptKind,
+} from './voter-attempt-events.js';
 import { observeLateVoter } from './voter-late-settlement.js';
 import { getMcpSafeDeadlineMs, VOTE_TIMEOUTS } from '../config/timeouts.js';
 
@@ -62,6 +68,9 @@ export interface VoteOptions {
   readonly allowSimulation: boolean;
   /** The panel's cancel (#6729); combined with this seat's overall cutoff at launch. */
   readonly signal?: AbortSignal | undefined;
+  readonly attemptCollector?: VoterAttemptCollector | undefined;
+  readonly attemptKind?: VoterAttemptKind | undefined;
+  readonly withinRoleRetry?: boolean | undefined;
 }
 
 export type VoteFn = (
@@ -254,13 +263,14 @@ function withPrimaryAttempts(
   primary: AgentVoteResult,
   recovered: AgentVoteResult
 ): AgentVoteResult {
-  return {
+  const carried = carryAttemptUsage(primary, recovered);
+  return preserveVoterAttemptTelemetry(carried, {
     // #6821: the failed primary's settled completions were billed too.
-    ...carryAttemptUsage(primary, recovered),
+    ...carried,
     timing: {
       attempts: [...(primary.timing?.attempts ?? []), ...(recovered.timing?.attempts ?? [])],
     },
-  };
+  });
 }
 
 type VoteOnAdapter = (
@@ -280,11 +290,13 @@ function voteBeforeDeadline(
     return Promise.resolve(createErrorVoteResult(role, DEADLINE_MESSAGE, input.overallDeadlineMs));
   }
   const observer = observeLateVoter(adapter, role, input.logger);
-  return raceWithDeadline(
+  const collector = new VoterAttemptCollector();
+  const result = raceWithDeadline(
     (signal) => {
       observer.register(signal);
       return input.voteFn(role, input.proposal, adapter, input.logger, {
         ...input.voteOptions,
+        attemptCollector: collector,
         signal,
       });
     },
@@ -304,6 +316,7 @@ function voteBeforeDeadline(
       }
     }
   );
+  return result.then((vote) => withVoterAttemptTelemetry(vote, () => collector.snapshot()));
 }
 
 async function launchRoleVote(
@@ -320,7 +333,7 @@ async function launchRoleVote(
   const pinnedModel = adapter.modelId;
   const assignedKey = adapterCliKey(adapter);
   const stamp = (r: AgentVoteResult): AgentVoteResult =>
-    withAssignment(r, pinnedModel, assignedKey);
+    preserveVoterAttemptTelemetry(r, withAssignment(r, pinnedModel, assignedKey));
   if (cancelled(input.signal)) {
     // Refused before any attempt: the timing says so with an empty list.
     return stamp({
@@ -348,15 +361,10 @@ async function launchRoleVote(
   // result rather than only in this log line. A seat that errored on the
   // fallback too answered nowhere and carries no fallback.
   const fallback = crossCliFallback(adapter, assignedKey, primary.error ?? '');
-  return stamp({ ...recovered, fallback });
+  return stamp(preserveVoterAttemptTelemetry(recovered, { ...recovered, fallback }));
 }
 
-export async function launchVotesWithOverallDeadline(
-  input: LaunchVotesInput
-): Promise<readonly AgentVoteResult[]> {
-  const { roles, logger, overallDeadlineMs } = input;
-
-  const deadlineAtMs = input.deadlineAtMs ?? Date.now() + overallDeadlineMs;
+function createTimedVoteLauncher(input: LaunchVotesInput, deadlineAtMs: number): VoteOnAdapter {
   const serialize = createKeyedSerializer();
 
   // One serialized, deadline-bounded vote attempt on a specific adapter.
@@ -378,16 +386,44 @@ export async function launchVotesWithOverallDeadline(
       const remaining = deadlineAtMs - runStartedAt;
       // A role can wait past the cutoff in a stagger or serialized CLI lane.
       // Record absence as an error; do not start an adapter with a fresh 1 ms.
-      const result = await voteBeforeDeadline(input, role, adapter, remaining);
+      const result = await voteBeforeDeadline(
+        {
+          ...input,
+          voteOptions: {
+            ...input.voteOptions,
+            attemptKind: fallback ? 'cli_fallback' : input.voteOptions.attemptKind,
+            withinRoleRetry:
+              input.voteOptions.withinRoleRetry === true ||
+              input.voteOptions.attemptKind === 'role_retry',
+          },
+        },
+        role,
+        adapter,
+        remaining
+      );
       const attempt: SeatAttemptTiming = {
         cli,
         queuedMs: runStartedAt - enqueuedAt,
         ranMs: Date.now() - runStartedAt,
         fallback,
       };
-      return { ...result, timing: { attempts: [...(result.timing?.attempts ?? []), attempt] } };
+      return withVoterAttemptTelemetry(
+        { ...result, timing: { attempts: [...(result.timing?.attempts ?? []), attempt] } },
+        () => result.attemptTelemetry ?? { events: [], observableAttempts: 0 }
+      );
     });
   };
+
+  return voteOnAdapter;
+}
+
+export async function launchVotesWithOverallDeadline(
+  input: LaunchVotesInput
+): Promise<readonly AgentVoteResult[]> {
+  const { roles, logger, overallDeadlineMs } = input;
+
+  const deadlineAtMs = input.deadlineAtMs ?? Date.now() + overallDeadlineMs;
+  const voteOnAdapter = createTimedVoteLauncher(input, deadlineAtMs);
 
   const wrapped = roles.map((role, index) =>
     launchRoleVote(role, index, input, voteOnAdapter, deadlineAtMs).then((result) => {

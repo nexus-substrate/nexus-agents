@@ -16,7 +16,12 @@
  * - voter-agents.ts: Main API (this file)
  */
 
-import type { VoterRole, AgentVoteResult } from './vote-types.js';
+import type {
+  VoterRole,
+  AgentVoteResult,
+  VoteExecutionOverrides,
+  VoteExecutionSettings,
+} from './vote-types.js';
 import { resolveVoterModelOverrides } from './voter-model-overrides.js';
 import { clisServingVoterSeats } from './voter-cli-access.js';
 import { VOTER_ROLES } from './voter-roles.js';
@@ -40,10 +45,12 @@ import {
   markUnverifiable,
   type UnverifiableReasoningRule,
 } from './voter-unverifiable.js';
+import { resolveAttemptCollector, withVoterAttemptTelemetry } from './voter-attempt-events.js';
 import { buildLlmVoteResult, carryAttemptUsage } from './voter-attempt-usage.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
 export { NoAdapterError };
+export type { VoteExecutionOverrides } from './vote-types.js';
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -192,13 +199,28 @@ export async function executeAgentVote(
   logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
 
   // #6729: the panel's cancel rides along so it reaches this seat's adapter call.
-  const retryOptions = { role, proposal, adapter, logger, ...settings, signal: options?.signal };
+  const collector = resolveAttemptCollector(options);
+  const attach = (vote: AgentVoteResult): AgentVoteResult =>
+    withVoterAttemptTelemetry(vote, () => collector.snapshot());
+  const retryOptions = {
+    role,
+    proposal,
+    adapter,
+    logger,
+    ...settings,
+    signal: options?.signal,
+    attemptCollector: collector,
+    attemptKind: options?.attemptKind,
+    withinRoleRetry: options?.withinRoleRetry,
+  };
   const result = await executeWithRetries({ ...retryOptions, options: declaredOptions });
   const processingTimeMs = getTimeProvider().now() - start;
 
   if (result.ok) {
     const built = buildLlmVoteResult(role, result, adapter, processingTimeMs);
-    return finalizeParsedVote(built, result.cliStderr, logger);
+    const finalized = finalizeParsedVote(built, result.cliStderr, logger);
+    if (finalized.source !== 'llm') collector.discardFinal();
+    return attach(finalized);
   }
 
   // Retries exhausted or explicitly refused by the adapter.
@@ -212,7 +234,7 @@ export async function executeAgentVote(
   if (allowSimulation) {
     logger.warn('Falling back to simulation (allowSimulation=true)', { role });
     const simulated = createSimulationVoteResult(role, proposal, processingTimeMs, result.error);
-    return carryAttemptUsage(result, simulated);
+    return attach(carryAttemptUsage(result, simulated));
   }
 
   // #3350: a stale-OAuth failure (e.g. codex "refresh token already used")
@@ -222,7 +244,7 @@ export async function executeAgentVote(
   const remediation = authRemediation(result.error, adapter.providerId);
   const errorText = remediation === null ? result.error : `${result.error}\n\n${remediation}`;
   const errored = createErrorVoteResult(role, errorText, processingTimeMs, adapter.providerId);
-  return carryAttemptUsage(result, errored);
+  return attach(carryAttemptUsage(result, errored));
 }
 
 // ============================================================================
@@ -458,37 +480,6 @@ async function resolveDiverseAdapters(
 
 /** Options for staggered vote launching. */
 /** Caller-supplied vote execution overrides; unset fields take defaults. */
-export interface VoteExecutionOverrides {
-  timeoutMs?: number;
-  maxRetries?: number;
-  allowSimulation?: boolean;
-  /** Declared options for a multi-option proposal (#4472). */
-  declaredOptions?: readonly string[] | undefined;
-  /** Target project for the system prompts (#6110); absent ⇒ `nexus-agents`. */
-  project?: string | undefined;
-  /** Working directory named in every user prompt (#6254); absent ⇒ no REPOSITORY ACCESS block. */
-  workspace?: string | undefined;
-  /** Ratified commit when workspace is a detached scratch checkout. */
-  workspaceSha?: string | undefined;
-  /** The panel's cancel (#6729): aborts this seat's adapter call in flight. */
-  signal?: AbortSignal | undefined;
-  /** Reports failure retryability to the panel without changing the recorded seat shape. */
-  onError?: ((role: VoterRole, retryable: boolean | undefined) => void) | undefined;
-}
-
-/** Resolved per-call vote execution settings. */
-interface VoteExecutionSettings {
-  timeoutMs: number;
-  maxRetries: number;
-  allowSimulation: boolean;
-  declaredOptions?: readonly string[] | undefined;
-  /** Required KEY (#6110): a hop that drops the target project fails to compile. */
-  project: string | undefined;
-  /** Required KEY (#6254), for the same reason. */
-  workspace: string | undefined;
-  workspaceSha: string | undefined;
-  onError: VoteExecutionOverrides['onError'];
-}
 
 interface StaggeredVoteInput {
   readonly roles: readonly VoterRole[];
@@ -548,6 +539,28 @@ export async function assignPanelSeats(
   return resolveDiverseAdapters(options.roles, logger, fallbackAdapter, options.gatewayAdapters);
 }
 
+async function collectPanelPasses(
+  input: StaggeredVoteInput,
+  deadline: ReturnType<typeof resolvePanelDeadline>,
+  nonRetryableRoles: ReadonlySet<VoterRole>,
+  backoffMs: number
+): Promise<readonly AgentVoteResult[]> {
+  const { overallDeadlineMs, deadlineAtMs } = deadline;
+  const first = await launchStaggeredVotes(input, overallDeadlineMs, deadlineAtMs);
+  return retryErroredRoles(
+    first,
+    (roles) =>
+      launchStaggeredVotes(
+        { ...input, roles, voteOptions: { ...input.voteOptions, attemptKind: 'role_retry' } },
+        overallDeadlineMs,
+        deadlineAtMs
+      ),
+    input.logger,
+    backoffMs,
+    { signal: input.signal, deadlineAtMs, nonRetryableRoles }
+  );
+}
+
 export async function collectRealVotes(
   options: CollectRealVotesOptions
 ): Promise<readonly AgentVoteResult[]> {
@@ -601,16 +614,11 @@ export async function collectRealVotes(
     interDelay,
     logger
   );
-  const firstPass = await launchStaggeredVotes(launchInput, overallDeadlineMs, deadlineAtMs);
-  // #5578: recover an errored seat with one extra call rather than losing it
-  // (reduce_denominator) or replaying the whole panel (absolute_quorum).
-  const results = await retryErroredRoles(
-    firstPass,
-    (retryRoles) =>
-      launchStaggeredVotes({ ...launchInput, roles: retryRoles }, overallDeadlineMs, deadlineAtMs),
-    logger,
-    options.erroredRoleBackoffMs ?? DEFAULT_ERRORED_ROLE_BACKOFF_MS,
-    { signal: options.signal, deadlineAtMs, nonRetryableRoles }
+  const results = await collectPanelPasses(
+    launchInput,
+    { overallDeadlineMs, deadlineAtMs },
+    nonRetryableRoles,
+    options.erroredRoleBackoffMs ?? DEFAULT_ERRORED_ROLE_BACKOFF_MS
   );
 
   // #4983/#5546: this is the only point the question is answerable. Assess the
