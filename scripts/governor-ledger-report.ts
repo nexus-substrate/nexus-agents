@@ -163,24 +163,30 @@ function formatRatified(evidence: RatifiedEvidence): string {
   );
 }
 
-/** Which records the scope-wide signature check judged (#3927); `0` is named, not hidden. */
+/**
+ * Which LINES the scope-wide signature check judged, out of how many (#3927,
+ * #7000 panel): coverage in raw lines, the exempt counts named, so a gap is
+ * never silent. `0 of N` is printed as such.
+ */
 function ledgerSignaturesClause(check: LedgerSignatureCheck): string {
-  const what =
-    check.scope === 'added'
-      ? 'record(s) this PR adds to the base ledger'
-      : 'record(s) in the whole ledger';
-  return `${String(check.checked)} ${what} outside the grandfather set`;
+  const of = `${String(check.checked)} of ${String(check.lines)} ledger line(s) checked`;
+  return check.scope === 'added'
+    ? `${of}: the lines this PR adds; ${String(check.inBase)} already on the base, ` +
+        `${String(check.grandfathered)} grandfathered`
+    : `${of}: every line; ${String(check.grandfathered)} grandfathered`;
 }
 
-/** `ledger-signature-required`: every failing record by id, with its own verdict code (#3927). */
+/** `ledger-signature-required`: every failing line by record id and line number, with its own verdict code (#3927). */
 function ledgerSignatureBody(check: LedgerSignatureCheck): string {
   return (
     `ledger-signature-required: ${String(check.refused.length)} of the ` +
-    `${ledgerSignaturesClause(check)} not 'signed' — ` +
+    `${String(check.checked)} checked line(s) not 'signed' (${ledgerSignaturesClause(check)}) — ` +
     check.refused
-      .map((f) => `record '${f.recordId}' ${signatureVerdictBody(f.verdict)}`)
+      .map(
+        (f) => `record '${f.recordId}' (line ${String(f.line)}) ${signatureVerdictBody(f.verdict)}`
+      )
       .join('; ') +
-    " — every record past the grandfather set must be signed by a key the gate checkout's allowed_signers lists"
+    " — every ledger line past the grandfather set must be signed by a key the gate checkout's allowed_signers lists"
   );
 }
 

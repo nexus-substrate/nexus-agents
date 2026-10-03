@@ -290,17 +290,21 @@
  *
  * NOT ONLY BOUND RECORDS (#3927, closing gap). Enforcement over the bound
  * records alone let an unsigned record that no PR binds be appended and
- * merge unrefused. `signatureScope` extends the requirement: `added` (the
- * pre-merge job) judges every record — vote or redaction — whose id+hash the
- * base ledger lacks, i.e. what the PR appends; `ledger` (the post-merge
- * backstop, and the env reader's default when no scope is named) judges
- * every record in the ledger, so a record that bypassed the pre-merge job
- * keeps `main` red until it is resolved rather than for one push. Grandfathered
- * hashes are skipped in both. A ratified verdict with a refused record
- * becomes `ledger-signature-required`, naming each record id and its own
- * verdict code; any other refusal carries the refused records beside it. A
- * PR adding no record is `checked: 0` and passes this check, the bound
- * check unchanged. Precedence: after every other kind — it is evaluated only
+ * merge unrefused. `signatureScope` extends the requirement, over RAW LEDGER
+ * LINES — each occurrence, never the deduplicated set, because the signature
+ * is outside the hash and an unsigned copy of a signed record collapses into
+ * it on load (the PR #7000 panel's reproduction). `added` (the pre-merge job)
+ * judges each head line not matched, occurrence for occurrence, by a base
+ * line with the same id, hash and signature; `ledger` (the post-merge
+ * backstop, and the env reader's default) judges every line, so a record
+ * that bypassed the pre-merge job keeps `main` red until it is resolved. An
+ * UNSIGNED line with a grandfathered hash is exempt in both; a signed one is
+ * judged. A ratified verdict with a refused line becomes
+ * `ledger-signature-required`, naming each record id, its line and its own
+ * verdict code; any other refusal carries the refused lines beside it. The
+ * check reports `lines = inBase + grandfathered + checked`, so coverage is
+ * never silent; a PR adding no line is `checked: 0` and passes this check,
+ * the bound check unchanged. Precedence: after every other kind — it is evaluated only
  * once the bound records ratify.
  *
  * ## Residual trust (disclosed)
@@ -729,13 +733,12 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   }
   const loaded = loadLedger(inputs.ledgerText);
   if (!loaded.ok) return loaded.verdict;
-  // #3927 (closing gap): the scope's records, not only the bound ones. No scope ⇒ unchanged.
+  // #3927: every raw LINE in scope, never the deduplicated set (#7000 panel). No scope ⇒ unchanged.
   const bound = verdictOverLoaded(inputs, loaded.records, loaded.redactions, appendOnlyChecked);
-  const all = [...loaded.records, ...loaded.redactions];
   const verdict: LedgerEvidence = applySignatureScope(
     withRedaction(bound, loaded.redacted),
     isRatifiedKind,
-    all,
+    inputs.ledgerText,
     inputs
   );
   return loaded.forks.length === 0 ? verdict : { ...verdict, forks: loaded.forks };

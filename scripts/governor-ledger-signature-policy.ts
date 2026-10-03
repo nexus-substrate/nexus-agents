@@ -103,53 +103,142 @@ export type LedgerSignatureScope = 'added' | 'ledger';
 /** The scopes, as the workflow spells them. */
 export const LEDGER_SIGNATURE_SCOPES: readonly LedgerSignatureScope[] = ['added', 'ledger'];
 
-/** What the ledger-wide signature check measured: the effective scope, how many records it judged, which failed. */
-export interface LedgerSignatureCheck {
-  readonly scope: LedgerSignatureScope;
-  /** Records judged — grandfathered hashes are excluded, so 0 is a PR that adds no record. */
-  readonly checked: number;
-  /** Every judged record whose verdict is not `signed`, in ledger order; empty when all are signed. */
-  readonly refused: readonly RecordSignatureReport[];
+/** One refused LINE of the ledger: the record it carries, its 1-based record-line number, and the verdict. */
+export interface LedgerLineSignatureReport extends RecordSignatureReport {
+  readonly line: number;
 }
 
 /**
- * Run the signature requirement over the records `scope` names. `added`
- * without a base ledger cannot say what was added, so it widens to `ledger`
- * (fail-closed: the stricter set, and the reported scope says so). Records in
- * {@link GRANDFATHERED_RECORD_HASHES} are skipped, by hash as for bound
- * records. No verifier ⇒ every judged record is `signature-not-measured`.
- * The empty case is named: a scope with no records to judge (a PR adding
- * none) is `checked: 0` with no failures — there is nothing to sign, and the
- * bound-record requirement still applies on its own.
+ * What the scope-wide signature check measured, in RAW LEDGER LINES — every
+ * occurrence, never the deduplicated record set (PR #7000 panel: an unsigned
+ * copy of a signed record shares its id and hash, because the signature is
+ * outside the hash, and the deduplicated set hid it). The counts partition
+ * the ledger: `lines = inBase + grandfathered + checked`.
+ */
+export interface LedgerSignatureCheck {
+  readonly scope: LedgerSignatureScope;
+  /** Record lines (non-blank) in the head ledger. */
+  readonly lines: number;
+  /** `added` only: lines matched, occurrence for occurrence, to a base line with the same id, hash AND signature. */
+  readonly inBase: number;
+  /** Lines exempt as grandfathered: an UNSIGNED line whose hash is in {@link GRANDFATHERED_RECORD_HASHES}. */
+  readonly grandfathered: number;
+  /** Lines judged. 0 is named, not hidden: a PR that adds no line, or a ledger of only exempt lines. */
+  readonly checked: number;
+  /** Every judged line whose verdict is not `signed`, in ledger order; empty when all are signed. */
+  readonly refused: readonly LedgerLineSignatureReport[];
+}
+
+/** Each record line's parsed record, in order; a line that does not parse as one record is `undefined`. */
+function recordsByLine(text: string): (SignableLedgerRecord | undefined)[] {
+  return text
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => {
+      const { records, redactions } = parseVoteRecordsText(line);
+      return records[0] ?? redactions[0];
+    });
+}
+
+/**
+ * The identity of one occurrence for the `added` diff: id, hash and the
+ * signature itself. A redaction's rewrite of a base line keeps all three
+ * (the reasoning it drops is outside both), so it stays "on the base"; an
+ * unsigned or re-signed copy of a base record differs in the third, so it
+ * is an added line and must verify on its own.
+ */
+function occurrenceKey(r: SignableLedgerRecord): string {
+  return `${r.id}\u0000${r.hash}\u0000${JSON.stringify(r.signature ?? null)}`;
+}
+
+/**
+ * Run the signature requirement over the ledger LINES `scope` names (#3927).
+ * `added`: each head line not matched — as a multiset, occurrence for
+ * occurrence — by a base line with the same {@link occurrenceKey}; `added`
+ * without a base cannot say what was added, so it widens to `ledger`
+ * (fail-closed, and the reported scope says so). `ledger`: every line.
+ *
+ * Grandfathering exempts a line only when its hash is grandfathered AND it
+ * carries no signature: an unsigned re-append of a grandfathered record is
+ * byte-for-byte that record's hash-covered content again (the hash covers
+ * every field but `previousHash` and `signature`), so it adds nothing to
+ * sign; a grandfathered record carrying a signature is judged, so a forged
+ * signature on one is refused rather than waved through. No verifier ⇒ every
+ * judged line is `signature-not-measured`. A line that does not parse is
+ * refused as `signature-not-measured` naming the line (unreachable after the
+ * ledger load, which refuses such a ledger first).
  */
 export function ledgerSignatureCheck(
-  headRecords: readonly SignableLedgerRecord[],
+  headText: string,
   scope: LedgerSignatureScope,
   baseText: string | undefined,
-  verify: ((record: SignableLedgerRecord) => VoteRecordSignatureVerdict) | undefined
+  verify: LineVerifier | undefined
 ): LedgerSignatureCheck {
   const effective: LedgerSignatureScope =
     scope === 'added' && baseText === undefined ? 'ledger' : scope;
-  // Keyed by id AND hash: a base line a redaction rewrote keeps both (its
-  // hash is unchanged), while a new record reusing a base id is added.
-  const key = (r: SignableLedgerRecord): string => `${r.id}\u0000${r.hash}`;
-  const inBase = new Set<string>();
-  if (effective === 'added' && baseText !== undefined) {
-    const base = parseVoteRecordsText(baseText);
-    for (const r of [...base.records, ...base.redactions]) inBase.add(key(r));
+  const baseCounts = baseOccurrences(effective === 'added' ? baseText : undefined);
+  const head = recordsByLine(headText);
+  const counts = { inBase: 0, grandfathered: 0, checked: 0 };
+  const refused: LedgerLineSignatureReport[] = [];
+  for (const [i, record] of head.entries()) {
+    const outcome = classifyLine(record, baseCounts);
+    counts[outcome]++;
+    if (outcome !== 'checked') continue;
+    const verdict = lineVerdict(record, verify);
+    if (verdict.code !== 'signed') {
+      refused.push({ recordId: record?.id ?? `(line ${String(i + 1)})`, line: i + 1, verdict });
+    }
   }
-  const judged = headRecords.filter(
-    (r) => !GRANDFATHERED_RECORD_HASHES.has(r.hash) && !inBase.has(key(r))
-  );
-  const refused: RecordSignatureReport[] = [];
-  for (const record of judged) {
-    const verdict: VoteRecordSignatureVerdict = verify?.(record) ?? {
+  return { scope: effective, lines: head.length, ...counts, refused };
+}
+
+type LineVerifier = (record: SignableLedgerRecord) => VoteRecordSignatureVerdict;
+
+/** The base ledger's lines as a multiset of {@link occurrenceKey}s; empty when there is no base to diff. */
+function baseOccurrences(baseText: string | undefined): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const r of baseText === undefined ? [] : recordsByLine(baseText)) {
+    if (r !== undefined) counts.set(occurrenceKey(r), (counts.get(occurrenceKey(r)) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Where one head line falls: matched to a base occurrence (consuming it), exempt, or judged. */
+function classifyLine(
+  record: SignableLedgerRecord | undefined,
+  baseCounts: Map<string, number>
+): 'inBase' | 'grandfathered' | 'checked' {
+  if (record === undefined) return 'checked';
+  const key = occurrenceKey(record);
+  const left = baseCounts.get(key) ?? 0;
+  if (left > 0) {
+    baseCounts.set(key, left - 1);
+    return 'inBase';
+  }
+  // Only an UNSIGNED line is exempt by hash; a signed one is judged.
+  if (record.signature === undefined && GRANDFATHERED_RECORD_HASHES.has(record.hash)) {
+    return 'grandfathered';
+  }
+  return 'checked';
+}
+
+/** One judged line's verdict; an unparseable line or a missing verifier is `signature-not-measured`. */
+function lineVerdict(
+  record: SignableLedgerRecord | undefined,
+  verify: LineVerifier | undefined
+): VoteRecordSignatureVerdict {
+  if (record === undefined) {
+    return {
+      code: 'signature-not-measured',
+      reason: 'the line does not parse as one ledger record',
+    };
+  }
+  return (
+    verify?.(record) ?? {
       code: 'signature-not-measured',
       reason: 'no verifier supplied; a record outside the grandfather set cannot pass unverified',
-    };
-    if (verdict.code !== 'signed') refused.push({ recordId: record.id, verdict });
-  }
-  return { scope: effective, checked: judged.length, refused };
+    }
+  );
 }
 
 /** The refusal a ratified verdict becomes when a record in scope is not `signed` (#3927). */
@@ -181,12 +270,12 @@ export interface SignatureScopeInputs {
 export function applySignatureScope<V extends { readonly kind: string }>(
   verdict: V,
   isRatified: (kind: V['kind']) => boolean,
-  ledgerRecords: readonly SignableLedgerRecord[],
+  ledgerText: string,
   inputs: SignatureScopeInputs
 ): V | (V & WithLedgerSignatures) | LedgerSignatureRequired {
   if (inputs.signatureScope === undefined) return verdict;
   const check = ledgerSignatureCheck(
-    ledgerRecords,
+    ledgerText,
     inputs.signatureScope,
     inputs.baseLedgerText,
     inputs.signatureVerifier

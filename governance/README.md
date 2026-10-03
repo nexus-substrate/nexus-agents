@@ -469,24 +469,37 @@ the cutover — absence is not measured as signed.
 **Not only bound records (#3927).** Enforcing the bound records alone let an
 unsigned record that no PR binds be appended and merge unrefused. The gate
 therefore also judges a signature SCOPE, named by
-`RATIFICATION_SIGNATURE_SCOPE`:
+`RATIFICATION_SIGNATURE_SCOPE`, over RAW LEDGER LINES — every occurrence,
+never the deduplicated record set. The signature is outside the hash, so an
+unsigned copy of a signed record has the same id and hash and collapses into
+it when the ledger loads; judging the set let that copy through (the PR #7000
+panel's reproduction).
 
-- `added` — the pre-merge job: every record (vote or redaction) the head
-  ledger carries whose id+hash the base ledger does not, i.e. what the PR
-  appends, bound or not.
+- `added` — the pre-merge job: each head line not matched, occurrence for
+  occurrence, by a base line with the same id, hash AND signature, i.e. what
+  the PR appends, bound or not. An unsigned or re-signed copy of a base
+  record is an added line and must verify on its own; a redaction's rewrite
+  of a base line keeps all three and stays on the base.
 - `ledger` — the post-merge backstop, and the default when the variable is
-  unset: every record in the ledger. A record that bypassed the pre-merge job
-  keeps `main` red on every governor push until it is resolved, not only on
-  the push that landed it. Any other value is `unmeasured`.
+  unset: every line. A record that bypassed the pre-merge job keeps `main`
+  red on every governor push until it is resolved, not only on the push that
+  landed it. Any other value is `unmeasured`.
 
-The grandfathered hashes are skipped in both scopes. A record in scope that
-is not `signed` turns a ratified verdict into `ledger-signature-required`,
-naming each record id with its own code (`unsigned-record`, `unknown-signer`,
-`bad-signature`, `signature-not-measured`); under any other refusal the same
-records are named on a second `::error::` line. A PR that adds no record has
-nothing to judge here (`0 record(s) … all signed`); its bound record is still
-checked as above. An unsigned redaction record is refused like any other, so
-redact with a signing key configured.
+A line is grandfathered only when it carries NO signature and its hash is
+one of the 15 grandfathered hashes: an unsigned re-append of a grandfathered
+record repeats exactly its hash-covered content, so it has nothing to sign; a
+grandfathered record carrying a signature is judged, so a forged signature on
+one is refused. A line in scope that is not `signed` turns a ratified verdict
+into `ledger-signature-required`, naming each record id and line number with
+its own code (`unsigned-record`, `unknown-signer`, `bad-signature`,
+`signature-not-measured`); under any other refusal the same lines are named
+on a second `::error::` line. A duplicate carrying a different VALID
+signature (a second listed key) is allowed. Coverage is printed in lines —
+`N of M ledger line(s) checked`, with the on-base and grandfathered counts,
+which partition `M` — so a gap is never silent. A PR that adds no line prints
+`0 of M … all signed`; its bound record is still checked as above. An
+unsigned redaction record is refused like any other, so redact with a
+signing key configured.
 
 An unreadable ledger (a directory at the path, a permissions error) prints
 `unmeasured` naming the error instead of crashing the gate (#6213); so does a
