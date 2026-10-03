@@ -20,11 +20,13 @@ export interface LinkedVote {
 }
 
 /** Attempt measurements come only from immutable response events, never final seats. */
-export interface ConsensusAttemptTelemetryReport {
+interface ConsensusAttemptTelemetryReport {
   readonly scope: 'observed outer-attempt usage, not all physical attempts';
   readonly measurement: 'lower-bound' | 'unmeasured';
   readonly decisionsWithTelemetry: number;
   readonly decisionsLackingTelemetry: number;
+  /** Matched decisions excluded from attempt totals because response IDs collide. */
+  readonly invalidTelemetry: number;
   readonly observableAttempts: number | null;
   readonly observedAttempts: number | null;
   readonly reportedAttempts: number | null;
@@ -191,23 +193,26 @@ function countIds<T>(
   return counts;
 }
 
-/** Schema-valid rows may still contain contradictory token totals; refuse them. */
-function validCostRecord(record: DecisionCostRecord): boolean {
-  if (!DecisionCostRecordSchema.safeParse(record).success) return false;
-  const s = record.summary;
-  if (s.voterCount === 0 || s.perVoter.length !== s.voterCount) return false;
+/** Normalize optional telemetry, then refuse contradictory final-seat token totals. */
+function readValidCostRecord(record: DecisionCostRecord): DecisionCostRecord | undefined {
+  const parsed = DecisionCostRecordSchema.safeParse(record);
+  if (!parsed.success) return undefined;
+  const s = parsed.data.summary;
+  if (s.voterCount === 0 || s.perVoter.length !== s.voterCount) return undefined;
   let input = 0;
   let output = 0;
   for (const voter of s.perVoter) {
-    if (voter.totalTokens !== voter.inputTokens + voter.outputTokens) return false;
+    if (voter.totalTokens !== voter.inputTokens + voter.outputTokens) return undefined;
     input += voter.inputTokens;
     output += voter.outputTokens;
   }
-  return (
-    s.totalInputTokens === input &&
-    s.totalOutputTokens === output &&
-    s.totalTokens === input + output
-  );
+  if (
+    s.totalInputTokens !== input ||
+    s.totalOutputTokens !== output ||
+    s.totalTokens !== input + output
+  )
+    return undefined;
+  return parsed.data;
 }
 
 interface VoteIndex {
@@ -309,7 +314,7 @@ export function summarizeConsensusDecisionTokens(
   pipelineRunIds: readonly string[] | null = []
 ): ConsensusDecisionTokenReport {
   const consensusCosts = costRecords.filter((r) => r.gate === 'consensus_vote');
-  const validCosts = uniqueResponseHistories(consensusCosts.filter(validCostRecord), costRecords);
+  const validCosts = consensusCosts.flatMap((r) => readValidCostRecord(r) ?? []);
   const invalidCostRecords = consensusCosts.length - validCosts.length;
   const index = indexVotes(voteRecords, validCosts, consensusCosts);
   const joined = joinCosts(validCosts, index);
@@ -336,7 +341,7 @@ export function summarizeConsensusDecisionTokens(
     tokenCoverage: coverage?.tokenCoverage ?? null,
     measurement: 'lower-bound-final-seats',
     observedAttemptUsage: sumObservedAttempts(joined.records),
-    attemptTelemetry: summarizeResponseEvents(joined.records),
+    attemptTelemetry: summarizeResponseEvents(joined.records, costRecords),
     ...joinOutcomes(joined.records, outcomes),
     ...joinPipelineOutcomes(pipelineRunIds, outcomes),
   };
@@ -344,9 +349,12 @@ export function summarizeConsensusDecisionTokens(
 
 /** Empty/legacy histories lack attempt evidence; explicit reported zero is measured. */
 function summarizeResponseEvents(
-  records: readonly DecisionCostRecord[]
+  records: readonly DecisionCostRecord[],
+  allHistories: readonly DecisionCostRecord[]
 ): ConsensusAttemptTelemetryReport {
-  const telemetry = records.flatMap((r) =>
+  const validHistories = uniqueResponseHistories(records, allHistories);
+  const invalidTelemetry = records.length - validHistories.length;
+  const telemetry = validHistories.flatMap((r) =>
     r.attemptTelemetry !== undefined ? [r.attemptTelemetry] : []
   );
   const events = telemetry.flatMap((t) => t.events);
@@ -362,7 +370,8 @@ function summarizeResponseEvents(
     scope: 'observed outer-attempt usage, not all physical attempts',
     measurement: reported.length === 0 ? 'unmeasured' : 'lower-bound',
     decisionsWithTelemetry: telemetry.length,
-    decisionsLackingTelemetry: records.length - telemetry.length,
+    decisionsLackingTelemetry: records.length - telemetry.length - invalidTelemetry,
+    invalidTelemetry,
     observableAttempts: telemetry.length === 0 ? null : observable,
     observedAttempts: telemetry.length === 0 ? null : events.length,
     reportedAttempts: telemetry.length === 0 ? null : reported.length,

@@ -45,7 +45,7 @@ import {
   markUnverifiable,
   type UnverifiableReasoningRule,
 } from './voter-unverifiable.js';
-import { VoterAttemptCollector, withVoterAttemptTelemetry } from './voter-attempt-events.js';
+import { resolveAttemptCollector, withVoterAttemptTelemetry } from './voter-attempt-events.js';
 import { buildLlmVoteResult, carryAttemptUsage } from './voter-attempt-usage.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
@@ -185,12 +185,6 @@ function resolveVoteExecution(options: VoteExecutionOverrides = {}): VoteExecuti
   };
 }
 
-function resolveAttemptCollector(
-  options: VoteExecutionOverrides | undefined
-): VoterAttemptCollector {
-  return options?.attemptCollector ?? new VoterAttemptCollector();
-}
-
 export async function executeAgentVote(
   role: VoterRole,
   proposal: string,
@@ -217,6 +211,7 @@ export async function executeAgentVote(
     signal: options?.signal,
     attemptCollector: collector,
     attemptKind: options?.attemptKind,
+    withinRoleRetry: options?.withinRoleRetry,
   };
   const result = await executeWithRetries({ ...retryOptions, options: declaredOptions });
   const processingTimeMs = getTimeProvider().now() - start;

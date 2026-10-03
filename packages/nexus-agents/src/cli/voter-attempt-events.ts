@@ -8,10 +8,29 @@
 import { randomUUID } from 'node:crypto';
 import type { CompletionResponse, IModelAdapter } from '../core/index.js';
 import type { AttemptTelemetry, VoterAttemptEvent } from '../observability/attempt-usage.js';
-import type { AgentVoteResult, VoterRole } from './vote-types.js';
+import type { AgentVoteResult, VotePromptContext, VoterRole } from './vote-types.js';
 
 export type VoterAttemptKind = VoterAttemptEvent['attemptKind'];
 type Observation = Omit<VoterAttemptEvent, 'outcome'>;
+
+/** Reuse the pass's collector or start a new execution chain. */
+export function resolveAttemptCollector(context?: VotePromptContext): VoterAttemptCollector {
+  return context?.attemptCollector ?? new VoterAttemptCollector();
+}
+
+/** Retry provenance follows the failed attempt's cause and retains the outer pass. */
+export function voteRetryContext(
+  context: VotePromptContext,
+  attempt: number,
+  parseFailed: boolean
+): VotePromptContext {
+  return {
+    ...context,
+    attemptKind: attempt === 0 ? context.attemptKind : parseFailed ? 'parse_retry' : 'error_retry',
+    withinRoleRetry: context.withinRoleRetry === true || context.attemptKind === 'role_retry',
+  };
+}
+const MAX_PROVENANCE_LENGTH = 120;
 
 function count(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
@@ -59,7 +78,8 @@ export class VoterAttemptCollector {
     role: VoterRole,
     adapter: IModelAdapter,
     response: CompletionResponse,
-    attemptKind: VoterAttemptKind
+    attemptKind: VoterAttemptKind,
+    withinRoleRetry?: boolean
   ): string {
     const id = randomUUID();
     const model = response.model || adapter.modelId;
@@ -68,10 +88,16 @@ export class VoterAttemptCollector {
       Object.freeze({
         id,
         role,
-        cli: typeof name === 'string' && name !== '' ? name : adapter.providerId,
-        adapter: adapter.providerId,
-        ...(model !== '' && model !== 'pending-detection' ? { model } : {}),
+        cli: (typeof name === 'string' && name !== '' ? name : adapter.providerId).slice(
+          0,
+          MAX_PROVENANCE_LENGTH
+        ),
+        adapter: adapter.providerId.slice(0, MAX_PROVENANCE_LENGTH),
+        ...(model !== '' && model !== 'pending-detection'
+          ? { model: model.slice(0, MAX_PROVENANCE_LENGTH) }
+          : {}),
         attemptKind,
+        ...(withinRoleRetry === true ? { withinRoleRetry } : {}),
         usage: responseUsage(response),
       })
     );

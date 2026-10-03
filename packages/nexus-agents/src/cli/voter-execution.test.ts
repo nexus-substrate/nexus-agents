@@ -414,6 +414,8 @@ describe('voter-execution', () => {
 
   describe('executeSingleVoteAttempt', () => {
     const mockAdapter = {
+      providerId: 'test-provider',
+      modelId: 'test-model',
       complete: vi.fn(),
     } as unknown as IModelAdapter;
 
@@ -624,6 +626,8 @@ describe('voter-execution', () => {
 
   describe('executeWithRetries', () => {
     const mockAdapter = {
+      providerId: 'test-provider',
+      modelId: 'test-model',
       complete: vi.fn(),
     } as unknown as IModelAdapter;
 
@@ -964,7 +968,11 @@ describe('voter-execution', () => {
   // #6821: every outer completion a seat settled is billed, so every one is
   // recorded — not only the answer that was kept.
   describe('attempt-level usage (#6821)', () => {
-    const adapter = { complete: vi.fn() } as unknown as IModelAdapter;
+    const adapter = {
+      providerId: 'test-provider',
+      modelId: 'test-model',
+      complete: vi.fn(),
+    } as unknown as IModelAdapter;
     const logger: ILogger = {
       debug: vi.fn(),
       info: vi.fn(),

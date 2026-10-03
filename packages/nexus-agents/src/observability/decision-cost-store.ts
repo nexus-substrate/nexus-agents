@@ -118,22 +118,19 @@ export const DecisionCostRecordSchema = z
     timestamp: z.string().min(1).max(40),
     /** The rolled-up cost summary. */
     summary: DecisionCostSummarySchema,
-    /** Immutable settled-response events; malformed history rejects the whole row. */
-    attemptTelemetry: AttemptTelemetrySchema.optional(),
+    /** Immutable settled-response events; malformed history drops only telemetry. */
+    attemptTelemetry: AttemptTelemetrySchema.optional().catch(undefined),
     /** #5422 — optional: absent means no verdict was recorded, not "not fired". */
     undeclaredOptionsDetector: UndeclaredOptionsDetectorSchema.optional(),
   })
-  .refine(
-    (record) => {
-      if (record.attemptTelemetry === undefined) return true;
-      const roles = new Set(record.summary.perVoter.map((v) => v.role));
-      for (const event of record.attemptTelemetry.events) {
-        if (!roles.has(event.role)) return false;
-      }
-      return true;
-    },
-    { message: 'outer-attempt event references an absent voter role' }
-  );
+  .transform((record) => {
+    if (record.attemptTelemetry === undefined) return record;
+    const roles = new Set(record.summary.perVoter.map((v) => v.role));
+    for (const event of record.attemptTelemetry.events) {
+      if (!roles.has(event.role)) return { ...record, attemptTelemetry: undefined };
+    }
+    return record;
+  });
 export type DecisionCostRecord = z.infer<typeof DecisionCostRecordSchema>;
 
 /** Bounded retention — keep the most recent N decision rollups. */

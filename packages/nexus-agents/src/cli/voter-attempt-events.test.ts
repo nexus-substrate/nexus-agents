@@ -25,6 +25,7 @@ interface Telemetry {
     readonly adapter: string;
     readonly model?: string;
     readonly attemptKind: string;
+    readonly withinRoleRetry?: boolean;
     readonly outcome: string;
     readonly usage: { readonly kind: string; readonly input?: number; readonly output?: number };
   }[];
@@ -149,6 +150,69 @@ describe('immutable voter outer-attempt telemetry (#6821)', () => {
     expect(result.inputTokens).toBeUndefined();
   });
 
+  it('labels adapter-error retries separately from parse retries', async () => {
+    const adapter = seat([
+      { ok: false, error: new ModelError('transient adapter failure', { retryable: true }) },
+      response(),
+    ]);
+    const observed = telemetry(await vote(adapter, 1));
+    expect(observed.observableAttempts).toBe(2);
+    expect(observed.events[0]).toMatchObject({ attemptKind: 'error_retry', outcome: 'final' });
+  });
+
+  it('labels retries after timeouts as error retries', async () => {
+    vi.useFakeTimers();
+    const adapter = seat([]);
+    adapter.complete = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<CompletionResult>((resolve) =>
+            setTimeout(() => {
+              resolve(response('late vote', 100, 50));
+            }, 140)
+          )
+      )
+      .mockResolvedValue(response());
+    const pending = executeAgentVote('architect', 'Review this change', adapter, logger, {
+      timeoutMs: 100,
+      maxRetries: 1,
+    });
+    await vi.runAllTimersAsync();
+    const observed = telemetry(await pending);
+    expect(observed.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ attemptKind: 'initial', outcome: 'superseded' }),
+        expect.objectContaining({ attemptKind: 'error_retry', outcome: 'final' }),
+      ])
+    );
+  });
+
+  it('retains the role retry marker on cross-CLI fallback', async () => {
+    const results = await launchVotesWithOverallDeadline({
+      roles: ['architect'],
+      proposal: 'Review this change',
+      roleAdapters: new Map([['architect', seat([response('invalid')], 'cli-gemini')]]),
+      fallbackAdapter: seat([response()]),
+      logger,
+      interDelay: 0,
+      overallDeadlineMs: 1_000,
+      voteOptions: {
+        timeoutMs: 5_000,
+        maxRetries: 0,
+        allowSimulation: false,
+        attemptKind: 'role_retry',
+      },
+      voteFn: executeAgentVote,
+    });
+    expect(
+      telemetry(results[0]).events.map((event) => [event.attemptKind, event.withinRoleRetry])
+    ).toEqual([
+      ['role_retry', true],
+      ['cli_fallback', true],
+    ]);
+  });
+
   it('keeps explicit zero usage as a reported measurement', async () => {
     const result = await vote(seat([response(VALID_VOTE, 0, 0)]));
     expect(telemetry(result).events[0]?.usage).toEqual({ kind: 'reported', input: 0, output: 0 });
@@ -181,7 +245,7 @@ describe('immutable voter outer-attempt telemetry (#6821)', () => {
     const observed = telemetry(await vote(adapter));
     expect(observed.observableAttempts).toBe(2);
     expect(observed.events).toHaveLength(1);
-    expect(observed.events[0]).toMatchObject({ attemptKind: 'parse_retry', outcome: 'final' });
+    expect(observed.events[0]).toMatchObject({ attemptKind: 'error_retry', outcome: 'final' });
     expect(adapter.complete).toHaveBeenCalledTimes(2);
   });
 
@@ -295,11 +359,38 @@ describe('immutable voter outer-attempt telemetry (#6821)', () => {
     const observed = telemetry(results[0]);
     expect(observed.observableAttempts).toBe(2);
     expect(observed.events).toHaveLength(2);
-    expect(observed.events.map((e) => [e.attemptKind, e.outcome])).toEqual(
-      expect.arrayContaining([
+    expect(observed.events.map((e) => [e.attemptKind, e.outcome, e.usage.input])).toEqual([
+      ['initial', 'parse_failed', 100],
+      ['role_retry', 'parse_failed', 7],
+    ]);
+  });
+
+  it('keeps the retained first seat fields when its role retry fails', async () => {
+    const unverifiable = JSON.stringify({
+      decision: 'abstain',
+      reasoning: 'UNVERIFIABLE: could not read artifact',
+      confidence: 0,
+    });
+    const results = await collectRealVotes({
+      adapter: seat([response(unverifiable, 100, 50), response('invalid retry', 7, 3)]),
+      logger,
+      roles: ['architect'],
+      proposal: 'Review this change',
+      timeoutMs: 5_000,
+      maxRetries: 0,
+      interAgentDelayMs: 0,
+      erroredRoleBackoffMs: 0,
+    });
+    expect(results[0]).toMatchObject({
+      source: 'unverifiable',
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+    expect(telemetry(results[0]).events.map((event) => [event.attemptKind, event.outcome])).toEqual(
+      [
+        ['initial', 'superseded'],
         ['role_retry', 'parse_failed'],
-        ['initial', 'parse_failed'],
-      ])
+      ]
     );
   });
 

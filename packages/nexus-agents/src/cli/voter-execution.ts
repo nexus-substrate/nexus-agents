@@ -20,6 +20,7 @@ import { withTimeout } from '../utils/async-utils.js';
 import {
   VoterAttemptCollector,
   withVoterAttemptTelemetry,
+  voteRetryContext,
   type VoterAttemptKind,
 } from './voter-attempt-events.js';
 import { trackVoterCompletion } from './voter-late-settlement.js';
@@ -322,7 +323,8 @@ async function runVoteCompletion(
         args.role,
         args.adapter,
         response.value,
-        args.attemptKind ?? 'initial'
+        args.attemptKind ?? 'initial',
+        args.withinRoleRetry
       );
     return response;
   });
@@ -425,7 +427,7 @@ export async function executeSingleVoteAttempt(
     completion = await runVoteCompletion({
       ...completionArgs,
       withResponseFormat: false,
-      attemptKind: 'parse_retry',
+      attemptKind: 'error_retry',
     });
   }
   if (!completion.ok) return completion;
@@ -489,6 +491,7 @@ export interface RetryOptions {
   readonly signal?: AbortSignal | undefined;
   readonly attemptCollector?: VoterAttemptCollector | undefined;
   readonly attemptKind?: VoterAttemptKind | undefined;
+  readonly withinRoleRetry?: boolean | undefined;
 }
 
 /**
@@ -544,10 +547,6 @@ export async function executeWithRetries(
   return withVoterAttemptTelemetry(result, () => collector.snapshot());
 }
 
-function retryContext(opts: RetryOptions, attempt: number): VotePromptContext {
-  return { ...opts, attemptKind: attempt === 0 ? opts.attemptKind : 'parse_retry' };
-}
-
 async function waitForNextAttempt(
   opts: RetryOptions,
   attempt: number,
@@ -566,6 +565,7 @@ async function runVoteRetries(
 ): Promise<(VoteOutcome & { ok: true }) | VoteAttemptFailure> {
   const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
   let lastError = '';
+  let parseFailed = false;
   // #6821: every settled completion is billed, so every one is recorded.
   let attemptUsage: AttemptUsage | undefined;
 
@@ -580,13 +580,8 @@ async function runVoteRetries(
     // retry succeeded (or which attempt blew the cap). Total vote time
     // is already captured at the call-site; this fills the per-attempt gap.
     const attemptStart = Date.now();
-    const result = await executeSingleVoteAttempt(
-      role,
-      proposal,
-      adapter,
-      timeoutMs,
-      retryContext(opts, attempt)
-    );
+    const context = voteRetryContext(opts, attempt, parseFailed);
+    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, context);
     const attemptMs = Date.now() - attemptStart;
     if (result.ok) {
       logger.info('Vote attempt timing', {
@@ -600,6 +595,8 @@ async function runVoteRetries(
 
     attemptUsage = foldAttempt(attemptUsage, result.usage);
     lastError = result.error;
+    // Only parse failures carry rawOutput, including an empty response.
+    parseFailed = result.rawOutput !== undefined;
     const terminal = logFailedAttempt(logger, {
       role,
       attempt,

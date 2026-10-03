@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { AttemptTelemetrySchema, type VoterAttemptEvent } from './attempt-usage.js';
+import { VoterAttemptCollector } from '../cli/voter-attempt-events.js';
+import type { IModelAdapter, CompletionResponse } from '../core/index.js';
 import { DecisionCostStore, type DecisionCostRecord } from './decision-cost-store.js';
 import {
   summarizeConsensusDecisionTokens,
@@ -74,6 +76,141 @@ function report(
 }
 
 describe('immutable outer-attempt decision telemetry (#6821)', () => {
+  it('persists a 131-character response model with bounded capture provenance', () => {
+    const config = fixture();
+    const collector = new VoterAttemptCollector();
+    const model = 'm'.repeat(131);
+    const adapter = {
+      providerId: 'a'.repeat(131),
+      name: 'c'.repeat(131),
+      modelId: model,
+    } as unknown as IModelAdapter;
+    const response: CompletionResponse = {
+      model,
+      content: [],
+      stopReason: 'end_turn',
+      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+    };
+    collector.started();
+    collector.classified(collector.settled('architect', adapter, response, 'initial'), 'parsed');
+    const writer = new DecisionCostStore(config);
+    expect(
+      writer.record({
+        decisionId: 'bounded',
+        gate: 'consensus_vote',
+        billingMode: 'plan',
+        timestamp: new Date().toISOString(),
+        voters: [
+          {
+            role: 'architect',
+            inputTokens: 3,
+            outputTokens: 2,
+            attemptTelemetry: collector.snapshot(),
+          },
+        ],
+      }).persisted
+    ).toBe(true);
+    const saved = new DecisionCostStore(config).all()[0];
+    expect(saved?.summary.totalTokens).toBe(5);
+    expect(saved?.attemptTelemetry?.events[0]).toMatchObject({
+      model: model.slice(0, 120),
+      adapter: 'a'.repeat(120),
+      cli: 'c'.repeat(120),
+    });
+  });
+
+  it.each(['duplicate-final', 'bad-count', 'orphan-role'] as const)(
+    'persists final-seat billing and drops %s telemetry from the weather view',
+    (caseName) => {
+      const config = fixture();
+      vi.stubEnv('NEXUS_DATA_DIR', config.dataDir);
+      vi.stubEnv('NEXUS_REPO_PREFERRED', '0');
+      vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+      const events =
+        caseName === 'duplicate-final'
+          ? [event('a'), event('b')]
+          : [{ ...event(), role: caseName === 'orphan-role' ? 'missing' : 'architect' }];
+      const writer = new DecisionCostStore(config);
+      expect(
+        writer.record({
+          decisionId: 'decorated',
+          gate: 'consensus_vote',
+          billingMode: 'plan',
+          timestamp: new Date().toISOString(),
+          voters: [
+            {
+              role: 'architect',
+              inputTokens: 3,
+              outputTokens: 2,
+              attemptTelemetry: {
+                events,
+                observableAttempts: caseName === 'bad-count' ? 0 : events.length,
+              },
+            },
+          ],
+        }).persisted
+      ).toBe(true);
+      const reader = new DecisionCostStore(config);
+      expect(reader.hydrationComplete).toBe(true);
+      expect(reader.size).toBe(1);
+      expect(reader.all()[0]?.attemptTelemetry).toBeUndefined();
+      const section = buildWeatherCostSection(createDefaultWeatherConfig(), {
+        voteRecords: [{ correlationId: 'decorated', decision: 'approved' }],
+      });
+      expect(section.consensusDecisionTokens).toMatchObject({
+        totalReportedFinalSeatTokens: 5,
+        attemptTelemetry: { decisionsLackingTelemetry: 1, decisionsWithTelemetry: 0 },
+      });
+    }
+  );
+
+  it.each(['reported', 'unknown'] as const)(
+    'hydrates future %s telemetry and permits later appends',
+    (kind) => {
+      const config = fixture();
+      const saved = record([event()]);
+      const futureEvent = {
+        ...event(),
+        attemptKind: 'future-kind',
+        outcome: 'future-outcome',
+        futureEventKey: true,
+        usage:
+          kind === 'reported'
+            ? { kind, input: 3, output: 2, futureUsageKey: true }
+            : { kind, futureUsageKey: true },
+      };
+      writeFileSync(
+        config.filePath,
+        `${JSON.stringify({
+          ...saved,
+          attemptTelemetry: {
+            events: [futureEvent],
+            observableAttempts: 1,
+            futureTelemetryKey: true,
+          },
+        })}\n`
+      );
+      const reader = new DecisionCostStore(config);
+      expect(reader.hydrationComplete).toBe(true);
+      expect(reader.all()[0]?.attemptTelemetry?.events[0]).toEqual({
+        ...event(),
+        attemptKind: 'unknown',
+        outcome: 'unknown',
+        usage: kind === 'reported' ? { kind, input: 3, output: 2 } : { kind },
+      });
+      expect(
+        reader.record({
+          decisionId: 'later',
+          gate: 'consensus_vote',
+          billingMode: 'plan',
+          timestamp: new Date().toISOString(),
+          voters: [{ role: 'architect', inputTokens: 1, outputTokens: 1 }],
+        }).persisted
+      ).toBe(true);
+      expect(new DecisionCostStore(config).size).toBe(2);
+    }
+  );
+
   it('persists events beside final-seat totals without adding them together', () => {
     const config = fixture();
     const writer = new DecisionCostStore(config);
@@ -224,11 +361,11 @@ describe('immutable outer-attempt decision telemetry (#6821)', () => {
     ).toBe(false);
   });
 
-  it('excludes costs whose event role does not exist in the seat summary', () => {
+  it('drops orphan-role telemetry while retaining final-seat costs', () => {
     const result = report([{ ...event(), role: 'nonexistent-seat' }]);
     expect(result).toMatchObject({
-      invalidCostRecords: 1,
-      totalReportedFinalSeatTokens: 0,
+      invalidCostRecords: 0,
+      totalReportedFinalSeatTokens: 5,
       attemptTelemetry: { measurement: 'unmeasured', totalTokens: null },
     });
   });
@@ -244,9 +381,9 @@ describe('immutable outer-attempt decision telemetry (#6821)', () => {
       ]
     );
     expect(result).toMatchObject({
-      invalidCostRecords: 2,
-      totalReportedFinalSeatTokens: 0,
-      attemptTelemetry: { measurement: 'unmeasured', observedAttempts: null },
+      invalidCostRecords: 0,
+      totalReportedFinalSeatTokens: 10,
+      attemptTelemetry: { measurement: 'unmeasured', observedAttempts: null, invalidTelemetry: 2 },
     });
   });
 
@@ -267,9 +404,9 @@ describe('immutable outer-attempt decision telemetry (#6821)', () => {
         [{ correlationId: 'decision', decision: 'approved' }]
       );
       expect(result).toMatchObject({
-        invalidCostRecords: caseName === 'other-gate' ? 1 : 2,
-        matchedQuorumDecisions: 0,
-        totalReportedFinalSeatTokens: 0,
+        invalidCostRecords: 0,
+        matchedQuorumDecisions: 1,
+        totalReportedFinalSeatTokens: 5,
         attemptTelemetry: { measurement: 'unmeasured', totalTokens: null },
       });
     }
@@ -290,8 +427,8 @@ describe('immutable outer-attempt decision telemetry (#6821)', () => {
       [{ correlationId: 'decision', decision: 'approved' }]
     );
     expect(result).toMatchObject({
-      invalidCostRecords: 2,
-      totalReportedFinalSeatTokens: 0,
+      invalidCostRecords: 0,
+      totalReportedFinalSeatTokens: 5,
       attemptTelemetry: { measurement: 'unmeasured', totalTokens: null },
     });
   });
@@ -317,7 +454,7 @@ describe('immutable outer-attempt decision telemetry (#6821)', () => {
     expect(events?.[1]?.usage).toEqual({ kind: 'unknown' });
   });
 
-  it('fails closed on corrupt persisted event histories', () => {
+  it('hydrates billing despite corrupt persisted telemetry', () => {
     const config = fixture();
     const saved = record([event()]);
     mkdirSync(config.dataDir, { recursive: true });
@@ -326,10 +463,11 @@ describe('immutable outer-attempt decision telemetry (#6821)', () => {
       `${JSON.stringify({ ...saved, attemptTelemetry: { events: [event(), event()], observableAttempts: 2 } })}\n`
     );
     const reader = new DecisionCostStore(config);
-    expect(reader.hydrationComplete).toBe(false);
+    expect(reader.hydrationComplete).toBe(true);
+    expect(reader.all()[0]?.attemptTelemetry).toBeUndefined();
     vi.stubEnv('NEXUS_DATA_DIR', config.dataDir);
     vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
     vi.stubEnv('NEXUS_REPO_PREFERRED', '0');
-    expect(() => resolveWeatherDecisionCosts(0)).toThrow(/invalid.*decision cost/i);
+    expect(resolveWeatherDecisionCosts(0)).toHaveLength(1);
   });
 });

@@ -373,6 +373,7 @@ export interface VoteExecutionOverrides {
   signal?: AbortSignal | undefined;
   attemptCollector?: VoterAttemptCollector | undefined;
   attemptKind?: VoterAttemptKind | undefined;
+  withinRoleRetry?: boolean | undefined;
   /** Reports failure retryability to the panel without changing the recorded seat shape. */
   onError?: ((role: VoterRole, retryable: boolean | undefined) => void) | undefined;
 }
@@ -417,6 +418,7 @@ export interface VoteCompletionArgs {
   readonly signal?: AbortSignal | undefined;
   readonly attemptCollector?: VoterAttemptCollector | undefined;
   readonly attemptKind?: VoterAttemptKind | undefined;
+  readonly withinRoleRetry?: boolean | undefined;
 }
 
 export interface VotePromptContext {
@@ -430,4 +432,5 @@ export interface VotePromptContext {
   readonly signal?: AbortSignal | undefined;
   readonly attemptCollector?: VoterAttemptCollector | undefined;
   readonly attemptKind?: VoterAttemptKind | undefined;
+  readonly withinRoleRetry?: boolean | undefined;
 }

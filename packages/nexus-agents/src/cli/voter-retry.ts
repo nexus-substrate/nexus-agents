@@ -194,6 +194,11 @@ function keepFailedRetryUsage(
   const failedByRole = new Map(retried.filter((r) => r.source === 'error').map((r) => [r.role, r]));
   return first.map((v) => {
     const failed = failedByRole.get(v.role);
-    return failed === undefined ? v : carryAttemptUsage(failed, v);
+    if (failed === undefined) return v;
+    const carried = carryAttemptUsage(v, failed);
+    return preserveVoterAttemptTelemetry(carried, {
+      ...v,
+      ...(carried.attemptUsage !== undefined ? { attemptUsage: carried.attemptUsage } : {}),
+    });
   });
 }

@@ -388,7 +388,7 @@ InterfaceDeclaration AgentTurn
   readonly turnIndex: number
 InterfaceDeclaration AgentVoteResult
   readonly assignedCli?: string | undefined
-  readonly attemptTelemetry?: Readonly<{ events: readonly Readonly<{ adapter: string; attemptKind: "cli_fallback" | "initial" | "parse_retry" | "role_retry"; cli: string; id: string; model?: string | undefined; outcome: "final" | "parse_failed" | "parsed" | "superseded"; role: string; usage: Readonly<{ cacheCreation?: number | undefined; cached?: number | undefined; input: number; kind: "reported"; output: number; reasoning?: number | undefined; }> | Readonly<{ kind: "unknown"; }>; }>[]; observableAttempts: number; }> | undefined
+  readonly attemptTelemetry?: Readonly<{ events: readonly Readonly<{ adapter: string; attemptKind: "cli_fallback" | "error_retry" | "initial" | "parse_retry" | "role_retry" | "unknown"; cli: string; id: string; model?: string | undefined; outcome: "final" | "parse_failed" | "parsed" | "superseded" | "unknown"; role: string; usage: Readonly<{ cacheCreation?: number | undefined; cached?: number | undefined; input: number; kind: "reported"; output: number; reasoning?: number | undefined; }> | Readonly<{ kind: "unknown"; }>; withinRoleRetry?: boolean | undefined; }>[]; observableAttempts: number; }> | undefined
   readonly attemptUsage?: AttemptUsage | undefined
   readonly cacheCreationInputTokens?: number | undefined
   readonly cachedInputTokens?: number | undefined
@@ -1997,6 +1997,7 @@ InterfaceDeclaration ConsensusAttemptTelemetryReport
   readonly decisionsLackingTelemetry: number
   readonly decisionsWithTelemetry: number
   readonly inputTokens: null | number
+  readonly invalidTelemetry: number
   readonly measurement: "lower-bound" | "unmeasured"
   readonly observableAttempts: null | number
   readonly observedAttempts: null | number
@@ -10170,18 +10171,19 @@ TypeAliasDeclaration VoteDecisionStatus
 InterfaceDeclaration VoteExecutionOverrides
   allowSimulation?: boolean | undefined
   attemptCollector?: VoterAttemptCollector | undefined
-  attemptKind?: "cli_fallback" | "initial" | "parse_retry" | "role_retry" | undefined
+  attemptKind?: "cli_fallback" | "error_retry" | "initial" | "parse_retry" | "role_retry" | "unknown" | undefined
   declaredOptions?: readonly string[] | undefined
   maxRetries?: number | undefined
   onError?: ((role: VoterRole, retryable: boolean | undefined) => void) | undefined
   project?: string | undefined
   signal?: AbortSignal | undefined
   timeoutMs?: number | undefined
+  withinRoleRetry?: boolean | undefined
   workspace?: string | undefined
   workspaceSha?: string | undefined
 InterfaceDeclaration VoteExecutionSettings
   allowSimulation: boolean
-  attemptKind?: "cli_fallback" | "initial" | "parse_retry" | "role_retry" | undefined
+  attemptKind?: "cli_fallback" | "error_retry" | "initial" | "parse_retry" | "role_retry" | "unknown" | undefined
   declaredOptions?: readonly string[] | undefined
   maxRetries: number
   onError: ((role: VoterRole, retryable: boolean | undefined) => void) | undefined
@@ -10207,7 +10209,7 @@ InterfaceDeclaration VoterAgentOptions
 ClassDeclaration VoterAttemptCollector
   classified(id: string | undefined, outcome: "parse_failed" | "parsed") => void
   discardFinal() => void
-  settled(role: VoterRole, adapter: IModelAdapter, response: CompletionResponse, attemptKind: VoterAttemptKind) => string
+  settled(role: VoterRole, adapter: IModelAdapter, response: CompletionResponse, attemptKind: VoterAttemptKind, withinRoleRetry?: boolean) => string
   snapshot() => AttemptTelemetry
   started() => void
 TypeAliasDeclaration VoterAttemptEvent
@@ -10411,7 +10413,7 @@ InterfaceDeclaration WaveTaskResult
 TypeAliasDeclaration WeatherReportConfig
   = z.infer<typeof WeatherReportConfigSchema>
 InterfaceDeclaration WeatherReportDeps @mcp/tools/weather-report
-  readonly decisionCostRecords?: readonly { attemptTelemetry?: Readonly<{ events: readonly Readonly<{ adapter: string; attemptKind: "cli_fallback" | "initial" | "parse_retry" | "role_retry"; cli: string; id: string; model?: string | undefined; outcome: "final" | "parse_failed" | "parsed" | "superseded"; role: string; usage: Readonly<{ cacheCreation?: number | undefined; cached?: number | undefined; input: number; kind: "reported"; output: number; reasoning?: number | undefined; }> | Readonly<{ kind: "unknown"; }>; }>[]; observableAttempts: number; }> | undefined; decisionId: string; gate: "consensus_vote" | "dev_pipeline_vote" | "pr_review"; jobId?: string | undefined; summary: { billingMode: "api" | "plan"; measuredVoters: number; observedAttemptUsage?: undefined | { completions: number; incompleteSeats: number; inputTokens: number; outputTokens: number; reportedCompletions: number; seats: number; totalTokens: number; }; perModel: readonly { costUsd: number; inputTokens: number; model: string; outputTokens: number; totalTokens: number; voterCount: number; }[]; perVoter: readonly { attemptUsage?: undefined | { cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; completions: number; inputTokens?: number | undefined; outputTokens?: number | undefined; reportedCompletions: number; }; cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; costUsd: number; inputTokens: number; model: string; outputTokens: number; priceBasis?: "list" | "unknown" | undefined; pricingProvenance?: undefined | { scope: "project-glasswing-participants"; source: "anthropic"; upstreamUrl: string; }; role: string; tokenUsageMeasured?: boolean | undefined; totalTokens: number; unmeasured: boolean; }[]; priceBasis?: "list" | "unknown" | undefined; tokenMeasuredVoters?: number | undefined; tokenUnmeasuredVoters?: number | undefined; totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number; unmeasuredVoters: number; voterCount: number; }; timestamp: string; undeclaredOptionsDetector?: undefined | { applicable: false; declaredOptionCount: number; excerpt?: undefined; fired?: undefined; pattern?: undefined; source?: "cli" | "mcp" | undefined; } | { applicable?: true | undefined; declaredOptionCount: number; excerpt?: string | undefined; fired: boolean; pattern?: string | undefined; source?: "cli" | "mcp" | undefined; }; }[] | undefined
+  readonly decisionCostRecords?: readonly { attemptTelemetry?: Readonly<{ events: readonly Readonly<{ adapter: string; attemptKind: "cli_fallback" | "error_retry" | "initial" | "parse_retry" | "role_retry" | "unknown"; cli: string; id: string; model?: string | undefined; outcome: "final" | "parse_failed" | "parsed" | "superseded" | "unknown"; role: string; usage: Readonly<{ cacheCreation?: number | undefined; cached?: number | undefined; input: number; kind: "reported"; output: number; reasoning?: number | undefined; }> | Readonly<{ kind: "unknown"; }>; withinRoleRetry?: boolean | undefined; }>[]; observableAttempts: number; }> | undefined; decisionId: string; gate: "consensus_vote" | "dev_pipeline_vote" | "pr_review"; jobId?: string | undefined; summary: { billingMode: "api" | "plan"; measuredVoters: number; observedAttemptUsage?: undefined | { completions: number; incompleteSeats: number; inputTokens: number; outputTokens: number; reportedCompletions: number; seats: number; totalTokens: number; }; perModel: readonly { costUsd: number; inputTokens: number; model: string; outputTokens: number; totalTokens: number; voterCount: number; }[]; perVoter: readonly { attemptUsage?: undefined | { cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; completions: number; inputTokens?: number | undefined; outputTokens?: number | undefined; reportedCompletions: number; }; cacheCreationInputTokens?: number | undefined; cachedInputTokens?: number | undefined; costUsd: number; inputTokens: number; model: string; outputTokens: number; priceBasis?: "list" | "unknown" | undefined; pricingProvenance?: undefined | { scope: "project-glasswing-participants"; source: "anthropic"; upstreamUrl: string; }; role: string; tokenUsageMeasured?: boolean | undefined; totalTokens: number; unmeasured: boolean; }[]; priceBasis?: "list" | "unknown" | undefined; tokenMeasuredVoters?: number | undefined; tokenUnmeasuredVoters?: number | undefined; totalCostUsd: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number; unmeasuredVoters: number; voterCount: number; }; timestamp: string; undeclaredOptionsDetector?: undefined | { applicable: false; declaredOptionCount: number; excerpt?: undefined; fired?: undefined; pattern?: undefined; source?: "cli" | "mcp" | undefined; } | { applicable?: true | undefined; declaredOptionCount: number; excerpt?: string | undefined; fired: boolean; pattern?: string | undefined; source?: "cli" | "mcp" | undefined; }; }[] | undefined
   readonly pipelineRunIds?: readonly string[] | undefined
   readonly voteRecords?: readonly LinkedVote[] | undefined
 TypeAliasDeclaration WeatherReportDeps @mcp/tools/weather-report-tool

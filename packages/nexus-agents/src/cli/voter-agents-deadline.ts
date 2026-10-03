@@ -70,6 +70,7 @@ export interface VoteOptions {
   readonly signal?: AbortSignal | undefined;
   readonly attemptCollector?: VoterAttemptCollector | undefined;
   readonly attemptKind?: VoterAttemptKind | undefined;
+  readonly withinRoleRetry?: boolean | undefined;
 }
 
 export type VoteFn = (
@@ -391,6 +392,9 @@ function createTimedVoteLauncher(input: LaunchVotesInput, deadlineAtMs: number):
           voteOptions: {
             ...input.voteOptions,
             attemptKind: fallback ? 'cli_fallback' : input.voteOptions.attemptKind,
+            withinRoleRetry:
+              input.voteOptions.withinRoleRetry === true ||
+              input.voteOptions.attemptKind === 'role_retry',
           },
         },
         role,

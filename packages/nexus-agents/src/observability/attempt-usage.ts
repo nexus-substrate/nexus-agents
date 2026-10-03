@@ -176,19 +176,24 @@ export function summarizeAttemptUsage(
 }
 
 /** One settled outer response, captured before parsing; snapshots are immutable. */
-export const VoterAttemptEventSchema = z
+const VoterAttemptEventSchema = z
   .object({
     id: z.string().min(1).max(200),
     role: z.string().min(1).max(64),
     cli: z.string().min(1).max(120),
     adapter: z.string().min(1).max(120),
     model: z.string().min(1).max(120).optional(),
-    attemptKind: z.enum(['initial', 'parse_retry', 'role_retry', 'cli_fallback']),
-    outcome: z.enum(['parsed', 'parse_failed', 'superseded', 'final']),
+    attemptKind: z
+      .enum(['initial', 'parse_retry', 'error_retry', 'role_retry', 'cli_fallback', 'unknown'])
+      .or(z.string().transform(() => 'unknown' as const)),
+    outcome: z
+      .enum(['parsed', 'parse_failed', 'superseded', 'final', 'unknown'])
+      .or(z.string().transform(() => 'unknown' as const)),
+    withinRoleRetry: z.boolean().optional(),
     usage: z.discriminatedUnion('kind', [
       z
         .object({ kind: z.literal('unknown') })
-        .strict()
+        .strip()
         .readonly(),
       z
         .object({
@@ -199,11 +204,11 @@ export const VoterAttemptEventSchema = z
           reasoning: z.number().int().nonnegative().optional(),
           cacheCreation: z.number().int().nonnegative().optional(),
         })
-        .strict()
+        .strip()
         .readonly(),
     ]),
   })
-  .strict()
+  .strip()
   .readonly();
 export type VoterAttemptEvent = z.infer<typeof VoterAttemptEventSchema>;
 
@@ -218,7 +223,7 @@ export const AttemptTelemetrySchema = z
     events: z.array(VoterAttemptEventSchema).readonly(),
     observableAttempts: z.number().int().nonnegative(),
   })
-  .strict()
+  .strip()
   .refine((t) => t.observableAttempts >= t.events.length, {
     message: 'observableAttempts cannot be smaller than settled response events',
   })
