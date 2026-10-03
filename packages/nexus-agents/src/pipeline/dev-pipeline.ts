@@ -214,6 +214,12 @@ export interface QaReviewResult {
 }
 
 /** Dependency provisioning from the scratch checkout's HEAD lockfile, before edits. */
+/** Where execution stages run, and how that checkout's dependencies were provisioned. */
+export interface DevPipelineWorkspaceBinding {
+  readonly directory: string;
+  readonly dependencies: DevPipelineDependencies;
+}
+
 export type DevPipelineDependencies =
   | { readonly status: 'none' }
   | { readonly status: 'installed'; readonly manager: 'pnpm' | 'npm' | 'yarn' }
@@ -341,8 +347,13 @@ export interface DevPipelineResult {
  * securityScan end their subprocess trees (#6747).
  */
 export interface DevPipelineStages {
-  /** Rebind execution stages to a per-run scratch directory, sharing the run's budget. */
-  withWorkspace?(directory: string, dependencies?: DevPipelineDependencies): DevPipelineStages;
+  /**
+   * Rebind execution stages to a per-run scratch directory, sharing the run's budget.
+   * One binding object, not positional arguments: a wrapper that re-exposes this
+   * method forwards the whole binding, so it cannot silently drop the dependency
+   * outcome the quality gate reads (#6794 panel; a 1-arg lambda type-checks).
+   */
+  withWorkspace?(binding: DevPipelineWorkspaceBinding): DevPipelineStages;
   /**
    * Research expert gathers context for the task. Returns the full
    * {@link ResearchContext} (#3234 seam 0): `.text` feeds plan/vote as before,

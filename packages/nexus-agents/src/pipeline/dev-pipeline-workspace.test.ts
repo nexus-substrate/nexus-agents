@@ -5,13 +5,18 @@ import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
-import type { DevPipelineResult, DevPipelineStages } from './dev-pipeline.js';
+import type {
+  DevPipelineDependencies,
+  DevPipelineResult,
+  DevPipelineStages,
+} from './dev-pipeline.js';
 import { buildStructuredOutput } from '../mcp/tools/dev-pipeline-output.js';
 import { stepBus } from '../core/step-bus.js';
 import type { StepEvent } from '../core/step-events.js';
 import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
 import { createAgentStages } from './agent-executor.js';
 import { runDevPipeline } from './dev-pipeline.js';
+import { guardDevPipelineStages } from './dev-pipeline-deadlines.js';
 
 const mocks = vi.hoisted(() => ({
   disposeFailure: false,
@@ -65,12 +70,12 @@ const result: DevPipelineResult = {
 
 function boundStages(
   directory: string,
-  dependencies?: NonNullable<DevPipelineResult['changes']>['dependencies']
+  dependencies: DevPipelineDependencies = { status: 'none' }
 ): DevPipelineStages {
   return {
-    ...createAgentStages().withWorkspace?.(directory, dependencies),
+    ...createAgentStages().withWorkspace?.({ directory, dependencies }),
     implementWorkspace: { directory, accessMode: 'workspace-edit' },
-    withWorkspace: boundStages,
+    withWorkspace: (binding) => boundStages(binding.directory, binding.dependencies),
     research: vi.fn(),
     plan: vi.fn(),
     vote: vi.fn(),
@@ -344,6 +349,23 @@ describe('dev pipeline workspace follow-up', () => {
       });
     }
   );
+
+  // #6794 panel: production reaches withWorkspace only THROUGH the deadline guard,
+  // which once re-exposed it as `(directory) => ...` and dropped the dependency
+  // outcome, so a failed install ran the real gate. Enter through the guard.
+  it('carries a failed install through the deadline guard to an unmeasured gate', async () => {
+    const guarded = guardDevPipelineStages(createAgentStages(), {});
+    const bound = guarded.withWorkspace?.({
+      directory: repo,
+      dependencies: { status: 'failed', manager: 'npm', reason: 'offline cache miss' },
+    });
+    expect(bound?.qualityGate).toBeDefined();
+    expect(await bound?.qualityGate?.()).toMatchObject({
+      passed: false,
+      verdict: 'skip',
+      feedback: 'Gate unmeasured: dependencies could not be provisioned: offline cache miss',
+    });
+  });
 
   it.each(['no lockfile', 'no package.json'])(
     'names status none for %s without invoking an install',

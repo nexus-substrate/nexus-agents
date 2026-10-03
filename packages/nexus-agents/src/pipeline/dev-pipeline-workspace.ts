@@ -177,10 +177,10 @@ export async function withDevPipelineWorkspace(
   try {
     const dependencies = await provisionDependencies(scratch.path, install);
     // Preserve a workingDir that points at a package below the repository root.
-    const bound = stages.withWorkspace(
-      join(scratch.path, relative(repoRoot, directory)),
-      dependencies
-    );
+    const bound = stages.withWorkspace({
+      directory: join(scratch.path, relative(repoRoot, directory)),
+      dependencies,
+    });
     result = await run(bound);
     changes = captureChanges(scratch.path, baseSha, dependencies);
   } finally {

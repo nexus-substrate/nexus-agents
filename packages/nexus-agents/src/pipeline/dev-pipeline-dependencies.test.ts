@@ -10,7 +10,7 @@ import type { DevPipelineStages } from './dev-pipeline.js';
 function stages(directory: string): DevPipelineStages {
   return {
     implementWorkspace: { directory, accessMode: 'workspace-edit' },
-    withWorkspace: stages,
+    withWorkspace: (binding) => stages(binding.directory),
     research: vi.fn(),
     plan: vi.fn(),
     vote: vi.fn(),
