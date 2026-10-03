@@ -1,4 +1,12 @@
 {
-  "$comment": "Reviewed exceptions to the Security Audit gate (#4794). Every id here MUST also appear in package.json > pnpm.auditConfig, which is what actually mutes the advisory; this file is the attribution and expiry ledger that scripts/audit-exceptions.ts enforces. An exception with no owner, no issue, or a past expiry fails CI. Empty means full enforcement. NOTE ON expires: the check is wall-clock and runs inside script-tests, which is a REQUIRED job (#4795) \u2014 so on the day after an expiry, every open PR goes red with no code change until the entry is renewed or removed. That is deliberate: an exception nobody renews should stop working. Set the date to when you can realistically re-review, not to the longest you can get away with, and note that raising a version in pnpm.overrides usually FIXES an advisory outright and needs no entry here at all.",
-  "exceptions": []
+  "$comment": "Reviewed exceptions to the Security Audit gate (#4794). Every id here MUST also appear in package.json > pnpm.auditConfig, which is what actually mutes the advisory; this file is the attribution and expiry ledger that scripts/audit-exceptions.ts enforces. An exception with no owner, no issue, or a past expiry fails CI. Empty means full enforcement. NOTE ON expires: the check is wall-clock and runs inside script-tests, which is a REQUIRED job (#4795) — so on the day after an expiry, every open PR goes red with no code change until the entry is renewed or removed. That is deliberate: an exception nobody renews should stop working. Set the date to when you can realistically re-review, not to the longest you can get away with, and note that raising a version in pnpm.overrides usually FIXES an advisory outright and needs no entry here at all.",
+  "exceptions": [
+    {
+      "id": "GHSA-ch52-4w7c-c8xp",
+      "reason": "http-cache-semantics <=4.2.0 has no patched release; the only path is website>astro (docs workspace, static build, not part of the published package), which never runs a shared HTTP cache.",
+      "owner": "@williamzujkowski",
+      "issue": 6986,
+      "expires": "2026-11-01"
+    }
+  ]
 }

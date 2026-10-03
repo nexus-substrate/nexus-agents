@@ -161,6 +161,11 @@
       "protobufjs@<7.6.3": ">=7.6.3",
       "encoding-sniffer@<1.0.0": "^1.0.0",
       "uuid@<14.0.0": ">=14.0.0"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-ch52-4w7c-c8xp"
+      ]
     }
   }
 }
