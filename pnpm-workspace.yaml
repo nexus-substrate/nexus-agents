@@ -1,6 +1,11 @@
 packages:
   - 'packages/*'
-  - 'website'
+
+# website/ is deliberately NOT a member (#6986). The docs site is its own pnpm
+# root (website/pnpm-workspace.yaml + website/pnpm-lock.yaml), so its
+# dependency tree never enters this lockfile and the required Security Audit
+# job audits only what the product ships and builds with. The site has its own
+# non-required audit in deploy-website.yml.
 
 # Publishing must pack bundleDependencies under hoisted (#6481, #6894).
 # Changesets spawns another pnpm, so an outer CLI flag alone is insufficient.

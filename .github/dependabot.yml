@@ -30,6 +30,31 @@ updates:
       - dependency-name: '*'
         update-types: ['version-update:semver-major']
 
+  # The docs site is its own pnpm root since #6986, so the '/' entry above no
+  # longer covers its dependencies.
+  - package-ecosystem: 'npm'
+    directory: '/website'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'America/New_York'
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+    labels:
+      - 'dependencies'
+    groups:
+      website-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+
   # GitHub Actions
   - package-ecosystem: 'github-actions'
     directory: '/'

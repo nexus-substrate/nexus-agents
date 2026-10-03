@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  // website/ is its own pnpm root, outside the product workspace (#6986). knip
+  // no longer sees it as a workspace, so its entry points (astro.config.mjs,
+  // files astro loads by convention) read as orphans of the root package.
+  // It is a separate project, not a set of allowlisted exceptions.
+  "ignore": ["website/**"]
+}
