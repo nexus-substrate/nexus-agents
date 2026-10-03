@@ -260,6 +260,7 @@ describe('dev pipeline workspace follow-up', () => {
           timeout: WORKFLOW_TIMEOUTS.stepMs,
           env: expect.objectContaining({
             npm_config_package_import_method: 'copy',
+            HUSKY: '0',
             npm_config_enable_global_virtual_store: 'false',
             npm_config_virtual_store_dir: join(
               output.changes?.worktreePath ?? '',
@@ -381,6 +382,32 @@ describe('dev pipeline workspace follow-up', () => {
       expect(installer).not.toHaveBeenCalled();
     }
   );
+
+  // #6794 panel: a worktree shares the SOURCE repo's git config, so an install
+  // lifecycle script (`prepare: husky` → `git config core.hooksPath`) mutates it
+  // outside the returned patch. The run must say so.
+  it('warns when the run changes the source repository shared git config', async () => {
+    file('package.json', '{"name":"fixture","private":true}\n');
+    file('package-lock.json', '{}\n');
+    commit();
+    const installer = vi.fn(async (_command: string, _args: string[], opts: { cwd: string }) => {
+      execFileSync('git', ['config', 'core.hooksPath', '.husky/_'], {
+        cwd: opts.cwd,
+        stdio: 'pipe',
+      });
+      return Promise.resolve();
+    });
+    const output = await withDevPipelineWorkspace(boundStages(repo), edit, installer);
+    expect(git('config', '--get', 'core.hooksPath').trim()).toBe('.husky/_');
+    expect(output.warnings).toContainEqual(
+      expect.stringContaining("changed the source repository's shared git config")
+    );
+  });
+
+  it('adds no shared-config warning when the config is unchanged', async () => {
+    const output = await withDevPipelineWorkspace(boundStages(repo), edit, vi.fn());
+    expect(output.warnings ?? []).not.toContainEqual(expect.stringContaining('shared git config'));
+  });
 
   it('reports successful removal independently from a prune failure', async () => {
     mocks.pruneFailure = true;

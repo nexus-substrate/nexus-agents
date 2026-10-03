@@ -1,7 +1,7 @@
 /** Per-run implementation checkout and operator-owned patch handoff (#6794). */
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { createScratchCheckout, type ScratchCheckout } from '../cli/vote-scratch-checkout.js';
@@ -39,6 +39,31 @@ type DependencyInstaller = (
 ) => Promise<unknown>;
 
 /** Provision only the pinned checkout before implementation can edit its lockfile. */
+/** The config file every worktree of `repoRoot` shares, and its bytes now. */
+function readSharedGitConfig(repoRoot: string): { path: string; bytes: string | undefined } {
+  const commonDir = git(repoRoot, [
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-common-dir',
+  ]).trim();
+  const path = join(commonDir, 'config');
+  return { path, bytes: existsSync(path) ? readFileSync(path, 'utf8') : undefined };
+}
+
+/**
+ * A scratch worktree writes `git config` into the SOURCE repository's shared
+ * config, and nothing in the returned patch shows it. Reported, not reverted:
+ * restoring could clobber an operator's concurrent change.
+ */
+function sharedConfigWarning(
+  repoRoot: string,
+  before: { path: string; bytes: string | undefined }
+): string | undefined {
+  const after = readSharedGitConfig(repoRoot);
+  if (after.bytes === before.bytes) return undefined;
+  return `The run changed the source repository's shared git config at ${before.path}; this is not part of the returned patch. Review it with: git config --list --show-origin`;
+}
+
 async function provisionDependencies(
   scratchPath: string,
   install: DependencyInstaller
@@ -62,6 +87,9 @@ async function provisionDependencies(
         npm_config_package_import_method: 'copy',
         npm_config_enable_global_virtual_store: 'false',
         npm_config_virtual_store_dir: join(scratchPath, 'node_modules/.pnpm'),
+        // A `prepare: husky` script runs `git config core.hooksPath`, and a worktree
+        // shares its config with the source repository (#6794 panel).
+        HUSKY: '0',
       },
     });
     return { status: 'installed', manager };
@@ -170,6 +198,7 @@ export async function withDevPipelineWorkspace(
   const repoRoot = git(directory, ['rev-parse', '--show-toplevel']).trim();
   const baseSha = git(repoRoot, ['rev-parse', 'HEAD']).trim();
   const sourceWarning = dirtySourceWarning(repoRoot, baseSha);
+  const sharedConfig = readSharedGitConfig(repoRoot);
   const scratch = createScratchCheckout({ repoRoot, sha: baseSha, tmpRoot: scratchRoot(repoRoot) });
   let result: DevPipelineResult;
   let changes: NonNullable<DevPipelineResult['changes']>;
@@ -186,7 +215,10 @@ export async function withDevPipelineWorkspace(
   } finally {
     cleanupWarning = disposeWorkspace(scratch);
   }
-  const warnings = [sourceWarning, cleanupWarning].filter((warning) => warning !== undefined);
+  const configWarning = sharedConfigWarning(repoRoot, sharedConfig);
+  const warnings = [sourceWarning, cleanupWarning, configWarning].filter(
+    (warning) => warning !== undefined
+  );
   return {
     ...result,
     completed: result.completed && !changes.empty,

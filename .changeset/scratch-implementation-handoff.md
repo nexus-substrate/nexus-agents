@@ -2,7 +2,7 @@
 'nexus-agents': minor
 ---
 
-Run dev-pipeline implementation, QA, quality checks, and security scans in a disposable worktree pinned to HEAD. Return a unified diff and its base commit for the operator to apply. Pipeline-owned file operations do not write the source checkout's tracked files, untracked files or `node_modules`. Report an empty implementation as `no_changes`.
+Run dev-pipeline implementation, QA, quality checks, and security scans in a disposable worktree pinned to HEAD. Return a unified diff and its base commit for the operator to apply. Pipeline-owned file operations do not write the source checkout's tracked files, untracked files or `node_modules`, apart from git's worktree registration and the gitignored `.nexus-agents` data directory. A worktree shares the source repository's git config, so installs run with `HUSKY=0`, and any change to that shared config during the run is reported as a warning (not reverted). Report an empty implementation as `no_changes`.
 
 Provision dependencies inside the scratch before implementation, using the root lockfile from HEAD: `pnpm-lock.yaml` selects `pnpm install --frozen-lockfile --prefer-offline`, `package-lock.json` selects `npm ci --prefer-offline`, and `yarn.lock` selects `yarn install --frozen-lockfile --prefer-offline`. Installs never run in the source checkout. Report `changes.dependencies` with status `installed`, `none` or `failed`, plus the manager and failure reason when applicable. No root `package.json` or supported lockfile means `none`. A failed install reports the quality gate as unmeasured with the reason rather than as a code failure. Exclude scratch dependencies from the returned patch.
 
