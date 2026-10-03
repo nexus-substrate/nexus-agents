@@ -22,6 +22,8 @@ import { SIGKILL_GRACE_MS, terminateProcessTree, trackProcessTree } from './proc
 export interface ExecFileTreeOptions {
   /** Working directory for the command. Absent: the server's own. */
   readonly cwd?: string | undefined;
+  /** Environment for the command. Absent: the server's own. */
+  readonly env?: NodeJS.ProcessEnv | undefined;
   /** Runaway guard: the tree is ended and the call rejects after this long. */
   readonly timeoutMs: number;
   /** Largest stdout or stderr accepted, in bytes. Absent: Node's default. */
@@ -110,6 +112,7 @@ function spawnTracked(
       {
         encoding: 'utf8',
         ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+        ...(options.env !== undefined ? { env: options.env } : {}),
         ...(options.maxBuffer !== undefined ? { maxBuffer: options.maxBuffer } : {}),
       },
       (error, stdout, stderr) => {

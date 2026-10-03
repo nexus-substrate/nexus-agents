@@ -39,6 +39,10 @@ const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 export interface SecurityGateConfig {
   /** Whether to run OSV dependency checks (default: true). */
   readonly enableOsv?: boolean | undefined;
+  /** Subprocess environment. Absent: inherit the caller's environment. */
+  readonly env?: NodeJS.ProcessEnv | undefined;
+  /** Containment root for the target. Absent: the server's cwd (see SecurityScanOptions.root). */
+  readonly root?: string | undefined;
 }
 
 /**
@@ -65,7 +69,7 @@ export function checkSecurityScan(
         rulesets: [...rulesets],
         maxFindings: 50,
       },
-      signal
+      { signal, env: config.env, root: config.root }
     );
     // #6747: an aborted scan measured nothing. Rejecting keeps it from being
     // reported as a `skip`, and keeps the OSV lookups from starting.

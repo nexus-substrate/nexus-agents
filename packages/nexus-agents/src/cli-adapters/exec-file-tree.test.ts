@@ -6,11 +6,11 @@
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileTree } from './exec-file-tree.js';
 import { AbortError } from '../adapters/abort-utils.js';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 
 /** Only ESRCH proves a process is gone; a zombie (dead, unreaped) counts as gone. */
 function isAlive(pid: number): boolean {
@@ -43,7 +43,7 @@ describe.skipIf(process.platform !== 'linux')('execFileTree on real processes (#
   const pids: number[] = [];
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'nexus-exec-tree-'));
+    tmpDir = mkdtempOutsideRepo('nexus-exec-tree-');
   });
 
   afterEach(() => {
@@ -88,6 +88,19 @@ describe.skipIf(process.platform !== 'linux')('execFileTree on real processes (#
       timeoutMs: 10_000,
     });
     expect(stdout).toBe('hi');
+  });
+
+  it('uses the supplied environment instead of inheriting the parent environment', async () => {
+    const { stdout } = await execFileTree(
+      process.execPath,
+      [
+        '-e',
+        'process.stdout.write(JSON.stringify([process.env.NEXUS_EXEC_TREE_ENV, typeof process.env.PATH]))',
+      ],
+      { timeoutMs: 10_000, env: { NEXUS_EXEC_TREE_ENV: 'isolated' } }
+    );
+    const environment: unknown = JSON.parse(stdout);
+    expect(environment).toEqual(['isolated', 'undefined']);
   });
 
   it('rejects with the exit failure when the command fails', async () => {

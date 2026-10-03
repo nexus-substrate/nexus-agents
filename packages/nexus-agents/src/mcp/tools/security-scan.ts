@@ -21,9 +21,12 @@ const logger = createLogger({ component: 'security-scan' });
 const SCAN_TIMEOUT_MS = 300_000;
 
 /** Check if semgrep is available. */
-async function isSemgrepAvailable(signal: AbortSignal | undefined): Promise<boolean> {
+async function isSemgrepAvailable(
+  signal: AbortSignal | undefined,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<boolean> {
   try {
-    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal });
+    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal, env });
     return true;
   } catch {
     return false;
@@ -38,7 +41,8 @@ async function isSemgrepAvailable(signal: AbortSignal | undefined): Promise<bool
 async function runSemgrep(
   targetDir: string,
   rulesets: readonly string[],
-  signal: AbortSignal | undefined
+  signal: AbortSignal | undefined,
+  env: NodeJS.ProcessEnv | undefined
 ): Promise<string> {
   const args = ['--sarif', '--quiet', ...rulesets.flatMap((r) => ['--config', r]), targetDir];
 
@@ -46,6 +50,7 @@ async function runSemgrep(
     timeoutMs: SCAN_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024, // 10MB for large SARIF output
     signal,
+    env,
   });
 
   return stdout;
@@ -59,30 +64,48 @@ async function runSemgrep(
  * effectively a no-op on POSIX (every absolute path starts with `/`).
  * (#1913 Class D — path traversal gap.)
  */
-function validateTargetPath(target: string): string {
-  // Require the target to be inside cwd (or cwd itself), following symlinks.
-  const resolved = resolveInsideRoot(target);
+function validateTargetPath(target: string, root: string = process.cwd()): string {
+  // Require the target to be inside the root (or the root itself), following symlinks.
+  const resolved = resolveInsideRoot(target, root);
   if (resolved === null) {
-    throw new Error(`Invalid target path: must resolve inside ${process.cwd()} (got ${target})`);
+    throw new Error(`Invalid target path: must resolve inside ${root} (got ${target})`);
   }
   return resolved;
+}
+
+/** Options for {@link executeSecurityScan}; one object so a wrapper forwards them whole. */
+export interface SecurityScanOptions {
+  /** Caller abort (#6747). */
+  readonly signal?: AbortSignal | undefined;
+  /** Scanner subprocess environment. Absent: inherit the caller's. */
+  readonly env?: NodeJS.ProcessEnv | undefined;
+  /**
+   * Root the target must resolve inside. Absent: the server's cwd. Only a
+   * caller that CREATED the directory may pass it: the dev pipeline's scratch
+   * worktree lives outside cwd by design (#6794), so cwd containment rejected
+   * every pipeline scan and left security unmeasured.
+   */
+  readonly root?: string | undefined;
 }
 
 /**
  * Execute a security scan against a local codebase.
  *
  * @param input - Scan configuration
- * @param signal - Caller abort (#6747): ends the scanner's process tree and
- *   returns an `error` saying the scan was aborted, not a result.
+ * @param options - `signal` (#6747: an abort ends the scanner's process tree and
+ *   returns an `error` saying the scan was aborted, not a result), the scanner
+ *   `env` (absent: inherit), and the containment
+ *   `root` the target must resolve inside (absent: the server's cwd).
  * @returns Parsed SARIF findings or error message
  */
 export async function executeSecurityScan(
   input: SecurityScanInput,
-  signal?: AbortSignal
+  options: SecurityScanOptions = {}
 ): Promise<SarifParseResult | { error: string }> {
+  const { signal, env } = options;
   let targetDir: string;
   try {
-    targetDir = validateTargetPath(input.target);
+    targetDir = validateTargetPath(input.target, options.root);
   } catch (e: unknown) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -93,7 +116,7 @@ export async function executeSecurityScan(
     rulesets: input.rulesets,
   });
 
-  const available = await isSemgrepAvailable(signal);
+  const available = await isSemgrepAvailable(signal, env);
   // An abort during the probe is not a missing scanner.
   if (signal?.aborted === true) return { error: 'Scan aborted before semgrep ran' };
   if (!available) {
@@ -103,7 +126,7 @@ export async function executeSecurityScan(
   }
 
   try {
-    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal);
+    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal, env);
     const result = parseSarif(sarifOutput, input.maxFindings);
 
     logger.info('Security scan completed', {

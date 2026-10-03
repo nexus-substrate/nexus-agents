@@ -42,7 +42,7 @@ describe('checkSecurityScan and the abort signal (#6747)', () => {
 
     await checkSecurityScan(project)(signal);
 
-    expect(vi.mocked(executeSecurityScan).mock.calls[0]?.[1]).toBe(signal);
+    expect(vi.mocked(executeSecurityScan).mock.calls[0]?.[1]?.signal).toBe(signal);
     expect(vi.mocked(queryOsvBatch).mock.calls[0]?.[2]).toBe(signal);
   });
 

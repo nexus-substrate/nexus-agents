@@ -63,6 +63,7 @@ import { applyPipelineHindsight, assemblePlanContext } from './dev-pipeline-cont
 import { DEFAULT_MAX_NO_QUORUM_RETRIES, retryNoQuorumVote } from './iterative-consensus.js';
 import { allOf, anyOf } from '../utils/verdict-aggregation.js';
 import { DevPipelineCancelledError, guardDevPipelineStages } from './dev-pipeline-deadlines.js';
+import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -212,8 +213,36 @@ export interface QaReviewResult {
   readonly coverage?: QaReviewCoverage;
 }
 
+/** Dependency provisioning from the scratch checkout's HEAD lockfile, before edits. */
+/** Where execution stages run, and how that checkout's dependencies were provisioned. */
+export interface DevPipelineWorkspaceBinding {
+  readonly directory: string;
+  readonly dependencies: DevPipelineDependencies;
+}
+
+export type DevPipelineDependencies =
+  | { readonly status: 'none' }
+  | { readonly status: 'installed'; readonly manager: 'pnpm' | 'npm' | 'yarn' }
+  | {
+      readonly status: 'failed';
+      readonly manager: 'pnpm' | 'npm' | 'yarn';
+      readonly reason: string;
+    };
+
 /** Overall pipeline result. */
 export interface DevPipelineResult {
+  /** Operator-applied patch and the scratch checkout's cleanup status. */
+  readonly changes?: {
+    readonly diff: string;
+    readonly baseSha: string;
+    /** Provenance; a cleanup failure leaves this path for the operator to remove. */
+    readonly worktreePath: string;
+    readonly worktreeRemoved: boolean;
+    /** Offline provisioning outcome, scoped to this scratch checkout. */
+    readonly dependencies: DevPipelineDependencies;
+    readonly empty: boolean;
+    readonly status: 'no_changes' | 'changes';
+  };
   /**
    * Whether the pipeline completed successfully.
    *
@@ -319,6 +348,13 @@ export interface DevPipelineResult {
  */
 export interface DevPipelineStages {
   /**
+   * Rebind execution stages to a per-run scratch directory, sharing the run's budget.
+   * One binding object, not positional arguments: a wrapper that re-exposes this
+   * method forwards the whole binding, so it cannot silently drop the dependency
+   * outcome the quality gate reads (#6794 panel; a 1-arg lambda type-checks).
+   */
+  withWorkspace?(binding: DevPipelineWorkspaceBinding): DevPipelineStages;
+  /**
    * Research expert gathers context for the task. Returns the full
    * {@link ResearchContext} (#3234 seam 0): `.text` feeds plan/vote as before,
    * `.metadata` is attached to decomposed tasks for routing-experience enrichment.
@@ -362,10 +398,15 @@ export interface DevPipelineStages {
    * Local QA quality gate (typecheck/lint/tests/build) run before ship (#3356).
    * Optional: pipelines that don't supply it simply skip the gate. Returns
    * `passed` plus actionable `feedback` from the underlying `runQualityGate`
-   * engine. Whether a red gate fails the phase is governed by the
+   * engine. `verdict: skip` means unmeasured, including dependency provisioning
+   * failure. Whether a red gate fails the phase is governed by the
    * `qualityGate` mode in {@link DevPipelineOptions}, not this method.
    */
-  qualityGate?(signal?: AbortSignal): Promise<{ passed: boolean; feedback: string }>;
+  qualityGate?(signal?: AbortSignal): Promise<{
+    passed: boolean;
+    feedback: string;
+    readonly verdict?: 'pass' | 'fail' | 'skip';
+  }>;
   /**
    * Security scan. `verdict` preserves the scanner's tri-state so a `skip`
    * (scanner absent or errored) is not recorded as a rejection (#5502).
@@ -611,12 +652,14 @@ async function runDevPipelineInner(
   }
 
   // Phases 4-5: Implement + Quality Gate + Security
-  const result = await runImplSecurityPhase(planResult, tasks, stages, {
-    sid,
-    qualityGateMode: options?.qualityGate ?? 'off',
-    limits: resolveIterationLimits(options),
-    contentTier: provenance.contentTier,
-  });
+  const result = await withDevPipelineWorkspace(stages, (bound) =>
+    runImplSecurityPhase(planResult, tasks, bound, {
+      sid,
+      qualityGateMode: options?.qualityGate ?? 'off',
+      limits: resolveIterationLimits(options),
+      contentTier: provenance.contentTier,
+    })
+  );
 
   // Apply hindsight with actual pipeline outcome (#1720)
   applyPipelineHindsight(bm, task, sid, result);
@@ -973,7 +1016,10 @@ async function runImplSecurityPhase(
   const qaGate = await runQualityGateStage(stages, qualityGateMode);
   // #6792: the gate ran scripts where the implement expert edited files.
   const implRan = implResult.totalIterations > 0;
-  const warnings = gateWorkspaceWarningFields(stages, qualityGateMode, implRan);
+  const warnings =
+    qaGate.verdict === 'skip'
+      ? { warnings: [qaGate.feedback] }
+      : gateWorkspaceWarningFields(stages, qualityGateMode, implRan);
   if (qualityGateMode === 'blocking' && !qaGate.passed) {
     return blockedAfterImplement({ planResult, tasks, implResult, taskStatus, ...warnings });
   }
@@ -1094,6 +1140,7 @@ function isWithin(parent: string, child: string): boolean {
 
 /** Result of the optional pre-ship quality gate (#3356). */
 interface QualityGateOutcome {
+  readonly verdict?: 'pass' | 'fail' | 'skip';
   readonly passed: boolean;
   readonly feedback: string;
 }
@@ -1117,8 +1164,16 @@ async function runQualityGateStage(
   const runGate = stages.qualityGate.bind(stages);
   return withStep({ name: 'quality-gate', attrs: { mode } }, async (ctx) => {
     const r = await runGate();
-    const advisory = mode === 'advisory' && !r.passed;
-    ctx.setSummary(r.passed ? 'passed' : advisory ? 'FAILED (advisory)' : 'FAILED');
+    const advisory = mode === 'advisory' && !r.passed && r.verdict !== 'skip';
+    ctx.setSummary(
+      r.verdict === 'skip'
+        ? 'UNMEASURED'
+        : r.passed
+          ? 'passed'
+          : advisory
+            ? 'FAILED (advisory)'
+            : 'FAILED'
+    );
     if (advisory) {
       logger.warn('Quality gate failed (advisory — not blocking)', {
         feedback: r.feedback.slice(0, 200),

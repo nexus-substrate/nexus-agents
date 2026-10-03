@@ -1,5 +1,7 @@
 /** Detached, disposable repository access for ratification voters (#6358). */
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { VoteCommandOptions } from './vote-types.js';
@@ -24,6 +26,8 @@ export interface ScratchCheckoutOptions {
   readonly repoRoot: string;
   readonly sha: string;
   readonly tmpRoot?: string;
+  /** Disable source hooks and remove repository-local git environment redirects. */
+  readonly hermetic?: boolean;
 }
 
 export interface ScratchCheckout {
@@ -31,13 +35,43 @@ export interface ScratchCheckout {
   dispose(): void;
 }
 
-function runGit(repoRoot: string, args: string[]): void {
-  execFileSync('git', args, { cwd: repoRoot, stdio: 'pipe', timeout: GIT_TIMEOUT_MS });
+function runGit(options: ScratchCheckoutOptions, args: string[]): void {
+  const hermetic = options.hermetic === true;
+  execFileSync('git', hermetic ? ['-c', 'core.hooksPath=/dev/null', ...args] : args, {
+    cwd: options.repoRoot,
+    stdio: 'pipe',
+    timeout: GIT_TIMEOUT_MS,
+    ...(hermetic ? { env: { ...hermeticGitEnv(), GIT_OPTIONAL_LOCKS: '0' } } : {}),
+  });
+}
+
+/** Git can retain a worktree after a post-checkout hook fails. */
+function removeScratchCheckout(options: ScratchCheckoutOptions, path: string): void {
+  try {
+    runGit(options, ['worktree', 'remove', '--force', path]);
+  } finally {
+    runGit(options, ['worktree', 'prune']);
+  }
+}
+
+/** Preserve the allocation error while identifying any retained worktree. */
+function failedAllocationCleanup(options: ScratchCheckoutOptions, path: string): string {
+  if (!existsSync(path)) return 'No leftover worktree path exists.';
+  let failure: string | undefined;
+  try {
+    removeScratchCheckout(options, path);
+  } catch (error: unknown) {
+    failure = String(error);
+  }
+  const status = existsSync(path)
+    ? `Leftover worktree remains at ${path}.`
+    : 'Leftover worktree removed.';
+  return failure === undefined ? status : `${status} Cleanup failed: ${failure}`;
 }
 
 /** Creates a detached worktree without changing the caller's HEAD or files. */
 export function createScratchCheckout(options: ScratchCheckoutOptions): ScratchCheckout {
-  const { repoRoot, sha } = options;
+  const { sha } = options;
   if (sha.trim() === '') {
     throw new ScratchCheckoutError('Cannot create a panel scratch checkout: SHA is empty.');
   }
@@ -47,7 +81,7 @@ export function createScratchCheckout(options: ScratchCheckoutOptions): ScratchC
     );
   }
   try {
-    runGit(repoRoot, ['cat-file', '-e', `${sha}^{commit}`]);
+    runGit(options, ['cat-file', '-e', `${sha}^{commit}`]);
   } catch (error: unknown) {
     throw new ScratchCheckoutError(
       `Ratified commit ${sha} is not available locally; fetch it first.`,
@@ -59,10 +93,10 @@ export function createScratchCheckout(options: ScratchCheckoutOptions): ScratchC
     `vote-${sha.slice(0, SHA_PREFIX_LENGTH)}-${randomUUID()}`
   );
   try {
-    runGit(repoRoot, ['worktree', 'add', '--detach', path, sha]);
+    runGit(options, ['worktree', 'add', '--detach', path, sha]);
   } catch (error: unknown) {
     throw new ScratchCheckoutError(
-      `Failed to create panel scratch checkout at ${path}.`,
+      `Failed to create panel scratch checkout at ${path}. ${failedAllocationCleanup(options, path)}`,
       toError(error)
     );
   }
@@ -70,11 +104,7 @@ export function createScratchCheckout(options: ScratchCheckoutOptions): ScratchC
     path,
     dispose(): void {
       try {
-        try {
-          runGit(repoRoot, ['worktree', 'remove', '--force', path]);
-        } finally {
-          runGit(repoRoot, ['worktree', 'prune']);
-        }
+        removeScratchCheckout(options, path);
       } catch (error: unknown) {
         throw new ScratchCheckoutError(
           `Failed to dispose panel scratch checkout at ${path}.`,

@@ -565,6 +565,30 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['warnings']).toEqual(['the gate ran edited scripts']);
   });
 
+  it('surfaces the scratch artifact and names an empty implementation (#6794)', async () => {
+    const changes = {
+      diff: '',
+      baseSha: 'a'.repeat(40),
+      worktreePath: '/tmp/removed-scratch',
+      worktreeRemoved: true,
+      dependencies: { status: 'none' as const },
+      empty: true,
+      status: 'no_changes',
+    };
+    runDevPipelineMock.mockResolvedValueOnce({
+      ...PIPELINE_RESULT,
+      completed: false,
+      changes,
+    } as never);
+    const result = await captureHandler()({ task: 'Build feature X' }, STDIO_CTX);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('no_changes');
+    const envelope = result._meta?.[ERROR_ENVELOPE_META_KEY] as {
+      detail?: Record<string, unknown>;
+    };
+    expect(envelope.detail?.['changes']).toEqual(changes);
+  });
+
   it('omits both fields when the pipeline did not report them', async () => {
     // Absent means the producer predates the distinction — not false, not 'empty'.
     const handler = captureHandler();
