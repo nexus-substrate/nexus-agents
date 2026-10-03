@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.127.8
+
+### Patch Changes
+
+- [#6989](https://github.com/nexus-substrate/nexus-agents/pull/6989) [`4c1c81e`](https://github.com/nexus-substrate/nexus-agents/commit/4c1c81ece9d15da141df1617e2bfb445c27ae206) Thanks [@dependabot](https://github.com/apps/dependabot)! - The tier recommender now steps between `RequestTier` values explicitly instead of adding or subtracting 1 from an enum value. Recommendations are unchanged (promote DIRECT→ANALYZED→ORCHESTRATED, demote the reverse). The `@typescript-eslint/no-unsafe-enum-assignment` rule introduced in typescript-eslint 8.71 flagged the arithmetic; the rule is turned off in this repo's ESLint config for now because its type walk runs lint out of memory ([#6994](https://github.com/nexus-substrate/nexus-agents/issues/6994)).
+
 ## 8.127.7
 
 ### Patch Changes
