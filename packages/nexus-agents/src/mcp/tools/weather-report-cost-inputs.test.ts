@@ -34,6 +34,35 @@ describe('resolveWeatherVoteRecords', () => {
 });
 
 describe('resolveWeatherDecisionCosts', () => {
+  it('reads persisted declared costs for weather reports without dropping the decision', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'weather-declared-cost-'));
+    dirs.push(dir);
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    vi.stubEnv('NEXUS_PERSIST_LEARNING', 'true');
+    const writer = new DecisionCostStore();
+    const { persisted } = writer.record({
+      decisionId: 'declared-decision',
+      gate: 'consensus_vote',
+      voters: [
+        {
+          role: 'reviewer',
+          model: 'test-model',
+          inputTokens: 1,
+          outputTokens: 1,
+          costUsd: 0.01,
+          priceBasis: 'declared',
+        },
+      ],
+      billingMode: 'api',
+      timestamp: new Date().toISOString(),
+    });
+    expect(persisted).toBe(true);
+    const records = resolveWeatherDecisionCosts(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.summary.priceBasis).toBe('declared');
+    expect(records[0]?.summary.perVoter[0]?.priceBasis).toBe('declared');
+  });
+
   it('refuses a durable valid-plus-schema-invalid duplicate instead of joining the surviving row', () => {
     const dir = mkdtempSync(join(tmpdir(), 'weather-cost-ledger-'));
     dirs.push(dir);

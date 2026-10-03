@@ -302,7 +302,8 @@ export function describeUnpricedArm(
  *   UNMEASURED sentinel (`priceBasisOf` → `'unknown'`), never $0-as-measured.
  * - `free` / `local` → a MEASURED $0; `priced:<in>,<out>` → the flat rate,
  *   micro-USD rounded like every ledger figure. `resolvedId` is the ARM: the
- *   declaration, not a registry entry, is what supplied the number.
+ *   declaration, not a registry entry, is what supplied the number. `declared`
+ *   marks this provenance so `priceBasisOf` reports `'declared'`.
  * - bare `priced` → {@link computeCostDetail} on the model that answered; a
  *   model the registry cannot price stays unpriced, as it always did. A
  *   writer that holds no model id (the routing observer, #6399) passes
@@ -326,7 +327,7 @@ export function gatewayCostDetail(
       : computeCostDetail(modelId, inputTokens, outputTokens);
   }
   const { costUsd } = computeTokenCost({ input: inputTokens, output: outputTokens }, rates);
-  return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId: arm };
+  return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId: arm, declared: true };
 }
 
 /**
