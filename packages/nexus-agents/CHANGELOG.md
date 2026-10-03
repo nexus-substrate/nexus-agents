@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.129.1
+
+### Patch Changes
+
+- [#7019](https://github.com/nexus-substrate/nexus-agents/pull/7019) [`529ab87`](https://github.com/nexus-substrate/nexus-agents/commit/529ab875ab8d2e675c56828303d65c1f32f352b1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Clamp decision-cost model and role labels with a visible truncation marker so overlong labels preserve billing records and token totals ([#7017](https://github.com/nexus-substrate/nexus-agents/issues/7017)).
+
 ## 8.129.0
 
 ### Minor Changes
