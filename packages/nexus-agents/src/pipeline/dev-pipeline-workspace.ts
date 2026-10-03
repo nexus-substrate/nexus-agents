@@ -203,6 +203,8 @@ export async function withDevPipelineWorkspace(
   let result: DevPipelineResult;
   let changes: NonNullable<DevPipelineResult['changes']>;
   let cleanupWarning: string | undefined;
+  let configWarning: string | undefined;
+  let completed = false;
   try {
     const dependencies = await provisionDependencies(scratch.path, install);
     // Preserve a workingDir that points at a package below the repository root.
@@ -212,10 +214,14 @@ export async function withDevPipelineWorkspace(
     });
     result = await run(bound);
     changes = captureChanges(scratch.path, baseSha, dependencies);
+    completed = true;
   } finally {
+    // Every exit reports what the run did outside the patch: a thrown or timed-out
+    // stage has no result to carry warnings, so they are logged instead (#6794 panel).
     cleanupWarning = disposeWorkspace(scratch);
+    configWarning = sharedConfigWarning(repoRoot, sharedConfig);
+    if (!completed && configWarning !== undefined) logger.warn(configWarning);
   }
-  const configWarning = sharedConfigWarning(repoRoot, sharedConfig);
   const warnings = [sourceWarning, cleanupWarning, configWarning].filter(
     (warning) => warning !== undefined
   );

@@ -16,7 +16,7 @@ import type { StepEvent } from '../core/step-events.js';
 import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
 import { createAgentStages } from './agent-executor.js';
 import { runDevPipeline } from './dev-pipeline.js';
-import { guardDevPipelineStages } from './dev-pipeline-deadlines.js';
+import { DevPipelineStageTimeoutError, guardDevPipelineStages } from './dev-pipeline-deadlines.js';
 
 const mocks = vi.hoisted(() => ({
   disposeFailure: false,
@@ -402,6 +402,38 @@ describe('dev pipeline workspace follow-up', () => {
     expect(output.warnings).toContainEqual(
       expect.stringContaining("changed the source repository's shared git config")
     );
+  });
+
+  // The full exit matrix (#6794 panel, round 4): the shared-config report must
+  // survive every way the run can end, not only success.
+  const changeHooksPath = (opts: { cwd: string }): Promise<void> => {
+    execFileSync('git', ['config', 'core.hooksPath', '.husky/_'], { cwd: opts.cwd, stdio: 'pipe' });
+    return Promise.resolve();
+  };
+  it.each([
+    { exit: 'a thrown stage', run: () => Promise.reject(new Error('stage threw')) },
+    {
+      exit: 'a stage timeout',
+      run: () => Promise.reject(new DevPipelineStageTimeoutError('implement', 1)),
+    },
+  ])('logs a shared git config change when the run ends with $exit', async ({ run }) => {
+    file('package-lock.json', '{}\n');
+    commit();
+    const installer = vi.fn((_c: string, _a: string[], opts: { cwd: string }) =>
+      changeHooksPath(opts)
+    );
+    await expect(withDevPipelineWorkspace(boundStages(repo), run, installer)).rejects.toThrow();
+    expect(mocks.paths.every((path) => !existsSync(path))).toBe(true);
+    expect(mocks.warn).toHaveBeenCalledWith(
+      expect.stringContaining("changed the source repository's shared git config")
+    );
+  });
+
+  it('logs nothing about the shared config when a thrown run left it unchanged', async () => {
+    await expect(
+      withDevPipelineWorkspace(boundStages(repo), () => Promise.reject(new Error('x')), vi.fn())
+    ).rejects.toThrow('x');
+    expect(mocks.warn).not.toHaveBeenCalledWith(expect.stringContaining('shared git config'));
   });
 
   it('adds no shared-config warning when the config is unchanged', async () => {
