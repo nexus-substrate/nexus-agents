@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.127.6
+
+### Patch Changes
+
+- [#6985](https://github.com/nexus-substrate/nexus-agents/pull/6985) [`85f1ef8`](https://github.com/nexus-substrate/nexus-agents/commit/85f1ef875ed35a2b8c0f910d46f9fe39c875b6e6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Forward CODEX_HOME, CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME, and XDG_CACHE_HOME to spawned CLIs so relocated config and data directories are honored. Codex read-only MCP isolation scans the same forwarded CODEX_HOME/config.toml the child loads. Cross-vendor credential filtering remains intact.
+
 ## 8.127.5
 
 ### Patch Changes
