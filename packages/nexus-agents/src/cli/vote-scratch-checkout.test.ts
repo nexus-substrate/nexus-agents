@@ -1,7 +1,7 @@
 /** Regression coverage for ratification panel checkout isolation (#6358). */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, chmodSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NexusError } from '../core/errors.js';
@@ -17,18 +17,19 @@ describe('createScratchCheckout', () => {
     execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
 
   beforeEach(async () => {
-    root = mkdtempSync(join(tmpdir(), 'vote-scratch-test-'));
+    root = mkdtempOutsideRepo('vote-scratch-test-');
     repoRoot = join(root, 'repo');
     tmpRoot = join(root, 'scratch');
     mkdirSync(repoRoot);
     mkdirSync(tmpRoot);
+    vi.stubEnv('NEXUS_TMPDIR', tmpRoot);
     git(repoRoot, 'init', '--initial-branch=main');
     git(repoRoot, 'config', 'user.name', 'Scratch Test');
     git(repoRoot, 'config', 'user.email', 'scratch@example.test');
     git(repoRoot, 'config', 'commit.gpgsign', 'false');
     writeFileSync(join(repoRoot, 'README.md'), 'first commit\n');
     git(repoRoot, 'add', 'README.md');
-    git(repoRoot, 'commit', '-m', 'initial');
+    git(repoRoot, '-c', 'core.hooksPath=/dev/null', 'commit', '-m', 'initial');
     sha = git(repoRoot, 'rev-parse', 'HEAD');
     subject = await import('./vote-scratch-checkout.js');
   });
@@ -92,6 +93,17 @@ describe('createScratchCheckout', () => {
       );
     }
   );
+
+  it('removes a worktree retained by git after a failing post-checkout hook', () => {
+    const hook = join(repoRoot, '.git/hooks/post-checkout');
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n');
+    chmodSync(hook, 0o755);
+    expect(() => subject.createScratchCheckout({ repoRoot, sha, tmpRoot })).toThrow(
+      'Leftover worktree removed'
+    );
+    expect(readdirSync(tmpRoot)).toEqual([]);
+    expect(git(repoRoot, 'worktree', 'list', '--porcelain').match(/^worktree /gm)).toHaveLength(1);
+  });
 
   it('uses the existing NEXUS_TMPDIR resolver when tmpRoot is omitted', () => {
     vi.stubEnv('NEXUS_TMPDIR', tmpRoot);

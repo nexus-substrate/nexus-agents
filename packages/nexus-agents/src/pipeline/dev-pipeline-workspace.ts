@@ -1,10 +1,11 @@
 /** Per-run implementation checkout and operator-owned patch handoff (#6794). */
-import { execFile, execFileSync } from 'node:child_process';
-import { promisify } from 'node:util';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { createScratchCheckout, type ScratchCheckout } from '../cli/vote-scratch-checkout.js';
+import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
+import { execFileTree } from '../cli-adapters/exec-file-tree.js';
 import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
 import { getNexusTmpDir } from '../config/nexus-tmp-dir.js';
 import { createLogger } from '../core/index.js';
@@ -15,15 +16,15 @@ import type {
 } from './dev-pipeline.js';
 
 const GIT_TIMEOUT_MS = 30_000;
-const execFileAsync = promisify(execFile);
 const DIFF_MAX_BYTES = 16 * 1024 * 1024;
 const logger = createLogger({ component: 'dev-pipeline-workspace' });
 // Installed dependencies are runtime inputs, excluded even when not ignored.
 const PATCH_PATHS = ['.', ':(exclude,glob)**/node_modules', ':(exclude,glob)**/node_modules/**'];
 
 function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, {
+  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
     cwd,
+    env: hermeticGitEnv(),
     encoding: 'utf8',
     timeout: GIT_TIMEOUT_MS,
     maxBuffer: DIFF_MAX_BYTES,
@@ -94,7 +95,7 @@ async function provisionDependencies(
       cwd: scratchPath,
       timeout: WORKFLOW_TIMEOUTS.stepMs,
       env: {
-        ...process.env,
+        ...hermeticGitEnv(),
         // A shared store hardlink would permit scratch edits to change source dependencies.
         npm_config_package_import_method: 'copy',
         npm_config_enable_global_virtual_store: 'false',
@@ -151,8 +152,27 @@ function scratchRoot(repoRoot: string): string {
   return occupied.some((path) => overlaps(preferred, path)) ? tmpdir() : preferred;
 }
 
+/** Logging in finally must never replace an error or discard a successful result. */
+function reportWarning(warning: string, context?: { error: string }): void {
+  try {
+    if (context === undefined) logger.warn(warning);
+    else logger.warn(warning, context);
+  } catch {
+    // Logging is best effort here: the run error and returned warnings are authoritative.
+  }
+}
+
+/** Keep the installer seam while ending lifecycle descendants on timeout. */
+const installDependencies: DependencyInstaller = (command, args, options) =>
+  execFileTree(command, args, {
+    cwd: options.cwd,
+    timeoutMs: options.timeout,
+    env: options.env,
+  });
+
 /** Cleanup must never discard a patch or replace the run's original error. */
-function disposeWorkspace(scratch: ScratchCheckout): string | undefined {
+function disposeWorkspace(scratch: ScratchCheckout | undefined): string | undefined {
+  if (scratch === undefined) return undefined; // Allocation failed before returning a handle.
   try {
     scratch.dispose();
     return undefined;
@@ -160,7 +180,7 @@ function disposeWorkspace(scratch: ScratchCheckout): string | undefined {
     const warning = existsSync(scratch.path)
       ? `Failed to remove scratch worktree at ${scratch.path}: ${String(error)}. Leftover path: ${scratch.path}.`
       : `Failed to prune scratch worktree registration for ${scratch.path}: ${String(error)}.`;
-    logger.warn(warning, { error: String(error) });
+    reportWarning(warning, { error: String(error) });
     return warning;
   }
 }
@@ -201,7 +221,7 @@ function captureChanges(
 export async function withDevPipelineWorkspace(
   stages: DevPipelineStages,
   run: (bound: DevPipelineStages) => Promise<DevPipelineResult>,
-  install: DependencyInstaller = execFileAsync
+  install: DependencyInstaller = installDependencies
 ): Promise<DevPipelineResult> {
   if (stages.withWorkspace === undefined) return run(stages);
   const declared = stages.implementWorkspace?.directory;
@@ -211,13 +231,19 @@ export async function withDevPipelineWorkspace(
   const baseSha = git(repoRoot, ['rev-parse', 'HEAD']).trim();
   const sourceWarning = dirtySourceWarning(repoRoot, baseSha);
   const sharedConfig = readSharedGitConfig(repoRoot);
-  const scratch = createScratchCheckout({ repoRoot, sha: baseSha, tmpRoot: scratchRoot(repoRoot) });
+  let scratch: ScratchCheckout | undefined;
   let result: DevPipelineResult;
   let changes: NonNullable<DevPipelineResult['changes']>;
   let cleanupWarning: string | undefined;
   let configWarning: string | undefined;
   let completed = false;
   try {
+    scratch = createScratchCheckout({
+      repoRoot,
+      sha: baseSha,
+      tmpRoot: scratchRoot(repoRoot),
+      hermetic: true,
+    });
     const dependencies = await provisionDependencies(scratch.path, install);
     // Preserve a workingDir that points at a package below the repository root.
     const bound = stages.withWorkspace({
@@ -232,7 +258,7 @@ export async function withDevPipelineWorkspace(
     // stage has no result to carry warnings, so they are logged instead (#6794 panel).
     cleanupWarning = disposeWorkspace(scratch);
     configWarning = sharedConfigWarning(sharedConfig);
-    if (!completed && configWarning !== undefined) logger.warn(configWarning);
+    if (!completed && configWarning !== undefined) reportWarning(configWarning);
   }
   const warnings = [sourceWarning, cleanupWarning, configWarning].filter(
     (warning) => warning !== undefined
