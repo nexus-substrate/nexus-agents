@@ -13,8 +13,43 @@ describe('RoutingDecisionSchema legacy router attribution', () => {
   it('parses legacy quality as unattributed with empty measurement evidence', () => {
     const parsed = RoutingDecisionSchema.parse({ ...storedDecision, routerType: 'quality' });
     expect(parsed.routerType).toBe('unattributed');
-    expect(parsed.routerTypeMeasured).toBeUndefined();
+    expect(parsed.routerTypeMeasured).toBe(false);
   });
+
+  it('clears claimed measurement for legacy quality', () => {
+    const parsed = RoutingDecisionSchema.parse({
+      ...storedDecision,
+      routerType: 'quality',
+      routerTypeMeasured: true,
+    });
+    expect(parsed.routerType).toBe('unattributed');
+    expect(parsed.routerTypeMeasured).toBe(false);
+  });
+
+  it.each(['linucb', 'preference', 'cascade', 'topsis', 'unattributed'])(
+    'preserves valid %s attribution and measurement',
+    (routerType) => {
+      const parsed = RoutingDecisionSchema.parse({
+        ...storedDecision,
+        routerType,
+        routerTypeMeasured: true,
+      });
+      expect(parsed.routerType).toBe(routerType);
+      expect(parsed.routerTypeMeasured).toBe(true);
+    }
+  );
+
+  it.each(['composite', 'budget', 'zero', null, undefined, 1])(
+    'rejects invalid stored label %j',
+    (routerType) => {
+      const result = RoutingDecisionSchema.safeParse({
+        ...storedDecision,
+        routerType,
+        routerTypeMeasured: true,
+      });
+      expect(result.success).toBe(false);
+    }
+  );
 
   it('preserves legacy topsis with empty measurement evidence', () => {
     const parsed = RoutingDecisionSchema.parse({ ...storedDecision, routerType: 'topsis' });

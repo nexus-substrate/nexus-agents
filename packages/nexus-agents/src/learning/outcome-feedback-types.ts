@@ -25,6 +25,26 @@ import type { QueryFeatures } from '../cli-adapters/preference-router-types.js';
 export type RouterType = 'linucb' | 'preference' | 'cascade' | 'topsis' | 'unattributed';
 
 /**
+ * Shared stored-label normalizer for Zod and SQLite readers.
+ * Legacy quality has no producer (#5914), so it cannot retain measurement.
+ * Unknown labels fail validation; never certify corrupt attribution as measured.
+ */
+export const StoredRouterAttributionSchema = z
+  .object({
+    routerType: z.enum(['linucb', 'preference', 'cascade', 'topsis', 'unattributed', 'quality']),
+    // Absence on pre-#5812 records means unmeasured; preserve that evidence.
+    routerTypeMeasured: z.boolean().optional(),
+  })
+  .transform((attribution): { routerType: RouterType; routerTypeMeasured?: boolean | undefined } =>
+    attribution.routerType === 'quality'
+      ? { routerType: 'unattributed', routerTypeMeasured: false }
+      : {
+          routerType: attribution.routerType,
+          routerTypeMeasured: attribution.routerTypeMeasured,
+        }
+  );
+
+/**
  * Task outcome classification.
  */
 export type OutcomeClass = 'success' | 'partial' | 'failure' | 'timeout' | 'error';
@@ -107,28 +127,22 @@ export interface RoutingDecision {
 /**
  * Zod schema for routing decision.
  */
-export const RoutingDecisionSchema = z.object({
-  id: z.uuid(),
-  timestamp: z.iso.datetime(),
-  query: z.string(),
-  routerType: z
-    .enum(['linucb', 'preference', 'cascade', 'topsis', 'unattributed', 'quality'])
-    // Explicit storage migration: legacy quality has no producer (#5914).
-    // Preserve old topsis labels: the label cannot reveal whether it was a fallback.
-    .transform((routerType) => (routerType === 'quality' ? 'unattributed' : routerType)),
-  // Optional so a row persisted before #5812 still parses. Absence is read as
-  // unmeasured by `isRouterTypeMeasured`, never as measured.
-  routerTypeMeasured: z.boolean().optional(),
-  selectedModel: z.string(),
-  selectedTier: z.enum(['strong', 'weak']).optional(),
-  armIndex: z.number().int().min(0).optional(),
-  banditContext: z.record(z.string(), z.unknown()).optional(),
-  queryFeatures: z.record(z.string(), z.unknown()).optional(),
-  ucbScore: z.number().optional(),
-  confidence: z.number().min(0).max(1).optional(),
-  traceId: z.string(),
-  domain: z.string().optional(),
-});
+export const RoutingDecisionSchema = z
+  .object({
+    id: z.uuid(),
+    timestamp: z.iso.datetime(),
+    query: z.string(),
+    selectedModel: z.string(),
+    selectedTier: z.enum(['strong', 'weak']).optional(),
+    armIndex: z.number().int().min(0).optional(),
+    banditContext: z.record(z.string(), z.unknown()).optional(),
+    queryFeatures: z.record(z.string(), z.unknown()).optional(),
+    ucbScore: z.number().optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    traceId: z.string(),
+    domain: z.string().optional(),
+  })
+  .and(StoredRouterAttributionSchema);
 
 /**
  * Task outcome for a routing decision.
