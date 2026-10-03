@@ -66,6 +66,7 @@ import type { RedactionRecord } from './redaction-record.js';
 import { RedactionRecordSchema } from './redaction-record.js';
 import {
   VoteRecordSchema,
+  VoterSummarySchema,
   clipForRecord,
   computeVoteRecordHash,
   hashProposal,
@@ -165,8 +166,36 @@ function outcomeToDecision(
   return 'no_quorum';
 }
 
+/**
+ * The seat's `servedModel` entry field (#6967): the model the adapter REPORTED
+ * serving, copied only when it reported one — never `model`, the one requested.
+ * A value the reader would reject is omitted with a warning: written, it would
+ * fail the append-time schema check and lose the whole record.
+ */
+function servedModelField(
+  v: AgentVoteResult,
+  logger: ILogger | undefined
+): { servedModel?: string } {
+  if (v.servedModel === undefined) return {};
+  if (VoterSummarySchema.shape.servedModel.safeParse(v.servedModel).success) {
+    return { servedModel: v.servedModel };
+  }
+  // The type says string, but the value is adapter output: a null or other
+  // non-string must not throw here and lose the record it was meant to protect.
+  const reported: unknown = v.servedModel;
+  const warnTo = logger ?? createLogger({ component: 'vote-record-store' });
+  warnTo.warn('Omitting a reported servedModel the vote-record reader would reject', {
+    role: v.role,
+    ...(typeof reported === 'string' ? { length: reported.length } : { type: typeof reported }),
+  });
+  return {};
+}
+
 /** Build the per-voter summary from the (real) agent votes, skipping errors. */
-function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
+function toVoterSummaries(
+  votes: readonly AgentVoteResult[],
+  logger: ILogger | undefined
+): VoterSummary[] {
   const summaries: VoterSummary[] = [];
   for (const v of votes) {
     // An errored voter has no entry here at all; `panelCoverage` names it
@@ -199,6 +228,9 @@ function toVoterSummaries(votes: readonly AgentVoteResult[]): VoterSummary[] {
       // seat's final state and the state it recovered from. The live retry
       // already clipped and de-controlled the cause; this is projection only.
       ...(v.retriedFrom !== undefined ? { retriedFrom: projectRetriedFrom(v.retriedFrom) } : {}),
+      // #6967: the hash projection (`VOTER_SUMMARY_KEYS`) appends it last, so
+      // its position here does not change any hash.
+      ...servedModelField(v, logger),
     });
   }
   return summaries;
@@ -307,6 +339,8 @@ export interface BuildVoteRecordInput {
    * NOT verified — retained so a reviewer can see the write-time tip (#3927).
    */
   readonly previousHash?: string | undefined;
+  /** Receives the warning for an omitted invalid `servedModel` (#6967). */
+  readonly logger?: ILogger | undefined;
 }
 
 /**
@@ -531,7 +565,7 @@ export function buildVoteRecord(input: BuildVoteRecordInput): VoteRecord {
   // parseable selection lost its option fields entirely.)
   const { optionTally, optionCoverage } = deriveOptionFields(input.votes, input.declaredOptions);
   const panelCoverage = panelCoverageOf(input.votes, input.ratifiesPr !== undefined);
-  const voters = toVoterSummaries(input.votes);
+  const voters = toVoterSummaries(input.votes, input.logger);
   const payload: Omit<VoteRecord, 'hash'> = {
     version: recordVersion(optionTally, optionCoverage, panelCoverage, voters, input),
     id: input.id,
@@ -685,7 +719,6 @@ export interface PersistVoteRecordOptions extends Omit<
    * and the {@link nexusDataPath} resolution (see {@link resolveVoteRecordsPath}).
    */
   readonly filePath?: string | undefined;
-  readonly logger?: ILogger | undefined;
 }
 
 /**
@@ -729,6 +762,7 @@ export function persistVoteRecord(opts: PersistVoteRecordOptions): VoteRecord | 
     const { maxSequence, lastHash } = readLedgerTip(filePath, logger);
     const record = buildVoteRecord({
       ...opts,
+      logger,
       sequence: maxSequence + 1,
       previousHash: lastHash,
     });
