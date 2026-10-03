@@ -36,6 +36,7 @@ import { sanitizeErrorDetails, sanitizeStringLeaves } from '../../security/outpu
 import { toolStructuredError, type ToolResult } from '../tools/tool-result.js';
 import { getGlobalExecutionMode } from './policy-registry.js';
 import { runPolicyCheck, getRegisteredAuditLogger } from './policy-check.js';
+import { checkRunningInstall, mapInstallModuleError } from './install-state.js';
 
 export type { ToolResult };
 
@@ -448,6 +449,8 @@ export function createSecureHandler(
   const logger = config.logger ?? createLogger({ tool: config.toolName });
 
   return async (args: unknown): Promise<ToolResult> => {
+    const installError = checkRunningInstall(logger);
+    if (installError !== undefined) return installError;
     // Resolved per call, like the firewall (#6431 review): handlers are created
     // at registration, before the operator's mode reaches the registry, so a
     // mode captured here would be the pre-registration default for the life of
@@ -571,6 +574,8 @@ async function executeAndAudit(
     // AuthenticationError carries `sk-ant-api03-…` substrings; fetch
     // wrappers can echo Authorization headers). The success branch above
     // runs sanitizeToolResult; the exception path must too.
+    const installError = mapInstallModuleError(error, requestLogger);
+    if (installError !== undefined) return installError;
     const sanitized = sanitizeOutput(rawMessage, requestLogger);
     return internalError(sanitized, requestContext.requestId);
   }
