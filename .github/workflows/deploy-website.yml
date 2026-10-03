@@ -28,15 +28,24 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      # Must go through turbo from the repo root, NOT `pnpm build` inside
-      # website/. The API reference is generated at build time (#4449), and the
-      # ordering lives in turbo.json: nexus-agents-website#build dependsOn
-      # nexus-agents#docs:api:md dependsOn nexus-memory#build. Running astro
-      # directly bypasses that graph, so docs/api never exists and the Astro
-      # glob loader silently yields an empty `api` collection — the site
-      # deploys successfully with the entire /api section missing (#4507).
+      # The API reference is generated at build time (#4449) and MUST exist
+      # before astro runs: the Astro glob loader turns a missing docs/api into
+      # an empty `api` collection, so the site deploys successfully with the
+      # entire /api section missing (#4507). turbo resolves the generator's own
+      # prerequisite (nexus-agents#docs:api:md dependsOn nexus-memory#build).
+      #
+      # website/ is its own pnpm root since #6986 — outside the product
+      # workspace and its lockfile — so turbo no longer sees it. The ordering
+      # that used to live in turbo.json as nexus-agents-website#build is these
+      # two steps, in this order.
+      - name: Generate the API reference
+        run: npx turbo run docs:api:md --filter=nexus-agents
+
+      - name: Install website dependencies (own lockfile)
+        run: pnpm --dir website install --frozen-lockfile
+
       - name: Build website
-        run: npx turbo run build --filter=nexus-agents-website
+        run: pnpm --dir website build
 
       # The failure mode this guards is silent: a missing collection is not a
       # build error, so without this the site publishes minus its API

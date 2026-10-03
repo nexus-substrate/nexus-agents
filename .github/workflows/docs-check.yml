@@ -904,6 +904,43 @@ jobs:
             echo "✅ No spelling issues found"
           fi
 
+  # Website Audit (advisory, #6986)
+  #
+  # website/ is its own pnpm root with its own lockfile, outside the product
+  # workspace, so the REQUIRED Security Audit job in ci.yml no longer sees docs
+  # dependencies. This job keeps their advisories visible without letting a
+  # docs-only advisory with no patched release (GHSA-ch52-4w7c-c8xp, via
+  # astro > http-cache-semantics) block product PRs. It is advisory by
+  # decision (panel vote-1790991394070-0rtgig2 + runoff, #6986): listed in
+  # DOCS_ADVISORY_JOBS in scripts/ci-required-jobs.test.ts, not in
+  # docs-success.needs, and carries continue-on-error so it reports red
+  # without failing the workflow.
+  website-audit:
+    name: Website Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+        with:
+          install: 'false'
+
+      # Also the only PR-time check that website/package.json and
+      # website/pnpm-lock.yaml agree; the deploy installs with the same flag.
+      - name: Install website dependencies (own lockfile)
+        run: pnpm --dir website install --frozen-lockfile --ignore-scripts
+
+      # The site's plugin tests left the root scripts suite with the workspace
+      # (website deps are not in the root node_modules), so they run here.
+      - name: Test website plugins
+        run: pnpm --dir website test
+
+      # Runs even when the tests fail, so one red step cannot hide the other.
+      - name: Audit website dependencies
+        if: ${{ !cancelled() }}
+        run: pnpm --dir website audit --audit-level=high
+
   # ==========================================================================
   # Aggregate verdict (#4809)
   # ==========================================================================

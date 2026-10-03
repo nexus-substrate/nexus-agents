@@ -1,0 +1,16 @@
+# The docs site is its own pnpm root, separate from the product workspace one
+# directory up (#6986). This file's presence is what stops pnpm walking up to
+# ../pnpm-workspace.yaml, so `pnpm --dir website install` resolves against
+# website/pnpm-lock.yaml only. Do not delete it, and do not add website back to
+# the root workspace: the root lockfile is what the REQUIRED Security Audit job
+# audits, and docs-only dependencies (astro's http-cache-semantics, #6986) would
+# fail every product PR on an advisory the shipped package never contains.
+packages: []
+
+# Same posture as the root (#6486): a new, unreviewed dependency build script
+# fails the install instead of being skipped silently.
+strictDepBuilds: true
+# Reviewed, as at the root: esbuild's postinstall only verifies its prebuilt
+# platform binary, which pnpm already installed as an optional dependency.
+ignoredBuiltDependencies:
+  - esbuild
