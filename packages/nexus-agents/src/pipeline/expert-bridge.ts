@@ -11,6 +11,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
+import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 import {
   assertAccessMode,
   requestedAccessModeOf,
@@ -148,6 +149,7 @@ interface RoutedAttribution {
 
 /** The task the bridge hands the router. */
 interface BridgeTask {
+  wrapper?: CommandWrapper | undefined;
   content: string;
   options?: Record<string, unknown> | undefined;
   /** Host access the routed call may use (#6768); absent means the default. */
@@ -304,6 +306,7 @@ export function tokenSplitFromUsage(
 function toCliTask(task: BridgeTask): import('../cli-adapters/types.js').CliTask {
   return {
     content: task.content,
+    ...(task.wrapper !== undefined ? { wrapper: task.wrapper } : {}),
     ...(task.options !== undefined ? { options: task.options } : {}),
     ...(task.accessMode !== undefined ? { accessMode: task.accessMode } : {}),
   };
@@ -545,8 +548,11 @@ async function dispatchWithRateLimitRetry(
 
 /** The options `executeExpert` and its call path take. */
 interface ExpertCallOptions {
+  /** Confine CLI startup, project configuration and hooks within the scratch sandbox. */
+  wrapper?: CommandWrapper | undefined;
   workDir?: string | undefined;
   signal?: AbortSignal | undefined;
+  /** Restricted modes omit the MCP config and require an enforcing adapter. */
   accessMode?: ExecutionAccessMode | undefined;
 }
 
@@ -562,6 +568,7 @@ async function buildBridgeTask(
   options: ExpertCallOptions | undefined
 ): Promise<BridgeTask> {
   const task: BridgeTask = { content };
+  if (options?.wrapper !== undefined) task.wrapper = options.wrapper;
   const restricted = requestedAccessModeOf(options) !== 'default';
   const mcpConfigPath = restricted ? null : await getMcpConfigPath();
   if (mcpConfigPath !== null) task.options = { mcpConfigPath };
@@ -591,32 +598,18 @@ export function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string,
   // eslint-disable-next-line @typescript-eslint/unified-signatures -- Preserve the published two-argument API signature.
-  options: {
-    workDir?: string | undefined;
-    /** Aborts the routed CLI call (#6736): a stage deadline or a job cancel. */
-    signal?: AbortSignal | undefined;
-    /**
-     * Host access the expert's call may use (#6768). Under
-     * `'read-only-analysis'` or `'workspace-edit'` (#6792) the expert gets no
-     * nexus-agents MCP config (an MCP server's tools fall outside the mode's
-     * allow list) and the router only selects an arm that enforces the mode.
-     */
-    accessMode?: ExecutionAccessMode | undefined;
-  }
+  options: ExpertCallOptions
 ): Promise<ExpertBridgeResult>;
 /**
  * Execute with an optional working directory for the expert's CLI subprocess,
  * an optional signal that aborts the routed call (#6736), and an optional
- * access mode (#6768).
+ * access mode (#6768). The optional wrapper confines CLI startup, project
+ * configuration and hooks to the scratch sandbox.
  */
 export async function executeExpert(
   expertType: BuiltInExpertType,
   prompt: string,
-  options?: {
-    workDir?: string | undefined;
-    signal?: AbortSignal | undefined;
-    accessMode?: ExecutionAccessMode | undefined;
-  }
+  options?: ExpertCallOptions
 ): Promise<ExpertBridgeResult> {
   // Thrown, not returned as a failed call: a bad mode is a caller error, and a
   // failure result would read as the expert failing.

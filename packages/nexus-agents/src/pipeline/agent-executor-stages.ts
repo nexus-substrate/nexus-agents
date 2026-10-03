@@ -226,6 +226,7 @@ export function createImplementStage({
   config,
   guard,
   startStage,
+  wrapper,
 }: StageDeps): DevPipelineStages['implement'] {
   return async (task, signal) => {
     startStage(`impl-${task.id}`);
@@ -241,6 +242,7 @@ export function createImplementStage({
         signal,
         accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
         workDir: config.scanTarget,
+        wrapper,
       }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
@@ -312,6 +314,7 @@ export function createQaReviewStage({
   config,
   guard,
   startStage,
+  wrapper,
 }: StageDeps): DevPipelineStages['qaReview'] {
   return async (task, implementation, signal) => {
     startStage(`qa-${task.id}`);
@@ -323,6 +326,7 @@ export function createQaReviewStage({
       signal,
       accessMode: 'read-only-analysis',
       workDir: config.scanTarget,
+      wrapper,
     });
     const { review: parsed, unmeasured } = readQaReview(r);
     const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;
@@ -362,33 +366,52 @@ export function createQaReviewStage({
   };
 }
 
+/**
+ * Run typecheck/lint/tests for the gate, or report it unmeasured when the
+ * scratch's dependencies could not be provisioned (#6794).
+ */
+function runQualityChecks(
+  target: string,
+  workspaceDependencies: StageDeps['workspaceDependencies'],
+  wrapper: StageDeps['wrapper'],
+  signal: AbortSignal | undefined
+): Promise<Awaited<ReturnType<typeof runQualityGate>> | { verdict: 'skip'; feedback: string }> {
+  if (workspaceDependencies?.status === 'failed') {
+    return Promise.resolve({
+      verdict: 'skip' as const,
+      feedback: `dependencies could not be provisioned: ${workspaceDependencies.reason}`,
+    });
+  }
+  // Scratch scripts must not inherit source-repository Git redirects.
+  const env = workspaceDependencies === undefined ? undefined : hermeticGitEnv();
+  // Reuse the canonical #1684 engine + check factories — no new check logic.
+  return runQualityGate(
+    'qa',
+    [
+      checkTypeCheck(target, env, wrapper),
+      checkLint(target, env, wrapper),
+      checkTests(target, env, wrapper),
+    ],
+    1,
+    signal
+  );
+}
+
 export function createQualityGateStage({
   config,
   startStage,
   workspaceDependencies,
+  wrapper,
 }: StageDeps): NonNullable<DevPipelineStages['qualityGate']> {
   return async (signal) => {
     startStage('quality-gate');
     const start = getTimeProvider().now();
     const target = config.scanTarget ?? process.cwd();
     await postProgress(config, 'QualityGate', `Typecheck/lint/tests on ${target}...`);
-    // Scratch scripts must not inherit source-repository Git redirects.
-    const env = workspaceDependencies === undefined ? undefined : hermeticGitEnv();
-    // Reuse the canonical #1684 engine + check factories — no new check logic.
     // #6747: the signal ends the running check's process tree; an aborted
     // gate throws rather than recording an outcome it never measured.
     const result = await rethrowAsStageAbort('qualityGate', signal, async () =>
-      workspaceDependencies?.status === 'failed'
-        ? {
-            verdict: 'skip' as const,
-            feedback: `dependencies could not be provisioned: ${workspaceDependencies.reason}`,
-          }
-        : runQualityGate(
-            'qa',
-            [checkTypeCheck(target, env), checkLint(target, env), checkTests(target, env)],
-            1,
-            signal
-          )
+      runQualityChecks(target, workspaceDependencies, wrapper, signal)
     );
     // #4355: `=== 'pass'`, NOT `!== 'fail'`. The gate reports three states,
     // and `skip` means no check actually ran — every declared script was
@@ -428,6 +451,7 @@ export function createSecurityScanStage({
   config,
   startStage,
   workspaceDependencies,
+  wrapper,
 }: StageDeps): DevPipelineStages['securityScan'] {
   return async (signal) => {
     startStage('security');
@@ -440,6 +464,7 @@ export function createSecurityScanStage({
     const check = checkSecurityScan(target, undefined, {
       env: scratchBound ? hermeticGitEnv() : undefined,
       root: scratchBound ? target : undefined,
+      wrapper,
     });
     // #6747: the signal ends the scanner's process tree and the OSV lookups.
     const result = await rethrowAsStageAbort('securityScan', signal, () => check(signal));

@@ -8,7 +8,11 @@
  */
 
 import { resolveCheckCommand, type ScriptedCheck } from './quality-gate-commands.js';
-import { execFileTree, type ExecFileTreeOptions } from '../cli-adapters/exec-file-tree.js';
+import {
+  execFileTree,
+  type CommandWrapper,
+  type ExecFileTreeOptions,
+} from '../cli-adapters/exec-file-tree.js';
 import { throwIfAborted } from '../adapters/abort-utils.js';
 import type {
   PipelineStage,
@@ -37,7 +41,7 @@ async function runCommandCheck(
   command: string,
   args: readonly string[],
   cwd: string,
-  options: Pick<ExecFileTreeOptions, 'signal' | 'env'>
+  options: Pick<ExecFileTreeOptions, 'signal' | 'env' | 'wrapper'>
 ): Promise<GateCheckResult> {
   const start = Date.now();
   try {
@@ -89,7 +93,8 @@ function scriptedCheck(
   name: string,
   check: ScriptedCheck,
   projectDir: string,
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
 ): GateCheckFn {
   return async (signal) => {
     const resolved = resolveCheckCommand(projectDir, check);
@@ -101,23 +106,39 @@ function scriptedCheck(
         durationMs: 0,
       };
     }
-    return runCommandCheck(name, resolved.command, resolved.args, projectDir, { signal, env });
+    return runCommandCheck(name, resolved.command, resolved.args, projectDir, {
+      signal,
+      env,
+      wrapper,
+    });
   };
 }
 
 /** Check: the repository's declared typecheck script passes. */
-export function checkTypeCheck(projectDir: string, env?: NodeJS.ProcessEnv): GateCheckFn {
-  return scriptedCheck('type_check', 'typecheck', projectDir, env);
+export function checkTypeCheck(
+  projectDir: string,
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
+): GateCheckFn {
+  return scriptedCheck('type_check', 'typecheck', projectDir, env, wrapper);
 }
 
 /** Check: the repository's declared lint script passes. */
-export function checkLint(projectDir: string, env?: NodeJS.ProcessEnv): GateCheckFn {
-  return scriptedCheck('lint', 'lint', projectDir, env);
+export function checkLint(
+  projectDir: string,
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
+): GateCheckFn {
+  return scriptedCheck('lint', 'lint', projectDir, env, wrapper);
 }
 
 /** Check: the repository's declared test script passes. */
-export function checkTests(projectDir: string, env?: NodeJS.ProcessEnv): GateCheckFn {
-  return scriptedCheck('tests', 'tests', projectDir, env);
+export function checkTests(
+  projectDir: string,
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
+): GateCheckFn {
+  return scriptedCheck('tests', 'tests', projectDir, env, wrapper);
 }
 
 /**

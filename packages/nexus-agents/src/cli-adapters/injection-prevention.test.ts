@@ -133,8 +133,8 @@ describe('codex adapter spawn options', () => {
       fs.readFile(new URL('./subprocess-adapter.ts', import.meta.url), 'utf-8')
     );
 
-    // Verify spawn is called with array args pattern
-    expect(source).toContain('spawn(cmdConfig.command, cmdConfig.args');
+    // Wrappers can replace the command and argv. Spawn still receives a separate array.
+    expect(source).toMatch(/\bspawn\(\w+,\s*\[\.\.\.\w+\],\s*\{/);
     // No shell: true in the subprocess adapter
     const matches = source.match(/shell:\s*true/g);
     expect(matches).toBeNull();

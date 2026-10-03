@@ -27,6 +27,12 @@ import { createAgentStages } from './agent-executor.js';
 import { runDevPipeline } from './dev-pipeline.js';
 import { DevPipelineStageTimeoutError, guardDevPipelineStages } from './dev-pipeline-deadlines.js';
 
+// These regressions exercise the retained best-effort defenses explicitly.
+vi.mock('./dev-pipeline-sandbox.js', async (original) => ({
+  ...(await original<typeof import('./dev-pipeline-sandbox.js')>()),
+  bwrapPreflight: () => Promise.resolve({ mode: 'best-effort', reason: 'fixture fallback' }),
+}));
+
 const mocks = vi.hoisted(() => ({
   disposeFailure: false,
   pruneFailure: false,

@@ -11,6 +11,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
+import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 import type { ITaskTracker } from './task-tracker.js';
 import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
@@ -288,6 +289,8 @@ function throwIfAborted(signal: AbortSignal | undefined, expertType: BuiltInExpe
 
 /** Per-call options for {@link runExpert}. */
 interface RunExpertOptions {
+  /** Sandbox the complete expert subprocess when bound to scratch. */
+  readonly wrapper?: CommandWrapper | undefined;
   /** Explicit working directory for scratch-bound implementation and review. */
   readonly workDir?: string | undefined;
   /**
@@ -316,7 +319,7 @@ export async function runExpert(
   executionId?: string,
   options: RunExpertOptions = {}
 ): Promise<ExpertBridgeResult> {
-  const { signal, accessMode, workDir } = options;
+  const { signal, accessMode, workDir, wrapper } = options;
   throwIfAborted(signal, expertType);
   if (guard.isExhausted()) {
     // Observable escalation (#3262): a budget short-circuit must not be silent.
@@ -341,6 +344,7 @@ export async function runExpert(
     };
   }
   const bridgeOptions = {
+    ...(wrapper !== undefined && { wrapper }),
     ...(workDir !== undefined && { workDir }),
     ...(signal !== undefined && { signal }),
     ...(accessMode !== undefined && { accessMode }),
@@ -382,6 +386,7 @@ function maybeEmitModelCalled(executionId: string | undefined, result: ExpertBri
 
 /** What every stage closure needs from the executor. */
 export interface StageDeps {
+  readonly wrapper?: import('../cli-adapters/exec-file-tree.js').CommandWrapper | undefined;
   readonly workspaceDependencies?: import('./dev-pipeline.js').DevPipelineDependencies | undefined;
   readonly config: AgentExecutorConfig;
   /** Per-run budget guard (#3395). No-op unless config.budget is set. */
