@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.127.10
+
+### Patch Changes
+
+- [#7005](https://github.com/nexus-substrate/nexus-agents/pull/7005) [`4b1173b`](https://github.com/nexus-substrate/nexus-agents/commit/4b1173bc7b29bf0c5b7427fafd083edd9ba80497) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Include declared options in the quick-vote contrarian check so it can assess the available choices without escalating because candidates appear missing. Preserve full option labels when the proposal exceeds the review budget, and keep prompts unchanged for votes without declared options.
+
 ## 8.127.9
 
 ### Patch Changes
