@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.127.7
+
+### Patch Changes
+
+- [#6992](https://github.com/nexus-substrate/nexus-agents/pull/6992) [`7b55668`](https://github.com/nexus-substrate/nexus-agents/commit/7b5566851cedac955a0ff8d7ee0d95d277704927) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote records now carry `voters[].servedModel`: the model the adapter reported serving that seat, beside `model` (the one requested). The field is written only when the adapter reported a model; it is never copied from `model`. It is covered by the record hash, so editing it on disk fails verification. A reported value the reader would reject (empty, over 200 characters, or outside `[A-Za-z0-9._:/@+-]`) is left out with a warning, and the rest of the record is still written. Readers from before the reader-first change cannot parse records that carry the field.
+
 ## 8.127.6
 
 ### Patch Changes
