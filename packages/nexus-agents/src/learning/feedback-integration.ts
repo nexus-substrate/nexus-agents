@@ -89,7 +89,7 @@ const MAX_DECISION_MAP_SIZE = 10000;
  * (Source: Issue #464 - Improve routing technique analytics)
  *
  * @param decision - The routing decision with stage execution info
- * @returns The RouterType that was decisive in the routing decision
+ * @returns The decisive router and measurement evidence, or unattributed when no scoring stage explains it
  */
 function getDecisiveRouterType(decision: CompositeRoutingDecision): DecisiveRouter {
   const stages = decision.stagesExecuted;
@@ -118,11 +118,7 @@ function getDecisiveRouterType(decision: CompositeRoutingDecision): DecisiveRout
   // (enableTopsisRanking, enableZeroRouter, …) and applyTopsisRanking can
   // return an undefined score, so this branch is reachable in production.
   //
-  // `routerType` stays 'topsis' because RouterType has no member for "no stage
-  // explains this" and widening a published union is a breaking change (#5914).
-  // `measured: false` is what stops the label being read as a measurement —
-  // countDecisionsByRouter excludes these rather than crediting TOPSIS.
-  return { routerType: 'topsis', measured: false };
+  return { routerType: 'unattributed', measured: false };
 }
 
 /** What `getDecisiveRouterType` concluded, and whether it concluded anything. */

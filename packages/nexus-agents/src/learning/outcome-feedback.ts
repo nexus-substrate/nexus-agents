@@ -245,8 +245,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
       outcomesByClass,
       avgQualityScore: avgQuality,
       avgReward,
-      decisionsByRouter: routerCounts.byRouter,
-      decisionsUnattributed: routerCounts.unattributed,
+      decisionsByRouter: routerCounts,
       lastUpdatedAt: getTimeProvider().nowIso(),
     };
   }
