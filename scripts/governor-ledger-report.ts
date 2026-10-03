@@ -33,8 +33,13 @@
  *   `unsigned-record`, `unknown-signer`, `bad-signature`,
  *   `signature-not-measured`), rendered by
  *   `governor-ledger-signature.ts`; `ledgerEvidenceFromEnv` supplies the
- *   verifier over the `allowed_signers` beside the ledger. Informational
- *   this phase — the exit answer never reads it.
+ *   verifier over the gate checkout's `allowed_signers`. Enforced: a bound
+ *   record that is not `signed` is `signature-required` (#6279);
+ * - every record in the signature scope (`RATIFICATION_SIGNATURE_SCOPE`:
+ *   `added` — what the PR appends — on the pre-merge job, `ledger` — the
+ *   whole ledger — on the backstop and by default) must be `signed` too, or
+ *   the line is `ledger-signature-required` naming each record id and its
+ *   code (#3927, closing gap).
  *
  * @module scripts/governor-ledger-report
  * (Source: Issue #5131, #6219, #6256, #3927)
@@ -57,7 +62,16 @@ import {
   evaluateLedgerEvidence,
   isRatifiedKind,
 } from './governor-ledger-evidence.js';
-import { formatSignatures, signatureVerifierFromEnv } from './governor-ledger-signature.js';
+import {
+  formatSignatures,
+  signatureVerdictBody,
+  signatureVerifierFromEnv,
+} from './governor-ledger-signature.js';
+import {
+  LEDGER_SIGNATURE_SCOPES,
+  type LedgerSignatureCheck,
+  type LedgerSignatureScope,
+} from './governor-ledger-signature-policy.js';
 import { formatModelDiversityFailure } from './governor-ledger-diversity.js';
 import { gitMovedHeadProbe, isFullSha, type MovedHeadProbe } from './governor-patch-identity.js';
 
@@ -137,11 +151,42 @@ function formatRatified(evidence: RatifiedEvidence): string {
         `redaction record(s) ${evidence.redacted.redactionIds.map((id) => `'${id}'`).join(', ')} ` +
         '(hash unchanged; the tally is verified).';
   const diversity = (evidence.diversityNotices ?? []).map((notice) => ` ${notice}.`).join('');
+  const ledgerSigs =
+    evidence.ledgerSignatures === undefined
+      ? ' Ledger-wide signatures: unmeasured (no scope supplied).'
+      : ` ${ledgerSignaturesClause(evidence.ledgerSignatures)}: all signed.`;
   return (
     `::notice::${TAG} ${evidence.kind}: record '${evidence.record.id}' ratifies PR #${String(b?.pr)} ` +
     `${sha}, decision ${evidence.record.decision}, strategy: ${evidence.record.strategy}, ` +
     `${panel}, ${policy}, ${appendOnly}, ${formatSignatures(evidence.signatures)} — enforced from sequence ` +
-    `${String(SIGNATURE_CUTOVER_SEQUENCE)} (0–${String(SIGNATURE_CUTOVER_SEQUENCE - 1)} grandfathered).${redacted}${diversity}`
+    `${String(SIGNATURE_CUTOVER_SEQUENCE)} (0–${String(SIGNATURE_CUTOVER_SEQUENCE - 1)} grandfathered).${ledgerSigs}${redacted}${diversity}`
+  );
+}
+
+/**
+ * Which LINES the scope-wide signature check judged, out of how many (#3927,
+ * #7000 panel): coverage in raw lines, the exempt counts named, so a gap is
+ * never silent. `0 of N` is printed as such.
+ */
+function ledgerSignaturesClause(check: LedgerSignatureCheck): string {
+  const of = `${String(check.checked)} of ${String(check.lines)} ledger line(s) checked`;
+  return check.scope === 'added'
+    ? `${of}: the lines this PR adds; ${String(check.inBase)} already on the base, ` +
+        `${String(check.grandfathered)} grandfathered`
+    : `${of}: every line; ${String(check.grandfathered)} grandfathered`;
+}
+
+/** `ledger-signature-required`: every failing line by record id and line number, with its own verdict code (#3927). */
+function ledgerSignatureBody(check: LedgerSignatureCheck): string {
+  return (
+    `ledger-signature-required: ${String(check.refused.length)} of the ` +
+    `${String(check.checked)} checked line(s) not 'signed' (${ledgerSignaturesClause(check)}) — ` +
+    check.refused
+      .map(
+        (f) => `record '${f.recordId}' (line ${String(f.line)}) ${signatureVerdictBody(f.verdict)}`
+      )
+      .join('; ') +
+    " — every ledger line past the grandfather set must be signed by a key the gate checkout's allowed_signers lists"
   );
 }
 
@@ -236,6 +281,8 @@ function refusalBody(evidence: Exclude<LedgerEvidence, RatifiedEvidence>): strin
         'restore the base lines verbatim, in their order'
       );
     }
+    case 'ledger-signature-required':
+      return ledgerSignatureBody(evidence);
     case 'duplicate-id':
       return (
         `${evidence.kind}: ${evidence.ids.map((id) => `'${id}'`).join(', ')} name(s) more than one ` +
@@ -261,11 +308,17 @@ export function formatLedgerEvidence(evidence: LedgerEvidence): string {
     evidence.kind === 'ratified' || evidence.kind === 'ratified-rebased'
       ? formatRatified(evidence)
       : `::error::${TAG} ${refusalBody(evidence)}. ${FAIL_NOTE}`;
+  // #3927: a refusal for another reason still names an unsigned record in scope.
+  const sigs = evidence.ledgerSignatures;
+  const withSigs =
+    sigs !== undefined && sigs.refused.length > 0 && evidence.kind !== 'ledger-signature-required'
+      ? `${line}\n::error::${TAG} ${ledgerSignatureBody(sigs)}. ${FAIL_NOTE}`
+      : line;
   const forks = evidence.forks ?? [];
   // Empty means no fork notice; it has no effect on the verdict.
-  if (forks.length === 0) return line;
+  if (forks.length === 0) return withSigs;
   return [
-    line,
+    withSigs,
     ...forks.map(
       ({ sequence, recordIds }) =>
         `::notice::${TAG} ledger forks: sequence ${String(sequence)} ` +
@@ -336,6 +389,28 @@ function readLedgerFile(path: string, what: string, missingIsEmpty: boolean): Re
  * beside the ledger); an unreadable file is `signature-not-measured` on the
  * line, not `unmeasured`.
  */
+/**
+ * #3927 (closing gap): which records the signature requirement covers beyond
+ * the bound ones. The pre-merge job sets `added` (the records the PR appends
+ * to the base ledger); the backstop sets `ledger` (every record on `main`).
+ * Unset or empty ⇒ `ledger`, the stricter scope — a caller that does not say
+ * cannot get the narrower one by omission. Any other value is `unmeasured`.
+ */
+export const SIGNATURE_SCOPE_ENV = 'RATIFICATION_SIGNATURE_SCOPE';
+
+function signatureScopeFromEnv(
+  env: NodeJS.ProcessEnv
+): LedgerSignatureScope | Extract<LedgerEvidenceReport, { kind: 'unmeasured' }> {
+  const text = (env[SIGNATURE_SCOPE_ENV] ?? '').trim();
+  if (text === '') return 'ledger';
+  const scope = LEDGER_SIGNATURE_SCOPES.find((s) => s === text);
+  if (scope !== undefined) return scope;
+  return {
+    kind: 'unmeasured',
+    reason: `${SIGNATURE_SCOPE_ENV} is '${text}', not one of ${LEDGER_SIGNATURE_SCOPES.join(', ')}`,
+  };
+}
+
 /** The report when the workflow supplied no head to bind a record to. */
 const NO_HEAD_SUPPLIED: LedgerEvidenceReport = {
   kind: 'unmeasured',
@@ -362,10 +437,13 @@ export function ledgerEvidenceFromEnv(
 
   const head = headFromEnv(env);
   if (head === undefined) return NO_HEAD_SUPPLIED;
+  const signatureScope = signatureScopeFromEnv(env);
+  if (typeof signatureScope !== 'string') return signatureScope;
   return evaluateLedgerEvidence({
     ledgerText: ledger.text,
     pr,
     head,
+    signatureScope,
     ...optionalInputs(env, head.sha, targetDir, base),
     // allowed_signers is policy: from this gate's own checkout, not the target.
     signatureVerifier: signatureVerifierFromEnv(env, ledgerPath, policyDir),
