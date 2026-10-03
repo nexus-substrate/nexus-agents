@@ -113,7 +113,7 @@ describe('codex exec: one disable per configured MCP server (#6970)', () => {
         'mcp_servers.alpha.enabled=false',
         'mcp_servers.beta.enabled=false',
         'mcp_servers.projonly.enabled=false',
-        'mcp_servers.projonly.command="p"',
+        'mcp_servers.projonly.command="nexus-agents-disabled-mcp-server"',
       ].sort()
     );
   });
@@ -195,10 +195,52 @@ describe('scanCodexMcpServers', () => {
     expect(scan.ok && scan.value).toEqual([]);
   });
 
-  it('serializes a url transport as a TOML string', () => {
-    expect(
-      codexMcpDisableArgs([{ name: 'r', transport: { key: 'url', value: 'http://h/"q"' } }])
-    ).toEqual(['-c', 'mcp_servers.r.enabled=false', '-c', 'mcp_servers.r.url="http://h/\\"q\\""']);
+  it('repeats a url transport as the placeholder url, a TOML string', () => {
+    expect(codexMcpDisableArgs([{ name: 'r', transportKey: 'url' }])).toEqual([
+      '-c',
+      'mcp_servers.r.enabled=false',
+      '-c',
+      'mcp_servers.r.url="http://disabled.invalid/"',
+    ]);
+  });
+});
+
+describe('codex: no project-only server value reaches the argv (#6978)', () => {
+  // codex rejects a disable for a server no loaded layer defines, so the
+  // override repeats the transport KEY. Its VALUE is a placeholder: the
+  // configured url/command, args and env may carry credentials, and argv is
+  // readable by other local users via ps and /proc.
+  const SECRETS = ['URLSECRET123', 'userpass', 'ARGSECRET', 'ENVSECRET999', 'secret-cmd'];
+  const PROJECT_TOML = `
+[mcp_servers.tokensrv]
+url = "https://user:userpass@host.example/mcp?token=URLSECRET123"
+[mcp_servers.cmdsrv]
+command = "/opt/secret-cmd"
+args = ["--key", "ARGSECRET"]
+env = { API_KEY = "ENVSECRET999" }
+`;
+
+  it('the codex exec argv carries none of the configured values', () => {
+    write(join(project, '.codex', 'config.toml'), PROJECT_TOML);
+    const { args } = new CodexProbe().command(readOnly());
+    const argv = args.join(' ');
+    for (const secret of SECRETS) expect(argv).not.toContain(secret);
+    expect(mcpOverrides(args).sort()).toEqual(
+      [
+        'mcp_servers.cmdsrv.enabled=false',
+        'mcp_servers.cmdsrv.command="nexus-agents-disabled-mcp-server"',
+        'mcp_servers.tokensrv.enabled=false',
+        'mcp_servers.tokensrv.url="http://disabled.invalid/"',
+      ].sort()
+    );
+  });
+
+  it('the scan result itself holds no configured value', () => {
+    write(join(project, '.codex', 'config.toml'), PROJECT_TOML);
+    const scan = scanCodexMcpServers({ env: { HOME: home }, cwd }, []);
+    expect(scan.ok).toBe(true);
+    const dump = JSON.stringify(scan.ok ? scan.value : null);
+    for (const secret of SECRETS) expect(dump).not.toContain(secret);
   });
 });
 

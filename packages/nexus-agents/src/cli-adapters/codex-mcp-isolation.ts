@@ -14,7 +14,7 @@
  * - project: `.codex/config.toml` in each directory from the cwd up to the
  *   project root (the first directory holding a `project_root_markers` entry,
  *   default `.git`). codex loads these only for a trusted project; this module
- *   does not decide trust, see {@link CodexMcpServer.transport}.
+ *   does not decide trust, see {@link CodexMcpServer.transportKey}.
  *
  * Refused rather than listed (the scan fails closed), since this module
  * cannot name the servers they add:
@@ -43,18 +43,39 @@ import {
   readConfigIfPresent,
 } from './mcp-config-scan.js';
 
+/** The key that selects an MCP server's transport in codex config. */
+type TransportKey = 'command' | 'url';
+
 /** One MCP server codex's config registers. */
 export interface CodexMcpServer {
   readonly name: string;
   /**
-   * The transport key (`command` or `url`) and value, set only for a server
-   * that no system or user config defines. codex rejects a `-c` override for
-   * a server no loaded layer defines (`invalid transport`), and an untrusted
-   * project's layer is not loaded; repeating the transport key makes the
-   * override a complete, disabled definition either way.
+   * The transport key (`command` or `url`), set only for a server that no
+   * system or user config defines. codex rejects a `-c` override for a server
+   * no loaded layer defines (`invalid transport`), and an untrusted project's
+   * layer is not loaded; repeating the transport key makes the override a
+   * complete, disabled definition either way.
+   *
+   * Only the key is kept: the override repeats it with
+   * {@link CODEX_DISABLED_TRANSPORT_PLACEHOLDER}, never the configured value
+   * (#6978). A configured url or command can embed a credential, and `-c`
+   * values sit in the child's argv, readable via `ps` and `/proc`. Measured
+   * live on codex-cli 0.160.0: a placeholder value with `enabled=false`
+   * passes validation and starts nothing, for a trusted project (whose own
+   * definition it overrides) and an untrusted one alike.
    */
-  readonly transport?: { readonly key: 'command' | 'url'; readonly value: unknown };
+  readonly transportKey?: TransportKey;
 }
+
+/**
+ * The value a disabled project-only server's transport key is repeated with
+ * (#6978). Never started: the same override sets `enabled = false`. `.invalid`
+ * is a reserved TLD (RFC 2606), so the url cannot resolve even if it were.
+ */
+export const CODEX_DISABLED_TRANSPORT_PLACEHOLDER: Readonly<Record<TransportKey, string>> = {
+  command: 'nexus-agents-disabled-mcp-server',
+  url: 'http://disabled.invalid/',
+};
 
 /** System config files, lowest precedence first. */
 export const CODEX_SYSTEM_CONFIG_FILES: readonly string[] = [
@@ -73,7 +94,7 @@ const DEFAULT_PROJECT_ROOT_MARKERS: readonly string[] = ['.git'];
 const ADDRESSABLE_NAME = /^[A-Za-z0-9_-]+$/;
 
 interface ParsedLayer {
-  readonly servers: ReadonlyMap<string, CodexMcpServer['transport']>;
+  readonly servers: ReadonlyMap<string, TransportKey | undefined>;
   readonly projectRootMarkers?: readonly string[];
   /** Names in the layer's `plugins` table not explicitly disabled. */
   readonly enabledPlugins: readonly string[];
@@ -90,18 +111,19 @@ function enabledPlugins(path: string, table: unknown): Result<readonly string[],
   );
 }
 
-function transportOf(name: string, entry: unknown): Result<CodexMcpServer['transport'], string> {
+/** The server's transport key; its value is deliberately not read (#6978). */
+function transportOf(name: string, entry: unknown): Result<TransportKey | undefined, string> {
   if (!isRecord(entry)) return err(`mcp_servers.${name} is not a table`);
-  if ('command' in entry) return ok({ key: 'command', value: entry['command'] });
-  if ('url' in entry) return ok({ key: 'url', value: entry['url'] });
+  if ('command' in entry) return ok('command');
+  if ('url' in entry) return ok('url');
   return ok(undefined);
 }
 
 function parseServers(
   path: string,
   table: unknown
-): Result<Map<string, CodexMcpServer['transport']>, string> {
-  const servers = new Map<string, CodexMcpServer['transport']>();
+): Result<Map<string, TransportKey | undefined>, string> {
+  const servers = new Map<string, TransportKey | undefined>();
   if (table === undefined) return ok(servers);
   if (!isRecord(table)) return err(`${path}: mcp_servers is not a table`);
   for (const [name, entry] of Object.entries(table)) {
@@ -346,14 +368,14 @@ export function scanCodexMcpServers(
 /**
  * The servers of the always-loaded layers, then those only a project layer
  * defines (nearest first, so the first definition seen wins), with the
- * transport repeated for the latter.
+ * transport key kept for the latter.
  */
 function mergeServers(
   always: readonly ParsedLayer[],
   project: readonly ParsedLayer[]
 ): readonly CodexMcpServer[] {
   const baseNames = new Set(always.flatMap((l) => [...l.servers.keys()]));
-  const projectOnly = new Map<string, CodexMcpServer['transport']>();
+  const projectOnly = new Map<string, TransportKey | undefined>();
   for (const layer of project) {
     for (const [name, transport] of layer.servers) {
       if (!baseNames.has(name) && !projectOnly.has(name)) projectOnly.set(name, transport);
@@ -361,8 +383,8 @@ function mergeServers(
   }
   return [
     ...[...baseNames].map((name) => ({ name })),
-    ...[...projectOnly].map(([name, transport]) =>
-      transport === undefined ? { name } : { name, transport }
+    ...[...projectOnly].map(([name, transportKey]) =>
+      transportKey === undefined ? { name } : { name, transportKey }
     ),
   ];
 }
@@ -374,8 +396,9 @@ export function codexMcpDisableConfig(
   const config: Record<string, unknown> = {};
   for (const server of servers) {
     config[`mcp_servers.${server.name}.enabled`] = false;
-    if (server.transport !== undefined) {
-      config[`mcp_servers.${server.name}.${server.transport.key}`] = server.transport.value;
+    if (server.transportKey !== undefined) {
+      config[`mcp_servers.${server.name}.${server.transportKey}`] =
+        CODEX_DISABLED_TRANSPORT_PLACEHOLDER[server.transportKey];
     }
   }
   return config;
