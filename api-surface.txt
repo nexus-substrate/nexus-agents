@@ -3024,6 +3024,7 @@ InterfaceDeclaration DevPipelineOptions
   readonly trustTier?: string | undefined
   readonly untrustedInputGuard?: (() => void) | undefined
 InterfaceDeclaration DevPipelineResult
+  readonly changes?: undefined | { readonly baseSha: string; readonly dependenciesLinked: number; readonly diff: string; readonly empty: boolean; readonly status: "changes" | "no_changes"; readonly worktreePath: string; readonly worktreeRemoved: boolean; }
   readonly completed: boolean
   readonly dryRun?: true | undefined
   readonly harnessMode?: true | undefined
@@ -3050,6 +3051,7 @@ InterfaceDeclaration DevPipelineStages
   research(task: string, signal?: AbortSignal) => Promise<ResearchContext>
   securityScan(signal?: AbortSignal) => Promise<{ readonly feedback: string; readonly passed: boolean; readonly verdict?: "fail" | "pass" | "skip"; }>
   vote(plan: string, research: string, signal?: AbortSignal) => Promise<VoteResult>
+  withWorkspace((directory: string) => DevPipelineStages) | undefined
 TypeAliasDeclaration DifficultyDimension
   = z.infer<typeof DifficultyDimensionSchema>
 InterfaceDeclaration DifficultyEstimate

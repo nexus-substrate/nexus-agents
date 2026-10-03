@@ -288,6 +288,8 @@ function throwIfAborted(signal: AbortSignal | undefined, expertType: BuiltInExpe
 
 /** Per-call options for {@link runExpert}. */
 interface RunExpertOptions {
+  /** Explicit working directory for scratch-bound implementation and review. */
+  readonly workDir?: string | undefined;
   /**
    * The stage's abort signal (#6736): it reaches the routed CLI call, and once
    * it has fired {@link runExpert} THROWS instead of returning a failure
@@ -314,7 +316,7 @@ export async function runExpert(
   executionId?: string,
   options: RunExpertOptions = {}
 ): Promise<ExpertBridgeResult> {
-  const { signal, accessMode } = options;
+  const { signal, accessMode, workDir } = options;
   throwIfAborted(signal, expertType);
   if (guard.isExhausted()) {
     // Observable escalation (#3262): a budget short-circuit must not be silent.
@@ -339,6 +341,7 @@ export async function runExpert(
     };
   }
   const bridgeOptions = {
+    ...(workDir !== undefined && { workDir }),
     ...(signal !== undefined && { signal }),
     ...(accessMode !== undefined && { accessMode }),
   };

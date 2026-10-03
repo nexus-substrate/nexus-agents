@@ -63,6 +63,7 @@ import { applyPipelineHindsight, assemblePlanContext } from './dev-pipeline-cont
 import { DEFAULT_MAX_NO_QUORUM_RETRIES, retryNoQuorumVote } from './iterative-consensus.js';
 import { allOf, anyOf } from '../utils/verdict-aggregation.js';
 import { DevPipelineCancelledError, guardDevPipelineStages } from './dev-pipeline-deadlines.js';
+import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
 
 const logger = createLogger({ component: 'dev-pipeline' });
 
@@ -214,6 +215,18 @@ export interface QaReviewResult {
 
 /** Overall pipeline result. */
 export interface DevPipelineResult {
+  /** Operator-applied patch and the scratch checkout's cleanup status. */
+  readonly changes?: {
+    readonly diff: string;
+    readonly baseSha: string;
+    /** Provenance; a cleanup failure leaves this path for the operator to remove. */
+    readonly worktreePath: string;
+    readonly worktreeRemoved: boolean;
+    /** Installed dependency directories linked from the source; zero leaves gates unchanged. */
+    readonly dependenciesLinked: number;
+    readonly empty: boolean;
+    readonly status: 'no_changes' | 'changes';
+  };
   /**
    * Whether the pipeline completed successfully.
    *
@@ -318,6 +331,8 @@ export interface DevPipelineResult {
  * securityScan end their subprocess trees (#6747).
  */
 export interface DevPipelineStages {
+  /** Rebind execution stages to a per-run scratch directory, sharing the run's budget. */
+  withWorkspace?(directory: string): DevPipelineStages;
   /**
    * Research expert gathers context for the task. Returns the full
    * {@link ResearchContext} (#3234 seam 0): `.text` feeds plan/vote as before,
@@ -611,12 +626,14 @@ async function runDevPipelineInner(
   }
 
   // Phases 4-5: Implement + Quality Gate + Security
-  const result = await runImplSecurityPhase(planResult, tasks, stages, {
-    sid,
-    qualityGateMode: options?.qualityGate ?? 'off',
-    limits: resolveIterationLimits(options),
-    contentTier: provenance.contentTier,
-  });
+  const result = await withDevPipelineWorkspace(stages, (bound) =>
+    runImplSecurityPhase(planResult, tasks, bound, {
+      sid,
+      qualityGateMode: options?.qualityGate ?? 'off',
+      limits: resolveIterationLimits(options),
+      contentTier: provenance.contentTier,
+    })
+  );
 
   // Apply hindsight with actual pipeline outcome (#1720)
   applyPipelineHindsight(bm, task, sid, result);

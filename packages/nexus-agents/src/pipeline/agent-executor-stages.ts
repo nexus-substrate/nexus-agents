@@ -239,6 +239,7 @@ export function createImplementStage({
       {
         signal,
         accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
+        workDir: config.scanTarget,
       }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
@@ -320,6 +321,7 @@ export function createQaReviewStage({
     const r = await runExpert(guard, 'qa', prompt, task.id, {
       signal,
       accessMode: 'read-only-analysis',
+      workDir: config.scanTarget,
     });
     const { review: parsed, unmeasured } = readQaReview(r);
     const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;

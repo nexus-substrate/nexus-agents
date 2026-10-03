@@ -346,7 +346,7 @@ export async function runDevPipelineForGoal(
 // ============================================================================
 
 const RUN_DEV_PIPELINE_DESCRIPTION =
-  "Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Supports dry-run (plan+vote only). Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.";
+  "Run the multi-agent development pipeline. Accepts direct task instructions, a plan file, or a spec file. Implement, QA and gates use a per-run scratch worktree pinned to HEAD; the source checkout is unchanged. Links installed root/workspace dependencies without installing; changes.dependenciesLinked is zero when none are available and gate behaviour is unchanged. Returns changes (unified diff, baseSha, worktreePath, worktreeRemoved, dependenciesLinked, empty, status: changes or no_changes) for the operator to apply. Cleanup failures preserve the diff with worktreeRemoved:false and a leftover-path warning; dirty-source warnings identify HEAD and the number of omitted uncommitted paths. Supports dry-run (plan+vote only). Supports dispatch: 'async' (non-dryRun runs) — returns a jobId immediately; poll get_job_result.";
 
 /**
  * Validates input, runs the dev pipeline, and shapes the result.
@@ -408,6 +408,9 @@ function describeIncompleteRun(result: DevPipelineResult): string {
   }
   if (result.taskStatus !== undefined && result.taskStatus !== 'all_done') {
     return `Pipeline did not complete: tasks ${result.taskStatus}`;
+  }
+  if (result.changes?.status === 'no_changes') {
+    return 'Pipeline produced no_changes: implement left an empty diff';
   }
   return 'Pipeline did not complete';
 }

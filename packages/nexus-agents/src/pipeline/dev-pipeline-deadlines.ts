@@ -144,7 +144,14 @@ export function guardDevPipelineStages(
   options: DevStageGuardOptions
 ): DevPipelineStages {
   const qualityGate = stages.qualityGate?.bind(stages);
+  const withWorkspace = stages.withWorkspace?.bind(stages);
   return {
+    ...(withWorkspace !== undefined
+      ? {
+          withWorkspace: (directory: string) =>
+            guardDevPipelineStages(withWorkspace(directory), options),
+        }
+      : {}),
     research: (task) => runStage('research', options, (s) => stages.research(task, s)),
     plan: (task, research, priorFeedback) =>
       runStage('plan', options, (s) => stages.plan(task, research, priorFeedback, s)),
