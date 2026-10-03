@@ -20,17 +20,14 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     // scripts/ — the generators and drift gates (#3952).
-    // website/src/plugins/ — the markdown plugins that shape the published docs
-    // site. The website package has no test runner of its own, and these were
-    // uncovered until the Astro 7 migration (#4359) needed a regression net.
+    // website/ is NOT collected here: it is its own pnpm root since #6986, so
+    // its dependencies (satteri) are not in this node_modules. Its plugin tests
+    // run from website/ (`pnpm --dir website test`) in the advisory Website
+    // Audit job in docs-check.yml.
     // eslint-rules/ — the in-repo custom lint rules (#4581). They are plain
     // ESM so that eslint.config.js can import them directly, and their
     // RuleTester fixtures are the only thing proving they still fire.
-    include: [
-      'scripts/**/*.test.ts',
-      'website/src/plugins/**/*.test.ts',
-      'eslint-rules/**/*.test.js',
-    ],
+    include: ['scripts/**/*.test.ts', 'eslint-rules/**/*.test.js'],
     exclude: [
       'node_modules',
       '**/node_modules/**',

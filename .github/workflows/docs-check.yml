@@ -931,7 +931,14 @@ jobs:
       - name: Install website dependencies (own lockfile)
         run: pnpm --dir website install --frozen-lockfile --ignore-scripts
 
+      # The site's plugin tests left the root scripts suite with the workspace
+      # (website deps are not in the root node_modules), so they run here.
+      - name: Test website plugins
+        run: pnpm --dir website test
+
+      # Runs even when the tests fail, so one red step cannot hide the other.
       - name: Audit website dependencies
+        if: ${{ !cancelled() }}
         run: pnpm --dir website audit --audit-level=high
 
   # ==========================================================================
