@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 8.129.0
+
+### Minor Changes
+
+- [#7016](https://github.com/nexus-substrate/nexus-agents/pull/7016) [`28642bb`](https://github.com/nexus-substrate/nexus-agents/commit/28642bb294255afbc28c8f2931fcfc2df55fb325) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist immutable voter response usage and provenance across retries, replacements,
+  fallbacks and late settlement in decision-cost telemetry. Report observed outer-attempt
+  usage and coverage separately from final-seat totals in the weekly weather view.
+
+  Keep final-seat cost records when decorative telemetry is invalid, and bound captured
+  model, CLI and adapter strings. Read future telemetry keys and classifications safely.
+  Exclude duplicate response histories only from attempt totals, with explicit invalid
+  telemetry coverage. Distinguish parse and adapter-error retries, retain role-retry
+  context through CLI fallback, and preserve first-pass/retry event order.
+
 ## 8.128.1
 
 ### Patch Changes
