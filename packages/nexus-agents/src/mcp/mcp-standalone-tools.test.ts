@@ -8,7 +8,6 @@
  * @module mcp/mcp-standalone-tools.test
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
@@ -165,11 +164,10 @@ async function setupServer(): Promise<TestContext> {
 
 describe('MCP Standalone Tools Integration', () => {
   let ctx: TestContext;
-  // #5045: compare_data_feeds needs two real files to get past input
-  // validation. They live in a temp dir, never the repo — an earlier draft let
-  // research_add_source persist into docs/research/registry/ and the suite
-  // then failed on its own second run.
-  const feedDir = mkdtempSync(join(tmpdir(), 'nexus-feed-'));
+  // #5045: compare_data_feeds needs real files under cwd to pass its path guard.
+  // Keep them in a disposable directory, removed after the suite; never write
+  // test data into the persistent research registry.
+  const feedDir = mkdtempSync(join(process.cwd(), '.nexus-feed-'));
 
   beforeAll(async () => {
     writeFileSync(join(feedDir, 'a.json'), JSON.stringify([{ id: 'x', license: 'MIT' }]));
@@ -207,6 +205,7 @@ describe('MCP Standalone Tools Integration', () => {
   const ROUND_TRIP_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
     memory_query: { query: 'round trip', source: 'session' },
     memory_stats: {},
+    weather_report: {},
     memory_write: { key: 'rt-key', content: 'round-trip', backend: 'session' },
     research_add: { arxivId: '2401.12345', dryRun: true },
     research_add_source: {
@@ -236,6 +235,17 @@ describe('MCP Standalone Tools Integration', () => {
       compareFields: ['license'],
     },
   };
+
+  it('compare_data_feeds reads its fixture and returns measured differences', async () => {
+    const result = await ctx.client.callTool({
+      name: 'compare_data_feeds',
+      arguments: ROUND_TRIP_ARGS['compare_data_feeds'],
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      counts: { entriesInA: 1, entriesInB: 1, inBoth: 1, fieldDifferences: 1 },
+    });
+  });
 
   /**
    * #5008: a tool result that does not name the build it came from cannot be
