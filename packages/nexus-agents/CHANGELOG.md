@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.128.1
+
+### Patch Changes
+
+- [#7014](https://github.com/nexus-substrate/nexus-agents/pull/7014) [`5fac264`](https://github.com/nexus-substrate/nexus-agents/commit/5fac264da8af9e16f5371b8dd23a9a23b6ff6635) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Prevent Codex MCP tasks from silently running in the server's working directory when a task specifies another directory. These tasks now return a non-retryable refusal because MCP working-directory support cannot be verified. Use the Codex subprocess transport for directory-bound tasks. Tasks without a working directory retain their existing behavior.
+
 ## 8.128.0
 
 ### Minor Changes
