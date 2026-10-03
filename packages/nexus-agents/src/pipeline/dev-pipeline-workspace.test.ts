@@ -1,15 +1,7 @@
 /** Dependency provisioning, cleanup failures and HEAD provenance use real temporary repositories. */
 import { execFileSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
@@ -118,7 +110,9 @@ describe('dev pipeline workspace follow-up', () => {
     mocks.warn.mockClear();
     mocks.stageEvent.mockClear();
     mocks.paths = [];
-    tmp = mkdtempSync(join(tmpdir(), 'dev-workspace-test-'));
+    // The vitest TMPDIR is in-repo on a short checkout path (CI); the fixture
+    // and its scratch must not be, or the isolation check rightly refuses the gate.
+    tmp = mkdtempOutsideRepo('dev-workspace-test-');
     repo = join(tmp, 'repo');
     mkdirSync(repo);
     vi.stubEnv('NEXUS_TMPDIR', tmp);
