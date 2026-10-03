@@ -347,6 +347,53 @@ describe('codex: plugin and cloud-managed MCP sources fail closed (#6970)', () =
     );
     expect(!scan.ok && scan.error).toMatch(/cloud-managed/);
   });
+
+  /** auth.json for a ChatGPT login on `plan`; the tokens are obviously fake. */
+  function writeAuthForPlan(codexHome: string, plan: string): void {
+    const claims = { 'https://api.openai.com/auth': { chatgpt_plan_type: plan } };
+    const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
+    write(
+      join(codexHome, 'auth.json'),
+      JSON.stringify({
+        auth_mode: 'chatgpt',
+        tokens: { id_token: `TESTFAKE.${payload}.TESTFAKE`, access_token: 'TESTFAKE' },
+      })
+    );
+  }
+
+  it('a workspace account with no cached bundle yet is refused (#6977)', async () => {
+    writeAuthForPlan(join(home, '.codex'), 'enterprise');
+    expect(await refusalOf(new CodexProbe({ sandboxProbe: () => ({ status: 'ok' }) }))).toMatch(
+      /plan "enterprise" is not a personal plan/
+    );
+  });
+
+  it('a personal account with no cached bundle runs, under CODEX_HOME (#6977)', () => {
+    writeAuthForPlan(join(root, 'ch'), 'plus');
+    writeAuthForPlan(join(home, '.codex'), 'enterprise');
+    const scan = scanCodexMcpServers(
+      { env: { HOME: home, CODEX_HOME: join(root, 'ch') }, cwd },
+      []
+    );
+    expect(scan.ok).toBe(true);
+  });
+
+  it('a keyring credential store in the user config is refused (#6977)', () => {
+    write(join(home, '.codex', 'config.toml'), 'cli_auth_credentials_store = "keyring"\n');
+    const scan = scanCodexMcpServers({ env: { HOME: home }, cwd }, []);
+    expect(!scan.ok && scan.error).toMatch(/cli_auth_credentials_store/);
+  });
+
+  it('a project layer cannot hide a keyring store set below it (#6977)', () => {
+    write(join(home, '.codex', 'config.toml'), 'cli_auth_credentials_store = "auto"\n');
+    write(join(project, '.codex', 'config.toml'), 'cli_auth_credentials_store = "file"\n');
+    expect(scanCodexMcpServers({ env: { HOME: home }, cwd }, []).ok).toBe(false);
+  });
+
+  it('the read-only refusal does not touch a default-mode run (#6977)', () => {
+    writeAuthForPlan(join(home, '.codex'), 'enterprise');
+    expect(() => new CodexProbe().command(defaultMode())).not.toThrow();
+  });
 });
 
 describe('readConfigIfPresent: only a bounded regular file is read (#6970)', () => {

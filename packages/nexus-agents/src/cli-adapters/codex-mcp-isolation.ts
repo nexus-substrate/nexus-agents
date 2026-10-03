@@ -24,8 +24,9 @@
  *   `.codex-plugin/`, `.claude-plugin/` or `.cursor-plugin/` `plugin.json`).
  * - cloud-managed config: a `cloud-config-bundle-cache.json` in `$CODEX_HOME`,
  *   which codex 0.160.0 writes for a workspace whose admin pushes config.
- *   A workspace account's FIRST run, before that cache exists, is not
- *   detectable from disk.
+ *   Before that cache exists, the account is classified instead: a run whose
+ *   `auth.json` is not a personal plan is refused (#6977), see
+ *   {@link cloudConfigAuthRefusal}.
  */
 
 import { readdirSync, realpathSync, statSync } from 'node:fs';
@@ -35,6 +36,7 @@ import { parse as parseToml } from 'smol-toml';
 import type { Result } from '../core/index.js';
 import { ok, err } from '../core/index.js';
 import { isRecord } from '../utils/type-coercion.js';
+import { cloudConfigAuthRefusal } from './codex-cloud-config-auth.js';
 import {
   type McpScanContext,
   childHome,
@@ -98,6 +100,8 @@ interface ParsedLayer {
   readonly projectRootMarkers?: readonly string[];
   /** Names in the layer's `plugins` table not explicitly disabled. */
   readonly enabledPlugins: readonly string[];
+  /** The layer's `cli_auth_credentials_store`, when set. */
+  readonly credentialsStore?: string;
 }
 
 /** Plugin entries in a `plugins` table that are not `enabled = false`. */
@@ -145,6 +149,12 @@ function readMarkers(path: string, value: unknown): Result<readonly string[] | u
   return err(`${path}: project_root_markers is not an array of strings`);
 }
 
+/** The layer's `cli_auth_credentials_store`, which must be a string when set. */
+function readStore(path: string, value: unknown): Result<string | undefined, string> {
+  if (value === undefined || typeof value === 'string') return ok(value);
+  return err(`${path}: cli_auth_credentials_store is not a string`);
+}
+
 /** One config file's servers; a missing file is an empty layer. */
 function readLayer(path: string): Result<ParsedLayer, string> {
   const text = readConfigIfPresent(path);
@@ -156,16 +166,24 @@ function readLayer(path: string): Result<ParsedLayer, string> {
   } catch (error: unknown) {
     return err(`cannot parse ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
+  return parseLayer(path, doc);
+}
+
+/** The keys of one parsed config document this module reads. */
+function parseLayer(path: string, doc: Record<string, unknown>): Result<ParsedLayer, string> {
   const servers = parseServers(path, doc['mcp_servers']);
   if (!servers.ok) return servers;
   const markers = readMarkers(path, doc['project_root_markers']);
   if (!markers.ok) return markers;
   const plugins = enabledPlugins(path, doc['plugins']);
   if (!plugins.ok) return plugins;
+  const store = readStore(path, doc['cli_auth_credentials_store']);
+  if (!store.ok) return store;
   return ok({
     servers: servers.value,
     enabledPlugins: plugins.value,
     ...(markers.value !== undefined && { projectRootMarkers: markers.value }),
+    ...(store.value !== undefined && { credentialsStore: store.value }),
   });
 }
 
@@ -313,7 +331,8 @@ function descendBranch(
 /**
  * An error when codex would load MCP servers from a source this module
  * cannot list: an enabled plugin entry, an installed plugin declaring MCP
- * servers, or cloud-managed config.
+ * servers, cached cloud-managed config, or an account codex would fetch
+ * cloud-managed config for.
  */
 function unlistableSourceRefusal(
   env: McpScanContext['env'],
@@ -334,8 +353,16 @@ function unlistableSourceRefusal(
     statSync(cache);
   } catch (error: unknown) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT' || code === 'ENOTDIR') return ok(undefined);
-    return err(`cannot stat ${cache}: ${code ?? String(error)}`);
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+      return err(`cannot stat ${cache}: ${code ?? String(error)}`);
+    }
+    // Nothing cached yet: refuse an account codex would fetch for (#6977).
+    // Any layer naming a non-file store counts, so a project layer cannot
+    // hide one set below it.
+    const store = layers
+      .map((l) => l.credentialsStore)
+      .find((s) => s !== undefined && s !== 'file');
+    return cloudConfigAuthRefusal(home, store);
   }
   return err(`cloud-managed config is cached at ${cache}; its MCP servers cannot be listed`);
 }
