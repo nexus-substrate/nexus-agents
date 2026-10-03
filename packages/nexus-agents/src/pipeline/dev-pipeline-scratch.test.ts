@@ -155,10 +155,14 @@ describe('dev pipeline scratch worktree', () => {
     );
     expect(mocks.check).toHaveBeenCalledTimes(3);
     // The scan is contained to the scratch it was bound to, not to cwd (#6794).
-    expect(mocks.scan).toHaveBeenCalledWith(workspace, undefined, {
-      env: hermeticGitEnv(),
-      root: workspace,
-    });
+    expect(mocks.scan).toHaveBeenCalledWith(
+      workspace,
+      undefined,
+      expect.objectContaining({
+        env: hermeticGitEnv(),
+        root: workspace,
+      })
+    );
     expect(
       join(
         result.changes?.worktreePath ?? '',

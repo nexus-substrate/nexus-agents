@@ -218,6 +218,7 @@ export interface QaReviewResult {
 export interface DevPipelineWorkspaceBinding {
   readonly directory: string;
   readonly dependencies: DevPipelineDependencies;
+  readonly wrapper?: import('../cli-adapters/exec-file-tree.js').CommandWrapper | undefined;
 }
 
 export type DevPipelineDependencies =
@@ -240,6 +241,8 @@ export interface DevPipelineResult {
     readonly worktreeRemoved: boolean;
     /** Offline provisioning outcome, scoped to this scratch checkout. */
     readonly dependencies: DevPipelineDependencies;
+    /** Measured subprocess isolation, with a reason when unavailable. */
+    readonly isolation: { readonly mode: 'os-sandbox' | 'best-effort'; readonly reason?: string };
     readonly empty: boolean;
     readonly status: 'no_changes' | 'changes';
   };

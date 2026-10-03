@@ -362,33 +362,52 @@ export function createQaReviewStage({
   };
 }
 
+/**
+ * Run typecheck/lint/tests for the gate, or report it unmeasured when the
+ * scratch's dependencies could not be provisioned (#6794).
+ */
+function runQualityChecks(
+  target: string,
+  workspaceDependencies: StageDeps['workspaceDependencies'],
+  wrapper: StageDeps['wrapper'],
+  signal: AbortSignal | undefined
+): Promise<Awaited<ReturnType<typeof runQualityGate>> | { verdict: 'skip'; feedback: string }> {
+  if (workspaceDependencies?.status === 'failed') {
+    return Promise.resolve({
+      verdict: 'skip' as const,
+      feedback: `dependencies could not be provisioned: ${workspaceDependencies.reason}`,
+    });
+  }
+  // Scratch scripts must not inherit source-repository Git redirects.
+  const env = workspaceDependencies === undefined ? undefined : hermeticGitEnv();
+  // Reuse the canonical #1684 engine + check factories — no new check logic.
+  return runQualityGate(
+    'qa',
+    [
+      checkTypeCheck(target, env, wrapper),
+      checkLint(target, env, wrapper),
+      checkTests(target, env, wrapper),
+    ],
+    1,
+    signal
+  );
+}
+
 export function createQualityGateStage({
   config,
   startStage,
   workspaceDependencies,
+  wrapper,
 }: StageDeps): NonNullable<DevPipelineStages['qualityGate']> {
   return async (signal) => {
     startStage('quality-gate');
     const start = getTimeProvider().now();
     const target = config.scanTarget ?? process.cwd();
     await postProgress(config, 'QualityGate', `Typecheck/lint/tests on ${target}...`);
-    // Scratch scripts must not inherit source-repository Git redirects.
-    const env = workspaceDependencies === undefined ? undefined : hermeticGitEnv();
-    // Reuse the canonical #1684 engine + check factories — no new check logic.
     // #6747: the signal ends the running check's process tree; an aborted
     // gate throws rather than recording an outcome it never measured.
     const result = await rethrowAsStageAbort('qualityGate', signal, async () =>
-      workspaceDependencies?.status === 'failed'
-        ? {
-            verdict: 'skip' as const,
-            feedback: `dependencies could not be provisioned: ${workspaceDependencies.reason}`,
-          }
-        : runQualityGate(
-            'qa',
-            [checkTypeCheck(target, env), checkLint(target, env), checkTests(target, env)],
-            1,
-            signal
-          )
+      runQualityChecks(target, workspaceDependencies, wrapper, signal)
     );
     // #4355: `=== 'pass'`, NOT `!== 'fail'`. The gate reports three states,
     // and `skip` means no check actually ran — every declared script was
@@ -428,6 +447,7 @@ export function createSecurityScanStage({
   config,
   startStage,
   workspaceDependencies,
+  wrapper,
 }: StageDeps): DevPipelineStages['securityScan'] {
   return async (signal) => {
     startStage('security');
@@ -440,6 +460,7 @@ export function createSecurityScanStage({
     const check = checkSecurityScan(target, undefined, {
       env: scratchBound ? hermeticGitEnv() : undefined,
       root: scratchBound ? target : undefined,
+      wrapper,
     });
     // #6747: the signal ends the scanner's process tree and the OSV lookups.
     const result = await rethrowAsStageAbort('securityScan', signal, () => check(signal));

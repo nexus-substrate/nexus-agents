@@ -41,6 +41,8 @@ export interface SecurityGateConfig {
   readonly enableOsv?: boolean | undefined;
   /** Subprocess environment. Absent: inherit the caller's environment. */
   readonly env?: NodeJS.ProcessEnv | undefined;
+  /** Optional scratch OS sandbox. */
+  readonly wrapper?: import('../cli-adapters/exec-file-tree.js').CommandWrapper | undefined;
   /** Containment root for the target. Absent: the server's cwd (see SecurityScanOptions.root). */
   readonly root?: string | undefined;
 }
@@ -69,7 +71,7 @@ export function checkSecurityScan(
         rulesets: [...rulesets],
         maxFindings: 50,
       },
-      { signal, env: config.env, root: config.root }
+      { signal, env: config.env, root: config.root, wrapper: config.wrapper }
     );
     // #6747: an aborted scan measured nothing. Rejecting keeps it from being
     // reported as a `skip`, and keeps the OSV lookups from starting.

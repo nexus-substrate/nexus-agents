@@ -13,7 +13,7 @@ import { parseSarif } from '../../security/sarif-parser.js';
 import type { SarifParseResult } from '../../security/sarif-types.js';
 import { createLogger } from '../../core/index.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
-import { execFileTree } from '../../cli-adapters/exec-file-tree.js';
+import { execFileTree, type CommandWrapper } from '../../cli-adapters/exec-file-tree.js';
 
 const logger = createLogger({ component: 'security-scan' });
 
@@ -23,10 +23,11 @@ const SCAN_TIMEOUT_MS = 300_000;
 /** Check if semgrep is available. */
 async function isSemgrepAvailable(
   signal: AbortSignal | undefined,
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
+  wrapper: CommandWrapper | undefined
 ): Promise<boolean> {
   try {
-    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal, env });
+    await execFileTree('semgrep', ['--version'], { timeoutMs: 10_000, signal, env, wrapper });
     return true;
   } catch {
     return false;
@@ -42,7 +43,8 @@ async function runSemgrep(
   targetDir: string,
   rulesets: readonly string[],
   signal: AbortSignal | undefined,
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
+  wrapper: CommandWrapper | undefined
 ): Promise<string> {
   const args = ['--sarif', '--quiet', ...rulesets.flatMap((r) => ['--config', r]), targetDir];
 
@@ -51,6 +53,7 @@ async function runSemgrep(
     maxBuffer: 10 * 1024 * 1024, // 10MB for large SARIF output
     signal,
     env,
+    wrapper,
   });
 
   return stdout;
@@ -79,6 +82,8 @@ export interface SecurityScanOptions {
   readonly signal?: AbortSignal | undefined;
   /** Scanner subprocess environment. Absent: inherit the caller's. */
   readonly env?: NodeJS.ProcessEnv | undefined;
+  /** Optional scratch OS sandbox. */
+  readonly wrapper?: CommandWrapper | undefined;
   /**
    * Root the target must resolve inside. Absent: the server's cwd. Only a
    * caller that CREATED the directory may pass it: the dev pipeline's scratch
@@ -116,7 +121,7 @@ export async function executeSecurityScan(
     rulesets: input.rulesets,
   });
 
-  const available = await isSemgrepAvailable(signal, env);
+  const available = await isSemgrepAvailable(signal, env, options.wrapper);
   // An abort during the probe is not a missing scanner.
   if (signal?.aborted === true) return { error: 'Scan aborted before semgrep ran' };
   if (!available) {
@@ -126,7 +131,7 @@ export async function executeSecurityScan(
   }
 
   try {
-    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal, env);
+    const sarifOutput = await runSemgrep(targetDir, input.rulesets, signal, env, options.wrapper);
     const result = parseSarif(sarifOutput, input.maxFindings);
 
     logger.info('Security scan completed', {

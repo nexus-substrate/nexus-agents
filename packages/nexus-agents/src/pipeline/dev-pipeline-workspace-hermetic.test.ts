@@ -19,6 +19,12 @@ import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import type { DevPipelineResult, DevPipelineStages } from './dev-pipeline.js';
 import { withDevPipelineWorkspace } from './dev-pipeline-workspace.js';
 
+// These regressions exercise the retained best-effort defenses explicitly.
+vi.mock('./dev-pipeline-sandbox.js', async (original) => ({
+  ...(await original<typeof import('./dev-pipeline-sandbox.js')>()),
+  bwrapPreflight: () => Promise.resolve({ mode: 'best-effort', reason: 'fixture fallback' }),
+}));
+
 const mocks = vi.hoisted(() => ({ warn: vi.fn(), creationFailure: false, disposalFailure: false }));
 vi.mock('../core/index.js', async (original) => {
   const actual = await original<typeof import('../core/index.js')>();

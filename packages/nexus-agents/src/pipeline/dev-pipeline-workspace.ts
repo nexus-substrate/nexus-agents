@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { createScratchCheckout, type ScratchCheckout } from '../cli/vote-scratch-checkout.js';
 import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
-import { execFileTree } from '../cli-adapters/exec-file-tree.js';
+import { type BwrapIsolation } from '../cli-adapters/codex-sandbox-preflight.js';
+import {
+  bwrapPreflight,
+  createScratchSandbox,
+  dependencyInstallEnv,
+} from './dev-pipeline-sandbox.js';
+import { execFileTree, type CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
 import { getNexusTmpDir } from '../config/nexus-tmp-dir.js';
 import { createLogger } from '../core/index.js';
@@ -21,10 +27,10 @@ const logger = createLogger({ component: 'dev-pipeline-workspace' });
 // Installed dependencies are runtime inputs, excluded even when not ignored.
 const PATCH_PATHS = ['.', ':(exclude,glob)**/node_modules', ':(exclude,glob)**/node_modules/**'];
 
-function git(cwd: string, args: string[]): string {
+function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
   return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
     cwd,
-    env: { ...hermeticGitEnv(), GIT_OPTIONAL_LOCKS: '0' },
+    env: { ...hermeticGitEnv(), ...env, GIT_OPTIONAL_LOCKS: '0' },
     encoding: 'utf8',
     timeout: GIT_TIMEOUT_MS,
     maxBuffer: DIFF_MAX_BYTES,
@@ -36,7 +42,12 @@ function git(cwd: string, args: string[]): string {
 type DependencyInstaller = (
   command: string,
   args: string[],
-  options: { cwd: string; timeout: number; env: NodeJS.ProcessEnv }
+  options: {
+    cwd: string;
+    timeout: number;
+    env: NodeJS.ProcessEnv;
+    wrapper?: CommandWrapper | undefined;
+  }
 ) => Promise<unknown>;
 
 /** Provision only the pinned checkout before implementation can edit its lockfile. */
@@ -77,29 +88,10 @@ function sharedConfigWarning(before: SharedGitConfig): string | undefined {
   return `The run changed the source repository's shared git config at ${before.path}; this is not part of the returned patch. Review it with: git config --list --show-origin`;
 }
 
-/** Drop inherited directory redirects before pinning scratch-local install paths. */
-function dependencyInstallEnv(scratchPath: string): NodeJS.ProcessEnv {
-  const env = Object.fromEntries(
-    Object.entries(hermeticGitEnv()).filter(
-      ([name]) =>
-        !/^npm_config_(?:virtual_store_dir|modules_dir|lockfile_dir|dir|global_dir|prefix)$/i.test(
-          name
-        )
-    )
-  );
-  // Shared cache imports must be copies, never hardlinks into source dependencies.
-  env['npm_config_package_import_method'] = 'copy';
-  env['npm_config_enable_global_virtual_store'] = 'false';
-  env['npm_config_modules_dir'] = 'node_modules';
-  env['npm_config_virtual_store_dir'] = join(scratchPath, 'node_modules/.pnpm');
-  // Husky would otherwise change the git config shared with the source repository.
-  env['HUSKY'] = '0';
-  return env;
-}
-
 async function provisionDependencies(
   scratchPath: string,
-  install: DependencyInstaller
+  install: DependencyInstaller,
+  wrapper?: CommandWrapper
 ): Promise<DevPipelineDependencies> {
   if (!existsSync(join(scratchPath, 'package.json'))) return { status: 'none' };
   const lockfiles = [
@@ -115,6 +107,7 @@ async function provisionDependencies(
       cwd: scratchPath,
       timeout: WORKFLOW_TIMEOUTS.stepMs,
       env: dependencyInstallEnv(scratchPath),
+      wrapper,
     });
     return { status: 'installed', manager };
   } catch (error: unknown) {
@@ -179,6 +172,7 @@ const installDependencies: DependencyInstaller = (command, args, options) =>
     cwd: options.cwd,
     timeoutMs: options.timeout,
     env: options.env,
+    wrapper: options.wrapper,
   });
 
 /** Cleanup must never discard a patch or replace the run's original error. */
@@ -200,18 +194,16 @@ function disposeWorkspace(scratch: ScratchCheckout | undefined): string | undefi
 function captureChanges(
   scratchPath: string,
   baseSha: string,
-  dependencies: DevPipelineDependencies
+  dependencies: DevPipelineDependencies,
+  isolation: BwrapIsolation,
+  env?: NodeJS.ProcessEnv
 ): NonNullable<DevPipelineResult['changes']> {
-  git(scratchPath, ['add', '--intent-to-add', '--all', '--', ...PATCH_PATHS]);
-  const diff = git(scratchPath, [
-    'diff',
-    '--binary',
-    '--no-ext-diff',
-    '--no-textconv',
-    baseSha,
-    '--',
-    ...PATCH_PATHS,
-  ]);
+  git(scratchPath, ['add', '--intent-to-add', '--all', '--', ...PATCH_PATHS], env);
+  const diff = git(
+    scratchPath,
+    ['diff', '--binary', '--no-ext-diff', '--no-textconv', baseSha, '--', ...PATCH_PATHS],
+    env
+  );
   const empty = diff === '';
   return {
     diff,
@@ -219,36 +211,90 @@ function captureChanges(
     worktreePath: scratchPath,
     worktreeRemoved: false,
     dependencies,
+    isolation,
     empty,
     status: empty ? 'no_changes' : 'changes',
   };
 }
 
+type SandboxHandle = {
+  wrapper: CommandWrapper | undefined;
+  gitEnv: NodeJS.ProcessEnv | undefined;
+  dispose: () => void;
+};
+const BEST_EFFORT_SANDBOX: SandboxHandle = {
+  wrapper: undefined,
+  gitEnv: undefined,
+  dispose: () => {},
+};
+
 /**
- * BEST-EFFORT isolation, not an OS sandbox. Built-in stages bind implement,
- * QA and both gates to the same disposable checkout. Stages without a workspace
- * binding are external implementations.
- *
- * Pipeline-owned git runs hermetically with optional index refresh disabled and
- * source hooks disabled. Gate subprocesses receive the hermetic git environment.
- * Installs are scratch-local with directory overrides removed and copy imports,
- * run with HUSKY=0, and are killed as a process tree on timeout. Changes to the
- * source repository's shared git config are reported, never reverted.
- *
- * Known residual channel: an install descendant that ignores SIGTERM can write
- * during the kill grace period before the config snapshot. An OS sandbox is
- * tracked in #7011. The operator receives a diff and cleanup status, and failed
- * removal leaves a warning.
+ * Enter the OS sandbox when the preflight says it works. A sandbox whose setup
+ * then fails (an unresolvable package cache, say) falls back to best-effort and
+ * RECORDS why, the same as an unavailable bwrap: the run never claims a
+ * sandbox it did not get, and a setup failure does not abort the run (#7011).
+ */
+async function prepareSandbox(
+  scratchPath: string,
+  repoRoot: string,
+  preflight: () => Promise<BwrapIsolation>
+): Promise<{ isolation: BwrapIsolation; sandbox: SandboxHandle }> {
+  const isolation = await preflight();
+  if (isolation.mode !== 'os-sandbox') return { isolation, sandbox: BEST_EFFORT_SANDBOX };
+  try {
+    return { isolation, sandbox: await createScratchSandbox(scratchPath, repoRoot) };
+  } catch (error: unknown) {
+    const reason = `sandbox setup failed: ${error instanceof Error ? error.message : String(error)}`;
+    return { isolation: { mode: 'best-effort', reason }, sandbox: BEST_EFFORT_SANDBOX };
+  }
+}
+
+function workspaceDirectory(stages: DevPipelineStages): string {
+  const directory = stages.implementWorkspace?.directory;
+  if (directory === undefined) throw new Error('Workspace binding requires a repository directory');
+  return realpathSync(directory);
+}
+
+/** Temp cleanup must preserve the original outcome and disclose leftover files. */
+function disposeSandbox(sandbox: SandboxHandle): string | undefined {
+  try {
+    sandbox.dispose();
+    return undefined;
+  } catch (error: unknown) {
+    const warning = `Failed to remove sandbox temp directory: ${String(error)}`;
+    reportWarning(warning);
+    return warning;
+  }
+}
+
+function workspaceResult(
+  result: DevPipelineResult,
+  changes: NonNullable<DevPipelineResult['changes']>,
+  scratchPath: string,
+  notes: readonly (string | undefined)[]
+): DevPipelineResult {
+  const warnings = notes.filter((note) => note !== undefined);
+  return {
+    ...result,
+    completed: result.completed && !changes.empty,
+    changes: { ...changes, worktreeRemoved: !existsSync(scratchPath) },
+    ...(warnings.length > 0 ? { warnings: [...(result.warnings ?? []), ...warnings] } : {}),
+  };
+}
+
+/**
+ * Scratch installs and gates use a measured OS sandbox when available, retaining
+ * hermetic Git, copy imports, HUSKY=0 and shared-config reporting in both modes.
+ * Best-effort fallback records why confinement was unavailable.
  */
 export async function withDevPipelineWorkspace(
   stages: DevPipelineStages,
   run: (bound: DevPipelineStages) => Promise<DevPipelineResult>,
-  install: DependencyInstaller = installDependencies
+  install: DependencyInstaller = installDependencies,
+  preflight: () => Promise<BwrapIsolation> = bwrapPreflight
 ): Promise<DevPipelineResult> {
   if (stages.withWorkspace === undefined) return run(stages);
-  const declared = stages.implementWorkspace?.directory;
-  if (declared === undefined) throw new Error('Workspace binding requires a repository directory');
-  const directory = realpathSync(declared);
+  const directory = workspaceDirectory(stages);
   const repoRoot = git(directory, ['rev-parse', '--show-toplevel']).trim();
   const baseSha = git(repoRoot, ['rev-parse', 'HEAD']).trim();
   const sourceWarning = dirtySourceWarning(repoRoot, baseSha);
@@ -258,7 +304,9 @@ export async function withDevPipelineWorkspace(
   let changes: NonNullable<DevPipelineResult['changes']>;
   let cleanupWarning: string | undefined;
   let configWarning: string | undefined;
+  let tempWarning: string | undefined;
   let completed = false;
+  let sandbox: SandboxHandle = BEST_EFFORT_SANDBOX;
   try {
     scratch = createScratchCheckout({
       repoRoot,
@@ -266,29 +314,27 @@ export async function withDevPipelineWorkspace(
       tmpRoot: scratchRoot(repoRoot),
       hermetic: true,
     });
-    const dependencies = await provisionDependencies(scratch.path, install);
+    const prepared = await prepareSandbox(scratch.path, repoRoot, preflight);
+    sandbox = prepared.sandbox;
+    const { isolation } = prepared;
+    const dependencies = await provisionDependencies(scratch.path, install, sandbox.wrapper);
     // Preserve a workingDir that points at a package below the repository root.
     const bound = stages.withWorkspace({
       directory: join(scratch.path, relative(repoRoot, directory)),
       dependencies,
+      wrapper: sandbox.wrapper,
     });
     result = await run(bound);
-    changes = captureChanges(scratch.path, baseSha, dependencies);
+    changes = captureChanges(scratch.path, baseSha, dependencies, isolation, sandbox.gitEnv);
     completed = true;
   } finally {
     // Every exit reports what the run did outside the patch: a thrown or timed-out
     // stage has no result to carry warnings, so they are logged instead (#6794 panel).
+    tempWarning = disposeSandbox(sandbox);
     cleanupWarning = disposeWorkspace(scratch);
     configWarning = sharedConfigWarning(sharedConfig);
     if (!completed && configWarning !== undefined) reportWarning(configWarning);
   }
-  const warnings = [sourceWarning, cleanupWarning, configWarning].filter(
-    (warning) => warning !== undefined
-  );
-  return {
-    ...result,
-    completed: result.completed && !changes.empty,
-    changes: { ...changes, worktreeRemoved: !existsSync(scratch.path) },
-    ...(warnings.length > 0 ? { warnings: [...(result.warnings ?? []), ...warnings] } : {}),
-  };
+  const warnings = [sourceWarning, cleanupWarning, configWarning, tempWarning];
+  return workspaceResult(result, changes, scratch.path, warnings);
 }
