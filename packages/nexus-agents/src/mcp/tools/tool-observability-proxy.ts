@@ -4,6 +4,10 @@
  * Creates a Proxy around McpServer that wraps every tool callback
  * to emit tool.invoked / tool.completed events to the pipeline EventBus.
  *
+ * Every callback waits for workspace-root readiness before its handler runs,
+ * including upstream proxies. The shared startup timeout pins and logs the
+ * fallback, so a late roots response cannot split session writes (#4002).
+ *
  * Zero-change integration: existing tool registration functions
  * don't need modification — observability is injected transparently.
  *
@@ -14,6 +18,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { IEventBus } from '../../pipeline/event-types.js';
 import { getTimeProvider } from '../../core/index.js';
+import {
+  workspaceRootReady,
+  WORKSPACE_ROOT_READY_TIMEOUT_MS,
+  startWorkspaceRootReadyTimeout,
+  logWorkspaceRootFallback,
+} from '../workspace-roots.js';
 
 /** Counter for generating unique invocation IDs. */
 let invocationCounter = 0;
@@ -88,6 +98,9 @@ function wrapWithObservability(
     });
 
     try {
+      startWorkspaceRootReadyTimeout(WORKSPACE_ROOT_READY_TIMEOUT_MS);
+      await workspaceRootReady;
+      logWorkspaceRootFallback(toolName);
       const result = await cb(args, extra);
       const durationMs = getTimeProvider().now() - startTime;
 
