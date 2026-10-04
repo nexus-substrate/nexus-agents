@@ -87,6 +87,15 @@ describe('parseConcatenatedString', () => {
 });
 
 describe('extractRuntimeDescription', () => {
+  it('reads the shared structured-output registration seam', () => {
+    const src =
+      "registerStructuredTool(server, 'alpha', { description: 'Strict output' }, handler);";
+    expect(extractRuntimeDescription(src, 'alpha')).toEqual({
+      text: 'Strict output',
+      elidedSubstitutions: 0,
+    });
+  });
+
   it('resolves template const and inline descriptions with an elision count', () => {
     const expr = '`start; ${items.join("/")} end`';
     const src = `const D = ${expr};

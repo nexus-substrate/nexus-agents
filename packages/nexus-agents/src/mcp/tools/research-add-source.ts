@@ -26,8 +26,9 @@ import {
 import { computeSourceQualityScore } from '../../research/source-quality.js';
 import type { ResearchSource } from '../../indexer/research-index/research-index-base-types.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -65,7 +66,9 @@ export const ResearchAddSourceInputSchema = z.object({
       has_paper: z.boolean().optional(),
     })
     .optional()
-    .describe('Quality signals used to compute quality_score; provide explicitly — no GitHub metadata is fetched'),
+    .describe(
+      'Quality signals used to compute quality_score; provide explicitly — no GitHub metadata is fetched'
+    ),
   techniques_extracted: z
     .array(z.string().max(100))
     .max(5)
@@ -283,7 +286,8 @@ function createResearchAddSourceHandler(deps: ResearchAddSourceDeps) {
         });
       }
 
-      return toolSuccessStructured(result as unknown as Record<string, unknown>);
+      const { errorCategory: _errorCategory, ...data } = result;
+      return structuredToolSuccess(z.object(RESEARCH_ADD_SOURCE_OUTPUT_SCHEMA), data);
     });
   };
 }
@@ -337,7 +341,8 @@ export function registerResearchAddSourceTool(
     logger,
   });
 
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'research_add_source',
     {
       description,

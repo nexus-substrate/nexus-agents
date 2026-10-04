@@ -19,11 +19,26 @@ import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.j
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
+
+/** Shared handler and registration output contract (#7042). */
+const OUTPUT_SCHEMA = {
+  workflows: z.array(
+    z.object({
+      name: z.string(),
+      version: z.string(),
+      description: z.string().optional(),
+      category: z.string().optional(),
+    })
+  ),
+  count: z.number(),
+  categories: z.array(z.string()).optional(),
+};
 
 /**
  * Input schema for list_workflows tool.
@@ -144,8 +159,7 @@ function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
         category: validationResult.data.category,
       });
 
-      const data = result as unknown as Record<string, unknown>;
-      return toolSuccessStructured(data);
+      return structuredToolSuccess(z.object(OUTPUT_SCHEMA), result);
     });
   };
 }
@@ -189,25 +203,13 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  const outputSchema = {
-    workflows: z.array(
-      z.object({
-        name: z.string(),
-        version: z.string(),
-        description: z.string().optional(),
-        category: z.string().optional(),
-      })
-    ),
-    count: z.number(),
-    categories: z.array(z.string()).optional(),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'list_workflows',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('list_workflows'),
     },
     toSdkCallback(wrappedHandler)

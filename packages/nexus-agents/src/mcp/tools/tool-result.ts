@@ -8,6 +8,13 @@
  * @module mcp/tools/tool-result
  */
 
+import { z } from 'zod';
+import type {
+  McpServer,
+  RegisteredTool,
+  ToolCallback,
+} from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { ILogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -89,19 +96,47 @@ export function toolSuccess(text: string): ToolResult {
   };
 }
 
+/** Structured success data is serialized without mutating readonly domain responses. */
+type ReadonlyOutput<T> = T extends readonly (infer Item)[]
+  ? readonly ReadonlyOutput<Item>[]
+  : T extends object
+    ? { readonly [Key in keyof T]: ReadonlyOutput<T[Key]> }
+    : T;
+
 /**
  * Creates a successful tool result with structured content for outputSchema validation.
  *
  * When a tool is registered with outputSchema, the SDK validates structuredContent
  * against the schema. This helper returns both text (for display) and structured data.
  *
- * @param data - The structured result data (must match the tool's outputSchema)
+ * @param _schema - The tool's declared output schema
+ * @param data - The structured result data inferred from the schema
  * @returns A ToolResult with both text content and structuredContent
  *
  * @example
  * ```typescript
- * return toolSuccessStructured({ experts: [...], count: 10 });
+ * return toolSuccessStructured(z.object({ count: z.number() }), { count: 10 });
  * ```
+ */
+
+export function structuredToolSuccess<
+  Schema extends z.ZodType<Record<string, unknown>>,
+  Data extends ReadonlyOutput<z.output<NoInfer<Schema>>>,
+>(
+  _schema: Schema,
+  data: Data & Record<Exclude<keyof Data, keyof z.output<Schema>>, never>
+): ToolResult {
+  // The schema binds the data type; the SDK performs runtime validation.
+  return {
+    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    structuredContent: data,
+  };
+}
+
+/**
+ * Untyped structured success, kept with its original signature for external
+ * callers of the published API. In-tree tools use {@link structuredToolSuccess},
+ * which binds the data to the declared output schema (#7042).
  */
 export function toolSuccessStructured(data: Record<string, unknown>): ToolResult {
   return {
@@ -166,4 +201,23 @@ export function toolStructuredError(input: ToolStructuredErrorInput): ToolResult
  */
 export function toolError(message: string): ToolResult {
   return toolStructuredError({ errorCategory: 'internal', message });
+}
+
+/** Registers a declared output shape with strict SDK server-side validation (#7042). */
+export function registerStructuredTool(
+  server: McpServer,
+  name: string,
+  config: {
+    description: string;
+    inputSchema: z.ZodRawShape;
+    outputSchema: z.ZodRawShape;
+    annotations?: ToolAnnotations;
+  },
+  callback: ToolCallback<z.ZodRawShape>
+): RegisteredTool {
+  return server.registerTool(
+    name,
+    { ...config, outputSchema: z.strictObject(config.outputSchema) },
+    callback
+  );
 }

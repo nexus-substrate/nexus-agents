@@ -24,8 +24,9 @@ import {
 } from './weather-report-output-schema.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
@@ -91,8 +92,9 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
     };
     const report = generateWeatherReport(opts);
     const serialized = serializeReport(report);
-    const data = serialized as Record<string, unknown>;
-    return Promise.resolve(toolSuccessStructured(data));
+    return Promise.resolve(
+      structuredToolSuccess(z.object(WEATHER_REPORT_OUTPUT_SCHEMA), serialized)
+    );
   } catch (caught) {
     return Promise.resolve(toolErrorResponse('Weather report failed', caught, ctx.logger));
   }
@@ -139,13 +141,13 @@ export function registerWeatherReportTool(server: McpServer, deps: WeatherReport
     logger,
   });
 
-  const timeoutMs = getToolTimeout('weather_report', deps.security);
   const wrappedHandler = wrapToolWithTimeout('weather_report', secureHandler, {
-    timeoutMs,
+    timeoutMs: getToolTimeout('weather_report', deps.security),
     logger,
   });
 
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'weather_report',
     {
       description,

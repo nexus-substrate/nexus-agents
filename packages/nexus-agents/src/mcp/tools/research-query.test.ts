@@ -172,8 +172,8 @@ describe('outputSchema declares every key ResearchQueryResponse returns (#5141)'
     );
 
     const call = server.registerTool.mock.calls[0] as unknown[];
-    const meta = call[1] as { outputSchema?: Record<string, unknown> };
-    const declared = Object.keys(meta.outputSchema ?? {}).sort();
+    const meta = call[1] as { outputSchema?: { shape: Record<string, unknown> } };
+    const declared = Object.keys(meta.outputSchema?.shape ?? {}).sort();
 
     // Both directions: undeclared-but-returned is the -32602; declared-but-never
     // -returned is a claim nothing supports.

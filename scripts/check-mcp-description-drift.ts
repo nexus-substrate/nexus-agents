@@ -106,15 +106,26 @@ export function parseConcatenatedString(expr: string): EvaluatedDescription | nu
     : null;
 }
 
+/** Recognize direct SDK calls and the shared structured-output seam. */
+function registrationArgs(node: ts.CallExpression): readonly ts.Expression[] | undefined {
+  const expr = node.expression;
+  if (ts.isIdentifier(expr)) {
+    return expr.text === 'registerStructuredTool' ? node.arguments.slice(1) : undefined;
+  }
+  if (
+    ts.isPropertyAccessExpression(expr) &&
+    ['registerTool', 'registerToolTask'].includes(expr.name.text)
+  ) {
+    return node.arguments;
+  }
+  return undefined;
+}
+
 /** Find this tool's registration config in the AST, ignoring comments and strings. */
 function findToolConfig(node: ts.Node, toolName: string): ts.ObjectLiteralExpression | undefined {
-  if (
-    ts.isCallExpression(node) &&
-    ts.isPropertyAccessExpression(node.expression) &&
-    (node.expression.name.text === 'registerTool' ||
-      node.expression.name.text === 'registerToolTask')
-  ) {
-    const [name, config] = node.arguments;
+  const args = ts.isCallExpression(node) ? registrationArgs(node) : undefined;
+  if (args !== undefined) {
+    const [name, config] = args;
     if (
       name !== undefined &&
       ts.isStringLiteral(name) &&
@@ -232,7 +243,8 @@ function loadToolSources(): Map<string, string> {
   for (const file of readdirSync(TOOLS_DIR)) {
     if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue;
     const source = readFileSync(join(TOOLS_DIR, file), 'utf-8');
-    const re = /registerTool(?:Task)?\(\s*['"]([a-z_]+)['"]/g;
+    const re =
+      /(?:registerTool(?:Task)?\(\s*|registerStructuredTool\(\s*[^,]+,\s*)['"]([a-z_]+)['"]/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
       if (m[1] !== undefined) map.set(m[1], source);

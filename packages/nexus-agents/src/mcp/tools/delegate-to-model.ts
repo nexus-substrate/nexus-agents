@@ -1,3 +1,4 @@
+import { registerStructuredTool } from './tool-result.js';
 /**
  * nexus-agents/mcp - Delegate to Model Tool
  *
@@ -140,10 +141,13 @@ function classifyDelegateGovernance(
 
 /** Enriches output with governance metadata when promoted. */
 function enrichWithGovernance(
-  output: Record<string, unknown>,
+  output: import('./delegate-to-model-types.js').DelegateOutput,
   governance: GovernanceClassification
-): Record<string, unknown> {
+): import('./delegate-to-model-types.js').DelegateOutput {
   if (!governance.promoted) return output;
+  if (governance.votingThreshold === null || governance.promotionReason === null) {
+    throw new Error('Promoted governance requires a voting threshold and promotion reason');
+  }
   return {
     ...output,
     governance: {
@@ -314,7 +318,8 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
     logger,
   });
 
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'delegate_to_model',
     {
       description:
