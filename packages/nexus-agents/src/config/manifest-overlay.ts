@@ -111,7 +111,7 @@ export interface ManifestLoadResult {
   readonly entries: readonly ModelEntry[];
   readonly rejections: readonly ManifestRejection[];
   readonly path: string;
-  readonly status: 'missing' | 'empty' | 'malformed' | 'too-large' | 'loaded';
+  readonly status: 'missing' | 'empty' | 'malformed' | 'too-large' | 'unreadable' | 'loaded';
 }
 
 // ============================================================================
@@ -279,7 +279,15 @@ function loadManifestFile(path: string, logger: ILogger): ManifestLoadResult {
     return { entries: [], rejections: [], path, status: 'missing' };
   }
 
-  const stat = statSync(path);
+  // existsSync then statSync is a check-then-act: the file can vanish (or
+  // become unreadable) in between, and a throw here crashes every module-load
+  // caller of the registry. A vanished file is simply missing.
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(path);
+  } catch (e: unknown) {
+    return unreadableOrMissing(path, e, logger);
+  }
   if (stat.size === 0) {
     return { entries: [], rejections: [], path, status: 'empty' };
   }
@@ -292,8 +300,24 @@ function loadManifestFile(path: string, logger: ILogger): ManifestLoadResult {
     return { entries: [], rejections: [], path, status: 'too-large' };
   }
 
-  const raw = readFileSync(path, 'utf-8');
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf-8');
+  } catch (e: unknown) {
+    return unreadableOrMissing(path, e, logger);
+  }
   return parseManifest(raw, path, logger);
+}
+
+/** ENOENT means the file vanished after the existence check; anything else is unreadable. */
+function unreadableOrMissing(path: string, e: unknown, logger: ILogger): ManifestLoadResult {
+  const code = e instanceof Error && 'code' in e ? (e as NodeJS.ErrnoException).code : undefined;
+  if (code === 'ENOENT') return { entries: [], rejections: [], path, status: 'missing' };
+  logger.warn('Manifest overlay unreadable; skipping', {
+    path,
+    error: e instanceof Error ? e.message : String(e),
+  });
+  return { entries: [], rejections: [], path, status: 'unreadable' };
 }
 
 function parseManifest(raw: string, path: string, logger: ILogger): ManifestLoadResult {
