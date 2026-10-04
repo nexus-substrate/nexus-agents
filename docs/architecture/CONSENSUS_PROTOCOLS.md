@@ -21,7 +21,7 @@ The consensus system exposes 6 core voting algorithm names (five distinct strate
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
 - **proof_of_learning**: Weighted by agent performance
-- **higher_order**: Bayesian-optimal aggregation with correlation awareness — alias for `opinion_wise` (#514)
+- **higher_order**: alias for `opinion_wise` (#514). The verdict is a plain approve/reject tally at a 0.5 bar; the correlation-aware posterior is computed but only drives contrarian escalation (#4701)
 - **opinion_wise**: Opinion-based aggregation
 
 Correlation aggregates are lifetime evidence; retained records are count-bounded by `maxProposals` FIFO and `maxObservationsPerAgent`, and active history is partitioned by each role's pinned model. The `correlationMaxAgeMs` and `observationDecayFactor` config keys are deprecated and ignored.
@@ -65,7 +65,7 @@ type ConsensusAlgorithm =
   | 'unanimous' // 100%
   | 'proof_of_learning' // Weighted by agent performance
   | 'higher_order' // alias for 'opinion_wise' (#514)
-  | 'opinion_wise'; // Opinion-based aggregation (Bayesian-optimal, correlation-aware)
+  | 'opinion_wise'; // Plain tally verdict; correlation posterior drives escalation only (#4701)
 
 interface Vote {
   agentId: string;
