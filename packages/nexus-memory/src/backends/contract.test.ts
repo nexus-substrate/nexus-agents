@@ -9,15 +9,16 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { IMemoryBackend } from '../types.js';
+import type { IMemoryBackend, JsonValue } from '../types.js';
 import { InMemoryBackend, MemoryValidationError } from './memory.js';
 import { SqliteBackend } from './sqlite.js';
+import { openSqliteDatabase } from './open-database.js';
 import { resetMemoryTelemetry } from '../telemetry.js';
 
-interface SamplePayload {
+type SamplePayload = {
   readonly text: string;
   readonly count: number;
-}
+};
 
 const SampleSchema = z.object({
   text: z.string(),
@@ -181,89 +182,207 @@ for (const [name, factory] of factories) {
   });
 }
 
-// ============================================================================
-// Where the two backends DIVERGE (#5776)
-// ============================================================================
-
-/**
- * The suite above runs identically against both backends and passes — but its
- * only payload is `{ text: string; count: number }`, the two shapes JSON
- * preserves exactly, and its only key type is `string`. So it cannot see the
- * places where the two implementations disagree, and a green run is not
- * evidence that a production write lands intact.
- *
- * These cases pin the divergence as it exists TODAY. They are characterisation
- * tests, not aspirations: each one asserts what each backend actually does, so
- * that converging the two (whichever way) FAILS here and forces the contract
- * and its docs to be updated in the same change. Measured, not reasoned —
- * every expectation below was produced by running both backends.
- */
-describe('backend divergence, pinned (#5776)', () => {
-  afterEach(() => {
-    resetMemoryTelemetry();
-  });
-
-  it('SQLite round-trips a Date as an ISO string; in-memory keeps the Date', async () => {
-    // sqlite.ts JSON.stringify/JSON.parse; memory.ts stores by reference.
-    // The optional Zod schema does not catch it: validate() runs on the
-    // PRE-serialisation value and read never validates, so a schema-backed
-    // SQLite backend can return a value that violates its own schema.
-    const sql = new SqliteBackend<string, { at: Date }>({
-      domain: 'div_date_s',
-      dbPath: ':memory:',
+// #5979: these replace the three divergence pins with converged guarantees.
+for (const [name, factory] of factories) {
+  describe(`JSON convergence — ${name}`, () => {
+    let backend: IMemoryBackend<string, SamplePayload>;
+    beforeEach(() => {
+      backend = factory('convergence');
     });
-    await sql.write('k', { at: new Date(0) });
-    const fromSql = await sql.read('k');
-    expect(fromSql?.at).toBe('1970-01-01T00:00:00.000Z');
-    expect(fromSql?.at instanceof Date).toBe(false);
-
-    const mem = new InMemoryBackend<string, { at: Date }>({ domain: 'div_date_m' });
-    await mem.write('k', { at: new Date(0) });
-    expect((await mem.read('k'))?.at).toBeInstanceOf(Date);
-  });
-
-  it('in-memory hands back the stored object by reference, so a caller can mutate the store', async () => {
-    // No write event, no telemetry increment — the store changes with nothing
-    // recording it. SQLite returns a fresh parse and is unaffected.
-    const mem = new InMemoryBackend<string, { n: number }>({ domain: 'div_alias_m' });
-    await mem.write('k', { n: 1 });
-    const read = await mem.read('k');
-    if (read !== undefined) read.n = 99;
-    expect((await mem.read('k'))?.n).toBe(99);
-
-    const sql = new SqliteBackend<string, { n: number }>({
-      domain: 'div_alias_s',
-      dbPath: ':memory:',
+    afterEach(async () => {
+      await backend.close();
+      resetMemoryTelemetry();
     });
-    await sql.write('k', { n: 1 });
-    const sread = await sql.read('k');
-    if (sread !== undefined) sread.n = 99;
-    expect((await sql.read('k'))?.n).toBe(1);
-  });
 
-  it('in-memory keys objects by identity; SQLite keys them structurally', async () => {
-    // memory.ts uses `new Map<TKey, Row>` (SameValueZero); sqlite.ts falls
-    // through to JSON.stringify in keyToString.
-    const mem = new InMemoryBackend<{ id: string }, number>({ domain: 'div_key_m' });
-    await mem.write({ id: 'a' }, 7);
-    expect(await mem.read({ id: 'a' })).toBeUndefined();
-    expect(await mem.delete({ id: 'a' })).toBe(false);
-    expect((await mem.stats()).count).toBe(1); // the row is still there, unreachable
-
-    const sql = new SqliteBackend<{ id: string }, number>({
-      domain: 'div_key_s',
-      dbPath: ':memory:',
+    it('rejects a Date with its offending path; callers must serialize explicitly', async () => {
+      await expect(
+        backend.write('k', { at: new Date(0) } as unknown as SamplePayload)
+      ).rejects.toMatchObject({ name: 'MemoryValidationError', path: '$["at"]' });
+      expect((await backend.stats()).count).toBe(0);
     });
-    await sql.write({ id: 'a' }, 7);
-    expect(await sql.read({ id: 'a' })).toBe(7);
+
+    it('copies on write, read, and query, including nested values', async () => {
+      const value = { text: 'original', count: 1, nested: { n: 1 } };
+      await backend.write('k', value);
+      value.text = 'write alias';
+      value.nested.n = 2;
+      const read = await backend.read('k');
+      expect(read).toEqual({ text: 'original', count: 1, nested: { n: 1 } });
+      if (read !== undefined) {
+        (read as typeof value).text = 'read alias';
+        (read as typeof value).nested.n = 99;
+      }
+      const query = await backend.query();
+      const first = query[0] as typeof value;
+      first.nested.n = 3;
+      expect(await backend.read('k')).toEqual({ text: 'original', count: 1, nested: { n: 1 } });
+    });
+
+    it.each([7, false, null, undefined, { id: 'a' }, Symbol('key')])(
+      'rejects non-string keys %s on write, read, and delete',
+      async (invalid) => {
+        const key = invalid as unknown as string;
+        for (const operation of [
+          () => backend.write(key, { text: 'x', count: 1 }),
+          () => backend.read(key),
+          () => backend.delete(key),
+        ]) {
+          await expect(operation()).rejects.toMatchObject({
+            name: 'MemoryValidationError',
+            path: '$key',
+          });
+        }
+        expect((await backend.stats()).count).toBe(0);
+      }
+    );
+
+    it('uses string keys literally without structural coercion', async () => {
+      await backend.write('7', { text: 'x', count: 1 });
+      expect(await backend.read('7')).toEqual({ text: 'x', count: 1 });
+      expect(await backend.read('07')).toBeUndefined();
+      expect(await backend.delete('7')).toBe(true);
+    });
+
+    it.each([
+      ['Map', new Map()],
+      ['Set', new Set()],
+      ['NaN', NaN],
+      ['Infinity', Infinity],
+      ['negative Infinity', -Infinity],
+      ['undefined', undefined],
+      ['function', () => 1],
+      ['symbol', Symbol('value')],
+      ['bigint', 1n],
+      ['prototype', Object.create({ inherited: 1 }) as unknown],
+      [
+        'cycle',
+        (() => {
+          const v: Record<string, unknown> = {};
+          v['self'] = v;
+          return v;
+        })(),
+      ],
+      ['sparse array', new Array(2)],
+      ['symbol property', { [Symbol('hidden')]: 1 }],
+      ['hidden property', Object.defineProperty({}, 'hidden', { value: 1 })],
+      ['accessor', Object.defineProperty({}, 'get', { get: () => 1, enumerable: true })],
+      ['array property', Object.assign([1], { extra: 2 })],
+      ['non-index numeric array property', Object.assign([1], { 4294967295: 2 })],
+      ['negative zero', -0],
+      ['toJSON hook', { toJSON: () => 'coerced' }],
+    ])('rejects nested non-JSON %s without overwriting existing data', async (_label, invalid) => {
+      await backend.write('k', { text: 'valid', count: 1 });
+      await expect(
+        backend.write('k', { payload: invalid } as unknown as SamplePayload)
+      ).rejects.toMatchObject({ name: 'MemoryValidationError' });
+      await expect(
+        backend.write('k', { payload: invalid } as unknown as SamplePayload)
+      ).rejects.toThrow(/\$\["payload"\]/);
+      expect(await backend.read('k')).toEqual({ text: 'valid', count: 1 });
+    });
+
+    it('schema-backed reads and queries accept only the stored JSON shape', async () => {
+      await backend.close();
+      backend = factory('convergence_schema', SampleSchema);
+      await backend.write('k', { text: 'valid', count: 1 });
+      expect(await backend.read('k')).toEqual({ text: 'valid', count: 1 });
+      expect(await backend.query()).toEqual([{ text: 'valid', count: 1 }]);
+    });
+  });
+}
+
+describe('SQLite stored-row validation', () => {
+  it('rejects lossy stored JSON even without an optional schema', async () => {
+    const db = openSqliteDatabase(':memory:');
+    const backend = new SqliteBackend<string, JsonValue>({
+      domain: 'unvalidated',
+      dbPath: ':memory:',
+      db,
+    });
+    try {
+      db.prepare('INSERT INTO unvalidated (key,value,timestamp) VALUES (?,?,?)').run(
+        'infinite-row',
+        '{"n":1e999}',
+        1
+      );
+      await expect(backend.read('infinite-row')).rejects.toMatchObject({
+        name: 'MemoryReadError',
+        key: 'infinite-row',
+      });
+      await expect(backend.query()).rejects.toMatchObject({
+        name: 'MemoryReadError',
+        key: 'infinite-row',
+      });
+    } finally {
+      await backend.close();
+      db.close();
+    }
   });
 
-  it('the shared suite above genuinely cannot see any of this', () => {
-    // The guard that keeps the divergence visible: if someone widens
-    // SamplePayload to include a Date or an object key, these characterisation
-    // tests and the shared suite would start disagreeing, which is the signal
-    // to converge the backends rather than to broaden the fixture.
-    const probe: SamplePayload = { text: 'x', count: 1 };
-    expect(JSON.parse(JSON.stringify(probe))).toEqual(probe);
-  });
+  it.each(['{"text":42,"count":1}', '{broken', '{"text":"x","count":1e999}'])(
+    'fails closed on read and query for corrupt row %s',
+    async (stored) => {
+      const db = openSqliteDatabase(':memory:');
+      const backend = new SqliteBackend<string, SamplePayload>({
+        domain: 'corrupt',
+        dbPath: ':memory:',
+        db,
+        schema: SampleSchema,
+      });
+      try {
+        db.prepare('INSERT INTO corrupt (key,value,timestamp) VALUES (?,?,?)').run(
+          'bad-row',
+          stored,
+          1
+        );
+        for (const operation of [
+          () => backend.read('bad-row'),
+          () => backend.query(),
+          () => backend.query({ where: { text: 'not-matching' }, limit: 0 }),
+        ]) {
+          await expect(operation()).rejects.toMatchObject({
+            name: 'MemoryReadError',
+            key: 'bad-row',
+            domain: 'corrupt',
+          });
+          await expect(operation()).rejects.toThrow(/bad-row/);
+        }
+      } finally {
+        await backend.close();
+        db.close();
+      }
+    }
+  );
 });
+
+for (const Backend of [InMemoryBackend, SqliteBackend]) {
+  describe(`JSON values — ${Backend.name}`, () => {
+    it('round-trips primitives, arrays, null-prototype objects, and shared acyclic children', async () => {
+      const backend = new Backend<string, JsonValue>({ domain: 'json_values', dbPath: ':memory:' });
+      const child = { n: 1 };
+      const plain: unknown = Object.assign(Object.create(null) as object, { key: 'value' });
+      const values: JsonValue[] = [
+        null,
+        true,
+        false,
+        '',
+        0,
+        1.5,
+        [],
+        {},
+        [1, 'x', null],
+        plain as JsonValue,
+        { first: child, second: child },
+      ];
+      try {
+        for (const [index, value] of values.entries()) {
+          await backend.write(String(index), value);
+          expect(await backend.read(String(index))).toEqual(value);
+        }
+        expect(await backend.query()).toHaveLength(values.length);
+      } finally {
+        await backend.close();
+      }
+    });
+  });
+}

@@ -12,6 +12,13 @@
 
 import type { z } from 'zod';
 
+/** JSON data only. Runtime validation rejects non-finite numbers, negative zero,
+ * undefined, Dates, custom prototypes, accessors, sparse arrays, and cycles.
+ * Serialize Dates explicitly (for example, to ISO strings) before writing.
+ */
+export type JsonValue =
+  null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+
 /** Canonical CLI identifier used for the `cli` tag column. */
 export type CliName = 'claude' | 'codex' | 'gemini' | 'opencode';
 
@@ -54,17 +61,17 @@ export interface BackendStats {
  * **domain** (e.g., `'experience'`, `'outcomes'`, `'beliefs'`). Cross-domain
  * coordination happens in {@link MemoryRegistry}.
  */
-export interface IMemoryBackend<TKey, TValue> {
+export interface IMemoryBackend<TKey extends string, TValue extends JsonValue> {
   /** Stable identifier; matches the table name in SQLite backends. */
   readonly domain: string;
 
-  /** Read by primary key. Returns undefined for missing keys. */
+  /** Read by string primary key. Returns a copy, or undefined for missing keys. */
   read(key: TKey): Promise<TValue | undefined>;
 
-  /** Write or overwrite. `meta.cli` populates the per-CLI tag column. */
+  /** Write or overwrite a validated JSON value, copying caller data. Non-JSON writes throw MemoryValidationError. `meta.cli` populates the per-CLI tag column. */
   write(key: TKey, value: TValue, meta?: WriteMeta): Promise<void>;
 
-  /** Range/filter query. Returns rows matching {@link QueryFilter}. */
+  /** Range/filter query. Returns copies of rows matching {@link QueryFilter}. */
   query(filter?: QueryFilter<TValue>): Promise<readonly TValue[]>;
 
   /** Delete by primary key. Returns true if a row was removed. */
@@ -91,8 +98,8 @@ export interface IMemoryBackend<TKey, TValue> {
  * Hot-path backends typically have stronger compile-time typing and
  * may skip this in favor of TypeScript guarantees.
  */
-export interface ColdArchiveSchema<TValue> {
-  /** Zod schema used to validate values before write. */
+export interface ColdArchiveSchema<TValue extends JsonValue> {
+  /** Zod schema used to validate writes and stored SQLite reads. */
   readonly schema: z.ZodType<TValue>;
 }
 

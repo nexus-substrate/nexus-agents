@@ -19,17 +19,17 @@ import type {
 } from './open-database.js';
 import type { z } from 'zod';
 import { recordFailedMemoryOp, recordMemoryEvent } from '../telemetry.js';
-import type { BackendStats, IMemoryBackend, QueryFilter, WriteMeta } from '../types.js';
-import { MemoryValidationError } from './memory.js';
+import type { BackendStats, IMemoryBackend, JsonValue, QueryFilter, WriteMeta } from '../types.js';
+import { assertStringKey, MemoryReadError, validateMemoryValue } from '../json.js';
 import { openSqliteDatabase } from './open-database.js';
 
-export interface SqliteBackendOptions<TValue> {
+export interface SqliteBackendOptions<TValue extends JsonValue> {
   readonly domain: string;
   /** Absolute path to the SQLite file. Use `':memory:'` for tests. */
   readonly dbPath: string;
   /**
    * Zod schema for cold-archive validation (Phase 2 vote mitigation #1).
-   * When supplied, every `write()` validates first.
+   * When supplied, writes, reads, and queries validate the stored shape. Invalid stored rows throw MemoryReadError with the domain and row key.
    */
   readonly schema?: z.ZodType<TValue>;
   /** Pre-existing database handle. Used by `MemoryRegistry` to share a single connection. */
@@ -46,25 +46,18 @@ interface SqliteRow {
 }
 
 function buildWriteRow(
-  key: unknown,
-  value: unknown,
+  key: string,
+  value: JsonValue,
   meta: WriteMeta | undefined
 ): Record<string, string | number | null> {
   return {
-    key: keyToString(key),
+    key,
     value: JSON.stringify(value),
     cli: meta?.cli ?? null,
     source: meta?.source ?? null,
     timestamp: meta?.timestamp ?? Date.now(),
     trust_tier: meta?.trustTier ?? null,
   };
-}
-
-/** Stringify a key so SQLite primary-key lookups stay simple. */
-function keyToString(key: unknown): string {
-  if (typeof key === 'string') return key;
-  if (typeof key === 'number' || typeof key === 'boolean') return String(key);
-  return JSON.stringify(key);
 }
 
 /** Apply `where`, `orderBy`, `limit` to an in-memory row set. Extracted from
@@ -98,7 +91,10 @@ function applyQueryFilter<T>(values: T[], filter?: QueryFilter<T>): T[] {
   return out;
 }
 
-export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue> {
+export class SqliteBackend<TKey extends string, TValue extends JsonValue> implements IMemoryBackend<
+  TKey,
+  TValue
+> {
   readonly domain: string;
   private readonly db: DatabaseType;
   private readonly ownsDb: boolean;
@@ -189,8 +185,9 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
       start,
       () => {
         this.assertOpen();
-        const row = this.stmts.read.get(keyToString(key)) as SqliteRow | undefined;
-        const value = row !== undefined ? (JSON.parse(row.value) as TValue) : undefined;
+        assertStringKey(key, this.domain);
+        const row = this.stmts.read.get(key) as SqliteRow | undefined;
+        const value = row !== undefined ? this.decodeRow(row) : undefined;
         recordMemoryEvent({
           domain: this.domain,
           op: 'read',
@@ -205,19 +202,13 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
     );
   }
 
-  private validate(value: TValue): void {
-    // #4021: reject `undefined` uniformly (before the optional schema check) so
-    // both backends behave identically. Previously SqliteBackend threw a cryptic
-    // NOT NULL bind error for `write(key, undefined)` while InMemoryBackend stored
-    // a phantom row. `undefined` is the missing-key sentinel; use `null` for an
-    // explicit absent value.
-    if (value === undefined) {
-      throw new MemoryValidationError(this.domain, 'value must not be undefined (use null)');
-    }
-    if (this.schema === undefined) return;
-    const result = this.schema.safeParse(value);
-    if (!result.success) {
-      throw new MemoryValidationError(this.domain, result.error);
+  private decodeRow(row: SqliteRow): TValue {
+    try {
+      const value: unknown = JSON.parse(row.value);
+      validateMemoryValue<TValue>(value, this.domain, this.schema);
+      return value;
+    } catch (cause: unknown) {
+      throw new MemoryReadError(this.domain, row.key, cause);
     }
   }
 
@@ -232,7 +223,8 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
       start,
       () => {
         this.assertOpen();
-        this.validate(value);
+        assertStringKey(key, this.domain);
+        validateMemoryValue(value, this.domain, this.schema);
         this.stmts.write.run(buildWriteRow(key, value, meta));
         recordMemoryEvent({
           domain: this.domain,
@@ -264,7 +256,7 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
         if (filter?.cli !== undefined) {
           rows = rows.filter((r) => r.cli === filter.cli);
         }
-        let values = rows.map((r) => JSON.parse(r.value) as TValue);
+        let values = rows.map((r) => this.decodeRow(r));
         values = applyQueryFilter(values, filter);
         recordMemoryEvent({
           domain: this.domain,
@@ -290,7 +282,8 @@ export class SqliteBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue>
       start,
       () => {
         this.assertOpen();
-        const result = this.stmts.delete.run(keyToString(key));
+        assertStringKey(key, this.domain);
+        const result = this.stmts.delete.run(key);
         const removed = result.changes > 0;
         recordMemoryEvent({
           domain: this.domain,

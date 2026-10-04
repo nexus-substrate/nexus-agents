@@ -9,8 +9,10 @@
  */
 
 import type { z } from 'zod';
+import { assertStringKey, copyJson, validateMemoryValue } from '../json.js';
+export { MemoryValidationError } from '../json.js';
 import { recordFailedMemoryOp, recordMemoryEvent } from '../telemetry.js';
-import type { BackendStats, IMemoryBackend, QueryFilter, WriteMeta } from '../types.js';
+import type { BackendStats, IMemoryBackend, JsonValue, QueryFilter, WriteMeta } from '../types.js';
 
 interface Row<TValue> {
   readonly value: TValue;
@@ -20,7 +22,7 @@ interface Row<TValue> {
   readonly trustTier?: 1 | 2 | 3 | 4;
 }
 
-export interface InMemoryBackendOptions<TValue> {
+export interface InMemoryBackendOptions<TValue extends JsonValue> {
   readonly domain: string;
   /**
    * Optional Zod schema. Phase 2 vote mitigation #1 (security dissent):
@@ -28,13 +30,6 @@ export interface InMemoryBackendOptions<TValue> {
    * payloads throw `MemoryValidationError`.
    */
   readonly schema?: z.ZodType<TValue>;
-}
-
-export class MemoryValidationError extends Error {
-  constructor(domain: string, cause: unknown) {
-    super(`nexus-memory: write rejected for domain "${domain}": ${String(cause)}`);
-    this.name = 'MemoryValidationError';
-  }
 }
 
 function buildInMemoryRow<TValue>(value: TValue, meta: WriteMeta | undefined): Row<TValue> {
@@ -78,9 +73,12 @@ function applyInMemoryFilter<T>(values: T[], filter?: QueryFilter<T>): T[] {
   return out;
 }
 
-export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValue> {
+export class InMemoryBackend<
+  TKey extends string,
+  TValue extends JsonValue,
+> implements IMemoryBackend<TKey, TValue> {
   readonly domain: string;
-  private readonly rows = new Map<TKey, Row<TValue>>();
+  private readonly rows = new Map<string, Row<TValue>>();
   private readonly schema?: z.ZodType<TValue>;
   private closed = false;
 
@@ -101,6 +99,7 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
       start,
       () => {
         this.assertOpen();
+        assertStringKey(key, this.domain);
         const row = this.rows.get(key);
         recordMemoryEvent({
           domain: this.domain,
@@ -110,25 +109,9 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
           key,
           result: row?.value,
         });
-        return Promise.resolve(row?.value);
+        return Promise.resolve(row === undefined ? undefined : copyJson(row.value));
       }
     );
-  }
-
-  private validate(value: TValue): void {
-    // #4021: reject `undefined` uniformly (before the optional schema check) so
-    // both backends behave identically. Previously this backend stored a phantom
-    // row for `write(key, undefined)` while SqliteBackend threw a cryptic NOT NULL
-    // bind error — a contract divergence. `undefined` is the missing-key sentinel
-    // `read` returns; an explicit `undefined` write is a caller bug — use `null`.
-    if (value === undefined) {
-      throw new MemoryValidationError(this.domain, 'value must not be undefined (use null)');
-    }
-    if (this.schema === undefined) return;
-    const result = this.schema.safeParse(value);
-    if (!result.success) {
-      throw new MemoryValidationError(this.domain, result.error);
-    }
   }
 
   async write(key: TKey, value: TValue, meta?: WriteMeta): Promise<void> {
@@ -142,8 +125,9 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
       start,
       () => {
         this.assertOpen();
-        this.validate(value);
-        this.rows.set(key, buildInMemoryRow(value, meta));
+        assertStringKey(key, this.domain);
+        validateMemoryValue(value, this.domain, this.schema);
+        this.rows.set(key, buildInMemoryRow(copyJson(value), meta));
         recordMemoryEvent({
           domain: this.domain,
           op: 'write',
@@ -185,7 +169,7 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
           key: filter,
           result: { count: values.length },
         });
-        return Promise.resolve(values);
+        return Promise.resolve(values.map((value) => copyJson(value)));
       }
     );
   }
@@ -200,6 +184,7 @@ export class InMemoryBackend<TKey, TValue> implements IMemoryBackend<TKey, TValu
       start,
       () => {
         this.assertOpen();
+        assertStringKey(key, this.domain);
         const removed = this.rows.delete(key);
         recordMemoryEvent({
           domain: this.domain,

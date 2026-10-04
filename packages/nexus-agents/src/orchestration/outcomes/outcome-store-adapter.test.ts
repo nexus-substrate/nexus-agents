@@ -57,7 +57,7 @@ describe('OutcomeStoreAdapter', () => {
     store.append(makeOutcome({ cli: 'gemini' }));
     const claudes = await adapter.query({ where: { cli: 'claude' } });
     expect(claudes).toHaveLength(1);
-    expect(claudes[0]?.cli).toBe('claude');
+    expect(claudes[0]?.['cli']).toBe('claude');
   });
 
   it('query honors limit', async () => {
@@ -66,13 +66,32 @@ describe('OutcomeStoreAdapter', () => {
     expect(limited).toHaveLength(2);
   });
 
+  it('omits unset fields and returns independent JSON outcome rows', async () => {
+    store.append(makeOutcome({ qualitySignals: ['reviewed'], errorMessage: undefined }));
+    const rows = await adapter.query();
+    expect(rows[0]).not.toHaveProperty('errorMessage');
+    expect(rows[0]?.['qualitySignals']).toEqual(['reviewed']);
+    const signals = rows[0]?.['qualitySignals'];
+    if (Array.isArray(signals)) signals.push('caller mutation');
+    expect((await adapter.query())[0]?.['qualitySignals']).toEqual(['reviewed']);
+  });
+
   it('read returns undefined (OutcomeStore is query-only)', async () => {
     expect(await adapter.read('any-key')).toBeUndefined();
   });
 
   it('write rejects with explanatory error', async () => {
-    await expect(adapter.write('k', makeOutcome())).rejects.toThrow(/append.*directly/);
+    await expect(adapter.write('k', {})).rejects.toThrow(/append.*directly/);
   });
+
+  it.each(['read', 'write', 'delete'] as const)(
+    'rejects runtime non-string keys in %s',
+    async (op) => {
+      const key = 42 as unknown as string;
+      const action = op === 'write' ? adapter.write(key, {}) : adapter[op](key);
+      await expect(action).rejects.toThrow(/key must be a string/);
+    }
+  );
 
   it('delete returns false (bulk-only)', async () => {
     expect(await adapter.delete('k')).toBe(false);
