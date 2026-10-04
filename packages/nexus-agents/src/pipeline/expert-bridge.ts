@@ -12,6 +12,7 @@
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
 import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
+import type { GeneratedMcpConfig } from '../cli-adapters/child-mcp-config.js';
 import {
   assertAccessMode,
   requestedAccessModeOf,
@@ -200,55 +201,51 @@ function routedAttribution(
 // Cached router — lazily initialized, reused across calls within a session
 let cachedRouter: RouterLike | null = null;
 
-// Cached MCP config — generated once, reused across expert calls (#1708)
-let cachedMcpConfigPath: string | null = null;
-// Cached cleanup for the cached config's tempdir (closes #2946). Previously
-// the cleanup returned by `generateMcpConfig` was thrown away, so
-// `/tmp/nexus-mcp-XXXXXX/` accumulated one entry per MCP server lifetime.
-// Stored here + invoked by `shutdownExpertBridge()` from the server's
-// graceful-shutdown path.
-let cachedMcpConfigCleanup: (() => Promise<void>) | null = null;
-// Coalesces concurrent init under voter fan-out (closes #2969). consensus_vote
-// fans out N=7 callers on cold start; without this each one ran the full init
-// including a mkdtemp() that the loser N-1 instances never cleaned up.
-let mcpConfigInitPromise: Promise<string | null> | null = null;
+// Each expert owns its config through all router retries (#4631). The server
+// shutdown path can also release configs for calls interrupted by shutdown.
+const activeMcpConfigs = new Set<GeneratedMcpConfig>();
 
-/** Get or create cached MCP config path for expert CLI sessions (#1708). */
-async function getMcpConfigPath(): Promise<string | null> {
-  if (cachedMcpConfigPath !== null) return cachedMcpConfigPath;
-  mcpConfigInitPromise ??= (async (): Promise<string | null> => {
-    try {
-      const { generateMcpConfig } = await import('../cli-adapters/child-mcp-config.js');
-      const config = await generateMcpConfig();
-      cachedMcpConfigPath = config.configPath;
-      cachedMcpConfigCleanup = config.cleanup;
-      return cachedMcpConfigPath;
-    } catch {
-      mcpConfigInitPromise = null; // allow retry on next call
-      return null; // MCP config not available — experts run without tools
+/** Release active expert configs during server shutdown; safe to repeat. */
+export async function shutdownExpertBridge(): Promise<void> {
+  const configs = [...activeMcpConfigs];
+  activeMcpConfigs.clear();
+  const cleanups = configs.map(async (config) => config.cleanup());
+  for (const result of await Promise.allSettled(cleanups)) {
+    if (result.status === 'rejected') {
+      const error: unknown = result.reason;
+      logger.debug('Expert-bridge MCP-config cleanup failed', { error: String(error) });
     }
-  })();
-  return mcpConfigInitPromise;
+  }
 }
 
-/**
- * Removes the cached MCP-config tempdir (closes #2946). Invoke from the
- * server's graceful-shutdown path so stale nexus-mcp-* tempdirs (under
- * the OS tmpdir, see child-mcp-config.ts) don't accumulate across daemon
- * restarts. Idempotent; safe to call multiple times. Never throws —
- * cleanup failures are logged and swallowed.
- */
-export async function shutdownExpertBridge(): Promise<void> {
-  const cleanup = cachedMcpConfigCleanup;
-  if (cleanup === null) return;
-  cachedMcpConfigCleanup = null;
-  cachedMcpConfigPath = null;
-  mcpConfigInitPromise = null;
+/** Keep a call-owned config alive through dispatch and rate-limit backoff. */
+async function dispatchWithMcpConfig(
+  router: RouterLike,
+  content: string,
+  expertType: BuiltInExpertType,
+  start: number,
+  options: ExpertCallOptions | undefined
+): Promise<ExpertBridgeResult> {
+  let config: GeneratedMcpConfig | undefined;
+  if (requestedAccessModeOf(options) === 'default') {
+    try {
+      const { generateMcpConfig } = await import('../cli-adapters/child-mcp-config.js');
+      config = await generateMcpConfig();
+      activeMcpConfigs.add(config);
+    } catch (error: unknown) {
+      logger.debug('Expert MCP-config unavailable', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   try {
-    await cleanup();
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.debug('Expert-bridge MCP-config cleanup failed', { error: msg });
+    const task = buildBridgeTask(content, options, config?.configPath);
+    return await dispatchWithRateLimitRetry(router, task, expertType, start, options?.signal);
+  } finally {
+    if (config !== undefined) {
+      await config.cleanup();
+      activeMcpConfigs.delete(config);
+    }
   }
 }
 
@@ -371,7 +368,7 @@ function adaptCompositeRouter(
   };
 }
 
-// Coalesces concurrent router init the same way mcpConfigInitPromise does
+// Coalesces concurrent router init under concurrent expert fan-out
 // (closes #2969). N=7 voter fan-out previously ran createAllAdapters() N times
 // — N sets of CLI probe subprocesses, all but one discarded.
 let routerInitPromise: Promise<RouterLike | null> | null = null;
@@ -563,15 +560,14 @@ interface ExpertCallOptions {
  * fall outside the mode's allow list, and the claude adapter refuses a
  * restricted task that names an MCP config.
  */
-async function buildBridgeTask(
+function buildBridgeTask(
   content: string,
-  options: ExpertCallOptions | undefined
-): Promise<BridgeTask> {
+  options: ExpertCallOptions | undefined,
+  mcpConfigPath: string | undefined
+): BridgeTask {
   const task: BridgeTask = { content };
   if (options?.wrapper !== undefined) task.wrapper = options.wrapper;
-  const restricted = requestedAccessModeOf(options) !== 'default';
-  const mcpConfigPath = restricted ? null : await getMcpConfigPath();
-  if (mcpConfigPath !== null) task.options = { mcpConfigPath };
+  if (mcpConfigPath !== undefined) task.options = { mcpConfigPath };
   if (options?.workDir !== undefined) {
     task.options = { ...task.options, workDir: options.workDir };
   }
@@ -655,13 +651,7 @@ async function runExpertCall(
       };
     }
 
-    return await dispatchWithRateLimitRetry(
-      router,
-      await buildBridgeTask(fullPrompt, options),
-      expertType,
-      start,
-      options?.signal
-    );
+    return await dispatchWithMcpConfig(router, fullPrompt, expertType, start, options);
   } catch (error) {
     const durationMs = getTimeProvider().now() - start;
     const msg = error instanceof Error ? error.message : String(error);
