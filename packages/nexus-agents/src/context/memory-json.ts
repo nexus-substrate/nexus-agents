@@ -1,5 +1,6 @@
 /** JSON projection for native memory rows exposed through the shared registry. */
-import { assertJsonValue } from 'nexus-memory';
+import { types } from 'node:util';
+import { assertJsonValue, MemoryValidationError } from 'nexus-memory';
 import type { JsonValue } from 'nexus-memory';
 
 /**
@@ -8,12 +9,27 @@ import type { JsonValue } from 'nexus-memory';
  * registry contract. All other unsupported values remain validation errors.
  */
 export function projectMemoryJson(value: unknown): JsonValue {
-  const projected = projectNativeValue(value, new WeakMap<object, object>());
+  const projected = projectNativeValue(value, new WeakMap<object, object>(), '$');
   assertJsonValue(projected);
   return projected;
 }
 
-function projectNativeValue(value: unknown, seen: WeakMap<object, object>): unknown {
+/** Reject hooks before projection; native Dates are explicitly serialized below. */
+function assertProjectable(value: unknown, path: string): void {
+  if (types.isProxy(value))
+    throw new MemoryValidationError('json', 'proxies are not JSON values', path);
+  if (value === null || typeof value !== 'object' || value instanceof Date) return;
+  if ('toJSON' in value) {
+    throw new MemoryValidationError(
+      'json',
+      'toJSON properties are not JSON values',
+      `${path}["toJSON"]`
+    );
+  }
+}
+
+function projectNativeValue(value: unknown, seen: WeakMap<object, object>, path: string): unknown {
+  assertProjectable(value, path);
   if (value instanceof Date) return value.toISOString();
   if (value === null || typeof value !== 'object') return value;
   if (seen.has(value)) return seen.get(value);
@@ -23,7 +39,7 @@ function projectNativeValue(value: unknown, seen: WeakMap<object, object>): unkn
   seen.set(value, copy);
   for (const key of Reflect.ownKeys(value)) {
     if (isArray && key === 'length') continue;
-    projectProperty(value, copy, key, seen);
+    projectProperty(value, copy, key, seen, path);
   }
   return copy;
 }
@@ -33,7 +49,8 @@ function projectProperty(
   value: object,
   copy: object,
   key: string | symbol,
-  seen: WeakMap<object, object>
+  seen: WeakMap<object, object>,
+  path: string
 ): void {
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   if (descriptor === undefined) return;
@@ -42,7 +59,7 @@ function projectProperty(
     if (!Array.isArray(value) && descriptor.value === undefined) return;
     Object.defineProperty(copy, key, {
       ...descriptor,
-      value: projectNativeValue(descriptor.value, seen),
+      value: projectNativeValue(descriptor.value, seen, `${path}[${JSON.stringify(key)}]`),
     });
     return;
   }

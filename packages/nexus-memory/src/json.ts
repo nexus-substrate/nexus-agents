@@ -1,5 +1,6 @@
 /** Shared JSON boundary for all memory backends. Dates must be serialized by callers. */
 import type { z } from 'zod';
+import { types } from 'node:util';
 import type { JsonValue } from './types.js';
 
 export class MemoryValidationError extends Error {
@@ -41,7 +42,7 @@ function inspectProperty(
   key: string | symbol,
   path: string,
   context: JsonInspection
-): void {
+): JsonValue {
   const childPath = `${path}[${typeof key === 'symbol' ? String(key) : JSON.stringify(key)}]`;
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   if (typeof key === 'symbol' || descriptor?.enumerable !== true || !('value' in descriptor)) {
@@ -58,10 +59,11 @@ function inspectProperty(
       childPath
     );
   }
-  inspectJson(descriptor.value, childPath, context);
+  return inspectJson(descriptor.value, childPath, context);
 }
 
-function inspectProperties(value: object, path: string, context: JsonInspection): void {
+function inspectProperties(value: object, path: string, context: JsonInspection): JsonValue {
+  const copy: Record<string, JsonValue> | JsonValue[] = Array.isArray(value) ? [] : {};
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
       if (!Object.hasOwn(value, i)) {
@@ -75,11 +77,19 @@ function inspectProperties(value: object, path: string, context: JsonInspection)
   }
   for (const key of Reflect.ownKeys(value)) {
     if (Array.isArray(value) && key === 'length') continue;
-    inspectProperty(value, key, path, context);
+    const child = inspectProperty(value, key, path, context);
+    // Define data properties so literal __proto__ keys cannot invoke setters.
+    Object.defineProperty(copy, key, {
+      value: child,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
+  return copy;
 }
 
-function inspectObject(value: object, path: string, context: JsonInspection): void {
+function inspectObject(value: object, path: string, context: JsonInspection): JsonValue {
   const prototype: unknown = Object.getPrototypeOf(value);
   const expected = Array.isArray(value) ? Array.prototype : Object.prototype;
   if (prototype !== expected && !(prototype === null && !Array.isArray(value))) {
@@ -89,20 +99,30 @@ function inspectObject(value: object, path: string, context: JsonInspection): vo
       path
     );
   }
+  // Null-prototype inputs normalize to standard objects, which must also be hook-free.
+  if ('toJSON' in value || 'toJSON' in expected) {
+    throw new MemoryValidationError(
+      context.domain,
+      'toJSON properties are not JSON values',
+      `${path}["toJSON"]`
+    );
+  }
   if (context.ancestors.has(value))
     throw new MemoryValidationError(context.domain, 'cyclic value', path);
   context.ancestors.add(value);
-  inspectProperties(value, path, context);
+  const copy = inspectProperties(value, path, context);
   context.ancestors.delete(value);
+  return copy;
 }
 
-function inspectJson(value: unknown, path: string, context: JsonInspection): void {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+function inspectJson(value: unknown, path: string, context: JsonInspection): JsonValue {
+  if (types.isProxy(value))
+    throw new MemoryValidationError(context.domain, 'proxies are not JSON values', path);
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') {
-    if (Number.isFinite(value) && !Object.is(value, -0)) return;
+    if (Number.isFinite(value) && !Object.is(value, -0)) return value;
   } else if (typeof value === 'object') {
-    inspectObject(value, path, context);
-    return;
+    return inspectObject(value, path, context);
   }
   throw new MemoryValidationError(
     context.domain,
@@ -116,15 +136,15 @@ export function assertJsonValue(value: unknown, domain = 'json'): asserts value 
   inspectJson(value, '$', { domain, ancestors: new Set() });
 }
 
-/** Validate the original stored shape; schema transforms are not persisted or returned. */
+/** Validate and copy once; check the stored copy without persisting schema transforms. */
 export function validateMemoryValue<T extends JsonValue>(
   value: unknown,
   domain: string,
   schema?: z.ZodType<T>
-): asserts value is T {
-  assertJsonValue(value, domain);
-  if (schema === undefined) return;
-  const result = schema.safeParse(value);
+): T {
+  const copy = inspectJson(value, '$', { domain, ancestors: new Set() }) as T;
+  if (schema === undefined) return copy;
+  const result = schema.safeParse(copy);
   if (!result.success) {
     const path =
       '$' +
@@ -133,9 +153,10 @@ export function validateMemoryValue<T extends JsonValue>(
         .join('');
     throw new MemoryValidationError(domain, result.error, path);
   }
+  return copy;
 }
 
-/** Copy an already validated JSON value, preserving no caller-owned references. */
+/** Validate and copy JSON data without invoking caller accessors or serialization hooks. */
 export function copyJson<T extends JsonValue>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  return validateMemoryValue<T>(value, 'json');
 }

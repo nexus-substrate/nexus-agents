@@ -126,15 +126,15 @@ export class InMemoryBackend<
       () => {
         this.assertOpen();
         assertStringKey(key, this.domain);
-        validateMemoryValue(value, this.domain, this.schema);
-        this.rows.set(key, buildInMemoryRow(copyJson(value), meta));
+        const copy = validateMemoryValue(value, this.domain, this.schema);
+        this.rows.set(key, buildInMemoryRow(copy, meta));
         recordMemoryEvent({
           domain: this.domain,
           op: 'write',
           ...(meta?.cli !== undefined && { cli: meta.cli }),
           durationMs: Date.now() - start,
           key,
-          payload: value,
+          payload: copy,
         });
         return Promise.resolve();
       }

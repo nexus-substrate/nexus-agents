@@ -205,8 +205,7 @@ export class SqliteBackend<TKey extends string, TValue extends JsonValue> implem
   private decodeRow(row: SqliteRow): TValue {
     try {
       const value: unknown = JSON.parse(row.value);
-      validateMemoryValue<TValue>(value, this.domain, this.schema);
-      return value;
+      return validateMemoryValue<TValue>(value, this.domain, this.schema);
     } catch (cause: unknown) {
       throw new MemoryReadError(this.domain, row.key, cause);
     }
@@ -224,15 +223,15 @@ export class SqliteBackend<TKey extends string, TValue extends JsonValue> implem
       () => {
         this.assertOpen();
         assertStringKey(key, this.domain);
-        validateMemoryValue(value, this.domain, this.schema);
-        this.stmts.write.run(buildWriteRow(key, value, meta));
+        const copy = validateMemoryValue(value, this.domain, this.schema);
+        this.stmts.write.run(buildWriteRow(key, copy, meta));
         recordMemoryEvent({
           domain: this.domain,
           op: 'write',
           ...(meta?.cli !== undefined && { cli: meta.cli }),
           durationMs: Date.now() - start,
           key,
-          payload: value,
+          payload: copy,
         });
         return Promise.resolve();
       }

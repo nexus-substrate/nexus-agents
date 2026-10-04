@@ -7,13 +7,13 @@
  * @module nexus-memory/backends/contract.test
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { IMemoryBackend, JsonValue } from '../types.js';
 import { InMemoryBackend, MemoryValidationError } from './memory.js';
 import { SqliteBackend } from './sqlite.js';
 import { openSqliteDatabase } from './open-database.js';
-import { resetMemoryTelemetry } from '../telemetry.js';
+import { resetMemoryTelemetry, subscribeToMemoryEvents } from '../telemetry.js';
 
 type SamplePayload = {
   readonly text: string;
@@ -357,6 +357,165 @@ describe('SQLite stored-row validation', () => {
 
 for (const Backend of [InMemoryBackend, SqliteBackend]) {
   describe(`JSON values — ${Backend.name}`, () => {
+    afterEach(() => {
+      resetMemoryTelemetry();
+      vi.unstubAllEnvs();
+    });
+    it('rejects the descriptor-valid proxy with a spoofed toJSON before storing anything', async () => {
+      const backend = new Backend<string, { n: number }>({
+        domain: 'proxy_hook',
+        dbPath: ':memory:',
+        schema: z.object({ n: z.number() }),
+      });
+      let hookCalls = 0;
+      const value = new Proxy(
+        { n: 1 },
+        {
+          get(target, key, receiver) {
+            if (key === 'toJSON')
+              return () => {
+                hookCalls++;
+                return { n: 'invalid' };
+              };
+            return Reflect.get(target, key, receiver) as unknown;
+          },
+          has(target, key) {
+            return key === 'toJSON' ? false : Reflect.has(target, key);
+          },
+        }
+      );
+      try {
+        await expect(backend.write('k', value)).rejects.toMatchObject({
+          name: 'MemoryValidationError',
+          path: '$',
+        });
+        expect(hookCalls).toBe(0);
+        expect(await backend.read('k')).toBeUndefined();
+        expect(await backend.query()).toEqual([]);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it.each(['own', 'inherited'] as const)(
+      'rejects a %s toJSON property even when it is not callable',
+      async (location) => {
+        const backend = new Backend<string, JsonValue>({ domain: 'json_hook', dbPath: ':memory:' });
+        const value = { n: 1 };
+        const holder = location === 'own' ? value : Object.prototype;
+        const original = Object.getOwnPropertyDescriptor(holder, 'toJSON');
+        Object.defineProperty(holder, 'toJSON', {
+          value: null,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+        try {
+          await expect(backend.write('k', { nested: value })).rejects.toMatchObject({
+            name: 'MemoryValidationError',
+            path: location === 'own' ? '$["nested"]["toJSON"]' : '$["toJSON"]',
+          });
+          expect((await backend.stats()).count).toBe(0);
+        } finally {
+          if (original === undefined) Reflect.deleteProperty(holder, 'toJSON');
+          else Object.defineProperty(holder, 'toJSON', original);
+          await backend.close();
+        }
+      }
+    );
+
+    it('rejects a changing getter without invoking it or storing anything', async () => {
+      const backend = new Backend<string, JsonValue>({ domain: 'json_getter', dbPath: ':memory:' });
+      let reads = 0;
+      const value = Object.defineProperty({}, 'n', { enumerable: true, get: () => ++reads });
+      try {
+        await expect(backend.write('k', value as JsonValue)).rejects.toMatchObject({
+          name: 'MemoryValidationError',
+          path: '$["n"]',
+        });
+        expect(reads).toBe(0);
+        expect((await backend.stats()).count).toBe(0);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('rejects a null-prototype input when its fresh copy would inherit a toJSON hook', async () => {
+      const backend = new Backend<string, { n: number }>({
+        domain: 'copy_prototype_hook',
+        dbPath: ':memory:',
+        schema: z.object({ n: z.number() }),
+      });
+      const value = Object.assign(Object.create(null) as object, { n: 1 });
+      const original = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+      let hookCalls = 0;
+      let failure: unknown;
+      Object.defineProperty(Object.prototype, 'toJSON', {
+        configurable: true,
+        writable: true,
+        value: () => {
+          hookCalls++;
+          return { n: 'invalid' };
+        },
+      });
+      try {
+        try {
+          await backend.write('k', value);
+        } catch (error: unknown) {
+          failure = error;
+        }
+      } finally {
+        if (original === undefined) Reflect.deleteProperty(Object.prototype, 'toJSON');
+        else Object.defineProperty(Object.prototype, 'toJSON', original);
+      }
+      try {
+        expect(failure).toMatchObject({ name: 'MemoryValidationError', path: '$["toJSON"]' });
+        expect(hookCalls).toBe(0);
+        expect(await backend.read('k')).toBeUndefined();
+        expect((await backend.stats()).count).toBe(0);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('validates and stores the same fresh copy independently of the caller', async () => {
+      vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+      let payloadSummary: string | undefined;
+      const unsubscribe = subscribeToMemoryEvents((event) => {
+        if (event.op === 'write') payloadSummary = event.payloadSummary;
+      });
+      const value = { n: 1, nested: { label: 'valid' } };
+      let checked: unknown;
+      const schema = z.custom<typeof value>((candidate: unknown) => {
+        checked = candidate;
+        value.n = 2;
+        value.nested.label = 'caller changed during validation';
+        return (
+          candidate !== value &&
+          typeof candidate === 'object' &&
+          candidate !== null &&
+          'n' in candidate &&
+          candidate.n === 1
+        );
+      });
+      const backend = new Backend<string, typeof value>({
+        domain: 'stored_copy',
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', value);
+        expect(payloadSummary).toBe(JSON.stringify({ n: 1, nested: { label: 'valid' } }));
+        expect(checked).not.toBe(value);
+        expect(checked).toEqual({ n: 1, nested: { label: 'valid' } });
+        expect(await backend.read('k')).toEqual({ n: 1, nested: { label: 'valid' } });
+        expect(await backend.query()).toEqual([{ n: 1, nested: { label: 'valid' } }]);
+      } finally {
+        unsubscribe();
+        await backend.close();
+      }
+    });
+
     it('round-trips primitives, arrays, null-prototype objects, and shared acyclic children', async () => {
       const backend = new Backend<string, JsonValue>({ domain: 'json_values', dbPath: ':memory:' });
       const child = { n: 1 };
@@ -373,6 +532,7 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
         [1, 'x', null],
         plain as JsonValue,
         { first: child, second: child },
+        JSON.parse('{"__proto__":{"n":1},"constructor":"literal"}') as JsonValue,
       ];
       try {
         for (const [index, value] of values.entries()) {
