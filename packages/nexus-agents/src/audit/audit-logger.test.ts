@@ -374,16 +374,37 @@ describe('AuditLogger', () => {
   });
 
   describe('logSystemShutdownBegin', () => {
-    it('records the BEGIN action, not a completed shutdown (#5577)', async () => {
-      const l = new AuditLogger(makeConfig(), s);
-      l.logSystemShutdownBegin({ reason: 'graceful' });
-      await l.flush();
-      const e = callArg(s.write, 0);
-      // The sink closes before the rest of the teardown, so this record must
-      // not claim the shutdown finished.
-      expect(e.action).toBe('system.shutdown.begin');
-      expect(e.metadata).toEqual({ reason: 'graceful' });
+    it('exposes only the canonical shutdown method', () => {
+      const shutdownMethods = Object.getOwnPropertyNames(AuditLogger.prototype).filter(
+        (name) => name.startsWith('logSystem') && name.includes('Shutdown')
+      );
+      expect(shutdownMethods).toEqual(['logSystemShutdownBegin']);
     });
+    it.each([{ reason: 'graceful' }, {}, undefined])(
+      'preserves the pre-removal persisted begin record with metadata %j (#5736)',
+      async (metadata) => {
+        const l = new AuditLogger(makeConfig(), s);
+        l.logSystemShutdownBegin(metadata);
+        await l.flush();
+        expect(s.write).toHaveBeenCalledTimes(1);
+        // Captured before removing the delegate: the sink closes before the
+        // rest of teardown, so this is still a begin record, not completion.
+        expect(callArg(s.write, 0)).toStrictEqual({
+          id: 'aud_lxfxgbwo_aabbccddeeff',
+          version: '1.0',
+          timestamp: '2024-06-15T09:40:45.000Z',
+          timestampMs: 1718444445000,
+          category: 'system',
+          severity: 'info',
+          outcome: 'success',
+          action: 'system.shutdown.begin',
+          description:
+            'Nexus Agents shutdown begun (no completion record — see logSystemShutdownBegin)',
+          actor: { type: 'system', id: 'nexus-agents', name: 'Nexus Agents System' },
+          ...(metadata === undefined ? {} : { metadata }),
+        });
+      }
+    );
   });
 
   describe('startup phase records (#5577)', () => {
