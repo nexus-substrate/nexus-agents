@@ -3,6 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { GeminiCliAdapter } from '../cli-adapters/adapters/gemini-adapter.js';
 
 // Mock child_process to avoid real subprocess spawns (perf: saves ~40s)
 vi.mock('node:child_process', async (importOriginal) => {
@@ -27,6 +29,9 @@ describe('status-command', () => {
 
   beforeEach(() => {
     originalEnv = { ...process.env };
+    vi.mocked(execFileSync).mockImplementation(() => {
+      throw new Error('not found');
+    });
   });
 
   afterEach(() => {
@@ -121,8 +126,42 @@ describe('status-command', () => {
     expect(status.cliTools).toHaveLength(3);
     const names = status.cliTools.map((t) => t.binary);
     expect(names).toContain('claude');
-    expect(names).toContain('gemini');
+    expect(names).toContain(new GeminiCliAdapter().binaryName);
     expect(names).toContain('codex');
+  });
+
+  it.each([undefined, 'alternate-cli'])(
+    'probes and reports the adapter binary with override %s (#4389)',
+    (override) => {
+      if (override !== undefined) {
+        vi.spyOn(GeminiCliAdapter.prototype, 'binaryName', 'get').mockReturnValue(override);
+      }
+      const binary = new GeminiCliAdapter().binaryName;
+      vi.mocked(execFileSync).mockImplementation((command) => {
+        if (command === binary) return '1.2.3\n';
+        throw new Error('not found');
+      });
+
+      const row = statusModule.collectStatus().cliTools.find((tool) => tool.name === 'Gemini CLI');
+
+      expect(row).toEqual({ name: 'Gemini CLI', binary, installed: true, version: '1.2.3' });
+    }
+  );
+
+  it('reports the adapter binary when it is missing (#4389)', () => {
+    vi.spyOn(GeminiCliAdapter.prototype, 'binaryName', 'get').mockReturnValue('missing-cli');
+    vi.mocked(execFileSync).mockImplementation(() => {
+      throw new Error('not found');
+    });
+
+    const row = statusModule.collectStatus().cliTools.find((tool) => tool.name === 'Gemini CLI');
+
+    expect(row).toEqual({
+      name: 'Gemini CLI',
+      binary: 'missing-cli',
+      installed: false,
+      version: null,
+    });
   });
 
   it('cliTools entries have correct shape', () => {

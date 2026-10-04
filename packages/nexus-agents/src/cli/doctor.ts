@@ -42,7 +42,8 @@ import {
   countRoutedOutcomesInFile,
   type RoutedOutcomeCounts,
 } from '../learning/distiller-eligibility.js';
-import { createAllAdapters } from '../cli-adapters/factory.js';
+import { createAllAdapters, createCliAdapter } from '../cli-adapters/factory.js';
+import { getCliAdapterDiagnostics } from '../cli-adapters/cli-adapter-diagnostics.js';
 import { isCliAdmitted } from '../cli-adapters/cli-admission.js';
 import { cliBinaryAdapterOf } from '../cli-adapters/gateway-slot-arm.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
@@ -51,7 +52,7 @@ import {
   codexSandboxPreflight,
   type CodexSandboxPreflightResult,
 } from '../cli-adapters/codex-sandbox-preflight.js';
-import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
+import type { CliName, HealthStatus, CapacityStatus, ICliAdapter } from '../cli-adapters/types.js';
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
 import {
@@ -405,36 +406,26 @@ export interface DoctorResult {
 /**
  * Gets the CLI install/upgrade fix command.
  */
-function getFixCommand(name: CliName, issue: 'install' | 'upgrade' | 'auth'): string {
-  const commands: Record<CliName, Record<string, string>> = {
-    claude: {
-      install: 'npm install -g @anthropic-ai/claude-code',
-      upgrade: 'npm update -g @anthropic-ai/claude-code',
-      auth: 'claude auth login',
-    },
-    gemini: {
-      install: 'npm install -g @google/gemini-cli',
-      upgrade: 'npm update -g @google/gemini-cli',
-      auth: 'gemini auth login',
-    },
-    codex: {
-      install: 'npm install -g @openai/codex',
-      upgrade: 'npm update -g @openai/codex',
-      auth: 'codex auth login',
-    },
-    opencode: {
-      install: 'npm install -g opencode-ai',
-      upgrade: 'npm update -g opencode-ai',
-      auth: 'opencode auth login',
-    },
-  };
-  return commands[name][issue] ?? '';
+function getFixCommand(
+  name: CliName,
+  issue: 'install' | 'upgrade' | 'auth',
+  adapter?: ICliAdapter
+): string {
+  const source =
+    adapter !== undefined && 'binaryName' in adapter
+      ? adapter
+      : createCliAdapter({ cli: name, transport: 'subprocess' });
+  return getCliAdapterDiagnostics(source).installationHints[issue];
 }
 
 /**
  * Creates a result for when a CLI is not found.
  */
-function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
+function createNotFoundResult(
+  name: CliName,
+  errorMsg: string,
+  adapter?: ICliAdapter
+): CliCheckResult {
   return {
     name,
     // Not installed, so auth was never probed. `not-authenticated` would claim
@@ -447,7 +438,7 @@ function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
     versionStatus: 'unsupported',
     authenticated: false,
     error: errorMsg,
-    fix: getFixCommand(name, 'install'),
+    fix: getFixCommand(name, 'install', adapter),
   };
 }
 
@@ -494,7 +485,8 @@ function createHealthyResult(
   name: CliName,
   health: HealthStatus,
   authProbe: AuthProbeResult,
-  capacity?: CapacityStatus
+  capacity?: CapacityStatus,
+  adapter?: ICliAdapter
 ): CliCheckResult {
   const versionOk = health.healthy;
   const authenticated = versionOk && authProbe.state === 'authenticated';
@@ -528,10 +520,10 @@ function createHealthyResult(
   // re-authenticate a working CLI (#4661).
   // `not-authenticated` already implies `!authenticated` — see resolveAuthState.
   if (authState === 'not-authenticated') {
-    return { ...result, fix: getFixCommand(name, 'auth') };
+    return { ...result, fix: getFixCommand(name, 'auth', adapter) };
   }
   if (health.versionStatus === 'outdated') {
-    return { ...result, fix: getFixCommand(name, 'upgrade') };
+    return { ...result, fix: getFixCommand(name, 'upgrade', adapter) };
   }
 
   return result;
@@ -583,11 +575,11 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
       // Optional catch binding: there is no variable to be unused.
     }
 
-    return createHealthyResult(name, health, authProbe, capacity);
+    return createHealthyResult(name, health, authProbe, capacity, adapter);
   } catch (error) {
     const message = getErrorMessage(error);
     const isNotFound = message.includes('ENOENT') || message.includes('not found');
-    return createNotFoundResult(name, isNotFound ? 'Not found in PATH' : message);
+    return createNotFoundResult(name, isNotFound ? 'Not found in PATH' : message, adapter);
   }
 }
 

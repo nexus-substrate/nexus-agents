@@ -17,6 +17,9 @@ import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
 import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { execFileSync } from 'node:child_process';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
+import { createCliAdapter } from '../cli-adapters/factory.js';
+import { getCliAdapterDiagnostics } from '../cli-adapters/cli-adapter-diagnostics.js';
+import type { CliName } from '../cli-adapters/types.js';
 
 // ============================================================================
 // Types
@@ -58,10 +61,10 @@ const API_ADAPTER_CHECKS: ReadonlyArray<{ name: string; envVar: string }> = [
   { name: 'OpenAI', envVar: 'OPENAI_API_KEY' },
 ];
 
-const CLI_TOOL_CHECKS: ReadonlyArray<{ name: string; binary: string }> = [
-  { name: 'Claude CLI', binary: 'claude' },
-  { name: 'Gemini CLI', binary: 'gemini' },
-  { name: 'Codex CLI', binary: 'codex' },
+const CLI_TOOL_CHECKS: ReadonlyArray<{ name: string; cli: CliName }> = [
+  { name: 'Claude CLI', cli: 'claude' },
+  { name: 'Gemini CLI', cli: 'gemini' },
+  { name: 'Codex CLI', cli: 'codex' },
 ];
 
 // ============================================================================
@@ -82,15 +85,17 @@ function checkApiAdapters(): readonly ApiAdapterStatus[] {
  */
 function detectCliTools(): readonly CliToolStatus[] {
   return CLI_TOOL_CHECKS.map((check) => {
+    const adapter = createCliAdapter({ cli: check.cli, transport: 'subprocess' });
+    const binary = getCliAdapterDiagnostics(adapter).binaryName;
     try {
-      const version = execFileSync(check.binary, ['--version'], {
+      const version = execFileSync(binary, ['--version'], {
         timeout: CLI_SUBPROCESS_TIMEOUTS.statusProbeMs,
         stdio: ['ignore', 'pipe', 'ignore'],
         encoding: 'utf-8',
       }).trim();
-      return { name: check.name, binary: check.binary, installed: true, version };
+      return { name: check.name, binary, installed: true, version };
     } catch {
-      return { name: check.name, binary: check.binary, installed: false, version: null };
+      return { name: check.name, binary, installed: false, version: null };
     }
   });
 }

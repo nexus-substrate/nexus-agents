@@ -3,14 +3,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 
 // Mock CLI adapter factory to avoid real subprocess spawns (perf: saves ~23s)
-vi.mock('../cli-adapters/factory.js', () => ({
-  createAllAdapters: vi.fn(() => new Map()),
-}));
+vi.mock('../cli-adapters/factory.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli-adapters/factory.js')>();
+  return { ...actual, createAllAdapters: vi.fn(() => new Map()) };
+});
 
 // The pinned-model probe (#6120) would spawn the real claude CLI.
 vi.mock('./doctor-claude-model.js', async (importOriginal) => {
@@ -58,8 +59,7 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
     process.env['NEXUS_PERSIST_LEARNING'] = 'true';
 
     // Create temp dir with test data
-    const tmpDir = join(tmpdir(), `nexus-doctor-test-${String(Date.now())}`);
-    mkdirSync(tmpDir, { recursive: true });
+    const tmpDir = mkdtempOutsideRepo('nexus-doctor-test-');
 
     const outcomesFile = join(tmpDir, 'outcomes.jsonl');
     const rulesFile = join(tmpDir, 'rules.json');
@@ -111,7 +111,7 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
   it('reports the named empty case: 0 eligible, 0 rules, and a last-distill time (#6512)', async () => {
     process.env['NEXUS_PERSIST_LEARNING'] = 'true';
     const originalDataDir = process.env['NEXUS_DATA_DIR'];
-    const dataDir = join(tmpdir(), `nexus-doctor-6512-${String(Date.now())}`);
+    const dataDir = mkdtempOutsideRepo('nexus-doctor-6512-');
     process.env['NEXUS_DATA_DIR'] = dataDir;
     try {
       const { getOutcomesFile, getRulesFile, ensureLearningDir } =
@@ -157,7 +157,7 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
   it('counts routed outcomes and the ones from the last 7 days (#6521)', async () => {
     process.env['NEXUS_PERSIST_LEARNING'] = 'true';
     const originalDataDir = process.env['NEXUS_DATA_DIR'];
-    const dataDir = join(tmpdir(), `nexus-doctor-6521-${String(Date.now())}`);
+    const dataDir = mkdtempOutsideRepo('nexus-doctor-6521-');
     process.env['NEXUS_DATA_DIR'] = dataDir;
     try {
       const { getOutcomesFile, ensureLearningDir } =

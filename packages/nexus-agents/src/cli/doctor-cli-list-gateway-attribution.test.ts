@@ -18,7 +18,10 @@ vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return { ...actual, execFileSync: vi.fn() };
 });
-vi.mock('../cli-adapters/factory.js', () => ({ createAllAdapters: vi.fn() }));
+vi.mock('../cli-adapters/factory.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli-adapters/factory.js')>();
+  return { ...actual, createAllAdapters: vi.fn() };
+});
 // The slot's binary is "on PATH", so the arm is `cli-or-gateway`. Nothing spawns it.
 vi.mock('../cli-adapters/cli-binary-on-path.js', () => ({ isCliBinaryOnPath: vi.fn(() => true) }));
 vi.mock('../cli-adapters/codex-mcp-server-probe.js', async (importOriginal) => {
