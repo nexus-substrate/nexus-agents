@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runDoctor, printDoctorResults, doctorCommand } from './doctor.js';
 import type { CliCheckResult, DoctorResult } from './doctor.js';
+import { GeminiCliAdapter } from '../cli-adapters/adapters/gemini-adapter.js';
 
 const { TEST_VERSION } = vi.hoisted(() => ({ TEST_VERSION: '1.0.0' }));
 
@@ -26,9 +27,10 @@ vi.mock('node:child_process', async (importOriginal) => {
 });
 
 // Mock the factory module
-vi.mock('../cli-adapters/factory.js', () => ({
-  createAllAdapters: vi.fn(),
-}));
+vi.mock('../cli-adapters/factory.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli-adapters/factory.js')>();
+  return { ...actual, createAllAdapters: vi.fn() };
+});
 
 // #6119: the client-mode verdict is measured by `codex mcp-server --help`.
 // Default to a codex that still serves it; the unavailable case is a test.
@@ -38,9 +40,14 @@ vi.mock('../cli-adapters/codex-mcp-server-probe.js', async (importOriginal) => {
 });
 
 // The sandbox preflight is model-free, but unit tests must not spawn Codex.
-vi.mock('../cli-adapters/codex-sandbox-preflight.js', () => ({
-  codexSandboxPreflight: vi.fn(() => Promise.resolve({ status: 'ok' as const })),
-}));
+vi.mock('../cli-adapters/codex-sandbox-preflight.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../cli-adapters/codex-sandbox-preflight.js')>();
+  return {
+    ...actual,
+    codexSandboxPreflight: vi.fn(() => Promise.resolve({ status: 'ok' as const })),
+  };
+});
 
 // The pinned-model probe (#6120) spends a real claude call; stub it here and
 // keep the formatter real. doctor.ts imports the probe directly, so the spread
@@ -65,7 +72,8 @@ vi.mock('../mcp/server.js', () => ({
 }));
 
 // Mock fs.existsSync for config file checks
-vi.mock('node:fs', () => ({
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: vi.fn(() => false),
   // #4488: the scratch-space check reads statfs. A roomy reading keeps these
   // tests about CLI/auth health rather than disk state.
@@ -246,6 +254,59 @@ describe('Doctor Command', () => {
   });
 
   describe('runDoctor()', () => {
+    it('uses raw adapter metadata when the routing arm is absent (#4389)', async () => {
+      vi.spyOn(GeminiCliAdapter.prototype, 'binaryName', 'get').mockReturnValue('missing-cli');
+      vi.mocked(createAllAdapters).mockReturnValue(new Map());
+
+      const result = await runDoctor();
+
+      expect(result.clis.find((cli) => cli.name === 'gemini')?.fix).toBe(
+        'Install missing-cli and ensure it is on PATH'
+      );
+    });
+
+    it.each([undefined, 'alternate-cli'])(
+      'offers installation help for the adapter binary with override %s (#4389)',
+      async (override) => {
+        const adapter = new GeminiCliAdapter();
+        if (override !== undefined) {
+          vi.spyOn(adapter, 'binaryName', 'get').mockReturnValue(override);
+        }
+        vi.spyOn(adapter, 'healthCheck').mockRejectedValue(new Error('ENOENT'));
+        vi.mocked(createAllAdapters).mockReturnValue(new Map([['gemini', adapter]]));
+
+        const result = await runDoctor();
+        const row = result.clis.find((cli) => cli.name === 'gemini');
+
+        expect(row?.installed).toBe(false);
+        expect(row?.fix).toBe(`Install ${adapter.binaryName} and ensure it is on PATH`);
+      }
+    );
+
+    it.each([undefined, 'alternate-cli'])(
+      'offers upgrade help for the adapter binary with override %s (#4389)',
+      async (override) => {
+        const adapter = new GeminiCliAdapter();
+        if (override !== undefined) {
+          vi.spyOn(adapter, 'binaryName', 'get').mockReturnValue(override);
+        }
+        vi.spyOn(adapter, 'healthCheck').mockResolvedValue({
+          healthy: true,
+          version: '1.0.0',
+          versionStatus: 'outdated',
+          lastChecked: new Date(0),
+        });
+        vi.spyOn(adapter, 'getCapacity').mockRejectedValue(new Error('not supported'));
+        vi.mocked(createAllAdapters).mockReturnValue(new Map([['gemini', adapter]]));
+
+        const result = await runDoctor();
+
+        expect(result.clis.find((cli) => cli.name === 'gemini')?.fix).toBe(
+          `Update ${adapter.binaryName} to the latest version`
+        );
+      }
+    );
+
     it.each([
       { status: 'ok' as const },
       { status: 'broken' as const, reason: 'bubblewrap cannot isolate app-server sockets' },
