@@ -35,6 +35,7 @@ export function assertStringKey(key: unknown, domain: string): asserts key is st
 interface JsonInspection {
   readonly domain: string;
   readonly ancestors: Set<object>;
+  readonly stored?: boolean;
 }
 
 function inspectProperty(
@@ -45,7 +46,11 @@ function inspectProperty(
 ): JsonValue {
   const childPath = `${path}[${typeof key === 'symbol' ? String(key) : JSON.stringify(key)}]`;
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
-  if (typeof key === 'symbol' || descriptor?.enumerable !== true || !('value' in descriptor)) {
+  if (
+    typeof key === 'symbol' ||
+    descriptor?.enumerable !== true ||
+    !Object.hasOwn(descriptor, 'value')
+  ) {
     throw new MemoryValidationError(
       context.domain,
       'only enumerable string data properties are JSON values',
@@ -75,16 +80,20 @@ function inspectProperties(value: object, path: string, context: JsonInspection)
       }
     }
   }
-  for (const key of Reflect.ownKeys(value)) {
-    if (Array.isArray(value) && key === 'length') continue;
+  const keys = Reflect.ownKeys(value);
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index];
+    if (key === undefined || (Array.isArray(value) && key === 'length')) continue;
     const child = inspectProperty(value, key, path, context);
     // Define data properties so literal __proto__ keys cannot invoke setters.
-    Object.defineProperty(copy, key, {
+    const descriptor = {
+      __proto__: null,
       value: child,
       enumerable: true,
       writable: true,
       configurable: true,
-    });
+    };
+    Object.defineProperty(copy, key, descriptor);
   }
   return copy;
 }
@@ -100,7 +109,10 @@ function inspectObject(value: object, path: string, context: JsonInspection): Js
     );
   }
   // Null-prototype inputs normalize to standard objects, which must also be hook-free.
-  if ('toJSON' in value || 'toJSON' in expected) {
+  if (
+    Object.hasOwn(value, 'toJSON') ||
+    (context.stored !== true && ('toJSON' in value || 'toJSON' in expected))
+  ) {
     throw new MemoryValidationError(
       context.domain,
       'toJSON properties are not JSON values',
@@ -138,7 +150,11 @@ export function assertJsonValue(value: unknown, domain = 'json'): asserts value 
 
 function freezeJson(value: JsonValue): void {
   if (value === null || typeof value !== 'object') return;
-  for (const child of Object.values(value)) freezeJson(child);
+  const keys = Object.keys(value);
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index];
+    if (key !== undefined) freezeJson(jsonProperty(value, key));
+  }
   Object.freeze(value);
 }
 
@@ -149,6 +165,20 @@ export function validateMemoryValue<T extends JsonValue>(
   schema?: z.ZodType<T>
 ): T {
   const copy = inspectJson(value, '$', { domain, ancestors: new Set() }) as T;
+  return validateSnapshot(copy, domain, schema);
+}
+
+/** Validate freshly parsed row data without treating shared prototype hooks as row data. */
+export function validateStoredMemoryValue<T extends JsonValue>(
+  value: unknown,
+  domain: string,
+  schema?: z.ZodType<T>
+): T {
+  const copy = inspectJson(value, '$', { domain, ancestors: new Set(), stored: true }) as T;
+  return validateSnapshot(copy, domain, schema);
+}
+
+function validateSnapshot<T extends JsonValue>(copy: T, domain: string, schema?: z.ZodType<T>): T {
   freezeJson(copy);
   if (schema === undefined) return copy;
   const result = schema.safeParse(copy);
@@ -163,7 +193,65 @@ export function validateMemoryValue<T extends JsonValue>(
   return copy;
 }
 
-/** Return fresh mutable JSON data without invoking accessors or serialization hooks. */
+/** Read only an own enumerable data property of an already validated snapshot. */
+function jsonProperty(value: object, key: string): JsonValue {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (descriptor?.enumerable !== true || !Object.hasOwn(descriptor, 'value')) {
+    throw new MemoryValidationError('json', 'expected an own enumerable data property');
+  }
+  return descriptor.value as JsonValue;
+}
+
+/** Return fresh mutable JSON data via an own walk, independent of shared prototypes. */
 export function copyJson<T extends JsonValue>(value: T): T {
-  return inspectJson(value, '$', { domain: 'json', ancestors: new Set() }) as T;
+  if (value === null || typeof value !== 'object') return value;
+  const copy = Array.isArray(value) ? [] : {};
+  const keys = Object.keys(value);
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index];
+    if (key === undefined) continue;
+    const descriptor = {
+      __proto__: null,
+      value: copyJson(jsonProperty(value, key)),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    };
+    Object.defineProperty(copy, key, descriptor);
+  }
+  return copy as T;
+}
+
+/** Emit validated JSON data in property order, without invoking object hooks or getters. */
+export function serializeJson(value: JsonValue): string {
+  if (value === null || typeof value !== 'object') return serializeJsonPrimitive(value);
+  return serializeJsonContainer(value);
+}
+
+/**
+ * Primitives only: `JSON.stringify` on a string or number cannot reach a toJSON
+ * hook, so it is safe here and keeps escaping identical to the native output.
+ */
+function serializeJsonPrimitive(value: JsonValue): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'number') return JSON.stringify(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  throw new MemoryValidationError('json', 'expected JSON data');
+}
+
+/** Indexed loops, not for-of: the array iterator is itself a prototype hook. */
+function serializeJsonContainer(
+  value: Exclude<JsonValue, null | string | number | boolean>
+): string {
+  const array = Array.isArray(value);
+  const keys = Object.keys(value);
+  let text = array ? '[' : '{';
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index];
+    if (key === undefined) continue;
+    const child = serializeJson(jsonProperty(value, key));
+    if (index > 0) text += ',';
+    text += array ? child : `${JSON.stringify(key)}:${child}`;
+  }
+  return text + (array ? ']' : '}');
 }

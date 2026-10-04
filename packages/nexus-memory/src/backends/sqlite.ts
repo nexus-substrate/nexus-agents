@@ -20,7 +20,14 @@ import type {
 import type { z } from 'zod';
 import { recordFailedMemoryOp, recordMemoryEvent } from '../telemetry.js';
 import type { BackendStats, IMemoryBackend, JsonValue, QueryFilter, WriteMeta } from '../types.js';
-import { assertStringKey, copyJson, MemoryReadError, validateMemoryValue } from '../json.js';
+import {
+  assertStringKey,
+  copyJson,
+  MemoryReadError,
+  serializeJson,
+  validateMemoryValue,
+  validateStoredMemoryValue,
+} from '../json.js';
 import { openSqliteDatabase } from './open-database.js';
 
 export interface SqliteBackendOptions<TValue extends JsonValue> {
@@ -52,7 +59,7 @@ function buildWriteRow(
 ): Record<string, string | number | null> {
   return {
     key,
-    value: JSON.stringify(value),
+    value: serializeJson(value),
     cli: meta?.cli ?? null,
     source: meta?.source ?? null,
     timestamp: meta?.timestamp ?? Date.now(),
@@ -205,7 +212,7 @@ export class SqliteBackend<TKey extends string, TValue extends JsonValue> implem
   private decodeRow(row: SqliteRow): TValue {
     try {
       const value: unknown = JSON.parse(row.value);
-      return copyJson(validateMemoryValue<TValue>(value, this.domain, this.schema));
+      return copyJson(validateStoredMemoryValue<TValue>(value, this.domain, this.schema));
     } catch (cause: unknown) {
       throw new MemoryReadError(this.domain, row.key, cause);
     }

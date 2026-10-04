@@ -362,8 +362,10 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
       vi.unstubAllEnvs();
     });
     it('rejects the descriptor-valid proxy with a spoofed toJSON before storing anything', async () => {
+      const db = openSqliteDatabase(':memory:');
       const backend = new Backend<string, { n: number }>({
         domain: 'proxy_hook',
+        db,
         dbPath: ':memory:',
         schema: z.object({ n: z.number() }),
       });
@@ -390,10 +392,14 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
           path: '$',
         });
         expect(hookCalls).toBe(0);
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM proxy_hook WHERE key = ?').get('k')).toBeUndefined();
+        }
         expect(await backend.read('k')).toBeUndefined();
         expect(await backend.query()).toEqual([]);
       } finally {
         await backend.close();
+        db.close();
       }
     });
 
@@ -558,18 +564,26 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
         });
         return true;
       });
+      const db = openSqliteDatabase(':memory:');
       const backend = new Backend<string, { n: number }>({
         domain: 'schema_hook',
+        db,
         dbPath: ':memory:',
         schema,
       });
       try {
         await backend.write('k', { n: 1 });
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM schema_hook WHERE key = ?').get('k')).toEqual({
+            value: '{"n":1}',
+          });
+        }
         expect(await backend.read('k')).toEqual({ n: 1 });
         expect(await backend.query()).toEqual([{ n: 1 }]);
         expect(hookCalls).toBe(0);
       } finally {
         await backend.close();
+        db.close();
       }
     });
 
@@ -580,8 +594,10 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
         retained = candidate as typeof value;
         return true;
       });
+      const db = openSqliteDatabase(':memory:');
       const backend = new Backend<string, typeof value>({
         domain: 'schema_retained',
+        db,
         dbPath: ':memory:',
         schema,
       });
@@ -596,10 +612,16 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
           Reflect.set(retained.items, '0', { n: 99 }),
           Reflect.set(retained.items[0]!, 'n', 99),
         ];
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM schema_retained WHERE key = ?').get('k')).toEqual({
+            value: '{"n":1,"nested":{"n":2},"items":[{"n":3}]}',
+          });
+        }
         expect(await backend.read('k')).toEqual(value);
         expect(mutations).toEqual([false, false, false, false]);
       } finally {
         await backend.close();
+        db.close();
       }
     });
 
@@ -647,5 +669,252 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
         await backend.close();
       }
     });
+  });
+}
+
+// Keep prototype pollution active through persistence, audit, read, and query.
+for (const Backend of [InMemoryBackend, SqliteBackend]) {
+  describe(`Stored JSON bytes — ${Backend.name}`, () => {
+    afterEach(() => {
+      resetMemoryTelemetry();
+      vi.unstubAllEnvs();
+    });
+
+    it('preserves JSON escaping, numeric formatting, and property order in stored bytes', async () => {
+      const db = openSqliteDatabase(':memory:');
+      const backend = new Backend<string, JsonValue>({
+        domain: 'byte_compatibility',
+        dbPath: ':memory:',
+        db,
+      });
+      const text = '\"\\\b\f\n\r\t\u0000\ud800\udfff😀';
+      const value: JsonValue = {
+        z: text,
+        '10': 10,
+        '2': 2,
+        a: [null, true, false, 0, 1.5, 1e-7, 1e21],
+        ['__proto__']: { constructor: 'literal' },
+      };
+      const expected =
+        '{"2":2,"10":10,"z":' +
+        JSON.stringify(text) +
+        ',"a":[null,true,false,0,1.5,1e-7,1e+21],"__proto__":{"constructor":"literal"}}';
+      try {
+        await backend.write('k', value);
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM byte_compatibility WHERE key = ?').get('k')).toEqual(
+            { value: expected }
+          );
+        }
+        expect(await backend.read('k')).toEqual(value);
+      } finally {
+        await backend.close();
+        db.close();
+      }
+    });
+
+    it.each(['join', 'push', 'iterator'] as const)(
+      'ignores Array.prototype.%s replaced during schema validation',
+      async (kind) => {
+        const db = openSqliteDatabase(':memory:');
+        const key = kind === 'iterator' ? Symbol.iterator : kind;
+        const original = Object.getOwnPropertyDescriptor(Array.prototype, key);
+        vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+        let summary: string | undefined;
+        const unsubscribe = subscribeToMemoryEvents((event) => {
+          if (event.op === 'write') summary = event.payloadSummary;
+        });
+        let installed = false;
+        let calls = 0;
+        const value = { n: 1, items: [2, 3] };
+        const backend = new Backend<string, typeof value>({
+          domain: 'array_methods',
+          dbPath: ':memory:',
+          db,
+          schema: z.custom<typeof value>(() => {
+            if (!installed) {
+              const hook =
+                kind === 'iterator'
+                  ? function* (): Generator<never> {
+                      calls++;
+                    }
+                  : (): string => {
+                      calls++;
+                      return '"n":"invalid"';
+                    };
+              Object.defineProperty(Array.prototype, key, { configurable: true, value: hook });
+              installed = true;
+            }
+            return true;
+          }),
+        });
+        // Read JSON independently of Zod's own inherited array iterator.
+        const reader =
+          Backend === SqliteBackend
+            ? new SqliteBackend<string, typeof value>({
+                domain: 'array_methods',
+                dbPath: ':memory:',
+                db,
+              })
+            : backend;
+        let raw: unknown;
+        let write: Promise<void> | undefined;
+        let read: Promise<typeof value | undefined> | undefined;
+        try {
+          // Both backend bodies run synchronously; restore before the test harness resumes.
+          write = backend.write('k', value);
+          if (Backend === SqliteBackend) {
+            raw = db.prepare('SELECT value FROM array_methods WHERE key = ?').get('k');
+          }
+          read = reader.read('k');
+        } finally {
+          if (original === undefined) Reflect.deleteProperty(Array.prototype, key);
+          else Object.defineProperty(Array.prototype, key, original);
+        }
+        try {
+          await write;
+          expect(await read).toEqual(value);
+          if (Backend === SqliteBackend) {
+            expect(raw).toEqual({ value: '{"n":1,"items":[2,3]}' });
+          }
+          expect(summary).toBe('{"n":1,"items":[2,3]}');
+          expect(calls).toBe(0);
+        } finally {
+          unsubscribe();
+          if (reader !== backend) await reader.close();
+          await backend.close();
+          db.close();
+        }
+      }
+    );
+
+    it.each(['getter', 'getter get', 'getter set', 'Symbol.toPrimitive', 'valueOf'] as const)(
+      'ignores a prototype %s installed after inspection',
+      async (kind) => {
+        const db = openSqliteDatabase(':memory:');
+        const key =
+          kind === 'Symbol.toPrimitive'
+            ? Symbol.toPrimitive
+            : kind === 'getter'
+              ? 'inherited_key'
+              : kind === 'getter get'
+                ? 'get'
+                : kind === 'getter set'
+                  ? 'set'
+                  : 'valueOf';
+        const holders: object[] = [Object.prototype, Array.prototype];
+        const originals = holders.map((holder) => Object.getOwnPropertyDescriptor(holder, key));
+        let calls = 0;
+        let installed = false;
+        let summary: string | undefined;
+        vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+        const unsubscribe = subscribeToMemoryEvents((event) => {
+          if (event.op === 'write') summary = event.payloadSummary;
+        });
+        const value = { n: 1, inherited_key: 'own', items: [1] };
+        const backend = new Backend<string, typeof value>({
+          domain: 'prototype_coercion',
+          dbPath: ':memory:',
+          db,
+          schema: z.custom<typeof value>(() => {
+            if (!installed) {
+              for (const holder of holders) {
+                const hook = (): never => {
+                  calls++;
+                  throw new Error('prototype hook invoked');
+                };
+                const descriptor = kind.startsWith('getter')
+                  ? { __proto__: null, configurable: true, enumerable: true, get: hook }
+                  : { __proto__: null, configurable: true, value: hook };
+                Object.defineProperty(holder, key, descriptor);
+              }
+              installed = true;
+            }
+            return true;
+          }),
+        });
+        let raw: unknown;
+        let read: unknown;
+        let query: unknown;
+        try {
+          await backend.write('k', value);
+          if (Backend === SqliteBackend) {
+            raw = db.prepare('SELECT value FROM prototype_coercion WHERE key = ?').get('k');
+          }
+          read = await backend.read('k');
+          query = await backend.query();
+        } finally {
+          for (const [index, holder] of holders.entries()) {
+            const original = originals[index];
+            if (original === undefined) Reflect.deleteProperty(holder, key);
+            else Object.defineProperty(holder, key, original);
+          }
+          unsubscribe();
+          await backend.close();
+          db.close();
+        }
+        if (Backend === SqliteBackend) {
+          expect(raw).toEqual({ value: '{"n":1,"inherited_key":"own","items":[1]}' });
+        }
+        expect(summary).toBe('{"n":1,"inherited_key":"own","items":[1]}');
+        expect(read).toEqual(value);
+        expect(query).toEqual([value]);
+        expect(calls).toBe(0);
+      }
+    );
+
+    it.each(['Object', 'Array'] as const)(
+      'ignores toJSON installed on %s.prototype during schema validation',
+      async (kind) => {
+        const db = openSqliteDatabase(':memory:');
+        const holder: object = kind === 'Object' ? Object.prototype : Array.prototype;
+        const original = Object.getOwnPropertyDescriptor(holder, 'toJSON');
+        const value: JsonValue = kind === 'Object' ? { n: 1 } : [{ n: 1 }];
+        const expectedBytes = kind === 'Object' ? '{"n":1}' : '[{"n":1}]';
+        let hookCalls = 0;
+        let installed = false;
+        let summary: string | undefined;
+        vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+        const unsubscribe = subscribeToMemoryEvents((event) => {
+          if (event.op === 'write') summary = event.payloadSummary;
+        });
+        const backend = new Backend<string, JsonValue>({
+          domain: 'prototype_hook',
+          dbPath: ':memory:',
+          db,
+          schema: z.custom<JsonValue>(() => {
+            if (!installed) {
+              Object.defineProperty(holder, 'toJSON', {
+                configurable: true,
+                value: () => {
+                  hookCalls++;
+                  return { n: 'invalid' };
+                },
+              });
+              installed = true;
+            }
+            return true;
+          }),
+        });
+        try {
+          await backend.write('k', value);
+          if (Backend === SqliteBackend) {
+            expect(db.prepare('SELECT value FROM prototype_hook WHERE key = ?').get('k')).toEqual({
+              value: expectedBytes,
+            });
+          }
+          expect(summary).toBe(expectedBytes);
+          expect(await backend.read('k')).toEqual(value);
+          expect(await backend.query()).toEqual([value]);
+          expect(hookCalls).toBe(0);
+        } finally {
+          if (original === undefined) Reflect.deleteProperty(holder, 'toJSON');
+          else Object.defineProperty(holder, 'toJSON', original);
+          unsubscribe();
+          await backend.close();
+          db.close();
+        }
+      }
+    );
   });
 }
