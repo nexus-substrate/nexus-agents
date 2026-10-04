@@ -54,6 +54,9 @@ describe('enrichWithGovernance', () => {
   const baseOutput = {
     recommended_model: 'claude-opus',
     reasoning: 'Best for complex tasks',
+    capabilities: { reasoning: 10, contextWindow: 10, codeGeneration: 10, speed: 10, cost: 10 },
+    estimated_tokens: 100,
+    alternatives: [],
   };
 
   it('returns output unchanged when not promoted', () => {
@@ -67,6 +70,19 @@ describe('enrichWithGovernance', () => {
     const result = enrichWithGovernance(baseOutput, notPromoted);
     expect(result).toEqual(baseOutput);
     expect(result).not.toHaveProperty('governance');
+  });
+
+  it('rejects incomplete promoted governance metadata', () => {
+    const incomplete: GovernanceClassification = {
+      tier: RequestTier.ORCHESTRATED,
+      promoted: true,
+      domain: 'security',
+      votingThreshold: null,
+      promotionReason: null,
+    };
+    expect(() => enrichWithGovernance(baseOutput, incomplete)).toThrow(
+      'Promoted governance requires a voting threshold and promotion reason'
+    );
   });
 
   it('adds governance metadata when promoted', () => {

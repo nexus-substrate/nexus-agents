@@ -35,7 +35,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { measuredTrustTier } from '../middleware/request-context.js';
 import {
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
@@ -318,7 +318,7 @@ async function executePipelineBody(
       detail: output,
     });
   }
-  return toolSuccessStructured(output);
+  return structuredToolSuccess(z.record(z.string(), z.unknown()), output);
 }
 
 /** Wire caller observations and pipeline execution modes into the agent stages. */

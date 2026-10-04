@@ -33,7 +33,7 @@ import { TaskSourceTrustTierSchema } from './task-source-trust-tier.js';
 import { measureInputSanitization } from './pipeline-input-sanitization.js';
 import {
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
@@ -392,7 +392,7 @@ async function executeDevPipelineBody(
       detail: output,
     });
   }
-  return toolSuccessStructured(output);
+  return structuredToolSuccess(z.record(z.string(), z.unknown()), output);
 }
 
 /**

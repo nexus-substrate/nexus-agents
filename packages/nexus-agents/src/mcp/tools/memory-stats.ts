@@ -16,8 +16,9 @@ import { withToolError } from '../middleware/tool-error-handler.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -25,6 +26,20 @@ import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { getMemoryRegistry } from 'nexus-memory';
 import { MemoryType, type TypedMemoryStats } from '../../context/memory-types.js';
+
+// Permissive shape from collectMemoryStats (#2340 batch 2). Backend-specific
+// stats vary by initialization state (some are nullable, some optional in CI
+// where partial init is the norm); model the envelope, not internal structure.
+const OUTPUT_SCHEMA = {
+  backends: z.unknown(),
+  session: z.unknown().optional(),
+  belief: z.unknown().optional(),
+  typed: z.unknown().optional(),
+  mobimem: z.unknown().optional(),
+  decay: z.unknown().optional(),
+  registry: z.array(z.unknown()).optional(),
+  collectedAt: z.string().optional(),
+};
 
 // ============================================================================
 // Schema & Types
@@ -302,7 +317,7 @@ async function memoryStatsHandler(args: unknown, ctx: HandlerContext): Promise<T
 
   return withToolError('Memory stats failed', ctx.logger, async () => {
     const result = await collectMemoryStats(validationResult.data, ctx.logger);
-    return toolSuccessStructured(result as unknown as Record<string, unknown>);
+    return structuredToolSuccess(z.object(OUTPUT_SCHEMA), result);
   });
 }
 
@@ -338,26 +353,13 @@ export function registerMemoryStatsTool(server: McpServer, deps: MemoryStatsDeps
   const timeoutMs = getToolTimeout('memory_stats', deps.security);
   const wrappedHandler = wrapToolWithTimeout('memory_stats', secureHandler, { timeoutMs, logger });
 
-  // Permissive shape from collectMemoryStats (#2340 batch 2). Backend-specific
-  // stats vary by initialization state (some are nullable, some optional in CI
-  // where partial init is the norm); model the envelope, not internal structure.
-  const outputSchema = {
-    backends: z.unknown(),
-    session: z.unknown().optional(),
-    belief: z.unknown().optional(),
-    typed: z.unknown().optional(),
-    mobimem: z.unknown().optional(),
-    decay: z.unknown().optional(),
-    registry: z.array(z.unknown()).optional(),
-    collectedAt: z.string().optional(),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'memory_stats',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('memory_stats'),
     },
     toSdkCallback(wrappedHandler)

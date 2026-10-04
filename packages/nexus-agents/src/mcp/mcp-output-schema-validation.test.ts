@@ -7,11 +7,7 @@ import { registerListExpertsTool } from './tools/list-experts.js';
 import { RateLimiter } from './middleware/rate-limiter.js';
 
 describe('server output-schema validation', () => {
-  // KNOWN GAP (#7042, step 2 pending): the SDK validates with a non-strict parse,
-  // so the server still ACCEPTS an undeclared key that validating clients reject.
-  // `it.fails` records that honestly; when strict registration lands this test
-  // starts passing, `it.fails` goes red, and it must be flipped to `it`.
-  it.fails('rejects an undeclared handler key on the server before client validation', async () => {
+  it('rejects an undeclared handler key on the server before client validation', async () => {
     const server = new McpServer({ name: 'strict-output-test', version: '1.0.0' });
     const registration = vi.spyOn(server, 'registerTool');
     registerListExpertsTool(server, {
