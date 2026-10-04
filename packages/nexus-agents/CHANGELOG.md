@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.131.0
+
+### Minor Changes
+
+- [#7046](https://github.com/nexus-substrate/nexus-agents/pull/7046) [`2be32c1`](https://github.com/nexus-substrate/nexus-agents/commit/2be32c1c22eaf9c1c3c5a4e2def5b153d59952ac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Declare consensus vote retry provenance and higher-order decision attribution in the MCP output schema so validating clients accept these existing response fields.
+
 ## 8.130.6
 
 ### Patch Changes
