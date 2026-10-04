@@ -7,6 +7,8 @@
  * (Source: Issue #284 - Learning metrics dashboard)
  */
 
+import type { BanditReconstruction } from '../cli-adapters/bandit-warm-start.js';
+
 /**
  * Options for the learning-metrics CLI command.
  */
@@ -98,6 +100,8 @@ export interface LearningMetricsResult {
   readonly periodHours: number;
   readonly models: ReadonlyArray<ModelLearningStats>;
   readonly banditProgress: BanditProgress;
+  /** Provenance when the CLI reconstructed its bandit from stored outcomes (#5275). */
+  readonly banditReconstruction?: BanditReconstruction;
   readonly rewardTrend: RewardTrend;
   readonly feedbackLoop: FeedbackLoopStats;
   readonly summary: {

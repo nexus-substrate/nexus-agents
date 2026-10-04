@@ -91,7 +91,7 @@ import {
   isStrategyDistillationEnabled,
 } from '../config/learning-persistence.js';
 import { getPipelineEventBus } from '../pipeline/event-bus.js';
-import { generateSyntheticPriors, runWarmUp } from '../cli/warm-up.js';
+import { warmStartBandit } from './bandit-warm-start.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
@@ -359,7 +359,7 @@ export class CompositeRouter implements ICompositeRouter {
       // collapse the arm names here, that would destroy the CLI-vs-API
       // distinct learning this migration exists to enable.
       this.linucbBandit = new LinUCBBandit(this.cliNames, { alpha: this.config.linucbAlpha });
-      this.warmStartBandit();
+      warmStartBandit(this.linucbBandit, this.logger);
     }
     if (this.config.enableLatencyTracking) this.latencyTracker = new LatencyTracker(latencyConfig);
   }
@@ -454,58 +454,6 @@ export class CompositeRouter implements ICompositeRouter {
       reasoning: decision.reason,
       decisionPath: decision.stagesExecuted,
     });
-  }
-
-  /** Warm-start LinUCB bandit from persisted outcomes (Issue #1015).
-   * Uses a 30-day lookback window so stale outcomes don't override
-   * routing changes like primaryCli specialization (#1667). */
-  private warmStartBandit(): void {
-    if (this.linucbBandit === undefined) return;
-    try {
-      let replayed = 0;
-      if (isPersistenceEnabled()) {
-        // Use 30-day lookback — stale all-time data was overriding
-        // specialization matrix changes (e.g., architecture claude→gemini) (#1667)
-        const WARM_START_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
-        const since = new Date(getTimeProvider().now() - WARM_START_LOOKBACK_MS).toISOString();
-        const outcomes = getOutcomeStore().query({
-          since,
-          excludeQualitySignals: ['e2e-eval'],
-        });
-        if (outcomes.length > 0) {
-          replayed = this.linucbBandit.warmStart(outcomes);
-          this.logger.info('LinUCB warm-started from recent outcomes', {
-            outcomesAvailable: outcomes.length,
-            outcomesReplayed: replayed,
-            lookbackDays: 30,
-          });
-        }
-      }
-      // Always seed specialization priors — not just cold-start (#1667).
-      // This ensures primaryCli preferences from TASK_SPECIALIZATION_MATRIX
-      // always influence LinUCB, even when warm-start data disagrees.
-      const priors = generateSyntheticPriors();
-      this.linucbBandit.seedPriors(priors, replayed === 0 ? 3 : 1);
-      if (replayed === 0) {
-        const result = runWarmUp(this.logger);
-        if (!result.skipped) {
-          // Mirror the 30-day path's filter (#2824 bullet) — pre-fix this
-          // cold-start fallback queried with no filter, replaying any
-          // e2e-eval synthetic outcomes that survived from prior test
-          // runs into LinUCB. The 30-day branch above carefully excludes
-          // them; the fallback didn't.
-          const outcomes = getOutcomeStore().query({ excludeQualitySignals: ['e2e-eval'] });
-          this.linucbBandit.warmStart(outcomes);
-        }
-        this.logger.info('LinUCB cold-start seeded from specialization matrix', {
-          syntheticOutcomes: result.seeded,
-        });
-      }
-    } catch (error: unknown) {
-      this.logger.warn('LinUCB warm-start failed, starting cold', {
-        error: getErrorMessage(error),
-      });
-    }
   }
 
   private logInitialization(adapterCount: number): void {

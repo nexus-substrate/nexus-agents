@@ -7,6 +7,7 @@
  * (Source: Issue #170, Alignment Roadmap Phase 1)
  */
 
+import type { BanditReconstruction } from '../cli-adapters/bandit-warm-start.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
 import type { TaskProfile } from '../core/index.js';
@@ -88,6 +89,7 @@ export interface RoutingAuditResult {
   readonly selectionReason: string;
   readonly isExploration: boolean;
   readonly banditStats?: BanditStats;
+  readonly banditReconstruction?: BanditReconstruction;
 }
 
 // =============================================================================

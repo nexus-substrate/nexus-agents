@@ -10,7 +10,9 @@
 
 import { writeFileSync } from 'node:fs';
 import { createLogger, getErrorMessage, toError } from '../core/index.js';
-import type { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
+import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
+import { warmStartBandit } from '../cli-adapters/bandit-warm-start.js';
+import { DEFAULT_MODEL_PROFILES } from '../cli-adapters/topsis-types.js';
 import type { RoutingMetricsCollector } from '../observability/routing-metrics.js';
 import type { FeedbackIntegration } from '../learning/feedback-integration.js';
 import type { LearningMetricsOptions, LearningMetricsResult } from './learning-metrics-types.js';
@@ -138,12 +140,7 @@ export function learningMetricsCommand(
   context?: LearningMetricsContext
 ): number {
   try {
-    const result = gatherLearningMetrics(
-      context?.bandit,
-      context?.metricsCollector,
-      context?.feedbackIntegration,
-      options
-    );
+    const result = gatherContextMetrics(context, options);
 
     const output =
       options.format === 'json' ? formatJsonOutput(result) : formatAsciiOutput(result, options);
@@ -178,12 +175,37 @@ export function runLearningMetrics(
     ...options,
   };
 
-  return gatherLearningMetrics(
-    context?.bandit,
+  return gatherContextMetrics(context, mergedOptions);
+}
+
+/** Reconstruct the standalone CLI's bandit while preserving supplied live components. */
+function gatherContextMetrics(
+  context: LearningMetricsContext | undefined,
+  options: LearningMetricsOptions
+): LearningMetricsResult {
+  const bandit = context?.bandit ?? new LinUCBBandit(DEFAULT_MODEL_PROFILES.map((p) => p.cliName));
+  const reconstruction =
+    context?.bandit === undefined ? warmStartBandit(bandit, logger, { persist: false }) : undefined;
+  const result = gatherLearningMetrics(
+    bandit,
     context?.metricsCollector,
     context?.feedbackIntegration,
-    mergedOptions
+    options
   );
+  if (reconstruction === undefined) return result;
+  // Replays and priors are not selection decisions, so the pull spread of a
+  // reconstructed bandit says nothing about exploration: never derive a verdict.
+  const summary = { ...result.summary, learningStatus: 'unmeasured' as const };
+  // Priors and synthetic fallback pulls are not measured routing evidence.
+  if (reconstruction.status === 'failed' || reconstruction.empiricalOutcomesReplayed === 0) {
+    return {
+      ...result,
+      banditReconstruction: reconstruction,
+      summary,
+      banditProgress: { ...result.banditProgress, topFeatures: [], interceptFeatures: [] },
+    };
+  }
+  return { ...result, banditReconstruction: reconstruction, summary };
 }
 
 /**

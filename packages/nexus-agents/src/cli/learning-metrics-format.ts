@@ -19,6 +19,7 @@ import type {
 import { formatPercentage } from '../core/index.js';
 import { colors, color } from './ansi-output.js';
 import { horizontalLine, boxLine, centerText } from './box-drawing.js';
+import { formatBanditReconstruction } from './bandit-reconstruction-format.js';
 import {
   BANDIT_INTERCEPT_NOTE,
   formatBanditFeatureLabel,
@@ -71,7 +72,11 @@ function formatSummary(result: LearningMetricsResult): string[] {
           : color('◎', ANSI.blue);
   const statusText =
     result.summary.learningStatus === 'unmeasured'
-      ? 'unmeasured (no routing decisions recorded)'
+      ? result.banditReconstruction === undefined
+        ? 'unmeasured (no routing decisions recorded)'
+        : result.banditReconstruction.status === 'failed'
+          ? 'unmeasured (reconstruction failed)'
+          : 'unmeasured (no empirical replay)'
       : result.summary.learningStatus;
   lines.push(boxLine(`   ${statusEmoji} Learning Status: ${statusText}`));
 
@@ -127,7 +132,7 @@ function formatModelStats(models: readonly ModelLearningStats[]): string[] {
 /**
  * Formats the bandit progress section.
  */
-function formatBanditProgress(bandit: BanditProgress): string[] {
+function formatBanditProgress(bandit: BanditProgress, unmeasured: boolean): string[] {
   const lines: string[] = [];
   lines.push(boxLine(color(' LinUCB Bandit Progress:', ANSI.bold)));
 
@@ -135,8 +140,9 @@ function formatBanditProgress(bandit: BanditProgress): string[] {
   lines.push(boxLine(`   Total Pulls: ${pulls}`));
 
   const expRatio = formatPercentage(bandit.explorationRatio, 1);
-  const expStatus =
-    bandit.explorationRatio >= 0.1 && bandit.explorationRatio <= 0.3
+  const expStatus = unmeasured
+    ? color('(unmeasured)', ANSI.dim)
+    : bandit.explorationRatio >= 0.1 && bandit.explorationRatio <= 0.3
       ? color('(healthy)', ANSI.green)
       : color('(adjust)', ANSI.yellow);
   lines.push(boxLine(`   Exploration Ratio: ${expRatio} ${expStatus}`));
@@ -265,13 +271,18 @@ export function formatAsciiOutput(
   options: LearningMetricsOptions
 ): string {
   const lines: string[] = [
+    ...(result.banditReconstruction === undefined
+      ? []
+      : formatBanditReconstruction(result.banditReconstruction)),
     ...formatHeader(result),
     ...formatSummary(result),
     ...formatModelStats(result.models),
   ];
 
   if (options.banditStats) {
-    lines.push(...formatBanditProgress(result.banditProgress));
+    lines.push(
+      ...formatBanditProgress(result.banditProgress, result.summary.learningStatus === 'unmeasured')
+    );
     lines.push(...formatFeatureImportance(result.banditProgress.topFeatures));
   }
 
@@ -288,5 +299,18 @@ export function formatAsciiOutput(
  * Formats the JSON output.
  */
 export function formatJsonOutput(result: LearningMetricsResult): string {
-  return JSON.stringify(result, null, 2);
+  return JSON.stringify(
+    {
+      ...result,
+      ...(result.banditReconstruction === undefined
+        ? {}
+        : {
+            banditStateDescription: formatBanditReconstruction(result.banditReconstruction).join(
+              ' '
+            ),
+          }),
+    },
+    null,
+    2
+  );
 }
