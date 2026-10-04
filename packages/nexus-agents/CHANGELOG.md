@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.132.0
+
+### Minor Changes
+
+- [#7074](https://github.com/nexus-substrate/nexus-agents/pull/7074) [`1d2dccf`](https://github.com/nexus-substrate/nexus-agents/commit/1d2dccf37e7cbb98e17e282dec53ccea9878e216) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add optional adapter contract members for auth status, opt-in bounded live readiness, and model-support queries. Live readiness is capped by the interactive operation-class guard and single-flight per adapter. Enforce these members across in-tree CLI and API adapters with one conformance suite; preserve explicit unknown and unmeasured outcomes.
+
 ## 8.131.6
 
 ### Patch Changes
