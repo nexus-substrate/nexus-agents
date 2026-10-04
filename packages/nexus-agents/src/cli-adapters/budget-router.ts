@@ -35,7 +35,7 @@ import { generateBudgetWarnings } from './budget-warnings.js';
 import { createBudgetExceededError } from './budget-errors.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
 import { gatewayCostGap } from '../adapters/sdk/gateway-cost.js';
-import { budgetCostOfArm, ceilingCostOfArm, unpricedReasonOfArm } from './budget-arm-cost.js';
+import { budgetCostOfArm, recordCeilingCostOfArm, unpricedReasonOfArm } from './budget-arm-cost.js';
 
 // The registry estimator moved to a sibling for the file cap (#4392 inc 2);
 // re-exported so `budget-router` keeps its published surface.
@@ -295,7 +295,8 @@ export class BudgetRouter implements IBudgetRouter {
       // A vendor arm is priced by its display slot's default model (#3422); a
       // gateway arm by its NEXUS_GATEWAY_COST declaration (#4392 inc 2).
       const target = { arm, adapter: this.adapters.get(arm) };
-      const cost = ceilingCostOfArm(target, inputTokens, outputTokens);
+      const estimate = recordCeilingCostOfArm(target, inputTokens, outputTokens, ceiling);
+      const cost = estimate.costUsd;
       if (cost === undefined) {
         const gap = gatewayCostGap(arm);
         if (gap !== undefined) {
