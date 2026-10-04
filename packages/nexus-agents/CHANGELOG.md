@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.130.2
+
+### Patch Changes
+
+- [#7028](https://github.com/nexus-substrate/nexus-agents/pull/7028) [`7a4331d`](https://github.com/nexus-substrate/nexus-agents/commit/7a4331db8b7a69c4c1dfae39a66e8daa4a8701d9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Count production code-PR soak evidence only, report excluded test rows in readiness, and stamp new records with origin. Legacy unstamped `audit-soak-<digits>` records are counted as excluded test output without rewriting the ledger. Assert soak paths use the existing test data-dir override.
+
 ## 8.130.1
 
 ### Patch Changes
