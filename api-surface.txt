@@ -665,7 +665,6 @@ ClassDeclaration AuditLogger
   logPolicyDecision(opts: PolicyDecisionAuditOpts) => void
   logRateLimitViolation(opts: RateLimitAuditOpts) => void
   logSecurityEvent(opts: SecurityEventAuditOpts) => void
-  logSystemShutdown(metadata?: Record<string, unknown>) => void
   logSystemShutdownBegin(metadata?: Record<string, unknown>) => void
   logSystemStartup(metadata?: Record<string, unknown>, outcome?: "failure" | "success") => void
   logSystemStartupBegin(metadata?: Record<string, unknown>) => void
