@@ -21,6 +21,7 @@ import { TopsisRouter } from '../cli-adapters/topsis-router.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
 import { DEFAULT_MODEL_PROFILES } from '../cli-adapters/topsis-types.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
+import { warmStartBandit } from '../cli-adapters/bandit-warm-start.js';
 import { BANDIT_INTERCEPT_FEATURES } from '../cli-adapters/linucb-math.js';
 import { taskProfileToBanditContext } from '../cli-adapters/composite-router-helpers.js';
 import type { Task } from '../core/types/agent.js';
@@ -235,6 +236,7 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
 
   // Step 4: LinUCB selection
   const bandit = new LinUCBBandit(eligibleClis);
+  const banditReconstruction = warmStartBandit(bandit, logger, { persist: false });
   const context = taskProfileToBanditContext(taskProfile);
   const linucbDetails = computeLinUCBDetails(bandit, context);
   const selection = bandit.select(context);
@@ -256,6 +258,7 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
     budgetResults,
     topsisResult,
     linucbDetails,
+    banditReconstruction,
     selectedCli,
     selectionReason,
     isExploration,

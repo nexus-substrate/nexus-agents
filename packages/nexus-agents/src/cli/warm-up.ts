@@ -85,6 +85,39 @@ export function generateSyntheticPriors(): ReadonlyMap<string, number> {
 }
 
 /**
+ * One synthetic outcome per CLI per specialization category, stamped with
+ * `timestamp`. Pure: callers decide whether to persist them (runWarmUp) or
+ * replay them in memory (read-only bandit reconstruction, #5275).
+ */
+export function buildSyntheticOutcomes(timestamp: string): TaskOutcome[] {
+  const outcomes: TaskOutcome[] = [];
+  for (const spec of TASK_SPECIALIZATION_MATRIX) {
+    for (const cli of CLI_NAMES) {
+      let reward: number;
+      if (cli === spec.primaryCli) {
+        reward = PRIMARY_REWARD;
+      } else if (cli === spec.secondaryCli) {
+        reward = SECONDARY_REWARD;
+      } else {
+        reward = OTHER_REWARD;
+      }
+      outcomes.push({
+        id: `synthetic-${cli}-${spec.category}`,
+        cli,
+        category: spec.category,
+        model: `${cli}-default`,
+        success: reward >= 0.5,
+        durationMs: 0,
+        timestamp,
+        qualitySignals: [SYNTHETIC_MARKER],
+        source: 'manual',
+      });
+    }
+  }
+  return outcomes;
+}
+
+/**
  * Seed the LinUCB bandit with synthetic priors and record synthetic outcomes.
  *
  * Idempotent: skips if OutcomeStore already contains outcomes with the
@@ -103,36 +136,9 @@ export function runWarmUp(logger?: ILogger): WarmUpResult {
   }
 
   const priors = generateSyntheticPriors();
-  const now = new Date().toISOString();
-  let seeded = 0;
-
-  // Record one synthetic outcome per CLI per category
-  for (const spec of TASK_SPECIALIZATION_MATRIX) {
-    for (const cli of CLI_NAMES) {
-      let reward: number;
-      if (cli === spec.primaryCli) {
-        reward = PRIMARY_REWARD;
-      } else if (cli === spec.secondaryCli) {
-        reward = SECONDARY_REWARD;
-      } else {
-        reward = OTHER_REWARD;
-      }
-
-      const outcome: TaskOutcome = {
-        id: `synthetic-${cli}-${spec.category}`,
-        cli,
-        category: spec.category,
-        model: `${cli}-default`,
-        success: reward >= 0.5,
-        durationMs: 0,
-        timestamp: now,
-        qualitySignals: [SYNTHETIC_MARKER],
-        source: 'manual',
-      };
-      store.append(outcome);
-      seeded++;
-    }
-  }
+  const outcomes = buildSyntheticOutcomes(new Date().toISOString());
+  for (const outcome of outcomes) store.append(outcome);
+  const seeded = outcomes.length;
 
   log.info('LinUCB warm-up complete', {
     seeded,
