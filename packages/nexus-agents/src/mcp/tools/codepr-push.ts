@@ -13,7 +13,7 @@
  * discriminated denial value; the module NEVER throws (a throw is wrapped into a
  * denied result):
  *  1. **Readiness gate FIRST.** Assemble the enable-readiness evidence (explicit
- *     flag, enable-vote ref, `guardsGreenSoak` from {@link readCodePrGuardsGreenSoak},
+ *     flag, enable-vote ref, `guardsGreenSoak` from {@link readCodePrSoakSummary},
  *     owner-ack) and call {@link evaluateCodePrEnableReadiness}. NOT ready →
  *     `not_enabled` and DO NOTHING ELSE (no worktree, no push). Audit the refusal.
  *  2. **Credentials required.** The push seam requires a non-empty token from
@@ -66,7 +66,7 @@ import {
   evaluateCodePrEnableReadiness,
   type CodePrEnableReadinessConfig,
 } from './codepr-enable-readiness.js';
-import { readCodePrGuardsGreenSoak } from './codepr-soak-store.js';
+import { readCodePrSoakSummary, type CodePrSoakSummary } from './codepr-soak-store.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { hasStringProperty, redactCredentials } from './codepr-credentials.js';
 import type { CODEPR_BRANCH_PREFIX } from './auto-remediation-branch.js';
@@ -102,7 +102,7 @@ const PUSH_USAGE_ZERO: ResourceUsage = { wallClockMs: 0, tokens: 0, toolCalls: 0
 /**
  * The enable-readiness evidence the caller supplies EXPLICITLY (the flag is NOT
  * read from env here — the gate stays a pure, testable decision). The
- * `guardsGreenSoak` value is read from {@link readCodePrGuardsGreenSoak} inside
+ * `guardsGreenSoak` value is read from {@link readCodePrSoakSummary} inside
  * {@link executeCodePrPush}, NOT taken from this input — the caller cannot forge
  * the soak streak.
  */
@@ -168,10 +168,10 @@ export interface CodePrPushDeps {
   /** Hash-chained audit logger (intent + result records). */
   readonly logger: IAuditLogger;
   /**
-   * Test seam: override the soak read. Defaults to {@link readCodePrGuardsGreenSoak}.
+   * Test seam: override the soak read. Defaults to {@link readCodePrSoakSummary}.
    * Production leaves this undefined (reads the durable soak store).
    */
-  readonly readSoak?: (() => number) | undefined;
+  readonly readSoak?: (() => number | CodePrSoakSummary) | undefined;
   /** Test seam: override the dry-run plan invocation. Defaults to {@link planCodePrRun}. */
   readonly planRun?: typeof planCodePrRun | undefined;
 }
@@ -300,13 +300,16 @@ function checkReadiness(
   input: CodePrPushInput,
   deps: CodePrPushDeps
 ): CodePrPushResult | undefined {
-  const readSoak = deps.readSoak ?? readCodePrGuardsGreenSoak;
-  const consecutiveGreenDryRuns = readSoak();
+  const readSoak = deps.readSoak ?? readCodePrSoakSummary;
+  const soak = readSoak();
+  const consecutiveGreenDryRuns = typeof soak === 'number' ? soak : soak.consecutiveGreenDryRuns;
+  const excludedTestRows = typeof soak === 'number' ? 0 : soak.excludedTestRows;
   const verdict = evaluateCodePrEnableReadiness(
     {
       flagEnabled: input.readiness.flagEnabled,
       enableVoteRef: input.readiness.enableVoteRef,
       consecutiveGreenDryRuns,
+      excludedTestRows,
       owner: input.readiness.owner,
     },
     input.readinessConfig
@@ -315,7 +318,10 @@ function checkReadiness(
   auditRefusal(deps.logger, input.run, 'not_enabled', sha256(''));
   return pushDenied(
     'not_enabled',
-    `enable-readiness not satisfied: blockers=[${verdict.blockers.join(', ')}]`
+    `enable-readiness not satisfied: blockers=[${verdict.blockers.join(', ')}]; ` +
+      (verdict.criteria.find((c) => c.name === 'guards-green-soak')?.detail ??
+        `${String(consecutiveGreenDryRuns)} consecutive green production dry-runs; ` +
+          `excludedTestRows: ${String(excludedTestRows)}; readiness evaluation unavailable`)
   );
 }
 
@@ -539,7 +545,7 @@ function planRealizePush(
  *
  * A push is IMPOSSIBLE unless BOTH (a) {@link evaluateCodePrEnableReadiness}
  * returns `ready` against the explicit flag/vote/owner evidence AND the durable
- * guards-green soak read from {@link readCodePrGuardsGreenSoak}, AND (b) an
+ * guards-green soak read from {@link readCodePrSoakSummary}, AND (b) an
  * explicit scoped token is present in {@link CODEPR_TOKEN_ENV}. There is NO merge
  * path anywhere in this module: the PR is a normal feature-branch PR subject to
  * CI + CODEOWNERS.
@@ -646,7 +652,7 @@ export function defaultOpenPullRequest(args: OpenPullRequestArgs): OpenedPrRef {
 /**
  * Assemble the production push deps (real `gitPush`/`openPullRequest` seams over
  * the scoped token, plus the supplied audit logger). The durable soak read + the
- * dry-run plan default to {@link readCodePrGuardsGreenSoak} / {@link planCodePrRun}.
+ * dry-run plan default to {@link readCodePrSoakSummary} / {@link planCodePrRun}.
  * Note: assembling these deps does NOT push — a push still requires the full
  * readiness gate + the explicit token at {@link executeCodePrPush} time.
  */

@@ -41,6 +41,7 @@ import { promisify } from 'node:util';
 
 import { describe, it, expect, afterEach } from 'vitest';
 
+import { getCodePrSoakFile, getCodePrSoakSink } from './codepr-soak-store.js';
 import { buildAutoRemediationDeps } from './auto-remediation-deps.js';
 import { runAutoRemediationCycle } from './auto-remediation-cycle.js';
 import {
@@ -372,6 +373,12 @@ describe('enforce path — e2e against a throwaway repo (#3777)', () => {
     });
 
     it('audit cycle DOES write soak records (the wrap is audit-only)', async () => {
+      // soakSink replaces only the remediation collector. The separate code-PR
+      // singleton must resolve through the suite's existing temp data-dir override.
+      expect(process.env['NEXUS_DATA_DIR']).toBeTruthy();
+      expect(getCodePrSoakFile()).toBe(
+        join(process.env['NEXUS_DATA_DIR'] ?? '', 'learning', 'codepr-guards-soak.jsonl')
+      );
       const sink = recordingSink();
       const deps = buildAutoRemediationDeps({ voteRunner: APPROVING_VOTE_RUNNER });
       // Unique signalKey so the process-singleton runaway guard never collides
@@ -382,6 +389,13 @@ describe('enforce path — e2e against a throwaway repo (#3777)', () => {
         { collectSignals: async () => Promise.resolve([uniq]), deps, soakSink: sink }
       );
       expect(sink.count()).toBeGreaterThan(0); // audit flushes the collector
+      expect(
+        getCodePrSoakSink()
+          .getRecords()
+          .find((r) => r.signalKey === uniq.signalKey)
+      ).toMatchObject({
+        origin: 'test',
+      });
     });
   });
 
