@@ -11,7 +11,7 @@ import {
   getMemoryRegistry,
   setMemoryRegistry,
 } from './registry.js';
-import type { IMemoryBackend } from './types.js';
+import type { JsonValue, IMemoryBackend } from './types.js';
 import { createInMemoryMemoryRegistry, createSqliteMemoryRegistry } from './factory.js';
 
 describe('MemoryRegistry', () => {
@@ -105,8 +105,8 @@ describe('shared singleton (getMemoryRegistry / setMemoryRegistry)', () => {
 
 describe('MemoryRegistry.close() failure handling (#5776)', () => {
   function stubBackend(
-    overrides: Partial<IMemoryBackend<string, unknown>> = {}
-  ): IMemoryBackend<string, unknown> {
+    overrides: Partial<IMemoryBackend<string, JsonValue>> = {}
+  ): IMemoryBackend<string, JsonValue> {
     return {
       domain: 'stub',
       read: () => Promise.resolve(undefined),

@@ -11,11 +11,30 @@
  * @module orchestration/outcomes/outcome-store-adapter
  */
 
-import type { BackendStats, IMemoryBackend, QueryFilter, WriteMeta } from 'nexus-memory';
+import { assertStringKey } from 'nexus-memory';
+import type { BackendStats, IMemoryBackend, JsonValue, QueryFilter, WriteMeta } from 'nexus-memory';
+import { OutcomeQuerySchema } from './outcome-types.js';
+import type { OutcomeQuery } from './outcome-types.js';
 import type { OutcomeStore } from './outcome-store.js';
-import type { TaskOutcome } from './outcome-types.js';
+import { projectMemoryJson } from '../../context/memory-json.js';
 
-export class OutcomeStoreAdapter implements IMemoryBackend<string, TaskOutcome> {
+type JsonOutcome = Readonly<Record<string, JsonValue>>;
+
+function toOutcomeQuery(filter?: QueryFilter<JsonValue>): OutcomeQuery {
+  const raw = filter?.where;
+  const where =
+    raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Readonly<Record<string, JsonValue>>)
+      : {};
+  return OutcomeQuerySchema.parse({
+    ...(typeof where['cli'] === 'string' && { cli: where['cli'] }),
+    ...(typeof where['category'] === 'string' && { category: where['category'] }),
+    ...(typeof where['success'] === 'boolean' && { success: where['success'] }),
+    ...(typeof where['baselineId'] === 'string' && { baselineId: where['baselineId'] }),
+  });
+}
+
+export class OutcomeStoreAdapter implements IMemoryBackend<string, JsonValue> {
   readonly domain = 'outcomes';
   private readonly store: OutcomeStore;
 
@@ -23,13 +42,15 @@ export class OutcomeStoreAdapter implements IMemoryBackend<string, TaskOutcome> 
     this.store = store;
   }
 
-  read(_key: string): Promise<TaskOutcome | undefined> {
+  async read(key: string): Promise<JsonOutcome | undefined> {
+    assertStringKey(key, this.domain);
     // OutcomeStore is keyed by query filter, not primary key. Direct
     // key lookup isn't a meaningful operation — callers should `query`.
     return Promise.resolve(undefined);
   }
 
-  write(_key: string, _value: TaskOutcome, _meta?: WriteMeta): Promise<void> {
+  async write(key: string, _value: JsonValue, _meta?: WriteMeta): Promise<void> {
+    assertStringKey(key, this.domain);
     return Promise.reject(
       new Error(
         'nexus-memory: outcomes write should go through OutcomeStore.append() directly; ' +
@@ -38,21 +59,17 @@ export class OutcomeStoreAdapter implements IMemoryBackend<string, TaskOutcome> 
     );
   }
 
-  query(filter?: QueryFilter<TaskOutcome>): Promise<readonly TaskOutcome[]> {
+  async query(filter?: QueryFilter<JsonValue>): Promise<readonly JsonOutcome[]> {
     // Translate the IMemoryBackend filter into OutcomeStore.query's
     // narrower shape. `where` is shallow-matched, `limit` is honored.
-    const where = filter?.where ?? {};
-    const all = this.store.query({
-      ...(typeof where.cli === 'string' && { cli: where.cli }),
-      ...(typeof where.category === 'string' && { category: where.category }),
-      ...(typeof where.success === 'boolean' && { success: where.success }),
-      ...(typeof where.baselineId === 'string' && { baselineId: where.baselineId }),
-    });
+    const all = this.store.query(toOutcomeQuery(filter));
     const limit = filter?.limit;
-    return Promise.resolve(limit !== undefined ? all.slice(0, limit) : all);
+    const rows = limit !== undefined ? all.slice(0, limit) : all;
+    return Promise.resolve(rows.map((row) => projectMemoryJson(row) as JsonOutcome));
   }
 
-  delete(_key: string): Promise<boolean> {
+  async delete(key: string): Promise<boolean> {
+    assertStringKey(key, this.domain);
     // OutcomeStore has bulk-purge methods (`purgeSkippedWorkers`) but no
     // per-key delete. Treat as no-op for the contract.
     return Promise.resolve(false);
