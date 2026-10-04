@@ -79,3 +79,58 @@ describe('constants', () => {
     expect(MAX_TASK_CAPACITY).toBe(50);
   });
 });
+
+describe('task session scoping (#7045)', () => {
+  it('allows the owning session and rejects another session accessing or changing a task', async () => {
+    const store = getTaskStore();
+    const task = await store.createTask(
+      { ttl: DEFAULT_TASK_TTL_MS },
+      1,
+      { method: 'tools/call', params: { name: 'execute_expert' } },
+      'owner-session'
+    );
+    const result = { content: [{ type: 'text' as const, text: 'completed' }] };
+
+    expect(await store.getTask(task.taskId, 'owner-session')).toEqual(task);
+    expect(await store.getTask(task.taskId, 'other-session')).toBeNull();
+    await expect(
+      store.updateTaskStatus(task.taskId, 'cancelled', undefined, 'other-session')
+    ).rejects.toThrow('not found');
+    await expect(
+      store.storeTaskResult(task.taskId, 'completed', result, 'other-session')
+    ).rejects.toThrow('not found');
+
+    await store.storeTaskResult(task.taskId, 'completed', result, 'owner-session');
+    expect(await store.getTaskResult(task.taskId, 'owner-session')).toEqual(result);
+    await expect(store.getTaskResult(task.taskId, 'other-session')).rejects.toThrow('not found');
+  });
+
+  it('lists only accessible tasks, including tasks created without a session', async () => {
+    const store = getTaskStore();
+    const request = { method: 'tools/call', params: { name: 'execute_expert' } };
+    const options = { ttl: DEFAULT_TASK_TTL_MS };
+    const ownTask = await store.createTask(options, 1, request, 'owner-session');
+    const otherTask = await store.createTask(options, 2, request, 'other-session');
+    const unscopedTask = await store.createTask(options, 3, request);
+
+    expect((await store.listTasks(undefined, 'owner-session')).tasks).toEqual([
+      ownTask,
+      unscopedTask,
+    ]);
+    expect(await store.getTask(unscopedTask.taskId, 'owner-session')).toEqual(unscopedTask);
+    expect(await store.getTask(otherTask.taskId)).toEqual(otherTask);
+    expect((await store.listTasks()).tasks).toEqual([ownTask, otherTask, unscopedTask]);
+  });
+
+  it('returns an empty list when the session has no accessible tasks', async () => {
+    const store = getTaskStore();
+    await store.createTask(
+      { ttl: DEFAULT_TASK_TTL_MS },
+      1,
+      { method: 'tools/call', params: { name: 'execute_expert' } },
+      'owner-session'
+    );
+
+    expect((await store.listTasks(undefined, 'other-session')).tasks).toEqual([]);
+  });
+});
