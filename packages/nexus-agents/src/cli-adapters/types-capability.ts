@@ -8,6 +8,8 @@
  */
 
 import type { Result, ILogger, ExecutionAccessMode } from '../core/index.js';
+import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
+import type { LevelOutcome } from '../cli/cli-readiness.js';
 import type { CommandWrapper } from './exec-file-tree.js';
 import type {
   CliName,
@@ -210,6 +212,26 @@ export interface ICliAdapter {
    * Called on shutdown.
    */
   dispose(): Promise<void>;
+
+  /** Local auth evidence from the existing CLI probe; unknown is not authentication. */
+  authStatus?(): Promise<AuthProbeResult>;
+
+  /**
+   * Completion readiness: not-attempted by default. With live: true, delegates
+   * to the fixed-prompt probe, capped by the interactive operation-class guard
+   * and single-flight per adapter (spends quota, disables retries).
+   */
+  readiness?(options?: {
+    readonly live?: boolean;
+    readonly timeoutMs?: number;
+  }): Promise<LevelOutcome>;
+
+  /**
+   * Catalog support by canonical model identity, not live availability. Positive
+   * evidence returns yes; absent, empty, failed or nonmatching catalogs return
+   * unknown. Incomplete catalogs cannot establish no.
+   */
+  serves?(modelId: string): Promise<'yes' | 'no' | 'unknown'>;
 
   /**
    * (#2540) Optional: list models the underlying CLI installation/runtime

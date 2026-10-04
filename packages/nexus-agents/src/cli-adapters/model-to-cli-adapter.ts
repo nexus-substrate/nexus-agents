@@ -12,6 +12,9 @@
  * @module cli-adapters/model-to-cli-adapter
  */
 
+import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
+import type { LevelOutcome } from '../cli/cli-readiness.js';
+import { adapterReadiness, servesListedModel } from './cli-admission.js';
 import type {
   Result,
   IModelAdapter,
@@ -238,6 +241,28 @@ export class ModelToCliAdapter implements ICliAdapter {
     // uses it both to count the window and to retire a stale assertion.
     this.capacityTracker.recordUsage(response.usage);
     return ok(response);
+  }
+
+  /** Configuration validation is not authentication; this arm has no local auth probe. */
+  authStatus(): Promise<AuthProbeResult> {
+    return Promise.resolve({
+      cli: this.name,
+      state: 'unknown',
+      reason: 'API authentication is unmeasured',
+    });
+  }
+
+  /** Default is unmeasured; an explicit live call delegates to the bounded completion probe. */
+  readiness(options?: {
+    readonly live?: boolean;
+    readonly timeoutMs?: number;
+  }): Promise<LevelOutcome> {
+    return adapterReadiness(this, options);
+  }
+
+  /** Model-list evidence only; missing, empty, failing and unlisted models remain unknown. */
+  serves(modelId: string): Promise<'yes' | 'no' | 'unknown'> {
+    return servesListedModel(this, modelId);
   }
 
   /** Health is derived from the model adapter's config validation. */

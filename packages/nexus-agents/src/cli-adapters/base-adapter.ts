@@ -43,6 +43,9 @@ import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
 import { createCliError } from './cli-error-helpers.js';
 import { unenforcedAccessModeRefusal, withEnforcedAccessMode } from './access-mode.js';
+import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
+import type { LevelOutcome } from '../cli/cli-readiness.js';
+import { adapterReadiness, servesListedModel } from './cli-admission.js';
 
 const execAsync = promisify(exec);
 
@@ -112,6 +115,25 @@ export abstract class BaseCliAdapter implements ICliAdapter {
 
   constructor(logger?: ILogger) {
     this.logger = logger ?? createLogger({ component: 'cli-adapter' });
+  }
+
+  /** Local CLI auth evidence from the canonical probe; makes no live API call. */
+  async authStatus(): Promise<AuthProbeResult> {
+    const { probeCli } = await import('../cli/cli-auth-probe.js');
+    return probeCli(this.name);
+  }
+
+  /** Unmeasured by default; live opt-in delegates to the bounded completion probe. */
+  readiness(options?: {
+    readonly live?: boolean;
+    readonly timeoutMs?: number;
+  }): Promise<LevelOutcome> {
+    return adapterReadiness(this, options);
+  }
+
+  /** Catalog evidence; absent, empty, failed or unlisted models remain unknown. */
+  serves(modelId: string): Promise<'yes' | 'no' | 'unknown'> {
+    return servesListedModel(this as ICliAdapter, modelId, this.name);
   }
 
   /**
