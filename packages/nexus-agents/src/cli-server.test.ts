@@ -489,6 +489,30 @@ describe('startServer', () => {
     );
   });
 
+  it('prepares workspace readiness before connect and resolves it from initialized (#4002)', async () => {
+    const roots = await import('./mcp/workspace-roots.js');
+    const previous = roots.workspaceRootReady;
+    const mcpModule = await import('./mcp/index.js');
+    vi.mocked(mcpModule.connectTransport).mockImplementation(async (server) => {
+      expect(roots.workspaceRootReady).not.toBe(previous);
+      let released = false;
+      void roots.workspaceRootReady.then(() => {
+        released = true;
+      });
+      await Promise.resolve();
+      expect(released).toBe(false);
+      server.server.getClientCapabilities = () => ({});
+      expect(server.server.oninitialized).toBeTypeOf('function');
+      server.server.oninitialized?.();
+      await roots.workspaceRootReady;
+      expect(released).toBe(true);
+      return { ok: true, value: undefined };
+    });
+    const { startServer } = await import('./cli-server.js');
+    await startServer(false, 'server', true);
+    expect(mcpModule.connectTransport).toHaveBeenCalledOnce();
+  });
+
   it('exits for mesh mode before doing other work', async () => {
     const { startServer } = await import('./cli-server.js');
 
