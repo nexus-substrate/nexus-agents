@@ -9,7 +9,8 @@
  * The readiness gate wants CONSECUTIVE green dry-runs (`consecutiveGreenDryRuns`
  * compared against `minGuardsGreenSoak`) — a denial RESETS the streak to 0. So
  * the read surface ({@link readCodePrGuardsGreenSoak}) counts the TRAILING run of
- * green records: the number of green data points since the last denial. This
+ * production green records: the number of production green data points since the
+ * last production denial. Test rows are excluded and counted in the summary. This
  * matches the readiness semantics exactly (a single denial mid-soak forfeits the
  * accumulated streak, which is the conservative, fail-closed reading).
  *
@@ -43,6 +44,8 @@ export const CodePrSoakRecordSchema = z
     runId: z.string(),
     /** The improvement signal's stable key that triggered the dry-run. */
     signalKey: z.string(),
+    /** Explicit provenance on new writes; absent only on legacy records. */
+    origin: z.enum(['production', 'test']).optional(),
     /** True when the dry-run plan succeeded with ZERO guard denial. */
     green: z.boolean(),
     /** The guard denial reason when `green` is false; omitted for a green plan. */
@@ -92,7 +95,7 @@ export function createCodePrSoakSink(
   });
   return {
     record(record: CodePrSoakRecord): void {
-      store.append(record);
+      store.append({ ...record, origin: record.origin ?? soakOrigin() });
     },
     getRecords(): readonly CodePrSoakRecord[] {
       return store.all();
@@ -108,6 +111,10 @@ export function getCodePrSoakSink(): IRecordingCodePrSoakSink {
   return soakSingleton;
 }
 
+function soakOrigin(): 'production' | 'test' {
+  return process.env['VITEST'] === 'true' ? 'test' : 'production';
+}
+
 /** Build a green code-PR soak record from a clean dry-run plan. */
 export function greenCodePrSoakRecord(args: {
   runId: string;
@@ -115,6 +122,7 @@ export function greenCodePrSoakRecord(args: {
   filesTouched: number;
 }): CodePrSoakRecord {
   return {
+    origin: soakOrigin(),
     timestamp: new Date(getTimeProvider().now()).toISOString(),
     runId: args.runId,
     signalKey: args.signalKey,
@@ -130,6 +138,7 @@ export function deniedCodePrSoakRecord(args: {
   denialReason: GuardDenialReason;
 }): CodePrSoakRecord {
   return {
+    origin: soakOrigin(),
     timestamp: new Date(getTimeProvider().now()).toISOString(),
     runId: args.runId,
     signalKey: args.signalKey,
@@ -140,7 +149,7 @@ export function deniedCodePrSoakRecord(args: {
 }
 
 /**
- * Count the CONSECUTIVE green dry-runs ending at the most-recent record — the
+ * Count the CONSECUTIVE production green dry-runs ending at the most-recent production record — the
  * trailing run of `green === true` since the last denial. This is the value fed
  * to {@link evaluateCodePrEnableReadiness} as `consecutiveGreenDryRuns`: a denial
  * anywhere forfeits the streak before it, matching the gate's "N CONSECUTIVE
@@ -149,16 +158,20 @@ export function deniedCodePrSoakRecord(args: {
  * Pure over its input; does no I/O.
  */
 export function countTrailingGreen(records: readonly CodePrSoakRecord[]): number {
+  // Empty production evidence is unmeasured, represented here by zero.
+  if (records.length === 0) return 0;
   let count = 0;
   for (let i = records.length - 1; i >= 0; i--) {
-    if (records[i]?.green === true) count++;
+    const record = records[i];
+    if (record === undefined || isTestSoakRecord(record)) continue;
+    if (record.green) count++;
     else break;
   }
   return count;
 }
 
 /**
- * Read the durable soak evidence and return the consecutive guards-green count —
+ * Read the durable soak evidence and return the production consecutive guards-green count —
  * the `consecutiveGreenDryRuns` evidence the code-PR enable-readiness gate
  * consumes. Convenience over {@link countTrailingGreen}.
  */
@@ -166,4 +179,39 @@ export function readCodePrGuardsGreenSoak(
   sink: IRecordingCodePrSoakSink = getCodePrSoakSink()
 ): number {
   return countTrailingGreen(sink.getRecords());
+}
+
+/**
+ * Legacy migration rule (#7026): ONLY unstamped audit-soak-<digits> keys are
+ * known leaked e2e output. Other unstamped rows remain production evidence.
+ * Explicit origin takes precedence. Exclusion is read-only, never a ledger rewrite.
+ */
+function isTestSoakRecord(record: CodePrSoakRecord): boolean {
+  return (
+    record.origin === 'test' ||
+    (record.origin === undefined && /^audit-soak-\d+$/.test(record.signalKey))
+  );
+}
+
+/** Production-only evidence and visible test exclusions over retained ledger rows. */
+export interface CodePrSoakSummary {
+  readonly scope: 'production';
+  readonly status: 'measured' | 'unmeasured';
+  readonly consecutiveGreenDryRuns: number;
+  readonly excludedTestRows: number;
+}
+
+/** Read production readiness evidence without modifying or removing test rows. */
+export function readCodePrSoakSummary(
+  sink: IRecordingCodePrSoakSink = getCodePrSoakSink()
+): CodePrSoakSummary {
+  const records = sink.getRecords();
+  const excludedTestRows = records.filter(isTestSoakRecord).length;
+  return {
+    scope: 'production',
+    // Empty and test-only ledgers provide no production measurement.
+    status: records.length === excludedTestRows ? 'unmeasured' : 'measured',
+    consecutiveGreenDryRuns: countTrailingGreen(records),
+    excludedTestRows,
+  };
 }
