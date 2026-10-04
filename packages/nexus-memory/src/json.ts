@@ -136,13 +136,20 @@ export function assertJsonValue(value: unknown, domain = 'json'): asserts value 
   inspectJson(value, '$', { domain, ancestors: new Set() });
 }
 
-/** Validate and copy once; check the stored copy without persisting schema transforms. */
+function freezeJson(value: JsonValue): void {
+  if (value === null || typeof value !== 'object') return;
+  for (const child of Object.values(value)) freezeJson(child);
+  Object.freeze(value);
+}
+
+/** Validate and freeze a fresh snapshot before checking it; ignore schema transforms. */
 export function validateMemoryValue<T extends JsonValue>(
   value: unknown,
   domain: string,
   schema?: z.ZodType<T>
 ): T {
   const copy = inspectJson(value, '$', { domain, ancestors: new Set() }) as T;
+  freezeJson(copy);
   if (schema === undefined) return copy;
   const result = schema.safeParse(copy);
   if (!result.success) {
@@ -156,7 +163,7 @@ export function validateMemoryValue<T extends JsonValue>(
   return copy;
 }
 
-/** Validate and copy JSON data without invoking caller accessors or serialization hooks. */
+/** Return fresh mutable JSON data without invoking accessors or serialization hooks. */
 export function copyJson<T extends JsonValue>(value: T): T {
-  return validateMemoryValue<T>(value, 'json');
+  return inspectJson(value, '$', { domain: 'json', ancestors: new Set() }) as T;
 }

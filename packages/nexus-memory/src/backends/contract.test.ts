@@ -544,5 +544,108 @@ for (const Backend of [InMemoryBackend, SqliteBackend]) {
         await backend.close();
       }
     });
+
+    it('prevents a custom schema from installing a toJSON hook on the validated snapshot', async () => {
+      let hookCalls = 0;
+      const schema = z.custom<{ n: number }>((candidate: unknown) => {
+        if (typeof candidate !== 'object' || candidate === null || !('n' in candidate))
+          return false;
+        if (typeof candidate.n !== 'number') return false;
+        // Reflect.set also exercises the silent-assignment behavior of non-strict callers.
+        Reflect.set(candidate, 'toJSON', () => {
+          hookCalls++;
+          return { n: 'invalid' };
+        });
+        return true;
+      });
+      const backend = new Backend<string, { n: number }>({
+        domain: 'schema_hook',
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', { n: 1 });
+        expect(await backend.read('k')).toEqual({ n: 1 });
+        expect(await backend.query()).toEqual([{ n: 1 }]);
+        expect(hookCalls).toBe(0);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('prevents retained schema references from mutating the snapshot at any depth', async () => {
+      const value = { n: 1, nested: { n: 2 }, items: [{ n: 3 }] };
+      let retained: typeof value | undefined;
+      const schema = z.custom<typeof value>((candidate: unknown) => {
+        retained = candidate as typeof value;
+        return true;
+      });
+      const backend = new Backend<string, typeof value>({
+        domain: 'schema_retained',
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', value);
+        expect(retained).toBeDefined();
+        if (retained === undefined) throw new Error('schema did not retain the snapshot');
+        // Attempt every mutation before asserting so a shallow freeze cannot pass.
+        const mutations = [
+          Reflect.set(retained, 'n', 99),
+          Reflect.set(retained.nested, 'n', 99),
+          Reflect.set(retained.items, '0', { n: 99 }),
+          Reflect.set(retained.items[0]!, 'n', 99),
+        ];
+        expect(await backend.read('k')).toEqual(value);
+        expect(mutations).toEqual([false, false, false, false]);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('stores and returns the untransformed snapshot rather than schema output', async () => {
+      const schema = z.object({ n: z.number() }).transform(() => ({ n: 99 }));
+      const backend = new Backend<string, { n: number }>({
+        domain: 'schema_transform',
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', { n: 1 });
+        expect(await backend.read('k')).toEqual({ n: 1 });
+        expect(await backend.query()).toEqual([{ n: 1 }]);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('returns mutable read and query copies without aliasing the snapshot', async () => {
+      const value = { nested: { n: 1 }, items: [{ n: 2 }] };
+      const backend = new Backend<string, typeof value>({
+        domain: 'mutable_reads',
+        dbPath: ':memory:',
+        schema: z.object({
+          nested: z.object({ n: z.number() }),
+          items: z.array(z.object({ n: z.number() })),
+        }),
+      });
+      try {
+        await backend.write('k', value);
+        const read = await backend.read('k');
+        expect(read).toBeDefined();
+        if (read === undefined) throw new Error('missing stored snapshot');
+        read.nested = { n: 99 };
+        read.items[0]!.n = 99;
+        read.items.push({ n: 99 });
+        const rows = await backend.query();
+        const first = rows[0]!;
+        first.nested.n = 88;
+        first.items.push({ n: 88 });
+        expect(await backend.read('k')).toEqual(value);
+        expect(await backend.query()).toEqual([value]);
+      } finally {
+        await backend.close();
+      }
+    });
   });
 }
