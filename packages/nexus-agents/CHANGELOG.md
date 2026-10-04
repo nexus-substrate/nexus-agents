@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 8.131.5
+
+### Patch Changes
+
+- [#7056](https://github.com/nexus-substrate/nexus-agents/pull/7056) [`9649f5a`](https://github.com/nexus-substrate/nexus-agents/commit/9649f5a7f59f5342d22e12b6a44c4b225fda3c06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Hide run_workflow from MCP tool listings when its execution engine is structurally unavailable at startup. Keep workflow discovery available and log adapter configuration and restart guidance.
+
+- [#7060](https://github.com/nexus-substrate/nexus-agents/pull/7060) [`5d313de`](https://github.com/nexus-substrate/nexus-agents/commit/5d313ded9c85a93c0cb45fa52a6ac58f93698b14) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents routing-audit` and `nexus-agents learning-metrics` now show a bandit reconstructed with the router's own warm start, not a cold one. It replays the last 30 days of recorded outcomes (excluding `e2e-eval`), seeds the same specialization priors and applies the same cold-start fallback. The output is labelled with the reconstruction time, the number of outcomes replayed and how many of those are real (empirical) rather than synthetic. It also says the state is a reconstruction, not the running router's in-memory state. An empty outcome store is reported as "no empirical outcomes replayed".
+
+  Both commands stay read-only: the fallback's synthetic warm-up outcomes are replayed in memory and never written to the outcome store. `learning-metrics` reports its learning status as `unmeasured` for a reconstructed bandit, because replayed outcomes are not routing decisions and their spread says nothing about exploration. Router behaviour is unchanged.
+
 ## 8.131.4
 
 ### Patch Changes
