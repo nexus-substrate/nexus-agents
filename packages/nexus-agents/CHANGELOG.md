@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.130.5
+
+### Patch Changes
+
+- [#7036](https://github.com/nexus-substrate/nexus-agents/pull/7036) [`5f3f50d`](https://github.com/nexus-substrate/nexus-agents/commit/5f3f50ddfc71178a2278dd8aab249e2d7f6e3de3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Release child MCP config directories after each expert call, on config write failure, and on ordinary process exit.
+
+- [#7035](https://github.com/nexus-substrate/nexus-agents/pull/7035) [`228128c`](https://github.com/nexus-substrate/nexus-agents/commit/228128c2c77561d85e4b2c304d7536336388a0fd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Read CLI status binaries and doctor remediation hints from adapter metadata so Gemini diagnostics follow the executable actually invoked.
+
 ## 8.130.4
 
 ### Patch Changes
