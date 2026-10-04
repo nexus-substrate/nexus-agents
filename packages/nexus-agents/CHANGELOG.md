@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 8.130.6
+
+### Patch Changes
+
+- [#7038](https://github.com/nexus-substrate/nexus-agents/pull/7038) [`a0c6d7a`](https://github.com/nexus-substrate/nexus-agents/commit/a0c6d7ae83adc2fa6b5751baab6e6dd49f21d123) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wait for MCP workspace roots before dispatching tools. Bound startup waiting to one second, log the selected fallback root and data directories, and retain that fallback if roots arrive late to prevent split session state.
+
+- [#7039](https://github.com/nexus-substrate/nexus-agents/pull/7039) [`8491dc0`](https://github.com/nexus-substrate/nexus-agents/commit/8491dc0c7f70f0a7137619a37edcc1abbea1aa55) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record price basis and unmeasured pricing on task-class cost ceiling decisions without changing routing choices.
+
 ## 8.130.5
 
 ### Patch Changes
