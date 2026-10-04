@@ -7,6 +7,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
+import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types';
 import { WeatherReportInputSchema } from './weather-report-types.js';
 import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 import type { ToolResult } from './tool-result.js';
@@ -159,11 +161,14 @@ describe('weather_report output contract (#5842)', () => {
       }
     );
     const call = registerTool.mock.calls[0] as unknown[];
-    const config = call[1] as { outputSchema?: z.ZodRawShape };
+    const config = call[1] as { outputSchema?: z.ZodRawShape | z.ZodObject };
     expect(config.outputSchema).toBeDefined();
     const handler = call[2] as (args: unknown) => Promise<ToolResult>;
     return {
-      schema: z.object(config.outputSchema ?? {}),
+      schema:
+        config.outputSchema instanceof z.ZodObject
+          ? config.outputSchema
+          : z.object(config.outputSchema ?? {}),
       result: await handler({ includeAdaptive }),
     };
   }
@@ -173,6 +178,11 @@ describe('weather_report output contract (#5842)', () => {
     async (adaptive) => {
       const { schema, result } = await registeredReport(adaptive);
       expect(result.isError).toBeUndefined();
+      const validate = new AjvJsonSchemaValidator().getValidator(
+        z.toJSONSchema(schema, { io: 'output' }) as unknown as JsonSchemaType
+      );
+      const validation = validate(result.structuredContent);
+      expect(validation.valid, validation.errorMessage).toBe(true);
       expect(schema.parse(result.structuredContent)).toEqual(result.structuredContent);
       const report = result.structuredContent as Record<string, unknown>;
       expect(report['overall']).toMatchObject({ totalTasks: 1, avgDurationMs: 125 });

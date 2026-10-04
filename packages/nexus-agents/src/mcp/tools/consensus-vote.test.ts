@@ -29,6 +29,8 @@ import {
   type VoteDecisionStatus,
 } from './consensus-vote.js';
 import { z } from 'zod';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
+import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types';
 import {
   toAgentVoteSummary,
   buildResponse,
@@ -50,6 +52,16 @@ import type { ConsensusResult } from '../../consensus/types.js';
 import type { VoteRecord } from '../../audit/vote-record.js';
 import { rollupDecisionCost } from '../../observability/decision-cost.js';
 import { getCorrelationJsonlPath } from '../../consensus/correlation-persistence.js';
+
+/** Validate the original wire payload, including nested additionalProperties. */
+function expectStrictVoteOutput(response: unknown): void {
+  const schema = z.toJSONSchema(z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA), { io: 'output' });
+  const validate = new AjvJsonSchemaValidator().getValidator(schema as unknown as JsonSchemaType);
+  // Protocol serialization omits optional properties whose value is undefined.
+  const wireOutput: unknown = JSON.parse(JSON.stringify(response));
+  const result = validate(wireOutput);
+  expect(result.valid, result.errorMessage).toBe(true);
+}
 
 /**
  * Creates a permissive rate limiter for tests.
@@ -696,6 +708,26 @@ describe('Timeout configuration', () => {
 // ============================================================================
 
 describe('toAgentVoteSummary (Issue #815)', () => {
+  it.each(['retried', 'retriedFrom'] as const)(
+    'declares %s provenance in the output schema (#7042)',
+    (field) => {
+      const summary = toAgentVoteSummary({
+        role: 'catfish',
+        vote: { decision: 'approve', reasoning: 'Recovered', confidence: 0.9 },
+        processingTimeMs: 100,
+        source: 'llm',
+        retried: true,
+        retriedFrom: { source: 'error', error: 'Clipped first-pass error', errorTruncated: true },
+      });
+      expect(summary.retried).toBe(true);
+      expect(summary.retriedFrom?.errorTruncated).toBe(true);
+      const { retried, retriedFrom, ...base } = summary;
+      expectStrictVoteOutput({
+        votes: [{ ...base, [field]: field === 'retried' ? retried : retriedFrom }],
+      });
+    }
+  );
+
   it('should set error=false for LLM votes', () => {
     const result: AgentVoteResult = {
       role: 'architect',
@@ -1295,6 +1327,16 @@ describe('opinion_wise is treated as a higher_order alias (#3271)', () => {
     expect(buildResponse(input, makeResult('higher_order')).higherOrderMetadata).toBeDefined();
   });
 
+  it.each(['higher_order', 'opinion_wise'] as const)(
+    'validates real %s response metadata with the advertised client schema (#7042)',
+    (strategy) => {
+      const result = makeResult(strategy);
+      if (result.higherOrderResult === undefined) throw new Error('Missing fixture metadata');
+      result.higherOrderResult = { ...result.higherOrderResult, method: 'ow' };
+      expectStrictVoteOutput(buildResponse(input, result));
+    }
+  );
+
   it('marks the metadata as NOT having decided the vote (#4701)', () => {
     // `strategy: 'higher_order'` does not produce a higher-order verdict. The
     // decision comes from ConsensusEngine.close() ->
@@ -1627,6 +1669,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
 
     const parsed = outputValidator.safeParse(response);
     expect(parsed.success).toBe(true);
+    expectStrictVoteOutput(response);
   });
 
   it('should validate buildResponse output with error votes', () => {
@@ -1649,6 +1692,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
 
     const parsed = outputValidator.safeParse(response);
     expect(parsed.success).toBe(true);
+    expectStrictVoteOutput(response);
   });
 
   it('should validate buildResponse output with threshold', () => {
@@ -1676,6 +1720,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
 
     const parsed = outputValidator.safeParse(response);
     expect(parsed.success).toBe(true);
+    expectStrictVoteOutput(response);
     expect(response.threshold).toBe('supermajority');
   });
 });
@@ -1783,6 +1828,10 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
 
   it('strictly accepts a response carrying panelWarning + costSummary', () => {
     expect(() => z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA).strict().parse(fullResponse)).not.toThrow();
+  });
+
+  it('accepts all nested response fields for a validating client (#7042)', () => {
+    expectStrictVoteOutput(fullResponse);
   });
 
   // #5066: the schema also covers the async-dispatch envelope, which is a
