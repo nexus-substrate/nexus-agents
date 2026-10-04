@@ -50,6 +50,20 @@ vi.mock('./doctor-gateway.js', async (importOriginal) => {
     checkGatewayHealth: vi.fn(() => Promise.resolve({ state: 'not_configured' as const })),
   };
 });
+// #7063: gateway verdicts must not depend on the host's scratch-space headroom.
+vi.mock('./doctor-scratch-space.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./doctor-scratch-space.js')>();
+  return {
+    ...actual,
+    checkScratchFilesystems: vi.fn(() => [
+      actual.checkScratchSpace('/tmp/doctor-test', () => ({
+        bsize: 4096,
+        blocks: (32 * 1024 ** 3) / 4096,
+        bavail: (20 * 1024 ** 3) / 4096,
+      })),
+    ]),
+  };
+});
 
 import { doctorCommand, runDoctor } from './doctor.js';
 import { checkGatewayHealth, type GatewayHealth } from './doctor-gateway.js';
