@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.131.3
+
+### Patch Changes
+
+- [#7054](https://github.com/nexus-substrate/nexus-agents/pull/7054) [`b0613e2`](https://github.com/nexus-substrate/nexus-agents/commit/b0613e2147d5f49156f18a70d3ae3233e8204379) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Resolve the MCP workspace root synchronously from validated CLAUDE_PROJECT_DIR in Claude Code, releasing tool readiness immediately while preserving NEXUS_DATA_DIR precedence and MCP roots fallback.
+
 ## 8.131.2
 
 ### Patch Changes
