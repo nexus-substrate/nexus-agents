@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.131.1
+
+### Patch Changes
+
+- [#7047](https://github.com/nexus-substrate/nexus-agents/pull/7047) [`54c01bc`](https://github.com/nexus-substrate/nexus-agents/commit/54c01bc582f04f312fab8cb1a3362b2a5630f014) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - dependency: MCP SDK 1.32.0. Scope in-memory MCP tasks to the session that created them when callers supply a session ID, preventing other sessions from reading or changing those tasks. Calls without a session ID remain unrestricted. Accept tool and prompt requests that omit optional arguments ([#7045](https://github.com/nexus-substrate/nexus-agents/issues/7045)).
+
 ## 8.131.0
 
 ### Minor Changes
