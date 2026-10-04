@@ -25,6 +25,23 @@ import { ROOT } from './script-paths.js';
 
 const TOOLS_DIR = join(ROOT, 'packages/nexus-agents/src/mcp/tools');
 
+interface TimestampExemption {
+  readonly file: string;
+  readonly field: string;
+  readonly reason: string;
+  readonly removalIssue: string;
+}
+
+/** Temporary public-API compatibility exceptions; stale entries fail the scan. */
+const TIMESTAMP_EXEMPTIONS: readonly TimestampExemption[] = [
+  {
+    file: 'weather-report-output-schema.ts',
+    field: 'lastHitAt',
+    reason: 'epoch ms from exported RateLimitStats.lastHitAt; ISO conversion is a breaking change',
+    removalIssue: '#7066',
+  },
+];
+
 /**
  * A timestamp-named identifier: ends in `At`/`Date` (camelCase, preceded by
  * a lowercase letter) or is exactly `timestamp`. `*Time` is deliberately
@@ -44,7 +61,7 @@ export interface TimestampViolation {
 /** A line that opens a tool-OUTPUT region — an output schema or a `*Response` type. */
 function opensOutputRegion(line: string): boolean {
   return (
-    /\b(?:output[Ss]chema|OUTPUT_SCHEMA)\b[^=]*=\s*\{/.test(line) ||
+    /\b(?:output[Ss]chema|[A-Z0-9_]*OUTPUT_SCHEMA)\b[^=]*=\s*\{/.test(line) ||
     /\b(?:interface|type)\s+\w*Response\b.*\{/.test(line)
   );
 }
@@ -119,16 +136,46 @@ export interface ToolScanResult {
   readonly dirMissing: boolean;
 }
 
+/** Apply exact file/field exceptions, reporting each one and rejecting stale entries. */
+function applyTimestampExemptions(
+  violations: TimestampViolation[],
+  exemptions: readonly TimestampExemption[]
+): TimestampViolation[] {
+  let remaining = violations;
+  // No exemptions means every violation remains actionable.
+  for (const exemption of exemptions) {
+    const matches = remaining.filter(
+      (v) => v.file === exemption.file && v.field === exemption.field
+    );
+    if (matches.length === 0) {
+      throw new Error(
+        `Stale timestamp exemption: ${exemption.file} ${exemption.field} (${exemption.removalIssue})`
+      );
+    }
+    console.log(
+      `Tool-output consistency exemption applied: ${exemption.file} ${exemption.field} — ` +
+        `${exemption.reason} (removal ${exemption.removalIssue})`
+    );
+    remaining = remaining.filter((v) => v.file !== exemption.file || v.field !== exemption.field);
+  }
+  return remaining;
+}
+
 /**
  * Scan every MCP tool file for timestamp-as-number violations.
  *
- * Reports coverage alongside the findings. The previous signature returned a
+ * Reports coverage alongside the findings and prints applied exemptions. Throws
+ * if an exemption no longer matches a numeric timestamp in an output region.
+ * The previous signature returned a
  * bare array and opened with `if (!existsSync(TOOLS_DIR)) return [];`, so a
  * moved directory produced the same value as a clean sweep and `main` printed
  * a pass. The directory is injectable so the empty and absent cases are
  * testable without moving the real tree.
  */
-export function scanToolFilesWithCoverage(dir: string = TOOLS_DIR): ToolScanResult {
+export function scanToolFilesWithCoverage(
+  dir: string = TOOLS_DIR,
+  exemptions: readonly TimestampExemption[] = TIMESTAMP_EXEMPTIONS
+): ToolScanResult {
   if (!existsSync(dir)) return { violations: [], scanned: 0, dirMissing: true };
   const out: TimestampViolation[] = [];
   let scanned = 0;
@@ -138,18 +185,14 @@ export function scanToolFilesWithCoverage(dir: string = TOOLS_DIR): ToolScanResu
     const src = readFileSync(join(dir, entry), 'utf-8');
     out.push(...findTimestampNumberFields(src, entry));
   }
-  return { violations: out, scanned, dirMissing: false };
+  return { violations: applyTimestampExemptions(out, exemptions), scanned, dirMissing: false };
 }
 
 /**
  * Violations only, without coverage.
  *
- * A thin view over {@link scanToolFilesWithCoverage} — one implementation, two
- * shapes — kept for `scripts/inject-governance.ts`, whose own
- * `checkToolOutputConsistency` still returns `true` on `length === 0` and so
- * carries the same blind spot this file just closed. That script is an
- * owner-ratified governance path, so the fix is tracked separately rather than
- * folded in here.
+ * A thin view over {@link scanToolFilesWithCoverage}: shares coverage scanning,
+ * exemption reporting and stale-exemption failures with the governance caller.
  */
 export function scanToolFiles(dir: string = TOOLS_DIR): TimestampViolation[] {
   return scanToolFilesWithCoverage(dir).violations;
