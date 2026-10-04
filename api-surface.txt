@@ -1691,6 +1691,7 @@ ClassDeclaration CodexMcpAdapter
   readonly name: "claude" | "codex" | "gemini" | "opencode"
   readonly transport: CliTransport
 ClassDeclaration CodexResponseParser
+  extractErrorMessage(raw: string) => null | string
   extractResponse(raw: string) => null | string
   extractSessionId(raw: string) => null | string
   extractUsage(raw: string) => TokenUsage | null

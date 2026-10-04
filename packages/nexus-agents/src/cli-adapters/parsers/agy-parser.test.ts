@@ -9,49 +9,28 @@
  * just removed from this repo, and reintroducing it through a new adapter would
  * undo that work.
  *
- * Fixtures are verbatim captures from `agy` v1.1.9 on 2026-08-09.
+ * Fixtures are sanitized captures from `agy` v1.1.9 on 2026-08-09.
  *
  * @module cli-adapters/parsers/agy-parser.test
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { AgyResponseParser } from './agy-parser.js';
 
 const parser = new AgyResponseParser();
 
-/** Verbatim capture: `agy --print "Reply with exactly: OK" --output-format json`. */
-const SUCCESS_RAW = JSON.stringify({
-  conversation_id: 'f1f8db42-c436-42ef-a568-148385671f86',
-  status: 'SUCCESS',
-  response: 'OK\n',
-  duration_seconds: 1.199020029,
-  num_turns: 1,
-  usage: {
-    input_tokens: 16397,
-    output_tokens: 5,
-    thinking_tokens: 0,
-    cache_read_tokens: 0,
-    total_tokens: 16402,
-  },
-});
+/** Sanitized capture: `agy --print "Reply with exactly: OK" --output-format json`. */
+const SUCCESS_RAW = readFileSync(
+  new URL('./fixtures/agy-success.capture.json', import.meta.url),
+  'utf8'
+);
 
-/** Verbatim capture: `agy --print "hi" --model no-such-model` — EXIT CODE 0. */
-const ERROR_RAW = JSON.stringify({
-  conversation_id: '',
-  status: 'ERROR',
-  response: '',
-  error:
-    'invalid model selection (--model "no-such-model" --effort ""): model no-such-model is not recognized',
-  duration_seconds: 0,
-  num_turns: 0,
-  usage: {
-    input_tokens: 0,
-    output_tokens: 0,
-    thinking_tokens: 0,
-    cache_read_tokens: 0,
-    total_tokens: 0,
-  },
-});
+/** Capture: `agy --print "hi" --model no-such-model` — EXIT CODE 0. */
+const ERROR_RAW = readFileSync(
+  new URL('./fixtures/agy-error.capture.json', import.meta.url),
+  'utf8'
+);
 
 describe('AgyResponseParser', () => {
   describe('successful responses', () => {
@@ -63,7 +42,7 @@ describe('AgyResponseParser', () => {
       const parsed = parser.parse(SUCCESS_RAW);
 
       expect(parsed?.status).toBe('SUCCESS');
-      expect(parsed?.conversation_id).toBe('f1f8db42-c436-42ef-a568-148385671f86');
+      expect(parsed?.conversation_id).toBe('SANITIZED_SESSION_ID');
     });
 
     it('reports no error message', () => {

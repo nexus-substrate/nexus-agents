@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { OpenCodeCliAdapter, resetOpenCodeModelCache } from './opencode-adapter.js';
 import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
@@ -171,6 +172,7 @@ describe('OpenCodeCliAdapter', () => {
         JSON.stringify({ type: 'message.delta', content: 'Hello from OpenCode!' }),
         JSON.stringify({
           type: 'session.complete',
+          reason: 'stop',
           usage: { input_tokens: 15, output_tokens: 25 },
         }),
       ].join('\n');
@@ -195,7 +197,7 @@ describe('OpenCodeCliAdapter', () => {
     it('refuses a requested model that is not in available models (#1402 → #6599)', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -226,7 +228,7 @@ describe('OpenCodeCliAdapter', () => {
 
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -259,7 +261,7 @@ describe('OpenCodeCliAdapter', () => {
           createMockProcess(
             [
               JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-              JSON.stringify({ type: 'session.complete' }),
+              JSON.stringify({ type: 'session.complete', reason: 'stop' }),
             ].join('\n')
           )
         );
@@ -294,7 +296,7 @@ describe('OpenCodeCliAdapter', () => {
         createMockProcess(
           [
             JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-            JSON.stringify({ type: 'session.complete' }),
+            JSON.stringify({ type: 'session.complete', reason: 'stop' }),
           ].join('\n')
         )
       );
@@ -325,7 +327,7 @@ describe('OpenCodeCliAdapter', () => {
           createMockProcess(
             [
               JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-              JSON.stringify({ type: 'session.complete' }),
+              JSON.stringify({ type: 'session.complete', reason: 'stop' }),
             ].join('\n')
           )
         );
@@ -377,7 +379,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should resolve internal model names to CLI format (#1402)', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -401,7 +403,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should include --dir when workDir is provided', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -422,7 +424,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should not include --dir when workDir is empty', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -441,7 +443,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should include --variant when allowlisted value is provided', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -461,7 +463,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should reject non-allowlisted variant values', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -480,7 +482,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should include --thinking when set to true', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -499,7 +501,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should not include --thinking when not specified', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -514,12 +516,47 @@ describe('OpenCodeCliAdapter', () => {
   });
 
   describe('execute()', () => {
+    it.each([
+      { name: 'opencode-success.jsonl', succeeds: true },
+      { name: 'opencode-failure.jsonl', succeeds: false },
+      { name: 'opencode-tool-calls.documented.jsonl', succeeds: false },
+      { name: 'opencode-default-live.jsonl', succeeds: false },
+      { name: 'opencode-custom-opus-live.jsonl', succeeds: false },
+      { name: 'opencode-custom-sonnet-live.jsonl', succeeds: false },
+    ])('replays $name through execute (#7073)', async ({ name, succeeds }) => {
+      // tool-calls: documented-format, unverified against a live capture.
+      // Other rows replay existing v1.2.15 success / live invalid-model failure.
+      const stdout = readFileSync(new URL(`../parsers/fixtures/${name}`, import.meta.url), 'utf8');
+      vi.mocked(spawn).mockReturnValue(createMockProcess(stdout));
+      const result = await adapter.execute(
+        { content: 'Reply with the single word ok' },
+        { allowRetry: false }
+      );
+      expect(result.ok).toBe(succeeds);
+      if (result.ok) expect(result.value.text).toBe('OK');
+    });
+
+    it.each([
+      { stdout: 'opencode: failed to connect to provider anthropic: invalid API key', exitCode: 1 },
+      { stdout: '{"type":"unknown.event"}\n{"type":"another.unknown"}', exitCode: 0 },
+      { stdout: '{"content":"Unverified JSON text"}', exitCode: 0 },
+    ])(
+      'fails closed through execute for invalid output with exit $exitCode (#7073)',
+      async ({ stdout, exitCode }) => {
+        vi.mocked(spawn).mockReturnValue(createMockProcess(stdout, '', exitCode));
+        const result = await adapter.execute({ content: 'Test' }, { allowRetry: false });
+        expect(result.ok).toBe(false);
+        expect(spawn).toHaveBeenCalledTimes(1);
+      }
+    );
+
     it('should return successful response', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'session.start', session_id: 'oc-exec-1' }),
         JSON.stringify({ type: 'message.delta', content: 'Hello from OpenCode!' }),
         JSON.stringify({
           type: 'session.complete',
+          reason: 'stop',
           usage: { input_tokens: 15, output_tokens: 25 },
         }),
       ].join('\n');
@@ -539,7 +576,7 @@ describe('OpenCodeCliAdapter', () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'session.start', session_id: 'oc-session-789' }),
         JSON.stringify({ type: 'message.delta', content: 'Continuing...' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -553,18 +590,16 @@ describe('OpenCodeCliAdapter', () => {
       }
     });
 
-    it('should fall back to plaintext for non-JSON output (#1402)', async () => {
+    it('should reject plaintext for non-JSON output (#7073 supersedes #1402)', async () => {
       const mockProcess = createMockProcess('not valid json at all', '', 0);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = { content: 'Test' };
-      const result = await adapter.execute(task);
+      const result = await adapter.execute(task, { allowRetry: false });
 
-      // Plaintext fallback returns success with raw text content
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value.text).toBe('not valid json at all');
-      }
+      // #7073: run --format json cannot treat old #1402 plaintext as success.
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
     });
 
     it('should return PARSE_ERROR for very short output', async () => {
@@ -779,7 +814,7 @@ describe('OpenCodeCliAdapter', () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'session.start', session_id: 'auto-init' }),
         JSON.stringify({ type: 'message.delta', content: 'Auto-init!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -837,7 +872,7 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
   ];
   const OK_STREAM = [
     JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-    JSON.stringify({ type: 'session.complete' }),
+    JSON.stringify({ type: 'session.complete', reason: 'stop' }),
   ].join('\n');
 
   async function adapterWithInventory(models: readonly string[]): Promise<OpenCodeCliAdapter> {

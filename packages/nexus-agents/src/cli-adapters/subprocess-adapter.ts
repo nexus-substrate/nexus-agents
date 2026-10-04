@@ -38,26 +38,6 @@ import { createCallerAbortCliError, isTimeoutText } from './cli-error-helpers.js
 import { generateHyphenId } from '../utils/id-utils.js';
 import { recordAbortObservation } from '../adapters/abort-observation.js';
 
-/** Minimum length for plaintext fallback to kick in.
- * Lowered from 100→30 to recover short but valid CLI responses (#1401). */
-const PLAINTEXT_FALLBACK_MIN_LENGTH = 30;
-
-/**
- * Attempts to extract a usable response from raw stdout when the structured
- * parser fails. Returns the trimmed text if it looks like natural language
- * (not JSON/NDJSON) and exceeds the minimum length threshold.
- *
- * Recovers responses from CLIs that output plaintext instead of their
- * expected structured format. (#1401)
- */
-function tryPlaintextFallback(stdout: string): string | null {
-  const trimmed = stdout.trim();
-  if (trimmed.length < PLAINTEXT_FALLBACK_MIN_LENGTH) return null;
-  // Skip if it looks like structured output the parser should handle
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return null;
-  return trimmed;
-}
-
 /** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
 const STDERR_ERROR_PATTERNS = [
   'error:',
@@ -793,7 +773,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     }
 
     const text = this.parser.extractResponse(stdout);
-    if (text === null) return this.handleNoAnswer(stdout, stderr, startTime);
+    if (text === null) return this.handleNoAnswer(stdout, stderr);
     const authFailure = this.classifyEmptyAnswer(text, stderr);
     if (authFailure !== null) return authFailure;
 
@@ -823,14 +803,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * NDJSON `{"type":"error"}`) surfaced an `errorMessage`: classify it before
    * the generic PARSE_ERROR path, which would mask the real cause.
    */
-  private handleNoAnswer(
-    stdout: string,
-    stderr: string,
-    startTime: number
-  ): Result<CliResponse, CliError> {
+  private handleNoAnswer(stdout: string, stderr: string): Result<CliResponse, CliError> {
     const errorOnly = this.classifyErrorOnlyStream(stdout);
     if (errorOnly !== null) return errorOnly;
-    return this.handleUnparseableOutput(stdout, stderr, startTime);
+    return this.handleUnparseableOutput(stdout, stderr);
   }
 
   /**
@@ -874,14 +850,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * parser returned null. Order of recovery attempts (most-specific first):
    *   1. Rate-limit text in raw stdout (#1320)
    *   2. Structured CLI error envelope (#2440)
-   *   3. Plaintext fallback for natural-language output (#1401)
-   *   4. Generic PARSE_ERROR with truncated snippet
+   *   3. Generic PARSE_ERROR with truncated snippet
+   * Only the adapter parser can authorize a successful response (#7073).
    */
-  private handleUnparseableOutput(
-    stdout: string,
-    stderr: string,
-    startTime: number
-  ): Result<CliResponse, CliError> {
+  private handleUnparseableOutput(stdout: string, stderr: string): Result<CliResponse, CliError> {
     if (isRateLimitText(stdout)) {
       const snippet = stdout.slice(0, 500).trim();
       return err(this.createError('RATE_LIMITED', snippet));
@@ -902,18 +874,6 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         rawSanitized: sanitizeOutput(stdout),
       });
       return err(this.createError(envelope.code, msg));
-    }
-    const plaintext = tryPlaintextFallback(stdout);
-    if (plaintext !== null) {
-      subprocessLogger.debug('Using plaintext fallback for unparseable output', {
-        rawSanitized: sanitizeOutput(stdout),
-      });
-      return ok(
-        this.normalizeResponse(plaintext, undefined, {
-          durationMs: getTimeProvider().now() - startTime,
-          raw: stdout,
-        })
-      );
     }
     const snippet = stdout.slice(0, 500).trim();
     const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 300).trim()}]` : '';

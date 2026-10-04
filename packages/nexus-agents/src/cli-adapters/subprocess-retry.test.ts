@@ -720,12 +720,12 @@ describe('SubprocessCliAdapter parse error retry (#1533)', () => {
   });
 });
 
-describe('SubprocessCliAdapter plaintext fallback', () => {
+describe('SubprocessCliAdapter respects parser rejection', () => {
   beforeEach(() => {
     mockSpawn.mockReset();
   });
 
-  it('should recover plaintext response when JSON parser fails', async () => {
+  it('rejects long plaintext when its canonical parser rejects it (#7073)', async () => {
     const adapter = new StrictJsonAdapter();
     const task: CliTask = { content: 'test' };
     const longText = 'This is a detailed analysis of the codebase. '.repeat(5);
@@ -740,9 +740,10 @@ describe('SubprocessCliAdapter plaintext fallback', () => {
     });
 
     const result = await promise;
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.text).toBe(longText.trim());
+    // Previously the shared fallback overruled the parser's rejection.
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
     }
   });
 
@@ -766,7 +767,7 @@ describe('SubprocessCliAdapter plaintext fallback', () => {
     }
   });
 
-  it('should recover short plaintext output above 30-char threshold (#1401)', async () => {
+  it('rejects plaintext above the former fallback threshold (#7073)', async () => {
     const adapter = new StrictJsonAdapter();
     const task: CliTask = { content: 'test' };
     // 40 chars — above 30-char threshold but below old 100-char threshold
@@ -782,9 +783,10 @@ describe('SubprocessCliAdapter plaintext fallback', () => {
     });
 
     const result = await promise;
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.text).toBe(shortResponse);
+    // The old 30-character fallback cannot authorize success independently.
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
     }
   });
 
