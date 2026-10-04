@@ -68,7 +68,8 @@ export const MAX_PROPOSAL_LENGTH = 4000;
  *   recorded voter history, and nothing writes that history today (#5234), so in practice this
  *   currently behaves as simple_majority. The outcome reports `weightBasis: 'unweighted'` when
  *   that is the case (#5117) rather than claiming a weighting that did not happen.
- * - `higher_order`: Bayesian-optimal with correlation awareness (Issue #514)
+ * - `higher_order`: plain approve/reject tally at a 0.5 bar; its correlation
+ *   posterior drives contrarian escalation only, not the verdict (#4701, #514)
  * - `opinion_wise`: Alias for higher_order (Issue #333)
  */
 export type VotingStrategy =
@@ -89,7 +90,8 @@ export const VotingStrategySchema = z.enum([
 ]);
 
 /**
- * Whether a strategy uses higher-order (Bayesian, correlation-aware) aggregation.
+ * Whether a strategy takes the higher-order path (correlation analysis for
+ * contrarian escalation; the verdict itself is a plain tally, #4701).
  * `opinion_wise` is a documented alias of `higher_order` (#333), so both must
  * take the higher-order path — gating on the literal `'higher_order'` silently
  * dropped opinion_wise to the plain engine with no higherOrderMetadata (#3271).
@@ -236,7 +238,7 @@ export const ConsensusVoteInputSchema = z
       'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
     ),
     strategy: VotingStrategySchema.optional().describe(
-      'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal). ' +
+      'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (a plain majority tally whose correlation analysis only triggers contrarian escalation). ' +
         'NOTE (#4452): thresholds are evaluated over approve/reject/abstain, not over which option a voter chose. On a ' +
         'multi-option proposal even `unanimous` clears trivially — see the `proposal` field description.'
     ),
