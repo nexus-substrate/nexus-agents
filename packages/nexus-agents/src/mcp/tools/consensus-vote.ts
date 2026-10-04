@@ -1095,6 +1095,14 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
         reasoning: z.string().max(4000),
         simulated: z.boolean(),
         error: z.boolean(),
+        retried: z.boolean().optional(),
+        retriedFrom: z
+          .object({
+            source: z.enum(['error', 'unverifiable']),
+            error: z.string().optional(),
+            errorTruncated: z.literal(true).optional(),
+          })
+          .optional(),
         /** #6094: present only when the seat could not read the artifact. */
         unverifiable: z.literal(true).optional(),
         /** #6115: present only when the seat answered elsewhere than assigned. */
@@ -1143,6 +1151,7 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       posteriorRejection: z.number(),
       effectiveVoteCount: z.number(),
       method: z.enum(['ow', 'isp', 'simple']),
+      appliedToDecision: z.boolean(),
       usedCorrelationData: z.boolean(),
       improvementOverBaseline: z.number(),
       downweightedAgents: z.array(z.string().max(100)).max(10),
