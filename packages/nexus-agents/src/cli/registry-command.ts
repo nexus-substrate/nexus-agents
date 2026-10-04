@@ -37,6 +37,7 @@ import {
   MANIFEST_MAX_BYTES,
   defaultUserManifestPath,
   loadUserManifestOverlay,
+  type ManifestLoadResult,
 } from '../config/manifest-overlay.js';
 
 // ---------------------------------------------------------------------------
@@ -106,7 +107,7 @@ interface DoctorReport {
   };
   readonly overlay: {
     readonly path: string;
-    readonly status: 'missing' | 'empty' | 'malformed' | 'too-large' | 'loaded';
+    readonly status: ManifestLoadResult['status'];
     readonly entryCount: number;
     readonly rejections: readonly { index: number; id?: string; reason: string }[];
     readonly envOverride: string | undefined;
