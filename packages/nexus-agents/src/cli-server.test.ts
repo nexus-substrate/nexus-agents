@@ -3,7 +3,7 @@
  * @module cli-server.test
  */
 
-import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { ILogger } from './core/index.js';
 import type { ModeDetectionResult, ServerMode } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
@@ -467,7 +467,12 @@ describe('validateModeOrExit', () => {
 describe('startServer', () => {
   let processExitSpy: MockInstance;
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(async () => {
+    vi.stubEnv('CLAUDE_PROJECT_DIR', undefined);
     vi.resetAllMocks();
     processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     vi.spyOn(process, 'on').mockReturnValue(process);
