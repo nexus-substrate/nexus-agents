@@ -244,10 +244,9 @@ async function connectToStdioTransport(
   logger.setDestination?.('stderr');
   serverLogger.setDestination?.('stderr');
   logger.info('Connecting to stdio transport');
-  // Resolve the active workspace root from the client's declared MCP `roots`
-  // (#3991) once the handshake completes, so per-repo `.nexus-agents/` state
-  // lands in the repo being worked on rather than homedir. Set before connect
-  // so the hook is in place when `notifications/initialized` arrives; fail-soft.
+  // Resolve CLAUDE_PROJECT_DIR synchronously (#7044), or prepare the readiness
+  // barrier for MCP roots after initialized (#3991/#4002). Both are wired
+  // before connect so the first tool call uses the session's workspace root.
   beginWorkspaceRootResolution(serverLogger);
   server.server.oninitialized = () => {
     void resolveWorkspaceRootFromClient(server, serverLogger);

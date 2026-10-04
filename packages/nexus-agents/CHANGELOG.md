@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 8.131.3
+
+### Patch Changes
+
+- [#7054](https://github.com/nexus-substrate/nexus-agents/pull/7054) [`b0613e2`](https://github.com/nexus-substrate/nexus-agents/commit/b0613e2147d5f49156f18a70d3ae3233e8204379) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Resolve the MCP workspace root synchronously from validated CLAUDE_PROJECT_DIR in Claude Code, releasing tool readiness immediately while preserving NEXUS_DATA_DIR precedence and MCP roots fallback.
+
+## 8.131.2
+
+### Patch Changes
+
+- [#7052](https://github.com/nexus-substrate/nexus-agents/pull/7052) [`dfb37b9`](https://github.com/nexus-substrate/nexus-agents/commit/dfb37b94527f0b618ac5685a0c33690b02583522) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Reject undeclared tool output keys during SDK server-side validation and bind structured success data to each declared output schema.
+
 ## 8.131.1
 
 ### Patch Changes

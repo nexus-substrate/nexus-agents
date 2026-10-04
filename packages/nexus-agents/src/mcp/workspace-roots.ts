@@ -1,5 +1,5 @@
 /**
- * Workspace-root resolution from MCP client `roots` (#3991).
+ * Workspace-root resolution from Claude Code's environment or MCP roots.
  *
  * A globally-installed nexus-agents MCP server runs with `process.cwd()`
  * OUTSIDE the repo the user is actually working in (it's launched from the
@@ -9,12 +9,13 @@
  * checkpoints, audit, sessions, …) lands in `~/.nexus-agents/` instead of
  * `<repo>/.nexus-agents/`.
  *
- * The fix uses the MCP standard rather than a bespoke env var: clients that
- * declare the `roots` capability (MCP spec — Claude Code and other editors
- * do) advertise their workspace folder(s). After the initialize handshake the
- * server asks for them via `roots/list`, derives a single repo root, and hands
- * it to `setActiveWorkspaceRoot()` so the resolver bases per-repo subdirs
- * there. When the client declares no roots (or the lookup fails) the resolver
+ * Claude Code's validated `CLAUDE_PROJECT_DIR` supplies a synchronous git
+ * workspace root before transport opens (#7044). Otherwise, clients that
+ * declare the `roots` capability advertise their workspace folder(s). After
+ * the initialize handshake the server asks via `roots/list` and hands the
+ * result to `setActiveWorkspaceRoot()` so per-repo subdirs resolve there.
+ * Neither source changes explicit `NEXUS_DATA_DIR` precedence.
+ * When the client declares no roots (or the lookup fails) the resolver
  * keeps its existing cwd/homedir fallback. Tool dispatch waits for readiness
  * with a bounded timeout; a timeout pins the fallback for the session and
  * every call using it logs its root and effective data directories.
@@ -22,8 +23,8 @@
  * @module mcp/workspace-roots
  */
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
@@ -83,6 +84,7 @@ interface RootResolution {
   readonly logger: ILogger;
   readonly fallbackRoot: string;
   readonly resolve: () => void;
+  readonly fromClaudeProjectDir: boolean;
   settled: boolean;
   timedOut: boolean;
   timer?: ReturnType<typeof setTimeout>;
@@ -90,20 +92,46 @@ interface RootResolution {
 
 let resolution: RootResolution | undefined;
 
-/** Prepare the barrier before transport opens, including before initialized. */
+/** Resolve Claude Code's startup source, logging invalid values once per startup. */
+function resolveClaudeProjectRoot(logger: ILogger): string | null {
+  // Claude Code injects CLAUDE_PROJECT_DIR into spawned stdio MCP servers:
+  // the stable project root, unchanged by adding/removing working directories.
+  // https://code.claude.com/docs/en/mcp#option-3-add-a-local-stdio-server
+  const candidate = process.env['CLAUDE_PROJECT_DIR'];
+  if (candidate === undefined) return null;
+  try {
+    if (isAbsolute(candidate)) {
+      const canonical = realpathSync(candidate);
+      const root = statSync(canonical).isDirectory() ? findRepoRoot(canonical) : null;
+      if (root !== null && setActiveWorkspaceRoot(root)) return root;
+    }
+  } catch {
+    // Missing/inaccessible paths and broken symlinks join the invalid-value fallback.
+  }
+  logger.warn('Invalid CLAUDE_PROJECT_DIR; falling back to MCP client roots');
+  return null;
+}
+
+/** Prepare before transport opens; a valid Claude Code root settles synchronously. */
 export function beginWorkspaceRootResolution(logger: ILogger): void {
   if (resolution?.timer !== undefined) clearTimeout(resolution.timer);
   let resolveReady!: () => void;
   workspaceRootReady = new Promise<void>((resolve) => {
     resolveReady = resolve;
   });
+  const root = resolveClaudeProjectRoot(logger);
   resolution = {
     logger,
     fallbackRoot: findRepoRoot(process.cwd()) ?? homedir(),
     resolve: resolveReady,
+    fromClaudeProjectDir: root !== null,
     settled: false,
     timedOut: false,
   };
+  if (root !== null) {
+    logger.info('Resolved workspace root from CLAUDE_PROJECT_DIR', { workspaceRoot: root });
+    finishResolution(resolution);
+  }
 }
 
 function finishResolution(state: RootResolution): void {
@@ -154,7 +182,8 @@ function applyWorkspaceRoots(roots: readonly McpRoot[], logger: ILogger): void {
 }
 
 /**
- * Resolve the client's roots after initialized, releasing dispatch on success,
+ * Resolve roots after initialized unless the startup source already settled.
+ * Release dispatch on success,
  * absent capability, empty/unusable roots, or error. A timed-out session keeps
  * its pinned fallback: a late response must never split per-repo state.
  */
@@ -164,6 +193,16 @@ export async function resolveWorkspaceRootFromClient(
 ): Promise<void> {
   if (resolution === undefined) beginWorkspaceRootResolution(logger);
   const state = resolution;
+  if (state?.fromClaudeProjectDir === true) return;
+  await requestWorkspaceRoots(server, logger, state);
+}
+
+/** Request client roots and settle the existing readiness barrier on every outcome. */
+async function requestWorkspaceRoots(
+  server: McpServer,
+  logger: ILogger,
+  state: RootResolution | undefined
+): Promise<void> {
   try {
     if (server.server.getClientCapabilities()?.roots === undefined) {
       logger.debug(
