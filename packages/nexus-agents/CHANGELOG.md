@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.130.3
+
+### Patch Changes
+
+- [#7030](https://github.com/nexus-substrate/nexus-agents/pull/7030) [`ceb4565`](https://github.com/nexus-substrate/nexus-agents/commit/ceb4565ba10af8a25adc9f1070c7398b419bee31) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct the `consensus_vote` `higher_order` strategy description. It said "Bayesian-optimal", but its verdict is a plain approve/reject tally at a 0.5 bar. The correlation-aware posterior is computed, but it only triggers contrarian escalation and does not weight the decision ([#4701](https://github.com/nexus-substrate/nexus-agents/issues/4701)). Behaviour is unchanged; only the description, JSDoc and architecture docs now say what the strategy does.
+
 ## 8.130.2
 
 ### Patch Changes
