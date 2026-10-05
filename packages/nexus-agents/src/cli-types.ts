@@ -224,6 +224,8 @@ export interface ParsedCliArgs {
     fix: boolean;
     // Vote command options
     proposal?: string;
+    /** File inlined into every voter proposal (--artifact-file). */
+    artifactFile?: string;
     /** Legacy spelling of the bar; `strategy` wins when both are given (#6227). */
     threshold?: VoteThreshold;
     /** #6227 — `--strategy`, the tool's own enum, passed to the engine as the MCP tool passes it. */
@@ -473,6 +475,9 @@ export const PARSE_ARGS_CONFIG = {
     // #6227 — the bar as the tool spells it. `threshold` is the legacy spelling;
     // the engine's `resolveStrategy` lets `strategy` win when both are given.
     strategy: {
+      type: 'string' as const,
+    },
+    'artifact-file': {
       type: 'string' as const,
     },
     // #6227 — `<pr>@<40-hex sha>`: binds the record to a governor-path PR for

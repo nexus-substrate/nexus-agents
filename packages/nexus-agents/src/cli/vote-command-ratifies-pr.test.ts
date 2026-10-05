@@ -14,8 +14,9 @@
  * @module cli/vote-command-ratifies-pr.test
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
@@ -37,7 +38,12 @@ vi.mock('./voter-agents.js', () => ({
 import { voteCommand } from './vote-command.js';
 
 let SHA: string;
-type CollectedOptions = { roles: readonly VoterRole[]; workspace?: string; workspaceSha?: string };
+type CollectedOptions = {
+  roles: readonly VoterRole[];
+  proposal: string;
+  workspace?: string;
+  workspaceSha?: string;
+};
 
 function approvingPanel(roles: readonly VoterRole[]): AgentVoteResult[] {
   return roles.map((role) => ({
@@ -219,6 +225,28 @@ describe('nexus-agents vote --ratifies-pr / --strategy reach the persisted recor
     expect(workspaces[1]).toBe(workspaces[0]);
     expect(existsSync(workspaces[0]!)).toBe(false);
     expect(printed()).toContain('No quorum — re-running the vote once');
+  });
+
+  it('passes the inlined artifact to every seat and hashes it in the persisted proposal (#7092)', async () => {
+    const artifactFile = join(repo, 'resolution.diff');
+    const content = '+ resolved\n'.repeat(500);
+    writeFileSync(artifactFile, content);
+    const digest = createHash('sha256').update(content).digest('hex');
+    const proposal =
+      `Ratify\n\nArtifact: resolution.diff sha256:${digest} ${String(Buffer.byteLength(content))} bytes\n` +
+      `===== BEGIN ARTIFACT =====\n${content}\n===== END ARTIFACT =====`;
+    expect(await voteCommand({ proposal: 'Ratify', artifactFile })).toBe(0);
+    expect(collectRealVotesMock.mock.calls[0]?.[0].proposal).toBe(proposal);
+    expect(readBack().proposal).toContain(`Artifact: resolution.diff sha256:${digest}`);
+    expect(readBack().proposalHash).toBe(createHash('sha256').update(proposal).digest('hex'));
+  });
+
+  it('fails before launching seats when the artifact is missing (#7092)', async () => {
+    expect(
+      await voteCommand({ proposal: 'Ratify', artifactFile: join(repo, 'missing.diff') })
+    ).toBe(1);
+    expect(collectRealVotesMock).not.toHaveBeenCalled();
+    expect(printed()).toContain('ENOENT');
   });
 
   it('records NO binding when the flag was not given — the pair', async () => {

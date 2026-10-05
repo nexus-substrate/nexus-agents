@@ -16,6 +16,7 @@
  * - Use --record <issue-number> flag
  */
 
+import { inlineVoteArtifact } from './vote-artifact.js';
 import * as crypto from 'node:crypto';
 import { withPanelWorkspace } from './vote-scratch-checkout.js';
 import { getTimeProvider, formatPercentage, getErrorMessage, createLogger } from '../core/index.js';
@@ -623,6 +624,9 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
   );
   const onNoQuorum: NoQuorumPolicy = options.onNoQuorum ?? 'fail';
   try {
+    options = Object.assign({}, options, {
+      proposal: await inlineVoteArtifact(options.proposal, options.artifactFile),
+    });
     return await withPanelWorkspace(options, async (workspace) => {
       let result = await runVote(options, workspace);
       // #4135: a quorum void is recoverable (a voice was missing) — under `retry`,

@@ -330,6 +330,7 @@ function buildVoteCommandOptions(args: ParsedCliArgs): VoteCommandOptions {
 
   return {
     proposal: args.options.proposal ?? '',
+    artifactFile: args.options.artifactFile,
     ...(args.options.options !== undefined && { options: args.options.options }),
     ...(validThreshold !== undefined && { threshold: validThreshold }),
     // #6227: both already validated by the parser (`parseStrategy`,

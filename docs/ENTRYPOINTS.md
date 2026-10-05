@@ -213,10 +213,43 @@ Options available for all commands:
 | `--strategy`       | enum    | `simple_majority` | The bar, as the `consensus_vote` tool spells it: `simple_majority`, `supermajority`, `unanimous`, `proof_of_learning`, `higher_order`, `opinion_wise`. Wins over `--threshold` when both are given (#6227). An unknown value is refused, not dropped.                                                                                                                      |
 | `--threshold`      | enum    | —                 | Legacy spelling of the bar: `majority`, `supermajority`, `unanimous`. `--strategy` wins when both are given. No short `-t` (it is `--task`).                                                                                                                                                                                                                               |
 | `--ratifies-pr`    | string  | —                 | `<number>@<40-hex-lowercase-sha>`: bind the audit record to a governor-path PR at the head the panel reviewed (#6227, #5130). Prints `record <id> bound to PR n @ sha`; then `scripts/append-ratification-record.ts --record-id <id>`. Governor bar: `--strategy supermajority --error-policy absolute_quorum`; a vote below it is still recorded, with a one-line notice. |
+| `--artifact-file`  | string  | —                 | Read a UTF-8 file and inline it into every seat's proposal, with its basename, SHA-256 digest, and byte count. Maximum 256 KiB (262144 bytes); missing, empty, NUL-containing, or oversized files error.                                                                                                                                                                   |
 | `--error-policy`   | enum    | per strategy      | `reduce_denominator`, `count_as_abstain`, `fail_closed`, `absolute_quorum` (#2630, #4132). Default `fail_closed` for `unanimous`, else `reduce_denominator`.                                                                                                                                                                                                               |
 | `--timeout`        | number  | `300`             | Timeout per vote in seconds (`VOTE_TIMEOUTS.defaultMs`, #1640; the parse default drifted to 90 until #6236)                                                                                                                                                                                                                                                                |
 | `--quick`          | boolean | `false`           | Use 3 agents instead of 7                                                                                                                                                                                                                                                                                                                                                  |
 | `--dry-run`        | boolean | `false`           | Simulate votes without agent execution                                                                                                                                                                                                                                                                                                                                     |
+
+##### Merge ratification
+
+Generate the merge resolution diff before starting the panel, then pass it with
+`--artifact-file`. Read-only voter seats can have limited access to untracked or
+ignored files, and `git show --remerge-diff` can require writes they cannot perform.
+Run these commands from the checkout containing the merge head being ratified:
+
+```bash
+git show --remerge-diff --format=fuller HEAD > merge-resolution.diff
+nexus-agents vote \
+  --proposal "Ratify the merge resolution shown in the attached artifact." \
+  --artifact-file merge-resolution.diff \
+  --ratifies-pr "<pr-number>@<full-40-hex-lowercase-head-sha>" \
+  --strategy supermajority \
+  --error-policy absolute_quorum
+```
+
+Use the record ID printed by the vote with
+`pnpm exec tsx scripts/append-ratification-record.ts --record-id <id>` to prepare
+the committed ratification ledger. Owner ratification remains required for governor
+paths.
+
+The file must contain UTF-8 text, have content, contain no NUL bytes, and be at most
+256 KiB (262144 bytes). A missing, empty, binary, or oversized file fails before
+voting; an oversized-file error reports both its byte size and the cap. The proposal
+includes `Artifact: <basename> sha256:<hex> <bytes> bytes`, followed by the text
+between `===== BEGIN ARTIFACT =====` and `===== END ARTIFACT =====` markers. The
+existing `proposalHash` covers this header and content. Seats read the inlined text;
+this option does not grant access to the working tree or make a resolution-only
+diff a review of the entire PR. State the scope the panel should review in the
+proposal.
 
 #### review
 

@@ -75,6 +75,11 @@ const VOTE_HELP: CommandHelpEntry = {
   flags: [
     { flag: '-p, --proposal <text>', description: 'Proposal text to vote on (required)' },
     {
+      flag: '--artifact-file <path>',
+      description:
+        'Inline a nonempty UTF-8 text file (max 256 KiB) into every seat proposal with its SHA-256 digest; seats read the inlined text',
+    },
+    {
       flag: '--strategy <s>',
       description:
         'The bar, as the consensus_vote tool spells it: simple_majority (default) | supermajority | unanimous | proof_of_learning | higher_order | opinion_wise. Wins over --threshold when both are given (#6227)',

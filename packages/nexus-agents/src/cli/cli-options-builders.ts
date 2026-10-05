@@ -47,6 +47,7 @@ export interface ParsedValues extends SubcommandFlagValues {
   threshold?: string;
   strategy?: string;
   'ratifies-pr'?: string;
+  'artifact-file'?: string;
   option?: string[];
   quick: boolean;
   timeout?: string;
@@ -177,6 +178,7 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
     ...(values.proposal !== undefined && { proposal: values.proposal }),
     ...(options !== undefined && options.length > 0 && { options }),
     ...parseVoteBarFlags(values),
+    ...(values['artifact-file'] !== undefined && { artifactFile: values['artifact-file'] }),
     ...(timeoutMs !== undefined && { timeoutMs }),
     ...(errorPolicy !== undefined && { errorPolicy }),
     ...(onNoQuorum !== undefined && { onNoQuorum }),
