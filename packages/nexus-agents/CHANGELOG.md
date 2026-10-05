@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.133.4
+
+### Patch Changes
+
+- [#7085](https://github.com/nexus-substrate/nexus-agents/pull/7085) [`d5122f5`](https://github.com/nexus-substrate/nexus-agents/commit/d5122f57e6d56ea4f5a143913f7ac227407e622c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix model-drift proposals to use the same capability tiers as gateway routing, rank the best models first within each vendor, and spread the five-proposal limit across vendors. Previously closed proposals now count as duplicates, preventing weekly refiling.
+
 ## 8.133.3
 
 ### Patch Changes
