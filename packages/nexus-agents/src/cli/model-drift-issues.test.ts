@@ -1,9 +1,17 @@
 /**
  * Tests for model-drift issue drafting and filing (#6625). `gh` is faked.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-import type { ModelDriftReport, NewModel } from '../config/model-drift.js';
+const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn() }));
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  execFile: Object.assign(vi.fn(), {
+    [Symbol.for('nodejs.util.promisify.custom')]: execFileMock,
+  }),
+}));
+
+import { detectModelDrift, type ModelDriftReport, type NewModel } from '../config/model-drift.js';
 import {
   MODEL_DRIFT_MAX_ISSUES_PER_RUN,
   draftNewModelIssue,
@@ -43,22 +51,26 @@ function report(ids: readonly string[]): ModelDriftReport {
 }
 
 function fakeDeps(overrides: Partial<ModelDriftIssueDeps> = {}): {
-  readonly fileIssue: ReturnType<typeof vi.fn>;
+  readonly fileIssue: Mock<NonNullable<ModelDriftIssueDeps['fileIssue']>>;
   readonly deps: ModelDriftIssueDeps;
 } {
-  const fileIssue = vi.fn((opts: { title: string }) =>
+  const fileIssue = vi.fn<NonNullable<ModelDriftIssueDeps['fileIssue']>>((opts) =>
     Promise.resolve({ ok: true as const, url: `https://example.invalid/${opts.title}` })
   );
   return {
     fileIssue,
     deps: {
       ghAvailable: () => Promise.resolve(true),
-      listOpenIssueTitles: () => Promise.resolve([] as readonly string[]),
+      listProposalIssueTitles: () => Promise.resolve([] as readonly string[]),
       fileIssue,
       ...overrides,
     },
   };
 }
+
+beforeEach(() => {
+  execFileMock.mockReset();
+});
 
 describe('draftNewModelIssue', () => {
   it('names the model id in the title and carries the drafted entry', () => {
@@ -71,6 +83,75 @@ describe('draftNewModelIssue', () => {
 });
 
 describe('fileNewModelIssues', () => {
+  it('skips a model whose discovered proposal issue is CLOSED', async () => {
+    const issues = [
+      {
+        title: 'models: propose a registry entry for `claude-opus-4-9`',
+        state: 'CLOSED',
+        labels: ['discovered'],
+      },
+    ];
+    execFileMock.mockImplementation((_command: string, args: readonly string[]) => {
+      const state = args[args.indexOf('--state') + 1];
+      const label = args.includes('--label') ? args[args.indexOf('--label') + 1] : undefined;
+      const rows = issues.filter(
+        (issue) =>
+          (state === 'all' || issue.state.toLowerCase() === state) &&
+          (label === undefined || issue.labels.includes(label))
+      );
+      return Promise.resolve({ stdout: JSON.stringify(rows), stderr: '' });
+    });
+    const { fileIssue } = fakeDeps();
+    const result = await fileNewModelIssues(report(['claude-opus-4-9']), {
+      ghAvailable: () => Promise.resolve(true),
+      fileIssue,
+    });
+
+    expect(result.skipped).toEqual([{ id: 'claude-opus-4-9', reason: 'duplicate' }]);
+    expect(fileIssue).not.toHaveBeenCalled();
+    expect(execFileMock).toHaveBeenCalledWith(
+      'gh',
+      expect.arrayContaining(['--state', 'all', '--label', 'discovered', '--limit', '1000']),
+      expect.anything()
+    );
+  });
+
+  it('asks the injected lister for all discovered proposal issues', async () => {
+    const listProposalIssueTitles = vi.fn(() => Promise.resolve([]));
+    const { deps } = fakeDeps({ listProposalIssueTitles });
+    await fileNewModelIssues(report(['gpt-7']), deps);
+    expect(listProposalIssueTitles).toHaveBeenCalledWith({ state: 'all', label: 'discovered' });
+  });
+
+  it('caps seven proposals at five while including both vendors', async () => {
+    const ids = ['gpt-7', 'gpt-8', 'gpt-9', 'gpt-10', 'gpt-11', 'claude-opus-5', 'claude-opus-6'];
+    const drift = await detectModelDrift({
+      sources: [
+        {
+          name: 'gateway',
+          probe: () =>
+            Promise.resolve({
+              status: 'measured',
+              models: ids.map((id) => ({ id })),
+            }),
+        },
+      ],
+      registry: [{ id: 'gpt-5.5' }, { id: 'claude-sonnet-4-6' }],
+      nowMs: Date.UTC(2026, 8, 23),
+    });
+    const { deps, fileIssue } = fakeDeps();
+    const result = await fileNewModelIssues(drift, deps);
+    expect(fileIssue).toHaveBeenCalledTimes(5);
+    expect(result.filed.map((f) => f.id)).toEqual([
+      'claude-opus-6',
+      'gpt-11',
+      'claude-opus-5',
+      'gpt-10',
+      'gpt-9',
+    ]);
+    expect(result.skipped.filter((s) => s.reason === 'rate-limit')).toHaveLength(2);
+  });
+
   it('files one issue per new model', async () => {
     const { deps, fileIssue } = fakeDeps();
     const result = await fileNewModelIssues(report(['claude-opus-4-9']), deps);
@@ -82,7 +163,7 @@ describe('fileNewModelIssues', () => {
 
   it('skips a model that already has an open issue naming its id', async () => {
     const { deps, fileIssue } = fakeDeps({
-      listOpenIssueTitles: () =>
+      listProposalIssueTitles: () =>
         Promise.resolve(['models: propose a registry entry for `claude-opus-4-9`']),
     });
     const result = await fileNewModelIssues(report(['claude-opus-4-9', 'gpt-7']), deps);
@@ -94,7 +175,7 @@ describe('fileNewModelIssues', () => {
 
   it('does not treat an issue for a longer id as a duplicate', async () => {
     const { deps } = fakeDeps({
-      listOpenIssueTitles: () =>
+      listProposalIssueTitles: () =>
         Promise.resolve(['models: propose a registry entry for `gpt-7-mini`']),
     });
     const result = await fileNewModelIssues(report(['gpt-7']), deps);

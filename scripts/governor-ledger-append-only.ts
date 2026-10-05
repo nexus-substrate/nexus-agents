@@ -3,11 +3,19 @@
  * record lines must be an ordered subsequence of the head's, byte-for-byte —
  * with exactly one admitted difference, a redaction's rewrite of the line it
  * names. Split out of `governor-ledger-evidence.ts` (#6372) so that file
- * stays under the line budget; governor-owned like its parent.
+ * stays under the line budget; governor-owned like its parent. The ledger
+ * load (parse, set-verify, refuse ambiguous ids) moved here for the same
+ * reason when #3927 added the signature-scope check to the evidence.
  *
  * @module scripts/governor-ledger-append-only
  */
 import { isRecord } from '../packages/nexus-agents/src/utils/type-coercion.js';
+import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
+import { verifyVoteRecordSet } from '../packages/nexus-agents/src/audit/vote-record.js';
+import type {
+  RedactedRecordReport,
+  RedactionRecord,
+} from '../packages/nexus-agents/src/audit/redaction-record.js';
 import { redactedRolesByTarget } from '../packages/nexus-agents/src/audit/redaction-record.js';
 import { parseVoteRecordsText } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 
@@ -87,4 +95,72 @@ export function appendOnlyVerdict(headText: string, baseText: string): LedgerRew
     cursor = at + 1;
   }
   return undefined;
+}
+
+/** A benign duplicate sequence in the verified set; informational, never a refusal. */
+export interface LedgerFork {
+  readonly sequence: number;
+  readonly recordIds: readonly string[];
+}
+
+/** The two refusals a ledger load can return — the evidence verdict's `ledger-invalid` and `duplicate-id`. */
+export type LedgerLoadRefusal =
+  | { readonly kind: 'ledger-invalid'; readonly detail: string }
+  | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] };
+
+type Loaded =
+  | {
+      ok: true;
+      records: VoteRecord[];
+      /** The verifier's per-record `redacted` answers, by record id (#6264). */
+      redacted: ReadonlyMap<string, RedactedRecordReport>;
+      /** Every redaction record in the ledger, in file order (#6372: their signatures are reported beside their targets). */
+      redactions: readonly RedactionRecord[];
+      forks: readonly LedgerFork[];
+    }
+  | { ok: false; verdict: LedgerLoadRefusal };
+
+/** Parse and verify the ledger; collapse byte-identical duplicates; refuse ambiguous ids. */
+export function loadLedger(text: string): Loaded {
+  const { records, redactions, invalidLines } = parseVoteRecordsText(text);
+  if (invalidLines.length > 0) {
+    return {
+      ok: false,
+      verdict: {
+        kind: 'ledger-invalid',
+        detail: `line(s) ${invalidLines.join(', ')} do not parse or fail the record schema`,
+      },
+    };
+  }
+  // #6264: the redaction records are part of the verified set. A record whose
+  // opening was dropped under one verifies as `redacted` (its tally is still
+  // hash-covered); dropped under none it is `hash_mismatch` and lands here.
+  const verification = verifyVoteRecordSet(records, redactions);
+  if (!verification.ok) {
+    return {
+      ok: false,
+      verdict: {
+        kind: 'ledger-invalid',
+        detail: `${verification.reason} at record '${verification.recordId}': ${verification.detail}`,
+      },
+    };
+  }
+  const redacted = new Map((verification.redacted ?? []).map((r) => [r.recordId, r]));
+  const byId = new Map<string, VoteRecord>();
+  const ambiguous = new Set<string>();
+  for (const record of records) {
+    const seen = byId.get(record.id);
+    if (seen === undefined) byId.set(record.id, record);
+    else if (seen.hash !== record.hash) ambiguous.add(record.id);
+  }
+  if (ambiguous.size > 0) {
+    return { ok: false, verdict: { kind: 'duplicate-id', ids: [...ambiguous].sort() } };
+  }
+  const members = [...records, ...redactions];
+  // No verifier forks means no informational fork report.
+  const forks = (verification.forks ?? []).map((sequence) => ({
+    sequence,
+    recordIds: members.filter((r) => r.sequence === sequence).map((r) => r.id),
+  }));
+  return { ok: true, records: [...byId.values()], redacted, redactions, forks };
 }

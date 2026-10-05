@@ -10,6 +10,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runDoctor, printDoctorResults, doctorCommand } from './doctor.js';
 import type { CliCheckResult, DoctorResult } from './doctor.js';
+import { GeminiCliAdapter } from '../cli-adapters/adapters/gemini-adapter.js';
+import * as authEvidence from '../cli-adapters/auth-evidence.js';
+import type { AuthProbeResult } from './cli-auth-probe.js';
 
 const { TEST_VERSION } = vi.hoisted(() => ({ TEST_VERSION: '1.0.0' }));
 
@@ -26,9 +29,10 @@ vi.mock('node:child_process', async (importOriginal) => {
 });
 
 // Mock the factory module
-vi.mock('../cli-adapters/factory.js', () => ({
-  createAllAdapters: vi.fn(),
-}));
+vi.mock('../cli-adapters/factory.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli-adapters/factory.js')>();
+  return { ...actual, createAllAdapters: vi.fn() };
+});
 
 // #6119: the client-mode verdict is measured by `codex mcp-server --help`.
 // Default to a codex that still serves it; the unavailable case is a test.
@@ -38,9 +42,14 @@ vi.mock('../cli-adapters/codex-mcp-server-probe.js', async (importOriginal) => {
 });
 
 // The sandbox preflight is model-free, but unit tests must not spawn Codex.
-vi.mock('../cli-adapters/codex-sandbox-preflight.js', () => ({
-  codexSandboxPreflight: vi.fn(() => Promise.resolve({ status: 'ok' as const })),
-}));
+vi.mock('../cli-adapters/codex-sandbox-preflight.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../cli-adapters/codex-sandbox-preflight.js')>();
+  return {
+    ...actual,
+    codexSandboxPreflight: vi.fn(() => Promise.resolve({ status: 'ok' as const })),
+  };
+});
 
 // The pinned-model probe (#6120) spends a real claude call; stub it here and
 // keep the formatter real. doctor.ts imports the probe directly, so the spread
@@ -65,7 +74,8 @@ vi.mock('../mcp/server.js', () => ({
 }));
 
 // Mock fs.existsSync for config file checks
-vi.mock('node:fs', () => ({
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: vi.fn(() => false),
   // #4488: the scratch-space check reads statfs. A roomy reading keeps these
   // tests about CLI/auth health rather than disk state.
@@ -229,6 +239,22 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
   };
 }
 
+/** Keep the real doctor and formatter; replace only process-facing probes. */
+function mockAuthEvidenceCli(probe: AuthProbeResult): void {
+  const adapter = {
+    name: probe.cli,
+    healthCheck: vi.fn().mockResolvedValue({
+      healthy: true,
+      version: '1.0.0',
+      versionStatus: 'supported',
+      lastChecked: new Date(),
+    }),
+    getCapacity: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.mocked(createAllAdapters).mockReturnValue(new Map([[probe.cli, adapter]]) as never);
+  vi.mocked(probeCli).mockResolvedValueOnce(probe);
+}
+
 describe('Doctor Command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -246,6 +272,169 @@ describe('Doctor Command', () => {
   });
 
   describe('runDoctor()', () => {
+    it.each([
+      [
+        { cli: 'claude', state: 'authenticated', via: 'cli-credentials' },
+        'artifact',
+        'artifact',
+        'claude credentials file',
+      ],
+      [
+        { cli: 'codex', state: 'authenticated', via: 'cli-credentials' },
+        'probe',
+        'cli',
+        'codex login status',
+      ],
+      [
+        { cli: 'gemini', state: 'unknown', reason: 'No non-interactive auth check' },
+        'none',
+        'none',
+        'agy probe unknown',
+      ],
+      [
+        { cli: 'opencode', state: 'authenticated', via: 'cli-credentials' },
+        'probe',
+        'cli',
+        'opencode auth list',
+      ],
+      [
+        { cli: 'claude', state: 'authenticated', via: 'env-var' },
+        'artifact',
+        'artifact',
+        'ANTHROPIC_API_KEY environment variable',
+      ],
+      [
+        { cli: 'codex', state: 'authenticated', via: 'env-var' },
+        'artifact',
+        'artifact',
+        'OPENAI_API_KEY environment variable',
+      ],
+      [
+        {
+          cli: 'claude',
+          state: 'needs-login',
+          reason: 'Expired credentials',
+          fixCommand: 'claude /login',
+        },
+        'none',
+        'artifact',
+        'claude credentials file',
+      ],
+      [
+        { cli: 'codex', state: 'error', reason: 'Probe timed out' },
+        'none',
+        'cli',
+        'codex login status',
+      ],
+    ] satisfies ReadonlyArray<readonly [AuthProbeResult, string, string, string]>)(
+      'reports auth evidence for %j in structured and per-CLI output',
+      async (probe, rung, source, description) => {
+        mockAuthEvidenceCli(probe);
+        const result = await runDoctor();
+        const row = result.clis.find((cli) => cli.name === probe.cli);
+        expect(row?.authEvidence).toEqual({
+          rung,
+          source,
+          description,
+          probeState: probe.state,
+          passed: probe.state === 'authenticated',
+          blocks: probe.state === 'needs-login',
+        });
+        const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+        printDoctorResults(result);
+        expect(writeSpy.mock.calls.map((call) => call[0]).join('')).toContain(
+          `Auth evidence: ${rung} (${description})`
+        );
+      }
+    );
+
+    it('renders the resolver measurement rather than grading auth independently', async () => {
+      mockAuthEvidenceCli({ cli: 'codex', state: 'authenticated', via: 'cli-credentials' });
+      const measurement = {
+        rung: 'none' as const,
+        source: 'none' as const,
+        probeState: 'unknown' as const,
+        passed: false,
+        blocks: false,
+      };
+      vi.spyOn(authEvidence, 'resolveAuthEvidence').mockReturnValue(measurement);
+      const result = await runDoctor();
+      expect(result.clis.find((cli) => cli.name === 'codex')?.authEvidence).toMatchObject(
+        measurement
+      );
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      printDoctorResults(result);
+      expect(writeSpy.mock.calls.map((call) => call[0]).join('')).toContain(
+        'Auth evidence: none (codex probe unknown)'
+      );
+    });
+
+    it('prints no auth evidence line for a CLI that was never probed (#4661)', async () => {
+      vi.mocked(createAllAdapters).mockReturnValue(new Map());
+      const result = await runDoctor();
+      // An uninstalled CLI gets no auth line (#4661): no probe ran, so there is no evidence to grade.
+      const claude = result.clis.find((cli) => cli.name === 'claude');
+      expect(claude).toBeDefined();
+      expect(claude?.installed).toBe(false);
+      expect(claude?.authEvidence).toBeUndefined();
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      printDoctorResults(result);
+      expect(writeSpy.mock.calls.map((call) => call[0]).join('')).not.toContain('Auth evidence:');
+    });
+
+    it('uses raw adapter metadata when the routing arm is absent (#4389)', async () => {
+      vi.spyOn(GeminiCliAdapter.prototype, 'binaryName', 'get').mockReturnValue('missing-cli');
+      vi.mocked(createAllAdapters).mockReturnValue(new Map());
+
+      const result = await runDoctor();
+
+      expect(result.clis.find((cli) => cli.name === 'gemini')?.fix).toBe(
+        'Install missing-cli and ensure it is on PATH'
+      );
+    });
+
+    it.each([undefined, 'alternate-cli'])(
+      'offers installation help for the adapter binary with override %s (#4389)',
+      async (override) => {
+        const adapter = new GeminiCliAdapter();
+        if (override !== undefined) {
+          vi.spyOn(adapter, 'binaryName', 'get').mockReturnValue(override);
+        }
+        vi.spyOn(adapter, 'healthCheck').mockRejectedValue(new Error('ENOENT'));
+        vi.mocked(createAllAdapters).mockReturnValue(new Map([['gemini', adapter]]));
+
+        const result = await runDoctor();
+        const row = result.clis.find((cli) => cli.name === 'gemini');
+
+        expect(row?.installed).toBe(false);
+        expect(row?.fix).toBe(`Install ${adapter.binaryName} and ensure it is on PATH`);
+      }
+    );
+
+    it.each([undefined, 'alternate-cli'])(
+      'offers upgrade help for the adapter binary with override %s (#4389)',
+      async (override) => {
+        const adapter = new GeminiCliAdapter();
+        if (override !== undefined) {
+          vi.spyOn(adapter, 'binaryName', 'get').mockReturnValue(override);
+        }
+        vi.spyOn(adapter, 'healthCheck').mockResolvedValue({
+          healthy: true,
+          version: '1.0.0',
+          versionStatus: 'outdated',
+          lastChecked: new Date(0),
+        });
+        vi.spyOn(adapter, 'getCapacity').mockRejectedValue(new Error('not supported'));
+        vi.mocked(createAllAdapters).mockReturnValue(new Map([['gemini', adapter]]));
+
+        const result = await runDoctor();
+
+        expect(result.clis.find((cli) => cli.name === 'gemini')?.fix).toBe(
+          `Update ${adapter.binaryName} to the latest version`
+        );
+      }
+    );
+
     it.each([
       { status: 'ok' as const },
       { status: 'broken' as const, reason: 'bubblewrap cannot isolate app-server sockets' },
@@ -414,6 +603,17 @@ describe('Doctor Command', () => {
         status: 'not-probed',
         reason: 'claude CLI not installed',
       });
+    });
+
+    it('suppresses the duplicate pinned call when the live adapter ladder will measure serving', async () => {
+      const probe = vi
+        .fn()
+        .mockResolvedValue({ alias: 'fable', status: 'available', reason: null });
+      const deps = { live: true, skipClaudeModelProbe: true, probeClaudeModel: probe };
+      const result = await runDoctor(deps);
+      expect(probe).not.toHaveBeenCalled();
+      expect(result.claudeModel.status).toBe('not-probed');
+      expect(result.claudeModel.reason).toContain('live readiness');
     });
 
     it('leaves the pinned Claude model unmeasured without --live (#6814)', async () => {

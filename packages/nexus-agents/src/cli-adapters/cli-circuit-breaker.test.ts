@@ -138,6 +138,22 @@ describe('CliCircuitBreakerIntegration', () => {
     });
   });
 
+  it('consults the custom opencode route breaker before dispatch (#7070)', async () => {
+    const adapter = createMockAdapter('opencode');
+    const routeIntegration = new CliCircuitBreakerIntegration([adapter]);
+    const custom = getDefaultCliCircuitBreakerRegistry().getArmBreaker('api:opencode-custom');
+    for (let i = 0; i < custom.getSnapshot().config.failureThreshold; i++) {
+      custom.recordFailure('connection');
+    }
+    const result = await routeIntegration.execute(adapter, {
+      content: 'test custom route',
+      model: 'opencode-custom-sonnet',
+    });
+    expect(result.ok).toBe(false);
+    expect(adapter.execute).not.toHaveBeenCalled();
+    expect(routeIntegration.getHealthStatus().systemHealthy).toBe(true);
+  });
+
   describe('execute - success path', () => {
     it('should execute successfully and track usage', async () => {
       const task = createTask();
@@ -185,7 +201,10 @@ describe('CliCircuitBreakerIntegration', () => {
         perCliConfig: { opencode: { failureThreshold: 1 } },
       });
 
-      const result = await custom.execute(quotaAdapter, createTask());
+      const result = await custom.execute(quotaAdapter, {
+        content: 'test default route',
+        model: 'opencode-default',
+      });
 
       expect(result.ok).toBe(false);
       expect(custom.getCircuitSnapshots().get('opencode')?.state).toBe('open');
@@ -201,7 +220,10 @@ describe('CliCircuitBreakerIntegration', () => {
       const defaultIntegration = new CliCircuitBreakerIntegration([quotaAdapter]);
 
       for (let i = 0; i < 5; i++) {
-        await defaultIntegration.execute(quotaAdapter, createTask());
+        await defaultIntegration.execute(quotaAdapter, {
+          content: 'test default route',
+          model: 'opencode-default',
+        });
       }
 
       expect(getCliCircuitBreakerSnapshot('opencode')?.state).toBe('open');

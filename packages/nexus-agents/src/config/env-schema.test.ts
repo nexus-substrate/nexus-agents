@@ -1334,3 +1334,23 @@ describe('debt variables registered (#6457)', () => {
     expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain('NEXUS_TASK_STATE_ENABLED');
   });
 });
+
+describe('inferred capability-gap opt-in (#6930)', () => {
+  it.each(['0', '1'])('recognizes the exact switch value %s', (value) => {
+    vi.stubEnv('NEXUS_CAPABILITY_GAP_INFERRED', value);
+    const result = validateNexusEnv();
+    expect(result.unknownVars.map((entry) => entry.name)).not.toContain(
+      'NEXUS_CAPABILITY_GAP_INFERRED'
+    );
+    expect(result.invalidVars.map((entry) => entry.name)).not.toContain(
+      'NEXUS_CAPABILITY_GAP_INFERRED'
+    );
+  });
+  it('rejects true because only 1 enables the recording switch', () => {
+    vi.stubEnv('NEXUS_CAPABILITY_GAP_INFERRED', 'true');
+    const result = validateNexusEnv();
+    expect(result.invalidVars.map((entry) => entry.name)).toContain(
+      'NEXUS_CAPABILITY_GAP_INFERRED'
+    );
+  });
+});

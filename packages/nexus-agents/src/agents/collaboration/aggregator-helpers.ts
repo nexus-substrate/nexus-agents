@@ -165,6 +165,8 @@ function handleFieldConflict(ctx: ConflictContext): ResultConflict {
   const conflict: ResultConflict = {
     expert1Id: ctx.existing.expertId,
     expert2Id: ctx.newResult.expertId,
+    expert1Value: ctx.existing.value,
+    expert2Value: ctx.value,
     field: ctx.key,
     description: `Conflicting values for field '${ctx.key}'`,
     resolution: 'unresolved',
@@ -174,8 +176,10 @@ function handleFieldConflict(ctx: ConflictContext): ResultConflict {
   if (result1 !== undefined) {
     const resolution = ctx.conflictResolver(conflict, result1, ctx.newResult);
     conflict.resolution = resolution;
-    const resolutionDesc = resolution === 'merged' ? 'merge' : `${resolution} value`;
-    conflict.resolutionReason = `Resolved using ${resolutionDesc}`;
+    if (resolution !== 'unresolved') {
+      const resolutionDesc = resolution === 'merged' ? 'merge' : `${resolution} value`;
+      conflict.resolutionReason = `Resolved using ${resolutionDesc}`;
+    }
   }
 
   return conflict;

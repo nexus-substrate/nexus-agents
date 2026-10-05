@@ -2,22 +2,23 @@
  * `learning-metrics` must not assert a convergence verdict over an unconsulted
  * bandit (#5267).
  *
- * `cli-commands-handlers.ts` calls `learningMetricsCommand(options)` with no
- * second `context` argument, and no production caller supplies one. So
- * `gatherLearningMetrics` always took its fallback —
+ * Before #5275, the standalone CLI supplied no bandit to
+ * `gatherLearningMetrics`, which therefore took its fallback —
  * `?? { totalPulls: 0, explorationRatio: 0, … }` — and `explorationRatio: 0`
  * is `< 0.3`, which produced `learningStatus: 'exploiting'`, rendered with a
  * **green ✓**.
  *
  * The CLI reported the bandit had converged past exploration into exploitation
  * — the strongest positive signal on the screen — when the bandit was never
- * consulted. That is worse than #5255's fabricated `100.0%`: a green checkmark
+ * consulted. That was worse than #5255's fabricated `100.0%`: a green checkmark
  * reads as an affirmative health verdict rather than a number a reader might
  * question.
  *
  * Driven through the exported entry point rather than the private
  * `computeSummary`, because exporting a function solely for a test is what the
  * producer/consumer ratchet rejects (see #5117's rewrite for the same reason).
+ * The CLI now reconstructs first; these guards retain the aggregator's
+ * dependency-injection contract when a caller supplies no measured bandit.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -37,7 +38,7 @@ function banditWith(totalPulls: number, explorationRatio: number): LinUCBBandit 
 
 describe('learning status over an unconsulted bandit (#5267)', () => {
   it('is unmeasured when no bandit is supplied at all', () => {
-    // The production path today: the handler passes no context.
+    // Direct aggregation without a supplied bandit carries no evidence.
     const result = gatherLearningMetrics(undefined, undefined, undefined, OPTIONS);
     expect(result.summary.learningStatus).toBe('unmeasured');
   });

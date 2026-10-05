@@ -17,10 +17,16 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { WeatherReportInputSchema } from './weather-report-types.js';
 import type { WeatherReportResponse, CliWeather, AdaptiveBonus } from './weather-report-types.js';
 import { generateWeatherReport } from './weather-report.js';
+import {
+  WEATHER_REPORT_OUTPUT_SCHEMA,
+  type SerializedCliWeather,
+  type SerializedWeatherReport,
+} from './weather-report-output-schema.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
@@ -36,7 +42,7 @@ export type WeatherReportDeps = BaseMcpToolDeps;
 // ============================================================================
 
 /** Converts Maps to plain objects for JSON serialization. */
-function serializeReport(report: WeatherReportResponse): unknown {
+function serializeReport(report: WeatherReportResponse): SerializedWeatherReport {
   return {
     ...report,
     cliWeather: report.cliWeather.map(serializeCliWeather),
@@ -44,7 +50,7 @@ function serializeReport(report: WeatherReportResponse): unknown {
   };
 }
 
-function serializeCliWeather(cw: CliWeather): unknown {
+function serializeCliWeather(cw: CliWeather): SerializedCliWeather {
   return {
     cli: cw.cli,
     totalTasks: cw.totalTasks,
@@ -54,7 +60,7 @@ function serializeCliWeather(cw: CliWeather): unknown {
   };
 }
 
-function serializeBonus(b: AdaptiveBonus): unknown {
+function serializeBonus(b: AdaptiveBonus): AdaptiveBonus {
   return { ...b };
 }
 
@@ -86,8 +92,9 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
     };
     const report = generateWeatherReport(opts);
     const serialized = serializeReport(report);
-    const data = serialized as Record<string, unknown>;
-    return Promise.resolve(toolSuccessStructured(data));
+    return Promise.resolve(
+      structuredToolSuccess(z.object(WEATHER_REPORT_OUTPUT_SCHEMA), serialized)
+    );
   } catch (caught) {
     return Promise.resolve(toolErrorResponse('Weather report failed', caught, ctx.logger));
   }
@@ -134,17 +141,20 @@ export function registerWeatherReportTool(server: McpServer, deps: WeatherReport
     logger,
   });
 
-  const timeoutMs = getToolTimeout('weather_report', deps.security);
   const wrappedHandler = wrapToolWithTimeout('weather_report', secureHandler, {
-    timeoutMs,
+    timeoutMs: getToolTimeout('weather_report', deps.security),
     logger,
   });
 
-  // Note: outputSchema deferred for weather_report due to complex dynamic shape
-  // with 12+ optional fields. structuredContent is still returned for future use.
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'weather_report',
-    { description, inputSchema: toolSchema, annotations: getToolAnnotations('weather_report') },
+    {
+      description,
+      inputSchema: toolSchema,
+      outputSchema: WEATHER_REPORT_OUTPUT_SCHEMA,
+      annotations: getToolAnnotations('weather_report'),
+    },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered weather_report tool');

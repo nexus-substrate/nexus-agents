@@ -92,7 +92,7 @@ describe.skipIf(process.platform !== 'linux')(
       const controller = new AbortController();
       const scan = executeSecurityScan(
         { target: '.', scanner: 'auto', rulesets: ['p/default'], maxFindings: 10 },
-        controller.signal
+        { signal: controller.signal }
       );
       await waitFor(() => readPids().length === 2, 'the scanner tree to start', 15_000);
       const pids = readPids();
@@ -113,7 +113,7 @@ describe.skipIf(process.platform !== 'linux')(
       controller.abort('cancel_job');
       const result = await executeSecurityScan(
         { target: '.', scanner: 'auto', rulesets: ['p/default'], maxFindings: 10 },
-        controller.signal
+        { signal: controller.signal }
       );
       // An abort, not a missing scanner.
       expect('error' in result && result.error).toMatch(/aborted/);

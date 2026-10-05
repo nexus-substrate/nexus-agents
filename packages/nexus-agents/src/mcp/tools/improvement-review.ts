@@ -29,7 +29,7 @@ import { withPrerequisite } from '../middleware/tool-prerequisites.js';
 import { isAuditableScore } from '../../governance/fitness-score.js';
 import {
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -992,7 +992,10 @@ async function reviewHandler(args: unknown, ctx: HandlerContext): Promise<ToolRe
     });
   }
   const response = await runImprovementReview(parsed.data, { logger: ctx.logger });
-  return toolSuccessStructured(response as unknown as Record<string, unknown>);
+  return structuredToolSuccess(
+    z.record(z.string(), z.unknown()),
+    response as unknown as Record<string, unknown>
+  );
 }
 
 // ============================================================================

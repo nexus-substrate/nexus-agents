@@ -9,7 +9,7 @@
  * @module scripts/decide-publish-smoke.test
  */
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -31,6 +31,8 @@ interface Scenario {
   readonly local: { readonly agents: string; readonly memory: string };
   /** What `npm view <pkg> version` prints; `null` makes that lookup fail. */
   readonly npm: { readonly agents: string | null; readonly memory: string | null };
+  /** Version-list answers can differ from latest during promotion. */
+  readonly versions?: { readonly agents: readonly string[]; readonly memory: readonly string[] };
   /** What the pending-changeset counter prints. */
   readonly pending?: number;
 }
@@ -64,31 +66,35 @@ function decide(scenario: Scenario): Decision {
       JSON.stringify({ name: pkg, version })
     );
   }
-  const git = (...args: string[]): string =>
-    execFileSync('git', ['-C', repo, ...args], { encoding: 'utf-8' });
-  git('init', '-q');
-  git('config', 'user.email', 'test@example.com');
-  git('config', 'user.name', 'test');
-  git('add', '-A');
-  git('commit', '-qm', 'fixture');
-  const sha = git('rev-parse', 'HEAD').trim();
-
-  // The stub insists on the exact invocation, so a script that stopped
-  // counting at the given sha fails here rather than passing silently.
+  const sha = 'fixture-sha';
+  stub(
+    join(bin, 'git'),
+    `
+    [ "$1" = show ] || exit 97
+    case "$2" in
+      *nexus-agents/package.json) cat packages/nexus-agents/package.json ;;
+      *nexus-memory/package.json) cat packages/nexus-memory/package.json ;;
+      *) exit 98 ;;
+    esac
+  `
+  );
   stub(
     join(bin, 'pnpm'),
-    `[ "$*" = "exec tsx scripts/count-pending-changesets.ts ${sha}" ] || { echo "unexpected pnpm $*" >&2; exit 97; }\n` +
-      `echo ${String(scenario.pending ?? 0)}`
+    `[ "$*" = "exec tsx scripts/count-pending-changesets.ts ${sha}" ] && { echo ${String(scenario.pending ?? 0)}; exit; }\n` +
+      '[ "$1 $2 $3 $4" = "exec tsx scripts/publish-env.ts npm" ] || exit 97\n' +
+      'shift 4; exec npm "$@"'
   );
-  const npmCase = (pkg: string, version: string | null): string =>
-    version === null ? `  ${pkg}) exit 1 ;;` : `  ${pkg}) echo '${version}' ;;`;
+  const npmCase = (pkg: string, version: string | null, versions?: readonly string[]): string =>
+    version === null
+      ? `  ${pkg}) exit 1 ;;`
+      : `  ${pkg}) if [ "$3" = versions ]; then echo '${JSON.stringify(versions ?? (version === '' ? [] : [version]))}'; else echo '${version}'; fi ;;`;
   stub(
     join(bin, 'npm'),
     [
-      '[ "$1" = view ] && [ "$3" = version ] || { echo "unexpected npm $*" >&2; exit 97; }',
+      '[ "$1" = view ] || { echo "unexpected npm $*" >&2; exit 97; }',
       'case "$2" in',
-      npmCase('nexus-agents', scenario.npm.agents),
-      npmCase('nexus-memory', scenario.npm.memory),
+      npmCase('nexus-agents', scenario.npm.agents, scenario.versions?.agents),
+      npmCase('nexus-memory', scenario.npm.memory, scenario.versions?.memory),
       '  *) exit 98 ;;',
       'esac',
     ].join('\n')
@@ -162,7 +168,7 @@ describe('decide-publish-smoke.sh', () => {
       npm: { agents: '8.104.4', memory: null },
     });
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain('::error::npm view nexus-memory version failed');
+    expect(result.stdout).toContain('::error::npm view nexus-memory versions failed');
     expect(result.outputs).toEqual({});
   });
 
@@ -198,8 +204,31 @@ describe('decide-publish-smoke.sh', () => {
     const result = decide({
       local: { agents: '8.104.9', memory: '1.4.0' },
       npm: { agents: '8.104.10', memory: '1.4.0' },
+      versions: { agents: ['8.104.9', '8.104.10'], memory: ['1.4.0'] },
     });
     expect(result.status).toBe(0);
     expect(result.outputs).toEqual({ will_publish: 'false', memory_ahead: 'false' });
+  });
+});
+
+describe('publication independent of latest (#6514)', () => {
+  it('does not republish versions on next while latest is older', () => {
+    const result = decide({
+      local: { agents: '8.105.0', memory: '1.5.0' },
+      npm: { agents: '8.104.4', memory: '1.4.0' },
+      versions: { agents: ['8.104.4', '8.105.0'], memory: ['1.4.0', '1.5.0'] },
+    });
+    expect(result.status).toBe(0);
+    expect(result.outputs).toEqual({ will_publish: 'false', memory_ahead: 'false' });
+  });
+
+  it('publishes a missing version even if a newer version exists', () => {
+    const result = decide({
+      local: { agents: '8.104.9', memory: '1.4.0' },
+      npm: { agents: '8.104.10', memory: '1.4.0' },
+      versions: { agents: ['8.104.10'], memory: ['1.4.0'] },
+    });
+    expect(result.status).toBe(0);
+    expect(result.outputs).toEqual({ will_publish: 'true', memory_ahead: 'false' });
   });
 });

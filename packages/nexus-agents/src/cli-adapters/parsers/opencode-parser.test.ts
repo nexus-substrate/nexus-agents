@@ -219,7 +219,8 @@ describe('OpenCodeResponseParser', () => {
     it('should extract concatenated content from NDJSON', () => {
       const raw = createNdjson(
         { type: 'message.delta', content: 'Line 1' },
-        { type: 'message.delta', content: ' Line 2' }
+        { type: 'message.delta', content: ' Line 2' },
+        { type: 'session.complete', reason: 'stop' }
       );
 
       expect(parser.extractResponse(raw)).toBe('Line 1 Line 2');
@@ -497,12 +498,13 @@ describe('OpenCodeResponseParser', () => {
     });
   });
 
-  describe('plaintext fallback (#1402)', () => {
-    it('should return plaintext when output is not JSON or NDJSON', () => {
+  describe('plaintext fallback rejected (#7073 supersedes #1402)', () => {
+    it('should reject plaintext when output is not JSON or NDJSON', () => {
       const raw = 'This is a plain text response from OpenCode CLI';
       const result = parser.parse(raw);
-      expect(result).not.toBeNull();
-      expect(result?.content).toBe(raw);
+      // #7073: --format json output must not use the old #1402 plaintext success.
+      expect(result).toBeNull();
+      expect(parser.extractResponse(raw)).toBeNull();
     });
 
     it('should return null for short plaintext', () => {
@@ -511,48 +513,56 @@ describe('OpenCodeResponseParser', () => {
       expect(result).toBeNull();
     });
 
-    it('should accept malformed NDJSON as plaintext when parsers fail (#1402)', () => {
+    it('should reject unrecognized NDJSON when parsers fail (#7073)', () => {
       const raw = createNdjson(
         { type: 'unknown.event', data: 'unrecognized' },
         { type: 'another.unknown', data: 'also unrecognized' }
       );
       const result = parser.parse(raw);
-      // NDJSON parsing failed → JSON fallback failed → accept as plaintext
-      expect(result).not.toBeNull();
-      expect(result?.content).toBe(raw.trim());
+      // #7073: unknown events are not evidence of successful completion (#1402).
+      expect(result).toBeNull();
+      expect(parser.extractResponse(raw)).toBeNull();
     });
 
-    it('should return plaintext for multi-line non-JSON output', () => {
+    it('should reject multi-line non-JSON output', () => {
       const raw = 'Error: Model not available\nPlease check your API key\nRetry later';
       const result = parser.parse(raw);
-      expect(result).not.toBeNull();
-      expect(result?.content).toBe(raw);
+      // #7073: --format json output must not use the old #1402 plaintext success.
+      expect(result).toBeNull();
+      expect(parser.extractResponse(raw)).toBeNull();
     });
 
-    it('should return plaintext for error messages from OpenCode', () => {
+    it('should reject plaintext error messages from OpenCode', () => {
       const raw = 'opencode: failed to connect to provider anthropic: invalid API key';
       const result = parser.parse(raw);
-      expect(result).not.toBeNull();
-      expect(result?.content).toBe(raw);
+      // #7073: --format json output must not use the old #1402 plaintext success.
+      expect(result).toBeNull();
+      expect(parser.extractResponse(raw)).toBeNull();
     });
   });
 
   describe('edge cases', () => {
     it('should handle unicode content', () => {
-      const raw = createNdjson({
-        type: 'message.delta',
-        content: '你好 🌍 مرحبا',
-      });
+      const raw = createNdjson(
+        {
+          type: 'message.delta',
+          content: '你好 🌍 مرحبا',
+        },
+        { type: 'session.complete', reason: 'stop' }
+      );
 
       expect(parser.extractResponse(raw)).toBe('你好 🌍 مرحبا');
     });
 
     it('should handle very long content', () => {
       const longText = 'x'.repeat(100000);
-      const raw = createNdjson({
-        type: 'message.delta',
-        content: longText,
-      });
+      const raw = createNdjson(
+        {
+          type: 'message.delta',
+          content: longText,
+        },
+        { type: 'session.complete', reason: 'stop' }
+      );
 
       expect(parser.extractResponse(raw)).toBe(longText);
     });
@@ -606,7 +616,10 @@ describe('OpenCodeResponseParser', () => {
     });
 
     it('extractErrorMessage returns null for a normal text stream', () => {
-      const raw = createNdjson({ type: 'text', text: 'hello' });
+      const raw = createNdjson(
+        { type: 'text', part: { text: 'hello' } },
+        { type: 'step_finish', part: { reason: 'stop' } }
+      );
       expect(parser.extractErrorMessage(raw)).toBeNull();
     });
 
@@ -624,10 +637,8 @@ describe('OpenCodeResponseParser', () => {
     });
 
     it('should handle error event with null error object', () => {
-      // No error.data.message and no error.name → captureErrorMessage returns
-      // early, so errorMessage is never set. The error event still marks
-      // hasStepEvents=true, so handleEmptyContent falls back to the tool-only
-      // marker. Pre-existing behavior — pre-#2821 also returned this.
+      // An explicit error event must fail even without error detail (#7073).
+      // Previously this was accepted as a tool-only success.
       const raw = createNdjson({
         type: 'error',
         sessionID: 'ses_789',
@@ -635,8 +646,9 @@ describe('OpenCodeResponseParser', () => {
 
       const result = parser.parse(raw);
       expect(result).not.toBeNull();
-      expect(result?.content).toBe('[Tool-only response — no text output]');
-      expect(result?.errorMessage).toBeUndefined();
+      expect(result?.content).toBe('');
+      expect(result?.errorMessage).toBe('Unknown error');
+      expect(parser.extractResponse(raw)).toBeNull();
     });
 
     it('should fall back to "Unknown error" message in errorMessage (#2821)', () => {
@@ -682,7 +694,7 @@ describe('OpenCodeResponseParser', () => {
       const result = parser.parse(raw);
       expect(result?.content).toBe('Hello!');
       expect(result?.errorMessage).toContain('StreamInterrupted');
-      expect(parser.extractResponse(raw)).toBe('Hello!');
+      expect(parser.extractResponse(raw)).toBeNull();
     });
 
     it('should handle plain JSON with camelCase sessionId', () => {
@@ -697,17 +709,15 @@ describe('OpenCodeResponseParser', () => {
     });
 
     it('should reject recognized NDJSON with no content as plaintext', () => {
-      // message.start is recognized by isRecognizedLegacyEvent but has no handler
-      // that produces content → hasAnyRecognizedEvent = true, no content
+      // Recognized starts without a terminal event cannot authorize success (#7073).
       const raw = createNdjson(
         { type: 'message.start', id: 'msg-1' },
         { type: 'session.start', session_id: 'sess-x' }
       );
 
       const result = parser.parse(raw);
-      // NDJSON recognized but no content → parsePlainJson → looks like NDJSON
-      // → rejected because hasAnyRecognizedEvent is true
-      expect(result).toBeNull();
+      expect(result?.errorMessage).toContain('missing terminal reason');
+      expect(parser.extractResponse(raw)).toBeNull();
     });
 
     it('should return null for usage with only one token field', () => {
@@ -727,10 +737,10 @@ describe('OpenCodeResponseParser', () => {
       });
 
       const result = parser.parse(raw);
-      // text event processed (hasStepEvents=true) but no part.text → no content
-      // → hasStepEvents true → tool-only fallback
+      // Missing text and terminal stop cannot certify a completed turn (#7073).
       expect(result).not.toBeNull();
-      expect(result?.content).toBe('[Tool-only response — no text output]');
+      expect(result?.content).toBe('');
+      expect(parser.extractResponse(raw)).toBeNull();
     });
 
     it('should handle step_finish without part field', () => {

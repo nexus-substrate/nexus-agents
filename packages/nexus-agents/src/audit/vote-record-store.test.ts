@@ -409,8 +409,8 @@ describe('persistVoteRecord', () => {
   it('a maximal built voter entry carries every producer field — reader-only fields are explicit (#6057)', () => {
     // The schema-only failure mode is a compile error now; this pins the
     // builder side: a vote that is retried AND clipped produces an entry whose
-    // key set equals the producer fields in the schema. servedModel is reader-only
-    // until base checkout readers are deployed (#6951).
+    // key set equals the producer fields in the schema — servedModel included
+    // since #6967 made the builder write it.
     // One past the cap, derived from the constant: a literal that happened to
     // sit under it produced a fixture that was not clipped at all.
     const clipped = 'x'.repeat(MAX_VOTER_REASONING_CHARS + 1);
@@ -427,6 +427,8 @@ describe('persistVoteRecord', () => {
           retried: true,
           // #6091/#6094: the seat's model and the unverifiable marker.
           model: 'codex-5.3',
+          // #6967: the model the adapter reported serving.
+          servedModel: 'codex-5.3-mini',
           source: 'unverifiable',
           unverifiableSignal: 'stderr',
           // #6115: where the seat was assigned, and that it answered elsewhere.
@@ -458,8 +460,8 @@ describe('persistVoteRecord', () => {
       error: 'Vote parsing failed',
       errorTruncated: true,
     });
-    const { servedModel: _readerOnly, ...producerShape } = VoterSummarySchema.shape;
-    expect(Object.keys(entry).sort()).toEqual(Object.keys(producerShape).sort());
+    expect(entry.servedModel).toBe('codex-5.3-mini');
+    expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
   });
 
   it('the returned record and the line on disk serialize IDENTICALLY (#6054)', () => {
@@ -1920,9 +1922,9 @@ describe('gateway-served voter model reader (#6951)', () => {
     expect(parseVoteRecordsText(JSON.stringify(record)).records).toEqual([record]);
   });
 
-  it('keeps the producer from writing servedModel before base readers are deployed', () => {
+  it('writes the adapter-reported served model beside the configured one (#6967)', () => {
     const record = buildVoteRecord({
-      id: 'reader-first',
+      id: 'writer',
       proposal: 'p',
       strategy: 'supermajority',
       result: consensusResult(),
@@ -1930,9 +1932,74 @@ describe('gateway-served voter model reader (#6951)', () => {
       resolvedDecision: 'approved',
       votes: [
         { ...agentVote('architect', 'approve'), model: 'gemini-2.5-pro', servedModel: 'sonnet' },
+        { ...agentVote('security', 'approve'), model: 'gemini-2.5-pro' },
       ],
     });
-    expect(record.voters[0]).not.toHaveProperty('servedModel');
+    expect(record.voters[0]).toMatchObject({ model: 'gemini-2.5-pro', servedModel: 'sonnet' });
+    // Not reported stays absent: the configured model is never copied in.
+    expect(record.voters[1]).not.toHaveProperty('servedModel');
+    expect(verifyVoteRecordSet([record]).ok).toBe(true);
+    const voters = record.voters.map(({ servedModel: _s, ...rest }) => rest);
+    expect(verifyVoteRecordSet([{ ...record, voters }])).toMatchObject({
+      ok: false,
+      reason: 'hash_mismatch',
+    });
+  });
+
+  it.each<unknown>([
+    '',
+    'x'.repeat(201),
+    'claude sonnet',
+    'claude\n',
+    'claude<script>',
+    // Wrong types from adapter output must not throw in the warning path (#6992 panel).
+    null,
+    42,
+    { model: 'sonnet' },
+  ])('omits a reported value the reader would reject, with a warning (%j)', (servedModel) => {
+    const dir = mkdtempSync(join(tmpdir(), 'served-model-invalid-'));
+    try {
+      const filePath = join(dir, 'governance', 'vote-records.jsonl');
+      const warn = vi.fn();
+      const logger: ILogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn,
+        error: vi.fn(),
+        child: vi.fn(),
+        setLevel: vi.fn(),
+      };
+      const written = persistVoteRecord({
+        id: 'invalid-served',
+        proposal: 'p',
+        strategy: 'supermajority',
+        result: consensusResult(),
+        declaredOptions: undefined,
+        resolvedDecision: 'approved',
+        // Adapter output is untyped at runtime; the cast models that boundary.
+        votes: [
+          {
+            ...agentVote('architect', 'approve'),
+            model: 'gemini-2.5-pro',
+            servedModel: servedModel as string,
+          },
+        ],
+        filePath,
+        logger,
+      });
+      expect(written).toBeDefined();
+      expect(written!.voters[0]).not.toHaveProperty('servedModel');
+      expect(written!.voters[0]?.model).toBe('gemini-2.5-pro');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('servedModel'),
+        expect.objectContaining({ role: 'architect' })
+      );
+      const parsed = readVoteRecords(filePath);
+      expect(parsed.invalidLines).toEqual([]);
+      expect(verifyVoteRecordSet(parsed.records).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it.each(['1.12', '1.13'] as const)(

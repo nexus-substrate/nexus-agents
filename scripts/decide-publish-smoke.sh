@@ -6,7 +6,7 @@
 #   Run from the repo root. Writes `will_publish` and `memory_ahead` to
 #   $GITHUB_OUTPUT. Exits 1 when an npm lookup fails.
 #
-# Extracted from release.yml unchanged so it can be tested
+# Extracted from release.yml so it can be tested
 # (scripts/decide-publish-smoke.test.ts, #6804).
 set -euo pipefail
 
@@ -32,22 +32,25 @@ for pkg in nexus-agents nexus-memory; do
   local_version=$(git show "$sha:packages/$pkg/package.json" | jq -r '.version')
   # A failed lookup is unmeasured, never "nothing to publish" (#4927):
   # guessing "not ahead" here would skip the smoke on a real publish.
-  if ! published_version=$(npm view "$pkg" version 2>/dev/null) || [ -z "$published_version" ]; then
-    echo "::error::npm view $pkg version failed, so whether this run publishes is unmeasured. Not skipping the smoke on a guess; re-run once the registry answers."
+  if ! versions=$(pnpm exec tsx scripts/publish-env.ts npm view "$pkg" versions --json 2>/dev/null); then
+    echo "::error::npm view $pkg versions failed, so whether this run publishes is unmeasured. Not skipping the smoke on a guess; re-run once the registry answers."
     exit 1
   fi
-  larger=$(printf '%s\n%s\n' "$local_version" "$published_version" | sort -V | tail -1)
-  echo "$pkg: package.json=$local_version npm=$published_version"
-  if [ "$local_version" != "$published_version" ] && [ "$larger" = "$local_version" ]; then
-    echo "$pkg is ahead of npm: this run publishes it."
+  # Empty or malformed registry evidence cannot certify that nothing publishes.
+  if ! versions=$(printf '%s' "$versions" | jq -ce 'if type == "string" then [.] else . end | select(type == "array" and length > 0) | select(all(.[]; type == "string" and length > 0))'); then
+    echo "::error::npm view $pkg versions returned empty or invalid evidence; publication is unmeasured."
+    exit 1
+  fi
+  if ! printf '%s' "$versions" | jq -e --arg version "$local_version" 'index($version) != null' >/dev/null; then
+    echo "$pkg@$local_version is absent from npm's versions list: this run publishes it."
     will_publish=true
     if [ "$pkg" = "nexus-memory" ]; then memory_ahead=true; fi
   fi
 done
 if [ "$will_publish" = "true" ]; then
-  echo "No pending changesets and a package is ahead of npm: smoking the packed tarball(s) first."
+  echo "No pending changesets and a package version is absent from npm: smoking the packed tarball(s) first."
 else
-  echo "No pending changesets and no package is ahead of npm: nothing new to publish. No smoke."
+  echo "No pending changesets and both package versions are on npm: nothing new to publish. No smoke."
 fi
 echo "will_publish=$will_publish" >> "$GITHUB_OUTPUT"
 echo "memory_ahead=$memory_ahead" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,14 @@
+{
+  "conversation_id": "SANITIZED_SESSION_ID",
+  "status": "SUCCESS",
+  "response": "OK\n",
+  "duration_seconds": 1.199020029,
+  "num_turns": 1,
+  "usage": {
+    "input_tokens": 16397,
+    "output_tokens": 5,
+    "thinking_tokens": 0,
+    "cache_read_tokens": 0,
+    "total_tokens": 16402
+  }
+}

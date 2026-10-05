@@ -8,7 +8,11 @@
  */
 
 import { resolveCheckCommand, type ScriptedCheck } from './quality-gate-commands.js';
-import { execFileTree } from '../cli-adapters/exec-file-tree.js';
+import {
+  execFileTree,
+  type CommandWrapper,
+  type ExecFileTreeOptions,
+} from '../cli-adapters/exec-file-tree.js';
 import { throwIfAborted } from '../adapters/abort-utils.js';
 import type {
   PipelineStage,
@@ -37,7 +41,7 @@ async function runCommandCheck(
   command: string,
   args: readonly string[],
   cwd: string,
-  signal: AbortSignal | undefined
+  options: Pick<ExecFileTreeOptions, 'signal' | 'env' | 'wrapper'>
 ): Promise<GateCheckResult> {
   const start = Date.now();
   try {
@@ -47,7 +51,7 @@ async function runCommandCheck(
     // at that cwd — arbitrary under a global install.
     // #6747: `<pm> run <script>` spawns the script's own processes, so the
     // timeout and the abort end the whole tree, not only the package manager.
-    await execFileTree(command, args, { timeoutMs: CHECK_TIMEOUT_MS, cwd, signal });
+    await execFileTree(command, args, { timeoutMs: CHECK_TIMEOUT_MS, cwd, ...options });
     return {
       name,
       verdict: 'pass',
@@ -85,7 +89,13 @@ async function runCommandCheck(
  * defect in the other direction. {@link runQualityGate} makes sure a skip
  * cannot be read as a pass.
  */
-function scriptedCheck(name: string, check: ScriptedCheck, projectDir: string): GateCheckFn {
+function scriptedCheck(
+  name: string,
+  check: ScriptedCheck,
+  projectDir: string,
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
+): GateCheckFn {
   return async (signal) => {
     const resolved = resolveCheckCommand(projectDir, check);
     if (resolved.kind === 'unconfigured') {
@@ -96,23 +106,39 @@ function scriptedCheck(name: string, check: ScriptedCheck, projectDir: string): 
         durationMs: 0,
       };
     }
-    return runCommandCheck(name, resolved.command, resolved.args, projectDir, signal);
+    return runCommandCheck(name, resolved.command, resolved.args, projectDir, {
+      signal,
+      env,
+      wrapper,
+    });
   };
 }
 
 /** Check: the repository's declared typecheck script passes. */
-export function checkTypeCheck(projectDir: string): GateCheckFn {
-  return scriptedCheck('type_check', 'typecheck', projectDir);
+export function checkTypeCheck(
+  projectDir: string,
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
+): GateCheckFn {
+  return scriptedCheck('type_check', 'typecheck', projectDir, env, wrapper);
 }
 
 /** Check: the repository's declared lint script passes. */
-export function checkLint(projectDir: string): GateCheckFn {
-  return scriptedCheck('lint', 'lint', projectDir);
+export function checkLint(
+  projectDir: string,
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
+): GateCheckFn {
+  return scriptedCheck('lint', 'lint', projectDir, env, wrapper);
 }
 
 /** Check: the repository's declared test script passes. */
-export function checkTests(projectDir: string): GateCheckFn {
-  return scriptedCheck('tests', 'tests', projectDir);
+export function checkTests(
+  projectDir: string,
+  env?: NodeJS.ProcessEnv,
+  wrapper?: CommandWrapper
+): GateCheckFn {
+  return scriptedCheck('tests', 'tests', projectDir, env, wrapper);
 }
 
 /**

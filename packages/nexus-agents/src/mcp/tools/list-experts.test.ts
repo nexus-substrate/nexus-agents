@@ -190,9 +190,9 @@ describe('list_experts tool', () => {
 
       const config = mockServer.registerTool.mock.calls[0]?.[1] as Record<string, unknown>;
       expect(config).toHaveProperty('outputSchema');
-      const schema = config['outputSchema'] as Record<string, unknown>;
-      expect(schema).toHaveProperty('experts');
-      expect(schema).toHaveProperty('count');
+      const schema = config['outputSchema'] as { shape: Record<string, unknown> };
+      expect(schema.shape).toHaveProperty('experts');
+      expect(schema.shape).toHaveProperty('count');
     });
 
     it('should return structuredContent alongside content (Issue #1117)', async () => {

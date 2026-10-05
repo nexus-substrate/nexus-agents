@@ -19,11 +19,28 @@
  */
 
 import { writeFile, rm } from 'node:fs/promises';
-import { nexusMkdtemp } from '../config/nexus-tmp-dir.js';
+import { rmSync } from 'node:fs';
+import { nexusMkdtempSync } from '../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 import { createLogger } from '../core/index.js';
 
 const logger = createLogger({ component: 'swe-bench-mcp-config' });
+
+// Async finally blocks cannot run after process.exit (#4631). One listener
+// covers concurrent configs; SIGKILL cannot execute any in-process cleanup.
+const activeMcpDirs = new Set<string>();
+
+function cleanupOnExit(): void {
+  for (const dir of activeMcpDirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (error: unknown) {
+      logger.debug('MCP-config exit cleanup failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
 
 /**
  * MCP server entry in Claude CLI config format.
@@ -110,18 +127,31 @@ export interface GeneratedMcpConfig {
 export async function generateMcpConfig(options?: McpConfigOptions): Promise<GeneratedMcpConfig> {
   const config = buildConfig(options);
 
-  const tempDir = await nexusMkdtemp('nexus-mcp-');
+  // Creation and exit registration must occur in one turn: async mkdtemp
+  // can finish in its worker before JS can register cleanup (#4631).
+  const tempDir = nexusMkdtempSync('nexus-mcp-');
   const configPath = join(tempDir, 'mcp-config.json');
 
-  await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  if (activeMcpDirs.size === 0) process.on('exit', cleanupOnExit);
+  activeMcpDirs.add(tempDir);
 
   const cleanup = async (): Promise<void> => {
-    await rm(tempDir, { recursive: true, force: true }).catch((e: unknown) => {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+      activeMcpDirs.delete(tempDir);
+      if (activeMcpDirs.size === 0) process.removeListener('exit', cleanupOnExit);
+    } catch (e: unknown) {
       logger.debug('Best-effort cleanup failed', {
         error: e instanceof Error ? e.message : String(e),
       });
-    });
+    }
   };
 
-  return { configPath, cleanup };
+  try {
+    await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    return { configPath, cleanup };
+  } catch (error: unknown) {
+    await cleanup();
+    throw error;
+  }
 }

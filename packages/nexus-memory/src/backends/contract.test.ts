@@ -7,17 +7,18 @@
  * @module nexus-memory/backends/contract.test
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { IMemoryBackend } from '../types.js';
+import type { IMemoryBackend, JsonValue } from '../types.js';
 import { InMemoryBackend, MemoryValidationError } from './memory.js';
 import { SqliteBackend } from './sqlite.js';
-import { resetMemoryTelemetry } from '../telemetry.js';
+import { openSqliteDatabase } from './open-database.js';
+import { resetMemoryTelemetry, subscribeToMemoryEvents } from '../telemetry.js';
 
-interface SamplePayload {
+type SamplePayload = {
   readonly text: string;
   readonly count: number;
-}
+};
 
 const SampleSchema = z.object({
   text: z.string(),
@@ -181,89 +182,739 @@ for (const [name, factory] of factories) {
   });
 }
 
-// ============================================================================
-// Where the two backends DIVERGE (#5776)
-// ============================================================================
-
-/**
- * The suite above runs identically against both backends and passes — but its
- * only payload is `{ text: string; count: number }`, the two shapes JSON
- * preserves exactly, and its only key type is `string`. So it cannot see the
- * places where the two implementations disagree, and a green run is not
- * evidence that a production write lands intact.
- *
- * These cases pin the divergence as it exists TODAY. They are characterisation
- * tests, not aspirations: each one asserts what each backend actually does, so
- * that converging the two (whichever way) FAILS here and forces the contract
- * and its docs to be updated in the same change. Measured, not reasoned —
- * every expectation below was produced by running both backends.
- */
-describe('backend divergence, pinned (#5776)', () => {
-  afterEach(() => {
-    resetMemoryTelemetry();
-  });
-
-  it('SQLite round-trips a Date as an ISO string; in-memory keeps the Date', async () => {
-    // sqlite.ts JSON.stringify/JSON.parse; memory.ts stores by reference.
-    // The optional Zod schema does not catch it: validate() runs on the
-    // PRE-serialisation value and read never validates, so a schema-backed
-    // SQLite backend can return a value that violates its own schema.
-    const sql = new SqliteBackend<string, { at: Date }>({
-      domain: 'div_date_s',
-      dbPath: ':memory:',
+// #5979: these replace the three divergence pins with converged guarantees.
+for (const [name, factory] of factories) {
+  describe(`JSON convergence — ${name}`, () => {
+    let backend: IMemoryBackend<string, SamplePayload>;
+    beforeEach(() => {
+      backend = factory('convergence');
     });
-    await sql.write('k', { at: new Date(0) });
-    const fromSql = await sql.read('k');
-    expect(fromSql?.at).toBe('1970-01-01T00:00:00.000Z');
-    expect(fromSql?.at instanceof Date).toBe(false);
-
-    const mem = new InMemoryBackend<string, { at: Date }>({ domain: 'div_date_m' });
-    await mem.write('k', { at: new Date(0) });
-    expect((await mem.read('k'))?.at).toBeInstanceOf(Date);
-  });
-
-  it('in-memory hands back the stored object by reference, so a caller can mutate the store', async () => {
-    // No write event, no telemetry increment — the store changes with nothing
-    // recording it. SQLite returns a fresh parse and is unaffected.
-    const mem = new InMemoryBackend<string, { n: number }>({ domain: 'div_alias_m' });
-    await mem.write('k', { n: 1 });
-    const read = await mem.read('k');
-    if (read !== undefined) read.n = 99;
-    expect((await mem.read('k'))?.n).toBe(99);
-
-    const sql = new SqliteBackend<string, { n: number }>({
-      domain: 'div_alias_s',
-      dbPath: ':memory:',
+    afterEach(async () => {
+      await backend.close();
+      resetMemoryTelemetry();
     });
-    await sql.write('k', { n: 1 });
-    const sread = await sql.read('k');
-    if (sread !== undefined) sread.n = 99;
-    expect((await sql.read('k'))?.n).toBe(1);
-  });
 
-  it('in-memory keys objects by identity; SQLite keys them structurally', async () => {
-    // memory.ts uses `new Map<TKey, Row>` (SameValueZero); sqlite.ts falls
-    // through to JSON.stringify in keyToString.
-    const mem = new InMemoryBackend<{ id: string }, number>({ domain: 'div_key_m' });
-    await mem.write({ id: 'a' }, 7);
-    expect(await mem.read({ id: 'a' })).toBeUndefined();
-    expect(await mem.delete({ id: 'a' })).toBe(false);
-    expect((await mem.stats()).count).toBe(1); // the row is still there, unreachable
-
-    const sql = new SqliteBackend<{ id: string }, number>({
-      domain: 'div_key_s',
-      dbPath: ':memory:',
+    it('rejects a Date with its offending path; callers must serialize explicitly', async () => {
+      await expect(
+        backend.write('k', { at: new Date(0) } as unknown as SamplePayload)
+      ).rejects.toMatchObject({ name: 'MemoryValidationError', path: '$["at"]' });
+      expect((await backend.stats()).count).toBe(0);
     });
-    await sql.write({ id: 'a' }, 7);
-    expect(await sql.read({ id: 'a' })).toBe(7);
+
+    it('copies on write, read, and query, including nested values', async () => {
+      const value = { text: 'original', count: 1, nested: { n: 1 } };
+      await backend.write('k', value);
+      value.text = 'write alias';
+      value.nested.n = 2;
+      const read = await backend.read('k');
+      expect(read).toEqual({ text: 'original', count: 1, nested: { n: 1 } });
+      if (read !== undefined) {
+        (read as typeof value).text = 'read alias';
+        (read as typeof value).nested.n = 99;
+      }
+      const query = await backend.query();
+      const first = query[0] as typeof value;
+      first.nested.n = 3;
+      expect(await backend.read('k')).toEqual({ text: 'original', count: 1, nested: { n: 1 } });
+    });
+
+    it.each([7, false, null, undefined, { id: 'a' }, Symbol('key')])(
+      'rejects non-string keys %s on write, read, and delete',
+      async (invalid) => {
+        const key = invalid as unknown as string;
+        for (const operation of [
+          () => backend.write(key, { text: 'x', count: 1 }),
+          () => backend.read(key),
+          () => backend.delete(key),
+        ]) {
+          await expect(operation()).rejects.toMatchObject({
+            name: 'MemoryValidationError',
+            path: '$key',
+          });
+        }
+        expect((await backend.stats()).count).toBe(0);
+      }
+    );
+
+    it('uses string keys literally without structural coercion', async () => {
+      await backend.write('7', { text: 'x', count: 1 });
+      expect(await backend.read('7')).toEqual({ text: 'x', count: 1 });
+      expect(await backend.read('07')).toBeUndefined();
+      expect(await backend.delete('7')).toBe(true);
+    });
+
+    it.each([
+      ['Map', new Map()],
+      ['Set', new Set()],
+      ['NaN', NaN],
+      ['Infinity', Infinity],
+      ['negative Infinity', -Infinity],
+      ['undefined', undefined],
+      ['function', () => 1],
+      ['symbol', Symbol('value')],
+      ['bigint', 1n],
+      ['prototype', Object.create({ inherited: 1 }) as unknown],
+      [
+        'cycle',
+        (() => {
+          const v: Record<string, unknown> = {};
+          v['self'] = v;
+          return v;
+        })(),
+      ],
+      ['sparse array', new Array(2)],
+      ['symbol property', { [Symbol('hidden')]: 1 }],
+      ['hidden property', Object.defineProperty({}, 'hidden', { value: 1 })],
+      ['accessor', Object.defineProperty({}, 'get', { get: () => 1, enumerable: true })],
+      ['array property', Object.assign([1], { extra: 2 })],
+      ['non-index numeric array property', Object.assign([1], { 4294967295: 2 })],
+      ['negative zero', -0],
+      ['toJSON hook', { toJSON: () => 'coerced' }],
+    ])('rejects nested non-JSON %s without overwriting existing data', async (_label, invalid) => {
+      await backend.write('k', { text: 'valid', count: 1 });
+      await expect(
+        backend.write('k', { payload: invalid } as unknown as SamplePayload)
+      ).rejects.toMatchObject({ name: 'MemoryValidationError' });
+      await expect(
+        backend.write('k', { payload: invalid } as unknown as SamplePayload)
+      ).rejects.toThrow(/\$\["payload"\]/);
+      expect(await backend.read('k')).toEqual({ text: 'valid', count: 1 });
+    });
+
+    it('schema-backed reads and queries accept only the stored JSON shape', async () => {
+      await backend.close();
+      backend = factory('convergence_schema', SampleSchema);
+      await backend.write('k', { text: 'valid', count: 1 });
+      expect(await backend.read('k')).toEqual({ text: 'valid', count: 1 });
+      expect(await backend.query()).toEqual([{ text: 'valid', count: 1 }]);
+    });
+  });
+}
+
+describe('SQLite stored-row validation', () => {
+  it('rejects lossy stored JSON even without an optional schema', async () => {
+    const db = openSqliteDatabase(':memory:');
+    const backend = new SqliteBackend<string, JsonValue>({
+      domain: 'unvalidated',
+      dbPath: ':memory:',
+      db,
+    });
+    try {
+      db.prepare('INSERT INTO unvalidated (key,value,timestamp) VALUES (?,?,?)').run(
+        'infinite-row',
+        '{"n":1e999}',
+        1
+      );
+      await expect(backend.read('infinite-row')).rejects.toMatchObject({
+        name: 'MemoryReadError',
+        key: 'infinite-row',
+      });
+      await expect(backend.query()).rejects.toMatchObject({
+        name: 'MemoryReadError',
+        key: 'infinite-row',
+      });
+    } finally {
+      await backend.close();
+      db.close();
+    }
   });
 
-  it('the shared suite above genuinely cannot see any of this', () => {
-    // The guard that keeps the divergence visible: if someone widens
-    // SamplePayload to include a Date or an object key, these characterisation
-    // tests and the shared suite would start disagreeing, which is the signal
-    // to converge the backends rather than to broaden the fixture.
-    const probe: SamplePayload = { text: 'x', count: 1 };
-    expect(JSON.parse(JSON.stringify(probe))).toEqual(probe);
-  });
+  it.each(['{"text":42,"count":1}', '{broken', '{"text":"x","count":1e999}'])(
+    'fails closed on read and query for corrupt row %s',
+    async (stored) => {
+      const db = openSqliteDatabase(':memory:');
+      const backend = new SqliteBackend<string, SamplePayload>({
+        domain: 'corrupt',
+        dbPath: ':memory:',
+        db,
+        schema: SampleSchema,
+      });
+      try {
+        db.prepare('INSERT INTO corrupt (key,value,timestamp) VALUES (?,?,?)').run(
+          'bad-row',
+          stored,
+          1
+        );
+        for (const operation of [
+          () => backend.read('bad-row'),
+          () => backend.query(),
+          () => backend.query({ where: { text: 'not-matching' }, limit: 0 }),
+        ]) {
+          await expect(operation()).rejects.toMatchObject({
+            name: 'MemoryReadError',
+            key: 'bad-row',
+            domain: 'corrupt',
+          });
+          await expect(operation()).rejects.toThrow(/bad-row/);
+        }
+      } finally {
+        await backend.close();
+        db.close();
+      }
+    }
+  );
 });
+
+for (const Backend of [InMemoryBackend, SqliteBackend]) {
+  describe(`JSON values — ${Backend.name}`, () => {
+    afterEach(() => {
+      resetMemoryTelemetry();
+      vi.unstubAllEnvs();
+    });
+    it('rejects the descriptor-valid proxy with a spoofed toJSON before storing anything', async () => {
+      const db = openSqliteDatabase(':memory:');
+      const backend = new Backend<string, { n: number }>({
+        domain: 'proxy_hook',
+        db,
+        dbPath: ':memory:',
+        schema: z.object({ n: z.number() }),
+      });
+      let hookCalls = 0;
+      const value = new Proxy(
+        { n: 1 },
+        {
+          get(target, key, receiver) {
+            if (key === 'toJSON')
+              return () => {
+                hookCalls++;
+                return { n: 'invalid' };
+              };
+            return Reflect.get(target, key, receiver) as unknown;
+          },
+          has(target, key) {
+            return key === 'toJSON' ? false : Reflect.has(target, key);
+          },
+        }
+      );
+      try {
+        await expect(backend.write('k', value)).rejects.toMatchObject({
+          name: 'MemoryValidationError',
+          path: '$',
+        });
+        expect(hookCalls).toBe(0);
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM proxy_hook WHERE key = ?').get('k')).toBeUndefined();
+        }
+        expect(await backend.read('k')).toBeUndefined();
+        expect(await backend.query()).toEqual([]);
+      } finally {
+        await backend.close();
+        db.close();
+      }
+    });
+
+    it.each(['own', 'inherited'] as const)(
+      'rejects a %s toJSON property even when it is not callable',
+      async (location) => {
+        const backend = new Backend<string, JsonValue>({ domain: 'json_hook', dbPath: ':memory:' });
+        const value = { n: 1 };
+        const holder = location === 'own' ? value : Object.prototype;
+        const original = Object.getOwnPropertyDescriptor(holder, 'toJSON');
+        Object.defineProperty(holder, 'toJSON', {
+          value: null,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+        try {
+          await expect(backend.write('k', { nested: value })).rejects.toMatchObject({
+            name: 'MemoryValidationError',
+            path: location === 'own' ? '$["nested"]["toJSON"]' : '$["toJSON"]',
+          });
+          expect((await backend.stats()).count).toBe(0);
+        } finally {
+          if (original === undefined) Reflect.deleteProperty(holder, 'toJSON');
+          else Object.defineProperty(holder, 'toJSON', original);
+          await backend.close();
+        }
+      }
+    );
+
+    it('rejects a changing getter without invoking it or storing anything', async () => {
+      const backend = new Backend<string, JsonValue>({ domain: 'json_getter', dbPath: ':memory:' });
+      let reads = 0;
+      const value = Object.defineProperty({}, 'n', { enumerable: true, get: () => ++reads });
+      try {
+        await expect(backend.write('k', value as JsonValue)).rejects.toMatchObject({
+          name: 'MemoryValidationError',
+          path: '$["n"]',
+        });
+        expect(reads).toBe(0);
+        expect((await backend.stats()).count).toBe(0);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('rejects a null-prototype input when its fresh copy would inherit a toJSON hook', async () => {
+      const backend = new Backend<string, { n: number }>({
+        domain: 'copy_prototype_hook',
+        dbPath: ':memory:',
+        schema: z.object({ n: z.number() }),
+      });
+      const value = Object.assign(Object.create(null) as object, { n: 1 });
+      const original = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+      let hookCalls = 0;
+      let failure: unknown;
+      Object.defineProperty(Object.prototype, 'toJSON', {
+        configurable: true,
+        writable: true,
+        value: () => {
+          hookCalls++;
+          return { n: 'invalid' };
+        },
+      });
+      try {
+        try {
+          await backend.write('k', value);
+        } catch (error: unknown) {
+          failure = error;
+        }
+      } finally {
+        if (original === undefined) Reflect.deleteProperty(Object.prototype, 'toJSON');
+        else Object.defineProperty(Object.prototype, 'toJSON', original);
+      }
+      try {
+        expect(failure).toMatchObject({ name: 'MemoryValidationError', path: '$["toJSON"]' });
+        expect(hookCalls).toBe(0);
+        expect(await backend.read('k')).toBeUndefined();
+        expect((await backend.stats()).count).toBe(0);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('validates and stores the same fresh copy independently of the caller', async () => {
+      vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+      let payloadSummary: string | undefined;
+      const unsubscribe = subscribeToMemoryEvents((event) => {
+        if (event.op === 'write') payloadSummary = event.payloadSummary;
+      });
+      const value = { n: 1, nested: { label: 'valid' } };
+      let checked: unknown;
+      const schema = z.custom<typeof value>((candidate: unknown) => {
+        checked = candidate;
+        value.n = 2;
+        value.nested.label = 'caller changed during validation';
+        return (
+          candidate !== value &&
+          typeof candidate === 'object' &&
+          candidate !== null &&
+          'n' in candidate &&
+          candidate.n === 1
+        );
+      });
+      const backend = new Backend<string, typeof value>({
+        domain: 'stored_copy',
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', value);
+        expect(payloadSummary).toBe(JSON.stringify({ n: 1, nested: { label: 'valid' } }));
+        expect(checked).not.toBe(value);
+        expect(checked).toEqual({ n: 1, nested: { label: 'valid' } });
+        expect(await backend.read('k')).toEqual({ n: 1, nested: { label: 'valid' } });
+        expect(await backend.query()).toEqual([{ n: 1, nested: { label: 'valid' } }]);
+      } finally {
+        unsubscribe();
+        await backend.close();
+      }
+    });
+
+    it('round-trips primitives, arrays, null-prototype objects, and shared acyclic children', async () => {
+      const backend = new Backend<string, JsonValue>({ domain: 'json_values', dbPath: ':memory:' });
+      const child = { n: 1 };
+      const plain: unknown = Object.assign(Object.create(null) as object, { key: 'value' });
+      const values: JsonValue[] = [
+        null,
+        true,
+        false,
+        '',
+        0,
+        1.5,
+        [],
+        {},
+        [1, 'x', null],
+        plain as JsonValue,
+        { first: child, second: child },
+        JSON.parse('{"__proto__":{"n":1},"constructor":"literal"}') as JsonValue,
+      ];
+      try {
+        for (const [index, value] of values.entries()) {
+          await backend.write(String(index), value);
+          expect(await backend.read(String(index))).toEqual(value);
+        }
+        expect(await backend.query()).toHaveLength(values.length);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('prevents a custom schema from installing a toJSON hook on the validated snapshot', async () => {
+      let hookCalls = 0;
+      const schema = z.custom<{ n: number }>((candidate: unknown) => {
+        if (typeof candidate !== 'object' || candidate === null || !('n' in candidate))
+          return false;
+        if (typeof candidate.n !== 'number') return false;
+        // Reflect.set also exercises the silent-assignment behavior of non-strict callers.
+        Reflect.set(candidate, 'toJSON', () => {
+          hookCalls++;
+          return { n: 'invalid' };
+        });
+        return true;
+      });
+      const db = openSqliteDatabase(':memory:');
+      const backend = new Backend<string, { n: number }>({
+        domain: 'schema_hook',
+        db,
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', { n: 1 });
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM schema_hook WHERE key = ?').get('k')).toEqual({
+            value: '{"n":1}',
+          });
+        }
+        expect(await backend.read('k')).toEqual({ n: 1 });
+        expect(await backend.query()).toEqual([{ n: 1 }]);
+        expect(hookCalls).toBe(0);
+      } finally {
+        await backend.close();
+        db.close();
+      }
+    });
+
+    it('prevents retained schema references from mutating the snapshot at any depth', async () => {
+      const value = { n: 1, nested: { n: 2 }, items: [{ n: 3 }] };
+      let retained: typeof value | undefined;
+      const schema = z.custom<typeof value>((candidate: unknown) => {
+        retained = candidate as typeof value;
+        return true;
+      });
+      const db = openSqliteDatabase(':memory:');
+      const backend = new Backend<string, typeof value>({
+        domain: 'schema_retained',
+        db,
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', value);
+        expect(retained).toBeDefined();
+        if (retained === undefined) throw new Error('schema did not retain the snapshot');
+        // Attempt every mutation before asserting so a shallow freeze cannot pass.
+        const mutations = [
+          Reflect.set(retained, 'n', 99),
+          Reflect.set(retained.nested, 'n', 99),
+          Reflect.set(retained.items, '0', { n: 99 }),
+          Reflect.set(retained.items[0]!, 'n', 99),
+        ];
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM schema_retained WHERE key = ?').get('k')).toEqual({
+            value: '{"n":1,"nested":{"n":2},"items":[{"n":3}]}',
+          });
+        }
+        expect(await backend.read('k')).toEqual(value);
+        expect(mutations).toEqual([false, false, false, false]);
+      } finally {
+        await backend.close();
+        db.close();
+      }
+    });
+
+    it('stores and returns the untransformed snapshot rather than schema output', async () => {
+      const schema = z.object({ n: z.number() }).transform(() => ({ n: 99 }));
+      const backend = new Backend<string, { n: number }>({
+        domain: 'schema_transform',
+        dbPath: ':memory:',
+        schema,
+      });
+      try {
+        await backend.write('k', { n: 1 });
+        expect(await backend.read('k')).toEqual({ n: 1 });
+        expect(await backend.query()).toEqual([{ n: 1 }]);
+      } finally {
+        await backend.close();
+      }
+    });
+
+    it('returns mutable read and query copies without aliasing the snapshot', async () => {
+      const value = { nested: { n: 1 }, items: [{ n: 2 }] };
+      const backend = new Backend<string, typeof value>({
+        domain: 'mutable_reads',
+        dbPath: ':memory:',
+        schema: z.object({
+          nested: z.object({ n: z.number() }),
+          items: z.array(z.object({ n: z.number() })),
+        }),
+      });
+      try {
+        await backend.write('k', value);
+        const read = await backend.read('k');
+        expect(read).toBeDefined();
+        if (read === undefined) throw new Error('missing stored snapshot');
+        read.nested = { n: 99 };
+        read.items[0]!.n = 99;
+        read.items.push({ n: 99 });
+        const rows = await backend.query();
+        const first = rows[0]!;
+        first.nested.n = 88;
+        first.items.push({ n: 88 });
+        expect(await backend.read('k')).toEqual(value);
+        expect(await backend.query()).toEqual([value]);
+      } finally {
+        await backend.close();
+      }
+    });
+  });
+}
+
+// Keep prototype pollution active through persistence, audit, read, and query.
+for (const Backend of [InMemoryBackend, SqliteBackend]) {
+  describe(`Stored JSON bytes — ${Backend.name}`, () => {
+    afterEach(() => {
+      resetMemoryTelemetry();
+      vi.unstubAllEnvs();
+    });
+
+    it('preserves JSON escaping, numeric formatting, and property order in stored bytes', async () => {
+      const db = openSqliteDatabase(':memory:');
+      const backend = new Backend<string, JsonValue>({
+        domain: 'byte_compatibility',
+        dbPath: ':memory:',
+        db,
+      });
+      const text = '\"\\\b\f\n\r\t\u0000\ud800\udfff😀';
+      const value: JsonValue = {
+        z: text,
+        '10': 10,
+        '2': 2,
+        a: [null, true, false, 0, 1.5, 1e-7, 1e21],
+        ['__proto__']: { constructor: 'literal' },
+      };
+      const expected =
+        '{"2":2,"10":10,"z":' +
+        JSON.stringify(text) +
+        ',"a":[null,true,false,0,1.5,1e-7,1e+21],"__proto__":{"constructor":"literal"}}';
+      try {
+        await backend.write('k', value);
+        if (Backend === SqliteBackend) {
+          expect(db.prepare('SELECT value FROM byte_compatibility WHERE key = ?').get('k')).toEqual(
+            { value: expected }
+          );
+        }
+        expect(await backend.read('k')).toEqual(value);
+      } finally {
+        await backend.close();
+        db.close();
+      }
+    });
+
+    it.each(['join', 'push', 'iterator'] as const)(
+      'ignores Array.prototype.%s replaced during schema validation',
+      async (kind) => {
+        const db = openSqliteDatabase(':memory:');
+        const key = kind === 'iterator' ? Symbol.iterator : kind;
+        const original = Object.getOwnPropertyDescriptor(Array.prototype, key);
+        vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+        let summary: string | undefined;
+        const unsubscribe = subscribeToMemoryEvents((event) => {
+          if (event.op === 'write') summary = event.payloadSummary;
+        });
+        let installed = false;
+        let calls = 0;
+        const value = { n: 1, items: [2, 3] };
+        const backend = new Backend<string, typeof value>({
+          domain: 'array_methods',
+          dbPath: ':memory:',
+          db,
+          schema: z.custom<typeof value>(() => {
+            if (!installed) {
+              const hook =
+                kind === 'iterator'
+                  ? function* (): Generator<never> {
+                      calls++;
+                    }
+                  : (): string => {
+                      calls++;
+                      return '"n":"invalid"';
+                    };
+              Object.defineProperty(Array.prototype, key, { configurable: true, value: hook });
+              installed = true;
+            }
+            return true;
+          }),
+        });
+        // Read JSON independently of Zod's own inherited array iterator.
+        const reader =
+          Backend === SqliteBackend
+            ? new SqliteBackend<string, typeof value>({
+                domain: 'array_methods',
+                dbPath: ':memory:',
+                db,
+              })
+            : backend;
+        let raw: unknown;
+        let write: Promise<void> | undefined;
+        let read: Promise<typeof value | undefined> | undefined;
+        try {
+          // Both backend bodies run synchronously; restore before the test harness resumes.
+          write = backend.write('k', value);
+          if (Backend === SqliteBackend) {
+            raw = db.prepare('SELECT value FROM array_methods WHERE key = ?').get('k');
+          }
+          read = reader.read('k');
+        } finally {
+          if (original === undefined) Reflect.deleteProperty(Array.prototype, key);
+          else Object.defineProperty(Array.prototype, key, original);
+        }
+        try {
+          await write;
+          expect(await read).toEqual(value);
+          if (Backend === SqliteBackend) {
+            expect(raw).toEqual({ value: '{"n":1,"items":[2,3]}' });
+          }
+          expect(summary).toBe('{"n":1,"items":[2,3]}');
+          expect(calls).toBe(0);
+        } finally {
+          unsubscribe();
+          if (reader !== backend) await reader.close();
+          await backend.close();
+          db.close();
+        }
+      }
+    );
+
+    it.each(['getter', 'getter get', 'getter set', 'Symbol.toPrimitive', 'valueOf'] as const)(
+      'ignores a prototype %s installed after inspection',
+      async (kind) => {
+        const db = openSqliteDatabase(':memory:');
+        const key =
+          kind === 'Symbol.toPrimitive'
+            ? Symbol.toPrimitive
+            : kind === 'getter'
+              ? 'inherited_key'
+              : kind === 'getter get'
+                ? 'get'
+                : kind === 'getter set'
+                  ? 'set'
+                  : 'valueOf';
+        const holders: object[] = [Object.prototype, Array.prototype];
+        const originals = holders.map((holder) => Object.getOwnPropertyDescriptor(holder, key));
+        let calls = 0;
+        let installed = false;
+        let summary: string | undefined;
+        vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+        const unsubscribe = subscribeToMemoryEvents((event) => {
+          if (event.op === 'write') summary = event.payloadSummary;
+        });
+        const value = { n: 1, inherited_key: 'own', items: [1] };
+        const backend = new Backend<string, typeof value>({
+          domain: 'prototype_coercion',
+          dbPath: ':memory:',
+          db,
+          schema: z.custom<typeof value>(() => {
+            if (!installed) {
+              for (const holder of holders) {
+                const hook = (): never => {
+                  calls++;
+                  throw new Error('prototype hook invoked');
+                };
+                const descriptor = kind.startsWith('getter')
+                  ? { __proto__: null, configurable: true, enumerable: true, get: hook }
+                  : { __proto__: null, configurable: true, value: hook };
+                Object.defineProperty(holder, key, descriptor);
+              }
+              installed = true;
+            }
+            return true;
+          }),
+        });
+        let raw: unknown;
+        let read: unknown;
+        let query: unknown;
+        try {
+          await backend.write('k', value);
+          if (Backend === SqliteBackend) {
+            raw = db.prepare('SELECT value FROM prototype_coercion WHERE key = ?').get('k');
+          }
+          read = await backend.read('k');
+          query = await backend.query();
+        } finally {
+          for (const [index, holder] of holders.entries()) {
+            const original = originals[index];
+            if (original === undefined) Reflect.deleteProperty(holder, key);
+            else Object.defineProperty(holder, key, original);
+          }
+          unsubscribe();
+          await backend.close();
+          db.close();
+        }
+        if (Backend === SqliteBackend) {
+          expect(raw).toEqual({ value: '{"n":1,"inherited_key":"own","items":[1]}' });
+        }
+        expect(summary).toBe('{"n":1,"inherited_key":"own","items":[1]}');
+        expect(read).toEqual(value);
+        expect(query).toEqual([value]);
+        expect(calls).toBe(0);
+      }
+    );
+
+    it.each(['Object', 'Array'] as const)(
+      'ignores toJSON installed on %s.prototype during schema validation',
+      async (kind) => {
+        const db = openSqliteDatabase(':memory:');
+        const holder: object = kind === 'Object' ? Object.prototype : Array.prototype;
+        const original = Object.getOwnPropertyDescriptor(holder, 'toJSON');
+        const value: JsonValue = kind === 'Object' ? { n: 1 } : [{ n: 1 }];
+        const expectedBytes = kind === 'Object' ? '{"n":1}' : '[{"n":1}]';
+        let hookCalls = 0;
+        let installed = false;
+        let summary: string | undefined;
+        vi.stubEnv('NEXUS_MEMORY_AUDIT_MODE', 'audit');
+        const unsubscribe = subscribeToMemoryEvents((event) => {
+          if (event.op === 'write') summary = event.payloadSummary;
+        });
+        const backend = new Backend<string, JsonValue>({
+          domain: 'prototype_hook',
+          dbPath: ':memory:',
+          db,
+          schema: z.custom<JsonValue>(() => {
+            if (!installed) {
+              Object.defineProperty(holder, 'toJSON', {
+                configurable: true,
+                value: () => {
+                  hookCalls++;
+                  return { n: 'invalid' };
+                },
+              });
+              installed = true;
+            }
+            return true;
+          }),
+        });
+        try {
+          await backend.write('k', value);
+          if (Backend === SqliteBackend) {
+            expect(db.prepare('SELECT value FROM prototype_hook WHERE key = ?').get('k')).toEqual({
+              value: expectedBytes,
+            });
+          }
+          expect(summary).toBe(expectedBytes);
+          expect(await backend.read('k')).toEqual(value);
+          expect(await backend.query()).toEqual([value]);
+          expect(hookCalls).toBe(0);
+        } finally {
+          if (original === undefined) Reflect.deleteProperty(holder, 'toJSON');
+          else Object.defineProperty(holder, 'toJSON', original);
+          unsubscribe();
+          await backend.close();
+          db.close();
+        }
+      }
+    );
+  });
+}

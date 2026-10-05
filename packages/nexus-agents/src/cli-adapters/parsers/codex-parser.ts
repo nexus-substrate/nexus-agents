@@ -18,10 +18,7 @@ const logger = createLogger({ component: 'codex-parser' });
  * Codex CLI NDJSON event types.
  */
 export type CodexEventType =
-  | 'thread.started'
-  | 'turn.started'
-  | 'item.completed'
-  | 'turn.completed';
+  'thread.started' | 'turn.started' | 'item.completed' | 'turn.completed';
 
 /**
  * Base Codex event structure.
@@ -92,13 +89,14 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
 
     for (const line of lines) {
       if (line.trim() === '') continue;
-      this.processLine(
+      const failed = this.processLine(
         line,
         messages,
         reasoning,
         (id) => (threadId = id),
         (u) => (usage = u)
       );
+      if (failed) return null;
     }
 
     if (messages.length === 0 && reasoning.length === 0) {
@@ -114,7 +112,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
   }
 
   /**
-   * Processes a single NDJSON line.
+   * Processes a single NDJSON line; returns true for a terminal failed turn.
    */
   private processLine(
     line: string,
@@ -122,13 +120,18 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
     reasoning: string[],
     setThreadId: (id: string) => void,
     setUsage: (usage: TokenUsage) => void
-  ): void {
+  ): boolean {
     try {
       const event: unknown = JSON.parse(line);
       const record = asRecord(event);
-      if (record === null) return;
+      if (record === null) return false;
 
       const eventType = record.type;
+      // A completed message may precede a failed turn. The captured CLI error
+      // ends with turn.failed; an earlier message cannot turn it into success.
+      // Ordinary error events can be recoverable, so only this terminal event
+      // denies the result (#7073).
+      if (eventType === 'turn.failed') return true;
 
       if (eventType === 'thread.started') {
         const tid = record.thread_id;
@@ -143,6 +146,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
       // Skip malformed NDJSON lines
       logger.debug('Skipped malformed NDJSON line', { snippet: line.slice(0, 100) });
     }
+    return false;
   }
 
   /**
@@ -156,6 +160,40 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
     }
 
     return parsed.messages.join('\n');
+  }
+
+  /**
+   * Returns the terminal failed-turn message, falling back to its error event.
+   * A completed turn clears recoverable errors instead of surfacing them.
+   */
+  extractErrorMessage(raw: string): string | null {
+    let errorMessage: string | null = null;
+    for (const line of raw.trim().split('\n')) {
+      if (line.trim() === '') continue;
+      try {
+        const event: unknown = JSON.parse(line);
+        const record = asRecord(event);
+        if (record === null) continue;
+        if (record.type === 'turn.completed') {
+          errorMessage = null;
+          continue;
+        }
+        if (record.type !== 'turn.failed' && record.type !== 'error') continue;
+        errorMessage = this.errorMessageFromEvent(record) ?? errorMessage;
+        if (record.type === 'turn.failed') return errorMessage;
+      } catch {
+        // Malformed diagnostics cannot supply a terminal error message.
+        continue;
+      }
+    }
+    return errorMessage;
+  }
+
+  /** Validates the message field from a failed turn or error event. */
+  private errorMessageFromEvent(record: Record<string, unknown>): string | null {
+    const message =
+      record.type === 'turn.failed' ? asRecord(record.error)?.message : record.message;
+    return typeof message === 'string' && message.trim() !== '' ? message : null;
   }
 
   /**

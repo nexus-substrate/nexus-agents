@@ -161,3 +161,52 @@ export function createCodexSandboxGuard(
       : undefined;
   };
 }
+
+/** Read-only root, fresh PID namespace and session, with network retained. */
+export const BWRAP_READ_ONLY_ARGS = [
+  '--ro-bind',
+  '/',
+  '/',
+  '--dev',
+  '/dev',
+  '--proc',
+  '/proc',
+  '--unshare-pid',
+  '--die-with-parent',
+  '--new-session',
+] as const;
+
+/** Direct bwrap capability measurement, sharing the Codex preflight runner (#7011). */
+export type BwrapIsolation = {
+  readonly mode: 'os-sandbox' | 'best-effort';
+  readonly reason?: string;
+};
+
+/** Cache the actual profile's success or failure, including concurrent callers. */
+export function createBwrapPreflight(
+  exec: CodexSandboxProbeExec = defaultExec,
+  platform: NodeJS.Platform = process.platform
+): () => Promise<BwrapIsolation> {
+  let cached: Promise<BwrapIsolation> | undefined;
+  return () =>
+    (cached ??= (async (): Promise<BwrapIsolation> => {
+      if (platform !== 'linux') return { mode: 'best-effort', reason: 'bwrap requires Linux' };
+      try {
+        const result = await exec(
+          'bwrap',
+          [...BWRAP_READ_ONLY_ARGS, '--', 'true'],
+          Math.min(CLI_SUBPROCESS_TIMEOUTS.statusProbeMs, resolveClassGuardMs('interactive'))
+        );
+        if (result.exitCode === 0) return { mode: 'os-sandbox' };
+        return {
+          mode: 'best-effort',
+          reason: `bwrap probe failed: ${sanitizeOutput(result.stderr) || 'no diagnostic output'}`,
+        };
+      } catch (error: unknown) {
+        return {
+          mode: 'best-effort',
+          reason: `bwrap probe failed: ${sanitizeOutput(getErrorMessage(error))}`,
+        };
+      }
+    })());
+}

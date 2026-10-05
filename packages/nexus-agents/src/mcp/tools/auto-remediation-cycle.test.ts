@@ -16,7 +16,11 @@ import {
   _resetRemediationSoakSinkForTests,
 } from './improvement-remediation-shadow.js';
 import type { ImprovementSignal } from './improvement-review.js';
-import { createCodePrSoakSink, readCodePrGuardsGreenSoak } from './codepr-soak-store.js';
+import {
+  createCodePrSoakSink,
+  readCodePrGuardsGreenSoak,
+  readCodePrSoakSummary,
+} from './codepr-soak-store.js';
 import type { CodePrPlan, PlannedPrDescriptor } from './codepr-orchestrator.js';
 import type { RemediationPlan } from './improvement-remediation-capability.js';
 
@@ -192,7 +196,7 @@ describe('runAutoRemediationCycle', () => {
       });
     }
 
-    it('audit-mode code-touching remediation runs planCodePrRun dry-run and increments green soak', async () => {
+    it('audit-mode code-touching remediation records a green test row excluded from production soak', async () => {
       const soakDir = mkdtempSync(join(tmpdir(), 'codepr-soak-'));
       try {
         const sink = createCodePrSoakSink(join(soakDir, 'codepr.jsonl'));
@@ -213,8 +217,15 @@ describe('runAutoRemediationCycle', () => {
         expect(planRun).toHaveBeenCalledTimes(1);
         expect(sink.getRecords()).toHaveLength(1);
         expect(sink.getRecords()[0]?.green).toBe(true);
-        // The recorded count is the consecutiveGreenDryRuns evidence.
-        expect(readCodePrGuardsGreenSoak(sink)).toBe(1);
+        // Previously this asserted one production green from synthetic test output (#7026).
+        expect(sink.getRecords()[0]?.origin).toBe('test');
+        expect(readCodePrGuardsGreenSoak(sink)).toBe(0);
+        expect(readCodePrSoakSummary(sink)).toEqual({
+          scope: 'production',
+          status: 'unmeasured',
+          consecutiveGreenDryRuns: 0,
+          excludedTestRows: 1,
+        });
       } finally {
         rmSync(soakDir, { recursive: true, force: true });
       }
@@ -224,9 +235,12 @@ describe('runAutoRemediationCycle', () => {
       const soakDir = mkdtempSync(join(tmpdir(), 'codepr-soak-denied-'));
       try {
         const sink = createCodePrSoakSink(join(soakDir, 'codepr.jsonl'));
-        const planRun = vi.fn(
-          (): CodePrPlan => ({ ok: false, reason: 'sensitive_path', detail: 'x', auditRecorded: true })
-        );
+        const planRun = vi.fn((): CodePrPlan => ({
+          ok: false,
+          reason: 'sensitive_path',
+          detail: 'x',
+          auditRecorded: true,
+        }));
         const deps = buildAutoRemediationDeps({
           voteRunner: async () => Promise.resolve({ approved: true, approvalPercentage: 100 }),
         });
@@ -288,7 +302,11 @@ describe('runAutoRemediationCycle', () => {
       });
       await runAutoRemediationCycle(
         { mode: 'enforce' },
-        { collectSignals: async () => Promise.resolve([codeSignal()]), deps, runCodePrSoak: runSoak }
+        {
+          collectSignals: async () => Promise.resolve([codeSignal()]),
+          deps,
+          runCodePrSoak: runSoak,
+        }
       );
       expect(runSoak).not.toHaveBeenCalled();
     });

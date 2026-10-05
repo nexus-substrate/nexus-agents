@@ -54,8 +54,8 @@ export const PR_REVIEW_RECORDS_REL_PATH = 'governance/pr-review-records.jsonl';
  */
 export const PR_REVIEW_RECORDS_PATH_ENV = 'NEXUS_PR_REVIEW_RECORDS_PATH';
 
-/** Max summary chars retained in the human record. */
-const MAX_SUMMARY_RECORD_CHARS = 500;
+/** Character budget for summary truncation and aggregate reasons. */
+export const MAX_SUMMARY_RECORD_CHARS = 500;
 
 /** Inputs for {@link buildPrReviewRecord} — the finalized review data. */
 export interface BuildPrReviewRecordInput {
@@ -68,6 +68,7 @@ export interface BuildPrReviewRecordInput {
   readonly verified: boolean;
   readonly voteCounts: PrReviewVoteCounts;
   readonly summary: string;
+  readonly reason?: string | undefined;
   readonly correlationId?: string | undefined;
   readonly recordedAt?: string | undefined;
   /**
@@ -106,6 +107,13 @@ export interface BuildPrReviewRecordInput {
   readonly previousHash?: string | undefined;
 }
 
+/** Retain the existing summary truncation marker within the record format. */
+function truncatePrReviewSummary(summary: string): string {
+  return summary.length > MAX_SUMMARY_RECORD_CHARS
+    ? summary.slice(0, MAX_SUMMARY_RECORD_CHARS) + '...'
+    : summary;
+}
+
 /**
  * Construct a fully self-hashed {@link PrReviewRecord} from a completed review.
  * Pure (no I/O) so it is unit-testable and reusable by the gate seam and the
@@ -114,10 +122,6 @@ export interface BuildPrReviewRecordInput {
  * The summary is stored truncated.
  */
 export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRecord {
-  const summaryTruncated =
-    input.summary.length > MAX_SUMMARY_RECORD_CHARS
-      ? input.summary.slice(0, MAX_SUMMARY_RECORD_CHARS) + '...'
-      : input.summary;
   const payload: Omit<PrReviewRecord, 'hash'> = {
     version: '1.4',
     sequence: input.sequence ?? 0,
@@ -134,7 +138,8 @@ export function buildPrReviewRecord(input: BuildPrReviewRecordInput): PrReviewRe
       error: input.voteCounts.error,
       total: input.voteCounts.total,
     },
-    summary: summaryTruncated,
+    summary: truncatePrReviewSummary(input.summary),
+    ...(input.reason !== undefined ? { reason: input.reason } : {}),
     ...(input.diffProvenance !== undefined ? { diffProvenance: input.diffProvenance } : {}),
     ...(input.sanitization !== undefined ? { sanitization: input.sanitization } : {}),
     ...(input.coverage !== undefined ? { coverage: input.coverage } : {}),

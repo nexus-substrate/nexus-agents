@@ -52,6 +52,7 @@ function makeCapturingServer(captured: CapturedTool[]): RegisterMcpToolsOptions[
   return {
     registerTool: vi.fn((name: string, _cfg: unknown, callback: unknown) => {
       captured.push({ name, callback: callback as CapturedTool['callback'] });
+      return { disable: vi.fn() };
     }),
     tool: vi.fn(),
     registerPrompt: vi.fn(),

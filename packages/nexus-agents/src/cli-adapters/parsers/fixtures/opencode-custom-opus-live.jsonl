@@ -1,0 +1,2 @@
+{"type":"error","timestamp":1791117198561,"sessionID":"ses_sanitized","error":{"name":"UnknownError","data":{"message":"Model not found: custom/claude-opus-4-6."}}}
+{"type":"error","timestamp":1791117198562,"sessionID":"ses_sanitized","error":{"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_8cf4f198"}}}

@@ -22,8 +22,9 @@ import {
 import { normalizeTopicToCanonical } from '../../research/topic-aliases.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -640,7 +641,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
     const response = await withToolError('Discovery failed', logger, async () => {
       const result = await executeDiscovery(validationResult.data, logger);
       // recordDiscoverySuccess is now baked into executeDiscovery (#2640).
-      return toolSuccessStructured(result as unknown as Record<string, unknown>);
+      return structuredToolSuccess(z.object(RESEARCH_DISCOVER_OUTPUT_SCHEMA), result);
     });
     const durationMs = Date.now() - startMs;
     if (response.isError === true) {
@@ -706,7 +707,8 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
     logger,
   });
 
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'research_discover',
     {
       description,

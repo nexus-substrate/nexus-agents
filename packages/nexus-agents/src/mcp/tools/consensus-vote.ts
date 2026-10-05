@@ -24,8 +24,9 @@ import {
 } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccess,
+  structuredToolSuccess,
   toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
@@ -957,11 +958,10 @@ async function runSyncConsensusVote(
     approvalPercentage: result.value.approvalPercentage,
     voteCount: result.value.votes.length,
   });
-  const data = result.value as unknown as Record<string, unknown>;
-  return {
-    ...toolSuccess(JSON.stringify(result.value, null, 2)),
-    structuredContent: data,
-  };
+  // Untyped until 9.0 (#7049): the published AgentVoteSummary.rejectionCategories
+  // is string[], wider than this tool's enum schema. Runtime strictness still
+  // applies through registerStructuredTool.
+  return toolSuccessStructured({ ...result.value });
 }
 
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
@@ -1017,20 +1017,20 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
  */
 const ASYNC_ENVELOPES: JobEnvelopeBuilders<ToolResult> = {
   pending: (jobId) =>
-    toolSuccessStructured({
+    structuredToolSuccess(z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA), {
       status: 'pending',
       jobId,
       pollTool: 'get_job_result',
       note: 'Poll via get_job_result({ jobId }) until status !== "pending".',
     }),
   busy: (retryAfterMs, toolName) =>
-    toolSuccessStructured({
+    structuredToolSuccess(z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA), {
       status: 'busy',
       retryAfterMs,
       note: `Async-mode concurrency cap reached for ${toolName}. Retry later or use dispatch: "sync".`,
     }),
   replay: (jobId) =>
-    toolSuccessStructured({
+    structuredToolSuccess(z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA), {
       status: 'replay',
       jobId,
       pollTool: 'get_job_result',
@@ -1089,6 +1089,14 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
         reasoning: z.string().max(4000),
         simulated: z.boolean(),
         error: z.boolean(),
+        retried: z.boolean().optional(),
+        retriedFrom: z
+          .object({
+            source: z.enum(['error', 'unverifiable']),
+            error: z.string().optional(),
+            errorTruncated: z.literal(true).optional(),
+          })
+          .optional(),
         /** #6094: present only when the seat could not read the artifact. */
         unverifiable: z.literal(true).optional(),
         /** #6115: present only when the seat answered elsewhere than assigned. */
@@ -1137,6 +1145,7 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       posteriorRejection: z.number(),
       effectiveVoteCount: z.number(),
       method: z.enum(['ow', 'isp', 'simple']),
+      appliedToDecision: z.boolean(),
       usedCorrelationData: z.boolean(),
       improvementOverBaseline: z.number(),
       downweightedAgents: z.array(z.string().max(100)).max(10),
@@ -1253,7 +1262,8 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     logger,
   });
 
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'consensus_vote',
     {
       description: CONSENSUS_VOTE_DESCRIPTION,

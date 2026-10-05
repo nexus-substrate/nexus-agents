@@ -12,6 +12,9 @@
  * @module indexer/symbol-extractor
  */
 
+import { SUPPORTED_EXTENSIONS } from './supported-extensions.js';
+export { SUPPORTED_EXTENSIONS } from './supported-extensions.js';
+
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import type { ts } from 'ts-morph';
@@ -32,15 +35,6 @@ export interface CodeSymbol {
   /** Whether the symbol is exported */
   exported: boolean;
 }
-
-/**
- * Extensions the TypeScript compiler API path can parse (#4517).
- *
- * Exported so the tool layer can name them in its error message instead of
- * asserting a file "may not be TypeScript/JavaScript" without saying what
- * would count.
- */
-export const SUPPORTED_EXTENSIONS: readonly string[] = ['.ts', '.tsx', '.js', '.jsx'];
 
 /** Result of extracting symbols from a file. */
 export interface SymbolExtractionResult {

@@ -3,10 +3,9 @@
  *
  * Extracted from `v2-orchestrate.ts` and `v2-delegate.ts`, which previously
  * each had their own near-identical converter. The shared scaffolding (id
- * template, status, empty-default constraints/capabilities/artifacts,
- * timestamps) lives here; callers supply only the fields that genuinely
- * differ between entry points (idPrefix, task description, analysis summary,
- * metadata).
+ * template, status, measured analysis/constraints/capabilities, empty
+ * artifacts, timestamps) lives here; callers supply the entry-point prefix,
+ * task description and metadata.
  *
  * (Source: Issue #2343, audit-epic #2337)
  *
@@ -16,7 +15,11 @@
 import { randomUUID } from 'node:crypto';
 import type { TaskContract } from './task-contract.js';
 import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
-import type { ISharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
+import type {
+  ISharedTaskAnalyzer,
+  TaskAnalysisResult,
+} from '../core/task-analysis/shared-task-analyzer.js';
+import { detectCapabilityGaps } from '../core/task-analysis/capability-gap-detector.js';
 
 /** Inputs needed to build a fresh `'approved'` `TaskContract`. */
 export interface BaseTaskContractInput {
@@ -24,8 +27,8 @@ export interface BaseTaskContractInput {
   readonly idPrefix: string;
   /** The task description (free-text). */
   readonly task: string;
-  /** Lightweight analysis summary (complexity / taskType / ambiguityScore). */
-  readonly analysis: TaskContract['analysis'];
+  /** Optional summary override; constraints/capabilities still come from the task. */
+  readonly analysis?: TaskContract['analysis'];
   /** Caller-controlled metadata (source tag + entry-point-specific fields). */
   readonly metadata: Readonly<Record<string, unknown>>;
 }
@@ -36,6 +39,12 @@ export interface BaseTaskContractInput {
  * function of the task text.
  */
 let sharedAnalyzer: ISharedTaskAnalyzer | undefined;
+
+/** Retains the full canonical analysis for contract measurement. */
+function analyzeTask(task: string): TaskAnalysisResult {
+  sharedAnalyzer ??= createSharedTaskAnalyzer();
+  return sharedAnalyzer.analyze(task);
+}
 
 /**
  * Derives the `TaskContract.analysis` summary from the task itself (#5924).
@@ -59,8 +68,7 @@ export function analyzeForContract(task: string): {
   taskType: string;
   ambiguityScore: number;
 } {
-  sharedAnalyzer ??= createSharedTaskAnalyzer();
-  const result = sharedAnalyzer.analyze(task);
+  const result = analyzeTask(task);
   return {
     complexity: result.complexity,
     taskType: result.taskType,
@@ -69,8 +77,12 @@ export function analyzeForContract(task: string): {
 }
 
 /**
- * Build a fresh `TaskContract` in the `'approved'` status with empty-default
- * constraints, required capabilities, capability gaps, and artifacts.
+ * Build a fresh `'approved'` contract using canonical analysis and gap detection.
+ *
+ * Scope is empty and time/quality absent when the analyzer recognizes none;
+ * these are extracted hints, not a guarantee that the task has no constraints.
+ * `allSatisfied` covers inferred requirements only, not execution outcomes.
+ * Inferred gaps are retained regardless of the ledger's recording flag.
  *
  * The two MCP entrypoints (`orchestrate`, `delegate_to_model`) build their
  * task contracts via this helper rather than copy-pasting the full shape.
@@ -78,24 +90,31 @@ export function analyzeForContract(task: string): {
  * place.
  */
 export function buildBaseTaskContract(input: BaseTaskContractInput): TaskContract {
+  const analysis = analyzeTask(input.task);
+  const report = detectCapabilityGaps(analysis.requiredCapabilities);
   const now = Date.now();
   return {
     id: `${input.idPrefix}-${randomUUID().slice(0, 8)}`,
     description: input.task,
     status: 'approved',
-    analysis: input.analysis,
-    constraints: { scope: [] },
-    requiredCapabilities: { tools: [], experts: [] },
+    analysis: input.analysis ?? {
+      complexity: analysis.complexity,
+      taskType: analysis.taskType,
+      ambiguityScore: analysis.ambiguityScore,
+    },
+    constraints: { ...analysis.constraints, scope: [...analysis.constraints.scope] },
+    requiredCapabilities: {
+      tools: [...analysis.requiredCapabilities.tools],
+      experts: [...analysis.requiredCapabilities.experts],
+    },
     capabilityGaps: {
-      available: { tools: [], experts: [] },
-      gaps: [],
-      // NOT a measurement (#5919). No detector runs here, so `allSatisfied`
-      // carries no information — `gapsMeasured` is what says so. Wiring
-      // `capability-gap-detector.ts` in is the follow-up; its cost on this hot
-      // path has not been measured, and asserting an unmeasured verdict is the
-      // part that had to stop now.
-      allSatisfied: true,
-      gapsMeasured: false,
+      available: {
+        tools: [...report.available.tools],
+        experts: [...report.available.experts],
+      },
+      gaps: [...report.gaps],
+      allSatisfied: report.allSatisfied,
+      gapsMeasured: true,
     },
     artifacts: [],
     metadata: { ...input.metadata },

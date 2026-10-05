@@ -482,6 +482,7 @@ describe('Export contracts — pipeline V2 types', () => {
   });
 
   it('exports createEventBusBridge (Issue #922)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- verify the public export retained until 9.0 (#6291)
     expect(typeof createEventBusBridge).toBe('function');
   });
 

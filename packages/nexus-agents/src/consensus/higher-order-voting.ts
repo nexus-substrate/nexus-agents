@@ -4,14 +4,12 @@
  * Implements Opinion-Wise (OW) and Independent Subset Partition (ISP) voting
  * methods that account for correlations between agent opinions.
  *
- * Traditional voting assumes independence between voters. Higher-order voting
- * uses Bayesian-optimal aggregation that handles correlated agents better,
- * BUT NOTE (#4701): `calculateOutcome` — the `IVotingStrategy` entry point the
+ * Traditional voting assumes independence between voters. The correlation-aware
+ * aggregation here is designed for correlated agents, BUT NOTE (#4701): `calculateOutcome` — the `IVotingStrategy` entry point the
  * `ConsensusEngine` calls — uses `aggregateSimpleInternal` and ignores weights.
  * `aggregateWithCorrelation` is reached only via `runHigherOrderVoting`, whose
  * `posteriorApproval` feeds contrarian escalation, not the verdict. So selecting
  * `higher_order` does not currently buy a correlation-weighted approve/reject.
- * resulting in more accurate consensus decisions.
  *
  * @module consensus/higher-order-voting
  * (Source: Issue #333)

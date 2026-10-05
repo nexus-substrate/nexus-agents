@@ -4,8 +4,10 @@
  * Type definitions for Opinion-Wise (OW) and Independent Subset Partition (ISP)
  * voting methods that account for correlations between agent opinions.
  *
- * Higher-order voting uses Bayesian-optimal aggregation that handles correlated
- * agents better than traditional independent voting assumptions.
+ * The correlation-aware aggregation these types describe is computed, but the
+ * verdict is NOT taken from it: `calculateOutcome` tallies approve/reject as a
+ * plain ratio, and the correlation posterior only drives contrarian escalation
+ * (#4701).
  *
  * @module consensus/higher-order-types
  * (Source: Issue #333)

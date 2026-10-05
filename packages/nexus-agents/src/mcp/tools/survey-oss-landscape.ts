@@ -37,8 +37,9 @@ import { fetchSource, type DiscoverError } from '../../cli/research-helpers-sour
 import { resolveToken } from '../../scm/token-resolver.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -279,7 +280,7 @@ function createSurveyHandler(deps: SurveyOssLandscapeDeps) {
     });
     return withToolError('Survey failed', logger, async () => {
       const result = await executeSurvey(validation.data, logger);
-      return toolSuccessStructured(result as unknown as Record<string, unknown>);
+      return structuredToolSuccess(z.object(SURVEY_OUTPUT_SCHEMA), result);
     });
   };
 }
@@ -324,7 +325,8 @@ export function registerSurveyOssLandscapeTool(
     timeoutMs,
     logger,
   });
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'survey_oss_landscape',
     {
       description: SURVEY_DESCRIPTION,

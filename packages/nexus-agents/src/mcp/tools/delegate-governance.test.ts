@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { _testing } from './delegate-to-model.js';
 import { createLogger } from '../../core/index.js';
 import type { GovernanceClassification } from '../gateway/governance-enforcer.js';
+import { RequestTier } from '../gateway/tier-classifier.js';
 
 const { classifyDelegateGovernance, enrichWithGovernance } = _testing;
 const logger = createLogger({ component: 'test' });
@@ -53,11 +54,14 @@ describe('enrichWithGovernance', () => {
   const baseOutput = {
     recommended_model: 'claude-opus',
     reasoning: 'Best for complex tasks',
+    capabilities: { reasoning: 10, contextWindow: 10, codeGeneration: 10, speed: 10, cost: 10 },
+    estimated_tokens: 100,
+    alternatives: [],
   };
 
   it('returns output unchanged when not promoted', () => {
     const notPromoted: GovernanceClassification = {
-      tier: 1,
+      tier: RequestTier.DIRECT,
       promoted: false,
       domain: 'none',
       votingThreshold: null,
@@ -68,9 +72,22 @@ describe('enrichWithGovernance', () => {
     expect(result).not.toHaveProperty('governance');
   });
 
+  it('rejects incomplete promoted governance metadata', () => {
+    const incomplete: GovernanceClassification = {
+      tier: RequestTier.ORCHESTRATED,
+      promoted: true,
+      domain: 'security',
+      votingThreshold: null,
+      promotionReason: null,
+    };
+    expect(() => enrichWithGovernance(baseOutput, incomplete)).toThrow(
+      'Promoted governance requires a voting threshold and promotion reason'
+    );
+  });
+
   it('adds governance metadata when promoted', () => {
     const promoted: GovernanceClassification = {
-      tier: 3,
+      tier: RequestTier.ORCHESTRATED,
       promoted: true,
       domain: 'security',
       votingThreshold: 'supermajority',
@@ -86,7 +103,7 @@ describe('enrichWithGovernance', () => {
 
   it('preserves all original output fields', () => {
     const promoted: GovernanceClassification = {
-      tier: 3,
+      tier: RequestTier.ORCHESTRATED,
       promoted: true,
       domain: 'architecture',
       votingThreshold: 'supermajority',

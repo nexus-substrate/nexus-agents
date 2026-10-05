@@ -4,7 +4,7 @@
  * @module scripts/check-tool-output-consistency.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +26,13 @@ describe('findTimestampNumberFields', () => {
     const v = findTimestampNumberFields(src, 'tool.ts');
     expect(v).toHaveLength(1);
     expect(v[0]).toMatchObject({ field: 'createdAt', line: 3 });
+  });
+
+  it('flags a numeric timestamp inside a prefixed output schema constant', () => {
+    const src = ['export const FOO_OUTPUT_SCHEMA = {', '  createdAt: z.number(),', '};'].join('\n');
+    expect(findTimestampNumberFields(src, 'tool.ts')).toEqual([
+      { file: 'tool.ts', field: 'createdAt', line: 2 },
+    ]);
   });
 
   it('flags a timestamp field typed as number inside a *Response interface', () => {
@@ -104,7 +111,7 @@ describe('scanToolFiles reports its own coverage (#5261-class)', () => {
   it('reports the directory as missing rather than returning a clean result', () => {
     const dir = box();
     try {
-      const result = scanToolFilesWithCoverage(join(dir, 'does-not-exist'));
+      const result = scanToolFilesWithCoverage(join(dir, 'does-not-exist'), []);
       expect(result.dirMissing).toBe(true);
       expect(result.scanned).toBe(0);
     } finally {
@@ -118,7 +125,7 @@ describe('scanToolFiles reports its own coverage (#5261-class)', () => {
     const dir = box();
     try {
       mkdirSync(join(dir, 'tools'));
-      const result = scanToolFilesWithCoverage(join(dir, 'tools'));
+      const result = scanToolFilesWithCoverage(join(dir, 'tools'), []);
       expect(result.dirMissing).toBe(false);
       expect(result.scanned).toBe(0);
       expect(result.violations).toEqual([]);
@@ -139,7 +146,7 @@ describe('scanToolFiles reports its own coverage (#5261-class)', () => {
       writeFileSync(join(tools, 'alpha.test.ts'), 'export const t = 3;\n');
       writeFileSync(join(tools, 'README.md'), 'not typescript\n');
 
-      const result = scanToolFilesWithCoverage(tools);
+      const result = scanToolFilesWithCoverage(tools, []);
       expect(result.scanned).toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -159,7 +166,7 @@ describe('scanToolFiles reports its own coverage (#5261-class)', () => {
         'const outputSchema = {\n  createdAt: z.number(),\n};\n'
       );
 
-      const result = scanToolFilesWithCoverage(tools);
+      const result = scanToolFilesWithCoverage(tools, []);
       expect(result.scanned).toBe(1);
       expect(result.violations).toHaveLength(1);
       expect(result.violations[0]).toMatchObject({ field: 'createdAt' });
@@ -184,5 +191,71 @@ describe('scanToolFiles stays a faithful view of the coverage-aware scan', () =>
     // diverged, the governance run and the lint would disagree about the same
     // tree while both reported success.
     expect(scanToolFiles()).toEqual(scanToolFilesWithCoverage().violations);
+  });
+});
+
+describe('timestamp exemptions', () => {
+  const exemption = {
+    file: 'weather-report-output-schema.ts',
+    field: 'lastHitAt',
+    reason: 'epoch ms from exported RateLimitStats.lastHitAt; ISO conversion is a breaking change',
+    removalIssue: '#7066',
+  };
+  const numericSchema =
+    'export const WEATHER_REPORT_OUTPUT_SCHEMA = {\n  lastHitAt: z.number(),\n};\n';
+
+  it('suppresses only the exempted file and field, preserving other violations', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tool-output-exemption-'));
+    try {
+      writeFileSync(
+        join(dir, exemption.file),
+        numericSchema.replace('};', '  createdAt: z.number(),\n};')
+      );
+      writeFileSync(join(dir, 'other.ts'), numericSchema);
+      const result = scanToolFilesWithCoverage(dir);
+      expect(result.violations).toEqual([
+        { file: 'other.ts', field: 'lastHitAt', line: 2 },
+        { file: exemption.file, field: 'createdAt', line: 3 },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['missing file', 'renamed.ts', numericSchema],
+    ['renamed field', exemption.file, numericSchema.replace('lastHitAt', 'lastSeenAt')],
+    ['ISO conversion', exemption.file, numericSchema.replace('z.number()', 'z.string()')],
+    [
+      'internal field only',
+      exemption.file,
+      numericSchema.replace('WEATHER_REPORT_OUTPUT_SCHEMA', 'internal'),
+    ],
+  ])('fails the check for a stale exemption: %s', (_case, file, src) => {
+    const dir = mkdtempSync(join(tmpdir(), 'tool-output-stale-'));
+    try {
+      writeFileSync(join(dir, file), src);
+      expect(() => scanToolFilesWithCoverage(dir, [exemption])).toThrow(
+        'Stale timestamp exemption: weather-report-output-schema.ts lastHitAt (#7066)'
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports each applied exemption with its reason and removal issue', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tool-output-report-'));
+    const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      writeFileSync(join(dir, exemption.file), numericSchema);
+      expect(scanToolFilesWithCoverage(dir, [exemption]).violations).toEqual([]);
+      expect(output).toHaveBeenCalledWith(
+        `Tool-output consistency exemption applied: ${exemption.file} ${exemption.field} — ` +
+          `${exemption.reason} (removal ${exemption.removalIssue})`
+      );
+    } finally {
+      output.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

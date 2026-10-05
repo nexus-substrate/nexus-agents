@@ -39,17 +39,25 @@
  */
 
 import { resolveClassGuardMs } from '../config/timeouts.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, CliTask, ExecutionOptions } from '../cli-adapters/types.js';
+import { classifyExtractedError } from '../cli-adapters/cli-error-envelope.js';
+import { isTimeoutText } from '../cli-adapters/cli-error-helpers.js';
+import { IN_FAMILY_FALLBACK_OPTION } from '../cli-adapters/adapters/claude-adapter.js';
+import { getTimeProvider } from '../core/index.js';
+import { sanitizeErrorDetails } from '../security/output-sanitizer.js';
 
 /** Ordered weakest to strongest. Each level subsumes the ones before it. */
 export const READINESS_LEVELS = ['installed', 'authenticated', 'serves'] as const;
 
 export type ReadinessLevel = (typeof READINESS_LEVELS)[number];
 
+/** Actionable failure category for a live completion. */
+type ProbeErrorClass = 'auth' | 'quota' | 'timeout' | 'sandbox' | 'execution';
+
 /** What a single level's check concluded. */
 export type LevelOutcome =
-  | { readonly status: 'verified' }
-  | { readonly status: 'failed'; readonly reason: string }
+  | { readonly status: 'verified'; readonly latencyMs?: number }
+  | { readonly status: 'failed'; readonly reason: string; readonly errorClass?: ProbeErrorClass }
   /** Not run. Carries why, so the report can distinguish opt-out from error. */
   | { readonly status: 'not-attempted'; readonly reason: string };
 
@@ -181,7 +189,12 @@ export function formatReadiness(readiness: CliReadiness): string {
 
   const lines = READINESS_LEVELS.map((level) => {
     const outcome = readiness.levels[level];
-    const detail = outcome.status === 'verified' ? '' : ` — ${outcome.reason}`;
+    const detail =
+      outcome.status === 'verified'
+        ? outcome.latencyMs === undefined
+          ? ''
+          : ` — ok (${String(outcome.latencyMs)}ms)`
+        : ` — ${outcome.status === 'failed' && outcome.errorClass !== undefined ? `failed (${outcome.errorClass}): ` : ''}${outcome.reason}`;
     return `      ${icon(outcome)} ${level}${detail}`;
   });
 
@@ -190,10 +203,12 @@ export function formatReadiness(readiness: CliReadiness): string {
 
 /** The minimal adapter surface the `serves` probe needs. */
 export interface ServesProbeTarget {
-  execute(task: {
-    content: string;
-    maxTokens?: number;
-  }): Promise<{ ok: true; value: { text: string } } | { ok: false; error: { message: string } }>;
+  execute(
+    task: CliTask,
+    options?: ExecutionOptions
+  ): Promise<
+    { ok: true; value: { text: string } } | { ok: false; error: { message: string; code?: string } }
+  >;
 }
 
 /**
@@ -226,33 +241,81 @@ export async function probeServes(
   adapter: ServesProbeTarget,
   timeoutMs: number = resolveClassGuardMs('interactive')
 ): Promise<LevelOutcome> {
+  const startedAt = getTimeProvider().now();
+  const controller = new AbortController();
   let result: Awaited<ReturnType<ServesProbeTarget['execute']>>;
   try {
     result = await withDeadline(
-      adapter.execute({ content: SERVES_PROBE_PROMPT, maxTokens: 16 }),
-      timeoutMs
+      adapter.execute(
+        {
+          content: SERVES_PROBE_PROMPT,
+          maxTokens: 16,
+          timeoutMs,
+          options: { [IN_FAMILY_FALLBACK_OPTION]: false },
+        },
+        { timeoutMs, allowRetry: false, maxRetries: 0, signal: controller.signal }
+      ),
+      timeoutMs,
+      controller
     );
   } catch (caught: unknown) {
     if (caught instanceof ProbeTimeout) {
       return {
         status: 'failed',
+        errorClass: 'timeout',
         reason: `no response within ${String(Math.round(timeoutMs / 1000))}s`,
       };
     }
     const message = caught instanceof Error ? caught.message : String(caught);
-    return { status: 'failed', reason: `probe threw: ${message}` };
+    return probeFailure(message);
   }
 
   if (!result.ok) {
-    return { status: 'failed', reason: result.error.message };
+    return probeFailure(result.error.message, result.error.code);
   }
   if (result.value.text.trim() === '') {
     return {
       status: 'failed',
+      errorClass: 'execution',
       reason: 'call succeeded but returned no content — the #4351 signature',
     };
   }
-  return { status: 'verified' };
+  return { status: 'verified', latencyMs: getTimeProvider().now() - startedAt };
+}
+
+/** Classify before redacting so secrets cannot reach a report or change its category. */
+function probeFailure(message: string, code?: string): LevelOutcome {
+  const classified = classifyExtractedError(message, '');
+  const errorClass: ProbeErrorClass =
+    code === 'TIMEOUT' || isTimeoutText(message)
+      ? 'timeout'
+      : code === 'RATE_LIMITED' || classified.code === 'RATE_LIMITED'
+        ? 'quota'
+        : code === 'NOT_AUTHENTICATED' || classified.code === 'NOT_AUTHENTICATED'
+          ? 'auth'
+          : /sandbox|permission denied|eacces/i.test(message)
+            ? 'sandbox'
+            : 'execution';
+  return { status: 'failed', errorClass, reason: sanitizeProbeMessage(message) };
+}
+
+/** Redact configured credentials by value as well as recognizable credential shapes. */
+/**
+ * Shorter values are not redacted by value: a flag-like `X_KEY=1` would
+ * otherwise overwrite every "1" in the message. Real credentials are longer,
+ * and recognizable credential shapes are still caught by `sanitizeErrorDetails`.
+ */
+const MIN_REDACTED_VALUE_LENGTH = 8;
+
+function sanitizeProbeMessage(message: string): string {
+  let sanitized = sanitizeErrorDetails(message);
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined || value.length < MIN_REDACTED_VALUE_LENGTH) continue;
+    if (/(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIALS?)$/i.test(name)) {
+      sanitized = sanitizeErrorDetails(sanitized, value);
+    }
+  }
+  return sanitized;
 }
 
 /** Raised when a probe outlives its ceiling. */
@@ -261,15 +324,19 @@ class ProbeTimeout extends Error {}
 /**
  * Race a promise against a deadline.
  *
- * The underlying call is not cancelled — a CLI subprocess keeps running until
- * its own guard reaps it. What this bounds is how long the OPERATOR waits,
- * which is the thing that made an unbounded ladder unusable.
+ * The deadline also aborts the adapter's subprocess. Racing still bounds the
+ * wait when an adapter does not settle after cancellation.
  */
-async function withDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+async function withDeadline<T>(
+  work: Promise<T>,
+  timeoutMs: number,
+  controller: AbortController
+): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       reject(new ProbeTimeout());
+      controller.abort(new DOMException('Live probe timed out', 'TimeoutError'));
     }, timeoutMs);
     // Deliberately NOT unref'd. An unref'd timer does not hold the event loop
     // open, so if the probed call never settles and nothing else is pending,

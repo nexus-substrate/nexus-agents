@@ -13,7 +13,7 @@
  * @module cli-adapters/binary-name.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { CliName, CliTransport, CliTask, ModelInfo } from './types.js';
 import type { CliResponse, CliError, ResolvedExecutionOptions } from './types.js';
 import type { Result } from '../core/index.js';
@@ -21,6 +21,8 @@ import { ok } from '../core/index.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
+import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
+import { getCliAdapterDiagnostics } from './cli-adapter-diagnostics.js';
 
 /** An adapter that does not override `binaryName`. */
 class PlainAdapter extends BaseCliAdapter {
@@ -55,6 +57,44 @@ class PlainAdapter extends BaseCliAdapter {
 }
 
 describe('adapter binary name (#4346)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([undefined, 'alternate-cli'])(
+    'derives Gemini remediation hints from the binary with override %s (#4389)',
+    (override) => {
+      const adapter = new GeminiCliAdapter();
+      if (override !== undefined) {
+        vi.spyOn(adapter, 'binaryName', 'get').mockReturnValue(override);
+      }
+
+      expect(getCliAdapterDiagnostics(adapter).installationHints).toEqual({
+        install: `Install ${adapter.binaryName} and ensure it is on PATH`,
+        upgrade: `Update ${adapter.binaryName} to the latest version`,
+        auth: `Authenticate ${adapter.binaryName} using its CLI`,
+      });
+    }
+  );
+
+  it('preserves package installation hints for other adapters (#4389)', () => {
+    expect(getCliAdapterDiagnostics(new PlainAdapter()).installationHints).toEqual({
+      install: 'npm install -g @openai/codex',
+      upgrade: 'npm update -g @openai/codex',
+      auth: 'codex auth login',
+    });
+    expect(getCliAdapterDiagnostics(new ClaudeCliAdapter()).installationHints).toEqual({
+      install: 'npm install -g @anthropic-ai/claude-code',
+      upgrade: 'npm update -g @anthropic-ai/claude-code',
+      auth: 'claude auth login',
+    });
+    expect(getCliAdapterDiagnostics(new OpenCodeCliAdapter()).installationHints).toEqual({
+      install: 'npm install -g opencode-ai',
+      upgrade: 'npm update -g opencode-ai',
+      auth: 'opencode auth login',
+    });
+  });
+
   it('defaults to the CliName when the arm and the executable coincide', () => {
     expect(new PlainAdapter().binaryName).toBe('codex');
     expect(new ClaudeCliAdapter().binaryName).toBe('claude');

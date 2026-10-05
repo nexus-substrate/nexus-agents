@@ -52,6 +52,8 @@ const TIER_2_VENUES = new Set([
 export function classifyVenue(venue: string | null | undefined): number {
   if (venue === null || venue === undefined || venue.length === 0) return 0;
   const normalized = venue.toLowerCase().replace(/[^a-z]/g, '');
+  // A venue with no letters ("2024", " ", "—") names no venue.
+  if (normalized.length === 0) return 0;
   if (TIER_3_VENUES.has(normalized)) return 3;
   if (TIER_2_VENUES.has(normalized)) return 2;
   // Any non-empty venue that's not arXiv is at least tier 1 (workshop/journal)
@@ -76,9 +78,10 @@ export function recencyBoost(publicationDate: string | undefined): number {
 /**
  * Compute citation score (0-3 points).
  * Logarithmic: 0=no citations, 1=1-9, 2=10-99, 3=100+
+ * Missing, null and NaN counts from unvalidated registries mean no citations.
  */
-export function citationScore(count: number | undefined): number {
-  if (count === undefined || count === 0) return 0;
+export function citationScore(count: number | null | undefined): number {
+  if (count === undefined || count === null || count === 0 || Number.isNaN(count)) return 0;
   if (count < 10) return 1;
   if (count < 100) return 2;
   return 3;

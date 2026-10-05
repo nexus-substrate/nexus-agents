@@ -67,6 +67,12 @@ export default defineConfig([
       // real defects — hence verdict-position scoping rather than a blanket
       // ban. See the rule's own header for its known blind spot (#4581).
       'nexus/no-vacuous-verdict': 'error',
+      // New in typescript-eslint 8.71 via strictTypeChecked. Its deep type
+      // walk has no cross-call cache (upstream typescript-eslint#12956) and
+      // takes `eslint src/` from 3.94 GB peak RSS to a heap OOM at Node's
+      // default limit. Off until upstream fixes it; the tree is already clean
+      // under it (#6994 tracks re-enabling).
+      '@typescript-eslint/no-unsafe-enum-assignment': 'off',
       '@typescript-eslint/switch-exhaustiveness-check': [
         'error',
         { considerDefaultExhaustiveForUnions: true },

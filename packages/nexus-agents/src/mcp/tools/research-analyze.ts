@@ -13,8 +13,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -23,6 +24,15 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { loadTechniquesRegistry, loadPapersRegistry } from '../../cli/research-helpers.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+
+// Permissive shape — handler returns ResearchAnalyzeResponse with focus,
+// success, analysis (varies per focus), recommendations (#2340 batch 3).
+const OUTPUT_SCHEMA = {
+  focus: z.string().optional(),
+  success: z.boolean().optional(),
+  analysis: z.unknown().optional(),
+  recommendations: z.array(z.string()).optional(),
+};
 
 // =============================================================================
 // SCHEMAS
@@ -415,7 +425,7 @@ function createResearchAnalyzeHandler(deps: ResearchAnalyzeDeps) {
     const logger = deps.logger ?? createLogger({ tool: 'research_analyze' });
     return withToolError('Analysis failed', logger, async () => {
       const result = await executeAnalysis(validationResult.data);
-      return toolSuccessStructured(result as unknown as Record<string, unknown>);
+      return structuredToolSuccess(z.object(OUTPUT_SCHEMA), result);
     });
   };
 }
@@ -452,21 +462,13 @@ export function registerResearchAnalyzeTool(server: McpServer, deps: ResearchAna
     logger,
   });
 
-  // Permissive shape — handler returns ResearchAnalyzeResponse with focus,
-  // success, analysis (varies per focus), recommendations (#2340 batch 3).
-  const outputSchema = {
-    focus: z.string().optional(),
-    success: z.boolean().optional(),
-    analysis: z.unknown().optional(),
-    recommendations: z.array(z.string()).optional(),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'research_analyze',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('research_analyze'),
     },
     toSdkCallback(wrappedHandler)

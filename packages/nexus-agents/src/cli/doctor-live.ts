@@ -117,7 +117,7 @@ async function ladderFor(
     return buildReadiness(cli, {
       installed: { status: 'failed', reason: 'binary not found on PATH' },
       authenticated: { status: 'not-attempted', reason: NOT_REACHED },
-      serves: { status: 'not-attempted', reason: NOT_REACHED },
+      serves: { status: 'not-attempted', reason: `skipped (not configured): ${NOT_REACHED}` },
     });
   }
   const installed: LevelOutcome = { status: 'verified' };
@@ -134,7 +134,10 @@ async function ladderFor(
     return buildReadiness(cli, {
       installed,
       authenticated,
-      serves: { status: 'not-attempted', reason: NOT_REACHED },
+      serves: {
+        status: 'not-attempted',
+        reason: `skipped (credentials unavailable): ${NOT_REACHED}`,
+      },
     });
   }
 

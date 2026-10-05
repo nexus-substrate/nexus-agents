@@ -1,43 +1,30 @@
 /**
- * `nexus-agents remediation-review` — the human soundness-review surface (#3765).
- *
- * The 2nd link in the autonomy enforce-decision-gate evidence chain (#3540 /
- * #3653). The durable soak (#3762) is the set of audit-mode selections to
- * review; a NAMED evaluator marks each reviewed + sound|unsound, and a named
- * owner signs off — producing the `judgedSelections`/`judgedSound`/`evaluator`/
- * `owner` the readiness collector (#3764) feeds to the enforce gate. Named
- * evaluator + owner are inherently human acts, so this is a CLI surface.
- *
- * Subcommands:
- *   list                              List pending (un-reviewed) soak selections.
- *   mark <soakRef> --evaluator <name> (--sound | --unsound) [--note <text>]
- *                                     Record one reviewed verdict by a named evaluator.
- *   sign-off --owner <name>           Record an owner sign-off across reviewed selections.
- *   readiness                         Show the enforce-readiness verdict + per-criterion rates + harmful-rate
- *                                     + the soak-store staleness signal (#4279; read-only).
- *
- * `--format json` emits structured output. Never flips enforcement on itself.
- * An optional LLM-judge pre-pass is deferred to #3773 (advisory only — the
- * named-evaluator criterion needs human confirmation regardless).
- *
+ * Remediation soundness reviews: human marks, live panel batches, sampled owner
+ * checks and final owner sign-off. Readiness reports each source separately.
  * @module cli/remediation-review-command
  */
 
+import { runPanelJudge, runSample } from './remediation-review-panel.js';
 import type { CliExitResult, ParsedCliArgs } from '../cli-types.js';
 import { cliExit, EXIT_CODES } from '../cli-types.js';
 import { getTimeProvider } from '../core/index.js';
 import {
-  getRemediationSoakSink,
+  createRemediationSoakSink,
   readRemediationSoakSummary,
   type RemediationSoakRecord,
 } from '../mcp/tools/improvement-remediation-shadow.js';
 import {
   getRemediationReviewStore,
+  currentRemediationJudgments,
+  getRemediationReviewSampleStore,
+  pendingSampleRefs,
+  isOwnerSampleMark,
   pendingSoakSelections,
   readRemediationReviewSummary,
   soakRefOf,
-  summarizeRemediationReviews,
+  readRemediationReviewRecords,
   type ReviewRecord,
+  type ReviewSample,
 } from '../mcp/tools/remediation-review.js';
 import {
   assessSoakStaleness,
@@ -52,12 +39,12 @@ import {
 
 /** Soak records, projected to the minimal ref-able shape. */
 function soakSelections(): readonly Pick<RemediationSoakRecord, 'signalKey' | 'timestamp'>[] {
-  return getRemediationSoakSink().getRecords();
+  return createRemediationSoakSink().getRecords();
 }
 
 /** `remediation-review list` — print the pending (un-reviewed) selections. */
 function runList(format: string): void {
-  const reviews = getRemediationReviewStore().getRecords();
+  const reviews = readRemediationReviewRecords();
   const pending = pendingSoakSelections(soakSelections(), reviews);
   if (format === 'json') {
     process.stdout.write(`${JSON.stringify({ pending }, null, 2)}\n`);
@@ -68,10 +55,10 @@ function runList(format: string): void {
   process.stdout.write(`${lines.join('\n')}\n`);
 }
 
-/** Fraction of JUDGED selections assessed unsound (= 1 − soundnessRate); 0 when nothing judged. */
-export function harmfulRate(ev: EnforceReadinessEvidence): number {
+/** Fraction of JUDGED selections assessed unsound (= 1 − soundnessRate); null (unmeasured) when nothing judged. */
+export function harmfulRate(ev: EnforceReadinessEvidence): number | null {
   return ev.judgedSelections === 0
-    ? 0
+    ? null
     : (ev.judgedSelections - ev.judgedSound) / ev.judgedSelections;
 }
 
@@ -91,18 +78,36 @@ function formatSoakStore(s: SoakStalenessSignal): string {
   return `Soak store: fresh — ${n}${last}`;
 }
 
+/** Separate counts expose who judged the selections and who checked the panel. */
+function formatJudgments(evidence: EnforceReadinessEvidence): string {
+  const human = evidence.human ?? { n: 0, disagreements: 0 };
+  const panel = evidence.panel ?? { n: 0, disagreements: 0 };
+  const sample = evidence.sample ?? { n: 0, disagreements: 0 };
+  return `Judgments: human ${String(human.n)} (${String(human.disagreements)} unsound), panel ${String(panel.n)} (${String(panel.disagreements)} unsound), sample ${String(sample.n)} (${String(sample.disagreements)} disagreements)`;
+}
+
+/** Render measured harm without turning absent judgments into a percentage. */
+function formatHarmfulRate(harmful: number | null, judgedSelections: number): string {
+  return harmful === null
+    ? 'unmeasured (0 judged)'
+    : `${String(Math.round(harmful * 100))}% of ${String(judgedSelections)} judged sound-reviews`;
+}
+
 /** Render the text-mode readiness report (kept separate to hold `runReadiness` under the line cap). */
 function formatReadiness(
   verdict: ReturnType<typeof evaluateEnforceReadiness>,
   evidence: EnforceReadinessEvidence,
-  harmful: number,
+  harmful: number | null,
   soakStore: SoakStalenessSignal
 ): string {
   const maxPct = Math.round((1 - DEFAULT_ENFORCE_READINESS_CONFIG.minSoundnessRate) * 100);
   const lines = [
     `Enforcement readiness: ${verdict.ready ? 'READY' : 'NOT READY'}`,
     formatSoakStore(soakStore),
-    `harmful-rate: ${String(Math.round(harmful * 100))}% of ${String(evidence.judgedSelections)} judged sound-reviews (threshold ≤ ${String(maxPct)}%)`,
+    `harmful-rate: ${formatHarmfulRate(harmful, evidence.judgedSelections)} (threshold ≤ ${String(maxPct)}%)`,
+    formatJudgments(evidence),
+    `Excluded reviews: ${String(evidence.unverifiablePanelRows ?? 0)} unverifiable panel rows; ${String(evidence.supersededPanelRows ?? 0)} SUPERSEDED panel rows; ${String(evidence.evictedReviewRows ?? 0)} rows with evicted soak refs`,
+    `${String(evidence.overriddenPanelRejections ?? 0)} panel rejections overridden by human; ${String(evidence.mootOwnerDisagreements ?? 0)} moot owner disagreements on superseded panel refs`,
     'Criteria:',
   ];
   for (const c of verdict.criteria) {
@@ -167,22 +172,45 @@ function validateMark(args: ParsedCliArgs): {
   return { soakRef, evaluator, sound };
 }
 
+function validateSampleMark(sampleId: string | undefined, ref: string): ReviewSample | undefined {
+  if (sampleId === undefined) return undefined;
+  const sample = getRemediationReviewSampleStore()
+    .getRecords()
+    .find((s) => s.id === sampleId);
+  if (sample?.refs.includes(ref) !== true) {
+    throw new Error('remediation-review mark: ref is not in the named sample');
+  }
+  return sample;
+}
+
+function markAnnotations(
+  owner: string | undefined,
+  note: string | undefined
+): Pick<ReviewRecord, 'owner' | 'note'> {
+  return {
+    ...(owner !== undefined && owner !== '' ? { owner } : {}),
+    ...(note !== undefined && note !== '' ? { note } : {}),
+  };
+}
+
 /** `remediation-review mark <soakRef> --evaluator <name> (--sound|--unsound)`. */
 function runMark(args: ParsedCliArgs): void {
   const { soakRef, evaluator, sound } = validateMark(args);
   const owner = args.options.owner?.trim();
+  const sampleId = args.options.sample;
+  const sample = validateSampleMark(sampleId, soakRef);
   const record: ReviewRecord = {
+    judgeKind: sample !== undefined ? 'owner-sample' : 'human',
+    ...(sampleId !== undefined ? { sampleId } : {}),
     soakRef,
     reviewedAt: new Date(getTimeProvider().now()).toISOString(),
     reviewed: true,
     sound,
     evaluator,
-    ...(owner !== undefined && owner !== '' ? { owner } : {}),
-    ...(args.options.note !== undefined && args.options.note !== ''
-      ? { note: args.options.note }
-      : {}),
+    ...markAnnotations(owner, args.options.note),
+    ownerSignedOff: false,
   };
-  getRemediationReviewStore().record(record);
+  if (!getRemediationReviewStore().record(record)) throw new Error('Review persistence failed');
   if (args.options.format === 'json') {
     process.stdout.write(`${JSON.stringify({ marked: record }, null, 2)}\n`);
     return;
@@ -190,10 +218,51 @@ function runMark(args: ParsedCliArgs): void {
   process.stdout.write(`marked ${soakRef} as ${sound ? 'SOUND' : 'UNSOUND'} by ${evaluator}\n`);
 }
 
+/** Require the recorded owner and complete judgments before attesting an active draw. */
+function validateSampleSignOff(
+  sample: ReviewSample | undefined,
+  records: readonly ReviewRecord[],
+  owner: string
+): void {
+  if (sample === undefined) return;
+  if (sample.owner !== owner)
+    throw new Error('remediation-review sign-off: --owner must match the recorded sample owner');
+  const pending = pendingSampleRefs(sample, records);
+  if (pending.length > 0) {
+    throw new Error(
+      `remediation-review sign-off: sample ${sample.id} has ${String(pending.length)} unjudged refs`
+    );
+  }
+}
+
+/** Only the latest draw is active; previous draws remain as historical evidence. */
+function signOffJudgments(
+  existing: readonly ReviewRecord[],
+  owner: string
+): Map<string, ReviewRecord> {
+  // Empty panel set uses human sign-off; historical draws are no longer active.
+  const hasPanelJudgments = [...currentRemediationJudgments(existing).values()].some(
+    (record) => record.judgeKind === 'panel'
+  );
+  const sample = hasPanelJudgments
+    ? getRemediationReviewSampleStore().getRecords().at(-1)
+    : undefined;
+  validateSampleSignOff(sample, existing, owner);
+  const latest = new Map<string, ReviewRecord>();
+  for (const r of existing) {
+    if (r.judgeKind === 'panel') continue;
+    if (r.judgeKind === 'owner-sample' && (sample === undefined || !isOwnerSampleMark(sample, r)))
+      continue;
+    latest.set(r.soakRef, r);
+  }
+  if (latest.size === 0) throw new Error('No human judgments to sign off; draw and mark a sample');
+  return latest;
+}
+
 /**
- * `remediation-review sign-off --owner <name>` — record an owner sign-off. Re-affirms
- * each already-reviewed selection's latest verdict with the owner attached, so the
- * review summary's `owner` reflects the named sign-off (summary is last-wins per ref).
+ * Record owner sign-off after every sampled ref is judged. Only human and
+ * owner-sample rows carry owners; panel provenance is preserved unchanged.
+ * Copies retain reviewedAt: signing an existing judgment is not re-judgment.
  */
 function runSignOff(args: ParsedCliArgs): void {
   const owner = args.options.owner?.trim();
@@ -201,20 +270,18 @@ function runSignOff(args: ParsedCliArgs): void {
     throw new Error('remediation-review sign-off: a named --owner is required');
   }
   const store = getRemediationReviewStore();
-  const existing = store.getRecords();
+  const existing = readRemediationReviewRecords();
   if (existing.length === 0) {
     throw new Error('remediation-review sign-off: no reviews to sign off (mark selections first)');
   }
-  // Latest verdict per selection — re-affirm with the owner attached.
-  const latest = new Map<string, ReviewRecord>();
-  for (const r of existing) latest.set(r.soakRef, r);
-  const reviewedAt = new Date(getTimeProvider().now()).toISOString();
+  const latest = signOffJudgments(existing, owner);
   let count = 0;
   for (const r of latest.values()) {
-    store.record({ ...r, reviewedAt, owner });
+    if (!store.record({ ...r, owner, ownerSignedOff: true }))
+      throw new Error('Sign-off persistence failed');
     count++;
   }
-  const summary = summarizeRemediationReviews(store.getRecords());
+  const summary = readRemediationReviewSummary();
   if (args.options.format === 'json') {
     process.stdout.write(`${JSON.stringify({ owner, signedOff: count, summary }, null, 2)}\n`);
     return;
@@ -242,6 +309,12 @@ export async function handleRemediationReviewCommand(args: ParsedCliArgs): Promi
     case 'mark':
       runMark(args);
       break;
+    case 'panel-judge':
+      await runPanelJudge(args);
+      break;
+    case 'sample':
+      runSample(args);
+      break;
     case 'sign-off':
       runSignOff(args);
       break;
@@ -250,7 +323,7 @@ export async function handleRemediationReviewCommand(args: ParsedCliArgs): Promi
       break;
     default:
       throw new Error(
-        `remediation-review: unknown subcommand '${sub}' (expected list | mark | sign-off | readiness)`
+        `remediation-review: unknown subcommand '${sub}' (expected list | mark | panel-judge | sample | sign-off | readiness)`
       );
   }
   await Promise.resolve();

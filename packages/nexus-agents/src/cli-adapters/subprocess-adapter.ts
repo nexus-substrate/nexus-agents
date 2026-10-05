@@ -38,26 +38,6 @@ import { createCallerAbortCliError, isTimeoutText } from './cli-error-helpers.js
 import { generateHyphenId } from '../utils/id-utils.js';
 import { recordAbortObservation } from '../adapters/abort-observation.js';
 
-/** Minimum length for plaintext fallback to kick in.
- * Lowered from 100→30 to recover short but valid CLI responses (#1401). */
-const PLAINTEXT_FALLBACK_MIN_LENGTH = 30;
-
-/**
- * Attempts to extract a usable response from raw stdout when the structured
- * parser fails. Returns the trimmed text if it looks like natural language
- * (not JSON/NDJSON) and exceeds the minimum length threshold.
- *
- * Recovers responses from CLIs that output plaintext instead of their
- * expected structured format. (#1401)
- */
-function tryPlaintextFallback(stdout: string): string | null {
-  const trimmed = stdout.trim();
-  if (trimmed.length < PLAINTEXT_FALLBACK_MIN_LENGTH) return null;
-  // Skip if it looks like structured output the parser should handle
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return null;
-  return trimmed;
-}
-
 /** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
 const STDERR_ERROR_PATTERNS = [
   'error:',
@@ -201,7 +181,8 @@ export function isTransientError(code: CliErrorCode): boolean {
 function spawnCliChild(
   cliName: CliName,
   cmdConfig: CommandConfig,
-  workDir: unknown
+  task: CliTask,
+  timeoutMs: number
 ): ChildProcessWithoutNullStreams {
   // Curated child env: base infrastructure vars + only this CLI's
   // own vendor credentials, so cross-vendor API keys don't leak
@@ -210,13 +191,32 @@ function spawnCliChild(
   // #6754: a command's own variables (e.g. a read-only permission config) are
   // applied last, so an inherited value of the same name cannot override them.
   const childEnv = { ...buildChildEnv(cliName), ...cmdConfig.env };
+  const cwd = spawnCwd(task.options?.['workDir']);
+  const wrapped = task.wrapper?.(cmdConfig.command, cmdConfig.args, {
+    cwd,
+    env: childEnv,
+    timeoutMs,
+  });
+  const command = wrapped?.command ?? cmdConfig.command;
+  const args = wrapped?.args ?? cmdConfig.args;
+  const options = wrapped?.options ?? { cwd, env: childEnv };
   return trackProcessTree(
-    spawn(cmdConfig.command, cmdConfig.args, {
+    spawn(command, [...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: childEnv,
-      ...(typeof workDir === 'string' && workDir.trim().length > 0 ? { cwd: workDir } : {}),
+      env: options.env,
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
     })
   );
+}
+
+/**
+ * The working directory a CLI child is spawned in for a task's `workDir`
+ * option, or `undefined` when it inherits this process's cwd. Exported so a
+ * command builder that reads the child's config files resolves the same
+ * directory the spawn uses (#6970).
+ */
+export function spawnCwd(workDir: unknown): string | undefined {
+  return typeof workDir === 'string' && workDir.trim().length > 0 ? workDir : undefined;
 }
 
 /**
@@ -433,7 +433,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     // adapter-internal correlation key.
     const requestId = generateHyphenId('cli-req', 8);
     const result = await this.spawnSubprocess(task, options, requestId);
-    if (result.ok || !this.transientRetry.enabled) return result;
+    if (result.ok || !this.transientRetry.enabled || !options.allowRetry) return result;
     if (!shouldRetryInPlace(result.error, options.signal)) return result;
 
     return this.retryTransient(task, options, result, 0, requestId);
@@ -551,7 +551,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         resolveOuter(r);
       };
       try {
-        const child = spawnCliChild(this.name, cmdConfig, task.options?.['workDir']);
+        const child = spawnCliChild(this.name, cmdConfig, task, options.timeoutMs);
 
         const onProgress = options.onProgress;
         // Keep stdout evidence available to the caller-deadline abort path (#6851).
@@ -773,7 +773,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     }
 
     const text = this.parser.extractResponse(stdout);
-    if (text === null) return this.handleNoAnswer(stdout, stderr, startTime);
+    if (text === null) return this.handleNoAnswer(stdout, stderr);
     const authFailure = this.classifyEmptyAnswer(text, stderr);
     if (authFailure !== null) return authFailure;
 
@@ -803,14 +803,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * NDJSON `{"type":"error"}`) surfaced an `errorMessage`: classify it before
    * the generic PARSE_ERROR path, which would mask the real cause.
    */
-  private handleNoAnswer(
-    stdout: string,
-    stderr: string,
-    startTime: number
-  ): Result<CliResponse, CliError> {
+  private handleNoAnswer(stdout: string, stderr: string): Result<CliResponse, CliError> {
     const errorOnly = this.classifyErrorOnlyStream(stdout);
     if (errorOnly !== null) return errorOnly;
-    return this.handleUnparseableOutput(stdout, stderr, startTime);
+    return this.handleUnparseableOutput(stdout, stderr);
   }
 
   /**
@@ -854,14 +850,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
    * parser returned null. Order of recovery attempts (most-specific first):
    *   1. Rate-limit text in raw stdout (#1320)
    *   2. Structured CLI error envelope (#2440)
-   *   3. Plaintext fallback for natural-language output (#1401)
-   *   4. Generic PARSE_ERROR with truncated snippet
+   *   3. Generic PARSE_ERROR with truncated snippet
+   * Only the adapter parser can authorize a successful response (#7073).
    */
-  private handleUnparseableOutput(
-    stdout: string,
-    stderr: string,
-    startTime: number
-  ): Result<CliResponse, CliError> {
+  private handleUnparseableOutput(stdout: string, stderr: string): Result<CliResponse, CliError> {
     if (isRateLimitText(stdout)) {
       const snippet = stdout.slice(0, 500).trim();
       return err(this.createError('RATE_LIMITED', snippet));
@@ -882,18 +874,6 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         rawSanitized: sanitizeOutput(stdout),
       });
       return err(this.createError(envelope.code, msg));
-    }
-    const plaintext = tryPlaintextFallback(stdout);
-    if (plaintext !== null) {
-      subprocessLogger.debug('Using plaintext fallback for unparseable output', {
-        rawSanitized: sanitizeOutput(stdout),
-      });
-      return ok(
-        this.normalizeResponse(plaintext, undefined, {
-          durationMs: getTimeProvider().now() - startTime,
-          raw: stdout,
-        })
-      );
     }
     const snippet = stdout.slice(0, 500).trim();
     const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 300).trim()}]` : '';

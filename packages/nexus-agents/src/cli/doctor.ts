@@ -42,8 +42,10 @@ import {
   countRoutedOutcomesInFile,
   type RoutedOutcomeCounts,
 } from '../learning/distiller-eligibility.js';
-import { createAllAdapters } from '../cli-adapters/factory.js';
+import { createAllAdapters, createCliAdapter } from '../cli-adapters/factory.js';
+import { getCliAdapterDiagnostics } from '../cli-adapters/cli-adapter-diagnostics.js';
 import { isCliAdmitted } from '../cli-adapters/cli-admission.js';
+import { resolveAuthEvidence } from '../cli-adapters/auth-evidence.js';
 import { cliBinaryAdapterOf } from '../cli-adapters/gateway-slot-arm.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
@@ -51,7 +53,7 @@ import {
   codexSandboxPreflight,
   type CodexSandboxPreflightResult,
 } from '../cli-adapters/codex-sandbox-preflight.js';
-import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
+import type { CliName, HealthStatus, CapacityStatus, ICliAdapter } from '../cli-adapters/types.js';
 import { getInTreeCapabilitiesMatrix } from '../config/model-config-helpers.js';
 import { createServer } from '../mcp/server.js';
 import {
@@ -128,6 +130,10 @@ export interface CliCheckResult {
    * login command that fixes nothing.
    */
   readonly authState: 'authenticated' | 'unverified' | 'not-authenticated';
+  /** Local evidence from the admission ladder, with the probe's readable provenance. */
+  readonly authEvidence?: ReturnType<typeof resolveAuthEvidence> & {
+    readonly description: string;
+  };
   /**
    * Whether the router would route to this CLI: `isCliAdmitted` over the same
    * health check and auth probe (#6720). `doctor --gateway` reads it to say
@@ -405,36 +411,26 @@ export interface DoctorResult {
 /**
  * Gets the CLI install/upgrade fix command.
  */
-function getFixCommand(name: CliName, issue: 'install' | 'upgrade' | 'auth'): string {
-  const commands: Record<CliName, Record<string, string>> = {
-    claude: {
-      install: 'npm install -g @anthropic-ai/claude-code',
-      upgrade: 'npm update -g @anthropic-ai/claude-code',
-      auth: 'claude auth login',
-    },
-    gemini: {
-      install: 'npm install -g @google/gemini-cli',
-      upgrade: 'npm update -g @google/gemini-cli',
-      auth: 'gemini auth login',
-    },
-    codex: {
-      install: 'npm install -g @openai/codex',
-      upgrade: 'npm update -g @openai/codex',
-      auth: 'codex auth login',
-    },
-    opencode: {
-      install: 'npm install -g opencode-ai',
-      upgrade: 'npm update -g opencode-ai',
-      auth: 'opencode auth login',
-    },
-  };
-  return commands[name][issue] ?? '';
+function getFixCommand(
+  name: CliName,
+  issue: 'install' | 'upgrade' | 'auth',
+  adapter?: ICliAdapter
+): string {
+  const source =
+    adapter !== undefined && 'binaryName' in adapter
+      ? adapter
+      : createCliAdapter({ cli: name, transport: 'subprocess' });
+  return getCliAdapterDiagnostics(source).installationHints[issue];
 }
 
 /**
  * Creates a result for when a CLI is not found.
  */
-function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
+function createNotFoundResult(
+  name: CliName,
+  errorMsg: string,
+  adapter?: ICliAdapter
+): CliCheckResult {
   return {
     name,
     // Not installed, so auth was never probed. `not-authenticated` would claim
@@ -447,7 +443,7 @@ function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
     versionStatus: 'unsupported',
     authenticated: false,
     error: errorMsg,
-    fix: getFixCommand(name, 'install'),
+    fix: getFixCommand(name, 'install', adapter),
   };
 }
 
@@ -494,11 +490,13 @@ function createHealthyResult(
   name: CliName,
   health: HealthStatus,
   authProbe: AuthProbeResult,
-  capacity?: CapacityStatus
+  capacity?: CapacityStatus,
+  adapter?: ICliAdapter
 ): CliCheckResult {
   const versionOk = health.healthy;
   const authenticated = versionOk && authProbe.state === 'authenticated';
   const authState = resolveAuthState(authenticated, authProbe.state);
+  const evidence = resolveAuthEvidence(authProbe);
 
   const result: CliCheckResult = {
     name,
@@ -507,6 +505,7 @@ function createHealthyResult(
     versionStatus: health.versionStatus,
     authenticated,
     authState,
+    authEvidence: { ...evidence, description: describeAuthEvidence(authProbe, evidence) },
     routerAdmits: isCliAdmitted(health, authProbe),
     ...(authenticated && { authMethod: detectAuthMethod(name) }),
     ...(capacity !== undefined && { capacity }),
@@ -528,13 +527,32 @@ function createHealthyResult(
   // re-authenticate a working CLI (#4661).
   // `not-authenticated` already implies `!authenticated` — see resolveAuthState.
   if (authState === 'not-authenticated') {
-    return { ...result, fix: getFixCommand(name, 'auth') };
+    return { ...result, fix: getFixCommand(name, 'auth', adapter) };
   }
   if (health.versionStatus === 'outdated') {
-    return { ...result, fix: getFixCommand(name, 'upgrade') };
+    return { ...result, fix: getFixCommand(name, 'upgrade', adapter) };
   }
 
   return result;
+}
+
+/** Name the existing producer behind the ladder's source without regrading it. */
+function describeAuthEvidence(
+  probe: AuthProbeResult,
+  evidence: ReturnType<typeof resolveAuthEvidence>
+): string {
+  if (evidence.source === 'artifact') {
+    if (probe.state === 'authenticated' && probe.via === 'env-var') {
+      const envVar = probe.cli === 'claude' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+      return `${envVar} environment variable`;
+    }
+    return 'claude credentials file';
+  }
+  if (evidence.source === 'cli') {
+    return probe.cli === 'codex' ? 'codex login status' : 'opencode auth list';
+  }
+  const binary = probe.cli === 'gemini' ? 'agy' : probe.cli;
+  return `${binary} probe ${evidence.probeState}`;
 }
 
 /**
@@ -583,11 +601,11 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
       // Optional catch binding: there is no variable to be unused.
     }
 
-    return createHealthyResult(name, health, authProbe, capacity);
+    return createHealthyResult(name, health, authProbe, capacity, adapter);
   } catch (error) {
     const message = getErrorMessage(error);
     const isNotFound = message.includes('ENOENT') || message.includes('not found');
-    return createNotFoundResult(name, isNotFound ? 'Not found in PATH' : message);
+    return createNotFoundResult(name, isNotFound ? 'Not found in PATH' : message, adapter);
   }
 }
 
@@ -1083,6 +1101,12 @@ function claudeModelForDoctor(
   clis: readonly CliCheckResult[],
   deps: RunDoctorDeps
 ): Promise<ClaudeModelProbe> | ClaudeModelProbe {
+  if (deps.skipClaudeModelProbe === true) {
+    return {
+      ...unprobedClaudeModel(clis.find((c) => c.name === 'claude')?.installed === true),
+      reason: 'adapter serving is measured in live readiness; no separate pinned-model call',
+    };
+  }
   if (deps.live === true) return probeClaudeModelFor(clis, deps.probeClaudeModel);
   return unprobedClaudeModel(clis.find((c) => c.name === 'claude')?.installed === true);
 }
@@ -1119,6 +1143,8 @@ interface RunDoctorDeps {
   readonly probeClaudeModel?: (installed: boolean) => Promise<ClaudeModelProbe>;
   /** Opt in to the pinned Claude completion probe (`--live`). */
   readonly live?: boolean;
+  /** The CLI live ladder measures serving; suppress a duplicate pinned-model completion. */
+  readonly skipClaudeModelProbe?: boolean;
   /** The gateway measurement seam (#6609). */
   readonly checkGateway?: GatewayCheck;
   /** Send one completion per gateway family (`--probe`). Spends tokens. */
@@ -1192,6 +1218,8 @@ export async function runDoctor(deps: RunDoctorDeps = {}): Promise<DoctorResult>
 
 /** Doctor command options. */
 export interface DoctorOptions {
+  /** The CLI handler prints the summary after its live report. */
+  readonly deferSummary?: boolean;
   /** Auto-fix safe issues (run setup, generate config). */
   readonly fix?: boolean;
   /** Print the gateway section: census, slots, guard, proxy (#6609). */
@@ -1200,6 +1228,8 @@ export interface DoctorOptions {
   readonly probe?: boolean;
   /** Probe the pinned Claude model with a real completion. Spends quota. */
   readonly live?: boolean;
+  /** The CLI live ladder measures serving; suppress a duplicate pinned-model completion. */
+  readonly skipClaudeModelProbe?: boolean;
   /**
    * Receives the measured result, so `doctor --live` can compare its own CLI
    * availability check against the CLI list's (#6781).
@@ -1215,9 +1245,10 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<number
   const result = await runDoctor({
     gatewayProbe: options.probe === true,
     live: options.live === true,
+    skipClaudeModelProbe: options.skipClaudeModelProbe === true,
   });
   options.onResult?.(result);
-  printDoctorResults(result);
+  printDoctorResults(result, undefined, options.deferSummary === true);
   if (options.gateway === true || options.probe === true) {
     const { formatGatewayReport } = await import('./doctor-gateway-report.js');
     for (const line of formatGatewayReport(result.gateway, result.clis)) {

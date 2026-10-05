@@ -1,0 +1,8 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": true,
+  "stop_reason": "stop_sequence",
+  "api_error_status": 429,
+  "result": "You're out of usage credits. Switch to another model, to continue."
+}

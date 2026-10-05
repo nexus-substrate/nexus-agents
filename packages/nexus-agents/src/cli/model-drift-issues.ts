@@ -6,7 +6,7 @@
  * specific to models:
  *
  *   - one drafted issue per new model, carrying the drafted registry entry;
- *   - dedup by MODEL ID, against every open issue title, filtered client-side
+ *   - dedup by MODEL ID, against open and closed `discovered` issue titles
  *     (the search index can miss an issue that exists);
  *   - a hard cap of {@link MODEL_DRIFT_MAX_ISSUES_PER_RUN};
  *   - nothing is filed when `gh` is unavailable, and the drafts are returned so
@@ -37,8 +37,8 @@ export const MODEL_DRIFT_MAX_ISSUES_PER_RUN = 5;
 /** An existing repo label (the parameter-drift job uses it too). */
 const MODEL_DRIFT_LABEL = 'discovered';
 
-/** Upper bound on the open issues read for dedup. */
-const OPEN_ISSUE_LIST_LIMIT = 1000;
+/** Upper bound on discovered issues (open and closed) read for dedup. */
+const PROPOSAL_ISSUE_LIST_LIMIT = 1000;
 
 export interface ModelIssueDraft {
   readonly modelId: string;
@@ -49,7 +49,10 @@ export interface ModelIssueDraft {
 /** Injectable `gh` boundary. */
 export interface ModelDriftIssueDeps {
   readonly ghAvailable?: () => Promise<boolean>;
-  readonly listOpenIssueTitles?: () => Promise<readonly string[]>;
+  readonly listProposalIssueTitles?: (query: {
+    readonly state: 'all';
+    readonly label: string;
+  }) => Promise<readonly string[]>;
   readonly fileIssue?: AutoFileDeps['fileIssue'];
 }
 
@@ -100,16 +103,21 @@ async function defaultGhAvailable(): Promise<boolean> {
   }
 }
 
-async function defaultListOpenIssueTitles(): Promise<readonly string[]> {
+async function listProposalIssueTitles(query: {
+  readonly state: 'all';
+  readonly label: string;
+}): Promise<readonly string[]> {
   const { stdout } = await execFileAsync(
     'gh',
     [
       'issue',
       'list',
       '--state',
-      'open',
+      query.state,
+      '--label',
+      query.label,
       '--limit',
-      String(OPEN_ISSUE_LIST_LIMIT),
+      String(PROPOSAL_ISSUE_LIST_LIMIT),
       '--json',
       'title',
     ],
@@ -144,14 +152,17 @@ export async function fileNewModelIssues(
   const ghAvailable = await (deps.ghAvailable ?? defaultGhAvailable)();
   if (!ghAvailable) return { status: 'gh-unavailable', drafts, filed: [], skipped: [] };
 
-  const openTitles = await (deps.listOpenIssueTitles ?? defaultListOpenIssueTitles)();
+  const proposalTitles = await (deps.listProposalIssueTitles ?? listProposalIssueTitles)({
+    state: 'all',
+    label: MODEL_DRIFT_LABEL,
+  });
   const idByTitle = new Map(drafts.map((d) => [d.title, d.modelId]));
   const result = await autoFileSuggestions(drafts.map(toTask), {
     maxPerRun: MODEL_DRIFT_MAX_ISSUES_PER_RUN,
     label: MODEL_DRIFT_LABEL,
     searchExisting: (title) => {
       const modelId = idByTitle.get(title) ?? /`([^`]+)`/.exec(title)?.[1] ?? title;
-      return Promise.resolve(openTitles.some((t) => titleNamesModel(t, modelId)));
+      return Promise.resolve(proposalTitles.some((t) => titleNamesModel(t, modelId)));
     },
     ...(deps.fileIssue !== undefined && { fileIssue: deps.fileIssue }),
   });

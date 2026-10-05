@@ -8,6 +8,7 @@ import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { GatewayRediscovery, setGatewayRediscovery } from '../adapters/gateway-rediscovery.js';
 import type { ILogger, IModelAdapter } from '../core/index.js';
+import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 
 const { executeTaskMock, createAllAdaptersMock, servedByBuild } = vi.hoisted(() => ({
   executeTaskMock: vi.fn(),
@@ -44,6 +45,18 @@ describe('executeExpert workspace (#6358)', () => {
   beforeEach(() => {
     executeTaskMock.mockReset();
     executeTaskMock.mockResolvedValue({ ok: true, value: { text: 'reviewed' } });
+  });
+
+  it('preserves the sandbox wrapper through the router task conversion', async () => {
+    const wrapper: CommandWrapper = (command, args, options) => ({ command, args, options });
+    await executeExpert('qa', 'review the scratch', {
+      workDir: '/scratch/workspace',
+      accessMode: 'read-only-analysis',
+      wrapper,
+    });
+    expect(executeTaskMock).toHaveBeenCalledWith(
+      expect.objectContaining({ wrapper, options: { workDir: '/scratch/workspace' } })
+    );
   });
 
   it('forwards the workspace to the router without dropping the MCP config', async () => {

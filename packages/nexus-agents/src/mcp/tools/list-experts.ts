@@ -15,13 +15,27 @@ import { createLogger, formatZodError } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
 import { BUILT_IN_EXPERTS, type BuiltInExpertType } from '../../agents/index.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+
+/** Shared handler and registration output contract (#7042). */
+const OUTPUT_SCHEMA = {
+  experts: z.array(
+    z.object({
+      role: z.string(),
+      name: z.string(),
+      description: z.string(),
+      capabilities: z.array(z.string()),
+    })
+  ),
+  count: z.number(),
+};
 
 /**
  * Input schema for list_experts tool.
@@ -164,8 +178,7 @@ function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ToolRes
 
   ctx.logger.debug('Listed available experts', { count: result.count });
 
-  const data = result as unknown as Record<string, unknown>;
-  return Promise.resolve(toolSuccessStructured(data));
+  return Promise.resolve(structuredToolSuccess(z.object(OUTPUT_SCHEMA), result));
 }
 
 /**
@@ -202,24 +215,13 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
   const timeoutMs = getToolTimeout('list_experts', deps.security);
   const wrappedHandler = wrapToolWithTimeout('list_experts', secureHandler, { timeoutMs, logger });
 
-  const outputSchema = {
-    experts: z.array(
-      z.object({
-        role: z.string(),
-        name: z.string(),
-        description: z.string(),
-        capabilities: z.array(z.string()),
-      })
-    ),
-    count: z.number(),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'list_experts',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('list_experts'),
     },
     toSdkCallback(wrappedHandler)

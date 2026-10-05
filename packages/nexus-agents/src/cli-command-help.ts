@@ -167,7 +167,7 @@ const DOCTOR_HELP: CommandHelpEntry = {
     {
       flag: '--live',
       description:
-        'Probe pinned Claude and eligible adapters with real completions (may use quota)',
+        'One bounded completion per configured adapter (uses quota; failures exit nonzero)',
     },
     { flag: '--fix', description: 'Auto-fix correctable issues (data dirs, config)' },
     {

@@ -5,7 +5,7 @@
  * YAML/JSON, and schema-invalid entries all degrade gracefully.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -52,6 +52,18 @@ describe('loadManifestOverlay', () => {
     expect(result.status).toBe('missing');
     expect(result.entries).toEqual([]);
     expect(result.rejections).toEqual([]);
+  });
+
+  it('returns unreadable (never throws) when the path exists but cannot be read', () => {
+    // A directory passes existsSync and statSync but readFileSync throws EISDIR.
+    // The loader is documented as never-throwing; a throw here crashed every
+    // module-load caller of the model registry (seen as a CI race on models.yaml).
+    const dir = join(tempDir, 'manifest-dir.yaml');
+    mkdirSync(join(dir, 'child'), { recursive: true });
+    writeFileSync(join(dir, 'child', 'pad.txt'), 'x'.repeat(64));
+    const result = loadManifestOverlay({ path: dir });
+    expect(result.status).toBe('unreadable');
+    expect(result.entries).toEqual([]);
   });
 
   it('returns empty status when the file is zero bytes', () => {

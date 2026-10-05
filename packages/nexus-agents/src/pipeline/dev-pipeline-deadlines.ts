@@ -19,7 +19,7 @@ import { resolveClassGuardMs } from '../config/timeouts.js';
 import { isTimeoutAbortReason } from '../adapters/abort-utils.js';
 import { emitPipelineStageEvent } from './pipeline-observability.js';
 import { resolveStageTimeoutMs } from './stage-deadline.js';
-import type { DevPipelineStages } from './dev-pipeline.js';
+import type { DevPipelineStages, DevPipelineWorkspaceBinding } from './dev-pipeline.js';
 
 /**
  * Raised once the run's cancel signal has fired: at a stage boundary (#6305),
@@ -144,7 +144,14 @@ export function guardDevPipelineStages(
   options: DevStageGuardOptions
 ): DevPipelineStages {
   const qualityGate = stages.qualityGate?.bind(stages);
+  const withWorkspace = stages.withWorkspace?.bind(stages);
   return {
+    ...(withWorkspace !== undefined
+      ? {
+          withWorkspace: (binding: DevPipelineWorkspaceBinding) =>
+            guardDevPipelineStages(withWorkspace(binding), options),
+        }
+      : {}),
     research: (task) => runStage('research', options, (s) => stages.research(task, s)),
     plan: (task, research, priorFeedback) =>
       runStage('plan', options, (s) => stages.plan(task, research, priorFeedback, s)),

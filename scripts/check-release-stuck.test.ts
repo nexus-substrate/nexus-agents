@@ -3,13 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_GRACE_SEC,
   STALL_ISSUE_MARKER,
   assessReleaseStall,
   changesetAgeSec,
+  hasActiveReleaseRun,
   pendingChangesets,
   stallIssueBody,
 } from './check-release-stuck.js';
@@ -34,6 +35,18 @@ describe('pendingChangesets', () => {
 });
 
 describe('assessReleaseStall', () => {
+  it('does not report old changesets while a Release run is active', () => {
+    const verdict = assessReleaseStall({
+      pendingChangesets: [{ file: 'a.md', ageSec: 7200 }],
+      hasOpenVersionPr: false,
+      hasActiveReleaseRun: true,
+      graceSec: GRACE_SEC,
+    });
+
+    expect(verdict.stalled).toBe(false);
+    expect(verdict.reason).toMatch(/release.*active/i);
+  });
+
   it('flags changesets older than the grace period with no open version PR', () => {
     const verdict = assessReleaseStall({
       pendingChangesets: [
@@ -41,6 +54,7 @@ describe('assessReleaseStall', () => {
         { file: 'b.md', ageSec: 3600 },
       ],
       hasOpenVersionPr: false,
+      hasActiveReleaseRun: false,
       graceSec: GRACE_SEC,
     });
 
@@ -53,6 +67,7 @@ describe('assessReleaseStall', () => {
     const verdict = assessReleaseStall({
       pendingChangesets: [{ file: 'a.md', ageSec: 7200 }],
       hasOpenVersionPr: true,
+      hasActiveReleaseRun: false,
       graceSec: GRACE_SEC,
     });
 
@@ -70,6 +85,7 @@ describe('assessReleaseStall', () => {
         { file: 'fresh.md', ageSec: 120 },
       ],
       hasOpenVersionPr: false,
+      hasActiveReleaseRun: false,
       graceSec: GRACE_SEC,
     });
 
@@ -84,11 +100,13 @@ describe('assessReleaseStall', () => {
     const at = assessReleaseStall({
       pendingChangesets: [{ file: 'a.md', ageSec: GRACE_SEC }],
       hasOpenVersionPr: false,
+      hasActiveReleaseRun: false,
       graceSec: GRACE_SEC,
     });
     const past = assessReleaseStall({
       pendingChangesets: [{ file: 'a.md', ageSec: GRACE_SEC + 1 }],
       hasOpenVersionPr: false,
+      hasActiveReleaseRun: false,
       graceSec: GRACE_SEC,
     });
 
@@ -102,6 +120,7 @@ describe('assessReleaseStall', () => {
     const verdict = assessReleaseStall({
       pendingChangesets: [],
       hasOpenVersionPr: false,
+      hasActiveReleaseRun: false,
       graceSec: GRACE_SEC,
     });
 
@@ -111,8 +130,12 @@ describe('assessReleaseStall', () => {
 
   it('is clear when there is nothing to release and a PR is somehow open', () => {
     expect(
-      assessReleaseStall({ pendingChangesets: [], hasOpenVersionPr: true, graceSec: GRACE_SEC })
-        .stalled
+      assessReleaseStall({
+        pendingChangesets: [],
+        hasOpenVersionPr: true,
+        hasActiveReleaseRun: false,
+        graceSec: GRACE_SEC,
+      }).stalled
     ).toBe(false);
   });
 
@@ -122,11 +145,81 @@ describe('assessReleaseStall', () => {
     const verdict = assessReleaseStall({
       pendingChangesets: [{ file: 'a.md', ageSec: 7200 }],
       hasOpenVersionPr: false,
+      hasActiveReleaseRun: false,
       graceSec: GRACE_SEC,
     });
 
     expect(verdict.stalled).toBe(true);
     expect(Object.keys(verdict)).not.toContain('runConclusion');
+  });
+});
+
+describe('hasActiveReleaseRun', () => {
+  const statuses = ['requested', 'waiting', 'pending', 'queued', 'in_progress'];
+
+  it('still detects a queued run that starts between status queries', () => {
+    let started = false;
+    const query = (args: readonly string[]): string => {
+      if (args.some((arg) => arg.includes('status=queued&'))) started = true;
+      if (args.some((arg) => arg.includes('status=in_progress&')) && started) return '1\n';
+      return '0\n';
+    };
+
+    expect(hasActiveReleaseRun(query)).toBe(true);
+  });
+
+  it.each(statuses)('exempts a Release run with status %s', (status) => {
+    const query = vi.fn((args: readonly string[]) =>
+      args.some((arg) => arg.includes(`status=${status}&`)) ? '1\n' : '0\n'
+    );
+    const active = hasActiveReleaseRun(query);
+    expect(active).toBe(true);
+    expect(
+      assessReleaseStall({
+        pendingChangesets: [{ file: 'old.md', ageSec: 7200 }],
+        hasOpenVersionPr: false,
+        hasActiveReleaseRun: active,
+        graceSec: GRACE_SEC,
+      }).stalled
+    ).toBe(false);
+  });
+
+  it('checks all active statuses on main with read-only, status-filtered queries', () => {
+    const query = vi.fn(() => '0\n');
+    const active = hasActiveReleaseRun(query);
+    expect(active).toBe(false);
+    expect(query.mock.calls).toEqual(
+      statuses.map((status) => [
+        [
+          'api',
+          '--method',
+          'GET',
+          `repos/{owner}/{repo}/actions/workflows/release.yml/runs?branch=main&status=${status}&per_page=1`,
+          '--jq',
+          '.total_count',
+        ],
+      ])
+    );
+    expect(
+      assessReleaseStall({
+        pendingChangesets: [{ file: 'old.md', ageSec: 7200 }],
+        hasOpenVersionPr: false,
+        hasActiveReleaseRun: active,
+        graceSec: GRACE_SEC,
+      }).stalled
+    ).toBe(true);
+  });
+
+  it.each(['', 'null', 'unexpected'])('refuses an unmeasured response: %j', (output) => {
+    expect(() => hasActiveReleaseRun(() => output)).toThrow(/could not measure/i);
+  });
+
+  it('propagates API failure rather than treating it as no active run', () => {
+    expect(() =>
+      hasActiveReleaseRun(() => {
+        throw new Error('GitHub API unavailable');
+      })
+    ).toThrow('GitHub API unavailable');
   });
 });
 

@@ -135,6 +135,7 @@ export const MODULE_RELATIVE_RESOLVERS: Readonly<Record<string, string | null>> 
   // Each still has to be listed, so the next addition is a deliberate answer.
   'cli-adapters/child-mcp-config.ts': null, // resolves dist/cli.js, produced by tsup itself
   'cli/visualize-summary.ts': null, // module-relative path, no asset read
+  'mcp/middleware/install-state.ts': null, // reads the package's own package.json beside dist, which npm always ships
   'testing/test-scratch-root.ts': null, // scratch dir for tests, never shipped
 };
 

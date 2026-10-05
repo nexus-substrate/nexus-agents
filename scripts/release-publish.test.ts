@@ -250,51 +250,100 @@ describe('teeCommand', () => {
 });
 
 describe('release publish invocation', () => {
-  it('scopes the hoisted linker to pnpm and removes legacy pnpm-only npm config', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'release-publish-env-'));
+  it.each([[], ['--no-git-tag'], ['--tag', 'test']])(
+    'scopes the hoisted linker and defaults publication to next with args %j',
+    (...extraArgs: string[]) => {
+      const dir = mkdtempSync(join(tmpdir(), 'release-publish-env-'));
+      try {
+        const record = join(dir, 'spawn.json');
+        const pnpm = join(dir, 'pnpm');
+        writeFileSync(
+          pnpm,
+          `#!${process.execPath}\n` +
+            'import { writeFileSync } from "node:fs"; writeFileSync(process.env.SPAWN_RECORD, JSON.stringify({' +
+            'args: process.argv.slice(2), env: process.env}));\n'
+        );
+        chmodSync(pnpm, 0o755);
+        execFileSync(
+          process.execPath,
+          ['--import', 'tsx', join(ROOT, 'scripts/release-publish.ts'), ...extraArgs],
+          {
+            cwd: ROOT,
+            env: {
+              ...process.env,
+              PATH: `${dir}:${process.env.PATH ?? ''}`,
+              SPAWN_RECORD: record,
+              npm_config_strict_dep_builds: 'true',
+              npm_config_node_linker: 'isolated',
+              npm_config_verify_deps_before_run: 'false',
+            },
+          }
+        );
+        const spawned = JSON.parse(readFileSync(record, 'utf8')) as {
+          args: string[];
+          env: Record<string, string>;
+        };
+        expect(spawned.env).not.toHaveProperty('npm_config_strict_dep_builds');
+        expect(spawned.env).not.toHaveProperty('npm_config_node_linker');
+        expect(spawned.env).not.toHaveProperty('npm_config_verify_deps_before_run');
+        expect(spawned.env['NEXUS_PUBLISH_NODE_LINKER']).toBe('hoisted');
+        expect(spawned.args).toEqual([
+          '--config.node-linker=hoisted',
+          'exec',
+          'tsx',
+          'scripts/publish-env.ts',
+          'changeset',
+          'publish',
+          ...(extraArgs.includes('--tag') ? extraArgs : ['--tag', 'next', ...extraArgs]),
+        ]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  );
+});
+
+describe('changesets staged-directory tag propagation (#6514)', () => {
+  it.each(['pnpm', 'npm'])('passes next to the underlying %s publish command', (manager) => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-tag-contract-'));
     try {
-      const record = join(dir, 'spawn.json');
-      const pnpm = join(dir, 'pnpm');
+      const record = join(dir, 'publish.json');
+      const pkgDir = join(dir, 'pkg');
+      mkdirSync(join(pkgDir, '.publish-stage'), { recursive: true });
+      const executable = join(dir, manager);
       writeFileSync(
-        pnpm,
+        executable,
         `#!${process.execPath}\n` +
-          'require("node:fs").writeFileSync(process.env.SPAWN_RECORD, JSON.stringify({' +
-          'args: process.argv.slice(2), env: process.env}));\n'
+          'import { writeFileSync } from "node:fs";\n' +
+          'if (process.argv[2] === "--version") { console.log("10.34.5"); } else {\n' +
+          'writeFileSync(process.env.SPAWN_RECORD, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }));\n' +
+          'console.log("{}"); }\n'
       );
-      chmodSync(pnpm, 0o755);
+      chmodSync(executable, 0o755);
+      const modulePath = join(ROOT, 'node_modules/@changesets/cli/dist/getPublishPlan.mjs');
       execFileSync(
         process.execPath,
-        ['--import', 'tsx', join(ROOT, 'scripts/release-publish.ts'), '--tag', 'test'],
-        {
-          cwd: ROOT,
-          env: {
-            ...process.env,
-            PATH: `${dir}:${process.env.PATH ?? ''}`,
-            SPAWN_RECORD: record,
-            npm_config_strict_dep_builds: 'true',
-            npm_config_node_linker: 'isolated',
-            npm_config_verify_deps_before_run: 'false',
-          },
-        }
+        [
+          '--input-type=module',
+          '-e',
+          `
+        const { r: getPublishTool } = await import(${JSON.stringify(modulePath)});
+        const pkg = { dir: ${JSON.stringify(pkgDir)}, packageJson: { name: 'nexus-agents', version: '8.125.0', publishConfig: { directory: '.publish-stage' } } };
+        const tool = await getPublishTool({ rootDir: ${JSON.stringify(dir)}, tool: { type: ${JSON.stringify(manager)} } });
+        const result = await tool.publish({ pkg, release: { name: 'nexus-agents', version: '8.125.0', access: 'public', tag: 'next' }, tarballPath: null, interactive: false });
+        if (result.result !== 'published') throw new Error(JSON.stringify(result));
+      `,
+        ],
+        { env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ''}`, SPAWN_RECORD: record } }
       );
-      const spawned = JSON.parse(readFileSync(record, 'utf8')) as {
-        args: string[];
-        env: Record<string, string>;
-      };
-      expect(spawned.env).not.toHaveProperty('npm_config_strict_dep_builds');
-      expect(spawned.env).not.toHaveProperty('npm_config_node_linker');
-      expect(spawned.env).not.toHaveProperty('npm_config_verify_deps_before_run');
-      expect(spawned.env['NEXUS_PUBLISH_NODE_LINKER']).toBe('hoisted');
-      expect(spawned.args).toEqual([
-        '--config.node-linker=hoisted',
-        'exec',
-        'tsx',
-        'scripts/publish-env.ts',
-        'changeset',
-        'publish',
-        '--tag',
-        'test',
-      ]);
+      const command = JSON.parse(readFileSync(record, 'utf8')) as { args: string[]; cwd: string };
+      expect(command.args[0]).toBe('publish');
+      expect(
+        command.args.slice(command.args.indexOf('--tag'), command.args.indexOf('--tag') + 2)
+      ).toEqual(['--tag', 'next']);
+      expect(command.cwd).toBe(pkgDir);
+      // npm receives the staging directory; pnpm resolves publishConfig.directory itself.
+      if (manager === 'npm') expect(command.args).toContain(join(pkgDir, '.publish-stage'));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -1,0 +1,794 @@
+[
+  {
+    "title": "capability-gap detector still cannot report a gap: inferred requirements are drawn from the available set"
+  },
+  {
+    "title": "pipeline: StageContext.task is an empty object typed as TaskContract (task: {} as never)"
+  },
+  {
+    "title": "release: add a static guard that release.yml npm steps use publish-env; fix the misleading registry error text"
+  },
+  {
+    "title": "release: three more pnpm settings (strict-dep-builds, npm-globalconfig, _jsr-registry) leak into npm during bundling"
+  },
+  {
+    "title": "flaky: append-ratification-record real-git test teardown fails ENOTEMPTY on .git (background git maintenance race)"
+  },
+  {
+    "title": "learning: decisionHistory now retains full task text (up to 10k × 50k chars) since #6899"
+  },
+  {
+    "title": "learning: FeedbackIntegration records the router's reason as the routed query, so preference feedback trains on explanations"
+  },
+  {
+    "title": "release: npm_config_node_linker leaks into npm publish; npm 12 warns it will error in a future major"
+  },
+  {
+    "title": "consensus/decision: absolute_quorum counts returned seats, not requested ones (governor path)"
+  },
+  {
+    "title": "consensus: an empty-panel vote yields the engine's default 'rejected' instead of failing closed"
+  },
+  {
+    "title": "test env: blank NEXUS_MODELS_OVERLAY_PATH / NEXUS_MODEL_REGISTRY_OVERLAY so a developer overlay cannot keep a mutation alive"
+  },
+  {
+    "title": "Overlay matrix test: add a deterministic row for the registry tier dimension (#6866 follow-up)"
+  },
+  {
+    "title": "A manifest overlay on an in-tree model hides its in-tree metadata (context window falls back to 8192)"
+  },
+  {
+    "title": "dev-pipeline plan votes record no outcome rows, cost record or vote record (a comment claims they do)"
+  },
+  { "title": "Report dev-pipeline outcome-join coverage in an existing report (#6858 follow-up)" },
+  {
+    "title": "Record an unverified gateway model choice durably, not only in the selection reason (#4392 follow-up)"
+  },
+  {
+    "title": "test: audit-chain seam omits its configured log root and parses permission errors as JSON"
+  },
+  {
+    "title": "Dev-pipeline outcome rows carry their sessionId; DecisionCostRecord gains jobId (#6822)"
+  },
+  {
+    "title": "Consensus outcome rows carry their decisionId; report outcome-join coverage (#6822)"
+  },
+  {
+    "title": "query_trace cannot read dev-pipeline traces: it reads runs/, the pipeline writes traces/ (#6822)"
+  },
+  {
+    "title": "Voter usage after #6821: late-settling completions, per-attempt event stream, billed errors"
+  },
+  {
+    "title": "voter retry ignores retryable:false; codex sandbox preflight blocks the event loop once per process"
+  },
+  {
+    "title": "Adopt gpt-6.1-sol in the model registry: panel no_quorum, re-vote once codex seats can read (#6841)"
+  },
+  {
+    "title": "codex voter seats are always UNVERIFIABLE on codex-cli ≥0.156.1: the legacy-landlock sandbox now panics without bwrap userns"
+  },
+  { "title": "bug: API surface extractor misses inline import types in public signatures" },
+  { "title": "bug: API surface extractor follows private field dependency types" },
+  { "title": "System Review: 2026-09-28" },
+  { "title": "Carry scoped catalog-price provenance into durable cost records" },
+  { "title": "Fail closed on truncated MCP tools/list in npm install smoke" },
+  { "title": "Fail closed on truncated MCP tools/list in npm install smoke" },
+  { "title": "evaluation: paired context-efficiency gate with independently checked success" },
+  { "title": "measurement: join task runs, model calls, and validated outcomes" },
+  { "title": "measurement: persist observed voter-attempt usage across retries and fallbacks" },
+  {
+    "title": "doctor: default run probes Claude despite --live being the documented quota-spending mode"
+  },
+  { "title": "consensus: live quick and full panels time out without quorum after 30 minutes" },
+  { "title": "measurement: report full workflow tokens per validated success with coverage" },
+  {
+    "title": "test: close gating gaps found by QA review (release-gate decision, doctor handler seam, two vacuous assertions)"
+  },
+  {
+    "title": "dev-pipeline: refuse the quality gate for untrusted-tier tasks while implement edits the real repo"
+  },
+  {
+    "title": "orchestrate: worker prompts still advertise write and shell tools that read-only mode removes"
+  },
+  {
+    "title": "memory_write: undeclared content inherits the measured stdio caller tier 1 after #6795"
+  },
+  {
+    "title": "mcp: caller transport is never recorded, so every request tier is the fallback and the execute gate cannot discriminate"
+  },
+  {
+    "title": "dev-pipeline: run implement in a scratch worktree and hand back a diff (#6792 option C follow-up)"
+  },
+  {
+    "title": "cli-adapters: implement-stage experts inherit the operator's Claude permission mode (auto mode + untrusted issue text)"
+  },
+  {
+    "title": "release: open the Version Packages PR with an App/PAT token so pull_request gates run on it (owner action, #6770 option A)"
+  },
+  {
+    "title": "cli-adapters: child-mcp-config computes an allowedTools list that nothing passes to the CLI"
+  },
+  {
+    "title": "doctor: install-freshness and harness-alignment report false failures; unmeasured is handled inconsistently"
+  },
+  { "title": "doctor --live credits the CLI with a completion the gateway served" },
+  { "title": "dev-pipeline: a QA review that failed or never ran is recorded as pass" },
+  {
+    "title": "ci_health_check status-page signal is always unknown: component is named 'Actions', not 'GitHub Actions'"
+  },
+  {
+    "title": "ci(release): no pull_request workflow runs on the Version Packages PR — nine jobless failures on #6760 and #6766, merged anyway"
+  },
+  {
+    "title": "list_available_models: migrate adapter acquisition from createAllAdapters to getGlobalRegistry (#5313 panel)"
+  },
+  {
+    "title": "pipeline: dev-pipeline QA stage should run in read-only analysis mode (MCP tools and router path block it)"
+  },
+  {
+    "title": "verify read-only voter seats live for agy/gemini and opencode once quota returns (#6754 follow-up)"
+  },
+  {
+    "title": "test: path-containment 'inside symlink accepted' cases assert only the absence of one error message"
+  },
+  {
+    "title": "setup: non-interactive error tells the user to set CI=true, which triggers the same error"
+  },
+  {
+    "title": "cli-adapters: voter and reviewer seats should run CLIs in an enforced read-only analysis mode"
+  },
+  { "title": "refactor(security): consolidate the three secret-redaction pattern lists" },
+  {
+    "title": "dev-pipeline: research content is recorded with the caller's trust tier instead of its source tier"
+  },
+  { "title": "pr_review: a cancelled async review still persists a partial-panel review record" },
+  {
+    "title": "dev-pipeline: research, qualityGate and securityScan stages cannot forward their abort signal"
+  },
+  { "title": "chore: cli-adapters/unified-routing-types has no production consumer" },
+  { "title": "chore: remove vestigial code left by the gateway and process-kill work" },
+  { "title": "run_dev_pipeline: timeoutMs is accepted but never read" },
+  {
+    "title": "consensus_vote: record the votes that settled before a cancel_job on the cancelled job record"
+  },
+  {
+    "title": "memory: FTS5 search fails with a syntax error on any query containing '.', erroring the agentic/typed/adaptive backends"
+  },
+  {
+    "title": "run_pipeline: timeoutMs is accepted but never read; the vote node runs under the 120s graph default and a full panel times out"
+  },
+  {
+    "title": "consensus_vote: cancel_job does not abort in-flight voters, contrary to the schema doc; cancelled jobs hold the async slot"
+  },
+  {
+    "title": "doctor: CLIs disabled by NEXUS_DISABLED_CLIS are reported as 'not installed' in the model advisory and MCP Client mode"
+  },
+  {
+    "title": "jobs: list_jobs reports a different status than get_job_result (task_state precedence, abandoned flag)"
+  },
+  {
+    "title": "jobs: runaway-guard expiry records failed and frees the slot but never aborts the job body"
+  },
+  {
+    "title": "gateway: NEXUS_DISABLED_CLIS removes the family's gateway slot and doctor still reports it served"
+  },
+  {
+    "title": "process-tree-kill: double-fork daemons escape the tree walk; macOS ps blocks the event loop"
+  },
+  {
+    "title": "process-tree-kill: SIGKILL escalation can signal unrelated processes after PID reuse (#6703 follow-up)"
+  },
+  {
+    "title": "breaker: a CLI failure through ResilientAdapter is recorded twice against the same breaker key"
+  },
+  {
+    "title": "Watchdog aborts without a TimeoutError reason read as caller cancels on the CLI breaker"
+  },
+  {
+    "title": "cli-adapters: CLI subprocesses outlive a SIGKILLed server now that they run in their own process group"
+  },
+  {
+    "title": "cli: research index rejects the repo's own techniques.yaml (status 'retired' not in the CLI schema)"
+  },
+  {
+    "title": "cli: documented flags rejected as unknown options (session --limit/--markdown, usage --since/--until, validation --task-type/--min-sample)"
+  },
+  {
+    "title": "cli-adapters: a caller-aborted CLI call is recorded as a circuit-breaker timeout failure"
+  },
+  {
+    "title": "vestigial: dead adapter code after the gateway work (tryWireGatewayAdapter, getAvailableAdapters, response-cache, router-scoring, …)"
+  },
+  {
+    "title": "graph workflows: model-backed multi-family review templates (family-slot routing, token accounting)"
+  },
+  {
+    "title": "orchestrate: cancel_job does not interrupt worker-dispatch waves, synthesis, or orchestrator.execute in flight"
+  },
+  {
+    "title": "setup-installed Claude Code hooks exit 3 on every call: --track-metrics/--tool/--check-tasks are unknown options"
+  },
+  {
+    "title": "cli: global parser swallows command flags (session, hooks, --task, validation, research index, usage, memory-benchmark) and vote drops invalid enum values silently"
+  },
+  {
+    "title": "cli: --dry-run is silently ignored on improvement-review --file-issues and session prune (destructive)"
+  },
+  {
+    "title": "run_graph_workflow multi-CLI templates label keyword heuristics as [claude]/[codex]/[gemini] review steps"
+  },
+  {
+    "title": "gateway: router arm set (run_dev_pipeline expert stage) ignores a gateway re-discovered after boot"
+  },
+  { "title": "price-basis: add a 'declared' member for NEXUS_GATEWAY_COST rates (next major)" },
+  {
+    "title": "decision-cost rollup prices a seat by the requested alias, not the model that answered"
+  },
+  {
+    "title": "fidelity: consensus servedModel is the requested alias; unresolved seats uncounted; declared gateway rate labelled 'list'"
+  },
+  {
+    "title": "gateway: lazy re-discovery only fires from voting; private-address refusal re-armed; NO_PROXY ignores CIDR"
+  },
+  {
+    "title": "doctor --gateway passes a host whose CLI slots have no gateway model (unavailable slots excused)"
+  },
+  {
+    "title": "openai direct adapter: OPENAI_BASE_URL pointed at a chat-only gateway 404s on /responses"
+  },
+  {
+    "title": "feat(gateway): MCP server default takes the first listed gateway model, not the ranked default"
+  },
+  {
+    "title": "fix(sdk): custom-openai adapter calls /v1/responses, which chat-only OpenAI-spec gateways do not serve"
+  },
+  {
+    "title": "fix(cli): improvement-review --file-issues and its numeric flags are dropped by buildOptions"
+  },
+  {
+    "title": "model-identity: in-tree alias codex-5.3 resolves to vendor unknown despite provider openai"
+  },
+  {
+    "title": "gateway: rank models within a family when dealing panel seats (wire #6623's rankFamilyModels into #6606's seam)"
+  },
+  {
+    "title": "governance: persist panelDiversity (distinctFamilies/distinctModels) on the vote record (#6606 follow-up, #6601)"
+  },
+  {
+    "title": "custom-openai single-model path: apply the gateway auth header, extra headers and proxy"
+  },
+  {
+    "title": "gateway: unpinned default adapter and the opencode slot still fall back to NEXUS_CUSTOM_MODEL"
+  },
+  {
+    "title": "models: identify and adopt new frontier models automatically (rank by metadata within tier, propose registry entries, promote on measured outcomes)"
+  },
+  {
+    "title": "outcomes: record the served model and its cost on pipeline, worker and consensus outcome rows"
+  },
+  { "title": "sdk-adapter: content-filter finish is returned as a successful empty answer" },
+  {
+    "title": "model-equivalence: size and modality variants share an identity key with the base model (gpt-4o-mini = gpt-4o)"
+  },
+  {
+    "title": "test: audit multiprocess test fails in vote scratch checkouts — tsx IPC socket path exceeds the 108-byte Unix-socket limit under TEST_TMP"
+  },
+  { "title": "cli-circuit-breaker integration counts caller-input CLI errors against the breaker" },
+  {
+    "title": "epic: first-class support for a single OpenAI-spec gateway serving OpenAI, Anthropic and Google models"
+  },
+  { "title": "docs: corporate gateway recipe and fix the gateway setup doc defects" },
+  {
+    "title": "test: fake OpenAI-compatible three-family gateway fixture and end-to-end acceptance suite"
+  },
+  {
+    "title": "doctor: live gateway probe (doctor --gateway) and a correct verdict for gateway-only hosts"
+  },
+  {
+    "title": "gateway: corporate network support (custom auth header, in-process proxy, actionable private-IP error, lazy re-discovery)"
+  },
+  {
+    "title": "gateway: surface refusals and empty replies, send all parallel tool results, keep streamed tool args"
+  },
+  {
+    "title": "gateway: deal voter seats across model families and record distinct families/models on the result"
+  },
+  {
+    "title": "gateway: harden discovery (chat-model filter, dedupe, identity keys keep versions, send listed ids verbatim)"
+  },
+  {
+    "title": "gateway: resolve claude/codex/gemini slots to a gateway model of that family (family-slot mapping)"
+  },
+  {
+    "title": "governance: ratification accepts a single-model panel; record distinct model count and decide a diversity floor"
+  },
+  {
+    "title": "gateway: the 256-model discovery cap locks out OpenRouter (456 models); add an allowlist applied before the cap"
+  },
+  {
+    "title": "opencode: the requested model never reaches the CLI (dropped in CliToModelAdapter, id-prefix mismatch), so every call runs the default and is costed as it"
+  },
+  {
+    "title": "cli: no operator knob to take a quota-exhausted CLI out of voter seats and routing (NEXUS_DISABLED_CLIS)"
+  },
+  {
+    "title": "orchestrate: JSDoc says worker output is gated by DEFAULT_QUALITY_GATE, but no caller passes a gate"
+  },
+  { "title": "vote --record GitHub comment omits the declared-option tally" },
+  { "title": "vote CLI: --option tally is recorded but never printed in the summary" },
+  {
+    "title": "vestigial: seven orchestration/pipeline exports with no production consumer (3 unwired strategies, a dead CheckpointStore, a documented-but-absent quality-gate default)"
+  },
+  {
+    "title": "learning: after #6554, weather/doctor/adaptive-bonus readers iterate CLI_NAMES and miss api:* outcome rows"
+  },
+  {
+    "title": "audit: shutdown can still lose system.shutdown.begin (in-flight flush, logger closed before server, EPIPE on parent death)"
+  },
+  { "title": "test(file-lock): ABA child-process test times out at 90s under CI coverage (flake)" },
+  {
+    "title": "audit: stdin-EOF shutdown calls process.exit without flushing the audit logger (startup/shutdown records lost)"
+  },
+  {
+    "title": "learning: after #6554, MCP orchestrate / execute-expert writers still record slots, and doctor --deep convergence reads absent arms as 0"
+  },
+  {
+    "title": "learning: after #6554, API-arm routed outcomes train no distilled rules; decide arm-keyed rules vs slot aggregation"
+  },
+  {
+    "title": "learning: routed outcome rows record the vendor slot (claude), not the arm that ran (api:anthropic), so warm start credits the wrong arm"
+  },
+  {
+    "title": "TaskOutcome.category cannot represent an undetected category; writers default or drop"
+  },
+  {
+    "title": "p1(audit): a second process appending to an audit log breaks the AuditLogger hash chain (restart or concurrent server)"
+  },
+  {
+    "title": "flaky test: mutation-operators 'should apply mutations based on mutation rate' depends on unseeded Math.random"
+  },
+  {
+    "title": "outcomes.jsonl hydrate rewrite strips fields unknown to the running version (drops routedBy on older installs)"
+  },
+  {
+    "title": "verify: Codex Models check surfaces maintainer concerns as user degradation (no-codex users, source-file fix text, planned retirements)"
+  },
+  { "title": "orchestrate CLI command routes but records no outcome or router feedback" },
+  {
+    "title": "governance: concurrent votes silently lose a vote record while the CLI prints 'Audit record #0 written'"
+  },
+  {
+    "title": "orchestrate-dispatch persists worker outcomes with cli 'cli-codex' (unvalidated providerId cast)"
+  },
+  { "title": "registry: remove gpt-5.5 after its 2026-10-14 codex retirement (#6516 follow-up)" },
+  {
+    "title": "release: measure and alert on the post-publish tarball 404 window (no-credential half of #6514)"
+  },
+  {
+    "title": "learning: outcomes carry no routed-origin tag, so the routing learning loop cannot tell routed outcomes from voter and warm-up records"
+  },
+  {
+    "title": "registry: codex default gpt-5.5 retires 2026-10-14 per the codex model cache; pick a successor before it goes unserved"
+  },
+  {
+    "title": "audit: enabling audit as root (Docker default) makes the server exit at startup; /root is treated as a system directory"
+  },
+  {
+    "title": "release: 'latest' points at a version whose tarball 404s for ~5 min, so fresh installs fail every release"
+  },
+  {
+    "title": "learning: the strategy distiller never runs in practice; its 50-outcome trigger is per-process and no rules.json has ever been written"
+  },
+  {
+    "title": "audit: startup records carry no package version, so a soak window cannot be tied to a build"
+  },
+  { "title": "cli: workflow-run bypasses the run_workflow spend cap (#4754 follow-up)" },
+  {
+    "title": "arch(graph): run_graph_workflow has no spend cap; nodes do not report token usage (#4754 follow-up)"
+  },
+  {
+    "title": "release: npm's staged-publish window makes the next release run re-publish and fail E409"
+  },
+  { "title": "release: lift the npm 11 pin once pnpm 10 has published a release" },
+  { "title": "release: publishing from inside .publish-stage bypasses the stale-stage check" },
+  {
+    "title": "release: close three gaps the bundled publish opened (override floors, pnpm packlist, stale stage)"
+  },
+  {
+    "title": "release: npm 12 rejects --no-git-checks that changesets passes through pnpm 9 publish"
+  },
+  {
+    "title": "fix(security): unify MCP output redaction on sanitizeErrorDetails and cover _meta/structuredContent envelopes"
+  },
+  {
+    "title": "install: dependency install scripts stall pnpm 12 interactive installs and fail npm 12 strict-allow-scripts"
+  },
+  { "title": "System Review: 2026-09-21" },
+  { "title": "tech-debt(context): wire or prune unreferenced SessionJournal flight recorder" },
+  {
+    "title": "tech-debt(config): add 6 debt environment variables to NexusEnvSchema and burn down coverage baseline"
+  },
+  {
+    "title": "test(qa): eliminate vacuous assertions in forest-engine, expert-system, and skill-library tests"
+  },
+  {
+    "title": "test(workflows): mutation-operators test uses non-failing assertion on mutation count"
+  },
+  {
+    "title": "bug(testing): scenario-runner runDryRun reports passed: true on empty expectedOutputs"
+  },
+  { "title": "tech-debt: remove expired swe-bench and atbench CLI subcommands and option parsers" },
+  { "title": "docs: CONFIGURATION.md self-contradicts on NEXUS_REPUTATION_GATING default mode" },
+  {
+    "title": "bug: orchestrator-adapters zero-step execution vacuously reports tokensMeasured: true"
+  },
+  {
+    "title": "openai-compat: refuse 'custom-openai' as NEXUS_OPENAI_COMPAT_ENDPOINT — it collides with mechanism A's arm id"
+  },
+  {
+    "title": "mcp policy: deny-mutations-without-mode would fire on every mutation tool (ctx.mode defaults to read-only), and NEXUS_MCP_POLICY_ENFORCE has no reader — no path to enforce exists (#4988 pre-req)"
+  },
+  {
+    "title": "chore(vestigial): 32 exports with zero references anywhere (gated sweep 2026-09-16) and ~175 surplus export keywords"
+  },
+  {
+    "title": "corroboration floor: the rule says an unlisted action type gets the Tier 1 floor; the validator crashes instead (docs/code drift)"
+  },
+  {
+    "title": "openai-compat: refuse a vendor segment (openai|anthropic|google) as NEXUS_OPENAI_COMPAT_ENDPOINT — it collides with a vendor arm id (#4392 follow-up)"
+  },
+  {
+    "title": "perf(server): lazy-load the two TypeScript compiler copies — −120 MB RSS at idle (#5231 measured)"
+  },
+  {
+    "title": "budget-arm-cost: bare 'priced' with no catalogue still prices a gateway at its display slot (#4392 follow-up)"
+  },
+  {
+    "title": "routing observer: registryCostForModel prices gateway traffic at the opencode slot (#4392 follow-up)"
+  },
+  {
+    "title": "governance: two-checkout gate cannot land a coordinated checker+workflow change in one PR — two-hop procedure, and whether the gate should run both checkers"
+  },
+  {
+    "title": "budget-router: checkBudget still prices an undeclared gateway arm as opencode's default model (#4392 inc 2)"
+  },
+  {
+    "title": "policy: the required-jobs lock pins needed job IDs, not their bodies — decide whether a pass-through re-aggregation is drift"
+  },
+  {
+    "title": "check-required-jobs: bind the aggregator job ID to the required-context NAME (a duplicate 'CI Success' job satisfies protection)"
+  },
+  {
+    "title": "governance: express ci-success result checks from the required-jobs manifest itself (a shell-comment stripper cannot close every vector)"
+  },
+  {
+    "title": "governance: governor-review and codeowners-errors jobs still run the PR head's toolchain — route them through the two-checkout layout"
+  },
+  {
+    "title": "audit: sign redaction records with the agent key (they are appended unsigned since #6367)"
+  },
+  {
+    "title": "governance: required-jobs checker matches a commented-out needs.<id>.result line as a live check"
+  },
+  {
+    "title": "governance: the ratification-gate job runs an ungoverned local composite action (./.github/actions/setup-node) from the PR head before its checks"
+  },
+  { "title": "docs: align ledger-tooling governor coverage claims with CODEOWNERS" },
+  {
+    "title": "governance: moved-head rule should accept a ratified sha that is an ancestor of any prior head, not only a prior head itself (#6357 re-panel cost)"
+  },
+  {
+    "title": "vote: a voter seat can move the caller's working tree (observed: git checkout of the ratified head during three panels) — run seats in a detached scratch checkout"
+  },
+  {
+    "title": "DocOps: migrate the existing PIPELINE NOTE comments out of SKILL.md into pipeline-notes/ (one file per note)"
+  },
+  {
+    "title": "governance: CI/OIDC-issued short-lived signing identity for records appended in CI (#6257 follow-on)"
+  },
+  {
+    "title": "governance: the append-only ledger rule refuses the redaction PR itself — admit a base line minus its opening when an appended redaction record names it (#5748 step 2 follow-up)"
+  },
+  {
+    "title": "governance: enforce_admins for main once the changesets version PR can merge without the admin path (#4802 part 3)"
+  },
+  {
+    "title": "governance: drift check that branch protection's required contexts name the live ratification-gate job (and that the job name never silently changes)"
+  },
+  {
+    "title": "governance: ci.yml's required-job set and its pinning tests are review-requested, not governor paths — an ordinary PR can un-require a gate"
+  },
+  {
+    "title": "DocOps: PIPELINE NOTE lines live in one shared file, so every concurrent pipeline PR conflicts on SKILL.md and voids its ratification binding"
+  },
+  {
+    "title": "chore(lint): migrate the five files with file-wide type-safety suppressions (release-* commands, backfill-research-quality; ~100 sites)"
+  },
+  {
+    "title": "ops(backlog): check-unblocked should read the stated ## Trigger, not only blocker state (#5237 half b)"
+  },
+  {
+    "title": "learning: the MCP server's FeedbackIntegration is handed only to delegate_to_model, which has no router, so it records nothing"
+  },
+  {
+    "title": "next major: remove ClawGuardViolationEvent, the *Deps.auditLogger members and the NEXUS_ACCESS_POLICY_MODE schema entry left by #5108"
+  },
+  {
+    "title": "firewall: per-action process() re-emits the input-level audit events, so one triage records N+1 trust classifications of the same input"
+  },
+  {
+    "title": "firewall: corroboration is still validated beside the firewall on the dogfooding paths — migrate onto validateAction with the stage on"
+  },
+  {
+    "title": "jobs: thread cancel_job's AbortSignal into the six runAsJob tools whose engines have no cancellation surface"
+  },
+  {
+    "title": "docs(governance): update the CLAUDE.md/AGENTS.md 'Authorize a tool call' row and the NEXUS_ACCESS_POLICY_MODE row after the ClawGuard mount removal (#5107)"
+  },
+  {
+    "title": "security: tool-risk READ_ONLY_TOOLS is a second classification of registered tools and disagrees with the manifest on delegate_to_model and registry_import"
+  },
+  {
+    "title": "policy: operator policy.defaultMode never reaches createSecureHandler — executionMode is a literal 'read-only' at three sites (#5114 follow-up)"
+  },
+  { "title": "System Review: 2026-09-14" },
+  {
+    "title": "9.0: remove the CliName-typed circuit/capacity readers and the deprecated ApiVendor alias kept additive by #6290 (#4392 increment 1)"
+  },
+  {
+    "title": "governance: phase-3 signature enforcement must verify allowed_signers from the BASE ref, not the PR head"
+  },
+  {
+    "title": "cli-error-envelope: LOGIN_HINTS.gemini names the gemini binary while the seat runs agy"
+  },
+  {
+    "title": "gemini-adapter: pass agy --print-timeout from the task timeout instead of its 5m0s default"
+  },
+  {
+    "title": "deps: re-land the production-dependencies bump (#6268) with the typescript-eslint 8.70 lint fixes and the zod 4.6.2 API-surface snapshot"
+  },
+  {
+    "title": "vote: a CLI seat whose binary fails auth (empty stdout, error on stderr) is retried as a parse failure and never reaches the #3587 fallback"
+  },
+  {
+    "title": "consensus: voter reasoning reaches the committed ledger unscrubbed when a seat runs on an API adapter"
+  },
+  {
+    "title": "scripts: redact-vote-record.ts drops a voter's reasoning from the committed ledger and appends the redaction record (#5748 step 3)"
+  },
+  {
+    "title": "audit(vote-record): REDACTION record type and a legible `redacted` verifier state (#5748 step 2)"
+  },
+  {
+    "title": "audit(vote-record): new tier hashes a salted digest of voter reasoning instead of the raw text (#5748 step 1)"
+  },
+  {
+    "title": "vote: name the panel's working directory on the live result so an unverifiable seat is diagnosable without stderr (#6254 item 3)"
+  },
+  {
+    "title": "governance: signing-key custody — a key the agent process can use without a human proves key access, not ratification (#3927 item 4b)"
+  },
+  {
+    "title": "governor ledger gate: a rebase to pick up another PR's ledger line invalidates the bound record; accept an unchanged patch-id across the rebase (ratified-rebased)"
+  },
+  { "title": "Backlog triage 2026-09-14: ordered burn-down (8 tiers, 150 issues)" },
+  {
+    "title": "vote (CLI path): a gemini seat returns 'could not read the artifact' on ~half of governor panels, voiding absolute-quorum ratifications until a re-run"
+  },
+  {
+    "title": "governance-stamp-exemption: injectorIsClean() is spawned (~5 s) even when no generated governance file is in the change set"
+  },
+  { "title": "vote: a retried seat drops the first-pass cause it was retried from" },
+  {
+    "title": "vote: a response-parse failure is classified as 'could not read the artifact' (unverifiable); the record and summary name the wrong cause"
+  },
+  { "title": "vote: the clamp message says max 300s while VOTE_TIMEOUTS.maxMs is 600s" },
+  {
+    "title": "fix(ci): parameter-drift.yml skipped fallback cannot fire — `| tail -1 || echo skipped` sees tail's exit 0, so an absent verdict reads as empty and green"
+  },
+  { "title": "cli: vote --help says --timeout defaults to 300s but parseArgs applies 90s" },
+  {
+    "title": "governor-ledger gate never reads record.strategy: a simple_majority ratification (4/7) is reported ratified"
+  },
+  {
+    "title": "cli: nexus-agents vote cannot bind a ratification (--ratifies-pr) or set --strategy, so CLI-run governor panels never reach the ledger gate"
+  },
+  {
+    "title": "audit: PrReviewBindingBoundsSchema doc still describes the sanitized-text measurement closed by #6177"
+  },
+  {
+    "title": "mcp: remove the deprecated `mode` async-dispatch alias from consensus_vote, run_workflow and orchestrate (#4968 next-major)"
+  },
+  {
+    "title": "jobs: isAbandonedJob anchors on the declared 1 h guard while runAsJob uses the resolved (operator-raised) guard — a live 2 h job reads as abandoned; plus retention"
+  },
+  {
+    "title": "release-stall-check: add a grace period so a changeset merged minutes ago is not reported as a stall"
+  },
+  {
+    "title": "governor ledger gate: enforce append-only against the base, require panelCoverage on bound records, and report an unreadable ledger as unmeasured — before the #5131 flip"
+  },
+  {
+    "title": "vote record does not carry errorPolicy, so the ratification gate cannot report wrong-error-policy (only degraded-panel)"
+  },
+  { "title": "ops(release): release pipeline is stalled — changesets on main with no version PR" },
+  {
+    "title": "pr_review: the 500-char summary cap cuts the dropped-file list and can drop the binding stamp; carry them as structured record fields"
+  },
+  {
+    "title": "api-surface: extractor does not follow `extends`, so an extended interface's inherited members leave the snapshot"
+  },
+  {
+    "title": "audit: reviewed-diff-hash.ts JSDoc says voters never see past the cap; false since #6003"
+  },
+  {
+    "title": "consensus: the governed seam trusts the caller's quorumReached; derive quorum from the fixture through a governed function or add below-quorum rows"
+  },
+  {
+    "title": "pr_review: the coverage stamp measures the sanitized diff while the hash binds the raw one (#6003 follow-up)"
+  },
+  {
+    "title": "CI: validate CODEOWNERS against GitHub's own parser (codeowners/errors endpoint) on any PR that edits it"
+  },
+  {
+    "title": "consensus: a seam test inside the governed decision directory pins that engine and consensus_vote emit the governed verdict"
+  },
+  {
+    "title": "governance: check misreports a stale AGENTS.md inline value as CLAUDE.md block drift (renderClaudeMd copies the on-disk slice)"
+  },
+  {
+    "title": "async jobs: a body allowed past the 1 h guard should prove liveness (heartbeat), and the two clamp orders should be unified or deliberately kept"
+  },
+  {
+    "title": "Two more .ts files carry raw control bytes in regex literals (ESC in vote-command.test.ts, [\\x00-\\x1f\\x7f] in research-context.ts)"
+  },
+  {
+    "title": "governance: should the governor path set live in a dedicated file that generates the CODEOWNERS section, instead of being parsed from it?"
+  },
+  {
+    "title": "adopt eslint-comments/require-description in place of the custom max-lines suppression check (42 non-test, 388 total undescribed directives)"
+  },
+  {
+    "title": "improvement-review.ts carries a raw NUL byte in a string literal, so grep treats the file as binary"
+  },
+  { "title": "split the eight files above the 600-line governance ceiling" },
+  {
+    "title": "governance: fold AGENTS.md's toolchain footer rows into the one render so check has a single mechanism"
+  },
+  {
+    "title": "check-new-unused-exports: a pre-commit run silently passes because the scan is base...HEAD and ignores the working tree"
+  },
+  {
+    "title": "governance:check does not measure AGENTS.md's governance stamp (the VERSION span inside AGNOSTIC:BODY)"
+  },
+  {
+    "title": "pr_review and supply_chain_tradeoff_panel still judge against the nexus-agents default project; reuse the #6110 resolver"
+  },
+  {
+    "title": "claude adapter: an out-of-credits envelope (is_error: true) is parsed as an empty answer, trips the breaker, and doctor never probes the pinned model"
+  },
+  {
+    "title": "codex seats are dead on codex-cli ≥0.154: the default transport spawns `codex mcp-server`, which no longer exists, and doctor infers readiness instead of probing"
+  },
+  {
+    "title": "consensus_vote: a seat that fell over to another model is indistinguishable from an assigned one; two 7-seat panels ran single-model with no disclosure"
+  },
+  {
+    "title": "improvement_review: issue filing uses fixed priority labels without checking the target repo has them (#6107 C)"
+  },
+  {
+    "title": "consensus_vote: a failed quick-mode contrarian check produces no_quorum with voteCounts.error 0; give the check its own field (#6107 B)"
+  },
+  {
+    "title": "consensus_vote: every voter is told it is judging \"the nexus-agents project\"; thread the caller's target project into the prompts (#6107 A)"
+  },
+  { "title": "Consensus review misclassifies consuming repositories as out of scope" },
+  {
+    "title": "inject-governance: inject never regenerates AGENTS.md's TOOL_INDEX / WORKFLOW_INDEX tables, so a stale AGENTS.md copy is unrepairable (pre-#6099) or unmeasured (post-#6099)"
+  },
+  {
+    "title": "consensus: the unverifiable reasoning fallback discards a seat that quotes the sandbox error but reports it recovered"
+  },
+  {
+    "title": "consensus: a seat that falls over to another CLI is queued behind that CLI's other seats, so a prompt fallback can still take minutes; record per-seat timing to confirm"
+  },
+  {
+    "title": "cli: running src/cli.ts through tsx is a silent exit-0 no-op because isDirectRun() only accepts cli.js"
+  },
+  {
+    "title": "governance: one pure render for inject and check so local parity with CI is total, not approximate"
+  },
+  {
+    "title": "consensus: record a seat that could not read the artifact as unverifiable, retry it once, and keep it out of the abstain bucket (#6068 B)"
+  },
+  {
+    "title": "codex seats: pass features.use_legacy_landlock on Linux so voter reads survive apparmor_restrict_unprivileged_userns (#6068 A)"
+  },
+  {
+    "title": "audit: add a compile-time negative probe so the voter-key exhaustiveness constraint cannot weaken silently"
+  },
+  { "title": "audit: the vote record does not carry which model sat in each seat" },
+  {
+    "title": "governance:check compares only the generated block locally while CI compares the whole file; a prettier throw is unhandled"
+  },
+  {
+    "title": "audit: source-checkout refusal tells the vote store to set the env var that reached the tracked file"
+  },
+  {
+    "title": "api-surface: splitTopLevel counts the > of => as a closer, so members after an arrow-typed member are unsorted and end in ;;"
+  },
+  {
+    "title": "audit: bind the VOTER_SUMMARY_KEYS exhaustiveness check to the tuple so a lint cleanup cannot delete it"
+  },
+  {
+    "title": "audit: the vote ledger lacks the source-checkout write guard the pr-review ledger got in #4415, and the tracked file is reachable"
+  },
+  {
+    "title": "consensus_vote: voter seats intermittently lose repo access (bwrap loopback), degrading governor-path quorum"
+  },
+  {
+    "title": "api-surface: union members record in resolution order, so the snapshot can shift with no API change"
+  },
+  {
+    "title": "governance:check fails permanently on prettier-normalized AGENTS.md prose, and tells you to run the command that cannot fix it"
+  },
+  {
+    "title": "api-surface gate cannot detect ANY function signature change — 461 exported functions record only `: typeof <name>`"
+  },
+  {
+    "title": "pr_review: decide whether a SANITIZED review may satisfy an enforcing governor gate (#5385 follow-up)"
+  },
+  {
+    "title": "audit: the voter-field list is enumerated in three places that must agree, with no link between them"
+  },
+  {
+    "title": "audit: the vote-record write path does not validate, so a malformed record becomes an unreadable ledger line"
+  },
+  { "title": "test: no behavioural coverage of the tool/CLI to vote-record wire" },
+  {
+    "title": "quorum-validator: a tied vote is reported as approved and the tie signal is discarded"
+  },
+  { "title": "vote record: a retried voter seat is indistinguishable from a clean first attempt" },
+  { "title": "vote record: option coverage vanishes when no approver's selection is parseable" },
+  {
+    "title": "governor-section: consider a dedicated start/end directive instead of anchoring to the human heading"
+  },
+  { "title": "search_usages and list_jobs: unreadable input reported as measured absence" },
+  {
+    "title": "repo_security_plan: scanner-data provenance is computed then dropped, and a stale cache is stamped 'registry'"
+  },
+  {
+    "title": "weather-report: adaptation speed and observedCategories both report unmeasured as healthy"
+  },
+  {
+    "title": "repo-analyze: a failed workflows listing is reported as 'no workflows', fabricating a SAST gap"
+  },
+  { "title": "governor-section: a typo'd CODEOWNERS pattern silently ungoverns its path" },
+  {
+    "title": "governor-section: the START marker is matched by substring too, so a mention opens the section early"
+  },
+  {
+    "title": "check-governor-review: a comment naming the sentinel collapses the governor path set to zero, fail-open"
+  },
+  {
+    "title": "governor-review.yml: PR_BASE_SHA reads a step from another job, so the stamp exemption never fires"
+  },
+  { "title": "check-docops-skill: mentioning [skip-docops] in prose bypasses the gate" },
+  { "title": "Should MODEL_LIST join the governance stamp exemption subset? (#6022 follow-up)" },
+  {
+    "title": "Any edit to a governance stamp source becomes a governor-path PR — including adding an MCP tool"
+  },
+  {
+    "title": "repo_analyze reports false gaps on non-JS repos — its own topLevelEntries disprove one of them"
+  },
+  {
+    "title": "getGlobalRegistry({ logger }) is called as a configurator at 6+ sites; only the first wins"
+  },
+  { "title": "doctor: the summary counts issues but does not name them" },
+  {
+    "title": "11 files blanket-disable max-lines with no reason; 7 of them are 60-329 lines past the governance ceiling"
+  },
+  { "title": "pr_review: reviewed content and bound content are decided by one comparison" }
+]
