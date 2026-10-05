@@ -1,7 +1,7 @@
 /** Artifact input travels through the registered tool into seats and the ledger. */
+import { mkdtempOutsideRepo } from '../../testing/non-repo-temp-dir.js';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentVoteResult, VoterRole } from '../../cli/vote-types.js';
@@ -56,7 +56,7 @@ describe('consensus_vote artifactPath (#7092)', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(process.cwd(), '.vote-artifact-test-'));
-    outside = mkdtempSync(join(tmpdir(), 'nexus-vote-artifact-outside-'));
+    outside = mkdtempOutsideRepo('nexus-vote-artifact-outside-');
     ledger = join(root, 'vote-records.jsonl');
     vi.stubEnv('NEXUS_DATA_DIR', root);
     vi.stubEnv(VOTE_RECORDS_PATH_ENV, ledger);
