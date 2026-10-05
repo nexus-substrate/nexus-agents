@@ -91,6 +91,17 @@ function createMockLogger(): ILogger {
 }
 
 describe('ConsensusVoteInputSchema', () => {
+  it('rejects proof_of_learning with retirement and migration guidance (#5234)', () => {
+    const input = {
+      proposal: 'Test proposal',
+      strategy: 'proof_of_learning',
+    };
+    expect(() => ConsensusVoteInputSchema.parse(input)).toThrow(
+      /proof_of_learning.*retired.*9\.0.*#5234/
+    );
+    expect(() => ConsensusVoteInputSchema.parse(input)).toThrow(/simple_majority.*higher_order/);
+  });
+
   describe('proposal validation', () => {
     it('should accept valid proposal', () => {
       const input = { proposal: 'Should we implement feature X?' };
@@ -1248,7 +1259,7 @@ describe('opinion_wise is treated as a higher_order alias (#3271)', () => {
     expect(isHigherOrderStrategy('opinion_wise')).toBe(true);
     expect(isHigherOrderStrategy('simple_majority')).toBe(false);
     expect(isHigherOrderStrategy('unanimous')).toBe(false);
-    expect(isHigherOrderStrategy('proof_of_learning')).toBe(false);
+    expect(isHigherOrderStrategy('supermajority')).toBe(false);
   });
 
   function makeResult(strategy: VotingStrategy): ExtendedVotingResult {

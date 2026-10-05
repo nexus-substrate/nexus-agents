@@ -2,7 +2,7 @@
  * nexus-agents/consensus - Voting Strategies
  *
  * Implementation of different voting strategies for consensus engine.
- * Supports simple majority, supermajority, unanimous, and proof-of-learning.
+ * Supports simple majority, supermajority, unanimous, and higher-order voting.
  */
 
 import type {
@@ -10,9 +10,9 @@ import type {
   Vote,
   VoteCounts,
   WeightedVoteCounts,
-  AgentPerformance,
   WeightBasis,
 } from './types.js';
+import { RETIRED_CONSENSUS_STRATEGY_MESSAGE } from './types-core.js';
 import { VOTING_THRESHOLDS } from './decision/thresholds.js';
 import { HigherOrderVotingStrategy } from './higher-order-voting.js';
 // The ratio-vs-bar comparison lives in the governed decision module (#6000 step 1).
@@ -35,35 +35,11 @@ export interface VotingOutcome {
   voteCounts: VoteCounts;
   weightedCounts?: WeightedVoteCounts;
   /**
-   * Present on weighted strategies only. Absent means the strategy does not
-   * weight at all (simple majority, supermajority, unanimous) — which is
-   * different from `'unweighted'`, meaning a weighted strategy ran with nothing
-   * to weight by.
+   * Retained for historical results and custom weighted strategies. Built-in
+   * strategies leave this absent after the proof-of-learning retirement (#5234).
    */
   weightBasis?: WeightBasis;
   reason: string;
-}
-
-/**
- * Classifies a weighted tally by how many of its voters had a real weight
- * supplied (#5117).
- *
- * A voter absent from `weights` had no performance record; `countWeightedVotes`
- * already defaults such a voter to `1.0`, so the arithmetic is unchanged — the
- * absence is what carries the provenance.
- */
-function deriveWeightBasis(votes: Map<string, Vote>, weights: Map<string, number>): WeightBasis {
-  let withRecord = 0;
-  for (const agentId of votes.keys()) {
-    if (weights.has(agentId)) withRecord++;
-  }
-
-  // The empty case, named rather than left to a default: zero voters carrying a
-  // record — including the zero-voter case — is 'unweighted', never
-  // 'performance'. Answering it with `withRecord === votes.size` would make
-  // 0 === 0 report a full performance basis over nothing measured.
-  if (withRecord === 0) return 'unweighted';
-  return withRecord === votes.size ? 'performance' : 'partial';
 }
 
 /**
@@ -97,38 +73,6 @@ abstract class BaseVotingStrategy implements IVotingStrategy {
     }
 
     return { approve, reject, abstain, total: votes.size };
-  }
-
-  /**
-   * Calculate weighted vote counts using agent performance weights.
-   */
-  protected countWeightedVotes(
-    votes: Map<string, Vote>,
-    weights: Map<string, number>
-  ): WeightedVoteCounts {
-    let approve = 0;
-    let reject = 0;
-    let abstain = 0;
-    let totalWeight = 0;
-
-    for (const [agentId, vote] of votes.entries()) {
-      const weight = weights.get(agentId) ?? 1.0;
-      totalWeight += weight;
-
-      switch (vote.decision) {
-        case 'approve':
-          approve += weight;
-          break;
-        case 'reject':
-          reject += weight;
-          break;
-        case 'abstain':
-          abstain += weight;
-          break;
-      }
-    }
-
-    return { approve, reject, abstain, totalWeight };
   }
 }
 
@@ -258,93 +202,9 @@ export class UnanimousStrategy extends BaseVotingStrategy {
   }
 }
 
-/**
- * Proof-of-learning weighted voting strategy.
- * Agents with better track records have more voting power.
- */
-export class ProofOfLearningStrategy extends BaseVotingStrategy {
-  readonly algorithm: ConsensusAlgorithm = 'proof_of_learning';
-
-  calculateOutcome(votes: Map<string, Vote>, weights?: Map<string, number>): VotingOutcome {
-    const counts = this.countVotes(votes);
-    const effectiveWeights = weights ?? new Map<string, number>();
-    const weightedCounts = this.countWeightedVotes(votes, effectiveWeights);
-    const threshold = VOTING_THRESHOLDS.proof_of_learning;
-
-    const votingWeight = weightedCounts.approve + weightedCounts.reject;
-
-    if (votingWeight === 0) {
-      return {
-        approved: false,
-        approvalPercentage: 0,
-        voteCounts: counts,
-        weightedCounts,
-        reason: 'No weighted votes cast (excluding abstentions)',
-      };
-    }
-
-    const { approved, approvalPercentage } = evaluateThreshold(
-      weightedCounts.approve,
-      votingWeight,
-      threshold,
-      false
-    );
-
-    const weightBasis = deriveWeightBasis(votes, effectiveWeights);
-    const verdict = approved ? 'Approved' : 'Rejected';
-
-    return {
-      approved,
-      approvalPercentage,
-      voteCounts: counts,
-      weightedCounts,
-      weightBasis,
-      reason: `${verdict} with ${approvalPercentage.toFixed(1)}% ${describeBasis(weightBasis)}`,
-    };
-  }
-}
-
-/**
- * The tail of the reason string, naming what the percentage was computed over.
- *
- * Calling an unweighted tally "weighted approval" is the misreport #5117 fixes:
- * the phrase invites a reader to believe voter track record moved the number
- * when nothing had ever recorded one.
- */
-function describeBasis(basis: WeightBasis): string {
-  switch (basis) {
-    case 'performance':
-      return 'weighted approval (weights from voter performance history)';
-    case 'partial':
-      return 'partly weighted approval (some voters have no performance history; those count as 1.0)';
-    case 'unweighted':
-      return 'approval (UNWEIGHTED — no voter performance history recorded)';
-    default: {
-      const unreachable: never = basis;
-      throw new Error(`Unhandled weight basis: ${String(unreachable)}`);
-    }
-  }
-}
-
-/**
- * Calculate vote weight for an agent based on their performance history.
- *
- * Weight ranges from 0.5 (never correct) to 1.0 (perfect track record). An
- * agent with NO history returns 1.0, not 0.5 — the doc used to say "0.5 (no
- * history)", which the code has never done (#5117). The distinction matters:
- * a 1.0 default is indistinguishable from a perfect record by value alone,
- * which is why callers must not infer "was this measured?" from the number.
- * `deriveWeightBasis` answers that from provenance instead.
- */
-export function calculateVoteWeight(performance: AgentPerformance | undefined): number {
-  if (performance === undefined || performance.totalVotes === 0) {
-    return 1.0; // Default weight for new agents
-  }
-
-  // Weight = 0.5 + (successRate * 0.5)
-  // This gives a range of 0.5 to 1.0 based on historical accuracy
-  return 0.5 + performance.successRate * 0.5;
-}
+// Widened to string so runtime callers can receive the retirement error even
+// though TypeScript no longer permits selecting this algorithm.
+const RETIRED_ALGORITHM: string = 'proof_of_learning';
 
 /**
  * Factory for creating voting strategies.
@@ -357,7 +217,6 @@ export class VotingStrategyFactory {
       ['simple_majority', new SimpleMajorityStrategy()],
       ['supermajority', new SupermajorityStrategy()],
       ['unanimous', new UnanimousStrategy()],
-      ['proof_of_learning', new ProofOfLearningStrategy()],
       ['opinion_wise', new HigherOrderVotingStrategy()],
       ['higher_order', new HigherOrderVotingStrategy()],
     ]);
@@ -367,6 +226,9 @@ export class VotingStrategyFactory {
    * Get a voting strategy by algorithm type.
    */
   getStrategy(algorithm: ConsensusAlgorithm): IVotingStrategy {
+    if (algorithm === RETIRED_ALGORITHM) {
+      throw new Error(RETIRED_CONSENSUS_STRATEGY_MESSAGE);
+    }
     const strategy = this.strategies.get(algorithm);
     if (strategy === undefined) {
       throw new Error(`Unknown voting algorithm: ${algorithm}`);

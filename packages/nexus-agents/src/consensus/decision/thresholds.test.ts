@@ -23,7 +23,6 @@ describe('consensus/decision/thresholds (#6000 step 1)', () => {
       simple_majority: 0.5,
       supermajority: 2 / 3,
       unanimous: 1.0,
-      proof_of_learning: 0.5,
       opinion_wise: 0.5,
       higher_order: 0.5,
     });
@@ -33,14 +32,7 @@ describe('consensus/decision/thresholds (#6000 step 1)', () => {
   it('covers every algorithm exactly once — no bar can be missing or defaulted', () => {
     const algorithms = Object.keys(VOTING_THRESHOLDS).sort();
     expect(algorithms).toEqual(
-      [
-        'higher_order',
-        'opinion_wise',
-        'proof_of_learning',
-        'simple_majority',
-        'supermajority',
-        'unanimous',
-      ].sort()
+      ['higher_order', 'opinion_wise', 'simple_majority', 'supermajority', 'unanimous'].sort()
     );
   });
 

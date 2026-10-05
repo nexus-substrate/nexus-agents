@@ -13,16 +13,17 @@ keywords: [consensus, voting, multi-agent, catfish, rejection, protocols, archit
 
 ## Overview
 
-The consensus system exposes 6 core voting algorithm names (five distinct strategies — `higher_order` is an alias for `opinion_wise`, #514) for multi-agent decisions:
+The consensus system exposes 5 core voting algorithm names (four distinct strategies — `higher_order` is an alias for `opinion_wise`, #514) for multi-agent decisions:
 
 **Implemented Algorithms:**
 
 - **simple_majority**: >50% approval threshold
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
-- **proof_of_learning**: Weighted by agent performance
 - **higher_order**: Bayesian-optimal aggregation with correlation awareness — alias for `opinion_wise` (#514)
 - **opinion_wise**: Opinion-based aggregation
+
+`proof_of_learning` was retired in 9.0 ([#5234](https://github.com/nexus-substrate/nexus-agents/issues/5234), unanimous panel `vote-1791191269012-2wxf9h4`). No defensible ground-truth correctness signal existed, so live votes always used equal weights. Use `simple_majority` for the same tally, or `higher_order` for contrarian escalation. Persisted vote records still accept the retired name and verify with their original hashes.
 
 Correlation aggregates are lifetime evidence; retained records are count-bounded by `maxProposals` FIFO and `maxObservationsPerAgent`, and active history is partitioned by each role's pinned model.
 
@@ -33,19 +34,18 @@ The system draws inspiration from several research protocols documented in our r
 
 ## Protocol Selection Matrix
 
-| Protocol              | Use When                                   | Agents      | Threshold       |
-| --------------------- | ------------------------------------------ | ----------- | --------------- |
-| **Simple Majority**   | Quick, non-critical decisions              | 2+          | >50%            |
-| **Supermajority**     | Important decisions, reversible            | 3-5         | ≥67%            |
-| **Unanimous**         | Critical, irreversible decisions           | 3-5         | 100%            |
-| **Aegean**            | Safety-critical, Byzantine tolerance       | 4-7 (3f+1)  | Quorum          |
-| **CP-WBFT**           | Untrusted agents, weighted trust           | Any         | 67% weighted    |
-| **Reflexion**         | Code review, iterative refinement          | 1-4 critics | Severity <0.3   |
-| **Multi-Round**       | Comprehensive evaluation, sycophancy check | 2-7         | 67%             |
-| **Free-MAD**          | Preserve minority opinions                 | 3-7         | Anti-conformity |
-| **Self-Refine**       | Autonomous improvement                     | 1           | Convergence     |
-| **Self-Debug**        | Error detection and repair                 | 1           | Test pass       |
-| **Proof-of-Learning** | Performance-weighted voting                | Any         | 50% weighted    |
+| Protocol            | Use When                                   | Agents      | Threshold       |
+| ------------------- | ------------------------------------------ | ----------- | --------------- |
+| **Simple Majority** | Quick, non-critical decisions              | 2+          | >50%            |
+| **Supermajority**   | Important decisions, reversible            | 3-5         | ≥67%            |
+| **Unanimous**       | Critical, irreversible decisions           | 3-5         | 100%            |
+| **Aegean**          | Safety-critical, Byzantine tolerance       | 4-7 (3f+1)  | Quorum          |
+| **CP-WBFT**         | Untrusted agents, weighted trust           | Any         | 67% weighted    |
+| **Reflexion**       | Code review, iterative refinement          | 1-4 critics | Severity <0.3   |
+| **Multi-Round**     | Comprehensive evaluation, sycophancy check | 2-7         | 67%             |
+| **Free-MAD**        | Preserve minority opinions                 | 3-7         | Anti-conformity |
+| **Self-Refine**     | Autonomous improvement                     | 1           | Convergence     |
+| **Self-Debug**      | Error detection and repair                 | 1           | Test pass       |
 
 ---
 
@@ -63,7 +63,6 @@ type ConsensusAlgorithm =
   | 'simple_majority' // >50%
   | 'supermajority' // ≥67%
   | 'unanimous' // 100%
-  | 'proof_of_learning' // Weighted by agent performance
   | 'higher_order' // alias for 'opinion_wise' (#514)
   | 'opinion_wise'; // Opinion-based aggregation (Bayesian-optimal, correlation-aware)
 
@@ -287,7 +286,7 @@ Execute → Detect Error → Explain → Fix → Verify → ...
 | Robustness   | Expect failures/attacks | CP-WBFT, Aegean                |
 | Transparency | Need detailed reasoning | Reflexion, Free-MAD            |
 | Autonomy     | Single agent            | Self-Refine, Self-Debug        |
-| Learning     | Team improves over time | CP-WBFT, Proof-of-Learning     |
+| Learning     | Team improves over time | CP-WBFT                        |
 
 ---
 

@@ -65,7 +65,7 @@ TaskContract -> PlanContract -> PipelineRunner -> PluginRegistry -> EventBus
 ### Consensus Voting
 
 - 6 agent roles: architect, security, devex, ai_ml, pm, catfish (contrarian)
-- 5 strategies: simple_majority, supermajority, unanimous, proof_of_learning, higher_order
+- 5 strategy names: simple_majority, supermajority, unanimous, higher_order, opinion_wise
 - Multi-CLI round-robin assignment for model diversity
 
 ---

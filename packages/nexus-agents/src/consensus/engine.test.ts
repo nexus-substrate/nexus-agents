@@ -12,12 +12,9 @@ import {
   SimpleMajorityStrategy,
   SupermajorityStrategy,
   UnanimousStrategy,
-  ProofOfLearningStrategy,
   VotingStrategyFactory,
-  calculateVoteWeight,
   type Vote,
   type Proposal,
-  type AgentPerformance,
 } from './index.js';
 
 describe('ConsensusEngine', () => {
@@ -354,23 +351,6 @@ describe('ConsensusEngine', () => {
       expect(metrics.algorithmUsage.unanimous).toBe(1);
     });
   });
-
-  describe('agent performance tracking', () => {
-    it('should track agent performance', () => {
-      engine.updateAgentPerformance('agent-1', true);
-      engine.updateAgentPerformance('agent-1', true);
-      engine.updateAgentPerformance('agent-1', false);
-
-      const performance = engine.getAgentPerformance('agent-1');
-
-      expect(performance).toBeDefined();
-      if (performance) {
-        expect(performance.totalVotes).toBe(3);
-        expect(performance.correctVotes).toBe(2);
-        expect(performance.successRate).toBeCloseTo(0.667, 2);
-      }
-    });
-  });
 });
 
 describe('Proposal Content Caching (Issue #589)', () => {
@@ -679,92 +659,6 @@ describe('Voting Strategies', () => {
     });
   });
 
-  describe('ProofOfLearningStrategy', () => {
-    const strategy = new ProofOfLearningStrategy();
-
-    it('should weight votes by agent performance', () => {
-      const votes = new Map<string, Vote>([
-        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
-        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
-      ]);
-
-      // Agent-1 has higher weight (better performance)
-      const weights = new Map<string, number>([
-        ['agent-1', 1.0],
-        ['agent-2', 0.6],
-      ]);
-
-      const outcome = strategy.calculateOutcome(votes, weights);
-
-      expect(outcome.approved).toBe(true);
-      expect(outcome.weightedCounts).toBeDefined();
-      if (outcome.weightedCounts) {
-        expect(outcome.weightedCounts.approve).toBe(1.0);
-        expect(outcome.weightedCounts.reject).toBe(0.6);
-      }
-    });
-
-    it('should use default weight when no weights provided', () => {
-      const votes = new Map<string, Vote>([
-        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
-        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
-      ]);
-
-      const outcome = strategy.calculateOutcome(votes);
-
-      expect(outcome.approved).toBe(false); // 50-50 split doesn't exceed threshold
-    });
-  });
-
-  describe('calculateVoteWeight', () => {
-    it('should return 1.0 for new agents', () => {
-      expect(calculateVoteWeight(undefined)).toBe(1.0);
-    });
-
-    it('should calculate weight based on success rate', () => {
-      const performance: AgentPerformance = {
-        agentId: 'agent-1',
-        totalVotes: 100,
-        correctVotes: 80,
-        successRate: 0.8,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const weight = calculateVoteWeight(performance);
-
-      // 0.5 + (0.8 * 0.5) = 0.9
-      expect(weight).toBeCloseTo(0.9, 2);
-    });
-
-    it('should return 0.5 for 0% success rate', () => {
-      const performance: AgentPerformance = {
-        agentId: 'agent-1',
-        totalVotes: 10,
-        correctVotes: 0,
-        successRate: 0,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const weight = calculateVoteWeight(performance);
-
-      expect(weight).toBe(0.5);
-    });
-
-    it('should return 1.0 for 100% success rate', () => {
-      const performance: AgentPerformance = {
-        agentId: 'agent-1',
-        totalVotes: 50,
-        correctVotes: 50,
-        successRate: 1.0,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const weight = calculateVoteWeight(performance);
-
-      expect(weight).toBe(1.0);
-    });
-  });
-
   describe('VotingStrategyFactory', () => {
     it('should return correct strategy for each algorithm', () => {
       const factory = new VotingStrategyFactory();
@@ -772,7 +666,6 @@ describe('Voting Strategies', () => {
       expect(factory.getStrategy('simple_majority')).toBeInstanceOf(SimpleMajorityStrategy);
       expect(factory.getStrategy('supermajority')).toBeInstanceOf(SupermajorityStrategy);
       expect(factory.getStrategy('unanimous')).toBeInstanceOf(UnanimousStrategy);
-      expect(factory.getStrategy('proof_of_learning')).toBeInstanceOf(ProofOfLearningStrategy);
     });
 
     it('should list all available algorithms', () => {
@@ -782,7 +675,6 @@ describe('Voting Strategies', () => {
       expect(algorithms).toContain('simple_majority');
       expect(algorithms).toContain('supermajority');
       expect(algorithms).toContain('unanimous');
-      expect(algorithms).toContain('proof_of_learning');
     });
   });
 });
@@ -955,125 +847,6 @@ describe('Voting Strategy Edge Cases', () => {
 
       expect(outcome.approved).toBe(false);
       expect(outcome.reason).toContain('No approvals');
-    });
-  });
-
-  describe('ProofOfLearningStrategy - Edge Cases', () => {
-    const strategy = new ProofOfLearningStrategy();
-
-    it('should handle empty vote map', () => {
-      const votes = new Map<string, Vote>();
-      const outcome = strategy.calculateOutcome(votes);
-
-      expect(outcome.approved).toBe(false);
-      expect(outcome.reason).toContain('No weighted votes');
-    });
-
-    it('should handle zero weight agents', () => {
-      const votes = new Map<string, Vote>([
-        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
-        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
-      ]);
-
-      const weights = new Map<string, number>([
-        ['agent-1', 0],
-        ['agent-2', 0],
-      ]);
-
-      const outcome = strategy.calculateOutcome(votes, weights);
-
-      expect(outcome.approved).toBe(false);
-      expect(outcome.reason).toContain('No weighted votes');
-    });
-
-    it('should handle very small weights', () => {
-      const votes = new Map<string, Vote>([
-        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
-        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
-      ]);
-
-      const weights = new Map<string, number>([
-        ['agent-1', 0.001],
-        ['agent-2', 0.001],
-      ]);
-
-      const outcome = strategy.calculateOutcome(votes, weights);
-
-      // 50-50 split with equal weights should reject
-      expect(outcome.approved).toBe(false);
-    });
-
-    it('should handle dominant single agent weight', () => {
-      const votes = new Map<string, Vote>([
-        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
-        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
-        ['agent-3', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
-      ]);
-
-      // agent-1 has weight 10, others have 0.1 each
-      const weights = new Map<string, number>([
-        ['agent-1', 10],
-        ['agent-2', 0.1],
-        ['agent-3', 0.1],
-      ]);
-
-      const outcome = strategy.calculateOutcome(votes, weights);
-
-      // agent-1's weight dominates
-      expect(outcome.approved).toBe(true);
-      expect(outcome.weightedCounts?.approve).toBe(10);
-    });
-
-    it('should handle missing weights (default to 1.0)', () => {
-      const votes = new Map<string, Vote>([
-        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
-        ['agent-2', { decision: 'approve', reasoning: 'Yes', confidence: 0.8 }],
-        ['agent-3', { decision: 'reject', reasoning: 'No', confidence: 0.7 }],
-      ]);
-
-      // Only provide weight for one agent
-      const weights = new Map<string, number>([['agent-1', 0.5]]);
-
-      const outcome = strategy.calculateOutcome(votes, weights);
-
-      // agent-1: 0.5, agent-2: 1.0 (default), agent-3: 1.0 (default)
-      // approve = 1.5, reject = 1.0
-      expect(outcome.approved).toBe(true);
-      expect(outcome.weightedCounts?.approve).toBe(1.5);
-    });
-  });
-
-  describe('calculateVoteWeight - Edge Cases', () => {
-    it('should handle undefined performance', () => {
-      const weight = calculateVoteWeight(undefined);
-      expect(weight).toBe(1.0);
-    });
-
-    it('should handle zero total votes', () => {
-      const performance: AgentPerformance = {
-        agentId: 'agent-1',
-        totalVotes: 0,
-        correctVotes: 0,
-        successRate: 0,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const weight = calculateVoteWeight(performance);
-      expect(weight).toBe(1.0);
-    });
-
-    it('should handle 50% success rate', () => {
-      const performance: AgentPerformance = {
-        agentId: 'agent-1',
-        totalVotes: 100,
-        correctVotes: 50,
-        successRate: 0.5,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const weight = calculateVoteWeight(performance);
-      // 0.5 + (0.5 * 0.5) = 0.75
-      expect(weight).toBeCloseTo(0.75, 2);
     });
   });
 });

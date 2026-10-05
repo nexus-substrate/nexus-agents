@@ -89,7 +89,7 @@
         "SimpleMajority",
         "Supermajority",
         "Unanimous",
-        "ProofOfLearning",
+        "HigherOrderVoting",
         "HigherOrderVotingStrategy",
         "QuorumValidator"
       ],

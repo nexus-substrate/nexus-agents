@@ -8,23 +8,25 @@
 import { z } from 'zod';
 import { DEFAULT_MIN_VOTERS_FOR_QUORUM } from './decision/quorum.js';
 
+/** Migration error for callers selecting the retired live strategy (#5234). */
+export const RETIRED_CONSENSUS_STRATEGY_MESSAGE =
+  'proof_of_learning was retired in 9.0 (#5234); use simple_majority or higher_order for contrarian escalation.';
+
 /**
  * Consensus algorithm types.
  * - simple_majority: >50% of votes required
  * - supermajority: >=67% of votes required
  * - unanimous: 100% approval required
- * - proof_of_learning: weighted voting based on agent performance
  * - opinion_wise: higher-order voting with correlation awareness (Issue #333)
  * - higher_order: alias for opinion_wise (Issue #514)
  */
-export const ConsensusAlgorithmSchema = z.enum([
-  'simple_majority',
-  'supermajority',
-  'unanimous',
-  'proof_of_learning',
-  'opinion_wise',
-  'higher_order',
-]);
+export const ConsensusAlgorithmSchema = z.enum(
+  ['simple_majority', 'supermajority', 'unanimous', 'opinion_wise', 'higher_order'],
+  {
+    error: (issue) =>
+      issue.input === 'proof_of_learning' ? RETIRED_CONSENSUS_STRATEGY_MESSAGE : undefined,
+  }
+);
 export type ConsensusAlgorithm = z.infer<typeof ConsensusAlgorithmSchema>;
 
 /**
@@ -143,28 +145,7 @@ export interface VoteCounts {
   total: number;
 }
 
-/**
- * Weighted vote counts for proof-of-learning.
- */
-/**
- * What a weighted tally's weights were actually derived from (#5117).
- *
- * `proof_of_learning` reported `"X% weighted approval"` and a populated
- * `weightedCounts` for tallies in which every weight was structurally `1.0` —
- * because the performance map feeding them has never had a writer
- * (`updateAgentPerformance` has no non-test caller). A reader was invited to
- * believe voter track record influenced the outcome. It did not, and could not.
- *
- * Deliberately NOT derived by checking whether any weight differs from `1.0`.
- * A voter with a perfect record legitimately weighs `1.0`, so numeric equality
- * cannot tell "measured, and they were reliable" from "never measured" — that
- * test would be its own can't-distinguish defect. The basis is derived from
- * PROVENANCE: whether a performance record existed for each voter.
- *
- * `partial` is a real state, not a rounding of the other two. Some voters
- * having history while others do not must not be reported as fully
- * performance-weighted.
- */
+/** Historical weighted-tally provenance retained for persisted vote records (#5117, #5234). */
 export type WeightBasis = 'performance' | 'partial' | 'unweighted';
 
 export interface WeightedVoteCounts {
@@ -230,28 +211,6 @@ export const ConsensusResultSchema = z.object({
 });
 
 /**
- * Agent performance record for proof-of-learning.
- */
-export interface AgentPerformance {
-  agentId: string;
-  totalVotes: number;
-  correctVotes: number;
-  successRate: number;
-  lastUpdated: string;
-}
-
-/**
- * Agent performance schema.
- */
-export const AgentPerformanceSchema = z.object({
-  agentId: z.string(),
-  totalVotes: z.number().int().nonnegative(),
-  correctVotes: z.number().int().nonnegative(),
-  successRate: z.number().min(0).max(1),
-  lastUpdated: z.iso.datetime(),
-});
-
-/**
  * Proposal content caching configuration for determinism. (Issue #589)
  */
 export interface ProposalCacheConfig {
@@ -308,7 +267,6 @@ export interface ConsensusEngineConfig {
   defaultTimeout: number;
   minVotersForQuorum: number;
   maxActiveProposals: number;
-  enablePerformanceTracking: boolean;
   /** Maximum number of closed proposals to retain. Oldest are evicted when exceeded. (Issue #549) */
   maxClosedProposals: number;
   /** Content-based proposal caching for determinism (Issue #589) */
@@ -333,7 +291,6 @@ export const ConsensusEngineConfigSchema = z.object({
   defaultTimeout: z.number().int().positive().default(300000), // 5 minutes
   minVotersForQuorum: z.number().int().positive().default(DEFAULT_MIN_VOTERS_FOR_QUORUM),
   maxActiveProposals: z.number().int().positive().default(100),
-  enablePerformanceTracking: z.boolean().default(true),
   maxClosedProposals: z.number().int().positive().default(1000), // Issue #549
   proposalCache: ProposalCacheConfigSchema.optional(), // Issue #589
 });
@@ -345,7 +302,6 @@ export const DEFAULT_CONSENSUS_CONFIG: ConsensusEngineConfig = {
   defaultTimeout: 300000, // 5 minutes
   minVotersForQuorum: DEFAULT_MIN_VOTERS_FOR_QUORUM, // governed: decision/quorum.ts (#6180)
   maxActiveProposals: 100,
-  enablePerformanceTracking: true,
   maxClosedProposals: 1000, // Issue #549: Prevent unbounded memory growth
 };
 
@@ -364,7 +320,6 @@ export interface ProposalState {
   proposal: Proposal;
   status: ProposalStatus;
   votes: Map<string, Vote>;
-  voteWeights: Map<string, number>;
   startedAt: Date;
   timeoutId?: ReturnType<typeof setTimeout>;
   /** Number of incremental quorum expansions applied (Issue #1408). */

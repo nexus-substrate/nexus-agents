@@ -63,7 +63,8 @@ function parseStrategy(value: string | undefined): VotingStrategy | undefined {
   const parsed = VotingStrategySchema.safeParse(value);
   if (!parsed.success) {
     throw new Error(
-      `--strategy must be one of ${VotingStrategySchema.options.join(', ')}; got '${value}'`
+      `--strategy: ${parsed.error.issues[0]?.message ?? 'invalid value'}; ` +
+        `must be one of ${VotingStrategySchema.options.join(', ')}; got '${value}'`
     );
   }
   return parsed.data;
