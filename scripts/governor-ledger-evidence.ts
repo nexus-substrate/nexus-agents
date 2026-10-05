@@ -331,7 +331,7 @@ import type {
   RedactionRecord,
 } from '../packages/nexus-agents/src/audit/redaction-record.js';
 import { appendOnlyVerdict, loadLedger, type LedgerFork } from './governor-ledger-append-only.js';
-import { recomputeRecordDecision } from './governor-ledger-verdict.js';
+import { isRecomputableStrategy, recomputeRecordDecision } from './governor-ledger-verdict.js';
 
 export type { LedgerFork };
 import { modelDiversityEvidence, type ModelDiversityFailure } from './governor-ledger-diversity.js';
@@ -633,6 +633,10 @@ function panelVerdict(record: VoteRecord): BoundRecordFailure | undefined {
 
 /** Require a canonical approval that agrees with the recorded decision. */
 function recordDecisionFailure(record: VoteRecord): BoundRecordFailure | undefined {
+  // A retired strategy (proof_of_learning, #5234) cannot be recomputed under
+  // 9.0. It is never a governor strategy, so the wrong-strategy check in the
+  // same BOUND_RECORD_CHECKS list, which always runs, refuses it.
+  if (!isRecomputableStrategy(record.strategy)) return undefined;
   const recomputed = recomputeRecordDecision(record);
   const mismatch = recomputed.decision !== record.decision;
   if (!mismatch && recomputed.decision === 'approved') return undefined;

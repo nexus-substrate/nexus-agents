@@ -3,6 +3,10 @@ import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.
 import type { AgentVoteResult, VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import { createStrategyFactory } from '../packages/nexus-agents/src/consensus/strategies.js';
 import {
+  VotingStrategySchema,
+  type VotingStrategy,
+} from '../packages/nexus-agents/src/mcp/tools/consensus-vote-types.js';
+import {
   DEFAULT_MIN_VOTERS_FOR_QUORUM,
   isQuorumReached,
 } from '../packages/nexus-agents/src/consensus/decision/quorum.js';
@@ -82,22 +86,53 @@ function seatEvidenceDefect(
   return undefined;
 }
 
-/** Never read the producer's aggregate decision, counts or approval percentage. */
-export function recomputeRecordDecision(record: VoteRecord): VoteDecisionOutcome {
+/**
+ * The live strategy a record ran under, or undefined when it was later retired.
+ * A persisted record may legitimately carry proof_of_learning (#5234); it cannot
+ * be recomputed under 9.0, so it is refused with a reason rather than thrown on.
+ */
+function recomputableStrategy(recorded: VoteRecord['strategy']): VotingStrategy | undefined {
+  const parsed = VotingStrategySchema.safeParse(recorded);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** Whether a recorded strategy is still live and can be recomputed. */
+export function isRecomputableStrategy(recorded: VoteRecord['strategy']): boolean {
+  return recomputableStrategy(recorded) !== undefined;
+}
+
+/** The live strategy and rebuilt seats, or the reason the record cannot be recomputed. */
+function recomputableEvidence(
+  record: VoteRecord
+):
+  | { readonly algorithm: VotingStrategy; readonly seats: AgentVoteResult[] }
+  | { readonly defect: string } {
+  const algorithm = recomputableStrategy(record.strategy);
+  if (algorithm === undefined) {
+    return { defect: `strategy '${record.strategy}' is retired and cannot be recomputed` };
+  }
   const coverage = coverageDefect(record);
-  if (coverage !== undefined) return { decision: 'no_quorum', degradeReason: coverage };
+  if (coverage !== undefined) return { defect: coverage };
   const seats = recordedSeats(record);
   const defect = seatEvidenceDefect(record.voters.length, seats);
-  if (defect !== undefined) return { decision: 'no_quorum', degradeReason: defect };
-  const errorPolicy = record.errorPolicy ?? getDefaultErrorPolicy(record.strategy);
+  if (defect !== undefined) return { defect };
+  return { algorithm, seats };
+}
+
+/** Never read the producer's aggregate decision, counts or approval percentage. */
+export function recomputeRecordDecision(record: VoteRecord): VoteDecisionOutcome {
+  const evidence = recomputableEvidence(record);
+  if ('defect' in evidence) return { decision: 'no_quorum', degradeReason: evidence.defect };
+  const { algorithm, seats } = evidence;
+  const errorPolicy = record.errorPolicy ?? getDefaultErrorPolicy(algorithm);
   const policy = applyErrorPolicy(seats, errorPolicy);
   const votes = new Map(policy.engineVotes.map((seat) => [seat.role, seat.vote]));
-  const tally = strategies.getStrategy(record.strategy).calculateOutcome(votes);
+  const tally = strategies.getStrategy(algorithm).calculateOutcome(votes);
   const quorumReached = isQuorumReached(votes.size, DEFAULT_MIN_VOTERS_FOR_QUORUM);
   const result: ExtendedVotingResult = {
     proposal: record.proposal,
-    threshold: record.strategy,
-    strategy: record.strategy,
+    threshold: algorithm,
+    strategy: algorithm,
     errorPolicy,
     votes: seats,
     panelSize: record.panelCoverage?.requested ?? seats.length,
@@ -109,7 +144,7 @@ export function recomputeRecordDecision(record: VoteRecord): VoteDecisionOutcome
       proposal: {
         title: record.proposal,
         description: record.proposal,
-        algorithm: record.strategy,
+        algorithm,
       },
       outcome: determineFinalStatus(quorumReached, tally.approved),
       votes,
@@ -124,7 +159,7 @@ export function recomputeRecordDecision(record: VoteRecord): VoteDecisionOutcome
   return resolveVoteDecision(
     {
       proposal: record.proposal,
-      strategy: record.strategy,
+      strategy: algorithm,
       errorPolicy,
       quickMode: false,
       simulateVotes: false,
