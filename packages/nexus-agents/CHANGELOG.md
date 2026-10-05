@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.133.1
+
+### Patch Changes
+
+- [#7078](https://github.com/nexus-substrate/nexus-agents/pull/7078) [`7d80b3d`](https://github.com/nexus-substrate/nexus-agents/commit/7d80b3de9e52714646be568e5e1284d671398b21) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Show each CLI's local authentication evidence rung and source in doctor output, distinguishing credential artifacts, CLI probes, and unverified auth ([#7069](https://github.com/nexus-substrate/nexus-agents/issues/7069)).
+
 ## 8.133.0
 
 ### Minor Changes
