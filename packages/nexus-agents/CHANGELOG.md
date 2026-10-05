@@ -1,5 +1,124 @@
 # nexus-agents
 
+## 9.0.0
+
+### Major Changes
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Retire the `proof_of_learning` consensus strategy and its weighted-quorum branch in 9.0 ([#5234](https://github.com/nexus-substrate/nexus-agents/issues/5234), unanimous panel `vote-1791191269012-2wxf9h4`). There was no defensible ground-truth correctness signal for voter performance, and production votes always used equal weights. The in-memory performance tracking API, which nothing wrote to, is removed with it. These exports are gone: `ProofOfLearningStrategy`, `AgentPerformance`, `AgentPerformanceSchema`, `calculateVoteWeight`, `ConsensusEngine.updateAgentPerformance`, `ConsensusEngine.getAgentPerformance`, `ConsensusEngineConfig.enablePerformanceTracking` and `ProposalState.voteWeights`. A config object that still sets `enablePerformanceTracking` is accepted and the key is ignored.
+
+  New MCP consensus votes, pipeline votes, CLI `--strategy` selections, and engine proposals reject `proof_of_learning`. Use `simple_majority` for the same unweighted tally, or `higher_order` for contrarian escalation:
+
+  ```diff
+  - strategy: 'proof_of_learning'
+  + strategy: 'simple_majority'
+  ```
+
+  Historical vote records and committed ledgers remain readable and verifiable; their persisted strategy enum and hash projection are unchanged.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Replace the producerless `quality` member of the public `RouterType` union with
+  `unattributed`. Routing decisions with no decisive scoring stage now report
+  `unattributed` instead of `topsis`. Update exhaustive switches and router count
+  records to handle `unattributed` and remove `quality`.
+
+  `FeedbackLoopStats.decisionsUnattributed` is removed; read
+  `stats.decisionsByRouter.unattributed` instead. `countDecisionsByRouter` now returns
+  the bucket record directly, including unmeasured legacy decisions in
+  `unattributed`.
+
+  ```diff
+  - const missing = stats.decisionsUnattributed;
+  + const missing = stats.decisionsByRouter.unattributed;
+  ```
+
+  Keep recording `routerTypeMeasured`: its SQLite signal distinguishes measured
+  results from legacy fallback labels and treats absent evidence as unmeasured.
+  One shared normalizer validates stored labels in Zod and SQLite readers. Stored
+  legacy `quality` values parse as `unattributed` with `routerTypeMeasured=false`,
+  even if the stored flag claims measurement. Historical `topsis` values remain
+  `topsis` because their labels cannot reveal whether TOPSIS actually ran.
+
+  Unknown labels (including the old test-only `composite` label) fail validation.
+  SQLite single and collection readers return `OutcomeStorageError` with a
+  `ZodError` cause; one corrupt row fails the entire collection read rather than
+  returning invalid attribution as valid telemetry. Zod parsing rejects the same
+  labels. Repair the stored label before retrying the read.
+
+  `FeedbackRoutingDecisionSchema` (internally `RoutingDecisionSchema`) is now a
+  composed Zod intersection. Object-specific methods such as `.shape`, `.extend`,
+  and `.pick` are no longer available; compose with `.and` or validate with `.parse`
+  and `.safeParse`.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove `ClawGuardViolationEvent` from the security `AuditEvent` union, and remove
+  `auditLogger` from `ExecuteExpertDeps` and `OrchestrateDeps`. ClawGuard's access-policy
+  producer was retired in [#6302](https://github.com/nexus-substrate/nexus-agents/issues/6302)/[#6321](https://github.com/nexus-substrate/nexus-agents/issues/6321), so nothing created these events or read these
+  options. Use PolicyFirewall for tool authorization; durable auditing is configured
+  through the server's audit logger. Durable audit records written before the removal
+  keep `action: 'security.clawguard_violation'` and can still be queried by that action.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the deprecated shutdown delegate from `AuditLogger`. Replace calls to that delegate with `logger.logSystemShutdownBegin(metadata)`; the metadata argument remains optional. The replacement writes the same `system.shutdown.begin` record. The audit record format and hash chain are unchanged.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the deprecated `IMemoryBackend` context-store interface and its public re-exports. Import and implement `IContextMemoryBackend` instead. The separate generic `IMemoryBackend` contract exported by `nexus-memory` remains available.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the ignored `correlationMaxAgeMs` and `observationDecayFactor` keys from `HigherOrderVotingConfig` and its validation schema. Omit these keys from configuration. Correlation evidence remains lifetime evidence partitioned by each role's pinned model; use `maxProposals`, `maxObservationsPerAgent`, and `maxTrackedPairs` to bound retained history.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the reserved `DistilledRule.tainted` field from the public type, generated rules, and persisted rule schema. Stop reading or supplying it; use `status` for lifecycle filtering and `category` for task matching. The flag never represented an enforced security check.
+
+  Older snapshots remain readable: their extra field is discarded. Downgrading after saving with this release can make an older version reject the rules cache; `PersistentStrategyDistiller` rebuilds it from `OutcomeStore` on the next distillation cycle.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the legacy `SwarmObserver` and `createSwarmObserver` aliases from the orchestration observer module and its agents/observability barrel. Use `OrchestrationObserver` and `createOrchestrationObserver` instead:
+
+  ```diff
+  - import { SwarmObserver, createSwarmObserver } from './agents/observability/index.js';
+  + import { OrchestrationObserver, createOrchestrationObserver } from './agents/observability/index.js';
+  ```
+
+  The separate interaction observer in `observability/swarm-observer` remains available, including the public `InteractionSwarmObserver` and `createInteractionSwarmObserver` exports.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the unenforced `maxDecisionTimeMs` option from router configuration and `routing.linucb` YAML configuration. Remove this key from your configuration; it never bounded routing decisions. Use the capacity stage's `probeTimeoutMs` to bound capacity probes, and use `decisionTimeMs` to observe routing latency. LinUCB exploration remains configurable through `linucbAlpha` or `routing.linucb.alpha`.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the deprecated MCP `mode: 'sync' | 'async'` alias from `consensus_vote`, `run_workflow`, and `orchestrate`. Use `dispatch: 'sync' | 'async'` instead; omitting it still runs synchronously. Calls containing the removed alias now fail validation with an error naming `dispatch`. `run_dev_pipeline` continues to accept its execution `mode: 'autonomous' | 'harness'`.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `declared` to the published `PriceBasis` union for `NEXUS_GATEWAY_COST` rates (`priced:<in>,<out>`, `free`, `local`). Outcome records and voter/decision cost summaries now distinguish an operator's statement from a published registry rate. Bare `priced` still uses the registry, and unpriced details remain `unknown`. The declared caveat identifies the operator declaration as its source.
+
+  Consumers of `TaskOutcome`, `DecisionCostSummary`, `VoterCostBreakdown`, and `WeatherReportDeps` must handle the new member in validators, switches, and displays. Mixed decision totals retain `list` if any contribution uses a list rate; otherwise `declared` takes precedence over `unknown`, with each voter's basis preserved.
+
+  Current in-tree persisted readers share the widened schema and accept `declared`. Older readers with the two-member schema reject records containing it, potentially skipping entire JSONL decision/outcome rows; upgrade readers sharing telemetry before writing declared records. Existing records remain readable.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Return `RateLimitStats.lastHitAt` and `weather_report.rateLimits[].lastHitAt` as ISO-8601 strings instead of epoch milliseconds. Callers that need epoch milliseconds should use `new Date(lastHitAt).getTime()`.
+
+  Narrow `AgentVoteSummary.rejectionCategories` from arbitrary strings to the supported `RejectionCategory` values. Callers constructing vote summaries must use those categories. The `consensus_vote` success response now uses the schema-typed structured output helper to catch type/schema drift during compilation.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Node.js >=24 is now required. Upgrade Node before installing the next major release of either package; Node 22 and 23 are no longer supported.
+
+  Both packages use the built-in `node:sqlite` on their runtime paths. Node 24 provides a more mature SQLite implementation and an LTS support window through April 2028, one year longer than Node 22. Use the latest Node 24 LTS patch release for SQLite fixes and security updates.
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Represent missing learning measurements as `null` in the public API. The
+  `StoredModelStats` fields `avgReward`, `avgQualityScore`, `avgLatencyMs`, and
+  `successRate` are now `number | null`; each is null when its aggregate has no
+  inputs, including models with routing decisions but no outcomes. Consumers must
+  handle null explicitly and exclude unmeasured values from metric rankings or
+  place them last, rather than treating them as zero.
+
+  `ExperimentResult.relativeImprovement` is now `number | null`, returning null
+  when the control has no samples or has a measured zero success rate. The
+  `relativeImprovementMeasured` field has been removed. Check the value for null
+  and display `'-'` for undefined lift. Use the existing `control.n` to distinguish
+  no control samples (`0`) from a measured zero baseline (`> 0`); measured zero
+  lift still returns numeric `0`.
+
+  ```diff
+  -const lift = result.relativeImprovementMeasured
+  -  ? `${(result.relativeImprovement * 100).toFixed(1)}%`
+  -  : '-';
+  +const lift = result.relativeImprovement === null
+  +  ? '-'
+  +  : `${(result.relativeImprovement * 100).toFixed(1)}%`;
+  ```
+
+### Patch Changes
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve the 9.0 `declared` price basis in main's cost-ceiling telemetry for explicit gateway rates, including gateway-served CLI slots. Registry prices remain `list`, and unavailable estimates remain `unknown`.
+
 ## 8.134.0
 
 ### Minor Changes
