@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 9.1.1
+
+### Patch Changes
+
+- [#7113](https://github.com/nexus-substrate/nexus-agents/pull/7113) [`05dc30c`](https://github.com/nexus-substrate/nexus-agents/commit/05dc30ce61bd9aa0a5f214a2c8a834bbbf5eecb0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Send Codex and Gemini CLI prompts through stdin so large vote artifacts do not exceed Linux argument limits and fail voter seats. Vote responses now warn when a fallback changes a seat's model family, naming the role and its assigned and served families while preserving existing panel warnings ([#7106](https://github.com/nexus-substrate/nexus-agents/issues/7106)).
+
 ## 9.1.0
 
 ### Minor Changes
