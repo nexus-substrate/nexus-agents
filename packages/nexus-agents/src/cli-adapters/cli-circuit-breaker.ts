@@ -12,18 +12,29 @@ import { ok, err, createLogger, getTimeProvider, getErrorMessage } from '../core
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import type { FallbackTaskType } from './task-classifier.js';
 import { getFallbackChainForCategory } from './fallback-chains.js';
-import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
+import type {
+  ICliAdapter,
+  CliName,
+  CliTask,
+  CliResponse,
+  CliError,
+  ObservedArmId,
+} from './types.js';
+import { breakerKeys } from './breaker-key.js';
+import { gatewayServedSlotOf, resolveGatewayServedSlot } from './gateway-slot-arm.js';
 import {
   CircuitBreakerRegistry,
   CircuitError,
   CircuitErrorCode,
   mapCliErrorToCategory,
+  type CliCircuitBreaker,
   type CircuitBreakerConfig,
   type CircuitBreakerSnapshot,
   type CircuitStateChangeListener,
 } from './circuit-breaker.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
+import { unenforcedAccessModeRefusal } from './access-mode.js';
 
 /** Maps canonical TaskCategory (10 types) to FallbackTaskType (5 types). */
 const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
@@ -142,7 +153,7 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       config === undefined ? defaultCliCircuitBreakerRegistry : new CircuitBreakerRegistry();
     for (const adapter of adapters) {
       this.adapters.set(adapter.name, adapter);
-      this.registry.getBreaker(adapter.name, this.config.perCliConfig[adapter.name]);
+      this.breakerFor(adapter);
     }
   }
 
@@ -165,7 +176,7 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       return err(lastError);
     }
 
-    for (const cli of this.getFallbackClis(primaryCli, taskCategory).slice(
+    for (const cli of this.getFallbackClis(primaryCli, taskCategory, task).slice(
       0,
       this.config.maxFallbackAttempts
     )) {
@@ -190,12 +201,10 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
   }
 
   getHealthStatus(): CliCircuitHealthStatus {
-    const snapshots = this.registry.getAllSnapshots();
     const clis: CliCircuitHealthStatus['clis'][number][] = [];
     let healthyCount = 0;
-    for (const name of this.adapters.keys()) {
-      const snapshot = snapshots.get(name);
-      if (!snapshot) continue;
+    for (const [name, adapter] of this.adapters) {
+      const snapshot = this.breakerFor(adapter).breaker.getSnapshot();
       const healthy = snapshot.state === 'closed';
       if (healthy) healthyCount++;
       clis.push({
@@ -215,19 +224,16 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
   }
 
   getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot> {
-    const allSnapshots = this.registry.getAllSnapshots();
     const snapshots = new Map<CliName, CircuitBreakerSnapshot>();
-    for (const name of this.adapters.keys()) {
-      const snapshot = allSnapshots.get(name);
-      if (snapshot !== undefined) {
-        snapshots.set(name, snapshot);
-      }
+    for (const [name, adapter] of this.adapters) {
+      snapshots.set(name, this.breakerFor(adapter).breaker.getSnapshot());
     }
     return snapshots;
   }
 
   resetCircuit(cliName: CliName): void {
-    this.registry.reset(cliName);
+    const adapter = this.adapters.get(cliName);
+    this.registry.resetArm(adapter === undefined ? cliName : this.breakerFor(adapter).key);
     this.logger.info('Circuit reset', { cliName });
   }
 
@@ -244,28 +250,55 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     adapter: ICliAdapter,
     task: CliTask
   ): Promise<Result<CliResponse, CircuitError | CliError>> {
-    const breaker = this.registry.getBreaker(adapter.name);
-    const canRun = breaker.canExecute();
-    if (!canRun.ok) {
-      return canRun;
-    }
-
+    let { key, breaker } = this.breakerFor(adapter, task);
     let execResult: Result<CliResponse, CliError>;
+    let targetResolved = false;
     try {
+      await resolveGatewayServedSlot(adapter);
+      const refusal = await this.prepareImplicitRoute(adapter, task);
+      if (refusal !== undefined) return err(refusal);
+      targetResolved = true;
+      ({ key, breaker } = this.breakerFor(adapter, task));
+      const canRun = breaker.canExecute();
+      if (!canRun.ok) return canRun;
       execResult = await adapter.execute(task);
     } catch (error) {
-      breaker.recordFailure('unknown');
+      // A rejected availability probe has not selected a failure domain.
+      // Never charge the provisional plain CLI breaker for that probe.
+      if (targetResolved) breaker.recordFailure('unknown');
       return err(
         new CircuitError(`CLI execution threw unexpectedly: ${getErrorMessage(error)}`, {
           circuitErrorCode: CircuitErrorCode.EXECUTION_FAILED,
           cliName: adapter.name,
-          armId: adapter.name,
+          armId: key,
           circuitState: breaker.getState(),
           cause: error instanceof Error ? error : new Error(String(error)),
         })
       );
     }
 
+    return this.recordOutcome(adapter, breaker, execResult);
+  }
+
+  /** Resolve an implicit OpenCode route before gating, preserving access refusals. */
+  private async prepareImplicitRoute(
+    adapter: ICliAdapter,
+    task: CliTask
+  ): Promise<CliError | undefined> {
+    if (adapter.name !== 'opencode' || task.model !== undefined) return undefined;
+    const refusal = unenforcedAccessModeRefusal(adapter, task);
+    if (refusal !== undefined) return refusal;
+    // A missing/cooled configured model omits --model and runs the default.
+    await adapter.initialize();
+    return undefined;
+  }
+
+  private recordOutcome(
+    adapter: ICliAdapter,
+    breaker: CliCircuitBreaker,
+    execResult: Result<CliResponse, CliError>
+  ): Result<CliResponse, CliError> {
+    const recordsOutcome = this.ownsBreakerOutcome(adapter);
     if (!execResult.ok) {
       // #6613: caller-input errors (e.g. invalid model requested) must not count
       // against the breaker or exhaust half-open probe capacity. #6691: nor
@@ -274,22 +307,57 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
         breaker.releaseHalfOpenProbe();
         return err(execResult.error);
       }
-      breaker.recordFailure(mapCliErrorToCategory(execResult.error.code));
+      if (recordsOutcome) breaker.recordFailure(mapCliErrorToCategory(execResult.error.code));
       return err(execResult.error);
     }
 
-    breaker.recordSuccess();
+    if (recordsOutcome) breaker.recordSuccess();
     return ok(execResult.value);
   }
 
-  private getFallbackClis(excludeCli: CliName, taskCategory?: TaskCategory): CliName[] {
+  private breakerFor(
+    adapter: Pick<ICliAdapter, 'name'> & Partial<Pick<ICliAdapter, 'getModelInfo'>>,
+    task?: CliTask
+  ): {
+    key: ObservedArmId;
+    breaker: CliCircuitBreaker;
+  } {
+    const key = breakerKeys.forArm({
+      name: adapter.name,
+      model: task?.model ?? adapter.getModelInfo?.().id,
+      gatewayArm: gatewayServedSlotOf(adapter)?.arm,
+    });
+    return {
+      key,
+      breaker: this.registry.getArmBreaker(key, this.config.perCliConfig[adapter.name]),
+    };
+  }
+
+  /** Marked gateway slots record in the shared registry; private registries own their records. */
+  private ownsBreakerOutcome(adapter: ICliAdapter): boolean {
+    return (
+      this.registry !== defaultCliCircuitBreakerRegistry ||
+      gatewayServedSlotOf(adapter)?.arm === undefined
+    );
+  }
+
+  private getFallbackClis(
+    excludeCli: CliName,
+    taskCategory?: TaskCategory,
+    task?: CliTask
+  ): CliName[] {
     const chain =
       taskCategory !== undefined
         ? getFallbackChainForCategory(taskCategory, CATEGORY_TO_FALLBACK[taskCategory])
         : this.config.fallbackChain;
-    return [...chain].filter(
-      (cli) => cli !== excludeCli && !this.registry.isOpen(cli) && this.adapters.has(cli)
-    );
+    return [...chain].filter((cli) => {
+      const adapter = this.adapters.get(cli);
+      return (
+        cli !== excludeCli &&
+        adapter !== undefined &&
+        !this.registry.isArmOpen(this.breakerFor(adapter, task).key)
+      );
+    });
   }
 }
 

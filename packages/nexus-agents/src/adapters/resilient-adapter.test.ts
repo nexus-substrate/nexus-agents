@@ -19,6 +19,7 @@ import {
   CircuitBreakerRegistry,
   DEFAULT_CIRCUIT_BREAKER_CONFIG,
 } from '../cli-adapters/circuit-breaker.js';
+import { breakerKeys } from '../cli-adapters/breaker-key.js';
 
 // ============================================================================
 // Mocks — vi.mock is hoisted, so use inline factories only
@@ -572,6 +573,64 @@ describe('ResilientAdapter', () => {
     // retry loop records its own failures (resilient-adapter-breaker-count.test).
     beforeEach(() => {
       vi.mocked(createAutoAdapter).mockReturnValue(Promise.resolve(makeSelection('claude', 'api')));
+    });
+
+    it.each([false, true])(
+      'records vendor API failures under the reader arm (durable=%s, #7070)',
+      async (durable) => {
+        const registry = new CircuitBreakerRegistry();
+        const failingAdapter = new ResilientAdapter({ circuitBreakerRegistry: registry });
+        vi.mocked(createAutoAdapter).mockResolvedValue(makeSelection('anthropic', 'api'));
+        vi.mocked(isDurableCapacityError).mockReturnValue(durable);
+        mockComplete.mockResolvedValue(err(new ModelError('upstream failed')));
+        const breaker = registry.getArmBreaker('api:anthropic');
+        for (let i = 0; i < breaker.getSnapshot().config.failureThreshold; i++) {
+          await failingAdapter.complete({ messages: [] });
+        }
+        expect(registry.isArmOpen('api:anthropic')).toBe(true);
+        expect([...registry.getAllArmSnapshots().keys()]).not.toContain('anthropic');
+        expect(failingAdapter.getHealth()?.state).toBe('degraded');
+        await failingAdapter.complete({ messages: [] });
+        expect(createAutoAdapter).toHaveBeenCalledTimes(2);
+        failingAdapter.dispose();
+      }
+    );
+
+    it('does not evict the default opencode selection for a custom-route event (#7070)', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const proxy = new ResilientAdapter({ circuitBreakerRegistry: registry });
+      vi.mocked(createAutoAdapter).mockResolvedValue(makeSelection('opencode', 'cli'));
+      await proxy.complete({ messages: [] });
+      const custom = registry.getArmBreaker('api:opencode-custom', { failureThreshold: 1 });
+      custom.recordFailure('connection');
+      expect(proxy.getHealth()?.state).toBe('healthy');
+      await proxy.complete({ messages: [] });
+      expect(createAutoAdapter).toHaveBeenCalledTimes(1);
+      proxy.dispose();
+    });
+
+    it('records gateway-served API selections on their slot and evicts that selection (#7070)', async () => {
+      const registry = new CircuitBreakerRegistry();
+      const proxy = new ResilientAdapter({ circuitBreakerRegistry: registry });
+      const gatewayArm = 'api:gateway-test';
+      const selection = makeSelection('claude', 'api');
+      const gatewayAdapter = { ...selection.adapter, gatewayArm };
+      vi.mocked(createAutoAdapter).mockResolvedValue({
+        ...selection,
+        adapter: gatewayAdapter,
+      });
+      mockComplete.mockResolvedValue(err(new ModelError('upstream failed')));
+      const slotKey = breakerKeys.forArm({ name: 'claude', gatewayArm });
+      const threshold = registry.getArmBreaker(slotKey).getSnapshot().config.failureThreshold;
+      for (let i = 0; i < threshold; i++) await proxy.complete({ messages: [] });
+      expect(registry.isArmOpen(slotKey)).toBe(true);
+      expect(registry.isOpen('claude')).toBe(false);
+      expect(registry.isArmOpen(gatewayArm)).toBe(false);
+      expect(proxy.getHealth()?.state).toBe('degraded');
+      expect(createAutoAdapter).toHaveBeenCalledTimes(1);
+      await proxy.complete({ messages: [] });
+      expect(createAutoAdapter).toHaveBeenCalledTimes(2);
+      proxy.dispose();
     });
 
     function makeLogger(): ILogger {

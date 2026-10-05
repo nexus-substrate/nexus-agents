@@ -15,7 +15,12 @@ import type { ModelId } from '../../config/model-capabilities-types.js';
 import { computeCostDetail } from '../../learning/usage-log.js';
 import { CliToModelAdapter } from '../cli-to-model-adapter.js';
 import { isCallerInputCliError } from '../cli-error-helpers.js';
-import { getDefaultCliCircuitBreakerRegistry } from '../cli-circuit-breaker.js';
+import {
+  CliCircuitBreakerIntegration,
+  getDefaultCliCircuitBreakerRegistry,
+} from '../cli-circuit-breaker.js';
+import { getAvailableClis } from '../factory.js';
+import { CliDetectionCache } from '../cli-detection-cache.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('opencode'));
@@ -905,6 +910,194 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
     const args = spawnedArgs();
     expect(args).toContain('--model');
     expect(args[args.indexOf('--model') + 1]).toBe('custom/claude-sonnet-4-6');
+  });
+
+  it.each(['opencode-custom-sonnet', 'opencode-custom-opus', 'custom/claude-sonnet-4-6'])(
+    'isolates %s failures from the default route (#7070)',
+    async (model) => {
+      const registry = getDefaultCliCircuitBreakerRegistry();
+      registry.resetAll();
+      const a = await adapterWithInventory([...INVENTORY, 'custom/claude-opus-4-6']);
+      vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+      const threshold = registry.getBreaker('opencode').getSnapshot().config.failureThreshold;
+      for (let i = 0; i < threshold; i++) {
+        expect((await a.execute({ content: 'x', model }, { allowRetry: false })).ok).toBe(false);
+      }
+      expect(registry.isOpen('opencode')).toBe(false);
+      expect(registry.isArmOpen('api:opencode-custom')).toBe(true);
+      registry.resetAll();
+      await a.dispose();
+    }
+  );
+
+  it('keeps opencode in voter panels during a custom-route outage (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    const a = await adapterWithInventory(INVENTORY);
+    vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+    const threshold = registry.getBreaker('opencode').getSnapshot().config.failureThreshold;
+    for (let i = 0; i < threshold; i++) {
+      await a.execute({ content: 'x', model: 'opencode-custom-sonnet' }, { allowRetry: false });
+    }
+    const cache = new CliDetectionCache();
+    cache.set('opencode', {
+      healthy: true,
+      version: '1.0.0',
+      versionStatus: 'supported',
+      checkedAt: new Date(),
+    });
+    expect(await getAvailableClis(cache)).toContain('opencode');
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it.each([undefined, 'opencode-default'])(
+    'opens the plain default-route breaker for model %s (#7070)',
+    async (model) => {
+      const registry = getDefaultCliCircuitBreakerRegistry();
+      registry.resetAll();
+      const a = await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+      vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+      const threshold = registry.getBreaker('opencode').getSnapshot().config.failureThreshold;
+      const task: CliTask = model === undefined ? { content: 'x' } : { content: 'x', model };
+      for (let i = 0; i < threshold; i++) {
+        expect((await a.execute(task, { allowRetry: false })).ok).toBe(false);
+      }
+      expect(registry.isOpen('opencode')).toBe(true);
+      expect(registry.isArmOpen('api:opencode-custom')).toBe(false);
+      registry.resetAll();
+      await a.dispose();
+    }
+  );
+
+  it.each([undefined, 'opencode-default'])(
+    'records default calls on a custom-configured adapter under opencode (model %s, #7070)',
+    async (model) => {
+      const registry = getDefaultCliCircuitBreakerRegistry();
+      registry.resetAll();
+      await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+      const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+      vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+      const task: CliTask = model === undefined ? { content: 'x' } : { content: 'x', model };
+      expect((await a.execute(task, { allowRetry: false })).ok).toBe(false);
+      expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBe(1);
+      expect(registry.getAllArmSnapshots().get('api:opencode-custom')?.failureCount ?? 0).toBe(0);
+      if (model === undefined) expect(spawnedArgs()).not.toContain('--model');
+      registry.resetAll();
+      await a.dispose();
+    }
+  );
+
+  it('records a usable configured custom model under its own route (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory(INVENTORY);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+    expect((await a.execute({ content: 'x' }, { allowRetry: false })).ok).toBe(false);
+    expect(registry.getAllArmSnapshots().get('api:opencode-custom')?.failureCount).toBe(1);
+    expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBe(0);
+    expect(spawnedArgs()).toContain('custom/claude-sonnet-4-6');
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('keeps a default success from resetting the configured custom-route breaker (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    registry.getArmBreaker('api:opencode-custom').recordFailure('connection');
+    registry.getBreaker('opencode').recordFailure('connection');
+    expect((await a.execute({ content: 'x' })).ok).toBe(true);
+    expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBe(0);
+    expect(registry.getArmBreaker('api:opencode-custom').getSnapshot().failureCount).toBe(1);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('refuses a restricted default call before probing its configured route (#7070)', async () => {
+    resetOpenCodeModelCache();
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const result = await a.execute({ content: 'review', accessMode: 'read-only-analysis' });
+    expect(result.ok).toBe(false);
+    expect(vi.mocked(execFile)).not.toHaveBeenCalled();
+    expect(vi.mocked(spawn)).not.toHaveBeenCalled();
+    await a.dispose();
+  });
+
+  it('lets the integration use a real default fallback despite a configured custom outage (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    const custom = registry.getArmBreaker('api:opencode-custom');
+    const threshold = custom.getSnapshot().config.failureThreshold;
+    for (let i = 0; i < threshold; i++) custom.recordFailure('connection');
+    expect((await integration.execute(a, { content: 'default fallback' })).ok).toBe(true);
+    expect(spawnedArgs()).not.toContain('--model');
+    expect(custom.getSnapshot().failureCount).toBe(threshold);
+    expect(integration.getHealthStatus().systemHealthy).toBe(true);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('lets the integration use an implicit usable custom model despite a default outage (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory(INVENTORY);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    const plain = registry.getBreaker('opencode');
+    for (let i = 0; i < plain.getSnapshot().config.failureThreshold; i++) {
+      plain.recordFailure('connection');
+    }
+    expect((await integration.execute(a, { content: 'configured custom' })).ok).toBe(true);
+    expect(spawnedArgs()).toContain('custom/claude-sonnet-4-6');
+    expect(registry.isOpen('opencode')).toBe(true);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('keeps integration default failures off an unavailable configured custom route (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+    expect((await integration.execute(a, { content: 'default fallback' })).ok).toBe(false);
+    expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBeGreaterThan(0);
+    expect(registry.getArmBreaker('api:opencode-custom').getSnapshot().failureCount).toBe(0);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('refuses an implicit restricted integration call before probing (#7070)', async () => {
+    resetOpenCodeModelCache();
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    const result = await integration.execute(a, {
+      content: 'review',
+      accessMode: 'read-only-analysis',
+    });
+    expect(result.ok).toBe(false);
+    expect(vi.mocked(execFile)).not.toHaveBeenCalled();
+    expect(vi.mocked(spawn)).not.toHaveBeenCalled();
+    await a.dispose();
+  });
+
+  it('preserves capacity usage across implicit-model integration calls (#7070)', async () => {
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    expect((await integration.execute(a, { content: 'first default' })).ok).toBe(true);
+    const first = await a.getCapacity();
+    expect((await integration.execute(a, { content: 'second default' })).ok).toBe(true);
+    const second = await a.getCapacity();
+    expect(second.remainingRequests).toBe(first.remainingRequests - 1);
+    await a.dispose();
   });
 
   it('resolves a bare provider/model to the openrouter/-prefixed id opencode lists', async () => {
