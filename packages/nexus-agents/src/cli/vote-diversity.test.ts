@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { AgentVoteResult, VoterRole } from './vote-types.js';
 import {
+  assignedPanelDiversityOf,
   panelDiversityOf,
   singleFamilyPanelWarning,
   singleModelPanelWarning,
@@ -77,6 +78,54 @@ function anthropicPanel(): AgentVoteResult[] {
     seat('scope_steward', { cli: 'cli-claude', model: 'claude-haiku', assignedCli: 'claude' }),
   ];
 }
+
+describe('assignedPanelDiversityOf', () => {
+  it('counts all three assignments when only one seat answers', () => {
+    const panel = [
+      seat('architect', { pinnedModel: 'claude-opus', model: 'claude-opus' }),
+      seat('security', { pinnedModel: 'openai/o3', source: 'error', model: undefined }),
+      seat('pm', {
+        pinnedModel: 'gemini-3.1-pro-preview',
+        source: 'unverifiable',
+        vote: { decision: 'abstain', reasoning: 'Cannot inspect artifact', confidence: 0 },
+      }),
+    ];
+    expect(assignedPanelDiversityOf(panel)).toEqual({
+      assignedDistinctModels: 3,
+      assignedDistinctFamilies: 3,
+    });
+    expect(panelDiversityOf(panel)).toMatchObject({ distinctModels: 1, distinctFamilies: 1 });
+  });
+
+  it('counts one assigned model even if execution used another model', () => {
+    const panel = SEVEN.map((role) => seat(role, { pinnedModel: 'openai/o3' }));
+    expect(assignedPanelDiversityOf(panel)).toEqual({
+      assignedDistinctModels: 1,
+      assignedDistinctFamilies: 1,
+    });
+  });
+
+  it('counts canonical model identities and does not invent a family for unknown models', () => {
+    const panel = [
+      seat('architect', { pinnedModel: 'openai/o3' }),
+      seat('security', { pinnedModel: 'o3' }),
+      seat('pm', { pinnedModel: 'custom-model' }),
+    ];
+    expect(assignedPanelDiversityOf(panel)).toEqual({
+      assignedDistinctModels: 2,
+      assignedDistinctFamilies: 1,
+    });
+  });
+
+  it('names an empty or unresolved roster as unmeasured, not zero diversity', () => {
+    expect(assignedPanelDiversityOf([])).toEqual({});
+    expect(assignedPanelDiversityOf([seat('pm')])).toEqual({});
+    expect(assignedPanelDiversityOf([seat('pm', { pinnedModel: 'pending-detection' })])).toEqual(
+      {}
+    );
+    expect(assignedPanelDiversityOf([seat('pm', { pinnedModel: '' })])).toEqual({});
+  });
+});
 
 describe('panelDiversityOf — families (#6606)', () => {
   it('counts distinct vendor families over the answering seats', () => {

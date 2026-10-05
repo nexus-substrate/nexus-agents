@@ -1803,6 +1803,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
         simulated: false,
         error: false,
         modelUsed: 'claude-sonnet',
+        assignedModel: 'codex-5.3',
         rejectionCategories: [],
         // #6115: present only on a seat that answered elsewhere; set here so
         // the strict parse covers the shape.
@@ -1813,6 +1814,8 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA covers the full response (#4032)', () => 
     simulateVotes: false,
     // #6115: always present on the response; the key-parity guard covers it.
     panelDiversity: { distinctModels: 1, distinctFamilies: 1, unclassifiedSeats: 0, fallbacks: 1 },
+    assignedDistinctModels: 3,
+    assignedDistinctFamilies: 3,
     // #6258: present on every live panel; the key-parity guard covers it.
     workspace: '/srv/panel-cwd',
     higherOrderMetadata: {
