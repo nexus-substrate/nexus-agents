@@ -165,7 +165,9 @@ async function main(argv: readonly string[]): Promise<number> {
       'scripts/publish-env.ts',
       'changeset',
       'publish',
-      ...argv,
+      ...(argv.includes('--tag') || argv.some((arg) => arg.startsWith('--tag='))
+        ? argv
+        : ['--tag', 'next', ...argv]),
     ],
     publishEnv(process.env),
     { stdout: (c) => process.stdout.write(c), stderr: (c) => process.stderr.write(c) }
