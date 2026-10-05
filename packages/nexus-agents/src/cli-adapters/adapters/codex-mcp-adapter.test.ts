@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PassThrough } from 'node:stream';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -306,6 +306,49 @@ describe('CodexMcpAdapter', () => {
   });
 
   describe('execute()', () => {
+    describe('single MCP result parser (#7073)', () => {
+      // documented-format, unverified against a live capture.
+      // The installed codex lacks a working mcp-server command (connection
+      // closed; direct invocation reports "stdin is not a terminal").
+      // MCP specifies absent isError as false:
+      // https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.ts
+      function fixture(name: string): unknown {
+        return JSON.parse(
+          readFileSync(new URL(`../parsers/fixtures/${name}`, import.meta.url), 'utf8')
+        ) as unknown;
+      }
+
+      async function replay(
+        result: unknown
+      ): Promise<Awaited<ReturnType<CodexMcpAdapter['execute']>>> {
+        Client.mockImplementationOnce(function () {
+          return {
+            connect: vi.fn().mockResolvedValue(undefined),
+            callTool: vi.fn().mockResolvedValue(result),
+          };
+        });
+        return adapter.execute({ content: 'Reply with the single word ok' }, { allowRetry: false });
+      }
+
+      it('accepts absent isError: documented-format, unverified against a live capture', async () => {
+        const result = await replay(fixture('codex-mcp-success.documented.json'));
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.value.text).toBe('ok');
+      });
+
+      it('rejects isError true: documented-format, unverified against a live capture', async () => {
+        const result = await replay(fixture('codex-mcp-error.documented.json'));
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.error.message).toContain('Tool execution failed');
+      });
+
+      it('rejects empty content: documented-format, unverified against a live capture', async () => {
+        const result = await replay({ content: [] });
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
+      });
+    });
+
     describe('working directory binding (#7012)', () => {
       function clientReturning(): {
         connect: ReturnType<typeof vi.fn>;

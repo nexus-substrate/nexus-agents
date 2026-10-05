@@ -348,7 +348,9 @@ describe('the CLI→model bridge forwards the mode and fails closed (#6754)', ()
  */
 const PRINT_PERMISSION =
   'const v = process.env.OPENCODE_PERMISSION ?? "UNSET";' +
-  'process.stdout.write(JSON.stringify({type:"text",sessionID:"s",part:{type:"text",text:v}}) + "\\n");';
+  // Documented probe stream: environment forwarding requires a completed turn (#7073).
+  'process.stdout.write(JSON.stringify({type:"text",sessionID:"s",part:{type:"text",text:v}}) + "\\n");' +
+  'process.stdout.write(JSON.stringify({type:"step_finish",sessionID:"s",part:{reason:"stop"}}) + "\\n");';
 
 const DENY = JSON.stringify({ bash: 'deny', edit: 'deny', webfetch: 'deny' });
 

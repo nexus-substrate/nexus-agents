@@ -1,0 +1,2 @@
+{"type":"error","timestamp":1791117198556,"sessionID":"ses_sanitized","error":{"name":"UnknownError","data":{"message":"Model not found: custom/claude-sonnet-4-6."}}}
+{"type":"error","timestamp":1791117198556,"sessionID":"ses_sanitized","error":{"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_fa3c9026"}}}

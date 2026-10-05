@@ -1,0 +1,13 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 4210,
+  "result": "done",
+  "session_id": "SANITIZED_SESSION_ID",
+  "total_cost_usd": 0.0342,
+  "usage": {
+    "input_tokens": 1200,
+    "output_tokens": 340
+  }
+}
