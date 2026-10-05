@@ -244,3 +244,73 @@ describe('per-voter cost row names the assigned CLI (#6115)', () => {
     expect('assignedCli' in (summary.perVoter[1] ?? {})).toBe(false);
   });
 });
+
+describe('consensus_vote response: cross-family fallback (#7106)', () => {
+  const fallbackSeat = seat('security', {
+    assignedCli: 'codex',
+    cli: 'cli-claude',
+    model: 'claude-fable-5',
+    pinnedModel: 'gpt-6.1-sol',
+    fallback: { fromCli: 'codex', fromModel: 'gpt-6.1-sol', reason: 'unknown' },
+  });
+
+  it('names the role, assigned family and served family even when the panel remains diverse', () => {
+    const response = buildResponse(INPUT, extended([fallbackSeat, seat('architect')]));
+    expect(response.panelWarning).toContain('security');
+    expect(response.panelWarning).toContain('assigned openai');
+    expect(response.panelWarning).toContain('served anthropic');
+  });
+
+  it('discloses an undetected Codex assignment using its assigned CLI family', () => {
+    const response = buildResponse(
+      INPUT,
+      extended([
+        {
+          ...fallbackSeat,
+          pinnedModel: 'pending-detection',
+          fallback: { fromCli: 'codex', reason: 'unknown' },
+        },
+      ])
+    );
+    expect(response.panelWarning).toContain('security: assigned openai, served anthropic');
+  });
+
+  it('adds no fallback family warning for a same-family substitution', () => {
+    const response = buildResponse(
+      INPUT,
+      extended([
+        {
+          ...fallbackSeat,
+          assignedCli: 'claude',
+          pinnedModel: 'claude-opus',
+          fallback: { fromCli: 'claude', fromModel: 'claude-opus', reason: 'capacity' },
+        },
+      ])
+    );
+    expect(response.panelWarning).toBeUndefined();
+  });
+
+  it('appends fallback disclosure without losing an existing degradation warning', () => {
+    const response = buildResponse(
+      INPUT,
+      extended([
+        fallbackSeat,
+        seat('architect'),
+        seat('pm', { source: 'error', model: undefined, error: 'boom' }),
+      ])
+    );
+    expect(response.panelWarning).toContain('Panel degraded: 1 of 3 voters errored');
+    expect(response.panelWarning).toContain('security: assigned openai, served anthropic');
+  });
+
+  it('does not claim a family change for unknown or unanswered seats or an empty panel', () => {
+    for (const votes of [
+      [],
+      [{ ...fallbackSeat, model: 'pending-detection' }],
+      [{ ...fallbackSeat, model: 'mystery-model' }],
+      [{ ...fallbackSeat, source: 'error' as const, error: 'boom' }],
+    ]) {
+      expect(buildResponse(INPUT, extended(votes)).panelWarning ?? '').not.toContain('served');
+    }
+  });
+});

@@ -305,12 +305,10 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
         ? `${task.systemPrompt}\n\n${task.content}`
         : task.content;
 
-    // --print LAST with an explicit value. agy accepts flags in any order, but
-    // a valueless --print consumes whatever token follows it, so the prompt is
-    // always passed as its argument rather than positionally.
-    args.push('--print', content);
-
-    return { command: this.binaryName, args };
+    // agy reads text stdin in print mode when no prompt flag is present.
+    // Explicit --print (even with an empty value) suppresses that stdin read.
+    // Keep large artifact prompts out of argv's per-argument limit (#7106).
+    return { command: this.binaryName, args, stdin: content };
   }
 
   private checkCircuitBreaker(): CliError | null {

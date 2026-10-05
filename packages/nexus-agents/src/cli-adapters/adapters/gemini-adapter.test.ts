@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GeminiCliAdapter, createGeminiAdapter } from './gemini-adapter.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
+import type { CommandConfig } from '../subprocess-adapter.js';
 
 /** Expected default model ID for Gemini, derived from canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('gemini'));
@@ -224,11 +225,11 @@ describe('GeminiCliAdapter', () => {
 });
 
 describe('GeminiCliAdapter systemPrompt (#1886, reworked in #4346)', () => {
-  function getCommand(task: unknown): { command: string; args: string[]; cleanup?: () => void } {
+  function getCommand(task: unknown): CommandConfig {
     const adapter = new GeminiCliAdapter();
     return (
       adapter as unknown as {
-        getCommand: (t: unknown) => { command: string; args: string[]; cleanup?: () => void };
+        getCommand: (t: unknown) => CommandConfig;
       }
     ).getCommand(task);
   }
@@ -240,15 +241,13 @@ describe('GeminiCliAdapter systemPrompt (#1886, reworked in #4346)', () => {
     // framing fidelity, pinned here so it is not mistaken for an oversight.
     const cmd = getCommand({ content: 'test prompt', systemPrompt: 'You are strict.' });
 
-    const printIdx = cmd.args.indexOf('--print');
-    expect(cmd.args[printIdx + 1]).toBe('You are strict.\n\ntest prompt');
+    expect(cmd.stdin).toBe('You are strict.\n\ntest prompt');
   });
 
   it('passes the content unchanged when no system prompt is set', () => {
     const cmd = getCommand({ content: 'test prompt' });
 
-    const printIdx = cmd.args.indexOf('--print');
-    expect(cmd.args[printIdx + 1]).toBe('test prompt');
+    expect(cmd.stdin).toBe('test prompt');
   });
 
   it('writes no temp file, so there is nothing to clean up', () => {
@@ -262,10 +261,12 @@ describe('GeminiCliAdapter systemPrompt (#1886, reworked in #4346)', () => {
 });
 
 describe('GeminiCliAdapter runs agy, not the retired gemini CLI (#4346)', () => {
-  function getCommand(task: unknown): { command: string; args: string[] } {
+  function getCommand(task: unknown): CommandConfig {
     const adapter = new GeminiCliAdapter();
     return (
-      adapter as unknown as { getCommand: (t: unknown) => { command: string; args: string[] } }
+      adapter as unknown as {
+        getCommand: (t: unknown) => CommandConfig;
+      }
     ).getCommand(task);
   }
 
@@ -280,7 +281,7 @@ describe('GeminiCliAdapter runs agy, not the retired gemini CLI (#4346)', () => 
 
     expect(args).toContain('--output-format');
     expect(args).toContain('--model');
-    expect(args).toContain('--print');
+    expect(args).not.toContain('--print');
     // The retired CLI's short forms.
     expect(args).not.toContain('-o');
     expect(args).not.toContain('-m');
@@ -299,12 +300,21 @@ describe('GeminiCliAdapter runs agy, not the retired gemini CLI (#4346)', () => 
     expect(args).not.toContain('--resume');
   });
 
-  it('passes the prompt as the value of --print, never positionally', () => {
-    // A valueless --print consumes whatever token follows it.
-    const { args } = getCommand({ content: 'hi' });
+  it('passes the prompt via stdin without --print (#7106)', () => {
+    // agy reads text stdin only when no explicit prompt flag is present.
+    const { args, stdin } = getCommand({ content: 'hi' });
 
-    expect(args[args.indexOf('--print') + 1]).toBe('hi');
-    expect(args[0]).not.toBe('hi');
+    expect(stdin).toBe('hi');
+    expect(args).not.toContain('--print');
+    expect(args).not.toContain('hi');
+  });
+
+  it('keeps a 200 KiB prompt out of argv (#7106)', () => {
+    const content = 'x'.repeat(200 * 1024);
+    const { args, stdin } = getCommand({ content });
+
+    expect(args).not.toContain(content);
+    expect(stdin).toBe(content);
   });
 });
 
@@ -375,10 +385,10 @@ describe('GeminiCliAdapter hands agy the working tree (#6254)', () => {
     expect(args).not.toContain('--print-timeout');
   });
 
-  it('puts --add-dir before --print, which must stay last', () => {
+  it('keeps --add-dir when the prompt is delivered through stdin', () => {
     const { args } = getCommand({ content: 'hi' });
 
-    expect(args.indexOf('--add-dir')).toBeLessThan(args.indexOf('--print'));
-    expect(args.indexOf('--print')).toBe(args.length - 2);
+    expect(args).toContain('--add-dir');
+    expect(args).not.toContain('--print');
   });
 });

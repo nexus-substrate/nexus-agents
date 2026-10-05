@@ -13,6 +13,7 @@
  * @module cli/vote-diversity
  */
 
+import { CLI_TO_MODELSDEV_VENDOR } from '../config/models-dev-by-vendor.js';
 import { countDistinctModels, UNRESOLVED_MODEL_ID } from '../config/model-equivalence.js';
 import type { AgentVoteResult, SeatFallback } from './vote-types.js';
 import { bareCliName } from './voter-fallback.js';
@@ -147,4 +148,28 @@ export function singleFamilyPanelWarning(votes: readonly AgentVoteResult[]): str
     `All ${String(answered.length)} answering seats ran ${vendorFamilyOf(model)} models ` +
     `(${String(distinctModels)} distinct); independence is weaker than assigned.`
   );
+}
+
+/** The assigned vendor, using the CLI vendor only when its model never resolved. */
+function assignedFallbackFamily(v: AgentVoteResult, fallback: SeatFallback): string {
+  const model = resolvedModel({ ...v, model: fallback.fromModel ?? v.pinnedModel });
+  return vendorFamilyOf(model ?? CLI_TO_MODELSDEV_VENDOR[fallback.fromCli] ?? '');
+}
+
+/**
+ * Disclose answering fallback seats whose vendor family changed (#7106), even
+ * if the remaining panel is diverse. An undetected assignment uses its known
+ * CLI vendor; an unknown served model cannot establish a family change.
+ * Empty panels and same-family fallbacks produce no warning.
+ */
+export function crossFamilyFallbackWarning(votes: readonly AgentVoteResult[]): string | undefined {
+  const changes: string[] = [];
+  for (const v of answeringSeats(votes)) {
+    if (v.fallback === undefined) continue;
+    const assigned = assignedFallbackFamily(v, v.fallback);
+    const served = vendorFamilyOf(resolvedModel(v) ?? '');
+    if (assigned === 'unknown' || served === 'unknown' || assigned === served) continue;
+    changes.push(`${v.role}: assigned ${assigned}, served ${served}`);
+  }
+  return changes.length === 0 ? undefined : `Cross-family fallback: ${changes.join('; ')}.`;
 }
