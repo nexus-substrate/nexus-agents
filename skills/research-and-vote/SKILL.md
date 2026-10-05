@@ -50,7 +50,7 @@ Catfish, Scope Steward
 | -------------------- | ----------------------------------------------------------------------------------------------- |
 | Reversible changes   | Majority                                                                                        |
 | Architecture         | Supermajority                                                                                   |
-| Security-critical    | Unanimous                                                                                       |
+| Security-critical    | Supermajority                                                                                   |
 | Breaking API changes | Supermajority (≥5 of 7 on a full panel) AND no unresolved concrete-defect dissent from any seat |
 
 See [CONSENSUS_PROTOCOLS.md](../../docs/architecture/CONSENSUS_PROTOCOLS.md) for protocol selection matrix.
