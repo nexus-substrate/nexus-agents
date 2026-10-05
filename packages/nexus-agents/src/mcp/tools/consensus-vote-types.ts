@@ -219,6 +219,17 @@ export const ConsensusVoteInputSchema = z
           '"declare", not "MUST", because the warning is what the code actually holds — it is ' +
           'tightened back only in the same change that promotes the warning to a refusal.'
       ),
+    artifactPath: z
+      .string()
+      .min(1)
+      .max(4096)
+      .optional()
+      .describe(
+        'UTF-8 artifact file within the repository root (server cwd). Its content is inlined ' +
+          "into every seat's proposal with a SHA-256 digest; maximum 256 KiB. Missing, empty, " +
+          'binary (NUL byte), oversized, and escaping paths are rejected. Seats read the ' +
+          'inlined text, not the tree.'
+      ),
     options: z
       .array(z.string().min(1).max(200))
       .min(2)

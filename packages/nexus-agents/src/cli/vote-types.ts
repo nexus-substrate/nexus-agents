@@ -37,6 +37,8 @@ export type NoQuorumPolicy = 'fail' | 'exit2' | 'retry';
  */
 export interface VoteCommandOptions {
   readonly proposal: string;
+  /** File snapshotted into the proposal before launching voter seats. */
+  readonly artifactFile?: string | undefined;
   /**
    * Named alternatives for a multi-option proposal (#4472, #4941).
    *
