@@ -6,6 +6,7 @@
  * @module testing/e2e/setup
  */
 
+import { NODE_ENGINE_RANGE, isNodeVersionSupported } from '../../version.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger({ component: 'e2e-setup' });
@@ -36,10 +37,8 @@ export function teardown(): Promise<void> {
 function validateEnvironment(): void {
   // Check Node.js version
   const nodeVersion = process.version;
-  const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0] ?? '0', 10);
-
-  if (majorVersion < 22) {
-    throw new Error(`Node.js 22+ required for E2E tests. Found: ${nodeVersion}`);
+  if (!isNodeVersionSupported(nodeVersion)) {
+    throw new Error(`Node.js ${NODE_ENGINE_RANGE} required for E2E tests. Found: ${nodeVersion}`);
   }
 
   logger.debug('Environment validated', { nodeVersion });

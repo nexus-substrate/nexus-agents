@@ -402,7 +402,7 @@ nexus-agents --help       # Full command list
 
 ## Prerequisites & Environment
 
-**Required:** Node.js 22.x LTS, pnpm 9.x (or npm 10.x). **Optional:** Docker (sandbox mode), Claude CLI (MCP mode).
+**Required:** Node.js 24.x LTS, pnpm 9.x (or npm 10.x). **Optional:** Docker (sandbox mode), Claude CLI (MCP mode).
 
 Most-used env vars:
 
@@ -621,12 +621,12 @@ _Auto-generated from source. 47 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: ffcf786ddfe5_
+_Governance Version: ac949c3ff921_
 
 <!-- GOVERNANCE:VERSION:END -->
 
 _MCP Protocol: 2025-11-25_
-_Node.js: >=22.5.0_
+_Node.js: >=24_
 _TypeScript: 6.x_
 
 <!-- GENERATED:FROM_AGENTS:END -->

@@ -31,7 +31,7 @@ concurrency:
   group: sica-test-generation
   cancel-in-progress: false
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
   TARGET_COVERAGE: ${{ github.event.inputs.target_coverage || '85' }}
 
 jobs:

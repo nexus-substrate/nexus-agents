@@ -19,7 +19,7 @@ Nexus-agents ships as a Claude Code plugin. Installing it exposes:
 
 ## Prerequisites
 
-- **Node.js 22.x LTS** — required for the MCP server
+- **Node.js 24.x LTS** — required for the MCP server
 - **Claude Code** (or another agent that reads `.claude-plugin/` directly)
 
 ## Install
@@ -63,7 +63,7 @@ Cache at `~/.claude/plugins/` is cleared automatically.
 
 ## Troubleshooting
 
-**MCP tools don't appear.** Ensure Node 22+ is on your `PATH` — the server launches via `npx -y nexus-agents --mode=server`. Check the Claude Code logs for `ENOENT` or `EACCES`.
+**MCP tools don't appear.** Ensure Node 24+ is on your `PATH` — the server launches via `npx -y nexus-agents --mode=server`. Check the Claude Code logs for `ENOENT` or `EACCES`.
 
 **Hooks don't fire.** Hooks are registered at plugin root via `${CLAUDE_PLUGIN_ROOT}/hooks/*.sh`. Verify the plugin's runtime root is resolvable via `echo $CLAUDE_PLUGIN_ROOT` inside a hook script.
 

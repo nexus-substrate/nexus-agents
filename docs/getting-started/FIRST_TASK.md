@@ -8,7 +8,7 @@ related_files: [./INSTALLATION.md, ./CONFIGURATION.md, ./PLUGIN_INSTALL.md]
 
 # Your first task
 
-A focused tutorial: install → verify → run a real consensus vote → wire it into your editor. About 5 minutes if you have Node 22; less if everything's already installed.
+A focused tutorial: install → verify → run a real consensus vote → wire it into your editor. About 5 minutes if you have Node 24; less if everything's already installed.
 
 This is the canonical new-user path. If you want platform-specific install details, jump to [INSTALLATION.md](./INSTALLATION.md). If you want every knob enumerated, jump to [CONFIGURATION.md](./CONFIGURATION.md). For Claude Code plugin install specifically, see [PLUGIN_INSTALL.md](./PLUGIN_INSTALL.md). Everything below stays on the canonical "first 5 minutes" path.
 
@@ -46,7 +46,7 @@ Nexus Agents Doctor
 
 Checking environment...
 
-✓ Node.js version: v22.x.x
+✓ Node.js version: v24.x.x
 ⚠ API keys configured: 0 of 3
   Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY
 

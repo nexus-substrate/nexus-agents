@@ -61,14 +61,14 @@ npm config set prefix '~/.npm-global'
 export PATH="~/.npm-global/bin:$PATH"
 
 # Option 2: Use a Node version manager (nvm, fnm)
-nvm install 22
-nvm use 22
+nvm install 24
+nvm use 24
 npm install -g nexus-agents
 ```
 
 ### "Unsupported Node.js version"
 
-**Cause:** nexus-agents requires Node.js 22.x LTS
+**Cause:** nexus-agents requires Node.js 24.x LTS
 
 **Solution:**
 
@@ -76,13 +76,13 @@ npm install -g nexus-agents
 # Check current version
 node --version
 
-# Install Node.js 22 via nvm
-nvm install 22
-nvm use 22
+# Install Node.js 24 via nvm
+nvm install 24
+nvm use 24
 
 # Or via fnm
-fnm install 22
-fnm use 22
+fnm install 24
+fnm use 24
 ```
 
 ---

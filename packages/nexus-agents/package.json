@@ -58,7 +58,7 @@
   ],
   "author": "William Zujkowski",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=24"
   },
   "scripts": {
     "build": "tsup && pnpm exec tsx ../../scripts/check-dist-assets.ts",

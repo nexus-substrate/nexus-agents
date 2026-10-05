@@ -219,7 +219,7 @@ async function checkSqliteAvailability(): Promise<VerifyCheck> {
     passed: false,
     severity: 'warn',
     message: result.error ?? 'node:sqlite not available',
-    fix: 'Upgrade to Node >= 22.5.0 (node:sqlite is a builtin; nothing to install)',
+    fix: `Upgrade to Node ${NODE_ENGINE_RANGE} (node:sqlite is a builtin; nothing to install)`,
   };
 }
 

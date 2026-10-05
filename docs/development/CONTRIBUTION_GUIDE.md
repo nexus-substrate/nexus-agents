@@ -31,7 +31,7 @@ This guide provides detailed contribution workflows for nexus-agents. For quick 
 
 | Tool            | Version  | Purpose                 |
 | --------------- | -------- | ----------------------- |
-| Node.js         | 22.x LTS | Runtime environment     |
+| Node.js         | 24.x LTS | Runtime environment     |
 | pnpm            | 9.x      | Package manager         |
 | Git             | Latest   | Version control         |
 | GitHub CLI (gh) | Latest   | Issue and PR management |
