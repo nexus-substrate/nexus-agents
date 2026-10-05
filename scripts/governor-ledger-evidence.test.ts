@@ -263,6 +263,23 @@ describe('#6952 recomputed seat verdict', () => {
     );
   });
 
+  it('refuses a record whose repeated roles would count one seat several times', () => {
+    // Production keys the tally by role, so repeats collapse to one vote; a
+    // record that repeats an approving role is not evidence a panel produced.
+    const e = evidence({
+      votes: [
+        seat('architect', 'approve'),
+        seat('architect', 'approve'),
+        seat('architect', 'approve'),
+        seat('architect', 'approve'),
+        seat('security', 'reject'),
+        seat('scope_steward', 'reject'),
+      ],
+    });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain('repeated role');
+  });
+
   it.each(['supermajority', 'unanimous'] as const)('passes genuine approval at %s', (strategy) => {
     expect(evidence({ strategy, errorPolicy: 'absolute_quorum' }).kind).toBe('ratified');
   });

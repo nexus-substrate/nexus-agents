@@ -42,16 +42,42 @@ function recordedSeats(record: VoteRecord): AgentVoteResult[] {
   return seats;
 }
 
+/** Roles that occur more than once across answering and errored seats, sorted. */
+function repeatedRoles(seats: readonly AgentVoteResult[]): string[] {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const seat of seats) {
+    if (seen.has(seat.role)) repeated.add(seat.role);
+    seen.add(seat.role);
+  }
+  return [...repeated].sort();
+}
+
+/**
+ * Seat evidence a real panel cannot have produced. Zero seats is no evidence.
+ * Production keys the tally by role (consensus-vote.ts `voteMap.set(role, vote)`),
+ * so a repeated role is one vote there; refuse it rather than count it either way.
+ */
+function seatEvidenceDefect(
+  recordedVoters: number,
+  seats: readonly AgentVoteResult[]
+): string | undefined {
+  if (recordedVoters === 0) return 'zero voters — no seat evidence';
+  const repeated = repeatedRoles(seats);
+  if (repeated.length > 0) {
+    return `repeated role(s) in the recorded panel: ${repeated.join(', ')}`;
+  }
+  return undefined;
+}
+
 /** Never read the producer's aggregate decision, counts or approval percentage. */
 export function recomputeRecordDecision(record: VoteRecord): VoteDecisionOutcome {
-  if (record.voters.length === 0) {
-    return { decision: 'no_quorum', degradeReason: 'zero voters — no seat evidence' };
-  }
   const seats = recordedSeats(record);
+  const defect = seatEvidenceDefect(record.voters.length, seats);
+  if (defect !== undefined) return { decision: 'no_quorum', degradeReason: defect };
   const errorPolicy = record.errorPolicy ?? getDefaultErrorPolicy(record.strategy);
   const policy = applyErrorPolicy(seats, errorPolicy);
-  // Seat indices preserve every recorded seat, even when diagnostic roles repeat.
-  const votes = new Map(policy.engineVotes.map((seat, index) => [String(index), seat.vote]));
+  const votes = new Map(policy.engineVotes.map((seat) => [seat.role, seat.vote]));
   const tally = strategies.getStrategy(record.strategy).calculateOutcome(votes);
   const quorumReached = isQuorumReached(votes.size, DEFAULT_MIN_VOTERS_FOR_QUORUM);
   const result: ExtendedVotingResult = {
