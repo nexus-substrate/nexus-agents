@@ -240,7 +240,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(args[args.indexOf('-s') + 1]).toBe('read-only');
     });
 
-    it('should include task content directly (not JSON-stringified)', async () => {
+    it('passes prompt through stdin without putting prompt text in argv', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
         JSON.stringify({
@@ -260,8 +260,24 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
       const calls = vi.mocked(spawn).mock.calls;
       const args = calls[0]?.[1] as string[];
-      // Task content is passed directly without JSON.stringify (shell: false)
-      expect(args).toContain('Complex "task" with quotes');
+      expect(args).not.toContain(task.content);
+      expect(args.at(-1)).toBe('-');
+      expect(mockProcess.stdin?.write).toHaveBeenCalledWith(task.content);
+      expect(mockProcess.stdin?.end).toHaveBeenCalled();
+    });
+
+    it('keeps a 200 KiB prompt out of spawned argv and writes it intact to stdin', async () => {
+      const mockProcess = createMockProcess(COMPLETED_NDJSON);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+      const content = 'x'.repeat(200 * 1024);
+
+      expect((await adapter.execute({ content })).ok).toBe(true);
+
+      const args = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+      expect(args.includes(content)).toBe(false);
+      expect(args.at(-1)).toBe('-');
+      expect(mockProcess.stdin?.write).toHaveBeenCalledWith(content);
+      expect(mockProcess.stdin?.end).toHaveBeenCalled();
     });
 
     it('should always skip git repo check', async () => {
@@ -501,7 +517,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
         '-c',
         'features.use_legacy_landlock=true',
         '--skip-git-repo-check',
-        'Say hello',
+        '-',
       ]);
     });
 
@@ -514,7 +530,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
         '-s',
         'read-only',
         '--skip-git-repo-check',
-        'Say hello',
+        '-',
       ]);
     });
 
@@ -545,7 +561,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
         'read-only',
         ...measurement.sandboxArgs,
         '--skip-git-repo-check',
-        'review',
+        '-',
       ]);
       await selected.dispose();
     });

@@ -24,6 +24,7 @@ import type {
 } from '../../cli/vote-types.js';
 import {
   assignedPanelDiversityOf,
+  crossFamilyFallbackWarning,
   panelDiversityOf,
   singleFamilyPanelWarning,
   singleModelPanelWarning,
@@ -550,10 +551,9 @@ export interface ConsensusVoteResponse {
    */
   policyReason?: string;
   /**
-   * Set when the panel was DEGRADED (#3587): some voters errored, so the
-   * decision rests on fewer than the requested number of voters. Surfaces a
-   * silently-shrunk panel so the result isn't read as a full-strength consensus.
-   * Absent when every requested voter returned a real vote.
+   * Panel caveats, including errored or unverifiable seats, weakened model
+   * diversity, cross-family fallbacks (#7106), and undeclared proposal options.
+   * Multiple warnings are appended; absent when no caveat applies.
    */
   panelWarning?: string;
   /**
@@ -1049,6 +1049,8 @@ function applyOptionalResponseFields(
   appendPanelWarning(response, singleModelPanelWarning(result.votes));
   // #6606: several models of ONE family — same rule, appended.
   appendPanelWarning(response, singleFamilyPanelWarning(result.votes));
+  // #7106: a recovered seat can change family while the panel stays diverse.
+  appendPanelWarning(response, crossFamilyFallbackWarning(result.votes));
   // #5360: a proposal that names alternatives while `options` is undefined
   // records a split as uniform approval — every voter approves the ACT of
   // deciding, not a side. A 3-3 tie was recorded as `APPROVED 83.3%` that way.

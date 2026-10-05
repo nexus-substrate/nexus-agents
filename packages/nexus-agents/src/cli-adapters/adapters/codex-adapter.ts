@@ -9,7 +9,7 @@
  * (Source: Issue #1140 — Migrated to SubprocessCliAdapter base class)
  *
  * SECURITY: All spawn() calls use array-based args without shell: true.
- * User task content is passed as a single argv element (no shell interpolation).
+ * User task content is passed through stdin (no shell interpolation).
  */
 
 import { writeFileSync, rmSync } from 'node:fs';
@@ -151,7 +151,7 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
 
   /**
    * Gets CLI command and arguments for execution.
-   * Task content is passed as a positional argument (not via stdin).
+   * Task content is read from stdin via `codex exec -` to avoid argv size limits.
    */
   protected getCommand(task: CliTask): CommandConfig {
     const args: string[] = ['exec'];
@@ -194,9 +194,14 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
       };
     }
 
-    // Add the task content (no JSON.stringify needed without shell: true)
-    args.push(task.content);
+    // `codex exec -` reads stdin, avoiding Linux's per-argument size limit (#7106).
+    args.push('-');
 
-    return cleanup === undefined ? { command: 'codex', args } : { command: 'codex', args, cleanup };
+    return {
+      command: 'codex',
+      args,
+      stdin: task.content,
+      ...(cleanup === undefined ? {} : { cleanup }),
+    };
   }
 }

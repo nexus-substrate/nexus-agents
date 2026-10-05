@@ -123,10 +123,12 @@ describe('codex exec: one disable per configured MCP server (#6970)', () => {
     expect(mcpOverrides(new CodexProbe().command(readOnly()).args)).toEqual([]);
   });
 
-  it('the overrides come before the prompt, which stays last', () => {
+  it('the overrides come before the stdin marker, which stays last', () => {
     write(join(home, '.codex', 'config.toml'), USER_TOML);
-    const { args } = new CodexProbe().command(readOnly());
-    expect(args.at(-1)).toBe('review');
+    const { args, stdin } = new CodexProbe().command(readOnly());
+    expect(args.at(-1)).toBe('-');
+    expect(args).not.toContain('review');
+    expect(stdin).toBe('review');
     expect(args[args.length - 2]).not.toBe('-c');
   });
 
