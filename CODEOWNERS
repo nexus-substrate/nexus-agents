@@ -27,6 +27,8 @@
 #
 # Audit hash chain
 /packages/nexus-agents/src/audit/ @williamzujkowski
+# Audit bridge decides what reaches the hash chain (#5125 owner decision).
+/packages/nexus-agents/src/security/audit-bridge.ts @williamzujkowski
 # Governance source
 /packages/nexus-agents/src/governance/ @williamzujkowski
 # Governance-drift injection machinery

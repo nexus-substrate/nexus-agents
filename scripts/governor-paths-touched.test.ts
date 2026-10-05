@@ -28,6 +28,7 @@ const CODEOWNERS = [
   GOVERNOR_SECTION_START_DIRECTIVE,
   "# Governor's own core",
   '/packages/nexus-agents/src/audit/ @owner',
+  '/packages/nexus-agents/src/security/audit-bridge.ts @owner',
   '/CODEOWNERS @owner',
   GOVERNOR_SECTION_END_DIRECTIVE,
 ].join('\n');
@@ -64,6 +65,24 @@ describe('governorPathsTouchedReport', () => {
     expect(report.value).toBe('true');
     expect(report.messages.join('\n')).toContain('packages/nexus-agents/src/audit/chain.ts');
     expect(report.messages.join('\n')).toContain('1 of 2 changed file(s)');
+  });
+
+  it('an audit-bridge-only PR runs the governor gates, while its trail sibling stays ordinary (#5125)', () => {
+    const real = readFileSync(join(REPO_ROOT, 'CODEOWNERS'), 'utf-8');
+    const bridge = 'packages/nexus-agents/src/security/audit-bridge.ts';
+    const report = governorPathsTouchedReport({ CHANGED_FILES: bridge }, real);
+    expect(report.exitCode).toBe(0);
+    expect(report.value).toBe('true');
+    expect(report.messages.join('\n')).toContain(bridge);
+    expect(report.messages.join('\n')).toContain('1 of 1 changed file(s)');
+
+    const trail = governorPathsTouchedReport(
+      { CHANGED_FILES: 'packages/nexus-agents/src/security/audit-trail.ts' },
+      real
+    );
+    expect(trail.exitCode).toBe(0);
+    expect(trail.value).toBe('false');
+    expect(trail.messages.join('\n')).toContain('0 of 1 changed file(s)');
   });
 
   it('a PR touching only the diversity floor is a governor-path PR (#6601)', () => {
