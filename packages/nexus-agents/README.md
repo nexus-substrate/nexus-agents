@@ -3,7 +3,7 @@
 > Governance substrate for your AI coding agents — adversarial review, drift-detected rules, tamper-evident append-only audit chain, human-gated closed-loop tuning (autonomous demotion, earned promotion)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue)](https://www.typescriptlang.org)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25-purple)](https://modelcontextprotocol.io)
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
@@ -18,7 +18,7 @@ Nexus Agents is a governance layer that sits above your AI coding agents — Cla
 
 - **Intelligent Routing** — Multi-stage CompositeRouter (TOPSIS, LinUCB bandit, distilled-rule short-circuit, weather-aware penalties). Learns from outcomes.
 - **Multi-Expert Orchestration** — Specialized expert agents (code, architecture, security, testing, docs, devops, research, PM, UX, infrastructure, QA, data-visualization) coordinated by an Orchestrator.
-- **Consensus Voting** — Six aggregation strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning.
+- **Consensus Voting** — Five aggregation strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise.
 - **Development Pipeline** — Research → Plan → Vote → Decompose → Implement → QA → Security. Autonomous, harness, and dry-run modes.
 - **Memory & Learning** — Multiple backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed) with cross-session persistence.
 - **MCP Tools** — Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations. See [docs/ENTRYPOINTS.md](https://github.com/nexus-substrate/nexus-agents/blob/main/docs/ENTRYPOINTS.md) for the canonical list.
@@ -325,7 +325,7 @@ if (result.ok) {
 
 ### Prerequisites
 
-- Node.js 22.x LTS
+- Node.js 24.x LTS
 - pnpm 9.x
 - TypeScript 5.9+
 

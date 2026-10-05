@@ -30,8 +30,8 @@
  *
  * `node:sqlite` is EXPERIMENTAL on Node 22 and emits an `ExperimentalWarning` on
  * first use. The CLI entry point suppresses it; a consumer embedding this as a
- * library will see it. It also raises the floor to Node >= 22.5.0, which the
- * `engines` field records.
+ * library on Node 22 will see it. The builtin was introduced in Node 22.5.0;
+ * nexus-agents 9.0 requires Node >=24 for SQLite maturity and the LTS window.
  *
  * @module context/open-database
  */

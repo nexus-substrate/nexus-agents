@@ -282,14 +282,6 @@ export async function getResearchInsightsForTask(
  *
  * Filters to (a) `status === 'active'` (rules that aren't deprecated or
  * shadowed) and (b) category matching the task's category or a global rule.
- *
- * A `tainted === false` conjunct used to sit between those two, documented as
- * a security gate. It was decorative: `upsertRule` writes the literal `false`
- * and is the only constructor of new rules, so the branch was unreachable and
- * no untrusted-origin rule was ever excluded here. Removed in #5853 rather
- * than left in place, because a filter that cannot exclude anything tells a
- * reader the substrate screens these rules when it does not. Re-add it only
- * together with a producer.
  */
 function fetchPriorStrategies(
   category: TaskCategory,

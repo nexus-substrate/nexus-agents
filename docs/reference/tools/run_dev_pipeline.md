@@ -29,7 +29,7 @@ Run the multi-agent development pipeline. Accepts direct task instructions, a pl
 | `labels` | array of string | no | — | Labels for created issues |
 | `sessionId` | string | no | maxLength 128; pattern `^[a-zA-Z0-9_-]+$` | Session ID for checkpoint/resume (crash recovery) |
 | `simulateVotes` | boolean | no | default false | TESTS ONLY — random output, must not be used for real decisions (#2319) |
-| `votingStrategy` | enum | no | one of: simple_majority \| supermajority \| unanimous \| higher_order \| proof_of_learning \| opinion_wise | Voting strategy for plan approval (default: higher_order) |
+| `votingStrategy` | enum | no | one of: simple_majority \| supermajority \| unanimous \| higher_order \| opinion_wise | Voting strategy for plan approval (default: higher_order) |
 | `quickMode` | boolean | no | default false | Use 3 agents instead of 6 for faster consensus voting |
 | `timeoutMs` | integer | no | min 30000; max 600000 | Max time for EACH stage call in ms (30000-600000), not for the whole run; applies to every stage, the vote included, and to each plan/vote and implement/QA iteration. A stage past it fails with a timeout and its model calls are aborted. Default: the vote stage gets the multi-LLM panel guard (900000 unless overridden), other stages the pipeline guard (1800000 unless overridden) |
 | `mode` | enum | no | one of: autonomous \| harness; default autonomous | 'autonomous': full pipeline. 'harness': stops after decompose, returns tasks for caller to implement. (Not the async switch — that is `dispatch`.) |

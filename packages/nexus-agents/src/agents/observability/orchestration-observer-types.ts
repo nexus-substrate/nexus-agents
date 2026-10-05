@@ -295,7 +295,7 @@ export interface IOrchestrationObserver {
 // ============================================================================
 
 /**
- * Event topics the SwarmObserver subscribes to.
+ * Event topics the OrchestrationObserver subscribes to.
  */
 export const ObserverTopics = {
   /** All session events */

@@ -78,7 +78,6 @@ import {
 } from './consensus-vote.js';
 import { DecisionCostStore } from '../../observability/decision-cost-store.js';
 import { readJobResult } from '../jobs/job-result-store.js';
-import { WARNINGS_META_KEY } from './async-dispatch-input.js';
 import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.js';
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 import { getCorrelationJsonlPath } from '../../consensus/correlation-persistence.js';
@@ -144,7 +143,7 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
   async function dispatch(): Promise<string> {
     const handler = captureHandler();
     const result = await handler(
-      { proposal: 'ship the thing', quickMode: true, mode: 'async' },
+      { proposal: 'ship the thing', quickMode: true, dispatch: 'async' },
       CTX
     );
     const env = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
@@ -260,7 +259,7 @@ describe('consensus_vote async dispatch fails closed (#4362)', () => {
 
     const handler = captureHandler();
     const result = await handler(
-      { proposal: 'ship the thing', quickMode: true, mode: 'async' },
+      { proposal: 'ship the thing', quickMode: true, dispatch: 'async' },
       CTX
     );
     const env = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
@@ -328,43 +327,46 @@ describe('consensus_vote dispatch key end to end (#4968)', () => {
     const env = envelopeOf(result);
     expect(env['status']).toBe('pending');
     expect(typeof env['jobId']).toBe('string');
-    expect(result._meta?.[WARNINGS_META_KEY]).toBeUndefined();
+    expect(result._meta?.['nexus-agents/warnings']).toBeUndefined();
   });
 
-  it('deprecated mode: async still dispatches and warns, naming dispatch', async () => {
-    const result = await captureHandler()(
-      { proposal: 'ship the thing', quickMode: true, mode: 'async' },
-      CTX
-    );
-    expect(envelopeOf(result)['status']).toBe('pending');
-    const warnings = result._meta?.[WARNINGS_META_KEY];
-    expect(warnings).toHaveLength(1);
-    expect(String((warnings as string[])[0])).toContain('dispatch: "async"');
-  });
+  it.each(['async', 'sync'] as const)(
+    'removed mode: %s fails validation without dispatch',
+    async (mode) => {
+      const result = await captureHandler()(
+        { proposal: 'ship the thing', quickMode: true, mode },
+        CTX
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toContain('dispatch: "async"');
+      expect(result._meta?.['nexus-agents/error']).toBeDefined();
+      expect(result._meta?.['nexus-agents/warnings']).toBeUndefined();
+      expect(collectRealVotesMock).not.toHaveBeenCalled();
+    }
+  );
 
-  it('deprecated mode: sync runs inline and the warning rides on that result too', async () => {
-    // Every-voter-errored panel → structured error; the deprecation warning
-    // must survive alongside the error envelope, not only on the happy path.
+  it.each(['async', 'sync'] as const)(
+    'mode is rejected even alongside dispatch: %s',
+    async (dispatch) => {
+      const result = await captureHandler()(
+        { proposal: 'ship the thing', quickMode: true, dispatch, mode: 'sync' },
+        CTX
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toContain('dispatch: "async"');
+      expect(collectRealVotesMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it('dispatch: sync preserves an inline structured error without alias warnings', async () => {
     const result = await captureHandler()(
-      { proposal: 'ship the thing', quickMode: true, mode: 'sync' },
+      { proposal: 'ship the thing', quickMode: true, dispatch: 'sync' },
       CTX
     );
     expect(result.isError).toBe(true);
-    const warnings = result._meta?.[WARNINGS_META_KEY];
-    expect(warnings).toHaveLength(1);
-    expect(String((warnings as string[])[0])).toContain('dispatch: "sync"');
     expect(result._meta?.['nexus-agents/error']).toBeDefined();
-  });
-
-  it('dispatch and mode disagreeing is a validation error naming both, and nothing is dispatched', async () => {
-    const result = await captureHandler()(
-      { proposal: 'ship the thing', quickMode: true, dispatch: 'async', mode: 'sync' },
-      CTX
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0]!.text).toContain('dispatch: "async"');
-    expect(result.content[0]!.text).toContain('mode: "sync"');
-    expect(collectRealVotesMock).not.toHaveBeenCalled();
+    expect(result._meta?.['nexus-agents/warnings']).toBeUndefined();
+    expect(collectRealVotesMock).toHaveBeenCalled();
   });
 });
 

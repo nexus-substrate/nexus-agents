@@ -324,6 +324,7 @@ Interface specs, generated references, the research loop's catalog, ADRs, and hi
 | [capabilities.md](./reference/capabilities.md)            | CLI/MCP/Workflow capability index                                              | Generated |
 | [MCP tool reference](./reference/tools/index.md)          | Per-tool MCP reference (name, description, input schema)                       | Generated |
 | [Strategy reference](./reference/strategies/index.md)     | Force-strategy escape hatches: entrypoint tool, when-to-force, tiers, executor | Generated |
+| [Price basis](./reference/price-basis.md)                 | `PriceBasis` members (`list`/`declared`/`unknown`) and persisted-reader compat | Canonical |
 | [skills-index.md](./skills-index.md)                      | LLM context loading index                                                      | Canonical |
 | [dependency-graph.md](./architecture/dependency-graph.md) | Module dependency diagram                                                      | Generated |
 | [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)   | Machine-readable component map                                                 | Generated |

@@ -107,6 +107,7 @@ export interface VoterCostInput {
    * rather than a figure verified against the operator's bill. It is NOT a
    * guarantee the number is a vendor list price: see {@link PriceBasis} for the
    * overlay and fuzzy-match paths that report something else under that label.
+   * Explicit gateway rates arrive as `'declared'`, the operator's statement.
    *
    * Orthogonal to `unmeasured`: that flag is about evidence of CONSUMPTION
    * (were tokens reported?), this is about the PRICE the money figure was
@@ -235,7 +236,8 @@ export interface DecisionCostSummary {
   /**
    * What kind of rate `totalCostUsd` rests on (#4406) — `'list'` if ANY voter
    * that contributed a price used a list rate, `'unknown'` if every voter that
-   * stated a basis had no price at all.
+   * stated a basis had no price at all. With no list contribution, an operator
+   * declaration reports `'declared'` (including mixed declared/unknown rows).
    *
    * OMITTED when no voter stated a basis (nothing was claimed) and in `plan`
    * mode, where the recorded $0 is pre-covered by a subscription and rests on
@@ -466,12 +468,33 @@ function voterPriceFields(
  * Silent when no voter stated a basis: emitting `'unknown'` there would assert
  * that no price existed for anyone, when in fact nobody looked. `'list'` wins
  * over `'unknown'` because the total is a sum — one list-derived contribution
- * makes the whole figure an estimate, and that is the caveat a reader needs.
+ * makes the whole figure an estimate. Otherwise `'declared'` wins over
+ * `'unknown'`, retaining the operator's statement; per-voter rows preserve
+ * every contribution's basis even when the total has mixed sources.
  */
 function decisionPriceBasis(voters: readonly VoterCostInput[]): PriceBasis | undefined {
-  const stated = voters.filter((v) => v.priceBasis !== undefined);
-  if (stated.length === 0) return undefined;
-  return stated.some((v) => v.priceBasis === 'list') ? 'list' : 'unknown';
+  // Empty voters, or no stated bases, mean nothing was claimed.
+  let result: PriceBasis | undefined;
+  for (const { priceBasis } of voters) {
+    switch (priceBasis) {
+      case undefined:
+        break;
+      case 'unknown':
+        result ??= 'unknown';
+        break;
+      case 'declared':
+        if (result !== 'list') result = 'declared';
+        break;
+      case 'list':
+        result = 'list';
+        break;
+      default: {
+        const unreachable: never = priceBasis;
+        throw new Error(`Unhandled price basis: ${String(unreachable)}`);
+      }
+    }
+  }
+  return result;
 }
 
 /**

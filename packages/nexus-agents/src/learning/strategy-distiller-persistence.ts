@@ -52,7 +52,6 @@ const DistilledRuleSchema = z.object({
   status: z.enum(['draft', 'active', 'promoted', 'expired']),
   createdAt: z.number(),
   updatedAt: z.number(),
-  tainted: z.boolean(),
 });
 
 /** Versioned snapshot schema for atomic saves. */

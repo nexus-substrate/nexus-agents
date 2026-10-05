@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](https://nodejs.org)
 [![Claims Registry Drift](https://img.shields.io/github/actions/workflow/status/nexus-substrate/nexus-agents/docs-check.yml?branch=main&label=claims%20registry)](https://github.com/nexus-substrate/nexus-agents/actions/workflows/docs-check.yml)
 
 ---
@@ -60,7 +60,7 @@ Autonomic systems are described by their **self-\*** properties. Each row below 
 - **Drift-detected charter** — `CLAUDE.md` + `governance:check` + blocking CI gates fail the build when documented rules drift from registered behavior (model registry, MCP tools, expert types, skills)
 - **Tamper-evident audit trail** — every tool call, every voter decision, every routing choice flows through `AuditTrail` with structured logging and hash-chained append-only storage; integrity is verifiable via the `verify_audit_chain` MCP tool (tamper-evident, not tamper-proof — see the [audit hash-chain threat model](docs/security/audit-hash-chain-threat-model.md))
 - **Closed-loop routing** — `OutcomeStore` feeds production telemetry back into LinUCB + TOPSIS scoring so the system actually learns from what shipped vs what regressed. A second, **bounded** loop runs by default: a `signal.swarm_unhealthy` (adapter circuit-breaker / swarm-health) applies a small, capped, auto-decaying routing demotion via `TuneAdjustmentStore` — demotion-only, never zeroes a CLI, every adjustment audited, opt-out with `NEXUS_TUNE_ENFORCE=false`
-- **Multi-voter consensus** — `consensus_vote` runs a default 7-role panel (architect, security, devex, ai_ml, pm, catfish, scope_steward; `--quick` uses 3). Six strategy names (five distinct: `higher_order` is an alias of `opinion_wise`, #514): simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning
+- **Multi-voter consensus** — `consensus_vote` runs a default 7-role panel (architect, security, devex, ai_ml, pm, catfish, scope_steward; `--quick` uses 3). Five strategy names (four distinct: `higher_order` is an alias of `opinion_wise`, #514): simple/super-majority, unanimous, higher-order Bayesian, opinion-wise
 
 ```
 You:               "Review this PR / orchestrate this task / vote on this proposal"
@@ -217,7 +217,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | Category                       | Details                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Adversarial PR Review**      | `pr_review` MCP tool: 5 voter roles (architect, security, devex, catfish, scope_steward) with 4-point gate. v5 evaluation (focused synthetic dataset, n=10): 100% bug-catch, 50% raw FP rate; manual triage reclassified one of two inspected FP cases as a real finding (directional small-n, not measured rates) ([details](docs/research/pr-review-experiment-results-v5.md)) |
-| **Consensus Voting**           | 6 strategies: simple_majority, supermajority, unanimous, higher_order (Bayesian correlation-aware), opinion_wise, proof_of_learning                                                                                                                                                                                                                                              |
+| **Consensus Voting**           | 5 strategies: simple_majority, supermajority, unanimous, higher_order (Bayesian correlation-aware), opinion_wise                                                                                                                                                                                                                                                                 |
 | **Drift-Detected Charter**     | `CLAUDE.md` + `inject-governance.ts check` enforces single-source registries (model registry, MCP tools, expert types). Blocking CI gate fails build on drift                                                                                                                                                                                                                    |
 | **Audit Trail**                | Structured logging for every tool call, voter decision, and routing choice. Tamper-evident hash-chained append-only storage (tamper-evident, not tamper-proof — see [threat model](docs/security/audit-hash-chain-threat-model.md)); integrity verifiable via `verify_audit_chain` MCP tool                                                                                      |
 | **Closed-Loop Telemetry**      | `OutcomeStore` feeds LinUCB + TOPSIS scoring; a second bounded, audited self-tuning loop demotes unhealthy CLIs (capped, auto-decaying, on by default, opt-out `NEXUS_TUNE_ENFORCE=false`)                                                                                                                                                                                       |
@@ -398,7 +398,7 @@ pnpm build
 pnpm test
 ```
 
-**Requirements:** Node.js 22.x LTS, pnpm 9.x
+**Requirements:** Node.js 24.x LTS, pnpm 9.x
 
 ---
 

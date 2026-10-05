@@ -455,7 +455,6 @@ export class StrategyDistiller {
         status,
         createdAt: now,
         updatedAt: now,
-        tainted: false,
       });
     }
   }

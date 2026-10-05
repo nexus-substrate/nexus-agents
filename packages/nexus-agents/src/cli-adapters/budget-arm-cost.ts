@@ -202,11 +202,26 @@ export function ceilingCostOfArm(
   );
 }
 
+/** Provenance of a resolved ceiling estimate, using the arm that actually serves it. */
+function ceilingPriceBasis(
+  target: RouterArm,
+  costUsd: number | undefined,
+  env: NodeJS.ProcessEnv
+): PriceBasis {
+  if (costUsd === undefined) return 'unknown';
+  const served = gatewayServedSlotOf(target.adapter);
+  const arm = served === undefined ? target.arm : served.arm;
+  const declaration =
+    arm !== undefined && isGatewayArmId(arm) ? resolveGatewayCostDeclaration(arm, env) : undefined;
+  const declared = declaration !== undefined && gatewayCostRates(declaration) !== 'registry';
+  return declared ? 'declared' : 'list';
+}
+
 /**
  * Record the canonical ceiling estimate with its price basis (#5095).
  * Missing pricing stays `undefined` and `unknown`, never a measured $0.
- * Resolved rates (including explicit free/local declarations) use the current
- * `list` vocabulary; it does not distinguish operator rates from list rates.
+ * Explicit gateway rates (including free/local) use `declared`; registry
+ * rates use `list`, including a gateway's bare `priced` declaration.
  * Wrapping the existing policy preserves its arithmetic and arm resolution.
  */
 export function recordCeilingCostOfArm(
@@ -217,7 +232,7 @@ export function recordCeilingCostOfArm(
   env: NodeJS.ProcessEnv = process.env
 ): { readonly costUsd: number | undefined; readonly priceBasis: PriceBasis } {
   const costUsd = ceilingCostOfArm(target, inputTokens, outputTokens, env);
-  const priceBasis: PriceBasis = costUsd === undefined ? 'unknown' : 'list';
+  const priceBasis = ceilingPriceBasis(target, costUsd, env);
   ceilingLogger.info('Cost ceiling: candidate evaluated', {
     arm: target.arm,
     ceiling,
@@ -333,7 +348,8 @@ export function describeUnpricedArm(
  *   UNMEASURED sentinel (`priceBasisOf` → `'unknown'`), never $0-as-measured.
  * - `free` / `local` → a MEASURED $0; `priced:<in>,<out>` → the flat rate,
  *   micro-USD rounded like every ledger figure. `resolvedId` is the ARM: the
- *   declaration, not a registry entry, is what supplied the number.
+ *   declaration, not a registry entry, is what supplied the number. `declared`
+ *   marks this provenance so `priceBasisOf` reports `'declared'`.
  * - bare `priced` → {@link computeCostDetail} on the model that answered; a
  *   model the registry cannot price stays unpriced, as it always did. A
  *   writer that holds no model id (the routing observer, #6399) passes
@@ -357,7 +373,7 @@ export function gatewayCostDetail(
       : computeCostDetail(modelId, inputTokens, outputTokens);
   }
   const { costUsd } = computeTokenCost({ input: inputTokens, output: outputTokens }, rates);
-  return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId: arm };
+  return { costUsd: roundToMicroUsd(costUsd), priced: true, resolvedId: arm, declared: true };
 }
 
 /**

@@ -54,11 +54,17 @@ describe('vote --strategy (#6227)', () => {
     'simple_majority',
     'supermajority',
     'unanimous',
-    'proof_of_learning',
     'higher_order',
     'opinion_wise',
   ] as const)('accepts %s — the tool enum, not a CLI copy of it', (strategy) => {
     expect(vote('--strategy', strategy).options.strategy).toBe(strategy);
+  });
+
+  it('refuses the retired strategy with migration guidance (#5234)', () => {
+    expect(() => vote('--strategy', 'proof_of_learning')).toThrow(
+      /proof_of_learning.*retired.*9\.0.*#5234/
+    );
+    expect(() => vote('--strategy', 'proof_of_learning')).toThrow(/simple_majority.*higher_order/);
   });
 
   it('refuses a value outside the enum, listing the members', () => {

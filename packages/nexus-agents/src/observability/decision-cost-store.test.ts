@@ -369,16 +369,16 @@ describe('DecisionCostStore price-basis persistence (#4406)', () => {
     expect(record?.summary.perVoter[0]?.priceBasis).toBe('list');
   });
 
-  it.each(PriceBasisSchema.options)(
+  it.each(['list', 'declared', 'unknown'] as const)(
     'persists a %s basis without the store rejecting the whole record (#4406 review)',
     (basis) => {
-      // Driven off the union's OWN member list, so a member added later is
-      // exercised here automatically. That is the point: the store schema used
-      // to hand-mirror the union, and a mirror that fell behind would make
+      // Explicit members keep declared covered even if the schema regresses.
+      // The store schema used to hand-mirror the union; a stale mirror made
       // `JsonlStore.safeParse` reject the ENTIRE decision record — `append`
       // returning persisted:false and the line skipped on read with only an
       // aggregate debug count. Whole-record governance/billing data loss from
       // one unrecognised field value.
+      expect(PriceBasisSchema.safeParse(basis).success).toBe(true);
       const store = new DecisionCostStore({ filePath: file, dataDir: dir });
       const { persisted } = store.record({
         decisionId: `d-${basis}`,
@@ -400,6 +400,7 @@ describe('DecisionCostStore price-basis persistence (#4406)', () => {
       const rehydrated = new DecisionCostStore({ filePath: file, dataDir: dir });
       expect(rehydrated.all()).toHaveLength(1);
       expect(rehydrated.all()[0]?.summary.perVoter[0]?.priceBasis).toBe(basis);
+      expect(rehydrated.all()[0]?.summary.priceBasis).toBe(basis);
     }
   );
 

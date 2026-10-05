@@ -3,7 +3,7 @@
  * (Source: Issue #253)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -38,6 +38,8 @@ vi.mock('./cli-auth-probe.js', () => ({
 vi.mock('./setup-cli-detection.js', () => ({
   detectCliBinary: vi.fn().mockReturnValue({ installed: false }),
 }));
+
+beforeEach(() => vi.spyOn(process, 'version', 'get').mockReturnValue('v24.0.0'));
 
 describe('verify-command', () => {
   describe('runVerify', () => {
@@ -75,20 +77,23 @@ describe('verify-command', () => {
 
       const nodeCheck = result.checks.find((c) => c.name === 'Node.js Version');
       expect(nodeCheck).toBeDefined();
-      expect(nodeCheck?.passed).toBe(true); // Should pass in test environment
+      expect(nodeCheck?.passed).toBe(true);
     });
 
-    it.each(['v20.19.0', 'v22.4.1'])('rejects Node %s with range', async (version) => {
-      const original = Object.getOwnPropertyDescriptor(process, 'version');
-      Object.defineProperty(process, 'version', { value: version, configurable: true });
-      try {
-        const nodeCheck = (await runVerify()).checks.find((c) => c.name === 'Node.js Version');
-        expect(nodeCheck?.passed).toBe(false);
-        expect(nodeCheck?.message).toContain('>=22.5.0');
-      } finally {
-        if (original !== undefined) Object.defineProperty(process, 'version', original);
+    it.each(['v20.19.0', 'v22.4.1', 'v22.22.3', 'v23.11.0'])(
+      'rejects Node %s with range',
+      async (version) => {
+        const original = Object.getOwnPropertyDescriptor(process, 'version');
+        Object.defineProperty(process, 'version', { value: version, configurable: true });
+        try {
+          const nodeCheck = (await runVerify()).checks.find((c) => c.name === 'Node.js Version');
+          expect(nodeCheck?.passed).toBe(false);
+          expect(nodeCheck?.message).toContain('>=24');
+        } finally {
+          if (original !== undefined) Object.defineProperty(process, 'version', original);
+        }
       }
-    });
+    );
 
     it('includes package exports check', async () => {
       const result = await runVerify();
@@ -136,7 +141,7 @@ describe('verify-command', () => {
     it('does not throw for successful result', () => {
       const result: VerifyResult = {
         version: '1.0.0',
-        nodeVersion: 'v22.0.0',
+        nodeVersion: 'v24.0.0',
         checks: [{ name: 'Test Check', passed: true, message: 'OK' }],
         allPassed: true,
         noHardFailures: true,
@@ -151,7 +156,7 @@ describe('verify-command', () => {
     it('does not throw for failed result', () => {
       const result: VerifyResult = {
         version: '1.0.0',
-        nodeVersion: 'v22.0.0',
+        nodeVersion: 'v24.0.0',
         checks: [{ name: 'Test Check', passed: false, message: 'Failed', fix: 'Do something' }],
         allPassed: false,
         noHardFailures: false,
@@ -166,7 +171,7 @@ describe('verify-command', () => {
     it('handles verbose mode', () => {
       const result: VerifyResult = {
         version: '1.0.0',
-        nodeVersion: 'v22.0.0',
+        nodeVersion: 'v24.0.0',
         checks: [],
         allPassed: true,
         noHardFailures: true,
@@ -295,7 +300,7 @@ describe('verify-command', () => {
     it('noHardFailures is true when only warn-severity checks fail', () => {
       const result: VerifyResult = {
         version: '1.0.0',
-        nodeVersion: 'v22.0.0',
+        nodeVersion: 'v24.0.0',
         checks: [
           { name: 'OK', passed: true, message: 'ok' },
           { name: 'Warn', passed: false, severity: 'warn', message: 'degraded' },
@@ -313,7 +318,7 @@ describe('verify-command', () => {
       // Exit-code contract: only hard failures flip the exit code.
       const passing: VerifyResult = {
         version: '1.0.0',
-        nodeVersion: 'v22.0.0',
+        nodeVersion: 'v24.0.0',
         checks: [{ name: 'X', passed: false, severity: 'warn', message: 'msg' }],
         allPassed: false,
         noHardFailures: true,
@@ -321,7 +326,7 @@ describe('verify-command', () => {
       };
       const failing: VerifyResult = {
         version: '1.0.0',
-        nodeVersion: 'v22.0.0',
+        nodeVersion: 'v24.0.0',
         checks: [{ name: 'X', passed: false, severity: 'hard', message: 'msg' }],
         allPassed: false,
         noHardFailures: false,
@@ -396,7 +401,7 @@ describe('verify-command', () => {
     it('printVerifyResult renders warn-only failures as degraded, not failed', () => {
       const result: VerifyResult = {
         version: '1.0.0',
-        nodeVersion: 'v22.0.0',
+        nodeVersion: 'v24.0.0',
         checks: [
           { name: 'OK', passed: true, message: 'ok' },
           { name: 'Warn', passed: false, severity: 'warn', message: 'degraded', fix: 'run x' },

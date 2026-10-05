@@ -54,15 +54,6 @@ export interface RouterConfig {
   readonly logger?: ILogger;
   /** Whether to prefer cost-efficient adapters */
   readonly preferCostEfficient?: boolean;
-  /**
-   * @deprecated Declared but NEVER ENFORCED — nothing on the routing path
-   * compares anything to it, and `composite-router.ts` measures
-   * `decisionTimeMs` only to record it (#5918). Setting it does not bound
-   * routing. `capacity-stage.ts` had to build its own `probeTimeoutMs` race
-   * because of this. Scheduled for removal in the next major (#5963); the
-   * default is 50 here and in every other declaration since #5918.
-   */
-  readonly maxDecisionTimeMs?: number;
 }
 
 /**
@@ -70,15 +61,6 @@ export interface RouterConfig {
  */
 export const RouterConfigSchema = z.object({
   preferCostEfficient: z.boolean().default(false),
-  /**
-   * @deprecated Declared but NEVER ENFORCED — nothing on the routing path
-   * compares anything to it, and `composite-router.ts` measures
-   * `decisionTimeMs` only to record it (#5918). Setting it does not bound
-   * routing. `capacity-stage.ts` had to build its own `probeTimeoutMs` race
-   * because of this. Scheduled for removal in the next major (#5963); the
-   * default is 50 here and in every other declaration since #5918.
-   */
-  maxDecisionTimeMs: z.number().min(1).max(1000).default(50),
 });
 
 /**

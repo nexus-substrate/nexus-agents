@@ -7,7 +7,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { z } from 'zod';
-import { deprecatedModeWarning, resolveDispatch, withWarnings } from './async-dispatch-input.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import {
@@ -29,7 +28,6 @@ import {
   registerStructuredTool,
   toolStructuredError,
   structuredToolSuccess,
-  toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -962,10 +960,7 @@ async function runSyncConsensusVote(
     approvalPercentage: result.value.approvalPercentage,
     voteCount: result.value.votes.length,
   });
-  // Untyped until 9.0 (#7049): the published AgentVoteSummary.rejectionCategories
-  // is string[], wider than this tool's enum schema. Runtime strictness still
-  // applies through registerStructuredTool.
-  return toolSuccessStructured({ ...result.value });
+  return structuredToolSuccess(z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA), { ...result.value });
 }
 
 /** Resolve once before dispatch so seats and the recorder consume the same artifact. */
@@ -1019,10 +1014,7 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
     if (!prepared.ok) return prepared.error;
     const input = prepared.value;
     const strategy = input.strategy ?? 'simple_majority';
-    // #4968: `dispatch` is canonical; `mode` is the deprecated alias. A call
-    // that sent only `mode` still runs, and says so in `_meta` warnings.
-    const dispatch = resolveDispatch(input);
-    const modeWarning = deprecatedModeWarning(input);
+    const dispatch = input.dispatch;
     ctx.logger.debug('Starting consensus vote', {
       strategy,
       quickMode: input.quickMode,
@@ -1041,9 +1033,9 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
         proposalLength: input.proposal.length,
         strategy,
       });
-      return withWarnings(asyncResult, [modeWarning]);
+      return asyncResult;
     }
-    return withWarnings(await runSyncConsensusVote(deps, notifier, input), [modeWarning]);
+    return runSyncConsensusVote(deps, notifier, input);
   };
 }
 
@@ -1052,7 +1044,7 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
  *
  * `runAsJob`'s defaults are text-only. Because this tool declares an
  * `outputSchema`, the SDK requires structured content on every non-error
- * result, so every `mode: 'async'` call failed with -32602 — the mode the
+ * result, so every `dispatch: 'async'` call failed with -32602 — the mode the
  * tool's own description recommends for 7-voter panels.
  */
 const ASYNC_ENVELOPES: JobEnvelopeBuilders<ToolResult> = {
@@ -1270,7 +1262,7 @@ const CONSENSUS_VOTE_DESCRIPTION =
   'is a simple tally of the panel, so correlated voters each carry full independent weight. The ' +
   'Bayesian correlation analysis is computed and feeds contrarian escalation only. Choose it for the ' +
   'escalation behaviour, not for a weighted verdict. ' +
-  "Supports async dispatch (dispatch: 'async'; `mode` is a deprecated alias) — returns a jobId to poll via get_job_result. " +
+  "Supports async dispatch (dispatch: 'async') — returns a jobId to poll via get_job_result. " +
   'Pass ratifies=<subject> to bind an authority-ladder ratification vote into its authentic record, ' +
   'and ratifiesPr={pr, headSha} to bind a governor-path PR ratification to the head the panel saw (#5130); ' +
   'the result carries voteRecordId for the caller-commits append. ' +

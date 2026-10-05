@@ -55,8 +55,9 @@ export function resolveBillingMode(): DecisionBillingMode {
  * voter as UNMEASURED (#3855: missing cost is unmeasured, never a measured $0).
  *
  * Whenever a price WAS looked up, the resulting {@link PriceBasis} rides along
- * (#4406) so the recorded figure says whether it came from a vendor list rate
- * rather than reading as contract-accurate.
+ * (#4406): a registry-chain rate is `'list'`, an explicit gateway rate is
+ * `'declared'`, and unresolved pricing is `'unknown'`. A declared rate is the
+ * operator's statement; neither priced basis certifies the operator's bill.
  */
 /**
  * Copy only the token counters the adapter actually reported. Every field is

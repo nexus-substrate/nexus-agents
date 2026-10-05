@@ -112,15 +112,6 @@ export const CompositeRouterConfigSchema = z.object({
    * since no deprioritization was ever implemented.
    */
   enableCapacityBalancing: z.boolean().default(true),
-  /**
-   * @deprecated Declared but NEVER ENFORCED — nothing on the routing path
-   * compares anything to it, and `composite-router.ts` measures
-   * `decisionTimeMs` only to record it (#5918). Setting it does not bound
-   * routing. `capacity-stage.ts` had to build its own `probeTimeoutMs` race
-   * because of this. Scheduled for removal in the next major (#5963); the
-   * default is 50 here and in every other declaration since #5918.
-   */
-  maxDecisionTimeMs: z.number().positive().default(50),
   /** Minimum preference data points before using learned routing (default: 10) */
   preferenceMinDataPoints: z.number().int().positive().default(10),
 });
@@ -205,7 +196,6 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   latencyScoreWeight: 0.2,
   billingMode: 'plan',
   linucbAlpha: 1.0,
-  maxDecisionTimeMs: 50,
   preferenceMinDataPoints: 10,
 };
 

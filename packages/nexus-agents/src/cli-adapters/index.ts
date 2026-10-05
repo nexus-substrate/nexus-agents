@@ -123,7 +123,7 @@ export type {
 } from './circuit-breaker.js';
 
 // Task Router types (Issue #78, #816)
-// TaskRouter class removed in v3.0 — use CompositeRouter (canonical path)
+// Use CompositeRouter for task routing; these types describe routing contracts.
 export { RoutingError, RouterConfigSchema } from './router-types.js';
 export type { ITaskRouter, RoutingDecision, RouterConfig } from './router-types.js';
 

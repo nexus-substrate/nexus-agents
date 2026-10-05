@@ -91,13 +91,14 @@ an unknown configured family withholds the seat's family credit. `servedModel`
 can only withhold credit, never grant it. The report is the gateway's own claim,
 not independent proof of the serving provider (#6952).
 
-This reader-first release accepts an optional hash-covered `servedModel` of
+The reader accepts an optional hash-covered `servedModel` of
 1–200 characters using only letters, digits, `.`, `_`, `:`, `/`, `@`, `+` and
 `-`; malformed identifiers fail schema validation as `servedModel_invalid`.
-Records without the field retain their existing hashes. The producer does not
-write the field in this release. A follow-up can enable writing after base
-checkout readers accept it, avoiding rejection of an entire ledger by older
-strict readers.
+Records without the field retain their existing hashes. Since #6967, the
+producer writes the adapter's report when it is present and valid; an invalid
+report is omitted with a warning. It never copies the configured model into
+this field. The reader support shipped first (#6951), avoiding rejection of an
+entire ledger by older strict readers.
 
 The floor uses only the pinned vendor-family patterns and
 normalization inside governed `scripts/governor-ledger-diversity.ts`; ordinary
@@ -182,11 +183,11 @@ What follows:
 - **The same boundary applies to every field.** The family floor reads
   `servedModel` / `model` from the same producers that already supply the
   decisions. It adds a check, not a new trust assumption.
-- **Gateway substitution is not detected today.** The reader accepts a
-  hash-covered `servedModel` (#6951), but the producer does not write it yet,
-  so a record still carries only the configured model. Once written, it is the
-  gateway's own report of what it served, not independent proof of the
-  serving provider.
+- **Gateway substitution is not independently verified.** The producer writes
+  a valid adapter-reported `servedModel` when available (#6967), and the reader
+  accepts it as hash-covered evidence (#6951). It is the gateway's own report
+  of what it served, not independent proof of the serving provider. Without a
+  report, the record carries only the configured model.
 
 A reviewer auditing a ratification should therefore also read changes to those
 producer files that merged since the last trusted panel. Whether to govern the

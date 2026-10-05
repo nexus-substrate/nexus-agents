@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 
 import type { FallbackReason, RetriedFrom } from '../cli/vote-types.js';
 import type { ErrorPolicy } from '../mcp/tools/consensus-vote-types.js';
+import { parseVoteRecordsText } from './vote-record-store.js';
 import type { VoteRecord, VoterSummary } from './vote-record.js';
 import {
   computeReasoningDigest,
@@ -60,6 +61,17 @@ function makeRecord(
 }
 
 describe('verifyVoteRecordSet', () => {
+  it('keeps persisted proof_of_learning records readable and verifiable (#5234)', () => {
+    const record = makeRecord('legacy-proof-of-learning', 0, { strategy: 'proof_of_learning' });
+    // Pin the pre-retirement projection: recomputing and verifying alone could mask hash drift.
+    expect(record.hash).toBe('c58fe7ac248a46305eaddfbd9a8d5dfee09eaf71a0c30826197a404a47dd1a8d');
+    expect(VoteRecordSchema.parse(record).strategy).toBe('proof_of_learning');
+    const { records, invalidLines } = parseVoteRecordsText(JSON.stringify(record));
+    expect(invalidLines).toEqual([]);
+    expect(records).toEqual([record]);
+    expect(verifyVoteRecordSet(records)).toEqual({ ok: true, recordCount: 1 });
+  });
+
   it('verifies an empty set trivially', () => {
     // #5818: `ok: true` alone could not distinguish a verified set from an
     // absent one. `notVerified` says which, matching `verifyChain`.

@@ -23,7 +23,7 @@ This guide walks through implementing custom memory backends and integrating wit
 ### Core Interface
 
 ```typescript
-interface IMemoryBackend {
+interface IContextMemoryBackend {
   set<T>(key: string, value: T, metadata?: MemoryMetadata): Promise<void>;
   get<T>(key: string): Promise<T | undefined>;
   has(key: string): Promise<boolean>;
@@ -61,13 +61,13 @@ type MemoryImportance = 'critical' | 'high' | 'medium' | 'low';
 
 ## Creating a Custom Memory Backend
 
-### Step 1: Implement IMemoryBackend
+### Step 1: Implement IContextMemoryBackend
 
 ```typescript
 // src/context/custom-memory.ts
-import type { IMemoryBackend, MemoryMetadata } from './memory-types.js';
+import type { IContextMemoryBackend, MemoryMetadata } from './memory-types.js';
 
-export class CustomMemoryBackend implements IMemoryBackend {
+export class CustomMemoryBackend implements IContextMemoryBackend {
   private storage = new Map<string, { value: unknown; metadata?: MemoryMetadata }>();
 
   async set<T>(key: string, value: T, metadata?: MemoryMetadata): Promise<void> {
@@ -338,9 +338,9 @@ export class GraphMemoryBackend implements IGraphMemory {
 ```typescript
 // src/context/adaptive-memory.ts
 export class AdaptiveMemoryBackend implements IAdaptiveMemory {
-  private backend: IMemoryBackend;
+  private backend: IContextMemoryBackend;
 
-  constructor(backend: IMemoryBackend) {
+  constructor(backend: IContextMemoryBackend) {
     this.backend = backend;
   }
 

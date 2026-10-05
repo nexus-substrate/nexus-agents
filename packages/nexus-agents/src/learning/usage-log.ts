@@ -94,11 +94,14 @@ export interface UsageEvent {
 export interface CostDetail {
   /** Cost in USD. Always 0 when `priced` is false — an unknown, not a $0. */
   readonly costUsd: number;
-  /** Whether the resolved registry entry carried pricing data. */
+  /** Whether a registry rate or explicit gateway declaration priced the call. */
   readonly priced: boolean;
+  /** Explicit NEXUS_GATEWAY_COST rate, including free/local; absent for registry rates. */
+  readonly declared?: true;
   /**
    * Canonical id the pricing/metadata came from: the entry's `resolvedFrom`
    * when the #4164 fuzzy tier matched a decorated id, else the caller's id.
+   * Explicit gateway declarations use the arm id that supplied the rate.
    */
   readonly resolvedId: string;
   /** Fuzzy-resolution provenance (#4164), passed through from the entry. */
@@ -156,34 +159,15 @@ export function computeCostDetail(
 /**
  * The {@link PriceBasis} the cost in a {@link CostDetail} rests on (#4406).
  *
- * DELIBERATELY derived rather than stored, because `CostDetail.priced` already
- * carries the only distinction the current two-member union can express: the
- * chain resolved a rate, or it did not. A `priceBasis` property beside `priced`
- * would be a second spelling of the same boolean.
+ * Unpriced details remain `'unknown'`. An explicit gateway declaration
+ * (`free`, `local`, `priced:<in>,<out>`) marks `declared`, so a priced detail
+ * reports `'declared'`. Otherwise the registry-chain rate reports `'list'`.
+ * Bare gateway `priced` uses the registry and does not mark a declaration.
  *
- * WHAT THE `'list'` VALUE ASSERTS. Only that a rate was resolved, and that it
- * should be read as an assumed published rate. It is NOT a guarantee that the
- * number is a vendor's advertised public rate — at least three paths put
- * something else behind the label, and one puts a real published rate behind
- * `'unknown'`:
- *
- *  - The operator manifest overlay is the highest-precedence tier and passes
- *    `pricing` through; overriding pricing is its purpose. A negotiated rate
- *    entered there reports `'list'`, and the caveat then warns the reader their
- *    contract may differ over the contract rate.
- *  - The normalized/fuzzy identity tier lets a decorated gateway id inherit a
- *    DIFFERENT canonical entry's rate.
- *  - A gateway's `NEXUS_GATEWAY_COST` declaration (`free`, `local`,
- *    `priced:<in>,<out>`) is the operator's own statement, not a published
- *    rate at all; `gatewayCostDetail` (#4392 step 4) reports it `priced: true`
- *    with the arm as `resolvedId`, so it reads `'list'` here too.
- *  - `config/models-generated-loader.ts` discards a published $0/$0 rate unless
- *    the id ends `:free`, so `'unknown'` does not mean no price exists.
- *
- * The derivation is therefore an assumption about the chain, not a fact about
- * it — conservative in the right direction (it invites a caveat rather than
- * suppressing one), and honest only if described this way. Narrowing it needs a
- * per-entry label the registry does not carry today; see {@link PriceBasis}.
+ * Registry rates remain assumed published rates: operator manifest overrides
+ * and fuzzy-matched sibling rates carry no distinguishing label today.
+ * A published zero rate discarded by the catalog loader can remain unknown.
+ * See {@link PriceBasis} for those existing registry-chain limitations.
  *
  * `priceSource`, the other provenance field, answers a different question: WHICH
  * registry entry supplied the number, not what KIND of rate it is. It does not
@@ -191,7 +175,8 @@ export function computeCostDetail(
  * (the decision-cost store) that persist neither field.
  */
 export function priceBasisOf(detail: CostDetail): PriceBasis {
-  return detail.priced ? 'list' : 'unknown';
+  if (!detail.priced) return 'unknown';
+  return detail.declared === true ? 'declared' : 'list';
 }
 
 /**

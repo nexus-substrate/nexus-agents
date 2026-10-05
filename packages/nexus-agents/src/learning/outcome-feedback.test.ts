@@ -368,12 +368,11 @@ describe('OutcomeFeedbackCollector', () => {
       const stats = collector.getStats();
       expect(stats.decisionsByRouter.linucb).toBe(1);
       expect(stats.decisionsByRouter.preference).toBe(1);
-      expect(stats.decisionsUnattributed).toBe(0);
+      expect(stats.decisionsByRouter.unattributed).toBe(0);
     });
 
-    it('reports an unattributable decision separately, not as topsis (#5812)', () => {
-      // The classifier labels these 'topsis' because RouterType has no member
-      // for "no stage explains this". Crediting TOPSIS was the misreport.
+    it('reports unattributed in its bucket with empty other measured buckets (#5914)', () => {
+      // Legacy unmeasured TOPSIS labels count in the unattributed bucket.
       collector.recordRoutingDecision(
         createTestDecision({ routerType: 'topsis', routerTypeMeasured: false, traceId: 't-1' })
       );
@@ -383,7 +382,8 @@ describe('OutcomeFeedbackCollector', () => {
 
       const stats = collector.getStats();
       expect(stats.decisionsByRouter.topsis).toBe(1);
-      expect(stats.decisionsUnattributed).toBe(1);
+      expect(stats.decisionsByRouter.unattributed).toBe(1);
+      expect(stats).not.toHaveProperty('decisionsUnattributed');
       expect(stats.totalDecisions).toBe(2);
     });
 

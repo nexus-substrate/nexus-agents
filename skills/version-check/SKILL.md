@@ -30,7 +30,7 @@ npm view <package> engines
 | ------------ | -------------------- | -------------- |
 | Deprecation  | Not deprecated       | Deprecated     |
 | Last update  | Within 12 months     | Over 12 months |
-| Node version | Compatible with 22.x | Incompatible   |
+| Node version | Compatible with 24.x | Incompatible   |
 | Security     | No advisories        | Has advisories |
 
 ### 3. Run Security Audit

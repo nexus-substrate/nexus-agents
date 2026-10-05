@@ -443,16 +443,9 @@ models:
     expect(priceBasisOf(detail)).toBe('unknown');
   });
 
-  it('does NOT restate the basis as a stored field on CostDetail (#4406 judgement)', () => {
-    // `priced` already carries exactly the two-state distinction the CURRENT
-    // union can express, so a `priceBasis` property beside it would be a second
-    // spelling of the same boolean. The basis is DERIVED once and carried by
-    // the downstream records that do not persist `priced`. The derivation is an
-    // assumption about the chain, not a fact about it (see `priceBasisOf`); if
-    // PriceBasis ever gains a member the chain can actually distinguish, this
-    // pin should be revisited deliberately, not silently.
+  it('does not mark registry rates as declarations (#6664)', () => {
     const detail = computeCostDetail('claude-sonnet', 10, 10);
-    expect(Object.keys(detail)).not.toContain('priceBasis');
+    expect(Object.keys(detail)).not.toContain('declared');
   });
 });
 

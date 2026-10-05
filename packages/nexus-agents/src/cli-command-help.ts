@@ -82,7 +82,7 @@ const VOTE_HELP: CommandHelpEntry = {
     {
       flag: '--strategy <s>',
       description:
-        'The bar, as the consensus_vote tool spells it: simple_majority (default) | supermajority | unanimous | proof_of_learning | higher_order | opinion_wise. Wins over --threshold when both are given (#6227)',
+        'The bar, as the consensus_vote tool spells it: simple_majority (default) | supermajority | unanimous | higher_order | opinion_wise. Wins over --threshold when both are given (#6227)',
     },
     {
       flag: '--threshold <t>',

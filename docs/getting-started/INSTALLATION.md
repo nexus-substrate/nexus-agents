@@ -15,7 +15,7 @@ Detailed installation instructions for nexus-agents across all platforms, Docker
 
 | Component | Version  | Notes                              |
 | --------- | -------- | ---------------------------------- |
-| Node.js   | 22.x LTS | Earlier versions are not supported |
+| Node.js   | 24.x LTS | Earlier versions are not supported |
 | npm       | 10.x     | Or pnpm 9.x (recommended)          |
 
 ### Optional
@@ -159,11 +159,11 @@ docker run -e ANTHROPIC_API_KEY="sk-ant-..." nexus-agents
 ### macOS
 
 ```bash
-# Install Node.js 22 via Homebrew
-brew install node@22
+# Install Node.js 24 via Homebrew
+brew install node@24
 
 # Add to PATH
-echo 'export PATH="/opt/homebrew/opt/node@22/bin:$PATH"' >> ~/.zshrc
+echo 'export PATH="/opt/homebrew/opt/node@24/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 
 # Install nexus-agents
@@ -176,8 +176,8 @@ nexus-agents doctor
 ### Linux (Ubuntu/Debian)
 
 ```bash
-# Install Node.js 22 via NodeSource
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+# Install Node.js 24 via NodeSource
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # Install nexus-agents
@@ -190,8 +190,8 @@ nexus-agents doctor
 ### Linux (Fedora/RHEL)
 
 ```bash
-# Install Node.js 22
-sudo dnf module enable nodejs:22
+# Install Node.js 24
+sudo dnf module enable nodejs:24
 sudo dnf install nodejs
 
 # Install nexus-agents
@@ -204,7 +204,7 @@ nexus-agents doctor
 ### Windows
 
 ```powershell
-# Install Node.js 22 via winget
+# Install Node.js 24 via winget
 winget install OpenJS.NodeJS.LTS
 
 # Or via Chocolatey
@@ -323,7 +323,7 @@ Run `nexus-agents setup` to pre-create this structure, or it will be created laz
 
 **Nothing in nexus-agents needs to compile at install time, and the CLI works with install scripts blocked.** Both halves are gated, not asserted — see below.
 
-Persistent memory (agentic, adaptive, typed, mobimem, decay) runs on **`node:sqlite`**, a Node builtin, since [#5388](https://github.com/nexus-substrate/nexus-agents/issues/5388) — which is why `engines` requires Node ≥ 22.5.0. It replaced `better-sqlite3`, whose install script built a native binding: where install scripts were blocked, `npm install` still exited `0` and the CLI then died with `Could not locate the bindings file`. A builtin has no install script to skip.
+Persistent memory (agentic, adaptive, typed, mobimem, decay) runs on **`node:sqlite`**, a Node builtin, since [#5388](https://github.com/nexus-substrate/nexus-agents/issues/5388) — and 9.0 requires Node ≥ 24 for the more mature SQLite implementation and longer LTS support window. It replaced `better-sqlite3`, whose install script built a native binding: where install scripts were blocked, `npm install` still exited `0` and the CLI then died with `Could not locate the bindings file`. A builtin has no install script to skip.
 
 The polyglot (Python/Go) security scanner does load native tree-sitter grammars, from `@ast-grep/lang-python` and `@ast-grep/lang-go`. Those ship **prebuilt** `.so` files inside their own npm tarballs for Linux, macOS (x64 + arm64) and Windows x64, so they neither download nor compile anything on a supported platform.
 
@@ -376,7 +376,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install nexus-agents
         run: npm install -g nexus-agents
@@ -393,7 +393,7 @@ jobs:
 
 ```yaml
 code-review:
-  image: node:22
+  image: node:24
   script:
     - npm install -g nexus-agents
     - nexus-agents orchestrate "Review this merge request"
@@ -406,7 +406,7 @@ code-review:
 ```groovy
 pipeline {
     agent {
-        docker { image 'node:22' }
+        docker { image 'node:24' }
     }
     environment {
         ANTHROPIC_API_KEY = credentials('anthropic-api-key')
@@ -565,8 +565,8 @@ Fix npm permissions:
 ```bash
 # Option 1: Use a node version manager (recommended)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-nvm install 22
-nvm use 22
+nvm install 24
+nvm use 24
 
 # Option 2: Change npm prefix
 npm config set prefix ~/.npm-global

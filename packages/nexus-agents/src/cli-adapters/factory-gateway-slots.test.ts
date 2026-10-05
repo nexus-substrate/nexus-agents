@@ -60,6 +60,7 @@ import {
   estimateArmCostUsd,
   estimateBudgetArmCostUsd,
   ceilingCostOfArm,
+  recordCeilingCostOfArm,
   unpricedReasonOfArm,
 } from './budget-arm-cost.js';
 import { fakeGatewayModel } from '../testing/adapters/fake-gateway-model.js';
@@ -251,6 +252,40 @@ describe('createAllAdapters gateway family slots (#6604)', () => {
     expect(unpricedReasonOfArm({ arm: 'claude', adapter: arm }, declared)).toContain(
       'carries no gateway arm'
     );
+    expect(
+      recordCeilingCostOfArm({ arm: 'claude', adapter: arm }, 1_000_000, 0, 5, declared)
+    ).toEqual({ costUsd: undefined, priceBasis: 'unknown' });
+  });
+
+  it.each([
+    { declaration: 'openai-compat=priced:1,2', costUsd: 1 },
+    { declaration: 'openai-compat=free', costUsd: 0 },
+    { declaration: 'openai-compat=local', costUsd: 0 },
+  ])(
+    'records declared ceiling basis for a gateway-served CLI slot: $declaration',
+    ({ declaration, costUsd }) => {
+      setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6', 'api:openai-compat')]);
+      const adapter = createAllAdapters(undefined, 'subprocess').get('claude');
+      expect(gatewayServedSlotOf(adapter)?.arm).toBe('api:openai-compat');
+      expect(
+        recordCeilingCostOfArm({ arm: 'claude', adapter }, 1_000_000, 0, 5, {
+          NEXUS_GATEWAY_COST: declaration,
+        })
+      ).toEqual({ costUsd, priceBasis: 'declared' });
+    }
+  );
+
+  it('records list ceiling basis for a gateway-served CLI slot with bare priced', () => {
+    setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6', 'api:openai-compat')]);
+    const adapter = createAllAdapters(undefined, 'subprocess').get('claude');
+    const env = { NEXUS_GATEWAY_COST: 'priced' };
+    const target = { arm: 'claude' as const, adapter };
+    const costUsd = ceilingCostOfArm(target, 1_000_000, 0, env);
+    expect(costUsd).toBeGreaterThan(0);
+    expect(recordCeilingCostOfArm(target, 1_000_000, 0, 5, env)).toEqual({
+      costUsd,
+      priceBasis: 'list',
+    });
   });
 
   it("the budget router prices each arm by that arm's own serving state", () => {

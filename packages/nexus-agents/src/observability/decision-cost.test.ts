@@ -332,6 +332,30 @@ describe('DecisionCostSummarySchema (#4032 — pins the MCP cost-summary shape)'
 });
 
 describe('price basis (#4406 — a list-derived cost is not a contract-accurate one)', () => {
+  it('omits the basis for an empty voter set', () => {
+    expect(rollupDecisionCost([], 'api').priceBasis).toBeUndefined();
+  });
+
+  it.each([
+    { bases: ['declared'], expected: 'declared' },
+    { bases: ['unknown', 'declared'], expected: 'declared' },
+    { bases: ['declared', 'list'], expected: 'list' },
+    { bases: ['list', 'declared'], expected: 'list' },
+  ] as const)('rolls up $bases as $expected', ({ bases, expected }) => {
+    const summary = rollupDecisionCost(
+      bases.map((priceBasis) => ({
+        role: 'architect',
+        model: 'gateway-model',
+        inputTokens: 10,
+        costUsd: 0.01,
+        priceBasis,
+      })),
+      'api'
+    );
+    expect(summary.priceBasis).toBe(expected);
+    expect(summary.perVoter.map((v) => v.priceBasis)).toEqual(bases);
+  });
+
   it('echoes a stated per-voter basis onto the breakdown line', () => {
     const summary = rollupDecisionCost(
       [

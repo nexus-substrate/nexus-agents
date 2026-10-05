@@ -36,8 +36,14 @@ describe('Node engine compatibility (#5608)', () => {
   it.each([
     ['v20.19.0', false],
     ['v22.4.1', false],
-    ['v22.5.0', true],
+    ['v22.5.0', false],
+    ['v22.22.3', false],
+    ['v23.11.0', false],
     ['v24.0.0', true],
+    ['v24.21.0', true],
+    ['v25.0.0', true],
+    ['v24.0.0-rc.1', false],
+    ['invalid', false],
   ])('reports %s supported=%s', (version, supported) => {
     expect(isNodeVersionSupported(version)).toBe(supported);
   });

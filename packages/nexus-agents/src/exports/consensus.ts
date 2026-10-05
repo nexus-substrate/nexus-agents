@@ -19,7 +19,6 @@ export type {
   VoteCounts,
   WeightedVoteCounts,
   ConsensusResult,
-  AgentPerformance,
   ConsensusEngineConfig,
   ProposalState,
   ConsensusMetrics,
@@ -55,7 +54,6 @@ export {
   VoteSchema,
   ProposalSchema,
   ConsensusResultSchema,
-  AgentPerformanceSchema,
   ConsensusEngineConfigSchema,
   ConsensusMetricsSchema,
   // Rejection categories (Issue #1213)
@@ -82,9 +80,7 @@ export {
   SimpleMajorityStrategy,
   SupermajorityStrategy,
   UnanimousStrategy,
-  ProofOfLearningStrategy,
   VotingStrategyFactory,
-  calculateVoteWeight,
   createStrategyFactory,
 } from '../consensus/index.js';
 

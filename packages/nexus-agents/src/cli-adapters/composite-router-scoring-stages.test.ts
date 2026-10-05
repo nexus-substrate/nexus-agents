@@ -68,7 +68,6 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
       billingMode: 'api',
       latencyScoreWeight: 0.2,
       linucbAlpha: 1.0,
-      maxDecisionTimeMs: 50,
       preferenceMinDataPoints: 10,
     },
     logger: mockLogger,

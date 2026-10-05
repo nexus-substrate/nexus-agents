@@ -190,35 +190,38 @@ describe('OrchestrateInputSchema', () => {
   });
 
   // #3042 / epic #2631: async-mode dispatch.
-  it('accepts mode: "async" (#3042)', () => {
-    const result = OrchestrateInputSchema.safeParse({ task: 'long-running task', mode: 'async' });
+  it('accepts dispatch: "async" (#3042)', () => {
+    const result = OrchestrateInputSchema.safeParse({
+      task: 'long-running task',
+      dispatch: 'async',
+    });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.mode).toBe('async');
+      expect(result.data.dispatch).toBe('async');
     }
   });
 
-  it('accepts mode: "sync" (#3042)', () => {
-    const result = OrchestrateInputSchema.safeParse({ task: 'quick task', mode: 'sync' });
+  it('accepts dispatch: "sync" (#3042)', () => {
+    const result = OrchestrateInputSchema.safeParse({ task: 'quick task', dispatch: 'sync' });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.mode).toBe('sync');
+      expect(result.data.dispatch).toBe('sync');
     }
   });
 
-  it('leaves mode undefined when omitted — backward-compat invariant (#3042)', () => {
+  it('leaves dispatch undefined when omitted — backward-compat invariant (#3042)', () => {
     const result = OrchestrateInputSchema.safeParse({ task: 'legacy caller' });
     expect(result.success).toBe(true);
     if (result.success) {
       // The handler treats undefined as 'sync', but the SCHEMA itself
       // doesn't apply a default — that would change the inferred type
-      // and force `mode: 'sync'` on every existing test fixture.
-      expect(result.data.mode).toBeUndefined();
+      // and force `dispatch: 'sync'` on every existing test fixture.
+      expect(result.data.dispatch).toBeUndefined();
     }
   });
 
-  it('rejects unknown mode value (#3042)', () => {
-    const result = OrchestrateInputSchema.safeParse({ task: 'x', mode: 'fire-and-forget' });
+  it('rejects unknown dispatch value (#3042)', () => {
+    const result = OrchestrateInputSchema.safeParse({ task: 'x', dispatch: 'fire-and-forget' });
     expect(result.success).toBe(false);
   });
 

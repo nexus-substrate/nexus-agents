@@ -17,6 +17,18 @@ const ROOT = join(import.meta.dirname, '..');
 const TOOLS_DOC_DIR = join(ROOT, 'docs', 'reference', 'tools');
 
 describe('generate-tool-reference', () => {
+  it('#6225 documents dispatch without advertising the removed mode alias', async () => {
+    const docs = await collectToolDocs();
+    for (const name of ['consensus_vote', 'run_workflow', 'orchestrate']) {
+      const doc = docs.find((d) => d.name === name);
+      expect(doc).toBeDefined();
+      if (doc === undefined) throw new Error(`Missing tool documentation: ${name}`);
+      expect(renderToolPage(doc)).toContain('dispatch');
+      expect(renderToolPage(doc)).not.toContain('deprecated alias');
+      expect(doc.params.find((p) => p.name === 'mode')?.type).toBe('never');
+    }
+  });
+
   it('produces one doc per registered manifest tool', async () => {
     const docs = await collectToolDocs();
     expect(docs).toHaveLength(TOOL_MANIFEST.length);

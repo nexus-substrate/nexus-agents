@@ -218,7 +218,7 @@ export const BUILT_IN_EXPERTS: Readonly<Record<BuiltInExpertType, ExpertConfig>>
 
 ## Technical Standards
 - TypeScript 5.8+ with strict mode
-- Node.js 22.x LTS
+- Node.js 24.x LTS
 - ES2024 features where appropriate
 
 ## Output Format

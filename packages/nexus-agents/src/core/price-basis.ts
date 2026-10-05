@@ -34,11 +34,10 @@ import { z } from 'zod';
 /**
  * The vocabulary itself. Members:
  *
- * - `'list'` — a price WAS resolved, from the registry chain or from a
- *   `NEXUS_GATEWAY_COST` declaration (#6660). Read it as "an
- *   assumed published rate", not a guaranteed vendor list rate: see
- *   {@link PriceBasis} for the cases where the resolved number is something
- *   else and is still reported this way.
+ * - `'list'` — a registry-chain rate, read as an assumed published rate;
+ *   the operator overlay and fuzzy-match caveats on {@link PriceBasis} apply.
+ * - `'declared'` — the operator's `NEXUS_GATEWAY_COST` statement:
+ *   `priced:<in>,<out>`, `free`, or `local`, not a published rate (#6664).
  * - `'unknown'` — no price was resolved for this model. Read it as "the chain
  *   produced nothing", not "no price exists in the world": the generated
  *   catalog loader (`config/models-generated-loader.ts`) deliberately discards
@@ -48,14 +47,14 @@ import { z } from 'zod';
  * Deriving the type from the schema (rather than the reverse) is what keeps the
  * runtime validator and the compile-time union from drifting.
  */
-export const PriceBasisSchema = z.enum(['list', 'unknown']);
+export const PriceBasisSchema = z.enum(['list', 'declared', 'unknown']);
 
 /**
  * Where a price came from, so a consumer can caveat it honestly (#4406).
  *
  * `'list'` is an ASSUMPTION about the pricing chain, not a verified property of
  * the number. The chain's tiers are mostly vendors' advertised public rates,
- * but at least three paths put something else behind the same label:
+ * but two paths can put something else behind the same label:
  *
  *  1. The operator manifest overlay (`config/manifest-overlay.ts`) is the
  *     HIGHEST-precedence tier and carries `pricing` in its passthrough keys —
@@ -66,23 +65,13 @@ export const PriceBasisSchema = z.enum(['list', 'unknown']);
  *     `mergeMatchedWithDerived`) grants a decorated gateway id the pricing of a
  *     DIFFERENT canonical entry it matched. That rate is a real vendor rate for
  *     some other model, not necessarily for the id being priced.
- *  3. A gateway rate the operator DECLARED in `NEXUS_GATEWAY_COST` (#6660).
- *     A call a gateway arm served is priced by `gatewayCostDetail`
- *     (`cli-adapters/budget-arm-cost.ts`), not by the registry, and the basis
- *     is then read off `priced` alone (`priceBasisOf`), so:
- *       - `priced:<in>,<out>` → `'list'`, `costUsd` = the declared flat rate;
- *       - `free` / `local`    → `'list'`, `costUsd` = a measured `0`;
- *       - bare `priced`       → the registry rate of the model that answered:
- *         `'list'` when the registry prices it, `'unknown'` when not;
- *       - no declaration for the arm (unset, invalid, no entry) → `'unknown'`,
- *         no `costUsd`.
- *     The first two are an operator's statement, not a published rate, and
- *     carry the `'list'` label anyway. There is no `'declared'` member because
- *     adding one widens a union exposed on published types (`TaskOutcome`,
- *     `DecisionCostSummary`, `VoterCostBreakdown`), which the api-surface gate
- *     treats as BREAKING for readers; the member waits for a major (#6664).
- *  4. In the reverse direction, `'unknown'` is not a claim that no price
- *     exists — see the loader caveat on {@link PriceBasisSchema}.
+ *
+ * A gateway's explicit `NEXUS_GATEWAY_COST` rate (`priced:<in>,<out>`,
+ * `free`, `local`) instead reports `'declared'`: the operator's statement,
+ * including a measured zero, rather than a published rate. Bare `priced`
+ * delegates to the registry and reports `'list'` when priced, `'unknown'`
+ * otherwise. Missing or invalid declarations remain `'unknown'`.
+ * `'unknown'` does not claim that no price exists; see the loader caveat above.
  *
  * There is deliberately no `'contract'` member. The gap is NOT that an operator
  * has no way to state a negotiated rate — the manifest overlay above is exactly
@@ -102,7 +91,16 @@ export type PriceBasis = z.infer<typeof PriceBasisSchema>;
  * Returns undefined for `'unknown'`: there is no price to caveat.
  */
 export function priceBasisCaveat(basis: PriceBasis): string | undefined {
-  return basis === 'list'
-    ? 'Estimated from public list prices — your contract, gateway or free-tier rate may differ.'
-    : undefined;
+  switch (basis) {
+    case 'list':
+      return 'Estimated from public list prices — your contract, gateway or free-tier rate may differ.';
+    case 'declared':
+      return 'Based on the operator’s NEXUS_GATEWAY_COST declaration, not a published rate.';
+    case 'unknown':
+      return undefined;
+    default: {
+      const unreachable: never = basis;
+      throw new Error(`Unhandled price basis: ${String(unreachable)}`);
+    }
+  }
 }

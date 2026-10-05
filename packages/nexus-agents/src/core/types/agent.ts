@@ -82,8 +82,6 @@ export interface TaskHistoryItem {
  * Enforcement status of each field (Issue #469):
  * - `maxDuration`: ENFORCED - Task times out after this duration
  * - `maxTokens`: INFORMATIONAL - Included in task context for agent awareness, not enforced
- * - `outputFormat`: DEPRECATED - Not enforced, will be removed in v3.0
- * - `allowedTools`: DEPRECATED - Not enforced, will be removed in v3.0
  */
 export interface TaskConstraints {
   /** Maximum execution time in ms. ENFORCED via timeout mechanism. */

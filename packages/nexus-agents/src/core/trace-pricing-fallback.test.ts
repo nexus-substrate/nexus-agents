@@ -65,6 +65,12 @@ describe('price provenance (#4406)', () => {
     expect(caveat).toContain('contract');
   });
 
+  it('caveats declared rates as the operator statement, not a published rate', () => {
+    expect(priceBasisCaveat('declared')).toBe(
+      'Based on the operator’s NEXUS_GATEWAY_COST declaration, not a published rate.'
+    );
+  });
+
   it('has no caveat when there is no price to caveat', () => {
     expect(priceBasisCaveat('unknown')).toBeUndefined();
   });

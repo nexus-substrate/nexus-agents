@@ -57,10 +57,10 @@ export interface StoredRoutingDecision {
   readonly taskProfile: Record<string, unknown>;
   readonly requestId?: string | undefined; // Integration with #185 RequestContext
   /**
-   * Whether a router actually attributed this decision (#5915, closing the
-   * third step of #5812). Absent on a decision read back from a row written
-   * before the column existed, and absence reads as UNMEASURED everywhere —
-   * a legacy row carries no more evidence than the fallback does.
+   * Persisted attribution evidence (#5915), retained for legacy router labels.
+   * Old `topsis` labels stay `topsis` because they may be measured or fallback;
+   * the label alone cannot recover attribution. NULL or absent database evidence
+   * reads back as false. An omitted field on input is stored as unmeasured.
    */
   readonly routerTypeMeasured?: boolean | undefined;
 }
@@ -95,15 +95,19 @@ export interface StoredReward {
 
 /**
  * Aggregated model statistics from stored data.
+ *
+ * Each average/rate is null when its own inputs are empty. Reward can be
+ * unmeasured even when outcomes exist. Null must not be ranked as zero;
+ * exclude unmeasured values or place them after measured values.
  */
 export interface StoredModelStats {
   readonly model: CliName;
   readonly totalDecisions: number;
   readonly totalOutcomes: number;
-  readonly avgReward: number;
-  readonly avgQualityScore: number;
-  readonly avgLatencyMs: number;
-  readonly successRate: number;
+  readonly avgReward: number | null;
+  readonly avgQualityScore: number | null;
+  readonly avgLatencyMs: number | null;
+  readonly successRate: number | null;
 }
 
 // ============================================================================
@@ -174,10 +178,10 @@ export interface ModelStatsRow {
   model: string;
   total_decisions: number;
   total_outcomes: number;
-  avg_reward: number;
-  avg_quality_score: number;
-  avg_latency_ms: number;
-  success_rate: number;
+  avg_reward: number | null;
+  avg_quality_score: number | null;
+  avg_latency_ms: number | null;
+  success_rate: number | null;
 }
 
 // ============================================================================

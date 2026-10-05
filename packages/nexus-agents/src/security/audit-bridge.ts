@@ -49,7 +49,6 @@ type CorroborationEvt = Extract<SecurityAuditEvent, { type: 'corroboration' }>;
 type ReputationEvt = Extract<SecurityAuditEvent, { type: 'reputation' }>;
 type SanitizationEvt = Extract<SecurityAuditEvent, { type: 'sanitization' }>;
 type GraphEvt = Extract<SecurityAuditEvent, { type: 'graph_execution' }>;
-type ClawGuardEvt = Extract<SecurityAuditEvent, { type: 'clawguard_violation' }>;
 
 function mapTrust(e: TrustEvent): AuditEventInput {
   const severity: AuditSeverity = e.wasDowngraded ? 'warning' : 'info';
@@ -184,31 +183,7 @@ function mapGraphExecution(e: GraphEvt): AuditEventInput {
 }
 
 /**
- * Map a ClawGuard AUDIT-mode violation (#4097) to a durable event. `outcome` is
- * `success` because audit mode ALLOWED the call (it is log-and-allow, not a
- * denial); `severity` is `warning` to flag the policy violation. Queryable by
- * `action: 'security.clawguard_violation'`.
- */
-function mapClawGuard(e: ClawGuardEvt): AuditEventInput {
-  return {
-    category: 'authorization',
-    severity: 'warning',
-    outcome: 'success',
-    action: 'security.clawguard_violation',
-    actor: systemActor(e.component),
-    metadata: {
-      toolName: e.toolName,
-      warning: e.warning,
-      policySource: e.policySource,
-      mode: e.mode,
-      requestId: e.requestId,
-    },
-  };
-}
-
-/**
- * Map a security `AuditEvent` (discriminated union) to a durable
- * `AuditEventInput`. Pure — no side effects. The durable logger assigns
+ * Map a security event to a durable `AuditEventInput`. Pure — no side effects. The durable logger assigns
  * id/timestamp/hash, so those are omitted here.
  */
 export function securityAuditEventToInput(event: SecurityAuditEvent): AuditEventInput {
@@ -225,8 +200,6 @@ export function securityAuditEventToInput(event: SecurityAuditEvent): AuditEvent
       return mapSanitization(event);
     case 'graph_execution':
       return mapGraphExecution(event);
-    case 'clawguard_violation':
-      return mapClawGuard(event);
   }
 }
 

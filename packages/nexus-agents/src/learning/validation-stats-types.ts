@@ -164,23 +164,15 @@ export interface ExperimentResult {
   readonly treatment: VariantResultSummary;
   /** Comparison between groups */
   readonly comparison: ComparisonResult;
-  /** Relative improvement (treatment vs control) */
-  readonly relativeImprovement: number;
   /**
-   * Whether {@link relativeImprovement} was computed from a control rate that
-   * could support a ratio.
-   *
-   * `false` means the control measured 0 successes, so the relative improvement
-   * is unbounded and the accompanying `0` is a placeholder — NOT "treatment and
-   * control performed identically", which is what `0` reads as on that scale. A
-   * control of 0/50 is a real measurement; the ratio over it is the thing that
-   * does not exist.
-   *
-   * `calculateRegret` solved the same problem with `null` (#5255). This field
-   * carries the same information without widening a public `number` to
-   * `number | null`, which is a breaking change for readers.
+   * Relative improvement (treatment vs control), or null when control has no
+   * samples or its measured success rate is zero (the ratio is undefined).
+   * Inspect `control.n`: zero means no samples; a positive count with null
+   * lift means a measured zero baseline, including unbounded lift when the
+   * treatment rate is positive. A measured zero lift remains numeric 0.
+   * Render null as '-' rather than as 0% improvement.
    */
-  readonly relativeImprovementMeasured: boolean;
+  readonly relativeImprovement: number | null;
   /** Whether experiment has enough data for valid conclusions */
   readonly hasMinimumSampleSize: boolean;
   /** Minimum recommended sample size per group */
@@ -197,9 +189,8 @@ export interface ExperimentResult {
    *
    * Note the gate is `control.n > 0`, NOT `control.successRate > 0`: a control
    * of 0/50 is a measured baseline of 0.0 and a legitimate input here. That is
-   * a different question from the one {@link relativeImprovementMeasured}
-   * answers, which is whether a *ratio over* the control rate exists — hence
-   * two markers rather than one shared flag (#5857).
+   * a different question from whether {@link relativeImprovement} is non-null:
+   * the ratio over a zero control rate is undefined (#5857).
    */
   readonly recommendedSampleSizeMeasured: boolean;
 }

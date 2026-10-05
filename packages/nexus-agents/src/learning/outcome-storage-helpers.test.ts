@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { ZodError } from 'zod';
 import type {
   RoutingDecisionRow,
   TaskOutcomeRow,
@@ -35,7 +36,7 @@ function makeDecisionRow(overrides?: Partial<RoutingDecisionRow>): RoutingDecisi
     id: 'dec-1',
     trace_id: 'trace-1',
     timestamp: 1700000000000,
-    router_type: 'composite',
+    router_type: 'linucb',
     selected_model: 'claude',
     alternative_models: '["gemini","codex"]',
     confidence: 0.9,
@@ -282,11 +283,35 @@ describe('createIndexes', () => {
 // ============================================================================
 
 describe('rowToDecision', () => {
+  it('maps stored legacy quality to unattributed with empty measurement evidence', () => {
+    const decision = rowToDecision(
+      makeDecisionRow({ router_type: 'quality', router_type_measured: null })
+    );
+    expect(decision.routerType).toBe('unattributed');
+    expect(decision.routerTypeMeasured).toBe(false);
+  });
+
+  it('preserves stored legacy topsis with empty measurement evidence', () => {
+    const decision = rowToDecision(
+      makeDecisionRow({ router_type: 'topsis', router_type_measured: null })
+    );
+    expect(decision.routerType).toBe('topsis');
+    expect(decision.routerTypeMeasured).toBe(false);
+  });
+
+  it('clears claimed measurement for stored legacy quality', () => {
+    const decision = rowToDecision(
+      makeDecisionRow({ router_type: 'quality', router_type_measured: 1 })
+    );
+    expect(decision.routerType).toBe('unattributed');
+    expect(decision.routerTypeMeasured).toBe(false);
+  });
+
   it('converts row to StoredRoutingDecision', () => {
     const decision = rowToDecision(makeDecisionRow());
     expect(decision.id).toBe('dec-1');
     expect(decision.traceId).toBe('trace-1');
-    expect(decision.routerType).toBe('composite');
+    expect(decision.routerType).toBe('linucb');
     expect(decision.selectedModel).toBe('claude');
     expect(decision.alternativeModels).toEqual(['gemini', 'codex']);
     expect(decision.confidence).toBe(0.9);
@@ -351,12 +376,26 @@ describe('rowToDecision', () => {
     expect(decision.taskProfile).toEqual({});
   });
 
-  it('preserves all router_type values', () => {
-    for (const routerType of ['composite', 'topsis', 'budget', 'zero']) {
-      const decision = rowToDecision(makeDecisionRow({ router_type: routerType }));
+  it('preserves the five valid router_type values and measurement', () => {
+    for (const routerType of ['linucb', 'preference', 'cascade', 'topsis', 'unattributed']) {
+      const decision = rowToDecision(
+        makeDecisionRow({ router_type: routerType, router_type_measured: 1 })
+      );
       expect(decision.routerType).toBe(routerType);
+      expect(decision.routerTypeMeasured).toBe(true);
     }
   });
+
+  // Previously this suite certified composite/budget/zero as valid labels.
+  // Composite originated in the ab774799fa test fixture, not a storage producer.
+  it.each(['composite', 'budget', 'zero', 'unknown', ''])(
+    'rejects invalid stored router_type %j with a typed error',
+    (routerType) => {
+      expect(() =>
+        rowToDecision(makeDecisionRow({ router_type: routerType, router_type_measured: 1 }))
+      ).toThrow(ZodError);
+    }
+  );
 
   it('preserves single alternative model', () => {
     const decision = rowToDecision(makeDecisionRow({ alternative_models: '["gemini"]' }));
@@ -636,8 +675,9 @@ describe('SQL constants', () => {
       expect(MODEL_STATS_SQL).toContain('ORDER BY total_decisions DESC');
     });
 
-    it('uses COALESCE for null safety', () => {
-      expect(MODEL_STATS_SQL).toContain('COALESCE');
+    it('preserves null when aggregate inputs are empty', () => {
+      // Previously pinned COALESCE, which fabricated measurements for empty input.
+      expect(MODEL_STATS_SQL).not.toContain('COALESCE');
     });
 
     it('uses COUNT(DISTINCT) for decisions', () => {

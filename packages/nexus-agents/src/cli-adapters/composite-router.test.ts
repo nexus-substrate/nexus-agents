@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- asserts the schema default for maxDecisionTimeMs, which is deprecated but must keep resolving through the cycle (#5918). */
 /**
  * nexus-agents/cli-adapters - CompositeRouter Tests
  *
@@ -14,6 +13,8 @@ import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
 } from './composite-router.js';
+import { RouterConfigSchema } from './router-types.js';
+import { DEFAULT_COMPOSITE_CONFIG } from './composite-router-types.js';
 import { RoutingConfigSchema } from '../config/schemas-routing.js';
 import { adaptRoutingConfig } from '../config/routing-config-adapter.js';
 import type { ICliAdapter, CliTask, CliName, RoutingArmId } from './types.js';
@@ -84,13 +85,30 @@ function createExecutionScopedRouter(adapters: Map<CliName, ICliAdapter>): Compo
 }
 
 describe('CompositeRouterConfigSchema', () => {
+  it('omits the removed decision timeout from composite config (#5963)', () => {
+    const result = CompositeRouterConfigSchema.parse({ linucbAlpha: 2.0, maxDecisionTimeMs: 25 });
+    expect(result.linucbAlpha).toBe(2.0);
+    expect(result).not.toHaveProperty('maxDecisionTimeMs');
+  });
+
+  it('omits the removed decision timeout from defaults (#5963)', () => {
+    expect(CompositeRouterConfigSchema.parse({})).not.toHaveProperty('maxDecisionTimeMs');
+    expect(DEFAULT_COMPOSITE_CONFIG).not.toHaveProperty('maxDecisionTimeMs');
+  });
+
+  it('preserves cost preference without the removed decision timeout (#5963)', () => {
+    expect(RouterConfigSchema.parse({ preferCostEfficient: true, maxDecisionTimeMs: 25 })).toEqual({
+      preferCostEfficient: true,
+    });
+    expect(RouterConfigSchema.parse({})).toEqual({ preferCostEfficient: false });
+  });
+
   it('should parse default config', () => {
     const result = CompositeRouterConfigSchema.parse({});
     expect(result.enableBudgetFilter).toBe(true);
     expect(result.enableTopsisRanking).toBe(true);
     expect(result.enableLinUCBSelection).toBe(true);
     expect(result.linucbAlpha).toBe(1.0);
-    expect(result.maxDecisionTimeMs).toBe(50);
   });
 
   it('should parse custom config', () => {

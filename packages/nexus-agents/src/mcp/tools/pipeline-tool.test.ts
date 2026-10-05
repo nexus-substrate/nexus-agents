@@ -59,6 +59,17 @@ import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.j
 import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
 
 describe('PipelineInputSchema', () => {
+  it('rejects proof_of_learning with retirement and migration guidance (#5234)', () => {
+    const input = {
+      task: 'Build a login form',
+      votingStrategy: 'proof_of_learning',
+    };
+    expect(() => PipelineInputSchema.parse(input)).toThrow(
+      /proof_of_learning.*retired.*9\.0.*#5234/
+    );
+    expect(() => PipelineInputSchema.parse(input)).toThrow(/simple_majority.*higher_order/);
+  });
+
   it('accepts a valid task with defaults', () => {
     const parsed = PipelineInputSchema.parse({ task: 'Build a login form' });
     expect(parsed.task).toBe('Build a login form');

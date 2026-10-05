@@ -1072,7 +1072,7 @@ describe('the ratification gate runs on EVERY pull request, so branch protection
 
     it('caches and installs the base dependencies in gate', () => {
       const node = steps.find((step) => step.uses?.startsWith('actions/setup-node@') === true);
-      expect(node?.with?.['node-version']).toBe('22');
+      expect(node?.with?.['node-version']).toBe('24');
       expect(node?.with?.['cache']).toBe('pnpm');
       expect(node?.with?.['cache-dependency-path']).toBe('gate/pnpm-lock.yaml');
       const install = steps.find((step) => step.run === 'pnpm install --frozen-lockfile');

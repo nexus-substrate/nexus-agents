@@ -34,8 +34,7 @@ export type AuditEvent =
   | CorroborationEvent
   | ReputationEvent
   | SanitizationEvent
-  | GraphExecutionAuditEvent
-  | ClawGuardViolationEvent;
+  | GraphExecutionAuditEvent;
 
 /** Base fields shared by all audit events. */
 interface AuditEventBase {
@@ -154,43 +153,6 @@ export interface SanitizationEvent extends AuditEventBase {
    * Untrusted Input Policy: "Log stripped elements for audit trail."
    */
   readonly strippedElements: readonly StrippedElementSummary[];
-}
-
-/**
- * ClawGuard AUDIT-mode violation (#4097). Recorded a tool call that violated
- * the derived access policy but was allowed under `audit` mode. Its only
- * producer (the access-constraint deriver's MCP guard) was deleted in #5108,
- * so no new events of this type are written; the member stays in the union
- * because `AuditEvent` is published and existing ledgers may carry it.
- * Removal is a breaking change scheduled for the next major (#6319).
- */
-export interface ClawGuardViolationEvent extends AuditEventBase {
-  readonly type: 'clawguard_violation';
-  /** The tool whose call violated the policy. */
-  readonly toolName: string;
-  /** Human-readable warning from the access decision (may be truncated). */
-  readonly warning: string;
-  /** Source of the derived policy (`llm` / `fallback-keyword` / `bypass`). */
-  readonly policySource: string;
-  /** Policy mode under which the violation was allowed (e.g. `audit`). */
-  readonly mode: string;
-  /** Request ID of the offending tool call, for correlation. */
-  readonly requestId: string;
-  /**
-   * Which rule produced the verdict (#5106) — `unbypassable:tool`,
-   * `unbypassable:path`, `allowedTools`, `allowedTools:confirm_risky`.
-   *
-   * A first-class field rather than prose inside `warning`, because `warning`
-   * is truncated at 500 chars and a long attacker-selectable `path` argument
-   * pushes the rule off the end. A chain reader must be able to tell an
-   * unbypassable denylist hit from an allowlist miss without parsing a string
-   * that may have been cut mid-word.
-   *
-   * Absent for verdicts that carry no rule (an audit-mode allowlist
-   * observation), which is why it is optional rather than defaulted — there is
-   * no rule to name, and inventing one would misreport.
-   */
-  readonly matchedRule?: string;
 }
 
 /** Graph execution lifecycle event (Issue #839). */

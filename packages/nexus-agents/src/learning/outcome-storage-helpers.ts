@@ -10,6 +10,7 @@
 import type { Result } from '../core/result.js';
 import { err } from '../core/index.js';
 import type { CliName } from '../cli-adapters/types.js';
+import { StoredRouterAttributionSchema } from './outcome-feedback-types.js';
 import type {
   ISQLiteDatabase,
   StoredRoutingDecision,
@@ -128,6 +129,11 @@ export function createIndexes(db: ISQLiteDatabase): void {
 
 /**
  * Convert a database row to a StoredRoutingDecision.
+ * Legacy `quality` maps to `unattributed`. Historical `topsis` stays `topsis`:
+ * its label cannot distinguish a measured result from the old fallback.
+ * `routerTypeMeasured` preserves the available evidence without guessing.
+ * Invalid labels throw ZodError, wrapped by single and collection storage
+ * readers as OutcomeStorageError. A corrupt row fails the collection read.
  */
 export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
   let alternativeModels: CliName[] = [];
@@ -146,7 +152,6 @@ export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
     id: row.id,
     traceId: row.trace_id,
     timestamp: new Date(row.timestamp).toISOString(),
-    routerType: row.router_type as StoredRoutingDecision['routerType'],
     selectedModel: row.selected_model as CliName,
     alternativeModels,
     confidence: row.confidence,
@@ -156,7 +161,10 @@ export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
     // NULL (legacy row, pre-#5915) and 0 both mean UNMEASURED. Defaulting a
     // NULL to measured would re-create the exact inflation #5812 removed, on
     // the history rather than the live stats.
-    routerTypeMeasured: row.router_type_measured === 1,
+    ...StoredRouterAttributionSchema.parse({
+      routerType: row.router_type,
+      routerTypeMeasured: row.router_type_measured === 1,
+    }),
   };
 }
 
@@ -219,16 +227,16 @@ export const INSERT_REWARD_SQL = `
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
-/** SQL for aggregating model statistics. */
+/** SQL for aggregating model statistics; empty aggregate inputs remain null. */
 export const MODEL_STATS_SQL = `
   SELECT
     rd.selected_model as model,
     COUNT(DISTINCT rd.id) as total_decisions,
     COUNT(DISTINCT o.routing_decision_id) as total_outcomes,
-    COALESCE(AVG(r.reward), 0) as avg_reward,
-    COALESCE(AVG(o.quality_score), 0) as avg_quality_score,
-    COALESCE(AVG(o.duration_ms), 0) as avg_latency_ms,
-    COALESCE(AVG(CAST(o.success AS REAL)), 0) as success_rate
+    AVG(r.reward) as avg_reward,
+    AVG(o.quality_score) as avg_quality_score,
+    AVG(o.duration_ms) as avg_latency_ms,
+    AVG(CAST(o.success AS REAL)) as success_rate
   FROM routing_decisions rd
   LEFT JOIN task_outcomes o ON rd.id = o.routing_decision_id
   LEFT JOIN computed_rewards r ON rd.id = r.routing_decision_id

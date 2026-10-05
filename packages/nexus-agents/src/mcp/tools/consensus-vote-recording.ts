@@ -114,6 +114,7 @@ const VOTE_RECORD_STRATEGIES: ReadonlySet<VoteRecord['strategy']> = new Set([
   'unanimous',
   'higher_order',
   'opinion_wise',
+  // Persisted history may still carry the strategy retired for new votes in 9.0 (#5234).
   'proof_of_learning',
 ]);
 

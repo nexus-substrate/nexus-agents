@@ -84,7 +84,7 @@ import {
   type InstallFreshness,
 } from './doctor-install-freshness.js';
 import { execFileSync } from 'node:child_process';
-import { VERSION, isNodeVersionSupported } from '../version.js';
+import { VERSION, NODE_ENGINE_RANGE, isNodeVersionSupported } from '../version.js';
 import { allOf } from '../utils/verdict-aggregation.js';
 import {
   checkGatewayHealth,
@@ -881,7 +881,7 @@ export async function checkSqlite(): Promise<SqliteCheck> {
     return {
       available: false,
       error: isNotFound
-        ? `node:sqlite unavailable on ${process.version} — requires Node >= 22.5.0; 5 memory backends unavailable`
+        ? `node:sqlite unavailable on ${process.version} — requires Node ${NODE_ENGINE_RANGE}; 5 memory backends unavailable`
         : `node:sqlite load error: ${msg}`,
     };
   }
@@ -1311,7 +1311,7 @@ async function runDoctorFix(result: DoctorResult): Promise<void> {
   // Display-only: SQLite availability
   if (!result.sqliteCheck.available) {
     writeLine('');
-    writeLine('⚠ SQLite unavailable (node:sqlite needs Node >= 22.5.0):');
+    writeLine(`⚠ SQLite unavailable (node:sqlite needs Node ${NODE_ENGINE_RANGE}):`);
     writeLine(`  Upgrade Node (currently ${process.version})`);
   }
 

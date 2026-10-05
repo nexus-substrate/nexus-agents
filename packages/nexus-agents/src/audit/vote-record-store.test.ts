@@ -2113,4 +2113,33 @@ describe('gateway-served voter model reader (#6951)', () => {
       expect(record.voters[0]).not.toHaveProperty('servedModel');
     }
   });
+
+  it('verifies a ratification record written by the main-branch servedModel writer (#6990)', () => {
+    // Written by origin/main's buildVoteRecord + serializeValidatedRecord at
+    // 7b5566851c (#6992, the writer). release/9.0 must read what main writes,
+    // or a governor-path PR into it fails ratification on its own ledger.
+    const bytes = readFileSync(
+      new URL('./fixtures/served-model-main-writer.jsonl', import.meta.url),
+      'utf-8'
+    );
+    const parsed = parseVoteRecordsText(bytes);
+    expect(parsed.invalidLines).toEqual([]);
+    expect(parsed.records).toHaveLength(1);
+    const [record] = parsed.records;
+    if (record === undefined) throw new Error('fixture record missing');
+    expect(record.ratifiesPr).toEqual({ pr: 6990, headSha: 'a'.repeat(40) });
+    expect(record.voters.map((v) => v.servedModel)).toEqual([
+      'claude-fable-5-20260901',
+      'gpt-6.1-sol',
+      undefined,
+    ]);
+    expect(computeVoteRecordHash(record)).toBe(record.hash);
+    expect(verifyVoteRecordSet(parsed.records).ok).toBe(true);
+    // The served model is hash-covered here too: editing it is detected.
+    const voters = record.voters.map((v, i) => (i === 0 ? { ...v, servedModel: 'gpt-5' } : v));
+    expect(verifyVoteRecordSet([{ ...record, voters }])).toMatchObject({
+      ok: false,
+      reason: 'hash_mismatch',
+    });
+  });
 });

@@ -41,7 +41,6 @@ describe('strategyToAlgorithm', () => {
       'simple_majority',
       'supermajority',
       'unanimous',
-      'proof_of_learning',
       'higher_order',
       'opinion_wise',
     ] as const) {
@@ -57,7 +56,6 @@ describe('getDefaultErrorPolicy', () => {
     expect(getDefaultErrorPolicy('supermajority')).toBe('reduce_denominator');
     expect(getDefaultErrorPolicy('higher_order')).toBe('reduce_denominator');
     expect(getDefaultErrorPolicy('opinion_wise')).toBe('reduce_denominator');
-    expect(getDefaultErrorPolicy('proof_of_learning')).toBe('reduce_denominator');
   });
 
   it('the previous home re-exports the SAME function, not a copy', () => {

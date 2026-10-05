@@ -120,12 +120,11 @@ These are **sequential, not parallel**: `CompositeRouter` selects a CLI → CLI 
 
 ### Consensus Protocols
 
-6 core voting algorithms for multi-agent decisions:
+5 core voting algorithms for multi-agent decisions:
 
 - **simple_majority**: >50% approval threshold
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
-- **proof_of_learning**: Weighted by agent performance
 - **higher_order**: simple tally for the verdict; the Bayesian correlation analysis feeds contrarian escalation only (#4701)
 - **opinion_wise**: Opinion-based aggregation
 

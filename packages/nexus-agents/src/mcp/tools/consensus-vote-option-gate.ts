@@ -58,10 +58,9 @@ const STRATEGY_TO_OPTION_THRESHOLD: Record<string, OptionThreshold> = {
   unanimous: 'unanimous',
   supermajority: 'supermajority',
   simple_majority: 'majority',
-  // higher_order and proof_of_learning aggregate differently; they are gated at
+  // Higher-order strategies aggregate differently; they are gated at
   // the majority bar so a declared-option split still cannot pass unnoticed.
   higher_order: 'majority',
-  proof_of_learning: 'majority',
   opinion_wise: 'majority',
 };
 

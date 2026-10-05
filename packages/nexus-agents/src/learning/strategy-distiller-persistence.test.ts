@@ -51,7 +51,6 @@ function makeRule(overrides?: Partial<DistilledRule>): DistilledRule {
     status: 'active',
     createdAt: 1000,
     updatedAt: 2000,
-    tainted: false,
     ...overrides,
   };
 }
@@ -74,7 +73,6 @@ function makeLegacyRecord(overrides: Record<string, unknown> = {}): Record<strin
     status: 'active',
     createdAt: 1000,
     updatedAt: 2000,
-    tainted: false,
     ...overrides,
   };
 }
@@ -160,6 +158,32 @@ describe('PersistentStrategyDistiller', () => {
         dataDir: tmpDir,
       });
       expect(distiller.getRules()).toHaveLength(2);
+    });
+
+    it('hydrates rules without the removed tainted field (#5867)', () => {
+      const rule = makeRule();
+      writeFileSync(filePath, JSON.stringify({ ...makeSnapshot([]), rules: [rule] }));
+
+      const distiller = new PersistentStrategyDistiller(new OutcomeStore(), {
+        filePath,
+        dataDir: tmpDir,
+      });
+      const rules = distiller.getRules();
+      expect(rules).toHaveLength(1);
+      expect(rules[0]).toMatchObject({ status: 'active', confidence: 0.8 });
+      expect(rules[0]).not.toHaveProperty('tainted');
+      expect(loadPersistedRules(filePath)).toEqual(rules);
+    });
+
+    it('strips the removed tainted field from older snapshots (#5867)', () => {
+      const snapshot = { ...makeSnapshot([]), rules: [{ ...makeRule(), tainted: true }] };
+      writeFileSync(filePath, JSON.stringify(snapshot));
+
+      const rules = loadPersistedRules(filePath);
+      expect(rules).toHaveLength(1);
+      expect(rules[0]).toMatchObject({ status: 'active', confidence: 0.8 });
+      expect(rules[0]).not.toHaveProperty('tainted');
+      expect(RulesSnapshotSchema.parse(snapshot).rules[0]).not.toHaveProperty('tainted');
     });
 
     describe('legacy records without support/effect (#5004 finding 3)', () => {

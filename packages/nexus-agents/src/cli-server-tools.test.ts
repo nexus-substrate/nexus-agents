@@ -640,6 +640,18 @@ describe('registerMcpTools - tool allowlisting', () => {
     );
   });
 
+  it('omits the retired execute_expert audit logger even when configured (#6319)', () => {
+    registerMcpTools(makeDefaultOptions({ auditLogger: { logPolicyDecision: vi.fn() } }));
+    expect(mockRegisterExecuteExpertTool).toHaveBeenCalledTimes(1);
+    expect(mockRegisterExecuteExpertTool.mock.calls[0]?.[1]).not.toHaveProperty('auditLogger');
+  });
+
+  it('omits the retired orchestrate audit logger even when configured (#6319)', () => {
+    registerMcpTools(makeDefaultOptions({ auditLogger: { logPolicyDecision: vi.fn() } }));
+    expect(mockRegisterOrchestrateTool).toHaveBeenCalledTimes(1);
+    expect(mockRegisterOrchestrateTool.mock.calls[0]?.[1]).not.toHaveProperty('auditLogger');
+  });
+
   it('omits the audit logger when the server has none', () => {
     // The pair: threading must stay conditional. An always-present key would
     // put `undefined` on the deps object and defeat the `config.auditLogger`

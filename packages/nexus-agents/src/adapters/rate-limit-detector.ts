@@ -323,7 +323,8 @@ export interface RateLimitEvent {
 export interface RateLimitStats {
   readonly provider: string;
   readonly totalHits: number;
-  readonly lastHitAt: number;
+  /** ISO-8601 timestamp of the last recorded event. */
+  readonly lastHitAt: string;
   readonly avgRetryAfterMs: number | undefined;
 }
 
@@ -360,11 +361,13 @@ export function getRateLimitStats(): readonly RateLimitStats[] {
         ? retryValues.reduce((a, b) => a + b, 0) / retryValues.length
         : undefined;
     const lastEvent = providerEvents[providerEvents.length - 1];
+    // Groups are created with an event, so an empty group violates this invariant.
+    if (lastEvent === undefined) throw new Error(`Empty rate limit event group: ${provider}`);
 
     stats.push({
       provider,
       totalHits: providerEvents.length,
-      lastHitAt: lastEvent?.timestamp ?? 0,
+      lastHitAt: new Date(lastEvent.timestamp).toISOString(),
       ...(avgRetry !== undefined
         ? { avgRetryAfterMs: Math.round(avgRetry) }
         : { avgRetryAfterMs: undefined }),

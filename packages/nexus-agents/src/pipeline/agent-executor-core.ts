@@ -231,13 +231,7 @@ export interface AgentExecutorConfig {
   readonly simulateVotes?: boolean | undefined;
   /** Voting strategy for consensus stages (default: higher_order). */
   readonly votingStrategy?:
-    | 'simple_majority'
-    | 'supermajority'
-    | 'unanimous'
-    | 'higher_order'
-    | 'proof_of_learning'
-    | 'opinion_wise'
-    | undefined;
+    'simple_majority' | 'supermajority' | 'unanimous' | 'higher_order' | 'opinion_wise' | undefined;
   /** Use 3 agents instead of the full 7-role panel for faster voting (default: false). */
   readonly quickMode?: boolean | undefined;
   readonly tracker?: ITaskTracker | undefined;

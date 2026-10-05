@@ -22,9 +22,7 @@ export interface RoutingScorerConfig {
   /**
    * The latency at or above which the decision-time component scores zero
    * (default: 100). A GRADING threshold applied after the fact — it bounds
-   * nothing at route time. Named `maxDecisionTimeMs` until #5918: sharing the
-   * name with the router's unenforced config field made a repo-wide grep for
-   * that field return this file and read as though routing were bounded.
+   * nothing at route time.
    */
   readonly latencyBudgetMs: number;
   /** Weight for preferred CLI match (default: 0.4) */

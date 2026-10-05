@@ -130,6 +130,38 @@ describe('FeedbackIntegration', () => {
   });
 
   describe('router attribution reaches the analytics (#5812)', () => {
+    it('fallback returns unattributed when the scoring stages are empty', () => {
+      const collector = new OutcomeFeedbackCollector();
+      const withCollector = new FeedbackIntegration(undefined, collector);
+      withCollector.recordRoutingDecision(createMockDecision({ stagesExecuted: [] }));
+      expect(collector.getPendingDecisions()[0]).toMatchObject({
+        routerType: 'unattributed',
+        routerTypeMeasured: false,
+      });
+    });
+
+    it('returns unattributed when scores are empty despite named scoring stages', () => {
+      const collector = new OutcomeFeedbackCollector();
+      const withCollector = new FeedbackIntegration(undefined, collector);
+      withCollector.recordRoutingDecision(
+        createMockDecision({
+          stagesExecuted: [
+            'linucb-selection',
+            'preference-routing',
+            'zero-router',
+            'topsis-ranking',
+          ],
+          ucbScore: undefined,
+          preferenceScore: undefined,
+          difficultyTier: undefined,
+          topsisScore: undefined,
+        })
+      );
+      expect(collector.getPendingDecisions()[0]).toMatchObject({
+        routerType: 'unattributed',
+        routerTypeMeasured: false,
+      });
+    });
     // The seam is classifier -> RoutingDecision.routerTypeMeasured ->
     // countDecisionsByRouter -> getStats. Testing the classifier alone would
     // leave the middle link untested, which is exactly how the original defect
@@ -147,7 +179,7 @@ describe('FeedbackIntegration', () => {
       return {
         topsis: stats.decisionsByRouter.topsis,
         linucb: stats.decisionsByRouter.linucb,
-        unattributed: stats.decisionsUnattributed,
+        unattributed: stats.decisionsByRouter.unattributed,
       };
     }
 
@@ -163,9 +195,7 @@ describe('FeedbackIntegration', () => {
     });
 
     it('does NOT credit TOPSIS when no stage explains the decision', () => {
-      // The ordinary shape when every scoring stage is disabled. The classifier
-      // still labels this 'topsis' — RouterType has no member for "no stage
-      // explains this" — so the count is what has to exclude it.
+      // The ordinary shape when every scoring stage is disabled.
       const stats = statsFor({
         stagesExecuted: ['task-analysis', 'quality-constraint', 'distilled-rule'],
         topsisScore: undefined,

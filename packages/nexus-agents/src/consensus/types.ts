@@ -26,8 +26,6 @@ export {
   type WeightBasis,
   type ConsensusResult,
   ConsensusResultSchema,
-  type AgentPerformance,
-  AgentPerformanceSchema,
   type ConsensusEngineConfig,
   ConsensusEngineConfigSchema,
   DEFAULT_CONSENSUS_CONFIG,

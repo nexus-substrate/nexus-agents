@@ -507,18 +507,6 @@ export class AuditLogger implements IAuditLogger {
   }
 
   /**
-   * @deprecated Use {@link logSystemShutdownBegin}. Kept so #5577 does not
-   *   remove a published method; it now delegates, so the record it writes is
-   *   `system.shutdown.begin` rather than the old `system.shutdown` /
-   *   `success`, which claimed a shutdown that had not happened. Removal is
-   *   tracked for the next major.
-   * @param metadata - Optional structured detail attached to the record.
-   */
-  logSystemShutdown(metadata?: Record<string, unknown>): void {
-    this.logSystemShutdownBegin(metadata);
-  }
-
-  /**
    * Log that shutdown has begun (#5577).
    *
    * There is deliberately no matching completion record. This logger is the

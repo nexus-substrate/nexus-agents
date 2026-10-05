@@ -343,10 +343,8 @@ describe('saveCorrelationData and loadCorrelationData', () => {
     const loadResult = loadCorrelationData({
       minObservationsForCorrelation: 10,
       correlationThreshold: 0.3,
-      correlationMaxAgeMs: 86400000,
       independenceThreshold: 0.2,
       fallbackToSimpleVoting: true,
-      observationDecayFactor: 0.95,
       maxObservationsPerAgent: 1000,
       maxProposals: 3,
       maxTrackedPairs: 100,

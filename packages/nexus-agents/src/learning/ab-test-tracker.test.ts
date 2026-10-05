@@ -474,9 +474,8 @@ describe('relativeImprovement over a zero control rate', () => {
   // does not exist, and it is unbounded rather than zero. So a change from 0%
   // to 50% was reported as "0.0% improvement" — the literal sits on the same
   // numeric scale as a genuine result, so no consumer could tell them apart.
-  // `calculateRegret` solved the identical problem with `null` (#5255); this
-  // field is public API typed `number`, so it carries a marker instead of
-  // widening to `number | null`, which is breaking for readers.
+  // Like `calculateRegret`, null represents the undefined ratio (#5816).
+  // The existing control sample count distinguishes no data from a zero rate.
   const experiment = {
     id: 'exp-zero-control',
     name: 'Zero control',
@@ -530,22 +529,67 @@ describe('relativeImprovement over a zero control rate', () => {
     return tracker.getSummary('exp-zero-control')?.result ?? null;
   }
 
-  it('marks the ratio unmeasured when the control never succeeded', () => {
+  it('returns null when control samples are nonempty but control successes are empty', () => {
     const result = run(false);
 
     expect(result).not.toBeNull();
-    expect(result?.relativeImprovementMeasured).toBe(false);
-    // The placeholder is still 0, and that is exactly why the marker exists:
-    // a reader cannot tell it from a measured "no difference" without one.
-    expect(result?.relativeImprovement).toBe(0);
+    expect(result).not.toHaveProperty('relativeImprovementMeasured');
+    expect(result?.relativeImprovement).toBeNull();
+    expect(result?.control.n).toBe(20);
   });
 
-  it('marks it measured when the control has a non-zero rate', () => {
-    // The pair. Without it the marker could be hard-coded false and the
-    // assertion above would still pass.
+  it('preserves measured lift when control and treatment samples are nonempty', () => {
+    // A nonempty measured baseline must retain its numeric lift.
     const result = run(true);
 
-    expect(result?.relativeImprovementMeasured).toBe(true);
+    expect(result?.relativeImprovement).toBe(-0.5);
+  });
+
+  it('reproduces #5761 lift when control successes are empty over 100 nonempty samples', () => {
+    const tracker = new AbTestTracker();
+    tracker.createExperiment(experiment);
+    tracker.startExperiment(experiment.id);
+    for (let i = 0; i < 100; i++) {
+      for (const variantId of ['control', 'treatment']) {
+        tracker.recordOutcome({
+          experimentId: experiment.id,
+          variantId,
+          traceId: `${variantId}-${String(i)}`,
+          success: variantId === 'treatment' && i < 50,
+          reward: variantId === 'treatment' && i < 50 ? 1 : 0,
+          latencyMs: 10,
+          timestamp: '2026-10-03T00:00:00.000Z',
+        });
+      }
+    }
+    const summary = tracker.getSummary(experiment.id);
+    if (summary?.result === null || summary === null) throw new Error('Expected experiment result');
+    expect(summary.result.control.n).toBe(100);
+    expect(summary.result.control.successRate).toBe(0);
+    expect(summary.result.treatment.n).toBe(100);
+    expect(summary.result.treatment.successRate).toBe(0.5);
+    // #5761 originally asserted: expect(summary.result.relativeImprovement).toBeGreaterThan(0);
+    // #5816 supersedes that assertion: the ratio over a zero baseline is null.
+    expect(summary.result.relativeImprovement).toBeNull();
+  });
+
+  it('returns null lift when control samples are empty but treatment samples are nonempty', () => {
+    const tracker = new AbTestTracker();
+    tracker.createExperiment(experiment);
+    tracker.startExperiment(experiment.id);
+    tracker.recordOutcome({
+      experimentId: experiment.id,
+      variantId: 'treatment',
+      traceId: 'treatment-only',
+      success: true,
+      reward: 1,
+      latencyMs: 10,
+      timestamp: '2026-10-03T00:00:00.000Z',
+    });
+    const result = tracker.getSummary(experiment.id)?.result;
+    expect(result?.control.n).toBe(0);
+    expect(result?.treatment.n).toBe(1);
+    expect(result?.relativeImprovement).toBeNull();
   });
 
   // #5857: `recommendedSampleSize` read the same `control.successRate` two
@@ -561,6 +605,7 @@ describe('relativeImprovement over a zero control rate', () => {
 
     expect(result).not.toBeNull();
     expect(result?.control.n).toBe(0);
+    expect(result?.relativeImprovement).toBeNull();
     expect(result?.recommendedSampleSizeMeasured).toBe(false);
     // The number is still emitted, and that is why the marker is needed: it
     // is real arithmetic over a fabricated 0 baseline, and it comes out
@@ -570,15 +615,13 @@ describe('relativeImprovement over a zero control rate', () => {
   });
 
   it('marks the recommendation measured for a control of 0 successes over 20 trials', () => {
-    // The discriminating pair, and the reason this is NOT the same flag as
-    // relativeImprovementMeasured: 0/20 is a measured baseline of 0.0 and a
-    // legitimate input to calculateMinSampleSize, while the RATIO over it
-    // still does not exist. The two markers must disagree on this input.
+    // 0/20 is a measured baseline for calculateMinSampleSize, while the
+    // relative improvement ratio over it remains null.
     const result = run(false);
 
     expect(result?.control.n).toBe(20);
     expect(result?.recommendedSampleSizeMeasured).toBe(true);
-    expect(result?.relativeImprovementMeasured).toBe(false);
+    expect(result?.relativeImprovement).toBeNull();
   });
 
   it('marks the recommendation measured when the control has a rate', () => {

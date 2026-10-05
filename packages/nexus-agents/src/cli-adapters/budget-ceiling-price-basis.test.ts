@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BudgetRouter } from './budget-router.js';
 import type { CliTask, RoutingArmId } from './types.js';
+import { recordCeilingCostOfArm } from './budget-arm-cost.js';
 
 const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 vi.mock('../core/logger.js', async (importOriginal) => {
@@ -66,8 +67,8 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
     }
   );
 
-  it('records an explicitly free gateway as priced, rather than unmeasured', () => {
-    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+  it.each(['free', 'local'])('records an explicitly %s gateway as declared', (declaration) => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', declaration);
     expect(router.filterByTaskClassCeiling(task, ['api:custom-openai'])).toEqual([
       'api:custom-openai',
     ]);
@@ -75,10 +76,25 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
       arm: 'api:custom-openai',
       cost: 0,
       ceiling: 0.2,
-      priceBasis: 'list',
+      priceBasis: 'declared',
       ceilingMeasurement: 'estimated',
       withinCeiling: true,
     });
+  });
+
+  it('records explicit gateway rates as declared while bare priced remains list', () => {
+    const target = { arm: 'api:custom-openai' as const, adapter: undefined };
+    expect(
+      recordCeilingCostOfArm(target, 1_000_000, 500_000, 10, {
+        NEXUS_GATEWAY_COST: 'priced:2,10',
+      })
+    ).toEqual({ costUsd: 7, priceBasis: 'declared' });
+    expect(
+      recordCeilingCostOfArm(target, 1_000, 200, 10, {
+        NEXUS_GATEWAY_COST: 'priced',
+        NEXUS_CUSTOM_MODEL: 'claude-sonnet-4-6',
+      })
+    ).toEqual({ costUsd: expect.any(Number), priceBasis: 'list' });
   });
 
   it('names the empty pool: no candidates and no candidate measurements', () => {

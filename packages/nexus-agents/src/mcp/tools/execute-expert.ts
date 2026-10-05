@@ -32,7 +32,6 @@ import { getExpertFallbackChain, ROLE_TO_TASK_CATEGORY } from './create-expert-r
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import { createExpert } from '../../agents/experts/expert-factory.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/outcome-store.js';
-import type { IAuditLogger } from '../../audit/audit-types.js';
 // Per-expert context-budget observer (#2031). Telemetry-only; never
 // influences the call. Emits `context_warning` when utilization crosses
 // threshold (default 85%, overridable via NEXUS_CONTEXT_WARN_THRESHOLD).
@@ -105,13 +104,6 @@ export type ExecuteExpertInput = z.infer<typeof ExecuteExpertInputSchema>;
 export interface ExecuteExpertDeps extends BaseMcpToolDeps {
   /** Registry of created experts (shared with create_expert) */
   expertRegistry: Map<string, Expert>;
-  /**
-   * Durable, hash-chained audit logger (#4097). Its only reader was the
-   * access-constraint deriver's ALS audit trail, deleted in #5108; nothing in
-   * this tool consumes it today. Kept because `ExecuteExpertDeps` is published
-   * — dropping the member is a breaking change for the next major (#6319).
-   */
-  auditLogger?: IAuditLogger;
   /** Optional CLI detection cache for checking available CLIs (Issue #747) */
   cliCache?: ICliDetectionCache;
   /** MCP notifier for client-visible logging (Issue #974) */
