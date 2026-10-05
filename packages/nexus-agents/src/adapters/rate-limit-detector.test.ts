@@ -185,7 +185,7 @@ describe('rate limit tracking', () => {
     const anthropic = stats.find((s) => s.provider === 'anthropic');
     expect(anthropic).toBeDefined();
     expect(anthropic?.totalHits).toBe(2);
-    expect(anthropic?.lastHitAt).toBe(2000);
+    expect(anthropic?.lastHitAt).toBe('1970-01-01T00:00:02.000Z');
     expect(anthropic?.avgRetryAfterMs).toBe(45000);
 
     const openai = stats.find((s) => s.provider === 'openai');
@@ -196,6 +196,11 @@ describe('rate limit tracking', () => {
 
   it('returns empty stats when no events recorded', () => {
     expect(getRateLimitStats()).toHaveLength(0);
+  });
+
+  it('preserves a recorded epoch-zero timestamp as ISO, rather than an absent hit', () => {
+    recordRateLimitEvent({ provider: 'test', timestamp: 0, retryAfterMs: undefined });
+    expect(getRateLimitStats()[0]?.lastHitAt).toBe('1970-01-01T00:00:00.000Z');
   });
 
   it('clears events correctly', () => {

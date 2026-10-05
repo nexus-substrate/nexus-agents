@@ -204,6 +204,18 @@ describe('timestamp exemptions', () => {
   const numericSchema =
     'export const WEATHER_REPORT_OUTPUT_SCHEMA = {\n  lastHitAt: z.number(),\n};\n';
 
+  it('rejects numeric lastHitAt without a default compatibility exemption', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tool-output-iso-'));
+    try {
+      writeFileSync(join(dir, exemption.file), numericSchema);
+      expect(scanToolFilesWithCoverage(dir).violations).toEqual([
+        { file: exemption.file, field: 'lastHitAt', line: 2 },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('suppresses only the exempted file and field, preserving other violations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'tool-output-exemption-'));
     try {
@@ -212,7 +224,7 @@ describe('timestamp exemptions', () => {
         numericSchema.replace('};', '  createdAt: z.number(),\n};')
       );
       writeFileSync(join(dir, 'other.ts'), numericSchema);
-      const result = scanToolFilesWithCoverage(dir);
+      const result = scanToolFilesWithCoverage(dir, [exemption]);
       expect(result.violations).toEqual([
         { file: 'other.ts', field: 'lastHitAt', line: 2 },
         { file: exemption.file, field: 'createdAt', line: 3 },

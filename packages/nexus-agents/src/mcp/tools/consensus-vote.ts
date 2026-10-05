@@ -27,7 +27,6 @@ import {
   registerStructuredTool,
   toolStructuredError,
   structuredToolSuccess,
-  toolSuccessStructured,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -958,10 +957,7 @@ async function runSyncConsensusVote(
     approvalPercentage: result.value.approvalPercentage,
     voteCount: result.value.votes.length,
   });
-  // Untyped until 9.0 (#7049): the published AgentVoteSummary.rejectionCategories
-  // is string[], wider than this tool's enum schema. Runtime strictness still
-  // applies through registerStructuredTool.
-  return toolSuccessStructured({ ...result.value });
+  return structuredToolSuccess(z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA), { ...result.value });
 }
 
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {

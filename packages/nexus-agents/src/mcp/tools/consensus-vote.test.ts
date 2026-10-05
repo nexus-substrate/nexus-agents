@@ -402,6 +402,19 @@ describe('Logger integration', () => {
 });
 
 describe('AgentVoteSummary structure', () => {
+  it('accepts only declared rejection categories at compile time (#7049)', () => {
+    const categories: NonNullable<AgentVoteSummary['rejectionCategories']> = [
+      'YAGNI',
+      'SECURITY_RISK',
+    ];
+    if (false) {
+      // @ts-expect-error — arbitrary strings are not rejection categories
+      const invalid: AgentVoteSummary['rejectionCategories'] = ['ARBITRARY_CATEGORY'];
+      expect(invalid).toEqual(['ARBITRARY_CATEGORY']);
+    }
+    expect(categories).toEqual(['YAGNI', 'SECURITY_RISK']);
+  });
+
   it('should have correct structure for approve vote', () => {
     const summary: AgentVoteSummary = {
       role: 'architect',

@@ -12,6 +12,7 @@ import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types'
 import { WeatherReportInputSchema } from './weather-report-types.js';
 import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 import type { ToolResult } from './tool-result.js';
+import { clearRateLimitEvents, recordRateLimitEvent } from '../../adapters/rate-limit-detector.js';
 
 vi.mock('../../config/learning-persistence.js', () => ({
   isPersistenceEnabled: vi.fn(() => false),
@@ -202,5 +203,32 @@ describe('weather_report output contract (#5842)', () => {
     const report = result.structuredContent as Record<string, unknown>;
     expect(schema.safeParse({ ...report, overall: { totalTasks: 'one' } }).success).toBe(false);
     expect(schema.strict().safeParse({ ...report, untrackedField: true }).success).toBe(false);
+  });
+
+  it('returns an ISO lastHitAt that round-trips the recorded event timestamp', async () => {
+    const timestamp = Date.parse('2026-10-05T12:34:56.789Z');
+    clearRateLimitEvents();
+    try {
+      recordRateLimitEvent({ provider: 'openai', timestamp, retryAfterMs: 1000 });
+      const { schema, result } = await registeredReport(true);
+      expect(result.isError).toBeUndefined();
+      const report = schema.parse(result.structuredContent);
+      const rateLimits = report['rateLimits'] as { lastHitAt: string }[];
+      expect(rateLimits).toHaveLength(1);
+      const lastHitAt = rateLimits[0]?.lastHitAt;
+      expect(lastHitAt).toBe(new Date(timestamp).toISOString());
+      expect(Date.parse(lastHitAt ?? '')).toBe(timestamp);
+      expect(new Date(lastHitAt ?? '').getTime()).toBe(timestamp);
+      expect(
+        schema.safeParse({ ...report, rateLimits: [{ ...rateLimits[0], lastHitAt: timestamp }] })
+          .success
+      ).toBe(false);
+      expect(
+        schema.safeParse({ ...report, rateLimits: [{ ...rateLimits[0], lastHitAt: 'invalid' }] })
+          .success
+      ).toBe(false);
+    } finally {
+      clearRateLimitEvents();
+    }
   });
 });

@@ -164,7 +164,8 @@ export interface RecommendedMapping {
 export interface RateLimitReport {
   readonly provider: string;
   readonly totalHits: number;
-  readonly lastHitAt: number;
+  /** ISO-8601 timestamp of the last recorded event. */
+  readonly lastHitAt: string;
   readonly avgRetryAfterMs: number | undefined;
 }
 

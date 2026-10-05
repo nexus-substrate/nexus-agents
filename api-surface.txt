@@ -409,7 +409,7 @@ InterfaceDeclaration AgentVoteSummary
   fallback?: SeatFallback | undefined
   modelUsed?: string | undefined
   reasoning: string
-  rejectionCategories?: readonly string[] | undefined
+  rejectionCategories?: readonly ("DRY_VIOLATION" | "INSUFFICIENT_EVIDENCE" | "MISALIGNED" | "OVER_ENGINEERING" | "SCOPE_CREEP" | "SECURITY_RISK" | "YAGNI")[] | undefined
   retried?: boolean | undefined
   retriedFrom?: RetriedFrom | undefined
   role: string
@@ -7225,7 +7225,7 @@ InterfaceDeclaration RateLimitExceeded
   readonly type: "rate_limit_exceeded"
 InterfaceDeclaration RateLimitReport
   readonly avgRetryAfterMs: number | undefined
-  readonly lastHitAt: number
+  readonly lastHitAt: string
   readonly provider: string
   readonly totalHits: number
 TypeAliasDeclaration ReasoningDepth
