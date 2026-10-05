@@ -12,7 +12,14 @@
  * @module nexus-memory/telemetry
  */
 
-import type { CliName, MemoryEvent, MemoryEventCounters, MemoryEventListener } from './types.js';
+import { serializeJson } from './json.js';
+import type {
+  JsonValue,
+  CliName,
+  MemoryEvent,
+  MemoryEventCounters,
+  MemoryEventListener,
+} from './types.js';
 
 const KEY_SUMMARY_LIMIT = 120;
 const PAYLOAD_SUMMARY_LIMIT = 240;
@@ -41,7 +48,7 @@ function truncate(value: unknown, limit: number): string {
     s = '<null>';
   } else {
     try {
-      s = JSON.stringify(value);
+      s = serializeJson(value as JsonValue);
     } catch {
       s = '<unserializable>';
     }

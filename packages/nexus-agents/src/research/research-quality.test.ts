@@ -37,6 +37,14 @@ describe('classifyVenue', () => {
     expect(classifyVenue('Some Workshop 2026')).toBe(1);
   });
 
+  it('returns 0 for a venue with no letters (a year, whitespace, punctuation)', () => {
+    // Semantic Scholar can return such strings; they name no venue, so they earn no tier
+    // and must not trigger the peer-reviewed rigor tag downstream.
+    expect(classifyVenue('2024')).toBe(0);
+    expect(classifyVenue(' ')).toBe(0);
+    expect(classifyVenue('—')).toBe(0);
+  });
+
   it('returns 0 for null/undefined/empty', () => {
     expect(classifyVenue(null)).toBe(0);
     expect(classifyVenue(undefined)).toBe(0);
@@ -45,6 +53,14 @@ describe('classifyVenue', () => {
 });
 
 describe('citationScore', () => {
+  it('returns 0 for null from unvalidated registry YAML', () => {
+    expect(citationScore(null)).toBe(0);
+  });
+
+  it('returns 0 for NaN', () => {
+    expect(citationScore(Number.NaN)).toBe(0);
+  });
+
   it('scores citations logarithmically', () => {
     expect(citationScore(0)).toBe(0);
     expect(citationScore(undefined)).toBe(0);
@@ -71,6 +87,13 @@ describe('recencyBoost', () => {
 });
 
 describe('computeQualityScore', () => {
+  it.each([null, Number.NaN])('treats citation_count %s like missing citations', (count) => {
+    const paper = makePaper({ source: 'arxiv', has_code: true });
+    expect(computeQualityScore({ ...paper, citation_count: count as never })).toBe(
+      computeQualityScore({ ...paper, citation_count: undefined })
+    );
+  });
+
   it('returns 0 for a bare arXiv preprint', () => {
     const paper = makePaper({ source: 'arxiv' });
     expect(computeQualityScore(paper)).toBe(0);
@@ -98,6 +121,12 @@ describe('computeQualityScore', () => {
 });
 
 describe('computeEvidenceTier', () => {
+  it.each([null, Number.NaN])('does not promote a paper with citation_count %s', (count) => {
+    const paper = makePaper({ venue: 'NeurIPS', rigor_tags: [] });
+    expect(computeEvidenceTier({ ...paper, citation_count: count as never })).toBe('low');
+    expect(computeEvidenceTier(paper)).toBe('low');
+  });
+
   it('returns high for peer-reviewed + code + baselines', () => {
     const paper = makePaper({
       rigor_tags: ['peer-reviewed', 'has-code', 'has-baselines'],

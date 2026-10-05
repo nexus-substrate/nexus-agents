@@ -43,6 +43,13 @@ export function readSubprocessDepth(env: NodeJS.ProcessEnv = process.env): numbe
 const BASE_ENV_EXACT: readonly string[] = [
   'PATH',
   'HOME',
+  // CLI config/data locations hold paths, not credentials (#6982).
+  'CODEX_HOME',
+  'CLAUDE_CONFIG_DIR',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_STATE_HOME',
+  'XDG_CACHE_HOME',
   'USER',
   'LOGNAME',
   'SHELL',

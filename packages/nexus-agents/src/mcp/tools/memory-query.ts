@@ -17,8 +17,9 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolMemory, type UnifiedMemoryResult } from './tool-memory.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -32,6 +33,24 @@ import {
 import type { IModelAdapter } from '../../core/index.js';
 import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+
+// Concrete shape from executeMemoryQuery (#2340 batch 2). Inner result rows
+// are dynamic (per-backend shape), so `results` is `z.array(z.unknown())`.
+const OUTPUT_SCHEMA = {
+  query: z.string(),
+  expandedQuery: z.string().optional(),
+  results: z.array(z.unknown()),
+  count: z.number(),
+  source: z.string(),
+  // #4999: the SDK validates structured content against this schema with
+  // `additionalProperties: false`, so a field added to the response and not
+  // declared here makes EVERY call fail with -32602 rather than merely going
+  // unreported. The integration test caught that; the unit tests could not,
+  // because they call the handler directly and never cross the protocol.
+  searched: z.array(z.string()),
+  unavailable: z.array(z.string()),
+  errored: z.array(z.string()),
+};
 
 // ============================================================================
 // Schema & Types
@@ -267,7 +286,7 @@ async function memoryQueryHandler(args: unknown, ctx: HandlerContext): Promise<T
 
   return withToolError('Memory query failed', ctx.logger, async () => {
     const result = await executeMemoryQuery(validationResult.data, ctx.logger);
-    return toolSuccessStructured(result as unknown as Record<string, unknown>);
+    return structuredToolSuccess(z.object(OUTPUT_SCHEMA), result);
   });
 }
 
@@ -314,30 +333,13 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
   const timeoutMs = getToolTimeout('memory_query', deps.security);
   const wrappedHandler = wrapToolWithTimeout('memory_query', secureHandler, { timeoutMs, logger });
 
-  // Concrete shape from executeMemoryQuery (#2340 batch 2). Inner result rows
-  // are dynamic (per-backend shape), so `results` is `z.array(z.unknown())`.
-  const outputSchema = {
-    query: z.string(),
-    expandedQuery: z.string().optional(),
-    results: z.array(z.unknown()),
-    count: z.number(),
-    source: z.string(),
-    // #4999: the SDK validates structured content against this schema with
-    // `additionalProperties: false`, so a field added to the response and not
-    // declared here makes EVERY call fail with -32602 rather than merely going
-    // unreported. The integration test caught that; the unit tests could not,
-    // because they call the handler directly and never cross the protocol.
-    searched: z.array(z.string()),
-    unavailable: z.array(z.string()),
-    errored: z.array(z.string()),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'memory_query',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('memory_query'),
     },
     toSdkCallback(wrappedHandler)

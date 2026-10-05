@@ -105,7 +105,7 @@ in every process. Every process start therefore wrote a new genesis event into
 the middle of an existing file, and every such seam verified as
 `previous_hash_mismatch` — indistinguishable from a deleted event.
 
-`computeEventHash` (`audit-logger.ts:~64`) is `SHA-256` over a JSON projection.
+`computeEventHash` (`audit-chain-verify.ts`) is `SHA-256` over a JSON projection.
 Since **#3921 the projection is versioned** (`hashVersion`). For a normal event
 the projection covers **only these fields**:
 
@@ -124,7 +124,7 @@ see [T7](#t7-content-tampering-in-unhashed-fields).
 **Exception (#3921 — versioned projection).** A tier-transition event (a
 `governance`-category event carrying `metadata.tierTransition`) is hashed under
 `hashVersion: 2`: the projection additionally folds in `hashVersion` and the
-canonicalized `metadata.tierTransition` payload (`audit-logger.ts:~58-77`). For
+canonicalized `metadata.tierTransition` payload (`audit-chain-verify.ts`). For
 those events the tier-transition payload **is** hash-covered, and because the
 `hashVersion` is itself part of the projection, a tampered or stripped version
 field cannot silently downgrade the hash. The blanket "metadata is fully
@@ -153,26 +153,26 @@ for tier-transition events.
 
 ### 1.4 What `verify_audit_chain` actually checks
 
-`verifyChain` (`audit-logger.ts:129`) walks the event array in order and, per
-event, calls `verifyEvent` (`audit-logger.ts:77`), which enforces three
+`verifyChain` (`audit-chain-verify.ts`) walks the event array in order and, per
+event, calls `verifyEvent` (`audit-chain-verify.ts`), which enforces three
 invariants:
 
 1. **`missing_hash`** — event has no `hash` field but the chain started hashed
-   (`audit-logger.ts:82`).
+   (`audit-chain-verify.ts`).
 2. **`previous_hash_mismatch`** — for `index > 0`, `event.previousHash` does not
-   equal the prior event's `hash` (`audit-logger.ts:91`).
+   equal the prior event's `hash` (`audit-chain-verify.ts`).
 3. **`hash_mismatch`** — recomputed hash of the (hashed) fields does not equal
-   the stored `hash` (`audit-logger.ts:100`).
+   the stored `hash` (`audit-chain-verify.ts`).
 
-It returns the **first** failure and stops (`audit-logger.ts:138`) — one tamper
+It returns the **first** failure and stops (`audit-chain-verify.ts`) — one tamper
 invalidates everything downstream.
 
 Two short-circuits matter for the threat analysis:
 
 - **Empty log ⇒ `{ ok: true, eventCount: 0, notVerified: 'empty' }`**
-  (`audit-logger.ts:192`).
+  (`audit-chain-verify.ts`).
 - **First event has no `hash` ⇒ the whole batch is treated as un-chained and
-  returns `{ ok: true, notVerified: 'unchained' }`** (`audit-logger.ts:193-195`).
+  returns `{ ok: true, notVerified: 'unchained' }`** (`audit-chain-verify.ts`).
   This is the backward-compat path for logs written with `enableHashChain:
 false`. It is also an attack surface — see [T3](#t3-rewrite-and-rehash) /
   [T8](#t8-chain-disable--downgrade).
@@ -259,7 +259,7 @@ statement: links verified, origin elsewhere ([T6](#t6-first-record-integrity-no-
 | **Code/tool compromise** | Can modify `audit-logger.ts` or the verify tool / its inputs.                                              | T9                |
 
 The critical observation: **the hashing algorithm uses no secret.**
-`computeEventHash` is a keyless `SHA-256` (`audit-logger.ts:45-56`). Any
+`computeEventHash` is a keyless `SHA-256` (`audit-chain-verify.ts`). Any
 adversary who can read the code (it is open source) can recompute valid hashes.
 The chain is therefore **tamper-evident only against an adversary who edits the
 files but does not recompute the chain.** It is **not tamper-proof** against one
@@ -469,7 +469,7 @@ failing closed on an un-chained log when policy expects chaining.
 ### T9: Tampering with the verification tool itself
 
 **Vector.** Code adversary modifies `verifyChain` / `verifyEvent` /
-`computeEventHash` (`audit-logger.ts`) or the MCP tool
+`computeEventHash` (`audit-chain-verify.ts`) or the MCP tool
 (`verify-audit-chain-tool.ts`) to always return `{ ok: true }`, or runs the tool
 against a sanitized copy of the directory.
 
@@ -546,7 +546,7 @@ Ranked by risk-reduction-per-effort. All are **out of scope for this doc**
 1. **Hash the full event payload, or explicitly document the hashed subset as a
    contract.** Add the remaining schema fields (esp. `metadata`,
    `policyDecision`, `violationType`, `resource`, `severity`, `timestampMs`) to
-   `computeEventHash` (`audit-logger.ts:45`). Closes **T7** outright, low effort.
+   `computeEventHash` (`audit-chain-verify.ts`). Closes **T7** outright, low effort.
    (Note: changing the hashed set is a chain-format migration — version it.)
 
 2. **External anchor of the head hash + event count.** Periodically write

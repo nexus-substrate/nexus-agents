@@ -5,8 +5,10 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { modelTierOf } from '../adapters/gateway-family-ranking.js';
 import {
   detectModelDrift,
+  draftTier,
   type DriftRegistryEntry,
   type DriftSource,
   type ListedModel,
@@ -44,6 +46,27 @@ const ALL_KNOWN: readonly ListedModel[] = [
   { id: 'gpt-5.5' },
 ];
 
+describe('draftTier', () => {
+  it.each([
+    ['openai/gpt-7-mini:beta', 'gpt-7-mini', 'mid'],
+    ['gpt-5.5', 'gpt-5.5', 'flagship'],
+    ['o3', 'o3', 'flagship'],
+    ['claude-sonnet-4-6', 'claude-sonnet-4-6', 'mid'],
+    ['gemini-9-flash-lite', 'gemini-9-flash-lite', 'small'],
+  ] as const)('uses the canonical tier for %s', (listed, bare, expected) => {
+    const levels = { 3: 'flagship', 2: 'mid', 1: 'small' };
+    expect(draftTier(listed)).toBe(expected);
+    expect(draftTier(listed)).toBe(levels[modelTierOf(bare) as keyof typeof levels]);
+  });
+
+  it.each(['unclassified-model-7', 'someorg/unclassified-mini'])(
+    'keeps an unresolvable family unknown: %s',
+    (id) => {
+      expect(draftTier(id)).toBe('unknown');
+    }
+  );
+});
+
 describe('detectModelDrift', () => {
   it('reports a model no registry entry names, with a drafted entry', async () => {
     const report = await detectModelDrift({
@@ -72,6 +95,74 @@ describe('detectModelDrift', () => {
       pricing: { inputPer1M: 5, outputPer1M: 25 },
     });
     expect(report.newModels[0]?.sources).toEqual(['vendor-a']);
+    expect(report.newModels[0]).toHaveProperty('createdAt', nowS - 3 * DAY_S);
+  });
+
+  it('orders dated haiku after opus without treating a date as a generation', async () => {
+    const report = await detectModelDrift({
+      sources: [
+        measured('gateway', [{ id: 'claude-3-haiku-20240307' }, { id: 'claude-opus-4-6' }]),
+      ],
+      registry: REGISTRY,
+      nowMs: NOW_MS,
+    });
+    expect(report.newModels.map((m) => m.draft.id)).toEqual([
+      'claude-opus-4-6',
+      'claude-3-haiku-20240307',
+    ]);
+  });
+
+  it('never puts a newer gpt mini before a same-vendor flagship', async () => {
+    const report = await detectModelDrift({
+      sources: [
+        measured('gateway', [
+          { id: 'gpt-9-mini', createdAt: nowS },
+          { id: 'gpt-7', createdAt: nowS - DAY_S },
+        ]),
+      ],
+      registry: REGISTRY,
+      nowMs: NOW_MS,
+    });
+    expect(report.newModels.map((m) => m.draft.id)).toEqual(['gpt-7', 'gpt-9-mini']);
+  });
+
+  it('ranks metadata recency within a tier and interleaves alphabetically ordered vendors', async () => {
+    const report = await detectModelDrift({
+      sources: [
+        measured('gateway', [
+          { id: 'gpt-9', createdAt: nowS - DAY_S },
+          { id: 'gpt-7', createdAt: nowS },
+          { id: 'claude-opus-5', createdAt: nowS },
+          { id: 'claude-opus-6', createdAt: nowS - DAY_S },
+        ]),
+      ],
+      registry: REGISTRY,
+      nowMs: NOW_MS,
+    });
+    expect(report.newModels.map((m) => m.draft.id)).toEqual([
+      'claude-opus-5',
+      'gpt-7',
+      'claude-opus-6',
+      'gpt-9',
+    ]);
+  });
+
+  it('uses generation when metadata is incomplete and omits unpublished createdAt', async () => {
+    const report = await detectModelDrift({
+      sources: [
+        measured('gateway', [
+          { id: 'claude-opus-4-1-20260923', createdAt: nowS },
+          { id: 'claude-opus-4-6' },
+        ]),
+      ],
+      registry: REGISTRY,
+      nowMs: NOW_MS,
+    });
+    expect(report.newModels.map((m) => m.draft.id)).toEqual([
+      'claude-opus-4-6',
+      'claude-opus-4-1-20260923',
+    ]);
+    expect(report.newModels[0]).not.toHaveProperty('createdAt');
   });
 
   it('marks metadata the source does not publish as unknown', async () => {

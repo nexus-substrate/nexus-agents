@@ -5,7 +5,7 @@
  * tests of `select()` driven through the real WorkflowRouter + classifier.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   createMetaOrchestrator,
   createRecordingSink,
@@ -337,6 +337,30 @@ describe('MetaOrchestrator.select — capability gap ledger wiring (#3555)', () 
     expect(summary[0]).toMatchObject({ type: 'tool', name: 'deploy', count: 1 });
     expect(summary[0]?.exampleGoals).toContain('ship it to prod');
   });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([undefined, '0', '1'])(
+    'filters inferred gaps at the meta recording site (%s)',
+    (flag) => {
+      vi.stubEnv('NEXUS_CAPABILITY_GAP_INFERRED', flag);
+      const report: CapabilityGapReport = {
+        available: { tools: [], experts: [] },
+        gaps: [{ type: 'tool', name: 'extract_symbols:.py', suggestion: 's', origin: 'inferred' }],
+        allSatisfied: false,
+      };
+      const ledger = createCapabilityGapLedger();
+      const meta = createMetaOrchestrator({
+        router: fakeRouter({ pattern: 'sequential', capabilityGaps: report }),
+        gapLedger: ledger,
+      });
+      const decision = meta.select({ goal: 'Extract Python symbols' });
+      expect(decision.capabilityGaps).toEqual(report);
+      expect(ledger.size()).toBe(flag === '1' ? 1 : 0);
+    }
+  );
 
   it('does not require a ledger (default absent, no throw)', () => {
     const meta = createMetaOrchestrator();

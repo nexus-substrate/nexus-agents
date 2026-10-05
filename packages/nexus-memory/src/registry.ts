@@ -16,7 +16,7 @@ import type { z } from 'zod';
 import { InMemoryBackend } from './backends/memory.js';
 import { openSqliteDatabase } from './backends/open-database.js';
 import { SqliteBackend } from './backends/sqlite.js';
-import type { IMemoryBackend } from './types.js';
+import type { IMemoryBackend, JsonValue } from './types.js';
 
 export interface MemoryRegistryOptions {
   /**
@@ -27,7 +27,7 @@ export interface MemoryRegistryOptions {
   readonly dbPath?: string;
 }
 
-export interface RegisterBackendOptions<TValue> {
+export interface RegisterBackendOptions<TValue extends JsonValue> {
   /** Stable domain identifier. Becomes the SQLite table name. */
   readonly domain: string;
   /** Optional Zod schema for cold-archive validation. */
@@ -39,7 +39,7 @@ export interface RegisterBackendOptions<TValue> {
  * `MemoryRegistry.get(domain)` is `O(1)` after registration.
  */
 export class MemoryRegistry {
-  private readonly backends = new Map<string, IMemoryBackend<unknown, unknown>>();
+  private readonly backends = new Map<string, IMemoryBackend<string, JsonValue>>();
   private readonly db?: DatabaseType;
   private closed = false;
 
@@ -58,7 +58,9 @@ export class MemoryRegistry {
    * and shares the registry's connection. Otherwise, an `InMemoryBackend`
    * is created (used for tests).
    */
-  register<TKey, TValue>(options: RegisterBackendOptions<TValue>): IMemoryBackend<TKey, TValue> {
+  register<TKey extends string, TValue extends JsonValue>(
+    options: RegisterBackendOptions<TValue>
+  ): IMemoryBackend<TKey, TValue> {
     this.assertOpen();
     if (this.backends.has(options.domain)) {
       throw new Error(`nexus-memory: domain "${options.domain}" already registered`);
@@ -75,8 +77,7 @@ export class MemoryRegistry {
             domain: options.domain,
             ...(options.schema !== undefined && { schema: options.schema }),
           });
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- TypeScript narrows the union type here, but the Map needs the lifted IMemoryBackend<unknown, unknown>; the assertion documents the variance and survives future contract changes.
-    this.backends.set(options.domain, backend as IMemoryBackend<unknown, unknown>);
+    this.backends.set(options.domain, backend as IMemoryBackend<string, JsonValue>);
     return backend;
   }
 
@@ -93,7 +94,7 @@ export class MemoryRegistry {
    * still owns its own `.db` (or JSONL, etc.) until a follow-up migration
    * folds the storage in fully.
    */
-  attach<TKey, TValue>(
+  attach<TKey extends string, TValue extends JsonValue>(
     domain: string,
     backend: IMemoryBackend<TKey, TValue>
   ): IMemoryBackend<TKey, TValue> {
@@ -101,8 +102,7 @@ export class MemoryRegistry {
     if (this.backends.has(domain)) {
       throw new Error(`nexus-memory: domain "${domain}" already registered`);
     }
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- See `register`.
-    this.backends.set(domain, backend as IMemoryBackend<unknown, unknown>);
+    this.backends.set(domain, backend as IMemoryBackend<string, JsonValue>);
     return backend;
   }
 
@@ -111,7 +111,9 @@ export class MemoryRegistry {
    * domain isn't registered — callers should treat that as "not yet
    * migrated to the unified contract."
    */
-  get<TKey, TValue>(domain: string): IMemoryBackend<TKey, TValue> | undefined {
+  get<TKey extends string, TValue extends JsonValue>(
+    domain: string
+  ): IMemoryBackend<TKey, TValue> | undefined {
     this.assertOpen();
     const backend = this.backends.get(domain);
     return backend as IMemoryBackend<TKey, TValue> | undefined;

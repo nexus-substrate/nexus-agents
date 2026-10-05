@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { OpenCodeCliAdapter, resetOpenCodeModelCache } from './opencode-adapter.js';
 import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
@@ -14,7 +15,12 @@ import type { ModelId } from '../../config/model-capabilities-types.js';
 import { computeCostDetail } from '../../learning/usage-log.js';
 import { CliToModelAdapter } from '../cli-to-model-adapter.js';
 import { isCallerInputCliError } from '../cli-error-helpers.js';
-import { getDefaultCliCircuitBreakerRegistry } from '../cli-circuit-breaker.js';
+import {
+  CliCircuitBreakerIntegration,
+  getDefaultCliCircuitBreakerRegistry,
+} from '../cli-circuit-breaker.js';
+import { getAvailableClis } from '../factory.js';
+import { CliDetectionCache } from '../cli-detection-cache.js';
 
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('opencode'));
@@ -171,6 +177,7 @@ describe('OpenCodeCliAdapter', () => {
         JSON.stringify({ type: 'message.delta', content: 'Hello from OpenCode!' }),
         JSON.stringify({
           type: 'session.complete',
+          reason: 'stop',
           usage: { input_tokens: 15, output_tokens: 25 },
         }),
       ].join('\n');
@@ -195,7 +202,7 @@ describe('OpenCodeCliAdapter', () => {
     it('refuses a requested model that is not in available models (#1402 → #6599)', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -226,7 +233,7 @@ describe('OpenCodeCliAdapter', () => {
 
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -259,7 +266,7 @@ describe('OpenCodeCliAdapter', () => {
           createMockProcess(
             [
               JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-              JSON.stringify({ type: 'session.complete' }),
+              JSON.stringify({ type: 'session.complete', reason: 'stop' }),
             ].join('\n')
           )
         );
@@ -294,7 +301,7 @@ describe('OpenCodeCliAdapter', () => {
         createMockProcess(
           [
             JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-            JSON.stringify({ type: 'session.complete' }),
+            JSON.stringify({ type: 'session.complete', reason: 'stop' }),
           ].join('\n')
         )
       );
@@ -325,7 +332,7 @@ describe('OpenCodeCliAdapter', () => {
           createMockProcess(
             [
               JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-              JSON.stringify({ type: 'session.complete' }),
+              JSON.stringify({ type: 'session.complete', reason: 'stop' }),
             ].join('\n')
           )
         );
@@ -377,7 +384,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should resolve internal model names to CLI format (#1402)', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -401,7 +408,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should include --dir when workDir is provided', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -422,7 +429,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should not include --dir when workDir is empty', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -441,7 +448,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should include --variant when allowlisted value is provided', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -461,7 +468,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should reject non-allowlisted variant values', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -480,7 +487,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should include --thinking when set to true', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -499,7 +506,7 @@ describe('OpenCodeCliAdapter', () => {
     it('should not include --thinking when not specified', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -514,12 +521,47 @@ describe('OpenCodeCliAdapter', () => {
   });
 
   describe('execute()', () => {
+    it.each([
+      { name: 'opencode-success.jsonl', succeeds: true },
+      { name: 'opencode-failure.jsonl', succeeds: false },
+      { name: 'opencode-tool-calls.documented.jsonl', succeeds: false },
+      { name: 'opencode-default-live.jsonl', succeeds: false },
+      { name: 'opencode-custom-opus-live.jsonl', succeeds: false },
+      { name: 'opencode-custom-sonnet-live.jsonl', succeeds: false },
+    ])('replays $name through execute (#7073)', async ({ name, succeeds }) => {
+      // tool-calls: documented-format, unverified against a live capture.
+      // Other rows replay existing v1.2.15 success / live invalid-model failure.
+      const stdout = readFileSync(new URL(`../parsers/fixtures/${name}`, import.meta.url), 'utf8');
+      vi.mocked(spawn).mockReturnValue(createMockProcess(stdout));
+      const result = await adapter.execute(
+        { content: 'Reply with the single word ok' },
+        { allowRetry: false }
+      );
+      expect(result.ok).toBe(succeeds);
+      if (result.ok) expect(result.value.text).toBe('OK');
+    });
+
+    it.each([
+      { stdout: 'opencode: failed to connect to provider anthropic: invalid API key', exitCode: 1 },
+      { stdout: '{"type":"unknown.event"}\n{"type":"another.unknown"}', exitCode: 0 },
+      { stdout: '{"content":"Unverified JSON text"}', exitCode: 0 },
+    ])(
+      'fails closed through execute for invalid output with exit $exitCode (#7073)',
+      async ({ stdout, exitCode }) => {
+        vi.mocked(spawn).mockReturnValue(createMockProcess(stdout, '', exitCode));
+        const result = await adapter.execute({ content: 'Test' }, { allowRetry: false });
+        expect(result.ok).toBe(false);
+        expect(spawn).toHaveBeenCalledTimes(1);
+      }
+    );
+
     it('should return successful response', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'session.start', session_id: 'oc-exec-1' }),
         JSON.stringify({ type: 'message.delta', content: 'Hello from OpenCode!' }),
         JSON.stringify({
           type: 'session.complete',
+          reason: 'stop',
           usage: { input_tokens: 15, output_tokens: 25 },
         }),
       ].join('\n');
@@ -539,7 +581,7 @@ describe('OpenCodeCliAdapter', () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'session.start', session_id: 'oc-session-789' }),
         JSON.stringify({ type: 'message.delta', content: 'Continuing...' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -553,18 +595,16 @@ describe('OpenCodeCliAdapter', () => {
       }
     });
 
-    it('should fall back to plaintext for non-JSON output (#1402)', async () => {
+    it('should reject plaintext for non-JSON output (#7073 supersedes #1402)', async () => {
       const mockProcess = createMockProcess('not valid json at all', '', 0);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = { content: 'Test' };
-      const result = await adapter.execute(task);
+      const result = await adapter.execute(task, { allowRetry: false });
 
-      // Plaintext fallback returns success with raw text content
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value.text).toBe('not valid json at all');
-      }
+      // #7073: run --format json cannot treat old #1402 plaintext as success.
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
     });
 
     it('should return PARSE_ERROR for very short output', async () => {
@@ -779,7 +819,7 @@ describe('OpenCodeCliAdapter', () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'session.start', session_id: 'auto-init' }),
         JSON.stringify({ type: 'message.delta', content: 'Auto-init!' }),
-        JSON.stringify({ type: 'session.complete' }),
+        JSON.stringify({ type: 'session.complete', reason: 'stop' }),
       ].join('\n');
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
@@ -837,7 +877,7 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
   ];
   const OK_STREAM = [
     JSON.stringify({ type: 'message.delta', content: 'Done!' }),
-    JSON.stringify({ type: 'session.complete' }),
+    JSON.stringify({ type: 'session.complete', reason: 'stop' }),
   ].join('\n');
 
   async function adapterWithInventory(models: readonly string[]): Promise<OpenCodeCliAdapter> {
@@ -870,6 +910,194 @@ describe('OpenCodeCliAdapter requested-model resolution (#6599)', () => {
     const args = spawnedArgs();
     expect(args).toContain('--model');
     expect(args[args.indexOf('--model') + 1]).toBe('custom/claude-sonnet-4-6');
+  });
+
+  it.each(['opencode-custom-sonnet', 'opencode-custom-opus', 'custom/claude-sonnet-4-6'])(
+    'isolates %s failures from the default route (#7070)',
+    async (model) => {
+      const registry = getDefaultCliCircuitBreakerRegistry();
+      registry.resetAll();
+      const a = await adapterWithInventory([...INVENTORY, 'custom/claude-opus-4-6']);
+      vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+      const threshold = registry.getBreaker('opencode').getSnapshot().config.failureThreshold;
+      for (let i = 0; i < threshold; i++) {
+        expect((await a.execute({ content: 'x', model }, { allowRetry: false })).ok).toBe(false);
+      }
+      expect(registry.isOpen('opencode')).toBe(false);
+      expect(registry.isArmOpen('api:opencode-custom')).toBe(true);
+      registry.resetAll();
+      await a.dispose();
+    }
+  );
+
+  it('keeps opencode in voter panels during a custom-route outage (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    const a = await adapterWithInventory(INVENTORY);
+    vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+    const threshold = registry.getBreaker('opencode').getSnapshot().config.failureThreshold;
+    for (let i = 0; i < threshold; i++) {
+      await a.execute({ content: 'x', model: 'opencode-custom-sonnet' }, { allowRetry: false });
+    }
+    const cache = new CliDetectionCache();
+    cache.set('opencode', {
+      healthy: true,
+      version: '1.0.0',
+      versionStatus: 'supported',
+      checkedAt: new Date(),
+    });
+    expect(await getAvailableClis(cache)).toContain('opencode');
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it.each([undefined, 'opencode-default'])(
+    'opens the plain default-route breaker for model %s (#7070)',
+    async (model) => {
+      const registry = getDefaultCliCircuitBreakerRegistry();
+      registry.resetAll();
+      const a = await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+      vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+      const threshold = registry.getBreaker('opencode').getSnapshot().config.failureThreshold;
+      const task: CliTask = model === undefined ? { content: 'x' } : { content: 'x', model };
+      for (let i = 0; i < threshold; i++) {
+        expect((await a.execute(task, { allowRetry: false })).ok).toBe(false);
+      }
+      expect(registry.isOpen('opencode')).toBe(true);
+      expect(registry.isArmOpen('api:opencode-custom')).toBe(false);
+      registry.resetAll();
+      await a.dispose();
+    }
+  );
+
+  it.each([undefined, 'opencode-default'])(
+    'records default calls on a custom-configured adapter under opencode (model %s, #7070)',
+    async (model) => {
+      const registry = getDefaultCliCircuitBreakerRegistry();
+      registry.resetAll();
+      await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+      const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+      vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+      const task: CliTask = model === undefined ? { content: 'x' } : { content: 'x', model };
+      expect((await a.execute(task, { allowRetry: false })).ok).toBe(false);
+      expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBe(1);
+      expect(registry.getAllArmSnapshots().get('api:opencode-custom')?.failureCount ?? 0).toBe(0);
+      if (model === undefined) expect(spawnedArgs()).not.toContain('--model');
+      registry.resetAll();
+      await a.dispose();
+    }
+  );
+
+  it('records a usable configured custom model under its own route (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory(INVENTORY);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+    expect((await a.execute({ content: 'x' }, { allowRetry: false })).ok).toBe(false);
+    expect(registry.getAllArmSnapshots().get('api:opencode-custom')?.failureCount).toBe(1);
+    expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBe(0);
+    expect(spawnedArgs()).toContain('custom/claude-sonnet-4-6');
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('keeps a default success from resetting the configured custom-route breaker (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    registry.getArmBreaker('api:opencode-custom').recordFailure('connection');
+    registry.getBreaker('opencode').recordFailure('connection');
+    expect((await a.execute({ content: 'x' })).ok).toBe(true);
+    expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBe(0);
+    expect(registry.getArmBreaker('api:opencode-custom').getSnapshot().failureCount).toBe(1);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('refuses a restricted default call before probing its configured route (#7070)', async () => {
+    resetOpenCodeModelCache();
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const result = await a.execute({ content: 'review', accessMode: 'read-only-analysis' });
+    expect(result.ok).toBe(false);
+    expect(vi.mocked(execFile)).not.toHaveBeenCalled();
+    expect(vi.mocked(spawn)).not.toHaveBeenCalled();
+    await a.dispose();
+  });
+
+  it('lets the integration use a real default fallback despite a configured custom outage (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    const custom = registry.getArmBreaker('api:opencode-custom');
+    const threshold = custom.getSnapshot().config.failureThreshold;
+    for (let i = 0; i < threshold; i++) custom.recordFailure('connection');
+    expect((await integration.execute(a, { content: 'default fallback' })).ok).toBe(true);
+    expect(spawnedArgs()).not.toContain('--model');
+    expect(custom.getSnapshot().failureCount).toBe(threshold);
+    expect(integration.getHealthStatus().systemHealthy).toBe(true);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('lets the integration use an implicit usable custom model despite a default outage (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory(INVENTORY);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    const plain = registry.getBreaker('opencode');
+    for (let i = 0; i < plain.getSnapshot().config.failureThreshold; i++) {
+      plain.recordFailure('connection');
+    }
+    expect((await integration.execute(a, { content: 'configured custom' })).ok).toBe(true);
+    expect(spawnedArgs()).toContain('custom/claude-sonnet-4-6');
+    expect(registry.isOpen('opencode')).toBe(true);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('keeps integration default failures off an unavailable configured custom route (#7070)', async () => {
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    registry.resetAll();
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    vi.mocked(spawn).mockImplementation(() => createMockProcess('', 'upstream failed', 1));
+    expect((await integration.execute(a, { content: 'default fallback' })).ok).toBe(false);
+    expect(registry.getBreaker('opencode').getSnapshot().failureCount).toBeGreaterThan(0);
+    expect(registry.getArmBreaker('api:opencode-custom').getSnapshot().failureCount).toBe(0);
+    registry.resetAll();
+    await a.dispose();
+  });
+
+  it('refuses an implicit restricted integration call before probing (#7070)', async () => {
+    resetOpenCodeModelCache();
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    const result = await integration.execute(a, {
+      content: 'review',
+      accessMode: 'read-only-analysis',
+    });
+    expect(result.ok).toBe(false);
+    expect(vi.mocked(execFile)).not.toHaveBeenCalled();
+    expect(vi.mocked(spawn)).not.toHaveBeenCalled();
+    await a.dispose();
+  });
+
+  it('preserves capacity usage across implicit-model integration calls (#7070)', async () => {
+    await adapterWithInventory([EXPECTED_DEFAULT_ID]);
+    const a = new OpenCodeCliAdapter({ model: 'custom/claude-sonnet-4-6' });
+    const integration = new CliCircuitBreakerIntegration([a]);
+    expect((await integration.execute(a, { content: 'first default' })).ok).toBe(true);
+    const first = await a.getCapacity();
+    expect((await integration.execute(a, { content: 'second default' })).ok).toBe(true);
+    const second = await a.getCapacity();
+    expect(second.remainingRequests).toBe(first.remainingRequests - 1);
+    await a.dispose();
   });
 
   it('resolves a bare provider/model to the openrouter/-prefixed id opencode lists', async () => {

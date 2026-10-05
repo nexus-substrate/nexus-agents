@@ -31,10 +31,8 @@ export function gateWorkspaceWarningFields(
  * Workspace-edit mode stops the implement expert from running commands, but
  * the gate then runs the package manager's typecheck, lint and test scripts
  * in the same directory. A `package.json` script or test file the expert
- * edited is therefore executed by the pipeline. Implement passes no
- * `workDir`, so that directory is the MCP server's cwd, normally the real
- * repository. The fix is a scratch worktree (#6794); until then the result
- * says so plainly instead of leaving it to a debug log.
+ * edited is therefore executed by the pipeline. A scratch worktree protects
+ * the source checkout, but does not isolate those scripts from the host.
  */
 function qualityGateWorkspaceWarning(
   stages: Pick<DevPipelineStages, 'implementWorkspace' | 'qualityGate'>,
@@ -46,10 +44,10 @@ function qualityGateWorkspaceWarning(
   if (workspace?.accessMode !== 'workspace-edit') return undefined;
   return (
     `The quality gate (${mode}) ran typecheck, lint and test scripts in ${workspace.directory}, ` +
-    'the MCP server working directory where the implement expert edited files in ' +
+    'the workspace where the implement expert edited files in ' +
     'workspace-edit mode. Workspace-edit stops the expert from running commands, but files ' +
     'it edited, including package.json scripts and tests, were executed by the gate. ' +
-    'Review the changes in that directory. Running implement in a scratch worktree (#6794) ' +
-    'removes this.'
+    'Review the returned diff. A scratch worktree (#6794) protects the source checkout, but ' +
+    'the gate still executes edited scripts on the host.'
   );
 }

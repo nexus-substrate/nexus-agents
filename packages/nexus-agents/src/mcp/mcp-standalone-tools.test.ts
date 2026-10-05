@@ -8,12 +8,14 @@
  * @module mcp/mcp-standalone-tools.test
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
+import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types';
 
 import { createServer, connectTransport } from './server.js';
 import {
@@ -61,13 +63,107 @@ vi.mock('../cli-adapters/factory.js', () => ({
   getAvailableClis: vi.fn().mockResolvedValue([]),
 }));
 
+// Populate the same paper shape used by research-helpers-synthesize.test.ts.
+// Only the data boundary is stubbed: the synthesis and MCP handlers stay real.
+vi.mock('../cli/research-helpers-io.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../cli/research-helpers-io.js')>()),
+  loadPapersRegistry: vi.fn().mockResolvedValue({
+    ok: true,
+    value: {
+      schema_version: '1.0',
+      papers: {
+        'paper-1': {
+          title: 'Paper A',
+          authors: ['Test Author'],
+          source: 'arxiv',
+          arxiv_id: 'test-1',
+          url: 'https://arxiv.org/abs/test-1',
+          publication_date: '2025-01-01',
+          venue: null,
+          topics: ['memory'],
+          tags: ['llm'],
+          reviewed_date: '2025-01-01',
+          reviewed_in: 'test',
+          summary: 'Summary of Paper A',
+          key_findings: ['Finding from Paper A'],
+          relevance: 'high',
+          implementation_status: 'not-started',
+          techniques_extracted: ['technique-1'],
+          priority: 'P2',
+        },
+      },
+    },
+  }),
+}));
+
+// arXiv availability must not decide whether the real research_add handler is
+// covered. Match the existing helper's successful dry-run result shape.
+vi.mock('../cli/research-helpers.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../cli/research-helpers.js')>()),
+  addResearchPaper: vi.fn().mockResolvedValue({
+    success: true,
+    paperId: 'arxiv-2401.12345',
+    title: 'Round trip paper',
+    message: 'Would add paper',
+    dryRun: true,
+  }),
+}));
+
+// Deterministic voter-boundary fixtures exercise the REAL vote computation,
+// response builder, and MCP handler without invoking model adapters.
+vi.mock('../cli/voter-agents.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli/voter-agents.js')>();
+  return {
+    ...actual,
+    collectRealVotes: vi.fn((options: Parameters<typeof actual.collectRealVotes>[0]) =>
+      Promise.resolve(
+        options.roles.map((role) => ({
+          role,
+          vote: { decision: 'reject' as const, confidence: 0.9, reasoning: 'Fixture rejection' },
+          processingTimeMs: 1,
+          source: 'llm' as const,
+        }))
+      )
+    ),
+  };
+});
+vi.mock('./tools/consensus-vote-completed-recording.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./tools/consensus-vote-completed-recording.js')>()),
+  recordCompletedVote: vi.fn().mockResolvedValue({
+    costSummary: undefined,
+    voteRecord: { persisted: false, reason: 'write-failed', detail: 'Fixture recording disabled' },
+  }),
+}));
+vi.mock('../consensus/correlation-persistence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../consensus/correlation-persistence.js')>()),
+  saveCorrelationData: vi.fn().mockReturnValue({ ok: true, value: undefined }),
+}));
+
 // ============================================================================
 // Test Infrastructure
 // ============================================================================
 
 interface TestContext {
   client: Client;
+  strictOutputSchemas: ReadonlyMap<string, z.ZodObject>;
   cleanup: () => Promise<void>;
+}
+
+function strictOutputViolations(
+  declared: z.ZodObject | undefined,
+  advertised: JsonSchemaType,
+  payload: unknown
+): string[] {
+  expect(declared, 'registration schema was not captured').toBeDefined();
+  const violations: string[] = [];
+  const parsed = declared?.safeParse(payload);
+  if (parsed?.success === false) violations.push(parsed.error.message);
+  // Validate the ORIGINAL protocol payload against every declared object in
+  // the advertised schema. Records and unknown payloads stay intentionally open.
+  const validate = new AjvJsonSchemaValidator().getValidator(advertised);
+  const strictResult = validate(payload);
+  if (!strictResult.valid) violations.push(strictResult.errorMessage);
+  return violations;
 }
 
 const TOOL_NAMES = [
@@ -92,6 +188,7 @@ async function setupServer(): Promise<TestContext> {
   const serverResult = createServer();
   if (!serverResult.ok) throw new Error(serverResult.error.message);
   const { server, logger } = serverResult.value;
+  const registrations = vi.spyOn(server, 'registerTool');
 
   const infra = registerTools(server, { logger });
   const deps = { logger: infra.logger, rateLimiter: infra.rateLimiter };
@@ -127,7 +224,16 @@ async function setupServer(): Promise<TestContext> {
   // `{ ok, value }` stub passed only because nothing in this suite called it;
   // list_workflows does, and crashed on `templates.map`.
   const stubEngine = {
-    listTemplates: () => Promise.resolve([]),
+    listTemplates: () =>
+      Promise.resolve([
+        {
+          name: 'code-review',
+          version: '1.0.0',
+          path: '/templates/code-review.yaml',
+          description: 'Code review workflow',
+          category: 'development',
+        },
+      ]),
   } as unknown as IWorkflowEngine;
   registerRunWorkflowTool(server, {
     ...deps,
@@ -143,6 +249,21 @@ async function setupServer(): Promise<TestContext> {
   registerConsensusVoteTool(server, deps);
   registerDelegateToModelTool(server, deps);
 
+  const strictOutputSchemas = new Map<string, z.ZodObject>();
+  const registered = registrations.mock.calls as unknown as Array<
+    [string, { outputSchema?: z.ZodObject | z.ZodRawShape }]
+  >;
+  for (const [name, config] of registered) {
+    const schema = config.outputSchema;
+    if (schema === undefined) continue;
+    // Registration accepts either an object schema or a raw object shape.
+    strictOutputSchemas.set(
+      name,
+      schema instanceof z.ZodObject ? schema.strict() : z.strictObject(schema)
+    );
+  }
+  registrations.mockRestore();
+
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const connectResult = await connectTransport(server, serverTransport, logger);
   if (!connectResult.ok) throw new Error(connectResult.error.message);
@@ -152,6 +273,7 @@ async function setupServer(): Promise<TestContext> {
 
   return {
     client,
+    strictOutputSchemas,
     cleanup: async () => {
       await client.close();
       await server.close();
@@ -165,11 +287,10 @@ async function setupServer(): Promise<TestContext> {
 
 describe('MCP Standalone Tools Integration', () => {
   let ctx: TestContext;
-  // #5045: compare_data_feeds needs two real files to get past input
-  // validation. They live in a temp dir, never the repo — an earlier draft let
-  // research_add_source persist into docs/research/registry/ and the suite
-  // then failed on its own second run.
-  const feedDir = mkdtempSync(join(tmpdir(), 'nexus-feed-'));
+  // #5045: compare_data_feeds needs real files under cwd to pass its path guard.
+  // Keep them in a disposable directory, removed after the suite; never write
+  // test data into the persistent research registry.
+  const feedDir = mkdtempSync(join(process.cwd(), '.nexus-feed-'));
 
   beforeAll(async () => {
     writeFileSync(join(feedDir, 'a.json'), JSON.stringify([{ id: 'x', license: 'MIT' }]));
@@ -194,6 +315,20 @@ describe('MCP Standalone Tools Integration', () => {
     }
   });
 
+  it('strict registration preserves the advertised output schema (#7042)', async () => {
+    const listed = await ctx.client.listTools();
+    expect(ctx.strictOutputSchemas.size).toBeGreaterThan(0);
+    for (const tool of listed.tools) {
+      const schema = ctx.strictOutputSchemas.get(tool.name);
+      if (schema === undefined) continue;
+      // Output JSON conversion already declares additionalProperties:false
+      // for a stripping object. Strict parsing must preserve that contract.
+      expect(tool.outputSchema, tool.name).toEqual(
+        z.toJSONSchema(z.object(schema.shape), { target: 'draft-7', io: 'output' })
+      );
+    }
+  });
+
   // --------------------------------------------------------------------------
   // Output-schema round-trip (#5045)
   // --------------------------------------------------------------------------
@@ -207,6 +342,7 @@ describe('MCP Standalone Tools Integration', () => {
   const ROUND_TRIP_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
     memory_query: { query: 'round trip', source: 'session' },
     memory_stats: {},
+    weather_report: {},
     memory_write: { key: 'rt-key', content: 'round-trip', backend: 'session' },
     research_add: { arxivId: '2401.12345', dryRun: true },
     research_add_source: {
@@ -223,11 +359,11 @@ describe('MCP Standalone Tools Integration', () => {
     research_discover: { topic: 'round trip' },
     research_query: { action: 'stats' },
     research_synthesize: {},
-    list_experts: { format: 'names' },
+    list_experts: { format: 'full' },
     survey_oss_landscape: { query: 'round trip' },
     vendor_publishing_audit: { vendor: 'anthropic' },
-    list_workflows: { format: 'names' },
-    consensus_vote: { proposal: 'round trip', quick: true },
+    list_workflows: { format: 'full' },
+    consensus_vote: { proposal: 'round trip', quickMode: true },
     delegate_to_model: { task: 'round trip', model: 'claude-haiku' },
     compare_data_feeds: {
       feedAPath: join(feedDir, 'a.json'),
@@ -236,6 +372,17 @@ describe('MCP Standalone Tools Integration', () => {
       compareFields: ['license'],
     },
   };
+
+  it('compare_data_feeds reads its fixture and returns measured differences', async () => {
+    const result = await ctx.client.callTool({
+      name: 'compare_data_feeds',
+      arguments: ROUND_TRIP_ARGS['compare_data_feeds'],
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      counts: { entriesInA: 1, entriesInB: 1, inBoth: 1, fieldDifferences: 1 },
+    });
+  });
 
   /**
    * #5008: a tool result that does not name the build it came from cannot be
@@ -343,6 +490,14 @@ describe('MCP Standalone Tools Integration', () => {
       }
       const violation = schemaViolationIn(result, thrown);
       if (violation !== '') violations.push(`${name}: ${violation}`);
+      const schema = listed.tools.find((tool) => tool.name === name)?.outputSchema;
+      if (schema !== undefined) {
+        const structured = (result as { structuredContent?: unknown } | undefined)
+          ?.structuredContent;
+        const validate = new AjvJsonSchemaValidator().getValidator(schema as JsonSchemaType);
+        const strictResult = validate(structured);
+        if (!strictResult.valid) violations.push(`${name}: ${strictResult.errorMessage}`);
+      }
     }
 
     expect(violations).toEqual([]);
@@ -381,65 +536,29 @@ describe('MCP Standalone Tools Integration', () => {
     return /output schema|-32602/.test(haystack) ? haystack : '';
   }
 
-  /**
-   * Tools whose round-trip call returns an error envelope rather than
-   * structured content, so their `outputSchema` genuinely goes unchecked here:
-   *
-   * - `research_synthesize` — the paper registry is empty in the test env, so
-   *   it answers "No papers found in registry" as an error envelope.
-   * - `consensus_vote` — the CLI factory is stubbed to find no adapters, so
-   *   all seven voters fail. Running it for real would mean live model calls;
-   *   `simulateVotes` is not an option (#2319) and would prove nothing anyway.
-   *
-   * Naming them is the point. Counting an unstructured response as a pass
-   * would make this a check that cannot fail, which is the same shape of hole
-   * #5045 exists to close. Four tools sat here in the first draft; three were
-   * my own bad arguments, found only because the list was printed.
-   */
-  // Tools that NEVER emit validatable structured content, in any environment.
-  const KNOWN_UNSTRUCTURED: readonly string[] = ['consensus_vote'];
+  function fixtureFailureIn(result: unknown, thrown: string): string {
+    const schemaViolation = schemaViolationIn(result, thrown);
+    if (schemaViolation !== '') return schemaViolation;
+    return typeof result === 'object' &&
+      result !== null &&
+      'isError' in result &&
+      result.isError === true
+      ? 'fixture returned a business error'
+      : '';
+  }
+
+  // Every schema-declaring tool must emit measured structured content.
+  const KNOWN_UNSTRUCTURED: readonly string[] = [];
 
   /**
-   * Tools whose structured-content emission depends on DATA, not on code (#5134).
-   *
-   * `research_synthesize` returns a SynthesisResult against a populated registry
-   * and an error envelope against an empty one — which is CI, always. So it is
-   * validated here on a developer machine and unexercised in CI, and no fixed
-   * list can be correct in both. Asserting either way would make this check
-   * environment-dependent, which is the defect class this suite exists to catch.
-   *
-   * These are excluded from the strict comparison rather than silently tolerated
-   * anywhere, and their schema parity is pinned deterministically in their own
-   * tests — see research-synthesize.test.ts, which compares the declared key set
-   * against SynthesisResult with no data at all. A round-trip is the wrong
-   * instrument for a response whose shape varies (#5141).
-   */
-  /**
-   * `research_add` fetches arXiv metadata (`addResearchPaper`), and `dryRun`
-   * suppresses the registry WRITE, not the fetch. So it emits structured
-   * content when arxiv.org answers and a `toolStructuredError` envelope — with
-   * no structured content at all — when it does not. CI is the second case
-   * often enough to fail intermittently (#5288), on PRs touching nothing near
-   * it.
-   *
-   * Same category as `research_synthesize` above, with the network standing in
-   * for registry state: the bucket depends on an input this suite does not
-   * control, so no fixed list can be correct in both environments. Its schema
-   * parity is pinned deterministically in `research-add.test.ts`.
-   */
-  const DATA_DEPENDENT_STRUCTURED: readonly string[] = ['research_synthesize', 'research_add'];
-
-  /**
-   * A response field missing from a tool's declared `outputSchema` does not go
-   * unreported — the SDK validates structured content with
-   * `additionalProperties: false`, so EVERY call fails with -32602 and the tool
-   * becomes unusable. #5044 shipped exactly that and was caught only because
-   * `memory_query` happened to be one of the few tools round-tripped here.
+   * The SDK's non-strict Zod parse strips undeclared keys during validation,
+   * but forwards the original structuredContent. Validate that payload against
+   * the advertised JSON Schema independently, as a validating client would.
    *
    * The tool's own tests cannot see it: they call the registered handler
    * directly and never cross the protocol. So the guard has to be a real client
-   * call, and the pass condition is narrow on purpose — a business failure is
-   * fine, an output-schema violation is not.
+   * call, and the pass condition is narrow on purpose — every fixture must produce a
+   * successful structured payload.
    *
    * The third bucket is the point of the disclosure: a call that returns no
    * structured content at all has nothing to validate, so counting it as a pass
@@ -482,19 +601,27 @@ describe('MCP Standalone Tools Integration', () => {
       // it throws. Checked before the unstructured bucket, because a violation
       // has no structured content either — and for a tool already in
       // KNOWN_UNSTRUCTURED it would otherwise be credited as expected.
-      const violation = schemaViolationIn(result, thrown);
+      const violation = fixtureFailureIn(result, thrown);
       if (violation !== '') {
         callFailed.push(`${tool.name}: ${violation}`);
       } else if (thrown !== '') {
         callFailed.push(`${tool.name}: ${thrown}`);
       } else if (result?.structuredContent === undefined) {
         notExercised.push(tool.name);
+      } else {
+        callFailed.push(
+          ...strictOutputViolations(
+            ctx.strictOutputSchemas.get(tool.name),
+            tool.outputSchema as JsonSchemaType,
+            result.structuredContent
+          ).map((message) => `${tool.name}: ${message}`)
+        );
       }
     }
 
     // A protocol-level throw means the call did not complete: a schema
-    // violation (-32602), a transport fault, a timeout. A tool answering
-    // `isError` in its content is fine and does not land here.
+    // violation (-32602), a transport fault, a timeout. Fixture business errors
+    // also fail: they cannot provide evidence about a success output schema.
     expect(callFailed).toEqual([]);
     // A new schema-declaring tool must be given arguments here, or it is not
     // covered — and an uncovered tool is exactly how #5044 shipped.
@@ -502,10 +629,9 @@ describe('MCP Standalone Tools Integration', () => {
     // Pinned rather than warned: a tool that stops returning structured
     // content stops being covered, and a silent drop is how the gap reopens.
     // Shrinking this list is always safe; growing it needs a reason in review.
-    // Data-dependent tools may legitimately land in either bucket; everything
-    // else must match the pinned list exactly.
-    const deterministic = notExercised.filter((n) => !DATA_DEPENDENT_STRUCTURED.includes(n));
-    expect(deterministic.sort()).toEqual([...KNOWN_UNSTRUCTURED].sort());
+    // Registry/network fixtures now ensure research_synthesize/research_add
+    // emit structured content, so neither is allowed an exemption.
+    expect(notExercised.sort()).toEqual([...KNOWN_UNSTRUCTURED].sort());
   }, 120_000);
 
   // --------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import { analyzeGaps } from '../mcp/tools/research-analyze.js';
 import { buildResearchContext, researchContextFromText } from './research-context.js';
 import { stageAbortError } from './dev-pipeline-deadlines.js';
 import { throwIfAborted } from '../adapters/abort-utils.js';
+import { hermeticGitEnv } from '../utils/hermetic-git-env.js';
 import {
   type StageDeps,
   emitStageEvent,
@@ -163,7 +164,10 @@ export function createPlanStage({
         ? `Revise plan.\n\nFeedback: ${feedback}\n\nTask: ${task}\n\n${contextBlock}`
         : `Create implementation plan for:\n\n${task}\n\n${contextBlock}`;
     await postProgress(config, 'Plan', feedback !== undefined ? 'Revising...' : 'Planning...');
-    const r = await runExpert(guard, 'architecture', prompt, 'plan', { signal });
+    const r = await runExpert(guard, 'architecture', prompt, 'plan', {
+      signal,
+      accessMode: 'read-only-analysis',
+    });
     // model: real per-model failure attribution for the feedback bridge (#4194)
     emitStageEvent('plan', r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -203,7 +207,7 @@ export function createDecomposeStage({
       'pm',
       `Decompose into tasks.\nReturn JSON: [{id,title,description,assignedTo}]\n\n${plan}`,
       'decompose',
-      { signal }
+      { signal, accessMode: 'read-only-analysis' }
     );
     const tasks = parseTasksFromResponse(r.text, plan);
     emitStageEvent('decompose', 'completed', { durationMs: r.durationMs });
@@ -222,6 +226,7 @@ export function createImplementStage({
   config,
   guard,
   startStage,
+  wrapper,
 }: StageDeps): DevPipelineStages['implement'] {
   return async (task, signal) => {
     startStage(`impl-${task.id}`);
@@ -233,7 +238,12 @@ export function createImplementStage({
       'code',
       `Implement:\n\n${task.title}\n${task.description}${fb}`,
       task.id,
-      { signal, accessMode: IMPLEMENT_ACCESS_MODE }
+      {
+        signal,
+        accessMode: config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
+        workDir: config.scanTarget,
+        wrapper,
+      }
     );
     emitStageEvent(`impl-${task.id}`, r.success ? 'completed' : 'failed', {
       durationMs: r.durationMs,
@@ -304,6 +314,7 @@ export function createQaReviewStage({
   config,
   guard,
   startStage,
+  wrapper,
 }: StageDeps): DevPipelineStages['qaReview'] {
   return async (task, implementation, signal) => {
     startStage(`qa-${task.id}`);
@@ -314,6 +325,8 @@ export function createQaReviewStage({
     const r = await runExpert(guard, 'qa', prompt, task.id, {
       signal,
       accessMode: 'read-only-analysis',
+      workDir: config.scanTarget,
+      wrapper,
     });
     const { review: parsed, unmeasured } = readQaReview(r);
     const review: QaReviewResult = coverage !== undefined ? { ...parsed, coverage } : parsed;
@@ -353,25 +366,52 @@ export function createQaReviewStage({
   };
 }
 
+/**
+ * Run typecheck/lint/tests for the gate, or report it unmeasured when the
+ * scratch's dependencies could not be provisioned (#6794).
+ */
+function runQualityChecks(
+  target: string,
+  workspaceDependencies: StageDeps['workspaceDependencies'],
+  wrapper: StageDeps['wrapper'],
+  signal: AbortSignal | undefined
+): Promise<Awaited<ReturnType<typeof runQualityGate>> | { verdict: 'skip'; feedback: string }> {
+  if (workspaceDependencies?.status === 'failed') {
+    return Promise.resolve({
+      verdict: 'skip' as const,
+      feedback: `dependencies could not be provisioned: ${workspaceDependencies.reason}`,
+    });
+  }
+  // Scratch scripts must not inherit source-repository Git redirects.
+  const env = workspaceDependencies === undefined ? undefined : hermeticGitEnv();
+  // Reuse the canonical #1684 engine + check factories — no new check logic.
+  return runQualityGate(
+    'qa',
+    [
+      checkTypeCheck(target, env, wrapper),
+      checkLint(target, env, wrapper),
+      checkTests(target, env, wrapper),
+    ],
+    1,
+    signal
+  );
+}
+
 export function createQualityGateStage({
   config,
   startStage,
+  workspaceDependencies,
+  wrapper,
 }: StageDeps): NonNullable<DevPipelineStages['qualityGate']> {
   return async (signal) => {
     startStage('quality-gate');
     const start = getTimeProvider().now();
     const target = config.scanTarget ?? process.cwd();
     await postProgress(config, 'QualityGate', `Typecheck/lint/tests on ${target}...`);
-    // Reuse the canonical #1684 engine + check factories — no new check logic.
     // #6747: the signal ends the running check's process tree; an aborted
     // gate throws rather than recording an outcome it never measured.
-    const result = await rethrowAsStageAbort('qualityGate', signal, () =>
-      runQualityGate(
-        'qa',
-        [checkTypeCheck(target), checkLint(target), checkTests(target)],
-        1,
-        signal
-      )
+    const result = await rethrowAsStageAbort('qualityGate', signal, async () =>
+      runQualityChecks(target, workspaceDependencies, wrapper, signal)
     );
     // #4355: `=== 'pass'`, NOT `!== 'fail'`. The gate reports three states,
     // and `skip` means no check actually ran — every declared script was
@@ -382,7 +422,10 @@ export function createQualityGateStage({
     // pass or fail; making `skip` reachable is what broke it.
     const passed = result.verdict === 'pass';
     const ms = getTimeProvider().now() - start;
-    emitStageEvent('quality-gate', passed ? 'completed' : 'failed', { durationMs: ms });
+    emitStageEvent('quality-gate', passed ? 'completed' : 'failed', {
+      durationMs: ms,
+      verdict: result.verdict,
+    });
     recordOutcome({
       sessionId: config.sessionId,
       taskId: 'quality-gate',
@@ -397,25 +440,32 @@ export function createQualityGateStage({
     });
     // A skip is not a failure, and saying "Gate failed" for one would send
     // the reader looking for a broken check rather than a missing script.
-    const verdictNote =
-      result.verdict === 'skip'
-        ? `Gate unmeasured: ${result.feedback}`
-        : `Gate failed: ${result.feedback}`;
+    const verdictNote = `Gate ${result.verdict === 'skip' ? 'unmeasured' : 'failed'}: ${result.feedback}`;
     await postProgress(config, 'QualityGate', passed ? 'Passed' : verdictNote);
-    return { passed, feedback: result.feedback };
+    const feedback = result.verdict === 'skip' ? verdictNote : result.feedback;
+    return { passed, verdict: result.verdict, feedback };
   };
 }
 
 export function createSecurityScanStage({
   config,
   startStage,
+  workspaceDependencies,
+  wrapper,
 }: StageDeps): DevPipelineStages['securityScan'] {
   return async (signal) => {
     startStage('security');
     const start = getTimeProvider().now();
     const target = config.scanTarget ?? process.cwd();
     await postProgress(config, 'Security', `Scanning ${target}...`);
-    const check = checkSecurityScan(target);
+    // Bound to the pipeline's own scratch (#6794): it lives outside cwd by
+    // design, so the scan is contained to the scratch rather than to cwd.
+    const scratchBound = workspaceDependencies !== undefined;
+    const check = checkSecurityScan(target, undefined, {
+      env: scratchBound ? hermeticGitEnv() : undefined,
+      root: scratchBound ? target : undefined,
+      wrapper,
+    });
     // #6747: the signal ends the scanner's process tree and the OSV lookups.
     const result = await rethrowAsStageAbort('securityScan', signal, () => check(signal));
     // #4355: same tri-state discipline as the quality gate above. This one

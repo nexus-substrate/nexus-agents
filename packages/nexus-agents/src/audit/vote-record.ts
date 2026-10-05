@@ -55,8 +55,8 @@
  * folds EVERY authenticity-bearing field — the proposal content hash, the
  * decision, the approval percentage, the vote counts, the per-voter summary,
  * and the `sequence` — into the self-hash, so editing any of them is detected
- * as a `hash_mismatch`. This is the tamper-evidence MVP; cryptographic
- * signing/provenance (binding the record to a key) is DEFERRED (#3897 follow-up).
+ * as a `hash_mismatch`. Per-record cryptographic signing is enforced by the
+ * governor gate from sequence 15 (#3927 item 4); the set verifier checks integrity.
  *
  * NOTE: the separate audit-event/tier-transition chain (`audit-logger.ts`) IS
  * still a real linear hash chain — it has a single-writer runtime and never
@@ -822,8 +822,10 @@ export const VoteRecordSchema = z
      * re-sequences, re-hashes, then signs), so a signed 1.11 record is still a
      * 1.11 record and hashes identically with or without this field. A record
      * that lacks it is `unsigned-record` to the verifier
-     * (`vote-record-signature.ts`), and the gate reports that informationally
-     * until the phase-3 cutover constant makes it a refusal.
+     * (`vote-record-signature.ts`). Since phase 3 (#6384) the ratification
+     * gate REFUSES such a record outside the grandfathered pre-cutover set —
+     * a bound record, every record a PR adds, and (post-merge backstop) every
+     * record in the ledger (#3927).
      */
     signature: VoteRecordSignatureSchema.optional(),
     /**

@@ -19,9 +19,20 @@ import { execFile, type ChildProcess } from 'node:child_process';
 import { AbortError } from '../adapters/abort-utils.js';
 import { SIGKILL_GRACE_MS, terminateProcessTree, trackProcessTree } from './process-tree-kill.js';
 
+/** Transform the invocation without changing lifecycle ownership. */
+export type CommandWrapper = (
+  command: string,
+  args: readonly string[],
+  options: ExecFileTreeOptions
+) => { command: string; args: readonly string[]; options: ExecFileTreeOptions };
+
 export interface ExecFileTreeOptions {
+  /** Optional OS isolation, absent for ordinary callers. */
+  readonly wrapper?: CommandWrapper | undefined;
   /** Working directory for the command. Absent: the server's own. */
   readonly cwd?: string | undefined;
+  /** Environment for the command. Absent: the server's own. */
+  readonly env?: NodeJS.ProcessEnv | undefined;
   /** Runaway guard: the tree is ended and the call rejects after this long. */
   readonly timeoutMs: number;
   /** Largest stdout or stderr accepted, in bytes. Absent: Node's default. */
@@ -103,6 +114,12 @@ function spawnTracked(
   options: ExecFileTreeOptions,
   onExit: (error: Error | null, stdout: string, stderr: string) => void
 ): ChildProcess {
+  const invocation = options.wrapper?.(command, args, options);
+  if (invocation !== undefined) {
+    command = invocation.command;
+    args = invocation.args;
+    options = invocation.options;
+  }
   return trackProcessTree(
     execFile(
       command,
@@ -110,6 +127,7 @@ function spawnTracked(
       {
         encoding: 'utf8',
         ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+        ...(options.env !== undefined ? { env: options.env } : {}),
         ...(options.maxBuffer !== undefined ? { maxBuffer: options.maxBuffer } : {}),
       },
       (error, stdout, stderr) => {

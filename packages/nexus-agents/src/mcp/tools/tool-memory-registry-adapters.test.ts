@@ -119,6 +119,70 @@ describe('StatsOnlyAdapter', () => {
     expect(result).toEqual([{ id: 1, content: 'match for find this' }]);
   });
 
+  it('projects native dates and omits unset object fields for the JSON registry contract', async () => {
+    const native = {
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      metadata: { unset: undefined, tags: ['memory'] },
+    };
+    const adapter = new StatsOnlyAdapter('native', {
+      count: () => 1,
+      search: () => Promise.resolve([native]),
+    });
+    const rows = await adapter.query({ where: { text: 'memory' } });
+    expect(rows).toEqual([
+      {
+        createdAt: '2026-01-01T00:00:00.000Z',
+        metadata: { tags: ['memory'] },
+      },
+    ]);
+    expect(rows[0]).not.toBe(native);
+    expect(native.createdAt).toBeInstanceOf(Date);
+    expect(native.metadata).toHaveProperty('unset');
+  });
+
+  it.each([new Map([['key', 'value']]), Number.NaN, { nested: [undefined] }])(
+    'rejects native values without a JSON representation: %j',
+    async (value) => {
+      const adapter = new StatsOnlyAdapter('invalid', {
+        count: () => 1,
+        search: () => Promise.resolve([value]),
+      });
+      await expect(adapter.query({ where: { text: 'memory' } })).rejects.toThrow(/JSON|json/);
+    }
+  );
+
+  it('rejects hidden fields and accessors without invoking getters', async () => {
+    let calls = 0;
+    const accessor = Object.defineProperty({}, 'content', {
+      enumerable: true,
+      get: () => {
+        calls++;
+        return 'secret';
+      },
+    });
+    const hidden = Object.defineProperty({}, 'secret', { value: 'hidden' });
+    const extra = Object.assign(['memory'], { label: 'extra' });
+    const sparse = new Array<unknown>(1);
+    for (const row of [accessor, hidden, extra, sparse]) {
+      const adapter = new StatsOnlyAdapter('invalid', {
+        count: () => 1,
+        search: () => Promise.resolve([row]),
+      });
+      await expect(adapter.query({ where: { text: 'memory' } })).rejects.toThrow(/JSON|json/);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it.each(['read', 'write', 'delete'] as const)(
+    'rejects runtime non-string keys in %s',
+    async (op) => {
+      const adapter = new StatsOnlyAdapter('test_keys', { count: () => 0 });
+      const key = 42 as unknown as string;
+      const action = op === 'write' ? adapter.write(key, 'value') : adapter[op](key);
+      await expect(action).rejects.toThrow(/key must be a string/);
+    }
+  );
+
   it('query honors default limit when filter.limit is absent', async () => {
     let seenLimit = -1;
     const adapter = new StatsOnlyAdapter('test_query_default_limit', {

@@ -199,9 +199,9 @@ describe('detectUndeclaredOptions — the verdict the telemetry records (#5422)'
     expect(verdict.excerpt).toContain('Option C');
   });
 
-  it('does not fire when options are declared, and then carries no pattern or excerpt', () => {
+  it('marks declared options not applicable, with no fired verdict', () => {
     const verdict = detectUndeclaredOptions(RECORD_137, ['A', 'B']);
-    expect(verdict).toEqual({ fired: false });
+    expect(verdict).toEqual({ applicable: false });
   });
 
   it('does not fire on an ordinary proposal — the denominator row', () => {

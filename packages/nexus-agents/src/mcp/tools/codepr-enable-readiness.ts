@@ -74,10 +74,12 @@ const CodePrEnableReadinessEvidenceSchema = z
      */
     enableVoteRef: z.string().default(''),
     /**
-     * Count of CONSECUTIVE dry-run plans observed with zero guard denials (the
+     * Count of CONSECUTIVE production dry-run plans observed with zero guard denials (the
      * guards-green soak). Compared against `minGuardsGreenSoak`.
      */
     consecutiveGreenDryRuns: z.number().int().nonnegative().default(0),
+    /** Test-origin rows excluded by the production-only soak reader. */
+    excludedTestRows: z.number().int().nonnegative().optional(),
     /**
      * Named owner accepting activation of the push path (the OWNER half of the
      * gate). Required when `requireOwnerAck` is set. Whitespace-only = absent.
@@ -136,7 +138,7 @@ function buildCriteria(
     {
       name: 'guards-green-soak',
       met: ev.consecutiveGreenDryRuns >= cfg.minGuardsGreenSoak,
-      detail: `${String(ev.consecutiveGreenDryRuns)} consecutive green dry-runs (need ≥ ${String(cfg.minGuardsGreenSoak)})`,
+      detail: `${String(ev.consecutiveGreenDryRuns)} consecutive green production dry-runs (need ≥ ${String(cfg.minGuardsGreenSoak)}); excludedTestRows: ${String(ev.excludedTestRows ?? 0)}`,
     },
     presenceCriterion('owner-ack', 'owner', owner, cfg.requireOwnerAck),
   ];

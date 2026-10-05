@@ -159,12 +159,12 @@ export interface RunWorkflowDeps extends BaseMcpToolDeps {
    */
   workflowEngine: IWorkflowEngine;
   /**
-   * Resolves the engine that actually EXECUTES, at call time (#5116).
+   * Resolves the engine that actually EXECUTES, at registration and call time.
    *
    * A THUNK rather than a value because constructing an executing engine throws
    * `WorkflowExecutionUnavailableError` under the #507 fail-safe when nothing
-   * can execute for real — doing that eagerly at tool registration killed the
-   * whole server, all 47 tools, over one unconfigured adapter.
+   * can execute for real. Registration catches only that structural error and
+   * disables `run_workflow` (#7043), keeping the rest of the server available.
    *
    * OPTIONAL rather than required, by unanimous panel decision. It was briefly
    * required, which is how all eight internal call sites were enumerated by the

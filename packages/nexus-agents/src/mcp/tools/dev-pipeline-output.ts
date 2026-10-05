@@ -17,6 +17,7 @@ export function buildStructuredOutput(
     // a random demo panel can never pass as a real decision.
     ...(simulated ? { simulated: true } : {}),
     completed: result.completed,
+    ...changesField(result),
     securityPassed: result.securityPassed,
     // #4772: these two are what make `completed: false` legible. Without them a
     // caller cannot tell a failed planner from a successful dry run, or a
@@ -51,6 +52,13 @@ export function buildStructuredOutput(
       feedback: t.feedback ?? null,
     })),
   };
+}
+
+/** Preserve the patch artifact, including the explicitly empty case. */
+function changesField(
+  result: Pick<DevPipelineResult, 'changes'>
+): Pick<DevPipelineResult, 'changes'> {
+  return result.changes !== undefined ? { changes: result.changes } : {};
 }
 
 /** A result's `warnings`, as a field to spread into the output, or `{}` when absent. */

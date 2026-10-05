@@ -11,6 +11,7 @@
 
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ExecutionAccessMode } from '../core/index.js';
+import type { CommandWrapper } from '../cli-adapters/exec-file-tree.js';
 import type { ITaskTracker } from './task-tracker.js';
 import { executeExpert, type ExpertBridgeResult } from './expert-bridge.js';
 import type { BudgetGuard, AgentBudgetConfig } from './budget-guard.js';
@@ -222,6 +223,8 @@ function accessModeSignals(args: RecordOutcomeArgs): string[] {
 
 /** Configuration for the agent executor. */
 export interface AgentExecutorConfig {
+  /** Restrict every expert stage to read-only analysis during a dry run. */
+  readonly dryRun?: boolean | undefined;
   /** Pipeline checkpoint session, also used by the run trace; absent means unscoped. */
   readonly sessionId?: string | undefined;
   readonly scanTarget?: string | undefined;
@@ -280,6 +283,10 @@ function throwIfAborted(signal: AbortSignal | undefined, expertType: BuiltInExpe
 
 /** Per-call options for {@link runExpert}. */
 interface RunExpertOptions {
+  /** Sandbox the complete expert subprocess when bound to scratch. */
+  readonly wrapper?: CommandWrapper | undefined;
+  /** Explicit working directory for scratch-bound implementation and review. */
+  readonly workDir?: string | undefined;
   /**
    * The stage's abort signal (#6736): it reaches the routed CLI call, and once
    * it has fired {@link runExpert} THROWS instead of returning a failure
@@ -288,8 +295,8 @@ interface RunExpertOptions {
    */
   readonly signal?: AbortSignal | undefined;
   /**
-   * Host access the expert's call may use (#6768). The QA review stage sets
-   * `'read-only-analysis'`; absent means the default.
+   * Host access the expert's call may use (#6768, #6958). Planning, review
+   * and dry-run stages set `'read-only-analysis'`; absent means the default.
    */
   readonly accessMode?: ExecutionAccessMode | undefined;
 }
@@ -306,7 +313,7 @@ export async function runExpert(
   executionId?: string,
   options: RunExpertOptions = {}
 ): Promise<ExpertBridgeResult> {
-  const { signal, accessMode } = options;
+  const { signal, accessMode, workDir, wrapper } = options;
   throwIfAborted(signal, expertType);
   if (guard.isExhausted()) {
     // Observable escalation (#3262): a budget short-circuit must not be silent.
@@ -331,6 +338,8 @@ export async function runExpert(
     };
   }
   const bridgeOptions = {
+    ...(wrapper !== undefined && { wrapper }),
+    ...(workDir !== undefined && { workDir }),
     ...(signal !== undefined && { signal }),
     ...(accessMode !== undefined && { accessMode }),
   };
@@ -371,6 +380,8 @@ function maybeEmitModelCalled(executionId: string | undefined, result: ExpertBri
 
 /** What every stage closure needs from the executor. */
 export interface StageDeps {
+  readonly wrapper?: import('../cli-adapters/exec-file-tree.js').CommandWrapper | undefined;
+  readonly workspaceDependencies?: import('./dev-pipeline.js').DevPipelineDependencies | undefined;
   readonly config: AgentExecutorConfig;
   /** Per-run budget guard (#3395). No-op unless config.budget is set. */
   readonly guard: BudgetGuard;

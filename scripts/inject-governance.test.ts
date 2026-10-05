@@ -1823,8 +1823,8 @@ describe('inject-governance tool-output-consistency (#2653)', () => {
   it('fails when a tool output schema types a timestamp field as a number', async () => {
     await withSandboxFile(TOOL, async (original) => {
       const broken = original.replace(
-        'const outputSchema = {',
-        'const outputSchema = {\n    createdAt: z.number(),'
+        'const OUTPUT_SCHEMA = {',
+        'const OUTPUT_SCHEMA = {\n    createdAt: z.number(),'
       );
       expect(broken).not.toBe(original);
       writeFileSync(box(TOOL), broken);

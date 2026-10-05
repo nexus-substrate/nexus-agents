@@ -20,7 +20,7 @@ The consensus system exposes 5 core voting algorithm names (four distinct strate
 - **simple_majority**: >50% approval threshold
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
-- **higher_order**: Bayesian-optimal aggregation with correlation awareness — alias for `opinion_wise` (#514)
+- **higher_order**: alias for `opinion_wise` (#514). The verdict is a plain approve/reject tally at a 0.5 bar; the correlation-aware posterior is computed but only drives contrarian escalation (#4701)
 - **opinion_wise**: Opinion-based aggregation
 
 `proof_of_learning` was retired in 9.0 ([#5234](https://github.com/nexus-substrate/nexus-agents/issues/5234), unanimous panel `vote-1791191269012-2wxf9h4`). No defensible ground-truth correctness signal existed, so live votes always used equal weights. Use `simple_majority` for the same tally, or `higher_order` for contrarian escalation. Persisted vote records still accept the retired name and verify with their original hashes.
@@ -64,7 +64,7 @@ type ConsensusAlgorithm =
   | 'supermajority' // ≥67%
   | 'unanimous' // 100%
   | 'higher_order' // alias for 'opinion_wise' (#514)
-  | 'opinion_wise'; // Opinion-based aggregation (Bayesian-optimal, correlation-aware)
+  | 'opinion_wise'; // Plain tally verdict; correlation posterior drives escalation only (#4701)
 
 interface Vote {
   agentId: string;

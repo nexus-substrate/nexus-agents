@@ -355,6 +355,7 @@ Interface specs, generated references, the research loop's catalog, ADRs, and hi
 | [fitness-stratified-v1.md](./research/fitness-stratified-v1.md)             | Stratified runtime-outcome report — per adapter / task-type / role (#2662) | Canonical |
 | [defending-code-harness-eval.md](./research/defending-code-harness-eval.md) | Eval of Anthropic defending-code-reference-harness (#3574)                 | Canonical |
 | [fork-session-spike.md](./research/fork-session-spike.md)                   | Spike: fork_session / branch-comparison on the graph builder (#2665)       | Canonical |
+| [mcp-spec-sdk-audit-2026-10.md](./research/mcp-spec-sdk-audit-2026-10.md)   | MCP spec/SDK drift audit and build-vs-adopt calls (#5139)                  | Canonical |
 
 ### Strategy & alignment
 

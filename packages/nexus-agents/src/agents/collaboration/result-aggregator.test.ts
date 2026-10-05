@@ -544,6 +544,27 @@ describe('ResultAggregator', () => {
       expect(result.value.metadata.conflictsDetected).toBe(false);
     });
 
+    it('preserves both values without claiming resolution when the resolver keeps disagreement', () => {
+      const aggregator = createResultAggregator({ conflictResolver: () => 'unresolved' });
+      const result = aggregator.aggregate({
+        pattern: 'parallel',
+        results: [
+          createExpertResult('e1', { value: 'one' }),
+          createExpertResult('e2', { value: 'two' }),
+        ],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw result.error;
+      expect(result.value.conflicts).toEqual([
+        expect.objectContaining({
+          expert1Value: 'one',
+          expert2Value: 'two',
+          resolution: 'unresolved',
+        }),
+      ]);
+      expect(result.value.conflicts[0]).not.toHaveProperty('resolutionReason');
+    });
+
     it('should use custom conflict resolver', () => {
       const customResolver = vi.fn().mockReturnValue('expert2');
       const aggregator = createResultAggregator({

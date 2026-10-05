@@ -163,7 +163,7 @@ describe('the detector verdict reaches the decision-cost record on every vote (#
     expect(verdict?.declaredOptionCount).toBe(0);
   });
 
-  it('records the declared option count and a not-fired verdict when options ARE declared', async () => {
+  it('records declared options as not applicable without a fired verdict', async () => {
     const handler = captureHandler();
     collectRealVotesMock.mockResolvedValue([
       {
@@ -184,7 +184,7 @@ describe('the detector verdict reaches the decision-cost record on every vote (#
       CTX
     );
     expect(readStore().all()[0]?.undeclaredOptionsDetector).toEqual({
-      fired: false,
+      applicable: false,
       declaredOptionCount: 2,
     });
   });

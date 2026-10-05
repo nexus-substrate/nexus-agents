@@ -1061,6 +1061,8 @@ That's my vote.`;
     it('launches votes with inter-agent delay', async () => {
       const callTimestamps: number[] = [];
       const adapter = {
+        providerId: 'test-provider',
+        modelId: 'test-model',
         complete: vi.fn().mockImplementation(() => {
           callTimestamps.push(Date.now());
           return Promise.resolve({
@@ -1090,13 +1092,15 @@ That's my vote.`;
 
     it('supports interAgentDelayMs option in CollectRealVotesOptions', async () => {
       const adapter = {
+        providerId: 'test-provider',
+        modelId: 'test-model',
         complete: vi.fn().mockResolvedValue({
           ok: true,
           value: {
             content: [
               {
                 type: 'text' as const,
-                text: '{"decision":"approve","confidence":0.9,"reasoning":"OK"}',
+                text: '{"decision":"approve","confidence":0.9,"reasoning":"Test vote."}',
               },
             ],
           },
@@ -1112,6 +1116,7 @@ That's my vote.`;
       });
 
       expect(results).toHaveLength(1);
+      expect(results[0]?.source).toBe('llm');
     });
   });
 

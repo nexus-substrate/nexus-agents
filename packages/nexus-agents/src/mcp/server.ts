@@ -111,7 +111,6 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
       },
       {
         capabilities: {
-          logging: {},
           prompts: {},
           resources: {},
           tasks: {},

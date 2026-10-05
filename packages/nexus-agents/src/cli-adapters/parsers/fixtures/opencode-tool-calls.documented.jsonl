@@ -1,0 +1,2 @@
+{"type": "step_start", "timestamp": 1772226973450, "sessionID": "ses_sanitized", "part": {"id": "prt_1", "sessionID": "ses_sanitized", "messageID": "msg_1", "type": "step-start", "snapshot": "e4cf1ced"}}
+{"type": "step_finish", "timestamp": 1772226974101, "sessionID": "ses_sanitized", "part": {"id": "prt_3", "sessionID": "ses_sanitized", "messageID": "msg_1", "type": "step-finish", "reason": "tool-calls", "snapshot": "e4cf1ced", "cost": 0, "tokens": {"total": 18080, "input": 78, "output": 23, "reasoning": 0, "cache": {"read": 17979, "write": 0}}}}

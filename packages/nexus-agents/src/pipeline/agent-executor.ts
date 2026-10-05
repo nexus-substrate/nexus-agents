@@ -78,12 +78,41 @@ export function createAgentStages(config: AgentExecutorConfig = {}): DevPipeline
     plan: createPlanStage(deps),
     vote: createVoteStage(deps),
     decompose: createDecomposeStage(deps),
+    ...createExecutionStages(deps),
+    // #6794: execution closures share the same guard and scratch directory.
+    withWorkspace: ({ directory, dependencies: workspaceDependencies, wrapper }) => {
+      const bound = {
+        ...deps,
+        workspaceDependencies,
+        wrapper,
+        config: { ...config, scanTarget: directory },
+      };
+      return {
+        ...createExecutionStages(bound),
+        research: createResearchStage(deps),
+        plan: createPlanStage(deps),
+        vote: createVoteStage(deps),
+        decompose: createDecomposeStage(deps),
+      };
+    },
+  };
+}
+
+/** Execution stages share a budget while targeting the per-run checkout. */
+function createExecutionStages(
+  deps: Parameters<typeof createImplementStage>[0]
+): Pick<
+  DevPipelineStages,
+  'implement' | 'qaReview' | 'qualityGate' | 'securityScan' | 'implementWorkspace'
+> {
+  return {
     implement: createImplementStage(deps),
-    // #6792: implement passes no workDir, so its expert edits the MCP
-    // server's cwd; the pipeline warns when a quality gate then runs there.
-    implementWorkspace: { accessMode: IMPLEMENT_ACCESS_MODE, directory: process.cwd() },
     qaReview: createQaReviewStage(deps),
     qualityGate: createQualityGateStage(deps),
     securityScan: createSecurityScanStage(deps),
+    implementWorkspace: {
+      accessMode: deps.config.dryRun === true ? 'read-only-analysis' : IMPLEMENT_ACCESS_MODE,
+      directory: deps.config.scanTarget ?? process.cwd(),
+    },
   };
 }

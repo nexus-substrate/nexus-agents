@@ -29,7 +29,10 @@ import type { IWorkflowRouter } from './workflow-router.js';
 import type { TaskSignals, WorkflowPattern } from './workflow-router-types.js';
 import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
 import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
-import type { ICapabilityGapLedger } from '../core/task-analysis/capability-gap-ledger.js';
+import {
+  recordRoutingGaps,
+  type ICapabilityGapLedger,
+} from '../core/task-analysis/capability-gap-ledger.js';
 import {
   buildForcedDecision,
   buildSelectedDecision,
@@ -370,11 +373,9 @@ export function createMetaOrchestrator(options?: {
       if (shadowSelector !== undefined && shadowSink !== undefined) {
         recordShadow(shadowSelector, shadowSink, decision, timestamp, logger);
       }
-      if (gapLedger !== undefined && decision.capabilityGaps !== undefined) {
-        gapLedger.record(decision.capabilityGaps, {
-          goal: input.goal,
-          decisionId: decision.decisionId,
-        });
+      if (gapLedger !== undefined) {
+        const context = { goal: input.goal, decisionId: decision.decisionId };
+        recordRoutingGaps(decision, context, gapLedger);
       }
 
       logSelection(logger, decision, forced);

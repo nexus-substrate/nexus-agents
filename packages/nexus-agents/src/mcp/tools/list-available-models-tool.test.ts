@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, it, expect, vi } 
 import { listAvailableModelsHandler } from './list-available-models-tool.js';
 import { createLogger } from '../../core/index.js';
 import type { AvailableModelsSource } from '../../config/available-models-cache.js';
+import { breakerKeys } from '../../cli-adapters/breaker-key.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../../cli-adapters/cli-circuit-breaker.js';
 import { startFakeGateway, type FakeGateway } from '../../testing/gateway/fake-gateway.js';
 
@@ -266,8 +267,13 @@ describe('list_available_models breaker state (#6769)', () => {
     const data = parse(res.content[0]?.text ?? '');
     const byName = new Map(data.transports.map((t) => [t.transport, t]));
 
-    // The probe still ran: breaker state is reported beside it, not instead of it.
-    expect(byName.get('claude')).toMatchObject({ ok: true, servesModels: true, breakerOpen: true });
+    // The probe still ran; open routes are excluded from the usable model list.
+    expect(byName.get('claude')).toMatchObject({
+      ok: true,
+      servesModels: false,
+      modelCount: 0,
+      breakerOpen: true,
+    });
     expect(byName.get('gemini')).toMatchObject({ breakerOpen: false });
     // No CLI breaker tracks openrouter: the field is absent, not a default `false`.
     expect(byName.get('openrouter')).not.toHaveProperty('breakerOpen');
@@ -310,5 +316,35 @@ describe('the codex row is labelled a vendor-catalogue superset (#5086)', () => 
 
   it('points readers at the per-transport caveat in the top-level note', async () => {
     expect((await report()).note).toMatch(/catalogueCaveat/);
+  });
+});
+
+describe('list_available_models route availability (#7070)', () => {
+  const breakers = getDefaultCliCircuitBreakerRegistry();
+  afterEach(() => {
+    breakers.resetAll();
+  });
+
+  it.each([
+    ['opencode-custom-sonnet', 'opencode-default', false],
+    ['opencode-default', 'opencode-custom-sonnet', true],
+  ])('omits unavailable %s while retaining %s', async (failed, healthy, defaultOpen) => {
+    const breaker = breakers.getArmBreaker(breakerKeys.forArm({ name: 'opencode', model: failed }));
+    for (let i = 0; i < breaker.getSnapshot().config.failureThreshold; i++) {
+      breaker.recordFailure('unknown');
+    }
+    const result = await listAvailableModelsHandler(
+      { includeModelIds: true },
+      { sourcesFactory: () => [src('opencode', [failed, healthy])] },
+      logger
+    );
+    const data = parse(result.content[0]?.text ?? '');
+    expect(data.transports[0]).toMatchObject({
+      modelIds: [healthy],
+      sampleModelIds: [healthy],
+      modelCount: 1,
+      servesModels: true,
+      breakerOpen: defaultOpen,
+    });
   });
 });

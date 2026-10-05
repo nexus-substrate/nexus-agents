@@ -139,6 +139,9 @@ function buildSoakCollector(
       category: s.category,
       priority: classifySignalPriority(s),
       severity: s.severity,
+      signalTitle: s.title,
+      signalDescription: s.body,
+      signalEvidence: s.evidence,
     });
   }
   const metaFor = (key: string): SoakSignalMeta | undefined => meta.get(key);

@@ -38,6 +38,7 @@
  * | `ledger-invalid` | a line does not parse, or `verifyVoteRecordSet` fails (tamper, gap, a voter opening dropped with no redaction record, a redaction record that binds nothing) |
  * | `ledger-rewritten` | the head ledger is not the base ledger plus appended lines — see below |
  * | `duplicate-id` | one id names two DIFFERENT records — refused, see below |
+ * | `ledger-signature-required` | the bound records ratify, but a record in the signature scope (added by the PR, or anywhere in the ledger on the backstop) is not `signed` — see "Signature" below (#3927) |
  *
  * A `ratified` / `ratified-rebased` verdict carries `redacted` when a
  * redaction record in the ledger names the ratifying record (#6264): a
@@ -259,7 +260,7 @@
  * misconfiguration. Both are non-ratified either way; only the report
  * changes. The `failures` field on a bound refusal carries that list.
  *
- * ## Signature: reported per bound record, not yet enforced (#3927 item 4)
+ * ## Signature: reported per bound record, enforced from sequence 15 (#3927 item 4)
  *
  * Since phase 1 a record may carry a `signature` — an `ssh-keygen -Y sign`
  * signature over its committed hash, outside the self-hash — and the gate
@@ -287,6 +288,25 @@
  * supplied)` for grandfathered records — and `signature-required` for a
  * record past the cutover, because absence is not measured as signed.
  *
+ * NOT ONLY BOUND RECORDS (#3927, closing gap). Enforcement over the bound
+ * records alone let an unsigned record that no PR binds be appended and
+ * merge unrefused. `signatureScope` extends the requirement, over RAW LEDGER
+ * LINES — each occurrence, never the deduplicated set, because the signature
+ * is outside the hash and an unsigned copy of a signed record collapses into
+ * it on load (the PR #7000 panel's reproduction). `added` (the pre-merge job)
+ * judges each head line not matched, occurrence for occurrence, by a base
+ * line with the same id, hash and signature; `ledger` (the post-merge
+ * backstop, and the env reader's default) judges every line, so a record
+ * that bypassed the pre-merge job keeps `main` red until it is resolved. An
+ * UNSIGNED line with a grandfathered hash is exempt in both; a signed one is
+ * judged. A ratified verdict with a refused line becomes
+ * `ledger-signature-required`, naming each record id, its line and its own
+ * verdict code; any other refusal carries the refused lines beside it. The
+ * check reports `lines = inBase + grandfathered + checked`, so coverage is
+ * never silent; a PR adding no line is `checked: 0` and passes this check,
+ * the bound check unchanged. Precedence: after every other kind — it is evaluated only
+ * once the bound records ratify.
+ *
  * ## Residual trust (disclosed)
  *
  * The self-hash makes a record tamper-EVIDENT, not tamper-PROOF. A record
@@ -306,24 +326,27 @@ import type {
   VoteRecord,
   VoteRecordPanelCoverage,
 } from '../packages/nexus-agents/src/audit/vote-record.js';
-import { verifyVoteRecordSet } from '../packages/nexus-agents/src/audit/vote-record.js';
 import type {
   RedactedRecordReport,
   RedactionRecord,
 } from '../packages/nexus-agents/src/audit/redaction-record.js';
-import { appendOnlyVerdict } from './governor-ledger-append-only.js';
+import { appendOnlyVerdict, loadLedger, type LedgerFork } from './governor-ledger-append-only.js';
+
+export type { LedgerFork };
+import { modelDiversityEvidence, type ModelDiversityFailure } from './governor-ledger-diversity.js';
 import {
   GRANDFATHERED_RECORD_HASHES,
   SIGNATURE_CUTOVER_SEQUENCE,
+  applySignatureScope,
   signatureRequiredFailures,
+  type LedgerSignatureRequired,
+  type LedgerSignatureScope,
   type SignatureRequiredFailure,
+  type WithLedgerSignatures,
 } from './governor-ledger-signature-policy.js';
 
 export { GRANDFATHERED_RECORD_HASHES, SIGNATURE_CUTOVER_SEQUENCE };
-import {
-  VOTE_RECORDS_REL_PATH,
-  parseVoteRecordsText,
-} from '../packages/nexus-agents/src/audit/vote-record-store.js';
+import { VOTE_RECORDS_REL_PATH } from '../packages/nexus-agents/src/audit/vote-record-store.js';
 import type { RecordSignatureReport, SignatureVerifier } from './governor-ledger-signature.js';
 import type {
   MovedHeadMeasurement,
@@ -381,9 +404,18 @@ export interface LedgerEvidenceInputs {
    * The signature verifier for a bound record (#3927 item 4) — the workflow
    * supplies `verifyVoteRecordSignature` over the committed allowed_signers.
    * Omitted ⇒ no `signatures` on the verdict, and the line says the check
-   * was not made. Informational this phase: it never changes `kind`.
+   * was not made; a bound record outside the grandfather set is then
+   * `signature-required` (phase 3, #6279 — absence is not measured as signed).
    */
   readonly signatureVerifier?: SignatureVerifier | undefined;
+  /**
+   * #3927 (closing gap): the records the signature requirement covers beyond
+   * the bound ones — `added` (what the head adds to the base; the pre-merge
+   * job) or `ledger` (every record; the post-merge backstop). Omitted ⇒ the
+   * check is not made and a ratified verdict carries no `ledgerSignatures`;
+   * `ledgerEvidenceFromEnv` always supplies one (default `ledger`).
+   */
+  readonly signatureScope?: LedgerSignatureScope | undefined;
 }
 
 /**
@@ -393,6 +425,8 @@ export interface LedgerEvidenceInputs {
  */
 interface WithSignatures {
   readonly signatures?: readonly RecordSignatureReport[];
+  /** Evaluation-time diversity exceptions; never persisted on a record. */
+  readonly diversityNotices?: readonly string[];
 }
 
 /** What the signature report needs: the verifier (if any) and the ledger's redactions (#6372). */
@@ -437,7 +471,8 @@ export type BoundRecordFailure =
    * unknown key, a signature that does not hold, or a verifier that could not
    * run (or was not supplied). Fail-closed: absence is not measured as signed.
    */
-  | SignatureRequiredFailure;
+  | SignatureRequiredFailure
+  | ModelDiversityFailure;
 
 /**
  * A refusal over the bound records: the precedence-first failure, plus EVERY
@@ -452,7 +487,7 @@ export type BoundRecordRefusal = BoundRecordFailure &
   };
 
 /** The verdict. See the module header for what each kind means. */
-export type LedgerEvidence =
+type LedgerVerdict =
   | ({
       readonly kind: 'ratified';
       readonly record: VoteRecord;
@@ -520,7 +555,25 @@ export type LedgerEvidence =
        */
       readonly againstRatifiedSha?: string;
     }
-  | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] };
+  | { readonly kind: 'duplicate-id'; readonly ids: readonly string[] }
+  /**
+   * #3927 (closing gap): the bound records ratify, but a record in the
+   * signature scope — one the PR adds, or (backstop) any record in the
+   * ledger — outside the grandfather set is not `signed`. Each failure names
+   * the record id and its distinct verdict code.
+   */
+  | LedgerSignatureRequired;
+
+/**
+ * `ledgerSignatures` is the scope-wide signature check (#3927), present when
+ * a scope was supplied and the ledger loaded. On a ratified kind its
+ * `refused` list is always empty (a failure converts the verdict to
+ * `ledger-signature-required`); on any other refusal it rides along only
+ * when it refused a record, so the log names that record beside the
+ * bound-record failure.
+ */
+export type LedgerEvidence = LedgerVerdict & WithForks & WithLedgerSignatures;
+type WithForks = { readonly forks?: readonly LedgerFork[] };
 
 /** The kinds that pass the gate (#5131): `ratified`, and `ratified-rebased` under the #6256 rule. */
 export function isRatifiedKind(kind: LedgerEvidence['kind']): boolean {
@@ -539,56 +592,6 @@ export function acceptedHeadShas(head: HeadBinding): string[] {
     shas.push(head.parentSha.toLowerCase());
   }
   return shas;
-}
-
-type Loaded =
-  | {
-      ok: true;
-      records: VoteRecord[];
-      /** The verifier's per-record `redacted` answers, by record id (#6264). */
-      redacted: ReadonlyMap<string, RedactedRecordReport>;
-      /** Every redaction record in the ledger, in file order (#6372: their signatures are reported beside their targets). */
-      redactions: readonly RedactionRecord[];
-    }
-  | { ok: false; verdict: LedgerEvidence };
-
-/** Parse and verify the ledger; collapse byte-identical duplicates; refuse ambiguous ids. */
-function loadLedger(text: string): Loaded {
-  const { records, redactions, invalidLines } = parseVoteRecordsText(text);
-  if (invalidLines.length > 0) {
-    return {
-      ok: false,
-      verdict: {
-        kind: 'ledger-invalid',
-        detail: `line(s) ${invalidLines.join(', ')} do not parse or fail the record schema`,
-      },
-    };
-  }
-  // #6264: the redaction records are part of the verified set. A record whose
-  // opening was dropped under one verifies as `redacted` (its tally is still
-  // hash-covered); dropped under none it is `hash_mismatch` and lands here.
-  const verification = verifyVoteRecordSet(records, redactions);
-  if (!verification.ok) {
-    return {
-      ok: false,
-      verdict: {
-        kind: 'ledger-invalid',
-        detail: `${verification.reason} at record '${verification.recordId}': ${verification.detail}`,
-      },
-    };
-  }
-  const redacted = new Map((verification.redacted ?? []).map((r) => [r.recordId, r]));
-  const byId = new Map<string, VoteRecord>();
-  const ambiguous = new Set<string>();
-  for (const record of records) {
-    const seen = byId.get(record.id);
-    if (seen === undefined) byId.set(record.id, record);
-    else if (seen.hash !== record.hash) ambiguous.add(record.id);
-  }
-  if (ambiguous.size > 0) {
-    return { ok: false, verdict: { kind: 'duplicate-id', ids: [...ambiguous].sort() } };
-  }
-  return { ok: true, records: [...byId.values()], redacted, redactions };
 }
 
 /**
@@ -683,11 +686,8 @@ function verdictOverBound(
       if (failure !== undefined) failures.push(failure);
     }
   }
-  // #3927 item 4: computed over every bound record, attached to whichever
-  // verdict follows, never consulted for `kind` this phase.
-  // #6372: a redaction that names a bound record is reported beside it — the
-  // one sanctioned edit of the ledger is the record that most needs to say
-  // who appended it. Ledger order; an empty redaction list adds nothing.
+  // Verify every bound vote and its naming redactions (#3927, #6372).
+  // Empty redactions add nothing; signatures also authorize owner overrides.
   const boundIds = new Set(bound.map((r) => r.id));
   const naming = redactions.filter((r) => boundIds.has(r.targetId));
   const signatures: WithSignatures =
@@ -699,15 +699,18 @@ function verdictOverBound(
           })),
         }
       : {};
-  // Phase 3 (#6279): at or past the cutover the signature IS consulted for
-  // `kind`. Precedence: after the panel checks (a misconfigured run names
-  // its cause first), before `not-approved` (report order below).
+  // Signature enforcement precedes diversity; both follow the panel checks.
   failures.push(...signatureRequiredFailures(bound, signatures.signatures));
+  const { failures: diversityFailures, ...diversity } = modelDiversityEvidence(
+    bound,
+    signatures.signatures
+  );
+  failures.push(...diversityFailures);
   const first = failures[0];
   if (first !== undefined) return { ...first, failures: inReportOrder(failures), ...signatures };
   // `bound` is non-empty by the caller's construction; the reduce needs no seed.
   const latest = bound.reduce((a, b) => (b.sequence > a.sequence ? b : a));
-  return { kind: 'ratified', record: latest, ...checked, ...signatures };
+  return { kind: 'ratified', record: latest, ...checked, ...signatures, ...diversity };
 }
 
 /**
@@ -717,7 +720,8 @@ function verdictOverBound(
  * consulted only on the moved-head path. Precedence: `ledger-rewritten` →
  * `ledger-invalid` → `duplicate-id` → `no-record` → `sha-mismatch` →
  * `not-approved` → `wrong-error-policy` → `wrong-strategy` →
- * `unmeasured-panel` → `degraded-panel` → `ratified` / `ratified-rebased`
+ * `unmeasured-panel` → `degraded-panel` → `ledger-signature-required`
+ * (#3927, only with a `signatureScope`) → `ratified` / `ratified-rebased`
  * (the latter only via the moved-head rule, #6256, which can also yield
  * `ledger-rewritten` against the ratified sha).
  */
@@ -729,10 +733,15 @@ export function evaluateLedgerEvidence(inputs: LedgerEvidenceInputs): LedgerEvid
   }
   const loaded = loadLedger(inputs.ledgerText);
   if (!loaded.ok) return loaded.verdict;
-  return withRedaction(
-    verdictOverLoaded(inputs, loaded.records, loaded.redactions, appendOnlyChecked),
-    loaded.redacted
+  // #3927: every raw LINE in scope, never the deduplicated set (#7000 panel). No scope ⇒ unchanged.
+  const bound = verdictOverLoaded(inputs, loaded.records, loaded.redactions, appendOnlyChecked);
+  const verdict: LedgerEvidence = applySignatureScope(
+    withRedaction(bound, loaded.redacted),
+    isRatifiedKind,
+    inputs.ledgerText,
+    inputs
   );
+  return loaded.forks.length === 0 ? verdict : { ...verdict, forks: loaded.forks };
 }
 
 /** The verdict over a loaded, verified ledger; see {@link evaluateLedgerEvidence}. */
@@ -869,6 +878,7 @@ function rebasedVerdict(
     appendOnlyChecked,
     // #3927 item 4: the rebased record is a bound record; its signature code travels with it.
     ...(verdict.signatures !== undefined ? { signatures: verdict.signatures } : {}),
+    diversityNotices: verdict.diversityNotices ?? [],
   };
 }
 

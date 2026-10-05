@@ -88,6 +88,10 @@ export interface ParsedValues extends SubcommandFlagValues {
   note?: string;
   sound: boolean;
   unsound: boolean;
+  batch?: string;
+  n?: string;
+  seed?: string;
+  sample?: string;
   'lookback-days'?: string;
   'file-issues': boolean;
   'min-sample-size'?: string;
@@ -291,6 +295,16 @@ function buildRemediationOptions(values: ParsedValues): Record<string, unknown> 
   };
 }
 
+/** Batch panel and random sample flags. */
+function buildRemediationPanelOptions(values: ParsedValues): Record<string, unknown> {
+  return {
+    ...(values.batch !== undefined && { batch: values.batch }),
+    ...(values.n !== undefined && { n: values.n }),
+    ...(values.seed !== undefined && { seed: values.seed }),
+    ...(values.sample !== undefined && { sample: values.sample }),
+  };
+}
+
 /** Builds documented forwarded flags (#6693). */
 function buildDocumentedFlags(values: ParsedValues): Record<string, unknown> {
   return {
@@ -317,6 +331,7 @@ export function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
   return {
     ...buildBaseOptions(values, detectionResult.mode),
     ...buildRemediationOptions(values),
+    ...buildRemediationPanelOptions(values),
     ...buildDocumentedFlags(values),
     ...buildOrchestrateOptions(values),
     ...buildVoteOptions(values),

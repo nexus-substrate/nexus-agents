@@ -11,9 +11,19 @@ import {
   NEXUS_SUBPROCESS_EXTRA_ENV,
 } from './subprocess-env.js';
 
+const CONFIG_LOCATION_VARS = [
+  'CODEX_HOME',
+  'CLAUDE_CONFIG_DIR',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_STATE_HOME',
+  'XDG_CACHE_HOME',
+];
+
 describe('buildChildEnv (#2865)', () => {
   /** Env keys the tests touch — cleared before each test for a known slate. */
   const MANAGED = [
+    ...CONFIG_LOCATION_VARS,
     'ANTHROPIC_API_KEY',
     'OPENAI_API_KEY',
     'GOOGLE_AI_API_KEY',
@@ -56,6 +66,21 @@ describe('buildChildEnv (#2865)', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it.each(CONFIG_LOCATION_VARS)('forwards config location %s when set (#6982)', (name) => {
+    vi.stubEnv(name, '/tmp/nexus-test/config home');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'TEST_FAKE_ANTHROPIC_KEY');
+    for (const cli of ['codex', 'claude', 'gemini', 'opencode'] as const) {
+      expect(buildChildEnv(cli)[name]).toBe('/tmp/nexus-test/config home');
+    }
+    expect(buildChildEnv('codex')).not.toHaveProperty('ANTHROPIC_API_KEY');
+  });
+
+  it.each(CONFIG_LOCATION_VARS)('omits config location %s when unset (#6982)', (name) => {
+    for (const cli of ['codex', 'claude', 'gemini', 'opencode'] as const) {
+      expect(buildChildEnv(cli)).not.toHaveProperty(name);
+    }
   });
 
   it('passes the base infra vars through (PATH, HOME)', () => {

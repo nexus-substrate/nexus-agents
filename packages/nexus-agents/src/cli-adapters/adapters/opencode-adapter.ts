@@ -24,7 +24,6 @@ import {
 } from '../subprocess-adapter.js';
 import { OpenCodeResponseParser } from '../parsers/opencode-parser.js';
 import { createCallerInputCliError } from '../cli-error-helpers.js';
-import { isReadOnlyAnalysis } from '../access-mode.js';
 import { isDynamicModelsEnabled } from '../../config/register-model-sources.js';
 import { getAvailabilityCache } from '../../config/model-availability.js';
 import type { ModelId } from '../../config/model-capabilities-types.js';
@@ -189,21 +188,19 @@ function warnIfAnthropicProvider(models: Set<string>): void {
  * as --model only when available (#1402); an explicitly requested model is
  * resolved against the probe or returned as an error (#6599).
  */
-/**
- * Child environment for a read-only analysis task (#6754). opencode reads
- * `OPENCODE_PERMISSION` as JSON and merges it into the `permission` config
- * after every config file, managed preferences included (verified in the
- * opencode 1.15.x binary; the key names and `allow`/`ask`/`deny` values are
- * documented at https://opencode.ai/docs/permissions). `bash` covers command
- * execution, `edit` every file write, `webfetch` network fetch.
- */
-const OPENCODE_READ_ONLY_ENV: Readonly<Record<string, string>> = {
-  OPENCODE_PERMISSION: JSON.stringify({ bash: 'deny', edit: 'deny', webfetch: 'deny' }),
-};
-
 export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'opencode';
-  override readonly enforcesReadOnlyAnalysis = true;
+  // opencode cannot run read-only analysis truthfully, so it refuses those
+  // tasks (#6970, revisit in #6979). #6754 mapped the mode to an
+  // `OPENCODE_PERMISSION` deny config. Observed live on 2026-10-02 with
+  // opencode 1.15.13, under that config: MCP servers from the user's config
+  // still started outside the permission rules (the nexus-agents server wrote
+  // `.gitignore` into the tree); opencode itself rewrote the project's
+  // `opencode.json` to insert `"$schema"` on every run; and it substitutes
+  // `{env:}`/`{file:}` across the raw config text, comments and values
+  // included, before parsing, so a config scan cannot list the servers it
+  // will load (a reviewer reproduced a bypass of that scan).
+  override readonly enforcesReadOnlyAnalysis = false;
   protected readonly parser: ICliResponseParser = new OpenCodeResponseParser();
 
   /** Enable transient-error retry for OpenCode (#1456). */
@@ -218,15 +215,20 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   }
 
   /**
-   * Gets OpenCode model information from canonical registry.
+   * Gets the implicit route's model information from the canonical registry.
+   * After inventory probing, an unusable configured model runs the default.
    */
   getModelInfo(): ModelInfo {
-    const fromRegistry = buildModelInfo('opencode', this.model);
+    const model =
+      this.availableModels !== undefined && !this.isModelUsable(resolveOpenCodeModel(this.model))
+        ? getCliModelName(getDefaultModelForCli('opencode'))
+        : this.model;
+    const fromRegistry = buildModelInfo('opencode', model);
     if (fromRegistry !== undefined) return fromRegistry;
 
     return {
-      id: this.model,
-      name: `OpenCode (${this.model})`,
+      id: model,
+      name: `OpenCode (${model})`,
       contextWindow: FALLBACK_CONTEXT_WINDOW,
       maxOutput: FALLBACK_MAX_OUTPUT,
       // OpenCode pricing fallback is adapter-specific (not the Claude 5/25).
@@ -240,6 +242,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
    * Warns if Anthropic provider is configured (#1429 — API key boundaries).
    */
   override async initialize(): Promise<void> {
+    if (this.initialized) return;
     this.availableModels = await probeAvailableModels();
     warnIfAnthropicProvider(this.availableModels);
     await super.initialize();
@@ -318,8 +321,19 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     task: CliTask,
     options?: ExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
-    if (task.model === undefined) return super.execute(task, options);
+    if (task.model === undefined) {
+      // Preserve the base adapter's refusal before the model inventory probe.
+      const refusal = await this.accessModeRefusal(task);
+      if (refusal !== undefined) return err(refusal);
+    }
     if (!this.initialized) await this.initialize();
+    if (task.model === undefined) {
+      // Record the route actually selected: an unavailable configured model
+      // omits --model and runs OpenCode's default, not that configured route.
+      const cliModel = resolveOpenCodeModel(this.model);
+      const effectiveTask = this.isModelUsable(cliModel) ? { ...task, model: cliModel } : task;
+      return super.execute(effectiveTask, options);
+    }
     const resolved = this.resolveRequestedModel(task.model);
     if (!resolved.ok) return resolved;
     const { cliId, reportedAs } = resolved.value;
@@ -402,9 +416,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
         ? `${task.systemPrompt}\n\n---\n\n${task.content}`
         : task.content;
 
-    return isReadOnlyAnalysis(task)
-      ? { command: 'opencode', args, stdin: content, env: OPENCODE_READ_ONLY_ENV }
-      : { command: 'opencode', args, stdin: content };
+    return { command: 'opencode', args, stdin: content };
   }
 
   /**

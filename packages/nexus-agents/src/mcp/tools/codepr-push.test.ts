@@ -229,6 +229,56 @@ describe('executeCodePrPush — readiness gate (step 1)', () => {
     expect(m.gitPush).not.toHaveBeenCalled();
   });
 
+  it('reports production streak and excluded rows from the soak summary', () => {
+    const m = makeMockDeps({ soak: 0 });
+    const result = executeCodePrPush(baseInput(), {
+      ...m.deps,
+      readSoak: () => ({
+        scope: 'production',
+        status: 'measured',
+        consecutiveGreenDryRuns: 1,
+        excludedTestRows: 251,
+      }),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected denial');
+    expect(result.reason).toBe('not_enabled');
+    expect(result.detail).toContain('1 consecutive green production dry-runs');
+    expect(result.detail).toContain('excludedTestRows: 251');
+    expect(m.gitPush).not.toHaveBeenCalled();
+    expect(m.openPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('malformed readiness config preserves production evidence and reports evaluation unavailable', () => {
+    const m = makeMockDeps({ soak: 100 });
+    const result = executeCodePrPush(
+      baseInput({
+        readinessConfig: {
+          minGuardsGreenSoak: Number.NaN,
+          requireEnableVoteRef: true,
+          requireOwnerAck: true,
+        },
+      }),
+      {
+        ...m.deps,
+        readSoak: () => ({
+          scope: 'production',
+          status: 'measured',
+          consecutiveGreenDryRuns: 100,
+          excludedTestRows: 251,
+        }),
+      }
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected denial');
+    expect(result.reason).toBe('not_enabled');
+    expect(result.detail).toContain('config-shape');
+    expect(result.detail).toContain('100 consecutive green production dry-runs');
+    expect(result.detail).toContain('excludedTestRows: 251');
+    expect(result.detail).toContain('readiness evaluation unavailable');
+    expect(m.gitPush).not.toHaveBeenCalled();
+  });
+
   it('no owner-ack → not_enabled, NO push', () => {
     const m = makeMockDeps({ soak: 100 });
     const result = executeCodePrPush(

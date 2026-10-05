@@ -1,5 +1,412 @@
 # nexus-agents
 
+## 8.133.4
+
+### Patch Changes
+
+- [#7085](https://github.com/nexus-substrate/nexus-agents/pull/7085) [`d5122f5`](https://github.com/nexus-substrate/nexus-agents/commit/d5122f57e6d56ea4f5a143913f7ac227407e622c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix model-drift proposals to use the same capability tiers as gateway routing, rank the best models first within each vendor, and spread the five-proposal limit across vendors. Previously closed proposals now count as duplicates, preventing weekly refiling.
+
+## 8.133.3
+
+### Patch Changes
+
+- [#7084](https://github.com/nexus-substrate/nexus-agents/pull/7084) [`108e447`](https://github.com/nexus-substrate/nexus-agents/commit/108e44768c9b6e33032dcdddbd09dc886fbfc4ef) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refactor audit chain hashing and verification into an internal module without changing behavior or the public API.
+
+## 8.133.2
+
+### Patch Changes
+
+- [#7081](https://github.com/nexus-substrate/nexus-agents/pull/7081) [`f2ec99c`](https://github.com/nexus-substrate/nexus-agents/commit/f2ec99c376029fc036e345dfcfe5017ae10c9367) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep OpenCode's default route available when a custom provider fails, and exclude failing custom routes per model from voter dispatch and available-model listings. Gateway-served slot failures no longer open the plain CLI breaker or affect other slots. Transient rate limits do not trip slot breakers; durable quota exhaustion still counts as a failure.
+
+## 8.133.1
+
+### Patch Changes
+
+- [#7078](https://github.com/nexus-substrate/nexus-agents/pull/7078) [`7d80b3d`](https://github.com/nexus-substrate/nexus-agents/commit/7d80b3de9e52714646be568e5e1284d671398b21) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Show each CLI's local authentication evidence rung and source in doctor output, distinguishing credential artifacts, CLI probes, and unverified auth ([#7069](https://github.com/nexus-substrate/nexus-agents/issues/7069)).
+
+## 8.133.0
+
+### Minor Changes
+
+- [#7076](https://github.com/nexus-substrate/nexus-agents/pull/7076) [`5261a20`](https://github.com/nexus-substrate/nexus-agents/commit/5261a200362f256aaa118a6fa8df5cfbe42f52b2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Use each CLI adapter's result parser as the single authority for success. OpenCode plaintext output, unrecognized event streams, missing terminal reasons, and `content-filter`, `error`, `tool-calls`, `other`, `unknown`, or unrecognized finish reasons now fail closed. `stop` succeeds; `length` succeeds only when text was produced. Apply the same terminal checks to legacy OpenCode events. Codex deterministic terminal failures now report the CLI's error message with a specific classification instead of a parse error and retry. Reject agy output without its explicit success marker, including output previously accepted by the shared plaintext fallback.
+
+## 8.132.0
+
+### Minor Changes
+
+- [#7074](https://github.com/nexus-substrate/nexus-agents/pull/7074) [`1d2dccf`](https://github.com/nexus-substrate/nexus-agents/commit/1d2dccf37e7cbb98e17e282dec53ccea9878e216) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add optional adapter contract members for auth status, opt-in bounded live readiness, and model-support queries. Live readiness is capped by the interactive operation-class guard and single-flight per adapter. Enforce these members across in-tree CLI and API adapters with one conformance suite; preserve explicit unknown and unmeasured outcomes.
+
+## 8.131.6
+
+### Patch Changes
+
+- [#7062](https://github.com/nexus-substrate/nexus-agents/pull/7062) [`0b19120`](https://github.com/nexus-substrate/nexus-agents/commit/0b191201998d9f5d80b473c553248b20481dfdfe) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Paper quality scoring no longer counts a missing citation count as citations. A registry entry with `citation_count: null` (or a non-numeric value) used to score 1 citation point, and NaN scored 3. Both now score 0, the same as an absent count, when a paper is added to the research registry. A venue with no letters in it, such as a bare year or whitespace, is also classified as no venue (tier 0) instead of tier 1.
+
+  `scripts/backfill-research-quality.ts` now scores papers with the package's own quality scorer instead of a separately maintained copy, so backfilled scores and evidence tiers match the ones assigned when a paper is added. Its Semantic Scholar lookups, `--dry-run` and write-back behave as before. The documented `--limit N` form now works; it used to be ignored and the script processed every paper (only `--limit=N` took effect).
+
+## 8.131.5
+
+### Patch Changes
+
+- [#7056](https://github.com/nexus-substrate/nexus-agents/pull/7056) [`9649f5a`](https://github.com/nexus-substrate/nexus-agents/commit/9649f5a7f59f5342d22e12b6a44c4b225fda3c06) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Hide run_workflow from MCP tool listings when its execution engine is structurally unavailable at startup. Keep workflow discovery available and log adapter configuration and restart guidance.
+
+- [#7060](https://github.com/nexus-substrate/nexus-agents/pull/7060) [`5d313de`](https://github.com/nexus-substrate/nexus-agents/commit/5d313ded9c85a93c0cb45fa52a6ac58f93698b14) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - `nexus-agents routing-audit` and `nexus-agents learning-metrics` now show a bandit reconstructed with the router's own warm start, not a cold one. It replays the last 30 days of recorded outcomes (excluding `e2e-eval`), seeds the same specialization priors and applies the same cold-start fallback. The output is labelled with the reconstruction time, the number of outcomes replayed and how many of those are real (empirical) rather than synthetic. It also says the state is a reconstruction, not the running router's in-memory state. An empty outcome store is reported as "no empirical outcomes replayed".
+
+  Both commands stay read-only: the fallback's synthetic warm-up outcomes are replayed in memory and never written to the outcome store. `learning-metrics` reports its learning status as `unmeasured` for a reconstructed bandit, because replayed outcomes are not routing decisions and their spread says nothing about exploration. Router behaviour is unchanged.
+
+## 8.131.4
+
+### Patch Changes
+
+- [#7058](https://github.com/nexus-substrate/nexus-agents/pull/7058) [`379b307`](https://github.com/nexus-substrate/nexus-agents/commit/379b30755586d642063a5588331114215c689f44) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The model-manifest overlay loader no longer throws when its file disappears or cannot be read between the existence check and the read. A file removed in that window is now reported as `missing`; one that exists but cannot be read (for example a directory at the path, or a permission error) is reported with the new `unreadable` status and a warning, and its entries are skipped. Previously the error escaped `getDefaultRegistry()` during module load, crashing any caller that looked up a model. `nexus-agents registry doctor` shows the new status.
+
+## 8.131.3
+
+### Patch Changes
+
+- [#7054](https://github.com/nexus-substrate/nexus-agents/pull/7054) [`b0613e2`](https://github.com/nexus-substrate/nexus-agents/commit/b0613e2147d5f49156f18a70d3ae3233e8204379) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Resolve the MCP workspace root synchronously from validated CLAUDE_PROJECT_DIR in Claude Code, releasing tool readiness immediately while preserving NEXUS_DATA_DIR precedence and MCP roots fallback.
+
+## 8.131.2
+
+### Patch Changes
+
+- [#7052](https://github.com/nexus-substrate/nexus-agents/pull/7052) [`dfb37b9`](https://github.com/nexus-substrate/nexus-agents/commit/dfb37b94527f0b618ac5685a0c33690b02583522) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Reject undeclared tool output keys during SDK server-side validation and bind structured success data to each declared output schema.
+
+## 8.131.1
+
+### Patch Changes
+
+- [#7047](https://github.com/nexus-substrate/nexus-agents/pull/7047) [`54c01bc`](https://github.com/nexus-substrate/nexus-agents/commit/54c01bc582f04f312fab8cb1a3362b2a5630f014) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - dependency: MCP SDK 1.32.0. Scope in-memory MCP tasks to the session that created them when callers supply a session ID, preventing other sessions from reading or changing those tasks. Calls without a session ID remain unrestricted. Accept tool and prompt requests that omit optional arguments ([#7045](https://github.com/nexus-substrate/nexus-agents/issues/7045)).
+
+## 8.131.0
+
+### Minor Changes
+
+- [#7046](https://github.com/nexus-substrate/nexus-agents/pull/7046) [`2be32c1`](https://github.com/nexus-substrate/nexus-agents/commit/2be32c1c22eaf9c1c3c5a4e2def5b153d59952ac) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Declare consensus vote retry provenance and higher-order decision attribution in the MCP output schema so validating clients accept these existing response fields.
+
+## 8.130.6
+
+### Patch Changes
+
+- [#7038](https://github.com/nexus-substrate/nexus-agents/pull/7038) [`a0c6d7a`](https://github.com/nexus-substrate/nexus-agents/commit/a0c6d7ae83adc2fa6b5751baab6e6dd49f21d123) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Wait for MCP workspace roots before dispatching tools. Bound startup waiting to one second, log the selected fallback root and data directories, and retain that fallback if roots arrive late to prevent split session state.
+
+- [#7039](https://github.com/nexus-substrate/nexus-agents/pull/7039) [`8491dc0`](https://github.com/nexus-substrate/nexus-agents/commit/8491dc0c7f70f0a7137619a37edcc1abbea1aa55) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record price basis and unmeasured pricing on task-class cost ceiling decisions without changing routing choices.
+
+## 8.130.5
+
+### Patch Changes
+
+- [#7036](https://github.com/nexus-substrate/nexus-agents/pull/7036) [`5f3f50d`](https://github.com/nexus-substrate/nexus-agents/commit/5f3f50ddfc71178a2278dd8aab249e2d7f6e3de3) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Release child MCP config directories after each expert call, on config write failure, and on ordinary process exit.
+
+- [#7035](https://github.com/nexus-substrate/nexus-agents/pull/7035) [`228128c`](https://github.com/nexus-substrate/nexus-agents/commit/228128c2c77561d85e4b2c304d7536336388a0fd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Read CLI status binaries and doctor remediation hints from adapter metadata so Gemini diagnostics follow the executable actually invoked.
+
+## 8.130.4
+
+### Patch Changes
+
+- [#7027](https://github.com/nexus-substrate/nexus-agents/pull/7027) [`51b5cf4`](https://github.com/nexus-substrate/nexus-agents/commit/51b5cf4354f4c2841cdbf5c16249c296b07c8741) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Adapt internal outcome and tool-memory registry adapters to the JSON-only nexus-memory contract. Native Dates are explicitly serialized to ISO strings, unset object fields are omitted, and query results are independent JSON copies. Proxies are rejected before projection, and JSON-shaped objects and arrays exposing own or inherited `toJSON` properties fail validation. Unsupported native values and non-string keys fail with typed validation errors. The nexus-agents public API surface is unchanged.
+
+## 8.130.3
+
+### Patch Changes
+
+- [#7030](https://github.com/nexus-substrate/nexus-agents/pull/7030) [`ceb4565`](https://github.com/nexus-substrate/nexus-agents/commit/ceb4565ba10af8a25adc9f1070c7398b419bee31) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Correct the `consensus_vote` `higher_order` strategy description. It said "Bayesian-optimal", but its verdict is a plain approve/reject tally at a 0.5 bar. The correlation-aware posterior is computed, but it only triggers contrarian escalation and does not weight the decision ([#4701](https://github.com/nexus-substrate/nexus-agents/issues/4701)). Behaviour is unchanged; only the description, JSDoc and architecture docs now say what the strategy does.
+
+## 8.130.2
+
+### Patch Changes
+
+- [#7028](https://github.com/nexus-substrate/nexus-agents/pull/7028) [`7a4331d`](https://github.com/nexus-substrate/nexus-agents/commit/7a4331db8b7a69c4c1dfae39a66e8daa4a8701d9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Count production code-PR soak evidence only, report excluded test rows in readiness, and stamp new records with origin. Legacy unstamped `audit-soak-<digits>` records are counted as excluded test output without rewriting the ledger. Assert soak paths use the existing test data-dir override.
+
+## 8.130.1
+
+### Patch Changes
+
+- [#7023](https://github.com/nexus-substrate/nexus-agents/pull/7023) [`208b5f3`](https://github.com/nexus-substrate/nexus-agents/commit/208b5f3fbaf19b73de1a469bc53707b06f1d0336) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Declare `weather_report`'s complete serialized output schema, so MCP clients can validate structured reports instead of receiving an undeclared shape ([#5842](https://github.com/nexus-substrate/nexus-agents/issues/5842)).
+
+## 8.130.0
+
+### Minor Changes
+
+- [#7021](https://github.com/nexus-substrate/nexus-agents/pull/7021) [`0b5b7f1`](https://github.com/nexus-substrate/nexus-agents/commit/0b5b7f12e9bf0355b43a57705a19b828a76c63a9) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Run scratch-bound expert CLIs, dependency installs, quality checks, security
+  scanners and change capture in a Linux bwrap sandbox when `changes.isolation.mode === 'os-sandbox'`.
+  The source tree, dependencies, shared package stores/caches and shared Git config,
+  index, objects and hooks are read-only. Writable paths are the scratch, its own
+  worktree Git metadata (including private objects) and a private TMPDIR. Installs
+  use private writable package stores/caches and copy imports. Pin the sandbox
+  executable before execution so a scratch PATH entry cannot replace it.
+
+  Before change capture, compare the scratch gitfile, commondir and gitdir with
+  bytes recorded before execution. Modified metadata returns `changes.status === 'tampered'`, an empty diff and a
+  warning. Capture runs in the same sandbox with
+  fsmonitor, hooks, external diff and textconv disabled. Host cleanup removes only
+  the scratch and worktree metadata paths recorded before execution, then runs
+  source-side worktree prune with fsmonitor disabled.
+
+  Remove host IPC environment redirects, mask `/run/user` with an empty tmpfs and
+  mask existing Docker sockets with `/dev/null`. Preserve DNS resolver paths under
+  `/run`. Network and abstract-namespace sockets remain reachable.
+
+  Unavailable bwrap, blocked user namespaces or sandbox setup failure retain
+  best-effort execution and record the reason in `changes.isolation`. Dependency
+  install failure records failed provisioning and leaves the quality gate
+  unmeasured. Best-effort mode retains the known channel where a SIGTERM-ignoring
+  install descendant can write the source during the kill grace period before the
+  shared-config snapshot. Hermetic Git, HUSKY=0, copy imports and shared-config
+  warnings remain in both modes.
+
+  Expert CLIs started inside the sandbox see a read-only home. Codex gets a private `CODEX_HOME` seeded with copies of its `auth.json` and `config.toml` (it cannot start without a writable home). Token refreshes land in that throwaway copy, and the host's codex home is never writable from the sandbox.
+
+## 8.129.1
+
+### Patch Changes
+
+- [#7019](https://github.com/nexus-substrate/nexus-agents/pull/7019) [`529ab87`](https://github.com/nexus-substrate/nexus-agents/commit/529ab875ab8d2e675c56828303d65c1f32f352b1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Clamp decision-cost model and role labels with a visible truncation marker so overlong labels preserve billing records and token totals ([#7017](https://github.com/nexus-substrate/nexus-agents/issues/7017)).
+
+## 8.129.0
+
+### Minor Changes
+
+- [#7016](https://github.com/nexus-substrate/nexus-agents/pull/7016) [`28642bb`](https://github.com/nexus-substrate/nexus-agents/commit/28642bb294255afbc28c8f2931fcfc2df55fb325) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist immutable voter response usage and provenance across retries, replacements,
+  fallbacks and late settlement in decision-cost telemetry. Report observed outer-attempt
+  usage and coverage separately from final-seat totals in the weekly weather view.
+
+  Keep final-seat cost records when decorative telemetry is invalid, and bound captured
+  model, CLI and adapter strings. Read future telemetry keys and classifications safely.
+  Exclude duplicate response histories only from attempt totals, with explicit invalid
+  telemetry coverage. Distinguish parse and adapter-error retries, retain role-retry
+  context through CLI fallback, and preserve first-pass/retry event order.
+
+## 8.128.1
+
+### Patch Changes
+
+- [#7014](https://github.com/nexus-substrate/nexus-agents/pull/7014) [`5fac264`](https://github.com/nexus-substrate/nexus-agents/commit/5fac264da8af9e16f5371b8dd23a9a23b6ff6635) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Prevent Codex MCP tasks from silently running in the server's working directory when a task specifies another directory. These tasks now return a non-retryable refusal because MCP working-directory support cannot be verified. Use the Codex subprocess transport for directory-bound tasks. Tasks without a working directory retain their existing behavior.
+
+## 8.128.0
+
+### Minor Changes
+
+- [#7007](https://github.com/nexus-substrate/nexus-agents/pull/7007) [`65000da`](https://github.com/nexus-substrate/nexus-agents/commit/65000daa0f92ae1d5aea008bc000060434b4f981) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Run dev-pipeline implementation, QA, quality checks, and security scans in a disposable worktree pinned to HEAD. Return a unified diff and its base commit for the operator to apply. Isolation is **BEST-EFFORT**, not an OS sandbox. Pipeline-owned git runs hermetically with repository-local `GIT_*` variables removed, optional index refresh disabled and source hooks disabled. Gate subprocesses receive the hermetic git environment. Installs are scratch-local with inherited directory overrides removed, copy imports and `HUSKY=0`, and are killed as a process tree on timeout. Changes to the source repository's shared git config are reported as a warning, or logged when the run throws or times out (never reverted). Known residual channel: an install descendant that ignores `SIGTERM` can write during the kill grace period before the config snapshot. An OS sandbox is tracked in [#7011](https://github.com/nexus-substrate/nexus-agents/issues/7011). Report an empty implementation as `no_changes`.
+
+  Provision dependencies inside the scratch before implementation, using the root lockfile from HEAD: `pnpm-lock.yaml` selects `pnpm install --frozen-lockfile --prefer-offline`, `package-lock.json` selects `npm ci --prefer-offline`, and `yarn.lock` selects `yarn install --frozen-lockfile --prefer-offline`. Installs never run in the source checkout. Report `changes.dependencies` with status `installed`, `none` or `failed`, plus the manager and failure reason when applicable. No root `package.json` or supported lockfile means `none`. A failed install reports the quality gate as unmeasured with the reason rather than as a code failure. Exclude scratch dependencies from the returned patch.
+
+  Attempt worktree removal on success, failure or timeout, and determine `worktreeRemoved` from whether the scratch path still exists after disposal. Preserve the diff/result with a leftover-path warning when removal fails, report prune failures as a separate warning, and preserve the original run error. Warn when uncommitted source paths were omitted, identifying the HEAD commit and path count. Edited gate scripts still execute on the host: the scratch checkout is not an OS sandbox.
+
+  When `NEXUS_TMPDIR` (by default `<repo>/.nexus-agents/tmp`) lies inside the source repository or the server's working directory, the worktree is created under the system temp directory instead, so the quality gate's isolation check can pass rather than refusing every untrusted gate.
+
+  Clean up worktrees retained after allocation failure and report shared config changes even when creation fails. Logging failures during cleanup never replace the original run error or discard the successful result and its warnings.
+
+## 8.127.10
+
+### Patch Changes
+
+- [#7005](https://github.com/nexus-substrate/nexus-agents/pull/7005) [`4b1173b`](https://github.com/nexus-substrate/nexus-agents/commit/4b1173bc7b29bf0c5b7427fafd083edd9ba80497) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Include declared options in the quick-vote contrarian check so it can assess the available choices without escalating because candidates appear missing. Preserve full option labels when the proposal exceeds the review budget, and keep prompts unchanged for votes without declared options.
+
+## 8.127.9
+
+### Patch Changes
+
+- [#6998](https://github.com/nexus-substrate/nexus-agents/pull/6998) [`f718817`](https://github.com/nexus-substrate/nexus-agents/commit/f71881735688d2e2d04a58110f162053ec0e0b81) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Read-only codex runs now refuse an account codex would fetch cloud-managed config for, even before that config is cached ([#6977](https://github.com/nexus-substrate/nexus-agents/issues/6977)). Cloud config was previously detected only through codex's cached `cloud-config-bundle-cache.json`, so on a workspace account's first run a cloud-defined MCP server could start outside the read-only sandbox. codex-cli 0.160.0 has no option to turn that fetch off. Instead, the plan is read from the `id_token` in `$CODEX_HOME/auth.json`. A read-only run continues only for a personal plan (free, go, plus, pro, prolite, promax), or when no ChatGPT login is stored (API-key and Bedrock auth). Other cases are refused: team, business, enterprise and education plans, unknown plans, auth modes that keep the plan outside auth.json, and a `cli_auth_credentials_store` other than `file`. Runs that are not read-only are unaffected. Refusal messages name the plan and never include token material.
+
+## 8.127.8
+
+### Patch Changes
+
+- [#6989](https://github.com/nexus-substrate/nexus-agents/pull/6989) [`4c1c81e`](https://github.com/nexus-substrate/nexus-agents/commit/4c1c81ece9d15da141df1617e2bfb445c27ae206) Thanks [@dependabot](https://github.com/apps/dependabot)! - The tier recommender now steps between `RequestTier` values explicitly instead of adding or subtracting 1 from an enum value. Recommendations are unchanged (promote DIRECT→ANALYZED→ORCHESTRATED, demote the reverse). The `@typescript-eslint/no-unsafe-enum-assignment` rule introduced in typescript-eslint 8.71 flagged the arithmetic; the rule is turned off in this repo's ESLint config for now because its type walk runs lint out of memory ([#6994](https://github.com/nexus-substrate/nexus-agents/issues/6994)).
+
+## 8.127.7
+
+### Patch Changes
+
+- [#6992](https://github.com/nexus-substrate/nexus-agents/pull/6992) [`7b55668`](https://github.com/nexus-substrate/nexus-agents/commit/7b5566851cedac955a0ff8d7ee0d95d277704927) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Vote records now carry `voters[].servedModel`: the model the adapter reported serving that seat, beside `model` (the one requested). The field is written only when the adapter reported a model; it is never copied from `model`. It is covered by the record hash, so editing it on disk fails verification. A reported value the reader would reject (empty, over 200 characters, or outside `[A-Za-z0-9._:/@+-]`) is left out with a warning, and the rest of the record is still written. Readers from before the reader-first change cannot parse records that carry the field.
+
+## 8.127.6
+
+### Patch Changes
+
+- [#6985](https://github.com/nexus-substrate/nexus-agents/pull/6985) [`85f1ef8`](https://github.com/nexus-substrate/nexus-agents/commit/85f1ef875ed35a2b8c0f910d46f9fe39c875b6e6) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Forward CODEX_HOME, CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME, and XDG_CACHE_HOME to spawned CLIs so relocated config and data directories are honored. Codex read-only MCP isolation scans the same forwarded CODEX_HOME/config.toml the child loads. Cross-vendor credential filtering remains intact.
+
+## 8.127.5
+
+### Patch Changes
+
+- [#6983](https://github.com/nexus-substrate/nexus-agents/pull/6983) [`e9d861f`](https://github.com/nexus-substrate/nexus-agents/commit/e9d861fa889843f677a52d1528eccbb8ed08e683) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Read-only codex runs no longer copy a project MCP server's `url` or `command` into the codex argv. A server defined only in a project `.codex/config.toml` is still disabled with `-c mcp_servers.<name>.enabled=false`. The required transport key now carries a fixed placeholder (`nexus-agents-disabled-mcp-server` or `http://disabled.invalid/`) instead of the configured value. Before this change, a credential embedded in that url (a query token or userinfo) was visible to other local users through `ps` and `/proc` while the run lasted. Tested live on codex-cli 0.160.0: the placeholder passes codex's config validation and the server stays disabled, in both trusted and untrusted projects.
+
+## 8.127.4
+
+### Patch Changes
+
+- [#6975](https://github.com/nexus-substrate/nexus-agents/pull/6975) [`89fcb3e`](https://github.com/nexus-substrate/nexus-agents/commit/89fcb3efef5fdaa64a4753d481e3f4ea3d1f01df) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Read-only analysis tasks on the codex adapters now disable every MCP server codex's own config registers, and the opencode adapter refuses read-only analysis tasks instead of running them.
+
+  Before this, `codex exec -s read-only` and opencode's `OPENCODE_PERMISSION` deny config both still started those servers, outside the sandbox. A live run on 2026-10-02 showed the nexus-agents MCP server writing `.gitignore` and `.nexus-agents/` into the working tree on every read-only run.
+
+  - **codex `exec`:** one `-c mcp_servers.<name>.enabled=false` per server. Sources are `/etc/codex/config.toml`, `/etc/codex/managed_config.toml`, `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`), and `.codex/config.toml` in each directory from the task's working directory up to the project root. For a server defined only in a project file, the override also repeats its `command` or `url`, so codex accepts it whether or not it trusts the project.
+  - **codex MCP transport:** the same disables, sent as the `config` argument of each new read-only thread.
+  - **opencode:** no longer declares read-only analysis, so a read-only task is refused before any spawn and voter seats are no longer dealt to it. opencode 1.15.13 rewrites the project's `opencode.json` on every run and substitutes `{env:}`/`{file:}` across the raw config text before parsing, so its MCP servers cannot be listed reliably. The `OPENCODE_PERMISSION` deny config it used to receive for this mode is no longer set. With claude and codex installed, the default 7-seat panel is architect/devex/pm/scope_steward on claude and security/ai_ml/catfish on codex.
+
+  A codex read-only task is refused instead of run when the adapter cannot list every server:
+
+  - a config file exists but cannot be read or parsed, or is not a regular file of at most 1 MiB (a symlink to `/dev/zero` or a FIFO is refused without being read);
+  - a server name that `-c` cannot address (characters outside `[A-Za-z0-9_-]`);
+  - plugins: an enabled `plugins` entry in any config layer, or an installed plugin under `$CODEX_HOME/plugins/` that declares MCP servers. A plugin tree deeper than six levels without a plugin root, or one containing a symlink loop, is refused rather than treated as declaring nothing;
+  - cloud-managed config, detected by a cached `cloud-config-bundle-cache.json` in `$CODEX_HOME` (a workspace account's first run, before that cache exists, is not detectable).
+
+  Default-mode tasks are unchanged.
+
+  `smol-toml` is now a direct dependency, used to parse codex's TOML config. It has no dependencies of its own.
+
+## 8.127.3
+
+### Patch Changes
+
+- [#6976](https://github.com/nexus-substrate/nexus-agents/pull/6976) [`559125d`](https://github.com/nexus-substrate/nexus-agents/commit/559125de6a54dd81eba3dc8b63f411c15f3fb244) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refuse MCP tool calls when a running server's installation is upgraded or removed, with a clear restart message instead of missing lazy-import chunk failures. Cache package version reads by mtime and map missing modules within the server's own dist directory to the same recovery message.
+
+## 8.127.2
+
+### Patch Changes
+
+- [#6972](https://github.com/nexus-substrate/nexus-agents/pull/6972) [`40d7413`](https://github.com/nexus-substrate/nexus-agents/commit/40d7413c14c4a56482d0d0ebfc982c2f3038322f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The gemini (agy) adapter now refuses read-only analysis tasks instead of running them with `--mode plan --sandbox`. A live run on 2026-10-02 with agy 1.2.15 showed that argv does not prevent writes: asked to, agy created a new file and modified a committed one. Read-only callers (consensus voter seats, pr_review, orchestrate workers, planning, decompose and dry-run stages) are now routed to an arm that enforces the mode, or get a refusal.
+
+  Consensus panels on the CLI path no longer seat the gemini CLI at all. Seats are dealt round-robin only over CLIs that enforce read-only analysis (claude, codex, opencode), so the default 7-seat panel stays whole instead of losing the two seats (security and catfish) that used to land on gemini and would now refuse. With claude, codex and opencode installed the panel is architect, ai_ml and scope_steward on claude; security and pm on codex; devex and catfish on opencode. A CLI dropped for this reason is named in an info log line. The gateway path and `NEXUS_VOTER_MODEL_<ROLE>` pins are unchanged.
+
+- [#6966](https://github.com/nexus-substrate/nexus-agents/pull/6966) [`70a38b6`](https://github.com/nexus-substrate/nexus-agents/commit/70a38b6c301776aadfd993437128f6d7bc56d18f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Accept optional `servedModel` identifiers when reading vote records, validate their format, and include them in hash verification while preserving existing record hashes. Vote-record producers do not yet write this field, so existing producer behavior is unchanged.
+
+  Preserve the configured-model diversity floor for records without `servedModel`. A serving report retains a seat's known configured family only when its known family matches; mismatched or unclassifiable reports withhold credit. Bare Claude alias normalization applies only to the serving comparison. The gateway's own claim ([#6952](https://github.com/nexus-substrate/nexus-agents/issues/6952)) can never grant a new family.
+
+## 8.127.1
+
+### Patch Changes
+
+- [#6968](https://github.com/nexus-substrate/nexus-agents/pull/6968) [`2791b80`](https://github.com/nexus-substrate/nexus-agents/commit/2791b80a104a8c658207b678ee37ee72e1c1dc77) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix `doctor --live` summaries to use the live probe results: served completions verify adapters, failed probes name their error class, and runs with no adapters explicitly report that nothing was probed. The summary appears after the live results and agrees with the exit status; plain `doctor` behavior is unchanged.
+
+## 8.127.0
+
+### Minor Changes
+
+- [#6963](https://github.com/nexus-substrate/nexus-agents/pull/6963) [`7d2c3e6`](https://github.com/nexus-substrate/nexus-agents/commit/7d2c3e6a584bd387cb088393745964f3bdd7af71) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Prevent development pipeline dry runs from editing workspace files by enforcing read-only expert access. Planning, task decomposition, and review always run read-only; real implementation retains workspace edit access. Adapters that cannot enforce read-only access are refused explicitly.
+
+  A real (non-dry-run) plan stage now runs read-only without the nexus MCP config, so the planner no longer has nexus tools. The gemini adapter's read-only mode (agy plan mode) has not been verified live yet; see [#6962](https://github.com/nexus-substrate/nexus-agents/issues/6962).
+
+### Patch Changes
+
+- [#6964](https://github.com/nexus-substrate/nexus-agents/pull/6964) [`9b1fa4d`](https://github.com/nexus-substrate/nexus-agents/commit/9b1fa4d5cdaa60bb797a2ccd5955522bb783c919) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Voters whose JSON answer sat in a fenced block no longer lose their vote when the reasoning quotes a triple-backtick fence. The extractor ended the fenced block at the first triple backtick, even one inside a JSON string, so the vote was cut off before `confidence`. On `pr_review` this rejected every Claude seat reviewing a diff that contained such fences. The extractor now reads the object from the fence opener with the string-aware scanner.
+
+  A vote that fails to parse now logs the first 2000 characters of the raw answer, secret-redacted, on the `Vote attempt failed` warning.
+
+  The PR-review prompt now shows complete JSON vote examples that include `confidence`. If fewer than a majority of the requested panel seats respond, the review abstains instead of approving and records the quorum shortfall in the response and the audit record. An empty panel no longer reports a verified review.
+
+- [#6965](https://github.com/nexus-substrate/nexus-agents/pull/6965) [`b135226`](https://github.com/nexus-substrate/nexus-agents/commit/b135226679af8f86f0d9f0a07c5420d0dbe75beb) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report the remediation-review readiness harmful rate as `unmeasured (0 judged)` when no selections have been judged, with `harmfulRate: null` in JSON output. Readiness continues to fail the soundness criterion until judged evidence is present; measured rates are unchanged.
+
+## 8.126.12
+
+### Patch Changes
+
+- [#6953](https://github.com/nexus-substrate/nexus-agents/pull/6953) [`1a28e51`](https://github.com/nexus-substrate/nexus-agents/commit/1a28e5116472fd8e922a7c865cc6936e3a3780b1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep MCP server stdout reserved for JSON-RPC by redirecting `logging.destination: stdout` to stderr in stdio server mode. Emit one warning explaining the redirect, even when the configured log level is error. CLI logging continues to support stdout.
+
+## 8.126.11
+
+### Patch Changes
+
+- [#6948](https://github.com/nexus-substrate/nexus-agents/pull/6948) [`f52786c`](https://github.com/nexus-substrate/nexus-agents/commit/f52786c94da30260ed83b4dbe51b354110d1c0b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract the `pr_review` findings block by plain string search instead of a lazy regex that could backtrack polynomially on reasoning text with many unterminated fences (CodeQL alert 255). Parsing results are unchanged.
+
+- [#6948](https://github.com/nexus-substrate/nexus-agents/pull/6948) [`f52786c`](https://github.com/nexus-substrate/nexus-agents/commit/f52786c94da30260ed83b4dbe51b354110d1c0b4) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - PR reviews now require medium-or-higher findings to verify blockers and reviewer agreement. Security-role findings are treated as at least medium, and every request_changes vote still counts toward soft blocking regardless of its reported severity. Low/info findings from request_changes voters disclose verified and unverified counts separately in responses and review records. Missing or unknown severity in legacy findings defaults to medium.
+
+  Published finding severity types now include `info`. Consumers with exhaustive severity switches must handle this new member; the union expansion can break those switches at compile time.
+
+- [#6947](https://github.com/nexus-substrate/nexus-agents/pull/6947) [`9ca0e0b`](https://github.com/nexus-substrate/nexus-agents/commit/9ca0e0b3b294e23ba839a856f944758695ef53a0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - MCP clients no longer receive operator lifecycle events or debug heartbeats through `notifications/message`, and the server no longer advertises the Logging capability. These events now go through the existing logger to stderr in server mode, respecting log levels and secret redaction while keeping stdout reserved for JSON-RPC. Real `notifications/progress` heartbeats and existing trace/OTel telemetry remain available.
+
+  The server no longer advertises the MCP `logging` capability, so a client that calls `logging/setLevel` anyway now receives `-32601 Method not found`; spec-compliant clients check the capability first.
+
+## 8.126.10
+
+### Patch Changes
+
+- [#6944](https://github.com/nexus-substrate/nexus-agents/pull/6944) [`06219ed`](https://github.com/nexus-substrate/nexus-agents/commit/06219ed7006de1de98e0d319f03dfa439f9e84dd) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Extract the `pr_review` findings block by plain string search instead of a lazy regex that could backtrack polynomially on reasoning text with many unterminated fences (CodeQL alert 255). Parsing results are unchanged.
+
+## 8.126.9
+
+### Patch Changes
+
+- [#6942](https://github.com/nexus-substrate/nexus-agents/pull/6942) [`cb1e887`](https://github.com/nexus-substrate/nexus-agents/commit/cb1e88728477b6191356f0a923be0bef9e77926d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report harmless duplicate-sequence ledger forks with their record ids in governor evidence, preserving ratification outcomes. Clarify that vote-record signing is enforced from sequence 15.
+
+## 8.126.8
+
+### Patch Changes
+
+- [#6940](https://github.com/nexus-substrate/nexus-agents/pull/6940) [`782b591`](https://github.com/nexus-substrate/nexus-agents/commit/782b5918d67bba4fdbafe8e34c5a46561b123140) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep unconfirmed PR review explanations readable and bounded by sanitizing and fencing finding locations. Omit absent reasons from audit records and clarify when findings require corroboration.
+
+- [#6940](https://github.com/nexus-substrate/nexus-agents/pull/6940) [`782b591`](https://github.com/nexus-substrate/nexus-agents/commit/782b5918d67bba4fdbafe8e34c5a46561b123140) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report a single reviewer's verified finding as an unconfirmed block that still requests changes. Verified blocks now require findings from two different reviewer roles at the same file within three lines. Local review comments show the unconfirmed reason, and a one-reviewer panel cannot approve a PR.
+
+- [#6940](https://github.com/nexus-substrate/nexus-agents/pull/6940) [`782b591`](https://github.com/nexus-substrate/nexus-agents/commit/782b5918d67bba4fdbafe8e34c5a46561b123140) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Include review decision reasons in MCP responses, CI comments, and audit records. Report the number of distinct reviewers with unconfirmed findings accurately, and compare citations using repository-relative paths and line ranges while ignoring columns.
+
+## 8.126.7
+
+### Patch Changes
+
+- [#6938](https://github.com/nexus-substrate/nexus-agents/pull/6938) [`03a953a`](https://github.com/nexus-substrate/nexus-agents/commit/03a953a1ba017ceeabe5b34321b0b48d63d7ff24) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - The server no longer republishes pipeline events onto the V1 agent event bus. No production subscriber or history reader consumed their content; they only contributed to V1 emission statistics and in-memory history. The only visible change is lower V1 event counts in the shutdown log.
+
+  The public `createEventBusBridge`, `EventBusBridgeOptions`, and `PipelineBridgeResult` exports remain available but are deprecated under [#5120](https://github.com/nexus-substrate/nexus-agents/issues/5120). Subscribe to the pipeline event bus directly; removal is scheduled for the 9.0 batch ([#6291](https://github.com/nexus-substrate/nexus-agents/issues/6291)).
+
+## 8.126.6
+
+### Patch Changes
+
+- [#6935](https://github.com/nexus-substrate/nexus-agents/pull/6935) [`8daa3d6`](https://github.com/nexus-substrate/nexus-agents/commit/8daa3d6c21f5dcae1a53aa609688a63431618a80) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make `doctor --live` report completion latency, actionable error classes, and sanitized failure messages. Bound each probe using the central timeout and signal cancellation at its deadline, disable retries, and avoid a duplicate Claude completion. Unconfigured adapters are explicitly skipped; any failed live completion exits nonzero. Plain `doctor` continues to make no model calls.
+
+- [#6936](https://github.com/nexus-substrate/nexus-agents/pull/6936) [`85c5681`](https://github.com/nexus-substrate/nexus-agents/commit/85c568136b52a005086c25e5d5453515e7566c4b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Collaboration sessions now report unresolved conflicting object fields with both experts' original values using the shared object-merge helper. Independent session patterns compare shared top-level keys; sequential and iterative refinement patterns explicitly skip comparison. Nested differences are recorded on their parent field, missing keys do not conflict, and array order matters. Finalization returns comparison failures as error results. Zero or one result explicitly reports no conflicts and no comparison; session output and quality scoring retain their existing behavior.
+
+## 8.126.5
+
+### Patch Changes
+
+- [#6933](https://github.com/nexus-substrate/nexus-agents/pull/6933) [`4f8cf6e`](https://github.com/nexus-substrate/nexus-agents/commit/4f8cf6e5c63279b9a1f87f64735696a4bc4308ae) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Populate orchestration and delegation task contracts with analyzed constraints,
+  required capabilities, and measured capability gaps. Unsupported symbol-extraction
+  requests now report inferred gaps with `allSatisfied: false`, independently of
+  ledger recording settings. The contract schema remains unchanged; unrecognized
+  scope stays empty and unrecognized time and quality constraints remain absent.
+
+## 8.126.4
+
+### Patch Changes
+
+- [#6931](https://github.com/nexus-substrate/nexus-agents/pull/6931) [`b2a007c`](https://github.com/nexus-substrate/nexus-agents/commit/b2a007c61b311cf8c6f84e3c4afa2fd99c876547) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report missing language support when a task explicitly requests symbol extraction for a named file extension or language. Inferred gaps appear in capability reports but stay out of the research ledger unless `NEXUS_CAPABILITY_GAP_INFERRED=1` is set; observed tool refusals continue to be recorded.
+
+  Limit inferred sources to known source-language extensions and explicit language positions in the request clause. Persist inferred and observed provenance while accepting legacy ledger rows without an origin.
+
+## 8.126.3
+
+### Patch Changes
+
+- [#6928](https://github.com/nexus-substrate/nexus-agents/pull/6928) [`321cbd0`](https://github.com/nexus-substrate/nexus-agents/commit/321cbd0479c9a6fb28fb2518ea9dadc4efcd29b1) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Review remediation soak selections in batches with a live consensus panel, then
+  check a reproducible random owner sample before sign-off. Readiness now reports
+  human, panel and sampled owner judgments separately and requires at least ten
+  owner sample judgments with no disagreements, while preserving legacy human
+  reviews and panel vote provenance.
+
+  Panel proposals include signal identity, classification, title, description,
+  evidence and selected plan steps, plus a hash binding the exact stored line.
+  Earlier vote reasons and results stay outside the proposal. Each panel review
+  pins the absolute ledger path used by persistence. Evidence must match that
+  ledger's vote decision, proposal hash/text and self-hash; missing, unreadable or
+  malformed ledgers make the panel unverifiable. Duplicate soak references are
+  skipped and reported, and batches parse one soak snapshot.
+
+  Owner agreement requires at least ten fully measured sample refs drawn strictly
+  after the latest current panel judgment. Disagreements across all draws persist
+  until an agreeing owner-sample mark on the same ref is made by its named owner;
+  human primary reviews cannot clear them. Damaged review/sample stores block
+  readiness and refuse appends. Panel IDs never satisfy named-evaluator, and owner
+  annotations require explicit sign-off. Owner agreement is n/a only with zero
+  panel rows and zero owner-sample rows in the raw store. Unverifiable or evicted
+  panels block owner agreement and judged coverage; human-only review remains supported.
+
+## 8.126.2
+
+### Patch Changes
+
+- [#6925](https://github.com/nexus-substrate/nexus-agents/pull/6925) [`e289648`](https://github.com/nexus-substrate/nexus-agents/commit/e28964804b83294920350c3abca777e2c2575a92) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Record undeclared-option detector results for CLI votes alongside MCP votes, including excerpts from the full proposal. Precision worksheets now show CLI and MCP counts separately and exclude votes with declared options from detector samples, including older records. The detector continues to warn without blocking votes.
+
 ## 8.126.1
 
 ### Patch Changes

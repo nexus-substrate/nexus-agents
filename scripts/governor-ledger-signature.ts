@@ -12,9 +12,11 @@
  * `unknown-signer`, `bad-signature`, `signature-not-measured`, distinct and
  * never collapsed, with ssh-keygen's reason where there is one.
  *
- * Informational this phase: the verdicts ride on the evidence and never
- * change its `kind` or the gate's exit code. Phase 3 enforces past a
- * committed cutover sequence. An `allowed_signers` that cannot be read makes
+ * Enforced since phase 3 (#6279): a bound record outside the committed
+ * grandfather set that is not `signed` is `signature-required`, and (#3927,
+ * closing gap) so is every record a PR adds, and on the post-merge backstop
+ * every record in the ledger (`ledger-signature-required`; the policy lives
+ * in `governor-ledger-signature-policy.ts`). An `allowed_signers` that cannot be read makes
  * every record `signature-not-measured` naming the path — on the line, not
  * as a gate `unmeasured`, because the rest of the evidence is still measured.
  * A caller that supplies no verifier at all is said as such (`unmeasured (no
@@ -96,7 +98,7 @@ export function signatureVerifierFromEnv(
 }
 
 /** One verdict's text: the code, the identity where the verdict has one, ssh-keygen's reason where there is one. */
-function signatureVerdictBody(verdict: VoteRecordSignatureVerdict): string {
+export function signatureVerdictBody(verdict: VoteRecordSignatureVerdict): string {
   switch (verdict.code) {
     case 'signed':
       // #6257 increment 1: WHICH process appended, by the principal's kind —

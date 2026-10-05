@@ -66,7 +66,7 @@ export interface ParsedVote extends Vote {
 export const RawFindingSchema = z.object({
   summary: z.string().min(1).max(500).describe('One-line summary of the issue'),
   location: z.string().min(1).max(200).describe('path/file.ext:line'),
-  severity: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']).default('medium'),
   gate: z.object({
     reread_cited_line: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
     traced_call_path: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
@@ -195,7 +195,7 @@ export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
             maxLength: 200,
             description: 'path/file.ext:line',
           },
-          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] },
           gate: {
             type: 'object',
             additionalProperties: false,
@@ -312,7 +312,7 @@ ${VOTE_PROMPT_EXAMPLES}`;
  * Empty string when none are declared, so a proposal without options produces
  * a prompt byte-identical to the pre-#4472 one.
  */
-function buildOptionsBlock(options?: readonly string[]): string {
+export function buildOptionsBlock(options?: readonly string[]): string {
   if (options === undefined || options.length === 0) return '';
   const list = options.map((o) => `- ${o}`).join('\n');
   return `
@@ -451,22 +451,47 @@ function extractFirstJsonObject(text: string): string | undefined {
  *     verdict followed by a trailing prose / YAML block still parses, and a
  *     truncated object is repaired.
  *  4. Fallback: the trimmed text (JSON.parse will surface a real malformation).
+ *
+ * A fence's object is scanned from the fence opener with the string-aware
+ * scanner, never cut at the next ` ``` ` (#6957): a pr_review voter quoting a
+ * fenced regex inside its reasoning put a ` ``` ` INSIDE a JSON string, the
+ * lazy fence match ended there, the truncation repair closed the object after
+ * `reasoning`, and every such seat was rejected for a missing confidence.
  */
 export function extractJsonFromResponse(text: string): string {
   const jsonFence = /```json\s*([\s\S]*?)```/i.exec(text);
   if (jsonFence?.[1] !== undefined) {
-    return extractFirstJsonObject(jsonFence[1]) ?? jsonFence[1].trim();
+    return (
+      objectFromFenceBody(text, jsonFence, jsonFence[1]) ??
+      extractFirstJsonObject(jsonFence[1]) ??
+      jsonFence[1].trim()
+    );
   }
 
   for (const match of text.matchAll(/```[a-zA-Z0-9]*\s*([\s\S]*?)```/g)) {
     const inner = match[1];
-    if (inner?.trimStart().startsWith('{') === true) {
-      const obj = extractFirstJsonObject(inner);
+    if (inner !== undefined) {
+      const obj = objectFromFenceBody(text, match, inner);
       if (obj !== undefined) return obj;
     }
   }
 
   return extractFirstJsonObject(text) ?? text.trim();
+}
+
+/**
+ * The balanced object that opens a fence's body, scanned in the FULL text from
+ * the body's start so a ` ``` ` inside a JSON string does not end it (#6957).
+ * Undefined when the body does not open with `{`.
+ */
+function objectFromFenceBody(
+  text: string,
+  match: RegExpExecArray | RegExpMatchArray,
+  body: string
+): string | undefined {
+  if (!body.trimStart().startsWith('{') || match.index === undefined) return undefined;
+  const bodyStart = match.index + match[0].length - '```'.length - body.length;
+  return extractFirstJsonObject(text.slice(bodyStart));
 }
 
 /** Caps mirroring {@link VoteResponseSchema} (reasoning) + {@link RawFindingSchema} (claim). */

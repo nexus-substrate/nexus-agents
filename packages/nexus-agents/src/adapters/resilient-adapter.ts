@@ -46,6 +46,7 @@ import type {
 import type { CircuitStateChangeEvent } from '../cli-adapters/circuit-breaker-types.js';
 import type { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
 import { mapModelErrorToCategory } from '../cli-adapters/circuit-breaker.js';
+import { breakerKeys } from '../cli-adapters/breaker-key.js';
 import { getGlobalEventBus } from '../core/event-bus.js';
 
 // ============================================================================
@@ -355,12 +356,12 @@ export class ResilientAdapter implements IResilientAdapter {
    * Record a direct-API failure to the circuit breaker so API adapters get the
    * same degradation/failover learning that CLI subprocess failures get (#3423).
    *
-   * The breaker key is `currentSelection.name` — distinct from the `api:<vendor>`
-   * arm key used by the ModelToCliAdapter path (#3422).
+   * The shared internal key policy preserves selected CLI slots, prefixes API
+   * vendor names, and isolates gateway endpoints by slot (#7070).
    *
    * A CLI selection is NOT recorded here (#6712). Its CLI adapter's retry loop
    * (`executeCliRetryLoop`) has already recorded the failure in the same
-   * registry under the same key, the CLI name, with the category taken from
+   * registry under its route key, with the category taken from
    * the CliError code. Recording it again counted every CLI failure twice (the
    * second time usually as `unknown`), so the breaker opened at about half its
    * configured threshold. Only a direct-API selection, which has no inner
@@ -400,10 +401,15 @@ export class ResilientAdapter implements IResilientAdapter {
     // minute. It is wrong for an exhausted credential, which does not clear:
     // never counting it means the breaker never opens, so every subsequent call
     // pays the same futile retries against the same dead key.
+    const breaker = this.circuitBreakerRegistry.getArmBreaker(
+      breakerKeys.forArm({
+        name: this.currentSelection.name,
+        model: adapter.modelId,
+        gatewayArm: this.gatewayArm,
+      })
+    );
     if (isDurableCapacityError(error)) {
-      this.circuitBreakerRegistry
-        .getBreaker(this.currentSelection.name as CliName)
-        .recordFailure(category);
+      breaker.recordFailure(category);
       this.logger.warn('Durable capacity cap recorded to circuit breaker', {
         provider: adapter.providerId,
         category,
@@ -415,9 +421,7 @@ export class ResilientAdapter implements IResilientAdapter {
       return;
     }
 
-    this.circuitBreakerRegistry
-      .getBreaker(this.currentSelection.name as CliName)
-      .recordFailure(category);
+    breaker.recordFailure(category);
 
     this.logger.warn('API failure recorded to circuit breaker', {
       provider: adapter.providerId,
@@ -428,8 +432,15 @@ export class ResilientAdapter implements IResilientAdapter {
   private handleCircuitStateChange(event: CircuitStateChangeEvent): void {
     if (event.newState !== 'open') return;
 
-    const currentSource = this.currentSelection?.name;
-    if (currentSource === undefined || currentSource !== event.cliName) {
+    const selection = this.currentSelection;
+    if (
+      selection === undefined ||
+      breakerKeys.forArm({
+        name: selection.name,
+        model: this.currentAdapter?.modelId,
+        gatewayArm: this.gatewayArm,
+      }) !== event.armId
+    ) {
       return; // Not our current adapter
     }
 

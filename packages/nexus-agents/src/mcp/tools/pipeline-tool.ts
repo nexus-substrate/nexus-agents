@@ -36,7 +36,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { measuredTrustTier } from '../middleware/request-context.js';
 import {
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type BaseMcpToolDeps,
   type ToolResult,
 } from './tool-result.js';
@@ -309,7 +309,21 @@ async function executePipelineBody(
       detail: output,
     });
   }
-  return toolSuccessStructured(output);
+  return structuredToolSuccess(z.record(z.string(), z.unknown()), output);
+}
+
+/** Wire caller observations and pipeline execution modes into the agent stages. */
+function createPipelineAgentStages(
+  input: PipelineInput,
+  config: AgentExecutorConfig
+): ReturnType<typeof createAgentStages> {
+  return createAgentStages({
+    dryRun: input.dryRun,
+    simulateVotes: input.simulateVotes,
+    votingStrategy: input.votingStrategy,
+    quickMode: input.quickMode,
+    ...config,
+  });
 }
 
 /** Validates input, runs the adaptive orchestrator, and shapes the result. */
@@ -341,10 +355,7 @@ async function runPipelineHandler(
     // Sync prelude — fast: input resolution + stage wiring. Only the
     // orchestrator BODY backgrounds in async mode (#3730).
     const task = await resolveTask(input.task, input.specFile);
-    const agentStages = createAgentStages({
-      simulateVotes: input.simulateVotes,
-      votingStrategy: input.votingStrategy,
-      quickMode: input.quickMode,
+    const agentStages = createPipelineAgentStages(input, {
       callerTrustTier,
       trustTier: callerTrustTier,
       ...sanitization,

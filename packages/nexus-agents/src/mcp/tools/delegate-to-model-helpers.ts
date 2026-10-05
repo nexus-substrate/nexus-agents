@@ -6,7 +6,7 @@
  * @module mcp/tools/delegate-to-model-helpers
  */
 
-import { toolError, toolSuccess, toolSuccessStructured } from './tool-result.js';
+import { toolError, toolSuccess, structuredToolSuccess } from './tool-result.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type {
   BillingMode,
@@ -19,6 +19,7 @@ import type {
   ToolResult,
 } from './delegate-to-model-types.js';
 import {
+  DelegateOutputSchema,
   MODEL_CAPABILITIES,
   REASONING_KEYWORDS,
   CONTEXT_KEYWORDS,
@@ -404,8 +405,8 @@ export function successResult(text: string): ToolResult {
 }
 
 /** Creates success result with structured content for outputSchema (Issue #1117). */
-export function successResultStructured(data: Record<string, unknown>): ToolResult {
-  return toolSuccessStructured(data);
+export function successResultStructured(data: DelegateOutput): ToolResult {
+  return structuredToolSuccess(DelegateOutputSchema, data);
 }
 
 /** Checks rate limit, returns error result if exceeded. */

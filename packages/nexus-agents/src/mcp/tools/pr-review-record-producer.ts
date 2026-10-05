@@ -440,6 +440,7 @@ function buildAndPersist(
     ...(disclosure !== undefined ? { sanitization: disclosure } : {}),
     ...(coverageFields ?? {}),
     verdict: aggregate.decision,
+    ...(aggregate.reason !== undefined ? { reason: aggregate.reason } : {}),
     verified: aggregate.verified,
     voteCounts: {
       approve: counts.approveCount,

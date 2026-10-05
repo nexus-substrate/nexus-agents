@@ -18,14 +18,24 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { withToolError } from '../middleware/tool-error-handler.js';
 import { addResearchPaper, paperExists } from '../../cli/research-helpers.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
 import type { ErrorCategory } from '../error-envelope.js';
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+
+// Concrete shape returned by executeResearchAdd (#2340).
+const OUTPUT_SCHEMA = {
+  success: z.boolean(),
+  paperId: z.string().optional(),
+  title: z.string().optional(),
+  message: z.string(),
+  dryRun: z.boolean().optional(),
+};
 
 // =============================================================================
 // SCHEMAS
@@ -190,7 +200,8 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
         });
       }
 
-      return toolSuccessStructured(result as unknown as Record<string, unknown>);
+      const { errorCategory: _errorCategory, ...data } = result;
+      return structuredToolSuccess(z.object(OUTPUT_SCHEMA), data);
     });
   };
 }
@@ -232,21 +243,13 @@ export function registerResearchAddTool(server: McpServer, deps: ResearchAddDeps
     logger,
   });
 
-  // Concrete shape returned by executeResearchAdd (#2340).
-  const outputSchema = {
-    success: z.boolean(),
-    paperId: z.string().optional(),
-    title: z.string().optional(),
-    message: z.string(),
-    dryRun: z.boolean().optional(),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'research_add',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('research_add'),
     },
     toSdkCallback(wrappedHandler)

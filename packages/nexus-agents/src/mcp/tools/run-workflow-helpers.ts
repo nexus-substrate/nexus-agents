@@ -9,10 +9,12 @@
  */
 
 import { resolve } from 'node:path';
+import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { toolError, toolStructuredError, toolSuccess } from './tool-result.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
-import { WorkflowError, SecurityError } from '../../core/index.js';
+import { WorkflowError, SecurityError, createLogger } from '../../core/index.js';
+import { WorkflowExecutionUnavailableError } from '../../workflows/workflow-engine-factory.js';
 import { getBuiltInTemplatesPath } from '../../workflows/template-loader.js';
 import { getActiveWorkspaceRoot } from '../../config/nexus-data-dir.js';
 import { resolveInsideRoot } from '../../security/safe-path.js';
@@ -20,6 +22,24 @@ import type { StepResultSummary, DryRunResult, RunWorkflowDeps } from './run-wor
 import type { ErrorCategory } from '../error-envelope.js';
 
 export { deriveWorkflowStatus } from '../../workflows/workflow-engine-helpers.js';
+
+/** Disable only the factory's structural-unavailability case at startup (#7043). */
+export function disableUnavailableWorkflow(tool: RegisteredTool, deps: RunWorkflowDeps): void {
+  try {
+    // Production captures its adapter once at startup; no runtime refresh path
+    // can turn an absent adapter into an executing engine in this session.
+    deps.resolveExecutionEngine?.();
+  } catch (error: unknown) {
+    if (!(error instanceof WorkflowExecutionUnavailableError)) throw error;
+    tool.disable();
+    const logger = deps.logger ?? createLogger({ tool: 'run_workflow' });
+    logger.warn(
+      'run_workflow disabled: workflow execution unavailable. ' +
+        'Configure a model adapter (API key or gateway) and restart the MCP server.',
+      { reason: error.message }
+    );
+  }
+}
 
 // ============================================================================
 // Path Detection

@@ -13,6 +13,8 @@
  */
 
 import { computeTokenCost, roundToMicroUsd } from '../learning/token-cost-core.js';
+import type { PriceBasis } from '../core/price-basis.js';
+import { createLogger } from '../core/logger.js';
 import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
 import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
@@ -199,6 +201,50 @@ export function ceilingCostOfArm(
     sentModelOf(target.adapter)
   );
 }
+
+/** Provenance of a resolved ceiling estimate, using the arm that actually serves it. */
+function ceilingPriceBasis(
+  target: RouterArm,
+  costUsd: number | undefined,
+  env: NodeJS.ProcessEnv
+): PriceBasis {
+  if (costUsd === undefined) return 'unknown';
+  const served = gatewayServedSlotOf(target.adapter);
+  const arm = served === undefined ? target.arm : served.arm;
+  const declaration =
+    arm !== undefined && isGatewayArmId(arm) ? resolveGatewayCostDeclaration(arm, env) : undefined;
+  const declared = declaration !== undefined && gatewayCostRates(declaration) !== 'registry';
+  return declared ? 'declared' : 'list';
+}
+
+/**
+ * Record the canonical ceiling estimate with its price basis (#5095).
+ * Missing pricing stays `undefined` and `unknown`, never a measured $0.
+ * Explicit gateway rates (including free/local) use `declared`; registry
+ * rates use `list`, including a gateway's bare `priced` declaration.
+ * Wrapping the existing policy preserves its arithmetic and arm resolution.
+ */
+export function recordCeilingCostOfArm(
+  target: RouterArm,
+  inputTokens: number,
+  outputTokens: number,
+  ceiling: number,
+  env: NodeJS.ProcessEnv = process.env
+): { readonly costUsd: number | undefined; readonly priceBasis: PriceBasis } {
+  const costUsd = ceilingCostOfArm(target, inputTokens, outputTokens, env);
+  const priceBasis = ceilingPriceBasis(target, costUsd, env);
+  ceilingLogger.info('Cost ceiling: candidate evaluated', {
+    arm: target.arm,
+    ceiling,
+    ...(costUsd !== undefined ? { cost: costUsd } : {}),
+    priceBasis,
+    ceilingMeasurement: costUsd === undefined ? 'unmeasured' : 'estimated',
+    withinCeiling: costUsd !== undefined && costUsd <= ceiling,
+  });
+  return { costUsd, priceBasis };
+}
+
+const ceilingLogger = createLogger({ component: 'budget-router' });
 
 /**
  * Estimate the USD cost of a task on a routing ARM for the per-task budget

@@ -1,0 +1,24 @@
+{
+  "model": "opencode-default",
+  "cliModel": "anthropic/claude-sonnet-4-6",
+  "capturedAt": "2026-10-04T12:33:18.664789+00:00",
+  "command": [
+    "opencode",
+    "run",
+    "--format",
+    "json",
+    "--model",
+    "anthropic/claude-sonnet-4-6",
+    "Reply with the single word ok"
+  ],
+  "exitCode": 1,
+  "finishReasons": [],
+  "finalFinishReason": null,
+  "producedText": false,
+  "stdoutFixture": "opencode-default-live.jsonl",
+  "sanitization": "Session/message/part identifiers, paths, URLs, hostnames, email addresses and credential-like strings redacted.",
+  "stderr": "",
+  "timeoutSeconds": 120,
+  "stdin": "/dev/null",
+  "status": "blocked: configured model unavailable (Model not found)"
+}

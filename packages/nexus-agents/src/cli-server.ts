@@ -15,8 +15,11 @@ import { registerMcpTools } from './cli-server-tools.js';
 import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, type ILogger } from './core/index.js';
-import { resolveWorkspaceRootFromClient } from './mcp/workspace-roots.js';
+import { createLogger, type ILogger, type LogDestination } from './core/index.js';
+import {
+  beginWorkspaceRootResolution,
+  resolveWorkspaceRootFromClient,
+} from './mcp/workspace-roots.js';
 import { VERSION } from './version.js';
 import { warnIfVersionStale } from './cli/version-check.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
@@ -241,10 +244,10 @@ async function connectToStdioTransport(
   logger.setDestination?.('stderr');
   serverLogger.setDestination?.('stderr');
   logger.info('Connecting to stdio transport');
-  // Resolve the active workspace root from the client's declared MCP `roots`
-  // (#3991) once the handshake completes, so per-repo `.nexus-agents/` state
-  // lands in the repo being worked on rather than homedir. Set before connect
-  // so the hook is in place when `notifications/initialized` arrives; fail-soft.
+  // Resolve CLAUDE_PROJECT_DIR synchronously (#7044), or prepare the readiness
+  // barrier for MCP roots after initialized (#3991/#4002). Both are wired
+  // before connect so the first tool call uses the session's workspace root.
+  beginWorkspaceRootResolution(serverLogger);
   server.server.oninitialized = () => {
     void resolveWorkspaceRootFromClient(server, serverLogger);
   };
@@ -348,8 +351,19 @@ async function initializeAndRegisterTools(
   registerMcpTools(toolsOptions);
 }
 
+/** Resolves the stdio log destination, warning once when stdout is requested. */
+function resolveStdioLogDestination(destination: LogDestination): LogDestination {
+  if (destination !== 'stdout') return destination;
+  // This startup warning must survive logging.level: error.
+  process.stderr.write(
+    'Warning: logging.destination: stdout coerced to stderr; ' +
+      'stdout carries MCP JSON-RPC in server mode.\n'
+  );
+  return 'stderr';
+}
+
 /**
- * Applies logging configuration from config file.
+ * Applies logging configuration for the stdio server, reserving stdout for MCP.
  * (Source: Issue #485 - Wire logging config)
  */
 function applyLoggingConfig(logger: ILogger, verbose: boolean, config: AppConfig): void {
@@ -367,9 +381,10 @@ function applyLoggingConfig(logger: ILogger, verbose: boolean, config: AppConfig
 
   // Wire logging destination (Issue #485)
   if (config.logging?.destination !== undefined && logger.setDestination !== undefined) {
-    logger.setDestination(config.logging.destination, config.logging.filePath);
+    const destination = resolveStdioLogDestination(config.logging.destination);
+    logger.setDestination(destination, config.logging.filePath);
     logger.debug('Log destination set from configuration', {
-      destination: config.logging.destination,
+      destination,
       filePath: config.logging.filePath,
     });
   }

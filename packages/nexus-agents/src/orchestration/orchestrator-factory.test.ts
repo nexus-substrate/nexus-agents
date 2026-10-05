@@ -54,7 +54,7 @@ function makeMockWorkflowEngine(overrides: Partial<IWorkflowEngine> = {}): IWork
     ),
     cancel: vi.fn().mockResolvedValue(ok(undefined)),
     getStatus: vi.fn().mockReturnValue({ state: 'pending' }),
-    listTemplates: vi.fn().mockResolvedValue([]),
+    listTemplates: vi.fn<IWorkflowEngine['listTemplates']>().mockResolvedValue([]),
     ...overrides,
   } as unknown as IWorkflowEngine;
 }

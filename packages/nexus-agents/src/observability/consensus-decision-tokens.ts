@@ -1,8 +1,9 @@
 /**
  * Read-only join of consensus costs/votes and consensus/pipeline outcomes.
  * The legacy totals are final-seat usage. Rows written since #6821 also carry
- * observed outer-attempt usage (retries, parse failures, fallbacks), reported
- * separately in {@link ConsensusDecisionTokenReport.observedAttemptUsage}.
+ * immutable outer-response events (retries, parse failures, fallbacks), reported
+ * separately in {@link ConsensusDecisionTokenReport.attemptTelemetry}. The older
+ * observedAttemptUsage field is a legacy seat aggregate, not event evidence.
  */
 import type { VoteRecordDecision } from '../audit/vote-record.js';
 import { aggregateDecisionCosts } from './decision-cost-aggregate.js';
@@ -10,11 +11,34 @@ import { DecisionCostRecordSchema, type DecisionCostRecord } from './decision-co
 import type { ObservedAttemptUsage } from './attempt-usage.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { isPipelineRunId } from '../pipeline/pipeline-run-id.js';
+import { isRecord } from '../utils/type-coercion.js';
 
 /** The two persisted vote fields needed by the read-only cost join. */
 export interface LinkedVote {
   readonly correlationId?: string | undefined;
   readonly decision: VoteRecordDecision;
+}
+
+/** Attempt measurements come only from immutable response events, never final seats. */
+interface ConsensusAttemptTelemetryReport {
+  readonly scope: 'observed outer-attempt usage, not all physical attempts';
+  readonly measurement: 'lower-bound' | 'unmeasured';
+  readonly decisionsWithTelemetry: number;
+  readonly decisionsLackingTelemetry: number;
+  /** Matched decisions excluded from attempt totals because response IDs collide. */
+  readonly invalidTelemetry: number;
+  readonly observableAttempts: number | null;
+  readonly observedAttempts: number | null;
+  readonly reportedAttempts: number | null;
+  readonly unobservedAttempts: number | null;
+  /** Reported usage responses / observed responses; excludes response-less calls. */
+  readonly coverage: number | null;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly totalTokens: number | null;
+  readonly cachedTokens: number | null;
+  readonly reasoningTokens: number | null;
+  readonly cacheCreationTokens: number | null;
 }
 
 export interface ConsensusDecisionTokenReport {
@@ -36,7 +60,11 @@ export interface ConsensusDecisionTokenReport {
   readonly tokenCoverage: number | null;
   /** The final-seat totals above exclude retries/fallbacks; every one is a floor. */
   readonly measurement: 'lower-bound-final-seats';
+  /** Separate lower-bound totals from response events, including missing telemetry. */
+  readonly attemptTelemetry?: ConsensusAttemptTelemetryReport;
   /**
+   * Legacy seat-aggregate attempt usage, retained for compatibility. This is
+   * not immutable event evidence; use attemptTelemetry for response coverage.
    * Outer-attempt usage summed over the matched decisions that recorded it
    * (#6821); `decisions` of the matched total did. Never added to the
    * final-seat totals. A floor when `incompleteSeats > 0`; null when no
@@ -165,23 +193,26 @@ function countIds<T>(
   return counts;
 }
 
-/** Schema-valid rows may still contain contradictory token totals; refuse them. */
-function validCostRecord(record: DecisionCostRecord): boolean {
-  if (!DecisionCostRecordSchema.safeParse(record).success) return false;
-  const s = record.summary;
-  if (s.voterCount === 0 || s.perVoter.length !== s.voterCount) return false;
+/** Normalize optional telemetry, then refuse contradictory final-seat token totals. */
+function readValidCostRecord(record: DecisionCostRecord): DecisionCostRecord | undefined {
+  const parsed = DecisionCostRecordSchema.safeParse(record);
+  if (!parsed.success) return undefined;
+  const s = parsed.data.summary;
+  if (s.voterCount === 0 || s.perVoter.length !== s.voterCount) return undefined;
   let input = 0;
   let output = 0;
   for (const voter of s.perVoter) {
-    if (voter.totalTokens !== voter.inputTokens + voter.outputTokens) return false;
+    if (voter.totalTokens !== voter.inputTokens + voter.outputTokens) return undefined;
     input += voter.inputTokens;
     output += voter.outputTokens;
   }
-  return (
-    s.totalInputTokens === input &&
-    s.totalOutputTokens === output &&
-    s.totalTokens === input + output
-  );
+  if (
+    s.totalInputTokens !== input ||
+    s.totalOutputTokens !== output ||
+    s.totalTokens !== input + output
+  )
+    return undefined;
+  return parsed.data;
 }
 
 interface VoteIndex {
@@ -283,7 +314,7 @@ export function summarizeConsensusDecisionTokens(
   pipelineRunIds: readonly string[] | null = []
 ): ConsensusDecisionTokenReport {
   const consensusCosts = costRecords.filter((r) => r.gate === 'consensus_vote');
-  const validCosts = consensusCosts.filter(validCostRecord);
+  const validCosts = consensusCosts.flatMap((r) => readValidCostRecord(r) ?? []);
   const invalidCostRecords = consensusCosts.length - validCosts.length;
   const index = indexVotes(voteRecords, validCosts, consensusCosts);
   const joined = joinCosts(validCosts, index);
@@ -310,7 +341,72 @@ export function summarizeConsensusDecisionTokens(
     tokenCoverage: coverage?.tokenCoverage ?? null,
     measurement: 'lower-bound-final-seats',
     observedAttemptUsage: sumObservedAttempts(joined.records),
+    attemptTelemetry: summarizeResponseEvents(joined.records, costRecords),
     ...joinOutcomes(joined.records, outcomes),
     ...joinPipelineOutcomes(pipelineRunIds, outcomes),
   };
+}
+
+/** Empty/legacy histories lack attempt evidence; explicit reported zero is measured. */
+function summarizeResponseEvents(
+  records: readonly DecisionCostRecord[],
+  allHistories: readonly DecisionCostRecord[]
+): ConsensusAttemptTelemetryReport {
+  const validHistories = uniqueResponseHistories(records, allHistories);
+  const invalidTelemetry = records.length - validHistories.length;
+  const telemetry = validHistories.flatMap((r) =>
+    r.attemptTelemetry !== undefined ? [r.attemptTelemetry] : []
+  );
+  const events = telemetry.flatMap((t) => t.events);
+  const reported = events.flatMap((e) => (e.usage.kind === 'reported' ? [e.usage] : []));
+  const optionalSum = (key: 'cached' | 'reasoning' | 'cacheCreation'): number | null => {
+    const values = reported.flatMap((u) => (u[key] !== undefined ? [u[key]] : []));
+    return values.length === 0 ? null : values.reduce((sum, n) => sum + n, 0);
+  };
+  const observable = telemetry.reduce((sum, t) => sum + t.observableAttempts, 0);
+  const input = reported.reduce((sum, u) => sum + u.input, 0);
+  const output = reported.reduce((sum, u) => sum + u.output, 0);
+  return {
+    scope: 'observed outer-attempt usage, not all physical attempts',
+    measurement: reported.length === 0 ? 'unmeasured' : 'lower-bound',
+    decisionsWithTelemetry: telemetry.length,
+    decisionsLackingTelemetry: records.length - telemetry.length - invalidTelemetry,
+    invalidTelemetry,
+    observableAttempts: telemetry.length === 0 ? null : observable,
+    observedAttempts: telemetry.length === 0 ? null : events.length,
+    reportedAttempts: telemetry.length === 0 ? null : reported.length,
+    unobservedAttempts: telemetry.length === 0 ? null : observable - events.length,
+    coverage: events.length === 0 ? null : reported.length / events.length,
+    inputTokens: reported.length === 0 ? null : input,
+    outputTokens: reported.length === 0 ? null : output,
+    totalTokens: reported.length === 0 ? null : input + output,
+    cachedTokens: optionalSum('cached'),
+    reasoningTokens: optionalSum('reasoning'),
+    cacheCreationTokens: optionalSum('cacheCreation'),
+  };
+}
+
+/** Reused response identities make every affected decision's history ambiguous. */
+function uniqueResponseHistories(
+  records: readonly DecisionCostRecord[],
+  allHistories: readonly DecisionCostRecord[]
+): readonly DecisionCostRecord[] {
+  const ids = countIds(allHistories.flatMap(readResponseIds), (id) => id);
+  const ambiguous = duplicateIds(ids);
+  return records.filter((record) => {
+    for (const event of record.attemptTelemetry?.events ?? []) {
+      if (ambiguous.has(event.id)) return false;
+    }
+    return true;
+  });
+}
+
+/** Invalid rows cannot certify usage, but readable identities still poison reuse. */
+function readResponseIds(record: unknown): string[] {
+  if (!isRecord(record) || !isRecord(record['attemptTelemetry'])) return [];
+  const events: unknown = record['attemptTelemetry']['events'];
+  if (!Array.isArray(events)) return [];
+  return events.flatMap((event: unknown) =>
+    isRecord(event) && typeof event['id'] === 'string' ? [event['id']] : []
+  );
 }

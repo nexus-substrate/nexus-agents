@@ -347,6 +347,19 @@ describe('analyzeGovernorReview — binding conditions', () => {
     if (outcome.kind === 'fail') expect(outcome.message).toContain('request_changes');
   });
 
+  it('fails closed on an unconfirmed request_changes record (#4334)', () => {
+    const unconfirmed = record({
+      verdict: 'request_changes',
+      verified: false,
+      reason: 'unconfirmed: 1 reviewer (security) at src/a.ts:10; needs second reviewer',
+      summary: 'request_changes (4 approve / 1 request_changes / 0 abstain) — review',
+      voteCounts: { approve: 4, request_changes: 1, abstain: 0, error: 0, total: 5 },
+    });
+    const outcome = analyzeGovernorReview(inputs({ records: [unconfirmed] }));
+    expect(outcome.kind).toBe('fail');
+    if (outcome.kind === 'fail') expect(outcome.message).toContain('request_changes');
+  });
+
   it('(v2) WARNS on an abstain record — nothing affirmed, nothing refused', () => {
     // Abstain carries no signal either way, so it sits with absence under the
     // warn-first posture rather than blocking ahead of the #4058 flip.
@@ -1631,6 +1644,8 @@ describe('the governor section is bounded by dedicated directives, not the human
     '/scripts/governor-ledger-evidence.ts',
     '/scripts/governor-ledger-append-only.ts',
     '/scripts/governor-ledger-signature-policy.ts',
+    '/scripts/governor-ledger-diversity.ts',
+    '/scripts/governor-ledger-diversity.test.ts',
     '/scripts/governor-ledger-report.ts',
     '/scripts/governor-patch-identity.ts',
     '/scripts/governor-ledger-signature.ts',
@@ -1676,7 +1691,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (40 entries)', () => {
+  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (42 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1689,6 +1704,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/docs/CODEOWNERS');
     // #5130 step 2: the committed-ledger half of the ratification gate.
     expect(set).toContain('/scripts/governor-ledger-evidence.ts');
+    expect(set).toContain('/scripts/governor-ledger-diversity.ts');
     // #6256: its env reader / printed line, and the git probe the moved-head
     // rule measures with — a probe outside the set could be weakened without
     // ratification.
@@ -1704,7 +1720,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/scripts/check-required-jobs.ts');
     expect(set).toContain('/scripts/check-required-jobs.test.ts');
     expect(set).toContain('/scripts/aggregator-shape.ts');
-    expect(set).toHaveLength(40);
+    expect(set).toHaveLength(42);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

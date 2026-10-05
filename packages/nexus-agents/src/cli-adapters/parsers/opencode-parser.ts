@@ -18,17 +18,6 @@ import { createLogger } from '../../core/index.js';
 
 const logger = createLogger({ component: 'opencode-parser' });
 
-/** Minimum raw text length for plaintext fallback (#1402). */
-const PLAINTEXT_MIN_LENGTH = 10;
-
-/** Returns true if text looks like NDJSON (most non-empty lines start with '{' ). */
-function looksLikeNdjson(text: string): boolean {
-  const lines = text.split('\n').filter((l) => l.trim() !== '');
-  if (lines.length === 0) return false;
-  const jsonLineCount = lines.filter((l) => l.trimStart().startsWith('{')).length;
-  return jsonLineCount > lines.length / 2;
-}
-
 /**
  * OpenCode CLI NDJSON event types.
  * Includes both real v1.2.x types and legacy assumed types for compatibility.
@@ -73,6 +62,14 @@ interface NdjsonParseState {
   readonly usage: TokenUsage | undefined;
   readonly hasStepEvents: boolean;
   readonly hasAnyRecognizedEvent: boolean;
+  readonly finishReason: string | undefined;
+}
+
+/** Mutable collectors shared by event handlers. */
+interface NdjsonCollectors {
+  readonly contentParts: string[];
+  readonly errorMessages: string[];
+  finishReason: string | undefined;
 }
 
 /**
@@ -93,7 +90,11 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     const state = this.processAllLines(lines);
 
     const errorMessage =
-      state.errorMessages.length > 0 ? state.errorMessages.join('; ') : undefined;
+      state.errorMessages.length > 0
+        ? state.errorMessages.join('; ')
+        : state.hasAnyRecognizedEvent
+          ? this.terminalError(state.finishReason, state.contentParts.join(''))
+          : undefined;
 
     if (state.contentParts.length === 0) {
       // #2821: error-only streams must surface as failure. Empty content +
@@ -114,11 +115,30 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     );
   }
 
+  /** AI SDK terminal reasons: unverified endings never authorize a successful turn (#7073). */
+  private terminalError(reason: string | undefined, content: string): string | undefined {
+    switch (reason) {
+      case 'stop':
+        return undefined;
+      case 'length':
+        // CliResponse has no truncation field; retain the produced partial text.
+        return content.trim() !== '' ? undefined : 'OpenCode length ending produced no text';
+      case 'content-filter':
+      case 'error':
+      case 'tool-calls':
+      case 'other':
+      case 'unknown':
+      default:
+        return `OpenCode turn did not finish successfully: ${reason ?? 'missing terminal reason'}`;
+    }
+  }
+
   /** Processes all NDJSON lines and returns aggregated state. */
   private processAllLines(lines: readonly string[]): NdjsonParseState {
     let sessionId: string | undefined;
     const contentParts: string[] = [];
     const errorMessages: string[] = [];
+    const collectors: NdjsonCollectors = { contentParts, errorMessages, finishReason: undefined };
     let usage: TokenUsage | undefined;
     let hasStepEvents = false;
     let hasAnyRecognizedEvent = false;
@@ -128,7 +148,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       if (line === undefined || line.trim() === '') continue;
       const hadEvent = this.processLine(
         line,
-        { contentParts, errorMessages },
+        collectors,
         (id) => (sessionId = id),
         (u) => (usage = u),
         idx
@@ -144,6 +164,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       usage,
       hasStepEvents,
       hasAnyRecognizedEvent,
+      finishReason: collectors.finishReason,
     };
   }
 
@@ -154,7 +175,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     state: NdjsonParseState
   ): OpenCodeCliResponse | null {
     // Tool-only responses have step_start/step_finish but no text events.
-    if (state.hasStepEvents) {
+    if (state.hasStepEvents && state.finishReason === 'stop') {
       return this.buildResponse(
         '[Tool-only response — no text output]',
         state.sessionId,
@@ -168,7 +189,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       hasStepEvents: state.hasStepEvents,
       hasAnyRecognizedEvent: state.hasAnyRecognizedEvent,
     });
-    return this.parsePlainJson(raw, state.hasAnyRecognizedEvent);
+    return this.parsePlainJson(raw);
   }
 
   /** Builds an OpenCodeCliResponse from parsed components. */
@@ -191,7 +212,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
    */
   extractResponse(raw: string): string | null {
     const parsed = this.parse(raw);
-    if (parsed === null || parsed.content === '') {
+    if (parsed === null || parsed.content === '' || parsed.errorMessage !== undefined) {
       logger.debug('extractResponse returned null', {
         rawLength: raw.length,
         snippet: raw.slice(0, 100),
@@ -203,8 +224,8 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   }
 
   /**
-   * Surfaces the error message from an error-only NDJSON stream (a
-   * `{"type":"error",...}` event with no text content). The subprocess adapter
+   * Surfaces stream errors or an incomplete turn, including after partial
+   * text. A terminal `stop`, or `length` with text, authorizes success. The subprocess adapter
    * consumes this when {@link extractResponse} returns `null`, so an upstream
    * 401 / rate-limit is classified by its message (NOT_AUTHENTICATED /
    * RATE_LIMITED with a remediation hint) instead of falling through to a
@@ -288,7 +309,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
    */
   private processLine(
     line: string,
-    collectors: { contentParts: string[]; errorMessages: string[] },
+    collectors: NdjsonCollectors,
     setSessionId: (id: string) => void,
     setUsage: (usage: TokenUsage) => void,
     lineIndex: number
@@ -300,7 +321,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       const isReal = this.processRealEvent(record, collectors, setSessionId, setUsage);
       if (isReal) return true;
 
-      this.processLegacyEvent(record, collectors.contentParts, setSessionId, setUsage);
+      this.processLegacyEvent(record, collectors, setSessionId, setUsage);
       return false;
     } catch {
       logger.debug('Skipped malformed NDJSON line', {
@@ -314,23 +335,28 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   /** Processes real opencode v1.2.x event types. Returns true if handled. */
   private processRealEvent(
     record: Record<string, unknown>,
-    collectors: { contentParts: string[]; errorMessages: string[] },
+    collectors: NdjsonCollectors,
     setSessionId: (id: string) => void,
     setUsage: (usage: TokenUsage) => void
   ): boolean {
     switch (record.type) {
       case 'step_start':
       case 'tool_use':
+        collectors.finishReason = undefined;
         this.handleRealSessionId(record, setSessionId);
         return true;
       case 'text':
+        collectors.finishReason = undefined;
         this.handleRealSessionId(record, setSessionId);
         this.pushRealTextContent(record, collectors.contentParts);
         return true;
-      case 'step_finish':
+      case 'step_finish': {
+        const reason = asRecord(record.part)?.reason;
+        collectors.finishReason = typeof reason === 'string' ? reason : undefined;
         this.handleRealSessionId(record, setSessionId);
         this.emitRealUsage(record, setUsage);
         return true;
+      }
       case 'error':
         this.handleRealSessionId(record, setSessionId);
         this.captureErrorMessage(record, collectors.errorMessages);
@@ -348,7 +374,10 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
    */
   private captureErrorMessage(record: Record<string, unknown>, errorMessages: string[]): void {
     const errorObj = asRecord(record.error);
-    if (errorObj === null) return;
+    if (errorObj === null) {
+      errorMessages.push('Unknown error');
+      return;
+    }
 
     const data = asRecord(errorObj.data);
     const message =
@@ -365,25 +394,38 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   /** Processes legacy assumed event types. */
   private processLegacyEvent(
     record: Record<string, unknown>,
-    contentParts: string[],
+    collectors: NdjsonCollectors,
     setSessionId: (id: string) => void,
     setUsage: (usage: TokenUsage) => void
   ): void {
     switch (record.type) {
       case 'session.start':
+        collectors.finishReason = undefined;
         this.handleLegacySessionStart(record, setSessionId);
         break;
+      case 'message.start':
+        collectors.finishReason = undefined;
+        break;
       case 'message.delta':
-        this.pushLegacyTextContent(record, contentParts);
+        collectors.finishReason = undefined;
+        this.pushLegacyTextContent(record, collectors.contentParts);
         break;
       case 'message.complete':
-        this.pushLegacyTextContent(record, contentParts);
+        this.pushLegacyTextContent(record, collectors.contentParts);
+        collectors.finishReason = this.legacyFinishReason(record);
         this.emitLegacyUsage(record, setUsage);
         break;
       case 'session.complete':
+        collectors.finishReason = this.legacyFinishReason(record);
         this.emitLegacyUsage(record, setUsage);
         break;
     }
+  }
+
+  /** Reads the terminal reason from legacy completion envelopes. */
+  private legacyFinishReason(record: Record<string, unknown>): string | undefined {
+    const reason = record.reason ?? record.finish_reason ?? record.finishReason;
+    return typeof reason === 'string' ? reason : undefined;
   }
 
   // --- Real v1.2.x format handlers ---
@@ -477,59 +519,25 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     }
   }
 
-  /**
-   * Fallback parser for plain JSON output (non-streaming).
-   * Falls back to raw plaintext if JSON parsing fails and content is substantial (#1402).
-   * When hasAnyRecognizedEvent is true, NDJSON-like plaintext is rejected (it was
-   * recognized NDJSON that simply had no content — not malformed output).
-   */
-  private parsePlainJson(raw: string, hasAnyRecognizedEvent: boolean): OpenCodeCliResponse | null {
+  /** Reads inherited plain JSON fields without treating an unverified envelope as success. */
+  private parsePlainJson(raw: string): OpenCodeCliResponse | null {
     try {
-      const data: unknown = JSON.parse(raw);
-      const record = asRecord(data);
-      if (record === null) return this.parsePlaintext(raw, hasAnyRecognizedEvent);
-
-      // Try common response field names
+      const record = asRecord(JSON.parse(raw) as unknown);
+      if (record === null) return null;
       const content = record.content ?? record.result ?? record.text ?? record.output;
-      if (typeof content !== 'string') return null; // Valid JSON but no recognized fields
-
+      if (typeof content !== 'string') return null;
       const usage = this.extractUsageFromRecord(record);
       const sid = record.session_id ?? record.sessionId;
-
       return {
         content,
+        errorMessage: 'OpenCode JSON envelope has no verified terminal event',
         ...(typeof sid === 'string' ? { sessionId: sid } : {}),
         ...(usage !== null ? { usage } : {}),
       };
     } catch {
-      return this.parsePlaintext(raw, hasAnyRecognizedEvent);
-    }
-  }
-
-  /**
-   * Last-resort plaintext fallback for non-JSON CLI output (#1402).
-   * Returns raw text as content when it has substantial length.
-   * Accepts NDJSON-like content only when no recognized events were found
-   * (meaning it's truly unrecognized/malformed output, not valid NDJSON with no text).
-   */
-  private parsePlaintext(raw: string, hasAnyRecognizedEvent: boolean): OpenCodeCliResponse | null {
-    const trimmed = raw.trim();
-    if (trimmed.length < PLAINTEXT_MIN_LENGTH) {
-      logger.debug('Plaintext fallback rejected: too short', { length: trimmed.length });
+      // #7073 supersedes #1402: --format json cannot authorize plaintext success.
       return null;
     }
-    if (looksLikeNdjson(trimmed)) {
-      if (hasAnyRecognizedEvent) {
-        logger.debug('Plaintext fallback rejected: recognized NDJSON with no content', {
-          length: trimmed.length,
-        });
-        return null;
-      }
-      logger.debug('Plaintext fallback: accepting malformed NDJSON as text', {
-        length: trimmed.length,
-      });
-    }
-    return { content: trimmed };
   }
 
   /**

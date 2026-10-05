@@ -414,6 +414,8 @@ describe('voter-execution', () => {
 
   describe('executeSingleVoteAttempt', () => {
     const mockAdapter = {
+      providerId: 'test-provider',
+      modelId: 'test-model',
       complete: vi.fn(),
     } as unknown as IModelAdapter;
 
@@ -624,6 +626,8 @@ describe('voter-execution', () => {
 
   describe('executeWithRetries', () => {
     const mockAdapter = {
+      providerId: 'test-provider',
+      modelId: 'test-model',
       complete: vi.fn(),
     } as unknown as IModelAdapter;
 
@@ -674,6 +678,60 @@ describe('voter-execution', () => {
 
       expect(result.ok).toBe(true);
       expect(mockAdapter.complete).toHaveBeenCalledTimes(1);
+    });
+
+    // #6957: a rejected answer was unobservable — the log said only "confidence
+    // Required", never what the voter wrote, so the cause could not be proven.
+    it('logs a bounded excerpt of the raw output on a parse failure', async () => {
+      const raw = `{"decision":"approve","reasoning":"${'r'.repeat(3000)}"}`;
+      vi.mocked(mockAdapter.complete).mockResolvedValue({
+        ok: true,
+        value: {
+          content: [{ type: 'text', text: raw }],
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          stopReason: 'end_turn',
+          model: 'test-model',
+        },
+      });
+
+      const result = await executeWithRetries({
+        role: 'devex',
+        proposal: 'Proposal',
+        adapter: mockAdapter,
+        logger: mockLogger,
+        timeoutMs: 5000,
+        maxRetries: 0,
+      });
+
+      expect(result.ok).toBe(false);
+      const failed = vi
+        .mocked(mockLogger.warn)
+        .mock.calls.find(([msg]) => msg === 'Vote attempt failed');
+      const excerpt = (failed?.[1] as { rawOutputExcerpt?: string } | undefined)?.rawOutputExcerpt;
+      expect(excerpt).toHaveLength(2000);
+      expect(excerpt).toBe(raw.slice(0, 2000));
+    });
+
+    it('logs no raw-output excerpt when the adapter itself failed', async () => {
+      vi.mocked(mockAdapter.complete).mockResolvedValue({
+        ok: false,
+        error: new ModelError('connection reset'),
+      });
+
+      await executeWithRetries({
+        role: 'devex',
+        proposal: 'Proposal',
+        adapter: mockAdapter,
+        logger: mockLogger,
+        timeoutMs: 5000,
+        maxRetries: 0,
+      });
+
+      const failed = vi
+        .mocked(mockLogger.warn)
+        .mock.calls.find(([msg]) => msg === 'Vote attempt failed');
+      expect(failed?.[1]).toBeDefined();
+      expect(failed?.[1]).not.toHaveProperty('rawOutputExcerpt');
     });
 
     // #5359: a durable capacity cap does not clear in seconds, so the remaining
@@ -910,7 +968,11 @@ describe('voter-execution', () => {
   // #6821: every outer completion a seat settled is billed, so every one is
   // recorded — not only the answer that was kept.
   describe('attempt-level usage (#6821)', () => {
-    const adapter = { complete: vi.fn() } as unknown as IModelAdapter;
+    const adapter = {
+      providerId: 'test-provider',
+      modelId: 'test-model',
+      complete: vi.fn(),
+    } as unknown as IModelAdapter;
     const logger: ILogger = {
       debug: vi.fn(),
       info: vi.fn(),
