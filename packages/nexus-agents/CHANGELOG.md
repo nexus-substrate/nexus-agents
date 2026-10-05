@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.133.5
+
+### Patch Changes
+
+- [#7089](https://github.com/nexus-substrate/nexus-agents/pull/7089) [`8a815c7`](https://github.com/nexus-substrate/nexus-agents/commit/8a815c7e71e75cbca730187cae364bf0325fc11f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - MCP `execute_expert` tasks now share per-tool and global concurrency limits with async jobs. Task creation rejects at capacity with the existing busy response and retry hint, and releases its slot when creation fails or background execution settles.
+
 ## 8.133.4
 
 ### Patch Changes
