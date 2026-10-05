@@ -18,7 +18,7 @@ Nexus Agents is a governance layer that sits above your AI coding agents — Cla
 
 - **Intelligent Routing** — Multi-stage CompositeRouter (TOPSIS, LinUCB bandit, distilled-rule short-circuit, weather-aware penalties). Learns from outcomes.
 - **Multi-Expert Orchestration** — Specialized expert agents (code, architecture, security, testing, docs, devops, research, PM, UX, infrastructure, QA, data-visualization) coordinated by an Orchestrator.
-- **Consensus Voting** — Six aggregation strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise, proof-of-learning.
+- **Consensus Voting** — Five aggregation strategies: simple/super-majority, unanimous, higher-order Bayesian, opinion-wise.
 - **Development Pipeline** — Research → Plan → Vote → Decompose → Implement → QA → Security. Autonomous, harness, and dry-run modes.
 - **Memory & Learning** — Multiple backends (session, belief, adaptive, routing, graph, hybrid, agentic, typed) with cross-session persistence.
 - **MCP Tools** — Agent management, workflow execution, research, memory, codebase intelligence, repo analysis, consensus, operations. See [docs/ENTRYPOINTS.md](https://github.com/nexus-substrate/nexus-agents/blob/main/docs/ENTRYPOINTS.md) for the canonical list.

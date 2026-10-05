@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { VotingStrategySchema } from './consensus-vote-types.js';
 import { dispatchFieldDefaultSync, modeEnumErrorNamingDispatch } from './async-dispatch-input.js';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -123,17 +124,9 @@ export const DevPipelineInputSchema = z.object({
     .default(false)
     .describe('TESTS ONLY — random output, must not be used for real decisions (#2319)'),
   /** Voting strategy for consensus stages. */
-  votingStrategy: z
-    .enum([
-      'simple_majority',
-      'supermajority',
-      'unanimous',
-      'higher_order',
-      'proof_of_learning',
-      'opinion_wise',
-    ])
-    .optional()
-    .describe('Voting strategy for plan approval (default: higher_order)'),
+  votingStrategy: VotingStrategySchema.optional().describe(
+    'Voting strategy for plan approval (default: higher_order)'
+  ),
   /** Use 3 agents instead of 6 for faster voting. */
   quickMode: z
     .boolean()

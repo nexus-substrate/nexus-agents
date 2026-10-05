@@ -31,7 +31,6 @@ import type {
   Vote,
   ConsensusResult,
   ConsensusAlgorithm,
-  AgentPerformance,
   ConsensusEngineConfig,
   ProposalState,
   ConsensusMetrics,
@@ -46,7 +45,7 @@ import {
   DEFAULT_INCREMENTAL_QUORUM_CONFIG,
 } from './types.js';
 import { VOTING_THRESHOLDS } from './decision/thresholds.js';
-import { VotingStrategyFactory, calculateVoteWeight, type VotingOutcome } from './strategies.js';
+import { VotingStrategyFactory, type VotingOutcome } from './strategies.js';
 import { buildFinalResult, buildTimeoutResult, buildPendingResult } from './result-builder.js';
 import { generateProposalId } from './helpers.js';
 import { isVotingAmbiguous } from './incremental-quorum.js';
@@ -142,7 +141,6 @@ const DEFAULT_PROPOSAL_CACHE_CONFIG: ProposalCacheConfig = {
 export class ConsensusEngine implements IConsensusEngine {
   private readonly proposals: Map<ProposalId, ProposalState> = new Map();
   private readonly closedProposals: Map<ProposalId, ConsensusResult> = new Map();
-  private readonly agentPerformance: Map<string, AgentPerformance> = new Map();
   private readonly proposalContentCache: Map<string, ProposalCacheEntry> = new Map();
   private readonly strategyFactory: VotingStrategyFactory;
   private readonly config: ConsensusEngineConfig;
@@ -294,35 +292,6 @@ export class ConsensusEngine implements IConsensusEngine {
     };
   }
 
-  updateAgentPerformance(agentId: string, wasCorrect: boolean): void {
-    const existing = this.agentPerformance.get(agentId);
-    const now = getTimeProvider().nowIso();
-
-    if (existing === undefined) {
-      this.agentPerformance.set(agentId, {
-        agentId,
-        totalVotes: 1,
-        correctVotes: wasCorrect ? 1 : 0,
-        successRate: wasCorrect ? 1.0 : 0.0,
-        lastUpdated: now,
-      });
-    } else {
-      const totalVotes = existing.totalVotes + 1;
-      const correctVotes = existing.correctVotes + (wasCorrect ? 1 : 0);
-      this.agentPerformance.set(agentId, {
-        agentId,
-        totalVotes,
-        correctVotes,
-        successRate: correctVotes / totalVotes,
-        lastUpdated: now,
-      });
-    }
-  }
-
-  getAgentPerformance(agentId: string): AgentPerformance | undefined {
-    return this.agentPerformance.get(agentId);
-  }
-
   getActiveProposalCount(): number {
     return this.proposals.size;
   }
@@ -333,7 +302,6 @@ export class ConsensusEngine implements IConsensusEngine {
       proposal: { ...data, id: proposalId, createdAt: now.toISOString() },
       status: 'voting',
       votes: new Map(),
-      voteWeights: new Map(),
       startedAt: now,
     };
   }
@@ -392,21 +360,6 @@ export class ConsensusEngine implements IConsensusEngine {
       ...vote,
       timestamp: getTimeProvider().nowIso(),
     });
-    if (state.proposal.algorithm === 'proof_of_learning') {
-      // Only record a weight when a performance record actually EXISTS (#5117).
-      // This used to call `calculateVoteWeight(undefined)`, which returns the
-      // 1.0 new-agent default, so the map was fully populated whether or not
-      // anything had ever been measured — and by the time the strategy saw it,
-      // "weighted at 1.0 because they are reliable" and "weighted at 1.0
-      // because we know nothing" were indistinguishable.
-      //
-      // Absence now carries that provenance. The arithmetic is unchanged:
-      // `countWeightedVotes` already defaults a missing entry to 1.0.
-      const performance = this.agentPerformance.get(agentId);
-      if (performance !== undefined) {
-        state.voteWeights.set(agentId, calculateVoteWeight(performance));
-      }
-    }
     this.logger.debug('Vote recorded', {
       proposalId: state.proposal.id,
       agentId,
@@ -486,7 +439,7 @@ export class ConsensusEngine implements IConsensusEngine {
 
   private calculateOutcome(state: ProposalState): VotingOutcome {
     const strategy = this.strategyFactory.getStrategy(state.proposal.algorithm);
-    const outcome: VotingOutcome = strategy.calculateOutcome(state.votes, state.voteWeights);
+    const outcome: VotingOutcome = strategy.calculateOutcome(state.votes);
     return outcome;
   }
 
@@ -497,7 +450,7 @@ export class ConsensusEngine implements IConsensusEngine {
    * `totalExpected = requiredVoters.length` and compared against
    * `VOTING_THRESHOLDS[algorithm]` directly. Every voting strategy
    * (`SimpleMajorityStrategy`, `SupermajorityStrategy`, `UnanimousStrategy`,
-   * `ProofOfLearningStrategy`) uses `approve + reject` as its denominator —
+   * `HigherOrderVotingStrategy`) uses `approve + reject` as its denominator —
    * abstains are explicitly excluded. The two diverged whenever abstains
    * were present, producing wrong-winner cascades (e.g. 5-voter supermajority
    * with [approve, abstain, abstain, abstain, pending] cascade-rejected even
@@ -526,8 +479,8 @@ export class ConsensusEngine implements IConsensusEngine {
       worstCase.set(voter, HYPOTHETICAL_REJECT);
     }
 
-    const bestOutcome = strategy.calculateOutcome(bestCase, state.voteWeights);
-    const worstOutcome = strategy.calculateOutcome(worstCase, state.voteWeights);
+    const bestOutcome = strategy.calculateOutcome(bestCase);
+    const worstOutcome = strategy.calculateOutcome(worstCase);
 
     if (bestOutcome.approved !== worstOutcome.approved) return false;
 
@@ -624,7 +577,6 @@ export class ConsensusEngine implements IConsensusEngine {
         simple_majority: 0,
         supermajority: 0,
         unanimous: 0,
-        proof_of_learning: 0,
         opinion_wise: 0,
         higher_order: 0,
       },

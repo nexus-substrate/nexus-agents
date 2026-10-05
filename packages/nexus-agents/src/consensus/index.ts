@@ -6,7 +6,6 @@
  * - Simple majority (>50%)
  * - Supermajority (>=67%)
  * - Unanimous (100%)
- * - Proof-of-learning (weighted by agent performance)
  */
 
 // Types and schemas
@@ -20,7 +19,6 @@ export type {
   VoteCounts,
   WeightedVoteCounts,
   ConsensusResult,
-  AgentPerformance,
   ConsensusEngineConfig,
   ProposalState,
   ConsensusMetrics,
@@ -38,7 +36,6 @@ export {
   VoteSchema,
   ProposalSchema,
   ConsensusResultSchema,
-  AgentPerformanceSchema,
   ConsensusEngineConfigSchema,
   ConsensusMetricsSchema,
   DEFAULT_CONSENSUS_CONFIG,
@@ -60,9 +57,7 @@ export {
   SimpleMajorityStrategy,
   SupermajorityStrategy,
   UnanimousStrategy,
-  ProofOfLearningStrategy,
   VotingStrategyFactory,
-  calculateVoteWeight,
   createStrategyFactory,
 } from './strategies.js';
 

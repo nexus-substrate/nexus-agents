@@ -115,6 +115,17 @@ function captureHandler(): CtxHandler {
 }
 
 describe('DevPipelineInputSchema', () => {
+  it('rejects proof_of_learning with retirement and migration guidance (#5234)', () => {
+    const input = {
+      task: 'Build a login form',
+      votingStrategy: 'proof_of_learning',
+    };
+    expect(() => DevPipelineInputSchema.parse(input)).toThrow(
+      /proof_of_learning.*retired.*9\.0.*#5234/
+    );
+    expect(() => DevPipelineInputSchema.parse(input)).toThrow(/simple_majority.*higher_order/);
+  });
+
   it('accepts direct task instructions', () => {
     const parsed = DevPipelineInputSchema.parse({ task: 'Build a login form' });
     expect(parsed.task).toBe('Build a login form');

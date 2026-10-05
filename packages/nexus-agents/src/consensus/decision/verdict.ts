@@ -5,7 +5,7 @@
  * (#6000 step 1) from the three files that used to hold them:
  *
  * - `evaluateThreshold` (from `consensus/strategies.ts`): ratio vs. bar — the
- *   comparison behind the simple-majority, supermajority and proof-of-learning
+ *   comparison behind the simple-majority and supermajority
  *   strategies.
  * - `determineFinalStatus` (from `consensus/result-builder.ts`): quorum +
  *   approval → the engine's `approved` / `rejected`.
@@ -39,10 +39,10 @@ import type { ProposalStatus } from '../types-core.js';
 
 /**
  * Evaluates an approval ratio against a threshold — the shared math behind
- * the simple-majority, supermajority and proof-of-learning strategies.
+ * the simple-majority and supermajority strategies.
  *
  * `inclusive` selects the comparison: `>=` for supermajority (an exact 2/3
- * passes), strict `>` for simple-majority and proof-of-learning (a tie at the
+ * passes), strict `>` for simple-majority (a tie at the
  * threshold is not enough). Callers apply their own zero-denominator guard
  * before calling this.
  */
@@ -91,7 +91,7 @@ export function mapOutcomeToDecision(outcome: string): VoteDecisionStatus {
  * `absolute_quorum` verdict needs — an ABSOLUTE floor over every requested
  * voter, not a majority of the responders (which abstains/errors would shrink).
  * majority → 0.5, supermajority → 2/3, unanimous → 1.0; the higher_order family
- * and proof_of_learning follow the majority (0.5) baseline they tally against.
+ * follows the majority (0.5) baseline they tally against.
  */
 function absoluteQuorumFraction(strategy: VotingStrategy): number {
   switch (strategy) {

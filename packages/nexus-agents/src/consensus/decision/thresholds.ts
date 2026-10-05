@@ -30,7 +30,6 @@ export const VOTING_THRESHOLDS: Record<ConsensusAlgorithm, number> = {
   simple_majority: 0.5,
   supermajority: SUPERMAJORITY_THRESHOLD,
   unanimous: 1.0,
-  proof_of_learning: 0.5, // Uses weighted voting
   opinion_wise: 0.5, // Uses correlation-aware Bayesian aggregation (Issue #333)
   higher_order: 0.5, // Alias for opinion_wise (Issue #514)
 };

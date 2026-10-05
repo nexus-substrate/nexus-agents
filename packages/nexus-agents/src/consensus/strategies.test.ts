@@ -9,8 +9,6 @@ import {
   SimpleMajorityStrategy,
   SupermajorityStrategy,
   UnanimousStrategy,
-  ProofOfLearningStrategy,
-  calculateVoteWeight,
   createStrategyFactory,
 } from './strategies.js';
 
@@ -163,229 +161,6 @@ describe('UnanimousStrategy', () => {
 });
 
 // ============================================================================
-// ProofOfLearningStrategy
-// ============================================================================
-
-describe('ProofOfLearningStrategy', () => {
-  const strategy = new ProofOfLearningStrategy();
-
-  it('has correct algorithm name', () => {
-    expect(strategy.algorithm).toBe('proof_of_learning');
-  });
-
-  it('uses equal weights when no weights provided', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(3, 1, 0));
-    expect(outcome.approved).toBe(true);
-    expect(outcome.weightedCounts).toBeDefined();
-  });
-
-  it('applies custom weights correctly', () => {
-    const votes = makeVotes(1, 2, 0);
-    const weights = new Map([
-      ['agent-a0', 10.0],
-      ['agent-r0', 1.0],
-      ['agent-r1', 1.0],
-    ]);
-    expect(strategy.calculateOutcome(votes, weights).approved).toBe(true);
-
-    const votes2 = makeVotes(2, 1, 0);
-    const weights2 = new Map([
-      ['agent-a0', 1.0],
-      ['agent-a1', 1.0],
-      ['agent-r0', 10.0],
-    ]);
-    expect(strategy.calculateOutcome(votes2, weights2).approved).toBe(false);
-  });
-
-  it('defaults to weight 1.0 for missing agents', () => {
-    const votes = makeVotes(2, 1, 0);
-    const weights = new Map([['agent-a0', 2.0]]);
-    const outcome = strategy.calculateOutcome(votes, weights);
-    expect(outcome.approved).toBe(true);
-  });
-
-  it('handles fractional and zero weights', () => {
-    const votes = makeVotes(2, 1, 0);
-    const weights1 = new Map([
-      ['agent-a0', 0.3],
-      ['agent-a1', 0.2],
-      ['agent-r0', 0.6],
-    ]);
-    expect(strategy.calculateOutcome(votes, weights1).approved).toBe(false);
-
-    const weights2 = new Map([
-      ['agent-a0', 0],
-      ['agent-a1', 5.0],
-      ['agent-r0', 0],
-    ]);
-    expect(strategy.calculateOutcome(votes, weights2).approved).toBe(true);
-  });
-
-  it('handles 50% weighted boundary (needs >50%)', () => {
-    const votes = makeVotes(1, 1, 0);
-    const weights = new Map([
-      ['agent-a0', 2.0],
-      ['agent-r0', 2.0],
-    ]);
-    expect(strategy.calculateOutcome(votes, weights).approved).toBe(false);
-  });
-
-  it('includes detailed weighted counts in outcome', () => {
-    const votes = makeVotes(2, 1, 1);
-    const weights = new Map([
-      ['agent-a0', 1.5],
-      ['agent-a1', 2.5],
-      ['agent-r0', 1.0],
-      ['agent-b0', 0.5],
-    ]);
-    const outcome = strategy.calculateOutcome(votes, weights);
-    expect(outcome.weightedCounts?.approve).toBe(4.0);
-    expect(outcome.weightedCounts?.reject).toBe(1.0);
-    expect(outcome.weightedCounts?.abstain).toBe(0.5);
-    expect(outcome.weightedCounts?.totalWeight).toBe(5.5);
-  });
-
-  it('handles all abstentions and empty weights', () => {
-    expect(strategy.calculateOutcome(makeVotes(0, 0, 3)).approved).toBe(false);
-    expect(strategy.calculateOutcome(makeVotes(3, 1, 0), new Map()).approved).toBe(true);
-  });
-
-  it('does NOT claim weighted approval when nothing was weighted', () => {
-    // This test previously asserted the reason CONTAINED 'weighted approval'
-    // for this exact call, which supplies no weights — it pinned the #5117
-    // misreport as intended behaviour. Anyone fixing the defect without reading
-    // this first would have seen the failure and taken it for their own
-    // regression.
-    const outcome = strategy.calculateOutcome(makeVotes(3, 1, 0));
-    expect(outcome.weightBasis).toBe('unweighted');
-    expect(outcome.reason).toContain('UNWEIGHTED');
-    expect(outcome.reason).not.toMatch(/\bweighted approval\b/);
-  });
-
-  it('reports performance basis when every voter has a recorded weight', () => {
-    // The seam that matters: the field must FLIP. A discriminator that only
-    // ever returns 'unweighted' is indistinguishable from a hardcoded string.
-    const votes = makeVotes(3, 1, 0);
-    const weights = new Map([...votes.keys()].map((id) => [id, 0.9]));
-    const outcome = strategy.calculateOutcome(votes, weights);
-    expect(outcome.weightBasis).toBe('performance');
-    expect(outcome.reason).toContain('weighted approval');
-  });
-
-  it('reports partial basis when only some voters have a recorded weight', () => {
-    // Partial coverage is its own state. Reporting it as fully
-    // performance-weighted would launder an unmeasured majority.
-    const votes = makeVotes(3, 1, 0);
-    const firstId = [...votes.keys()][0];
-    const weights = new Map(firstId !== undefined ? [[firstId, 0.9]] : []);
-    const outcome = strategy.calculateOutcome(votes, weights);
-    expect(outcome.weightBasis).toBe('partial');
-    expect(outcome.reason).toContain('partly weighted');
-  });
-});
-
-describe('weight-basis provenance at the strategy entry point (#5117)', () => {
-  const strategy = new ProofOfLearningStrategy();
-
-  it('reports no basis at all when nothing was cast', () => {
-    // The empty case, checked where a caller can actually reach it. A basis
-    // asserted over an empty tally would be the vacuous-verdict shape, so the
-    // outcome must leave the field absent AND say so in the reason.
-    const outcome = strategy.calculateOutcome(new Map(), new Map());
-    expect(outcome.weightBasis).toBeUndefined();
-    expect(outcome.reason).toContain('No weighted votes cast');
-    expect(outcome.reason).not.toMatch(/\bweighted approval\b/);
-  });
-
-  it('does not infer the basis from the weight VALUE', () => {
-    // The condition the design panel attached. A voter with a perfect record
-    // legitimately weighs exactly 1.0, so "does any weight differ from 1.0"
-    // cannot tell a measured-and-reliable voter from an unmeasured one. Here
-    // every recorded weight IS 1.0 and the basis must still be 'performance',
-    // because a record exists for each voter.
-    const votes = makeVotes(2, 1, 0);
-    const weights = new Map([...votes.keys()].map((id) => [id, 1.0]));
-    const outcome = strategy.calculateOutcome(votes, weights);
-    expect(outcome.weightBasis).toBe('performance');
-  });
-
-  it('a stale weight for a non-voter does not make a complete tally look partial', () => {
-    // The other direction, and the one mutation testing caught the rewrite
-    // missing: counting over the WEIGHTS map instead of the voters inflates the
-    // covered count past `votes.size`, so a fully-measured panel reports
-    // 'partial'. Every voter here has a record; a leftover weight for an agent
-    // who never voted must not change that.
-    const votes = makeVotes(2, 1, 0);
-    const weights = new Map([...votes.keys()].map((id) => [id, 0.7]));
-    weights.set('ghost', 0.9);
-    const outcome = strategy.calculateOutcome(votes, weights);
-    expect(outcome.weightBasis).toBe('performance');
-  });
-
-  it('ignores weights for agents who did not vote', () => {
-    // Coverage is measured over the voters, not over the map. A stale weight
-    // for an absent agent must not make a partial tally look complete.
-    const votes = makeVotes(2, 1, 0);
-    const firstId = [...votes.keys()][0];
-    const weights = new Map<string, number>([['ghost', 0.9]]);
-    if (firstId !== undefined) weights.set(firstId, 0.8);
-    const outcome = strategy.calculateOutcome(votes, weights);
-    expect(outcome.weightBasis).toBe('partial');
-  });
-});
-
-// ============================================================================
-// calculateVoteWeight
-// ============================================================================
-
-describe('calculateVoteWeight', () => {
-  it('returns 1.0 for undefined or zero totalVotes', () => {
-    expect(calculateVoteWeight(undefined)).toBe(1.0);
-    expect(calculateVoteWeight({ totalVotes: 0, successRate: 0 } as never)).toBe(1.0);
-  });
-
-  it('calculates weight as 0.5 + successRate * 0.5', () => {
-    expect(calculateVoteWeight({ totalVotes: 10, successRate: 1.0 } as never)).toBe(1.0);
-    expect(calculateVoteWeight({ totalVotes: 10, successRate: 0 } as never)).toBe(0.5);
-    expect(calculateVoteWeight({ totalVotes: 10, successRate: 0.5 } as never)).toBe(0.75);
-  });
-
-  it('handles various success rates', () => {
-    const testCases = [
-      { rate: 0, expected: 0.5 },
-      { rate: 0.1, expected: 0.55 },
-      { rate: 0.75, expected: 0.875 },
-      { rate: 1.0, expected: 1.0 },
-    ];
-
-    testCases.forEach(({ rate, expected }) => {
-      const weight = calculateVoteWeight({
-        agentId: 'test',
-        totalVotes: 100,
-        correctVotes: Math.round(rate * 100),
-        successRate: rate,
-        lastUpdated: '2025-01-01T00:00:00Z',
-      });
-      expect(weight).toBe(expected);
-    });
-  });
-
-  it('ensures weight stays in range [0.5, 1.0]', () => {
-    for (let rate = 0; rate <= 1; rate += 0.1) {
-      const weight = calculateVoteWeight({
-        agentId: 'test',
-        totalVotes: 10,
-        correctVotes: Math.round(rate * 10),
-        successRate: rate,
-        lastUpdated: '2025-01-01T00:00:00Z',
-      });
-      expect(weight).toBeGreaterThanOrEqual(0.5);
-      expect(weight).toBeLessThanOrEqual(1.0);
-    }
-  });
-});
-
-// ============================================================================
 // VotingStrategyFactory
 // ============================================================================
 
@@ -396,7 +171,6 @@ describe('VotingStrategyFactory', () => {
     expect(algorithms).toContain('simple_majority');
     expect(algorithms).toContain('supermajority');
     expect(algorithms).toContain('unanimous');
-    expect(algorithms).toContain('proof_of_learning');
     expect(algorithms).toContain('opinion_wise');
   });
 
@@ -405,7 +179,6 @@ describe('VotingStrategyFactory', () => {
     expect(factory.getStrategy('simple_majority').algorithm).toBe('simple_majority');
     expect(factory.getStrategy('supermajority').algorithm).toBe('supermajority');
     expect(factory.getStrategy('unanimous').algorithm).toBe('unanimous');
-    expect(factory.getStrategy('proof_of_learning').algorithm).toBe('proof_of_learning');
     expect(factory.getStrategy('opinion_wise').algorithm).toBe('opinion_wise');
   });
 

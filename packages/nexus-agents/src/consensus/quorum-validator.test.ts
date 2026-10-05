@@ -59,7 +59,6 @@ describe('DEFAULT_QUORUM_THRESHOLDS', () => {
     expect(DEFAULT_QUORUM_THRESHOLDS.simple_majority).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.supermajority).toBe(SUPERMAJORITY_THRESHOLD);
     expect(DEFAULT_QUORUM_THRESHOLDS.unanimous).toBe(1.0);
-    expect(DEFAULT_QUORUM_THRESHOLDS.proof_of_learning).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.opinion_wise).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.higher_order).toBe(0.5);
     expect(DEFAULT_QUORUM_THRESHOLDS.weighted_byzantine).toBe(SUPERMAJORITY_THRESHOLD);
@@ -68,7 +67,7 @@ describe('DEFAULT_QUORUM_THRESHOLDS', () => {
   it('is typed as Readonly', () => {
     // Readonly<Record<...>> at type level; verify values are not writable at runtime
     const keys = Object.keys(DEFAULT_QUORUM_THRESHOLDS);
-    expect(keys.length).toBe(7);
+    expect(keys.length).toBe(6);
   });
 });
 
@@ -376,7 +375,7 @@ describe('QuorumValidator.getQuorumBreakdown', () => {
     }
   });
 
-  it('calculates weights for proof_of_learning', () => {
+  it('calculates weights for weighted_byzantine', () => {
     const weights = new Map([
       ['a1', 2.0],
       ['a2', 1.0],
@@ -387,7 +386,7 @@ describe('QuorumValidator.getQuorumBreakdown', () => {
         ['a2', 'reject'],
       ]),
       agentWeights: weights,
-      config: makeConfig({ algorithm: 'proof_of_learning', threshold: 0.5 }),
+      config: makeConfig({ algorithm: 'weighted_byzantine', threshold: 0.5 }),
     });
 
     expect(breakdown.totalWeight).toBeDefined();
@@ -491,7 +490,7 @@ describe('QuorumValidator weighted quorum scenarios', () => {
         ['a2', 'reject'],
       ]),
       agentWeights: weights,
-      config: makeConfig({ algorithm: 'proof_of_learning', threshold: 0.5 }),
+      config: makeConfig({ algorithm: 'weighted_byzantine', threshold: 0.5 }),
     });
     // a2 (reject, weight 3.0) outweighs a1 (approve, weight 1.0)
     expect(result.status).toBe('reached');
@@ -511,7 +510,7 @@ describe('QuorumValidator weighted quorum scenarios', () => {
         ['a2', 'reject'],
       ]),
       agentWeights: weights,
-      config: makeConfig({ algorithm: 'proof_of_learning', threshold: 0.5 }),
+      config: makeConfig({ algorithm: 'weighted_byzantine', threshold: 0.5 }),
     });
     // Equal weights -> nobody won; this used to read `approve` via `>=`.
     expect(result.status).toBe('not_reached');

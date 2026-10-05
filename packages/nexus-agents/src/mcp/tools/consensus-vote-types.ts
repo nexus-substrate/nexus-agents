@@ -40,6 +40,7 @@ import type { DecisionCostSummary } from '../../observability/decision-cost.js';
 import type { VoteRecordPersistOutcome } from './consensus-vote-recording.js';
 import { VoteRecordPrBindingSchema } from '../../audit/vote-record.js';
 import {
+  RETIRED_CONSENSUS_STRATEGY_MESSAGE,
   SUPERMAJORITY_THRESHOLD,
   VOTING_THRESHOLDS,
   type ConsensusAlgorithm,
@@ -61,29 +62,19 @@ export const MAX_PROPOSAL_LENGTH = 4000;
  * - `simple_majority`: Standard majority voting (>50%)
  * - `supermajority`: Requires >=67% approval
  * - `unanimous`: Requires 100% approval
- * - `proof_of_learning`: Weighted by agent performance (Issue #103). NOTE: weights come from
- *   recorded voter history, and nothing writes that history today (#5234), so in practice this
- *   currently behaves as simple_majority. The outcome reports `weightBasis: 'unweighted'` when
- *   that is the case (#5117) rather than claiming a weighting that did not happen.
  * - `higher_order`: Bayesian-optimal with correlation awareness (Issue #514)
  * - `opinion_wise`: Alias for higher_order (Issue #333)
  */
 export type VotingStrategy =
-  | 'simple_majority'
-  | 'supermajority'
-  | 'unanimous'
-  | 'proof_of_learning'
-  | 'higher_order'
-  | 'opinion_wise';
+  'simple_majority' | 'supermajority' | 'unanimous' | 'higher_order' | 'opinion_wise';
 
-export const VotingStrategySchema = z.enum([
-  'simple_majority',
-  'supermajority',
-  'unanimous',
-  'proof_of_learning',
-  'higher_order',
-  'opinion_wise',
-]);
+export const VotingStrategySchema = z.enum(
+  ['simple_majority', 'supermajority', 'unanimous', 'higher_order', 'opinion_wise'],
+  {
+    error: (issue) =>
+      issue.input === 'proof_of_learning' ? RETIRED_CONSENSUS_STRATEGY_MESSAGE : undefined,
+  }
+);
 
 /**
  * Whether a strategy uses higher-order (Bayesian, correlation-aware) aggregation.
@@ -232,7 +223,7 @@ export const ConsensusVoteInputSchema = z.object({
     'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
   ),
   strategy: VotingStrategySchema.optional().describe(
-    'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal). ' +
+    'Voting strategy: simple_majority (default), supermajority, unanimous, higher_order (Bayesian-optimal), or opinion_wise (alias of higher_order). ' +
       'NOTE (#4452): thresholds are evaluated over approve/reject/abstain, not over which option a voter chose. On a ' +
       'multi-option proposal even `unanimous` clears trivially — see the `proposal` field description.'
   ),

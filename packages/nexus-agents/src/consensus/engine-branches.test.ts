@@ -1,13 +1,11 @@
 /**
  * Branch coverage tests for ConsensusEngine and higher-order voting.
  *
- * Covers 6 previously uncovered branches:
+ * Covers previously uncovered branches:
  * 1. Vote on already-closed proposal
- * 2. getAgentPerformance returning undefined
- * 3. proof_of_learning via full engine flow
- * 4. Closed proposal LRU eviction
- * 5. Higher-order ISP-wins-over-OW branch
- * 6. fallbackToSimpleVoting: false path
+ * 2. Closed proposal LRU eviction
+ * 3. Higher-order ISP-wins-over-OW branch
+ * 4. fallbackToSimpleVoting: false path
  *
  * @module consensus/engine-branches.test
  * (Issue #1342)
@@ -92,94 +90,7 @@ describe('vote on already-closed proposal', () => {
 });
 
 // ============================================================================
-// 2. getAgentPerformance returning undefined
-// ============================================================================
-
-describe('getAgentPerformance', () => {
-  it('returns undefined for unknown agent', () => {
-    const engine = createConsensusEngine();
-    const perf = engine.getAgentPerformance('unknown-agent');
-    expect(perf).toBeUndefined();
-  });
-
-  it('returns performance data for known agent', () => {
-    const engine = createConsensusEngine();
-    engine.updateAgentPerformance('agent-1', true);
-    const perf = engine.getAgentPerformance('agent-1');
-    expect(perf).toBeDefined();
-    expect(perf?.agentId).toBe('agent-1');
-    expect(perf?.totalVotes).toBe(1);
-    expect(perf?.successRate).toBe(1.0);
-  });
-
-  it('updates performance across multiple votes', () => {
-    const engine = createConsensusEngine();
-    engine.updateAgentPerformance('agent-1', true);
-    engine.updateAgentPerformance('agent-1', false);
-    engine.updateAgentPerformance('agent-1', true);
-    const perf = engine.getAgentPerformance('agent-1');
-    expect(perf?.totalVotes).toBe(3);
-    expect(perf?.correctVotes).toBe(2);
-    expect(perf?.successRate).toBeCloseTo(2 / 3);
-  });
-});
-
-// ============================================================================
-// 3. proof_of_learning via full engine flow
-// ============================================================================
-
-describe('proof_of_learning via engine', () => {
-  let engine: ConsensusEngine;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    engine = createConsensusEngine({
-      defaultTimeout: 60000,
-      minVotersForQuorum: 2,
-      maxActiveProposals: 10,
-    });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('uses proof_of_learning algorithm with weighted votes', async () => {
-    // Pre-populate agent performance so weights differ
-    engine.updateAgentPerformance('agent-1', true);
-    engine.updateAgentPerformance('agent-1', true);
-    engine.updateAgentPerformance('agent-1', true);
-    engine.updateAgentPerformance('agent-2', true);
-    engine.updateAgentPerformance('agent-2', false);
-
-    const result = await engine.propose(createProposal({ algorithm: 'proof_of_learning' }));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-
-    const proposalId = result.value;
-    await engine.vote(proposalId, 'agent-1', approveVote(0.95));
-    await engine.vote(proposalId, 'agent-2', rejectVote(0.6));
-
-    const closeResult = await engine.close(proposalId);
-    expect(closeResult.ok).toBe(true);
-    if (!closeResult.ok) return;
-
-    // Agent-1 has better performance, so its approve should carry more weight
-    expect(closeResult.value.outcome).toBe('approved');
-    expect(closeResult.value.proposal.algorithm).toBe('proof_of_learning');
-  });
-
-  it('records algorithm usage in metrics', async () => {
-    const result = await engine.propose(createProposal({ algorithm: 'proof_of_learning' }));
-    expect(result.ok).toBe(true);
-
-    const metrics = engine.getMetrics();
-    expect(metrics.algorithmUsage.proof_of_learning).toBe(1);
-  });
-});
-
-// ============================================================================
-// 4. Closed proposal LRU eviction
+// 2. Closed proposal LRU eviction
 // ============================================================================
 
 describe('closed proposal LRU eviction', () => {
@@ -223,7 +134,7 @@ describe('closed proposal LRU eviction', () => {
 });
 
 // ============================================================================
-// 5. Higher-order ISP-wins-over-OW branch
+// 3. Higher-order ISP-wins-over-OW branch
 // ============================================================================
 
 describe('OWVoting ISP-wins-over-OW branch', () => {
@@ -278,7 +189,7 @@ describe('OWVoting ISP-wins-over-OW branch', () => {
 });
 
 // ============================================================================
-// 6. fallbackToSimpleVoting: false path
+// 4. fallbackToSimpleVoting: false path
 // ============================================================================
 
 describe('OWVoting fallbackToSimpleVoting: false', () => {

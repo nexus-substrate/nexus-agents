@@ -27,6 +27,7 @@
 
 import { createLogger, formatPercentage, type ILogger } from '../core/index.js';
 import type { ConsensusAlgorithm, Vote, VoteCounts, WeightedVoteCounts } from './types-core.js';
+import { RETIRED_CONSENSUS_STRATEGY_MESSAGE } from './types-core.js';
 import { SUPERMAJORITY_THRESHOLD } from './decision/thresholds.js';
 
 // ============================================================================
@@ -117,7 +118,6 @@ export const DEFAULT_QUORUM_THRESHOLDS: Readonly<
   simple_majority: 0.5,
   supermajority: SUPERMAJORITY_THRESHOLD,
   unanimous: 1.0,
-  proof_of_learning: 0.5,
   opinion_wise: 0.5,
   higher_order: 0.5,
   // Byzantine fault tolerance also requires 2/3 — the same supermajority.
@@ -135,6 +135,9 @@ export const DEFAULT_QUORUM_THRESHOLDS: Readonly<
  * conventionally in [0, 1] with a handful of decimals).
  */
 const TIE_TOLERANCE = 1e-9;
+
+// Raw JavaScript callers are not protected by the narrowed algorithm type.
+const RETIRED_ALGORITHM: string = 'proof_of_learning';
 
 /** Inputs to the quorum-status calculation, grouped to stay within max-params. */
 interface QuorumStatusInput {
@@ -171,6 +174,10 @@ export class QuorumValidator implements IQuorumValidator {
   validateQuorum(input: QuorumValidationInput): QuorumValidationResult {
     const { votes, config } = input;
 
+    if (config.algorithm === RETIRED_ALGORITHM) {
+      return { status: 'invalid', error: RETIRED_CONSENSUS_STRATEGY_MESSAGE };
+    }
+
     // Validate input
     if (votes.size === 0) {
       return { status: 'invalid', error: 'No votes provided' };
@@ -198,6 +205,10 @@ export class QuorumValidator implements IQuorumValidator {
 
   getQuorumBreakdown(input: QuorumValidationInput): QuorumBreakdown {
     const { votes, agentWeights, config, requiredParticipants } = input;
+
+    if (config.algorithm === RETIRED_ALGORITHM) {
+      throw new Error(RETIRED_CONSENSUS_STRATEGY_MESSAGE);
+    }
 
     // Count votes
     const voteCounts = this.countVotes(votes);

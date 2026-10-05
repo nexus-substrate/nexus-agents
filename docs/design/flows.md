@@ -114,7 +114,6 @@ Multi-agent voting with configurable strategies.
    |     simple_majority: >50%
    |     supermajority: >=67%
    |     unanimous: 100%
-   |     proof_of_learning: majority + evidence
    |     higher_order: simple tally; correlation drives escalation only (#4701)
    |
 7. Returns { decision, votes[], reasoning, confidence }
