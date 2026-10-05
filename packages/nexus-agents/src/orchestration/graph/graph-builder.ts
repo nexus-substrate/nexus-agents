@@ -276,7 +276,9 @@ export class GraphBuilder {
    * ("Edge references non-existent node 'x' (from 'y')") already reads correctly.
    * Adding a variant would widen a union the library RETURNS, which breaks any
    * consumer switching exhaustively over `GraphCompileError` — a breaking change
-   * needing a unanimous panel, for a diagnostic distinction nothing consumes.
+   * needing supermajority (≥5 of 7 on a full panel) and no unresolved
+   * concrete-defect dissent from any seat (see `.rules/governance.md`), for a
+   * diagnostic distinction nothing consumes.
    */
   private checkGotoTargets(): GraphCompileError | undefined {
     for (const [nodeId, node] of this.nodes) {

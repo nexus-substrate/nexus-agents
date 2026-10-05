@@ -124,8 +124,9 @@ export type VoteResult =
   // approval clears a supermajority bar), not a missing link.
   //
   // A 7-voter panel took REMOVE, 5 of 6 approvers (#5768). It is published type
-  // surface, so the deletion is queued for the next major as #5969 and needs a
-  // `unanimous` vote at that point.
+  // surface, so the deletion (#5969) is a breaking change and needs the
+  // breaking-change bar in .rules/governance.md: supermajority with no
+  // unresolved concrete-defect dissent (#6956).
   | {
       readonly kind: 'conditional_go';
       readonly conditions: readonly string[];
