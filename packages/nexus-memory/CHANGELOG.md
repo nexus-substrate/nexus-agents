@@ -1,5 +1,13 @@
 # nexus-memory
 
+## 3.0.0
+
+### Major Changes
+
+- [#7105](https://github.com/nexus-substrate/nexus-agents/pull/7105) [`d96bbb8`](https://github.com/nexus-substrate/nexus-agents/commit/d96bbb869c7eff8a72e676ae157b57e1db37478d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Node.js >=24 is now required. Upgrade Node before installing the next major release of either package; Node 22 and 23 are no longer supported.
+
+  Both packages use the built-in `node:sqlite` on their runtime paths. Node 24 provides a more mature SQLite implementation and an LTS support window through April 2028, one year longer than Node 22. Use the latest Node 24 LTS patch release for SQLite fixes and security updates.
+
 ## 2.0.0
 
 ### Major Changes

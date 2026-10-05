@@ -1,6 +1,6 @@
 {
   "name": "nexus-memory",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Unified memory subsystem for nexus-agents and nexus-eval-* — IMemoryBackend contract, MemoryRegistry, telemetry, one-shot importer",
   "license": "MIT",
   "repository": {
