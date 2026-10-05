@@ -176,7 +176,11 @@ describe('governor model diversity floor (#6601)', () => {
     expect(panel.voteCounts.approve).toBe(decision === 'approve' ? 7 : 6);
     expect(panel.panelCoverage).toMatchObject({ requested: 7, responded: 7, errored: 0 });
     const evidence = evaluate([panel]);
-    expect(evidence.kind).toBe('insufficient-model-diversity');
+    // #6952: unverifiable seats void the canonical absolute quorum first.
+    expect(evidence.kind).toBe(
+      source === 'unverifiable' ? 'not-approved' : 'insufficient-model-diversity'
+    );
+    expect(formatLedgerEvidence(evidence)).toContain('insufficient-model-diversity');
     expect(formatLedgerEvidence(evidence)).toContain('families found: anthropic)');
   });
 
@@ -190,7 +194,8 @@ describe('governor model diversity floor (#6601)', () => {
     const panel = sevenSeatRecord('abstain', 'error');
     expect(panel.voters).toHaveLength(6);
     const evidence = evaluate([panel]);
-    expect(evidence.kind).toBe('degraded-panel');
+    expect(evidence.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(evidence)).toContain('degraded-panel');
     expect(formatLedgerEvidence(evidence)).toContain('insufficient-model-diversity');
   });
 
@@ -274,7 +279,7 @@ describe('governor model diversity floor (#6601)', () => {
     ['decision', 'not-approved'],
     ['policy', 'wrong-error-policy'],
     ['strategy', 'wrong-strategy'],
-    ['coverage', 'degraded-panel'],
+    ['coverage', 'not-approved'],
   ] as const)('keeps the %s check on an owner override', (check, kind) => {
     const changes: Partial<VoteRecord> =
       check === 'decision'
@@ -291,7 +296,9 @@ describe('governor model diversity floor (#6601)', () => {
                   erroredRoles: ['architect'],
                 },
               };
-    expect(evaluate([single(), signed(rehash(override(), changes), true)]).kind).toBe(kind);
+    const evidence = evaluate([single(), signed(rehash(override(), changes), true)]);
+    expect(evidence.kind).toBe(kind);
+    if (check === 'coverage') expect(formatLedgerEvidence(evidence)).toContain('degraded-panel');
   });
 
   it('does not let an override on head cover a single-family record on head^', () => {
@@ -371,7 +378,9 @@ describe('governor model diversity floor (#6601)', () => {
 
   it('names an empty voter collection as unmeasured', () => {
     const evidence = evaluate([signed(rehash(record('no-voters', MODELS), { voters: [] }))]);
-    expect(evidence.kind).toBe('unmeasured-model-diversity');
+    // #6952: zero voters now fails the recomputed verdict before diversity.
+    expect(evidence.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(evidence)).toContain('zero voters');
     expect(formatLedgerEvidence(evidence)).toContain('families found: none');
   });
 

@@ -197,7 +197,13 @@ function noRecordBody(recordCount: number): string {
     : `none of the ${String(recordCount)} record(s) in the committed ledger ratifies this PR`;
 }
 
-/** The reason text for one failing per-record check — the `BOUND_RECORD_CHECKS` kinds. */
+/** Include the stored decision and the reason independent recomputation refused it. */
+function notApprovedBody(evidence: Extract<BoundRecordFailure, { kind: 'not-approved' }>): string {
+  const stated = `record '${evidence.record.id}' binds this PR with decision '${evidence.record.decision}'`;
+  return stated + (evidence.reason !== undefined ? ` — ${evidence.reason}` : '');
+}
+
+/** Render a bound-record failure, including independent decision evidence. */
 function boundRecordBody(evidence: BoundRecordFailure): string {
   const id = `record '${evidence.record.id}'`;
   switch (evidence.kind) {
@@ -205,7 +211,7 @@ function boundRecordBody(evidence: BoundRecordFailure): string {
     case 'insufficient-model-diversity':
       return formatModelDiversityFailure(evidence);
     case 'not-approved':
-      return `${id} binds this PR with decision '${evidence.record.decision}'`;
+      return notApprovedBody(evidence);
     case 'wrong-error-policy':
       return (
         `${id} was approved under errorPolicy '${evidence.errorPolicy}' ` +
