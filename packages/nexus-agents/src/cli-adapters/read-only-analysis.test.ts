@@ -26,7 +26,7 @@ import type { CommandConfig } from './subprocess-adapter.js';
 import { BaseCliAdapter } from './base-adapter.js';
 import { CliToModelAdapter } from './cli-to-model-adapter.js';
 import { isCallerInputCliError } from './cli-error-helpers.js';
-import { unenforcedAccessModeRefusal } from './access-mode.js';
+import { accessModeConflict, unenforcedAccessModeRefusal } from './access-mode.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
@@ -145,7 +145,11 @@ describe('opencode cannot enforce read-only analysis, so it refuses it (#6970)',
     const result = await adapter.execute(READ_ONLY, { allowRetry: false });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.message).toMatch(/cannot enforce/);
+    expect(result.error.message).toBe(
+      'Refusing to run opencode in read-only analysis mode: this adapter cannot enforce it. ' +
+        'Next step: use claude or codex with read-only analysis and compatible task options. ' +
+        'See docs/guides/HARNESS_COMPATIBILITY.md#voter-transport--performance-consensus_vote-and-similar-tools.'
+    );
     expect(isCallerInputCliError(result.error)).toBe(true);
     expect(spawn).not.toHaveBeenCalled();
   });
@@ -270,6 +274,24 @@ describe('an adapter that does not declare enforcement fails closed (#6754)', ()
       unenforcedAccessModeRefusal({ name: 'claude', enforcesReadOnlyAnalysis: true }, READ_ONLY)
     ).toBeUndefined();
     expect(unenforcedAccessModeRefusal({ name: 'claude' }, DEFAULT_MODE)).toBeUndefined();
+  });
+
+  it('names enforcing alternatives and the guide for read-only option conflicts', () => {
+    const refusal = accessModeConflict('claude', 'read-only-analysis', 'conflicting task options');
+    expect(refusal.message).toContain('Next step: use claude or codex');
+    expect(refusal.message).toContain('compatible task options');
+    expect(refusal.message).toContain(
+      'docs/guides/HARNESS_COMPATIBILITY.md#voter-transport--performance-consensus_vote-and-similar-tools'
+    );
+    expect(new ClaudeCliAdapter().enforcesReadOnlyAnalysis).toBe(true);
+    expect(new CodexCliAdapter().enforcesReadOnlyAnalysis).toBe(true);
+    expect(new CodexMcpAdapter().enforcesReadOnlyAnalysis).toBe(true);
+  });
+
+  it('preserves the workspace-edit conflict message', () => {
+    expect(accessModeConflict('claude', 'workspace-edit', 'conflicting task options').message).toBe(
+      'Refusing to run claude in workspace-edit mode: conflicting task options.'
+    );
   });
 });
 

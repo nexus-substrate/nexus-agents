@@ -176,6 +176,8 @@ logging:
 
 All configuration can be overridden with environment variables:
 
+The MCP server process receives its environment from the client's server configuration when it launches. After changing that configuration, restart the client (or its MCP server process) to apply the new values. Some settings are read during calls, while others are retained from startup or adapter initialization; do not rely on hot reload.
+
 **Every `NEXUS_*` variable is validated at startup** against
 `packages/nexus-agents/src/config/env-schema.ts`. A name the schema does not
 recognize is reported as unknown, with a typo suggestion — including a name

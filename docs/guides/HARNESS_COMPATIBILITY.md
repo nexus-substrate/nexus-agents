@@ -31,6 +31,8 @@ export NEXUS_OPENAI_COMPAT_KEY=...
 
 See [CUSTOM_ENDPOINT_SETUP.md](./CUSTOM_ENDPOINT_SETUP.md) for the custom-gateway path in depth.
 
+The MCP server process receives its environment from the client's server configuration when it launches. After changing that configuration, restart the client (or its MCP server process) to apply the new values. Some settings are read during calls, while others are retained from startup or adapter initialization; do not rely on hot reload.
+
 ### Voter transport / performance (consensus_vote and similar tools)
 
 Tools that collect multiple LLM "votes" (e.g. `consensus_vote`) need one model
