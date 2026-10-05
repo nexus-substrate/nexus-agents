@@ -72,6 +72,46 @@ function extended(votes: readonly AgentVoteResult[]): ExtendedVotingResult {
 
 const INPUT = { proposal: 'Ratify commit abc', simulateVotes: false, quickMode: false } as const;
 
+describe('consensus_vote response: assigned roster diversity', () => {
+  it('discloses every assignment when only one of three assigned seats responds', () => {
+    const votes = [
+      seat('architect', { pinnedModel: 'claude-opus', model: 'claude-opus' }),
+      seat('security', { pinnedModel: 'openai/o3', source: 'error', model: undefined }),
+      seat('pm', {
+        pinnedModel: 'gemini-3.1-pro-preview',
+        source: 'unverifiable',
+        vote: { decision: 'abstain', reasoning: 'Cannot inspect artifact', confidence: 0 },
+      }),
+    ];
+    const response = buildResponse(INPUT, extended(votes));
+    expect(response).toMatchObject({ assignedDistinctModels: 3, assignedDistinctFamilies: 3 });
+    expect(response.panelDiversity).toMatchObject({ distinctModels: 1, distinctFamilies: 1 });
+    expect(response.votes.map((v) => v.assignedModel)).toEqual([
+      'claude-opus',
+      'openai/o3',
+      'gemini-3.1-pro-preview',
+    ]);
+  });
+
+  it('reports one assigned model when every seat is assigned the same model', () => {
+    const votes = SEVEN.map((role) => seat(role, { pinnedModel: 'openai/o3' }));
+    expect(buildResponse(INPUT, extended(votes))).toMatchObject({
+      assignedDistinctModels: 1,
+      assignedDistinctFamilies: 1,
+    });
+  });
+
+  it('omits assignment measurements for a zero-seat roster or an unresolved assignment', () => {
+    const response = buildResponse(INPUT, extended([]));
+    expect(response).not.toHaveProperty('assignedDistinctModels');
+    expect(response).not.toHaveProperty('assignedDistinctFamilies');
+    expect(toAgentVoteSummary(seat('pm'))).not.toHaveProperty('assignedModel');
+    expect(toAgentVoteSummary(seat('pm', { pinnedModel: 'pending-detection' }))).not.toHaveProperty(
+      'assignedModel'
+    );
+  });
+});
+
 describe('consensus_vote response: panel diversity (#6115)', () => {
   it('an all-one-model panel of 7 reports distinctModels 1 and appends the warning', () => {
     const votes = SEVEN.map((role, i) =>
