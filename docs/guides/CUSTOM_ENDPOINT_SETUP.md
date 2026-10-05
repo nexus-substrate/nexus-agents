@@ -269,7 +269,7 @@ docker run --rm nexus-opencode run --format json -m opencode/big-pickle \
 
 ### What the Container Includes
 
-- **Node.js 22** + built nexus-agents with all dependencies
+- **Node.js 24** + built nexus-agents with all dependencies
 - **OpenCode v1.2.15** (pinned for reproducibility)
 - **MCP config** (`opencode.json`): nexus-agents connected via stdio local transport
 - **Provider config**: Anthropic + custom OpenAI-compatible endpoint preconfigured

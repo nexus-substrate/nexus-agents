@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](https://nodejs.org)
 [![Claims Registry Drift](https://img.shields.io/github/actions/workflow/status/nexus-substrate/nexus-agents/docs-check.yml?branch=main&label=claims%20registry)](https://github.com/nexus-substrate/nexus-agents/actions/workflows/docs-check.yml)
 
 ---
@@ -398,7 +398,7 @@ pnpm build
 pnpm test
 ```
 
-**Requirements:** Node.js 22.x LTS, pnpm 9.x
+**Requirements:** Node.js 24.x LTS, pnpm 9.x
 
 ---
 

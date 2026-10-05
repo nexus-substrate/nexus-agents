@@ -1,10 +1,10 @@
 name: 'Setup Node.js'
-description: 'Setup pnpm + Node.js 22, install dependencies (requires checkout first)'
+description: 'Setup pnpm + Node.js 24, install dependencies (requires checkout first)'
 
 inputs:
   node-version:
     description: 'Node.js version'
-    default: '22'
+    default: '24'
   install:
     description: 'Run pnpm install'
     default: 'true'

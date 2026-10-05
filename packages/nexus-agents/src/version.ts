@@ -12,7 +12,7 @@ declare const __NEXUS_VERSION__: string;
 export const VERSION: string = typeof __NEXUS_VERSION__ !== 'undefined' ? __NEXUS_VERSION__ : 'dev';
 
 /** Supported Node.js versions. Pinned to package.json by a regression test. */
-export const NODE_ENGINE_RANGE = '>=22.5.0';
+export const NODE_ENGINE_RANGE = '>=24';
 
 /** Returns whether a Node.js version satisfies the package engine requirement. */
 export function isNodeVersionSupported(version: string): boolean {

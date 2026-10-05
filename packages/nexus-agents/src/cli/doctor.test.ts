@@ -14,6 +14,9 @@ import { GeminiCliAdapter } from '../cli-adapters/adapters/gemini-adapter.js';
 import * as authEvidence from '../cli-adapters/auth-evidence.js';
 import type { AuthProbeResult } from './cli-auth-probe.js';
 
+// Healthy-path checks use a supported runtime even when the host is on Node 22.
+beforeEach(() => vi.spyOn(process, 'version', 'get').mockReturnValue('v24.0.0'));
+
 const { TEST_VERSION } = vi.hoisted(() => ({ TEST_VERSION: '1.0.0' }));
 
 vi.mock('../version.js', async (importOriginal) => {
@@ -157,8 +160,8 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       },
     ],
     nodeVersion: {
-      version: 'v22.0.0',
-      major: 22,
+      version: 'v24.0.0',
+      major: 24,
       supported: true,
     },
     apiKeys: [
@@ -1288,7 +1291,7 @@ describe('Doctor Command', () => {
 
       const output = writeSpy.mock.calls.map((c) => c[0]).join('');
       expect(output).toContain('Node.js version');
-      expect(output).toContain('v22.0.0');
+      expect(output).toContain('v24.0.0');
 
       writeSpy.mockRestore();
     });
@@ -1307,7 +1310,7 @@ describe('Doctor Command', () => {
       expect(output).toContain('Node.js version');
       expect(output).toContain('v18.0.0');
       expect(output).toContain('Warning');
-      expect(output).toContain('>=22.5.0');
+      expect(output).toContain('>=24');
 
       writeSpy.mockRestore();
     });

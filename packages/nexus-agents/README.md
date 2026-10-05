@@ -3,7 +3,7 @@
 > Governance substrate for your AI coding agents — adversarial review, drift-detected rules, tamper-evident append-only audit chain, human-gated closed-loop tuning (autonomous demotion, earned promotion)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue)](https://www.typescriptlang.org)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25-purple)](https://modelcontextprotocol.io)
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
@@ -325,7 +325,7 @@ if (result.ok) {
 
 ### Prerequisites
 
-- Node.js 22.x LTS
+- Node.js 24.x LTS
 - pnpm 9.x
 - TypeScript 5.9+
 

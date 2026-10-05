@@ -295,7 +295,7 @@ function printSqliteCheck(check: SqliteCheck): void {
     writeLine(
       `  ${colors.dim}Memory backends (agentic, adaptive, typed) require it${colors.reset}`
     );
-    writeLine(`  ${colors.dim}Fix: upgrade to Node >= 22.5.0${colors.reset}`);
+    writeLine(`  ${colors.dim}Fix: upgrade to Node ${NODE_ENGINE_RANGE}${colors.reset}`);
   }
 }
 

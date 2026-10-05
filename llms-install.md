@@ -4,7 +4,7 @@ nexus-agents is an intelligent orchestration platform for AI coding tools. It co
 
 ## Prerequisites
 
-- Node.js 22.x or later
+- Node.js 24.x or later
 - pnpm 9.x (or npm 10.x)
 
 ## Install
@@ -81,6 +81,6 @@ For the canonical, auto-generated list, see [docs/ENTRYPOINTS.md](docs/ENTRYPOIN
 If `nexus-agents doctor` reports issues:
 
 1. **No CLI adapters detected** — Set at least one API key above
-2. **SQLite Storage unavailable** — Upgrade to Node ≥ 22.5.0; storage is `node:sqlite`, a builtin, so there is nothing to rebuild
+2. **SQLite Storage unavailable** — Upgrade to Node ≥ 24; storage is `node:sqlite`, a builtin, so there is nothing to rebuild
 3. **`npm warn install-scripts` on npm 12** — Expected and benign; the install succeeds and nothing needs those scripts. No `npm install-scripts approve` required. See [INSTALLATION.md](docs/getting-started/INSTALLATION.md#native-code-and-install-scripts)
 4. **MCP connection fails** — Ensure `--mode=server` is in the args

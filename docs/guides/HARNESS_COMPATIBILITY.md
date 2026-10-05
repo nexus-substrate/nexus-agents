@@ -250,7 +250,7 @@ Restart VS Code; Cline should list `nexus-agents` in its MCP panel with its tool
 ```bash
 nexus-agents --mode=server < /dev/null
 # Should print "Starting MCP server..." and then wait for stdio input.
-# If it prints nothing or crashes, check Node version (22.x required)
+# If it prints nothing or crashes, check Node version (24.x required)
 # and that `nexus-agents doctor` passes.
 ```
 

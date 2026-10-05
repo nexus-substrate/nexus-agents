@@ -74,7 +74,7 @@ Default behavior (no env vars): per-repo state lands in `<repo>/.nexus-agents/`,
 
 ```bash
 docker run --rm -v "$(pwd)":/work -w /work -e DOCKER_CONTAINER=1 \
-  node:22 bash -c "npx nexus-agents auth status"
+  node:24 bash -c "npx nexus-agents auth status"
 ```
 
 Output:

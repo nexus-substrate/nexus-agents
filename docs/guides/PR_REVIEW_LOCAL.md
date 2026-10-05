@@ -15,7 +15,7 @@ The validated path for subscription users is `scripts/pr-review-local.ts` — ru
 
 - Claude CLI installed and authenticated (or Codex / Gemini / OpenCode CLI)
 - `gh` CLI authenticated against the repo
-- Node 22.x
+- Node 24.x
 
 ## One-shot
 

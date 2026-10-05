@@ -14,13 +14,13 @@
 #   docker compose -f docker-compose.consolidation-test.yml run --rm consolidation-normal
 #   docker compose -f docker-compose.consolidation-test.yml run --rm consolidation-sandbox
 #
-# No new Dockerfile — uses node:22 directly. The repo (with built dist/
+# No new Dockerfile — uses node:24 directly. The repo (with built dist/
 # and installed node_modules) is mounted read-only; only scratch + the
 # per-mode homedir are writable.
 
 services:
   consolidation-normal:
-    image: node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383
+    image: node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
     working_dir: /scratch
     environment:
       HOME: /test-home
@@ -32,7 +32,7 @@ services:
     command: ['bash', '/repo/scripts/consolidation-test.sh', 'normal']
 
   consolidation-sandbox:
-    image: node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383
+    image: node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
     working_dir: /scratch
     environment:
       HOME: /test-home

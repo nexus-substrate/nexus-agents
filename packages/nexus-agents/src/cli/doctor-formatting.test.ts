@@ -177,7 +177,7 @@ describe('doctor-formatting', () => {
   ): DoctorResult => {
     const base = withScratch(options.scratchSpace, {
       allHealthy: options.allHealthy ?? true,
-      nodeVersion: options.nodeVersion ?? createNodeVersionCheck(true, 'v22.0.0'),
+      nodeVersion: options.nodeVersion ?? createNodeVersionCheck(true, 'v24.0.0'),
       apiKeys: options.apiKeys ?? [],
       configFile: options.configFile ?? createConfigFileCheck(true, './nexus-agents.yaml'),
       clis: options.clis ?? [],
@@ -595,7 +595,7 @@ describe('doctor-formatting', () => {
 
     it('should print Node.js version with correct status', () => {
       const testCases = [
-        { supported: true, version: 'v22.1.0', color: '\x1b[32m', warning: false },
+        { supported: true, version: 'v24.0.0', color: '\x1b[32m', warning: false },
         { supported: false, version: 'v18.0.0', color: '\x1b[33m', warning: true },
       ];
 
@@ -611,8 +611,17 @@ describe('doctor-formatting', () => {
         expect(nodeCall).toContain(tc.color);
         expect(nodeCall).toContain(tc.version);
         if (tc.warning)
-          expect(calls.some((call) => call.includes('Node.js >=22.5.0 required'))).toBe(true);
+          expect(calls.some((call) => call.includes('Node.js >=24 required'))).toBe(true);
       }
+    });
+
+    it('recommends Node 24 when SQLite is unavailable (#5163)', () => {
+      const result = {
+        ...createDoctorResult(),
+        sqliteCheck: { available: false, error: 'node:sqlite unavailable' },
+      };
+      printDoctorResults(result);
+      expect(getCalls().some((call) => call.includes('Fix: upgrade to Node >=24'))).toBe(true);
     });
 
     it('should print API keys status correctly', () => {
