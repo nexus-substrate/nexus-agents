@@ -30,16 +30,28 @@ function recordedSeats(record: VoteRecord): AgentVoteResult[] {
     },
     processingTimeMs: 0,
   }));
-  const coverage = record.panelCoverage;
-  for (let index = 0; index < (coverage?.errored ?? 0); index++) {
+  // Built from the role list, never from the producer-supplied count: the count
+  // is unbounded by the schema, so looping over it is an allocation an attacker
+  // controls. `coverageDefect` has already required the two to agree.
+  for (const role of record.panelCoverage?.erroredRoles ?? []) {
     seats.push({
-      role: (coverage?.erroredRoles[index] ?? `errored-seat-${String(index)}`) as VoterRole,
+      role: role as VoterRole,
       source: 'error',
       vote: { decision: 'abstain', confidence: 0, reasoning: '' },
       processingTimeMs: 0,
     });
   }
   return seats;
+}
+
+/** An errored count that disagrees with its role list cannot be a real panel's. */
+function coverageDefect(record: VoteRecord): string | undefined {
+  const coverage = record.panelCoverage;
+  if (coverage === undefined) return undefined;
+  if (coverage.errored !== coverage.erroredRoles.length) {
+    return `errored count ${String(coverage.errored)} disagrees with ${String(coverage.erroredRoles.length)} errored role(s)`;
+  }
+  return undefined;
 }
 
 /** Roles that occur more than once across answering and errored seats, sorted. */
@@ -72,6 +84,8 @@ function seatEvidenceDefect(
 
 /** Never read the producer's aggregate decision, counts or approval percentage. */
 export function recomputeRecordDecision(record: VoteRecord): VoteDecisionOutcome {
+  const coverage = coverageDefect(record);
+  if (coverage !== undefined) return { decision: 'no_quorum', degradeReason: coverage };
   const seats = recordedSeats(record);
   const defect = seatEvidenceDefect(record.voters.length, seats);
   if (defect !== undefined) return { decision: 'no_quorum', degradeReason: defect };

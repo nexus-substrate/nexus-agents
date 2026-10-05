@@ -21,6 +21,7 @@ import type { ConsensusResult, Vote } from '../packages/nexus-agents/src/consens
 import type { AgentVoteResult, VoterRole } from '../packages/nexus-agents/src/cli/vote-types.js';
 import type { VoteRecord } from '../packages/nexus-agents/src/audit/vote-record.js';
 import type { RedactionRecord } from '../packages/nexus-agents/src/audit/redaction-record.js';
+import { recomputeRecordDecision } from './governor-ledger-verdict.js';
 import {
   buildRedactionRecord,
   redactVoterOpenings,
@@ -261,6 +262,20 @@ describe('#6952 recomputed seat verdict', () => {
     expect(formatLedgerEvidence(e)).toContain(
       "stored decision 'rejected' disagrees with recomputed decision 'approved'"
     );
+  });
+
+  it('refuses an errored count that disagrees with its roles, without allocating it', () => {
+    // The count is producer-supplied and unbounded by the schema; a forged
+    // 1e9 must be refused, not looped over.
+    const forged: VoteRecord = {
+      ...record('forged-coverage', { sequence: 0 }),
+      panelCoverage: { requested: 3, responded: 3, errored: 1_000_000_000, erroredRoles: [] },
+    };
+    const started = Date.now();
+    const outcome = recomputeRecordDecision(forged);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(outcome.decision).toBe('no_quorum');
+    expect(outcome.degradeReason).toContain('errored count');
   });
 
   it('refuses a record whose repeated roles would count one seat several times', () => {
