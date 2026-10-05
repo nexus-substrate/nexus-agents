@@ -4,7 +4,10 @@
  * `createTaskHandler` with an injected `execute`, and `EXECUTE_EXPERT_TOOL_SCHEMA`.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
 import type {
   CreateTaskRequestHandlerExtra,
@@ -16,6 +19,15 @@ import { DEFAULT_TASK_TTL_MS } from '../task-store.js';
 import { EXPERT_TIMEOUTS } from '../../config/timeouts.js';
 import { createTaskHandler, EXECUTE_EXPERT_TOOL_SCHEMA } from './execute-expert-task-handler.js';
 import { ExecuteExpertInputSchema } from './execute-expert.js';
+import { resetNexusDataDirCache } from '../../config/nexus-data-dir.js';
+import { defaultBusyEnvelope, runAsJob } from '../jobs/run-as-job.js';
+import {
+  _resetForTests as resetConcurrency,
+  getInFlight,
+  getTotalInFlight,
+  suggestRetryAfterMs,
+  tryAcquire,
+} from '../jobs/job-concurrency.js';
 
 /** The parent's `ExpertResult` shape, as the injected execute path returns it. */
 type StubResult =
@@ -351,5 +363,158 @@ describe('createTaskHandler getTask / getTaskResult', () => {
     await expect(h.handler.getTaskResult(VALID_ARGS, extra)).resolves.toEqual({ content: [] });
     expect(getTask).toHaveBeenCalledWith('task-9');
     expect(getTaskResult).toHaveBeenCalledWith('task-9');
+  });
+});
+
+describe('createTaskHandler shared job concurrency caps', () => {
+  let dataDir: string;
+
+  beforeEach(() => {
+    resetConcurrency();
+    vi.stubEnv('NEXUS_JOB_MAX_CONCURRENT_EXECUTE_EXPERT', '4');
+    vi.stubEnv('NEXUS_JOB_MAX_CONCURRENT_TOTAL', '10');
+    dataDir = mkdtempSync(join(tmpdir(), 'nexus-expert-task-caps-'));
+    vi.stubEnv('NEXUS_DATA_DIR', dataDir);
+    resetNexusDataDirCache();
+  });
+
+  afterEach(() => {
+    resetConcurrency();
+    vi.unstubAllEnvs();
+    resetNexusDataDirCache();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('rejects at the per-tool cap with the job busy error and creates no task', async () => {
+    for (let i = 0; i < 4; i++) expect(tryAcquire('execute_expert')).toBe(true);
+    const h = createHarness(() => Promise.resolve({ ok: false, error: 'unreachable' }));
+    const busy = defaultBusyEnvelope(suggestRetryAfterMs('execute_expert'), 'execute_expert');
+
+    await expect(h.handler.createTask(VALID_ARGS, h.extra)).rejects.toEqual(
+      new Error(busy.content[0]!.text)
+    );
+
+    expect(h.createTaskInStore).not.toHaveBeenCalled();
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(getInFlight('execute_expert')).toBe(4);
+    expect(getTotalInFlight()).toBe(4);
+  });
+
+  it('rejects at the global cap even when no expert task is running', async () => {
+    for (let i = 0; i < 10; i++) expect(tryAcquire('other_tool')).toBe(true);
+    const h = createHarness(() => Promise.resolve({ ok: false, error: 'unreachable' }));
+    const busy = defaultBusyEnvelope(suggestRetryAfterMs('execute_expert'), 'execute_expert');
+
+    await expect(h.handler.createTask(VALID_ARGS, h.extra)).rejects.toEqual(
+      new Error(busy.content[0]!.text)
+    );
+
+    expect(h.createTaskInStore).not.toHaveBeenCalled();
+    expect(getInFlight('execute_expert')).toBe(0);
+    expect(getTotalInFlight()).toBe(10);
+  });
+
+  it.each(['success', 'failed result', 'thrown executor'] as const)(
+    'counts an in-flight task and releases exactly its slot after %s',
+    async (outcome) => {
+      expect(tryAcquire('execute_expert')).toBe(true);
+      expect(tryAcquire('other_tool')).toBe(true);
+      const priorTool = getInFlight('execute_expert');
+      const priorTotal = getTotalInFlight();
+      const gate = Promise.withResolvers<undefined>();
+      const h = createHarness(async () => {
+        await gate.promise;
+        if (outcome === 'thrown executor') throw new Error('executor failed');
+        if (outcome === 'failed result') return { ok: false, error: 'failed result' };
+        return {
+          ok: true,
+          value: { expertId: 'e', role: 'code', status: 'success', tokensUsed: 1 },
+        };
+      });
+
+      try {
+        await h.handler.createTask(VALID_ARGS, h.extra);
+        expect(getInFlight('execute_expert')).toBe(priorTool + 1);
+        expect(getTotalInFlight()).toBe(priorTotal + 1);
+      } finally {
+        gate.resolve(undefined);
+      }
+
+      await vi.waitFor(() => {
+        expect(h.storeTaskResult).toHaveBeenCalledWith(
+          'task-1',
+          outcome === 'success' ? 'completed' : 'failed',
+          expect.anything()
+        );
+        expect(getInFlight('execute_expert')).toBe(priorTool);
+        expect(getTotalInFlight()).toBe(priorTotal);
+      });
+    }
+  );
+
+  it('releases the reserved slot immediately when task creation rejects', async () => {
+    expect(tryAcquire('execute_expert')).toBe(true);
+    expect(tryAcquire('other_tool')).toBe(true);
+    const priorTool = getInFlight('execute_expert');
+    const priorTotal = getTotalInFlight();
+    const h = createHarness(() => Promise.resolve({ ok: false, error: 'unreachable' }));
+    const creation = Promise.withResolvers<never>();
+    h.createTaskInStore.mockReturnValueOnce(creation.promise);
+    const rejected = expect(h.handler.createTask(VALID_ARGS, h.extra)).rejects.toThrow(
+      'store down'
+    );
+
+    try {
+      expect(getInFlight('execute_expert')).toBe(priorTool + 1);
+      expect(getTotalInFlight()).toBe(priorTotal + 1);
+    } finally {
+      creation.reject(new Error('store down'));
+    }
+    await rejected;
+
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(getInFlight('execute_expert')).toBe(priorTool);
+    expect(getTotalInFlight()).toBe(priorTotal);
+  });
+
+  it('enforces one shared cap for a job-lane slot plus task-lane slots', async () => {
+    const job = Promise.withResolvers<{ ok: true }>();
+    const tasks = Promise.withResolvers<StubResult>();
+    const h = createHarness(() => tasks.promise);
+
+    try {
+      runAsJob({
+        toolName: 'execute_expert',
+        input: VALID_ARGS,
+        freshJobId: () => 'job-shared-cap',
+        run: () => job.promise,
+      });
+      for (let i = 0; i < 3; i++) await h.handler.createTask(VALID_ARGS, h.extra);
+      expect(getInFlight('execute_expert')).toBe(4);
+      expect(getTotalInFlight()).toBe(4);
+      const busy = defaultBusyEnvelope(suggestRetryAfterMs('execute_expert'), 'execute_expert');
+
+      await expect(h.handler.createTask(VALID_ARGS, h.extra)).rejects.toThrow(
+        busy.content[0]!.text
+      );
+      const overflow = vi.fn(() => job.promise);
+      expect(
+        runAsJob({
+          toolName: 'execute_expert',
+          input: VALID_ARGS,
+          freshJobId: () => 'job-overflow',
+          run: overflow,
+        })
+      ).toEqual(busy);
+      expect(overflow).not.toHaveBeenCalled();
+      expect(h.createTaskInStore).toHaveBeenCalledTimes(3);
+    } finally {
+      job.resolve({ ok: true });
+      tasks.resolve({ ok: false, error: 'settled' });
+      await vi.waitFor(() => {
+        expect(getInFlight('execute_expert')).toBe(0);
+        expect(getTotalInFlight()).toBe(0);
+      });
+    }
   });
 });
