@@ -33,14 +33,7 @@ interface TimestampExemption {
 }
 
 /** Temporary public-API compatibility exceptions; stale entries fail the scan. */
-const TIMESTAMP_EXEMPTIONS: readonly TimestampExemption[] = [
-  {
-    file: 'weather-report-output-schema.ts',
-    field: 'lastHitAt',
-    reason: 'epoch ms from exported RateLimitStats.lastHitAt; ISO conversion is a breaking change',
-    removalIssue: '#7066',
-  },
-];
+const TIMESTAMP_EXEMPTIONS: readonly TimestampExemption[] = [];
 
 /**
  * A timestamp-named identifier: ends in `At`/`Date` (camelCase, preceded by

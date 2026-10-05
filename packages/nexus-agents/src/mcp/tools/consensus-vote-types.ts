@@ -44,6 +44,7 @@ import {
   SUPERMAJORITY_THRESHOLD,
   VOTING_THRESHOLDS,
   type ConsensusAlgorithm,
+  type RejectionCategory,
 } from '../../consensus/types-core.js';
 import { checkUndeclaredOptions } from './consensus-vote-option-detection.js';
 import { resolveVoteDecision } from '../../consensus/decision/verdict.js';
@@ -345,7 +346,7 @@ export interface AgentVoteSummary {
    */
   modelUsed?: string;
   /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
-  rejectionCategories?: readonly string[];
+  rejectionCategories?: readonly RejectionCategory[];
   /**
    * True when this seat was recovered by the per-role retry (#6050).
    *

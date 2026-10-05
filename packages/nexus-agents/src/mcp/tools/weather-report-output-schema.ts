@@ -186,7 +186,7 @@ export const WEATHER_REPORT_OUTPUT_SCHEMA = {
       z.object({
         provider: z.string(),
         totalHits: z.number(),
-        lastHitAt: z.number(),
+        lastHitAt: z.iso.datetime(),
         avgRetryAfterMs: z.number().optional(),
       })
     )
