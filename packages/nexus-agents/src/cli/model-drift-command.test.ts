@@ -56,7 +56,7 @@ function run(
     },
     issueDeps: {
       ghAvailable: () => Promise.resolve(true),
-      listOpenIssueTitles: () => Promise.resolve([]),
+      listProposalIssueTitles: () => Promise.resolve([]),
       fileIssue,
     },
   });
