@@ -912,7 +912,7 @@ routing:
       research: 1.00 # Research tasks may spend more
 ```
 
-Two things to know before relying on ceilings:
+Three things to know before relying on ceilings:
 
 - **`NEXUS_BILLING_MODE=api` is required.** Ceilings are only enforced in
   cost-aware (`api`) billing mode. Under the default `plan` mode they are an
@@ -924,6 +924,14 @@ Two things to know before relying on ceilings:
   ceiling. If every candidate exceeds the ceiling (or is unpriced), routing
   fails at the budget-filter stage rather than falling back to
   all-candidates.
+- **List-price admissions are warned.** A candidate whose list-price estimate
+  clears the ceiling stays in the pool. Its ceiling-evaluation record logs at
+  warning level with `priceBasis: 'list'`, `ceilingMeasurement: 'estimated'`,
+  `withinCeiling: true`, and a `caveat` that actual contract or gateway charges
+  may differ. This check does not guarantee actual spend stays below the ceiling.
+  Explicit `NEXUS_GATEWAY_COST` rates (`priced:<in>,<out>`, `free`, or `local`)
+  use `declared`: they are the operator's own rates, and admissions log at info
+  level without a caveat or warning. Bare `priced` uses registry list prices.
 
 Omit `taskClassMaxCostUsd` (or leave it empty) to disable ceilings entirely
 (the default).

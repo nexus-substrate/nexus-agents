@@ -2,9 +2,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BudgetRouter } from './budget-router.js';
 import { getGlobalLogLevel, setGlobalLogLevel } from '../core/logger.js';
+import { priceBasisCaveat } from '../core/price-basis.js';
 
 describe('task-class ceiling default logging', () => {
-  it('emits basis and unmeasured evidence at info level with the real logger', () => {
+  it('emits list warnings and unmeasured evidence with the real logger at info level', () => {
     const previousLevel = getGlobalLogLevel();
     setGlobalLogLevel('info');
     const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -14,14 +15,19 @@ describe('task-class ceiling default logging', () => {
       sessionBudget: { resetIntervalMs: 0 },
     });
     try {
-      router.filterByTaskClassCeiling({ content: 'implement a function', maxTokens: 10_000 }, [
-        'gemini',
-        'codex',
-      ]);
+      vi.stubEnv('NEXUS_BILLING_MODE', 'api');
+      expect(
+        router.filterByTaskClassCeiling({ content: 'implement a function', maxTokens: 10_000 }, [
+          'gemini',
+          'codex',
+        ])
+      ).toEqual(['gemini']);
       const output = [...stdout.mock.calls, ...stderr.mock.calls]
         .map(([chunk]) => String(chunk))
         .join('');
       expect(output).toContain('Cost ceiling: candidate evaluated');
+      expect(output).toContain(JSON.stringify(priceBasisCaveat('list')));
+      expect(output).toContain('"level":"warn"');
       expect(output).toContain('"priceBasis":"list"');
       expect(output).toContain('"priceBasis":"unknown"');
       expect(output).toContain('"ceilingMeasurement":"unmeasured"');
@@ -30,6 +36,7 @@ describe('task-class ceiling default logging', () => {
       setGlobalLogLevel(previousLevel);
       stdout.mockRestore();
       stderr.mockRestore();
+      vi.unstubAllEnvs();
     }
   });
 });
