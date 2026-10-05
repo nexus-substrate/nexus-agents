@@ -177,6 +177,8 @@ const WHOLE_PANEL: readonly AgentVoteResult[] = [
 const DEGRADED_PANEL: readonly AgentVoteResult[] = [
   seat('architect', 'approve'),
   seat('security', 'approve'),
+  // Three respondents meet the canonical floor; isolate the errored-seat check.
+  seat('devex', 'approve'),
   seat('scope_steward', 'abstain', true),
 ];
 
@@ -228,6 +230,131 @@ function ledgerText(records: readonly VoteRecord[]): string {
 }
 
 const AT_HEAD = { sha: HEAD, parentSha: PARENT, commitFiles: ['scripts/x.ts'] } as const;
+
+describe('#6952 recomputed seat verdict', () => {
+  function evidence(opts: Omit<RecordOpts, 'sequence'>): LedgerEvidence {
+    return evaluateLedgerEvidence({
+      ledgerText: ledgerText([record('recomputed', { sequence: 0, ...opts })]),
+      pr: PR,
+      head: AT_HEAD,
+    });
+  }
+
+  it('refuses stored approval when seats tally below supermajority', () => {
+    const e = evidence({
+      errorPolicy: 'absolute_quorum',
+      votes: [
+        seat('architect', 'approve'),
+        seat('security', 'reject'),
+        seat('scope_steward', 'reject'),
+      ],
+    });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain(
+      "stored decision 'approved' disagrees with recomputed decision 'rejected'"
+    );
+  });
+
+  it('refuses stored rejection when seats approve as a mismatch', () => {
+    const e = evidence({ decision: 'rejected', errorPolicy: 'absolute_quorum' });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain(
+      "stored decision 'rejected' disagrees with recomputed decision 'approved'"
+    );
+  });
+
+  it.each(['supermajority', 'unanimous'] as const)('passes genuine approval at %s', (strategy) => {
+    expect(evidence({ strategy, errorPolicy: 'absolute_quorum' }).kind).toBe('ratified');
+  });
+
+  it('accepts the exact two-of-three supermajority despite stale aggregate counts', () => {
+    expect(
+      evidence({
+        errorPolicy: 'absolute_quorum',
+        votes: [
+          seat('architect', 'approve'),
+          seat('security', 'approve'),
+          seat('scope_steward', 'reject'),
+        ],
+      }).kind
+    ).toBe('ratified');
+  });
+
+  it('voids absolute_quorum when respondent approvals miss the absolute floor', () => {
+    const e = evidence({
+      errorPolicy: 'absolute_quorum',
+      votes: [
+        seat('architect', 'approve'),
+        seat('security', 'approve'),
+        seat('devex', 'approve'),
+        seat('scope_steward', 'approve'),
+        seat('catfish', 'abstain'),
+        seat('ai_ml', 'abstain'),
+        seat('pm', 'abstain'),
+      ],
+    });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain("recomputed decision 'no_quorum'");
+    expect(formatLedgerEvidence(e)).toContain('4/5 approvals over 7-voter panel');
+  });
+
+  it('refuses zero voters explicitly', () => {
+    const e = evidence({ votes: [], errorPolicy: 'absolute_quorum' });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain('zero voters');
+  });
+
+  it('voids an unverifiable seat under absolute_quorum', () => {
+    const e = evidence({
+      errorPolicy: 'absolute_quorum',
+      votes: [
+        seat('architect', 'approve'),
+        seat('security', 'approve'),
+        { ...seat('scope_steward', 'abstain'), source: 'unverifiable' },
+      ],
+    });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain('unverifiable');
+  });
+
+  it('voids an errored seat under absolute_quorum', () => {
+    const e = evidence({ votes: DEGRADED_PANEL, errorPolicy: 'absolute_quorum' });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain("recomputed decision 'no_quorum'");
+    expect(formatLedgerEvidence(e)).toContain('scope_steward');
+  });
+
+  it('voids a thin approval under the canonical respondent floor even with a legacy policy', () => {
+    const e = evidence({
+      votes: [
+        seat('architect', 'approve'),
+        seat('security', 'approve'),
+        seat('scope_steward', 'abstain', true),
+      ],
+    });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain('2 of 3 voters decided; 3 required');
+  });
+
+  it('excludes an abstention from the ratio while meeting the absolute supermajority floor', () => {
+    expect(
+      evidence({
+        errorPolicy: 'absolute_quorum',
+        votes: [...WHOLE_PANEL, seat('devex', 'abstain')],
+      }).kind
+    ).toBe('ratified');
+  });
+
+  it('requires every requested approval for absolute unanimous quorum', () => {
+    const e = evidence({
+      strategy: 'unanimous',
+      errorPolicy: 'absolute_quorum',
+      votes: [...WHOLE_PANEL, seat('devex', 'abstain')],
+    });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain('3/4 approvals over 4-voter panel');
+  });
+});
 
 function kindOf(e: LedgerEvidence): LedgerEvidence['kind'] {
   return e.kind;
@@ -329,8 +456,8 @@ describe('evaluateLedgerEvidence', () => {
     expect(e.kind).toBe('degraded-panel');
     if (e.kind !== 'degraded-panel') throw new Error('unreachable');
     expect(e.coverage).toEqual({
-      requested: 3,
-      responded: 2,
+      requested: 4,
+      responded: 3,
       errored: 1,
       erroredRoles: ['scope_steward'],
     });
@@ -659,12 +786,13 @@ describe('panel coverage is REQUIRED on a bound record (#6213, unmeasured-panel)
     ).toBe('degraded-panel');
   });
 
-  it('a bound record whose coverage says 0 of 0 seats → unmeasured-panel (the empty panel is named)', () => {
+  it('zero voters fail the verdict and also name unmeasured panel coverage', () => {
     const r = record('v0', { sequence: 0, votes: [] });
     expect(r.panelCoverage?.requested).toBe(0);
-    expect(
-      kindOf(evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR, head: AT_HEAD }))
-    ).toBe('unmeasured-panel');
+    const e = evaluateLedgerEvidence({ ledgerText: ledgerText([r]), pr: PR, head: AT_HEAD });
+    expect(e.kind).toBe('not-approved');
+    expect(formatLedgerEvidence(e)).toContain('zero voters');
+    expect(formatLedgerEvidence(e)).toContain('unmeasured-panel');
   });
 
   it('an UNBOUND record without coverage is irrelevant: the bound whole record still ratifies', () => {
@@ -1678,7 +1806,7 @@ describe('end to end: persistVoteRecord → append-ratification-record.ts → th
 
   it('a degraded panel produced by the real store → degraded-panel', () => {
     // The append script refuses `decision !== approved` but not a degraded
-    // approval — under reduce_denominator a 2-of-3 responded panel records as
+    // approval — under reduce_denominator a 3-of-4 responded panel records as
     // approved. This is the row the gate exists to catch (#5779).
     produce('vote-e2e', { sequence: 0, votes: DEGRADED_PANEL });
     expect(append('vote-e2e').status).toBe(0);
