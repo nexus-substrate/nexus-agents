@@ -13,7 +13,7 @@
  */
 
 import { computeTokenCost, roundToMicroUsd } from '../learning/token-cost-core.js';
-import type { PriceBasis } from '../core/price-basis.js';
+import { priceBasisCaveat, type PriceBasis } from '../core/price-basis.js';
 import { createLogger } from '../core/logger.js';
 import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
@@ -222,6 +222,7 @@ function ceilingPriceBasis(
  * Missing pricing stays `undefined` and `unknown`, never a measured $0.
  * Explicit gateway rates (including free/local) use `declared`; registry
  * rates use `list`, including a gateway's bare `priced` declaration.
+ * Admitted list-price estimates are warnings with the canonical caveat.
  * Wrapping the existing policy preserves its arithmetic and arm resolution.
  */
 export function recordCeilingCostOfArm(
@@ -233,13 +234,17 @@ export function recordCeilingCostOfArm(
 ): { readonly costUsd: number | undefined; readonly priceBasis: PriceBasis } {
   const costUsd = ceilingCostOfArm(target, inputTokens, outputTokens, env);
   const priceBasis = ceilingPriceBasis(target, costUsd, env);
-  ceilingLogger.info('Cost ceiling: candidate evaluated', {
+  const withinCeiling = costUsd !== undefined && costUsd <= ceiling;
+  const caveat = priceBasis === 'list' && withinCeiling ? priceBasisCaveat('list') : undefined;
+  const level = caveat === undefined ? 'info' : 'warn';
+  ceilingLogger[level]('Cost ceiling: candidate evaluated', {
     arm: target.arm,
     ceiling,
     ...(costUsd !== undefined ? { cost: costUsd } : {}),
     priceBasis,
     ceilingMeasurement: costUsd === undefined ? 'unmeasured' : 'estimated',
-    withinCeiling: costUsd !== undefined && costUsd <= ceiling,
+    withinCeiling,
+    ...(caveat !== undefined ? { caveat } : {}),
   });
   return { costUsd, priceBasis };
 }

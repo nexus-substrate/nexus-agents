@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BudgetRouter } from './budget-router.js';
 import type { CliTask, RoutingArmId } from './types.js';
 import { recordCeilingCostOfArm } from './budget-arm-cost.js';
+import { priceBasisCaveat } from '../core/price-basis.js';
 
 const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 vi.mock('../core/logger.js', async (importOriginal) => {
@@ -32,26 +33,35 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
     vi.unstubAllEnvs();
   });
 
-  it.each([
-    { arm: 'gemini', withinCeiling: true },
-    { arm: 'claude', withinCeiling: false },
-  ] as const)(
-    'records list basis for $arm with withinCeiling=$withinCeiling',
-    ({ arm, withinCeiling }) => {
-      router.filterByTaskClassCeiling(task, [arm]);
-      expect(log.info).toHaveBeenCalledWith(
-        'Cost ceiling: candidate evaluated',
-        expect.objectContaining({
-          arm,
-          ceiling: 0.2,
-          cost: expect.any(Number),
-          priceBasis: 'list',
-          ceilingMeasurement: 'estimated',
-          withinCeiling,
-        })
-      );
-    }
-  );
+  it('admits a list candidate under the ceiling with a warning and caveat', () => {
+    expect(router.filterByTaskClassCeiling(task, ['gemini'])).toEqual(['gemini']);
+    expect(log.warn).toHaveBeenCalledWith('Cost ceiling: candidate evaluated', {
+      arm: 'gemini',
+      ceiling: 0.2,
+      cost: expect.any(Number),
+      priceBasis: 'list',
+      ceilingMeasurement: 'estimated',
+      withinCeiling: true,
+      caveat: priceBasisCaveat('list'),
+    });
+    expect(log.info).not.toHaveBeenCalledWith(
+      'Cost ceiling: candidate evaluated',
+      expect.anything()
+    );
+  });
+
+  it('drops a list candidate over the ceiling at info with no caveat or warning', () => {
+    expect(router.filterByTaskClassCeiling(task, ['claude'])).toEqual([]);
+    expect(log.info).toHaveBeenCalledWith('Cost ceiling: candidate evaluated', {
+      arm: 'claude',
+      ceiling: 0.2,
+      cost: expect.any(Number),
+      priceBasis: 'list',
+      ceilingMeasurement: 'estimated',
+      withinCeiling: false,
+    });
+    expect(log.warn).not.toHaveBeenCalled();
+  });
 
   it.each(['codex', 'api:custom-openai'] as const)(
     'records unknown basis and an unmeasured ceiling for unpriced %s',
@@ -64,6 +74,7 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
         ceilingMeasurement: 'unmeasured',
         withinCeiling: false,
       });
+      expect(log.warn).not.toHaveBeenCalled();
     }
   );
 
@@ -80,6 +91,37 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
       ceilingMeasurement: 'estimated',
       withinCeiling: true,
     });
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('admits explicit declared rates under the ceiling at info with no caveat or warning', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:2,10');
+    expect(router.filterByTaskClassCeiling(task, ['api:custom-openai'])).toEqual([
+      'api:custom-openai',
+    ]);
+    expect(log.info).toHaveBeenCalledWith('Cost ceiling: candidate evaluated', {
+      arm: 'api:custom-openai',
+      cost: expect.any(Number),
+      ceiling: 0.2,
+      priceBasis: 'declared',
+      ceilingMeasurement: 'estimated',
+      withinCeiling: true,
+    });
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('drops declared rates over the ceiling at info with no caveat or warning', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'priced:50,50');
+    expect(router.filterByTaskClassCeiling(task, ['api:custom-openai'])).toEqual([]);
+    expect(log.info).toHaveBeenCalledWith('Cost ceiling: candidate evaluated', {
+      arm: 'api:custom-openai',
+      cost: expect.any(Number),
+      ceiling: 0.2,
+      priceBasis: 'declared',
+      ceilingMeasurement: 'estimated',
+      withinCeiling: false,
+    });
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
   it('records explicit gateway rates as declared while bare priced remains list', () => {
@@ -99,6 +141,7 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
 
   it('names the empty pool: no candidates and no candidate measurements', () => {
     expect(router.filterByTaskClassCeiling(task, [])).toEqual([]);
+    expect(log.warn).not.toHaveBeenCalled();
     expect(log.info).not.toHaveBeenCalledWith(
       'Cost ceiling: candidate evaluated',
       expect.anything()
@@ -109,6 +152,8 @@ describe('task-class ceiling price-basis evidence (#5095)', () => {
     const disabled = new BudgetRouter(new Map(), { sessionBudget: { resetIntervalMs: 0 } });
     try {
       expect(disabled.filterByTaskClassCeiling(task, ['codex'])).toEqual(['codex']);
+      expect(disabled.filterByTaskClassCeiling(task, ['gemini'])).toEqual(['gemini']);
+      expect(log.warn).not.toHaveBeenCalled();
       expect(log.info).not.toHaveBeenCalledWith(
         'Cost ceiling: candidate evaluated',
         expect.anything()
