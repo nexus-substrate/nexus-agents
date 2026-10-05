@@ -112,17 +112,17 @@ claims:
     evidenceType: adr
     verification:
       method: file-contains
-      path: packages/nexus-agents/src/audit/audit-logger.ts
+      path: packages/nexus-agents/src/audit/audit-chain-verify.ts
       expected: 'export function verifyChain'
       subjectContains: 'Tamper-evident hash-chained'
     lastVerified: '2026-06-17'
     caveat: >-
       Tamper-EVIDENT, not tamper-PROOF / immutable. computeEventHash
-      (audit-logger.ts:64) is a KEYLESS SHA-256 over only
+      (audit-chain-verify.ts) is a KEYLESS SHA-256 over only
       {id,timestamp,category,action,outcome,actor,previousHash} (plus the
       tier-transition payload for tier.* events, #3921) — partial-schema
       coverage, so a write-capable adversary can truncate/fork/rewrite-and-rehash
-      undetectably. verifyChain (audit-logger.ts:153) only detects post-hoc
+      undetectably. verifyChain (audit-chain-verify.ts) only detects post-hoc
       in-place edits. See docs/security/audit-hash-chain-threat-model.md §7
       (and #3874).
 
