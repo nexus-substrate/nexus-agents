@@ -4,9 +4,12 @@
  * Tests TaskContract conversion and pipeline execution for orchestrate.
  * Phase 1 (#927): Tests PolicyEvaluator enforcement in orchestrate pipeline.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import { analyzeForContract } from './task-contract-builders.js';
+import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
+import { detectCapabilityGaps } from '../core/task-analysis/capability-gap-detector.js';
+import { TaskContractSchema } from './task-contract.js';
 import { orchestrateInputToTaskContract, executeOrchestratePipeline } from './v2-orchestrate.js';
 
 // ============================================================================
@@ -144,5 +147,54 @@ describe('executeOrchestratePipeline — policy enforcement', () => {
 
     expect(metrics.policyViolations).toBeUndefined();
     expect(metrics.policyMode).toBeUndefined();
+  });
+});
+
+describe('measured task contract (#5923)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, '0', '1'])(
+    'reports an inferred extraction gap with ledger recording flag %s',
+    (flag) => {
+      vi.stubEnv('NEXUS_CAPABILITY_GAP_INFERRED', flag);
+      const task = 'Extract class and function symbols from src/parser.py';
+      const contract = orchestrateInputToTaskContract({ task });
+
+      expect(contract.capabilityGaps.allSatisfied).toBe(false);
+      expect(contract.capabilityGaps.gapsMeasured).toBe(true);
+      expect(contract.requiredCapabilities.tools).toContain('extract_symbols:.py');
+      expect(contract.capabilityGaps.gaps).toEqual([
+        expect.objectContaining({ type: 'tool', name: 'extract_symbols:.py', origin: 'inferred' }),
+      ]);
+      expect(TaskContractSchema.safeParse(contract).success).toBe(true);
+    }
+  );
+
+  it('reports measured requirements, availability and scope for an ordinary task', () => {
+    const task = 'Implement a production-ready API in src/api.ts by Friday';
+    const analysis = createSharedTaskAnalyzer().analyze(task);
+    const report = detectCapabilityGaps(analysis.requiredCapabilities);
+    const contract = orchestrateInputToTaskContract({ task });
+
+    expect(contract.requiredCapabilities).toEqual(analysis.requiredCapabilities);
+    expect(contract.requiredCapabilities.tools.length).toBeGreaterThan(0);
+    expect(contract.capabilityGaps).toEqual({ ...report, gapsMeasured: true });
+    expect(contract.capabilityGaps.available.tools.length).toBeGreaterThan(0);
+    expect(contract.constraints).toEqual(analysis.constraints);
+    expect(contract.constraints.scope).toContain('api.ts');
+    expect(contract.analysis).toEqual({
+      complexity: analysis.complexity,
+      taskType: analysis.taskType,
+      ambiguityScore: analysis.ambiguityScore,
+    });
+    expect(TaskContractSchema.safeParse(contract).success).toBe(true);
+  });
+
+  it('emits empty scope and absent time/quality when no constraints are recognized', () => {
+    const contract = orchestrateInputToTaskContract({ task: 'Hello' });
+    expect(contract.constraints).toEqual({ scope: [] });
+    expect(contract.constraints).not.toHaveProperty('time');
+    expect(contract.constraints).not.toHaveProperty('quality');
+    expect(contract.capabilityGaps.gapsMeasured).toBe(true);
   });
 });

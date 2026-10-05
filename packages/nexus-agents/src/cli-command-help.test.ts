@@ -114,7 +114,7 @@ describe('formatCommandHelp', () => {
     const help = formatCommandHelp('doctor')!;
     expect(help).toContain('no model completions by default');
     expect(help).toContain(
-      'Probe pinned Claude and eligible adapters with real completions (may use quota)'
+      'One bounded completion per configured adapter (uses quota; failures exit nonzero)'
     );
     expect(help).not.toContain('default probes pinned Claude');
   });

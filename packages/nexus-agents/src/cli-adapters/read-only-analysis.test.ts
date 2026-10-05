@@ -131,40 +131,64 @@ describe('claude maps read-only analysis to disallowed tools (#6754)', () => {
   });
 });
 
-describe('opencode maps read-only analysis to an OPENCODE_PERMISSION deny config (#6754)', () => {
-  it('sets the deny config in the child env', () => {
-    const { env } = new OpenCodeProbe().command(READ_ONLY);
-    expect(Object.keys(env ?? {})).toEqual(['OPENCODE_PERMISSION']);
-    const permission = JSON.parse(env?.['OPENCODE_PERMISSION'] ?? 'null') as unknown;
-    expect(permission).toEqual({ bash: 'deny', edit: 'deny', webfetch: 'deny' });
+describe('opencode cannot enforce read-only analysis, so it refuses it (#6970)', () => {
+  // Observed live 2026-10-02 (opencode 1.15.13): under the OPENCODE_PERMISSION
+  // deny config, configured MCP servers still wrote into the tree, and
+  // opencode rewrote the project's opencode.json itself.
+  it('does not declare the mode', () => {
+    expect(new OpenCodeProbe().enforcesReadOnlyAnalysis).not.toBe(true);
   });
 
-  it('the default mode sets no env', () => {
-    expect(new OpenCodeProbe().command(DEFAULT_MODE).env).toBeUndefined();
-  });
-});
-
-describe('gemini (agy) maps read-only analysis to plan mode in a sandbox (#6754)', () => {
-  it('adds --mode plan and --sandbox, before the --print prompt', () => {
-    const { args } = new GeminiProbe().command(READ_ONLY);
-    expect(flagValue(args, '--mode')).toBe('plan');
-    expect(args).toContain('--sandbox');
-    expect(args.indexOf('--sandbox')).toBeLessThan(args.indexOf('--print'));
-  });
-
-  it('the default mode carries neither flag', () => {
-    const { args } = new GeminiProbe().command(DEFAULT_MODE);
-    expect(args).not.toContain('--mode');
-    expect(args).not.toContain('--sandbox');
-  });
-
-  it('executeWithMetadata applies the refusal too (it bypasses the base execute)', async () => {
-    const adapter = new GeminiProbe();
-    Object.defineProperty(adapter, 'enforcesReadOnlyAnalysis', { value: false });
-    const result = await adapter.executeWithMetadata(READ_ONLY);
+  it('refuses a read-only task without spawning', async () => {
+    const adapter = new OpenCodeProbe();
+    const spawn = vi.spyOn(adapter, 'executeTask');
+    const result = await adapter.execute(READ_ONLY, { allowRetry: false });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.message).toMatch(/cannot enforce/);
+    expect(isCallerInputCliError(result.error)).toBe(true);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('never sets the deny config it was found not to enforce', () => {
+    for (const task of [READ_ONLY, DEFAULT_MODE]) {
+      expect(new OpenCodeProbe().command(task).env).toBeUndefined();
+    }
+  });
+});
+
+describe('gemini (agy) cannot enforce read-only analysis, so it refuses it (#6962)', () => {
+  // Observed live 2026-10-02 (agy 1.2.15): `--mode plan --sandbox` wrote a new
+  // file and modified a committed one when the prompt asked it to.
+  it('does not declare the mode', () => {
+    expect(new GeminiProbe().enforcesReadOnlyAnalysis).not.toBe(true);
+  });
+
+  it('refuses a read-only task without running it', async () => {
+    const adapter = new GeminiProbe();
+    const spawn = vi.spyOn(adapter, 'executeTask');
+    const result = await adapter.execute(READ_ONLY, { allowRetry: false });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toMatch(/read-only analysis mode/);
+    expect(result.error.message).toMatch(/cannot enforce/);
+    expect(isCallerInputCliError(result.error)).toBe(true);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('executeWithMetadata applies the refusal too (it bypasses the base execute)', async () => {
+    const result = await new GeminiProbe().executeWithMetadata(READ_ONLY);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toMatch(/cannot enforce/);
+  });
+
+  it('never passes the plan-mode flags it was found not to enforce', () => {
+    for (const task of [READ_ONLY, DEFAULT_MODE]) {
+      const { args } = new GeminiProbe().command(task);
+      expect(args).not.toContain('--mode');
+      expect(args).not.toContain('--sandbox');
+    }
   });
 });
 
@@ -315,22 +339,35 @@ describe('the CLI→model bridge forwards the mode and fails closed (#6754)', ()
 });
 
 /**
- * The child the subprocess adapter really spawns prints the permission config
- * it received, in opencode's NDJSON text shape, so the whole path — getCommand
- * env → spawn env — is measured, not just the command config.
+ * The child the subprocess adapter really spawns prints the variable it
+ * received, in opencode's NDJSON text shape, so the whole path — getCommand
+ * env → spawn env — is measured, not just the command config. The probe
+ * supplies a command env itself: no shipped adapter sets one since opencode
+ * stopped claiming read-only analysis (#6970), but `CommandConfig.env` is
+ * public and its merge order is the guarantee under test.
  */
 const PRINT_PERMISSION =
   'const v = process.env.OPENCODE_PERMISSION ?? "UNSET";' +
   'process.stdout.write(JSON.stringify({type:"text",sessionID:"s",part:{type:"text",text:v}}) + "\\n");';
 
-class OpenCodeSpawnProbe extends OpenCodeCliAdapter {
+const DENY = JSON.stringify({ bash: 'deny', edit: 'deny', webfetch: 'deny' });
+
+class EnvSpawnProbe extends OpenCodeCliAdapter {
+  constructor(private readonly commandEnv: Readonly<Record<string, string>> | undefined) {
+    super();
+  }
   override initialize(): Promise<void> {
     this.initialized = true;
     return Promise.resolve();
   }
   protected override getCommand(task: CliTask): CommandConfig {
     const real = super.getCommand(task);
-    return { ...real, command: process.execPath, args: ['-e', PRINT_PERMISSION] };
+    return {
+      ...real,
+      command: process.execPath,
+      args: ['-e', PRINT_PERMISSION],
+      ...(this.commandEnv !== undefined ? { env: this.commandEnv } : {}),
+    };
   }
 }
 
@@ -350,9 +387,9 @@ async function withEnv(vars: Record<string, string>, body: () => Promise<void>):
 
 describe('the spawned child receives the command env (#6754)', () => {
   // `false` is the full-passthrough hatch: the inherited allow-all value DOES
-  // reach buildChildEnv there, so only the merge order keeps the deny config.
+  // reach buildChildEnv there, so only the merge order keeps the command's value.
   it.each(['true', 'false'])(
-    'a read-only opencode task spawns with the deny config over an inherited allow-all (allowlist=%s)',
+    "a command's env wins over an inherited value of the same name (allowlist=%s)",
     async (allowlist) => {
       await withEnv(
         {
@@ -360,35 +397,29 @@ describe('the spawned child receives the command env (#6754)', () => {
           OPENCODE_PERMISSION: JSON.stringify({ bash: 'allow', edit: 'allow', webfetch: 'allow' }),
         },
         async () => {
-          const result = await new OpenCodeSpawnProbe().execute(READ_ONLY, { allowRetry: false });
+          const result = await new EnvSpawnProbe({ OPENCODE_PERMISSION: DENY }).execute(
+            DEFAULT_MODE,
+            { allowRetry: false }
+          );
           expect(result.ok).toBe(true);
           if (!result.ok) return;
-          expect(JSON.parse(result.value.text)).toEqual({
-            bash: 'deny',
-            edit: 'deny',
-            webfetch: 'deny',
-          });
+          expect(result.value.text).toBe(DENY);
         }
       );
     }
   );
 
-  it('the inherited value does reach the child under passthrough in the default mode (control)', async () => {
+  it('the inherited value does reach the child under passthrough without a command env (control)', async () => {
     await withEnv(
       { NEXUS_SUBPROCESS_ENV_ALLOWLIST: 'false', OPENCODE_PERMISSION: '{"bash":"allow"}' },
       async () => {
-        const result = await new OpenCodeSpawnProbe().execute(DEFAULT_MODE, { allowRetry: false });
+        const result = await new EnvSpawnProbe(undefined).execute(DEFAULT_MODE, {
+          allowRetry: false,
+        });
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         expect(result.value.text).toBe('{"bash":"allow"}');
       }
     );
-  });
-
-  it('a default-mode opencode task spawns without it', async () => {
-    const result = await new OpenCodeSpawnProbe().execute(DEFAULT_MODE, { allowRetry: false });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.text).not.toContain('deny');
   });
 });

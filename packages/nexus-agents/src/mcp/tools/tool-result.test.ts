@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import {
   toolError,
   toolSuccess,
-  toolSuccessStructured,
+  structuredToolSuccess,
   toolStructuredError,
 } from './tool-result.js';
 import type { ToolResult } from './tool-result.js';
@@ -62,14 +63,33 @@ describe('tool-result helpers', () => {
   describe('toolSuccessStructured', () => {
     it('creates result with both text and structuredContent', () => {
       const data = { count: 3, items: ['a', 'b', 'c'] };
-      const result: ToolResult = toolSuccessStructured(data);
+      const result: ToolResult = structuredToolSuccess(
+        z.object({ count: z.number(), items: z.array(z.string()) }),
+        data
+      );
 
       expect(result.content).toEqual([{ type: 'text', text: JSON.stringify(data, null, 2) }]);
       expect(result.structuredContent).toEqual(data);
     });
 
+    it('requires structured content to match the schema at compile time', () => {
+      const schema = z.object({ count: z.number() });
+      const handlerResult = { count: 0, undeclared: true };
+      // @ts-expect-error — undeclared fields on handler variables also fail
+      structuredToolSuccess(schema, handlerResult);
+      if (false) {
+        // @ts-expect-error — missing declared required field
+        structuredToolSuccess(schema, {});
+        // @ts-expect-error — incorrect declared field type
+        structuredToolSuccess(schema, { count: 'drift' });
+        // @ts-expect-error — undeclared literal field
+        structuredToolSuccess(schema, { count: 0, undeclared: true });
+      }
+      expect(structuredToolSuccess(schema, { count: 0 }).structuredContent).toEqual({ count: 0 });
+    });
+
     it('does not set isError', () => {
-      const result = toolSuccessStructured({ ok: true });
+      const result = structuredToolSuccess(z.object({ ok: z.boolean() }), { ok: true });
       expect(result.isError).toBeUndefined();
     });
   });

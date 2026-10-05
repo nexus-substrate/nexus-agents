@@ -14,8 +14,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -283,7 +284,7 @@ function createResearchQueryHandler(deps: ResearchQueryDeps) {
           reason: result.negativeResults.reason,
         });
       }
-      return toolSuccessStructured(result as unknown as Record<string, unknown>);
+      return structuredToolSuccess(z.object(ResearchQueryOutputSchema), result);
     });
   };
 }
@@ -331,7 +332,8 @@ export function registerResearchQueryTool(server: McpServer, deps: ResearchQuery
     logger,
   });
 
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'research_query',
     {
       description,

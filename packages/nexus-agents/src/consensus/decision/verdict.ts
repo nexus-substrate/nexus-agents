@@ -151,7 +151,8 @@ export interface VoteDecisionOutcome {
  *
  *   approved  ⇔ errorCount === 0 AND (contrarian present-and-non-error, unless
  *               quick-mode dropped it) AND approveCount >= ceil(frac * panel)
- *   no_quorum ⇔ errorCount > 0 OR the contrarian was requested but errored/missing
+ *   no_quorum ⇔ errorCount > 0 OR fewer results than `panelSize` requested (#6889) OR
+ *               the contrarian was requested but errored/missing
  *   rejected  ⇔ zero errors, contrarian present, engine rejected (genuine reject)
  *   no_quorum ⇔ zero errors but the absolute approval floor was not met and there
  *               is no genuine reject (abstain-heavy; recoverable)
@@ -199,16 +200,38 @@ function absentSeatClauses(
   return clauses;
 }
 
+/**
+ * #6889: the re-run reason under absolute_quorum. A seat that returned no result
+ * at all (including an empty panel) voids the verdict like an errored one, and a
+ * co-occurring errored/unverifiable diagnosis is kept rather than shadowed.
+ */
+function absoluteQuorumVoidReason(
+  result: ExtendedVotingResult,
+  errorCount: number,
+  panel: number
+): string | undefined {
+  const missing = panel - result.votes.length;
+  const seatReason = absoluteQuorumDegradeReason(result, errorCount);
+  if (missing <= 0) return seatReason;
+  const missingClause = `${String(missing)} of ${String(panel)} requested voter(s) missing`;
+  const seatClauses = seatReason
+    ?.replace(/^no_quorum: re-run — /, '')
+    .replace(/ \(absolute_quorum\)$/, '');
+  const reasons = seatClauses === undefined ? missingClause : `${missingClause}; ${seatClauses}`;
+  return `no_quorum: re-run — ${reasons} (absolute_quorum)`;
+}
+
 function computeAbsoluteQuorumDecision(
   result: ExtendedVotingResult,
   errorCount: number,
   allErrors: boolean
 ): VoteDecisionOutcome {
-  const degradeReason = absoluteQuorumDegradeReason(result, errorCount);
+  // The denominator is the panel that was REQUESTED, never less than returned.
+  const panel = Math.max(result.panelSize ?? result.votes.length, result.votes.length);
+  const degradeReason = absoluteQuorumVoidReason(result, errorCount, panel);
   if (degradeReason !== undefined) return { decision: 'no_quorum', degradeReason };
 
   // Zero errors, contrarian satisfied (or not required in quick mode).
-  const panel = result.panelSize ?? result.votes.length;
   const needed = Math.ceil(absoluteQuorumFraction(result.strategy) * panel);
   const approveCount = result.votes.filter(
     (v) => v.source !== 'error' && v.vote.decision === 'approve'
@@ -268,6 +291,8 @@ function respondentFloorOutcome(result: ExtendedVotingResult): VoteDecisionOutco
  * (including `no_quorum`) is derived once, in one place, and can't diverge
  * between the engine result and the MCP response. The engine
  * `ConsensusResult.outcome` stays 2-valued; this is the widened view.
+ * Under absolute_quorum, `result.panelSize` (the requested seat count) is the
+ * denominator; a missing result voids the quorum like an errored one (#6889).
  */
 export function resolveVoteDecision(
   input: ConsensusVoteInput,

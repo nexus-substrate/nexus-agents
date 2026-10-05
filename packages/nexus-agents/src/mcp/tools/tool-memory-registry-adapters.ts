@@ -13,10 +13,23 @@
  * @module mcp/tools/tool-memory-registry-adapters
  */
 
-import { MemoryRegistry, hasMemoryRegistry, setMemoryRegistry } from 'nexus-memory';
-import type { BackendStats, CliName, IMemoryBackend, QueryFilter, WriteMeta } from 'nexus-memory';
+import {
+  assertStringKey,
+  MemoryRegistry,
+  hasMemoryRegistry,
+  setMemoryRegistry,
+} from 'nexus-memory';
+import type {
+  BackendStats,
+  CliName,
+  IMemoryBackend,
+  JsonValue,
+  QueryFilter,
+  WriteMeta,
+} from 'nexus-memory';
 
 import { nexusDataPath } from '../../config/nexus-data-dir.js';
+import { projectMemoryJson } from '../../context/memory-json.js';
 
 /** Default cap when a consumer omits `limit` in `query()`. */
 const DEFAULT_SEARCH_LIMIT = 10;
@@ -27,7 +40,7 @@ const DEFAULT_SEARCH_LIMIT = 10;
  * dispatch entirely. The convention is `filter.where.text` — see
  * docs/architecture/memory-context-retrieval.md (Phase 1 of #2792).
  */
-function extractSearchText(filter?: QueryFilter<unknown>): string | null {
+function extractSearchText(filter?: QueryFilter<JsonValue>): string | null {
   const where: unknown = filter?.where;
   if (where === null || where === undefined || typeof where !== 'object') return null;
   if (!('text' in where)) return null;
@@ -60,7 +73,7 @@ export interface CountableBackend {
  * keep using the underlying backend directly until a deeper migration
  * folds the storage in.
  */
-export class StatsOnlyAdapter implements IMemoryBackend<string, unknown> {
+export class StatsOnlyAdapter implements IMemoryBackend<string, JsonValue> {
   readonly domain: string;
   private readonly backend: CountableBackend;
 
@@ -69,13 +82,15 @@ export class StatsOnlyAdapter implements IMemoryBackend<string, unknown> {
     this.backend = backend;
   }
 
-  read(_key: string): Promise<unknown> {
+  async read(key: string): Promise<JsonValue | undefined> {
+    assertStringKey(key, this.domain);
     // Reads through the unified registry aren't wired yet. Callers wanting
     // actual data should fetch via the underlying backend.
     return Promise.resolve(undefined);
   }
 
-  write(_key: string, _value: unknown, _meta?: WriteMeta): Promise<void> {
+  async write(key: string, _value: JsonValue, _meta?: WriteMeta): Promise<void> {
+    assertStringKey(key, this.domain);
     return Promise.reject(
       new Error(
         `nexus-memory: domain "${this.domain}" is attached as stats-only; ` +
@@ -90,21 +105,24 @@ export class StatsOnlyAdapter implements IMemoryBackend<string, unknown> {
    * callback on the underlying backend (or without a text term), returns
    * `[]` — consumers that need full coverage must wire `search()` on every
    * backend they attach. Search exceptions are swallowed; the registry's
-   * `memory_stats` consumer relies on `query()` never throwing.
+   * search failures yield no results. Invalid native JSON projections fail closed.
    */
-  async query(filter?: QueryFilter<unknown>): Promise<readonly unknown[]> {
+  async query(filter?: QueryFilter<JsonValue>): Promise<readonly JsonValue[]> {
     if (this.backend.search === undefined) return [];
     const text = extractSearchText(filter);
     if (text === null) return [];
     const limit = filter?.limit ?? DEFAULT_SEARCH_LIMIT;
+    let rows: readonly unknown[];
     try {
-      return await this.backend.search(text, limit);
+      rows = await this.backend.search(text, limit);
     } catch {
       return [];
     }
+    return rows.map(projectMemoryJson);
   }
 
-  delete(_key: string): Promise<boolean> {
+  async delete(key: string): Promise<boolean> {
+    assertStringKey(key, this.domain);
     return Promise.resolve(false);
   }
 

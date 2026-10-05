@@ -358,6 +358,13 @@ describe('registerPipelineTool', () => {
 describe('pipeline input observations (#4733)', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it.each([false, true])('threads dryRun=%s to the stage executor (#6958)', async (dryRun) => {
+    const spy = vi.spyOn(executor, 'createAgentStages');
+    await captureHandler()({ task: 'Build feature X', dryRun });
+
+    expect(spy).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ dryRun }));
+  });
+
   function context(sanitization: Partial<HandlerContext['sanitization']> = {}): HandlerContext {
     return {
       requestContext: createRequestContext({ toolName: 'run_pipeline' }),

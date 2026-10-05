@@ -3,7 +3,7 @@
  * @module cli-server.test
  */
 
-import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { ILogger } from './core/index.js';
 import type { ModeDetectionResult, ServerMode } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
@@ -467,7 +467,12 @@ describe('validateModeOrExit', () => {
 describe('startServer', () => {
   let processExitSpy: MockInstance;
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(async () => {
+    vi.stubEnv('CLAUDE_PROJECT_DIR', undefined);
     vi.resetAllMocks();
     processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     vi.spyOn(process, 'on').mockReturnValue(process);
@@ -487,6 +492,30 @@ describe('startServer', () => {
     vi.mocked(mcpModule.connectTransport).mockReturnValue(
       Promise.resolve({ ok: true, value: undefined }) as never
     );
+  });
+
+  it('prepares workspace readiness before connect and resolves it from initialized (#4002)', async () => {
+    const roots = await import('./mcp/workspace-roots.js');
+    const previous = roots.workspaceRootReady;
+    const mcpModule = await import('./mcp/index.js');
+    vi.mocked(mcpModule.connectTransport).mockImplementation(async (server) => {
+      expect(roots.workspaceRootReady).not.toBe(previous);
+      let released = false;
+      void roots.workspaceRootReady.then(() => {
+        released = true;
+      });
+      await Promise.resolve();
+      expect(released).toBe(false);
+      server.server.getClientCapabilities = () => ({});
+      expect(server.server.oninitialized).toBeTypeOf('function');
+      server.server.oninitialized?.();
+      await roots.workspaceRootReady;
+      expect(released).toBe(true);
+      return { ok: true, value: undefined };
+    });
+    const { startServer } = await import('./cli-server.js');
+    await startServer(false, 'server', true);
+    expect(mcpModule.connectTransport).toHaveBeenCalledOnce();
   });
 
   it('exits for mesh mode before doing other work', async () => {

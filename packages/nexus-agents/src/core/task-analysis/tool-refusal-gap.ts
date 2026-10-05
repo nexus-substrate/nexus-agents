@@ -4,15 +4,15 @@
  * ## What this is for
  *
  * A registry gap ("the task needed a tool we do not have") is what
- * `detectCapabilityGaps` was built for, and it cannot currently produce one —
- * `requiredCapabilities` is drawn from static tables whose every entry is
- * already available, so the diff is always empty.
+ * `detectCapabilityGaps` was built for. It now also predicts qualified
+ * symbol-extraction requirements with deterministic extension keys (#6930);
+ * these inferred gaps remain report-only by default.
  *
  * A **tool refusal** is a different thing: a tool that exists, ran, and
  * declined the work for a reason it can name. `extract_symbols` hard-gating on
  * file extension is the first producer — an agent asked it to read a `.py`
  * file and it could not. That is real, deterministic, observable demand for a
- * capability we do not have, and the registry diff has no vocabulary for it.
+ * capability we do not have, using the same key as the inferred requirement.
  *
  * The #4651 panel chose this shape unanimously among approvers over three
  * alternatives, in particular over inferring gaps from LLM-named capabilities:
@@ -77,6 +77,7 @@ export function recordToolRefusal(
     gaps: [
       {
         type: 'tool_refusal',
+        origin: 'observed',
         name: toolRefusalGapName(refusal.tool, capability),
         suggestion: refusal.suggestion,
       },

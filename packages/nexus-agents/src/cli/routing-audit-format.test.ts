@@ -92,6 +92,15 @@ describe('routing-audit-format', () => {
   ];
 
   const mockResult: RoutingAuditResult = {
+    banditReconstruction: {
+      reconstructedAt: '2026-10-04T12:00:00.000Z',
+      outcomesReplayed: 3,
+      empiricalOutcomesReplayed: 3,
+      lookbackDays: 30,
+      fallbackUsed: false,
+      fallbackOutcomesReplayed: 0,
+      status: 'complete',
+    },
     task: 'Implement a sorting algorithm with unit tests',
     taskProfile: mockTaskProfile,
     budgetResults: mockBudgetResults,
@@ -157,19 +166,31 @@ describe('routing-audit-format', () => {
       expect(output).toContain('simulated');
     });
 
-    it('marks the LinUCB bandit as cold (#5267)', () => {
-      // `routing-audit-logic.ts` constructs `new LinUCBBandit(eligibleClis)` and
-      // does NOT warm-start it, while the production router does —
-      // `composite-router.ts` calls `warmStartBandit()`, replaying persisted
-      // outcomes. So this box renders initialization constants: `pulls: 0` per
-      // arm, and UCB scores that reflect no history.
-      //
-      // The command exists to show what the router would do, and showed
-      // something the router would not do. Same remedy as the budget filter one
-      // function over (#4843): say it where the reader is.
+    it('labels LinUCB as reconstructed rather than live (#5275)', () => {
       const output = formatLinUCBSelection(mockResult).join('\n');
+      expect(output).toContain('reconstructed from the outcome store at');
+      expect(output).toContain('2026-10-04T12:00:00.000Z');
+      expect(output).toContain('3 outcomes replayed, window 30d');
+      expect(output).toContain("not the live router's in-memory state; see #7057");
+    });
 
-      expect(output).toContain('cold bandit');
+    it('labels failed reconstruction without asserting priors were seeded', () => {
+      const result: RoutingAuditResult = {
+        ...mockResult,
+        banditReconstruction: {
+          reconstructedAt: '2026-10-04T12:00:00.000Z',
+          outcomesReplayed: 0,
+          empiricalOutcomesReplayed: 0,
+          lookbackDays: 30,
+          fallbackUsed: false,
+          fallbackOutcomesReplayed: 0,
+          status: 'failed',
+        },
+      };
+      const output = formatLinUCBSelection(result).join('\n');
+      expect(output).toContain('reconstruction failed at');
+      expect(output).toContain('Partial state only');
+      expect(output).not.toContain('Specialization priors included');
     });
 
     it('keeps every rendered line inside the box (#4891 regression)', () => {

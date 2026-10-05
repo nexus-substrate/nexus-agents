@@ -15,115 +15,25 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'yaml';
+import {
+  citationScore,
+  classifyVenue,
+  computeEvidenceTier,
+  computeQualityScore,
+} from '../packages/nexus-agents/src/research/research-quality.js';
+import type { ResearchPaper } from '../packages/nexus-agents/src/research/research-schemas.js';
 
 const PAPERS_PATH = resolve('docs/research/registry/papers.yaml');
 const SEMANTIC_SCHOLAR_API = 'https://api.semanticscholar.org/graph/v1/paper';
 const RATE_LIMIT_MS = 1100; // 1 req/sec with margin
 
-interface PaperEntry {
-  title: string;
-  arxiv_id?: string;
-  url?: string;
-  venue?: string | null;
-  publication_date?: string;
-  has_code?: boolean;
-  citation_count?: number;
-  venue_tier?: number;
-  quality_score?: number;
-  evidence_tier?: 'high' | 'medium' | 'low';
-  rigor_tags?: string[];
-  [key: string]: unknown;
-}
-
-// ── Quality scoring (mirrors research-quality.ts) ───────────────
-
-const TIER_3 = new Set([
-  'neurips',
-  'nips',
-  'icml',
-  'iclr',
-  'aaai',
-  'acl',
-  'emnlp',
-  'cvpr',
-  'iccv',
-  'eccv',
-  'sigir',
-  'kdd',
-  'www',
-  'icse',
-  'fse',
-]);
-const TIER_2 = new Set([
-  'naacl',
-  'coling',
-  'eacl',
-  'ijcai',
-  'ecai',
-  'aistats',
-  'uai',
-  'colt',
-  'interspeech',
-  'ase',
-  'issta',
-]);
+type PaperEntry = Omit<ResearchPaper, 'rigor_tags'> & {
+  rigor_tags?: ResearchPaper['rigor_tags'];
+} & Record<string, unknown>;
 
 /** A missing, null or empty string all mean "not recorded". */
 function isBlank(value: string | null | undefined): value is null | undefined | '' {
   return value === undefined || value === null || value === '';
-}
-
-/**
- * A missing, null, zero or NaN citation count all mean "no citations found".
- * The registry YAML is unvalidated, so `citation_count: null` reaches here
- * despite the `number | undefined` type; without the null arm it would read as
- * "has citations" and switch the low-tier note off.
- */
-function hasNoCitations(count: number | null | undefined): count is null | undefined {
-  return count === undefined || count === null || count === 0 || Number.isNaN(count);
-}
-
-function classifyVenue(venue: string | null | undefined): number {
-  if (isBlank(venue)) return 0;
-  const n = venue.toLowerCase().replace(/[^a-z]/g, '');
-  if (TIER_3.has(n)) return 3;
-  if (TIER_2.has(n)) return 2;
-  if (!n.includes('arxiv') && n.length > 0) return 1;
-  return 0;
-}
-
-function citationScore(count: number | null | undefined): number {
-  if (hasNoCitations(count)) return 0;
-  if (count < 10) return 1;
-  if (count < 100) return 2;
-  return 3;
-}
-
-function recencyBoost(pubDate: string | undefined): number {
-  if (isBlank(pubDate)) return 0;
-  const months = (Date.now() - new Date(pubDate).getTime()) / (30 * 24 * 60 * 60 * 1000);
-  if (months < 6) return 2;
-  if (months < 12) return 1;
-  return 0;
-}
-
-function computeScore(p: PaperEntry): number {
-  return Math.min(
-    10,
-    citationScore(p.citation_count) +
-      (p.venue_tier ?? classifyVenue(p.venue)) +
-      (p.has_code === true ? 2 : 0) +
-      recencyBoost(p.publication_date)
-  );
-}
-
-function computeTier(p: PaperEntry): 'high' | 'medium' | 'low' {
-  const score = p.quality_score ?? computeScore(p);
-  const tags = new Set(p.rigor_tags ?? []);
-  if (tags.has('peer-reviewed') && tags.has('has-code') && tags.has('has-baselines')) return 'high';
-  if (score >= 7) return 'high';
-  if (tags.has('has-code') || score >= 4) return 'medium';
-  return 'low';
 }
 
 // ── Semantic Scholar fetch ──────────────────────────────────────
@@ -167,8 +77,11 @@ interface BackfillArgs {
 
 function parseArgs(argv: readonly string[]): BackfillArgs {
   const dryRun = argv.includes('--dry-run');
-  const limitArg = argv.find((a) => a.startsWith('--limit'));
-  const limit = limitArg !== undefined ? parseInt(limitArg.split('=')[1] ?? '999', 10) : 999;
+  // Accept both `--limit=N` and the documented `--limit N`.
+  const index = argv.findIndex((a) => a === '--limit' || a.startsWith('--limit='));
+  const flag = index === -1 ? undefined : argv[index];
+  const value = flag === '--limit' ? argv[index + 1] : flag?.split('=')[1];
+  const limit = value !== undefined ? parseInt(value, 10) : 999;
   return { dryRun, limit };
 }
 
@@ -200,8 +113,8 @@ async function fillCitations(paper: PaperEntry): Promise<boolean> {
 }
 
 /** Auto-detects rigor tags from the paper's code and venue evidence. */
-function detectRigorTags(paper: PaperEntry, venueTier: number): string[] {
-  const tags: string[] = [...(paper.rigor_tags ?? [])];
+function detectRigorTags(paper: PaperEntry, venueTier: number): ResearchPaper['rigor_tags'] {
+  const tags: ResearchPaper['rigor_tags'] = [...(paper.rigor_tags ?? [])];
   if (paper.has_code === true && !tags.includes('has-code')) tags.push('has-code');
   if (venueTier >= 1 && !tags.includes('peer-reviewed')) tags.push('peer-reviewed');
   return tags;
@@ -210,7 +123,7 @@ function detectRigorTags(paper: PaperEntry, venueTier: number): string[] {
 /** Why a paper landed in the low tier, for the audit trail. */
 function lowTierReasons(paper: PaperEntry): string {
   const reasons: string[] = [];
-  if (hasNoCitations(paper.citation_count)) reasons.push('no citations found');
+  if (citationScore(paper.citation_count) === 0) reasons.push('no citations found');
   if (paper.venue_tier === 0) reasons.push('arXiv preprint (not peer-reviewed)');
   if (paper.has_code !== true) reasons.push('no code repository');
   return reasons.join('; ');
@@ -231,8 +144,8 @@ function scorePaper(paper: PaperEntry): ScoredPaper {
   }
 
   // Compute quality score and evidence tier
-  paper.quality_score = computeScore(paper);
-  paper.evidence_tier = computeTier(paper);
+  paper.quality_score = computeQualityScore({ ...paper, rigor_tags: tags });
+  paper.evidence_tier = computeEvidenceTier({ ...paper, rigor_tags: tags });
 
   // Add quality audit trail — enables future re-review
   paper.last_quality_check = new Date().toISOString().slice(0, 10);

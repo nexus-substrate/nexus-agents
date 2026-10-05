@@ -239,6 +239,9 @@ export interface AggregatedResult {
 export interface ResultConflict {
   expert1Id: string;
   expert2Id: string;
+  /** Original values before conflict resolution; absent on older records. */
+  expert1Value?: unknown;
+  expert2Value?: unknown;
   field: string;
   description: string;
   resolution: 'expert1' | 'expert2' | 'merged' | 'unresolved';
@@ -284,13 +287,21 @@ export interface AggregationMetadata {
    * `conflictCount` of 0 are the absence of a check — not the absence of
    * disagreement. They are byte-identical to what a genuinely unanimous
    * session produces, which is exactly why the distinction has to be stated
-   * rather than inferred. The collaboration-session builder is in that
-   * position; the `ResultAggregator` path compares fields pairwise.
+   * rather than inferred. Sessions compare independent object contributions
+   * using the shared object-merge helper. Sequential, reflexion, self-refine,
+   * and self-debug outputs supersede earlier drafts and remain unchecked, as
+   * do zero or one result and non-object outputs.
+   *
+   * Comparison covers shared top-level keys only. A nested difference is
+   * reported on the parent field with both original values; a key missing
+   * on one side is not a conflict. Arrays are compared by order.
    *
    * Absent means the producer predates the distinction — unknown, not
    * checked. Mirrors `confidenceMeasured` (#4831).
    */
   conflictsDetected?: boolean;
+  /** Why comparison was skipped, e.g. "not compared: sequential refinement". */
+  conflictsDetectionReason?: string;
   aggregatedAt: string;
 }
 

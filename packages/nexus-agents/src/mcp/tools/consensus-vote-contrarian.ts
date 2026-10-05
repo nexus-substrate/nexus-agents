@@ -21,7 +21,7 @@ import type { ILogger, IModelAdapter } from '../../core/index.js';
 import { boundArtifactForReview, type BoundedArtifact } from '../../utils/bounded-artifact.js';
 import type { ResolvedVoterProject } from '../../cli/voter-project.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
-import { buildWorkspaceBlock } from '../../cli/voter-response.js';
+import { buildOptionsBlock, buildWorkspaceBlock } from '../../cli/voter-response.js';
 import { shouldEscalateLowPosterior } from './consensus-vote-types.js';
 import type {
   ConsensusVoteInput,
@@ -67,8 +67,12 @@ const CONTRARIAN_ESCALATION_THRESHOLD = 0.8;
  */
 const CONTRARIAN_PROPOSAL_BUDGET = 2000;
 
-/** Build the contrarian prompt, carrying the partial-view note when present. */
-function buildContrarianPrompt(bounded: BoundedArtifact, opts?: RevoteOpts): string {
+/** Build the contrarian prompt with full declared options and any partial-proposal note. */
+function buildContrarianPrompt(
+  bounded: BoundedArtifact,
+  options: readonly string[] | undefined,
+  opts?: RevoteOpts
+): string {
   const workspaceBlock = buildWorkspaceBlock(opts?.workspace, opts?.workspaceSha);
   return [
     'You are a contrarian analyst. Your job is to find reasons this proposal should be REJECTED.',
@@ -76,7 +80,8 @@ function buildContrarianPrompt(bounded: BoundedArtifact, opts?: RevoteOpts): str
     '',
     ...(workspaceBlock === '' ? [] : [workspaceBlock]),
     ...(bounded.note === '' ? [] : [bounded.note, '']),
-    `Proposal: ${bounded.text}`,
+    // Options are outside the proposal budget; the input schema bounds their labels.
+    `Proposal: ${bounded.text}${buildOptionsBlock(options)}`,
     '',
     'If you find a strong reason to reject, respond with JSON:',
     '{"decision":"reject","confidence":0.0-1.0,"reasoning":"your concern"}',
@@ -109,6 +114,7 @@ function logPartialProposal(bounded: BoundedArtifact, log: ILogger): void {
  */
 async function runContrarianCheck(
   proposal: string,
+  options: readonly string[] | undefined,
   log: ILogger,
   opts?: RevoteOpts
 ): Promise<{ shouldEscalate: boolean; reason: string; confidence: number; errored: boolean }> {
@@ -122,9 +128,13 @@ async function runContrarianCheck(
     // same `shouldEscalate: false` it returns after reading the whole thing.
     const bounded = boundArtifactForReview(proposal, CONTRARIAN_PROPOSAL_BUDGET, 'proposal');
     logPartialProposal(bounded, log);
-    const result = await executeExpert('architecture', buildContrarianPrompt(bounded, opts), {
-      workDir: opts?.workspace,
-    });
+    const result = await executeExpert(
+      'architecture',
+      buildContrarianPrompt(bounded, options, opts),
+      {
+        workDir: opts?.workspace,
+      }
+    );
     // Expert-bridge reported failure — the contrarian voice was NOT obtained.
     if (!result.success) return { shouldEscalate: false, reason: '', confidence: 0, errored: true };
 
@@ -226,7 +236,7 @@ export async function maybeEscalateContrarian(
     };
   }
 
-  const escalation = await runContrarianCheck(input.proposal, logger, opts);
+  const escalation = await runContrarianCheck(input.proposal, input.options, logger, opts);
   const contrarianCheck: ContrarianCheckStatus = escalation.errored ? 'errored' : 'ok';
   // #4132: under absolute_quorum, a contrarian check that ERRORED means the
   // contrarian voice was never heard — that voids the quorum (no_quorum), it is

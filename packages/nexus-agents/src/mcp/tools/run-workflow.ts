@@ -9,7 +9,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { Result } from '../../core/index.js';
+import type { Result, WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import {
   getErrorMessage,
   WorkflowError,
@@ -18,7 +18,6 @@ import {
   getTimeProvider,
 } from '../../core/index.js';
 
-import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import {
   wrapToolWithTimeout,
   toSdkCallbackWithTimeoutCheck,
@@ -49,6 +48,7 @@ import {
   errorResponse,
   createFailedResult,
   formatValidationErrors,
+  disableUnavailableWorkflow,
 } from './run-workflow-helpers.js';
 import { getToolMemory } from './tool-memory.js';
 import { getToolAnnotations } from '../tool-annotations.js';
@@ -505,8 +505,7 @@ function createRunWorkflowHandler(
  */
 export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_workflow' });
-  const notifier = deps.notifier ?? createMcpNotifier(server);
-  const depsWithNotifier = { ...deps, notifier };
+  const depsWithNotifier = { ...deps, notifier: deps.notifier ?? createMcpNotifier(server) };
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(createRunWorkflowHandler(depsWithNotifier), {
@@ -519,7 +518,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
   const timeoutMs = getToolTimeout('run_workflow', deps.security);
   const wrappedHandler = wrapToolWithTimeout('run_workflow', secureHandler, { timeoutMs, logger });
 
-  server.registerTool(
+  const tool = server.registerTool(
     'run_workflow',
     {
       description:
@@ -530,6 +529,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     },
     toSdkCallbackWithTimeoutCheck(wrappedHandler, 'run_workflow', timeoutMs, logger)
   );
+  disableUnavailableWorkflow(tool, deps);
   logger.info('Registered run_workflow tool with secure handler and timeout protection');
 }
 

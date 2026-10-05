@@ -156,14 +156,13 @@ describe('outputSchema declares exactly the keys the response carries (#5288)', 
 
   it('declares exactly the keys the handler returns', () => {
     const server = { registerTool: vi.fn() };
-    registerResearchAddTool(
-      server as unknown as Parameters<typeof registerResearchAddTool>[0],
-      { rateLimiter: createTestRateLimiter() }
-    );
+    registerResearchAddTool(server as unknown as Parameters<typeof registerResearchAddTool>[0], {
+      rateLimiter: createTestRateLimiter(),
+    });
 
     const call = server.registerTool.mock.calls[0] as unknown[];
-    const meta = call[1] as { outputSchema?: Record<string, unknown> };
-    const declared = Object.keys(meta.outputSchema ?? {}).sort();
+    const meta = call[1] as { outputSchema?: { shape: Record<string, unknown> } };
+    const declared = Object.keys(meta.outputSchema?.shape ?? {}).sort();
 
     // Both directions. The SDK applies `additionalProperties: false`, so a
     // returned-but-undeclared key is a hard -32602 for any validating client;

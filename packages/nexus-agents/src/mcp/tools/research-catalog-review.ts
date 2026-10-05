@@ -14,8 +14,9 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import { withToolError } from '../middleware/tool-error-handler.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -26,6 +27,15 @@ import { getAutoCatalog } from './research-auto-catalog.js';
 import { addResearchPaper, paperExists } from '../../cli/research-helpers.js';
 import { createResearchIssue, formatResearchIssueBody } from '../../cli/research-helpers-issues.js';
 import { getToolAnnotations } from '../tool-annotations.js';
+
+// Permissive shape — handler returns ResearchCatalogReviewResponse with
+// action, success, message, optional data (#2340 batch 3).
+const OUTPUT_SCHEMA = {
+  action: z.string().optional(),
+  success: z.boolean().optional(),
+  message: z.string().optional(),
+  data: z.unknown().optional(),
+};
 
 // =============================================================================
 // SCHEMAS
@@ -254,7 +264,7 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
         return toolStructuredError({ errorCategory: 'validation', message: result.message });
       }
 
-      return toolSuccessStructured(result as unknown as Record<string, unknown>);
+      return structuredToolSuccess(z.object(OUTPUT_SCHEMA), result);
     });
   };
 }
@@ -296,21 +306,13 @@ export function registerResearchCatalogReviewTool(
     logger,
   });
 
-  // Permissive shape — handler returns ResearchCatalogReviewResponse with
-  // action, success, message, optional data (#2340 batch 3).
-  const outputSchema = {
-    action: z.string().optional(),
-    success: z.boolean().optional(),
-    message: z.string().optional(),
-    data: z.unknown().optional(),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'research_catalog_review',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('research_catalog_review'),
     },
     toSdkCallback(wrappedHandler)

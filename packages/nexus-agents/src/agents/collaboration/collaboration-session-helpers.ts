@@ -125,7 +125,6 @@ export function buildFinalCollaborationResult(input: BuildFinalResultInput): Col
   const { config, participants, results, votes, reviews, startedAt, error } = input;
   const endTime = new Date(getTimeProvider().now());
   const durationMs = endTime.getTime() - new Date(startedAt).getTime();
-  const allResults = Array.from(results.values());
 
   const success = isSessionSuccessful({
     pattern: config.pattern,
@@ -142,7 +141,7 @@ export function buildFinalCollaborationResult(input: BuildFinalResultInput): Col
     pattern: config.pattern,
     aggregatedResult: buildAggregatedResult({
       pattern: config.pattern,
-      results: allResults,
+      results,
       participants,
       votes,
       reviews,

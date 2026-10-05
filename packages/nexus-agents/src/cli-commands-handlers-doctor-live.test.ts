@@ -41,7 +41,21 @@ vi.mock('./cli/index.js', async (importOriginal) => {
         // The handler reads only `clis`; the rest of the result is not part
         // of this seam.
         options.onResult?.({
-          clis: [{ name: 'claude', routerAdmits: true }],
+          allHealthy: true,
+          nodeVersion: { supported: true },
+          mcpServerReady: true,
+          gateway: { state: 'not_configured' },
+          installFreshness: { state: 'aligned', version: '1.0.0' },
+          scratchSpace: [],
+          clis: [
+            {
+              name: 'claude',
+              installed: true,
+              authenticated: true,
+              versionStatus: 'supported',
+              routerAdmits: true,
+            },
+          ],
         } as unknown as DoctorResult);
         return Promise.resolve(0);
       }
@@ -80,6 +94,7 @@ vi.mock('./cli/doctor-live.js', async (importOriginal) => {
   };
 });
 
+import { doctorCommand } from './cli/index.js';
 import { handleDoctorCommand } from './cli-commands-handlers.js';
 
 function doctorArgs(live: boolean): ParsedCliArgs {
@@ -154,6 +169,8 @@ describe('handleDoctorCommand --live (#6783)', () => {
     await handleDoctorCommand(doctorArgs(true));
 
     const printed = stdout.mock.calls.map((call) => String(call[0])).join('');
+    expect(doctorCommand).toHaveBeenCalledWith(expect.objectContaining({ deferSummary: true }));
+    expect(printed.lastIndexOf('Status: Ready')).toBeGreaterThan(printed.indexOf('Live readiness'));
     expect(printed).toContain(
       `claude: served by gateway model ${GATEWAY_MODEL} (CLI not available: its health/auth check failed in this live run, but the CLI list above admitted it)`
     );

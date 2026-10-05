@@ -1,10 +1,8 @@
 /**
  * nexus-agents/mcp - MCP Notification Helper
  *
- * Sends structured logging notifications to MCP clients via
- * the `notifications/message` protocol method.
- * Clients (e.g., Claude Code) can display these for real-time
- * observability of orchestration events.
+ * Routes operator-facing orchestration events through the existing logger
+ * to stderr in server mode, leaving stdout for JSON-RPC frames.
  *
  * Also provides progress notification support via AsyncLocalStorage
  * for resetting client-side request timeouts (MCP SDK resetTimeoutOnProgress).
@@ -12,7 +10,7 @@
  * @module mcp/mcp-notifier
  * (Source: Issue #973, #974 — Claude Code Observability)
  * (Source: Issue #1108 — Progress heartbeat timeout reset)
- * (Source: MCP Protocol 2025-11-25, Logging Specification)
+ * (Source: Issue #5167 — Migrate operator output off MCP Logging)
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -20,58 +18,61 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 
 /**
- * Logging levels for MCP notifications (RFC 5424 syslog).
+ * Legacy MCP logging level names retained for API compatibility.
  */
 export type McpLogLevel = 'debug' | 'info' | 'notice' | 'warning' | 'error';
 
 /**
- * MCP notifier for sending structured log events to clients.
+ * Operator event logger used by MCP tools.
  */
 export interface IMcpNotifier {
-  /** Send info-level notification (key orchestration events) */
+  /** Log info-level operator event (key orchestration events) */
   info(logger: string, data: Record<string, unknown>): void;
-  /** Send debug-level notification (detailed execution steps) */
+  /** Log debug-level operator event (detailed execution steps) */
   debug(logger: string, data: Record<string, unknown>): void;
-  /** Send warning-level notification */
+  /** Log warning-level operator event */
   warn(logger: string, data: Record<string, unknown>): void;
 }
 
 const internalLogger = createLogger({ component: 'mcp-notifier' });
 
 /**
- * Creates an MCP notifier that sends logging notifications to connected clients.
- *
- * Notifications are fire-and-forget — failures are logged but never
- * propagate to callers. This ensures observability never breaks tool execution.
+ * Creates an operator notifier backed by the existing logger.
+ * Server startup configures the logger destination as stderr. The server
+ * argument is retained for compatibility; no MCP Logging messages are sent.
+ * Logging failures never propagate to tool execution.
  */
-export function createMcpNotifier(server: McpServer): IMcpNotifier {
-  function send(level: McpLogLevel, logger: string, data: Record<string, unknown>): void {
+export function createMcpNotifier(_server: McpServer): IMcpNotifier {
+  function log(
+    level: 'info' | 'debug' | 'warn',
+    logger: string,
+    data: Record<string, unknown>
+  ): void {
     try {
-      server.sendLoggingMessage({ level, logger, data }).catch((error: unknown) => {
-        internalLogger.debug('Failed to send MCP notification', {
+      internalLogger[level](logger, data);
+    } catch (error: unknown) {
+      try {
+        internalLogger.debug('Failed to log operator event', {
           level,
           logger,
           error: getErrorMessage(error),
         });
-      });
-    } catch (error: unknown) {
-      internalLogger.debug('Failed to send MCP notification', {
-        level,
-        logger,
-        error: getErrorMessage(error),
-      });
+      } catch {
+        // An unavailable stderr sink cannot report its own failure. Keep
+        // operator logging from breaking tools or falling back to stdout.
+      }
     }
   }
 
   return {
     info: (logger, data) => {
-      send('info', logger, data);
+      log('info', logger, data);
     },
     debug: (logger, data) => {
-      send('debug', logger, data);
+      log('debug', logger, data);
     },
     warn: (logger, data) => {
-      send('warning', logger, data);
+      log('warn', logger, data);
     },
   };
 }
@@ -131,7 +132,7 @@ export const abortSignalStorage = new AsyncLocalStorage<AbortSignal>();
  * request handler), sends real `notifications/progress` that reset the
  * client's request timeout (MCP SDK resetTimeoutOnProgress feature).
  *
- * Always sends logging notifications for observability regardless.
+ * Also logs operator heartbeats at debug level.
  *
  * @param toolName - Name of the tool for notification context
  * @param notifier - MCP notifier instance
@@ -158,7 +159,7 @@ export async function withProgressHeartbeat<T>(
       progressCtx.sendNotification(beatCount);
     }
 
-    // Always send logging notification for observability
+    // Log the operator heartbeat independently of client progress
     notifier.debug(toolName, {
       event: 'heartbeat',
       elapsedSeconds: elapsed,

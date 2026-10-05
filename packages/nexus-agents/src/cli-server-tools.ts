@@ -81,7 +81,6 @@ import type { ILogger } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { getPipelinePluginRegistry } from './pipeline/core-plugins.js';
 import { getPipelineEventBus } from './pipeline/event-bus.js';
-import { startPipelineEventBridge } from './pipeline/event-bus-bridge.js';
 import { startTuneStage } from './pipeline/tune-stage.js';
 import { configureUntrustedInputFirewall } from './dogfooding/untrusted-input-firewall.js';
 import {
@@ -369,9 +368,10 @@ function buildWorkflowEngine(
  * Builds the engine that actually EXECUTES workflow steps (#5116).
  *
  * Throws `WorkflowExecutionUnavailableError` when no model adapter resolved.
- * Callers MUST invoke this lazily — at `run_workflow` call time, not at tool
- * registration — because throwing during `registerMcpTools` takes down all 47
- * tools over one unconfigured adapter.
+ * Registration probes this once and disables only `run_workflow` on that
+ * structural error (#7043); other errors propagate. Calls resolve it again
+ * for execution. The context captures the startup adapter and has no refresh
+ * path, so recovering from an absent adapter requires a server restart.
  *
  * Before #5116 this case silently became `useMockExecutor: true`, so every step
  * returned `status: 'success'` with "Executed step X with action Y" for work
@@ -849,10 +849,6 @@ function initV2PipelineSubsystems(
 ): void {
   const pluginRegistry = getPipelinePluginRegistry();
   const pipelineEventBus = getPipelineEventBus();
-  // Was `createEventBusBridge(...)` with the returned `dispose` dropped, so the
-  // V2→V1 forwarder outlived every shutdown. Now it follows the same
-  // start/shutdown shape as the tune stage and the other subsystems below.
-  startPipelineEventBridge(pipelineEventBus);
   // #5003: the EventBus → OutcomeStore bridge is GONE. `StageFailedEvent`
   // carries no `cli`, so it hardcoded `cli: 'claude'` + `category:
   // 'code_generation'` on every stage failure — the exact fabrication

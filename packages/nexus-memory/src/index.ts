@@ -18,6 +18,7 @@ export type {
   CliName,
   ColdArchiveSchema,
   IMemoryBackend,
+  JsonValue,
   MemoryEvent,
   MemoryEventCounters,
   MemoryEventListener,
@@ -26,10 +27,17 @@ export type {
 } from './types.js';
 
 // Backends
-export { InMemoryBackend, MemoryValidationError } from './backends/memory.js';
+export { InMemoryBackend } from './backends/memory.js';
 export type { InMemoryBackendOptions } from './backends/memory.js';
 export { SqliteBackend } from './backends/sqlite.js';
 export type { SqliteBackendOptions } from './backends/sqlite.js';
+
+export {
+  MemoryValidationError,
+  MemoryReadError,
+  assertJsonValue,
+  assertStringKey,
+} from './json.js';
 
 // Registry
 export {

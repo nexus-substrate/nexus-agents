@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "agentGuidance": false,
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -34,11 +35,6 @@
     "nexus-agents#docs:api:md": {
       "dependsOn": ["nexus-memory#build"],
       "cache": false
-    },
-    "nexus-agents-website#build": {
-      "dependsOn": ["nexus-agents#docs:api:md"],
-      "inputs": ["src/**", "*.config.*", "*.json", "../../docs/**/*.md"],
-      "outputs": ["dist/**"]
     }
   }
 }

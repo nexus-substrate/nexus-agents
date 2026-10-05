@@ -21,6 +21,13 @@ import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import type { CliModelInfo } from '../types-capability.js';
 import { listModelsForCli } from '../../config/models-dev-by-vendor.js';
+import { isReadOnlyAnalysis } from '../access-mode.js';
+import {
+  CODEX_SYSTEM_CONFIG_FILES,
+  codexMcpDisableArgs,
+  scanCodexMcpServers,
+} from '../codex-mcp-isolation.js';
+import { mcpScanRefusal, scanOrThrow, subprocessScanContext } from '../mcp-config-scan.js';
 import {
   CODEX_LEGACY_DEFAULTS,
   type CodexAdapterOptions,
@@ -75,9 +82,47 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     );
   }
 
-  /** The adapter always executes under read-only, including default-mode tasks. */
+  /**
+   * The adapter always executes under read-only, including default-mode tasks.
+   * A read-only analysis task is also refused when codex's MCP config cannot
+   * be listed (#6970): its servers run outside the sandbox.
+   */
   protected override async accessModeRefusal(task: CliTask): Promise<CliError | undefined> {
-    return (await super.accessModeRefusal(task)) ?? this.sandboxRefusal();
+    const base = await super.accessModeRefusal(task);
+    if (base !== undefined) return base;
+    if (isReadOnlyAnalysis(task)) {
+      const scan = scanCodexMcpServers(
+        subprocessScanContext(this.name, task),
+        this.codexSystemConfigFiles()
+      );
+      if (!scan.ok) return mcpScanRefusal(this.name, scan.error);
+    }
+    return this.sandboxRefusal();
+  }
+
+  /**
+   * The system config files the MCP scan reads (#6970). A seam so tests can
+   * keep the host's real `/etc/codex` out of the scan.
+   */
+  protected codexSystemConfigFiles(): readonly string[] {
+    return CODEX_SYSTEM_CONFIG_FILES;
+  }
+
+  /**
+   * `-c mcp_servers.<name>.enabled=false` for every MCP server codex would
+   * load (#6970). Measured live on codex-cli 0.160.0: `-s read-only` does not
+   * cover MCP servers, which start outside the sandbox, and the nexus-agents
+   * server wrote `.gitignore` and `.nexus-agents/` into the tree. Throws when
+   * the config cannot be listed, so the task never spawns with a server it
+   * could not see.
+   */
+  private readOnlyMcpArgs(task: CliTask): readonly string[] {
+    if (!isReadOnlyAnalysis(task)) return [];
+    const servers = scanOrThrow(
+      this.name,
+      scanCodexMcpServers(subprocessScanContext(this.name, task), this.codexSystemConfigFiles())
+    );
+    return codexMcpDisableArgs(servers);
   }
 
   /** Key-free model enumeration via the models.dev snapshot (#3405). */
@@ -122,7 +167,7 @@ export class CodexCliAdapter extends SubprocessCliAdapter {
     }
 
     // The awaited preflight selects the backend; every task stays read-only.
-    args.push('-s', CODEX_EXEC_SANDBOX, ...this.sandboxArgs);
+    args.push('-s', CODEX_EXEC_SANDBOX, ...this.sandboxArgs, ...this.readOnlyMcpArgs(task));
 
     // Skip git repo check for standalone prompts
     args.push('--skip-git-repo-check');

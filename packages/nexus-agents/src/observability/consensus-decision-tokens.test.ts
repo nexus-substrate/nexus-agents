@@ -4,6 +4,7 @@ import { summarizeConsensusDecisionTokens } from './consensus-decision-tokens.js
 import type { DecisionCostRecord } from './decision-cost-store.js';
 import type { VoteRecord } from '../audit/vote-record.js';
 import { TaskOutcomeSchema, type TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
+import type { VoterAttemptEvent } from './attempt-usage.js';
 
 type LinkedVote = Pick<VoteRecord, 'correlationId' | 'decision'>;
 
@@ -317,5 +318,78 @@ describe('observed attempt usage in the decision-token report (#6821)', () => {
     // `b` is unmatched and `c` is legacy: only `a` contributes.
     expect(report.observedAttemptUsage).toEqual({ decisions: 1, ...observed });
     expect(report.totalReportedFinalSeatTokens).toBe(41);
+  });
+});
+
+describe('duplicate response telemetry preserves final-seat accounting', () => {
+  function withResponse(record: DecisionCostRecord, eventId: string): DecisionCostRecord {
+    const event: VoterAttemptEvent = {
+      id: eventId,
+      role: 'architect',
+      cli: 'claude',
+      adapter: 'claude',
+      attemptKind: 'initial',
+      outcome: 'final',
+      usage: { kind: 'reported', input: 3, output: 2 },
+    };
+    return { ...record, attemptTelemetry: { events: [event], observableAttempts: 1 } };
+  }
+
+  it('keeps every final-seat result identical when response IDs collide across decisions', () => {
+    const costs = [cost('approved', 4), cost('failed', 6), cost('legacy', 1), cost('good', 9)];
+    const votes = [
+      vote('approved', 'approved'),
+      vote('failed', 'no_quorum'),
+      vote('legacy', 'rejected'),
+      vote('good', 'approved'),
+    ];
+    const outcomes = [outcome('approved'), outcome('failed', false)];
+    const baseline = summarizeConsensusDecisionTokens(costs, votes, outcomes);
+    const result = summarizeConsensusDecisionTokens(
+      costs.map((row) =>
+        row.decisionId === 'legacy'
+          ? row
+          : withResponse(row, row.decisionId === 'good' ? 'unique-response' : 'shared-response')
+      ),
+      votes,
+      outcomes
+    );
+    const { attemptTelemetry: baselineTelemetry, ...baselineFinalSeats } = baseline;
+    const { attemptTelemetry: resultTelemetry, ...resultFinalSeats } = result;
+    expect(baselineTelemetry?.decisionsLackingTelemetry).toBe(4);
+    expect(resultFinalSeats).toEqual(baselineFinalSeats);
+    expect(resultTelemetry).toMatchObject({
+      invalidTelemetry: 2,
+      decisionsWithTelemetry: 1,
+      decisionsLackingTelemetry: 1,
+      observableAttempts: 1,
+      observedAttempts: 1,
+      reportedAttempts: 1,
+      totalTokens: 5,
+      coverage: 1,
+    });
+  });
+
+  it('reports duplicate-only telemetry as invalid and unmeasured while retaining both decisions', () => {
+    const result = summarizeConsensusDecisionTokens(
+      [withResponse(cost('a', 4), 'shared'), withResponse(cost('b', 6), 'shared')],
+      [vote('a', 'approved'), vote('b', 'no_quorum')]
+    );
+    expect(result).toMatchObject({
+      matchedQuorumDecisions: 1,
+      matchedNoQuorumDecisions: 1,
+      invalidCostRecords: 0,
+      totalReportedFinalSeatTokens: 10,
+      noQuorumReportedFinalSeatTokens: 6,
+      attemptTelemetry: {
+        invalidTelemetry: 2,
+        decisionsWithTelemetry: 0,
+        decisionsLackingTelemetry: 0,
+        measurement: 'unmeasured',
+        observableAttempts: null,
+        observedAttempts: null,
+        totalTokens: null,
+      },
+    });
   });
 });

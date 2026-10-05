@@ -7,7 +7,7 @@
  */
 import type { DecisionGate } from '../../observability/decision-cost-store.js';
 import { randomUUID } from 'node:crypto';
-import { getErrorMessage, getTimeProvider, type ILogger } from '../../core/index.js';
+import { getTimeProvider, type ILogger } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { VoteRecordPrBinding } from '../../audit/vote-record.js';
 import {
@@ -16,8 +16,7 @@ import {
   recordVoteError,
   type VoteRecordPersistOutcome,
 } from './consensus-vote-recording.js';
-import { recordDecisionCost } from './decision-cost-recording.js';
-import { detectUndeclaredOptions } from './consensus-vote-option-detection.js';
+import { recordVoteDecisionCost } from './decision-cost-recording.js';
 import { toRecordDecision, type ExtendedVotingResult } from './consensus-vote-types.js';
 
 /**
@@ -57,7 +56,7 @@ async function recordVoteSideEffects(
   declared: DeclaredByCaller
 ): Promise<{
   decisionId: string;
-  costSummary: ReturnType<typeof recordDecisionCost> | undefined;
+  costSummary: ReturnType<typeof recordVoteDecisionCost>;
   voteRecord: VoteRecordPersistOutcome;
 }> {
   const decisionId = `consensus-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
@@ -93,34 +92,15 @@ async function recordVoteSideEffects(
   });
   // #3855: roll up + persist this decision's per-voter cost and ride it on the
   // existing response (no new MCP tool). A rollup failure must not fail the vote.
-  let costSummary: ReturnType<typeof recordDecisionCost> | undefined;
-  // Match the ledger and outcome guards: an empty panel is not simulated.
-  const allSimulated =
-    result.votes.length > 0 && result.votes.every((v) => v.source === 'simulation');
-  try {
-    if (!allSimulated) {
-      costSummary = recordDecisionCost({
-        decisionId,
-        gate: declared.gate ?? 'consensus_vote',
-        ...(declared.jobId !== undefined ? { jobId: declared.jobId } : {}),
-        votes: result.votes,
-        // #5422: the detector's verdict, recorded on EVERY vote so the not-fired
-        // rows are the denominator. Computed here, where the FULL proposal is in
-        // hand — the ledger keeps a 503-char preview, which is why precision
-        // cannot be measured there. Same patterns as the `panelWarning` in
-        // `buildResponse`, so the measured precision is the warning's precision.
-        undeclaredOptionsDetector: {
-          ...detectUndeclaredOptions(proposal, declared.options),
-          declaredOptionCount: declared.options?.length ?? 0,
-        },
-      });
-    }
-  } catch (costError) {
-    logger.warn('Per-decision cost rollup failed (non-fatal)', {
-      error: getErrorMessage(costError),
-    });
-    costSummary = undefined;
-  }
+  const costSummary = recordVoteDecisionCost({
+    decisionId,
+    gate: declared.gate ?? 'consensus_vote',
+    ...(declared.jobId !== undefined ? { jobId: declared.jobId } : {}),
+    votes: result.votes,
+    proposal,
+    declaredOptions: declared.options,
+    logger,
+  });
   return { decisionId, costSummary, voteRecord };
 }
 

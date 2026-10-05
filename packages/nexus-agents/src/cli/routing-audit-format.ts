@@ -7,6 +7,7 @@
  * (Source: Issue #170, Alignment Roadmap Phase 1)
  */
 
+import { formatBanditReconstruction } from './bandit-reconstruction-format.js';
 import { summarizeTaskProfile, formatPercentage } from '../core/index.js';
 import type { TopsisScore } from '../cli-adapters/topsis-types.js';
 import {
@@ -141,20 +142,12 @@ export function formatTopsisRanking(result: RoutingAuditResult): string[] {
  */
 export function formatLinUCBSelection(result: RoutingAuditResult): string[] {
   const lines: string[] = [];
-  // #5267: `routing-audit-logic` constructs `new LinUCBBandit(eligibleClis)`
-  // and does NOT warm-start it, while the production router does —
-  // `composite-router.ts:341-342` calls `warmStartBandit()`, replaying
-  // persisted outcomes through a 30-day lookback. So every arm below shows
-  // `pulls: 0` and a UCB score reflecting no history: initialization
-  // constants, not the router's state.
-  //
-  // This command exists to show what the router would do, so rendering that
-  // without saying so is the misreport. Same remedy, and the same two-line
-  // shape, as the budget filter's `[simulated]` label one function up (#4843):
-  // `boxLine` pads to BOX_WIDTH - 2 and `padEnd` no-ops past it, so a long
-  // single line pushes the right border off every row.
   lines.push(boxLine(color(' LinUCB Selection:', ANSI.bold)));
-  lines.push(boxLine(color("   [cold bandit — not the router's live state]", ANSI.dim)));
+  const provenance =
+    result.banditReconstruction === undefined
+      ? ['Bandit reconstruction provenance unavailable']
+      : formatBanditReconstruction(result.banditReconstruction);
+  for (const line of provenance) lines.push(boxLine(color(`   ${line}`, ANSI.dim)));
   for (const arm of result.linucbDetails) {
     const marker =
       arm.cliName === result.selectedCli
@@ -313,5 +306,9 @@ export function formatAsciiOutput(
  * Formats the JSON output.
  */
 export function formatJsonOutput(result: RoutingAuditResult): string {
-  return JSON.stringify(result, null, 2);
+  const banditStateDescription =
+    result.banditReconstruction === undefined
+      ? 'Bandit reconstruction provenance unavailable'
+      : formatBanditReconstruction(result.banditReconstruction).join(' ');
+  return JSON.stringify({ ...result, banditStateDescription }, null, 2);
 }

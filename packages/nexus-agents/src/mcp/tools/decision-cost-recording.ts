@@ -21,7 +21,8 @@
  */
 
 import type { AgentVoteResult } from '../../cli/vote-types.js';
-import { createLogger, getTimeProvider, type ILogger } from '../../core/index.js';
+import { createLogger, getTimeProvider, getErrorMessage, type ILogger } from '../../core/index.js';
+import { detectUndeclaredOptions } from './consensus-vote-option-detection.js';
 import { servedCostDetail } from '../../cli-adapters/budget-arm-cost.js';
 import { priceBasisOf, type CostDetail } from '../../learning/usage-log.js';
 import { DecisionCostStore, type DecisionGate } from '../../observability/decision-cost-store.js';
@@ -110,6 +111,7 @@ export function votesToCostInputs(votes: readonly AgentVoteResult[]): VoterCostI
       ...reportedTokenFields(v),
       // #6821: every settled completion, beside the answering one's counters.
       ...(v.attemptUsage !== undefined ? { attemptUsage: v.attemptUsage } : {}),
+      ...(v.attemptTelemetry !== undefined ? { attemptTelemetry: v.attemptTelemetry } : {}),
       ...(detail?.priced === true ? { costUsd: detail.costUsd } : {}),
       ...(detail?.pricingProvenance !== undefined
         ? { pricingProvenance: detail.pricingProvenance }
@@ -144,6 +146,39 @@ export interface RecordDecisionCostOptions {
    * `pr_review`, which runs no such detector.
    */
   readonly undeclaredOptionsDetector?: UndeclaredOptionsDetectorRecord;
+}
+
+interface RecordVoteDecisionCostOptions extends Omit<
+  RecordDecisionCostOptions,
+  'undeclaredOptionsDetector'
+> {
+  readonly proposal: string;
+  readonly declaredOptions: readonly string[] | undefined;
+  readonly source?: 'cli' | 'mcp';
+}
+
+/** Record live detector telemetry from the full proposal, best effort for both vote entry points. */
+export function recordVoteDecisionCost(
+  options: RecordVoteDecisionCostOptions
+): DecisionCostSummary | undefined {
+  // Empty and all-simulated panels provide no live detector measurement.
+  if (options.votes.length === 0 || options.votes.every((v) => v.source === 'simulation'))
+    return undefined;
+  try {
+    return recordDecisionCost({
+      ...options,
+      undeclaredOptionsDetector: {
+        ...detectUndeclaredOptions(options.proposal, options.declaredOptions),
+        declaredOptionCount: options.declaredOptions?.length ?? 0,
+        ...(options.source !== undefined ? { source: options.source } : {}),
+      },
+    });
+  } catch (error) {
+    (options.logger ?? defaultLogger).warn('Per-decision cost rollup failed (non-fatal)', {
+      error: getErrorMessage(error),
+    });
+    return undefined;
+  }
 }
 
 const defaultLogger = createLogger({ component: 'decision-cost-recording' });

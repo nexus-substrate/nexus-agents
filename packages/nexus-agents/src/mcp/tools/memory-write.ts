@@ -18,8 +18,9 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { withPrerequisite } from '../middleware/tool-prerequisites.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -32,6 +33,17 @@ import type { TrustTier } from '../../security/trust-types.js';
 import { resolveContentTrustProvenance } from '../../security/content-trust-tier.js';
 import { measuredTrustTier } from '../middleware/request-context.js';
 import { memoryTrustTierTag } from '../../context/memory-trust-tier.js';
+
+// Concrete shape: every backend writer returns success+backend+key, with an
+// optional `deduplicated` flag (belief backend only) and an optional `error`
+// field on failure paths (#2340 batch 2).
+const OUTPUT_SCHEMA = {
+  success: z.boolean(),
+  backend: z.string(),
+  key: z.string(),
+  deduplicated: z.boolean().optional(),
+  error: z.string().optional(),
+};
 
 // ============================================================================
 // Schema & Types
@@ -414,7 +426,7 @@ async function memoryWriteHandler(args: unknown, ctx: HandlerContext): Promise<T
         message: JSON.stringify(result, null, 2),
       });
     }
-    return toolSuccessStructured(result as unknown as Record<string, unknown>);
+    return structuredToolSuccess(z.object(OUTPUT_SCHEMA), result);
   });
 }
 
@@ -429,7 +441,6 @@ async function memoryWriteHandler(args: unknown, ctx: HandlerContext): Promise<T
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */
-// eslint-disable-next-line max-lines-per-function -- single cohesive registration: schema + handler + wrapping + register; +4 lines for #2648 annotations tipped past 50.
 export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'memory_write' });
   const toolSchema = {
@@ -468,23 +479,13 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
   const timeoutMs = getToolTimeout('memory_write', deps.security);
   const wrappedHandler = wrapToolWithTimeout('memory_write', guardedHandler, { timeoutMs, logger });
 
-  // Concrete shape: every backend writer returns success+backend+key, with an
-  // optional `deduplicated` flag (belief backend only) and an optional `error`
-  // field on failure paths (#2340 batch 2).
-  const outputSchema = {
-    success: z.boolean(),
-    backend: z.string(),
-    key: z.string(),
-    deduplicated: z.boolean().optional(),
-    error: z.string().optional(),
-  };
-
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'memory_write',
     {
       description,
       inputSchema: toolSchema,
-      outputSchema,
+      outputSchema: OUTPUT_SCHEMA,
       annotations: getToolAnnotations('memory_write'),
     },
     toSdkCallback(wrappedHandler)

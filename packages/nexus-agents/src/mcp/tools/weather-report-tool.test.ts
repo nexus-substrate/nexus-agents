@@ -6,7 +6,16 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { z } from 'zod';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
+import type { JsonSchemaType } from '@modelcontextprotocol/sdk/validation/types';
 import { WeatherReportInputSchema } from './weather-report-types.js';
+import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
+import type { ToolResult } from './tool-result.js';
+
+vi.mock('../../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
 
 // ============================================================================
 // Schema Validation
@@ -122,5 +131,76 @@ describe('registerWeatherReportTool', () => {
     expect(registerTool).toHaveBeenCalledOnce();
     const callArgs = registerTool.mock.calls[0] as unknown[];
     expect(callArgs[0]).toBe('weather_report');
+  });
+});
+
+describe('weather_report output contract (#5842)', () => {
+  async function registeredReport(includeAdaptive: boolean): Promise<{
+    schema: z.ZodObject<z.ZodRawShape>;
+    result: ToolResult;
+  }> {
+    resetOutcomeStore();
+    getOutcomeStore().append({
+      id: 'weather-schema-outcome',
+      cli: 'claude',
+      category: 'code_generation',
+      model: 'claude-sonnet',
+      success: true,
+      durationMs: 125,
+      timestamp: new Date().toISOString(),
+      source: 'delegate',
+    });
+    const { registerWeatherReportTool } = await import('./weather-report-tool.js');
+    const registerTool = vi.fn();
+    registerWeatherReportTool(
+      { registerTool } as unknown as Parameters<typeof registerWeatherReportTool>[0],
+      {
+        rateLimiter: { tryAcquire: vi.fn(() => true) } as unknown as Parameters<
+          typeof registerWeatherReportTool
+        >[1]['rateLimiter'],
+      }
+    );
+    const call = registerTool.mock.calls[0] as unknown[];
+    const config = call[1] as { outputSchema?: z.ZodRawShape | z.ZodObject };
+    expect(config.outputSchema).toBeDefined();
+    const handler = call[2] as (args: unknown) => Promise<ToolResult>;
+    return {
+      schema:
+        config.outputSchema instanceof z.ZodObject
+          ? config.outputSchema
+          : z.object(config.outputSchema ?? {}),
+      result: await handler({ includeAdaptive }),
+    };
+  }
+
+  it.each([true, false])(
+    'validates a real generated report without losing fields (adaptive=%s)',
+    async (adaptive) => {
+      const { schema, result } = await registeredReport(adaptive);
+      expect(result.isError).toBeUndefined();
+      const validate = new AjvJsonSchemaValidator().getValidator(
+        z.toJSONSchema(schema, { io: 'output' }) as unknown as JsonSchemaType
+      );
+      const validation = validate(result.structuredContent);
+      expect(validation.valid, validation.errorMessage).toBe(true);
+      expect(schema.parse(result.structuredContent)).toEqual(result.structuredContent);
+      const report = result.structuredContent as Record<string, unknown>;
+      expect(report['overall']).toMatchObject({ totalTasks: 1, avgDurationMs: 125 });
+      expect(report['cliWeather']).toContainEqual(
+        expect.objectContaining({
+          cli: 'claude',
+          byCategory: { code_generation: { count: 1, successRate: 1, avgDurationMs: 125 } },
+        })
+      );
+      expect(report['costSection']).toBeDefined();
+      expect(report['recentWindow']).toBeDefined();
+    }
+  );
+
+  it('rejects malformed nested stats and unknown report fields', async () => {
+    const { schema, result } = await registeredReport(true);
+    const report = result.structuredContent as Record<string, unknown>;
+    expect(schema.safeParse({ ...report, overall: { totalTasks: 'one' } }).success).toBe(false);
+    expect(schema.strict().safeParse({ ...report, untrackedField: true }).success).toBe(false);
   });
 });

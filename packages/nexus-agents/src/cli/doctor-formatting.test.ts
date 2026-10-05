@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest';
 import { rmSync } from 'node:fs';
 import { printDoctorResults } from './doctor-formatting.js';
+import { buildGatewayReadiness, buildReadiness } from './cli-readiness.js';
 import { checkHarnessAlignment } from './doctor-harness-alignment.js';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import type {
@@ -63,6 +64,7 @@ vi.mock('../cli-adapters/types.js', async (importOriginal) => ({
       quality: 85,
       costPerMToken: 10,
     },
+    opencode: { reasoning: 80, contextWindow: 128000, speed: 80, quality: 80, costPerMToken: 5 },
     gemini: {
       reasoning: 80,
       contextWindow: 1000000,
@@ -250,6 +252,139 @@ describe('doctor-formatting', () => {
     });
     return withInstallFreshness(base, options.installFreshness);
   };
+
+  describe('live summary (#6960)', () => {
+    const served = buildReadiness('gemini', {
+      installed: { status: 'verified' },
+      authenticated: { status: 'verified' },
+      serves: { status: 'verified', latencyMs: 12 },
+    });
+    const localResult = (): DoctorResult =>
+      createDoctorResult({
+        allHealthy: false,
+        clis: [
+          createCliCheckResult('gemini', true, false, 'supported', {
+            authState: 'unverified',
+          }),
+        ],
+      });
+
+    it('verifies a served adapter despite an unverified local auth check', () => {
+      printDoctorResults(localResult(), [served]);
+      expect(getCalls().at(-1)).toContain('Status: Ready');
+      expect(getCalls().at(-1)).not.toContain('CLI gemini');
+      expect(getCalls().at(-1)).not.toContain('unverified');
+    });
+
+    it('names a failed live probe and its error class even when local checks pass', () => {
+      const failed = buildReadiness('opencode', {
+        installed: { status: 'verified' },
+        authenticated: { status: 'verified' },
+        serves: { status: 'failed', errorClass: 'quota', reason: 'OpenRouter quota exceeded' },
+      });
+      printDoctorResults(
+        createDoctorResult({
+          clis: [createCliCheckResult('opencode', true, true, 'supported')],
+        }),
+        [failed]
+      );
+      expect(getCalls().at(-1)).toContain('1 issue(s) found (CLI opencode: failed (quota))');
+      expect(getCalls().at(-1)).not.toContain('Status: Ready');
+    });
+
+    it('attributes a failed gateway probe to its measured model', () => {
+      printDoctorResults(localResult(), [
+        buildGatewayReadiness(
+          'gemini',
+          {
+            gatewayModel: 'gemini-model',
+            cliState: 'disabled',
+          },
+          { status: 'failed', errorClass: 'quota', reason: 'quota' }
+        ),
+      ]);
+      expect(getCalls().at(-1)).toContain('gateway gemini-model (gemini slot): failed (quota)');
+      expect(getCalls().at(-1)).not.toContain('CLI gemini');
+    });
+
+    it('names a failed earlier live rung even when local checks admitted the CLI', () => {
+      printDoctorResults(
+        createDoctorResult({
+          clis: [createCliCheckResult('gemini', true, true, 'supported')],
+        }),
+        [
+          buildReadiness('gemini', {
+            installed: { status: 'verified' },
+            authenticated: { status: 'failed', reason: 'no usable credentials' },
+            serves: { status: 'not-attempted', reason: 'credentials unavailable' },
+          }),
+        ]
+      );
+      expect(getCalls().at(-1)).toContain('CLI gemini: authenticated failed');
+      expect(getCalls().at(-1)).not.toContain('Status: Ready');
+    });
+
+    it('retains local environment failures alongside a served live probe', () => {
+      printDoctorResults({ ...localResult(), mcpServerReady: false }, [served]);
+      expect(getCalls().at(-1)).toContain('1 issue(s) found (MCP server)');
+    });
+
+    it.each(['direct', 'failed-gateway'] as const)(
+      'does not retain stale gateway-covered notes after a %s live result',
+      (mode) => {
+        const result = {
+          ...localResult(),
+          gateway: {
+            state: 'healthy' as const,
+            host: 'gw.example',
+            listedCount: 1,
+            chatCount: 1,
+            allowlistActive: false,
+            census: { anthropic: 0, openai: 0, google: 1, unknown: 0 },
+            slots: { claude: 'unavailable', codex: 'unavailable', gemini: 'gemini-model' },
+            proxy: { kind: 'direct' as const },
+            probes: 'skipped' as const,
+          },
+        };
+        const report =
+          mode === 'direct'
+            ? served
+            : buildGatewayReadiness(
+                'gemini',
+                {
+                  gatewayModel: 'gemini-model',
+                  cliState: 'not-available',
+                },
+                { status: 'failed', errorClass: 'quota', reason: 'quota' }
+              );
+        printDoctorResults(result, [report]);
+        expect(getCalls().at(-1)).not.toContain('CLI unhealthy, slot served by gateway');
+      }
+    );
+
+    it('accepts a measured gateway completion when no local CLIs were detected', () => {
+      printDoctorResults(createDoctorResult({ allHealthy: false }), [
+        {
+          ...served,
+          gateway: { gatewayModel: 'gemini-model', cliState: 'disabled' },
+        },
+      ]);
+      expect(getCalls().at(-1)).toContain('Status: Ready');
+      expect(getCalls().at(-1)).not.toContain('no CLIs detected');
+    });
+
+    it('preserves the local summary without --live', () => {
+      printDoctorResults(localResult());
+      expect(getCalls().at(-1)).toContain('1 issue(s) found (CLI gemini)');
+      expect(getCalls().at(-1)).not.toContain('Live readiness');
+    });
+
+    it('explicitly reports an empty live measurement without a clean bill', () => {
+      printDoctorResults(createDoctorResult(), []);
+      expect(getCalls().at(-1)).toContain('no adapters probed');
+      expect(getCalls().at(-1)).not.toContain('Status: Ready');
+    });
+  });
 
   describe('distilled-rules line (#6512)', () => {
     const enabled = {

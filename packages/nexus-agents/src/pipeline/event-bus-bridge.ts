@@ -2,9 +2,9 @@
  * EventBus Bridge — V2 Pipeline → V1 Agent EventBus (Issue #922, Phase C)
  *
  * Subscribes to V2 pipeline events and forwards them as V1 DomainEvents
- * to the global agent EventBus. This bridges the two event systems so
- * existing V1 observability (SwarmObserver, Claude Desktop) sees pipeline
- * activity without migration.
+ * to the global agent EventBus when explicitly created. Server startup no
+ * longer installs this bridge (#5120); no production consumer read the
+ * forwarded payloads.
  *
  * @module pipeline/event-bus-bridge
  */
@@ -19,7 +19,11 @@ const logger = createLogger({ component: 'EventBusBridge' });
 // Configuration
 // ============================================================================
 
-/** Options for the EventBus bridge. */
+/**
+ * Options for the EventBus bridge.
+ * @deprecated Subscribe to the pipeline EventBus directly (#5120).
+ * Removal belongs to the 9.0 batch (#6291).
+ */
 export interface EventBusBridgeOptions {
   /** V2 pipeline EventBus to subscribe to. */
   readonly source: IEventBus;
@@ -31,7 +35,11 @@ export interface EventBusBridgeOptions {
 // Bridge Result
 // ============================================================================
 
-/** Result of bridge initialization. */
+/**
+ * Result of bridge initialization.
+ * @deprecated Subscribe to the pipeline EventBus directly (#5120).
+ * Removal belongs to the 9.0 batch (#6291).
+ */
 export interface PipelineBridgeResult {
   /** Number of events forwarded so far. */
   readonly forwarded: () => number;
@@ -81,7 +89,11 @@ function extractCorrelationId(event: PipelineEvent): string | undefined {
  * - correlationId: executionId or taskId from V2 event
  *
  * The bridge is fire-and-forget: forwarding errors are logged, not thrown.
+ *
+ * @deprecated Subscribe to the pipeline EventBus directly (#5120).
+ * Removal belongs to the 9.0 batch (#6291).
  */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- the retained factory uses its deprecated types until 9.0 (#6291)
 export function createEventBusBridge(options: EventBusBridgeOptions): PipelineBridgeResult {
   const { source } = options;
   const prefix = options.topicPrefix ?? 'pipeline';
@@ -109,36 +121,4 @@ export function createEventBusBridge(options: EventBusBridgeOptions): PipelineBr
     forwarded: () => forwardCount,
     dispose: unsub,
   };
-}
-
-// ============================================================================
-// Server lifecycle
-// ============================================================================
-
-/**
- * The server-wide V2→V1 forwarder's unsubscribe, or `null` when not running.
- *
- * `initV2PipelineSubsystems` called `createEventBusBridge` and dropped the
- * returned `dispose` on the floor, so the forwarder outlived every shutdown —
- * `createShutdownCleanup` disposes the V1 bridge, the tune stage, swarm health,
- * failover and the scheduler, and had no handle for this one.
- */
-let cachedBridgeDispose: Unsubscribe | null = null;
-
-/**
- * Start the server-wide pipeline→global event forwarder. Idempotent, and
- * returns the same result shape as {@link createEventBusBridge} so the caller
- * can still read `forwarded()` later.
- */
-export function startPipelineEventBridge(source: IEventBus): void {
-  if (cachedBridgeDispose !== null) return;
-  cachedBridgeDispose = createEventBusBridge({ source }).dispose;
-}
-
-/** Release the forwarder. Idempotent; paired with the start above. */
-export function shutdownPipelineEventBridge(): void {
-  if (cachedBridgeDispose !== null) {
-    cachedBridgeDispose();
-    cachedBridgeDispose = null;
-  }
 }

@@ -26,6 +26,9 @@
  * @module cli-adapters/gateway-slot-arm
  */
 
+import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
+import type { LevelOutcome } from '../cli/cli-readiness.js';
+import { adapterReadiness, servesListedModel } from './cli-admission.js';
 import type {
   CapabilityProfile,
   CapacityStatus,
@@ -173,6 +176,36 @@ class GatewaySlotArm implements ICliAdapter {
       this.freshProbe = true;
     }
     return result;
+  }
+
+  /** Auth belongs to the selected target; absent external contract evidence remains unknown. */
+  async authStatus(): Promise<AuthProbeResult> {
+    const target = await this.target();
+    return (
+      target.authStatus?.() ?? {
+        cli: this.name,
+        state: 'unknown',
+        reason: 'target exposes no auth status',
+      }
+    );
+  }
+
+  /** Default is unmeasured; live readiness measures this arm through the canonical bounded probe. */
+  readiness(options?: {
+    readonly live?: boolean;
+    readonly timeoutMs?: number;
+  }): Promise<LevelOutcome> {
+    return adapterReadiness(this, options);
+  }
+
+  /** Positive support requires a selected target catalog; absent catalogs remain unknown. */
+  async serves(modelId: string): Promise<'yes' | 'no' | 'unknown'> {
+    const target = await this.target();
+    return servesListedModel(
+      target,
+      modelId,
+      target === this.deps.cliAdapter ? this.name : undefined
+    );
   }
 
   async healthCheck(): Promise<HealthStatus> {

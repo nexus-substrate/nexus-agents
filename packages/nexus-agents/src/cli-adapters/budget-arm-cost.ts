@@ -13,6 +13,8 @@
  */
 
 import { computeTokenCost, roundToMicroUsd } from '../learning/token-cost-core.js';
+import type { PriceBasis } from '../core/price-basis.js';
+import { createLogger } from '../core/logger.js';
 import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
 import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
@@ -199,6 +201,35 @@ export function ceilingCostOfArm(
     sentModelOf(target.adapter)
   );
 }
+
+/**
+ * Record the canonical ceiling estimate with its price basis (#5095).
+ * Missing pricing stays `undefined` and `unknown`, never a measured $0.
+ * Resolved rates (including explicit free/local declarations) use the current
+ * `list` vocabulary; it does not distinguish operator rates from list rates.
+ * Wrapping the existing policy preserves its arithmetic and arm resolution.
+ */
+export function recordCeilingCostOfArm(
+  target: RouterArm,
+  inputTokens: number,
+  outputTokens: number,
+  ceiling: number,
+  env: NodeJS.ProcessEnv = process.env
+): { readonly costUsd: number | undefined; readonly priceBasis: PriceBasis } {
+  const costUsd = ceilingCostOfArm(target, inputTokens, outputTokens, env);
+  const priceBasis: PriceBasis = costUsd === undefined ? 'unknown' : 'list';
+  ceilingLogger.info('Cost ceiling: candidate evaluated', {
+    arm: target.arm,
+    ceiling,
+    ...(costUsd !== undefined ? { cost: costUsd } : {}),
+    priceBasis,
+    ceilingMeasurement: costUsd === undefined ? 'unmeasured' : 'estimated',
+    withinCeiling: costUsd !== undefined && costUsd <= ceiling,
+  });
+  return { costUsd, priceBasis };
+}
+
+const ceilingLogger = createLogger({ component: 'budget-router' });
 
 /**
  * Estimate the USD cost of a task on a routing ARM for the per-task budget

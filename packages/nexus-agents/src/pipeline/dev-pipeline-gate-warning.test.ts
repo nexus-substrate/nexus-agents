@@ -73,6 +73,8 @@ describe('quality gate over a workspace-edit implement directory (#6792)', () =>
       expect(warning).toContain(WORKSPACE.directory);
       expect(warning).toContain('executed by the gate');
       expect(warning).toContain('#6794');
+      expect(warning).not.toContain('the MCP server working directory');
+      expect(warning).not.toContain('removes this');
     }
   );
 

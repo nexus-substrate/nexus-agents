@@ -8,10 +8,21 @@
  */
 
 import type { Vote } from '../consensus/types.js';
-import type { VoterRole, AgentVoteResult } from './vote-types.js';
+import type {
+  VoterRole,
+  AgentVoteResult,
+  VoteCompletionArgs,
+  VotePromptContext,
+} from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { getRandomProvider } from '../core/index.js';
 import { withTimeout } from '../utils/async-utils.js';
+import {
+  VoterAttemptCollector,
+  withVoterAttemptTelemetry,
+  voteRetryContext,
+  type VoterAttemptKind,
+} from './voter-attempt-events.js';
 import { trackVoterCompletion } from './voter-late-settlement.js';
 import { cancelledSeat, isCancelled, seatSignal, unlessCancelled } from './voter-cancel.js';
 import { waitForVoteRetry } from './voter-cancel.js';
@@ -64,6 +75,8 @@ export const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
 // Rate-limit detection and failed-attempt logging live in a sibling (#6821
 // made room here); `isRateLimitError` stays exported from this module.
 import { isRateLimitError, logAbandonedRetries, logFailedAttempt } from './voter-attempt-log.js';
+import { readVoteUsage, foldAttempt } from './voter-attempt-usage.js';
+import { VOTER_ACCESS_MODE } from './voter-cli-access.js';
 export { isRateLimitError };
 
 /**
@@ -271,7 +284,7 @@ function buildVoteRequest({
     // share this path — reads the artifact and answers; it never needs to run
     // commands, edit files or fetch. A CLI that cannot enforce that refuses
     // the seat, and the panel's error policy counts it.
-    accessMode: 'read-only-analysis',
+    accessMode: VOTER_ACCESS_MODE,
     signal: seatSignal(timeoutMs, signal),
   };
   return withResponseFormat
@@ -296,45 +309,27 @@ export interface VoteUsage {
   readonly cacheCreationInputTokens?: number | undefined;
 }
 
-/** Read a usage token count when the adapter actually reported a number (#3910). */
-function readTokenCount(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
 /** One completion attempt: build → complete (timeout-bounded) → extract text + usage. */
-interface VoteCompletionArgs {
-  readonly role: VoterRole;
-  readonly proposal: string;
-  readonly adapter: IModelAdapter;
-  readonly timeoutMs: number;
-  readonly withResponseFormat: boolean;
-  /** Declared options for a multi-option proposal (#4472). */
-  readonly options?: readonly string[] | undefined;
-  /**
-   * The target project named in the system prompt (#6110). Required as a KEY
-   * so a hop that forgets to pass it fails to compile; `undefined` is the
-   * `nexus-agents` default.
-   */
-  readonly project: string | undefined;
-  /**
-   * The working directory every seat's tools run in (#6254), named in the
-   * user prompt. Required as a KEY for the same reason as `project`;
-   * `undefined` renders no REPOSITORY ACCESS block.
-   */
-  readonly workspace: string | undefined;
-  readonly workspaceSha?: string | undefined;
-  /** Panel cancel or overall cutoff, combined with the per-attempt deadline. */
-  readonly signal?: AbortSignal | undefined;
-}
-
 async function runVoteCompletion(
   args: VoteCompletionArgs
 ): Promise<Omit<VoteAttemptSuccess, 'vote'> | VoteAttemptFailure> {
+  const collector = args.attemptCollector;
+  let attemptEventId: string | undefined;
+  collector?.started();
+  // Observe the raw response BEFORE timeout/cancel racing can hide settlement.
+  const call = args.adapter.complete(buildVoteRequest(args)).then((response) => {
+    if (response.ok)
+      attemptEventId = collector?.settled(
+        args.role,
+        args.adapter,
+        response.value,
+        args.attemptKind ?? 'initial',
+        args.withinRoleRetry
+      );
+    return response;
+  });
   const timeoutResult = await withTimeout(
-    unlessCancelled(
-      trackVoterCompletion(args.adapter.complete(buildVoteRequest(args)), args.signal),
-      args.signal
-    ),
+    unlessCancelled(trackVoterCompletion(call, args.signal), args.signal),
     args.timeoutMs,
     `Vote timeout after ${String(args.timeoutMs)}ms for role: ${args.role}`
   );
@@ -343,30 +338,11 @@ async function runVoteCompletion(
   if (!response.ok) {
     return { ok: false, error: response.error.message, retryable: response.error.retryable };
   }
-  // #3910: capture the adapter-reported per-call usage so it can ride up into
-  // the AgentVoteResult and feed the decision-cost rollup as MEASURED. Cast
-  // through a loose shape: the type guarantees `usage`, but a real adapter (or a
-  // partial response) may omit the counts — read each defensively so a
-  // non-reporting call stays unmeasured rather than throwing or fabricating 0.
-  const reported = response.value.usage as unknown as
-    | {
-        inputTokens?: unknown;
-        outputTokens?: unknown;
-        cachedInputTokens?: unknown;
-        cacheCreationInputTokens?: unknown;
-      }
-    | undefined;
-  const usage: VoteUsage = {
-    inputTokens: readTokenCount(reported?.inputTokens),
-    outputTokens: readTokenCount(reported?.outputTokens),
-    // #4435: an `inputTokens: 2` next to 3,980 cached tokens tells a very
-    // different story than `inputTokens: 2` alone.
-    cachedInputTokens: readTokenCount(reported?.cachedInputTokens),
-    cacheCreationInputTokens: readTokenCount(reported?.cacheCreationInputTokens),
-  };
+  const usage = readVoteUsage(response.value);
   return {
     ok: true,
     output: extractTextFromResponse(response.value.content),
+    attemptEventId,
     usage,
     // #6094: the transport's captured stderr rides up with the vote so the
     // caller can classify a seat that could not read the artifact from the
@@ -386,6 +362,7 @@ interface VoteAttemptSuccess {
   readonly ok: true;
   readonly vote: Vote;
   readonly output: string;
+  readonly attemptEventId?: string | undefined;
   readonly usage: VoteUsage;
   /** Stderr the CLI transport captured for this completion, when any (#6094). */
   readonly cliStderr: string | undefined;
@@ -396,17 +373,6 @@ interface VoteAttemptSuccess {
 }
 
 /** What the prompt carries beyond the proposal: declared options (#4472), the target project (#6110) and the working directory (#6254). */
-interface VotePromptContext {
-  readonly options?: readonly string[] | undefined;
-  /** Target project for the system prompt; omitted ⇒ `nexus-agents`. */
-  readonly project?: string | undefined;
-  /** Working directory named in the user prompt; omitted ⇒ no REPOSITORY ACCESS block. */
-  readonly workspace?: string | undefined;
-  readonly workspaceSha?: string | undefined;
-  /** The panel's cancel (#6729); aborts the adapter call in flight. */
-  readonly signal?: AbortSignal | undefined;
-}
-
 /**
  * A failed attempt. `cliStderr` is present only on the parse-failure branch —
  * the transport completed but the output was not a vote (#6269): it says WHY
@@ -423,11 +389,15 @@ interface VoteAttemptFailure {
    * its reported usage rides on the failure instead of being discarded.
    */
   readonly usage?: VoteUsage | undefined;
+  /** Parse-failure branch only (#6957): the answer that was not a vote, for the failure log. */
+  readonly rawOutput?: string | undefined;
   /**
    * Set by {@link executeWithRetries} (#6821): usage summed over every attempt
    * that settled with a response. Absent when none did.
    */
   readonly attemptUsage?: AttemptUsage | undefined;
+  readonly attemptTelemetry?:
+    import('../observability/attempt-usage.js').AttemptTelemetry | undefined;
 }
 
 export async function executeSingleVoteAttempt(
@@ -454,14 +424,27 @@ export async function executeSingleVoteAttempt(
     completion.retryable !== false &&
     isStructuredOutputUnsupported(completion.error)
   ) {
-    completion = await runVoteCompletion({ ...completionArgs, withResponseFormat: false });
+    completion = await runVoteCompletion({
+      ...completionArgs,
+      withResponseFormat: false,
+      attemptKind: 'error_retry',
+    });
   }
   if (!completion.ok) return completion;
 
+  return parseVoteCompletion(completion, role, context);
+}
+
+function parseVoteCompletion(
+  completion: Omit<VoteAttemptSuccess, 'vote'>,
+  role: VoterRole,
+  context: VotePromptContext
+): VoteAttemptSuccess | VoteAttemptFailure {
   try {
     // parseVoteResponse throws SyntheticVoteError if parsing fails — we only
     // accept real LLM votes, not synthetic fallbacks.
     const vote = parseVoteResponse(completion.output, role, context.options);
+    context.attemptCollector?.classified(completion.attemptEventId, 'parsed');
     return {
       ok: true,
       vote,
@@ -473,11 +456,13 @@ export async function executeSingleVoteAttempt(
     };
   } catch (error) {
     if (error instanceof SyntheticVoteError) {
+      context.attemptCollector?.classified(completion.attemptEventId, 'parse_failed');
       return {
         ok: false,
         error: `Vote parsing failed: ${error.message}`,
         cliStderr: completion.cliStderr,
         usage: completion.usage,
+        rawOutput: error.rawOutput,
       };
     }
     throw error; // Re-throw unexpected errors
@@ -504,6 +489,9 @@ export interface RetryOptions {
    * combined with the per-attempt deadline, and stops further attempts.
    */
   readonly signal?: AbortSignal | undefined;
+  readonly attemptCollector?: VoterAttemptCollector | undefined;
+  readonly attemptKind?: VoterAttemptKind | undefined;
+  readonly withinRoleRetry?: boolean | undefined;
 }
 
 /**
@@ -524,14 +512,8 @@ export interface VoteOutcome {
    * completion's own report.
    */
   readonly attemptUsage: AttemptUsage;
-}
-
-/** Fold an attempt's reported usage, when the transport returned a response. */
-function foldAttempt(
-  acc: AttemptUsage | undefined,
-  usage: VoteUsage | undefined
-): AttemptUsage | undefined {
-  return usage === undefined ? acc : foldCompletionUsage(acc, usage);
+  readonly attemptTelemetry?:
+    import('../observability/attempt-usage.js').AttemptTelemetry | undefined;
 }
 
 /** A failure carrying the seat's attempt usage, when any attempt settled. */
@@ -539,7 +521,7 @@ function withAttemptUsage(
   failure: VoteAttemptFailure,
   attemptUsage: AttemptUsage | undefined
 ): VoteAttemptFailure {
-  const { usage: _single, ...rest } = failure;
+  const { usage: _single, rawOutput: _raw, ...rest } = failure;
   return attemptUsage === undefined ? rest : { ...rest, attemptUsage };
 }
 
@@ -560,29 +542,46 @@ function toOutcome(
 export async function executeWithRetries(
   opts: RetryOptions
 ): Promise<(VoteOutcome & { ok: true }) | VoteAttemptFailure> {
+  const collector = opts.attemptCollector ?? new VoterAttemptCollector();
+  const result = await runVoteRetries({ ...opts, attemptCollector: collector });
+  return withVoterAttemptTelemetry(result, () => collector.snapshot());
+}
+
+async function waitForNextAttempt(
+  opts: RetryOptions,
+  attempt: number,
+  lastError: string
+): Promise<boolean> {
+  if (attempt === 0) return true;
+  const isRateLimit = isRateLimitError(lastError);
+  const baseDelay = isRateLimit ? RATE_LIMIT_RETRY_DELAY_MS : INITIAL_RETRY_DELAY_MS;
+  const delayMs = baseDelay * Math.pow(2, attempt - 1);
+  opts.logger.debug('Retrying vote execution', { role: opts.role, attempt, delayMs, isRateLimit });
+  return waitForVoteRetry(delayMs, opts.signal);
+}
+
+async function runVoteRetries(
+  opts: RetryOptions
+): Promise<(VoteOutcome & { ok: true }) | VoteAttemptFailure> {
   const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
   let lastError = '';
+  let parseFailed = false;
   // #6821: every settled completion is billed, so every one is recorded.
   let attemptUsage: AttemptUsage | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // #6729: a cancelled panel makes no further adapter call, first or retry.
     if (isCancelled(opts.signal)) return withAttemptUsage(cancelledSeat(lastError), attemptUsage);
-    if (attempt > 0) {
-      const isRateLimit = isRateLimitError(lastError);
-      const baseDelay = isRateLimit ? RATE_LIMIT_RETRY_DELAY_MS : INITIAL_RETRY_DELAY_MS;
-      const delayMs = baseDelay * Math.pow(2, attempt - 1);
-      logger.debug('Retrying vote execution', { role, attempt, delayMs, isRateLimit });
-      if (!(await waitForVoteRetry(delayMs, opts.signal))) {
-        return withAttemptUsage(cancelledSeat(lastError), attemptUsage);
-      }
+    if (!(await waitForNextAttempt(opts, attempt, lastError))) {
+      return withAttemptUsage(cancelledSeat(lastError), attemptUsage);
     }
 
     // #2472: per-attempt timing breakdown so investigators can see which
     // retry succeeded (or which attempt blew the cap). Total vote time
     // is already captured at the call-site; this fills the per-attempt gap.
     const attemptStart = Date.now();
-    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, opts);
+    const context = voteRetryContext(opts, attempt, parseFailed);
+    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs, context);
     const attemptMs = Date.now() - attemptStart;
     if (result.ok) {
       logger.info('Vote attempt timing', {
@@ -596,6 +595,8 @@ export async function executeWithRetries(
 
     attemptUsage = foldAttempt(attemptUsage, result.usage);
     lastError = result.error;
+    // Only parse failures carry rawOutput, including an empty response.
+    parseFailed = result.rawOutput !== undefined;
     const terminal = logFailedAttempt(logger, {
       role,
       attempt,
@@ -604,6 +605,7 @@ export async function executeWithRetries(
       error: lastError,
       retryable: result.retryable,
       cliStderr: result.cliStderr,
+      rawOutput: result.rawOutput,
     });
     if (terminal !== null) {
       logAbandonedRetries(logger, role, attempt, maxRetries, terminal);

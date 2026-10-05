@@ -8,6 +8,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
+import { resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import {
   parseLearningMetricsArgs,
   learningMetricsCommand,
@@ -16,6 +20,18 @@ import {
   type LearningMetricsContext,
 } from './learning-metrics-command.js';
 import type { LearningMetricsOptions } from './learning-metrics-types.js';
+
+let fixtureRoot: string;
+beforeEach(() => {
+  fixtureRoot = mkdtempOutsideRepo('learning-metrics-command-');
+  vi.stubEnv('NEXUS_DATA_DIR', join(fixtureRoot, 'data'));
+  resetOutcomeStore();
+});
+afterEach(() => {
+  resetOutcomeStore();
+  vi.unstubAllEnvs();
+  rmSync(fixtureRoot, { recursive: true, force: true });
+});
 
 describe('parseLearningMetricsArgs', () => {
   it('should return defaults for empty args', () => {

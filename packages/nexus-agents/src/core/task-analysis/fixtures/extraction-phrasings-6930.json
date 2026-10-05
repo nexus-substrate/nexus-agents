@@ -1,0 +1,162 @@
+[
+  {
+    "task": "Extract symbols from src/a.ts (see docs at example.com)",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from package.json scripts",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/b.json",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts as a c programmer",
+    "expectedGaps": []
+  },
+  {
+    "task": "we should not extract symbols from parser.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Avoid: extract symbols from x.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts \u2014 not the .py files",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts. Next, check src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts! Check src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts? Check src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts; check src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts\ncheck src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts then check src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts next check src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts, except src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts, exclude .py files",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts without .py files",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts and skip src/b.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Skip extracting symbols from x.py",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from README.md and config.yaml",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts (reference example.org and example.net)",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract symbols from src/a.ts and go update docs",
+    "expectedGaps": []
+  },
+  {
+    "task": "Discuss symbol extraction for Python files",
+    "expectedGaps": []
+  },
+  {
+    "task": "Update parser.py and README.md",
+    "expectedGaps": []
+  },
+  {
+    "task": "Extract class and function symbols from src/parser.py",
+    "expectedGaps": ["extract_symbols:.py"]
+  },
+  {
+    "task": "extract symbols from the python files",
+    "expectedGaps": ["extract_symbols:.py"]
+  },
+  {
+    "task": "symbol table for src/x.rs",
+    "expectedGaps": ["extract_symbols:.rs"]
+  },
+  {
+    "task": "Extract symbols from python",
+    "expectedGaps": ["extract_symbols:.py"]
+  },
+  {
+    "task": "Extract symbols in Python",
+    "expectedGaps": ["extract_symbols:.py"]
+  },
+  {
+    "task": "Extract symbols from Rust source",
+    "expectedGaps": ["extract_symbols:.rs"]
+  },
+  {
+    "task": "Extract symbols from Go code",
+    "expectedGaps": ["extract_symbols:.go"]
+  },
+  {
+    "task": "Extract Python symbols",
+    "expectedGaps": ["extract_symbols:.py"]
+  },
+  {
+    "task": "Run extract_symbols on src/x.PY and src/y.py",
+    "expectedGaps": ["extract_symbols:.py"]
+  },
+  {
+    "task": "Perform symbol extraction from src/a.py and src/b.rs",
+    "expectedGaps": ["extract_symbols:.py", "extract_symbols:.rs"]
+  },
+  {
+    "task": "Avoid extracting symbols from a.py; extract symbols from b.rs",
+    "expectedGaps": ["extract_symbols:.rs"]
+  },
+  {
+    "task": "Review docs. Next, extract symbols from src/b.py",
+    "expectedGaps": ["extract_symbols:.py"]
+  },
+  {
+    "task": "Extract symbols from main.c and library.cpp",
+    "expectedGaps": ["extract_symbols:.c", "extract_symbols:.cpp"]
+  },
+  {
+    "task": "Extract symbols from App.java and App.kt",
+    "expectedGaps": ["extract_symbols:.java", "extract_symbols:.kt"]
+  },
+  {
+    "task": "Extract symbols from app.rb and app.php",
+    "expectedGaps": ["extract_symbols:.rb", "extract_symbols:.php"]
+  },
+  {
+    "task": "Extract symbols from App.cs and App.swift",
+    "expectedGaps": ["extract_symbols:.cs", "extract_symbols:.swift"]
+  }
+]

@@ -97,7 +97,7 @@ describe('evaluateCodePrEnableReadiness', () => {
       {
         name: 'guards-green-soak',
         met: true,
-        detail: `${String(SOAK)} consecutive green dry-runs (need ≥ ${String(SOAK)})`,
+        detail: `${String(SOAK)} consecutive green production dry-runs (need ≥ ${String(SOAK)}); excludedTestRows: 0`,
       },
       { name: 'owner-ack', met: true, detail: 'owner: william' },
     ]);
@@ -116,7 +116,7 @@ describe('evaluateCodePrEnableReadiness', () => {
       {
         name: 'guards-green-soak',
         met: false,
-        detail: `0 consecutive green dry-runs (need ≥ ${String(SOAK)})`,
+        detail: `0 consecutive green production dry-runs (need ≥ ${String(SOAK)}); excludedTestRows: 0`,
       },
       { name: 'owner-ack', met: false, detail: 'no owner' },
     ]);

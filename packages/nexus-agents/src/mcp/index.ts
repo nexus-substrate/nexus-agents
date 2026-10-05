@@ -508,3 +508,5 @@ export {
   analyzeTools,
   StpaAnalysisError,
 } from './safety/index.js';
+
+export { toPrReviewVote } from './tools/pr-review-result-mapping.js';

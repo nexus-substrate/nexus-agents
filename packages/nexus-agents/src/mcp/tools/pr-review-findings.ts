@@ -13,13 +13,17 @@
  * mark each as verified or unverified based on the gate output.
  *
  * Aggregation rule (enforced in pr-review-tool.ts):
- *   request_changes requires at least one VERIFIED finding from a
- *   non-error voter. Unverified findings surface in the response but
- *   don't trigger blocking.
+ *   A verified block requires VERIFIED medium-or-higher findings from two distinct non-error
+ *   request_changes roles at the same normalized file within ±3 lines.
+ *   A lone verified medium-or-higher finding requests changes, marked unconfirmed.
+ *   Security-role findings are at least medium. Unverified findings do not
+ *   trigger this tier; request_changes votes remain eligible for soft blocking.
  *
  * @module mcp/tools/pr-review-findings
  */
 
+import { posix } from 'node:path';
+import { findRepoRoot } from '../../config/repo-root-detection.js';
 import { parse as parseYaml } from 'yaml';
 
 /** The 4-point verification gate (#2225). Each check is either `passed`
@@ -38,7 +42,27 @@ export interface VerificationGate {
   readonly ruled_out_language_non_issue: 'passed' | 'failed' | 'skipped';
 }
 
-export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+/** Enforcement ordering, from informational to critical (#4337). */
+const FINDING_SEVERITY_ORDER: Readonly<Record<FindingSeverity, number>> = {
+  info: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+export const BLOCKING_SEVERITY_FLOOR: FindingSeverity = 'medium';
+
+/** Unknown runtime values use the parser's fail-closed medium default. */
+export function isBlockingSeverity(severity: FindingSeverity, role?: string): boolean {
+  // Model-asserted severity cannot downgrade security-role findings below medium.
+  if (role === 'security') return true;
+  return (
+    FINDING_SEVERITY_ORDER[coerceSeverity(severity)] >=
+    FINDING_SEVERITY_ORDER[BLOCKING_SEVERITY_FLOOR]
+  );
+}
 
 export interface Finding {
   /** One-line summary of the issue. */
@@ -56,6 +80,57 @@ export interface Finding {
   readonly verified: boolean;
 }
 
+/** Two distinct reviewers corroborate verified findings at the same file within ±3 lines. */
+export function findingsAgree(
+  left: Finding,
+  right: Finding,
+  leftRole: string,
+  rightRole: string,
+  repoPath?: string
+): boolean {
+  if (leftRole === rightRole || !left.verified || !right.verified) return false;
+  const a = normalizeFindingLocation(left.location, repoPath);
+  const b = normalizeFindingLocation(right.location, repoPath);
+  return a !== undefined && a.file === b?.file && a.start <= b.end + 3 && b.start <= a.end + 3;
+}
+
+function normalizeFindingLocation(
+  location: string,
+  repoPath?: string
+): { file: string; start: number; end: number } | undefined {
+  const citation = location
+    .trim()
+    .replace(/^`(.*)`$/, '$1')
+    .replaceAll('\\', '/');
+  const match = /^(.+?):L?(\d+)(?:-L?(\d+))?(?::\d+)?$/.exec(citation);
+  if (match === null) return undefined;
+  const file = normalizeFindingPath(match[1]?.trim() ?? '', repoPath);
+  const lines = parseFindingLines(match[2], match[3]);
+  if (file === undefined || lines === undefined) return undefined;
+  return { file, ...lines };
+}
+
+function parseFindingLines(
+  startText: string | undefined,
+  endText: string | undefined
+): { start: number; end: number } | undefined {
+  const start = Number(startText);
+  const end = Number(endText ?? startText);
+  if (!Number.isSafeInteger(start) || start < 1 || !Number.isSafeInteger(end) || end < start)
+    return undefined;
+  return { start, end };
+}
+
+function normalizeFindingPath(path: string, repoPath?: string): string | undefined {
+  if (path === '') return undefined;
+  const root = repoPath ?? findRepoRoot(process.cwd()) ?? process.cwd();
+  const file = posix.isAbsolute(path)
+    ? posix.relative(root.replaceAll('\\', '/'), path)
+    : posix.normalize(path).replace(/^[ab]\//, '');
+  if (file === '' || file === '.' || file.endsWith('/')) return undefined;
+  return file;
+}
+
 /** Returns true if all 4 checks passed AND the named assertion is
  * substantive (length > 10 chars, not just "passed" or "OK"). The threshold
  * exists because LLMs tend to write "passed" for everything when not
@@ -71,19 +146,31 @@ export function isFindingVerified(gate: VerificationGate): boolean {
   return true;
 }
 
-const FINDINGS_BLOCK_RE = /```yaml findings\n([\s\S]*?)\n```/;
+const FINDINGS_OPEN = '```yaml findings\n';
+const FINDINGS_CLOSE = '\n```';
+
+/**
+ * The body of the first ```yaml findings fence, or undefined when there is
+ * none or it is unterminated. Plain index scanning, not a lazy regex: the
+ * regex backtracked polynomially on reasoning with many unterminated fences
+ * (CodeQL js/polynomial-redos, alert 255).
+ */
+function extractFindingsBlock(reasoning: string): string | undefined {
+  const open = reasoning.indexOf(FINDINGS_OPEN);
+  if (open === -1) return undefined;
+  const start = open + FINDINGS_OPEN.length;
+  const close = reasoning.indexOf(FINDINGS_CLOSE, start);
+  return close === -1 ? undefined : reasoning.slice(start, close);
+}
 
 /**
  * Extracts a YAML-fenced findings block from the voter's reasoning and
  * parses it into typed `Finding[]`. On any parse error or missing block,
- * returns an empty array — voters who don't follow the format are treated
- * as having no findings (i.e. approve), consistent with the gate design:
- * "if you can't articulate what's wrong, don't file."
+ * returns an empty array: no structured findings. The vote decision remains
+ * eligible for the soft-block tier even without findings.
  */
 export function parseFindings(reasoning: string): readonly Finding[] {
-  const match = FINDINGS_BLOCK_RE.exec(reasoning);
-  if (match === null) return [];
-  const yamlBody = match[1];
+  const yamlBody = extractFindingsBlock(reasoning);
   if (yamlBody === undefined || yamlBody.trim() === '') return [];
 
   let parsed: unknown;
@@ -141,7 +228,9 @@ function coerceGateCheck(raw: unknown): 'passed' | 'failed' | 'skipped' {
 }
 
 function coerceSeverity(raw: unknown): FindingSeverity {
-  if (raw === 'critical' || raw === 'high' || raw === 'medium' || raw === 'low') return raw;
+  if (raw === 'critical' || raw === 'high' || raw === 'medium' || raw === 'low' || raw === 'info')
+    return raw;
+  // Preserve coerceFinding's medium default: malformed severity must not evade enforcement.
   return 'medium';
 }
 
@@ -153,7 +242,7 @@ export const FINDINGS_FORMAT_INSTRUCTIONS = `If you have one or more findings (c
 \`\`\`yaml findings
 - summary: 'One-line summary of the issue'
   location: path/file.ext:LINE
-  severity: critical | high | medium | low
+  severity: critical | high | medium | low | info
   gate:
     reread_cited_line: passed
     traced_call_path: passed
@@ -162,4 +251,4 @@ export const FINDINGS_FORMAT_INSTRUCTIONS = `If you have one or more findings (c
   claim: 'What is wrong and why it justifies blocking the merge.'
 \`\`\`
 
-A finding only triggers request_changes if ALL FOUR gate checks are 'passed' AND named_assertion is substantive (>10 chars, naming a concrete failure). Findings missing any of those surface as informational only — they do not block the merge. This is the #2225 verification gate; the 2026-04-25 audit found a 100% false-positive rate when this gate was not enforced.`;
+A finding only triggers the verified-finding tier if its severity is ${BLOCKING_SEVERITY_FLOOR} or higher, ALL FOUR gate checks are 'passed' AND named_assertion is substantive (>10 chars, naming a concrete failure). Non-security low/info findings are reported but do not corroborate a verified blocker. Security-role findings are treated as at least medium. Request_changes votes still count toward soft blocking regardless of severity. Missing/unknown severity in legacy YAML defaults to medium (fail closed); structured JSON rejects unknown severity. Findings missing any gate checks surface as informational only — they do not verify a blocker on their own. This is the #2225 verification gate; the 2026-04-25 audit found a 100% false-positive rate when this gate was not enforced.`;

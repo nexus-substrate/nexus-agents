@@ -226,3 +226,49 @@ describe('GapLedgerLoadReport completeness', () => {
     expect(report.cappedEntries).toBe(3);
   });
 });
+
+describe('persisted gap provenance', () => {
+  it.each(['inferred', 'observed'] as const)('persists %s origin across a reload', (origin) => {
+    const filePath = scratchFile();
+    const gap = { type: 'tool' as const, name: 'extract_symbols:.py', suggestion: 's', origin };
+    createPersistentCapabilityGapLedger({ filePath }).record({
+      gaps: [gap],
+      available: { tools: [], experts: [] },
+      allSatisfied: false,
+    });
+    const row: unknown = JSON.parse(readFileSync(filePath, 'utf8').trim());
+    expect(row).toMatchObject(gap);
+    const reloaded = createPersistentCapabilityGapLedger({ filePath });
+    expect(reloaded.loadReport()).toMatchObject({ loaded: 1, malformedLines: 0 });
+    expect(reloaded.summarize()[0]?.name).toBe(gap.name);
+  });
+
+  it('keeps legacy rows without origin valid and leaves provenance unspecified', () => {
+    const filePath = scratchFile();
+    createPersistentCapabilityGapLedger({ filePath }).record(report('legacy'));
+    const row: unknown = JSON.parse(readFileSync(filePath, 'utf8').trim());
+    expect(row).not.toHaveProperty('origin');
+    expect(createPersistentCapabilityGapLedger({ filePath }).loadReport()).toMatchObject({
+      loaded: 1,
+      malformedLines: 0,
+    });
+  });
+
+  it.each(['predicted', '', null, 1])('counts invalid origin %s as malformed', (origin) => {
+    const filePath = scratchFile();
+    writeFileSync(
+      filePath,
+      `${JSON.stringify({
+        type: 'tool',
+        name: 'x',
+        suggestion: 's',
+        timestamp: new Date().toISOString(),
+        origin,
+      })}\n`
+    );
+    expect(createPersistentCapabilityGapLedger({ filePath }).loadReport()).toMatchObject({
+      loaded: 0,
+      malformedLines: 1,
+    });
+  });
+});

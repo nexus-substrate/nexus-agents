@@ -31,8 +31,9 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -340,7 +341,7 @@ function createCompareDataFeedsHandler(deps: CompareDataFeedsDeps) {
     });
     return withToolError('Compare data feeds failed', logger, () => {
       const result = executeCompare(validation.data);
-      return Promise.resolve(toolSuccessStructured(result as unknown as Record<string, unknown>));
+      return Promise.resolve(structuredToolSuccess(z.object(COMPARE_OUTPUT_SCHEMA), result));
     });
   };
 }
@@ -388,7 +389,8 @@ export function registerCompareDataFeedsTool(server: McpServer, deps: CompareDat
     timeoutMs,
     logger,
   });
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'compare_data_feeds',
     {
       description: COMPARE_DESCRIPTION,

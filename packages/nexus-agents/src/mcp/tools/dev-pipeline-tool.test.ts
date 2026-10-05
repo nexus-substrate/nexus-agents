@@ -565,6 +565,30 @@ describe('run_dev_pipeline simulateVotes fail-closed gate (#4170)', () => {
     expect(output['warnings']).toEqual(['the gate ran edited scripts']);
   });
 
+  it('surfaces the scratch artifact and names an empty implementation (#6794)', async () => {
+    const changes = {
+      diff: '',
+      baseSha: 'a'.repeat(40),
+      worktreePath: '/tmp/removed-scratch',
+      worktreeRemoved: true,
+      dependencies: { status: 'none' as const },
+      empty: true,
+      status: 'no_changes',
+    };
+    runDevPipelineMock.mockResolvedValueOnce({
+      ...PIPELINE_RESULT,
+      completed: false,
+      changes,
+    } as never);
+    const result = await captureHandler()({ task: 'Build feature X' }, STDIO_CTX);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('no_changes');
+    const envelope = result._meta?.[ERROR_ENVELOPE_META_KEY] as {
+      detail?: Record<string, unknown>;
+    };
+    expect(envelope.detail?.['changes']).toEqual(changes);
+  });
+
   it('omits both fields when the pipeline did not report them', async () => {
     // Absent means the producer predates the distinction — not false, not 'empty'.
     const handler = captureHandler();
@@ -673,6 +697,22 @@ describe('registerDevPipelineTool — trustTier threading (#3712)', () => {
 describe('dev pipeline input sanitization forwarding (#4733)', () => {
   beforeEach(() => vi.spyOn(agentExecutor, 'createAgentStages'));
   afterEach(() => vi.restoreAllMocks());
+
+  it.each([false, true])('threads dryRun=%s to the stage executor (#6958)', async (dryRun) => {
+    await captureHandler()({ task: 'Build feature X', dryRun }, STDIO_CTX);
+
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ dryRun })
+    );
+  });
+
+  it('threads the plain-goal dry run to the stage executor (#6958)', async () => {
+    await runDevPipelineForGoal('Build feature X', undefined, true);
+
+    expect(agentExecutor.createAgentStages).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ dryRun: true })
+    );
+  });
 
   it.each([false, true])(
     'records middleware modification result %s with its counts',

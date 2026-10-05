@@ -29,8 +29,9 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import {
+  registerStructuredTool,
   toolStructuredError,
-  toolSuccessStructured,
+  structuredToolSuccess,
   type ToolResult,
   type BaseMcpToolDeps,
 } from './tool-result.js';
@@ -100,7 +101,9 @@ function createVendorPublishingAuditHandler(deps: VendorPublishingAuditDeps) {
     ctx.logger.debug('Vendor publishing audit', { vendor: validation.data.vendor });
     return withToolError('Vendor publishing audit failed', logger, () => {
       const result = lookupVendor(validation.data.vendor);
-      return Promise.resolve(toolSuccessStructured(result as unknown as Record<string, unknown>));
+      return Promise.resolve(
+        structuredToolSuccess(z.object(VENDOR_PUBLISHING_OUTPUT_SCHEMA), result)
+      );
     });
   };
 }
@@ -149,7 +152,8 @@ export function registerVendorPublishingAuditTool(
     timeoutMs,
     logger,
   });
-  server.registerTool(
+  registerStructuredTool(
+    server,
     'vendor_publishing_audit',
     {
       description: VENDOR_PUBLISHING_DESCRIPTION,

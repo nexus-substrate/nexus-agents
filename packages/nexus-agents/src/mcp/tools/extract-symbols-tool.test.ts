@@ -11,7 +11,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 
 // Mock the symbol extractor so we don't need real source files for every test.
 vi.mock('../../indexer/symbol-extractor.js', () => ({
@@ -60,6 +61,20 @@ function makeCtx(): Parameters<typeof extractSymbolsHandler>[1] {
     },
   };
 }
+
+let testDataDir: string;
+beforeEach(() => {
+  const root = join(process.cwd(), '.nexus-agents');
+  mkdirSync(root, { recursive: true });
+  testDataDir = mkdtempSync(join(root, 'gap-ledger-test-'));
+  vi.stubEnv('NEXUS_DATA_DIR', testDataDir);
+  resetGapLedger();
+});
+afterEach(() => {
+  resetGapLedger();
+  vi.unstubAllEnvs();
+  rmSync(testDataDir, { recursive: true, force: true });
+});
 
 describe('extract-symbols-tool (#2159)', () => {
   beforeEach(() => {

@@ -73,6 +73,126 @@ not an empty-ledger condition — the gate now refuses the empty ledger too.
    moved-head rule (`ratified-rebased`, #6256) as long as the moved head's
    tree is the ratified patch replayed onto its base; see below.
 
+### Model-family floor and owner override (#6601)
+
+Governor ratification requires **at least two known model vendor families**
+among verifiable `approve` or `reject` seats. Rejections count toward diversity;
+abstentions, errored seats, unverifiable voters and missing or unknown models
+do not. Multiple models from the same vendor count as one family. Zero known
+families is `unmeasured-model-diversity`; one is
+`insufficient-model-diversity`. The floor is computed from hash-covered
+`voters[].model`, using the unchanged configured-model classification. With
+`servedModel` absent, family credit is exactly as before; bare configured aliases
+(`sonnet`, `opus`, `haiku`, `fable`) remain unknown. With `servedModel` present,
+the seat retains credit only if the served family is known and equals the known
+configured family. Bare Claude aliases may be normalized to Anthropic **only
+for the served report's comparison**. A mismatch, an unclassifiable report, or
+an unknown configured family withholds the seat's family credit. `servedModel`
+can only withhold credit, never grant it. The report is the gateway's own claim,
+not independent proof of the serving provider (#6952).
+
+This reader-first release accepts an optional hash-covered `servedModel` of
+1–200 characters using only letters, digits, `.`, `_`, `:`, `/`, `@`, `+` and
+`-`; malformed identifiers fail schema validation as `servedModel_invalid`.
+Records without the field retain their existing hashes. The producer does not
+write the field in this release. A follow-up can enable writing after base
+checkout readers accept it, avoiding rejection of an entire ledger by older
+strict readers.
+
+The floor uses only the pinned vendor-family patterns and
+normalization inside governed `scripts/governor-ledger-diversity.ts`; ordinary
+routing or registry edits cannot change its mapping. Unrecognized configured IDs
+count toward no family, including aliases recognized only by the ordinary registry.
+The governed sibling `scripts/governor-ledger-diversity.test.ts` checks every
+in-tree model ID (including aliases and CLI model names) and every committed
+ledger model against `vendorFamilyOf`. The pinned configured-model mapping
+must agree or return `unknown` (stricter);
+disagreement fails the test and requires a deliberate governed edit.
+
+**Legacy handling uses exact hashes.** Only the three already-landed
+single-family records for PRs #6559, #6621 and #6698 are exempt, by the closed
+`GRANDFATHERED_DIVERSITY_HASHES` set in
+`scripts/governor-ledger-diversity.ts`. Changing their content voids the
+exemption. An old schema version, sequence or date grants no diversity
+exemption; missing per-voter models fail closed. Both the floor and this hash
+set are governor-owned.
+
+**An owner can override a measured single-family panel.** Run a separate live
+`consensus_vote` with `ratifiesPr: { pr, headSha }` exactly matching the
+original panel record, `strategy: "supermajority"` (or `"unanimous"`) and
+`errorPolicy: "absolute_quorum"`. It must produce a distinct, approved,
+qualifying record with whole-panel coverage. Then the human owner runs this
+exact command from the repository root, using that separate vote's record id:
+
+```bash
+pnpm exec tsx scripts/append-ratification-record.ts \
+  --record-id <ownerOverrideVoteRecordId> \
+  --ledger governance/vote-records.jsonl \
+  --as-owner --signing-key <path-to-owner-private-key>
+```
+
+The key must verify as an owner principal in the gate checkout's
+`governance/allowed_signers`; an agent signature or the flag alone cannot
+authorize an override. The command preserves the record's hash-covered
+`{pr, headSha}` binding; it does not supply or change it. Both records must
+satisfy the ordinary ratification checks, including ledger integrity,
+append-only history, strategy, approval, panel coverage and signature policy.
+A solitary owner-signed panel cannot override itself. The override applies
+only to the identical PR number and full recorded head SHA: a current-head
+override does not cover `head^` or a different rebased record SHA. Zero known
+families cannot be overridden; rerun a panel with measurable models instead.
+The gate reports the owner override id and exact binding when it accepts it.
+
+### What a ratification record does and does not prove (#6952)
+
+The gate checks a record's **contents**, not how they were produced:
+
+- each record's own hash, plus sequence coverage and append-only history
+  against the base. The ledger is verified as a set; there is no
+  `previousHash` chain to walk.
+- the signature policy.
+- the record's own `decision === 'approved'` and an eligible `strategy` /
+  `errorPolicy`. The gate does **not** recompute the supermajority from
+  `voters[].decision`; it trusts the decision the record carries.
+- panel coverage and the model-family floor (#6601) over each counted seat's
+  configured `voters[].model`, with `servedModel` only able to withhold credit.
+
+Most of those fields come from ordinary code outside the governor section:
+
+- `packages/nexus-agents/src/cli/voter-attempt-usage.ts` sets each seat's
+  `model` from the adapter's configured id;
+- `voter-response.ts` parses each seat's decision;
+- `voter-agents*.ts` assembles the panel.
+
+The overall `decision` is computed by the governed verdict function
+(`resolveVoteDecision`, `src/consensus/decision/verdict.ts`), but the ordinary
+orchestration in `src/mcp/tools/consensus-vote.ts` calls it and forwards its
+result. The governed audit builder (`src/audit/vote-record-store.ts`) validates
+the record's shape, drops fields its schema does not carry, and derives
+aggregates such as panel coverage and the option tally. It cannot verify that
+the per-seat values it receives are true.
+
+What follows:
+
+- **Tamper-evident after recording, not proof of honest production.** Editing
+  a committed record is detected. A producer change that mislabels a seat's
+  model, flips a parsed seat decision, or forwards the wrong overall decision is
+  not detected by the gate. It shows up only in that producer PR's diff and
+  review.
+- **The same boundary applies to every field.** The family floor reads
+  `servedModel` / `model` from the same producers that already supply the
+  decisions. It adds a check, not a new trust assumption.
+- **Gateway substitution is not detected today.** The reader accepts a
+  hash-covered `servedModel` (#6951), but the producer does not write it yet,
+  so a record still carries only the configured model. Once written, it is the
+  gateway's own report of what it served, not independent proof of the
+  serving provider.
+
+A reviewer auditing a ratification should therefore also read changes to those
+producer files that merged since the last trusted panel. Whether to govern the
+producers, recompute the tally in the gate, or verify the evidence
+independently is open in #6952.
+
 ### Redacting a voter's reasoning
 
 From the repository root, name the record and each voter role whose reasoning
@@ -108,7 +228,8 @@ needs `--as-owner` and `--as-owner` refuses the agent key, exactly as
 hash (a signed and an unsigned redaction hash the same) and is verified at the
 record's `at`; the gate reports it beside the target record's own line
 (`signed:agent by …` / `unsigned-record`). With no key configured the record
-is appended UNSIGNED and the command says so. The `by` field is
+is appended UNSIGNED and the command says so — and the ratification gate
+refuses the PR that adds it (`ledger-signature-required`, #3927). The `by` field is
 operator-supplied attribution; the signature is the authenticated identity.
 
 Review and commit the ledger diff in a PR. **The PR carrying the redaction is
@@ -311,8 +432,8 @@ had`, `no non-ledger change`, `conflict resolving <path>`, the head's
   there is this kind too, naming the ratified sha it was compared against.
 - `duplicate-id` — one id names two different records.
 
-**Signature, reported per bound record, not yet enforced (#3927 item 4,
-phases 1-2).** The line also carries the signature verifier's code for every
+**Signature, reported per bound record (#3927 item 4, phases 1-2;
+enforced since phase 3, below).** The line also carries the signature verifier's code for every
 bound record, verified against `governance/allowed_signers` — distinct,
 never collapsed:
 
@@ -345,6 +466,41 @@ the pure function that supplies no verifier prints `signature: unmeasured
 (no verifier supplied)` for a grandfathered record and refuses a record past
 the cutover — absence is not measured as signed.
 
+**Not only bound records (#3927).** Enforcing the bound records alone let an
+unsigned record that no PR binds be appended and merge unrefused. The gate
+therefore also judges a signature SCOPE, named by
+`RATIFICATION_SIGNATURE_SCOPE`, over RAW LEDGER LINES — every occurrence,
+never the deduplicated record set. The signature is outside the hash, so an
+unsigned copy of a signed record has the same id and hash and collapses into
+it when the ledger loads; judging the set let that copy through (the PR #7000
+panel's reproduction).
+
+- `added` — the pre-merge job: each head line not matched, occurrence for
+  occurrence, by a base line with the same id, hash AND signature, i.e. what
+  the PR appends, bound or not. An unsigned or re-signed copy of a base
+  record is an added line and must verify on its own; a redaction's rewrite
+  of a base line keeps all three and stays on the base.
+- `ledger` — the post-merge backstop, and the default when the variable is
+  unset: every line. A record that bypassed the pre-merge job keeps `main`
+  red on every governor push until it is resolved, not only on the push that
+  landed it. Any other value is `unmeasured`.
+
+A line is grandfathered only when it carries NO signature and its hash is
+one of the 15 grandfathered hashes: an unsigned re-append of a grandfathered
+record repeats exactly its hash-covered content, so it has nothing to sign; a
+grandfathered record carrying a signature is judged, so a forged signature on
+one is refused. A line in scope that is not `signed` turns a ratified verdict
+into `ledger-signature-required`, naming each record id and line number with
+its own code (`unsigned-record`, `unknown-signer`, `bad-signature`,
+`signature-not-measured`); under any other refusal the same lines are named
+on a second `::error::` line. A duplicate carrying a different VALID
+signature (a second listed key) is allowed. Coverage is printed in lines —
+`N of M ledger line(s) checked`, with the on-base and grandfathered counts,
+which partition `M` — so a gap is never silent. A PR that adds no line prints
+`0 of M … all signed`; its bound record is still checked as above. An
+unsigned redaction record is refused like any other, so redact with a
+signing key configured.
+
 An unreadable ledger (a directory at the path, a permissions error) prints
 `unmeasured` naming the error instead of crashing the gate (#6213); so does a
 run with no PR number (a direct push to `main`), or with no head sha. The
@@ -376,7 +532,8 @@ warn-first ended when it did.
 Precedence (the verdict's `kind`): `ledger-rewritten` → `ledger-invalid` →
 `duplicate-id` → `no-record` → `sha-mismatch` → `not-approved` →
 `wrong-error-policy` → `wrong-strategy` → `unmeasured-panel` →
-`degraded-panel` → `ratified` / `ratified-rebased` (the per-record checks
+`degraded-panel` → `ledger-signature-required` (#3927, judged only once the
+bound records ratify) → `ratified` / `ratified-rebased` (the per-record checks
 run over the records bound at the moved sha exactly as over a head-bound
 set, so a dissent there is `not-approved`). **Report order differs from precedence** for
 the per-record checks (the #6219 panel's note, applied at flip time): the

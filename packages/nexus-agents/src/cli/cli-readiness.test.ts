@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resolveClassGuardMs } from '../config/timeouts.js';
+import { FAKE_OPENAI_KEY } from '../testing/test-secrets.js';
 
 import {
   LEVEL_MEANING,
@@ -121,7 +123,7 @@ describe('probeServes', () => {
   });
 
   it('verifies when real content came back', async () => {
-    expect(await probeServes(served('ok'))).toEqual({ status: 'verified' });
+    expect(await probeServes(served('ok'))).toMatchObject({ status: 'verified' });
   });
 
   it('FAILS a successful call that returned nothing', async () => {
@@ -133,6 +135,7 @@ describe('probeServes', () => {
     expect(outcome.status).toBe('failed');
     if (outcome.status !== 'failed') return;
     expect(outcome.reason).toContain('no content');
+    expect(outcome).toMatchObject({ errorClass: 'execution' });
   });
 
   it('treats whitespace-only output as no content', async () => {
@@ -185,5 +188,109 @@ describe('probeServes deadline', () => {
     };
 
     expect((await probeServes(slowButFine, 500)).status).toBe('verified');
+  });
+});
+
+describe('live completion diagnostics (#4376)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it('records latency without exposing the completion content', async () => {
+    vi.useFakeTimers();
+    const execute = vi.fn(
+      () =>
+        new Promise<{ ok: true; value: { text: string } }>((resolve) => {
+          setTimeout(() => {
+            resolve({ ok: true, value: { text: FAKE_OPENAI_KEY } });
+          }, 25);
+        })
+    );
+    const pending = probeServes({ execute });
+    await vi.advanceTimersByTimeAsync(25);
+    const outcome = await pending;
+    expect(outcome).toEqual({ status: 'verified', latencyMs: 25 });
+    const output = formatReadiness(buildReadiness('claude', ladder(verified, verified, outcome)));
+    expect(output).toContain('ok (25ms)');
+    expect(output).not.toContain(FAKE_OPENAI_KEY);
+  });
+
+  it('bounds the adapter itself and disables retries and model fallback', async () => {
+    const execute = vi.fn(() => Promise.resolve({ ok: true as const, value: { text: 'ok' } }));
+    await probeServes({ execute });
+    const timeoutMs = resolveClassGuardMs('interactive');
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ maxTokens: 16, timeoutMs, options: { inFamilyFallback: false } }),
+      expect.objectContaining({
+        timeoutMs,
+        allowRetry: false,
+        maxRetries: 0,
+        signal: expect.any(AbortSignal),
+      })
+    );
+  });
+
+  it.each([
+    ['auth', 'Unauthorized'],
+    ['quota', 'Key limit exceeded (total limit)'],
+    ['timeout', 'ETIMEDOUT'],
+    ['sandbox', 'sandbox denied access'],
+    ['execution', 'provider crashed'],
+  ])('classifies %s failures and preserves the actionable message', async (errorClass, message) => {
+    const outcome = await probeServes({
+      execute: () => Promise.resolve({ ok: false as const, error: { message } }),
+    });
+    expect(outcome).toMatchObject({ status: 'failed', errorClass, reason: message });
+    const output = formatReadiness(buildReadiness('claude', ladder(verified, verified, outcome)));
+    expect(output).toContain(`failed (${errorClass})`);
+    expect(output).toContain(message);
+  });
+
+  it.each(['returned', 'thrown'])('redacts secrets in %s adapter failures', async (mode) => {
+    const message = `Unauthorized: ${FAKE_OPENAI_KEY}; Authorization: Bearer TEST_FAKE_TOKEN`;
+    const execute = (): ReturnType<ServesProbeTarget['execute']> =>
+      mode === 'thrown'
+        ? Promise.reject(new Error(message))
+        : Promise.resolve({ ok: false, error: { message } });
+    const outcome = await probeServes({ execute });
+    expect(JSON.stringify(outcome)).not.toContain(FAKE_OPENAI_KEY);
+    expect(JSON.stringify(outcome)).not.toContain('TEST_FAKE_TOKEN');
+    expect(JSON.stringify(outcome)).toContain('Unauthorized');
+  });
+
+  it('redacts a configured credential even when it has no recognizable key shape', async () => {
+    const credential = 'TEST_OPAQUE_GATEWAY_CREDENTIAL';
+    vi.stubEnv('NEXUS_OPENAI_COMPAT_KEY', credential);
+    const outcome = await probeServes({
+      execute: () =>
+        Promise.resolve({
+          ok: false as const,
+          error: { message: `Unauthorized: ${credential}` },
+        }),
+    });
+    expect(JSON.stringify(outcome)).not.toContain(credential);
+  });
+
+  it('does not redact a short credential-named value across unrelated text', async () => {
+    vi.stubEnv('NEXUS_FEATURE_KEY', '1');
+    const outcome = await probeServes({
+      execute: () =>
+        Promise.resolve({ ok: false as const, error: { message: 'HTTP 401 after 1 attempt' } }),
+    });
+    expect(JSON.stringify(outcome)).toContain('HTTP 401 after 1 attempt');
+  });
+
+  it('cancels a hung adapter at the deadline and reports timeout', async () => {
+    vi.useFakeTimers();
+    const execute = vi.fn(() => new Promise<never>(() => {}));
+    const pending = probeServes({ execute }, 100);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await pending).toMatchObject({ status: 'failed', errorClass: 'timeout' });
+    expect(execute).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: expect.objectContaining({ aborted: true }) })
+    );
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

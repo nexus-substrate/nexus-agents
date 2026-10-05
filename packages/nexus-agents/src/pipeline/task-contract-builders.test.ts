@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { analyzeForContract, buildBaseTaskContract } from './task-contract-builders.js';
+import { createSharedTaskAnalyzer } from '../core/task-analysis/shared-task-analyzer.js';
+import { detectCapabilityGaps } from '../core/task-analysis/capability-gap-detector.js';
 import { TaskContractSchema } from './task-contract.js';
 
 describe('buildBaseTaskContract', () => {
@@ -37,17 +39,15 @@ describe('buildBaseTaskContract', () => {
     expect(contract.metadata).not.toHaveProperty('after');
   });
 
-  it('returns empty defaults for constraints / capabilities / capability gaps / artifacts', () => {
+  it('measures capabilities while retaining empty artifacts and unrecognized scope', () => {
     const contract = buildBaseTaskContract(baseInput);
-    expect(contract.constraints.scope).toEqual([]);
-    expect(contract.requiredCapabilities).toEqual({ tools: [], experts: [] });
-    expect(contract.capabilityGaps.gaps).toEqual([]);
-    // `allSatisfied: true` here is NOT a verdict — no detector ran (#5919).
-    // This test used to assert only the `true`, which read as "the builder
-    // checked and everything was satisfied". `gapsMeasured` is what makes the
-    // difference visible, so it is asserted in the same breath.
-    expect(contract.capabilityGaps.gapsMeasured).toBe(false);
-    expect(contract.capabilityGaps.allSatisfied).toBe(true);
+    const analysis = createSharedTaskAnalyzer().analyze(baseInput.task);
+    expect(contract.constraints).toEqual({ scope: [] });
+    expect(contract.requiredCapabilities).toEqual(analysis.requiredCapabilities);
+    expect(contract.capabilityGaps).toEqual({
+      ...detectCapabilityGaps(analysis.requiredCapabilities),
+      gapsMeasured: true,
+    });
     expect(contract.artifacts).toEqual([]);
   });
 
@@ -70,10 +70,10 @@ describe('buildBaseTaskContract', () => {
 });
 
 // ============================================================================
-// The unmeasured capability-gap verdict is labelled as such (#5919)
+// Capability-gap verdicts are measured (#5923)
 // ============================================================================
 
-describe('capabilityGaps is not a measurement here (#5919)', () => {
+describe('capabilityGaps is measured (#5923)', () => {
   const baseInput = {
     idPrefix: 'orchestrate',
     task: 'Implement feature X',
@@ -81,23 +81,22 @@ describe('capabilityGaps is not a measurement here (#5919)', () => {
     metadata: { source: 'orchestrate', extra: 'value' },
   } as const;
 
-  it('never claims a gap detector ran', () => {
-    // `gaps: []` with an empty `available` from a detector that ran and one
-    // from a builder that never called one are byte-identical on the wire.
-    // The only thing separating them is this flag, so a consumer branching on
-    // `allSatisfied` alone would be reading a fabricated verdict.
-    const contract = buildBaseTaskContract(baseInput);
-    expect(contract.capabilityGaps.gapsMeasured).toBe(false);
+  it('reports a missing capability even when given only a legacy analysis summary', () => {
+    const contract = buildBaseTaskContract({
+      ...baseInput,
+      task: 'Extract class and function symbols from src/parser.py',
+    });
+    expect(contract.capabilityGaps.allSatisfied).toBe(false);
+    expect(contract.capabilityGaps.gapsMeasured).toBe(true);
+    expect(contract.capabilityGaps.gaps).toEqual([
+      expect.objectContaining({ name: 'extract_symbols:.py', origin: 'inferred' }),
+    ]);
   });
 
-  it('the empty available set is what makes allSatisfied meaningless', () => {
-    // The precondition that makes the flag necessary rather than decorative:
-    // `allSatisfied` is computed elsewhere as `gaps.length === 0` over a
-    // MEASURED `available` set. Here `available` is empty because nothing
-    // looked, not because nothing is available.
+  it('reports availability for inferred requirements instead of the old empty literal', () => {
     const contract = buildBaseTaskContract(baseInput);
-    expect(contract.capabilityGaps.available).toEqual({ tools: [], experts: [] });
-    expect(contract.capabilityGaps.gapsMeasured).toBe(false);
+    expect(contract.capabilityGaps.available.tools.length).toBeGreaterThan(0);
+    expect(contract.capabilityGaps.gapsMeasured).toBe(true);
   });
 
   it('the schema requires the flag, so a contract cannot omit it', () => {

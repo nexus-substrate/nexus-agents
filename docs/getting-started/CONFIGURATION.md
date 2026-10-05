@@ -207,6 +207,7 @@ two lists so they cannot drift apart again.
 | `NEXUS_META_SHADOW_TRAIN`        | Boolean: `true`/`1` feeds live `run` dispatch outcomes into the MetaOrchestrator shadow selector and persists them to `learning/meta-outcomes.jsonl` (feature values only, no task text) for cross-process learning; stays shadow-only — never alters what runs or feeds enforce. Requires learning persistence enabled (#3593)                                                                                                                                                                                                              | `0`                       |
 | `NEXUS_ROUTE_MODEL_SELECTION`    | Boolean: `true`/`1` lets the CompositeRouter resolve a concrete model from the computed difficulty tier at route time (`resolveModelForTier`, #3394)                                                                                                                                                                                                                                                                                                                                                                                         | `false`                   |
 | `NEXUS_ROUTE_MODEL_SHADOW`       | Boolean: `true`/`1` records, per outcome-joined routing decision, the model the tier resolver WOULD have picked vs the model actually used, to `learning/model-selection-shadow.jsonl` (CLI slot, tier, model ids, success only — no task text) for the offline flip eval; shadow-only — never alters routing. The log is append-only/unbounded; readers apply a 30-day lookback (matches `meta-outcomes.jsonl`). Requires learning persistence enabled (#4197)                                                                              | `0`                       |
+| `NEXUS_CAPABILITY_GAP_INFERRED`  | `1` records capability gaps that task analysis INFERRED (e.g. a request to extract symbols from a source language the extractor does not support, `extract_symbols:.py`) to the capability-gap ledger, which feeds research triggers and autofile. Default `0`: inferred gaps still appear in gap reports with `origin: 'inferred'`, but only observed run-time refusals are recorded (#6930)                                                                                                                                                | `0`                       |
 | `NEXUS_VERSION_CHECK`            | Startup warning if the build lags the latest published version (#3283); one npm-registry call. `0` disables; skips dev + CI                                                                                                                                                                                                                                                                                                                                                                                                                  | `1`                       |
 
 ### Model Provider Keys
@@ -233,6 +234,23 @@ two lists so they cannot drift apart again.
 | `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS` | Extra static headers on every gateway request (#6608): `Name=value,Name2=value2`, whitespace trimmed. The whole value is refused (warned, no extra headers sent) on a newline or other control character, an entry without `=`, an illegal or duplicate name, `Authorization`, or the header named by `NEXUS_OPENAI_COMPAT_AUTH_HEADER`. Values are never logged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `NEXUS_OPENCODE_CONFIG`             | Path to an `opencode.json` whose `providers.openai-compat.options.{baseURL,apiKey}` configures the OpenAI-compat adapter (fallback when the `_URL`/`_KEY` pair is unset)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `SEMANTIC_SCHOLAR_API_KEY`          | Optional. Lifts research_discover's semantic_scholar source past the unauthenticated 429 ceiling (#2234). Apply at https://www.semanticscholar.org/product/api#api-key-form                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+### Spawned CLI config locations
+
+The subprocess environment allowlist forwards `CODEX_HOME` (Codex),
+`CLAUDE_CONFIG_DIR` (Claude Code), and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+`XDG_STATE_HOME`, `XDG_CACHE_HOME` (OpenCode) when set. These variables hold paths;
+they do not require `NEXUS_SUBPROCESS_EXTRA_ENV` or disabling the allowlist.
+Unset variables remain absent, and cross-vendor credential filtering still applies.
+The Codex read-only MCP isolation scan uses the same forwarded `CODEX_HOME` as
+the spawned child, reading `$CODEX_HOME/config.toml` instead of `~/.codex/config.toml`.
+
+See the [Codex environment reference](https://developers.openai.com/codex/environment-variables),
+[Claude Code environment reference](https://code.claude.com/docs/en/env-vars), and
+[OpenCode directory resolution](https://github.com/anomalyco/opencode/blob/v1.2.0/packages/opencode/src/global/index.ts).
+[Gemini uses `GEMINI_CLI_HOME`](https://geminicli.com/docs/reference/configuration/)
+rather than these XDG variables; forward it explicitly
+with `NEXUS_SUBPROCESS_EXTRA_ENV=GEMINI_CLI_HOME` when relocating its home.
 
 ### Security Variables
 
@@ -512,10 +530,10 @@ and asserts it before running, and the cycle entry point structurally withholds
 >   lives only in `actions/cache` (evicted after 7 idle days). The readiness gate
 >   reads the operator store (`~/.nexus-agents/learning/remediation-soak.jsonl`);
 >   nothing bridges the two, and 43 green runs moved the gate by zero records.
-> - **Un-judged by construction.** Readiness requires a NAMED evaluator and owner
->   (`remediation-review mark` / `sign-off`) — human acts. A bridged CI corpus
->   would arrive with `judgedSelections: 0` and fail `judged-coverage`,
->   `named-evaluator` and `named-owner` regardless of its volume.
+> - **Un-judged by construction.** A bridged CI corpus arrives with no soundness
+>   judgments. It needs human reviews or live `remediation-review panel-judge`
+>   judgments, owner checks of a random panel sample, and a named owner sign-off;
+>   volume alone cannot satisfy readiness.
 > - **Self-authorship.** Letting the job commit its records would widen the
 >   cron-triggered token to `contents: write` so the automation seeking enforce
 >   authority could author the evidence that grants it.
@@ -529,21 +547,73 @@ from **your real `~/.nexus-agents` telemetry**, not a clean CI runner: a fresh
 checkout has little of your outcome/decision-cost telemetry, so the
 `improvement_review` signals it collects are thin and near-identical day to day.
 If you operate nexus-agents day-to-day, schedule the audit cycle _locally_ where
-that telemetry lives. Audit mode is the default, so a bare invocation is soak-only
-with zero writes:
+that telemetry lives. Audit mode is the default: the cycle appends soak evidence
+without applying remediation changes. Create `~/.nexus-agents/logs` before installing
+the cron entry, and retain the output so failures are visible:
 
 ```cron
 # crontab -e — daily audit-mode soak against your real ~/.nexus-agents telemetry
-17 7 * * * cd /path/to/your/repo && NEXUS_AUTO_REMEDIATE=audit nexus-agents auto-remediate >/dev/null 2>&1
+17 7 * * * cd /path/to/your/repo && NEXUS_AUTO_REMEDIATE=audit nexus-agents auto-remediate >>~/.nexus-agents/logs/auto-remediate.log 2>&1
 ```
 
 Or as a systemd timer (`~/.config/systemd/user/nexus-soak.service` +
 `nexus-soak.timer` with `OnCalendar=daily`) running the same command.
 
-After a soak window, judge a batch with `nexus-agents remediation-review` and the
-readiness gate reflects **genuine** soundness over real, plan-bearing selections.
-Every tier's record is judgeable — `mark` keys on the soak ref, never on whether a
-dry-run was captured (#4279 Gap 2).
+After a soak window, judge pending selections with a live panel, draw an owner
+sample, review those records, then sign off:
+
+```bash
+nexus-agents remediation-review panel-judge --batch 100
+nexus-agents remediation-review sample --n 10 --owner '<owner>' --format json
+# Read each sampled soak record and judge it independently; use the emitted ID/ref.
+nexus-agents remediation-review mark '<soakRef>' --sample '<sampleId>' --evaluator '<owner>' --sound
+# Use --unsound for an unsound selection. Repeat mark for every sampled ref.
+nexus-agents remediation-review sign-off --owner '<owner>'
+nexus-agents remediation-review readiness
+```
+
+`panel-judge` runs one live `higher_order` vote per pending record with
+`absolute_quorum`, using the full seven-seat panel by default (`--quick` uses
+three). The proposal allows signal identity, category, priority, severity,
+title, description and evidence, plus the selected remediation steps and their
+count. Earlier vote reasons/results and future fields are excluded. New soak
+records retain the signal and plan content before voting. Each judgment retains
+its vote record ID, the absolute ledger path returned by persistence, and the
+SHA256 hash of the original stored line. Quorum failures and errors record no
+judgment and are reported per ref. Malformed lines and duplicate references are
+skipped and reported; the batch parses one soak snapshot. Readiness verifies
+against exactly the recorded ledger path, checking decision, proposal hash/text
+and self-hash. Missing, unreadable or malformed ledgers and duplicate soak
+references make panel evidence unverifiable. The readiness criteria and text
+name each ref's cause (missing ledger path, unreadable ledger, record ID not
+found, or hash mismatch) and say: "re-judge the ref by a human or re-run panel-judge".
+A later human judgment supersedes the earlier panel row, removing its verification
+failure while retaining the superseded count.
+
+`sample` requires `--owner` and persists that name at draw time with a
+crypto-generated seed and the panel judgments selected for owner review; `--seed S` reproduces the draw over the same panel-judged corpus.
+The latest draw is the active sample; previous draws remain in the audit history.
+Sign-off refuses an incomplete active sample and preserves panel provenance.
+Readiness reports human, panel and sampled owner counts separately. Its existing
+100-selection, 80%-judged and 90%-sound thresholds remain unchanged, with an
+additional owner-agreement criterion requiring at least 10 fully measured sample
+refs drawn strictly after the latest current panel judgment. Disagreements across
+all draws block readiness until a later agreeing owner-sample mark on the same
+ref is made by that sample's recorded owner (`--evaluator` and `--owner`
+must match the name saved at draw time). Only that evaluator's sampled marks
+count as owner judgments; other evaluators' marks are ordinary human judgments
+and cannot resolve owner disagreements. Sign-off must also use the recorded
+owner name. Names are free text, at the same trust level as the existing
+named-evaluator and named-owner criteria: this binds consistency, not identity.
+Human primary judgments do not resolve owner disagreements. Review/sample histories
+do not rotate automatically; damaged stores block readiness and refuse appends.
+Panel IDs never qualify as named evaluators, and owner annotations require
+explicit sign-off. Owner agreement is `n/a` only when the raw review store has
+zero non-superseded panel rows and zero owner-sample rows. Superseded panel
+rows remain reported as a count. Unverifiable or evicted active panels block
+owner agreement and judged coverage with named reasons. Human-only review can
+still reach READY. Every tier's record is judgeable — `mark` keys on the soak
+ref, never on whether a dry-run was captured (#4279 Gap 2).
 
 **Watch the store, not the CI job.** `nexus-agents remediation-review readiness`
 prints a `Soak store:` line beside the verdict (#4279): `UNMEASURED` when the

@@ -339,6 +339,8 @@ const NexusEnvSchema = z.object({
   // now go through the same helper, so the schema tells the truth about them.
   NEXUS_BUDGET_ENFORCE: boolLooseStr.optional(),
   NEXUS_CONTEXT_RETRIEVER_INJECT: boolLooseStr.optional(),
+  // Exact opt-in: inferred gaps otherwise remain report-only (#6930).
+  NEXUS_CAPABILITY_GAP_INFERRED: z.enum(['0', '1']).optional(),
   NEXUS_DYNAMIC_MODELS: boolLooseStr.optional(),
   NEXUS_GITIGNORE_AUTO: boolLooseStr.optional(),
   NEXUS_SUBPROCESS_ENV_ALLOWLIST: boolLooseStr.optional(),

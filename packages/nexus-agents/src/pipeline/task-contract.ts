@@ -71,6 +71,11 @@ const TaskAnalysisSummarySchema = z.object({
   ambiguityScore: z.number().min(0).max(1),
 });
 
+/**
+ * Constraints the task analyzer RECOGNIZED in the task text (#5923). An empty
+ * `scope` and absent `time`/`quality` mean none were recognized, not that the
+ * task has no constraints.
+ */
 const TaskConstraintsSummarySchema = z.object({
   time: z.string().optional(),
   quality: z.string().optional(),
@@ -97,12 +102,9 @@ const CapabilityGapSummarySchema = z.object({
   /**
    * Whether a capability-gap detector actually ran (#5919).
    *
-   * `buildBaseTaskContract` writes `allSatisfied: true` with an EMPTY
-   * `available` set — a verdict from a detector that never ran, on the
-   * `orchestrate` and `delegate_to_model` paths. Nothing reads it today, which
-   * is camouflage rather than safety: it is the same shape as #5896's
-   * ValidationHarness, where a missing consumer let a hard-coded verdict sit
-   * until someone eventually trusted it.
+   * `buildBaseTaskContract` runs the canonical detector on inferred
+   * requirements for both entry points. Its report describes registry support,
+   * not observed tool execution; inferred gaps retain their origin (#5923).
    *
    * Named for the vocabulary this repo already uses for exactly this —
    * `tokensMeasured`, `policyEvaluated`, `routerTypeMeasured`. A consumer that

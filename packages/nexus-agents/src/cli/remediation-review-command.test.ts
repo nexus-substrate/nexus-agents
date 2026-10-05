@@ -4,12 +4,14 @@
  * reviewed+sound|unsound by a named evaluator, and record an owner sign-off.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 
+import { persistVoteRecord, resolveVoteRecordsPath } from '../audit/vote-record-store.js';
+import { buildRemediationPanelProposal } from '../mcp/tools/remediation-review-proposal.js';
 import { handleRemediationReviewCommand, harmfulRate } from './remediation-review-command.js';
 import type { ParsedCliArgs } from '../cli-types.js';
 import {
@@ -23,6 +25,9 @@ import {
   getRemediationReviewFile,
   _resetRemediationReviewStoreForTests,
   soakRefOf,
+  hashSoakRecordLine,
+  drawRemediationReviewSample,
+  getRemediationReviewSampleStore,
   type ReviewRecord,
 } from '../mcp/tools/remediation-review.js';
 import { runAutoRemediationCycle } from '../mcp/tools/auto-remediation-cycle.js';
@@ -56,7 +61,7 @@ function seedSoak(): RemediationSoakRecord {
     priority: 'p2',
     severity: 'warning',
     planStepCount: 3,
-    reason: 'plan produced',
+    reason: 'higher_order: approved (100%)',
   };
   createRemediationSoakSink(getRemediationSoakFile()).record(rec);
   return rec;
@@ -109,6 +114,21 @@ describe('handleRemediationReviewCommand', () => {
     expect(reviews[0]?.evaluator).toBe('alice');
   });
 
+  it('mark --owner is an annotation until explicit sign-off', async () => {
+    const rec = seedSoak();
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(
+      args('mark', { evaluator: 'Alice', owner: 'Carol', sound: true }, [soakRefOf(rec)])
+    );
+    out.mockClear();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const result = JSON.parse(output()) as { evidence: { owner?: string } };
+    expect(result.evidence.owner).toBeUndefined();
+    await handleRemediationReviewCommand(args('sign-off', { owner: 'Carol' }));
+    const rows = createRemediationReviewStore(getRemediationReviewFile()).getRecords();
+    expect(rows.at(-1)?.ownerSignedOff).toBe(true);
+  });
+
   it('mark --unsound: records sound=false', async () => {
     const rec = seedSoak();
     _resetRemediationSoakSinkForTests();
@@ -149,6 +169,84 @@ describe('handleRemediationReviewCommand', () => {
     expect(reviews.some((r) => r.owner === 'carol')).toBe(true);
   });
 
+  it('allows human recovery after historical panels are superseded without owner-sample rows', async () => {
+    const rec = seedSoak();
+    _resetRemediationSoakSinkForTests();
+    const raw = readFileSync(getRemediationSoakFile(), 'utf8').trimEnd();
+    const vote = persistVoteRecord({
+      id: 'historical-panel',
+      proposal: buildRemediationPanelProposal(raw),
+      strategy: 'higher_order',
+      resolvedDecision: 'approved',
+      declaredOptions: undefined,
+      errorPolicy: 'absolute_quorum',
+      result: {
+        proposalId: 'historical-panel',
+        proposal: {
+          title: 'Selection review',
+          description: 'Independent selection review',
+          algorithm: 'simple_majority',
+        },
+        outcome: 'approved',
+        votes: new Map(),
+        voteCounts: { approve: 1, reject: 0, abstain: 0, total: 1 },
+        approvalPercentage: 100,
+        quorumReached: true,
+        startedAt: rec.timestamp,
+        closedAt: rec.timestamp,
+        durationMs: 1,
+      },
+      votes: [
+        {
+          role: 'architect',
+          source: 'llm',
+          processingTimeMs: 1,
+          vote: {
+            decision: 'approve',
+            reasoning: 'Signal warrants the selected remediation.',
+            confidence: 1,
+          },
+        },
+      ],
+    });
+    expect(vote).toBeDefined();
+    const panel: ReviewRecord = {
+      judgeKind: 'panel',
+      voteRecordId: 'historical-panel',
+      voteLedgerPath: resolveVoteRecordsPath(),
+      soakRecordHash: hashSoakRecordLine(raw),
+      soakRef: soakRefOf(rec),
+      reviewedAt: '2026-06-09T00:00:00.000Z',
+      reviewed: true,
+      sound: true,
+      evaluator: 'panel:historical-panel',
+    };
+    expect(createRemediationReviewStore().record(panel, raw)).toBe(true);
+    const sample = drawRemediationReviewSample([panel], 1, 'Carol', 'historical-sample');
+    expect(getRemediationReviewSampleStore().record(sample)).toBe(true);
+    _resetRemediationReviewStoreForTests();
+    await handleRemediationReviewCommand(
+      args('mark', { evaluator: 'Alice', sound: true }, [soakRefOf(rec)])
+    );
+    await expect(
+      handleRemediationReviewCommand(args('sign-off', { owner: 'Carol' }))
+    ).resolves.toHaveProperty('exitCode', 0);
+    out.mockClear();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const result = JSON.parse(output()) as {
+      evidence: EnforceReadinessEvidence;
+      criteria: { name: string; met: boolean; detail: string }[];
+    };
+    expect(result.evidence).toMatchObject({ human: { n: 1 }, panel: { n: 0 }, owner: 'Carol' });
+    expect(result.criteria.find((criterion) => criterion.name === 'owner-agreement')).toMatchObject(
+      { met: true, detail: expect.stringContaining('n/a') }
+    );
+    expect(result.criteria.find((criterion) => criterion.name === 'named-owner')?.met).toBe(true);
+    out.mockClear();
+    await handleRemediationReviewCommand(args('readiness'));
+    expect(output()).toContain('1 SUPERSEDED panel rows');
+  });
+
   it('list reflects that a marked selection is no longer pending', async () => {
     const rec = seedSoak();
     _resetRemediationSoakSinkForTests();
@@ -161,30 +259,77 @@ describe('handleRemediationReviewCommand', () => {
     expect(output()).toContain('0 pending');
   });
 
-  it('readiness: NOT READY (text) with no review data — fail-closed, harmful-rate line present', async () => {
+  it('readiness: NOT READY (text) with no review data — harmful rate is unmeasured', async () => {
     seedSoak();
     _resetRemediationSoakSinkForTests();
     await handleRemediationReviewCommand(args('readiness'));
     const text = output();
     expect(text).toContain('Enforcement readiness: NOT READY');
-    expect(text).toContain('harmful-rate');
+    expect(text).toContain('harmful-rate: unmeasured (0 judged)');
+    expect(text).toContain('[FAIL] soundness');
     expect(text).toMatch(/Blockers:/);
   });
 
-  it('readiness --format json: ready=false + numeric harmfulRate with no review data', async () => {
+  it('readiness --format json: ready=false + null harmfulRate with no review data', async () => {
     seedSoak();
     _resetRemediationSoakSinkForTests();
     await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
     const parsed = JSON.parse(output()) as {
       ready: boolean;
-      harmfulRate: number;
-      evidence: { judgedSelections: number; judgedSound: number };
+      harmfulRate: number | null;
+      evidence: { shadowSelections: number; judgedSelections: number; judgedSound: number };
+      criteria: { name: string; met: boolean }[];
       blockers: string[];
     };
     expect(parsed.ready).toBe(false);
-    expect(typeof parsed.harmfulRate).toBe('number');
-    expect(parsed.harmfulRate).toBe(0); // judgedSelections=0 → 0
+    // Previously pinned 0 despite no measured reviews (#6961).
+    expect(parsed.harmfulRate).toBeNull();
+    expect(parsed.evidence.judgedSelections).toBe(0);
+    expect(parsed.criteria).toContainEqual(
+      expect.objectContaining({ name: 'soundness', met: false })
+    );
     expect(parsed.blockers.length).toBeGreaterThan(0);
+  });
+
+  it('readiness with 3 selections and 0 judged is unmeasured in text and JSON', async () => {
+    const sink = createRemediationSoakSink(getRemediationSoakFile());
+    const rec = seedSoak();
+    for (const signalKey of ['routing:floor:claude', 'routing:floor:gemini']) {
+      sink.record({ ...rec, signalKey });
+    }
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(args('readiness'));
+    expect(output()).toContain('harmful-rate: unmeasured (0 judged)');
+    expect(output()).toContain('[FAIL] soundness');
+    out.mockClear();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    const parsed = JSON.parse(output()) as {
+      ready: boolean;
+      harmfulRate: number | null;
+      evidence: { shadowSelections: number; judgedSelections: number };
+      criteria: { name: string; met: boolean }[];
+    };
+    expect(parsed.harmfulRate).toBeNull();
+    expect(parsed.evidence.shadowSelections).toBe(3);
+    expect(parsed.evidence.judgedSelections).toBe(0);
+    expect(parsed.ready).toBe(false);
+    expect(parsed.criteria).toContainEqual(
+      expect.objectContaining({ name: 'soundness', met: false })
+    );
+  });
+
+  it('readiness preserves a measured harmful rate in text and JSON', async () => {
+    const rec = seedSoak();
+    _resetRemediationSoakSinkForTests();
+    await handleRemediationReviewCommand(
+      args('mark', { evaluator: 'alice', unsound: true }, [soakRefOf(rec)])
+    );
+    out.mockClear();
+    await handleRemediationReviewCommand(args('readiness'));
+    expect(output()).toContain('harmful-rate: 100% of 1 judged sound-reviews (threshold ≤ 10%)');
+    out.mockClear();
+    await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
+    expect(JSON.parse(output()) as { harmfulRate: number | null }).toHaveProperty('harmfulRate', 1);
   });
 
   it('readiness: READY when volume + judged + sound + evaluator + owner all met', async () => {
@@ -200,7 +345,7 @@ describe('handleRemediationReviewCommand', () => {
         priority: 'p2',
         severity: 'warning',
         planStepCount: 3,
-        reason: 'plan produced',
+        reason: 'higher_order: approved (100%)',
       };
       sink.record(rec);
       refs.push(soakRefOf(rec));
@@ -220,7 +365,7 @@ describe('handleRemediationReviewCommand', () => {
     _resetRemediationSoakSinkForTests();
     _resetRemediationReviewStoreForTests();
     await handleRemediationReviewCommand(args('readiness', { format: 'json' }));
-    const parsed = JSON.parse(output()) as { ready: boolean; harmfulRate: number };
+    const parsed = JSON.parse(output()) as { ready: boolean; harmfulRate: number | null };
     expect(parsed.ready).toBe(true);
     expect(parsed.harmfulRate).toBeLessThanOrEqual(0.1);
     expect(parsed.harmfulRate).toBe(0);
@@ -294,7 +439,7 @@ describe('readiness renders the soak-store staleness signal (#4279)', () => {
         priority: 'p2',
         severity: 'warning',
         planStepCount: 3,
-        reason: 'plan produced',
+        reason: 'higher_order: approved (100%)',
       });
     }
     _resetRemediationSoakSinkForTests();
@@ -306,8 +451,9 @@ describe('readiness renders the soak-store staleness signal (#4279)', () => {
 });
 
 describe('harmfulRate', () => {
-  it('returns 0 when nothing judged', () => {
-    expect(harmfulRate({ shadowSelections: 5, judgedSelections: 0, judgedSound: 0 })).toBe(0);
+  it.each([0, 3])('returns null when nothing judged out of %i selections', (shadowSelections) => {
+    // Previously asserted an invented zero for absence of measurements (#6961).
+    expect(harmfulRate({ shadowSelections, judgedSelections: 0, judgedSound: 0 })).toBeNull();
   });
 
   it('is 1 − soundnessRate over judged selections (10 judged, 8 sound → 0.2)', () => {

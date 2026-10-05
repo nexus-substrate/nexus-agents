@@ -75,7 +75,7 @@ export const REJECTION_CATEGORIES = RejectionCategorySchema.options;
 const FindingShapeSchema = z.object({
   summary: z.string().min(1).max(500),
   location: z.string().min(1).max(200),
-  severity: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']).default('medium'),
   gate: z.object({
     reread_cited_line: z.enum(['passed', 'failed', 'skipped']).default('skipped'),
     traced_call_path: z.enum(['passed', 'failed', 'skipped']).default('skipped'),

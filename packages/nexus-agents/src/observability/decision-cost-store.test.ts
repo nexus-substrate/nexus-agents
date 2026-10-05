@@ -489,7 +489,7 @@ describe('DecisionCostStore undeclared-options detector verdict (#5422)', () => 
     });
   });
 
-  it('round-trips a NOT-FIRED verdict — the denominator row precision needs', () => {
+  it('keeps legacy declared-option rows parsing', () => {
     const store = new DecisionCostStore({ filePath: file, dataDir: dir });
     store.record({
       ...base,
@@ -502,6 +502,20 @@ describe('DecisionCostStore undeclared-options detector verdict (#5422)', () => 
       fired: false,
       declaredOptionCount: 2,
     });
+  });
+
+  it('round-trips a not-applicable verdict with no fired field', () => {
+    const store = new DecisionCostStore({ filePath: file, dataDir: dir });
+    const verdict = { applicable: false as const, declaredOptionCount: 2 };
+    const { persisted } = store.record({
+      ...base,
+      decisionId: 'declared',
+      timestamp: TS,
+      undeclaredOptionsDetector: verdict,
+    });
+    expect(persisted).toBe(true);
+    const fresh = new DecisionCostStore({ filePath: file, dataDir: dir });
+    expect(fresh.all()[0]?.undeclaredOptionsDetector).toEqual(verdict);
   });
 
   it('leaves the field ABSENT when the caller recorded no verdict (pr_review rows, older writers)', () => {
