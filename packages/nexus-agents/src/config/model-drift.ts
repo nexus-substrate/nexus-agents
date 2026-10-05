@@ -27,6 +27,8 @@
 
 import { anyOf } from '../utils/verdict-aggregation.js';
 import { isNonChatModelId } from '../adapters/gateway-catalog-filter.js';
+import { modelTierOf, rankFamilyModels } from '../adapters/gateway-family-ranking.js';
+import { gatewayModelFamily } from '../adapters/gateway-family-slots.js';
 import { getErrorMessage } from '../core/index.js';
 import { canonicalModelKey } from './model-equivalence.js';
 import { normaliseModelId, resolveModelIdentitySync, type ModelVendor } from './model-identity.js';
@@ -96,6 +98,8 @@ export interface NewModel {
   /** Every spelling the sources listed for this model. */
   readonly listedAs: readonly string[];
   readonly sources: readonly string[];
+  /** Epoch seconds from discovery, when published. */
+  readonly createdAt?: number;
   readonly draft: DraftRegistryEntry;
 }
 
@@ -217,17 +221,21 @@ async function probeOne(source: DriftSource): Promise<ProbedSource> {
 // Classification
 // ============================================================================
 
-const SMALL_TIER = /\b(haiku|mini|nano|lite|small|tiny)\b/;
-const FLAGSHIP_TIER = /\b(opus|pro|ultra)\b/;
-const MID_TIER = /\b(sonnet|flash)\b/;
-
-/** Tier from id tokens. Small is checked first so `flash-lite` is small. */
+/** Canonical tier for a resolvable family; an unclassified id stays unknown. */
 export function draftTier(id: string): DraftTier {
-  const norm = normaliseModelId(bareId(id));
-  if (SMALL_TIER.test(norm)) return 'small';
-  if (FLAGSHIP_TIER.test(norm)) return 'flagship';
-  if (MID_TIER.test(norm)) return 'mid';
-  return 'unknown';
+  const bare = bareId(id);
+  if (gatewayModelFamily(bare) === undefined) return 'unknown';
+  // modelTierOf encodes 3 flagship, 2 mid, 1 small.
+  switch (modelTierOf(bare)) {
+    case 3:
+      return 'flagship';
+    case 2:
+      return 'mid';
+    case 1:
+      return 'small';
+    default:
+      return 'unknown';
+  }
 }
 
 /** Why a listed, unknown model is not proposed. */
@@ -424,6 +432,36 @@ function decideVerdict(
   return newCount + retiredCount > 0 ? 'drift' : 'no-drift';
 }
 
+/** Rank within each vendor, then round-robin vendors in alphabetical order. */
+function orderProposals(models: readonly NewModel[]): NewModel[] {
+  const vendors = new Map<ModelVendor, NewModel[]>();
+  const byId = new Map(models.map((m) => [m.draft.id, m]));
+  for (const model of models) {
+    const group = vendors.get(model.draft.vendor) ?? [];
+    group.push(model);
+    vendors.set(model.draft.vendor, group);
+  }
+  const ranked = [...vendors.keys()].sort().map((vendor) =>
+    rankFamilyModels(
+      (vendors.get(vendor) ?? []).map((model) => ({
+        id: model.draft.id,
+        created: model.createdAt,
+      }))
+    )
+  );
+  const ordered: NewModel[] = [];
+  // Zero groups means zero rounds and an empty proposal list.
+  const rounds = ranked.reduce((max, group) => Math.max(max, group.length), 0);
+  for (let i = 0; i < rounds; i++) {
+    for (const group of ranked) {
+      const id = group[i];
+      const model = id === undefined ? undefined : byId.get(id);
+      if (model !== undefined) ordered.push(model);
+    }
+  }
+  return ordered;
+}
+
 /**
  * Probe every source, then diff the listings against the registry. Never
  * throws: a failing source becomes a `failed` coverage line.
@@ -437,11 +475,14 @@ export async function detectModelDrift(input: DetectModelDriftInput): Promise<Mo
   const oldestCreatedS = Math.floor(input.nowMs / 1000) - windowDays * SECONDS_PER_DAY;
   const scan = scanListings(measured, index, oldestCreatedS);
   const { possiblyRetired, retirementUnmeasured } = splitRetirement(input.registry, scan);
-  const newModels = scan.candidates.map((c) => ({
-    listedAs: [...c.listedAs],
-    sources: [...c.sources],
-    draft: toDraft(c),
-  }));
+  const newModels = orderProposals(
+    scan.candidates.map((c) => ({
+      listedAs: [...c.listedAs],
+      sources: [...c.sources],
+      ...(c.createdAt !== undefined && { createdAt: c.createdAt }),
+      draft: toDraft(c),
+    }))
+  );
   return {
     generatedAt: new Date(input.nowMs).toISOString(),
     verdict: decideVerdict(coverage, newModels.length, possiblyRetired.length),
