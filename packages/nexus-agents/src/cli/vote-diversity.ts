@@ -5,7 +5,8 @@
  * one, so "7 of 7 on gemini" was visible only to someone who knew the
  * round-robin. This module measures what the response and the summary line
  * disclose: how many distinct models actually answered, and how many seats
- * answered somewhere other than where they were assigned.
+ * answered somewhere other than where they were assigned, and the distinct
+ * assigned models and families across the full roster.
  *
  * Shared by the MCP response (`consensus-vote-types`) and the CLI / GitHub
  * renderings (`vote-summary-lines`) so the two cannot drift.
@@ -46,6 +47,14 @@ export interface PanelDiversity {
   readonly unresolvedSeats?: number;
   /** Seats that answered on a CLI or model other than the one assigned. */
   readonly fallbacks: number;
+}
+
+/** Assigned-roster diversity; absent counts mean no assigned model was measured. */
+interface AssignedPanelDiversity {
+  /** Distinct assigned models, including seats that errored or abstained. */
+  readonly assignedDistinctModels?: number;
+  /** Recognised vendor families among all assigned models. */
+  readonly assignedDistinctFamilies?: number;
 }
 
 /** A seat that answered elsewhere, with where it landed. */
@@ -100,6 +109,25 @@ export function panelDiversityOf(votes: readonly AgentVoteResult[]): PanelDivers
     unclassifiedSeats: families.length - classified.length,
     unresolvedSeats: resolved.length - models.length,
     fallbacks: seatFallbacks(votes).length,
+  };
+}
+
+/**
+ * Count the assigned roster independently of execution outcomes. An empty
+ * roster, or one with no resolved assignments, is unmeasured: omit the counts.
+ * Never substitute the executing model, which may be a failover model.
+ */
+export function assignedPanelDiversityOf(
+  votes: readonly AgentVoteResult[]
+): AssignedPanelDiversity {
+  const models = votes
+    .map((v) => v.pinnedModel)
+    .filter((m): m is string => m !== undefined && m !== '' && m !== UNRESOLVED_MODEL_ID);
+  if (models.length === 0) return {};
+  const families = models.map(vendorFamilyOf).filter((family) => family !== 'unknown');
+  return {
+    assignedDistinctModels: countDistinctModels(models),
+    assignedDistinctFamilies: new Set(families).size,
   };
 }
 

@@ -1,5 +1,17 @@
 # nexus-agents
 
+## 9.1.0
+
+### Minor Changes
+
+- [#7112](https://github.com/nexus-substrate/nexus-agents/pull/7112) [`62678e8`](https://github.com/nexus-substrate/nexus-agents/commit/62678e8a7bcd56d353b30048c549109e09b3d0cc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Make consensus_vote panel configuration visible: ignored model pins now appear in panelWarning with the requested and assigned models. Add assigned roster diversity and each voter's assigned model alongside responding diversity, including seats that errored or abstained. When voters cannot inspect an artifact and no artifactPath was supplied, explain how to provide one. Voting and routing behavior are unchanged.
+
+## 9.0.2
+
+### Patch Changes
+
+- [#7111](https://github.com/nexus-substrate/nexus-agents/pull/7111) [`553993c`](https://github.com/nexus-substrate/nexus-agents/commit/553993c4122685432d1da23facd6744d5c47fa0c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add a next step to read-only analysis refusals naming Claude and Codex and linking to the harness compatibility guide.
+
 ## 9.0.1
 
 ### Patch Changes

@@ -326,13 +326,13 @@ set, so `{ threshold: 'supermajority', strategy: 'higher_order' }` runs at
 `consensus/types-core.ts`). Written the old way, the architecture and security
 rows below were a simple majority (#5315, #5344).
 
-| Trigger                  | Pass this `strategy` | Bar   |
-| ------------------------ | -------------------- | ----- |
-| Architecture changes     | `supermajority`      | 0.667 |
-| Breaking API changes     | `unanimous`          | 1.0   |
-| Security-related changes | `supermajority`      | 0.667 |
-| Sprint planning          | `simple_majority`    | 0.5   |
-| Feature prioritization   | `simple_majority`    | 0.5   |
+| Trigger                  | Pass this `strategy` | Bar                                                          |
+| ------------------------ | -------------------- | ------------------------------------------------------------ |
+| Architecture changes     | `supermajority`      | 0.667                                                        |
+| Breaking API changes     | `supermajority`      | ≥5/7 on a full panel + no unresolved concrete-defect dissent |
+| Security-related changes | `supermajority`      | 0.667                                                        |
+| Sprint planning          | `simple_majority`    | 0.5                                                          |
+| Feature prioritization   | `simple_majority`    | 0.5                                                          |
 
 Choose `higher_order` for its contrarian-escalation behaviour, never for a
 stricter verdict — it does not aggregate by correlation weight either (#4701),
@@ -344,7 +344,20 @@ abstentions or errors, supermajority is 5 of 7. **Governor-path ratification
 votes must additionally pass `errorPolicy: 'absolute_quorum'`**, so a degraded
 panel cannot ratify a change to the governance substrate (#5344, panel option c).
 
-Overlapping triggers use the strictest bar (`unanimous > supermajority > majority`). Full rules in [`.rules/governance.md`](./.rules/governance.md).
+**Breaking API changes require ≥5 approvals of 7 on a full panel AND no
+unresolved concrete-defect dissent from any seat** (#6956). Pass
+`strategy: 'supermajority'` and `errorPolicy: 'absolute_quorum'`; verify all
+seven seats have valid responses. Missing, errored or abstaining seats cannot
+reduce the five-approval requirement. A concrete-defect dissent is a reject
+naming a specific `file:line` or behaviour that is wrong, rather than preference
+or scope disagreement alone. It is resolved when the defect is fixed and a
+re-run on the new head passes without that dissent, or the change's record
+explains why the defect does not apply. Record the head, tally, dissent and
+resolution in **the vote ledger record plus the PR comment**.
+
+Overlapping triggers use the strictest bar (`unanimous > supermajority > majority`)
+and retain every applicable additional condition. Breaking maps to supermajority
+plus the dissent condition. Full definitions and rules in [`.rules/governance.md`](./.rules/governance.md).
 
 ## Getting help
 
@@ -560,7 +573,7 @@ _Auto-generated from `skills/index.yaml`. 33 skills._
 
 ## Governance & Documentation Quality
 
-Voting thresholds, refactor gates, fitness audit, documentation governance in `.rules/governance.md` (auto-loaded). **Key numbers:** fitness bar = the `fitness-gate` action default (`.github/actions/fitness-gate/action.yml`, 90), inherited by both the PR and release gates; supermajority for architecture/security; unanimous for breaking API changes.
+Voting thresholds, refactor gates, fitness audit, documentation governance in `.rules/governance.md` (auto-loaded). **Key numbers:** fitness bar = the `fitness-gate` action default (`.github/actions/fitness-gate/action.yml`, 90), inherited by both the PR and release gates; supermajority for architecture/security; supermajority (≥5 of 7 on a full panel) AND no unresolved concrete-defect dissent from any seat for breaking API changes. Evidence belongs in the vote ledger record plus the PR comment; definitions in `.rules/governance.md`.
 
 100-point rubric for technical docs (RFCs, ADRs, architecture docs, blog posts) in `.rules/docs-rubric.md` — five categories, each dimension tagged `[M]`echanical or `[J]`udgment. Defers to user-level skills (`blog-pre-publish`, `blog-argument-shape`, `blog-llm-tells`, `blog-factcheck`, `blog-overlap`) for prose dimensions.
 

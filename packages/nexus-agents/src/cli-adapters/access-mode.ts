@@ -124,8 +124,13 @@ export function accessModeConflict(
   mode: RestrictedAccessMode,
   reason: string
 ): CliError {
+  const nextStep =
+    mode === 'read-only-analysis'
+      ? ' Next step: use claude or codex with read-only analysis and compatible task options. ' +
+        'See docs/guides/HARNESS_COMPATIBILITY.md#voter-transport--performance-consensus_vote-and-similar-tools.'
+      : '';
   return createCallerInputCliError(
-    `Refusing to run ${cli} in ${accessModeLabel(mode)} mode: ${reason}.`,
+    `Refusing to run ${cli} in ${accessModeLabel(mode)} mode: ${reason}.${nextStep}`,
     cli
   );
 }

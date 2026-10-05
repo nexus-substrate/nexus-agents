@@ -256,6 +256,8 @@ export interface AgentVoteResult {
    * the primary assignment when router failover serves the vote elsewhere.
    */
   readonly pinnedModel?: string | undefined;
+  /** Ignored operator pins and this seat's primary assignment, disclosed in panelWarning. */
+  readonly modelPinWarning?: string | undefined;
   /**
    * The CLI the round-robin or `NEXUS_VOTER_MODEL_<ROLE>` pin chose for this
    * seat (#6115), as a bare name (`claude`, not `cli-claude`). Unlike

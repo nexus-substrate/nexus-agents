@@ -17,7 +17,10 @@
  */
 
 import type { ILogger, IModelAdapter } from '../core/index.js';
-import type { VoterRole } from './vote-types.js';
+import type { AgentVoteResult, VoterRole } from './vote-types.js';
+import type { CollectRealVotesOptions } from './voter-agents.js';
+import { hasGatewaySlotCatalog, resolveGatewayDefault } from '../adapters/gateway-family-slots.js';
+import { preserveVoterAttemptTelemetry } from './voter-attempt-events.js';
 
 /** Env var name for a role's voter-model override (e.g. role `ai_ml` → `NEXUS_VOTER_MODEL_AI_ML`). */
 export function voterModelOverrideEnvKey(role: VoterRole): string {
@@ -71,4 +74,73 @@ export function resolveVoterModelOverrides(
     });
   }
   return overrides;
+}
+
+/** Why a role pin cannot affect the current panel's assignment. */
+function ignoredRolePinReason(
+  requested: string,
+  options: Pick<CollectRealVotesOptions, 'adapter' | 'roleAdapters' | 'gatewayAdapters'>
+): string | undefined {
+  const gateway = options.gatewayAdapters ?? [];
+  if (gateway.length === 0) {
+    return hasGatewaySlotCatalog()
+      ? 'gateway model dealing is inactive for this panel'
+      : 'no gateway active';
+  }
+  if (options.adapter !== undefined) return 'an explicit adapter overrides gateway dealing';
+  if (options.roleAdapters !== undefined) return 'the roster was assigned before this call';
+  if (gateway.length === 1) return 'single-model gateway: role pins have no effect';
+  if (!gateway.some((a) => a.modelId.toLowerCase() === requested.toLowerCase())) {
+    return 'not in the gateway catalog; the seat was dealt instead';
+  }
+  return undefined;
+}
+
+/** An unknown default pin, including a registered gateway reached via the registry. */
+function ignoredCustomPin(gateway: readonly IModelAdapter[]): string | undefined {
+  const requested = process.env['NEXUS_CUSTOM_MODEL']?.trim();
+  if (requested === undefined || requested === '') return undefined;
+  if (gateway.length > 0) {
+    if (gateway.some((a) => a.modelId === requested)) return undefined;
+  } else {
+    const resolved = resolveGatewayDefault();
+    if (
+      resolved.kind === 'inactive' ||
+      (resolved.kind === 'resolved' && resolved.via === 'override')
+    ) {
+      return undefined;
+    }
+  }
+  return `NEXUS_CUSTOM_MODEL="${requested}" ignored: not in the gateway catalog`;
+}
+
+/**
+ * Snapshot ignored pins before execution, then disclose each seat's actual
+ * primary assignment on its final result. Routing and retry behavior stay unchanged.
+ * An empty roster creates no warnings; blank pins are unset.
+ */
+export function captureModelPinWarnings(
+  options: Pick<CollectRealVotesOptions, 'roles' | 'adapter' | 'roleAdapters' | 'gatewayAdapters'>
+): (vote: AgentVoteResult) => AgentVoteResult {
+  const ignored = new Map<VoterRole, string>();
+  const custom = ignoredCustomPin(options.gatewayAdapters ?? []);
+  for (const role of options.roles) {
+    const key = voterModelOverrideEnvKey(role);
+    const requested = process.env[key]?.trim();
+    let roleWarning: string | undefined;
+    if (requested !== undefined && requested !== '') {
+      const reason = ignoredRolePinReason(requested, options);
+      if (reason !== undefined) roleWarning = `${key}="${requested}" ignored: ${reason}`;
+    }
+    const warning = [roleWarning, custom].filter((w) => w !== undefined).join('; ');
+    if (warning !== '') ignored.set(role, warning);
+  }
+  return (vote) => {
+    const warning = ignored.get(vote.role);
+    if (warning === undefined) return vote;
+    return preserveVoterAttemptTelemetry(vote, {
+      ...vote,
+      modelPinWarning: `${warning}; role "${vote.role}" assigned model "${vote.pinnedModel ?? 'unresolved'}".`,
+    });
+  };
 }

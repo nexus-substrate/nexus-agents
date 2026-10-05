@@ -1140,6 +1140,7 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
           })
           .optional(),
         modelUsed: z.string().max(100).optional(),
+        assignedModel: z.string().max(100).optional(),
         rejectionCategories: z
           .array(
             z.enum([
@@ -1217,6 +1218,10 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       fallbacks: z.number().int().nonnegative(),
     })
     .optional(),
+  // Assigned roster includes errored and abstaining seats. Absent when no
+  // assignment resolved, including a zero-seat roster.
+  assignedDistinctModels: z.number().int().nonnegative().optional(),
+  assignedDistinctFamilies: z.number().int().nonnegative().optional(),
   // #3855: per-decision cost rollup. Same omission as panelWarning (#4032) — it
   // is present on the response whenever cost recording succeeds (common in `api`
   // billing mode). Shared schema lives with the type (single source of truth).
@@ -1270,7 +1275,8 @@ const CONSENSUS_VOTE_DESCRIPTION =
   '`options` (#4472) — the threshold is then measured over WHICH option won, and the record ' +
   'carries the per-option tally plus selection coverage. WITHOUT `options` the tally is ' +
   'approve/reject/abstain only, so every voter who engages returns `approve` and a 6-1 split on ' +
-  'which option persists as 7-0, 100% (#4452).';
+  'which option persists as 7-0, 100% (#4452). ' +
+  'The response separates responding panelDiversity from optional assignedDistinctModels and assignedDistinctFamilies, and votes[].assignedModel shows each resolved assignment, including errored or abstaining seats. Assignment counts are omitted when unmeasured. panelWarning names ignored model pins and includes an artifactPath hint when unverifiable seats had no supplied artifact.';
 
 /**
  * Registers the consensus_vote tool with the MCP server.

@@ -23,6 +23,7 @@ import type {
   VotingResult,
 } from '../../cli/vote-types.js';
 import {
+  assignedPanelDiversityOf,
   crossFamilyFallbackWarning,
   panelDiversityOf,
   singleFamilyPanelWarning,
@@ -357,6 +358,8 @@ export interface AgentVoteSummary {
    * {@link MODEL_USED_MAX_CHARS} to fit the advertised output schema.
    */
   modelUsed?: string;
+  /** Model assigned before execution, including seats that errored or abstained. */
+  assignedModel?: string;
   /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
   rejectionCategories?: readonly RejectionCategory[];
   /**
@@ -562,6 +565,10 @@ export interface ConsensusVoteResponse {
    * panel of 3+ seats.
    */
   panelDiversity: PanelDiversity;
+  /** Distinct assigned models over all seats; absent when no assignment resolved. */
+  assignedDistinctModels?: number;
+  /** Recognised families over all assigned models; absent when no assignment resolved. */
+  assignedDistinctFamilies?: number;
   /**
    * Per-decision cost rollup (#3855): per-voter / per-model token + USD totals
    * for this governed decision. Rides the existing response — no new MCP tool.
@@ -718,6 +725,7 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     ...(result.retriedFrom !== undefined ? { retriedFrom: result.retriedFrom } : {}),
     // #6606: the per-seat model was only in `costSummary.perVoter`.
     ...modelUsedOf(result),
+    ...assignedModelOf(result),
   };
 }
 
@@ -730,6 +738,16 @@ function modelUsedOf(result: AgentVoteResult): { modelUsed?: string } {
   if (model === undefined || model === '' || model === UNRESOLVED_MODEL_ID) return {};
   return {
     modelUsed:
+      model.length <= MODEL_USED_MAX_CHARS ? model : `${model.slice(0, MODEL_USED_MAX_CHARS - 1)}…`,
+  };
+}
+
+/** Assignment survives execution errors and failover; unresolved ids remain absent. */
+function assignedModelOf(result: AgentVoteResult): { assignedModel?: string } {
+  const model = result.pinnedModel;
+  if (model === undefined || model === '' || model === UNRESOLVED_MODEL_ID) return {};
+  return {
+    assignedModel:
       model.length <= MODEL_USED_MAX_CHARS ? model : `${model.slice(0, MODEL_USED_MAX_CHARS - 1)}…`,
   };
 }
@@ -778,12 +796,21 @@ function appendPanelWarning(response: ConsensusVoteResponse, text: string | unde
  * is already inside `voteCounts.abstain`; this says how many of those never
  * saw the thing they were asked to judge. Undefined when there are none —
  * the count itself is still rendered as an explicit 0 in `voteCounts`.
+ * When no artifact path was supplied, explain how to make it inspectable.
  */
-function unverifiableSeatsWarning(unverifiableCount: number, total: number): string | undefined {
+function unverifiableSeatsWarning(
+  unverifiableCount: number,
+  total: number,
+  artifactPath: string | undefined
+): string | undefined {
   if (unverifiableCount <= 0) return undefined;
-  return (
+  const warning =
     `${String(unverifiableCount)} of ${String(total)} seat(s) could not read the artifact and ` +
-    'are recorded as unverifiable (counted as abstain in voteCounts; any decision they returned was discarded).'
+    'are recorded as unverifiable (counted as abstain in voteCounts; any decision they returned was discarded).';
+  if (artifactPath !== undefined) return warning;
+  return (
+    `${warning} No artifactPath was supplied: voters only see the proposal text; ` +
+    'pass artifactPath (or inline the artifact) so they can inspect it.'
   );
 }
 
@@ -938,6 +965,7 @@ export function buildResponse(
     ...disclosedWorkspace(result),
     // #6115: always present — a panel nobody answered is explicit zeros.
     panelDiversity: panelDiversityOf(result.votes),
+    ...assignedPanelDiversityOf(result.votes),
     // #3991: surface the authentic-vote-record persistence outcome so a skipped
     // or failed persist is visible to the MCP caller (was WARN-only).
     voteRecordPersisted: voteRecord?.persisted ?? false,
@@ -1005,11 +1033,16 @@ function applyOptionalResponseFields(
   if (panelWarning !== undefined) {
     response.panelWarning = panelWarning;
   }
+  for (const vote of result.votes) appendPanelWarning(response, vote.modelPinWarning);
   // #6094: APPENDED, like the undeclared-options warning below — a third
   // writer that assigned would clobber whichever fired first.
   appendPanelWarning(
     response,
-    unverifiableSeatsWarning(response.voteCounts.unverifiable, result.votes.length)
+    unverifiableSeatsWarning(
+      response.voteCounts.unverifiable,
+      result.votes.length,
+      input.artifactPath
+    )
   );
   // #6115: a 3+ panel whose every answering seat ran on ONE model. Appended for
   // the same reason as the two above.

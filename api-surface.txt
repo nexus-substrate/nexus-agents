@@ -390,6 +390,7 @@ InterfaceDeclaration AgentVoteResult
   readonly gatewayArm?: `api:${ string; }` | undefined
   readonly inputTokens?: number | undefined
   readonly model?: string | undefined
+  readonly modelPinWarning?: string | undefined
   readonly outputTokens?: number | undefined
   readonly pinnedModel?: string | undefined
   readonly processingTimeMs: number
@@ -403,6 +404,7 @@ InterfaceDeclaration AgentVoteResult
   readonly unverifiableSignal?: UnverifiableSignal | undefined
   readonly vote: { conditions?: string[] | undefined; confidence: number; decision: "abstain" | "approve" | "reject"; findings?: undefined | { claim: string; gate: { named_assertion: string; reread_cited_line: "failed" | "passed" | "skipped"; ruled_out_language_non_issue: "failed" | "passed" | "skipped"; traced_call_path: "failed" | "passed" | "skipped"; }; location: string; severity: "critical" | "high" | "info" | "low" | "medium"; summary: string; }[]; reasoning: string; rejectionCategories?: ("DRY_VIOLATION" | "INSUFFICIENT_EVIDENCE" | "MISALIGNED" | "OVER_ENGINEERING" | "SCOPE_CREEP" | "SECURITY_RISK" | "YAGNI")[] | undefined; selectedOption?: string | undefined; timestamp?: string | undefined; }
 InterfaceDeclaration AgentVoteSummary
+  assignedModel?: string | undefined
   confidence: number
   decision: "abstain" | "approve" | "reject"
   error: boolean
@@ -2124,6 +2126,8 @@ InterfaceDeclaration ConsensusVoteRequestedEvent
   readonly topic: "consensus.vote_requested"
 InterfaceDeclaration ConsensusVoteResponse
   approvalPercentage: number
+  assignedDistinctFamilies?: number | undefined
+  assignedDistinctModels?: number | undefined
   contrarianCheck: "errored" | "ok" | "skipped"
   costSummary?: DecisionCostSummary | undefined
   decision: "approved" | "no_quorum" | "pending" | "rejected" | "timeout"

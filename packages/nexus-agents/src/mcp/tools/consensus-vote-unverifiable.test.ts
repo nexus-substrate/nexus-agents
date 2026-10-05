@@ -28,6 +28,9 @@ const CLEAN_APPROVE = JSON.stringify({
   confidence: 0.9,
 });
 
+const NO_ARTIFACT_HINT =
+  'No artifactPath was supplied: voters only see the proposal text; pass artifactPath (or inline the artifact) so they can inspect it.';
+
 function adapterReturning(text: string): IModelAdapter {
   return {
     providerId: 'cli-codex',
@@ -121,6 +124,23 @@ describe('consensus_vote tally: unverifiable bucket (#6094)', () => {
     expect(blind?.unverifiable).toBe(true);
     expect(blind?.decision).toBe('abstain');
     expect(response.panelWarning).toContain('could not read the artifact');
+    expect(response.panelWarning).toContain(NO_ARTIFACT_HINT);
+  });
+
+  it('keeps the unverifiable warning without the no-artifact hint when artifactPath was supplied', async () => {
+    const votes = [await seat('architect', CLEAN_APPROVE), await seat('security', BLIND_APPROVE)];
+    const response = buildResponse(
+      {
+        proposal: 'Ratify commit abc',
+        simulateVotes: false,
+        quickMode: true,
+        artifactPath: 'review.patch',
+      },
+      extended(votes)
+    );
+    expect(response.voteCounts.unverifiable).toBe(1);
+    expect(response.panelWarning).toContain('could not read the artifact');
+    expect(response.panelWarning).not.toContain(NO_ARTIFACT_HINT);
   });
 
   it('the empty case is an explicit 0, never an omitted key', async () => {
@@ -132,6 +152,7 @@ describe('consensus_vote tally: unverifiable bucket (#6094)', () => {
     expect(Object.keys(response.voteCounts)).toContain('unverifiable');
     expect(response.voteCounts.unverifiable).toBe(0);
     expect(response.votes.every((v) => v.unverifiable === undefined)).toBe(true);
+    expect(response.panelWarning ?? '').not.toContain(NO_ARTIFACT_HINT);
   });
 
   it('under absolute_quorum an unverifiable seat voids the quorum like an errored one', async () => {

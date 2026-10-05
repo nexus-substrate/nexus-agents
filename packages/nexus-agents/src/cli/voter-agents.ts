@@ -22,7 +22,7 @@ import type {
   VoteExecutionOverrides,
   VoteExecutionSettings,
 } from './vote-types.js';
-import { resolveVoterModelOverrides } from './voter-model-overrides.js';
+import { captureModelPinWarnings, resolveVoterModelOverrides } from './voter-model-overrides.js';
 import { clisServingVoterSeats } from './voter-cli-access.js';
 import { VOTER_ROLES } from './voter-roles.js';
 import { createLogger, getTimeProvider, type IModelAdapter, type ILogger } from '../core/index.js';
@@ -584,6 +584,7 @@ export async function collectRealVotes(
 
   const roleAdapters = await assignPanelSeats(adapterResult.adapter, options, logger);
 
+  const discloseModelPins = captureModelPinWarnings(options);
   warnIfCodexConcurrencyExceeded(roleAdapters, logger);
 
   // The same resolver executeAgentVote applies, so the two paths cannot drift
@@ -628,7 +629,7 @@ export async function collectRealVotes(
   // successful result provenance, not the assigned adapters: a failed primary
   // may have been replaced by a vote from the shared fallback model.
   reportVoteIndependence(results, logger);
-  return results;
+  return results.map(discloseModelPins);
 }
 
 /**
