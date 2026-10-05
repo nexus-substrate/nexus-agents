@@ -30,6 +30,8 @@ import type { IMcpNotifier } from '../mcp-notifier.js';
 import { NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import { EXPERT_TIMEOUTS } from '../../config/timeouts.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
+import { release, suggestRetryAfterMs, tryAcquire } from '../jobs/job-concurrency.js';
+import { defaultBusyEnvelope } from '../jobs/run-as-job.js';
 import { toolStructuredError, toolSuccess } from './tool-result.js';
 
 /** The slice of the tool deps this handler reads itself; the rest passes through to `execute`. */
@@ -97,7 +99,7 @@ export const EXECUTE_EXPERT_TOOL_SCHEMA = {
  * Creates a ToolTaskHandler for execute_expert.
  *
  * Implements the MCP Tasks primitive (SEP-1686):
- * - createTask: validates, starts background execution, returns task immediately
+ * - createTask: validates, acquires a shared job slot, starts background execution
  * - getTask: returns current task status from store
  * - getTaskResult: returns completed/failed result from store
  *
@@ -117,22 +119,27 @@ export function createTaskHandler<TDeps extends ExpertTaskDeps, TArgs extends Ex
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
 
   return {
-    createTask: (
+    createTask: async (
       args: ExpertTaskArgs,
       extra: CreateTaskRequestHandlerExtra
     ): Promise<CreateTaskResult> => {
       // Validate input
       const parsed = executor.inputSchema.safeParse(args);
-      if (!parsed.success) {
-        return Promise.reject(new Error(`Validation error: ${formatZodError(parsed.error)}`));
-      }
+      if (!parsed.success) throw new Error(`Validation error: ${formatZodError(parsed.error)}`);
 
       const validatedArgs = parsed.data;
       const { taskStore } = extra;
 
+      // Both async surfaces occupy the same per-tool and global job slots (#4978).
+      if (!tryAcquire('execute_expert')) {
+        const busy = defaultBusyEnvelope(suggestRetryAfterMs('execute_expert'), 'execute_expert');
+        throw new Error(busy.content.map((content) => content.text).join('\n'));
+      }
+
       // Create task with clamped TTL
       const ttl = clampTaskTtl(DEFAULT_TASK_TTL_MS);
-      return taskStore.createTask({ ttl, pollInterval: 5000 }).then((task) => {
+      try {
+        const task = await taskStore.createTask({ ttl, pollInterval: 5000 });
         logger.info('Task created for execute_expert', {
           taskId: task.taskId,
           expertId: validatedArgs.expertId,
@@ -149,12 +156,15 @@ export function createTaskHandler<TDeps extends ExpertTaskDeps, TArgs extends Ex
         });
 
         return { task };
-      });
+      } catch (error: unknown) {
+        // The background runner only takes ownership after task creation succeeds.
+        release('execute_expert');
+        throw error;
+      }
     },
 
-    getTask: (_args: ExpertTaskArgs, extra: TaskRequestHandlerExtra): Promise<GetTaskResult> => {
-      return extra.taskStore.getTask(extra.taskId);
-    },
+    getTask: (_args: ExpertTaskArgs, extra: TaskRequestHandlerExtra): Promise<GetTaskResult> =>
+      extra.taskStore.getTask(extra.taskId),
 
     getTaskResult: (
       _args: ExpertTaskArgs,
@@ -242,5 +252,7 @@ async function runBackgroundExpertTask<TDeps extends ExpertTaskDeps, TArgs exten
         error: getErrorMessage(storeError),
       });
     }
+  } finally {
+    release('execute_expert');
   }
 }
