@@ -28,6 +28,7 @@ import { VOTER_ROLES } from './voter-roles.js';
 import { createLogger, getTimeProvider, type IModelAdapter, type ILogger } from '../core/index.js';
 import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
+import { unavailableSeat } from './voter-route-breaker.js';
 import { authRemediation } from '../cli-adapters/cli-error-envelope.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { countDistinctModels } from '../config/model-equivalence.js';
@@ -190,8 +191,10 @@ export async function executeAgentVote(
   proposal: string,
   adapter: IModelAdapter,
   logger: ILogger,
-  options?: VoteExecutionOverrides
+  options: VoteExecutionOverrides = {}
 ): Promise<AgentVoteResult> {
+  const unavailable = unavailableSeat(adapter, role);
+  if (unavailable !== undefined) return unavailable;
   const start = getTimeProvider().now();
   // `settings` is timeoutMs, maxRetries, project and workspace — the retry hop's own fields.
   const { allowSimulation, declaredOptions, ...settings } = resolveVoteExecution(options);
@@ -208,10 +211,10 @@ export async function executeAgentVote(
     adapter,
     logger,
     ...settings,
-    signal: options?.signal,
+    signal: options.signal,
     attemptCollector: collector,
-    attemptKind: options?.attemptKind,
-    withinRoleRetry: options?.withinRoleRetry,
+    attemptKind: options.attemptKind,
+    withinRoleRetry: options.withinRoleRetry,
   };
   const result = await executeWithRetries({ ...retryOptions, options: declaredOptions });
   const processingTimeMs = getTimeProvider().now() - start;
@@ -224,7 +227,7 @@ export async function executeAgentVote(
   }
 
   // Retries exhausted or explicitly refused by the adapter.
-  options?.onError?.(role, result.retryable);
+  options.onError?.(role, result.retryable);
   logger.error('Vote execution failed after all retries', undefined, {
     role,
     model: adapter.modelId,

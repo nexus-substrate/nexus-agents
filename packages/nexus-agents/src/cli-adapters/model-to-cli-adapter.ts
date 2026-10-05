@@ -26,12 +26,17 @@ import { ok, err, ModelError } from '../core/index.js';
 import { FALLBACK_CONTEXT_WINDOW } from '../config/model-config-helpers.js';
 import {
   isRateLimitText,
+  isRateLimitLikeError,
+  isDurableCapacityError,
   parseRetryAfterMs,
   retryAfterMsFromContext,
 } from '../adapters/rate-limit-detector.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { toCliTokenUsage } from './token-usage-bridge.js';
 import { withEnforcedAccessMode } from './access-mode.js';
+import { breakerKeys } from './breaker-key.js';
+import { mapModelErrorToCategory } from './circuit-breaker.js';
+import { isCallerCancelled } from '../adapters/abort-utils.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -225,12 +230,32 @@ export class ModelToCliAdapter implements ICliAdapter {
   }
 
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
+    const gatewayArm = this.gatewayArmField().gatewayArm;
+    // Only the gateway SLOT view needs a recorder here. Other model bridges
+    // keep their existing recording ownership (no cross-arm aliases).
+    // Lazy registry lookup avoids the registry → slot arm → bridge import cycle.
+    const breaker =
+      gatewayArm !== undefined && this.modelAdapter.providerId === `cli-${this.name}`
+        ? (await import('./cli-circuit-breaker.js'))
+            .getDefaultCliCircuitBreakerRegistry()
+            .getArmBreaker(breakerKeys.forArm({ name: this.name, gatewayArm }))
+        : undefined;
     const result = await this.modelAdapter.complete(this.toCompletionRequest(task, options));
     if (!result.ok) {
       const cliError = this.toCliError(result.error);
+      const category = mapModelErrorToCategory(result.error);
+      // Transient throttles clear on their own; durable quota caps still count
+      // (#3423/#5359), matching the API and gateway-arm recorders.
+      const transientRateLimit =
+        !isDurableCapacityError(result.error) &&
+        (category === 'rate_limit' || isRateLimitLikeError(result.error));
+      if (!isCallerCancelled(result.error) && !transientRateLimit) {
+        breaker?.recordFailure(category);
+      }
       this.recordQuotaSignal(cliError);
       return err(cliError);
     }
+    breaker?.recordSuccess();
     // #6792: no tools were sent, so the call ran nothing on the host; the
     // response says so and states the mode it was served under.
     const response: CliResponse = {

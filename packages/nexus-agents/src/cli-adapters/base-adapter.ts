@@ -41,6 +41,7 @@ import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
 import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 import { executeCliRetryLoop } from './cli-retry-loop.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-circuit-breaker.js';
+import { breakerKeys } from './breaker-key.js';
 import { createCliError } from './cli-error-helpers.js';
 import { unenforcedAccessModeRefusal, withEnforcedAccessMode } from './access-mode.js';
 import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
@@ -253,7 +254,9 @@ export abstract class BaseCliAdapter implements ICliAdapter {
     // serving-gate reads exactly this registry, so a quota-dead CLI's snapshot
     // stayed `undefined` and the gate fail-opened on every panel — #4325's
     // exclusion could never fire because nothing produced the signal.
-    const circuitBreaker = getDefaultCliCircuitBreakerRegistry().getBreaker(this.name);
+    const circuitBreaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(
+      breakerKeys.forArm({ name: this.name, model: task.model })
+    );
     const result = await executeCliRetryLoop(() => this.executeTask(task, opts), {
       maxRetries: opts.maxRetries,
       allowRetry: this.shouldOuterRetry(opts),

@@ -57,7 +57,8 @@ vi.mock('./codex-mcp-server-probe.js', () => ({
   codexMcpServerAvailable: () => true,
 }));
 
-vi.mock('./cli-circuit-breaker.js', () => ({
+vi.mock('./cli-circuit-breaker.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./cli-circuit-breaker.js')>()),
   getCliCircuitBreakerSnapshot: mocks.getCliCircuitBreakerSnapshot,
 }));
 
@@ -95,6 +96,28 @@ describe('getAvailableClis serving gate', () => {
     );
 
     await expect(getAvailableClis()).resolves.toEqual(['claude', 'gemini', 'codex']);
+  });
+
+  it('keeps plain opencode available when only a custom route breaker is open', async () => {
+    const { getAvailableClis } = await import('./factory.js');
+    const { getDefaultCliCircuitBreakerRegistry } = await import('./cli-circuit-breaker.js');
+    const { breakerKeys } = await import('./breaker-key.js');
+    const registry = getDefaultCliCircuitBreakerRegistry();
+    const custom = registry.getArmBreaker(
+      breakerKeys.forArm({ name: 'opencode', model: 'opencode-custom-sonnet' })
+    );
+    try {
+      for (let i = 0; i < custom.getSnapshot().config.failureThreshold; i++) {
+        custom.recordFailure('unknown');
+      }
+      mocks.getCliCircuitBreakerSnapshot.mockImplementation((cli: CliName) =>
+        registry.getAllSnapshots().get(cli)
+      );
+      expect(custom.getState()).toBe('open');
+      await expect(getAvailableClis()).resolves.toContain('opencode');
+    } finally {
+      registry.resetAll();
+    }
   });
 
   it('includes an authenticated healthy CLI when breaker state is unavailable', async () => {

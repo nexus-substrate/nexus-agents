@@ -25,6 +25,7 @@ import { MODELSDEV_CATALOGUE_CAVEATS } from '../../config/models-dev-by-vendor.j
 import type { AvailableModelsSource } from '../../config/available-models-cache.js';
 import { getToolAnnotations } from '../tool-annotations.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../../cli-adapters/cli-circuit-breaker.js';
+import { breakerKeys } from '../../cli-adapters/breaker-key.js';
 import { isCliName } from '../../cli-adapters/types-core.js';
 import {
   toolStructuredError,
@@ -36,8 +37,8 @@ import {
 const DESCRIPTION =
   'Probe every model-discovery transport (OpenRouter API, the configured gateway, and the ' +
   'opencode/claude/codex/gemini CLIs) ' +
-  'and report a per-transport health summary: probe ok/failed, model count, a sample of ids, and ' +
-  'for each CLI whether its shared circuit breaker is open (the router refuses it while open). ' +
+  'and report a per-transport health summary: probe ok/failed, model count, and a sample of usable ids. ' +
+  'Models with open route breakers are excluded; each CLI reports whether its default-route breaker is open. ' +
   'Use it to validate the CLIs and APIs are wired and reachable. Read-only; does not change routing.';
 
 /** Per-source probe timeout (ms). A hung transport must not block the report. */
@@ -65,7 +66,7 @@ export interface TransportReport {
   readonly ok: boolean;
   /**
    * Whether this transport can actually serve a model — `ok` AND a non-empty
-   * catalog (#5128).
+   * catalog of models whose route breaker is not open (#5128, #7070).
    *
    * Added because `ok: true, modelCount: 0` was indistinguishable, in the
    * summary, from a working transport. Three of five reported that way against
@@ -77,8 +78,8 @@ export interface TransportReport {
   readonly modelIds?: readonly string[];
   readonly error?: string;
   /**
-   * Whether the SHARED CLI circuit breaker — the one the router and the
-   * unified adapter registry consult — is open for this transport (#6769).
+   * Whether the shared DEFAULT-ROUTE CLI circuit breaker is open for this
+   * transport (#6769, #7070); custom-model breakers are checked per model.
    * A transport can probe fine and still be refused by the router while its
    * breaker is open; this reports that beside the probe, not in place of it.
    *
@@ -138,7 +139,17 @@ async function probeSource(
   });
   try {
     const models = await Promise.race([source.listModels(), timeout]);
-    const ids = models.map((m) => m.id);
+    // The catalog may enumerate a failed custom route beside healthy default
+    // models. Consult the resolved model's route before reporting it usable.
+    const ids = models
+      .map((m) => m.id)
+      .filter(
+        (model) =>
+          !isCliName(source.name) ||
+          !getDefaultCliCircuitBreakerRegistry().isArmOpen(
+            breakerKeys.forArm({ name: source.name, model })
+          )
+      );
     return {
       transport: source.name,
       ok: true,
@@ -268,7 +279,7 @@ export async function listAvailableModelsHandler(
     note:
       'Probe results — existence only; the in-tree registry remains authoritative for pricing/capability. ' +
       'healthyTransports counts transports that can serve a model; reachableTransports counts probes that merely succeeded. ' +
-      'breakerOpen marks a CLI transport the router is currently refusing (shared circuit breaker open), whatever its probe said. ' +
+      'Models on open routes are excluded; breakerOpen reports only the CLI default route, whatever its probe said. ' +
       'catalogueCaveat marks a transport whose list is not the set it can run (codex: a vendor-catalogue superset).',
   };
   logger.debug('list_available_models probed transports', {

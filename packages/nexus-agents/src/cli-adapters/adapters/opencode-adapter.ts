@@ -215,15 +215,20 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   }
 
   /**
-   * Gets OpenCode model information from canonical registry.
+   * Gets the implicit route's model information from the canonical registry.
+   * After inventory probing, an unusable configured model runs the default.
    */
   getModelInfo(): ModelInfo {
-    const fromRegistry = buildModelInfo('opencode', this.model);
+    const model =
+      this.availableModels !== undefined && !this.isModelUsable(resolveOpenCodeModel(this.model))
+        ? getCliModelName(getDefaultModelForCli('opencode'))
+        : this.model;
+    const fromRegistry = buildModelInfo('opencode', model);
     if (fromRegistry !== undefined) return fromRegistry;
 
     return {
-      id: this.model,
-      name: `OpenCode (${this.model})`,
+      id: model,
+      name: `OpenCode (${model})`,
       contextWindow: FALLBACK_CONTEXT_WINDOW,
       maxOutput: FALLBACK_MAX_OUTPUT,
       // OpenCode pricing fallback is adapter-specific (not the Claude 5/25).
@@ -237,6 +242,7 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
    * Warns if Anthropic provider is configured (#1429 — API key boundaries).
    */
   override async initialize(): Promise<void> {
+    if (this.initialized) return;
     this.availableModels = await probeAvailableModels();
     warnIfAnthropicProvider(this.availableModels);
     await super.initialize();
@@ -315,8 +321,19 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     task: CliTask,
     options?: ExecutionOptions
   ): Promise<Result<CliResponse, CliError>> {
-    if (task.model === undefined) return super.execute(task, options);
+    if (task.model === undefined) {
+      // Preserve the base adapter's refusal before the model inventory probe.
+      const refusal = await this.accessModeRefusal(task);
+      if (refusal !== undefined) return err(refusal);
+    }
     if (!this.initialized) await this.initialize();
+    if (task.model === undefined) {
+      // Record the route actually selected: an unavailable configured model
+      // omits --model and runs OpenCode's default, not that configured route.
+      const cliModel = resolveOpenCodeModel(this.model);
+      const effectiveTask = this.isModelUsable(cliModel) ? { ...task, model: cliModel } : task;
+      return super.execute(effectiveTask, options);
+    }
     const resolved = this.resolveRequestedModel(task.model);
     if (!resolved.ok) return resolved;
     const { cliId, reportedAs } = resolved.value;
