@@ -1,5 +1,14 @@
 # nexus-agents
 
+## 9.0.1
+
+### Patch Changes
+
+- [#7109](https://github.com/nexus-substrate/nexus-agents/pull/7109) [`f34d714`](https://github.com/nexus-substrate/nexus-agents/commit/f34d714d9856e41543d3bee24325c36c3b3bfde0) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Warn when a task-class cost ceiling admits a candidate using a list-price estimate,
+  with a caveat that actual contract or gateway charges may differ. Explicit
+  `NEXUS_GATEWAY_COST` rates remain `declared` and log at info without a caveat.
+  Routing choices are unchanged: over-ceiling and unpriced candidates are dropped.
+
 ## 9.0.0
 
 ### Major Changes
