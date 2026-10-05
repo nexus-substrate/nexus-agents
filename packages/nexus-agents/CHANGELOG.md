@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.133.2
+
+### Patch Changes
+
+- [#7081](https://github.com/nexus-substrate/nexus-agents/pull/7081) [`f2ec99c`](https://github.com/nexus-substrate/nexus-agents/commit/f2ec99c376029fc036e345dfcfe5017ae10c9367) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Keep OpenCode's default route available when a custom provider fails, and exclude failing custom routes per model from voter dispatch and available-model listings. Gateway-served slot failures no longer open the plain CLI breaker or affect other slots. Transient rate limits do not trip slot breakers; durable quota exhaustion still counts as a failure.
+
 ## 8.133.1
 
 ### Patch Changes
