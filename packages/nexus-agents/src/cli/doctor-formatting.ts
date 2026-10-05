@@ -113,8 +113,11 @@ function printCliResult(cli: CliCheckResult, gatewayCovered: boolean): void {
   if (cli.installed) {
     printInstalledCliDetails(cli);
   } else {
-    const errorText = cli.error ?? 'Not installed';
-    writeLine(`  ${colors.red}Error: ${errorText}${colors.reset}`);
+    writeLine(`  ${colors.red}Error: ${cli.error ?? 'Not installed'}${colors.reset}`);
+  }
+
+  if (cli.authEvidence !== undefined) {
+    writeLine(`  Auth evidence: ${cli.authEvidence.rung} (${cli.authEvidence.description})`);
   }
 
   if (cli.fix !== undefined && cli.fix !== '') {
@@ -146,13 +149,11 @@ function printCapabilities(clis: CliCheckResult[]): void {
     caps[c.name].speed > caps[best.name].speed ? c : best
   );
 
-  const contextTokensK = (caps[bestContext.name].contextWindow / 1000).toFixed(0);
-
   writeLine(
     `${formatStatus(true)} Complex reasoning: ${colors.bold}${capitalize(bestReasoning.name)}${colors.reset}`
   );
   writeLine(
-    `${formatStatus(true)} Large context: ${colors.bold}${capitalize(bestContext.name)}${colors.reset} (${contextTokensK}K tokens)`
+    `${formatStatus(true)} Large context: ${colors.bold}${capitalize(bestContext.name)}${colors.reset} (${(caps[bestContext.name].contextWindow / 1000).toFixed(0)}K tokens)`
   );
   writeLine(
     `${formatStatus(true)} Fast execution: ${colors.bold}${capitalize(bestSpeed.name)}${colors.reset}`
@@ -176,12 +177,11 @@ function printNodeVersionCheck(check: NodeVersionCheck): void {
  * Prints API key configuration check results.
  */
 function printApiKeysCheck(keys: ApiKeyCheck[]): void {
-  const configuredCount = keys.filter((k) => k.configured).length;
   const configuredNames = keys.filter((k) => k.configured).map((k) => k.name);
-  const hasAny = configuredCount > 0;
+  const hasAny = configuredNames.length > 0;
 
   writeLine(
-    `${formatStatus(hasAny, !hasAny)} API keys configured: ${String(configuredCount)} of ${String(keys.length)}`
+    `${formatStatus(hasAny, !hasAny)} API keys configured: ${String(configuredNames.length)} of ${String(keys.length)}`
   );
   if (hasAny) {
     writeLine(`  ${colors.dim}Keys: ${configuredNames.join(', ')}${colors.reset}`);

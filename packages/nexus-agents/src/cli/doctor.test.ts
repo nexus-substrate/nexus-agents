@@ -11,6 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runDoctor, printDoctorResults, doctorCommand } from './doctor.js';
 import type { CliCheckResult, DoctorResult } from './doctor.js';
 import { GeminiCliAdapter } from '../cli-adapters/adapters/gemini-adapter.js';
+import * as authEvidence from '../cli-adapters/auth-evidence.js';
+import type { AuthProbeResult } from './cli-auth-probe.js';
 
 const { TEST_VERSION } = vi.hoisted(() => ({ TEST_VERSION: '1.0.0' }));
 
@@ -237,6 +239,22 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
   };
 }
 
+/** Keep the real doctor and formatter; replace only process-facing probes. */
+function mockAuthEvidenceCli(probe: AuthProbeResult): void {
+  const adapter = {
+    name: probe.cli,
+    healthCheck: vi.fn().mockResolvedValue({
+      healthy: true,
+      version: '1.0.0',
+      versionStatus: 'supported',
+      lastChecked: new Date(),
+    }),
+    getCapacity: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.mocked(createAllAdapters).mockReturnValue(new Map([[probe.cli, adapter]]) as never);
+  vi.mocked(probeCli).mockResolvedValueOnce(probe);
+}
+
 describe('Doctor Command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -254,6 +272,116 @@ describe('Doctor Command', () => {
   });
 
   describe('runDoctor()', () => {
+    it.each([
+      [
+        { cli: 'claude', state: 'authenticated', via: 'cli-credentials' },
+        'artifact',
+        'artifact',
+        'claude credentials file',
+      ],
+      [
+        { cli: 'codex', state: 'authenticated', via: 'cli-credentials' },
+        'probe',
+        'cli',
+        'codex login status',
+      ],
+      [
+        { cli: 'gemini', state: 'unknown', reason: 'No non-interactive auth check' },
+        'none',
+        'none',
+        'agy probe unknown',
+      ],
+      [
+        { cli: 'opencode', state: 'authenticated', via: 'cli-credentials' },
+        'probe',
+        'cli',
+        'opencode auth list',
+      ],
+      [
+        { cli: 'claude', state: 'authenticated', via: 'env-var' },
+        'artifact',
+        'artifact',
+        'ANTHROPIC_API_KEY environment variable',
+      ],
+      [
+        { cli: 'codex', state: 'authenticated', via: 'env-var' },
+        'artifact',
+        'artifact',
+        'OPENAI_API_KEY environment variable',
+      ],
+      [
+        {
+          cli: 'claude',
+          state: 'needs-login',
+          reason: 'Expired credentials',
+          fixCommand: 'claude /login',
+        },
+        'none',
+        'artifact',
+        'claude credentials file',
+      ],
+      [
+        { cli: 'codex', state: 'error', reason: 'Probe timed out' },
+        'none',
+        'cli',
+        'codex login status',
+      ],
+    ] satisfies ReadonlyArray<readonly [AuthProbeResult, string, string, string]>)(
+      'reports auth evidence for %j in structured and per-CLI output',
+      async (probe, rung, source, description) => {
+        mockAuthEvidenceCli(probe);
+        const result = await runDoctor();
+        const row = result.clis.find((cli) => cli.name === probe.cli);
+        expect(row?.authEvidence).toEqual({
+          rung,
+          source,
+          description,
+          probeState: probe.state,
+          passed: probe.state === 'authenticated',
+          blocks: probe.state === 'needs-login',
+        });
+        const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+        printDoctorResults(result);
+        expect(writeSpy.mock.calls.map((call) => call[0]).join('')).toContain(
+          `Auth evidence: ${rung} (${description})`
+        );
+      }
+    );
+
+    it('renders the resolver measurement rather than grading auth independently', async () => {
+      mockAuthEvidenceCli({ cli: 'codex', state: 'authenticated', via: 'cli-credentials' });
+      const measurement = {
+        rung: 'none' as const,
+        source: 'none' as const,
+        probeState: 'unknown' as const,
+        passed: false,
+        blocks: false,
+      };
+      vi.spyOn(authEvidence, 'resolveAuthEvidence').mockReturnValue(measurement);
+      const result = await runDoctor();
+      expect(result.clis.find((cli) => cli.name === 'codex')?.authEvidence).toMatchObject(
+        measurement
+      );
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      printDoctorResults(result);
+      expect(writeSpy.mock.calls.map((call) => call[0]).join('')).toContain(
+        'Auth evidence: none (codex probe unknown)'
+      );
+    });
+
+    it('prints no auth evidence line for a CLI that was never probed (#4661)', async () => {
+      vi.mocked(createAllAdapters).mockReturnValue(new Map());
+      const result = await runDoctor();
+      // An uninstalled CLI gets no auth line (#4661): no probe ran, so there is no evidence to grade.
+      const claude = result.clis.find((cli) => cli.name === 'claude');
+      expect(claude).toBeDefined();
+      expect(claude?.installed).toBe(false);
+      expect(claude?.authEvidence).toBeUndefined();
+      const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      printDoctorResults(result);
+      expect(writeSpy.mock.calls.map((call) => call[0]).join('')).not.toContain('Auth evidence:');
+    });
+
     it('uses raw adapter metadata when the routing arm is absent (#4389)', async () => {
       vi.spyOn(GeminiCliAdapter.prototype, 'binaryName', 'get').mockReturnValue('missing-cli');
       vi.mocked(createAllAdapters).mockReturnValue(new Map());

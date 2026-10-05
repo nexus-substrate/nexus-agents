@@ -45,6 +45,7 @@ import {
 import { createAllAdapters, createCliAdapter } from '../cli-adapters/factory.js';
 import { getCliAdapterDiagnostics } from '../cli-adapters/cli-adapter-diagnostics.js';
 import { isCliAdmitted } from '../cli-adapters/cli-admission.js';
+import { resolveAuthEvidence } from '../cli-adapters/auth-evidence.js';
 import { cliBinaryAdapterOf } from '../cli-adapters/gateway-slot-arm.js';
 import { isCliDisabled } from '../cli-adapters/disabled-clis.js';
 import { codexMcpServerAvailable } from '../cli-adapters/codex-mcp-server-probe.js';
@@ -129,6 +130,10 @@ export interface CliCheckResult {
    * login command that fixes nothing.
    */
   readonly authState: 'authenticated' | 'unverified' | 'not-authenticated';
+  /** Local evidence from the admission ladder, with the probe's readable provenance. */
+  readonly authEvidence?: ReturnType<typeof resolveAuthEvidence> & {
+    readonly description: string;
+  };
   /**
    * Whether the router would route to this CLI: `isCliAdmitted` over the same
    * health check and auth probe (#6720). `doctor --gateway` reads it to say
@@ -491,6 +496,7 @@ function createHealthyResult(
   const versionOk = health.healthy;
   const authenticated = versionOk && authProbe.state === 'authenticated';
   const authState = resolveAuthState(authenticated, authProbe.state);
+  const evidence = resolveAuthEvidence(authProbe);
 
   const result: CliCheckResult = {
     name,
@@ -499,6 +505,7 @@ function createHealthyResult(
     versionStatus: health.versionStatus,
     authenticated,
     authState,
+    authEvidence: { ...evidence, description: describeAuthEvidence(authProbe, evidence) },
     routerAdmits: isCliAdmitted(health, authProbe),
     ...(authenticated && { authMethod: detectAuthMethod(name) }),
     ...(capacity !== undefined && { capacity }),
@@ -527,6 +534,25 @@ function createHealthyResult(
   }
 
   return result;
+}
+
+/** Name the existing producer behind the ladder's source without regrading it. */
+function describeAuthEvidence(
+  probe: AuthProbeResult,
+  evidence: ReturnType<typeof resolveAuthEvidence>
+): string {
+  if (evidence.source === 'artifact') {
+    if (probe.state === 'authenticated' && probe.via === 'env-var') {
+      const envVar = probe.cli === 'claude' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+      return `${envVar} environment variable`;
+    }
+    return 'claude credentials file';
+  }
+  if (evidence.source === 'cli') {
+    return probe.cli === 'codex' ? 'codex login status' : 'opencode auth list';
+  }
+  const binary = probe.cli === 'gemini' ? 'agy' : probe.cli;
+  return `${binary} probe ${evidence.probeState}`;
 }
 
 /**
