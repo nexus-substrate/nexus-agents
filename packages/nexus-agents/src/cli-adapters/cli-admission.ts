@@ -10,7 +10,7 @@
  */
 
 import type { CliName, HealthStatus, ICliAdapter } from './types.js';
-import type { AuthProbeResult } from '../cli/cli-auth-probe.js';
+import { resolveAuthEvidence, type AuthEvidenceInput } from './auth-evidence.js';
 import type { LevelOutcome } from '../cli/cli-readiness.js';
 import { resolveClassGuardMs } from '../config/timeouts.js';
 import { canonicalModelKey } from '../config/model-equivalence.js';
@@ -79,8 +79,8 @@ export async function servesListedModel(
 }
 
 /** The auth probe determined the CLI cannot serve: logged out or not installed. */
-export function cliAuthBlocks(auth: Pick<AuthProbeResult, 'state'>): boolean {
-  return auth.state === 'needs-login' || auth.state === 'not-installed';
+export function cliAuthBlocks(auth: AuthEvidenceInput): boolean {
+  return resolveAuthEvidence(auth).blocks;
 }
 
 /**
@@ -97,7 +97,7 @@ export function cliAuthBlocks(auth: Pick<AuthProbeResult, 'state'>): boolean {
  */
 export function isCliAdmitted(
   health: Pick<HealthStatus, 'healthy'>,
-  auth: Pick<AuthProbeResult, 'state'>
+  auth: AuthEvidenceInput
 ): boolean {
-  return health.healthy && !cliAuthBlocks(auth);
+  return health.healthy && !resolveAuthEvidence(auth).blocks;
 }
