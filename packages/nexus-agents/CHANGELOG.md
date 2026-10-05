@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 9.0.2
+
+### Patch Changes
+
+- [#7111](https://github.com/nexus-substrate/nexus-agents/pull/7111) [`553993c`](https://github.com/nexus-substrate/nexus-agents/commit/553993c4122685432d1da23facd6744d5c47fa0c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add a next step to read-only analysis refusals naming Claude and Codex and linking to the harness compatibility guide.
+
 ## 9.0.1
 
 ### Patch Changes
