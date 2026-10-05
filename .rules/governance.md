@@ -5,7 +5,7 @@ description: Voting thresholds, refactor gates, fitness audit, architecture/secu
 
 # Governance Rules
 
-<!-- CANONICAL SOURCE: CLAUDE.md Governance Framework -->
+<!-- CANONICAL SOURCE: this file. AGENTS.md/CLAUDE.md summarize these rules. -->
 
 Quick reference for governance enforcement. Loaded when working on architecture, CI, or structural changes.
 
@@ -18,21 +18,47 @@ runs at `higher_order`'s bar — which is **0.5** (`VOTING_THRESHOLDS` in
 `consensus/types-core.ts`). This table used to prescribe exactly that pairing,
 which made the architecture and security rows a simple majority (#5315, #5344).
 
-| Trigger                   | Pass this `strategy` | Bar   | Agents |
-| ------------------------- | -------------------- | ----- | ------ |
-| Architecture changes      | `supermajority`      | 0.667 | 5      |
-| Breaking API changes      | `unanimous`          | 1.0   | 5      |
-| Security-related changes  | `supermajority`      | 0.667 | 5      |
-| Sprint planning decisions | `simple_majority`    | 0.5   | 3      |
-| Feature prioritization    | `simple_majority`    | 0.5   | 5      |
+| Trigger                   | Pass this `strategy` | Bar                            | Agents         |
+| ------------------------- | -------------------- | ------------------------------ | -------------- |
+| Architecture changes      | `supermajority`      | 0.667                          | 5              |
+| Breaking API changes      | `supermajority`      | ≥5/7 + dissent condition below | 7 (full panel) |
+| Security-related changes  | `supermajority`      | 0.667                          | 5              |
+| Sprint planning decisions | `simple_majority`    | 0.5                            | 3              |
+| Feature prioritization    | `simple_majority`    | 0.5                            | 5              |
 
-Overlapping triggers → use STRICTEST. Order: `unanimous > supermajority > majority`.
+Overlapping triggers use the strictest bar (`unanimous > supermajority > majority`)
+and retain every applicable additional condition. Breaking API changes map to
+supermajority plus the concrete-defect dissent condition below, not unanimity.
+
+### Breaking API changes
+
+Per the [owner decision on #6956](https://github.com/nexus-substrate/nexus-agents/issues/6956#issuecomment-5998152330),
+breaking API changes require **supermajority (≥5 approvals of 7 on a full panel)
+AND no unresolved concrete-defect dissent from any seat**. Pass
+`strategy: 'supermajority'` and `errorPolicy: 'absolute_quorum'`, then verify all
+seven seats have valid responses and at least five approve. Missing, errored or
+abstaining seats cannot reduce the five-approval requirement; a partial panel
+cannot pass. The numeric tally alone does not clear concrete-defect dissent.
+
+**Concrete-defect dissent** is a reject that names a specific `file:line` or
+behaviour that is wrong (for example, a specific consumer-visible regression).
+Preference or scope disagreement alone does not qualify. Any seat's qualifying
+reject blocks the change until its defect is resolved or shown not to apply.
+
+**Resolved** means the defect is fixed and a re-run on the new head passes this
+bar without that dissent, **OR** the change's record explains why the named
+defect does not apply. The record is **the vote ledger record plus the PR
+comment**: together they identify the reviewed head, full-panel tally, each
+concrete-defect dissent and its disposition, and the clearing re-run or
+non-applicability explanation. Do not record approval while any such dissent
+remains unresolved.
 
 **What the bar is measured over.** Voters who cast approve or reject. Abstentions
 and errored seats leave the denominator, so supermajority is 5 of 7 when the whole
 panel answers and 4 of 5 when two seats are missing. `panelCoverage` on the vote
 record names the errored roles (#5738), and an errored seat is retried once before
-the tally (#5578).
+the tally (#5578). Breaking API changes additionally require the full-panel bar
+above; denominator reduction cannot clear that bar.
 
 **Governor-path ratification votes must pass `errorPolicy: 'absolute_quorum'`**, so
 a degraded panel cannot ratify a change to the governance substrate — `.rules/`,

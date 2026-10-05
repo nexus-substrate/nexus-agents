@@ -51,9 +51,12 @@ export interface ConsensusRequirement {
 }
 
 /**
- * Priority → consensus requirement. p0 is unanimous + dry-run (security/breaking);
+ * Priority → consensus requirement. p0 is unanimous + dry-run;
  * tiers relax down to file-only at p4. Uses the canonical {@link ConsensusAlgorithm}
  * values so the enforce path passes them straight to `consensus_vote`.
+ * This priority policy is separate from the breaking-API trigger bar in
+ * `.rules/governance.md` (≥5 of 7 on a full panel and no unresolved
+ * concrete-defect dissent from any seat).
  */
 const REQUIREMENT_BY_PRIORITY: Readonly<Record<RemediationPriority, ConsensusRequirement>> = {
   p0: { autoRemediate: true, algorithm: 'unanimous', requiresDryRun: true },
