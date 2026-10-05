@@ -14,6 +14,34 @@ export type CommandRunner = (command: string, args: readonly string[]) => Comman
 export type PromotionResult =
   { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
+const VERIFY_ATTEMPTS = 6;
+const VERIFY_DELAY_MS = 5000;
+
+export interface PromotionOptions {
+  /** Total verification reads, including the first read. */
+  readonly attempts?: number;
+  /** Delay between unsuccessful verification reads. */
+  readonly delayMs?: number;
+  /** Synchronous sleep; injectable to avoid real delays in tests. */
+  readonly sleep?: (ms: number) => void;
+}
+
+function sleepSync(ms: number): void {
+  // Node supports Atomics.wait without relying on an external sleep executable.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function resolveVerificationOptions(
+  options: PromotionOptions
+): Required<PromotionOptions> | undefined {
+  const attempts = options.attempts ?? VERIFY_ATTEMPTS;
+  const delayMs = options.delayMs ?? VERIFY_DELAY_MS;
+  if (!Number.isSafeInteger(attempts) || attempts < 1 || !Number.isFinite(delayMs) || delayMs < 0) {
+    return undefined;
+  }
+  return { attempts, delayMs, sleep: options.sleep ?? sleepSync };
+}
+
 const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const PromotionInput = z.object({
   packageName: z.string().max(214).regex(PACKAGE_NAME),
@@ -99,14 +127,48 @@ function latestFromTags(stdout: string): string {
   return latestTags.length === 1 ? (latestTags[0]?.slice('latest:'.length).trim() ?? '') : '';
 }
 
-/** Call only after the exact package version's tarball has returned HTTP 200. */
+function verifyPromotion(
+  packageName: string,
+  version: string,
+  run: CommandRunner,
+  options: Required<PromotionOptions>
+): PromotionResult {
+  const id = `${packageName}@${version}`;
+  let lastRead = '';
+  let reads = 0;
+  // Even the dist-tags endpoint can be stale briefly after a successful add (#7096).
+  while (reads < options.attempts) {
+    const tags = runWrappedNpm(['dist-tag', 'ls', packageName], run);
+    reads++;
+    const tagsError = commandFailure(tags);
+    const latest = tagsError === undefined ? latestFromTags(tags.stdout) : '';
+    if (tagsError === undefined && latest === version) return { ok: true };
+    lastRead =
+      tagsError === undefined
+        ? `received ${latest === '' ? '(empty)' : latest}`
+        : `received (unreadable): ${tagsError}`;
+    if (reads < options.attempts) options.sleep(options.delayMs);
+  }
+  return failure(
+    `Promotion of ${id} ran, but could not verify latest after ${String(reads)} reads: expected ${version}, ${lastRead}.`
+  );
+}
+
+/** Call only after the tarball returned HTTP 200; add once, then retry verification reads. */
 export function promotePublishedPackage(
   packageName: string,
   version: string,
-  run: CommandRunner = runCommand
+  run: CommandRunner = runCommand,
+  options: PromotionOptions = {}
 ): PromotionResult {
   if (!PromotionInput.safeParse({ packageName, version }).success) {
     return failure('Promotion requires a valid npm package name and an exact semantic version.');
+  }
+  const verification = resolveVerificationOptions(options);
+  if (verification === undefined) {
+    return failure(
+      'Verification requires a positive integer attempt count and a finite nonnegative delay.'
+    );
   }
   const current = inspectCurrentLatest(packageName, version, run);
   if (!current.ok) return current;
@@ -117,20 +179,7 @@ export function promotePublishedPackage(
   if (addError !== undefined) {
     return failedPromotion(id, add, addError);
   }
-  // The package document used by npm view may be cached after promotion.
-  // dist-tag ls reads the dist-tags endpoint directly instead (#6514).
-  const tags = runWrappedNpm(['dist-tag', 'ls', packageName], run);
-  const tagsError = commandFailure(tags);
-  if (tagsError !== undefined) {
-    return failure(`Promotion of ${id} ran, but could not verify latest: ${tagsError}.`);
-  }
-  const latest = latestFromTags(tags.stdout);
-  if (latest === '' || latest !== version) {
-    return failure(
-      `Promotion of ${id} ran, but could not verify latest: expected ${version}, received ${latest === '' ? '(empty)' : latest}.`
-    );
-  }
-  return { ok: true };
+  return verifyPromotion(packageName, version, run, verification);
 }
 
 if (process.argv[1]?.endsWith('promote-published-package.ts') === true) {
