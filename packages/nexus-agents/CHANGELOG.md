@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.134.0
+
+### Minor Changes
+
+- [#7094](https://github.com/nexus-substrate/nexus-agents/pull/7094) [`03f9917`](https://github.com/nexus-substrate/nexus-agents/commit/03f991787ccc9c2037b42dc4232296e311194216) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add `vote --artifact-file` and an optional MCP `consensus_vote` artifact input to inline a bounded UTF-8 file into every voter's proposal. Artifacts include a SHA-256 digest and byte count covered by the existing proposal hash, allowing read-only seats to review merge resolution diffs. Missing, empty, NUL-containing, and over-256-KiB files fail explicitly.
+
 ## 8.133.5
 
 ### Patch Changes
