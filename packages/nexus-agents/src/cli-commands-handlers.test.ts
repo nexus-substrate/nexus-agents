@@ -576,6 +576,17 @@ describe('handleVoteCommand forwards --option (#4963)', () => {
     voteMock.mockResolvedValue(0);
   });
 
+  it('forwards --artifact-file to voteCommand (#7092)', async () => {
+    const base = createMockArgs();
+    await handleVoteCommand({
+      ...base,
+      command: 'vote',
+      options: { ...base.options, proposal: 'Ratify', artifactFile: 'resolution.diff' },
+      positionals: ['vote'],
+    });
+    expect(voteMock.mock.calls[0]?.[0]).toMatchObject({ artifactFile: 'resolution.diff' });
+  });
+
   it('passes the declared alternatives to voteCommand', async () => {
     const base = createMockArgs();
     await handleVoteCommand({

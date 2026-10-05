@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { basename } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
@@ -40,6 +41,8 @@ import {
   strategyToAlgorithm,
 } from '../../consensus/decision/strategy.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
+import { inlineVoteArtifact } from '../../cli/vote-artifact.js';
+import { resolveInsideRoot } from '../../security/safe-path.js';
 import { resolveAndLogVoterProject, type ResolvedVoterProject } from '../../cli/voter-project.js';
 import { resolvePanelWorkspace } from '../../cli/panel-workspace.js';
 import { evaluateOptionGate, optionThresholdFor } from './consensus-vote-option-gate.js';
@@ -960,6 +963,36 @@ async function runSyncConsensusVote(
   return structuredToolSuccess(z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA), { ...result.value });
 }
 
+/** Resolve once before dispatch so seats and the recorder consume the same artifact. */
+async function prepareVoteArtifact(
+  input: ConsensusVoteInput
+): Promise<{ ok: true; value: ConsensusVoteInput } | { ok: false; error: ToolResult }> {
+  if (input.artifactPath === undefined) return { ok: true, value: input };
+  const resolved = resolveInsideRoot(input.artifactPath);
+  if (resolved === null) {
+    return {
+      ok: false,
+      error: toolStructuredError({
+        errorCategory: 'permission',
+        message: 'Path traversal denied: artifactPath must be within the repository root.',
+      }),
+    };
+  }
+  try {
+    const proposal = await inlineVoteArtifact(
+      input.proposal,
+      resolved,
+      basename(input.artifactPath)
+    );
+    return { ok: true, value: { ...input, proposal } };
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      error: toolStructuredError({ errorCategory: 'validation', message: getErrorMessage(error) }),
+    };
+  }
+}
+
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext): Promise<ConsensusVoteToolResponse> => {
@@ -977,29 +1010,32 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       const simCheck = checkSimulationAllowed('consensus_vote', ctx.logger);
       if (!simCheck.allowed) return simulationDeniedResult(simCheck.reason);
     }
-    const strategy = validationResult.data.strategy ?? 'simple_majority';
-    const dispatch = validationResult.data.dispatch;
+    const prepared = await prepareVoteArtifact(validationResult.data);
+    if (!prepared.ok) return prepared.error;
+    const input = prepared.value;
+    const strategy = input.strategy ?? 'simple_majority';
+    const dispatch = input.dispatch;
     ctx.logger.debug('Starting consensus vote', {
       strategy,
-      quickMode: validationResult.data.quickMode,
+      quickMode: input.quickMode,
       ...(dispatch !== undefined ? { dispatch } : {}),
     });
     notifier.info('consensus_vote', {
       event: 'vote_start',
-      proposalLength: validationResult.data.proposal.length,
+      proposalLength: input.proposal.length,
       strategy,
     });
     // #3045 / epic #2631 Stage 4 — async dispatch.
     if (dispatch === 'async') {
-      const asyncResult = dispatchAsyncConsensusVote(deps, validationResult.data);
+      const asyncResult = dispatchAsyncConsensusVote(deps, input);
       notifier.info('consensus_vote', {
         event: 'vote_dispatched_async',
-        proposalLength: validationResult.data.proposal.length,
+        proposalLength: input.proposal.length,
         strategy,
       });
       return asyncResult;
     }
-    return runSyncConsensusVote(deps, notifier, validationResult.data);
+    return runSyncConsensusVote(deps, notifier, input);
   };
 }
 
