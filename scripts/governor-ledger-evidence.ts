@@ -26,11 +26,11 @@
  *
  * | Kind | Meaning |
  * | --- | --- |
- * | `ratified` | one record binds this PR at an accepted head, is `approved`, and its recorded panel was whole |
+ * | `ratified` | one record binds this PR at an accepted head, recomputes to `approved` consistently with its stored decision, and its recorded panel was whole |
  * | `ratified-rebased` | as `ratified`, but the record binds an EARLIER head of this PR (an ancestor of the head, or a head the workflow saw this PR have) and the head's tree equals that head's patch replayed onto the head's base — see "The head moved" below (#6256, #6301) |
  * | `no-record` | no record carries `ratifiesPr.pr === PR`; an EMPTY ledger is this case with `recordCount: 0`, never `ratified` |
  * | `sha-mismatch` | records bind this PR, but none at an accepted head and none passes the moved-head rule — lists the shas found and, per sha, why the rule did not apply |
- * | `not-approved` | a bound record's `decision` is not `approved` |
+ * | `not-approved` | a bound record's canonical seat verdict is not `approved`, disagrees with its stored decision, or has zero voters (#6952) |
  * | `wrong-error-policy` | a bound record RECORDS an `errorPolicy` other than `absolute_quorum` (#6211) |
  * | `wrong-strategy` | a bound record's `strategy` is below the governor bar — not `supermajority` or `unanimous` (#6235) |
  * | `unmeasured-panel` | a bound record has no `panelCoverage`, or one that names no seats — it cannot show the panel ran whole |
@@ -331,6 +331,7 @@ import type {
   RedactionRecord,
 } from '../packages/nexus-agents/src/audit/redaction-record.js';
 import { appendOnlyVerdict, loadLedger, type LedgerFork } from './governor-ledger-append-only.js';
+import { recomputeRecordDecision } from './governor-ledger-verdict.js';
 
 export type { LedgerFork };
 import { modelDiversityEvidence, type ModelDiversityFailure } from './governor-ledger-diversity.js';
@@ -446,7 +447,7 @@ export interface MovedHeadRefusal {
  * the bound record it was computed over.
  */
 export type BoundRecordFailure =
-  | { readonly kind: 'not-approved'; readonly record: VoteRecord }
+  | { readonly kind: 'not-approved'; readonly record: VoteRecord; readonly reason?: string }
   | {
       readonly kind: 'wrong-error-policy';
       readonly record: VoteRecord;
@@ -630,6 +631,22 @@ function panelVerdict(record: VoteRecord): BoundRecordFailure | undefined {
   return undefined;
 }
 
+/** Require a canonical approval that agrees with the recorded decision. */
+function recordDecisionFailure(record: VoteRecord): BoundRecordFailure | undefined {
+  const recomputed = recomputeRecordDecision(record);
+  const mismatch = recomputed.decision !== record.decision;
+  if (!mismatch && recomputed.decision === 'approved') return undefined;
+  const reason = mismatch
+    ? `stored decision '${record.decision}' disagrees with recomputed decision '${recomputed.decision}'`
+    : `recomputed decision '${recomputed.decision}' is not approved`;
+  return {
+    kind: 'not-approved',
+    record,
+    reason:
+      reason + (recomputed.degradeReason !== undefined ? ` — ${recomputed.degradeReason}` : ''),
+  };
+}
+
 /**
  * The per-record checks in precedence order, each over the WHOLE bound set
  * before the next: every bound record must pass a check before any is
@@ -637,7 +654,7 @@ function panelVerdict(record: VoteRecord): BoundRecordFailure | undefined {
  * `not-approved` whatever else the approval says.
  */
 const BOUND_RECORD_CHECKS: readonly ((record: VoteRecord) => BoundRecordFailure | undefined)[] = [
-  (record) => (record.decision === 'approved' ? undefined : { kind: 'not-approved', record }),
+  recordDecisionFailure,
   // #6211: a RECORDED policy is read before the panel-coverage inference —
   // the policy is the cause, the errored seat only its symptom. An absent
   // field is a pre-1.11 record and falls through to the inference.
