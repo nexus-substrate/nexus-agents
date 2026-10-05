@@ -1,5 +1,11 @@
 # nexus-agents
 
+## 8.133.3
+
+### Patch Changes
+
+- [#7084](https://github.com/nexus-substrate/nexus-agents/pull/7084) [`108e447`](https://github.com/nexus-substrate/nexus-agents/commit/108e44768c9b6e33032dcdddbd09dc886fbfc4ef) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Refactor audit chain hashing and verification into an internal module without changing behavior or the public API.
+
 ## 8.133.2
 
 ### Patch Changes
