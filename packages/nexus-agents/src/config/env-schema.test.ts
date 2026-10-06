@@ -1273,6 +1273,60 @@ describe('deprecated gateway env aliases (#4392 inc 3)', () => {
   });
 });
 
+describe('deprecated access-policy mode (#6319)', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('NEXUS_ACCESS_POLICY_MODE', undefined);
+  });
+
+  it.each(['off', 'audit', 'confirm_risky', 'enforce'])(
+    'reports the deprecation notice for %s without treating it as a typo or invalid value',
+    (value) => {
+      vi.stubEnv('NEXUS_ACCESS_POLICY_MODE', value);
+      const warnings: string[] = [];
+      const logger = {
+        warn: (msg: string) => warnings.push(msg),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+      } as unknown as import('../core/index.js').ILogger;
+
+      const result = validateNexusEnv(logger);
+      const notice =
+        'NEXUS_ACCESS_POLICY_MODE is deprecated, has no effect, and will be removed in 10.0. ' +
+        'Remove it from your environment.';
+
+      expect(result.deprecatedVars).toContainEqual({
+        name: 'NEXUS_ACCESS_POLICY_MODE',
+        replacement: '',
+        shadowed: false,
+        notice,
+      });
+      expect(warnings).toContain(notice);
+      expect(result.unknownVars.map((entry) => entry.name)).not.toContain(
+        'NEXUS_ACCESS_POLICY_MODE'
+      );
+      expect(result.invalidVars.map((entry) => entry.name)).not.toContain(
+        'NEXUS_ACCESS_POLICY_MODE'
+      );
+    }
+  );
+
+  it('does not report a deprecation when the variable is unset', () => {
+    const result = validateNexusEnv();
+    expect(result.deprecatedVars?.map((entry) => entry.name)).not.toContain(
+      'NEXUS_ACCESS_POLICY_MODE'
+    );
+  });
+
+  it.each(['', 'invalid'])('still reports invalid value %j and its deprecation notice', (value) => {
+    vi.stubEnv('NEXUS_ACCESS_POLICY_MODE', value);
+    const result = validateNexusEnv();
+    expect(result.invalidVars.map((entry) => entry.name)).toContain('NEXUS_ACCESS_POLICY_MODE');
+    expect(result.deprecatedVars?.map((entry) => entry.name)).toContain('NEXUS_ACCESS_POLICY_MODE');
+  });
+});
+
 describe('debt variables registered (#6457)', () => {
   it('recognizes all 6 former debt variables as known', () => {
     const known = new Set(getKnownNexusVarNames());

@@ -2976,7 +2976,7 @@ InterfaceDeclaration DeprecatedGatewayEnvUse
   readonly replacement: string
   readonly shadowed: boolean
 TypeAliasDeclaration DeprecatedVar
-  = DeprecatedGatewayEnvUse
+  = DeprecatedGatewayEnvUse & { readonly notice?: string; }
 FunctionDeclaration deriveEntry
   : (modelId: string, identity: ResolvedModelIdentity) => ModelEntry
 InterfaceDeclaration DetectedFailure
@@ -3248,7 +3248,7 @@ FunctionDeclaration ensurePolyglotLangs
 TypeAliasDeclaration EntrySource
   = 'derived' | 'generated' | 'in-tree' | 'manifest' | 'models-dev'
 InterfaceDeclaration EnvValidationResult
-  readonly deprecatedVars?: readonly DeprecatedGatewayEnvUse[] | undefined
+  readonly deprecatedVars?: readonly DeprecatedVar[] | undefined
   readonly ineffectiveVars: readonly IneffectiveVar[]
   readonly invalidVars: readonly InvalidVar[]
   readonly unknownVars: readonly UnknownVar[]
