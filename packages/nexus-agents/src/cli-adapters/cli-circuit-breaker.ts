@@ -269,7 +269,7 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       return err(
         new CircuitError(`CLI execution threw unexpectedly: ${getErrorMessage(error)}`, {
           circuitErrorCode: CircuitErrorCode.EXECUTION_FAILED,
-          cliName: adapter.name,
+          cliName: key,
           armId: key,
           circuitState: breaker.getState(),
           cause: error instanceof Error ? error : new Error(String(error)),

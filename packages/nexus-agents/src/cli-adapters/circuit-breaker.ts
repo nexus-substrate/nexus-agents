@@ -14,7 +14,6 @@ import { getErrorMessage, err, ok, getTimeProvider } from '../core/index.js';
 import { ErrorCode, type ModelError } from '../core/errors.js';
 
 import type { CliName, ObservedArmId, CliErrorCode } from './types.js';
-import { isCliName, observedArmDisplaySlot } from './types.js';
 import {
   CircuitError,
   CircuitErrorCode,
@@ -65,14 +64,10 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   private halfOpenRequests = 0;
   private readonly listeners: Set<CircuitStateChangeListener> = new Set();
 
-  /** Display slot of {@link armId}; what `cliName` fields on events and errors carry. */
-  private readonly cliName: CliName;
-
   constructor(
     private readonly armId: ObservedArmId,
     private readonly config: CircuitBreakerConfig = DEFAULT_CIRCUIT_BREAKER_CONFIG
   ) {
-    this.cliName = observedArmDisplaySlot(armId);
     this.lastStateChange = getTimeProvider().now();
   }
 
@@ -163,7 +158,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
       return err(
         new CircuitError(`Circuit is open for CLI: ${this.armId}`, {
           circuitErrorCode: CircuitErrorCode.CIRCUIT_OPEN,
-          cliName: this.cliName,
+          cliName: this.armId,
           armId: this.armId,
           circuitState: this.state,
         })
@@ -175,7 +170,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
       return err(
         new CircuitError(`Circuit half-open request limit reached for CLI: ${this.armId}`, {
           circuitErrorCode: CircuitErrorCode.CIRCUIT_HALF_OPEN_REJECTED,
-          cliName: this.cliName,
+          cliName: this.armId,
           armId: this.armId,
           circuitState: this.state,
         })
@@ -285,7 +280,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
     reason: string
   ): void {
     const event: CircuitStateChangeEvent = {
-      cliName: this.cliName,
+      cliName: this.armId,
       armId: this.armId,
       previousState,
       newState,
@@ -315,7 +310,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
     const cause = error instanceof Error ? error : new Error(String(error));
     return new CircuitError(`CLI execution failed: ${message}`, {
       circuitErrorCode: CircuitErrorCode.EXECUTION_FAILED,
-      cliName: this.cliName,
+      cliName: this.armId,
       armId: this.armId,
       circuitState: this.state,
       failureCategory: category,
@@ -331,14 +326,9 @@ export class CliCircuitBreaker implements ICircuitBreaker {
 /**
  * Registry for managing per-arm circuit breakers.
  *
- * Keyed by {@link ObservedArmId} since #4392 — a published `RoutingArmId` or a
- * registered `EndpointArmId`: a CLI slot and an `api:*` arm are distinct keys,
- * so an endpoint opening never speaks for the CLI slot it displays under. The `*Arm*` methods are the source of truth over that map;
- * the older `CliName`-typed methods keep their signatures and are FILTERED
- * VIEWS of the same map, restricted to the four CLI slots — an `api:*` arm
- * never appears in `getHealthyClis()` / `getUnhealthyClis()` /
- * `getAllSnapshots()`, only in their `*Arms` siblings (#6290 panel; the
- * narrow methods are removed in 10.0, #6291).
+ * Keyed by {@link ObservedArmId}: a CLI slot and an `api:*` arm are distinct
+ * keys, so an endpoint opening never speaks for its display slot. Arm readers
+ * report every registered arm, including gateway endpoints (#6291, 10.0).
  */
 export class CircuitBreakerRegistry {
   private readonly breakers: Map<ObservedArmId, CliCircuitBreaker> = new Map();
@@ -391,18 +381,6 @@ export class CircuitBreakerRegistry {
     return snapshots;
   }
 
-  /**
-   * CLI-slot view of {@link getAllArmSnapshots}: `api:*` arms are filtered out.
-   * @deprecated Use {@link getAllArmSnapshots}; removed in 10.0, #6291.
-   */
-  getAllSnapshots(): Map<CliName, CircuitBreakerSnapshot> {
-    const snapshots = new Map<CliName, CircuitBreakerSnapshot>();
-    for (const [name, snapshot] of this.getAllArmSnapshots()) {
-      if (isCliName(name)) snapshots.set(name, snapshot);
-    }
-    return snapshots;
-  }
-
   resetAll(): void {
     for (const breaker of this.breakers.values()) {
       breaker.reset();
@@ -443,14 +421,6 @@ export class CircuitBreakerRegistry {
     return healthy;
   }
 
-  /**
-   * CLI-slot view of {@link getHealthyArms}: `api:*` arms are filtered out.
-   * @deprecated Use {@link getHealthyArms}; removed in 10.0, #6291.
-   */
-  getHealthyClis(): CliName[] {
-    return this.getHealthyArms().filter(isCliName);
-  }
-
   /** Every arm whose circuit is open or half-open. Empty registry: `[]`. */
   getUnhealthyArms(): ObservedArmId[] {
     const unhealthy: ObservedArmId[] = [];
@@ -461,14 +431,6 @@ export class CircuitBreakerRegistry {
       }
     }
     return unhealthy;
-  }
-
-  /**
-   * CLI-slot view of {@link getUnhealthyArms}: `api:*` arms are filtered out.
-   * @deprecated Use {@link getUnhealthyArms}; removed in 10.0, #6291.
-   */
-  getUnhealthyClis(): CliName[] {
-    return this.getUnhealthyArms().filter(isCliName);
   }
 }
 
