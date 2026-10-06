@@ -326,6 +326,7 @@ describe('buildVoteRecord', () => {
     const mixed: readonly AgentVoteResult[] = [
       { ...agentVote('architect', 'approve'), selectedOption: 'A' },
       { ...agentVote('catfish', 'reject'), selectedOption: 'B' },
+      { ...agentVote('security', 'abstain'), selectedOption: 'B' },
     ];
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
@@ -344,6 +345,11 @@ describe('buildVoteRecord', () => {
     // The tally and the coverage must describe the same population.
     const tallied = (record.optionTally ?? []).reduce((n, t) => n + t.count, 0);
     expect(tallied).toBe(record.optionCoverage?.selectedCount);
+    expect(record.voters.filter((v) => v.selectedOption !== undefined)).toHaveLength(tallied);
+    expect(record.voters.filter((v) => v.decision !== 'approve')).toEqual([
+      expect.not.objectContaining({ selectedOption: expect.anything() }),
+      expect.not.objectContaining({ selectedOption: expect.anything() }),
+    ]);
   });
 
   it('records selection coverage so a diluted share reads as partial (#4472)', () => {
@@ -465,11 +471,11 @@ describe('persistVoteRecord', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('a maximal built voter entry carries every producer field — reader-only fields are explicit (#6057)', () => {
+  it('a maximal abstaining voter entry carries every applicable producer field (#6057)', () => {
     // The schema-only failure mode is a compile error now; this pins the
     // builder side: a vote that is retried AND clipped produces an entry whose
-    // key set equals the producer fields in the schema — servedModel included
-    // since #6967 made the builder write it.
+    // key set equals the applicable producer fields in the schema. An abstaining
+    // seat cannot carry the approval-only selectedOption field (#4495).
     // One past the cap, derived from the constant: a literal that happened to
     // sit under it produced a fixture that was not clipped at all.
     const clipped = 'x'.repeat(MAX_VOTER_REASONING_CHARS + 1);
@@ -523,9 +529,14 @@ describe('persistVoteRecord', () => {
       errorTruncated: true,
     });
     expect(entry.servedModel).toBe('codex-5.3-mini');
-    expect(entry.selectedOption).toBe('A');
+    // Previously credited a selection to this abstention; only approvers select.
+    expect(entry).not.toHaveProperty('selectedOption');
     expect(entry.optionReask).toEqual({ resolved: true });
-    expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
+    expect(Object.keys(entry).sort()).toEqual(
+      Object.keys(VoterSummarySchema.shape)
+        .filter((key) => key !== 'selectedOption')
+        .sort()
+    );
   });
 
   it('the returned record and the line on disk serialize IDENTICALLY (#6054)', () => {

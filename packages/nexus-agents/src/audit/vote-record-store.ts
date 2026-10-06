@@ -192,11 +192,11 @@ function servedModelField(
 }
 
 /** Supplementary selection evidence, absent on historical yes/no seats. */
-function optionSelectionFields(
-  v: AgentVoteResult
-): Pick<VoterSummary, 'selectedOption' | 'optionReask'> {
+function optionEvidence(v: AgentVoteResult): Pick<VoterSummary, 'selectedOption' | 'optionReask'> {
   return {
-    ...(v.selectedOption !== undefined ? { selectedOption: v.selectedOption } : {}),
+    ...(v.vote.decision === 'approve' && v.selectedOption !== undefined
+      ? { selectedOption: v.selectedOption }
+      : {}),
     ...(v.optionReask !== undefined ? { optionReask: { resolved: v.optionReask.resolved } } : {}),
   };
 }
@@ -241,7 +241,7 @@ function toVoterSummaries(
       // #6967: the hash projection (`VOTER_SUMMARY_KEYS`) appends it last, so
       // its position here does not change any hash.
       ...servedModelField(v, logger),
-      ...optionSelectionFields(v),
+      ...optionEvidence(v),
     });
   }
   return summaries;
