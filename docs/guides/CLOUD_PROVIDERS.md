@@ -151,9 +151,9 @@ export NEXUS_OPENAI_COMPAT_KEY="your-gateway-key"
 export NEXUS_CUSTOM_MODEL="claude-sonnet-4-5"   # whatever model id your gateway exposes
 ```
 
-`NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` were removed in 10.0 (#7144). They are ignored and reported as unknown variables; rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`. The canonical pair configures the shared gateway path (model discovery, in-process voters, the `api:<endpoint>` arm). The `custom-openai` alias uses its resolved catalogue adapter, retaining `api:custom-openai` usage attribution. Without a catalogue it sends `NEXUS_CUSTOM_MODEL` or `gpt-5.5`, marked unverified after failed discovery. See [CONFIGURATION.md](../getting-started/CONFIGURATION.md#removed-in-100-6291-b1).
+`NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` were removed in 10.0 (#7144). They are ignored and reported as unknown variables; rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`. The canonical pair configures the shared gateway path (model discovery, in-process voters, the `api:<endpoint>` arm). The `custom-openai` alias uses its resolved catalogue model with an alias-specific client, retaining `api:custom-openai` usage attribution. Without a catalogue it sends `NEXUS_CUSTOM_MODEL` or `gpt-5.5`, marked unverified after failed discovery. See [CONFIGURATION.md](../getting-started/CONFIGURATION.md#removed-in-100-6291-b1).
 
-Gateway calls default to chat completions. Set `NEXUS_CUSTOM_API_SURFACE=responses` when your gateway serves the Responses API; this applies to both the alias and discovered per-model clients, including streaming and tool calls. Corporate auth headers, proxy settings and bounded host guards are shared; see [CORPORATE_GATEWAY.md](./CORPORATE_GATEWAY.md).
+Gateway calls default to chat completions. Set `NEXUS_CUSTOM_API_SURFACE=responses` when your gateway serves the Responses API; this applies to the `custom-openai` alias, including streaming and tool calls. Discovered per-model clients keep chat completions. Corporate auth headers, proxy settings and bounded host guards are shared; see [CORPORATE_GATEWAY.md](./CORPORATE_GATEWAY.md).
 
 ### Pros / cons
 

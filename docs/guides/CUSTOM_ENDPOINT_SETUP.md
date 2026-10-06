@@ -30,7 +30,7 @@ The URL/key pair configures model discovery (`GET $NEXUS_OPENAI_COMPAT_URL/model
 
 The adapter validates the base URL through an SSRF guard before making any request — loopback, RFC 1918 private ranges, and link-local (incl. AWS IMDS `169.254.169.254`) are rejected by default. Set `NEXUS_CUSTOM_API_ALLOW_PRIVATE=1` if your gateway runs on a trusted internal host.
 
-Gateway calls default to `<base>/chat/completions`. Set `NEXUS_CUSTOM_API_SURFACE=responses` for a gateway that serves `<base>/responses`; the setting applies to discovered per-model clients as well as the alias. Both surfaces support streaming and tool calls. Auth headers (`NEXUS_OPENAI_COMPAT_AUTH_HEADER` and `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS`) and proxy settings use the same client path; see [CORPORATE_GATEWAY.md](./CORPORATE_GATEWAY.md).
+Gateway calls default to `<base>/chat/completions`. Set `NEXUS_CUSTOM_API_SURFACE=responses` for a gateway that serves `<base>/responses`; the setting applies to the `custom-openai` alias only; discovered per-model clients keep chat completions. Both surfaces support streaming and tool calls. Auth headers (`NEXUS_OPENAI_COMPAT_AUTH_HEADER` and `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS`) and proxy settings use the same client path; see [CORPORATE_GATEWAY.md](./CORPORATE_GATEWAY.md).
 
 No CLI subprocess or OpenCode is required for this path. The alias uses the same URL validation and bounded DNS/private-host guard as other gateway clients. See [gateway-client-guard.ts](../../packages/nexus-agents/src/adapters/gateway-client-guard.ts) for request-time guards and [openai-compat-adapter.ts](../../packages/nexus-agents/src/adapters/openai-compat-adapter.ts) for discovery.
 
