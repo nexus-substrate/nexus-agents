@@ -18,8 +18,8 @@
  * @module cli-adapters/child-mcp-config
  */
 
-import { writeFile, rm } from 'node:fs/promises';
-import { rmSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { rmSync, writeFileSync } from 'node:fs';
 import { nexusMkdtempSync } from '../config/nexus-tmp-dir.js';
 import { join } from 'node:path';
 import { createLogger } from '../core/index.js';
@@ -148,7 +148,9 @@ export async function generateMcpConfig(options?: McpConfigOptions): Promise<Gen
   };
 
   try {
-    await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    // An async open can create the file after exit cleanup lists an empty
+    // directory, making its rmdir fail with ENOTEMPTY (#7121).
+    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
     return { configPath, cleanup };
   } catch (error: unknown) {
     await cleanup();
