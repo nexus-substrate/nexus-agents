@@ -2,9 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { createLogger, getErrorMessage, getTimeProvider, type ILogger } from '../core/index.js';
 import { isPersistenceEnabled } from '../config/learning-persistence.js';
+import { CliNameSchema } from '../config/model-capabilities-types.js';
 import {
   getOutcomeStore,
   OutcomeStore,
@@ -17,6 +19,11 @@ import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { generateSyntheticPriors, runWarmUp, SYNTHETIC_MARKER } from '../cli/warm-up.js';
 import { LinUCBBandit } from './linucb-bandit.js';
 import { warmStartBandit } from './bandit-warm-start.js';
+import { ApiArmIdSchema } from './types-core.js';
+
+// Freeze the outcome cli union on origin/release/10.0 before #6291 B2.
+const PreviousOutcomeCliSchema = z.union([CliNameSchema, ApiArmIdSchema, z.literal('unknown')]);
+const PreviousTaskOutcomeSchema = TaskOutcomeSchema.extend({ cli: PreviousOutcomeCliSchema });
 
 const NOW = '2026-10-04T12:00:00.000Z';
 const ARMS = ['claude', 'gemini', 'codex', 'opencode'];
@@ -137,10 +144,10 @@ describe('shared bandit warm start (#5275)', () => {
   it('loads pre-10.0 JSONL and preserves the previous routing warm-start state (#6291 B2)', () => {
     const arms = [...ARMS, 'api:anthropic', 'api:openai', 'api:google', 'api:custom-openai'];
     const rows = arms.flatMap((cli, index) => [
-      outcome({ id: `success-${String(index)}`, cli: OutcomeCliSchema.parse(cli) }),
+      outcome({ id: `success-${String(index)}`, cli: PreviousOutcomeCliSchema.parse(cli) }),
       outcome({
         id: `failure-${String(index)}`,
-        cli: OutcomeCliSchema.parse(cli),
+        cli: PreviousOutcomeCliSchema.parse(cli),
         success: false,
         failureCategory: 'timeout',
       }),
@@ -155,6 +162,12 @@ describe('shared bandit warm start (#5275)', () => {
     previousWarmStart(before, logger);
     const filePath = join(fixture, 'legacy-outcomes.jsonl');
     const bytes = rows.map((row) => JSON.stringify(row)).join('\n') + '\n';
+    const lines = bytes.trimEnd().split('\n');
+    expect(lines).toHaveLength(19);
+    for (const line of lines) {
+      const raw: unknown = JSON.parse(line);
+      expect(TaskOutcomeSchema.parse(raw)).toStrictEqual(PreviousTaskOutcomeSchema.parse(raw));
+    }
     writeFileSync(filePath, bytes);
     const hydrated = new PersistentOutcomeStore({ filePath, dataDir: fixture });
     expect(hydrated.query()).toEqual(store.query());
