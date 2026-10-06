@@ -153,19 +153,49 @@ for tier-transition events.
 
 ### 1.4 What `verify_audit_chain` actually checks
 
-`verifyChain` (`audit-chain-verify.ts`) walks the event array in order and, per
-event, calls `verifyEvent` (`audit-chain-verify.ts`), which enforces three
-invariants:
+`verifyChain` (`audit-chain-verify.ts`) scans the entire recovered event
+sequence. The top-level `reason`, `eventIndex`, `eventId`, and `detail` retain
+the first failure, with the existing precedence: `missing_hash`, then
+`previous_hash_mismatch`, then `hash_mismatch`. Verification continues after
+that failure so an earlier legacy break cannot hide later tampering (#7157,
+panel `vote-1791306113699-a546oky`, OPTION A, 7/7).
 
-1. **`missing_hash`** — event has no `hash` field but the chain started hashed
-   (`audit-chain-verify.ts`).
-2. **`previous_hash_mismatch`** — for `index > 0`, `event.previousHash` does not
-   equal the prior event's `hash` (`audit-chain-verify.ts`).
-3. **`hash_mismatch`** — recomputed hash of the (hashed) fields does not equal
-   the stored `hash` (`audit-chain-verify.ts`).
+Every break starts a new segment at the affected event. `breaks` records its
+zero-based `index` and `kind`:
 
-It returns the **first** failure and stops (`audit-chain-verify.ts`) — one tamper
-invalidates everything downstream.
+- **`restart`**: a non-head event has no `previousHash` instead of linking to
+  the preceding event's hash.
+- **`fork`**: its `previousHash` points to an earlier event's stored hash,
+  rather than the immediately preceding event's hash.
+- **`mismatch`**: its predecessor matches no earlier stored hash, or its own
+  hash fails recomputation or is missing. If link and content both fail at
+  the same event, there is one boundary, classified by the link.
+
+`segments` reports inclusive, zero-based `{ start, end, ok, firstFailure? }`
+bounds. Each segment is checked internally, including the content hash of
+its first event; only its broken incoming link is excluded. A content-hash
+failure reports `firstFailure: { index, kind: 'tampered' }`, distinct from an
+incoming link break. A missing hash reports `kind: 'missing_hash'`. A bad
+content hash at the head starts the first segment without creating an empty
+preceding segment.
+
+For example, a restart at index 2 followed by a changed event at index 3 yields
+three segments: `0..1` and `2..2` pass internally, while `3..end` reports
+`tampered` at index 3. Previously, verification stopped at index 2 and never
+checked the changed content. Segments that pass prove only internal consistency;
+they do not repair the lost linkage or establish an externally anchored origin.
+Overall **`ok` stays false whenever any break or tamper exists**, even if every
+segment passes internally. No audit line is rewritten.
+
+Both arrays retain their first **100 entries** independently. The full scan
+continues after either cap. `eventCount`, `breakCount`, `segmentCount`, and
+`tamperedCount` count the whole recovered sequence, including omitted entries;
+`breaksTruncated` and `segmentsTruncated` explicitly mark omitted diagnostics.
+An empty log has zero segments, zero breaks, and `notVerified: 'empty'`.
+A single hashed event has one segment whose verdict checks its content.
+An unchained batch reports zero verified segments and `notVerified: 'unchained'`.
+These indexes refer to recovered events across files, not physical JSONL lines;
+loader skips remain separately reported coverage limitations.
 
 Two short-circuits matter for the threat analysis:
 

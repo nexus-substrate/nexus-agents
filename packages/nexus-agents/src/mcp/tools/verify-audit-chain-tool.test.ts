@@ -138,6 +138,49 @@ describe('verify_audit_chain handler behavior', () => {
     if (result.ok) expect(result.eventCount).toBe(3);
   });
 
+  it('returns segmented diagnostics and detects later tampering without rewriting files', async () => {
+    const first = chain(2);
+    const restart = makeEvent('restart', undefined);
+    const tampered = { ...makeEvent('tampered', restart.hash), action: 'changed' };
+    writeAuditFile('audit-2026-04-28-12-00-00.jsonl', first);
+    writeAuditFile('audit-2026-04-28-13-00-00.jsonl', [restart, tampered]);
+    const filenames = fs.readdirSync(tmpDir).sort();
+    const before = filenames.map((name) => fs.readFileSync(path.join(tmpDir, name), 'utf8'));
+    type Captured =
+      ((a: unknown, c: unknown) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+    let captured: Captured;
+    const server = {
+      registerTool: (_n: string, _s: unknown, h: unknown) => {
+        captured = h as Captured;
+      },
+    };
+    registerVerifyAuditChainTool(server as never, {} as never);
+    expect(captured).toBeDefined();
+    const response = await captured?.({ logDir: tmpDir }, {});
+    const body = JSON.parse(response?.content[0]?.text ?? '{}') as VerifyAuditChainResponse;
+    expect(body.verification).toMatchObject({
+      ok: false,
+      reason: 'previous_hash_mismatch',
+      eventIndex: 2,
+      eventCount: 4,
+      breakCount: 2,
+      segmentCount: 3,
+      tamperedCount: 1,
+      breaks: [
+        { index: 2, kind: 'restart' },
+        { index: 3, kind: 'mismatch' },
+      ],
+      segments: [
+        { start: 0, end: 1, ok: true },
+        { start: 2, end: 2, ok: true },
+        { start: 3, end: 3, ok: false, firstFailure: { index: 3, kind: 'tampered' } },
+      ],
+    });
+    expect(filenames.map((name) => fs.readFileSync(path.join(tmpDir, name), 'utf8'))).toEqual(
+      before
+    );
+  });
+
   // #4768: the handler serialises the whole verdict, so the unverified marker
   // reaches the caller without extra wiring — asserted through the REGISTERED
   // handler rather than by re-calling verifyChain, because "the field exists"

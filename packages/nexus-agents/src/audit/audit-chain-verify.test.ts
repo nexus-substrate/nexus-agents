@@ -310,3 +310,209 @@ describe('withCoverage (#4805)', () => {
     expect(r).not.toHaveProperty('coverage');
   });
 });
+
+// Segment bounds and failure indexes are inclusive, zero-based event positions.
+describe('segmented verification (#7157)', () => {
+  it('reports one internally verified segment for a clean file', () => {
+    expect(verifyChain(chain(5))).toMatchObject({
+      ok: true,
+      breaks: [],
+      segments: [{ start: 0, end: 4, ok: true }],
+      breakCount: 0,
+      segmentCount: 1,
+      tamperedCount: 0,
+      breaksTruncated: false,
+      segmentsTruncated: false,
+    });
+  });
+
+  it('reports a restart as two good segments but keeps the first link failure', () => {
+    const first = chain(2);
+    const restart = makeEvent('restart', undefined);
+    const tail = makeEvent('tail', restart.hash);
+    expect(verifyChain([...first, restart, tail])).toMatchObject({
+      ok: false,
+      reason: 'previous_hash_mismatch',
+      eventIndex: 2,
+      eventId: 'restart',
+      eventCount: 4,
+      breaks: [{ index: 2, kind: 'restart' }],
+      breakCount: 1,
+      segmentCount: 2,
+      segments: [
+        { start: 0, end: 1, ok: true },
+        { start: 2, end: 3, ok: true },
+      ],
+    });
+  });
+
+  it('classifies a link to an earlier, non-adjacent event as a fork', () => {
+    const first = chain(3);
+    const fork = makeEvent('fork', first[0]!.hash);
+    expect(verifyChain([...first, fork])).toMatchObject({
+      ok: false,
+      breaks: [{ index: 3, kind: 'fork' }],
+      segments: [
+        { start: 0, end: 2, ok: true },
+        { start: 3, end: 3, ok: true },
+      ],
+    });
+  });
+
+  it('classifies an unknown predecessor as mismatch without claiming content tampering', () => {
+    const orphan = makeEvent('orphan', 'unknown');
+    expect(verifyChain([...chain(2), orphan])).toMatchObject({
+      ok: false,
+      breaks: [{ index: 2, kind: 'mismatch' }],
+      tamperedCount: 0,
+      segments: [
+        { start: 0, end: 1, ok: true },
+        { start: 2, end: 2, ok: true },
+      ],
+    });
+  });
+
+  it('detects tamper after an earlier break at the right index', () => {
+    const restart = makeEvent('restart', undefined);
+    const tampered = { ...makeEvent('tampered', restart.hash), action: 'changed' };
+    const tail = makeEvent('tail', tampered.hash);
+    expect(verifyChain([...chain(2), restart, tampered, tail])).toMatchObject({
+      ok: false,
+      reason: 'previous_hash_mismatch',
+      eventIndex: 2,
+      breaks: [
+        { index: 2, kind: 'restart' },
+        { index: 3, kind: 'mismatch' },
+      ],
+      breakCount: 2,
+      segmentCount: 3,
+      tamperedCount: 1,
+      segments: [
+        { start: 0, end: 1, ok: true },
+        { start: 2, end: 2, ok: true },
+        { start: 3, end: 4, ok: false, firstFailure: { index: 3, kind: 'tampered' } },
+      ],
+    });
+  });
+
+  it('checks content at a restart boundary as well as its link', () => {
+    const restart = { ...makeEvent('restart', undefined), action: 'changed' };
+    expect(verifyChain([...chain(2), restart])).toMatchObject({
+      ok: false,
+      reason: 'previous_hash_mismatch',
+      eventIndex: 2,
+      breaks: [{ index: 2, kind: 'restart' }],
+      tamperedCount: 1,
+      segments: [
+        { start: 0, end: 1, ok: true },
+        { start: 2, end: 2, ok: false, firstFailure: { index: 2, kind: 'tampered' } },
+      ],
+    });
+  });
+
+  it('names the empty file as unverified with zero segments', () => {
+    expect(verifyChain([])).toMatchObject({
+      ok: true,
+      notVerified: 'empty',
+      eventCount: 0,
+      breaks: [],
+      segments: [],
+      breakCount: 0,
+      segmentCount: 0,
+      tamperedCount: 0,
+      breaksTruncated: false,
+      segmentsTruncated: false,
+    });
+  });
+
+  it('verifies the content of a single event and reports a single segment', () => {
+    const event = chain(1)[0]!;
+    expect(verifyChain([event])).toMatchObject({
+      ok: true,
+      segments: [{ start: 0, end: 0, ok: true }],
+      segmentCount: 1,
+    });
+    expect(verifyChain([{ ...event, action: 'changed' }])).toMatchObject({
+      ok: false,
+      reason: 'hash_mismatch',
+      eventIndex: 0,
+      breaks: [{ index: 0, kind: 'mismatch' }],
+      segmentCount: 1,
+      segments: [{ start: 0, end: 0, ok: false, firstFailure: { index: 0, kind: 'tampered' } }],
+    });
+  });
+
+  it('reports a missing hash as an internally failing segment', () => {
+    const events = chain(3);
+    const noHash = { ...events[1]! };
+    delete (noHash as { hash?: string }).hash;
+    expect(verifyChain([events[0]!, noHash, events[2]!])).toMatchObject({
+      ok: false,
+      reason: 'missing_hash',
+      eventIndex: 1,
+      segments: expect.arrayContaining([
+        { start: 1, end: 1, ok: false, firstFailure: { index: 1, kind: 'missing_hash' } },
+      ]),
+    });
+  });
+
+  it('starts a new valid segment for a restart after a hashless event', () => {
+    const first = chain(2);
+    const noHash = { ...first[1]! };
+    delete (noHash as { hash?: string }).hash;
+    const restart = makeEvent('restart', undefined);
+    expect(verifyChain([first[0]!, noHash, restart])).toMatchObject({
+      ok: false,
+      reason: 'missing_hash',
+      eventIndex: 1,
+      breaks: [
+        { index: 1, kind: 'mismatch' },
+        { index: 2, kind: 'restart' },
+      ],
+      breakCount: 2,
+      segmentCount: 3,
+      segments: [
+        { start: 0, end: 0, ok: true },
+        { start: 1, end: 1, ok: false, firstFailure: { index: 1, kind: 'missing_hash' } },
+        { start: 2, end: 2, ok: true },
+      ],
+    });
+  });
+
+  it('caps diagnostics at 100 entries while counting and checking the whole file', () => {
+    const events = Array.from({ length: 105 }, (_, i) =>
+      makeEvent(`restart_${String(i)}`, undefined)
+    );
+    events[104] = { ...events[104]!, action: 'changed' };
+    const result = verifyChain(events);
+    expect(result).toMatchObject({
+      ok: false,
+      eventCount: 105,
+      breakCount: 104,
+      segmentCount: 105,
+      tamperedCount: 1,
+      breaksTruncated: true,
+      segmentsTruncated: true,
+    });
+    expect(result.breaks).toHaveLength(100);
+    expect(result.segments).toHaveLength(100);
+  });
+
+  it('sets each truncation flag only when its own cap is exceeded', () => {
+    const events = Array.from({ length: 101 }, (_, i) =>
+      makeEvent(`restart_${String(i)}`, undefined)
+    );
+    expect(verifyChain(events.slice(0, 100))).toMatchObject({
+      breakCount: 99,
+      segmentCount: 100,
+      breaksTruncated: false,
+      segmentsTruncated: false,
+    });
+    expect(verifyChain(events)).toMatchObject({
+      breakCount: 100,
+      segmentCount: 101,
+      breaksTruncated: false,
+      segmentsTruncated: true,
+    });
+  });
+});
