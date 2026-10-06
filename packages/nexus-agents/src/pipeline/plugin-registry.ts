@@ -1,7 +1,7 @@
 /**
  * PluginRegistry — V2 Plugin Lifecycle Manager (Issue #911, Phase 3-2)
  *
- * Manages plugin registration, resolution, and experimental gating.
+ * Manages plugin registration, resolution, and validation.
  * Registry is frozen after startup — no runtime registration changes.
  *
  * @see docs/v2/05-plugin-system-spec.md
@@ -25,50 +25,29 @@ const logger = createLogger({ component: 'PluginRegistry' });
 // ============================================================================
 
 /**
- * Options for controlling plugin registry behavior.
- *
- * Both fields are deprecated (#5097). No production construction sets them:
- * `registerCorePlugins` / `createCorePluginRegistry` build the registry with
- * no options, every `CORE_PLUGINS` manifest is `experimental: false`, and the
- * registry is frozen right after core registration — so only core plugins
- * ever load and the experimental gate cannot open. The fields stay accepted
- * (and still deny) because they are public API; removal is tracked in #5097
- * for the next major.
+ * Reserved options for plugin registry behavior.
+ * No options are currently supported; retained for API compatibility.
  */
-export interface PluginRegistryOptions {
-  /**
-   * Allow experimental plugins to be registered.
-   *
-   * @deprecated No production construction sets this; only core plugins load.
-   * Still accepted and still gates as before. Removal tracked in #5097 (next major).
-   */
-  readonly experimentalEnabled?: boolean;
-  /**
-   * Explicit allowlist of experimental plugin IDs.
-   *
-   * @deprecated No production construction sets this; only core plugins load.
-   * Still accepted and still gates as before. Removal tracked in #5097 (next major).
-   */
-  readonly experimentalAllow?: readonly string[];
-}
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- preserve the public options type after removing its deprecated fields (#5496)
+export interface PluginRegistryOptions {}
 
 // ============================================================================
 // Implementation
 // ============================================================================
 
 /**
- * In-memory plugin registry with experimental gating.
+ * In-memory plugin registry with manifest and configuration validation.
  *
  * Plugins are registered during startup. After freeze(),
  * no further registrations are accepted.
  */
 export class PluginRegistry implements IPluginRegistry {
   private readonly plugins = new Map<string, PipelinePlugin>();
-  private readonly options: PluginRegistryOptions;
   private isFrozen = false;
 
-  constructor(options?: PluginRegistryOptions) {
-    this.options = options ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-useless-constructor -- retain the public optional options argument for API compatibility (#5496)
+  constructor(_options?: PluginRegistryOptions) {
+    // Reserved for API compatibility; no registry options are supported.
   }
 
   get frozen(): boolean {
@@ -85,9 +64,6 @@ export class PluginRegistry implements IPluginRegistry {
 
     const manifestCheck = this.validateManifest(plugin.manifest);
     if (manifestCheck !== undefined) return manifestCheck;
-
-    const gateCheck = this.checkExperimentalGate(plugin.manifest);
-    if (gateCheck !== undefined) return gateCheck;
 
     const configResult = plugin.validateConfig(undefined);
     if (!configResult.ok) {
@@ -154,37 +130,6 @@ export class PluginRegistry implements IPluginRegistry {
         },
       };
     }
-    return undefined;
-  }
-
-  private checkExperimentalGate(
-    manifest: PluginManifest
-  ): Result<void, RegistrationError> | undefined {
-    if (!manifest.experimental) return undefined;
-
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- the deprecated option must keep gating until its removal in #5097
-    if (this.options.experimentalEnabled !== true) {
-      return {
-        ok: false,
-        error: {
-          type: 'missing_capability',
-          capability: 'experimental-plugins',
-        },
-      };
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- the deprecated option must keep gating until its removal in #5097
-    const allow = this.options.experimentalAllow;
-    if (allow !== undefined && !allow.includes(manifest.id)) {
-      return {
-        ok: false,
-        error: {
-          type: 'missing_capability',
-          capability: `allowlist:${manifest.id}`,
-        },
-      };
-    }
-
     return undefined;
   }
 }

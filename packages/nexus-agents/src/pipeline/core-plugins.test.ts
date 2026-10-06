@@ -116,9 +116,8 @@ describe('createCorePluginRegistry', () => {
   });
 
   it('loads only core plugins: none is experimental and the frozen registry refuses one (#5097)', () => {
-    // The production construction passes no PluginRegistryOptions, so the
-    // experimental gate can never open; freeze() then refuses any late
-    // registration. This is the behaviour the deprecation notice describes.
+    // Core registration freezes the registry, refusing any late registration
+    // regardless of the manifest's experimental flag.
     const registry = createCorePluginRegistry();
     expect(registry.listEnabled().every((m) => !m.experimental)).toBe(true);
     const late = registry.register({
