@@ -1,6 +1,14 @@
 /** #7151: real gateway bootstrap -> canonical factory -> router -> outcome. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLogger, err, ModelError, ok, type IModelAdapter } from '../core/index.js';
+import {
+  createLogger,
+  err,
+  ModelError,
+  ok,
+  type CompletionRequest,
+  type IModelAdapter,
+} from '../core/index.js';
+import { AbortError, isCallerCancelled } from '../adapters/abort-utils.js';
 import { wireGateway } from '../cli-server-gateway.js';
 import { resetGlobalRegistry, getGlobalRegistry } from '../adapters/unified-registry.js';
 import { _resetGatewaySlotCatalog } from '../adapters/gateway-family-slots.js';
@@ -102,6 +110,7 @@ describe('opted-in endpoint arms through production wiring (#7151)', () => {
     resetOutcomeStore();
     getDefaultCliCircuitBreakerRegistry().resetAll();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
   });
 
@@ -211,6 +220,178 @@ describe('opted-in endpoint arms through production wiring (#7151)', () => {
         expect.objectContaining({ name: 'opencode', circuitState: 'closed', healthy: true }),
       ])
     );
+  });
+
+  it('refuses the next endpoint execution when its shared breaker is open', async () => {
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    vi.mocked(model.complete).mockResolvedValue(err(new ModelError('endpoint failed')));
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const breaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM);
+    const threshold = breaker.getSnapshot().config.failureThreshold;
+    for (let i = 0; i < threshold; i++) await endpoint.execute(TASK);
+    expect(breaker.getState()).toBe('open');
+    vi.mocked(model.complete).mockClear();
+    // A healthy response cannot bypass an already-open failure domain.
+    vi.mocked(model.complete).mockResolvedValue(
+      ok({
+        content: [{ type: 'text', text: 'must not run' }],
+        stopReason: 'end_turn',
+        model: model.modelId,
+      })
+    );
+
+    const result = await endpoint.execute(TASK);
+
+    expect(result).toMatchObject({ ok: false, error: { cli: ARM, retryable: false } });
+    expect(!result.ok && result.error.message).toContain('Circuit is open');
+    expect(model.complete).not.toHaveBeenCalled();
+    expect(breaker.getState()).toBe('open');
+  });
+
+  it('propagates caller cancellation to an in-flight endpoint request', async () => {
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    const started = Promise.withResolvers<CompletionRequest>();
+    const finish = Promise.withResolvers<Awaited<ReturnType<IModelAdapter['complete']>>>();
+    let observedAbort = false;
+    vi.mocked(model.complete).mockImplementation((request) => {
+      request.signal?.addEventListener(
+        'abort',
+        () => {
+          observedAbort = true;
+          finish.resolve(err(new ModelError('Request cancelled', { cause: new AbortError() })));
+        },
+        { once: true }
+      );
+      started.resolve(request);
+      return finish.promise;
+    });
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const controller = new AbortController();
+    const pending = endpoint.execute(TASK, { signal: controller.signal });
+    const request = await started.promise;
+    controller.abort();
+    // Deterministic fallback settles the broken path without a timeout.
+    finish.resolve(ok({ content: [], stopReason: 'end_turn', model: model.modelId }));
+    const result = await pending;
+
+    expect(request.signal).toBe(controller.signal);
+    expect(observedAbort).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && isCallerCancelled(result.error)).toBe(true);
+    expect(
+      getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM).getSnapshot().failureCount
+    ).toBe(0);
+  });
+
+  it('recovers a half-open endpoint through circuit integration with one admission per call', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const integration = new CliCircuitBreakerIntegration([endpoint]);
+    const breaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM);
+    const config = breaker.getSnapshot().config;
+    for (let i = 0; i < config.failureThreshold; i++) breaker.recordFailure('unknown');
+    vi.advanceTimersByTime(config.resetTimeoutMs + 1);
+
+    for (let i = 0; i < config.halfOpenSuccessThreshold; i++) {
+      expect((await integration.execute(endpoint, TASK)).ok).toBe(true);
+    }
+
+    expect(model.complete).toHaveBeenCalledTimes(config.halfOpenSuccessThreshold);
+    expect(breaker.getState()).toBe('closed');
+  });
+
+  it('still enforces a private integration breaker independently of endpoint ownership', async () => {
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    vi.mocked(model.complete).mockResolvedValue(err(new ModelError('endpoint failed')));
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const integration = new CliCircuitBreakerIntegration([endpoint], {
+      perCliConfig: { [ARM]: { failureThreshold: 1 } },
+      enableFallback: false,
+    });
+    expect((await integration.execute(endpoint, TASK)).ok).toBe(false);
+    expect(integration.getCircuitSnapshots().get(ARM)?.state).toBe('open');
+    expect(getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM).getState()).toBe('closed');
+    vi.mocked(model.complete).mockClear();
+
+    const result = await integration.execute(endpoint, TASK);
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error.message).toContain('Circuit is open');
+    expect(model.complete).not.toHaveBeenCalled();
+  });
+
+  it('releases a cancelled endpoint half-open probe without recording a failure', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    vi.mocked(model.complete).mockResolvedValue(
+      err(new ModelError('Request cancelled', { cause: new AbortError() }))
+    );
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const breaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM);
+    const config = breaker.getSnapshot().config;
+    for (let i = 0; i < config.failureThreshold; i++) breaker.recordFailure('unknown');
+    vi.advanceTimersByTime(config.resetTimeoutMs + 1);
+    expect(breaker.getState()).toBe('half-open');
+    const failuresBefore = breaker.getSnapshot().failureCount;
+
+    const result = await endpoint.execute(TASK);
+
+    expect(!result.ok && isCallerCancelled(result.error)).toBe(true);
+    expect(breaker.getSnapshot()).toMatchObject({
+      state: 'half-open',
+      failureCount: failuresBefore,
+      halfOpenRequests: 0,
+    });
+  });
+
+  it('keeps the other half-open probe reserved when integration cancels one endpoint call', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const breaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM, {
+      halfOpenMaxRequests: 4,
+    });
+    const model = gatewayModel();
+    const firstStarted = Promise.withResolvers<undefined>();
+    const secondStarted = Promise.withResolvers<undefined>();
+    const first = Promise.withResolvers<Awaited<ReturnType<IModelAdapter['complete']>>>();
+    const second = Promise.withResolvers<Awaited<ReturnType<IModelAdapter['complete']>>>();
+    vi.mocked(model.complete)
+      .mockImplementationOnce(() => {
+        firstStarted.resolve(undefined);
+        return first.promise;
+      })
+      .mockImplementationOnce(() => {
+        secondStarted.resolve(undefined);
+        return second.promise;
+      });
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const integration = new CliCircuitBreakerIntegration([endpoint]);
+    const config = breaker.getSnapshot().config;
+    for (let i = 0; i < config.failureThreshold; i++) breaker.recordFailure('unknown');
+    vi.advanceTimersByTime(config.resetTimeoutMs + 1);
+    const pendingFirst = integration.execute(endpoint, TASK);
+    const pendingSecond = integration.execute(endpoint, TASK);
+    await Promise.all([firstStarted.promise, secondStarted.promise]);
+
+    first.resolve(err(new ModelError('Request cancelled', { cause: new AbortError() })));
+    const result = await pendingFirst;
+    expect(!result.ok && isCallerCancelled(result.error)).toBe(true);
+    expect(breaker.getSnapshot().halfOpenRequests).toBe(1);
+
+    second.resolve(ok({ content: [], stopReason: 'end_turn', model: model.modelId }));
+    expect((await pendingSecond).ok).toBe(true);
   });
 
   it('uses ranked default rather than discovery list order', async () => {

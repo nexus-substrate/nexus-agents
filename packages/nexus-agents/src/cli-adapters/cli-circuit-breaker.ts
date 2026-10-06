@@ -36,6 +36,7 @@ import {
 import { isCallerInputCliError } from './cli-error-helpers.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
 import { unenforcedAccessModeRefusal } from './access-mode.js';
+import { ModelToCliAdapter } from './model-to-cli-adapter.js';
 
 /** Maps canonical TaskCategory (10 types) to FallbackTaskType (5 types). */
 const CATEGORY_TO_FALLBACK: Record<TaskCategory, FallbackTaskType> = {
@@ -260,8 +261,12 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       if (refusal !== undefined) return err(refusal);
       targetResolved = true;
       ({ key, breaker } = this.breakerFor(adapter, task));
-      const canRun = breaker.canExecute();
-      if (!canRun.ok) return canRun;
+      // The endpoint wrapper gates the same shared breaker itself. A second
+      // admission here consumes another half-open probe for one request.
+      if (!this.adapterOwnsAdmission(adapter)) {
+        const canRun = breaker.canExecute();
+        if (!canRun.ok) return canRun;
+      }
       execResult = await adapter.execute(task);
     } catch (error) {
       // A rejected availability probe has not selected a failure domain.
@@ -305,7 +310,7 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       // against the breaker or exhaust half-open probe capacity. #6691: nor
       // must a call its caller cancelled.
       if (isCallerInputCliError(execResult.error) || isCallerCancelled(execResult.error)) {
-        breaker.releaseHalfOpenProbe();
+        if (!this.adapterOwnsAdmission(adapter)) breaker.releaseHalfOpenProbe();
         return err(execResult.error);
       }
       if (recordsOutcome) breaker.recordFailure(mapCliErrorToCategory(execResult.error.code));
@@ -340,6 +345,10 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
       this.registry !== defaultCliCircuitBreakerRegistry ||
       (gatewayServedSlotOf(adapter)?.arm === undefined && !adapter.name.startsWith('api:'))
     );
+  }
+
+  private adapterOwnsAdmission(adapter: ICliAdapter): boolean {
+    return adapter instanceof ModelToCliAdapter && adapter.ownsCircuitAdmission(this.registry);
   }
 
   private getFallbackClis(

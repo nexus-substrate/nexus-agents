@@ -44,6 +44,7 @@ import {
 import type { AdapterHealthInfo, IResilientAdapter } from './resilient-adapter-types.js';
 import { releaseGatewayCatalog, retainGatewayCatalog } from './sdk/gateway-catalog.js';
 import { resolveGatewayDefault } from './gateway-family-slots.js';
+import { isCallerCancelled } from './abort-utils.js';
 
 /** What the arm needs from its host: the SHARED breaker registry and a logger. */
 export interface GatewayArmDeps {
@@ -73,6 +74,19 @@ export function createGatewayArmAdapter(
     throw new ConfigError(`Gateway arm ${armId} has no models; nothing to register`);
   }
   return new GatewayArmAdapter(armId, models, deps);
+}
+
+/** Whether this concrete endpoint wrapper admits calls on this exact shared breaker. */
+export function ownsGatewayCircuitAdmission(
+  adapter: IModelAdapter,
+  armId: string,
+  registry: CircuitBreakerRegistry
+): boolean {
+  return (
+    adapter instanceof GatewayArmAdapter &&
+    adapter.gatewayArm === armId &&
+    adapter.getCircuitBreakerRegistry() === registry
+  );
 }
 
 class GatewayArmAdapter implements IResilientAdapter {
@@ -125,9 +139,23 @@ class GatewayArmAdapter implements IResilientAdapter {
       return err(new ModelError(resolved.error.message, { code: ErrorCode.MODEL_UNAVAILABLE }));
     }
     const delegate = resolved.value;
+    const breaker = this.deps.circuitBreakerRegistry.getArmBreaker(this.armId);
+    const admission = breaker.canExecute();
+    if (!admission.ok) {
+      return err(
+        new ModelError(admission.error.message, {
+          code: ErrorCode.MODEL_UNAVAILABLE,
+          cause: admission.error,
+          retryable: false,
+        })
+      );
+    }
     const result = await delegate.complete(request);
     if (result.ok) {
-      this.deps.circuitBreakerRegistry.getArmBreaker(this.armId).recordSuccess();
+      breaker.recordSuccess();
+    } else if (isCallerCancelled(result.error)) {
+      // Cancellation is no evidence of endpoint health, and frees a half-open probe.
+      breaker.releaseHalfOpenProbe();
     } else {
       this.recordFailure(result.error, delegate.providerId);
     }

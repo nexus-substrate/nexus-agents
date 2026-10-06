@@ -38,6 +38,8 @@ import { withEnforcedAccessMode } from './access-mode.js';
 import { breakerKeys } from './breaker-key.js';
 import { mapModelErrorToCategory } from './circuit-breaker.js';
 import { isCallerCancelled } from '../adapters/abort-utils.js';
+import { ownsGatewayCircuitAdmission } from '../adapters/gateway-arm-adapter.js';
+import type { CircuitBreakerRegistry } from './circuit-breaker.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -120,6 +122,11 @@ export class ModelToCliAdapter implements ICliAdapter {
    */
   private readonly capacityTracker: CapacityTracker;
 
+  /** Exact admission ownership; other API adapters still need the integration's gate. */
+  ownsCircuitAdmission(registry: CircuitBreakerRegistry): boolean {
+    return ownsGatewayCircuitAdmission(this.modelAdapter, this.name, registry);
+  }
+
   constructor(modelAdapter: IModelAdapter, config: ModelToCliAdapterConfig) {
     this.modelAdapter = modelAdapter;
     this.name = config.name;
@@ -140,6 +147,7 @@ export class ModelToCliAdapter implements ICliAdapter {
   private toCompletionRequest(task: CliTask, options?: ExecutionOptions): CompletionRequest {
     const request: CompletionRequest = {
       messages: [{ role: 'user', content: task.content }],
+      ...(options?.signal !== undefined ? { signal: options.signal } : {}),
     };
     if (task.systemPrompt !== undefined) {
       (request as { systemPrompt: string }).systemPrompt = task.systemPrompt;
