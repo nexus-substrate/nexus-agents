@@ -178,13 +178,15 @@ interface IPluginRegistry {
 
 4. **Capability validation at registration.** If a plugin declares `requiredCapabilities: ['claude-cli']` but no Claude adapter is available, registration fails cleanly.
 
-### Experimental Plugin Config
+### Experimental Plugin Config (Design Target)
 
-> **As shipped, only core plugins load.** No production code path constructs the
-> registry with `experimentalEnabled` / `experimentalAllow` (both `@deprecated`,
-> #5097), every core manifest is `experimental: false`, and the registry is frozen
-> right after core registration. The config below is the design target, not
-> current behaviour.
+> **As shipped, only core plugins load.** Every core manifest is
+> `experimental: false`, and the registry is frozen right after core registration.
+> In 10.0, the deprecated experimental registry options and gate were removed
+> ([#5496](https://github.com/nexus-substrate/nexus-agents/issues/5496)). Direct
+> registration validates experimental manifests like other plugins, until the
+> registry is frozen. The config and loading lifecycle below are design targets,
+> not shipped behaviour.
 
 ```yaml
 # nexus-agents.yaml
