@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { clampOversizeVoteStrings } from './voter-response-text.js';
 import { MAX_VOTER_CONDITIONS, MAX_VOTER_CONDITION_CHARS } from '../audit/vote-record.js';
 import type { Vote } from '../consensus/types.js';
 import { matchDeclaredOption } from '../consensus/option-tally.js';
@@ -498,60 +499,6 @@ function objectFromFenceBody(
   if (!body.trimStart().startsWith('{') || match.index === undefined) return undefined;
   const bodyStart = match.index + match[0].length - '```'.length - body.length;
   return extractFirstJsonObject(text.slice(bodyStart));
-}
-
-/** Caps mirroring {@link VoteResponseSchema} (reasoning) + {@link RawFindingSchema} (claim). */
-const REASONING_MAX_CHARS = 4000;
-const CLAIM_MAX_CHARS = 2000;
-const TRUNCATION_MARKER = ' …[truncated]';
-
-/** Truncate `s` to `max` chars with a marker; a no-op when already within cap. */
-function clampWithMarker(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return s.slice(0, Math.max(0, max - TRUNCATION_MARKER.length)) + TRUNCATION_MARKER;
-}
-
-/**
- * Clamp vote text before validation (#4131, #7134), keeping the real vote with
- * visible markers. Malformed shapes still fail validation.
- */
-function clampOversizeVoteStrings(parsed: unknown): unknown {
-  if (typeof parsed !== 'object' || parsed === null) return parsed;
-  const obj = { ...(parsed as Record<string, unknown>) };
-  if (typeof obj['reasoning'] === 'string') {
-    obj['reasoning'] = clampWithMarker(obj['reasoning'], REASONING_MAX_CHARS);
-  }
-  if (Array.isArray(obj['conditions'])) {
-    const conditions = obj['conditions'] as unknown[];
-    // Repair bounds only; malformed items must still fail validation, even
-    // beyond the item cap, rather than hiding an invalid response by clipping.
-    if (conditions.every((condition) => typeof condition === 'string')) {
-      const kept =
-        conditions.length > MAX_VOTER_CONDITIONS ? MAX_VOTER_CONDITIONS - 1 : conditions.length;
-      obj['conditions'] = conditions
-        .slice(0, kept)
-        .map((condition) => clampWithMarker(condition, MAX_VOTER_CONDITION_CHARS));
-      if (kept < conditions.length) {
-        (obj['conditions'] as string[]).push(
-          `${TRUNCATION_MARKER} ${String(conditions.length - kept)} conditions dropped`
-        );
-      }
-    }
-  }
-  if (Array.isArray(obj['findings'])) {
-    obj['findings'] = (obj['findings'] as unknown[]).map((finding): unknown => {
-      if (
-        typeof finding === 'object' &&
-        finding !== null &&
-        typeof (finding as Record<string, unknown>)['claim'] === 'string'
-      ) {
-        const f = finding as Record<string, unknown>;
-        return { ...f, claim: clampWithMarker(f['claim'] as string, CLAIM_MAX_CHARS) };
-      }
-      return finding;
-    });
-  }
-  return obj;
 }
 
 /** Maps a validated VoteResponse into a ParsedVote, threading optional fields. */
