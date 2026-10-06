@@ -44,7 +44,7 @@ describe('OpenAIAdapter.listModels', () => {
       ],
     });
 
-    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o', apiKey: 'k' });
+    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: 'k' });
     const models = await adapter.listModels();
     expect(models).toHaveLength(2);
     expect(models[0]).toEqual({
@@ -60,7 +60,7 @@ describe('OpenAIAdapter.listModels', () => {
       data: [{ id: 'gpt-4o', object: 'model', created: 1, owned_by: 'system' }],
     });
 
-    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o', apiKey: 'k' });
+    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: 'k' });
     await adapter.listModels();
     await adapter.listModels();
     expect(mocks.mockModelsList).toHaveBeenCalledTimes(1);
@@ -75,7 +75,7 @@ describe('OpenAIAdapter.listModels', () => {
         })
     );
 
-    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o', apiKey: 'k' });
+    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: 'k' });
     const a = adapter.listModels();
     const b = adapter.listModels();
     resolve({ data: [{ id: 'x', object: 'model', owned_by: 'system' }] });
@@ -85,7 +85,7 @@ describe('OpenAIAdapter.listModels', () => {
 
   it('throws on /v1/models error so identity resolver knows to fall back', async () => {
     mocks.mockModelsList.mockRejectedValue(new Error('endpoint not supported'));
-    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o', apiKey: 'k' });
+    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: 'k' });
     await expect(adapter.listModels()).rejects.toThrow('endpoint not supported');
   });
 
@@ -93,7 +93,7 @@ describe('OpenAIAdapter.listModels', () => {
     mocks.mockModelsList.mockResolvedValue({
       data: [{ id: 'mystery-model', object: 'model', created: 1234 }],
     });
-    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o', apiKey: 'k' });
+    const adapter = createOpenAIAdapter({ modelId: 'gpt-4o-2024-11-20', apiKey: 'k' });
     const models = await adapter.listModels();
     expect(models[0]).toEqual({ id: 'mystery-model', createdAt: 1234 });
   });

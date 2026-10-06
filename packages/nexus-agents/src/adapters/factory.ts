@@ -16,7 +16,7 @@ import { getErrorMessage, ConfigError, err, ok, formatZodError } from '../core/i
 export const AdapterConfigSchema = z.object({
   /** Provider identifier (e.g., 'anthropic', 'openai') */
   providerId: z.string().min(1, 'Provider ID is required'),
-  /** Model identifier (e.g., 'claude-sonnet-4', 'gpt-4o') */
+  /** Model identifier (e.g., 'claude-sonnet-4', 'gpt-4o-2024-11-20') */
   modelId: z.string().min(1, 'Model ID is required'),
   /** API key for authentication (optional, may come from environment) */
   apiKey: z.string().optional(),

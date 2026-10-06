@@ -39,7 +39,7 @@ import {
 export interface BaseAdapterConfig {
   /** Provider identifier (e.g., 'anthropic', 'openai') */
   providerId: string;
-  /** Model identifier (e.g., 'claude-sonnet-4', 'gpt-4o') */
+  /** Model identifier (e.g., 'claude-sonnet-4', 'gpt-4o-2024-11-20') */
   modelId: string;
   /** Capabilities this model supports */
   capabilities: readonly ModelCapability[];

@@ -297,8 +297,8 @@ interface IWorkflowEngine {
 models:
   default: claude-sonnet-4
   tiers:
-    fast: [claude-haiku-3, gpt-4o-mini]
-    balanced: [claude-sonnet-4, gpt-4o]
+    fast: [claude-haiku-3, gpt-4o-mini-2024-07-18]
+    balanced: [claude-sonnet-4, gpt-4o-2024-11-20]
     powerful: [claude-opus-4, o1-pro]
 
 routing:

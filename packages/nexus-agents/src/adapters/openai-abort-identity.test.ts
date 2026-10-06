@@ -13,7 +13,10 @@ class AbortIdentityAdapter extends OpenAIAdapter {
 }
 
 it('recognizes caller abort through the actual OpenAI SDK error transformation', () => {
-  const adapter = new AbortIdentityAdapter({ modelId: 'gpt-4o', apiKey: FAKE_OPENAI_KEY });
+  const adapter = new AbortIdentityAdapter({
+    modelId: 'gpt-4o-2024-11-20',
+    apiKey: FAKE_OPENAI_KEY,
+  });
   const error = adapter.transformForTest(new APIUserAbortError());
   expect(error.cause).toBeInstanceOf(Error);
   expect(isCallerAbortError(error)).toBe(true);
