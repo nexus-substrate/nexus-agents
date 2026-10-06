@@ -13,11 +13,6 @@ import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateMcpConfig } from './child-mcp-config.js';
 
-vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, writeFile: vi.fn(actual.writeFile) };
-});
-
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return { ...actual, writeFileSync: vi.fn(actual.writeFileSync) };
@@ -62,7 +57,6 @@ beforeEach(() => {
   vi.stubEnv('NEXUS_TMPDIR', scratch);
 });
 afterEach(() => {
-  vi.mocked(fs.writeFile).mockReset();
   vi.mocked(writeFileSync).mockReset();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -71,7 +65,6 @@ afterEach(() => {
 
 describe('child MCP config cleanup (#4631)', () => {
   it('removes its directory when writing the config fails', async () => {
-    vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('config write failed'));
     vi.mocked(writeFileSync).mockImplementationOnce(() => {
       throw new Error('config write failed');
     });
