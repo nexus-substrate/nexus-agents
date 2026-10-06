@@ -1,5 +1,31 @@
 # nexus-agents
 
+## 9.3.0
+
+### Minor Changes
+
+- [#7129](https://github.com/nexus-substrate/nexus-agents/pull/7129) [`2426e25`](https://github.com/nexus-substrate/nexus-agents/commit/2426e25e5a30b6dd4701e99f4d5463f2209b6908) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Warn that `NEXUS_ACCESS_POLICY_MODE` is deprecated, has no effect, and will be removed in 10.0 ([#6319](https://github.com/nexus-substrate/nexus-agents/issues/6319)). It remains recognized with its existing accepted values. Remove it from your environment; no replacement is needed.
+
+- [#7128](https://github.com/nexus-substrate/nexus-agents/pull/7128) [`b6981dc`](https://github.com/nexus-substrate/nexus-agents/commit/b6981dcbe18b61db8fdf1f881c60e5686d2abf8c) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Add NEXUS_CONSENSUS_ENFORCE=off|audit|enforce for the run consensus strategy,
+  with audit as the default. All modes expose enforcement status and record the
+  final panel once. Enforce blocks rejection and retries no_quorum or an approval
+  that would fail with errored seats counted as reject exactly once before failing
+  closed. Recording failures also fail enforced runs, including asynchronous jobs.
+  Off reports the verdict as unmeasured; audit reports wouldBlock without blocking.
+
+### Patch Changes
+
+- [#7131](https://github.com/nexus-substrate/nexus-agents/pull/7131) [`da3fc1d`](https://github.com/nexus-substrate/nexus-agents/commit/da3fc1d8465a5c8761d99f13909ca73cc3cdeaca) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Deprecate the CLI-slot circuit readers and cache snapshot field ahead of removal in 10.0 ([#6291](https://github.com/nexus-substrate/nexus-agents/issues/6291)). Use the existing arm-typed replacements, which include CLI slots and `api:*` arms:
+
+  - `getHealthyClis()` → `getHealthyArms()`
+  - `getUnhealthyClis()` → `getUnhealthyArms()`
+  - `getAllSnapshots()` → `getAllArmSnapshots()`
+  - `RegistrySnapshot.cachedAdapters` → `RegistrySnapshot.cachedArms`
+
+  The deprecated `createEventBusBridge` and its `EventBusBridgeOptions` / `PipelineBridgeResult` types are also scheduled for removal in 10.0. No replacement forwarding factory exists; subscribe to the pipeline EventBus directly via `IEventBus.subscribe(filter, handler)`.
+
+  All existing exports, signatures, and runtime behavior remain unchanged. The internal CLI snapshot reader now uses `getAllArmSnapshots().get(cliName)`.
+
 ## 9.2.0
 
 ### Minor Changes
