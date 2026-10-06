@@ -79,6 +79,39 @@ describe('config-loader', () => {
       }
     });
 
+    it.each([true, false])(
+      'rejects oauth2 at config load with migration guidance (enabled: %s)',
+      (enabled) => {
+        mockExistsSync.mockReturnValue(true);
+        mockReadFileSync.mockReturnValue('security:\n  auth:\n    method: oauth2');
+        mockYamlParse.mockReturnValue({ security: { auth: { enabled, method: 'oauth2' } } });
+
+        const result = loadConfig();
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe('VALIDATION_ERROR');
+          expect(result.error.message).toContain(
+            "security.auth.method 'oauth2' was never implemented and is no longer accepted. " +
+              "Set security.auth.method to 'token' for bearer-token authentication (#5681)."
+          );
+        }
+      }
+    );
+
+    it('loads a config using token authentication', () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue('security:\n  auth:\n    method: token');
+      mockYamlParse.mockReturnValue({ security: { auth: { method: 'token' } } });
+
+      const result = loadConfig();
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.config.security?.auth?.method).toBe('token');
+      }
+    });
+
     it('returns error for invalid YAML', () => {
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue('invalid: yaml: content');

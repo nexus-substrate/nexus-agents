@@ -68,10 +68,16 @@ nexus-agents auth init --force  # Regenerate token (overwrite existing)
 security:
   auth:
     enabled: true
-    method: token # 'token' is the only implemented method; 'oauth2' is accepted but behaves as 'token' and warns (#5678, narrowed at the next major: #5681)
+    method: token # Only supported authentication method
     tokenHeader: Authorization # Header name for Bearer token
     tokenFile: ~/.nexus-agents/auth/server-token # Token storage path
 ```
+
+Since 10.0, `security.auth.method` accepts only `token`. OAuth2 was never
+implemented; earlier versions accepted `oauth2` but performed bearer-token checks.
+If your config sets `security.auth.method: oauth2`, change it to
+`security.auth.method: token` before upgrading. Otherwise config loading fails
+with migration guidance ([#5681](https://github.com/nexus-substrate/nexus-agents/issues/5681)).
 
 Or via environment variables:
 

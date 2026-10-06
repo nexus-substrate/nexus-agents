@@ -1194,10 +1194,15 @@ Configure authentication for network-exposed MCP transports:
 security:
   auth:
     enabled: true # Enable authentication
-    method: token # 'token' is the only implemented method; 'oauth2' is accepted but behaves as 'token' and warns (#5678)
+    method: token # Only supported authentication method
     tokenHeader: Authorization # Header name for bearer token
     tokenFile: ~/.nexus-agents/auth/server-token # Token file path (auth/ is cross-repo)
 ```
+
+Since 10.0, configs with `security.auth.method: oauth2` are rejected at load.
+OAuth2 was never implemented; replace it with `security.auth.method: token` to
+retain the bearer-token authentication used by earlier versions
+([#5681](https://github.com/nexus-substrate/nexus-agents/issues/5681)).
 
 Generate and manage auth tokens with CLI commands:
 

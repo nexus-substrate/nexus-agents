@@ -260,7 +260,7 @@ describe('SecurityConfigSchema', () => {
       },
       auth: {
         enabled: true,
-        method: 'oauth2',
+        method: 'token',
         tokenHeader: 'X-Auth-Token',
         tokenFile: '/path/to/token',
       },
@@ -275,9 +275,25 @@ describe('SecurityConfigSchema', () => {
     expect(result.timeout?.defaultTimeoutMs).toBe(15000);
     expect(result.toolAllowlist).toEqual(['orchestrate', 'delegate']);
     expect(result.audit?.enabled).toBe(true);
-    // Accepted, not implemented: AuthHandler warns and behaves as 'token'
-    // (#5678); the value is rejected at the next major (#5681).
-    expect(result.auth?.method).toBe('oauth2');
+    expect(result.auth?.method).toBe('token');
+  });
+
+  it('rejects oauth2 with migration guidance (#5681)', () => {
+    const result = SecurityConfigSchema.safeParse({ auth: { method: 'oauth2' } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['auth', 'method']);
+      expect(result.error.issues[0]?.message).toContain("Set security.auth.method to 'token'");
+    }
+  });
+
+  it('rejects unknown auth methods without attributing them to oauth2', () => {
+    const result = SecurityConfigSchema.safeParse({ auth: { method: 'invalid' } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain('token');
+      expect(result.error.issues[0]?.message).not.toContain('oauth2');
+    }
   });
 
   it('allows empty allowedPaths array', () => {
