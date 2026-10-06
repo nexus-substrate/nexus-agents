@@ -14,7 +14,7 @@ import {
   CliCircuitBreakerIntegration,
   getDefaultCliCircuitBreakerRegistry,
 } from './cli-circuit-breaker.js';
-import { CircuitError } from './circuit-breaker.js';
+import { CircuitError, CircuitErrorCode } from './circuit-breaker.js';
 import { breakerKeys } from './breaker-key.js';
 import { buildGatewaySlotRouterArm } from './gateway-slot-arm.js';
 import { createModelToCliAdapter } from './model-to-cli-adapter.js';
@@ -72,6 +72,31 @@ describe('gateway slot circuit-breaker outcomes', () => {
     expect(model.complete).not.toHaveBeenCalled();
     expect(registry.getBreaker('claude').getSnapshot().failureCount).toBe(0);
     expect(registry.getBreaker('claude').getState()).toBe('closed');
+    await arm.dispose();
+  });
+
+  it('attributes a thrown gateway execution to the guarded arm (#6291 B2)', async () => {
+    setGatewaySlotCatalog([fakeGatewayModel('claude-sonnet-4-6', 'api:gw-prod')]);
+    const arm = gatewayArm('claude');
+    const cause = new Error('unexpected gateway execution failure');
+    vi.spyOn(arm, 'execute').mockRejectedValue(cause);
+    const integration = new CliCircuitBreakerIntegration([arm], { enableFallback: false });
+    const key = breakerKeys.forArm({ name: 'claude', gatewayArm: 'api:gw-prod' });
+
+    const result = await integration.execute(arm, { content: 'test thrown gateway call' });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        circuitErrorCode: CircuitErrorCode.EXECUTION_FAILED,
+        cliName: key,
+        armId: key,
+        circuitState: 'closed',
+        cause,
+      },
+    });
+    if (!result.ok) expect(result.error).toBeInstanceOf(CircuitError);
+    expect(integration.getCircuitSnapshots().get('claude')?.failureCount).toBe(1);
     await arm.dispose();
   });
 

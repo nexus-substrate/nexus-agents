@@ -24,6 +24,7 @@ import {
 } from './context-retriever.js';
 import { resetOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { DistilledRule } from '../learning/strategy-distiller-types.js';
+import type { RulesSnapshot } from '../learning/strategy-distiller-persistence.js';
 import type { TechniqueStatusSummary } from '../cli/research-types.js';
 import { rankMemories } from './context-retriever-helpers.js';
 import { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
@@ -261,7 +262,7 @@ describe('getContextForTask', () => {
     };
   }
 
-  function writeRulesFile(rules: readonly DistilledRule[]): void {
+  function writeRulesFile(rules: Readonly<RulesSnapshot['rules']>): void {
     const dir = join(dataDir, 'learning');
     mkdirSync(dir, { recursive: true });
     const snapshot = { version: 1, savedAt: new Date().toISOString(), rules };
@@ -302,7 +303,7 @@ describe('getContextForTask', () => {
     })();
   });
 
-  it('priorStrategies excludes non-active rules', async () => {
+  it('priorStrategies includes legacy promoted rules and excludes drafts and expired rules', async () => {
     const { shutdownToolMemory } = await import('../mcp/tools/tool-memory.js');
     shutdownToolMemory();
 
@@ -310,12 +311,13 @@ describe('getContextForTask', () => {
       makeRule({ id: 'active-one', status: 'active' }),
       makeRule({ id: 'draft-one', status: 'draft' }),
       makeRule({ id: 'expired-one', status: 'expired' }),
-      makeRule({ id: 'promoted-one', status: 'promoted' }),
+      { ...makeRule({ id: 'promoted-one' }), status: 'promoted' },
     ]);
 
     const ctx = await getContextForTask({ task: 'anything', category: 'code_generation' });
     const ids = ctx.priorStrategies.map((r) => r.id);
-    expect(ids).toEqual(['active-one']);
+    // Legacy promoted rules load as active (#5467), so they now reach consumers.
+    expect(ids).toEqual(['active-one', 'promoted-one']);
   });
 
   it('priorStrategies returns [] when no rules file exists', async () => {

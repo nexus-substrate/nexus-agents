@@ -257,10 +257,8 @@ describe('tryWireGatewayAdapters — probe and fail-closed matrix', () => {
     });
   });
 
-  // #4392 inc 3, panel option C: the deprecated NEXUS_CUSTOM_API_* pair is an
-  // alias for the single-model `custom-openai` reader only. Driven through the
-  // REAL env reader (not the file-level mock) so the pin covers the seam.
-  describe('legacy NEXUS_CUSTOM_API_* pair alone does not wire the gateway (#4392 inc 3)', () => {
+  // Drive the real reader to prove removed aliases cannot wire a gateway.
+  describe('removed gateway aliases do not wire the gateway (#6291 B1)', () => {
     const NAMES = [
       'NEXUS_CUSTOM_API_BASE_URL',
       'NEXUS_CUSTOM_API_KEY',

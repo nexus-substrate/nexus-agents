@@ -8,7 +8,7 @@
 
 import { NexusError, ErrorCode } from '../core/errors.js';
 import { isRateLimitText } from '../adapters/rate-limit-detector.js';
-import type { CliName, ObservedArmId } from './types.js';
+import type { RoutingArmId, ObservedArmId } from './types.js';
 
 // ============================================================================
 // Types
@@ -75,11 +75,11 @@ export interface CircuitBreakerSnapshot {
  */
 export interface CircuitStateChangeEvent {
   /**
-   * Display slot of the guarded arm: identity for a CLI slot, the collapsed
-   * slot for an `api:*` arm (#4392). Always `observedArmDisplaySlot(armId)`;
-   * read {@link armId} to tell an endpoint arm from the slot it displays under.
+   * Identity of the guarded routing arm (#6291, 10.0), including gateway ids.
+   * The breaker emits the same value as {@link armId}. For CLI-slot attribution
+   * use `routingArmDisplaySlot(cliName)` explicitly.
    */
-  readonly cliName: CliName;
+  readonly cliName: RoutingArmId;
   /**
    * Arm the breaker guards — a CLI slot, a built-in `api:*` arm or a
    * registered endpoint arm (#4392). The breaker is the only producer of this
@@ -172,8 +172,8 @@ export type CircuitErrorCode = (typeof CircuitErrorCode)[keyof typeof CircuitErr
  */
 export class CircuitError extends NexusError {
   readonly circuitErrorCode: CircuitErrorCode;
-  /** Display slot of {@link armId} — never the raw `api:*` id. */
-  readonly cliName: CliName;
+  /** Routing arm identity, including the raw validated gateway id (#6291). */
+  readonly cliName: RoutingArmId;
   /**
    * Arm whose circuit blocked the request — a CLI slot, a built-in `api:*` arm
    * or a registered endpoint arm (#4392). Defaults to `cliName` when the
@@ -187,8 +187,8 @@ export class CircuitError extends NexusError {
     message: string,
     options: {
       circuitErrorCode: CircuitErrorCode;
-      /** Display slot; the breaker passes `observedArmDisplaySlot(armId)`. */
-      cliName: CliName;
+      /** Routing arm identity; the breaker passes its guarded arm id. */
+      cliName: RoutingArmId;
       /** The guarded arm (#4392). Optional so the pre-#4392 option shape still compiles; defaults to `cliName`. */
       armId?: ObservedArmId;
       circuitState: CircuitState;

@@ -127,11 +127,7 @@ describe('auth-handler', () => {
       }
     });
 
-    describe("method: 'oauth2' (#5678)", () => {
-      // The schema accepts 'oauth2' but nothing implements it: both values run
-      // the bearer-token path. Until the enum is narrowed at the next major
-      // (#5681), the handler says so out loud instead of letting the config
-      // claim a mode that does not exist.
+    describe("method: 'token'", () => {
       const warnLogger = (): { logger: ILogger; warn: ReturnType<typeof vi.fn> } => {
         const warn = vi.fn();
         const logger = {
@@ -143,20 +139,10 @@ describe('auth-handler', () => {
         return { logger, warn };
       };
 
-      it("warns that 'oauth2' behaves as 'token'", () => {
-        const { logger, warn } = warnLogger();
-        new AuthHandler({ enabled: false, method: 'oauth2' }, logger);
-        const messages = warn.mock.calls.map((c: unknown[]) => String(c[0]));
-        const notice = messages.find((m) => m.includes('oauth2'));
-        expect(notice).toBeDefined();
-        expect(notice).toContain("behaves as 'token'");
-      });
-
       it("does not warn for method: 'token'", () => {
         const { logger, warn } = warnLogger();
         new AuthHandler({ enabled: false, method: 'token' }, logger);
-        const messages = warn.mock.calls.map((c: unknown[]) => String(c[0]));
-        expect(messages.some((m) => m.includes('oauth2'))).toBe(false);
+        expect(warn).not.toHaveBeenCalled();
       });
     });
 

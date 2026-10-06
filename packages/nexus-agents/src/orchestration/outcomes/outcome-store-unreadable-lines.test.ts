@@ -33,7 +33,7 @@ function outcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
 // Deliberately non-canonical spacing, Unicode and CRLF: reserialization loses bytes.
 const FUTURE_LINE =
   ' \t' +
-  JSON.stringify({ ...outcome({ id: 'future' }), cli: 'api:gw-prod', note: '未来' }) +
+  JSON.stringify({ ...outcome({ id: 'future' }), cli: 'future:arm', note: '未来' }) +
   ' \r\n';
 const GARBAGE_LINE = ' \tthis is not JSON: 未来 \r\n';
 const FINAL_UNREADABLE_LINE = '{"future":"unterminated line"}  ';
@@ -119,7 +119,7 @@ describe('PersistentOutcomeStore unreadable lines (#7146)', () => {
       info.mock.calls,
       error.mock.calls,
     ]);
-    expect(logs).not.toContain('api:gw-prod');
+    expect(logs).not.toContain('future:arm');
     expect(logs).not.toContain('this is not JSON');
     expect(logs).not.toContain('未来');
 

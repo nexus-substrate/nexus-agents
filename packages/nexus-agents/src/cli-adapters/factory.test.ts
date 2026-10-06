@@ -250,8 +250,8 @@ describe('createAllAdapters', () => {
       'ANTHROPIC_API_KEY',
       'OPENAI_API_KEY',
       'GOOGLE_AI_API_KEY',
-      'NEXUS_CUSTOM_API_KEY',
-      'NEXUS_CUSTOM_API_BASE_URL',
+      'NEXUS_OPENAI_COMPAT_KEY',
+      'NEXUS_OPENAI_COMPAT_URL',
     ] as const;
     const saved = new Map<string, string | undefined>();
 
@@ -279,8 +279,8 @@ describe('createAllAdapters', () => {
       process.env['ANTHROPIC_API_KEY'] = 'test-not-a-real-key';
       process.env['OPENAI_API_KEY'] = 'test-not-a-real-key';
       process.env['GOOGLE_AI_API_KEY'] = 'test-not-a-real-key';
-      process.env['NEXUS_CUSTOM_API_KEY'] = 'test-not-a-real-key';
-      process.env['NEXUS_CUSTOM_API_BASE_URL'] = 'https://gateway.example.com/v1';
+      process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'test-not-a-real-key';
+      process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
 
       expect([...createAllAdapters().keys()]).toEqual([
         'claude',

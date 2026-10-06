@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import { CliNameSchema } from '../../config/model-capabilities-types.js';
-import { ApiArmIdSchema } from '../../cli-adapters/types-core.js';
+import { EndpointArmIdSchema } from '../../cli-adapters/types-core.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { createLogger } from '../../core/index.js';
@@ -46,7 +46,7 @@ export const OutcomeFailureCategorySchema = z.enum([
 /**
  * Routing-arm attribution for an outcome.
  *
- * Widened beyond {@link CliNameSchema} for two reasons:
+ * Widened beyond {@link CliNameSchema} for the following attribution cases:
  *
  * - an explicit `'unknown'` (#3624) — for outcomes (e.g. expert executions)
  *   whose real executing CLI can't be resolved from the model. `'unknown'` is
@@ -61,9 +61,14 @@ export const OutcomeFailureCategorySchema = z.enum([
  *   warm-start: every process began cold no matter how much history existed,
  *   and the skip was silent.
  *
- * The union only ever grows, so previously persisted records stay valid.
+ * - Validated gateway endpoint arms (#6291, 10.0), using the same identity
+ *   schema as endpoint registration. URL/userinfo and malformed ids fail closed.
+ *
+ * This additive widening retains all existing JSONL values and their arm
+ * attribution unchanged. No schema version, migration or file rewrite is needed;
+ * legacy CLI/API histories still replay into LinUCB by their original names.
  */
-export const OutcomeCliSchema = z.union([CliNameSchema, ApiArmIdSchema, z.literal('unknown')]);
+export const OutcomeCliSchema = z.union([CliNameSchema, EndpointArmIdSchema, z.literal('unknown')]);
 export type OutcomeCli = z.infer<typeof OutcomeCliSchema>;
 
 /** Provenance for the CLI attributed to an outcome. */

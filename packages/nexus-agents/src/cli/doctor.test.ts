@@ -1903,7 +1903,7 @@ describe('Doctor Command', () => {
       });
     });
 
-    describe('deprecated env aliases (#4392 inc 3)', () => {
+    describe('removed env aliases (#6291 B1)', () => {
       const LEGACY = ['NEXUS_CUSTOM_API_BASE_URL', 'NEXUS_CUSTOM_API_KEY'] as const;
       const savedLegacy = new Map<string, string | undefined>();
 
@@ -1922,47 +1922,21 @@ describe('Doctor Command', () => {
         }
       });
 
-      it('the legacy pair alone does NOT configure the voter transport (option C) but is reported', async () => {
+      it('ignores the removed pair without configuring voter transport', async () => {
         process.env['NEXUS_CUSTOM_API_BASE_URL'] = 'https://gateway.example/v1';
         process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-NOT-REAL-0000';
         const { checkVoterTransport } = await import('./doctor.js');
-        expect(checkVoterTransport()).toEqual({
-          configured: false,
-          deprecatedEnv: [
-            {
-              name: 'NEXUS_CUSTOM_API_BASE_URL',
-              replacement: 'NEXUS_OPENAI_COMPAT_URL',
-              shadowed: false,
-            },
-            {
-              name: 'NEXUS_CUSTOM_API_KEY',
-              replacement: 'NEXUS_OPENAI_COMPAT_KEY',
-              shadowed: false,
-            },
-          ],
-        });
+        expect(checkVoterTransport()).toEqual({ configured: false });
       });
 
-      it('marks a legacy name shadowed when the new name is also set, beside a configured gateway', async () => {
+      it('reports canonical transport without legacy alias metadata', async () => {
         process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example/v1';
         process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-NOT-REAL-0000';
         process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-old-NOT-REAL-0000';
         const { checkVoterTransport } = await import('./doctor.js');
-        expect(checkVoterTransport()).toMatchObject({
-          configured: true,
-          deprecatedEnv: [
-            {
-              name: 'NEXUS_CUSTOM_API_KEY',
-              replacement: 'NEXUS_OPENAI_COMPAT_KEY',
-              shadowed: true,
-            },
-          ],
-        });
-      });
-
-      it('carries no deprecatedEnv field when no legacy name is set', async () => {
-        const { checkVoterTransport } = await import('./doctor.js');
-        expect('deprecatedEnv' in checkVoterTransport()).toBe(false);
+        const check = checkVoterTransport();
+        expect(check.configured).toBe(true);
+        expect('deprecatedEnv' in check).toBe(false);
       });
     });
   });

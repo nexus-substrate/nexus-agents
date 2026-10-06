@@ -219,12 +219,10 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
   });
 
   it.each(['discovered', 'failed'])(
-    'does not apply another gateway discovery (%s) to deprecated SDK transport',
+    'does not create an SDK transport from removed aliases after discovery (%s)',
     async (status) => {
       vi.mocked(getAvailableClis).mockResolvedValueOnce([]);
       gatewayDiscovery.status.mockReturnValue(status);
-      // Discovery's catalogue can come from OpenCode while the legacy SDK
-      // transport points elsewhere. Its models say nothing about that SDK URL.
       if (status === 'discovered')
         setGatewaySlotCatalog([fakeGatewayModel('custom-fallback-model')]);
       Reflect.deleteProperty(process.env, 'NEXUS_OPENAI_COMPAT_URL');
@@ -232,12 +230,10 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
       process.env['NEXUS_CUSTOM_API_BASE_URL'] = 'https://other-gateway.example.com/v1';
       process.env['NEXUS_CUSTOM_API_KEY'] = FAKE_OPENAI_KEY;
       try {
-        const selection = await createAutoAdapter({ enableCache: false });
-        expect(selection.adapter.modelId).toBe('custom-fallback-model');
-        expect(selection).not.toHaveProperty('modelVerified');
-        // Pricing must not depend on verification: an unmeasured fallback is
-        // still a gateway call, priced by the gateway declaration.
-        expect(Reflect.get(selection.adapter, 'gatewayArm')).toBe('api:custom-openai');
+        await expect(createAutoAdapter({ enableCache: false })).rejects.toThrow(
+          /No adapters available/
+        );
+        expect(sdkAdapterCtor).not.toHaveBeenCalled();
       } finally {
         gatewayDiscovery.status.mockReturnValue('unattempted');
       }

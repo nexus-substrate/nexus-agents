@@ -121,6 +121,7 @@ describe('PersistentStrategyDistiller', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     if (existsSync(tmpDir)) {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -158,6 +159,51 @@ describe('PersistentStrategyDistiller', () => {
         dataDir: tmpDir,
       });
       expect(distiller.getRules()).toHaveLength(2);
+    });
+
+    it.each([false, true])(
+      'loads legacy promoted rules as active without dropping the store (missing support/effect: %s)',
+      (legacyConfidence) => {
+        const active = makeRule({ id: 'failure-rate:gemini:research', cli: 'gemini' });
+        const promoted = legacyConfidence
+          ? makeLegacyRecord({ status: 'promoted' })
+          : { ...makeRule(), status: 'promoted' };
+        const snapshot = { ...makeSnapshot([active]), rules: [active, promoted] };
+        writeFileSync(filePath, JSON.stringify(snapshot));
+
+        // The persisted schema still accepts the legacy alias (#5467).
+        expect(RulesSnapshotSchema.safeParse(snapshot).success).toBe(true);
+        const distiller = new PersistentStrategyDistiller(new OutcomeStore(), {
+          filePath,
+          dataDir: tmpDir,
+        });
+        const rules = distiller.getRules('active');
+        expect(rules).toHaveLength(2);
+        expect(rules[0]).toEqual(active);
+        expect(rules[1]).toMatchObject({ id: promoted['id'], status: 'active' });
+        expect(loadPersistedRules(filePath)).toEqual(rules);
+      }
+    );
+
+    it('rewrites legacy promoted rules as active and lets them expire', () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      const rule = makeRule({ createdAt: now, updatedAt: now });
+      const snapshot = { ...makeSnapshot([]), rules: [{ ...rule, status: 'promoted' }] };
+      writeFileSync(filePath, JSON.stringify(snapshot));
+      const distiller = new PersistentStrategyDistiller(new OutcomeStore(), {
+        filePath,
+        dataDir: tmpDir,
+      });
+
+      distiller.distill();
+      const persisted = RulesSnapshotSchema.parse(JSON.parse(readFileSync(filePath, 'utf-8')));
+      expect(persisted.rules).toEqual([rule]);
+
+      const expiredAt = now + DEFAULT_DISTILLER_CONFIG.ruleExpiryMs + 1;
+      vi.setSystemTime(expiredAt);
+      distiller.distill();
+      expect(distiller.getRules()).toEqual([{ ...rule, status: 'expired', updatedAt: expiredAt }]);
     });
 
     it('hydrates rules without the removed tainted field (#5867)', () => {

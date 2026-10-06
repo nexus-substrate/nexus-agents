@@ -49,6 +49,8 @@ const DistilledRuleSchema = z.object({
   effect: z.number().optional(),
   observationCount: z.number(),
   metric: z.number(),
+  // Read-only legacy alias (#5467): old stores must still validate. hydrateRule
+  // maps 'promoted' to 'active'; in-memory rules and snapshot writers never emit it.
   status: z.enum(['draft', 'active', 'promoted', 'expired']),
   createdAt: z.number(),
   updatedAt: z.number(),
@@ -80,13 +82,16 @@ type PersistedRule = z.infer<typeof DistilledRuleSchema>;
  * never recorded), and `confidence` replaced by the product so routing never
  * multiplies by a sample-size-only value again. Nothing here can produce
  * `undefined × x = NaN`. A record that already carries both fields is
- * returned as-is.
+ * returned with its existing confidence fields. Legacy 'promoted' status is
+ * always mapped to 'active', so routing can apply the rule and expiry can retire it.
  */
 function hydrateRule(
   raw: PersistedRule,
   thresholds: EffectThresholds
 ): { rule: DistilledRule; legacy: boolean } {
-  const { support, effect, ...rest } = raw;
+  const { support, effect, status: persistedStatus, ...fields } = raw;
+  const status = persistedStatus === 'promoted' ? 'active' : persistedStatus;
+  const rest = { ...fields, status };
   if (support !== undefined && effect !== undefined) {
     return { rule: { ...rest, support, effect }, legacy: false };
   }

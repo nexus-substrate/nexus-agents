@@ -1,7 +1,7 @@
 /**
  * PluginRegistry tests (Issue #911, Phase 3-2)
  *
- * Tests plugin registration, resolution, experimental gating,
+ * Tests plugin registration, resolution, manifest validation,
  * registry freeze, and error cases.
  */
 import { describe, it, expect } from 'vitest';
@@ -46,6 +46,11 @@ function makePlugin(overrides: Partial<PluginManifest> = {}): PipelinePlugin {
 
 describe('PluginRegistry', () => {
   describe('register', () => {
+    it('accepts empty options for constructor compatibility (#5496)', () => {
+      const registry = new PluginRegistry({});
+      expect(registry.register(makePlugin())).toEqual({ ok: true, value: undefined });
+    });
+
     it('registers a valid plugin', () => {
       const registry = new PluginRegistry();
       const result = registry.register(makePlugin());
@@ -107,83 +112,35 @@ describe('PluginRegistry', () => {
   });
 
   // ==========================================================================
-  // Experimental Gating Tests
-  // ==========================================================================
+  // Experimental Manifest Tests
+  // ============================================================================
 
-  describe('experimental gating', () => {
-    it('blocks experimental plugins by default', () => {
+  describe('experimental manifests', () => {
+    it('registers experimental plugins without gate options (#5496)', () => {
       const registry = new PluginRegistry();
-      const result = registry.register(
-        makePlugin({
-          id: 'nexus:experimental',
-          trustLevel: 'experimental',
-          experimental: true,
-        })
-      );
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.type).toBe('missing_capability');
-      }
-    });
-
-    it('allows experimental plugins when enabled', () => {
-      const registry = new PluginRegistry({
-        experimentalEnabled: true,
+      const plugin = makePlugin({
+        id: 'nexus:experimental',
+        trustLevel: 'experimental',
+        experimental: true,
       });
-      const result = registry.register(
-        makePlugin({
-          id: 'nexus:experimental',
-          trustLevel: 'experimental',
-          experimental: true,
-        })
-      );
-      expect(result.ok).toBe(true);
+      expect(registry.register(plugin)).toEqual({ ok: true, value: undefined });
+      expect(registry.resolve(plugin.manifest.id)).toBe(plugin);
+      expect(registry.isEnabled(plugin.manifest.id)).toBe(true);
     });
 
-    it('allows only allowlisted experimental plugins', () => {
-      const registry = new PluginRegistry({
-        experimentalEnabled: true,
-        experimentalAllow: ['nexus:allowed'],
+    it('still validates experimental plugin configuration', () => {
+      const registry = new PluginRegistry();
+      const plugin = makePlugin({ experimental: true, trustLevel: 'experimental' });
+      plugin.validateConfig = () => ({ ok: false, error: { message: 'Bad config' } });
+      expect(registry.register(plugin)).toEqual({
+        ok: false,
+        error: { type: 'validation_failed', message: 'Bad config' },
       });
-      const allowed = registry.register(
-        makePlugin({
-          id: 'nexus:allowed',
-          experimental: true,
-          trustLevel: 'experimental',
-        })
-      );
-      expect(allowed.ok).toBe(true);
-
-      const denied = registry.register(
-        makePlugin({
-          id: 'nexus:denied',
-          experimental: true,
-          trustLevel: 'experimental',
-        })
-      );
-      expect(denied.ok).toBe(false);
-    });
-
-    it('still accepts the deprecated options and still denies when they do not open the gate (#5097)', () => {
-      // Deprecated, not removed: the fields are public API, so passing them
-      // must keep compiling and the denial behaviour must be unchanged.
-      const registry = new PluginRegistry({ experimentalEnabled: false, experimentalAllow: [] });
-      const denied = registry.register(
-        makePlugin({ id: 'nexus:experimental', trustLevel: 'experimental', experimental: true })
-      );
-      expect(denied.ok).toBe(false);
-      if (!denied.ok) {
-        expect(denied.error).toEqual({
-          type: 'missing_capability',
-          capability: 'experimental-plugins',
-        });
-      }
-      // A non-experimental plugin is unaffected by the deprecated options.
-      expect(registry.register(makePlugin({ id: 'nexus:plain' })).ok).toBe(true);
+      expect(registry.listEnabled()).toEqual([]);
     });
   });
 
-  // ==========================================================================
+  // ============================================================================
   // List & Query Tests
   // ==========================================================================
 

@@ -1,250 +1,83 @@
-/**
- * Tests for the mechanism-A gateway env resolver (#4392 increment 3).
- *
- * `NEXUS_CUSTOM_API_BASE_URL` / `NEXUS_CUSTOM_API_KEY` are deprecated aliases
- * of `NEXUS_OPENAI_COMPAT_URL` / `NEXUS_OPENAI_COMPAT_KEY` for the single-model
- * `custom-openai` reader ONLY (panel vote-1789558437481-yup142p runoff,
- * option C). Resolution is `new ?? old` per variable, trimmed, empty = unset,
- * and the deprecation warn fires once per process, naming names — never a
- * value.
- */
+/** Tests for canonical gateway env names and removed aliases (#6291 B1). */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ILogger } from '../../core/index.js';
+import { describe, expect, it } from 'vitest';
 import {
-  _resetDeprecatedGatewayEnvWarning,
   hostnameOf,
   readDirectOpenAiSurface,
   readGatewayEnv,
   resolveGatewayEnv,
-  warnDeprecatedGatewayEnvOnce,
 } from './gateway-env.js';
 
-const NEW_URL = 'https://new.gateway.example/v1';
-const NEW_KEY = 'sk-TESTFAKE-new-key-NOT-REAL-0000';
+const GATEWAY_URL = 'https://gateway.example/v1';
+const GATEWAY_KEY = 'sk-TESTFAKE-gateway-key-NOT-REAL-0000';
 const OLD_URL = 'https://old.gateway.example/v1';
 const OLD_KEY = 'sk-TESTFAKE-old-key-NOT-REAL-0000';
 
-type MockLogger = ILogger & Record<'debug' | 'info' | 'warn' | 'error', ReturnType<typeof vi.fn>>;
+for (const reader of [resolveGatewayEnv, readGatewayEnv]) {
+  describe(`${reader.name} (#6291 B1)`, () => {
+    it('reads the canonical pair', () => {
+      expect(
+        reader({ NEXUS_OPENAI_COMPAT_URL: GATEWAY_URL, NEXUS_OPENAI_COMPAT_KEY: GATEWAY_KEY })
+      ).toEqual({ baseUrl: GATEWAY_URL, apiKey: GATEWAY_KEY });
+    });
 
-function makeLogger(): MockLogger {
-  return {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  } as unknown as MockLogger;
-}
-
-function allCalls(logger: MockLogger): string {
-  return JSON.stringify([
-    ...logger.debug.mock.calls,
-    ...logger.info.mock.calls,
-    ...logger.warn.mock.calls,
-    ...logger.error.mock.calls,
-  ]);
-}
-
-describe('resolveGatewayEnv (#4392 inc 3)', () => {
-  it('reads the new pair when only the new names are set', () => {
-    const env = { NEXUS_OPENAI_COMPAT_URL: NEW_URL, NEXUS_OPENAI_COMPAT_KEY: NEW_KEY };
-    const resolved = resolveGatewayEnv(env);
-    expect(resolved.baseUrl).toBe(NEW_URL);
-    expect(resolved.apiKey).toBe(NEW_KEY);
-    expect(resolved.deprecated).toEqual([]);
-  });
-
-  it('reads the old pair when only the deprecated names are set, reporting both as honoured', () => {
-    const env = { NEXUS_CUSTOM_API_BASE_URL: OLD_URL, NEXUS_CUSTOM_API_KEY: OLD_KEY };
-    const resolved = resolveGatewayEnv(env);
-    expect(resolved.baseUrl).toBe(OLD_URL);
-    expect(resolved.apiKey).toBe(OLD_KEY);
-    expect(resolved.deprecated).toEqual([
-      {
-        name: 'NEXUS_CUSTOM_API_BASE_URL',
-        replacement: 'NEXUS_OPENAI_COMPAT_URL',
-        shadowed: false,
-      },
-      { name: 'NEXUS_CUSTOM_API_KEY', replacement: 'NEXUS_OPENAI_COMPAT_KEY', shadowed: false },
-    ]);
-  });
-
-  it('prefers the new name when both spellings are set, reporting the old as shadowed', () => {
-    const env = {
-      NEXUS_OPENAI_COMPAT_URL: NEW_URL,
-      NEXUS_OPENAI_COMPAT_KEY: NEW_KEY,
-      NEXUS_CUSTOM_API_BASE_URL: OLD_URL,
-      NEXUS_CUSTOM_API_KEY: OLD_KEY,
-    };
-    const resolved = resolveGatewayEnv(env);
-    expect(resolved.baseUrl).toBe(NEW_URL);
-    expect(resolved.apiKey).toBe(NEW_KEY);
-    expect(resolved.deprecated).toEqual([
-      { name: 'NEXUS_CUSTOM_API_BASE_URL', replacement: 'NEXUS_OPENAI_COMPAT_URL', shadowed: true },
-      { name: 'NEXUS_CUSTOM_API_KEY', replacement: 'NEXUS_OPENAI_COMPAT_KEY', shadowed: true },
-    ]);
-  });
-
-  it('resolves each variable independently for a mixed pair (new URL + old key)', () => {
-    const env = { NEXUS_OPENAI_COMPAT_URL: NEW_URL, NEXUS_CUSTOM_API_KEY: OLD_KEY };
-    const resolved = resolveGatewayEnv(env);
-    expect(resolved.baseUrl).toBe(NEW_URL);
-    expect(resolved.apiKey).toBe(OLD_KEY);
-    expect(resolved.deprecated).toEqual([
-      { name: 'NEXUS_CUSTOM_API_KEY', replacement: 'NEXUS_OPENAI_COMPAT_KEY', shadowed: false },
-    ]);
-  });
-
-  it('resolves each variable independently for the other mixed pair (old URL + new key)', () => {
-    const env = { NEXUS_CUSTOM_API_BASE_URL: OLD_URL, NEXUS_OPENAI_COMPAT_KEY: NEW_KEY };
-    const resolved = resolveGatewayEnv(env);
-    expect(resolved.baseUrl).toBe(OLD_URL);
-    expect(resolved.apiKey).toBe(NEW_KEY);
-    expect(resolved.deprecated).toEqual([
-      {
-        name: 'NEXUS_CUSTOM_API_BASE_URL',
-        replacement: 'NEXUS_OPENAI_COMPAT_URL',
-        shadowed: false,
-      },
-    ]);
-  });
-
-  it('treats an empty or whitespace-only value as unset, for either spelling', () => {
-    const env = {
-      NEXUS_OPENAI_COMPAT_URL: '   ',
-      NEXUS_CUSTOM_API_BASE_URL: OLD_URL,
-      NEXUS_OPENAI_COMPAT_KEY: NEW_KEY,
-      NEXUS_CUSTOM_API_KEY: '',
-    };
-    const resolved = resolveGatewayEnv(env);
-    // An empty new name does not shadow the old one; an empty old name is not "set".
-    expect(resolved.baseUrl).toBe(OLD_URL);
-    expect(resolved.apiKey).toBe(NEW_KEY);
-    expect(resolved.deprecated).toEqual([
-      {
-        name: 'NEXUS_CUSTOM_API_BASE_URL',
-        replacement: 'NEXUS_OPENAI_COMPAT_URL',
-        shadowed: false,
-      },
-    ]);
-  });
-
-  it('trims values', () => {
-    const env = {
-      NEXUS_OPENAI_COMPAT_URL: `  ${NEW_URL}  `,
-      NEXUS_CUSTOM_API_KEY: ` ${OLD_KEY}\n`,
-    };
-    const resolved = resolveGatewayEnv(env);
-    expect(resolved.baseUrl).toBe(NEW_URL);
-    expect(resolved.apiKey).toBe(OLD_KEY);
-  });
-
-  it('reports nothing set when the environment carries none of the four names', () => {
-    const resolved = resolveGatewayEnv({});
-    expect(resolved).toEqual({ baseUrl: undefined, apiKey: undefined, deprecated: [] });
-  });
-});
-
-describe('deprecation warn (#4392 inc 3)', () => {
-  beforeEach(() => {
-    _resetDeprecatedGatewayEnvWarning();
-  });
-
-  afterEach(() => {
-    _resetDeprecatedGatewayEnvWarning();
-  });
-
-  it('warns exactly once per process across repeated reads', () => {
-    const logger = makeLogger();
-    const env = { NEXUS_CUSTOM_API_BASE_URL: OLD_URL, NEXUS_CUSTOM_API_KEY: OLD_KEY };
-    readGatewayEnv(env, logger);
-    readGatewayEnv(env, logger);
-    readGatewayEnv(env, logger);
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not warn when only the new names are set', () => {
-    const logger = makeLogger();
-    readGatewayEnv({ NEXUS_OPENAI_COMPAT_URL: NEW_URL, NEXUS_OPENAI_COMPAT_KEY: NEW_KEY }, logger);
-    expect(logger.warn).not.toHaveBeenCalled();
-  });
-
-  it('does not warn when nothing is set', () => {
-    const logger = makeLogger();
-    readGatewayEnv({}, logger);
-    expect(logger.warn).not.toHaveBeenCalled();
-  });
-
-  it('names the deprecated variable, its replacement, honoured-vs-shadowed and the gateway-path opt-in', () => {
-    const logger = makeLogger();
-    readGatewayEnv(
-      {
-        NEXUS_OPENAI_COMPAT_URL: NEW_URL,
+    it('ignores the removed aliases when only old names are set', () => {
+      const resolved = reader({
         NEXUS_CUSTOM_API_BASE_URL: OLD_URL,
         NEXUS_CUSTOM_API_KEY: OLD_KEY,
-      },
-      logger
+      });
+      expect(resolved.baseUrl).toBeUndefined();
+      expect(resolved.apiKey).toBeUndefined();
+    });
+
+    it('keeps canonical values when removed aliases are also set', () => {
+      expect(
+        reader({
+          NEXUS_OPENAI_COMPAT_URL: GATEWAY_URL,
+          NEXUS_OPENAI_COMPAT_KEY: GATEWAY_KEY,
+          NEXUS_CUSTOM_API_BASE_URL: OLD_URL,
+          NEXUS_CUSTOM_API_KEY: OLD_KEY,
+        })
+      ).toEqual({ baseUrl: GATEWAY_URL, apiKey: GATEWAY_KEY });
+    });
+
+    it.each(['', '   '])(
+      'does not fall back to removed aliases for blank canonical values (%j)',
+      (blank) => {
+        const resolved = reader({
+          NEXUS_OPENAI_COMPAT_URL: blank,
+          NEXUS_OPENAI_COMPAT_KEY: blank,
+          NEXUS_CUSTOM_API_BASE_URL: OLD_URL,
+          NEXUS_CUSTOM_API_KEY: OLD_KEY,
+        });
+        expect(resolved.baseUrl).toBeUndefined();
+        expect(resolved.apiKey).toBeUndefined();
+      }
     );
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    const line = String(logger.warn.mock.calls[0]?.[0]);
-    expect(line).toContain('NEXUS_CUSTOM_API_BASE_URL');
-    expect(line).toContain('NEXUS_OPENAI_COMPAT_URL');
-    expect(line).toContain('NEXUS_CUSTOM_API_KEY');
-    expect(line).toContain('NEXUS_OPENAI_COMPAT_KEY');
-    // The shadowed one says so; the honoured one says so.
-    expect(line).toMatch(/NEXUS_CUSTOM_API_BASE_URL[^;]*ignored/);
-    expect(line).toMatch(/NEXUS_CUSTOM_API_KEY[^;]*honoured/);
-    // The rename is what opts into mechanism B (option C).
-    expect(line).toContain('NEXUS_OPENAI_COMPAT_*');
-    expect(line).toContain('model discovery');
-    expect(line).toContain('in-process voter transport');
-    expect(line).toContain('api:<endpoint>');
-    expect(line).toContain('#6291');
-  });
 
-  it('never puts a value on the warn line — not the URL, not the key', () => {
-    const logger = makeLogger();
-    readGatewayEnv(
-      {
-        NEXUS_CUSTOM_API_BASE_URL: OLD_URL,
-        NEXUS_CUSTOM_API_KEY: OLD_KEY,
-        NEXUS_OPENAI_COMPAT_KEY: NEW_KEY,
-      },
-      logger
-    );
-    const flat = allCalls(logger);
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(flat).not.toContain(OLD_URL);
-    expect(flat).not.toContain(OLD_KEY);
-    expect(flat).not.toContain(NEW_KEY);
-    expect(flat).not.toContain('old.gateway.example');
-  });
+    it('reads each canonical variable independently', () => {
+      expect(
+        reader({ NEXUS_OPENAI_COMPAT_URL: GATEWAY_URL, NEXUS_CUSTOM_API_KEY: OLD_KEY })
+      ).toEqual({ baseUrl: GATEWAY_URL, apiKey: undefined });
+      expect(
+        reader({ NEXUS_CUSTOM_API_BASE_URL: OLD_URL, NEXUS_OPENAI_COMPAT_KEY: GATEWAY_KEY })
+      ).toEqual({ baseUrl: undefined, apiKey: GATEWAY_KEY });
+    });
 
-  it('warnDeprecatedGatewayEnvOnce shares the once-guard with readGatewayEnv', () => {
-    const logger = makeLogger();
-    const env = { NEXUS_CUSTOM_API_KEY: OLD_KEY };
-    warnDeprecatedGatewayEnvOnce(env, logger);
-    readGatewayEnv(env, logger);
-    warnDeprecatedGatewayEnvOnce(env, logger);
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-  });
+    it('trims canonical values', () => {
+      expect(
+        reader({
+          NEXUS_OPENAI_COMPAT_URL: `  ${GATEWAY_URL}  `,
+          NEXUS_OPENAI_COMPAT_KEY: ` ${GATEWAY_KEY}\n`,
+        })
+      ).toEqual({ baseUrl: GATEWAY_URL, apiKey: GATEWAY_KEY });
+    });
 
-  it('readGatewayEnv returns the resolved values alongside the deprecation list', () => {
-    const logger = makeLogger();
-    const env = { NEXUS_CUSTOM_API_BASE_URL: OLD_URL, NEXUS_OPENAI_COMPAT_KEY: NEW_KEY };
-    expect(readGatewayEnv(env, logger)).toEqual({
-      baseUrl: OLD_URL,
-      apiKey: NEW_KEY,
-      deprecated: [
-        {
-          name: 'NEXUS_CUSTOM_API_BASE_URL',
-          replacement: 'NEXUS_OPENAI_COMPAT_URL',
-          shadowed: false,
-        },
-      ],
+    it('reports an unset pair when neither canonical name is set', () => {
+      expect(reader({})).toEqual({ baseUrl: undefined, apiKey: undefined });
     });
   });
-});
+}
 
 describe('hostnameOf (#4392 inc 3 — no-logging parity)', () => {
   it('returns the host only, dropping userinfo, path and port', () => {

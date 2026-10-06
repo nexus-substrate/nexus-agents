@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- compatibility tests for CLI-slot readers retained until 10.0 (#6291) */
 /**
  * nexus-agents/cli-adapters - Circuit Breaker Tests
  *
@@ -611,7 +610,7 @@ describe('CircuitBreakerRegistry', () => {
         await codexBreaker.execute(() => Promise.reject(new Error('error')));
       }
 
-      const healthy = registry.getHealthyClis();
+      const healthy = registry.getHealthyArms();
       expect(healthy).toContain('claude');
       expect(healthy).toContain('gemini');
       expect(healthy).not.toContain('codex');
@@ -625,7 +624,7 @@ describe('CircuitBreakerRegistry', () => {
         await geminiBreaker.execute(() => Promise.reject(new Error('error')));
       }
 
-      const unhealthy = registry.getUnhealthyClis();
+      const unhealthy = registry.getUnhealthyArms();
       expect(unhealthy).toContain('gemini');
       expect(unhealthy).not.toContain('claude');
     });
@@ -670,7 +669,7 @@ describe('CircuitBreakerRegistry', () => {
 
       await claudeBreaker.execute(() => Promise.reject(new Error('error')));
 
-      const snapshots = registry.getAllSnapshots();
+      const snapshots = registry.getAllArmSnapshots();
 
       expect(snapshots.size).toBe(2);
       expect(snapshots.get('claude')?.failureCount).toBe(1);
@@ -872,12 +871,9 @@ describe('categorizeError', () => {
   });
 });
 
-// #4392 increment 1: the breaker and its registry were typed around `CliName`,
-// so an `api:*` arm could get no health tracking at all. The registry is now
-// keyed by `ObservedArmId` (`RoutingArmId | EndpointArmId`) underneath; the
-// `CliName`-typed readers keep their types and become FILTERED VIEWS over the
-// arm-typed siblings (#6290 panel: additive now, the union into `RoutingArmId`
-// and the removals are #6291).
+// #4392 added distinct health tracking for API arms. In 10.0 (#6291 B2),
+// gateway ids are routing arms, the CLI-only readers are removed, and events
+// and errors retain the guarded arm identity in both armId and cliName.
 describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
   let registry: CircuitBreakerRegistry;
 
@@ -904,14 +900,14 @@ describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
     expect(registry.getBreaker('claude')).toBe(registry.getArmBreaker('claude'));
   });
 
-  it('carries armId AND the collapsed display slot on state-change events', async () => {
+  it('reports the gateway identity on state-change events', async () => {
     const events: CircuitStateChangeEvent[] = [];
     registry.addGlobalStateChangeListener((e) => events.push(e));
     const breaker = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
 
     await breaker.execute(() => Promise.reject(new Error('boom')));
 
-    expect(events.map((e) => [e.armId, e.cliName])).toEqual([['api:gw-prod', 'opencode']]);
+    expect(events.map((e) => [e.armId, e.cliName])).toEqual([['api:gw-prod', 'api:gw-prod']]);
     expect(registry.isArmOpen('api:gw-prod')).toBe(true);
     expect(registry.getAllArmSnapshots().has('api:gw-prod')).toBe(true);
   });
@@ -926,7 +922,7 @@ describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
     expect(events.map((e) => [e.armId, e.cliName])).toEqual([['gemini', 'gemini']]);
   });
 
-  it('names the arm AND its display slot on the CircuitError it raises', async () => {
+  it('reports the gateway identity on CircuitError', async () => {
     const breaker = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
     await breaker.execute(() => Promise.reject(new Error('boom')));
 
@@ -936,7 +932,7 @@ describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
     if (!blocked.ok) {
       expect(blocked.error).toBeInstanceOf(CircuitError);
       expect(blocked.error.armId).toBe('api:gw-prod');
-      expect(blocked.error.cliName).toBe('opencode');
+      expect(blocked.error.cliName).toBe('api:gw-prod');
     }
   });
 
@@ -949,39 +945,40 @@ describe('CircuitBreakerRegistry — api:* arms (#4392)', () => {
     expect(registry.getBreaker('opencode').getState()).toBe('closed');
   });
 
-  describe('CliName-typed readers are filtered views over the arm-typed ones', () => {
-    it('a registered api arm is absent from getHealthyClis() and present in getHealthyArms()', () => {
+  it('removes the CLI-only readers in 10.0', () => {
+    for (const name of ['getHealthyClis', 'getUnhealthyClis', 'getAllSnapshots']) {
+      expect(name in registry).toBe(false);
+    }
+  });
+
+  describe('arm readers include gateways (#6291 B2)', () => {
+    it('a healthy gateway is returned alongside CLI arms', () => {
       registry.getBreaker('claude');
       registry.getArmBreaker('api:gw-prod');
 
       expect(registry.getHealthyArms()).toEqual(['claude', 'api:gw-prod']);
-      expect(registry.getHealthyClis()).toEqual(['claude']);
     });
 
-    it('an open api arm is absent from getUnhealthyClis() and present in getUnhealthyArms()', async () => {
+    it('an open gateway is returned alongside unhealthy CLI arms', async () => {
       const api = registry.getArmBreaker('api:gw-prod', { failureThreshold: 1 });
       const cli = registry.getBreaker('codex', { failureThreshold: 1 });
       await api.execute(() => Promise.reject(new Error('boom')));
       await cli.execute(() => Promise.reject(new Error('boom')));
 
       expect(registry.getUnhealthyArms()).toEqual(['api:gw-prod', 'codex']);
-      expect(registry.getUnhealthyClis()).toEqual(['codex']);
     });
 
-    it('getAllSnapshots() omits the api arm that getAllArmSnapshots() carries', () => {
+    it('snapshots include the gateway state', () => {
       registry.getBreaker('claude');
       registry.getArmBreaker('api:gw-prod');
 
       expect([...registry.getAllArmSnapshots().keys()]).toEqual(['claude', 'api:gw-prod']);
-      expect([...registry.getAllSnapshots().keys()]).toEqual(['claude']);
+      expect(registry.getAllArmSnapshots().get('api:gw-prod')?.state).toBe('closed');
     });
 
-    it('empty registry: both views are empty (named empty case)', () => {
+    it('empty registry: all readers are empty (named empty case)', () => {
       expect(registry.getHealthyArms()).toEqual([]);
-      expect(registry.getHealthyClis()).toEqual([]);
       expect(registry.getUnhealthyArms()).toEqual([]);
-      expect(registry.getUnhealthyClis()).toEqual([]);
-      expect(registry.getAllSnapshots().size).toBe(0);
       expect(registry.getAllArmSnapshots().size).toBe(0);
     });
 

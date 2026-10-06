@@ -103,16 +103,6 @@ export {
   getPipelinePluginRegistry,
   resetPipelinePluginRegistry,
   type CorePluginRegistrationResult,
-  // EventBus bridge (Issue #922, Phase C)
-  /**
-   * @deprecated No replacement factory exists; subscribe via IEventBus.subscribe
-   * to the pipeline EventBus directly (#5120); removed in 10.0, #6291.
-   */
-  createEventBusBridge,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- retain the public export until 10.0 (#6291)
-  type EventBusBridgeOptions,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- retain the public export until 10.0 (#6291)
-  type PipelineBridgeResult,
   // Policy evaluator (Issue #923, Phase D)
   evaluatePipelinePolicy, // distinct from mcp.ts's evaluatePolicy (source fn now explicitly named, #3194)
   getPolicyMode,

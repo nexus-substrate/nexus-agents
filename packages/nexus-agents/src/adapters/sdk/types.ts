@@ -29,8 +29,7 @@ export interface SdkAdapterConfig {
   /**
    * Base URL for OpenAI-compatible gateways. Required when
    * `providerId === 'custom-openai'`, ignored otherwise. Falls back to
-   * the `NEXUS_OPENAI_COMPAT_URL` environment variable, or its deprecated
-   * alias `NEXUS_CUSTOM_API_BASE_URL` (#4392 increment 3).
+   * the `NEXUS_OPENAI_COMPAT_URL` environment variable.
    */
   baseUrl?: string;
   /** Request timeout in milliseconds */
@@ -39,63 +38,22 @@ export interface SdkAdapterConfig {
   maxRetries?: number;
 }
 
-/**
- * Maps provider IDs to their environment variable names.
- *
- * The three vendor entries are current. The `custom-openai` entry is kept at
- * its old value so existing readers of this table keep working, but the name
- * it holds is deprecated — see the entry's own note.
- */
+/** Maps provider IDs to their environment variable names. */
 export const PROVIDER_ENV_KEYS: Record<SdkProviderId, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   google: 'GOOGLE_AI_API_KEY',
-  /**
-   * @deprecated `NEXUS_CUSTOM_API_KEY` is an alias of `NEXUS_OPENAI_COMPAT_KEY`
-   * since #4392 increment 3, read only when the replacement is unset, and
-   * dropped in the next major (#6291). The `custom-openai` key is resolved by
-   * `adapters/sdk/gateway-env.ts`, which honours both spellings; do not read
-   * this entry directly.
-   */
-  'custom-openai': 'NEXUS_CUSTOM_API_KEY',
+  'custom-openai': 'NEXUS_OPENAI_COMPAT_KEY',
 };
 
 /**
- * Environment variable name for the custom gateway base URL.
- *
- * @deprecated Alias of {@link OPENAI_COMPAT_URL_ENV} since #4392 increment 3;
- * read only when the replacement is unset, dropped in the next major (#6291).
- * Resolve through `adapters/sdk/gateway-env.ts` rather than reading it.
- */
-export const CUSTOM_API_BASE_URL_ENV = 'NEXUS_CUSTOM_API_BASE_URL';
-
-/**
- * The OpenAI-compatible gateway base URL (#2468). One of the two names that
- * BOTH gateway mechanisms read: the single-model `custom-openai` SDK path
- * (via `gateway-env.ts`, where the deprecated alias also applies) and the
- * discovery/voter/`api:<endpoint>` path (`openai-compat-adapter.ts`, which
- * is reached through this spelling only — #4392 increment 3, option C).
+ * The OpenAI-compatible gateway base URL, read by both the single-model
+ * `custom-openai` SDK path and the discovery/voter/`api:<endpoint>` path.
  */
 export const OPENAI_COMPAT_URL_ENV = 'NEXUS_OPENAI_COMPAT_URL';
 
 /** The gateway API key paired with {@link OPENAI_COMPAT_URL_ENV}. */
 export const OPENAI_COMPAT_KEY_ENV = 'NEXUS_OPENAI_COMPAT_KEY';
-
-/**
- * The deprecated gateway env aliases (#4392 increment 3), each with the name
- * that replaced it. Each is read by the single-model `custom-openai` path only
- * when its replacement is unset; neither reaches the discovery/voter gateway
- * path. Both are dropped in the next major (#6291). Order is the report order.
- */
-export const DEPRECATED_GATEWAY_ENV_ALIASES: readonly {
-  readonly deprecated: string;
-  readonly replacement: string;
-}[] = [
-  // Spelled out (not via the @deprecated constants above) so no production
-  // code reads a deprecated symbol; the two literals ARE the deprecation.
-  { deprecated: 'NEXUS_CUSTOM_API_BASE_URL', replacement: OPENAI_COMPAT_URL_ENV },
-  { deprecated: 'NEXUS_CUSTOM_API_KEY', replacement: OPENAI_COMPAT_KEY_ENV },
-];
 
 /**
  * Escape hatch: set to `1`/`true` to allow the custom gateway base URL to

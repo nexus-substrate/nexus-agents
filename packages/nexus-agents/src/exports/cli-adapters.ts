@@ -72,20 +72,6 @@ export {
   type CompositeRouterConfig,
   type CompositeRoutingDecision,
   type CompositeRouterStats,
-  // Routing Memory types (moved from core/types - Issue #286)
-  RoutingMemoryError,
-  type IRoutingMemory,
-  type TaskProfileSummary,
-  type RoutingDecisionRecord,
-  type TaskOutcomeRecord,
-  type PreferenceSignal,
-  type PreferenceRecord,
-  type PreferenceFilter,
-  type ExperienceStep,
-  type ExperienceRecord,
-  type ActionRecord,
-  type RoutingMemoryExport,
-  type RoutingMemoryStats,
   // CLI Timeout Profiles (Issue #357, delegates to config/timeouts.ts)
   getTimeoutForTask,
   getTimeoutForTaskAuto,
@@ -120,3 +106,5 @@ export {
   type PreferenceModelStats,
   type IPreferenceDataStore,
 } from '../cli-adapters/index.js';
+
+export type { IRoutingMemory, RoutingMemoryStats } from '../context/routing-memory.js';
