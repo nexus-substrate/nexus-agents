@@ -1,5 +1,13 @@
 # nexus-agents
 
+## 10.1.1
+
+### Patch Changes
+
+- [#7167](https://github.com/nexus-substrate/nexus-agents/pull/7167) [`6453e52`](https://github.com/nexus-substrate/nexus-agents/commit/6453e52e1f63b967381d3fe35c8e72c6eadc84d2) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Fix doctor's install-freshness check to query the running Node interpreter's global prefix instead of whichever npm is on PATH, and report the prefix checked.
+
+- [#7168](https://github.com/nexus-substrate/nexus-agents/pull/7168) [`0e4d719`](https://github.com/nexus-substrate/nexus-agents/commit/0e4d719a636cde7f8d81e1e7d395ebc886d2983e) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Label successful learning-metrics reconstruction with its empirical outcome count, while preserving unmeasured labels for no empirical replay and failed reconstruction ([#7160](https://github.com/nexus-substrate/nexus-agents/issues/7160)).
+
 ## 10.1.0
 
 ### Minor Changes
