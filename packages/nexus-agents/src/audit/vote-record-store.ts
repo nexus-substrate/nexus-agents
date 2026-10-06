@@ -191,6 +191,16 @@ function servedModelField(
   return {};
 }
 
+/** Supplementary selection evidence, absent on historical yes/no seats. */
+function optionEvidence(v: AgentVoteResult): Pick<VoterSummary, 'selectedOption' | 'optionReask'> {
+  return {
+    ...(v.vote.decision === 'approve' && v.selectedOption !== undefined
+      ? { selectedOption: v.selectedOption }
+      : {}),
+    ...(v.optionReask !== undefined ? { optionReask: { resolved: v.optionReask.resolved } } : {}),
+  };
+}
+
 /** Build the per-voter summary from the (real) agent votes, skipping errors. */
 function toVoterSummaries(
   votes: readonly AgentVoteResult[],
@@ -231,6 +241,7 @@ function toVoterSummaries(
       // #6967: the hash projection (`VOTER_SUMMARY_KEYS`) appends it last, so
       // its position here does not change any hash.
       ...servedModelField(v, logger),
+      ...optionEvidence(v),
     });
   }
   return summaries;
@@ -405,8 +416,9 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.13 carries a voter `reasoningDigest` (#6263) — every entry with stored
- * reasoning does, so every record with a responding voter is 1.13 and the
+ * 1.14 carries per-seat selections and re-ask outcomes (#4495), preserving
+ * the digest fold. 1.13 carries a voter `reasoningDigest` (#6263) — every entry
+ * with stored reasoning does, so other records with responding voters are 1.13 and the
  * tiers below are reachable only through a panel with no voter entry — 1.12
  * a voter `retriedFrom` (#6246), 1.11 a record-level
  * `errorPolicy` (#6211), 1.10 a record-level `ratifiesPr` PR binding (#5130),
@@ -424,7 +436,8 @@ function recordVersion(
   recordLevel: Pick<BuildVoteRecordInput, 'ratifiesPr' | 'errorPolicy'>
 ): Exclude<VoteRecord['version'], '1.1'> {
   const voterTier = voterTierOf(voters);
-  // 1.13 first (#6263): the digest changes what the hash COVERS for the
+  if (voterTier === '1.14') return '1.14';
+  // 1.13 next (#6263): the digest changes what the hash COVERS for the
   // reasoning keys, so a reader must know from the version alone which fold
   // rule applies; it outranks every tier below, record-level ones included.
   if (voterTier === '1.13') return '1.13';
@@ -454,7 +467,9 @@ function recordVersion(
  */
 function voterTierOf(
   voters: readonly VoterSummary[]
-): '1.6' | '1.7' | '1.8' | '1.9' | '1.12' | '1.13' | undefined {
+): '1.6' | '1.7' | '1.8' | '1.9' | '1.12' | '1.13' | '1.14' | undefined {
+  if (voters.some((v) => v.selectedOption !== undefined || v.optionReask !== undefined))
+    return '1.14';
   if (voters.some((v) => v.reasoningDigest !== undefined)) return '1.13';
   if (voters.some((v) => v.retriedFrom !== undefined)) return '1.12';
   // 1.9, on the same tier logic as 1.8: either key alone lifts the tier, so

@@ -184,7 +184,15 @@ const VoterAttemptEventSchema = z
     adapter: z.string().min(1).max(120),
     model: z.string().min(1).max(120).optional(),
     attemptKind: z
-      .enum(['initial', 'parse_retry', 'error_retry', 'role_retry', 'cli_fallback', 'unknown'])
+      .enum([
+        'initial',
+        'parse_retry',
+        'error_retry',
+        'role_retry',
+        'cli_fallback',
+        'option_reask',
+        'unknown',
+      ])
       .or(z.string().transform(() => 'unknown' as const)),
     outcome: z
       .enum(['parsed', 'parse_failed', 'superseded', 'final', 'unknown'])

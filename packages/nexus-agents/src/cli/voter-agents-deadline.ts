@@ -13,7 +13,12 @@
  * stays deterministic.
  */
 import type { IModelAdapter, ILogger } from '../core/index.js';
-import type { AgentVoteResult, SeatAttemptTiming, VoterRole } from './vote-types.js';
+import type {
+  AgentVoteResult,
+  SeatAttemptTiming,
+  VoterRole,
+  VoteExecutionOverrides,
+} from './vote-types.js';
 import { createErrorVoteResult, delay } from './voter-execution.js';
 import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
 import { carryAttemptUsage } from './voter-attempt-usage.js';
@@ -25,6 +30,7 @@ import {
 } from './voter-attempt-events.js';
 import { observeLateVoter } from './voter-late-settlement.js';
 import { getMcpSafeDeadlineMs, VOTE_TIMEOUTS } from '../config/timeouts.js';
+import { reaskUnresolvedOption } from './voter-option-reask.js';
 
 /** Worst-case legitimate vote time plus stagger and buffer (#1871). */
 export function computeOverallConsensusDeadlineMs(
@@ -62,7 +68,10 @@ export function resolvePanelDeadline(
   return { overallDeadlineMs, deadlineAtMs: Date.now() + overallDeadlineMs };
 }
 
-export interface VoteOptions {
+export interface VoteOptions extends Pick<
+  VoteExecutionOverrides,
+  'declaredOptions' | 'project' | 'workspace' | 'workspaceSha'
+> {
   readonly timeoutMs: number;
   readonly maxRetries: number;
   readonly allowSimulation: boolean;
@@ -316,7 +325,38 @@ function voteBeforeDeadline(
       }
     }
   );
-  return result.then((vote) => withVoterAttemptTelemetry(vote, () => collector.snapshot()));
+  return result.then((vote) =>
+    withVoterAttemptTelemetry(vote, () => vote.attemptTelemetry ?? collector.snapshot())
+  );
+}
+
+type ReaskVotesInput = Pick<
+  LaunchVotesInput,
+  'proposal' | 'roleAdapters' | 'fallbackAdapter' | 'logger' | 'voteOptions' | 'signal'
+>;
+
+/** The received verdict survives a supplementary selection timeout. */
+function finishOptionSelection(
+  vote: AgentVoteResult,
+  input: ReaskVotesInput,
+  context: { adapter: IModelAdapter; deadlineAtMs: number }
+): Promise<AgentVoteResult> {
+  const settings = input.voteOptions;
+  return reaskUnresolvedOption(vote, {
+    adapter: context.adapter,
+    proposal: input.proposal,
+    logger: input.logger,
+    timeoutMs: Math.min(settings.timeoutMs, Math.max(1, context.deadlineAtMs - Date.now())),
+    options: settings.declaredOptions,
+    project: settings.project,
+    workspace: settings.workspace,
+    workspaceSha: settings.workspaceSha,
+    signal: input.signal,
+    withinRoleRetry:
+      vote.retried === true ||
+      settings.withinRoleRetry === true ||
+      settings.attemptKind === 'role_retry',
+  });
 }
 
 async function launchRoleVote(
@@ -364,9 +404,11 @@ async function launchRoleVote(
   return stamp(preserveVoterAttemptTelemetry(recovered, { ...recovered, fallback }));
 }
 
-function createTimedVoteLauncher(input: LaunchVotesInput, deadlineAtMs: number): VoteOnAdapter {
-  const serialize = createKeyedSerializer();
-
+function createTimedVoteLauncher(
+  input: LaunchVotesInput,
+  deadlineAtMs: number,
+  serialize: ReturnType<typeof createKeyedSerializer>
+): VoteOnAdapter {
   // One serialized, deadline-bounded vote attempt on a specific adapter.
   // #6103: the attempt's timing rides on the result — queued (enqueue → start)
   // and ran (start → settle) — so a slow panel can be attributed to the lane
@@ -417,13 +459,34 @@ function createTimedVoteLauncher(input: LaunchVotesInput, deadlineAtMs: number):
   return voteOnAdapter;
 }
 
+/** Re-ask the final seat set once, after first-pass and retry verdicts settle. */
+export async function reaskUnresolvedOptions(
+  votes: readonly AgentVoteResult[],
+  input: ReaskVotesInput,
+  deadlineAtMs: number
+): Promise<readonly AgentVoteResult[]> {
+  const serialize = createKeyedSerializer();
+  return Promise.all(
+    votes.map((vote) => {
+      const adapter =
+        vote.timing?.attempts.at(-1)?.fallback === true
+          ? input.fallbackAdapter
+          : (input.roleAdapters.get(vote.role) ?? input.fallbackAdapter);
+      return serialize(adapterCliKey(adapter), () =>
+        finishOptionSelection(vote, input, { adapter, deadlineAtMs })
+      );
+    })
+  );
+}
+
 export async function launchVotesWithOverallDeadline(
   input: LaunchVotesInput
 ): Promise<readonly AgentVoteResult[]> {
   const { roles, logger, overallDeadlineMs } = input;
 
   const deadlineAtMs = input.deadlineAtMs ?? Date.now() + overallDeadlineMs;
-  const voteOnAdapter = createTimedVoteLauncher(input, deadlineAtMs);
+  const serialize = createKeyedSerializer();
+  const voteOnAdapter = createTimedVoteLauncher(input, deadlineAtMs, serialize);
 
   const wrapped = roles.map((role, index) =>
     launchRoleVote(role, index, input, voteOnAdapter, deadlineAtMs).then((result) => {
