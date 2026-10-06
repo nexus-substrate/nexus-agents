@@ -253,7 +253,7 @@ describe('runLearningMetrics', () => {
     // 'unmeasured' joined the union in #5267. This list omitted it, so the
     // assertion would have failed on the honest value while passing on the
     // fabricated 'exploiting' — a whitelist that excluded the truth.
-    expect(['exploring', 'exploiting', 'balanced', 'unmeasured']).toContain(
+    expect(['exploring', 'exploiting', 'balanced', 'reconstructed', 'unmeasured']).toContain(
       result.summary.learningStatus
     );
   });

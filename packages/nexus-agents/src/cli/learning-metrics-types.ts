@@ -109,8 +109,9 @@ export interface LearningMetricsResult {
     readonly overallSuccessRate: number;
     readonly avgReward: number;
     /**
-     * Bandit learning phase, or `'unmeasured'` when nothing was recorded
-     * (#5267).
+     * Live bandit learning phase, `'reconstructed'` after successful empirical
+     * replay, or `'unmeasured'` without evidence or when reconstruction failed.
+     * Reconstructed learning does not establish a live exploration phase.
      *
      * This was a three-value union, and the empty case fell into
      * `'exploiting'` because the fallback `explorationRatio` of `0` is `< 0.3`
@@ -118,6 +119,7 @@ export interface LearningMetricsResult {
      * had never been consulted. `'unmeasured'` is not a phase; it means no
      * phase could be determined.
      */
-    readonly learningStatus: 'exploring' | 'exploiting' | 'balanced' | 'unmeasured';
+    readonly learningStatus:
+      'exploring' | 'exploiting' | 'balanced' | 'reconstructed' | 'unmeasured';
   };
 }
