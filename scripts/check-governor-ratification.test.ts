@@ -27,6 +27,7 @@ const GOVERNOR_PATTERNS = governorPathsFromCodeowners(
   [
     GOVERNOR_SECTION_START_DIRECTIVE,
     '/packages/nexus-agents/src/audit/ @owner',
+    '/packages/nexus-agents/src/security/audit-bridge.ts @owner',
     '/CODEOWNERS @owner',
     GOVERNOR_SECTION_END_DIRECTIVE,
   ].join('\n')
@@ -40,6 +41,7 @@ describe('governorOwnersFromCodeowners', () => {
     GOVERNOR_SECTION_START_DIRECTIVE,
     "# Governor's own core — never auto-merged",
     '/packages/nexus-agents/src/audit/ @williamzujkowski',
+    '/packages/nexus-agents/src/security/audit-bridge.ts @williamzujkowski',
     '/CODEOWNERS @williamzujkowski @second-owner',
     GOVERNOR_SECTION_END_DIRECTIVE,
   ].join('\n');
@@ -179,6 +181,7 @@ describe('governor section is bounded (#4683)', () => {
     GOVERNOR_SECTION_START_DIRECTIVE,
     "# Governor's own core — the governance-of-the-governor paths.",
     '/packages/nexus-agents/src/audit/ @owner',
+    '/packages/nexus-agents/src/security/audit-bridge.ts @owner',
     '/CODEOWNERS @owner',
     GOVERNOR_SECTION_END_DIRECTIVE,
     '',
@@ -195,6 +198,7 @@ describe('governor section is bounded (#4683)', () => {
   it('does not absorb a later section into the governor paths', () => {
     const paths = governorPathsFromCodeowners(WITH_TRAILING_SECTION);
     expect(paths).toContain('/packages/nexus-agents/src/audit/');
+    expect(paths).toContain('/packages/nexus-agents/src/security/audit-bridge.ts');
     expect(paths).not.toContain('/docs/');
   });
 
@@ -203,6 +207,7 @@ describe('governor section is bounded (#4683)', () => {
       GOVERNOR_SECTION_START_DIRECTIVE,
       "# Governor's own core — the governance-of-the-governor paths.",
       '/packages/nexus-agents/src/audit/ @owner',
+      '/packages/nexus-agents/src/security/audit-bridge.ts @owner',
     ].join('\n');
     // Before #6048 this returned [] and relied on `evaluateRatification` to
     // turn the empty owner set into `indeterminate`. The parser now refuses
@@ -219,6 +224,7 @@ describe('governor section is bounded (#4683)', () => {
       GOVERNOR_SECTION_START_DIRECTIVE,
       "# Governor's own core — the governance-of-the-governor paths.",
       '/packages/nexus-agents/src/audit/ @owner',
+      '/packages/nexus-agents/src/security/audit-bridge.ts @owner',
     ].join('\n');
     // #4683 ran an unterminated section to end-of-file (MORE paths). #6048
     // trades that for a loud refusal on BOTH sides, so the two gates cannot

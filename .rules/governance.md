@@ -62,9 +62,10 @@ above; denominator reduction cannot clear that bar.
 
 **Governor-path ratification votes must pass `errorPolicy: 'absolute_quorum'`**, so
 a degraded panel cannot ratify a change to the governance substrate — `.rules/`,
-`AGENTS.md`/`CLAUDE.md`, `src/audit/`, `src/governance/`, the drift-injection
-machinery, voter configuration and `CODEOWNERS`. Decided by panel on #5344,
-option (c), 5 of 6.
+`AGENTS.md`/`CLAUDE.md`, `src/audit/`, `src/security/audit-bridge.ts` (it decides
+what reaches the hash chain, #5125 owner decision), `src/governance/`, the
+drift-injection machinery, voter configuration and `CODEOWNERS`. Decided by panel
+on #5344, option (c), 5 of 6.
 
 **When to choose `higher_order`:** for its contrarian-escalation behaviour, never
 for a stricter verdict. It does not aggregate by correlation weight either — the

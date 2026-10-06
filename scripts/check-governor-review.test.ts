@@ -84,6 +84,8 @@ const CODEOWNERS_SAMPLE = [
   "# Governor's own core — the governance-of-the-governor paths.",
   '# Audit hash chain',
   '/packages/nexus-agents/src/audit/ @owner',
+  '# Audit bridge decides what reaches the hash chain (#5125)',
+  '/packages/nexus-agents/src/security/audit-bridge.ts @owner',
   '# Governance source',
   '/packages/nexus-agents/src/governance/ @owner',
   '/scripts/inject-governance.ts @owner',
@@ -184,7 +186,7 @@ describe('governor section start directive (#5576, #6048)', () => {
       "CODEOWNERS: governor section start directive '# @governor-section-start' not found — " +
         'the governor path set cannot be derived'
     );
-    expect(governorSectionLines(CODEOWNERS_SAMPLE)).toHaveLength(6);
+    expect(governorSectionLines(CODEOWNERS_SAMPLE)).toHaveLength(7);
   });
 
   it('fails the review gate when no governor pattern could be parsed', () => {
@@ -209,6 +211,7 @@ describe('governorPathsFromCodeowners — single-source path derivation', () => 
   it('extracts ONLY the governance-of-the-governor section patterns', () => {
     expect(GOVERNOR_PATTERNS).toEqual([
       '/packages/nexus-agents/src/audit/',
+      '/packages/nexus-agents/src/security/audit-bridge.ts',
       '/packages/nexus-agents/src/governance/',
       '/scripts/inject-governance.ts',
       '/governance/',
@@ -939,6 +942,8 @@ describe('the governor path set matches what the docs claim (#5997)', () => {
     ['packages/nexus-agents/src/consensus/decision/strategy.ts', true],
     ['packages/nexus-agents/src/consensus/decision/quorum.ts', true], // #6180
     ['packages/nexus-agents/src/cli/voter-roles.ts', true],
+    ['packages/nexus-agents/src/security/audit-bridge.ts', true],
+    ['packages/nexus-agents/src/security/audit-trail.ts', false],
     ['packages/nexus-agents/src/consensus/engine.ts', false],
     ['packages/nexus-agents/src/consensus/types-core.ts', false],
     ['packages/nexus-agents/src/cli/vote-types.ts', false],
@@ -1623,12 +1628,14 @@ describe('the governor section is bounded by dedicated directives, not the human
    * and signature-evidence module, plus the #4797 audit-exception warrant ledger
    * (the file whose entries mute advisories the required Security Audit job
    * would otherwise block — #4794 stage 2), plus the seven #6366 ledger-producer
-   * scripts and tests. The migration must not change what
+   * scripts and tests, plus the #5125 owner-decided audit bridge (it decides
+   * what reaches the hash chain). The migration must not change what
    * is governed: this is the identical-set proof, pinned as data rather than
    * recomputed, so an addition to the section is a reviewed act here too.
    */
   const PINNED_SET = [
     '/packages/nexus-agents/src/audit/',
+    '/packages/nexus-agents/src/security/audit-bridge.ts',
     '/packages/nexus-agents/src/governance/',
     '/scripts/inject-governance.ts',
     '/governance/',
@@ -1692,7 +1699,7 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(governorPathsFromCodeowners(REAL_CODEOWNERS)).toEqual(PINNED_SET);
   });
 
-  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (43 entries)', () => {
+  it('the gate scripts, shadow locations, #6343 manifest and #6366 ledger producers are governor-owned (44 entries)', () => {
     const set = governorPathsFromCodeowners(REAL_CODEOWNERS);
     expect(set).toContain('/scripts/check-codeowners-errors.ts');
     // #4802 part 1: the detector that decides whether the audit gate and the
@@ -1722,7 +1729,9 @@ describe('the governor section is bounded by dedicated directives, not the human
     expect(set).toContain('/scripts/check-required-jobs.ts');
     expect(set).toContain('/scripts/check-required-jobs.test.ts');
     expect(set).toContain('/scripts/aggregator-shape.ts');
-    expect(set).toHaveLength(43);
+    // #5125 owner decision: this bridge selects what enters the hash chain.
+    expect(set).toContain('/packages/nexus-agents/src/security/audit-bridge.ts');
+    expect(set).toHaveLength(44);
   });
 
   it('a stray copy of the old heading text elsewhere does NOT open a section (#6032)', () => {

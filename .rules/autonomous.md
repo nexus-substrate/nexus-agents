@@ -91,7 +91,7 @@ Genuinely pause and surface to the user ONLY when:
 - **Cost-gated work** that needs prior approval not already granted (e.g. running a $100+ benchmark sweep)
 - **Destructive operations** where the blast radius exceeds what the user authorized (force-push to main, delete data, revoke access)
 - **Secret or credential handling** that would expose a value, or any point where untrusted input, repository write, and secret access converge (Rule of Two)
-- **Governance self-modification** — `.rules/`, `AGENTS.md`/`CLAUDE.md`, `src/audit/`, `src/governance/`, drift machinery, voter config, `CODEOWNERS`. Author the change and open the PR; do not land it. The governor must not be able to weaken its own governor.
+- **Governance self-modification** — `.rules/`, `AGENTS.md`/`CLAUDE.md`, `src/audit/`, `src/security/audit-bridge.ts` (it decides what reaches the hash chain, #5125 owner decision), `src/governance/`, drift machinery, voter config, `CODEOWNERS`. Author the change and open the PR; do not land it. The governor must not be able to weaken its own governor.
 - **Publishing or spending** — an npm publish, a public release, or anything that moves money.
 
 For everything else: keep working, summarize progress at end of turn, begin the next item.
