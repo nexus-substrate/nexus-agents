@@ -153,13 +153,6 @@ const NexusEnvSchema = z.object({
   // Scratch root for short-lived working files (#4412, getNexusTmpDir). Unset
   // resolves to `<dataDir>/tmp`; set it to relocate scratch off the repo.
   NEXUS_TMPDIR: z.string().optional(),
-  // ClawGuard access-policy mode. NO READER since #5108 deleted the
-  // access-constraint deriver; the secret-path denylist it carried is now the
-  // PolicyFirewall `secret-paths` rule (enforce behind #4988). Still registered
-  // so a value an operator set from the AGENTS.md table is not reported as a
-  // typo (#4722 class); the row and this entry are retired together under
-  // #6303 / #6319, since that table is governor-owned.
-  NEXUS_ACCESS_POLICY_MODE: z.enum(['off', 'audit', 'confirm_risky', 'enforce']).optional(),
   // Sandbox FLAVOR string (`docker-opencode`, `codex`, …), set by the host
   // image so sandbox-detection knows it is inside one (epic #2500, #5026). It
   // was registered as a boolean while every producer and reader used a flavor
@@ -236,6 +229,10 @@ const NexusEnvSchema = z.object({
   // a typo; their use is reported in `deprecatedVars` instead.
   NEXUS_CUSTOM_API_BASE_URL: z.string().optional(),
   NEXUS_CUSTOM_API_KEY: z.string().optional(),
+  // Deprecated no-op since #6321 removed the ClawGuard deriver. Keep the
+  // accept-set and registration for compatibility with the AGENTS.md table
+  // (#4722); report its use in deprecatedVars until removal in 10.0 (#6319).
+  NEXUS_ACCESS_POLICY_MODE: z.enum(['off', 'audit', 'confirm_risky', 'enforce']).optional(),
   NEXUS_CUSTOM_MODEL: z.string().optional(),
   // #6645: the OpenAI API surface the single-model custom-openai adapter calls.
   // Default `chat` (/chat/completions); `responses` opts into /responses. The
@@ -515,11 +512,11 @@ export interface IneffectiveVar {
 }
 
 /**
- * A deprecated alias that is set: which name replaces it, and whether the
- * replacement is also set (in which case the alias is ignored). Currently
- * the two gateway aliases of #4392 increment 3.
+ * A deprecated variable that is set. Gateway aliases name their replacement
+ * and whether it shadows them. A retired no-op has an empty replacement,
+ * shadowed=false, and a notice explaining its removal.
  */
-export type DeprecatedVar = DeprecatedGatewayEnvUse;
+export type DeprecatedVar = DeprecatedGatewayEnvUse & { readonly notice?: string };
 
 /** Result of validating NEXUS_* environment variables. */
 export interface EnvValidationResult {
@@ -527,7 +524,7 @@ export interface EnvValidationResult {
   readonly invalidVars: readonly InvalidVar[];
   readonly ineffectiveVars: readonly IneffectiveVar[];
   /**
-   * Deprecated names in use (#4392 increment 3). Optional so a caller that
+   * Deprecated names in use (#4392 increment 3, #6319). Optional so a caller that
    * builds this shape by hand keeps compiling; `validateNexusEnv` always
    * fills it, empty when none is set.
    */
@@ -572,16 +569,18 @@ function classifyEnvKeys(
 /**
  * Logs validation warnings via the provided logger.
  *
- * `deprecatedVars` is deliberately NOT logged here: the gateway-env resolver
+ * Gateway aliases are deliberately NOT logged here: the gateway-env resolver
  * (`adapters/sdk/gateway-env.ts`) warns once per process, at the point the
  * alias is honoured or shadowed and at server startup, with the option-C
- * consequence spelled out. A second line here would be the same fact twice.
+ * consequence spelled out. Retired no-ops have no reader to warn, so their
+ * notices are logged here.
  */
 function logValidationWarnings(
   logger: ILogger,
   unknownVars: readonly UnknownVar[],
   invalidVars: readonly InvalidVar[],
-  ineffectiveVars: readonly IneffectiveVar[]
+  ineffectiveVars: readonly IneffectiveVar[],
+  deprecatedVars: readonly DeprecatedVar[]
 ): void {
   for (const u of unknownVars) {
     const hint = u.suggestion !== null ? ` (did you mean ${u.suggestion}?)` : '';
@@ -597,6 +596,25 @@ function logValidationWarnings(
         `${String(ineff.requestedMs)}ms, using ${String(ineff.effectiveMs)}ms. ${ineff.reason}`
     );
   }
+  for (const deprecated of deprecatedVars) {
+    if (deprecated.notice !== undefined) logger.warn(deprecated.notice);
+  }
+}
+
+/** Reports gateway aliases and the retired access-policy mode, empty when none is set. */
+function findDeprecatedVars(): DeprecatedVar[] {
+  const deprecatedVars: DeprecatedVar[] = [...resolveGatewayEnv(process.env).deprecated];
+  if (process.env['NEXUS_ACCESS_POLICY_MODE'] !== undefined) {
+    deprecatedVars.push({
+      name: 'NEXUS_ACCESS_POLICY_MODE',
+      replacement: '',
+      shadowed: false,
+      notice:
+        'NEXUS_ACCESS_POLICY_MODE is deprecated, has no effect, and will be removed in 10.0. ' +
+        'Remove it from your environment.',
+    });
+  }
+  return deprecatedVars;
 }
 
 /**
@@ -663,7 +681,7 @@ function ineffectiveReason(r: ClassGuardResolution): string {
  *
  * - Detects unknown vars (potential typos) with Levenshtein suggestions
  * - Detects invalid values for known vars
- * - Reports deprecated aliases in use (not logged here — see
+ * - Reports deprecated variables in use (gateway aliases are logged by their resolver — see
  *   {@link logValidationWarnings})
  * - Warn-only: never throws, never blocks startup
  *
@@ -691,10 +709,10 @@ export function validateNexusEnv(logger?: ILogger): EnvValidationResult {
   }
 
   const ineffectiveVars = findIneffectiveVars();
-  const deprecatedVars = resolveGatewayEnv(process.env).deprecated;
+  const deprecatedVars = findDeprecatedVars();
 
   if (logger !== undefined) {
-    logValidationWarnings(logger, unknownVars, invalidVars, ineffectiveVars);
+    logValidationWarnings(logger, unknownVars, invalidVars, ineffectiveVars, deprecatedVars);
   }
 
   return { unknownVars, invalidVars, ineffectiveVars, deprecatedVars };
