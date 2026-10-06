@@ -8,7 +8,7 @@ import {
   type FakeGateway,
   SCRIPTED_USAGE,
 } from '../testing/gateway/fake-gateway.js';
-import { createOpenAICompatAdapter, readOpenAICompatEnv } from './openai-compat-adapter.js';
+import { SdkAdapter } from './sdk/sdk-adapter.js';
 
 const MODEL = 'gpt-4o-mini';
 const REQUEST: CompletionRequest = {
@@ -42,11 +42,9 @@ describe('gateway Responses API', () => {
     vi.unstubAllEnvs();
   });
 
-  function adapter(): ReturnType<typeof createOpenAICompatAdapter> {
-    const config = readOpenAICompatEnv();
-    expect(config).not.toBeNull();
-    if (config === null) throw new Error('gateway configuration is absent');
-    return createOpenAICompatAdapter(MODEL, config);
+  function adapter(): SdkAdapter {
+    // NEXUS_CUSTOM_API_SURFACE belongs to the compatibility alias only.
+    return new SdkAdapter({ providerId: 'custom-openai', modelId: MODEL });
   }
 
   it('sends Responses input, model, output cap and gateway headers and parses text/usage', async () => {
@@ -256,10 +254,10 @@ describe('gateway Responses API', () => {
   });
 
   it('preserves HTTP failures from the Responses surface', async () => {
-    const result = await createOpenAICompatAdapter(
-      'missing-model',
-      readOpenAICompatEnv()!
-    ).complete(REQUEST);
+    const result = await new SdkAdapter({
+      providerId: 'custom-openai',
+      modelId: 'missing-model',
+    }).complete(REQUEST);
     expect(gateway.requests[0]?.path).toBe('/v1/responses');
     expect(result).toMatchObject({ ok: false });
     if (!result.ok) expect(result.error.message).toContain('HTTP 404');

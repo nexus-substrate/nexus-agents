@@ -39,8 +39,9 @@ export function readGatewayEnv(env: NodeJS.ProcessEnv = process.env): GatewayEnv
 }
 
 /**
- * The OpenAI API surface gateway adapters and the custom-openai alias call:
+ * The API surface the custom-openai alias and direct OpenAI gateway clients call:
  * `chat` is `POST <base>/chat/completions`, `responses` is `POST <base>/responses`.
+ * Discovery-backed api:<endpoint> arms remain on chat.
  */
 type CustomApiSurface = 'chat' | 'responses';
 

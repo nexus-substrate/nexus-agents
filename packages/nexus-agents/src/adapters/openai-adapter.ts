@@ -20,12 +20,8 @@ import type {
   TokenUsage,
 } from '../core/index.js';
 import { ok, err, ModelError, ConfigError, ErrorCode, getTokenEstimator } from '../core/index.js';
-import {
-  BaseAdapter,
-  type BaseAdapterConfig,
-  requireApiKey,
-  validateApiKeyPresence,
-} from './base-adapter.js';
+import { BaseAdapter, requireApiKey, validateApiKeyPresence } from './base-adapter.js';
+import type { BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
   DEFAULT_MAX_TOKENS,
@@ -146,6 +142,7 @@ export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
   private readonly resolvedModelId: string;
   private readonly apiSurface: 'chat' | 'responses';
+  private readonly omitDefaultTokenCap: boolean;
   private readonly apiKey: string | undefined;
   /** Headers sent on every request; each value is redacted from error text. */
   private readonly headers: OpenAIAdapterConfig['defaultHeaders'];
@@ -186,6 +183,7 @@ export class OpenAIAdapter extends BaseAdapter {
     this.headers = config.defaultHeaders;
     this.resolvedModelId = resolvedModelId;
     this.apiSurface = config.apiSurface ?? 'chat';
+    this.omitDefaultTokenCap = config.omitDefaultTokenCap ?? false;
 
     // Validate API key presence
     requireApiKey(config.apiKey, 'OpenAI', config.modelId);
@@ -423,7 +421,9 @@ export class OpenAIAdapter extends BaseAdapter {
     const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
       model: this.resolvedModelId,
       messages,
-      max_completion_tokens: request.maxTokens ?? this.defaultMaxCompletionTokens(),
+      ...(request.maxTokens !== undefined || !this.omitDefaultTokenCap
+        ? { max_completion_tokens: request.maxTokens ?? this.defaultMaxCompletionTokens() }
+        : {}),
     };
 
     const dropped = this.addOptionalParams(params, request);

@@ -75,6 +75,51 @@ describe('SdkAdapter custom-openai compatibility alias (#7150)', () => {
     expect(gateway.chatRequests()[0]?.hadAuthorization).toBe(true);
   });
 
+  describe.each(['chat', 'responses'] as const)('explicit-only token caps on %s', (surface) => {
+    it.each([undefined, 100])('completes with maxTokens=%s', async (maxTokens) => {
+      vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', surface);
+      const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: MODEL });
+      const result = await adapter.complete({
+        ...REQUEST,
+        ...(maxTokens !== undefined && { maxTokens }),
+      });
+      expect(result.ok).toBe(true);
+      expect(gateway.requests).toHaveLength(1);
+      const cap = surface === 'chat' ? 'max_completion_tokens' : 'max_output_tokens';
+      const body = gateway.requests[0]?.body;
+      expect(Object.keys(body ?? {}).sort()).toEqual(
+        [
+          surface === 'chat' ? 'messages' : 'input',
+          'model',
+          ...(maxTokens !== undefined ? [cap] : []),
+        ].sort()
+      );
+      if (maxTokens !== undefined) expect(body).toHaveProperty(cap, maxTokens);
+      else expect(body).not.toHaveProperty(cap);
+    });
+
+    if (surface === 'responses')
+      it.each([undefined, 100])('streams with maxTokens=%s', async (maxTokens) => {
+        vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', surface);
+        const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: MODEL });
+        const chunks = [];
+        for await (const chunk of adapter.stream({
+          ...REQUEST,
+          ...(maxTokens !== undefined && { maxTokens }),
+        }))
+          chunks.push(chunk);
+        expect(chunks.at(-1)).toMatchObject({ type: 'message_stop' });
+        expect(gateway.requests).toHaveLength(1);
+        const cap = 'max_output_tokens';
+        const body = gateway.requests[0]?.body;
+        expect(Object.keys(body ?? {}).sort()).toEqual(
+          ['input', 'model', 'stream', ...(maxTokens !== undefined ? [cap] : [])].sort()
+        );
+        if (maxTokens !== undefined) expect(body).toHaveProperty(cap, maxTokens);
+        else expect(body).not.toHaveProperty(cap);
+      });
+  });
+
   it('forwards tool calls through the gateway client', async () => {
     gateway.setScript(() => ({
       kind: 'tool_calls',

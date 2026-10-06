@@ -78,6 +78,8 @@ export interface OpenAIAdapterConfig {
   baseUrl?: string;
   /** Gateway API surface; omitted uses Chat Completions. */
   apiSurface?: 'chat' | 'responses';
+  /** Custom-openai compatibility: send a token cap only when explicitly requested. */
+  omitDefaultTokenCap?: boolean;
   /** Fetch implementation, including the gateway's host guard. */
   fetch?: typeof fetch;
   /** Caller diagnostics, shared by direct and gateway adapter clients. */

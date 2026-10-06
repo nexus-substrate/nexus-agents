@@ -5,7 +5,7 @@
 import type { ILogger, IModelAdapter } from '../core/index.js';
 import type { AdapterSelection } from './auto-adapter.js';
 import { createOpenAICompatClient, readOpenAICompatEnv } from './openai-compat-adapter.js';
-import { hostnameOf, readGatewayEnv } from './sdk/gateway-env.js';
+import { hostnameOf, readCustomApiSurface, readGatewayEnv } from './sdk/gateway-env.js';
 import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import { resolveGatewayDefault } from './gateway-family-slots.js';
 import { gatewayDiscoveryStatus } from './gateway-discovery.js';
@@ -13,8 +13,8 @@ import { withGatewayUsageRecording } from './gateway-usage-recording.js';
 
 /**
  * Keep the historical custom-openai arm over the canonical gateway client.
- * Catalogue selection reuses its resolved adapter; failed discovery falls
- * back to a single unverified client. Only the hostname reaches the log.
+ * Catalogue selection reuses its resolved model id; the alias retains its
+ * own API surface and token-cap policy. Only the hostname reaches the log.
  */
 export function tryCustomOpenAiAdapter(logger: ILogger): AdapterSelection | null {
   const { baseUrl: customBaseUrl, apiKey: customKey } = readGatewayEnv();
@@ -56,28 +56,34 @@ function customModelChoice(
   logger: ILogger
 ): { adapter: IModelAdapter; note: string; modelVerified?: boolean } | null {
   const d = resolveGatewayDefault(process.env, logger);
-  if (d.kind === 'inactive') {
-    const modelId = process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL;
-    const config = readOpenAICompatEnv();
-    if (config === null) return null;
-    const adapter = createOpenAICompatClient(modelId, { ...config, logger });
-    if (gatewayDiscoveryStatus() !== 'failed') return { adapter, note: '' };
-    // #4392: a gateway is configured but its catalogue could not be read, so
-    // nothing says it serves this model. Still sent (a gateway without a
-    // working /models can serve it), but never as if it were validated.
-    logger.warn(
-      `Gateway discovery failed, so the custom-openai model '${modelId}' is sent unverified; ` +
-        'set NEXUS_CUSTOM_MODEL to a model the gateway serves, or run `nexus-agents doctor --gateway`',
-      { model: modelId }
-    );
-    return { adapter, note: '; unverified: gateway discovery failed', modelVerified: false };
+  if (d.kind === 'unavailable') {
+    logger.warn('Gateway catalogue has no chat model; the custom-openai default is unavailable');
+    return null;
   }
+  const config = readOpenAICompatEnv();
+  if (config === null) return null;
+  const modelId =
+    d.kind === 'resolved'
+      ? d.adapter.modelId
+      : (process.env['NEXUS_CUSTOM_MODEL'] ?? CUSTOM_API_DEFAULT_MODEL);
+  const adapter = createOpenAICompatClient(modelId, {
+    ...config,
+    logger,
+    apiSurface: readCustomApiSurface(),
+    omitDefaultTokenCap: true,
+  });
   if (d.kind === 'resolved')
     return {
-      adapter: d.adapter,
+      adapter,
       note: `; gateway default by ${d.via}`,
       modelVerified: true,
     };
-  logger.warn('Gateway catalogue has no chat model; the custom-openai default is unavailable');
-  return null;
+  if (gatewayDiscoveryStatus() !== 'failed') return { adapter, note: '' };
+  // #4392: failed discovery leaves this configured model explicitly unverified.
+  logger.warn(
+    `Gateway discovery failed, so the custom-openai model '${modelId}' is sent unverified; ` +
+      'set NEXUS_CUSTOM_MODEL to a model the gateway serves, or run `nexus-agents doctor --gateway`',
+    { model: modelId }
+  );
+  return { adapter, note: '; unverified: gateway discovery failed', modelVerified: false };
 }

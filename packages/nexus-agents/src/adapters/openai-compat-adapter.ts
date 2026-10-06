@@ -55,6 +55,8 @@ import {
 export interface OpenAICompatConfig extends GatewayTransport {
   /** Gateway base URL — ends in `/v1`; the SDK appends `/models` and `/chat/completions`. */
   readonly baseUrl: string;
+  /** Preserve custom-openai requests without an implicit output token cap. */
+  readonly omitDefaultTokenCap?: boolean;
   /** API key the gateway expects. */
   readonly apiKey: string;
   /** Per-request timeout for an explicitly constructed gateway client. */
@@ -394,6 +396,9 @@ export function createOpenAICompatClient(
     apiKey: config.apiKey,
     baseUrl,
     verbatimModelId: true,
+    ...(config.omitDefaultTokenCap !== undefined && {
+      omitDefaultTokenCap: config.omitDefaultTokenCap,
+    }),
     ...gatewayClientOptions(config),
     fetch: guardedGatewayFetch(baseUrl),
     ...(config.logger !== undefined && { logger: config.logger }),

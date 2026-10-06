@@ -170,6 +170,31 @@ describe('SdkAdapter', () => {
     });
   });
 
+  describe('custom-openai SDK initialization guard (#7150)', () => {
+    it.each(['loadProvider', 'ensureInitialized'] as const)(
+      'rejects %s before passing gateway credentials to the OpenAI SDK',
+      async (method) => {
+        const { createOpenAI } = await import('@ai-sdk/openai');
+        const adapter = new SdkAdapter({
+          providerId: 'custom-openai',
+          modelId: 'gateway-model',
+          apiKey: 'test-gateway-key',
+          baseUrl: 'https://gateway.example.com/v1',
+        });
+        // Exercise the private boundary a future SDK-only method could reach.
+        const sdkOnly = adapter as unknown as {
+          loadProvider(apiKey: string): Promise<unknown>;
+          ensureInitialized(): Promise<void>;
+        };
+
+        await expect(sdkOnly[method]('test-gateway-key')).rejects.toThrow(
+          /custom-openai.*gateway HTTP adapter/
+        );
+        expect(createOpenAI).not.toHaveBeenCalled();
+      }
+    );
+  });
+
   describe('complete', () => {
     it('calls generateText and maps response', async () => {
       const { generateText } = await import('ai');

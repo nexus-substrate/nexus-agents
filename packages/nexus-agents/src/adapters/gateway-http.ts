@@ -27,7 +27,6 @@ import { BlockList, isIP } from 'node:net';
 import { ProxyAgent } from 'undici';
 import type { ILogger } from '../core/index.js';
 import type { OpenAIAdapterConfig } from './openai-types.js';
-import { readCustomApiSurface } from './sdk/gateway-env.js';
 
 /** Header that carries the gateway key instead of `Authorization: Bearer`. */
 const OPENAI_COMPAT_AUTH_HEADER_ENV = 'NEXUS_OPENAI_COMPAT_AUTH_HEADER';
@@ -41,7 +40,7 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 /** Transport options resolved from the environment for one gateway base URL. */
 export interface GatewayTransport {
-  /** API surface shared by discovery-backed and single-model gateway adapters. */
+  /** Explicit API surface; the custom-openai alias resolves its own env setting. */
   readonly apiSurface?: 'chat' | 'responses';
   /** Header carrying the key; absent means the SDK default, `Authorization: Bearer`. */
   readonly authHeader?: string;
@@ -291,7 +290,6 @@ export function readGatewayTransport(
   const extraHeaders = readExtraHeaders(env, authHeader, logger);
   const proxyUrl = readProxy(baseUrl, env, logger);
   return {
-    apiSurface: readCustomApiSurface(env),
     ...(authHeader !== undefined && { authHeader }),
     ...(extraHeaders !== undefined && { extraHeaders }),
     ...(proxyUrl !== undefined && { proxyUrl }),

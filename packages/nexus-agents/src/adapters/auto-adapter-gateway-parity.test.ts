@@ -6,13 +6,15 @@ import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import { tryCustomOpenAiAdapter } from './auto-adapter-gateway.js';
 import { readOpenAICompatEnv, createOpenAICompatAdapter } from './openai-compat-adapter.js';
 import { _resetGatewaySlotCatalog, setGatewaySlotCatalog } from './gateway-family-slots.js';
+import { gatewayDiscoveryStatus } from './gateway-discovery.js';
+import { ProxyAgent } from 'undici';
 import { recordUsageEvent } from '../learning/usage-log.js';
 
 vi.mock('node:dns/promises', () => ({
   lookup: vi.fn(() => Promise.resolve([{ address: '8.8.8.8', family: 4 }])),
 }));
 vi.mock('../learning/usage-log.js', () => ({ recordUsageEvent: vi.fn() }));
-vi.mock('./gateway-discovery.js', () => ({ gatewayDiscoveryStatus: () => 'failed' }));
+vi.mock('./gateway-discovery.js', () => ({ gatewayDiscoveryStatus: vi.fn(() => 'failed') }));
 
 const BASE = 'https://gateway.example.com/v1';
 const logger = createLogger();
@@ -37,6 +39,7 @@ interface WireRequest {
   url: string;
   headers: Headers;
   body: Record<string, unknown>;
+  dispatcher?: RequestInit['dispatcher'];
 }
 let requests: WireRequest[];
 
@@ -81,9 +84,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   _resetGatewaySlotCatalog();
   requests = [];
+  vi.mocked(gatewayDiscoveryStatus).mockReturnValue('failed');
   for (const name of [
     'HTTP_PROXY',
     'HTTPS_PROXY',
+    'NEXUS_OPENAI_COMPAT_PROXY',
+    'NO_PROXY',
+    'no_proxy',
     'http_proxy',
     'https_proxy',
     'NEXUS_CUSTOM_MODEL',
@@ -109,7 +116,27 @@ function captureRequest(input: string | URL | Request, init?: RequestInit): Prom
   if (typeof init?.body !== 'string') throw new Error('expected JSON request body');
   const body = JSON.parse(init.body) as Record<string, unknown>;
   if (typeof body['model'] !== 'string') throw new Error('expected wire model');
-  requests.push({ url, headers: new Headers(init.headers), body });
+  requests.push({ url, headers: new Headers(init.headers), body, dispatcher: init.dispatcher });
+  if (body['stream'] === true) {
+    const event = url.endsWith('/responses')
+      ? {
+          type: 'response.completed',
+          response: {
+            model: body['model'],
+            output: [{ type: 'message', content: [{ type: 'output_text', text: 'parity reply' }] }],
+          },
+        }
+      : {
+          id: 'chatcmpl-TEST',
+          model: body['model'],
+          choices: [{ index: 0, delta: { content: 'parity reply' }, finish_reason: 'stop' }],
+        };
+    return Promise.resolve(
+      new Response(`data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`, {
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    );
+  }
   return Promise.resolve(reply(url.endsWith('/responses') ? 'responses' : 'chat', body['model']));
 }
 
@@ -131,8 +158,55 @@ function configureCase(c: ParityCase): void {
   }
 }
 
+// Complete key sets measured in review7150/old/dump-old.log (plain/full).
+const OLD_BODY_KEYS = {
+  chat: { plain: ['messages', 'model'], full: ['messages', 'model', 'temperature'] },
+  responses: { plain: ['input', 'model'], full: ['input', 'model', 'temperature'] },
+} as const;
+const OLD_HEADER_KEYS = ['authorization', 'content-type', 'user-agent'];
+// Intended header additions; user-agent changes from ai/6… to OpenAI/JS….
+const ADDED_HEADER_KEYS = [
+  'accept',
+  'x-stainless-arch',
+  'x-stainless-lang',
+  'x-stainless-os',
+  'x-stainless-package-version',
+  'x-stainless-retry-count',
+  'x-stainless-runtime',
+  'x-stainless-runtime-version',
+];
+
+function assertKeySets(c: ParityCase, full = false): void {
+  const wire = requests[0];
+  if (wire === undefined) throw new Error('no outbound request measured');
+  // Only full requests intentionally add the formerly dropped cap and tools.
+  const addedBodyKeys = full
+    ? [c.surface === 'responses' ? 'max_output_tokens' : 'max_completion_tokens', 'tools']
+    : [];
+  expect(Object.keys(wire.body).sort()).toEqual(
+    [
+      ...OLD_BODY_KEYS[c.surface as 'chat' | 'responses'][full ? 'full' : 'plain'],
+      ...addedBodyKeys,
+    ].sort()
+  );
+  const authKeys = c.auth === 'api-key' ? ['api-key'] : ['authorization'];
+  const oldHeaders = OLD_HEADER_KEYS.filter((key) => key !== 'authorization');
+  expect([...wire.headers.keys()].sort()).toEqual(
+    [
+      ...oldHeaders,
+      ...authKeys,
+      ...ADDED_HEADER_KEYS,
+      ...(c.auth === 'extras' ? ['x-tenant'] : []),
+    ].sort()
+  );
+  expect(wire.headers.get('content-type')).toBe('application/json');
+  expect(wire.headers.get('accept')).toBe('application/json');
+  expect(wire.headers.get('user-agent')).toMatch(/^OpenAI\/JS /);
+}
+
 function assertWire(c: ParityCase, expectedModel: string): void {
   expect(requests).toHaveLength(1);
+  assertKeySets(c);
   const wire = requests[0];
   if (wire === undefined) throw new Error('no outbound request measured');
   expect(wire.url).toBe(`${BASE}/${c.surface === 'responses' ? 'responses' : 'chat/completions'}`);
@@ -186,6 +260,133 @@ describe('custom-openai wire parity (48 environment combinations)', () => {
       );
     }
   );
+
+  it.each(['chat', 'responses'] as const)(
+    'honours only an explicit token cap and tools on %s',
+    async (surface) => {
+      const c = { catalogue: false, modelSet: true, surface, allowPrivate: false, auth: 'bearer' };
+      configureCase(c);
+      vi.stubEnv('NEXUS_CUSTOM_MODEL', 'my-model');
+      const selection = tryCustomOpenAiAdapter(logger);
+      const result = await selection?.adapter.complete({
+        messages: [{ role: 'user', content: 'parity prompt' }],
+        temperature: 0.3,
+        maxTokens: 100,
+        tools: [{ name: 'get_weather', description: 'w', inputSchema: { type: 'object' } }],
+      });
+      expect(result?.ok).toBe(true);
+      expect(requests).toHaveLength(1);
+      assertKeySets(c, true);
+      expect(
+        requests[0]?.body[surface === 'responses' ? 'max_output_tokens' : 'max_completion_tokens']
+      ).toBe(100);
+      expect(requests[0]?.body['tools']).toEqual([
+        surface === 'chat'
+          ? {
+              type: 'function',
+              function: { name: 'get_weather', description: 'w', parameters: { type: 'object' } },
+            }
+          : {
+              type: 'function',
+              name: 'get_weather',
+              description: 'w',
+              parameters: { type: 'object' },
+              strict: false,
+            },
+      ]);
+    }
+  );
+
+  it.each(['chat', 'responses'] as const)(
+    'preserves streaming token caps on %s',
+    async (surface) => {
+      configureCase({
+        catalogue: false,
+        modelSet: true,
+        surface,
+        allowPrivate: false,
+        auth: 'bearer',
+      });
+      const selection = tryCustomOpenAiAdapter(logger);
+      if (selection === null) throw new Error('configured alias required');
+      for (const maxTokens of [undefined, 100]) {
+        const chunks = [];
+        for await (const chunk of selection.adapter.stream({
+          messages: [{ role: 'user', content: 'parity prompt' }],
+          ...(maxTokens !== undefined && { maxTokens }),
+        }))
+          chunks.push(chunk);
+        expect(chunks.length).toBeGreaterThan(0);
+        const body = requests.at(-1)?.body;
+        if (body === undefined) throw new Error('no stream request measured');
+        const cap = surface === 'chat' ? 'max_completion_tokens' : 'max_output_tokens';
+        expect(Object.keys(body).sort()).toEqual(
+          [
+            ...OLD_BODY_KEYS[surface].plain,
+            'stream',
+            ...(maxTokens !== undefined ? [cap] : []),
+          ].sort()
+        );
+        expect(body[cap]).toBe(maxTokens);
+      }
+    }
+  );
+
+  it.each(['NEXUS_OPENAI_COMPAT_PROXY', 'HTTPS_PROXY'])(
+    'preserves the alias wire contract through %s',
+    async (variable) => {
+      const c = {
+        catalogue: false,
+        modelSet: true,
+        surface: 'chat',
+        allowPrivate: false,
+        auth: 'bearer',
+      };
+      configureCase(c);
+      const proxyUrl = 'http://proxy.example.com:3128';
+      vi.stubEnv(variable, proxyUrl);
+      // The old tree ignores NEXUS_OPENAI_COMPAT_PROXY; only standard proxy env applies.
+      expect(readOpenAICompatEnv()?.proxyUrl).toBe(
+        variable === 'HTTPS_PROXY' ? proxyUrl : undefined
+      );
+      const selection = tryCustomOpenAiAdapter(logger);
+      expect(
+        (
+          await selection?.adapter.complete({
+            messages: [{ role: 'user', content: 'parity prompt' }],
+          })
+        )?.ok
+      ).toBe(true);
+      assertWire(c, 'gpt-5.5');
+      if (variable === 'HTTPS_PROXY') expect(requests[0]?.dispatcher).toBeInstanceOf(ProxyAgent);
+      else expect(requests[0]?.dispatcher).toBeUndefined();
+    }
+  );
+
+  it('keeps an unmeasured no-catalogue selection modelVerified undefined', async () => {
+    vi.mocked(gatewayDiscoveryStatus).mockReturnValue('unattempted');
+    const c = {
+      catalogue: false,
+      modelSet: true,
+      surface: 'chat',
+      allowPrivate: false,
+      auth: 'bearer',
+    };
+    configureCase(c);
+    const selection = tryCustomOpenAiAdapter(logger);
+    expect(selection?.modelVerified).toBeUndefined();
+    expect(
+      (
+        await selection?.adapter.complete({
+          messages: [{ role: 'user', content: 'parity prompt' }],
+        })
+      )?.ok
+    ).toBe(true);
+    assertWire(c, 'gpt-5.5');
+    expect(recordUsageEvent).toHaveBeenCalledWith(
+      expect.not.objectContaining({ modelVerified: expect.anything() })
+    );
+  });
 
   it('refuses a loopback fallback with ALLOW_PRIVATE off before an outbound request', () => {
     vi.stubEnv('NEXUS_OPENAI_COMPAT_URL', 'http://127.0.0.1:4000/v1');

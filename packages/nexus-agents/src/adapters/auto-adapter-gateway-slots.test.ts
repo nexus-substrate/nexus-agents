@@ -187,7 +187,8 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
     const previous = process.env['NEXUS_DATA_DIR'];
     process.env['NEXUS_DATA_DIR'] = dir;
     const complete = vi
-      .spyOn(modelVerified ? served : OpenAIAdapter.prototype, 'complete')
+      // Alias selects the catalogue model but uses its own compatibility client.
+      .spyOn(OpenAIAdapter.prototype, 'complete')
       .mockResolvedValueOnce(
         success
           ? ok({

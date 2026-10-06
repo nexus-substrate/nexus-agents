@@ -22,23 +22,16 @@ import type {
   TokenUsage,
   IModelAdapter,
 } from '../../core/index.js';
-import {
-  ok,
-  ModelError,
-  ModelCapability,
-  createLogger,
-  getErrorMessage,
-} from '../../core/index.js';
+import { ModelError, ModelCapability, createLogger, getErrorMessage } from '../../core/index.js';
 import { BaseAdapter, AdapterModelError } from '../base-adapter.js';
-import { ErrorCode } from '../../core/index.js';
+import { ErrorCode, ok } from '../../core/index.js';
 import {
   isRateLimitLikeError,
   resolveRetryAfterMs,
   RETRY_AFTER_CONTEXT_KEY,
 } from '../rate-limit-detector.js';
 import { sanitizeOutput } from '../../security/output-sanitizer.js';
-import type { SdkAdapterConfig, SdkProviderId } from './types.js';
-import { PROVIDER_ENV_KEYS } from './types.js';
+import { PROVIDER_ENV_KEYS, type SdkAdapterConfig, type SdkProviderId } from './types.js';
 import {
   readCustomApiSurface,
   readDirectOpenAiSurface,
@@ -244,6 +237,7 @@ function gatewayConfigFor(
     baseUrl,
     apiKey: apiKey ?? '',
     logger,
+    omitDefaultTokenCap: true,
     ...readGatewayTransport(baseUrl, process.env, logger),
     apiSurface: readCustomApiSurface(),
     ...(config.timeout !== undefined && { timeout: config.timeout }),
@@ -363,7 +357,7 @@ function categorizeError(error: unknown): ErrorCode {
  * the public custom-openai identifier delegates to the gateway HTTP adapter.
  */
 export class SdkAdapter extends BaseAdapter {
-  private readonly sdkProviderId: Exclude<SdkProviderId, 'custom-openai'>;
+  private readonly sdkProviderId: SdkProviderId;
   private model: AiSdkModel | undefined;
   private sdkFunctions: AiSdkFunctions | undefined;
   private readonly sdkConfig: SdkAdapterConfig;
@@ -388,7 +382,7 @@ export class SdkAdapter extends BaseAdapter {
       ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
       ...(config.maxRetries !== undefined ? { maxRetries: config.maxRetries } : {}),
     });
-    this.sdkProviderId = config.providerId === 'custom-openai' ? 'openai' : config.providerId;
+    this.sdkProviderId = config.providerId;
     this.sdkConfig = config;
     this.gatewayConfig = gatewayConfigFor(config, apiKey, this.logger);
     this.apiSurface = apiSurfaceFor(config.providerId);
@@ -454,6 +448,10 @@ export class SdkAdapter extends BaseAdapter {
    */
   private async loadProvider(apiKey: string): Promise<{ model: AiSdkModel }> {
     switch (this.sdkProviderId) {
+      case 'custom-openai':
+        throw new AdapterModelError('custom-openai must use the gateway HTTP adapter', {
+          code: ErrorCode.CONFIG_INVALID,
+        });
       case 'anthropic': {
         const mod = await import('@ai-sdk/anthropic');
         const factory = extractProviderFactory(mod, 'createAnthropic');

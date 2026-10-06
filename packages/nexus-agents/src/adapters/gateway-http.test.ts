@@ -35,6 +35,7 @@ const ENV_NAMES = [
   'NEXUS_OPENAI_COMPAT_ENDPOINT',
   'NEXUS_OPENCODE_CONFIG',
   'NEXUS_CUSTOM_API_ALLOW_PRIVATE',
+  'NEXUS_CUSTOM_API_SURFACE',
   'HTTP_PROXY',
   'HTTPS_PROXY',
   'NO_PROXY',
@@ -52,19 +53,44 @@ interface FakeGateway {
   readonly server: http.Server;
   readonly port: number;
   readonly seen: Map<string, Headers>;
+  readonly bodies: Map<string, Record<string, unknown>>;
 }
 
 /** An OpenAI-shaped gateway that records each request's headers by path. */
 async function startFakeGateway(): Promise<FakeGateway> {
   const seen = new Map<string, Headers>();
+  const bodies = new Map<string, Record<string, unknown>>();
   const server = http.createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0] ?? '';
     seen.set(path, { ...req.headers });
-    req.resume();
+    let body = '';
+    req.on('data', (chunk: Buffer) => {
+      body += chunk.toString();
+    });
     req.on('end', () => {
+      if (body !== '') bodies.set(path, JSON.parse(body) as Record<string, unknown>);
       res.writeHead(200, { 'content-type': 'application/json' });
       if (path.endsWith('/models')) {
         res.end(JSON.stringify({ object: 'list', data: [{ id: 'gw-model-a', object: 'model' }] }));
+        return;
+      }
+      if (path.endsWith('/responses')) {
+        res.end(
+          JSON.stringify({
+            id: 'resp-1',
+            object: 'response',
+            status: 'completed',
+            model: 'gw-model-a',
+            output: [
+              {
+                type: 'message',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: 'pong' }],
+              },
+            ],
+            usage: { input_tokens: 3, output_tokens: 1, total_tokens: 4 },
+          })
+        );
         return;
       }
       res.end(
@@ -82,7 +108,7 @@ async function startFakeGateway(): Promise<FakeGateway> {
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { server, port: (server.address() as AddressInfo).port, seen };
+  return { server, port: (server.address() as AddressInfo).port, seen, bodies };
 }
 
 /** A CONNECT proxy that records each tunnel target and pipes it to `targetPort`. */
@@ -435,5 +461,44 @@ describe('custom-openai single-model path shares the gateway transport (#6629)',
 
     expect(new Set(proxy.tunnels)).toEqual(new Set(['gateway.corp.invalid:80']));
     expect(completionHeaders(gateway)?.['authorization']).toBe(`Bearer ${GATEWAY_KEY}`);
+  });
+});
+
+describe('custom-openai API surface scope (#7150)', () => {
+  it('keeps discovery-backed gateway arms on chat when the alias selects Responses', async () => {
+    const gateway = await startFakeGateway();
+    servers.push(gateway.server);
+    process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'] = '1';
+    process.env['NEXUS_CUSTOM_API_SURFACE'] = 'responses';
+    process.env['NEXUS_OPENAI_COMPAT_URL'] = `http://127.0.0.1:${String(gateway.port)}/v1`;
+    process.env['NEXUS_OPENAI_COMPAT_KEY'] = GATEWAY_KEY;
+    const config = readOpenAICompatEnv();
+    if (config === null) throw new Error('config expected');
+    const listed = await discoverModels(config);
+    expect(listed.ok).toBe(true);
+    const adapter = createOpenAICompatAdapter('gw-model-a', config);
+    const reply = await adapter.complete({ messages: [{ role: 'user', content: 'ping' }] });
+
+    expect(reply.ok).toBe(true);
+    expect([...gateway.seen.keys()].sort()).toEqual(['/v1/chat/completions', '/v1/models']);
+    expect(gateway.bodies.get('/v1/chat/completions')?.['max_completion_tokens']).toBe(4096);
+  });
+
+  it('selects Responses only for the custom-openai alias', async () => {
+    const gateway = await startFakeGateway();
+    servers.push(gateway.server);
+    process.env['NEXUS_CUSTOM_API_ALLOW_PRIVATE'] = '1';
+    process.env['NEXUS_CUSTOM_API_SURFACE'] = 'responses';
+    const adapter = new SdkAdapter({
+      providerId: 'custom-openai',
+      modelId: 'gw-model-a',
+      apiKey: GATEWAY_KEY,
+      baseUrl: `http://127.0.0.1:${String(gateway.port)}/v1`,
+      maxRetries: 0,
+    });
+    const reply = await adapter.complete({ messages: [{ role: 'user', content: 'ping' }] });
+
+    expect(reply.ok).toBe(true);
+    expect([...gateway.seen.keys()]).toEqual(['/v1/responses']);
   });
 });

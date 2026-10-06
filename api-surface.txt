@@ -6115,6 +6115,7 @@ InterfaceDeclaration OpenAIAdapterConfig
   logger?: ILogger | undefined
   maxRetries?: number | undefined
   modelId: string
+  omitDefaultTokenCap?: boolean | undefined
   organization?: string | undefined
   timeout?: number | undefined
   verbatimModelId?: boolean | undefined
@@ -6127,6 +6128,7 @@ InterfaceDeclaration OpenAICompatConfig
   readonly maxRetries?: number | undefined
   readonly modelAllowlist?: readonly string[] | undefined
   readonly modelVerified?: boolean | undefined
+  readonly omitDefaultTokenCap?: boolean | undefined
   readonly timeout?: number | undefined
 ClassDeclaration OpenCodeCliAdapter
   execute(task: CliTask, options?: ExecutionOptions) => Promise<Result<CliResponse, CliError>>
