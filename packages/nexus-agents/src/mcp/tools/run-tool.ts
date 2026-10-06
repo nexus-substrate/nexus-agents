@@ -388,6 +388,7 @@ export async function executeGoal(
   const mode =
     opts.consensusEnforcementMode ??
     resolveConsensusEnforcementMode(process.env['NEXUS_CONSENSUS_ENFORCE']);
+  const { dryRun, sourceTrustTier } = input;
   const decision = selectDecision(input, 'execute', opts.logger);
   // #4806: fail closed BEFORE any executor runs. Only the dev pipeline stops
   // after plan+vote; every other strategy would execute for real, so honouring
@@ -404,7 +405,7 @@ export async function executeGoal(
       buildDefaultExecutors(
         opts.trustTier,
         opts.gatewayAdapters,
-        { ...input, consensusEnforcementMode: mode, logger: opts.logger },
+        { consensusEnforcementMode: mode, logger: opts.logger, dryRun, sourceTrustTier },
         opts.onProgress,
         opts.signal
       ),

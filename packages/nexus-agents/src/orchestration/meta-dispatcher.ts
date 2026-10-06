@@ -189,6 +189,29 @@ function consensusReason(record: Record<string, unknown>): string {
 
 const BLOCKING_CONSENSUS_DECISIONS = new Set<unknown>(['rejected', 'no_quorum']);
 
+/** Classify the engine verdict and the separate run-layer consensus judgement. */
+function classifyConsensusResult(
+  record: Record<string, unknown>,
+  mode: ConsensusEnforcementMode
+): MetaResultClassification {
+  const enforcement = record['enforcement'];
+  const wouldBlock =
+    typeof enforcement === 'object' &&
+    enforcement !== null &&
+    (enforcement as Record<string, unknown>)['wouldBlock'] === true;
+  if (mode === 'enforce' && (BLOCKING_CONSENSUS_DECISIONS.has(record['decision']) || wouldBlock)) {
+    const reason = consensusReason(record);
+    return {
+      success: false,
+      failureReason:
+        reason === record['decision']
+          ? `Consensus ${reason}`
+          : `Consensus ${String(record['decision'])}: ${reason}`,
+    };
+  }
+  return { success: true };
+}
+
 /**
  * Default engine result classifier (#5641).
  *
@@ -218,13 +241,7 @@ export function classifyEngineResult(
     }
     return { success: false, failureReason: resultError(record, 'pipeline did not complete') };
   }
-  if (mode === 'enforce' && BLOCKING_CONSENSUS_DECISIONS.has(record['decision'])) {
-    return {
-      success: false,
-      failureReason: `Consensus ${String(record['decision'])}: ${consensusReason(record)}`,
-    };
-  }
-  return { success: true };
+  return classifyConsensusResult(record, mode);
 }
 
 interface DispatchDeps {

@@ -9,12 +9,16 @@ import type { ConsensusEnforcementMode } from '../../orchestration/consensus-enf
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
 import { runConsensusForGoal } from './consensus-vote.js';
 import { recordCompletedVote } from './consensus-vote-completed-recording.js';
+import { recordVoteDecisionCost } from './decision-cost-recording.js';
+import { randomUUID } from 'node:crypto';
 
 /** What an enforcing run would do; off explicitly reports an unmeasured verdict. */
 export interface ConsensusEnforcement {
   readonly mode: ConsensusEnforcementMode;
-  readonly wouldBlock: boolean;
+  readonly wouldBlock?: boolean;
   readonly reason: string;
+  readonly attempts: 1 | 2;
+  readonly recordingError?: string;
 }
 
 /** Read the assessment from the dispatcher's opaque engine result. */
@@ -30,26 +34,27 @@ interface ConsensusRunResult extends ExtendedVotingResult {
   readonly voteRecord?: Awaited<ReturnType<typeof recordCompletedVote>>['voteRecord'] | undefined;
 }
 
-/** Assess outages against the whole returned roster, including abstaining/error seats. */
+/** Count approve/reject and unavailable seats; genuine abstentions leave the denominator. */
 function assessPanel(
   result: ExtendedVotingResult,
-  mode: ConsensusEnforcementMode
+  mode: ConsensusEnforcementMode,
+  attempts: 1 | 2
 ): ConsensusRunResult {
   if (mode === 'off') {
-    return { ...result, enforcement: { mode, wouldBlock: false, reason: 'unmeasured' } };
+    return { ...result, enforcement: { mode, attempts, reason: 'unmeasured' } };
   }
   const decision = result.decision ?? 'no_quorum';
   // Count respondents and errored seats from the roster: engine totals may already
   // include errors under other policies, so adding errors to that total is unsound.
-  const outageInvariant =
-    result.votes.length > 0 && result.result.voteCounts.approve > 0.5 * result.votes.length;
+  const denominator = result.votes.filter(
+    (seat) =>
+      seat.source === 'error' || seat.source === 'unverifiable' || seat.vote.decision !== 'abstain'
+  ).length;
+  const outageInvariant = denominator > 0 && result.result.voteCounts.approve > 0.5 * denominator;
   const reason = decision === 'approved' && !outageInvariant ? 'not_outage_invariant' : decision;
   return {
     ...result,
-    ...(mode === 'enforce' && reason === 'not_outage_invariant'
-      ? { decision: 'no_quorum' as const }
-      : {}),
-    enforcement: { mode, wouldBlock: reason !== 'approved', reason },
+    enforcement: { mode, attempts, wouldBlock: reason !== 'approved', reason },
   };
 }
 
@@ -81,9 +86,9 @@ async function recordFinalPanel(
   });
   if (result.enforcement.mode === 'off') return recorded;
   const enforcement: ConsensusEnforcement = {
-    mode: result.enforcement.mode,
+    ...result.enforcement,
     wouldBlock: true,
-    reason,
+    recordingError: reason,
   };
   if (result.enforcement.mode === 'audit') return { ...recorded, enforcement };
   return {
@@ -106,7 +111,7 @@ export async function runConsensusWithEnforcement(
   }
 ): Promise<ConsensusRunResult> {
   const logger = options.logger ?? createLogger({ tool: 'run', strategy: 'consensus' });
-  const runPanel = async (): Promise<ConsensusRunResult> => {
+  const runPanel = async (attempts: 1 | 2): Promise<ConsensusRunResult> => {
     options.signal?.throwIfAborted();
     const result = await runConsensusForGoal(
       goal,
@@ -116,12 +121,20 @@ export async function runConsensusWithEnforcement(
       options.signal
     );
     options.signal?.throwIfAborted();
-    return assessPanel(result, options.mode);
+    return assessPanel(result, options.mode, attempts);
   };
-  let result = await runPanel();
+  let result = await runPanel(1);
   if (options.mode === 'enforce' && result.decision === 'no_quorum') {
+    recordVoteDecisionCost({
+      decisionId: `consensus-${randomUUID()}`,
+      gate: 'consensus_vote',
+      votes: result.votes,
+      proposal: goal,
+      declaredOptions: undefined,
+      logger,
+    });
     logger.info('run: retrying consensus panel once', { reason: result.enforcement.reason });
-    result = await runPanel();
+    result = await runPanel(2);
   }
   return recordFinalPanel(goal, result, logger, options.signal);
 }

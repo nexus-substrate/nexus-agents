@@ -83,6 +83,16 @@ export function detectEngineFailure(
   if (record?.['completed'] === false) {
     return { message: describeIncompletePipeline(record), detail: record };
   }
+  if (record?.['enforcement'] !== undefined) {
+    return {
+      message: `Engine reported failure: ${classification.failureReason ?? 'no error message'}`,
+      detail: {
+        decision: record['decision'],
+        enforcement: record['enforcement'],
+        voteRecord: record['voteRecord'],
+      },
+    };
+  }
   const detail = classification.failureReason ?? 'no error message';
   return { message: `Engine reported failure: ${detail}` };
 }

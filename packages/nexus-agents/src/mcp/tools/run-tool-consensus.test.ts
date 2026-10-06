@@ -257,9 +257,14 @@ describe('registered run consensus enforcement (#4464)', () => {
     async (source) => {
       vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', 'enforce');
       const enginePanel = panel('approved', 3, 1, 3);
-      const votes = enginePanel.votes.map((seat) =>
+      const votes = enginePanel.votes.map((seat): AgentVoteResult =>
         seat.source === 'error'
-          ? { ...seat, source, error: undefined, vote: { ...seat.vote, decision: 'abstain' } }
+          ? {
+              role: seat.role,
+              source,
+              vote: { ...seat.vote, decision: 'abstain' },
+              processingTimeMs: seat.processingTimeMs,
+            }
           : seat
       );
       voteMock.mockResolvedValue({ ...enginePanel, votes });

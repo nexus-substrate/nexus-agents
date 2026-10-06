@@ -403,19 +403,29 @@ Resolution, one order for every class (#6162): `max(envClassOverride ?? base, 10
 `run({ execute: true })`. It defaults to `audit`.
 
 - `off` records the final panel without judging its verdict. The `enforcement`
-  field reports `{ mode: 'off', wouldBlock: false, reason: 'unmeasured' }`.
+  field reports `{ mode: 'off', attempts: 1, reason: 'unmeasured' }`; `wouldBlock`
+  is omitted.
 - `audit` reports whether enforcement would block, while allowing the run to
   succeed. It does not retry the panel.
 - `enforce` returns a business error for `rejected`. It retries `no_quorum`
   exactly once, then fails closed if the retry still lacks quorum. An approval
-  must have more approvals than half of all responding and errored seats;
-  otherwise it is treated as `no_quorum`, retried once, then blocked if still
-  unsafe. For example, 3 approvals, 2 rejections and 2 errored seats cannot pass;
-  5 approvals and 2 errored seats can.
+  must have approvals > 0.5 × (approve + reject + errored seats). Unverifiable
+  seats (unable to read the artifact) count with errored seats; genuine
+  abstentions leave the denominator. An approval below this bar is blocked
+  with reason `not_outage_invariant`, without retrying or changing the engine's
+  recorded decision. For example, 3 approvals, 1 rejection and 3 genuine
+  abstentions pass; replacing those abstentions with unverifiable seats blocks.
+  3 approvals, 2 rejections and 2 errored seats block; 5 approvals and 2 errored
+  seats pass.
 
-Every consensus run exposes `{ mode, wouldBlock, reason }` in `enforcement`
-and records its final panel once through the existing vote recorder. Recording
-errors fail the run under `enforce`; `audit` and `off` log them and continue.
+Every consensus run exposes `{ mode, attempts, reason }` in `enforcement`, plus
+`wouldBlock` when measured. `attempts` is 1 or 2. The ledger records the final
+panel's engine decision unchanged; a quorum retry also records the first
+panel's cost through the existing cost writer, without a second ledger line.
+Recording errors fail the run under `enforce`; `audit` and `off` log them and
+continue. Under `audit` and `enforce`, `enforcement.recordingError` reports a
+recording failure separately from the verdict's `reason`. Enforced refusals
+carry `{ decision, enforcement, voteRecord }` in the error envelope's `detail`.
 An enforced refusal also ends an asynchronous run job as `failed`.
 `pr_review` remains advisory.
 
