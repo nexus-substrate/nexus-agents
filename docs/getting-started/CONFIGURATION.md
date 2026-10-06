@@ -411,9 +411,9 @@ Resolution, one order for every class (#6162): `max(envClassOverride ?? base, 10
   exactly once, then fails closed if the retry still lacks quorum. An approval
   must have approvals > 0.5 × (approve + reject + errored seats). Unverifiable
   seats (unable to read the artifact) count with errored seats; genuine
-  abstentions leave the denominator. An approval below this bar is blocked
-  with reason `not_outage_invariant`, without retrying or changing the engine's
-  recorded decision. For example, 3 approvals, 1 rejection and 3 genuine
+  abstentions leave the denominator. An approval below this bar is treated
+  like `no_quorum` (reason `not_outage_invariant`): retried once, then
+  blocked. The engine's recorded decision is not changed. For example, 3 approvals, 1 rejection and 3 genuine
   abstentions pass; replacing those abstentions with unverifiable seats blocks.
   3 approvals, 2 rejections and 2 errored seats block; 5 approvals and 2 errored
   seats pass.

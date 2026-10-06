@@ -124,7 +124,9 @@ export async function runConsensusWithEnforcement(
     return assessPanel(result, options.mode, attempts);
   };
   let result = await runPanel(1);
-  if (options.mode === 'enforce' && result.decision === 'no_quorum') {
+  // A non-outage-invariant approval is treated as no_quorum: one retry, then fail closed.
+  const retryable = new Set(['no_quorum', 'not_outage_invariant']);
+  if (options.mode === 'enforce' && retryable.has(result.enforcement.reason)) {
     recordVoteDecisionCost({
       decisionId: `consensus-${randomUUID()}`,
       gate: 'consensus_vote',

@@ -240,10 +240,11 @@ describe('registered run consensus enforcement (#4464)', () => {
     });
     expect(result.content[0]!.text).toMatch(/outage.invariant/i);
     expect(parseToolErrorEnvelope(result._meta)?.errorCategory).toBe('business');
-    expect(voteMock).toHaveBeenCalledTimes(1);
+    // Ratified on #4464: a non-outage-invariant approval is treated as no_quorum (one retry).
+    expect(voteMock).toHaveBeenCalledTimes(2);
     expect(parseToolErrorEnvelope(result._meta)?.detail).toMatchObject({
       decision: 'approved',
-      enforcement: { reason: 'not_outage_invariant', attempts: 1, wouldBlock: true },
+      enforcement: { reason: 'not_outage_invariant', attempts: 2, wouldBlock: true },
       voteRecord: { persisted: true },
     });
     expect(ledgerLines()).toHaveLength(1);
@@ -270,7 +271,7 @@ describe('registered run consensus enforcement (#4464)', () => {
       voteMock.mockResolvedValue({ ...enginePanel, votes });
       const result = await captureHandler()(runArgs);
       expect(result.isError === true).toBe(source === 'unverifiable');
-      expect(voteMock).toHaveBeenCalledTimes(1);
+      expect(voteMock).toHaveBeenCalledTimes(source === 'unverifiable' ? 2 : 1);
       expect(ledgerLines()).toHaveLength(1);
     }
   );
@@ -286,6 +287,18 @@ describe('registered run consensus enforcement (#4464)', () => {
       enforcement: { reason: 'rejected', attempts: 1, wouldBlock: true },
       voteRecord: { persisted: true },
     });
+  });
+
+  it('retries a non-outage-invariant approval once and accepts a recovered panel', async () => {
+    vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', 'enforce');
+    voteMock
+      .mockResolvedValueOnce(panel('approved', 3, 2, 2))
+      .mockResolvedValueOnce(panel('approved', 5, 0, 2));
+    const result = await captureHandler()(runArgs);
+    expect(result.isError).toBeFalsy();
+    expect(voteMock).toHaveBeenCalledTimes(2);
+    expect(payload(result)['enforcement']).toMatchObject({ wouldBlock: false, attempts: 2 });
+    expect(ledgerLines()).toHaveLength(1);
   });
 
   it('accepts 5 approvals and 2 errored seats without a retry', async () => {
