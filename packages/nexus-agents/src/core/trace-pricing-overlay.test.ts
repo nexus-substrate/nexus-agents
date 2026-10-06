@@ -133,7 +133,8 @@ describe('manifest overlay price basis (#4600)', () => {
   });
 
   it('does not declare a metadata-only overlay price', () => {
-    // Trace's legacy matrix inherits pricing; the registry itself has no rate.
+    // Tracked defect #7132: trace's legacy matrix inherits a list price for a
+    // metadata-only overlay, while computeCostDetail resolves no registry rate.
     expect(calculateCost('claude-opus', MILLION, MILLION)).toBe(30);
     expect(priceBasisFor('claude-opus')).toBe('list');
     expect(priceBasisOf(computeCostDetail('claude-opus', MILLION, MILLION))).toBe('unknown');
