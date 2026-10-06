@@ -160,8 +160,8 @@ export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSche
 export const MAX_VOTER_REASONING_CHARS = 20_000;
 
 /** Conditions are preserved verbatim; exceeding either bound rejects persistence. */
-const MAX_VOTER_CONDITIONS = 20;
-const MAX_VOTER_CONDITION_CHARS = 2_000;
+export const MAX_VOTER_CONDITIONS = 20;
+export const MAX_VOTER_CONDITION_CHARS = 2_000;
 
 /**
  * Clip a voter-entry text to {@link MAX_VOTER_REASONING_CHARS} with a marker
@@ -373,10 +373,9 @@ export const VoterSummarySchema = z
     /**
      * Voter-sent approval conditions (#7134, schema 1.15). Advisory and
      * unenforced: they do not change the tally. Absent means not supplied;
-     * an empty array means explicitly no conditions. Preserve prose verbatim,
-     * including Unicode, on the reasoning-field rule. At most 20 strings of
-     * 2,000 UTF-16 code units each; over-cap records fail validation and are
-     * never silently truncated into a less conditional approval.
+     * an empty array means explicitly no conditions. Preserve prose, including
+     * Unicode, within the caps: at most 20 strings of 2,000 UTF-16 code units
+     * each. The response parser visibly marks clipped strings and dropped items.
      */
     conditions: z
       .array(z.string().max(MAX_VOTER_CONDITION_CHARS))

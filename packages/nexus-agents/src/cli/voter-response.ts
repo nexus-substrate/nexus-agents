@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { MAX_VOTER_CONDITIONS, MAX_VOTER_CONDITION_CHARS } from '../audit/vote-record.js';
 import type { Vote } from '../consensus/types.js';
 import { matchDeclaredOption } from '../consensus/option-tally.js';
 import type { VoterRole } from './vote-types.js';
@@ -88,7 +89,11 @@ export const VoteResponseSchema = z.object({
   decision: z.enum(['approve', 'reject', 'abstain']).describe('Your vote decision'),
   reasoning: z.string().min(10).max(4000).describe('Explanation for your vote (10-4000 chars)'),
   confidence: z.number().min(0).max(1).describe('Confidence level 0-1'),
-  conditions: z.array(z.string()).optional().describe('Optional conditions for approval'),
+  conditions: z
+    .array(z.string().max(MAX_VOTER_CONDITION_CHARS))
+    .max(MAX_VOTER_CONDITIONS)
+    .optional()
+    .describe('Optional conditions for approval'),
   /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
   rejectionCategories: z
     .array(
@@ -150,7 +155,8 @@ export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
     },
     conditions: {
       type: 'array',
-      items: { type: 'string' },
+      items: { type: 'string', maxLength: MAX_VOTER_CONDITION_CHARS },
+      maxItems: MAX_VOTER_CONDITIONS,
       description: 'Optional conditions for approval',
     },
     // #4472: without this, `additionalProperties: false` makes it impossible
@@ -506,19 +512,31 @@ function clampWithMarker(s: string, max: number): string {
 }
 
 /**
- * Clamp the capped string fields of a parsed vote to their schema limits with a
- * truncation marker BEFORE validation (#4131). A thorough voter (esp. the
- * contrarian, which writes the most detailed findings) whose `reasoning` exceeds
- * the 4000-char cap previously hard-failed validation and was SILENTLY DROPPED
- * from the panel denominator. Clamping records a (clipped, clearly-marked) real
- * vote instead. Only shape (oversize strings) is repaired — a genuinely
- * malformed vote (missing decision, bad confidence) still fails `safeParse`.
+ * Clamp vote text before validation (#4131, #7134), keeping the real vote with
+ * visible markers. Malformed shapes still fail validation.
  */
 function clampOversizeVoteStrings(parsed: unknown): unknown {
   if (typeof parsed !== 'object' || parsed === null) return parsed;
   const obj = { ...(parsed as Record<string, unknown>) };
   if (typeof obj['reasoning'] === 'string') {
     obj['reasoning'] = clampWithMarker(obj['reasoning'], REASONING_MAX_CHARS);
+  }
+  if (Array.isArray(obj['conditions'])) {
+    const conditions = obj['conditions'] as unknown[];
+    // Repair bounds only; malformed items must still fail validation, even
+    // beyond the item cap, rather than hiding an invalid response by clipping.
+    if (conditions.every((condition) => typeof condition === 'string')) {
+      const kept =
+        conditions.length > MAX_VOTER_CONDITIONS ? MAX_VOTER_CONDITIONS - 1 : conditions.length;
+      obj['conditions'] = conditions
+        .slice(0, kept)
+        .map((condition) => clampWithMarker(condition, MAX_VOTER_CONDITION_CHARS));
+      if (kept < conditions.length) {
+        (obj['conditions'] as string[]).push(
+          `${TRUNCATION_MARKER} ${String(conditions.length - kept)} conditions dropped`
+        );
+      }
+    }
   }
   if (Array.isArray(obj['findings'])) {
     obj['findings'] = (obj['findings'] as unknown[]).map((finding): unknown => {

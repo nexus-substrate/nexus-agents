@@ -119,7 +119,7 @@ describe('vote record conditions (#7134)', () => {
     expect(verifyVoteRecordSet(ledger.records)).toEqual({ ok: true, recordCount: 1 });
   });
 
-  it('distinguishes absent conditions from an explicitly empty array', () => {
+  it('an empty conditions array promotes the record to 1.15, unlike absent conditions', () => {
     const absent = persistVoteRecord({ ...inputFor(), filePath });
     const empty = persistVoteRecord({ ...inputFor([]), filePath });
     expect(absent?.version).toBe('1.13');
@@ -198,21 +198,35 @@ describe('vote record conditions (#7134)', () => {
   });
 
   it.each([
-    ['count', Array.from({ length: 21 }, () => 'condition')],
-    ['length', ['x'.repeat(2_001)]],
-  ])('fails closed on an excessive %s, without truncating or appending', (_bound, conditions) => {
-    const existing = persistVoteRecord({ ...inputFor(), filePath });
-    const input = inputFor(conditions);
-    const record = buildVoteRecord(input);
-    expect(record.voters[0]).toHaveProperty('conditions', conditions);
-    expect(VoteRecordSchema.safeParse(record).success).toBe(false);
-    expect(persistVoteRecord({ ...input, filePath })).toBeUndefined();
-    expect(LOGGER.warn).toHaveBeenCalledWith(
-      'Failed to persist authentic vote record',
-      expect.any(Object)
-    );
-    expect(readVoteRecords(filePath).records).toEqual([existing]);
-  });
+    [
+      'count',
+      Array.from({ length: 23 }, (_, i) => `condition ${String(i)}`),
+      [
+        ...Array.from({ length: 19 }, (_, i) => `condition ${String(i)}`),
+        ' …[truncated] 4 conditions dropped',
+      ],
+    ],
+    ['length', ['x'.repeat(2_001)], ['x'.repeat(2_000 - ' …[truncated]'.length) + ' …[truncated]']],
+  ])(
+    'persists an over-cap %s response with visibly clamped conditions',
+    (_bound, conditions, expected) => {
+      // Previously this test pinned loss of the whole record while the vote counted.
+      const existing = persistVoteRecord({ ...inputFor(), filePath });
+      const input = inputFor(conditions);
+      expect(input.votes[0]?.vote.conditions).toEqual(expected);
+      const record = persistVoteRecord({ ...input, filePath });
+      expect(record).toMatchObject({
+        version: '1.15',
+        voters: [{ conditions: expected }],
+        decision: 'approved',
+        voteCounts: RESULT.voteCounts,
+      });
+      expect(LOGGER.warn).not.toHaveBeenCalled();
+      const ledger = readVoteRecords(filePath);
+      expect(ledger.records).toEqual([existing, record]);
+      expect(verifyVoteRecordSet(ledger.records)).toEqual({ ok: true, recordCount: 2 });
+    }
+  );
 
   it('retains strict voter validation and rejects non-string conditions', () => {
     const voter = { role: 'architect', decision: 'approve', confidence: 0.9 };
