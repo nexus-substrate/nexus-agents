@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 9.2.0
+
+### Minor Changes
+
+- [#7125](https://github.com/nexus-substrate/nexus-agents/pull/7125) [`220d07e`](https://github.com/nexus-substrate/nexus-agents/commit/220d07eb2fffa06618b6b5420d218ec8acfe397d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Re-ask approving voters with unresolved declared-option selections exactly once before finalizing consensus. Preserve their original decisions, and persist per-seat selections and re-ask outcomes in backward-compatible vote record schema 1.14.
+
+### Patch Changes
+
+- [#7123](https://github.com/nexus-substrate/nexus-agents/pull/7123) [`48a5854`](https://github.com/nexus-substrate/nexus-agents/commit/48a58548a3de872aacef635259a064a223c7131a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Prevent child CLI MCP config directories from leaking when a process exits during config creation. Write the small config synchronously so pending filesystem writes cannot race exit cleanup.
+
 ## 9.1.1
 
 ### Patch Changes
