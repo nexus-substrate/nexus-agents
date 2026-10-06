@@ -13,7 +13,7 @@ const { CompositeRouter } = await import('./composite-router.js');
 function adapter(name: RoutingArmId): ICliAdapter {
   return {
     name,
-    transport: name === 'claude' ? 'subprocess' : 'mcp',
+    transport: 'subprocess',
     capabilities: { reasoning: 8, contextWindow: 200000, codeGeneration: 9, speed: 7, cost: 5 },
     execute: vi.fn(),
     healthCheck: vi.fn().mockResolvedValue({ healthy: true }),
