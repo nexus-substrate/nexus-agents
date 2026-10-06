@@ -11,6 +11,8 @@ import { runConsensusForGoal } from './consensus-vote.js';
 import { recordCompletedVote } from './consensus-vote-completed-recording.js';
 import { recordVoteDecisionCost } from './decision-cost-recording.js';
 import { randomUUID } from 'node:crypto';
+import { evaluateThreshold } from '../../consensus/decision/verdict.js';
+import { VOTING_THRESHOLDS } from '../../consensus/decision/thresholds.js';
 
 /** What an enforcing run would do; off explicitly reports an unmeasured verdict. */
 export interface ConsensusEnforcement {
@@ -50,7 +52,15 @@ function assessPanel(
     (seat) =>
       seat.source === 'error' || seat.source === 'unverifiable' || seat.vote.decision !== 'abstain'
   ).length;
-  const outageInvariant = denominator > 0 && result.result.voteCounts.approve > 0.5 * denominator;
+  // Strictly above a simple majority of every seat that answered or failed (#4464).
+  const outageInvariant =
+    denominator > 0 &&
+    evaluateThreshold(
+      result.result.voteCounts.approve,
+      denominator,
+      VOTING_THRESHOLDS.simple_majority,
+      false
+    ).approved;
   const reason = decision === 'approved' && !outageInvariant ? 'not_outage_invariant' : decision;
   return {
     ...result,
