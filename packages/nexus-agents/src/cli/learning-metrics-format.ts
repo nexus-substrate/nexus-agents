@@ -71,13 +71,15 @@ function formatSummary(result: LearningMetricsResult): string[] {
           ? color('✓', ANSI.green)
           : color('◎', ANSI.blue);
   const statusText =
-    result.summary.learningStatus === 'unmeasured'
-      ? result.banditReconstruction === undefined
-        ? 'unmeasured (no routing decisions recorded)'
-        : result.banditReconstruction.status === 'failed'
-          ? 'unmeasured (reconstruction failed)'
-          : 'unmeasured (no empirical replay)'
-      : result.summary.learningStatus;
+    result.summary.learningStatus === 'reconstructed' && result.banditReconstruction !== undefined
+      ? `reconstructed (${String(result.banditReconstruction.empiricalOutcomesReplayed)} empirical outcomes)`
+      : result.summary.learningStatus === 'unmeasured'
+        ? result.banditReconstruction === undefined
+          ? 'unmeasured (no routing decisions recorded)'
+          : result.banditReconstruction.status === 'failed'
+            ? 'unmeasured (reconstruction failed)'
+            : 'unmeasured (no empirical replay)'
+        : result.summary.learningStatus;
   lines.push(boxLine(`   ${statusEmoji} Learning Status: ${statusText}`));
 
   const routings = result.summary.totalRoutings.toLocaleString();
@@ -281,7 +283,11 @@ export function formatAsciiOutput(
 
   if (options.banditStats) {
     lines.push(
-      ...formatBanditProgress(result.banditProgress, result.summary.learningStatus === 'unmeasured')
+      ...formatBanditProgress(
+        result.banditProgress,
+        result.summary.learningStatus === 'unmeasured' ||
+          result.summary.learningStatus === 'reconstructed'
+      )
     );
     lines.push(...formatFeatureImportance(result.banditProgress.topFeatures));
   }

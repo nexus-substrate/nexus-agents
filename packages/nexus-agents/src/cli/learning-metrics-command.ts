@@ -194,18 +194,22 @@ function gatherContextMetrics(
   );
   if (reconstruction === undefined) return result;
   // Replays and priors are not selection decisions, so the pull spread of a
-  // reconstructed bandit says nothing about exploration: never derive a verdict.
-  const summary = { ...result.summary, learningStatus: 'unmeasured' as const };
+  // reconstructed bandit says nothing about exploration. Successful empirical
+  // replay measures reconstructed learning, not the live routing phase (#7160).
   // Priors and synthetic fallback pulls are not measured routing evidence.
   if (reconstruction.status === 'failed' || reconstruction.empiricalOutcomesReplayed === 0) {
     return {
       ...result,
       banditReconstruction: reconstruction,
-      summary,
+      summary: { ...result.summary, learningStatus: 'unmeasured' },
       banditProgress: { ...result.banditProgress, topFeatures: [], interceptFeatures: [] },
     };
   }
-  return { ...result, banditReconstruction: reconstruction, summary };
+  return {
+    ...result,
+    banditReconstruction: reconstruction,
+    summary: { ...result.summary, learningStatus: 'reconstructed' },
+  };
 }
 
 /**
