@@ -638,7 +638,9 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
     topsisScoresByArm: p.topsisResult.scoresByArm,
     selectedCli: p.selectedCli,
     ucbScore: p.linucbResult.ucbScore,
-    latencyScore: p.latencyResult.latencyScore,
+    // Endpoint latency is unmeasured; the stage's best CLI score is not its own.
+    latencyScore:
+      routingArmCliSlot(p.selectedCli) === undefined ? undefined : p.latencyResult.latencyScore,
     memoryRecommendation: p.memoryResult.recommendation,
     memoryConfidence: p.memoryResult.memoryConfidence,
     ...(stageScores.size > 0 ? { stageScores } : {}),
