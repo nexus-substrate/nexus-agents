@@ -66,7 +66,7 @@ export function computeReasoningDigest(reasoningNonce: string, reasoning: string
  * membership here is the ONLY thing that decides the fold, so an older record
  * is never re-projected by a version comparison.
  */
-const REASONING_DIGEST_TIERS: ReadonlySet<string> = new Set(['1.13', '1.14']);
+const REASONING_DIGEST_TIERS: ReadonlySet<string> = new Set(['1.13', '1.14', '1.15']);
 
 /** True when `version` is a tier whose voter hash folds the digest, not the text. */
 export function isReasoningDigestTier(version: string): boolean {

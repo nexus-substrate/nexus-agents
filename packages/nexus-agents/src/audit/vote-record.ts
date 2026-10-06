@@ -66,6 +66,8 @@
  * @module audit/vote-record
  */
 
+// Keep the schema and canonical hash projection together; 1.15 adds eight counted lines.
+/* eslint max-lines: ["error", { "max": 410, "skipBlankLines": true, "skipComments": true }] */
 import * as crypto from 'node:crypto';
 
 import { z } from 'zod';
@@ -157,11 +159,15 @@ export type VoteRecordPanelCoverage = z.infer<typeof VoteRecordPanelCoverageSche
  */
 export const MAX_VOTER_REASONING_CHARS = 20_000;
 
+/** Conditions are preserved verbatim; exceeding either bound rejects persistence. */
+const MAX_VOTER_CONDITIONS = 20;
+const MAX_VOTER_CONDITION_CHARS = 2_000;
+
 /**
  * Clip a voter-entry text to {@link MAX_VOTER_REASONING_CHARS} with a marker
  * (#5373): the returned `truncated` is the flag the record stores beside the
  * text (`reasoningTruncated`, `retriedFrom.errorTruncated`), present only when
- * the clip fired. ONE clip for every bounded voter string — the builder's
+ * the clip fired. ONE clip for voter reasoning and retry errors — the builder's
  * `reasoningFields` and the live retry's carried cause (#6246) both call this,
  * so there is one number and one marker rule, not a silent slice somewhere.
  */
@@ -364,6 +370,18 @@ export const VoterSummarySchema = z
     selectedOption: z.string().min(1).optional(),
     /** Present only when the approving seat was re-asked once (#4495). */
     optionReask: z.object({ resolved: z.boolean() }).strict().optional(),
+    /**
+     * Voter-sent approval conditions (#7134, schema 1.15). Advisory and
+     * unenforced: they do not change the tally. Absent means not supplied;
+     * an empty array means explicitly no conditions. Preserve prose verbatim,
+     * including Unicode, on the reasoning-field rule. At most 20 strings of
+     * 2,000 UTF-16 code units each; over-cap records fail validation and are
+     * never silently truncated into a less conditional approval.
+     */
+    conditions: z
+      .array(z.string().max(MAX_VOTER_CONDITION_CHARS))
+      .max(MAX_VOTER_CONDITIONS)
+      .optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -447,6 +465,8 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // 1.14 (#4495): appended, present-only; historical hashes stay unchanged.
   'selectedOption',
   'optionReask',
+  // 1.15 (#7134): appended LAST, present-only; [] remains distinct from absent.
+  'conditions',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
 /**
@@ -534,8 +554,8 @@ export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetr
 }
 
 /**
- * One voter field for the canonical hash. The two nested keys are rebuilt by
- * their own projectors; every other value is a scalar and is carried as-is.
+ * One voter field for the canonical hash. Nested evidence objects are rebuilt
+ * by their own projectors; other values, including conditions, are carried as-is.
  *
  * `digestTier` (#6263) is the one place the fold depends on the record's
  * tier: on the digest tier the opening keys (text and nonce) project to
@@ -669,7 +689,8 @@ export const VoteRecordSchema = z
      * and — the one tier that changes what an EXISTING key means to the
      * hash — folds those instead of `reasoning` (#6263; the clip marker
      * `reasoningTruncated` stays folded). '1.14' adds per-seat selections and
-     * re-ask outcomes (#4495), keeping the digest fold. Every tier is accepted — a 1.1 record
+     * re-ask outcomes (#4495), keeping the digest fold. '1.15' adds advisory
+     * voter conditions (#7134), also keeping the digest fold. Every tier is accepted — a 1.1 record
      * (no `ratifies`) verifies unchanged because each optional is folded into
      * the self-hash ONLY when present (see {@link computeVoteRecordHash}).
      * Tiers are labels, not ordered numbers: '1.10' follows '1.9' by
@@ -690,6 +711,7 @@ export const VoteRecordSchema = z
       '1.12',
       '1.13',
       '1.14',
+      '1.15',
     ]),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),

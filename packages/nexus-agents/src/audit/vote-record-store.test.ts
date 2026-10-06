@@ -504,7 +504,12 @@ describe('persistVoteRecord', () => {
           fallback: { fromCli: 'claude', fromModel: 'claude-opus', reason: 'capacity' },
           // #6246: what the per-role retry replaced.
           retriedFrom: { source: 'error', error: 'Vote parsing failed', errorTruncated: true },
-          vote: { ...votes[0]!.vote, decision: 'abstain', reasoning: clipped },
+          vote: {
+            ...votes[0]!.vote,
+            decision: 'abstain',
+            reasoning: clipped,
+            conditions: ['Read the artifact before approval'],
+          },
         },
       ],
       filePath,
@@ -532,6 +537,7 @@ describe('persistVoteRecord', () => {
     // Previously credited a selection to this abstention; only approvers select.
     expect(entry).not.toHaveProperty('selectedOption');
     expect(entry.optionReask).toEqual({ resolved: true });
+    expect(entry.conditions).toEqual(['Read the artifact before approval']);
     expect(Object.keys(entry).sort()).toEqual(
       Object.keys(VoterSummarySchema.shape)
         .filter((key) => key !== 'selectedOption')

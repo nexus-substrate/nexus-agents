@@ -41,6 +41,8 @@
  * @module audit/vote-record-store
  */
 
+// Keep the present-only evidence builder with its version selection and validated append.
+/* eslint max-lines: ["error", { "max": 410, "skipBlankLines": true, "skipComments": true }] */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
@@ -61,7 +63,11 @@ import type {
   VoteRecordPrBinding,
   VoterSummary,
 } from './vote-record.js';
-import { computeReasoningDigest, mintReasoningNonce } from './reasoning-commitment.js';
+import {
+  computeReasoningDigest,
+  isReasoningDigestTier,
+  mintReasoningNonce,
+} from './reasoning-commitment.js';
 import type { RedactionRecord } from './redaction-record.js';
 import { RedactionRecordSchema } from './redaction-record.js';
 import {
@@ -191,13 +197,17 @@ function servedModelField(
   return {};
 }
 
-/** Supplementary selection evidence, absent on historical yes/no seats. */
-function optionEvidence(v: AgentVoteResult): Pick<VoterSummary, 'selectedOption' | 'optionReask'> {
+/** Supplementary voter evidence, absent unless the seat actually supplied it. */
+function voterEvidence(
+  v: AgentVoteResult
+): Pick<VoterSummary, 'selectedOption' | 'optionReask' | 'conditions'> {
   return {
     ...(v.vote.decision === 'approve' && v.selectedOption !== undefined
       ? { selectedOption: v.selectedOption }
       : {}),
     ...(v.optionReask !== undefined ? { optionReask: { resolved: v.optionReask.resolved } } : {}),
+    // ParsedVote -> result.vote already carries conditions. Preserve [], never clip.
+    ...(v.vote.conditions !== undefined ? { conditions: [...v.vote.conditions] } : {}),
   };
 }
 
@@ -241,7 +251,7 @@ function toVoterSummaries(
       // #6967: the hash projection (`VOTER_SUMMARY_KEYS`) appends it last, so
       // its position here does not change any hash.
       ...servedModelField(v, logger),
-      ...optionEvidence(v),
+      ...voterEvidence(v),
     });
   }
   return summaries;
@@ -416,7 +426,8 @@ function deriveOptionFields(
 /**
  * Schema version implied by the option fields present.
  *
- * 1.14 carries per-seat selections and re-ask outcomes (#4495), preserving
+ * 1.15 carries advisory voter conditions (#7134); 1.14 carries per-seat
+ * selections and re-ask outcomes (#4495), preserving
  * the digest fold. 1.13 carries a voter `reasoningDigest` (#6263) — every entry
  * with stored reasoning does, so other records with responding voters are 1.13 and the
  * tiers below are reachable only through a panel with no voter entry — 1.12
@@ -436,11 +447,10 @@ function recordVersion(
   recordLevel: Pick<BuildVoteRecordInput, 'ratifiesPr' | 'errorPolicy'>
 ): Exclude<VoteRecord['version'], '1.1'> {
   const voterTier = voterTierOf(voters);
-  if (voterTier === '1.14') return '1.14';
-  // 1.13 next (#6263): the digest changes what the hash COVERS for the
+  // Digest tiers (#6263): the digest changes what the hash COVERS for the
   // reasoning keys, so a reader must know from the version alone which fold
   // rule applies; it outranks every tier below, record-level ones included.
-  if (voterTier === '1.13') return '1.13';
+  if (voterTier !== undefined && isReasoningDigestTier(voterTier)) return voterTier;
   // 1.12 next: a carried first-pass cause is orthogonal to every tier below
   // — it co-occurs with `retried` (1.7) but a retried seat need not carry one
   // — and a reader needs to know from the version alone whether a voter entry
@@ -467,7 +477,8 @@ function recordVersion(
  */
 function voterTierOf(
   voters: readonly VoterSummary[]
-): '1.6' | '1.7' | '1.8' | '1.9' | '1.12' | '1.13' | '1.14' | undefined {
+): '1.6' | '1.7' | '1.8' | '1.9' | '1.12' | '1.13' | '1.14' | '1.15' | undefined {
+  if (voters.some((v) => v.conditions !== undefined)) return '1.15';
   if (voters.some((v) => v.selectedOption !== undefined || v.optionReask !== undefined))
     return '1.14';
   if (voters.some((v) => v.reasoningDigest !== undefined)) return '1.13';
