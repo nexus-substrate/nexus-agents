@@ -15,7 +15,7 @@
 import { computeTokenCost, roundToMicroUsd } from '../learning/token-cost-core.js';
 import { priceBasisCaveat, type PriceBasis } from '../core/price-basis.js';
 import { createLogger } from '../core/logger.js';
-import { computeCostDetail, type CostDetail } from '../learning/usage-log.js';
+import { computeCostDetail, priceBasisOf, type CostDetail } from '../learning/usage-log.js';
 import type { CliName, EndpointArmId, ObservedArmId, RoutingArmId } from './types.js';
 import { observedArmDisplaySlot, routingArmDisplaySlot } from './types.js';
 import { gatewayServedSlotOf, type GatewayServedSlot } from './gateway-slot-arm.js';
@@ -214,14 +214,30 @@ function ceilingPriceBasis(
   const declaration =
     arm !== undefined && isGatewayArmId(arm) ? resolveGatewayCostDeclaration(arm, env) : undefined;
   const declared = declaration !== undefined && gatewayCostRates(declaration) !== 'registry';
-  return declared ? 'declared' : 'list';
+  if (declared) return 'declared';
+  return registryCeilingBasis(target, served, arm, env);
+}
+
+/** Basis of the same registry model that supplied the ceiling estimate. */
+function registryCeilingBasis(
+  target: RouterArm,
+  served: GatewayServedSlot | undefined,
+  arm: ObservedArmId | undefined,
+  env: NodeJS.ProcessEnv
+): PriceBasis {
+  const model =
+    arm !== undefined && isGatewayArmId(arm)
+      ? gatewayPricingModel(arm, served?.modelId ?? sentModelOf(target.adapter), env)
+      : getDefaultModelForCli(observedArmDisplaySlot(target.arm));
+  return model === undefined ? 'unknown' : priceBasisOf(computeCostDetail(model, 0, 0));
 }
 
 /**
  * Record the canonical ceiling estimate with its price basis (#5095).
  * Missing pricing stays `undefined` and `unknown`, never a measured $0.
- * Explicit gateway rates (including free/local) use `declared`; registry
- * rates use `list`, including a gateway's bare `priced` declaration.
+ * Explicit gateway rates (including free/local) and manifest-overlay rates
+ * use `declared`; other registry rates use `list`. Bare gateway `priced`
+ * inherits the selected registry tier's basis.
  * Admitted list-price estimates are warnings with the canonical caveat.
  * Wrapping the existing policy preserves its arithmetic and arm resolution.
  */

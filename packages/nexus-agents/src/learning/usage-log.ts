@@ -96,7 +96,7 @@ export interface CostDetail {
   readonly costUsd: number;
   /** Whether a registry rate or explicit gateway declaration priced the call. */
   readonly priced: boolean;
-  /** Explicit NEXUS_GATEWAY_COST rate, including free/local; absent for registry rates. */
+  /** Operator-asserted manifest or NEXUS_GATEWAY_COST rate, including free/local. */
   readonly declared?: true;
   /**
    * Canonical id the pricing/metadata came from: the entry's `resolvedFrom`
@@ -148,6 +148,9 @@ export function computeCostDetail(
   return {
     costUsd: roundToMicroUsd(costUsd),
     priced: true,
+    ...(getDefaultRegistry().getEntry(entry.resolvedFrom ?? entry.id).source === 'manifest'
+      ? { declared: true as const }
+      : {}),
     resolvedId,
     ...provenance,
     ...(entry.pricingProvenance !== undefined
@@ -159,15 +162,15 @@ export function computeCostDetail(
 /**
  * The {@link PriceBasis} the cost in a {@link CostDetail} rests on (#4406).
  *
- * Unpriced details remain `'unknown'`. An explicit gateway declaration
- * (`free`, `local`, `priced:<in>,<out>`) marks `declared`, so a priced detail
- * reports `'declared'`. Otherwise the registry-chain rate reports `'list'`.
- * Bare gateway `priced` uses the registry and does not mark a declaration.
+ * Unpriced details remain `'unknown'`. Explicit gateway declarations
+ * (`free`, `local`, `priced:<in>,<out>`) and manifest-overlay prices mark
+ * `declared`, so a priced detail reports `'declared'`. Other registry-chain
+ * rates report `'list'`. Bare gateway `priced` delegates to the registry and
+ * inherits the basis of the selected tier.
  *
- * Registry rates remain assumed published rates: operator manifest overrides
- * and fuzzy-matched sibling rates carry no distinguishing label today.
- * A published zero rate discarded by the catalog loader can remain unknown.
- * See {@link PriceBasis} for those existing registry-chain limitations.
+ * Fuzzy-matched sibling rates can still price a different canonical model;
+ * a published zero discarded by the catalog loader can remain unknown.
+ * See {@link PriceBasis} for those registry-chain limitations.
  *
  * `priceSource`, the other provenance field, answers a different question: WHICH
  * registry entry supplied the number, not what KIND of rate it is. It does not

@@ -384,12 +384,12 @@ describe('priceBasisOf (#4406 — the recorded figure carries its provenance)', 
    * distinctive rate into the chain, and the assertions pin the dollar figure
    * that rate produces as well as the basis reported for it.
    */
-  it('reports an operator-overridden rate as list — the known over-claim (#4406)', async () => {
+  it('reports an operator manifest rate as declared (#4600)', async () => {
     const { mkdtempSync: mkTmp, writeFileSync: write, rmSync: rm } = await import('node:fs');
     const dir = mkTmp(join(tmpdir(), 'usage-log-basis-overlay-'));
     const manifestPath = join(dir, 'models-manifest.yaml');
-    // 3 USD / 1M input, 15 USD / 1M output — deliberately not any in-tree rate,
-    // so the cost below can only come from THIS overlay.
+    // This gateway-only id has no in-tree entry, so its 3 / 15 USD rate
+    // can only come from this overlay.
     write(
       manifestPath,
       `version: 1
@@ -411,12 +411,8 @@ models:
       // The overlay rate actually reached the cost chain: 3 + 15 = 18 USD.
       expect(detail.costUsd).toBe(18);
       expect(detail.priced).toBe(true);
-      // ...and is STILL labelled 'list'. The manifest overlay is precisely the
-      // mechanism an operator uses to state a negotiated rate, so this label is
-      // an over-claim in the conservative direction — the caveat warns a reader
-      // their contract may differ over a number that already is their contract.
-      // Pinned deliberately: PriceBasis has no 'contract' member to report.
-      expect(priceBasisOf(detail)).toBe('list');
+      // Previously pinned the defect: an operator's own rate was labelled list.
+      expect(priceBasisOf(detail)).toBe('declared');
     } finally {
       if (previous === undefined) delete process.env['NEXUS_MODELS_OVERLAY_PATH'];
       else process.env['NEXUS_MODELS_OVERLAY_PATH'] = previous;
@@ -443,7 +439,7 @@ models:
     expect(priceBasisOf(detail)).toBe('unknown');
   });
 
-  it('does not mark registry rates as declarations (#6664)', () => {
+  it('does not mark in-tree rates as declarations (#6664)', () => {
     const detail = computeCostDetail('claude-sonnet', 10, 10);
     expect(Object.keys(detail)).not.toContain('declared');
   });
