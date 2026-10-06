@@ -19,6 +19,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DevPipelineStages } from '../../pipeline/dev-pipeline.js';
+import type { ExtendedVotingResult } from './consensus-vote-types.js';
+import type { AgentVoteResult } from '../../cli/vote-types.js';
+import { getVoterRoles } from '../../cli/voter-roles.js';
 import { researchContextFromText } from '../../pipeline/research-context.js';
 
 const stageCalls: string[] = [];
@@ -36,6 +39,15 @@ const consensusSpy = vi.fn();
 vi.mock('./consensus-vote.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./consensus-vote.js')>()),
   runConsensusForGoal: (...args: unknown[]): unknown => consensusSpy(...args),
+}));
+
+// These cancellation tests do not own ledger state; dedicated enforcement seam
+// tests cover recording against real throwaway ledgers.
+vi.mock('./consensus-vote-completed-recording.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./consensus-vote-completed-recording.js')>()),
+  recordCompletedVote: vi
+    .fn()
+    .mockResolvedValue({ costSummary: undefined, voteRecord: { persisted: true } }),
 }));
 
 import { registerRunTool, buildDefaultExecutors, executeGoal } from './run-tool.js';
@@ -221,7 +233,37 @@ describe('cancel_job interrupts an in-flight run (#6305)', () => {
 
 const DECISION = { strategy: 'consensus', decisionId: 'd-1' } as unknown as MetaDecision;
 const META_INPUT = { goal: 'Should we ship it?' } as unknown as MetaOrchestratorInput;
-const VERDICT = { decision: 'approved', votes: [] };
+const RESPONDENTS: readonly AgentVoteResult[] = getVoterRoles(true).map((role) => ({
+  role,
+  source: 'llm',
+  processingTimeMs: 1,
+  vote: { decision: 'approve', reasoning: 'Fixture panel approves the proposal', confidence: 0.9 },
+}));
+const VERDICT: ExtendedVotingResult = {
+  proposal: 'Summarise the repo',
+  threshold: 'simple_majority',
+  strategy: 'simple_majority',
+  decision: 'approved',
+  votes: RESPONDENTS,
+  simulateVotes: false,
+  totalTimeMs: 1,
+  result: {
+    proposalId: 'cancel-seam-fixture',
+    proposal: {
+      title: 'Summarise the repo',
+      description: 'Cancellation seam fixture',
+      algorithm: 'simple_majority',
+    },
+    outcome: 'approved',
+    votes: new Map(RESPONDENTS.map((vote) => [vote.role, vote.vote])),
+    voteCounts: { approve: RESPONDENTS.length, reject: 0, abstain: 0, total: RESPONDENTS.length },
+    approvalPercentage: 100,
+    quorumReached: true,
+    startedAt: '2026-10-05T12:00:00.000Z',
+    closedAt: '2026-10-05T12:00:00.000Z',
+    durationMs: 1,
+  },
+};
 
 describe('run strategy executors and the dispatch gate (#6305)', () => {
   beforeEach(() => {
@@ -262,7 +304,7 @@ describe('run strategy executors and the dispatch gate (#6305)', () => {
     ).consensus;
     if (consensus === undefined) throw new Error('consensus executor not wired');
 
-    await expect(consensus(DECISION, META_INPUT)).resolves.toBe(VERDICT);
+    await expect(consensus(DECISION, META_INPUT)).resolves.toMatchObject(VERDICT);
   });
 
   it('executeGoal refuses to dispatch once the signal has fired', async () => {

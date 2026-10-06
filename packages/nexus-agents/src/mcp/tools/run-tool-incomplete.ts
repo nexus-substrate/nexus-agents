@@ -1,7 +1,10 @@
 /**
- * Incomplete dev-pipeline result descriptions for the unified run tool.
+ * Engine failure descriptions for the unified run tool.
  * Split from run-tool.ts when #5506 pushed that module over the 400-line limit.
  */
+
+import { classifyEngineResult } from '../../orchestration/meta-dispatcher.js';
+import type { ConsensusEnforcementMode } from '../../orchestration/consensus-enforcement-mode.js';
 
 const FAILURE_PREFIX = 'Engine reported failure:';
 
@@ -53,4 +56,43 @@ export function describeIncompletePipeline(record: Record<string, unknown>): str
     return `${FAILURE_PREFIX} the run stopped before the security gate, which never ran`;
   }
   return `${FAILURE_PREFIX} the dev pipeline did not complete`;
+}
+
+/**
+ * Detect a business failure an engine reported in its own result, or null when
+ * the run is honest-success (#4362, #5641).
+ *
+ * Delegates the success/failure decision to {@link classifyEngineResult} while
+ * retaining tool-layer message and detail shaping:
+ *
+ * - `AdaptiveOrchestratorResult` (pipeline / research) — `success: false`
+ * - `DevPipelineResult` (dev-pipeline) — `completed: false`
+ *
+ * Consensus rejection and unresolved quorum fail only in enforce mode (#4464).
+ */
+export function detectEngineFailure(
+  result: unknown,
+  mode: ConsensusEnforcementMode
+): { message: string; detail?: Record<string, unknown> } | null {
+  const classification = classifyEngineResult(result, mode);
+  if (classification.success) return null;
+
+  const record =
+    typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : undefined;
+
+  if (record?.['completed'] === false) {
+    return { message: describeIncompletePipeline(record), detail: record };
+  }
+  if (record?.['enforcement'] !== undefined) {
+    return {
+      message: `Engine reported failure: ${classification.failureReason ?? 'no error message'}`,
+      detail: {
+        decision: record['decision'],
+        enforcement: record['enforcement'],
+        voteRecord: record['voteRecord'],
+      },
+    };
+  }
+  const detail = classification.failureReason ?? 'no error message';
+  return { message: `Engine reported failure: ${detail}` };
 }

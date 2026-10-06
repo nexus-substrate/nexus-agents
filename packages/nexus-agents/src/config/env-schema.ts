@@ -177,6 +177,8 @@ const NexusEnvSchema = z.object({
   // Drives the auto-remediation cycle (resolveAutoRemediateMode); default audit
   // (zero-write soak, #3769) when unset, explicit `off` disables.
   NEXUS_AUTO_REMEDIATE: z.enum(['off', 'audit', 'enforce']).optional(),
+  // Run-layer consensus verdict enforcement (#4464); default audit.
+  NEXUS_CONSENSUS_ENFORCE: z.enum(['off', 'audit', 'enforce']).optional(),
   // Stage-boundary policy gate enforcement mode (getGateEnforcementMode); warn by
   // default. Read by dev-pipeline's consensus→execute gate, and by any compiled
   // gate node whose caller supplies a `policyEnforcement` bundle without a mode

@@ -390,11 +390,48 @@ Resolution, one order for every class (#6162): `max(envClassOverride ?? base, 10
 | `NEXUS_EVENTBUS_ENABLED`    | EventBus A2A bridge                                                                                                                                                                                                                                 | `true`    |
 | `NEXUS_V2_POLICY_MODE`      | Policy enforcement (`off`/`warn`/`block`); governs the V2 orchestrate pre-execution check (`checkPipelinePolicy(task, 'execute')`)                                                                                                                  | `block`   |
 | `NEXUS_AUTO_REMEDIATE`      | Autonomous remediation cycle (`off`/`audit`/`enforce`, #3653; default `audit` zero-write soak, #3769)                                                                                                                                               | `audit`   |
+| `NEXUS_CONSENSUS_ENFORCE`   | Consensus verdict enforcement for `run` (`off`/`audit`/`enforce`, #4464); see below.                                                                                                                                                                | `audit`   |
 | `NEXUS_POLICY_GATE_MODE`    | Stage-boundary policy gate (`off`/`warn`/`block`, #3177): dev-pipeline's consensus→execute gate, and any compiled gate node whose caller supplies a `policyEnforcement` bundle (none in-tree today); the V2 delegate graph declares no gate (#4657) | `warn`    |
 | `NEXUS_JOB_RESULT_SOURCE`   | Async job-result reader source (`sidecar`/`task_state`, #3090/#3693): `task_state` prefers+unions the Stage-2 task-state log; reader half of the sidecar→Stage-2 migration (epic #2631)                                                             | `sidecar` |
 | `NEXUS_MODELS_OVERLAY_PATH` | Path to a model-registry overlay manifest (#3185 hot-reload)                                                                                                                                                                                        | _(unset)_ |
 | `NEXUS_DISABLE_SESSIONS`    | Disable session tracking                                                                                                                                                                                                                            | `false`   |
 | `NEXUS_DISABLE_METRICS`     | Disable metrics tracking                                                                                                                                                                                                                            | `false`   |
+
+### Consensus enforcement
+
+`NEXUS_CONSENSUS_ENFORCE` controls the consensus strategy dispatched by
+`run({ execute: true })`. It defaults to `audit`.
+
+- `off` records the final panel without judging its verdict. The `enforcement`
+  field reports `{ mode: 'off', attempts: 1, reason: 'unmeasured' }`; `wouldBlock`
+  is omitted.
+- `audit` reports whether enforcement would block, while allowing the run to
+  succeed. It does not retry the panel.
+- `enforce` returns a business error for `rejected`. It retries `no_quorum`
+  exactly once, then fails closed if the retry still lacks quorum. An approval
+  must have approvals > 0.5 × (approve + reject + errored seats). Unverifiable
+  seats (unable to read the artifact) count with errored seats; genuine
+  abstentions leave the denominator. An approval below this bar is treated
+  like `no_quorum` (reason `not_outage_invariant`): retried once, then
+  blocked. The engine's recorded decision is not changed. For example, 3 approvals, 1 rejection and 3 genuine
+  abstentions pass; replacing those abstentions with unverifiable seats blocks.
+  3 approvals, 2 rejections and 2 errored seats block; 5 approvals and 2 errored
+  seats pass.
+
+Every consensus run exposes `{ mode, attempts, reason }` in `enforcement`, plus
+`wouldBlock` when measured. `attempts` is 1 or 2. The ledger records the final
+panel's engine decision unchanged; a quorum retry also records the first
+panel's cost through the existing cost writer, without a second ledger line.
+Recording errors fail the run under `enforce`; `audit` and `off` log them and
+continue. Under `audit` and `enforce`, `enforcement.recordingError` reports a
+recording failure separately from the verdict's `reason`. Enforced refusals
+carry `{ decision, enforcement, voteRecord }` in the error envelope's `detail`.
+An enforced refusal also ends an asynchronous run job as `failed`.
+`pr_review` remains advisory.
+
+```bash
+NEXUS_CONSENSUS_ENFORCE=enforce nexus-agents --mode=server
+```
 
 ### Gateway behind a corporate network (#6608)
 
