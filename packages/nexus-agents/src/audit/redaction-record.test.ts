@@ -12,7 +12,7 @@
  * @module audit/redaction-record.test
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -112,6 +112,27 @@ describe('the redaction record (#6264)', () => {
     expect(RedactionRecordSchema.safeParse({ ...r, extra: 1 }).success).toBe(false);
     expect(RedactionRecordSchema.safeParse({ ...r, kind: 'vote' }).success).toBe(false);
     expect(RedactionRecordSchema.safeParse({ ...r, reason: '' }).success).toBe(false);
+  });
+
+  it('preserves conditions and their public type on the default and historical tiers', () => {
+    const voter = {
+      role: 'architect',
+      reasoning: 'grounds',
+      reasoningNonce: NONCE,
+      reasoningDigest: '0'.repeat(64),
+      conditions: ['Legacy condition'],
+    };
+    const defaults = redactVoterOpenings([voter], new Set(['architect']));
+    const historical = redactVoterOpenings([voter], new Set(['architect']), '1.14');
+    expectTypeOf(defaults[0]!.conditions).toEqualTypeOf<string[]>();
+    expectTypeOf(historical[0]!.conditions).toEqualTypeOf<string[]>();
+    const modern = redactVoterOpenings([voter], new Set(['architect']), '1.15');
+    expectTypeOf(modern).toEqualTypeOf<Array<Pick<typeof voter, 'role' | 'reasoningDigest'>>>();
+    const dynamicVersion: string = '1.15';
+    const dynamic = redactVoterOpenings([voter], new Set(['architect']), dynamicVersion);
+    expectTypeOf(dynamic).toEqualTypeOf<Array<Pick<typeof voter, 'role' | 'reasoningDigest'>>>();
+    expect(defaults[0]).toHaveProperty('conditions', voter.conditions);
+    expect(historical[0]).toHaveProperty('conditions', voter.conditions);
   });
 
   it('redactVoterOpenings drops text AND nonce for the named roles only, and keeps the digest and the clip marker', () => {

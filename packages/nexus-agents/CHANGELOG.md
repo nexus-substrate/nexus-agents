@@ -1,5 +1,19 @@
 # nexus-agents
 
+## 9.4.1
+
+### Patch Changes
+
+- [#7147](https://github.com/nexus-substrate/nexus-agents/pull/7147) [`810078a`](https://github.com/nexus-substrate/nexus-agents/commit/810078a807310ab4684dbecc7bc53968d9bc30fa) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Preserve unreadable outcome records during purge and reclassification rewrites so 9.x readers cannot delete outcomes written by newer versions ([#7146](https://github.com/nexus-substrate/nexus-agents/issues/7146)). Unreadable lines, including malformed JSON, are appended verbatim in their original relative order after readable records. Rewrites use an atomic temporary-file rename, and each load warns with the skipped count without logging line contents.
+
+## 9.4.0
+
+### Minor Changes
+
+- [#7135](https://github.com/nexus-substrate/nexus-agents/pull/7135) [`fcb862e`](https://github.com/nexus-substrate/nexus-agents/commit/fcb862e604684c609bd374390f51cf075e17dc2a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Report manifest-overlay prices as basis `declared` in trace pricing, usage cost details, decision-cost records and cost-ceiling logs. Reuse the existing manifest-tier provenance, including fuzzy matches, while keeping in-tree and catalog rates `list` and preserving the `list | declared | unknown` vocabulary for JSONL and MCP consumers. Honor overlay pricing on the first trace lookup and describe declared rates with a caveat that covers both manifest and gateway declarations.
+
+- [#7140](https://github.com/nexus-substrate/nexus-agents/pull/7140) [`6fe3fb8`](https://github.com/nexus-substrate/nexus-agents/commit/6fe3fb80764d10365592880d7c96962f289aa385) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Persist per-voter approval conditions as advisory, unenforced evidence in vote record schema 1.15. Preserve absent versus empty conditions, bound the array to 20 strings of 2,000 characters, and reject oversized records without truncation. Conditions are hash-covered only when present, preserving historical record hashes.
+
 ## 9.3.0
 
 ### Minor Changes

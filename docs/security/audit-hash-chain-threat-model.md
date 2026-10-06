@@ -652,7 +652,7 @@ longer use the unqualified word "immutable" (a grep of `CLAUDE.md` and
 lives as prose in those two governance files, and this doc is linked from the
 canonical index (`docs/README.md`).
 
-## 8. Sanctioned edit: redaction of voter reasoning in the vote ledger (#5748)
+## 8. Sanctioned edit: redaction of voter reasoning and conditions (#5748, #7134)
 
 This section covers the one edit the SET-based vote ledger
 (`governance/vote-records.jsonl`, `packages/nexus-agents/src/audit/vote-record.ts`)
@@ -671,13 +671,23 @@ _opening_ of the commitment — travel on the record outside the hash, and the
 verifier re-opens the commitment whenever both are present, so an edited text
 is still a `hash_mismatch`.
 
-A redaction (#6264) drops the opening — text **and** nonce, together — for the
+On tier **1.15** (#7134), the same nonce and digest commit to the UTF-8 bytes
+of `JSON.stringify({ reasoning, conditions })`, in that fixed key order.
+Every voter in a 1.15 panel uses this bundled preimage, including voters with
+no conditions. Absent conditions omit the JSON key; an explicit empty array
+remains `"conditions":[]`. Conditions travel outside the record hash with the
+reasoning and nonce, and the verifier re-opens the bundle to detect edits,
+reordering, or removal. Tiers 1.13 and 1.14 keep their original plain-reasoning
+preimage and hash projection.
+
+A redaction (#6264) drops the complete opening — reasoning **and** nonce,
+plus conditions on 1.15, together — for the
 named voter roles and leaves the digest. Two consequences follow from the fold
 rule, and both are asserted as hash-value equality in
 `redaction-record.test.ts`:
 
 - The target record's `hash` is **unchanged**. Anything signed over it (#3927
-  item 4, when signing lands) verifies unchanged; nothing is re-hashed or
+  item 4) verifies unchanged; nothing is re-hashed or
   re-signed.
 - With the 256-bit nonce gone, the digest is an opaque commitment: there is no
   offline `sha256(nonce ‖ guess)` check against low-entropy boilerplate
@@ -715,14 +725,17 @@ The governor ratification gate (`scripts/governor-ledger-evidence.ts`) treats a
 policy and panel coverage are all still hash-covered — and prints the
 redaction on the `::notice::` line so a spot-checker who goes looking for the
 reasoning finds "removed under redaction record 'X'" rather than nothing.
-The append-only rule admits removal of `reasoning` and `reasoningNonce` only
+The append-only rule admits removal of `reasoning` and `reasoningNonce`
+(and `conditions` on 1.15) only
 from roles named for that target by a redaction record newly appended in head,
 comparing the target canonically; every other change remains a rewrite.
 
 ### 8.3 What a redaction does and does not remove
 
-Removes, from the ledger's **current state**: the voter's reasoning text and
-its salt. Keeps, hash-covered and legible: every tally field, the decision, the
+Removes, from the ledger's **current state**: the voter's reasoning text,
+its salt, and its conditions on 1.15. Removing conditions alone leaves an
+incomplete opening and fails verification; the redaction removes the whole
+bundle. Keeps, hash-covered and legible: every tally field, the decision, the
 clip marker `reasoningTruncated`, the digest, and the redaction's own
 who/when/why.
 

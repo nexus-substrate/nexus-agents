@@ -1,9 +1,9 @@
 /**
- * Remove a named voter's commitment opening and append its redaction (#6265).
+ * Remove a named voter's complete commitment opening (including 1.15 conditions) and append its redaction (#6265).
  * Validates the caller's objects without re-emitting Zod's key order; verifies
  * the candidate before an atomic replacement. Git history is never rewritten.
- * Operator-run, not a CI gate. Redaction signatures are unsupported by the
- * strict redaction schema and signCommitted (which accepts VoteRecord only).
+ * Operator-run, not a CI gate. A configured key signs the appended redaction
+ * through signCommitted; the target hash and its existing signature stay intact.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -124,6 +124,7 @@ function rewriteTarget(text: string, recordId: string, roles: ReadonlySet<string
         if (!roles.has(voter.role)) continue;
         delete voter.reasoning;
         delete voter.reasoningNonce;
+        if (record.version === '1.15') delete voter.conditions;
       }
       return serializeValidatedRecord(VoteRecordSchema, record, 'vote').slice(0, -1);
     })

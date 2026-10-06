@@ -88,6 +88,7 @@ interface RecordOpts {
   readonly bound?: boolean;
   readonly decision?: VoteRecord['decision'];
   readonly pr?: number;
+  readonly conditions?: string[];
 }
 
 /** A realistic runtime-store record: high sequence, PR-bound, approved. */
@@ -99,7 +100,11 @@ function sourceRecord(id: string, opts: RecordOpts): VoteRecord {
     proposal: `Ratify PR #${String(opts.pr ?? 6200)}`,
     strategy: 'supermajority',
     result: consensusResult(),
-    votes,
+    votes: votes.map((v, i) =>
+      i === 0 && opts.conditions !== undefined
+        ? { ...v, vote: { ...v.vote, conditions: opts.conditions } }
+        : v
+    ),
     sequence: opts.sequence,
     correlationId: `consensus-${id}`,
     ...(opts.bound === false ? {} : { ratifiesPr: { pr: opts.pr ?? 6200, headSha: HEAD } }),
@@ -339,6 +344,20 @@ describe('appendRatificationRecord', () => {
     expect(detail).toContain('reasoningDigest');
     expect(detail).toContain('architect');
     // Refused BEFORE the write, not flagged by the read-back after it.
+    expect(existsSync(ledgerPath)).toBe(false);
+  });
+
+  it('refuses changed 1.15 conditions even when the source self-hash still matches', () => {
+    const genuine = sourceRecord('vote-a', { sequence: 0, conditions: ['Add tests'] });
+    const [first, ...rest] = genuine.voters;
+    const edited = { ...genuine, voters: [{ ...first!, conditions: ['Skip tests'] }, ...rest] };
+    expect(computeVoteRecordHash(edited)).toBe(genuine.hash);
+    writeLedger(sourcePath, [edited]);
+    const detail = expectRefused(
+      appendRatificationRecord({ sourcePath, ledgerPath, recordId: 'vote-a' }),
+      'source-hash-mismatch'
+    );
+    expect(detail).toContain('reasoningDigest');
     expect(existsSync(ledgerPath)).toBe(false);
   });
 

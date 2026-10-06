@@ -7,6 +7,8 @@
  */
 
 import { z } from 'zod';
+import { clampOversizeVoteStrings } from './voter-response-text.js';
+import { MAX_VOTER_CONDITIONS, MAX_VOTER_CONDITION_CHARS } from '../audit/vote-record.js';
 import type { Vote } from '../consensus/types.js';
 import { matchDeclaredOption } from '../consensus/option-tally.js';
 import type { VoterRole } from './vote-types.js';
@@ -88,7 +90,11 @@ export const VoteResponseSchema = z.object({
   decision: z.enum(['approve', 'reject', 'abstain']).describe('Your vote decision'),
   reasoning: z.string().min(10).max(4000).describe('Explanation for your vote (10-4000 chars)'),
   confidence: z.number().min(0).max(1).describe('Confidence level 0-1'),
-  conditions: z.array(z.string()).optional().describe('Optional conditions for approval'),
+  conditions: z
+    .array(z.string().max(MAX_VOTER_CONDITION_CHARS))
+    .max(MAX_VOTER_CONDITIONS)
+    .optional()
+    .describe('Optional conditions for approval'),
   /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
   rejectionCategories: z
     .array(
@@ -150,7 +156,8 @@ export const VOTE_JSON_SCHEMA: Record<string, unknown> = {
     },
     conditions: {
       type: 'array',
-      items: { type: 'string' },
+      items: { type: 'string', maxLength: MAX_VOTER_CONDITION_CHARS },
+      maxItems: MAX_VOTER_CONDITIONS,
       description: 'Optional conditions for approval',
     },
     // #4472: without this, `additionalProperties: false` makes it impossible
@@ -492,48 +499,6 @@ function objectFromFenceBody(
   if (!body.trimStart().startsWith('{') || match.index === undefined) return undefined;
   const bodyStart = match.index + match[0].length - '```'.length - body.length;
   return extractFirstJsonObject(text.slice(bodyStart));
-}
-
-/** Caps mirroring {@link VoteResponseSchema} (reasoning) + {@link RawFindingSchema} (claim). */
-const REASONING_MAX_CHARS = 4000;
-const CLAIM_MAX_CHARS = 2000;
-const TRUNCATION_MARKER = ' …[truncated]';
-
-/** Truncate `s` to `max` chars with a marker; a no-op when already within cap. */
-function clampWithMarker(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return s.slice(0, Math.max(0, max - TRUNCATION_MARKER.length)) + TRUNCATION_MARKER;
-}
-
-/**
- * Clamp the capped string fields of a parsed vote to their schema limits with a
- * truncation marker BEFORE validation (#4131). A thorough voter (esp. the
- * contrarian, which writes the most detailed findings) whose `reasoning` exceeds
- * the 4000-char cap previously hard-failed validation and was SILENTLY DROPPED
- * from the panel denominator. Clamping records a (clipped, clearly-marked) real
- * vote instead. Only shape (oversize strings) is repaired — a genuinely
- * malformed vote (missing decision, bad confidence) still fails `safeParse`.
- */
-function clampOversizeVoteStrings(parsed: unknown): unknown {
-  if (typeof parsed !== 'object' || parsed === null) return parsed;
-  const obj = { ...(parsed as Record<string, unknown>) };
-  if (typeof obj['reasoning'] === 'string') {
-    obj['reasoning'] = clampWithMarker(obj['reasoning'], REASONING_MAX_CHARS);
-  }
-  if (Array.isArray(obj['findings'])) {
-    obj['findings'] = (obj['findings'] as unknown[]).map((finding): unknown => {
-      if (
-        typeof finding === 'object' &&
-        finding !== null &&
-        typeof (finding as Record<string, unknown>)['claim'] === 'string'
-      ) {
-        const f = finding as Record<string, unknown>;
-        return { ...f, claim: clampWithMarker(f['claim'] as string, CLAIM_MAX_CHARS) };
-      }
-      return finding;
-    });
-  }
-  return obj;
 }
 
 /** Maps a validated VoteResponse into a ParsedVote, threading optional fields. */
