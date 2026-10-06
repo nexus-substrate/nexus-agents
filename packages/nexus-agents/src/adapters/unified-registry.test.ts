@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- compatibility tests for cachedAdapters retained until 10.0 (#6291) */
 /**
  * Tests for UnifiedAdapterRegistry
  *

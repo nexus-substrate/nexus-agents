@@ -21,8 +21,7 @@ const logger = createLogger({ component: 'EventBusBridge' });
 
 /**
  * Options for the EventBus bridge.
- * @deprecated Subscribe to the pipeline EventBus directly (#5120).
- * Removal belongs to the 9.0 batch (#6291).
+ * @deprecated Subscribe to the pipeline EventBus directly (#5120); removed in 10.0, #6291.
  */
 export interface EventBusBridgeOptions {
   /** V2 pipeline EventBus to subscribe to. */
@@ -37,8 +36,7 @@ export interface EventBusBridgeOptions {
 
 /**
  * Result of bridge initialization.
- * @deprecated Subscribe to the pipeline EventBus directly (#5120).
- * Removal belongs to the 9.0 batch (#6291).
+ * @deprecated Subscribe to the pipeline EventBus directly (#5120); removed in 10.0, #6291.
  */
 export interface PipelineBridgeResult {
   /** Number of events forwarded so far. */
@@ -90,10 +88,10 @@ function extractCorrelationId(event: PipelineEvent): string | undefined {
  *
  * The bridge is fire-and-forget: forwarding errors are logged, not thrown.
  *
- * @deprecated Subscribe to the pipeline EventBus directly (#5120).
- * Removal belongs to the 9.0 batch (#6291).
+ * @deprecated No replacement factory exists; subscribe via {@link IEventBus.subscribe}
+ * to the pipeline EventBus directly (#5120); removed in 10.0, #6291.
  */
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- the retained factory uses its deprecated types until 9.0 (#6291)
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- the retained factory uses its deprecated types until 10.0 (#6291)
 export function createEventBusBridge(options: EventBusBridgeOptions): PipelineBridgeResult {
   const { source } = options;
   const prefix = options.topicPrefix ?? 'pipeline';

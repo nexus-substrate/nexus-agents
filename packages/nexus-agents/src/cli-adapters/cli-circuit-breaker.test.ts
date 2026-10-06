@@ -15,7 +15,12 @@ import {
   getDefaultCliCircuitBreakerRegistry,
   type CliCircuitBreakerConfig,
 } from './cli-circuit-breaker.js';
-import { CircuitError, CircuitErrorCode, type CircuitStateChangeEvent } from './circuit-breaker.js';
+import {
+  CircuitBreakerRegistry,
+  CircuitError,
+  CircuitErrorCode,
+  type CircuitStateChangeEvent,
+} from './circuit-breaker.js';
 import { createCallerAbortCliError, createCallerInputCliError } from './cli-error-helpers.js';
 
 // ============================================================================
@@ -634,6 +639,47 @@ describe('CliCircuitBreakerIntegration', () => {
         expect(result.value.usedFallback).toBe(true);
       }
     });
+  });
+});
+
+describe('getCliCircuitBreakerSnapshot', () => {
+  let registry: CircuitBreakerRegistry;
+
+  beforeEach(() => {
+    registry = new CircuitBreakerRegistry({ failureThreshold: 1 });
+    vi.spyOn(getDefaultCliCircuitBreakerRegistry(), 'getAllArmSnapshots').mockImplementation(() =>
+      registry.getAllArmSnapshots()
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('leaves an unknown CLI undefined without creating a breaker', () => {
+    const legacyReader = vi.spyOn(getDefaultCliCircuitBreakerRegistry(), 'getAllSnapshots');
+
+    expect(getCliCircuitBreakerSnapshot('claude')).toBeUndefined();
+    expect(registry.getAllArmSnapshots().size).toBe(0);
+    expect(legacyReader).not.toHaveBeenCalled();
+  });
+
+  it('preserves a closed CLI snapshot when an API arm is open', () => {
+    const cli = registry.getArmBreaker('claude');
+    registry.getArmBreaker('api:custom-openai').recordFailure('connection');
+
+    expect(getCliCircuitBreakerSnapshot('claude')).toEqual(cli.getSnapshot());
+    expect(getCliCircuitBreakerSnapshot('claude')?.state).toBe('closed');
+    expect(getCliCircuitBreakerSnapshot('opencode')).toBeUndefined();
+  });
+
+  it('preserves an open CLI snapshot when an API arm is closed', () => {
+    const cli = registry.getArmBreaker('opencode');
+    cli.recordFailure('rate_limit');
+    registry.getArmBreaker('api:opencode-custom');
+
+    expect(getCliCircuitBreakerSnapshot('opencode')).toEqual(cli.getSnapshot());
+    expect(getCliCircuitBreakerSnapshot('opencode')?.state).toBe('open');
   });
 });
 

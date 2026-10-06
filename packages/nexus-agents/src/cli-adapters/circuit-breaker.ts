@@ -338,7 +338,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
  * VIEWS of the same map, restricted to the four CLI slots — an `api:*` arm
  * never appears in `getHealthyClis()` / `getUnhealthyClis()` /
  * `getAllSnapshots()`, only in their `*Arms` siblings (#6290 panel; the
- * narrow methods are removed in 9.0, #6291).
+ * narrow methods are removed in 10.0, #6291).
  */
 export class CircuitBreakerRegistry {
   private readonly breakers: Map<ObservedArmId, CliCircuitBreaker> = new Map();
@@ -391,7 +391,10 @@ export class CircuitBreakerRegistry {
     return snapshots;
   }
 
-  /** CLI-slot view of {@link getAllArmSnapshots}: `api:*` arms are filtered out. */
+  /**
+   * CLI-slot view of {@link getAllArmSnapshots}: `api:*` arms are filtered out.
+   * @deprecated Use {@link getAllArmSnapshots}; removed in 10.0, #6291.
+   */
   getAllSnapshots(): Map<CliName, CircuitBreakerSnapshot> {
     const snapshots = new Map<CliName, CircuitBreakerSnapshot>();
     for (const [name, snapshot] of this.getAllArmSnapshots()) {
@@ -440,7 +443,10 @@ export class CircuitBreakerRegistry {
     return healthy;
   }
 
-  /** CLI-slot view of {@link getHealthyArms}: `api:*` arms are filtered out. */
+  /**
+   * CLI-slot view of {@link getHealthyArms}: `api:*` arms are filtered out.
+   * @deprecated Use {@link getHealthyArms}; removed in 10.0, #6291.
+   */
   getHealthyClis(): CliName[] {
     return this.getHealthyArms().filter(isCliName);
   }
@@ -457,7 +463,10 @@ export class CircuitBreakerRegistry {
     return unhealthy;
   }
 
-  /** CLI-slot view of {@link getUnhealthyArms}: `api:*` arms are filtered out. */
+  /**
+   * CLI-slot view of {@link getUnhealthyArms}: `api:*` arms are filtered out.
+   * @deprecated Use {@link getUnhealthyArms}; removed in 10.0, #6291.
+   */
   getUnhealthyClis(): CliName[] {
     return this.getUnhealthyArms().filter(isCliName);
   }
