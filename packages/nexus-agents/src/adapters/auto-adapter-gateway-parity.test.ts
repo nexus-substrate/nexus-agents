@@ -110,6 +110,9 @@ afterEach(() => {
 });
 
 type ParityCase = (typeof cases)[number];
+const surfaceCases = [true, false].flatMap((catalogue) =>
+  (['chat', 'responses'] as const).map((surface) => ({ catalogue, surface }))
+);
 
 function captureRequest(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const url = input instanceof Request ? input.url : String(input);
@@ -140,11 +143,11 @@ function captureRequest(input: string | URL | Request, init?: RequestInit): Prom
   return Promise.resolve(reply(url.endsWith('/responses') ? 'responses' : 'chat', body['model']));
 }
 
-function configureCase(c: ParityCase): void {
+function configureCase(c: ParityCase, model = 'gpt-5.5'): void {
   vi.stubEnv('NEXUS_CUSTOM_API_SURFACE', c.surface);
   vi.stubEnv('NEXUS_CUSTOM_API_ALLOW_PRIVATE', c.allowPrivate ? '1' : '');
   // Missing means undefined, not the explicitly configured empty string.
-  if (c.modelSet) vi.stubEnv('NEXUS_CUSTOM_MODEL', 'gpt-5.5');
+  if (c.modelSet) vi.stubEnv('NEXUS_CUSTOM_MODEL', model);
   else Reflect.deleteProperty(process.env, 'NEXUS_CUSTOM_MODEL');
   if (c.auth === 'api-key') vi.stubEnv('NEXUS_OPENAI_COMPAT_AUTH_HEADER', 'api-key');
   if (c.auth === 'extras') vi.stubEnv('NEXUS_OPENAI_COMPAT_EXTRA_HEADERS', 'X-Tenant=TEST-tenant');
@@ -152,7 +155,7 @@ function configureCase(c: ParityCase): void {
     const config = readOpenAICompatEnv();
     if (config === null) throw new Error('configured gateway required');
     setGatewaySlotCatalog([
-      createOpenAICompatAdapter('gpt-5.5', { ...config, modelVerified: true }),
+      createOpenAICompatAdapter(model, { ...config, modelVerified: true }),
       createOpenAICompatAdapter('claude-opus-4-6', { ...config, modelVerified: true }),
     ]);
   }
@@ -261,12 +264,11 @@ describe('custom-openai wire parity (48 environment combinations)', () => {
     }
   );
 
-  it.each(['chat', 'responses'] as const)(
-    'honours only an explicit token cap and tools on %s',
-    async (surface) => {
-      const c = { catalogue: false, modelSet: true, surface, allowPrivate: false, auth: 'bearer' };
-      configureCase(c);
-      vi.stubEnv('NEXUS_CUSTOM_MODEL', 'my-model');
+  it.each(surfaceCases)(
+    'honours only an explicit token cap and tools on $surface, catalogue=$catalogue',
+    async ({ catalogue, surface }) => {
+      const c = { catalogue, modelSet: true, surface, allowPrivate: false, auth: 'bearer' };
+      configureCase(c, 'my-model');
       const selection = tryCustomOpenAiAdapter(logger);
       const result = await selection?.adapter.complete({
         messages: [{ role: 'user', content: 'parity prompt' }],
@@ -297,11 +299,11 @@ describe('custom-openai wire parity (48 environment combinations)', () => {
     }
   );
 
-  it.each(['chat', 'responses'] as const)(
-    'preserves streaming token caps on %s',
-    async (surface) => {
+  it.each(surfaceCases)(
+    'preserves streaming token caps on $surface, catalogue=$catalogue',
+    async ({ catalogue, surface }) => {
       configureCase({
-        catalogue: false,
+        catalogue,
         modelSet: true,
         surface,
         allowPrivate: false,
