@@ -3,13 +3,20 @@
  *
  * Extends the in-memory OutcomeStore with disk-backed append-only
  * JSONL storage. Hydrates on construction, appends on every write.
- * Corrupt lines are skipped with a warning (graceful degradation).
+ * Unreadable lines are skipped with a count-only warning and preserved on rewrite.
  *
  * @module orchestration/outcomes/outcome-store-persistence
  * (Source: Issue #1009 — Cross-session persistence)
  */
 
-import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
 
 import type { ILogger } from '../../core/index.js';
 import { createLogger, getErrorMessage } from '../../core/index.js';
@@ -49,11 +56,13 @@ export interface PersistentOutcomeStoreConfig extends OutcomeStoreConfig {
  *
  * - Construction: hydrates from existing JSONL file (Zod-validates each line)
  * - Append: calls super.append() then appendFileSync one JSON line
- * - Corruption: bad lines are skipped with a warning log
+ * - Unreadable lines: retained verbatim, with one count-only warning per load
  */
 export class PersistentOutcomeStore extends OutcomeStore {
   private readonly filePath: string;
   private readonly logger: ILogger;
+  /** Raw unreadable segments, including their original line terminators. */
+  private readonly unreadableLines: string[] = [];
 
   constructor(config?: PersistentOutcomeStoreConfig, logger?: ILogger) {
     super(config);
@@ -117,7 +126,8 @@ export class PersistentOutcomeStore extends OutcomeStore {
 
     try {
       const content = readFileSync(this.filePath, 'utf-8');
-      const lines = content.split('\n').filter((line) => line.trim().length > 0);
+      // Keep terminators so CRLF and an unterminated final line survive verbatim.
+      const lines = content.split(/(?<=\n)/).filter((line) => line.trim().length > 0);
       let loaded = 0;
       let skipped = 0;
 
@@ -129,17 +139,25 @@ export class PersistentOutcomeStore extends OutcomeStore {
             super.append(result.data);
             loaded++;
           } else {
+            this.unreadableLines.push(line);
             skipped++;
           }
-        } catch (parseErr: unknown) {
-          this.logger.debug('Skipping malformed outcome line during hydration', {
-            error: getErrorMessage(parseErr),
-            linePreview: line.slice(0, 80),
-          });
+        } catch {
+          // JSON parse errors can contain line contents; never log them.
+          this.unreadableLines.push(line);
           skipped++;
         }
       }
 
+      if (skipped > 0) {
+        this.logger.warn(
+          'Skipped unreadable outcome lines during hydration; preserving them on rewrite',
+          {
+            skipped,
+            path: this.filePath,
+          }
+        );
+      }
       this.logger.info('Hydrated outcomes from disk', {
         loaded,
         skipped,
@@ -147,26 +165,40 @@ export class PersistentOutcomeStore extends OutcomeStore {
         path: this.filePath,
       });
     } catch (error: unknown) {
-      const msg = getErrorMessage(error);
       this.logger.warn('Failed to hydrate outcomes from disk', {
-        error: msg,
+        error: getErrorMessage(error),
         path: this.filePath,
       });
     }
   }
 
-  /** Rewrite the JSONL file from in-memory state after reclassification. */
+  /**
+   * Atomically rewrite readable records, then append unreadable segments verbatim.
+   * Their relative order is preserved; their positions among readable records may
+   * change after reclassification, purge or FIFO eviction (#7146).
+   */
   private rewriteFile(): void {
+    const tmpPath = `${this.filePath}.tmp.${String(process.pid)}`;
     try {
       const entries = this.query();
-      const content = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
-      writeFileSync(this.filePath, content, 'utf-8');
+      const content =
+        entries.map((e) => JSON.stringify(e) + '\n').join('') + this.unreadableLines.join('');
+      writeFileSync(tmpPath, content, 'utf-8');
+      renameSync(tmpPath, this.filePath);
     } catch (error: unknown) {
       const msg = getErrorMessage(error);
       this.logger.warn('Failed to rewrite outcomes file after reclassification', {
         error: msg,
         path: this.filePath,
       });
+      try {
+        rmSync(tmpPath, { force: true });
+      } catch (cleanupError: unknown) {
+        this.logger.debug('Failed to clean up temporary outcomes file', {
+          error: getErrorMessage(cleanupError),
+          path: tmpPath,
+        });
+      }
     }
   }
 
