@@ -78,7 +78,10 @@ export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
     case 'api:custom-openai':
       return 'opencode';
     default:
-      return isCliName(armId) ? armId : UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT;
+      // Only a gateway endpoint arm (`api:<endpoint>`) maps to the display slot.
+      // Anything else (a CLI name, or a sentinel such as 'unknown') passes
+      // through unchanged, as before #6291 B2, so callers keep their own fallback.
+      return armId.startsWith('api:') ? UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT : (armId as CliName);
   }
 }
 
