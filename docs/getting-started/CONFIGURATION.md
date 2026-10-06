@@ -968,6 +968,27 @@ retain the legacy route.
 CLI-only profiles, preference tiers, and available-model probes do not alias
 that identity to a CLI slot; endpoint selection remains available to LinUCB.
 
+Endpoint arms pass the CLI quality constraints without measurement; routing
+records label this `quality-constraint:endpoint-unmeasured` when that stage is
+enabled. An endpoint-only candidate set does not report a measured
+`quality-constraint` stage. Non-fail-closed category preferences also preserve
+endpoints without measuring them and add
+`category-override:endpoint-unmeasured`. Fail-closed category policies exclude
+endpoints because they have no admitted CLI slot.
+
+Observer and feedback decision records retain the raw endpoint identity,
+including in SQLite. Budget admission uses the resolved endpoint model's
+context window and capabilities; latency is unmeasured until an endpoint
+profile exists. Dry-run output prices the resolved model using the gateway
+cost declaration. Model recommendations use its capability profile and omit
+endpoint alternatives, because the decision carries only the selected adapter.
+
+CLI subcommands and MCP handlers that use the global registry retain
+per-complexity CLI timeouts. The server's private execution registry retains
+its 30-minute default. With endpoint routing enabled, gateway bootstrap and
+rediscovery register endpoint wrappers in both registries, sharing the breaker.
+A later global registry claim with configuration warns that it is ignored.
+
 ### Per-Task-Class Cost Ceilings
 
 Cap the per-task USD cost by task class (#4196, #4214). Each key is a
