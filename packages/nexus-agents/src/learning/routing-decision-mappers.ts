@@ -33,7 +33,8 @@ export function mapFeedbackRoutingDecision(
     query: context.query ?? '',
     selectedModel: recordedArm(decision.cliName),
     confidence: decision.confidence,
-    selectedTier: decision.preferenceTier,
+    selectedTier:
+      routingArmCliSlot(decision.cliName) === undefined ? undefined : decision.preferenceTier,
   };
 }
 

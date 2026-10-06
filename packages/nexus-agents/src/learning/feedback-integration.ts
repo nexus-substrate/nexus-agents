@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import type { StepResult } from '../core/types/workflow.js';
-import type { RoutingArmId } from '../cli-adapters/types.js';
+import { routingArmCliSlot, type RoutingArmId } from '../cli-adapters/types.js';
 import type {
   CompositeRoutingDecision,
   ICompositeRouter,
@@ -99,8 +99,12 @@ function getDecisiveRouterType(decision: CompositeRoutingDecision): DecisiveRout
     return { routerType: 'linucb', measured: true };
   }
 
-  // Preference routing when it provided a score
-  if (stages.includes('preference-routing') && decision.preferenceScore !== undefined) {
+  // A preference score measures CLI tiers; a surviving endpoint has no tier membership.
+  if (
+    stages.includes('preference-routing') &&
+    decision.preferenceScore !== undefined &&
+    routingArmCliSlot(decision.cliName) !== undefined
+  ) {
     return { routerType: 'preference', measured: true };
   }
 

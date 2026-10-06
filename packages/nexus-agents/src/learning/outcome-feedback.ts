@@ -27,6 +27,7 @@ import {
 import type { TraceId } from '../observability/swarm-observer-types.js';
 import type { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { PreferenceRouter } from '../cli-adapters/preference-router.js';
+import { isCliName } from '../cli-adapters/types.js';
 import {
   countOutcomesByClass,
   countDecisionsByRouter,
@@ -109,6 +110,16 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   }
 
   recordRoutingDecision(decision: RoutingDecision): void {
+    // A direct caller cannot certify an endpoint as a measured CLI preference selection.
+    const recordedDecision: RoutingDecision =
+      decision.routerType === 'preference' && !isCliName(decision.selectedModel)
+        ? {
+            ...decision,
+            routerType: 'unattributed',
+            routerTypeMeasured: false,
+            selectedTier: undefined,
+          }
+        : decision;
     // Enforce limit on pending decisions
     if (this.pendingDecisions.size >= this.config.maxPendingDecisions) {
       this.clearExpiredDecisions();
@@ -122,19 +133,19 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
       }
     }
 
-    this.pendingDecisions.set(decision.traceId, decision);
+    this.pendingDecisions.set(recordedDecision.traceId, recordedDecision);
     this.decisionHistory.push({
-      ...decision,
+      ...recordedDecision,
       // Materialize the prefix: V8 sliced strings can retain the full task's backing store.
-      query: truncateText(decision.query, MAX_HISTORY_QUERY_LENGTH).split('').join(''),
+      query: truncateText(recordedDecision.query, MAX_HISTORY_QUERY_LENGTH).split('').join(''),
     });
     this.trimHistory();
 
     logger.debug('Routing decision recorded', {
-      id: decision.id,
-      traceId: decision.traceId,
-      routerType: decision.routerType,
-      selectedModel: decision.selectedModel,
+      id: recordedDecision.id,
+      traceId: recordedDecision.traceId,
+      routerType: recordedDecision.routerType,
+      selectedModel: recordedDecision.selectedModel,
     });
   }
 
@@ -318,7 +329,6 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
 
   private feedbackToPreferenceRouter(decision: RoutingDecision, outcome: TaskOutcome): void {
     if (decision.routerType !== 'preference' || this.preferenceRouter === undefined) return;
-
     // Missing task text is an empty string in the published RoutingDecision contract.
     // Skip preference training rather than learn from a router explanation or blank task.
     if (decision.query.trim().length === 0) return;
