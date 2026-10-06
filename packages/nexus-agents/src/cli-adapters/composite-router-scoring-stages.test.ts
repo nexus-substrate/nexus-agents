@@ -242,6 +242,44 @@ describe('runQualityConstraintStage', () => {
     expect(result.filtered.get('codex')).toBe('quality-below-threshold');
   });
 
+  it('marks endpoints unmeasured while applying quality constraints to CLI slots', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi
+        .fn()
+        .mockResolvedValue(
+          ok({ context: { signals: [], filtered: new Map(), availableClis: ['claude'] } })
+        ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableQualityConstraint: true },
+      qualityConstraintStage: mockStage as unknown as StageDependencies['qualityConstraintStage'],
+    });
+    const result = await runQualityConstraintStage(['claude', 'api:gw-prod'], stages, deps);
+    expect(result.eligible).toEqual(['claude', 'api:gw-prod']);
+    expect(stages).toEqual(['quality-constraint:endpoint-unmeasured', 'quality-constraint']);
+  });
+
+  it('does not report measured quality for an endpoint-only candidate set', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi
+        .fn()
+        .mockResolvedValue(
+          ok({ context: { signals: [], filtered: new Map(), availableClis: [] } })
+        ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableQualityConstraint: true },
+      qualityConstraintStage: mockStage as unknown as StageDependencies['qualityConstraintStage'],
+    });
+    const result = await runQualityConstraintStage(['api:gw-prod'], stages, deps);
+    expect(result.eligible).toEqual(['api:gw-prod']);
+    expect(result.usedFallback).toBe(false);
+    expect(stages).toEqual(['quality-constraint:endpoint-unmeasured']);
+    expect(mockStage.route).not.toHaveBeenCalled();
+  });
+
   it('falls back to all candidates when all filtered', async () => {
     const stages: string[] = [];
     const mockStage = {

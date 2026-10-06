@@ -739,3 +739,12 @@ it('does not apply opencode performance floor to an endpoint (#7151)', async () 
   expect(stages).not.toContain('perf-floor-override');
   spy.mockRestore();
 });
+
+it('marks endpoint category preferences unmeasured instead of claiming CLI coverage', async () => {
+  const task: CliTask = { content: 'Write documentation and api docs for the module' };
+  const stages: string[] = [];
+  const profile = analyzeTaskProfile(task, []);
+  const result = await runPipeline(task, profile, stages, ['api:gw-prod'], makeDeps());
+  expect(result.ok && result.value.selectedCli).toBe('api:gw-prod');
+  expect(stages).toContain('category-override:endpoint-unmeasured');
+});

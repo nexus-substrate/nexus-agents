@@ -423,6 +423,12 @@ function applyCategoryOverride(
 
   // Override chains are CLI-slot policies. Endpoints bypass preference chains;
   // sensitive categories exclude them explicitly because no slot is admitted.
+  if (
+    !isCategoryFailClosed(match.category) &&
+    candidates.some((arm) => routingArmCliSlot(arm) === undefined)
+  ) {
+    stagesExecuted.push('category-override:endpoint-unmeasured');
+  }
   const overrideSet = new Set(override);
   const orderIndex = (arm: RoutingArmId): number => {
     const slot = routingArmCliSlot(arm);

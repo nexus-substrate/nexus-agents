@@ -271,7 +271,15 @@ export async function runQualityConstraintStage(
 
   // Quality constraints are slot-level; collapse to slots for the stage, then
   // keep the arms whose slot survived (#3422).
-  const ctx = createRoutingContext('', armsToSlots(candidates));
+  const slots = armsToSlots(candidates);
+  if (candidates.some((arm) => routingArmCliSlot(arm) === undefined)) {
+    stagesExecuted.push('quality-constraint:endpoint-unmeasured');
+  }
+  // No measured CLI profiles: endpoint admission is explicitly unmeasured.
+  if (slots.length === 0) {
+    return { eligible: candidates, filtered: new Map(), usedFallback: false };
+  }
+  const ctx = createRoutingContext('', slots);
   const result = await deps.qualityConstraintStage.route(ctx);
   stagesExecuted.push('quality-constraint');
 
