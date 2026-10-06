@@ -1,5 +1,15 @@
 # nexus-agents
 
+## 10.1.0
+
+### Minor Changes
+
+- [#7162](https://github.com/nexus-substrate/nexus-agents/pull/7162) [`b0807c3`](https://github.com/nexus-substrate/nexus-agents/commit/b0807c33c01b55e9835f3eaed260e0db616ed416) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Verify audit hash chains past legacy breaks, reporting bounded restart/fork/mismatch diagnostics, per-segment integrity, full counts, and truncation flags. Preserve the first failure and overall failure verdict while detecting tampering in later segments ([#7157](https://github.com/nexus-substrate/nexus-agents/issues/7157)).
+
+### Patch Changes
+
+- [#7161](https://github.com/nexus-substrate/nexus-agents/pull/7161) [`cf31787`](https://github.com/nexus-substrate/nexus-agents/commit/cf317876fc9283815248550a77541cafcd9d1efc) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Validate doctor configuration through the server's config loader, report parsing and schema errors, and fail the doctor exit status for invalid configuration. Correct config help to show the intended ./.nexus-agents/nexus-agents.yaml output default.
+
 ## 10.0.0
 
 ### Major Changes
