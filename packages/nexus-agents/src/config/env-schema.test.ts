@@ -83,6 +83,13 @@ describe('env-schema', () => {
       expect(result.invalidVars.map((v) => v.name)).not.toContain('NEXUS_CONSENSUS_ENFORCE');
     });
 
+    it.each(['ENFORCE', '1'])('reports invalid consensus enforcement %s', (mode) => {
+      vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', mode);
+      expect(validateNexusEnv().invalidVars.map((v) => v.name)).toContain(
+        'NEXUS_CONSENSUS_ENFORCE'
+      );
+    });
+
     it('recognizes the autonomous-remediation + policy + overlay vars (#3713)', () => {
       vi.stubEnv('NEXUS_AUTO_REMEDIATE', 'audit');
       vi.stubEnv('NEXUS_POLICY_GATE_MODE', 'warn');

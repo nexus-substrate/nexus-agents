@@ -34,6 +34,7 @@ import { _resetForTests as resetJobConcurrency } from '../jobs/job-concurrency.j
 import { resetGlobalPolicyFirewall } from '../middleware/policy-registry.js';
 import { parseToolErrorEnvelope } from '../error-envelope.js';
 import { resetOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { DecisionCostStore } from '../../observability/decision-cost-store.js';
 
 type Verdict = 'approved' | 'rejected' | 'no_quorum';
 type Mode = 'off' | 'audit' | 'enforce';
@@ -150,21 +151,24 @@ describe('registered run consensus enforcement (#4464)', () => {
     voteMock.mockResolvedValue(panel(verdict));
     const result = await captureHandler()(runArgs);
     const blocked = mode === 'enforce' && verdict !== 'approved';
+    const retried = mode === 'enforce' && verdict === 'no_quorum';
     expect(result.isError === true).toBe(blocked);
-    expect(voteMock).toHaveBeenCalledTimes(mode === 'enforce' && verdict === 'no_quorum' ? 2 : 1);
+    expect(voteMock).toHaveBeenCalledTimes(retried ? 2 : 1);
     expect(ledgerLines()).toHaveLength(1);
     if (blocked) {
       expect(parseToolErrorEnvelope(result._meta)?.errorCategory).toBe('business');
       expect(result.content[0]!.text).toMatch(verdict === 'rejected' ? /rejected/i : /no.quorum/i);
     } else {
-      expect(payload(result)['enforcement']).toMatchObject({
-        mode,
-        wouldBlock: mode !== 'off' && verdict !== 'approved',
-        reason: expect.any(String),
-      });
       if (mode === 'off') {
+        expect(payload(result)['enforcement']).not.toHaveProperty('wouldBlock');
         expect(payload(result)['enforcement']).toMatchObject({ reason: 'unmeasured' });
       }
+      expect(payload(result)['enforcement']).toMatchObject({
+        mode,
+        ...(mode !== 'off' ? { wouldBlock: verdict !== 'approved' } : {}),
+        attempts: retried ? 2 : 1,
+        reason: expect.any(String),
+      });
     }
   });
 
@@ -190,10 +194,21 @@ describe('registered run consensus enforcement (#4464)', () => {
 
   it('retries no_quorum exactly once and accepts a recovered approval', async () => {
     vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', 'enforce');
-    voteMock.mockResolvedValueOnce(panel('no_quorum')).mockResolvedValueOnce(panel('approved'));
+    const engineFirst = panel('no_quorum');
+    const first = {
+      ...engineFirst,
+      votes: engineFirst.votes.map((seat) => ({ ...seat, inputTokens: 100, outputTokens: 50 })),
+    };
+    voteMock.mockResolvedValueOnce(first).mockResolvedValueOnce(panel('approved'));
     const result = await captureHandler()(runArgs);
     expect(result.isError).toBeFalsy();
     expect(voteMock).toHaveBeenCalledTimes(2);
+    const costs = new DecisionCostStore().all();
+    expect(costs).toHaveLength(2);
+    expect(costs[0]?.decisionId).not.toBe(costs[1]?.decisionId);
+    expect(costs.map((cost) => cost.summary.voterCount)).toEqual([7, 7]);
+    expect(costs[0]?.summary.totalTokens).toBe(1050);
+    expect(payload(result)['enforcement']).toMatchObject({ attempts: 2 });
     expect(ledgerLines()).toHaveLength(1);
     expect(JSON.parse(ledgerLines()[0]!) as { decision: string }).toMatchObject({
       decision: 'approved',
@@ -215,17 +230,56 @@ describe('registered run consensus enforcement (#4464)', () => {
     });
   });
 
-  it('blocks 3 approvals, 2 rejections and 2 errored seats after one retry', async () => {
+  it('preserves the engine approval when 3 approvals, 2 rejections and 2 errored seats block', async () => {
     vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', 'enforce');
     voteMock.mockResolvedValue(panel('approved', 3, 2, 2));
     const result = await captureHandler()(runArgs);
     expect(result.isError).toBe(true);
+    expect(JSON.parse(ledgerLines()[0]!) as { decision: string }).toMatchObject({
+      decision: 'approved',
+    });
     expect(result.content[0]!.text).toMatch(/outage.invariant/i);
     expect(parseToolErrorEnvelope(result._meta)?.errorCategory).toBe('business');
-    expect(voteMock).toHaveBeenCalledTimes(2);
+    expect(voteMock).toHaveBeenCalledTimes(1);
+    expect(parseToolErrorEnvelope(result._meta)?.detail).toMatchObject({
+      decision: 'approved',
+      enforcement: { reason: 'not_outage_invariant', attempts: 1, wouldBlock: true },
+      voteRecord: { persisted: true },
+    });
     expect(ledgerLines()).toHaveLength(1);
     expect(JSON.parse(ledgerLines()[0]!) as { decision: string }).toMatchObject({
-      decision: 'no_quorum',
+      decision: 'approved',
+    });
+  });
+
+  it.each(['llm', 'unverifiable'] as const)(
+    '3 approvals and 1 rejection with 3 %s abstentions use the ratified denominator',
+    async (source) => {
+      vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', 'enforce');
+      const enginePanel = panel('approved', 3, 1, 3);
+      const votes = enginePanel.votes.map((seat) =>
+        seat.source === 'error'
+          ? { ...seat, source, error: undefined, vote: { ...seat.vote, decision: 'abstain' } }
+          : seat
+      );
+      voteMock.mockResolvedValue({ ...enginePanel, votes });
+      const result = await captureHandler()(runArgs);
+      expect(result.isError === true).toBe(source === 'unverifiable');
+      expect(voteMock).toHaveBeenCalledTimes(1);
+      expect(ledgerLines()).toHaveLength(1);
+    }
+  );
+
+  it('returns the rejected panel details without repeating the verdict in its message', async () => {
+    vi.stubEnv('NEXUS_CONSENSUS_ENFORCE', 'enforce');
+    voteMock.mockResolvedValue(panel('rejected'));
+    const result = await captureHandler()(runArgs);
+    const envelope = parseToolErrorEnvelope(result._meta);
+    expect(envelope?.message).not.toContain('rejected: rejected');
+    expect(envelope?.detail).toMatchObject({
+      decision: 'rejected',
+      enforcement: { reason: 'rejected', attempts: 1, wouldBlock: true },
+      voteRecord: { persisted: true },
     });
   });
 
@@ -303,8 +357,10 @@ describe('registered run consensus enforcement (#4464)', () => {
       } else {
         expect(payload(result)['enforcement']).toMatchObject({
           mode,
-          wouldBlock: mode === 'audit',
-          reason: mode === 'off' ? 'unmeasured' : expect.stringMatching(/ledger/i),
+          reason: mode === 'off' ? 'unmeasured' : 'approved',
+          ...(mode === 'audit'
+            ? { recordingError: expect.stringMatching(/ledger/i), wouldBlock: true }
+            : {}),
         });
       }
       expect(voteMock).toHaveBeenCalledTimes(1);

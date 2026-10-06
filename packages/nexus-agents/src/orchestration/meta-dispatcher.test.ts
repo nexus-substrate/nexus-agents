@@ -320,3 +320,17 @@ describe('consensus enforcement classification', () => {
     });
   }
 });
+
+describe('run-layer consensus judgement', () => {
+  it('blocks an engine approval with an enforcing outage refusal', () => {
+    expect(
+      classifyEngineResult(
+        {
+          decision: 'approved',
+          enforcement: { mode: 'enforce', wouldBlock: true, reason: 'not_outage_invariant' },
+        },
+        'enforce'
+      )
+    ).toEqual({ success: false, failureReason: 'Consensus approved: not_outage_invariant' });
+  });
+});
