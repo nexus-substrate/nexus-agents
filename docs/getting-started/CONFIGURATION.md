@@ -948,6 +948,11 @@ export NEXUS_ROUTE_GATEWAY_ARMS=true
 export NEXUS_GATEWAY_COST='openai-compat=local'
 ```
 
+The opt-in applies to both MCP server routing and standalone commands such as
+`nexus-agents orchestrate`. Standalone CLI startup discovers and registers the
+endpoint through the same gateway bootstrap before dispatching the command.
+Help and version commands skip discovery.
+
 Use the configured `NEXUS_OPENAI_COMPAT_ENDPOINT` in a scoped declaration, or
 use a bare declaration for every gateway. `free`, `local`, `priced`, and
 `priced:<inputPer1M>,<outputPer1M>` are supported. An undeclared or invalid cost
