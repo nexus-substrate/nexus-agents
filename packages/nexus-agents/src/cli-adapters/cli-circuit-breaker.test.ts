@@ -657,11 +657,8 @@ describe('getCliCircuitBreakerSnapshot', () => {
   });
 
   it('leaves an unknown CLI undefined without creating a breaker', () => {
-    const legacyReader = vi.spyOn(getDefaultCliCircuitBreakerRegistry(), 'getAllSnapshots');
-
     expect(getCliCircuitBreakerSnapshot('claude')).toBeUndefined();
     expect(registry.getAllArmSnapshots().size).toBe(0);
-    expect(legacyReader).not.toHaveBeenCalled();
   });
 
   it('preserves a closed CLI snapshot when an API arm is open', () => {

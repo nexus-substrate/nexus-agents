@@ -1,6 +1,6 @@
 /** Regression fixture freezes the pre-extraction algorithm from #5275. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { rmSync } from 'node:fs';
+import { rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mkdtempOutsideRepo } from '../testing/non-repo-temp-dir.js';
 import { createLogger, getErrorMessage, getTimeProvider, type ILogger } from '../core/index.js';
@@ -11,6 +11,8 @@ import {
   setOutcomeStore,
   resetOutcomeStore,
 } from '../orchestration/outcomes/outcome-store.js';
+import { PersistentOutcomeStore } from '../orchestration/outcomes/outcome-store-persistence.js';
+import { OutcomeCliSchema, TaskOutcomeSchema } from '../orchestration/outcomes/outcome-types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import { generateSyntheticPriors, runWarmUp, SYNTHETIC_MARKER } from '../cli/warm-up.js';
 import { LinUCBBandit } from './linucb-bandit.js';
@@ -131,6 +133,61 @@ describe('shared bandit warm start (#5275)', () => {
       expect(store.query()).toEqual(previousRows);
     }
   );
+
+  it('loads pre-10.0 JSONL and preserves the previous routing warm-start state (#6291 B2)', () => {
+    const arms = [...ARMS, 'api:anthropic', 'api:openai', 'api:google', 'api:custom-openai'];
+    const rows = arms.flatMap((cli, index) => [
+      outcome({ id: `success-${String(index)}`, cli: OutcomeCliSchema.parse(cli) }),
+      outcome({
+        id: `failure-${String(index)}`,
+        cli: OutcomeCliSchema.parse(cli),
+        success: false,
+        failureCategory: 'timeout',
+      }),
+    ]);
+    rows.push(
+      outcome({ id: 'unknown', cli: 'unknown' }),
+      outcome({ id: 'stale', timestamp: '2026-08-01T00:00:00.000Z' }),
+      outcome({ id: 'eval', qualitySignals: ['e2e-eval'] })
+    );
+    for (const row of rows) store.append(row);
+    const before = new LinUCBBandit(arms);
+    previousWarmStart(before, logger);
+    const filePath = join(fixture, 'legacy-outcomes.jsonl');
+    const bytes = rows.map((row) => JSON.stringify(row)).join('\n') + '\n';
+    writeFileSync(filePath, bytes);
+    const hydrated = new PersistentOutcomeStore({ filePath, dataDir: fixture });
+    expect(hydrated.query()).toEqual(store.query());
+    setOutcomeStore(hydrated);
+    const after = new LinUCBBandit(arms);
+    const result = warmStartBandit(after, logger);
+    expect(result).toMatchObject({
+      status: 'complete',
+      outcomesReplayed: 16,
+      empiricalOutcomesReplayed: 16,
+      fallbackUsed: false,
+    });
+    expect(after.getDetailedStats()).toEqual(before.getDetailedStats());
+    expect(after.getWarmStartModelStats()).toEqual(before.getWarmStartModelStats());
+    expect(after.getStats().map((arm) => arm.pullCount)).toEqual([3, 3, 3, 3, 2, 2, 2, 2]);
+    expect(readFileSync(filePath, 'utf8')).toBe(bytes);
+  });
+
+  it('round-trips a gateway outcome through disk and warm-starts its own arm (#6291 B2)', () => {
+    const filePath = join(fixture, 'gateway-outcomes.jsonl');
+    const gateway = TaskOutcomeSchema.parse({ ...outcome(), cli: 'api:gw-prod' });
+    const writer = new PersistentOutcomeStore({ filePath, dataDir: fixture });
+    writer.append(gateway);
+    const hydrated = new PersistentOutcomeStore({ filePath, dataDir: fixture });
+    expect(hydrated.query()).toEqual(writer.query());
+    expect(hydrated.query()[0]).toMatchObject(gateway);
+    expect(OutcomeCliSchema.parse(hydrated.query()[0]?.cli)).toBe('api:gw-prod');
+    setOutcomeStore(hydrated);
+    const bandit = new LinUCBBandit(['api:gw-prod', 'opencode']);
+    expect(warmStartBandit(bandit, logger).empiricalOutcomesReplayed).toBe(1);
+    expect(bandit.getStats()[0]).toEqual({ name: 'api:gw-prod', pullCount: 1, avgReward: 0.7 });
+    expect(bandit.getWarmStartModelStats()[0]?.arm).toBe('api:gw-prod');
+  });
 
   it('replays only the last 30 days, including the boundary', () => {
     const cutoff = Date.parse(NOW) - 30 * 24 * 60 * 60 * 1000;

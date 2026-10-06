@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- compatibility tests for cachedAdapters retained until 10.0 (#6291) */
 /**
  * Tests for UnifiedAdapterRegistry
  *
@@ -162,13 +161,13 @@ describe('UnifiedAdapterRegistry', () => {
       registry.getAdapterForTask('implement a new feature');
       // "implement" → code_generation → codex
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('codex');
+      expect(snapshot.cachedArms).toContain('codex');
     });
 
     it('should detect research task', () => {
       registry.getAdapterForTask('research state of the art');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('gemini');
+      expect(snapshot.cachedArms).toContain('gemini');
     });
 
     it('should fall back to default for unrecognized task', () => {
@@ -194,8 +193,8 @@ describe('UnifiedAdapterRegistry', () => {
       registry.getAdapterForCli('claude');
       registry.getAdapterForCli('codex');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('claude');
-      expect(snapshot.cachedAdapters).toContain('codex');
+      expect(snapshot.cachedArms).toContain('claude');
+      expect(snapshot.cachedArms).toContain('codex');
     });
   });
 
@@ -203,19 +202,19 @@ describe('UnifiedAdapterRegistry', () => {
     it('should resolve claude-opus to claude CLI', () => {
       registry.getAdapterForModel('claude-opus');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('claude');
+      expect(snapshot.cachedArms).toContain('claude');
     });
 
     it('should resolve codex-5.3 to codex CLI', () => {
       registry.getAdapterForModel('codex-5.3');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('codex');
+      expect(snapshot.cachedArms).toContain('codex');
     });
 
     it('should resolve gemini-pro to gemini CLI', () => {
       registry.getAdapterForModel('gemini-pro');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('gemini');
+      expect(snapshot.cachedArms).toContain('gemini');
     });
 
     // #6599: the model used to be dropped here — the CLI slot adapter was
@@ -254,7 +253,7 @@ describe('UnifiedAdapterRegistry', () => {
       // and no longer entry — so it routes to gemini via the gemini-pro entry.
       registry.getAdapterForModel('gemini-pro-bespoke-deployment');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('gemini');
+      expect(snapshot.cachedArms).toContain('gemini');
     });
   });
 
@@ -262,31 +261,31 @@ describe('UnifiedAdapterRegistry', () => {
     it('should route code_expert to codex', () => {
       registry.getAdapterForRole('code_expert');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('codex');
+      expect(snapshot.cachedArms).toContain('codex');
     });
 
     it('should route architecture_expert to gemini', () => {
       registry.getAdapterForRole('architecture_expert');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('gemini');
+      expect(snapshot.cachedArms).toContain('gemini');
     });
 
     it('should route research_expert to gemini', () => {
       registry.getAdapterForRole('research_expert');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('gemini');
+      expect(snapshot.cachedArms).toContain('gemini');
     });
 
     it('should route documentation_expert to gemini', () => {
       registry.getAdapterForRole('documentation_expert');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('gemini');
+      expect(snapshot.cachedArms).toContain('gemini');
     });
 
     it('should route infrastructure_expert to claude (devops)', () => {
       registry.getAdapterForRole('infrastructure_expert');
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toContain('claude');
+      expect(snapshot.cachedArms).toContain('claude');
     });
 
     it('should fall back to default for unknown role', () => {
@@ -314,7 +313,7 @@ describe('UnifiedAdapterRegistry', () => {
       registry.getAdapterForCli('gemini');
       registry.dispose();
       const snapshot = registry.getSnapshot();
-      expect(snapshot.cachedAdapters).toHaveLength(0);
+      expect(snapshot.cachedArms).toHaveLength(0);
     });
 
     it('should log disposal', () => {
@@ -545,27 +544,23 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
     const viaCli = registry.getAdapterForCli('claude');
 
     expect(registry.getAdapterForArm('claude')).toBe(viaCli);
-    expect(registry.getSnapshot().cachedAdapters).toEqual(['claude']);
     expect(registry.getSnapshot().cachedArms).toEqual(['claude']);
   });
 
   it('getAdapterForArm on an unregistered api arm is undefined, not a CLI fallback', () => {
     expect(registry.getAdapterForArm('api:gw-prod')).toBeUndefined();
     // Asking did not create anything.
-    expect(registry.getSnapshot().cachedAdapters).toEqual([]);
     expect(registry.getSnapshot().cachedArms).toEqual([]);
   });
 
-  it('a registered api arm is returned by id and listed in cachedArms, NOT cachedAdapters', () => {
+  it('a registered api arm is returned by id and listed in cachedArms', () => {
     const stub = stubResilientAdapter('gw-prod');
 
     registry.registerApiArm('api:gw-prod', stub);
 
     expect(registry.getAdapterForArm('api:gw-prod')).toBe(stub);
-    // `cachedAdapters` keeps its `CliName[]` type (#6290 panel): it is the
-    // CLI-slot view of the one arm-keyed cache that `cachedArms` reports whole.
     expect(registry.getSnapshot().cachedArms).toEqual(['api:gw-prod']);
-    expect(registry.getSnapshot().cachedAdapters).toEqual([]);
+    expect('cachedAdapters' in registry.getSnapshot()).toBe(false);
   });
 
   it('registering an api arm leaves CLI-slot behaviour untouched', () => {
@@ -577,7 +572,6 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
     expect(opencode).not.toBe(stub);
     expect(opencode.getCircuitBreakerRegistry?.()).toBe(getDefaultCliCircuitBreakerRegistry());
     expect(registry.getSnapshot().cachedArms).toEqual(['api:gw-prod', 'opencode']);
-    expect(registry.getSnapshot().cachedAdapters).toEqual(['opencode']);
   });
 
   it('rejects an id that fails the endpoint validator, even through a cast', () => {
@@ -610,7 +604,6 @@ describe('UnifiedAdapterRegistry — api:* arms (#4392)', () => {
 
     expect(stub.dispose).toHaveBeenCalledTimes(1);
     expect(registry.getSnapshot().cachedArms).toEqual([]);
-    expect(registry.getSnapshot().cachedAdapters).toEqual([]);
   });
 });
 
