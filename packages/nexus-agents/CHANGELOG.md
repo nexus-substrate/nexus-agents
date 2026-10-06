@@ -1,5 +1,161 @@
 # nexus-agents
 
+## 10.0.0
+
+### Major Changes
+
+- [#7142](https://github.com/nexus-substrate/nexus-agents/pull/7142) [`b34acc6`](https://github.com/nexus-substrate/nexus-agents/commit/b34acc6f17eefbd1a8cb20287c50254f6573b692) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the deprecated strategy-distiller promotion channel in 10.0 ([#5467](https://github.com/nexus-substrate/nexus-agents/issues/5467)). `StrategyDistiller.promote()` and its internal `ruleToPerformance` conversion are removed, along with `DistillerConfig.promotionConfidence` and its default. `RuleStatus` no longer includes `'promoted'`, and `DistillerStats.ruleCountByStatus` no longer carries a `promoted` count.
+
+  There is no replacement promotion API or confidence setting. `DistilledRuleStage` remains the canonical channel for applying active distilled rules to routing scores. Remove calls to `promote()` and the `promotionConfidence` option:
+
+  ```diff
+  -const distiller = new StrategyDistiller(store, logger, { promotionConfidence: 0.7 });
+  -distiller.promote(routingMemory);
+  +const distiller = new StrategyDistiller(store, logger);
+  +distiller.distill();
+  ```
+
+  Existing persisted stores still load without throwing or dropping rules. The persisted schema retains `'promoted'` as a read-only legacy alias; both `PersistentStrategyDistiller` and `loadPersistedRules()` map it to `'active'` on load. These rules can participate in routing and expire normally. Subsequent snapshot writes use the current statuses and never emit `'promoted'`.
+
+- [#7139](https://github.com/nexus-substrate/nexus-agents/pull/7139) [`2688071`](https://github.com/nexus-substrate/nexus-agents/commit/26880713014cddda8fbe1f55bd385a81b3d1eb5d) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove deprecated plugin gate options and the unused workflow quality hint in 10.0 ([#5496](https://github.com/nexus-substrate/nexus-agents/issues/5496)).
+
+  - Remove `PluginRegistryOptions.experimentalEnabled` and `experimentalAllow`, deprecated in 8.9.3 ([#5492](https://github.com/nexus-substrate/nexus-agents/pull/5492)). Production registries never set these options and load only core plugins before freezing. The experimental registration gate is removed entirely: direct registration now applies ordinary manifest and configuration validation to experimental plugins too. There is no replacement toggle or allowlist. Use `new PluginRegistry()` and remove both options; the empty `PluginRegistryOptions` type remains exported for compatibility.
+  - Remove `TaskSignals.qualityRequirement` and the exported `QualityRequirement` type, deprecated in 8.9.1 ([#5482](https://github.com/nexus-substrate/nexus-agents/pull/5482)). No routing rule read this hint, so it never affected routing. Remove the field and type imports; nothing replaces them. Other routing signals continue to work.
+
+  ```diff
+  -const registry = new PluginRegistry({ experimentalEnabled: true, experimentalAllow: ['nexus:example'] });
+  +const registry = new PluginRegistry();
+  -const signals: TaskSignals = { description: 'Review code', qualityRequirement: 'high' };
+  +const signals: TaskSignals = { description: 'Review code' };
+  ```
+
+- [#7138](https://github.com/nexus-substrate/nexus-agents/pull/7138) [`3644013`](https://github.com/nexus-substrate/nexus-agents/commit/36440131598c755c58b989e4be4f8dacb2f2c661) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - In 10.0, `security.auth.method` accepts only `token`. Configs specifying `oauth2`
+  now fail at load with an explicit migration error. OAuth2 was never implemented:
+  earlier versions accepted the value but performed bearer-token checks and warned
+  at startup. The obsolete startup warning has been removed.
+
+  Before upgrading, operators with `oauth2` in their config must change the method
+  to `token` to retain that bearer-token authentication:
+
+  ```diff
+   security:
+     auth:
+  -    method: oauth2
+  +    method: token
+  ```
+
+  Resolves [#5681](https://github.com/nexus-substrate/nexus-agents/issues/5681).
+
+- [#7141](https://github.com/nexus-substrate/nexus-agents/pull/7141) [`488bf38`](https://github.com/nexus-substrate/nexus-agents/commit/488bf38d850d489a4a2b58f7e8e096f5890efd4b) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the unimplemented asynchronous routing-memory contract in 10.0 ([#5715](https://github.com/nexus-substrate/nexus-agents/issues/5715)). The `IRoutingMemory` exported through the CLI adapters entry now refers to the live synchronous interface in `context/routing-memory.ts`, implemented by `RoutingMemory`. The async, `Promise<Result<...>>`-returning contract ratified in [#238](https://github.com/nexus-substrate/nexus-agents/issues/238) was never implemented by shipped code.
+
+  Remove `RoutingMemoryError`, `RoutingMemoryErrorCode`, `TaskProfileSummary`, `RoutingDecisionRecord`, `TaskOutcomeRecord`, `PreferenceSignal`, `PreferenceRecord`, `PreferenceFilter`, `ExperienceStep`, `ExperienceRecord`, `ActionRecord`, and `RoutingMemoryExport`. These declarations have no live replacements. Remove their imports and migrate any custom implementations of the old contract to the live interface. Its `storePreference` accepts a model, task type, and performance metrics and returns `void`; reads return values directly. The old `storeExperience`, `getExperiences`, `storeAction`, `getActions`, `export`, and `import` methods are absent from the live contract.
+
+  `RoutingMemoryStats` from the CLI adapters entry now also refers to the live statistics: `totalPreferences`, `totalExperiences`, `cacheHits`, `cacheMisses`, and `recommendationsMade`. The old record-count, timestamp, and storage-size fields are removed.
+
+  ```diff
+   import type { IRoutingMemory } from 'nexus-agents';
+  -await memory.storePreference(decision, outcome, preference);
+  -const result = await memory.getPreferences({ taskType: 'code' }, 100);
+  -if (result.ok) consume(result.value);
+  +memory.storePreference('claude', 'code', {
+  +  avgQuality: 0.9,
+  +  successRate: 1,
+  +  avgLatencyMs: 1000,
+  +  avgTokens: 500,
+  +  observations: 1,
+  +});
+  +consume(memory.getPreferences('code'));
+  ```
+
+- [#7143](https://github.com/nexus-substrate/nexus-agents/pull/7143) [`b81f59c`](https://github.com/nexus-substrate/nexus-agents/commit/b81f59c2c03ed64582eba2f189327124f1341d4a) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the dead pipeline conditional approval path for 10.0: the `conditional_go`
+  variant of `VoteResult`, the `createVoteResult` helper, `PipelineTask.conditions`
+  and `PipelineTask.caveats`, and their conditional checkpoint fields. The variant
+  never had a production producer under any configuration; `createVoteResult` was
+  called only by tests. Production pipeline votes continue to return `approved`,
+  `rejected`, or `no_quorum`.
+
+  Consumers should remove `conditional_go` switch cases and task conditions/caveats
+  accesses. Replace calls to the removed helper with the appropriate vote literal:
+
+  ```diff
+  -const vote = createVoteResult(true, '', approvalPercentage);
+  +const vote: VoteResult = { kind: 'approved', approvalPercentage };
+  ```
+
+  Live per-voter conditions are unaffected: `VoteSchema.conditions`, the conditions
+  field in the voter prompt, and voter-response parsing remain available. Recording
+  these voter conditions is a separate change tracked by [#7134](https://github.com/nexus-substrate/nexus-agents/issues/7134).
+
+  Existing 9.x JSONL checkpoints still load and resume. The reader ignores retired
+  conditional metadata (including `voteConditions`, `voteCaveats`, and conditional
+  state); new vote checkpoints no longer write conditional metadata. No checkpoint
+  migration is required.
+
+- [#7144](https://github.com/nexus-substrate/nexus-agents/pull/7144) [`64d4638`](https://github.com/nexus-substrate/nexus-agents/commit/64d463828b7f85f7ac3de4784f0ad22c7ed6c03f) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the deprecated gateway environment aliases and pipeline event bridge in 10.0 ([#6291, B1](https://github.com/nexus-substrate/nexus-agents/issues/6291)).
+
+  `NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` no longer configure an adapter. Rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`, respectively. Setting an old name is ignored and reported as an unknown variable by `validateNexusEnv`; normal startup environment validation warns about it. The canonical pair configures both the single-model `custom-openai` path and the gateway path (model discovery, in-process voter transport, and the `api:<endpoint>` arm). Both canonical values must be non-empty after trimming to enable the gateway path.
+
+  ```diff
+  -export NEXUS_CUSTOM_API_BASE_URL="https://your-gateway.example.com/v1"
+  -export NEXUS_CUSTOM_API_KEY="your-gateway-key"
+  +export NEXUS_OPENAI_COMPAT_URL="https://your-gateway.example.com/v1"
+  +export NEXUS_OPENAI_COMPAT_KEY="your-gateway-key"
+  ```
+
+  Other `NEXUS_CUSTOM_*` settings, including `NEXUS_CUSTOM_MODEL`, `NEXUS_CUSTOM_API_ALLOW_PRIVATE`, and `NEXUS_CUSTOM_API_SURFACE`, remain supported.
+
+  Remove `createEventBusBridge` and its bridge-only `EventBusBridgeOptions` and `PipelineBridgeResult` types from the pipeline exports. Subscribe directly through `IEventBus.subscribe(filter, handler)` and invoke the returned unsubscribe function during cleanup. An empty filter (`{}`) receives every pipeline event; use a typed filter to narrow the subscription. Handlers receive the full typed `PipelineEvent`, including `type` and `timestamp`, rather than a collaboration `DomainEvent` payload. The automatic `pipeline.*` topic forwarding and bridge forwarding counter are removed; there is no replacement bridge factory.
+
+  ```diff
+  -import { createEventBusBridge } from 'nexus-agents';
+  +import type { IEventBus, PipelineEvent } from 'nexus-agents';
+
+   // pipelineBus is the application's pipeline event bus.
+  -const bridge = createEventBusBridge({ source: pipelineBus });
+  +const source: IEventBus = pipelineBus;
+  +const unsubscribe = source.subscribe({}, (event: PipelineEvent) => {
+  +  handlePipelineEvent(event);
+  +});
+
+   // During cleanup:
+  -bridge.dispose();
+  +unsubscribe();
+  ```
+
+  The collaboration event bus, the MCP-to-observer bridge, and the `adapter.failover` signal subscription remain available. Widening outcome readers and `OutcomeCli` to routing arm IDs is outside this B1 change.
+
+- [#7148](https://github.com/nexus-substrate/nexus-agents/pull/7148) [`5841a4e`](https://github.com/nexus-substrate/nexus-agents/commit/5841a4ed9c9adea95d70bb03159a0e4c5e679538) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove the deprecated CLI-only circuit-breaker readers and adapter-cache view in 10.0 ([#6291](https://github.com/nexus-substrate/nexus-agents/issues/6291) B2). Migrate to the existing arm readers, which include registered gateway endpoints:
+
+  ```diff
+  -registry.getHealthyClis()
+  +registry.getHealthyArms()
+  -registry.getUnhealthyClis()
+  +registry.getUnhealthyArms()
+  -registry.getAllSnapshots()
+  +registry.getAllArmSnapshots()
+  -adapterRegistry.getSnapshot().cachedAdapters
+  +adapterRegistry.getSnapshot().cachedArms
+  ```
+
+  `RoutingArmId` and `OutcomeCli` now include validated `EndpointArmId` gateway identities (`api:<endpoint>`). `CircuitStateChangeEvent.cliName`, `CircuitError.cliName`, and its constructor option now accept routing arm ids; breaker-produced events and errors carry the guarded arm id, matching `armId`. Consumers needing a CLI display slot should call `routingArmDisplaySlot(cliName)`. Built-in API vendor display mappings remain intact; other gateway arms display under `opencode`. `ApiVendor` remains the live vendor union.
+
+  The `cli:` log/event fields in `cli-circuit-breaker.ts` and `resilient-adapter.ts` now carry raw arm ids such as `api:<endpoint>` instead of the `opencode` display slot. Dashboards keyed on the four CLI names will see new labels; update their filters and grouping, or explicitly map arm ids through `routingArmDisplaySlot` for CLI-slot views.
+
+  `CircuitBreakerRegistry.getBreaker`, `isOpen`, and `reset` parameters intentionally remain `CliName`-typed. Use `getArmBreaker`, `isArmOpen`, and `resetArm` for gateway arm ids.
+
+  Persisted outcome compatibility: existing unversioned JSONL stores remain readable without migration, remapping, or rewriting user data. CLI slots, built-in API arms, and `unknown` retain their original attribution, and their histories continue feeding routing through LinUCB warm-start with unchanged arm statistics. Gateway outcomes persist and replay under their own endpoint ids. The widened schema reuses endpoint identity validation (1–64 lowercase alphanumeric, `.`, `_`, or `-` characters, starting alphanumeric), so URLs, userinfo, whitespace and malformed ids remain rejected.
+
+  Rollback hazard: a 9.x reader that predates [#7146](https://github.com/nexus-substrate/nexus-agents/issues/7146) rejects gateway outcome lines and drops them when it rewrites the store. Before running mixed versions against a shared store, upgrade 9.x to a release containing [#7146](https://github.com/nexus-substrate/nexus-agents/issues/7146); otherwise avoid rollback to a reader without that fix.
+
+- [#7145](https://github.com/nexus-substrate/nexus-agents/pull/7145) [`8e2f33d`](https://github.com/nexus-substrate/nexus-agents/commit/8e2f33d489059347d969bc467ff9ee4959488734) Thanks [@williamzujkowski](https://github.com/williamzujkowski)! - Remove `NEXUS_ACCESS_POLICY_MODE` in 10.0 ([#6319](https://github.com/nexus-substrate/nexus-agents/issues/6319)). It has had no effect since its only reader was deleted. Unset it; no replacement is needed. `validateNexusEnv` now reports the removed name in `unknownVars`, and startup validation warns that it is unknown, regardless of its value.
+
+  ```diff
+  -export NEXUS_ACCESS_POLICY_MODE="audit"
+  +unset NEXUS_ACCESS_POLICY_MODE
+  ```
+
+  Remove the unused `deprecatedVars` field from `EnvValidationResult` and the `DeprecatedVar` type from the config exports. Consumers should use the remaining `unknownVars`, `invalidVars` and `ineffectiveVars` fields; no deprecated-variable producer remains.
+
 ## 9.4.1
 
 ### Patch Changes
