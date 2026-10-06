@@ -23,6 +23,25 @@ describe('warm-up', () => {
   });
 
   describe('generateSyntheticPriors', () => {
+    it('adds neutral priors only for actual endpoint arms (#7151)', () => {
+      const priors = generateSyntheticPriors(['claude', 'api:gw-prod', 'invalid']);
+      expect(priors.get('api:gw-prod')).toBe(0.5);
+      expect(priors.has('invalid')).toBe(false);
+      expect(priors.has('api:unregistered')).toBe(false);
+      expect(priors.get('opencode')).toBe(generateSyntheticPriors().get('opencode'));
+    });
+
+    it('keeps CLI-only priors unchanged when no endpoint arm exists', () => {
+      expect(generateSyntheticPriors([])).toEqual(generateSyntheticPriors());
+      expect(generateSyntheticPriors(CLI_NAMES)).toEqual(generateSyntheticPriors());
+    });
+
+    it('keeps existing vendor API arms unchanged before endpoint opt-in (#7151)', () => {
+      expect(
+        generateSyntheticPriors(['api:anthropic', 'api:openai', 'api:google', 'api:custom-openai'])
+      ).toEqual(generateSyntheticPriors());
+    });
+
     it('should return entries for all CLIs', () => {
       const priors = generateSyntheticPriors();
       expect(priors.size).toBe(CLI_NAMES.length);

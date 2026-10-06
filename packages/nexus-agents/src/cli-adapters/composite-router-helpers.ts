@@ -7,10 +7,12 @@
  * (Source: Issue #275, Epic #164, Issue #347)
  */
 
+import { adjustProfileForTask } from './topsis-helpers.js';
+export { adjustProfileForTask } from './topsis-helpers.js';
 import type { Task } from '../core/types/agent.js';
 import { getTimeProvider, type TaskProfile } from '../core/index.js';
 import type { CliName, RoutingArmId, CliTask } from './types.js';
-import { routingArmDisplaySlot } from './types.js';
+import { routingArmCliSlot } from './types.js';
 import { NEUTRAL_BANDIT_FEATURE, type BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
 import {
@@ -33,22 +35,6 @@ import type { IZeroRouter } from './zero-router.js';
 import type { DifficultyEstimate, DifficultyOutcome, ModelTier } from './zero-router-types.js';
 import { hashTaskContent } from './zero-router-calibration.js';
 import { deriveStrongClis, deriveWeakClis, deriveTierToClis } from './derive-tier-tables.js';
-
-/**
- * Adjusts model profile based on task characteristics.
- */
-export function adjustProfileForTask(
-  profile: TopsisModelProfile,
-  taskProfile: TaskProfile
-): TopsisModelProfile {
-  if (taskProfile.taskType === 'architecture' || taskProfile.reasoningComplexity > 7) {
-    return { ...profile, qualityScore: Math.min(profile.qualityScore * 1.2, 10) };
-  }
-  if (taskProfile.taskType === 'bulk_operations' || taskProfile.contextRequired < 1000) {
-    return { ...profile, averageLatencyMs: profile.averageLatencyMs * 0.8 };
-  }
-  return profile;
-}
 
 /**
  * Converts a task profile to LinUCB bandit context.
@@ -159,14 +145,17 @@ export function filterByPreferenceTier(
 ): RoutingArmId[] {
   // Strong = the premium tier (most-expensive frontier default); weak = the
   // budget CLIs. DERIVED from real registry pricing + qualityScores (#4195) —
-  // a $0/unscored default can never be "strong". Tier membership is slot-level;
-  // collapse an api:* arm to its display slot (#3422) so a wrapped API arm
-  // inherits its vendor slot's tier.
+  // a $0/unscored default can never be "strong". Built-in vendor API arms
+  // retain their existing slot tiers; discovered endpoint models have none.
   const strongModels: CliName[] = deriveStrongClis();
   const weakModels: CliName[] = deriveWeakClis();
 
   const preferred = tier === 'strong' ? strongModels : weakModels;
-  const filtered = candidates.filter((c) => preferred.includes(routingArmDisplaySlot(c)));
+  // Endpoint models have no CLI preference tier; bypass this slot-only filter.
+  const filtered = candidates.filter((c) => {
+    const slot = routingArmCliSlot(c);
+    return slot === undefined || preferred.includes(slot);
+  });
 
   // Return filtered if any match, otherwise return all candidates
   return filtered.length > 0 ? filtered : candidates;
@@ -396,9 +385,9 @@ function buildAdjustedProfiles(
   options?: TopsisRankingOptions
 ): TopsisModelProfile[] {
   // TOPSIS profiles are slot-level (DEFAULT_MODEL_PROFILES keyed by CliName).
-  // Collapse arms to their display slot so an api:* arm reuses its vendor
-  // slot's profile (#3422).
-  const candidateSlots = new Set(candidates.map(routingArmDisplaySlot));
+  // Endpoint catalogue models have no slot-level TOPSIS profile; exclude them
+  // from this stage explicitly, while preserving their LinUCB candidacy.
+  const candidateSlots = new Set(candidates.map(routingArmCliSlot));
   const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidateSlots.has(p.cliName));
   let adjusted = profiles.map((p) => adjustProfileForTask(p, taskProfile));
   if (options?.stageScores !== undefined && options.stageScores.size > 0) {
@@ -433,22 +422,27 @@ export function applyTopsisRanking(
     taskProfile.reasoningComplexity
   );
   const adjustedProfiles = buildAdjustedProfiles(taskProfile, candidates, options);
+  if (adjustedProfiles.length === 0) return { ranking: candidates, topScore: 1.0 };
   const result: TopsisResult = router.selectModel({ profiles: adjustedProfiles });
 
-  // Scores are slot-keyed; an api:* candidate inherits its display slot's
-  // closeness score so it ranks alongside its vendor's CLI slot (#3422).
-  const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));
-  const scoreOf = (arm: RoutingArmId): number => scoreMap.get(routingArmDisplaySlot(arm)) ?? 0;
+  // Scores are slot-keyed. Only CLI and built-in vendor arms have a slot;
+  // discovered endpoints remain unmeasured by TOPSIS.
+  const scoreOf = (arm: RoutingArmId): number =>
+    result.scores.find((score) => score.cliName === routingArmCliSlot(arm))?.closenessScore ?? 0;
   const ranking = [...candidates].sort((a, b) => scoreOf(b) - scoreOf(a));
   const topArm = ranking[0];
   const topScore = topArm !== undefined ? scoreOf(topArm) : 1.0;
   // Keyed by ARM, not by display slot: `scoreOf` already resolves an api:* arm
   // to its slot, so this records the score each arm actually ranked on.
-  const scoresByArm = new Map(candidates.map((arm) => [arm, scoreOf(arm)]));
+  const scoresByArm = new Map(
+    candidates
+      .filter((arm) => routingArmCliSlot(arm) !== undefined)
+      .map((arm) => [arm, scoreOf(arm)])
+  );
 
   // Tolerance band: count how many candidates are within TOLERANCE_BAND_PERCENT of top
   const threshold = topScore * (1 - TOPSIS_TOLERANCE_BAND_PERCENT);
-  const toleranceBandSize = ranking.filter((c) => scoreOf(c) >= threshold).length;
+  const toleranceBandSize = [...scoresByArm.values()].filter((score) => score >= threshold).length;
 
   return { ranking, topScore, toleranceBandSize, scoresByArm };
 }
@@ -507,8 +501,9 @@ export function filterByDifficultyTier(
   // Sort candidates by tier preference order. Tier preference is slot-level;
   // an api:* arm sorts by its display slot's position (#3422).
   const sortedCandidates = [...candidates].sort((a, b) => {
-    const aIndex = preferred.indexOf(routingArmDisplaySlot(a));
-    const bIndex = preferred.indexOf(routingArmDisplaySlot(b));
+    // A gateway endpoint has no CLI tier membership.
+    const aIndex = preferred.findIndex((slot) => slot === routingArmCliSlot(a));
+    const bIndex = preferred.findIndex((slot) => slot === routingArmCliSlot(b));
     // If not in preference list, put at end
     const aPos = aIndex === -1 ? preferred.length : aIndex;
     const bPos = bIndex === -1 ? preferred.length : bIndex;
@@ -532,7 +527,12 @@ export function applyZeroRouterFilter(
 
   // Difficulty estimation is slot-level; collapse arms to their display slot
   // for the ZeroRouter call (we only read difficulty + tier back) (#3422).
-  const decision = zeroRouter.routeByDifficulty(task, candidates.map(routingArmDisplaySlot));
+  // ZeroRouter calibration is CLI-only; no endpoint may inherit a CLI slot.
+  const slots = candidates
+    .map(routingArmCliSlot)
+    .filter((slot): slot is CliName => slot !== undefined);
+  if (slots.length === 0) return defaultZeroRouterStageResult(candidates);
+  const decision = zeroRouter.routeByDifficulty(task, slots);
   const difficultyEstimate = decision.difficulty;
   const difficultyTier = decision.tier;
 
@@ -616,9 +616,11 @@ export function buildDecisionFields(ctx: BuildDecisionContext): {
   if (ctx.topsisScoresByArm === undefined) return { confidence, reason, alternatives };
   // Narrowed to the alternatives themselves: the winner's score already rides
   // on `topsisScore`, and a map that also carried it invites the very
-  // substitution this fixes.
+  // substitution this fixes. Unranked alternatives carry no score.
   const alternativeScores = new Map(
-    alternatives.map((arm) => [arm, ctx.topsisScoresByArm?.get(arm) ?? 0])
+    alternatives
+      .filter((arm) => ctx.topsisScoresByArm?.has(arm) === true)
+      .map((arm) => [arm, ctx.topsisScoresByArm?.get(arm) ?? 0])
   );
   return { confidence, reason, alternatives, alternativeScores };
 }

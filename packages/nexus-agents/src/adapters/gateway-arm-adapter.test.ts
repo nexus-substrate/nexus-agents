@@ -23,6 +23,7 @@ import { createUnifiedRegistry } from './unified-registry.js';
 import { createGatewayArmAdapter } from './gateway-arm-adapter.js';
 import { isGatewayModelAdapter } from './openai-compat-adapter.js';
 import { clearRateLimitEvents, getRateLimitStats } from './rate-limit-detector.js';
+import { _resetGatewaySlotCatalog, setGatewaySlotCatalog } from './gateway-family-slots.js';
 import {
   _resetGatewayCatalogs,
   getGatewayCatalog,
@@ -57,10 +58,12 @@ const RESPONSE: CompletionResponse = {
   model: 'm-0',
 };
 
-type MockModel = IModelAdapter & { complete: ReturnType<typeof vi.fn> };
+type MockModel = IModelAdapter & {
+  complete: ReturnType<typeof vi.fn<IModelAdapter['complete']>>;
+};
 
 function makeModel(modelId: string): MockModel {
-  const complete = vi.fn();
+  const complete = vi.fn<IModelAdapter['complete']>();
   complete.mockResolvedValue(ok(RESPONSE));
   return {
     providerId: 'openai',
@@ -74,8 +77,20 @@ function makeModel(modelId: string): MockModel {
 }
 
 function makeModels(count: number): MockModel[] {
-  return Array.from({ length: count }, (_v, i) => makeModel(`m-${String(i)}`));
+  const models = Array.from({ length: count }, (_v, i) => makeModel(`m-${String(i)}`));
+  setGatewaySlotCatalog(models);
+  return models;
 }
+
+beforeEach(() => {
+  _resetGatewaySlotCatalog();
+  vi.stubEnv('NEXUS_CUSTOM_MODEL', 'm-0');
+});
+
+afterEach(() => {
+  _resetGatewaySlotCatalog();
+  vi.unstubAllEnvs();
+});
 
 describe('createGatewayArmAdapter (#4392 inc 2 step 2)', () => {
   let breakers: CircuitBreakerRegistry;
@@ -126,7 +141,7 @@ describe('createGatewayArmAdapter (#4392 inc 2 step 2)', () => {
   });
 
   describe('delegation', () => {
-    it('identifies as the first model and delegates complete() to it', async () => {
+    it('identifies as the configured default and delegates complete() to it', async () => {
       const models = makeModels(3);
       const arm = createGatewayArmAdapter(ARM, models, {
         circuitBreakerRegistry: breakers,
@@ -142,6 +157,118 @@ describe('createGatewayArmAdapter (#4392 inc 2 step 2)', () => {
       expect(models[1]?.complete).not.toHaveBeenCalled();
       expect(await arm.countTokens('x')).toBe(7);
       expect(arm.validateConfig().ok).toBe(true);
+    });
+
+    it('uses the ranked default after bootstrap registers a multi-model catalogue', async () => {
+      vi.stubEnv('NEXUS_CUSTOM_MODEL', '');
+      const models = ['gpt-5.5-mini', 'gpt-5.5', 'claude-opus-4-6'].map(makeModel);
+      const arm = createGatewayArmAdapter(ARM, models, {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+      // Production registers the family catalogue after constructing the arm.
+      setGatewaySlotCatalog(models);
+
+      expect(arm.modelId).toBe('claude-opus-4-6');
+      await arm.complete({ messages: [] });
+      expect(models[2]?.complete).toHaveBeenCalledTimes(1);
+      expect(models[0]?.complete).not.toHaveBeenCalled();
+      expect(models[1]?.complete).not.toHaveBeenCalled();
+    });
+
+    it('ranks models within the winning family and memoises the resolved default', async () => {
+      vi.stubEnv('NEXUS_CUSTOM_MODEL', '');
+      const models = ['gpt-5.5', 'claude-opus-4-5', 'claude-opus-4-6', 'claude-haiku-4-5'].map(
+        makeModel
+      );
+      setGatewaySlotCatalog(models);
+      const arm = createGatewayArmAdapter(ARM, models, {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+      expect(arm.modelId).toBe('claude-opus-4-6');
+      // Resolution is fixed to this arm after its first successful read.
+      setGatewaySlotCatalog([makeModel('replacement')]);
+      await arm.complete({ messages: [] });
+      expect(arm.modelId).toBe('claude-opus-4-6');
+      expect(models[2]?.complete).toHaveBeenCalledTimes(1);
+      expect(models[1]?.complete).not.toHaveBeenCalled();
+    });
+
+    it('returns an error result when the resolved default belongs to another arm', async () => {
+      const models = makeModels(1);
+      const arm = createGatewayArmAdapter(ARM, models, {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+      setGatewaySlotCatalog([makeModel('m-0')]);
+      const result = await arm.complete({ messages: [] });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toMatch(/does not belong to arm/);
+      expect(arm.validateConfig().ok).toBe(false);
+      expect(models[0]?.complete).not.toHaveBeenCalled();
+    });
+
+    it('honours a catalogue override instead of listing order or the ranked default', async () => {
+      vi.stubEnv('NEXUS_CUSTOM_MODEL', 'gpt-5.5');
+      const models = ['gpt-5.5-mini', 'gpt-5.5', 'claude-opus-4-6'].map(makeModel);
+      setGatewaySlotCatalog(models);
+      const arm = createGatewayArmAdapter(ARM, models, {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+
+      expect(arm.modelId).toBe('gpt-5.5');
+      await arm.complete({ messages: [] });
+      expect(models[1]?.complete).toHaveBeenCalledTimes(1);
+      expect(models[0]?.complete).not.toHaveBeenCalled();
+    });
+
+    it('fails explicitly when the registered catalogue has no chat default', async () => {
+      vi.stubEnv('NEXUS_CUSTOM_MODEL', '');
+      const models = ['gpt-realtime', 'gpt-image-1'].map(makeModel);
+      setGatewaySlotCatalog(models);
+      const arm = createGatewayArmAdapter(ARM, models, {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+
+      const result = await arm.complete({ messages: [] });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toMatch(/no chat default/);
+      expect(arm.validateConfig().ok).toBe(false);
+      expect(models[0]?.complete).not.toHaveBeenCalled();
+    });
+
+    it('fails explicitly before the family catalogue is registered', async () => {
+      const arm = createGatewayArmAdapter(ARM, [makeModel('gpt-5.5')], {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+
+      const result = await arm.complete({ messages: [] });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toMatch(/no chat default/);
+      expect(arm.validateConfig().ok).toBe(false);
+    });
+
+    it('records an inflight failure even if bootstrap replaces the catalogue', async () => {
+      const models = makeModels(1);
+      models[0]?.complete.mockImplementation(() => {
+        setGatewaySlotCatalog([makeModel('replacement')]);
+        return Promise.resolve(
+          err(new ModelError('gateway down', { code: ErrorCode.MODEL_UNAVAILABLE }))
+        );
+      });
+      const arm = createGatewayArmAdapter(ARM, models, {
+        circuitBreakerRegistry: breakers,
+        logger,
+      });
+
+      const result = await arm.complete({ messages: [] });
+
+      expect(result.ok).toBe(false);
+      expect(breakers.getArmBreaker(ARM).getSnapshot().failureCount).toBe(1);
     });
 
     it('carries the gateway-arm marker, so a telemetry writer cannot price it at list (#4392 step 4)', () => {
@@ -397,6 +524,21 @@ describe('catalogue lifetime follows the arm (#6403 review)', () => {
     registry.dispose();
 
     expect(registry.getSnapshot().cachedArms).toEqual([]);
+    expect(getGatewayCatalog(ARM)).toBeUndefined();
+  });
+
+  it('a stale wrapper disposal after reset cannot erase a new owner catalogue', () => {
+    const deps = { circuitBreakerRegistry: new CircuitBreakerRegistry(), logger: makeLogger() };
+    const old = createGatewayArmAdapter(ARM, makeModels(1), deps);
+    setGatewayCatalog(ARM, ['old']);
+    _resetGatewayCatalogs();
+    const current = createGatewayArmAdapter(ARM, makeModels(1), deps);
+    setGatewayCatalog(ARM, ['current']);
+
+    old.dispose();
+
+    expect(getGatewayCatalog(ARM)).toEqual(['current']);
+    current.dispose();
     expect(getGatewayCatalog(ARM)).toBeUndefined();
   });
 });

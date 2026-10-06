@@ -6,7 +6,7 @@
  * createErrorResult.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createAgentTask,
   createCliTask,
@@ -15,9 +15,13 @@ import {
   selectCli,
   buildTaskResult,
   createErrorResult,
+  createRoutingDecisionDetails,
+  routeTask,
 } from './task-executor.js';
 import type { EvaluationTask, RubricScore } from './types.js';
 import type { ICliAdapter } from '../../cli-adapters/types.js';
+import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router-types.js';
+import { ok } from '../../core/index.js';
 
 // ============================================================================
 // Fixtures
@@ -44,6 +48,51 @@ function makeRubricScore(overrides: Partial<RubricScore> = {}): RubricScore {
     ...overrides,
   };
 }
+
+describe('CLI-only routing details', () => {
+  const endpoint: ICliAdapter = {
+    name: 'api:corp-proxy',
+    transport: 'subprocess',
+    capabilities: { reasoning: 5, contextWindow: 8192, codeGeneration: 5, speed: 5, cost: 5 },
+    execute: vi.fn<ICliAdapter['execute']>(),
+    healthCheck: vi.fn<ICliAdapter['healthCheck']>(),
+    getCapacity: vi.fn<ICliAdapter['getCapacity']>(),
+    getVersion: vi.fn<ICliAdapter['getVersion']>(),
+    getModelInfo: vi.fn<ICliAdapter['getModelInfo']>(),
+    initialize: vi.fn<ICliAdapter['initialize']>(),
+    dispose: vi.fn<ICliAdapter['dispose']>(),
+  };
+  const cli = { name: 'claude' } as ICliAdapter;
+  const decision: RoutingDecision = {
+    adapter: cli,
+    confidence: 0.8,
+    reason: 'selected',
+    decisionTimeMs: 1,
+    alternatives: [endpoint],
+  };
+
+  it('excludes endpoint alternatives from CLI evaluation details', () => {
+    const details = createRoutingDecisionDetails(decision, createAgentTask(makeEvalTask()));
+    expect(details.selectedCli).toBe('claude');
+    expect(details.alternatives).toEqual([]);
+  });
+
+  it('rejects an endpoint selected identity rather than borrowing a CLI identity', () => {
+    expect(() =>
+      createRoutingDecisionDetails(
+        { ...decision, adapter: endpoint },
+        createAgentTask(makeEvalTask())
+      )
+    ).toThrow(/CLI evaluation/);
+  });
+
+  it('returns no CLI routing result when the router selects an endpoint', async () => {
+    const router = {
+      routeWithDetails: vi.fn().mockResolvedValue(ok({ ...decision, adapter: endpoint })),
+    } as unknown as ITaskRouter;
+    expect(await routeTask(router, createAgentTask(makeEvalTask()))).toBeNull();
+  });
+});
 
 // ============================================================================
 // createAgentTask

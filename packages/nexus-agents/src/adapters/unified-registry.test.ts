@@ -25,6 +25,7 @@ import {
   RegistryAlreadyInitializedError,
 } from './unified-registry.js';
 import { ConfigError } from '../core/errors.js';
+import * as resilientAdapters from './resilient-adapter.js';
 import { getDefaultCliCircuitBreakerRegistry } from '../cli-adapters/cli-circuit-breaker.js';
 import { TASK_SPECIALIZATION_MATRIX } from '../config/task-specialization.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/in-tree-data.js';
@@ -502,10 +503,37 @@ describe('the registry singleton has a designated composition root (#6012)', () 
     resetGlobalRegistry();
     const first = { ...mockLogger } as unknown as Parameters<typeof claimGlobalRegistry>[0];
     const second = { ...mockLogger } as unknown as Parameters<typeof claimGlobalRegistry>[0];
-    const a = claimGlobalRegistry(first);
+    const created = vi.spyOn(resilientAdapters, 'createResilientAdapter');
+    const a = claimGlobalRegistry(first, { defaultCliTimeoutMs: 30_000 });
     const b = claimGlobalRegistry(second);
     expect(b).toBe(a);
     expect(a.getLogger()).toBe(first);
+    a.getAdapterForCli('claude');
+    expect(created).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultCliTimeoutMs: 30_000,
+        circuitBreakerRegistry: getDefaultCliCircuitBreakerRegistry(),
+      })
+    );
+    created.mockRestore();
+  });
+
+  it('warns when a later claim supplies configuration that cannot be applied', () => {
+    resetGlobalRegistry();
+    vi.clearAllMocks();
+    const first = claimGlobalRegistry(mockLogger);
+
+    const later = claimGlobalRegistry(mockLogger, { defaultCliTimeoutMs: 1_800_000 });
+
+    expect(later).toBe(first);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'UnifiedAdapterRegistry claim ignored configuration: singleton already initialized',
+      { providedKeys: ['defaultCliTimeoutMs'] }
+    );
+    const created = vi.spyOn(resilientAdapters, 'createResilientAdapter');
+    later.getAdapterForCli('codex');
+    expect(created.mock.calls[0]?.[0]).not.toHaveProperty('defaultCliTimeoutMs');
+    created.mockRestore();
   });
 });
 

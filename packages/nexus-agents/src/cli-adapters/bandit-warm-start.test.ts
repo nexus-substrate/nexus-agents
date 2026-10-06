@@ -110,6 +110,46 @@ describe('shared bandit warm start (#5275)', () => {
     rmSync(fixture, { recursive: true, force: true });
   });
 
+  it('seeds a neutral endpoint prior before cold-start selection (#7151)', () => {
+    // Existing stale synthetic rows isolate prior seeding from fallback replay.
+    store.append(
+      outcome({ qualitySignals: [SYNTHETIC_MARKER], timestamp: '2026-08-01T00:00:00.000Z' })
+    );
+    const endpoint = 'api:gw-prod';
+    const bandit = new LinUCBBandit(['claude', endpoint]);
+    warmStartBandit(bandit, logger, { persist: false });
+    expect(bandit.getStats().find((arm) => arm.name === endpoint)).toEqual({
+      name: endpoint,
+      pullCount: 3,
+      avgReward: 0.5,
+    });
+    // An unseeded endpoint wins at this shared neutral context solely through
+    // its maximal uncertainty; the neutral prior removes that cold-start bias.
+    const context = {
+      taskComplexity: 0.5,
+      contextLengthNormalized: 0.5,
+      isCodeTask: 0,
+      isReasoningTask: 0,
+      budgetUtilization: 0.5,
+      timePressure: 0.5,
+    };
+    const cold = new LinUCBBandit(['claude', endpoint]);
+    cold.seedPriors(generateSyntheticPriors(), 3);
+    expect(cold.select(context).armName).toBe(endpoint);
+    expect(bandit.select(context).armName).toBe('claude');
+  });
+
+  it('seeds a new endpoint neutrally even when recent CLI evidence exists', () => {
+    store.append(outcome());
+    const bandit = new LinUCBBandit(['claude', 'api:gw-new']);
+    warmStartBandit(bandit, logger);
+    expect(bandit.getStats()[1]).toEqual({
+      name: 'api:gw-new',
+      pullCount: 1,
+      avgReward: 0.5,
+    });
+  });
+
   it.each(['recent', 'empty', 'stale', 'disabled'] as const)(
     'matches the previous algorithm byte-for-byte on a %s fixture',
     (fixtureKind) => {
@@ -198,7 +238,7 @@ describe('shared bandit warm start (#5275)', () => {
     setOutcomeStore(hydrated);
     const bandit = new LinUCBBandit(['api:gw-prod', 'opencode']);
     expect(warmStartBandit(bandit, logger).empiricalOutcomesReplayed).toBe(1);
-    expect(bandit.getStats()[0]).toEqual({ name: 'api:gw-prod', pullCount: 1, avgReward: 0.7 });
+    expect(bandit.getStats()[0]).toEqual({ name: 'api:gw-prod', pullCount: 2, avgReward: 0.6 });
     expect(bandit.getWarmStartModelStats()[0]?.arm).toBe('api:gw-prod');
   });
 

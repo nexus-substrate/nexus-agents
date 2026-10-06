@@ -7,6 +7,7 @@
  */
 
 import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
+import { isCliName } from '../../cli-adapters/types.js';
 import { getTimeProvider } from '../../core/index.js';
 import type { ITaskRouter } from '../../cli-adapters/router-types.js';
 import type {
@@ -69,7 +70,9 @@ export async function resolveCliForTask(
   if (router !== undefined && cli === undefined) {
     const agentTask = createAgentTask(task);
     const routeResult = await router.routeWithDetails(agentTask);
-    if (routeResult.ok) {
+    // The evaluation framework scores CLI preferences, so endpoint decisions
+    // fall back to the declared CLI adapters rather than borrowing a CLI slot.
+    if (routeResult.ok && isCliName(routeResult.value.adapter.name)) {
       return {
         selectedCli: routeResult.value.adapter.name,
         routingDecision: createRoutingDecisionDetails(routeResult.value, agentTask),

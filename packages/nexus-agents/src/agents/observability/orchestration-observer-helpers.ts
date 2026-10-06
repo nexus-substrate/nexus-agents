@@ -7,7 +7,6 @@
  * @module agents/observability/orchestration-observer-helpers
  */
 
-import type { CliName } from '../../cli-adapters/types.js';
 import { ApiArmIdSchema, routingArmDisplaySlot } from '../../cli-adapters/types-core.js';
 import { gatewayCostDetail } from '../../cli-adapters/budget-arm-cost.js';
 import { isGatewayArmId } from '../../adapters/sdk/gateway-cost.js';
@@ -24,6 +23,7 @@ import type {
   SessionMetrics,
   SessionTokenTotals,
   CostMetrics,
+  OrchestrationStats,
 } from './orchestration-observer-types.js';
 
 // ============================================================================
@@ -183,14 +183,19 @@ export function createTrackedAgent(
  * Calculates routing distribution from routing history.
  *
  * @param routingHistory - The routing decision history
- * @returns A record mapping CLI names to counts
+ * @returns CLI counts and observed endpoint counts, preserving arm identity
  */
 export function calculateRoutingDistribution(
   routingHistory: readonly RoutingDecision[]
-): Record<CliName, number> {
-  const distribution: Record<CliName, number> = { claude: 0, gemini: 0, codex: 0, opencode: 0 };
+): OrchestrationStats['routingDistribution'] {
+  const distribution: OrchestrationStats['routingDistribution'] = {
+    claude: 0,
+    gemini: 0,
+    codex: 0,
+    opencode: 0,
+  };
   for (const decision of routingHistory) {
-    distribution[decision.selectedCli]++;
+    distribution[decision.selectedCli] = (distribution[decision.selectedCli] ?? 0) + 1;
   }
   return distribution;
 }

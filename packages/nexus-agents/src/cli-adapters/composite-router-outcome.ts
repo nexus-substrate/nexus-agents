@@ -11,7 +11,7 @@ import {
   getTimeProvider,
 } from '../core/index.js';
 import type { CliTask, RoutingArmId } from './types.js';
-import { routingArmDisplaySlot } from './types.js';
+import { routingArmCliSlot } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { IZeroRouter } from './zero-router.js';
@@ -129,12 +129,15 @@ export function recordZeroRouterOutcome(
     return;
   }
   const { difficulty, selectedCli } = attribution;
+  // Difficulty calibration is CLI-only; an endpoint has no calibration slot.
+  const slot = routingArmCliSlot(selectedCli);
+  if (slot === undefined) return;
   const outcome = buildDifficultyOutcome(
     task.content,
     difficulty,
     // Difficulty calibration is slot-level; collapse an api:* arm to its
     // display slot here (the bandit retains the distinct arm). (#3422)
-    routingArmDisplaySlot(selectedCli),
+    slot,
     success,
     qualityScore
   );
@@ -206,8 +209,9 @@ function getCachedCliSuccessRate(cli: RoutingArmId): number | undefined {
 function rewardSuccessRate(arm: RoutingArmId): number | undefined {
   const own = getCachedCliSuccessRate(arm);
   if (own !== undefined) return own;
-  const slot = routingArmDisplaySlot(arm);
-  return slot === arm ? undefined : getCachedCliSuccessRate(slot);
+  const slot = routingArmCliSlot(arm);
+  // An endpoint cold start is unmeasured, not opencode history.
+  return slot === undefined || slot === arm ? undefined : getCachedCliSuccessRate(slot);
 }
 
 /** Clears the per-CLI success-rate cache. For tests (#3261). */

@@ -392,3 +392,12 @@ describe('generateTraceId', () => {
     expect(traceId).toMatch(/^rt-\d+-[0-9a-z]{6}$/);
   });
 });
+
+it('does not record an endpoint decision as CLI metrics (#7151)', () => {
+  const metricsCollector = makeMockMetricsCollector();
+  recordDecisionToMetrics(makeDecision({ cliName: 'api:lab' }), 'trace', {
+    metricsCollector,
+    logger: makeMockLogger(),
+  });
+  expect(metricsCollector.recordDecision).not.toHaveBeenCalled();
+});

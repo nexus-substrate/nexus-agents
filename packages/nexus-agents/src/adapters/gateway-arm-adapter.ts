@@ -11,7 +11,7 @@
  * It is an {@link IResilientAdapter} so `UnifiedAdapterRegistry.registerApiArm`
  * can hold it next to the CLI slots, but it is NOT a `ResilientAdapter`: there
  * is no lazy detection and no failover (the gateway is the endpoint), so the
- * proxy is a thin delegate over the first discovered model, plus the breaker
+ * proxy is a thin delegate over the ranked gateway default, plus the breaker
  * recording `ResilientAdapter.recordBreakerFailure` does — copied, not
  * subclassed, because subclassing would drag detection and failover in.
  *
@@ -27,12 +27,11 @@ import type {
   CompletionResponse,
   IModelAdapter,
   ILogger,
-  ModelError,
   ModelMetadata,
   Result,
   StreamChunk,
 } from '../core/index.js';
-import { ConfigError, getTimeProvider } from '../core/index.js';
+import { ConfigError, ModelError, ErrorCode, err, ok, getTimeProvider } from '../core/index.js';
 import type { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
 import { mapModelErrorToCategory } from '../cli-adapters/circuit-breaker.js';
 import type { EndpointArmId } from '../cli-adapters/types-core.js';
@@ -43,7 +42,9 @@ import {
   toRateLimitError,
 } from './rate-limit-detector.js';
 import type { AdapterHealthInfo, IResilientAdapter } from './resilient-adapter-types.js';
-import { clearGatewayCatalog } from './sdk/gateway-catalog.js';
+import { releaseGatewayCatalog, retainGatewayCatalog } from './sdk/gateway-catalog.js';
+import { resolveGatewayDefault } from './gateway-family-slots.js';
+import { isCallerCancelled } from './abort-utils.js';
 
 /** What the arm needs from its host: the SHARED breaker registry and a logger. */
 export interface GatewayArmDeps {
@@ -57,8 +58,10 @@ export interface GatewayArmDeps {
 
 /**
  * Build the one arm for a gateway's whole catalogue. `models` is the
- * discovered list in the gateway's order; the first is the delegate for
- * `complete`/`stream`/`countTokens`, and `listModels` returns them all.
+ * discovered list in the gateway's order; `resolveGatewayDefault` chooses the
+ * delegate after bootstrap registers the catalogue, and `listModels` returns
+ * them all. There is no fallback to an arbitrary model when no chat default
+ * resolves.
  * Throws on an empty list — the named empty case: an arm with no model
  * cannot complete, and registering one would fail on first use instead.
  */
@@ -67,22 +70,36 @@ export function createGatewayArmAdapter(
   models: readonly IModelAdapter[],
   deps: GatewayArmDeps
 ): IResilientAdapter {
-  const delegate = models[0];
-  if (delegate === undefined) {
+  if (models.length === 0) {
     throw new ConfigError(`Gateway arm ${armId} has no models; nothing to register`);
   }
-  return new GatewayArmAdapter(armId, delegate, models, deps);
+  return new GatewayArmAdapter(armId, models, deps);
+}
+
+/** Whether this concrete endpoint wrapper admits calls on this exact shared breaker. */
+export function ownsGatewayCircuitAdmission(
+  adapter: IModelAdapter,
+  armId: string,
+  registry: CircuitBreakerRegistry
+): boolean {
+  return (
+    adapter instanceof GatewayArmAdapter &&
+    adapter.gatewayArm === armId &&
+    adapter.getCircuitBreakerRegistry() === registry
+  );
 }
 
 class GatewayArmAdapter implements IResilientAdapter {
   private readonly selectedAt = new Date();
+  private resolvedDelegate: IModelAdapter | undefined;
 
   constructor(
     private readonly armId: EndpointArmId,
-    private readonly delegate: IModelAdapter,
     private readonly models: readonly IModelAdapter[],
     private readonly deps: GatewayArmDeps
-  ) {}
+  ) {
+    retainGatewayCatalog(armId, this);
+  }
 
   /**
    * The gateway-arm marker (#4392 step 4, `isGatewayModelAdapter`): a
@@ -96,15 +113,15 @@ class GatewayArmAdapter implements IResilientAdapter {
   // --- IModelAdapter (forwarded to the delegate) ---
 
   get providerId(): string {
-    return this.delegate.providerId;
+    return this.requireDelegate().providerId;
   }
 
   get modelId(): string {
-    return this.delegate.modelId;
+    return this.requireDelegate().modelId;
   }
 
   get capabilities(): IModelAdapter['capabilities'] {
-    return this.delegate.capabilities;
+    return this.requireDelegate().capabilities;
   }
 
   /**
@@ -117,25 +134,45 @@ class GatewayArmAdapter implements IResilientAdapter {
    * sat half-open forever with any single error re-opening it.
    */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
-    const result = await this.delegate.complete(request);
+    const resolved = this.resolveDelegate();
+    if (!resolved.ok) {
+      return err(new ModelError(resolved.error.message, { code: ErrorCode.MODEL_UNAVAILABLE }));
+    }
+    const delegate = resolved.value;
+    const breaker = this.deps.circuitBreakerRegistry.getArmBreaker(this.armId);
+    const admission = breaker.canExecute();
+    if (!admission.ok) {
+      return err(
+        new ModelError(admission.error.message, {
+          code: ErrorCode.MODEL_UNAVAILABLE,
+          cause: admission.error,
+          retryable: false,
+        })
+      );
+    }
+    const result = await delegate.complete(request);
     if (result.ok) {
-      this.deps.circuitBreakerRegistry.getArmBreaker(this.armId).recordSuccess();
+      breaker.recordSuccess();
+    } else if (isCallerCancelled(result.error)) {
+      // Cancellation is no evidence of endpoint health, and frees a half-open probe.
+      breaker.releaseHalfOpenProbe();
     } else {
-      this.recordFailure(result.error);
+      this.recordFailure(result.error, delegate.providerId);
     }
     return result;
   }
 
   stream(request: CompletionRequest): AsyncIterable<StreamChunk> {
-    return this.delegate.stream(request);
+    return this.requireDelegate().stream(request);
   }
 
   countTokens(text: string): Promise<number> {
-    return this.delegate.countTokens(text);
+    return this.requireDelegate().countTokens(text);
   }
 
   validateConfig(): Result<void, ConfigError> {
-    return this.delegate.validateConfig();
+    const resolved = this.resolveDelegate();
+    return resolved.ok ? resolved.value.validateConfig() : resolved;
   }
 
   /** The whole catalogue, not the delegate alone — that is what the arm fronts. */
@@ -179,17 +216,38 @@ class GatewayArmAdapter implements IResilientAdapter {
 
   /**
    * No listeners or timers are held; the breaker outlives the arm on purpose
-   * (a re-registered gateway keeps its failure history). The catalogue does
-   * not: it describes THIS arm's models, so it goes when the arm goes
-   * (`UnifiedAdapterRegistry.dispose()`, or the re-registration that disposes
-   * the earlier adapter). The re-registering caller therefore sets the new
-   * catalogue AFTER `registerApiArm`, never before.
+   * (a re-registered gateway keeps its failure history). The shared catalogue
+   * stays while any registry owns a live wrapper for this endpoint. Repeated
+   * disposal is harmless, and a wrapper retained before replacement prevents
+   * disposal of the earlier wrapper from clearing the endpoint's metadata.
    */
   dispose(): void {
-    clearGatewayCatalog(this.armId);
+    releaseGatewayCatalog(this.armId, this);
   }
 
   // --- Private ---
+
+  /** Resolve lazily after bootstrap, and pin a successful default to this arm. */
+  private resolveDelegate(): Result<IModelAdapter, ConfigError> {
+    if (this.resolvedDelegate !== undefined) return ok(this.resolvedDelegate);
+    const resolved = resolveGatewayDefault(process.env, this.deps.logger);
+    if (resolved.kind !== 'resolved') {
+      return err(new ConfigError(`Gateway arm ${this.armId} has no chat default`));
+    }
+    const delegate = this.models.find((model) => model === resolved.adapter);
+    if (delegate === undefined) {
+      return err(new ConfigError(`Gateway default does not belong to arm ${this.armId}`));
+    }
+    this.resolvedDelegate = delegate;
+    return ok(delegate);
+  }
+
+  /** Metadata and streaming interfaces cannot carry a Result error. */
+  private requireDelegate(): IModelAdapter {
+    const resolved = this.resolveDelegate();
+    if (!resolved.ok) throw resolved.error;
+    return resolved.value;
+  }
 
   /**
    * `ResilientAdapter.recordBreakerFailure`, keyed on the ARM (#3423, #5359):
@@ -199,35 +257,38 @@ class GatewayArmAdapter implements IResilientAdapter {
    * is rate-limit-shaped, because it never clears; everything else counts.
    * Every rate-limit-shaped failure, durable or not, is a telemetry event.
    */
-  private recordFailure(error: ModelError): void {
+  private recordFailure(error: ModelError, provider: string): void {
     const breaker = this.deps.circuitBreakerRegistry.getArmBreaker(this.armId);
     const category = mapModelErrorToCategory(error);
     // Telemetry first, for EVERY rate-limit-like error — durable caps included
     // — exactly as `ResilientAdapter.complete` does before its breaker branch;
     // otherwise `getRateLimitStats()` under-counts the gateway (#6403 review).
     const rateLimitLike = category === 'rate_limit' || isRateLimitLikeError(error);
-    if (rateLimitLike) this.recordRateLimit(error);
+    if (rateLimitLike) this.recordRateLimit(error, provider);
     if (isDurableCapacityError(error)) {
       breaker.recordFailure(category);
       this.deps.logger.warn('Durable capacity cap recorded to gateway arm breaker', {
         arm: this.armId,
-        provider: this.delegate.providerId,
+        provider,
         category,
       });
       return;
     }
-    if (rateLimitLike) return;
+    if (rateLimitLike) {
+      // An exempt throttle provides no breaker verdict; keep recovery probes available.
+      breaker.releaseHalfOpenProbe();
+      return;
+    }
     breaker.recordFailure(category);
     this.deps.logger.warn('Gateway arm failure recorded to circuit breaker', {
       arm: this.armId,
-      provider: this.delegate.providerId,
+      provider,
       category,
     });
   }
 
   /** The telemetry branch of `ResilientAdapter.complete`, for the exempted case. */
-  private recordRateLimit(error: ModelError): void {
-    const provider = this.delegate.providerId;
+  private recordRateLimit(error: ModelError, provider: string): void {
     const rlError = toRateLimitError(error, provider);
     recordRateLimitEvent({
       provider,

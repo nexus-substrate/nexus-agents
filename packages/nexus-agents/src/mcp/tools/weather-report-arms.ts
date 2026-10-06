@@ -9,7 +9,8 @@
  * - a consumer that routes by CLI slot (adaptive bonuses, recommended
  *   mappings) folds each arm into its slot through {@link rowsOfSlot};
  * - a report keeps the arms apart and iterates {@link ROUTED_ARMS}, as
- *   `analyzeCategoryRouting` does.
+ *   `analyzeCategoryRouting` does. This set covers the known CLI/vendor arms;
+ *   dynamic endpoint rows are not measured by this slot-oriented report.
  *
  * @module mcp/tools/weather-report-arms
  */
@@ -19,11 +20,15 @@ import { CLI_NAMES } from '../../config/model-capabilities-types.js';
 import {
   ApiArmIdSchema,
   routingArmDisplaySlot,
-  type RoutingArmId,
+  type CliName,
+  type ApiArmId,
 } from '../../cli-adapters/types-core.js';
 
-/** CLI slots plus API arms: every `cli` an attributed outcome row can carry (#6552). */
-export const ROUTED_ARMS: readonly RoutingArmId[] = [...CLI_NAMES, ...ApiArmIdSchema.options];
+/** Known CLI/vendor arms covered by this report; dynamic endpoints are excluded. */
+export const ROUTED_ARMS: readonly (CliName | ApiArmId)[] = [
+  ...CLI_NAMES,
+  ...ApiArmIdSchema.options,
+];
 
 /**
  * Per CLI slot, the arms whose rows count toward it: the slot itself plus each

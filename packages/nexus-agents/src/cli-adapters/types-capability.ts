@@ -13,6 +13,7 @@ import type { LevelOutcome } from '../cli/cli-readiness.js';
 import type { CommandWrapper } from './exec-file-tree.js';
 import type {
   CliName,
+  RoutingArmId,
   CliTransport,
   CliResponse,
   CliError,
@@ -144,8 +145,8 @@ export interface ExecutionOptions {
  * (Source: cli-project_plan.md v2.1.0, Phase 2)
  */
 export interface ICliAdapter {
-  /** CLI name */
-  readonly name: CliName;
+  /** CLI slot or independent API endpoint identity. */
+  readonly name: RoutingArmId;
   /** Transport type */
   readonly transport: CliTransport;
   /** Capability profile */

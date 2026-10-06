@@ -573,3 +573,13 @@ describe('bandit train/score vector parity (#4953)', () => {
     expect(updateVector(bandit)).toEqual(await selectVector('build a parser', 0.6));
   });
 });
+
+it('does not calibrate a CLI difficulty slot from an endpoint outcome (#7151)', () => {
+  const zeroRouter = createMockZeroRouter();
+  const deps = createBaseDeps({ zeroRouter });
+  recordZeroRouterOutcome(createCliTask(), true, 0.9, deps, {
+    difficulty: 0.6,
+    selectedCli: 'api:lab',
+  });
+  expect(zeroRouter.calibrate).not.toHaveBeenCalled();
+});

@@ -9,7 +9,8 @@
  *    and the Phase 2 alias resolver; it does NOT drive the CLI pre-filter (its
  *    name is not a CLI name), which is intentional, and
  *  - every adapter that implements `listModels()` (opencode + SDK adapters),
- *    named by its CLI so `getCandidateCliNames` CAN filter on it.
+ *    named by its vendor CLI slot or its raw endpoint arm id. Slot sources drive
+ *    `getCandidateCliNames`; endpoint sources do not impersonate a CLI.
  *
  * Opt-in: gated by the boolean `NEXUS_DYNAMIC_MODELS` (`true`/`1`; default OFF
  * for the initial ship; the flag flips ON in a follow-up once telemetry + QA
@@ -21,7 +22,7 @@
 
 import { createOpenRouterModelsSource } from './openrouter-models-source.js';
 import { parseBoolEnv } from './defaults-env.js';
-import { routingArmDisplaySlot } from '../cli-adapters/types.js';
+import { routingArmCliSlot } from '../cli-adapters/types.js';
 import type { RoutingArmId } from '../cli-adapters/types.js';
 
 import type { AvailableModelsCache, AvailableModelsSource } from './available-models-cache.js';
@@ -45,8 +46,8 @@ function hasListModels(adapter: unknown): adapter is ListsModels {
 }
 
 /**
- * Wrap an adapter's `listModels()` as a cache source named for its CLI (so
- * `getCandidateCliNames` filters on it).
+ * Wrap an adapter's `listModels()` as a source named for its slot or endpoint.
+ * CLI-named sources feed `getCandidateCliNames`; endpoints stay distinct.
  *
  * Probe failures propagate (#5059). Catching them here returned `[]`, which
  * reached `AvailableModelsCache` on the SUCCESS path: the empty list replaced
@@ -70,7 +71,7 @@ export interface RegisterModelSourcesOptions {
 
 /**
  * Build (but don't register) the default discovery sources: the OpenRouter live
- * catalog + a CLI-named source per adapter exposing `listModels()`. Used both by
+ * catalog + a slot/endpoint-named source per adapter exposing `listModels()`. Used both by
  * {@link registerDefaultModelSources} and by the `list_available_models` tool to
  * probe each transport for health (#3406).
  */
@@ -84,12 +85,10 @@ export function buildDefaultModelSources(
   }
   for (const [key, adapter] of adapters) {
     if (hasListModels(adapter)) {
-      // #3425: the router's adapter map can be keyed by api:* arm ids (#3422).
-      // Register the source under the display CLI slot so no api:* literal leaks
-      // into the model-source registry; the cache de-dups by name, so when both
-      // a CLI slot and its api arm are present the CLI source wins.
-      const slot = routingArmDisplaySlot(key as RoutingArmId);
-      sources.push(adapterSource(slot, adapter));
+      // Vendor arms retain slot-level probing and deduplication. Endpoint
+      // catalogues keep raw identity so they cannot overwrite a CLI source.
+      const sourceName = routingArmCliSlot(key as RoutingArmId) ?? key;
+      sources.push(adapterSource(sourceName, adapter));
     }
   }
   return sources;

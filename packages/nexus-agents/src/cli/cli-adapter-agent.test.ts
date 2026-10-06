@@ -101,6 +101,13 @@ describe('CliAdapterAgent - constructor', () => {
     expect(agent.id).toBe('cli-codex');
   });
 
+  it('retains endpoint identity in its agent id and execution metadata', async () => {
+    const agent = new CliAdapterAgent('api:gw-prod', makeMockAdapter());
+    expect(agent.id).toBe('cli-api:gw-prod');
+    const result = await agent.execute(makeTask());
+    expect(result.ok && result.value.metadata.model).toBe('api:gw-prod');
+  });
+
   it('sets role to worker', () => {
     const agent = new CliAdapterAgent('gemini', makeMockAdapter());
     expect(agent.role).toBe('worker');

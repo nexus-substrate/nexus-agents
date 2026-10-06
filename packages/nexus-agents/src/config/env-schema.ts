@@ -233,6 +233,8 @@ const NexusEnvSchema = z.object({
       message: 'Must be one of: responses, chat',
     })
     .optional(),
+  // #7151 OPTION B: endpoint router arms are opt-in in every billing mode.
+  NEXUS_ROUTE_GATEWAY_ARMS: boolLooseStr.optional(),
   // #6604: pin the gateway model a family slot (claude/codex/gemini) uses.
   // Any model id is legal here; the one reader (adapters/gateway-family-slots.ts)
   // validates it against the discovered catalogue and warns on a miss.

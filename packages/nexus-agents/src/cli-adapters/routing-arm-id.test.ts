@@ -1,6 +1,6 @@
 /** Endpoint routing ids and credential-safe outcome validation (#6291 B2). */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
   ApiArmIdSchema,
   apiArmId,
@@ -68,7 +68,8 @@ describe('ApiArmId stays the closed four-literal template (#6290 panel pin)', ()
 
   it('RoutingArmId includes CLI slots, vendor arms and gateway arms', () => {
     expect(routingArmKind('api:gw-prod')).toBe('api');
-    expect(routingArmDisplaySlot('api:gw-prod')).toBe('opencode');
+    // Previously pinned endpoint→opencode collapse, which corrupted routing records (#7151).
+    expectTypeOf(routingArmDisplaySlot).parameter(0).toEqualTypeOf<CliName | ApiArmId>();
     for (const cli of CLI_NAMES) expect(routingArmKind(cli)).toBe('cli');
     for (const arm of BUILT_IN_API_ARM_IDS) expect(routingArmKind(arm)).toBe('api');
   });

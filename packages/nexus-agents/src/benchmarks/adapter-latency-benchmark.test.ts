@@ -7,7 +7,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ICliAdapter } from '../cli-adapters/types-capability.js';
-import type { CliName, CliTransport, CliResponse, CliError } from '../cli-adapters/types-core.js';
+import type {
+  RoutingArmId,
+  CliTransport,
+  CliResponse,
+  CliError,
+} from '../cli-adapters/types-core.js';
 import type { Result } from '../core/index.js';
 import {
   runAdapterLatencyBenchmark,
@@ -24,7 +29,7 @@ import type {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function makeMockAdapter(
-  name: CliName = 'claude',
+  name: RoutingArmId = 'claude',
   transport: CliTransport = 'subprocess',
   latencyMs = 10,
   shouldFail = false
@@ -86,6 +91,12 @@ const SINGLE_SCENARIO: LatencyScenario[] = [
 describe('runAdapterLatencyBenchmark', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('preserves endpoint identity in observed benchmark results', async () => {
+    const adapter = makeMockAdapter('api:corp-proxy', 'subprocess', 1);
+    const result = await runAdapterLatencyBenchmark([adapter], SINGLE_SCENARIO, FAST_CONFIG);
+    expect(result.results[0]?.adapterName).toBe('api:corp-proxy');
   });
 
   it('returns results for each adapter-scenario pair', async () => {

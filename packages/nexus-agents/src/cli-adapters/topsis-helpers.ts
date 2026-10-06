@@ -6,6 +6,7 @@
  * @module cli-adapters/topsis-helpers
  */
 
+import type { TaskProfile } from '../core/index.js';
 import type { CliName } from './types.js';
 import type { TopsisModelProfile, TopsisConfig, TopsisScore } from './topsis-types.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
@@ -128,4 +129,20 @@ export function generateReasoning(
   }
 
   return parts.join('. ');
+}
+
+/**
+ * Adjusts model profile based on task characteristics.
+ */
+export function adjustProfileForTask(
+  profile: TopsisModelProfile,
+  taskProfile: TaskProfile
+): TopsisModelProfile {
+  if (taskProfile.taskType === 'architecture' || taskProfile.reasoningComplexity > 7) {
+    return { ...profile, qualityScore: Math.min(profile.qualityScore * 1.2, 10) };
+  }
+  if (taskProfile.taskType === 'bulk_operations' || taskProfile.contextRequired < 1000) {
+    return { ...profile, averageLatencyMs: profile.averageLatencyMs * 0.8 };
+  }
+  return profile;
 }

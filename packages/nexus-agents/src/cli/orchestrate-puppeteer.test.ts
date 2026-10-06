@@ -44,7 +44,7 @@ import {
 } from '../agents/orchestration/index.js';
 import { CliAdapterAgent } from './cli-adapter-agent.js';
 import type { ILogger } from '../core/index.js';
-import type { ICliAdapter, CliName } from '../cli-adapters/index.js';
+import type { ICliAdapter, CliName, RoutingArmId } from '../cli-adapters/index.js';
 import type { OrchestrateOptions } from './orchestrate-types.js';
 import type {
   IPolicyEngine,
@@ -211,6 +211,18 @@ describe('orchestrate-puppeteer', () => {
 
       expect(agents).toHaveLength(2);
       expect(CliAdapterAgent).toHaveBeenCalledTimes(2);
+    });
+
+    it('preserves endpoint identity separately from the opencode agent', () => {
+      const endpoint = createMockAdapter();
+      const opencode = createMockAdapter();
+      const adapters = new Map<RoutingArmId, ICliAdapter>([
+        ['api:gw-prod', endpoint],
+        ['opencode', opencode],
+      ]);
+      expect(createAgentsFromAdapters(adapters)).toHaveLength(2);
+      expect(CliAdapterAgent).toHaveBeenCalledWith('api:gw-prod', endpoint);
+      expect(CliAdapterAgent).toHaveBeenCalledWith('opencode', opencode);
     });
 
     it('should return empty array for empty adapters map', () => {

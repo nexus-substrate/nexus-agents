@@ -108,6 +108,12 @@ class GatewaySlotArm implements ICliAdapter {
     };
   }
 
+  /** Endpoint this slot may serve, including an undecided CLI-or-gateway target. */
+  get gatewayEndpoint(): EndpointArmId | undefined {
+    const arm: unknown = (this.deps.gatewayModel as { gatewayArm?: unknown }).gatewayArm;
+    return typeof arm === 'string' && isEndpointArmId(arm) ? arm : undefined;
+  }
+
   /** The CLI's subprocess adapter; undefined when its binary is not on PATH. */
   get cliBinaryAdapter(): ICliAdapter | undefined {
     return this.deps.cliAdapter;
@@ -235,9 +241,14 @@ class GatewaySlotArm implements ICliAdapter {
 }
 
 /**
- * The gateway serving `adapter` when it is a gateway-mode slot arm that a
- * gateway model serves right now; otherwise `undefined`.
+ * Endpoint a family-slot arm can reach, including an undecided slot (#7151).
+ * Used by the factory to reserve that endpoint for its existing slot arms.
  */
+export function gatewaySlotEndpointOf(adapter: unknown): EndpointArmId | undefined {
+  return adapter instanceof GatewaySlotArm ? adapter.gatewayEndpoint : undefined;
+}
+
+/** The gateway serving the slot right now; undefined for CLI or undecided targets. */
 export function gatewayServedSlotOf(adapter: unknown): GatewayServedSlot | undefined {
   return adapter instanceof GatewaySlotArm ? adapter.gatewayServedSlot : undefined;
 }

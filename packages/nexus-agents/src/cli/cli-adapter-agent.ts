@@ -27,7 +27,7 @@ import {
 } from '../core/index.js';
 import { AgentError } from '../core/errors.js';
 import type { Result } from '../core/result.js';
-import type { ICliAdapter, CliName, CliTask } from '../cli-adapters/index.js';
+import type { ICliAdapter, RoutingArmId, CliTask } from '../cli-adapters/index.js';
 
 /**
  * Wraps a CLI adapter to implement the IAgent interface.
@@ -43,9 +43,9 @@ export class CliAdapterAgent implements IAgent {
   ];
 
   private readonly adapter: ICliAdapter;
-  private readonly cliName: CliName;
+  private readonly cliName: RoutingArmId;
 
-  constructor(cliName: CliName, adapter: ICliAdapter) {
+  constructor(cliName: RoutingArmId, adapter: ICliAdapter) {
     this.id = `cli-${cliName}`;
     this.cliName = cliName;
     this.adapter = adapter;

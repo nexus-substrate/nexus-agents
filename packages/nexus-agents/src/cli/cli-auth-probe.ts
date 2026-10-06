@@ -32,7 +32,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, RoutingArmId } from '../cli-adapters/types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -78,7 +78,7 @@ export type AuthProbeResult =
        * stayed selectable while failing every call (#4318). Real invocation
        * failures — the circuit breaker — do the excluding instead.
        */
-      readonly cli: CliName;
+      readonly cli: RoutingArmId;
       readonly state: 'unknown';
       readonly reason: string;
     }
