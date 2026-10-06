@@ -119,7 +119,7 @@ export function classifyUnverifiable(
  * Re-record a parsed vote as an unverifiable seat.
  *
  * The decision the model returned is DISCARDED (the caller logs it): the seat
- * never carries approve/reject, and never a `selectedOption` — a blind seat
+ * never carries approve/reject, conditions, or a `selectedOption` — a blind seat
  * cannot have chosen. Confidence is 0 because there is no verdict to be
  * confident in. Everything that IS real provenance — the reasoning text, the
  * model, the CLI, the token counts — is kept.
@@ -129,11 +129,12 @@ export function markUnverifiable(
   signal: UnverifiableSignal
 ): AgentVoteResult {
   const { selectedOption: _discarded, ...rest } = result;
+  const { conditions: _conditions, ...vote } = result.vote;
   return {
     ...rest,
     source: 'unverifiable',
     unverifiableSignal: signal,
-    vote: { ...result.vote, decision: 'abstain', confidence: 0 },
+    vote: { ...vote, decision: 'abstain', confidence: 0 },
   };
 }
 
