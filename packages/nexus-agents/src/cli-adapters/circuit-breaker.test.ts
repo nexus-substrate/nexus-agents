@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- compatibility tests for CLI-slot readers retained until 10.0 (#6291) */
 /**
  * nexus-agents/cli-adapters - Circuit Breaker Tests
  *

@@ -60,7 +60,8 @@ export interface RegistrySnapshot {
   /**
    * CLI-slot view of {@link cachedArms}: the lazily created CLI slots only.
    * A registered `api:*` arm is never listed here (#6290 panel: this field
-   * keeps its `CliName[]` type; it is retired in 9.0, #6291).
+   * keeps its `CliName[]` type).
+   * @deprecated Use {@link cachedArms}; removed in 10.0, #6291.
    */
   readonly cachedAdapters: readonly CliName[];
   /** Every cached arm: lazily created CLI slots and registered `api:*` endpoint arms (#4392). */
@@ -291,6 +292,7 @@ export class UnifiedAdapterRegistry {
   getSnapshot(): RegistrySnapshot {
     return {
       taskRouting: TASK_SPECIALIZATION_MATRIX.map((spec) => this.resolveRouting(spec)),
+      /** @deprecated Use {@link RegistrySnapshot.cachedArms}; removed in 10.0, #6291. */
       cachedAdapters: [...this.cliAdapters.keys()].filter(isCliName),
       cachedArms: [...this.cliAdapters.keys()],
       availableModels: getInTreeCapabilitiesMatrix().models.length,

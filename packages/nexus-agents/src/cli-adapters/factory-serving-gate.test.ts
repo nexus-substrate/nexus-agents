@@ -111,7 +111,7 @@ describe('getAvailableClis serving gate', () => {
         custom.recordFailure('unknown');
       }
       mocks.getCliCircuitBreakerSnapshot.mockImplementation((cli: CliName) =>
-        registry.getAllSnapshots().get(cli)
+        registry.getAllArmSnapshots().get(cli)
       );
       expect(custom.getState()).toBe('open');
       await expect(getAvailableClis()).resolves.toContain('opencode');

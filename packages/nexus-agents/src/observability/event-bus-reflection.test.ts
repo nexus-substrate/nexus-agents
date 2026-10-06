@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- verify reflection safety for explicit legacy bridge callers until 9.0 (#6291) */
+/* eslint-disable @typescript-eslint/no-deprecated -- verify reflection safety for explicit legacy bridge callers until 10.0 (#6291) */
 /**
  * Pins termination of the two-bus reflection cycle as an INVARIANT (#5223)
  * when callers explicitly install the deprecated pipeline bridge (#5120).

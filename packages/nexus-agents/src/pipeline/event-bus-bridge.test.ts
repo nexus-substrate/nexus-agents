@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- compatibility tests for the public bridge retained until 9.0 (#6291) */
+/* eslint-disable @typescript-eslint/no-deprecated -- compatibility tests for the public bridge retained until 10.0 (#6291) */
 /**
  * EventBus Bridge tests (Issue #922, Phase C)
  *

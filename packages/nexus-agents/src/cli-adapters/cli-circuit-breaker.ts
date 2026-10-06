@@ -129,7 +129,7 @@ export function getDefaultCliCircuitBreakerRegistry(): CircuitBreakerRegistry {
  * `undefined` means no circuit state is known yet, so callers should fail open.
  */
 export function getCliCircuitBreakerSnapshot(cliName: CliName): CircuitBreakerSnapshot | undefined {
-  return defaultCliCircuitBreakerRegistry.getAllSnapshots().get(cliName);
+  return defaultCliCircuitBreakerRegistry.getAllArmSnapshots().get(cliName);
 }
 
 /**
