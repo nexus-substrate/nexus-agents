@@ -21,6 +21,7 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
+import type { ConsensusEnforcementMode } from './consensus-enforcement-mode.js';
 import type { ILogger } from '../core/index.js';
 import type {
   ExecutionStrategy,
@@ -172,6 +173,22 @@ interface MetaResultClassification {
  */
 export type MetaResultClassifier = (result: unknown) => MetaResultClassification;
 
+/** String error accessors keep message shaping separate from verdict classification. */
+function resultError(record: Record<string, unknown>, fallback: string): string {
+  return typeof record['error'] === 'string' ? record['error'] : fallback;
+}
+
+function consensusReason(record: Record<string, unknown>): string {
+  const enforcement = record['enforcement'];
+  if (typeof enforcement === 'object' && enforcement !== null) {
+    const reason = (enforcement as Record<string, unknown>)['reason'];
+    if (typeof reason === 'string') return reason;
+  }
+  return String(record['decision']);
+}
+
+const BLOCKING_CONSENSUS_DECISIONS = new Set<unknown>(['rejected', 'no_quorum']);
+
 /**
  * Default engine result classifier (#5641).
  *
@@ -179,26 +196,33 @@ export type MetaResultClassifier = (result: unknown) => MetaResultClassification
  * - `AdaptiveOrchestratorResult`: `success: false`
  * - `DevPipelineResult`: `completed: false` (unless `dryRun: true` and `planStatus === undefined`)
  *
- * `ExtendedVotingResult` (consensus) with `decision: 'rejected'` is not an engine
- * fault (#4362) — it remains `success: true`.
+ * Consensus verdicts are advisory by default; enforce-mode rejection or
+ * unresolved quorum is a business failure (#4464). The run layer supplies
+ * outage-invariance assessment and the resolved mode.
  */
-export function classifyEngineResult(result: unknown): MetaResultClassification {
+export function classifyEngineResult(
+  result: unknown,
+  mode: ConsensusEnforcementMode = 'audit'
+): MetaResultClassification {
   if (typeof result !== 'object' || result === null) {
     return { success: true };
   }
   const record = result as Record<string, unknown>;
 
   if (record['success'] === false) {
-    const reason = typeof record['error'] === 'string' ? record['error'] : 'no error message';
-    return { success: false, failureReason: reason };
+    return { success: false, failureReason: resultError(record, 'no error message') };
   }
   if (record['completed'] === false) {
     if (record['dryRun'] === true && record['planStatus'] === undefined) {
       return { success: true };
     }
-    const reason =
-      typeof record['error'] === 'string' ? record['error'] : 'pipeline did not complete';
-    return { success: false, failureReason: reason };
+    return { success: false, failureReason: resultError(record, 'pipeline did not complete') };
+  }
+  if (mode === 'enforce' && BLOCKING_CONSENSUS_DECISIONS.has(record['decision'])) {
+    return {
+      success: false,
+      failureReason: `Consensus ${String(record['decision'])}: ${consensusReason(record)}`,
+    };
   }
   return { success: true };
 }

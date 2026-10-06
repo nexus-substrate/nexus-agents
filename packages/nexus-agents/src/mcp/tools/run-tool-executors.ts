@@ -17,7 +17,9 @@ import type {
 import type { StrategyExecutor, StrategyExecutorMap } from '../../orchestration/meta-dispatcher.js';
 import { runDevPipelineForGoal } from './dev-pipeline-tool.js';
 import { runPipelineForGoal } from './pipeline-tool.js';
-import { runConsensusForGoal } from './consensus-vote.js';
+import { runConsensusWithEnforcement } from './run-tool-consensus.js';
+import type { ConsensusEnforcementMode } from '../../orchestration/consensus-enforcement-mode.js';
+import type { ILogger } from '../../core/index.js';
 
 /**
  * Strategies wired for inline execution (increment B). Others fail closed with
@@ -47,12 +49,14 @@ export function buildDefaultExecutors(
   trustTier?: string,
   gatewayAdapters?: readonly IModelAdapter[],
   /**
-   * Options only the dev-pipeline executor reads: `dryRun` (#4806), and the
+   * Consensus enforcement and dev-pipeline inputs: `dryRun` (#4806) and the
    * caller's declared provenance of the goal text (#6795) — the dev pipeline
    * is the one strategy whose gate consumes a content tier. An omitted
    * `sourceTrustTier` means '3' there.
    */
-  devPipeline?: {
+  options?: {
+    readonly consensusEnforcementMode?: ConsensusEnforcementMode | undefined;
+    readonly logger?: ILogger | undefined;
     readonly dryRun?: boolean | undefined;
     readonly sourceTrustTier?: TrustTier | undefined;
   },
@@ -76,9 +80,9 @@ export function buildDefaultExecutors(
       runDevPipelineForGoal(
         metaInput.goal,
         trustTier,
-        devPipeline?.dryRun,
+        options?.dryRun,
         signal,
-        devPipeline?.sourceTrustTier
+        options?.sourceTrustTier
       )
     ),
     pipeline: gated('pipeline', (_decision, metaInput: MetaOrchestratorInput) =>
@@ -95,7 +99,13 @@ export function buildDefaultExecutors(
       runPipelineForGoal(metaInput.goal, undefined, signal)
     ),
     consensus: gated('consensus', (_decision, metaInput: MetaOrchestratorInput) =>
-      runConsensusForGoal(metaInput.goal, undefined, gatewayAdapters, onProgress, signal)
+      runConsensusWithEnforcement(metaInput.goal, {
+        mode: options?.consensusEnforcementMode ?? 'audit',
+        logger: options?.logger,
+        gatewayAdapters,
+        onProgress,
+        signal,
+      })
     ),
   };
 }
@@ -132,7 +142,7 @@ export function assertDispatchNotCancelled(
  * cancel does not always say so: the graph executor reports a generic
  * failure, and a vote returns a verdict over the seats it launched before the
  * cancel. Either would reach the caller as a failure of the wrong kind or as
- * a partial success, so the cancel wins over whatever the engine returned.
+ * a partial success, so cancellation wins over returned results and engine errors.
  */
 function cancellableExecutor(
   strategy: ExecutionStrategy,
@@ -141,8 +151,13 @@ function cancellableExecutor(
 ): StrategyExecutor {
   if (signal === undefined) return executor;
   return async (decision, metaInput) => {
-    const result = await executor(decision, metaInput);
-    throwIfRunCancelled(signal, `run cancelled during the ${strategy} strategy`);
-    return result;
+    try {
+      const result = await executor(decision, metaInput);
+      throwIfRunCancelled(signal, `run cancelled during the ${strategy} strategy`);
+      return result;
+    } catch (error) {
+      throwIfRunCancelled(signal, `run cancelled during the ${strategy} strategy`);
+      throw error;
+    }
   };
 }

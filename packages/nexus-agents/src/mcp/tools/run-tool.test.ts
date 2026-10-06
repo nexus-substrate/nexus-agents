@@ -6,6 +6,57 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ExtendedVotingResult } from './consensus-vote-types.js';
+import { getVoterRoles } from '../../cli/voter-roles.js';
+
+/** Routing tests use a complete panel; ledger behavior is covered by the dedicated seam suite. */
+function consensusFixture(outcome: 'approved' | 'rejected' = 'approved'): ExtendedVotingResult {
+  const votes = getVoterRoles(true).map((role) => ({
+    role,
+    vote: {
+      decision: outcome === 'approved' ? ('approve' as const) : ('reject' as const),
+      confidence: 0.9,
+      reasoning: 'Fixture panel reviewed the proposal',
+    },
+    processingTimeMs: 1,
+    source: 'llm' as const,
+  }));
+  return {
+    proposal: 'Routing fixture',
+    threshold: 'simple_majority',
+    strategy: 'simple_majority',
+    decision: outcome,
+    simulateVotes: false,
+    totalTimeMs: 1,
+    votes,
+    result: {
+      proposalId: 'routing-fixture',
+      proposal: { title: 'Routing fixture', description: 'Fixture', algorithm: 'simple_majority' },
+      outcome,
+      votes: new Map(votes.map((vote) => [vote.role, vote.vote])),
+      voteCounts: {
+        approve: outcome === 'approved' ? votes.length : 0,
+        reject: outcome === 'rejected' ? votes.length : 0,
+        abstain: 0,
+        total: votes.length,
+      },
+      approvalPercentage: outcome === 'approved' ? 100 : 0,
+      quorumReached: true,
+      startedAt: '2026-10-05T12:00:00.000Z',
+      closedAt: '2026-10-05T12:00:00.000Z',
+      durationMs: 1,
+    },
+  };
+}
+
+// The dedicated consensus seam tests exercise the real recorder and a throwaway ledger.
+// These routing tests call executeGoal without a throwaway data directory.
+vi.mock('./consensus-vote-completed-recording.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./consensus-vote-completed-recording.js')>()),
+  recordCompletedVote: vi
+    .fn()
+    .mockResolvedValue({ costSummary: undefined, voteRecord: { persisted: true } }),
+}));
 // #3712: capture the trustTier handed to runDevPipelineForGoal through the
 // run → dev-pipeline executor path (the "hole" — a real RequestContext that ran
 // a real research stage on a possibly-untrusted goal with an absent tier).
@@ -86,7 +137,7 @@ vi.mock('./pipeline-tool.js', () => ({
 // every other consensus-vote export real (run-tool only imports runConsensusForGoal).
 const runConsensusForGoalMock = vi.fn(
   (_goal: string, _logger?: unknown, _gw?: unknown, _onVoteCollected?: () => void) =>
-    Promise.resolve({ result: { outcome: 'approved' } })
+    Promise.resolve(consensusFixture())
 );
 vi.mock('./consensus-vote.js', async () => {
   const actual = await vi.importActual<typeof import('./consensus-vote.js')>('./consensus-vote.js');
@@ -585,7 +636,7 @@ describe('run async dispatch (execute:true, #3732)', () => {
     runConsensusForGoalMock.mockClear();
     runConsensusForGoalMock.mockImplementationOnce((_goal, _logger, _gw, onVoteCollected) => {
       onVoteCollected?.();
-      return Promise.resolve({ result: { outcome: 'approved' } });
+      return Promise.resolve(consensusFixture());
     });
     const handler = captureHandler();
     const result = await handler({
@@ -1062,8 +1113,8 @@ describe('run async dispatch (execute:true, #3732)', () => {
       expect(envelope(result)['executed']).toBe(true);
     });
 
-    it('leaves a rejected consensus vote a success — a verdict is not a failure', async () => {
-      runConsensusForGoalMock.mockResolvedValueOnce({ result: { outcome: 'rejected' } });
+    it('leaves a rejected consensus vote successful under default audit mode', async () => {
+      runConsensusForGoalMock.mockResolvedValueOnce(consensusFixture('rejected'));
       const handler = captureHandler();
       const result = await handler({
         goal: 'should we adopt A or B',

@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  classifyEngineResult,
   createMetaDispatcher,
   createRecordingOutcomeSink,
   MetaDispatchError,
@@ -149,23 +150,31 @@ describe('MetaDispatcher.dispatch', () => {
     expect(outcomes[0]?.failureReason).toContain('boom');
   });
 
-  it('records success: true when a consensus executor resolves decision: rejected', async () => {
-    const decision = decisionFor('should we adopt A or B');
-    const executors: StrategyExecutorMap = {
-      [decision.strategy]: () => Promise.resolve({ decision: 'rejected' }),
-    };
-    const sink = createRecordingOutcomeSink();
-    const dispatcher = createMetaDispatcher({ executors, outcomeSink: sink });
+  it.each(['off', 'audit', 'enforce'] as const)(
+    'records mode-dependent success for rejected consensus in %s',
+    async (mode) => {
+      const decision = decisionFor('should we adopt A or B');
+      const executors: StrategyExecutorMap = {
+        [decision.strategy]: () => Promise.resolve({ decision: 'rejected' }),
+      };
+      const sink = createRecordingOutcomeSink();
+      const dispatcher = createMetaDispatcher({
+        executors,
+        outcomeSink: sink,
+        classifyResult: (result) => classifyEngineResult(result, mode),
+      });
 
-    const result = await dispatcher.dispatch(decision, { goal: 'should we do X or Y' });
-    expect(result.result).toEqual({ decision: 'rejected' });
-    const outcomes = sink.getOutcomes();
-    expect(outcomes).toHaveLength(1);
-    expect(outcomes[0]?.decisionId).toBe(decision.decisionId);
-    expect(outcomes[0]?.strategy).toBe(decision.strategy);
-    expect(outcomes[0]?.success).toBe(true);
-    expect(outcomes[0]?.failureReason).toBeUndefined();
-  });
+      const result = await dispatcher.dispatch(decision, { goal: 'should we do X or Y' });
+      expect(result.result).toEqual({ decision: 'rejected' });
+      const outcomes = sink.getOutcomes();
+      expect(outcomes).toHaveLength(1);
+      expect(outcomes[0]?.decisionId).toBe(decision.decisionId);
+      expect(outcomes[0]?.strategy).toBe(decision.strategy);
+      expect(outcomes[0]?.success).toBe(mode !== 'enforce');
+      if (mode === 'enforce') expect(outcomes[0]?.failureReason).toContain('rejected');
+      else expect(outcomes[0]?.failureReason).toBeUndefined();
+    }
+  );
 
   it('records success: true for a dry-run dev-pipeline result with no planStatus', async () => {
     const decision = decisionFor('implement the feature', { dependencyStructure: 'dag' });
@@ -300,4 +309,14 @@ describe('MetaDispatcher onOutcome callback (#3593)', () => {
       dispatcher.dispatch(decision, { goal: 'implement the feature' })
     ).resolves.toMatchObject({ strategy: decision.strategy });
   });
+});
+
+describe('consensus enforcement classification', () => {
+  for (const mode of ['off', 'audit', 'enforce'] as const) {
+    it.each(['approved', 'rejected', 'no_quorum'])('%s in ' + mode, (decision) => {
+      const classification = classifyEngineResult({ decision }, mode);
+      expect(classification.success).toBe(mode !== 'enforce' || decision === 'approved');
+      if (!classification.success) expect(classification.failureReason).toContain(decision);
+    });
+  }
 });

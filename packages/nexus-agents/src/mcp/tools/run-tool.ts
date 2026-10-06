@@ -27,9 +27,14 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { IModelAdapter } from '../../core/index.js';
 
 import { createLogger, formatZodError, getErrorMessage, type ILogger } from '../../core/index.js';
+import {
+  resolveConsensusEnforcementMode,
+  type ConsensusEnforcementMode,
+} from '../../orchestration/consensus-enforcement-mode.js';
+import { getConsensusEnforcement, type ConsensusEnforcement } from './run-tool-consensus.js';
 import { parseBoolEnv } from '../../config/defaults-env.js';
 import { assertDryRunSupported, classifyDispatchError } from './run-tool-dry-run.js';
-import { describeIncompletePipeline } from './run-tool-incomplete.js';
+import { detectEngineFailure } from './run-tool-incomplete.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { measuredTrustTier, type RequestContext } from '../middleware/request-context.js';
@@ -305,6 +310,7 @@ export interface RunExecuteResponse {
   readonly executed: true;
   readonly durationMs: number;
   readonly result: unknown;
+  readonly enforcement?: ConsensusEnforcement | undefined;
 }
 
 /**
@@ -360,6 +366,7 @@ export async function executeGoal(
     /** In-process gateway model adapters routed to consensus voters (#4042). */
     readonly gatewayAdapters?: readonly IModelAdapter[] | undefined;
     readonly classifyResult?: MetaResultClassifier | undefined;
+    readonly consensusEnforcementMode?: ConsensusEnforcementMode | undefined;
     /**
      * The caller's request context (#6431 review): the policy check for the
      * selected strategy tool records under it. A direct caller with none gets
@@ -378,6 +385,9 @@ export async function executeGoal(
   // The authority-ladder guard fires inside `select` (#3920): an above-tier
   // dispatch is refused fail-closed (AuthorityRefusalError) here, BEFORE any
   // executor runs.
+  const mode =
+    opts.consensusEnforcementMode ??
+    resolveConsensusEnforcementMode(process.env['NEXUS_CONSENSUS_ENFORCE']);
   const decision = selectDecision(input, 'execute', opts.logger);
   // #4806: fail closed BEFORE any executor runs. Only the dev pipeline stops
   // after plan+vote; every other strategy would execute for real, so honouring
@@ -394,54 +404,25 @@ export async function executeGoal(
       buildDefaultExecutors(
         opts.trustTier,
         opts.gatewayAdapters,
-        { dryRun: input.dryRun, sourceTrustTier: input.sourceTrustTier },
+        { ...input, consensusEnforcementMode: mode, logger: opts.logger },
         opts.onProgress,
         opts.signal
       ),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(opts.outcomeSink !== undefined ? { outcomeSink: opts.outcomeSink } : {}),
     ...(onOutcome !== undefined ? { onOutcome } : {}),
-    ...(opts.classifyResult !== undefined ? { classifyResult: opts.classifyResult } : {}),
+    classifyResult: opts.classifyResult ?? ((result) => classifyEngineResult(result, mode)),
   });
   assertDispatchNotCancelled(opts.signal, decision.strategy);
   const dispatch = await dispatcher.dispatch(decision, toMetaInput(input, 'execute'));
   return {
-    strategy: dispatch.strategy,
-    decisionId: dispatch.decisionId,
+    ...dispatch,
     reasoning: decision.reasoning,
     executed: true,
-    durationMs: dispatch.durationMs,
-    result: dispatch.result,
+    ...(dispatch.strategy === 'consensus'
+      ? { enforcement: getConsensusEnforcement(dispatch.result) }
+      : {}),
   };
-}
-
-/**
- * Detect a business failure an engine reported in its own result, or null when
- * the run is honest-success (#4362, #5641).
- *
- * Delegates the success/failure decision to {@link classifyEngineResult} while
- * retaining tool-layer message and detail shaping:
- *
- * - `AdaptiveOrchestratorResult` (pipeline / research) — `success: false`
- * - `DevPipelineResult` (dev-pipeline) — `completed: false`
- *
- * `ExtendedVotingResult` (consensus) is deliberately absent: a `rejected`
- * outcome is the verdict the caller asked for, not an engine fault.
- */
-function detectEngineFailure(
-  result: unknown
-): { message: string; detail?: Record<string, unknown> } | null {
-  const classification = classifyEngineResult(result);
-  if (classification.success) return null;
-
-  const record =
-    typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : undefined;
-
-  if (record?.['completed'] === false) {
-    return { message: describeIncompletePipeline(record), detail: record };
-  }
-  const detail = classification.failureReason ?? 'no error message';
-  return { message: `Engine reported failure: ${detail}` };
 }
 
 /**
@@ -456,11 +437,12 @@ async function executeRunBody(
   logger: ILogger,
   body: RunBodyOptions = {}
 ): Promise<ToolResult> {
+  const mode = resolveConsensusEnforcementMode(process.env['NEXUS_CONSENSUS_ENFORCE']);
   try {
     // #3712: thread the caller's real RequestContext.trustTier into the
     // dev-pipeline executor's consensus→execute seam. undefined ⇒ seam
     // fail-closes to untrusted (4); never infer trust from absence.
-    const exec = await executeGoal(input, { logger, ...body });
+    const exec = await executeGoal(input, { logger, ...body, consensusEnforcementMode: mode });
     logger.info('run: executed goal', {
       decisionId: exec.decisionId,
       strategy: exec.strategy,
@@ -469,7 +451,7 @@ async function executeRunBody(
     // #4362: a dispatch that RESOLVED used to be an unconditional success, so an
     // engine reporting its own failure was handed back as `toolSuccess` — and,
     // backgrounded, recorded as a `complete` job. Only a throw was surfaced.
-    const engineFailure = detectEngineFailure(exec.result);
+    const engineFailure = detectEngineFailure(exec.result, mode);
     if (engineFailure !== null) {
       logger.warn('run: engine reported failure', {
         decisionId: exec.decisionId,
