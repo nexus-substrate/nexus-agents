@@ -121,7 +121,7 @@ import { probeClaudePinnedModel } from './doctor-claude-model.js';
 import { createServer } from '../mcp/server.js';
 import { existsSync } from 'node:fs';
 import * as fs from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { execFileSync } from 'node:child_process';
 
@@ -523,7 +523,11 @@ describe('Doctor Command', () => {
 
       const result = await runDoctor();
 
-      expect(result.installFreshness).toEqual({ state: 'aligned', version: TEST_VERSION });
+      const prefix =
+        process.platform === 'win32'
+          ? dirname(process.execPath)
+          : dirname(dirname(process.execPath));
+      expect(result.installFreshness).toEqual({ state: 'aligned', version: TEST_VERSION, prefix });
       expect(result.allHealthy).toBe(true);
       expect(result.mcpServerReady).toBe(true);
       expect(result.mcpClientReady).toBe(true);

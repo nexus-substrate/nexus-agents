@@ -4,7 +4,7 @@
  * @module cli/doctor-install-freshness.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   assessInstallFreshness,
   describeInstallFreshness,
@@ -149,6 +149,22 @@ describe('installFreshnessIsUnmeasured (#6782)', () => {
 });
 
 describe('describeInstallFreshness (#4767)', () => {
+  it.each(['aligned', 'behind', 'ahead', 'unknown'] as const)(
+    'reports the checked prefix when %s (#7159)',
+    (state) => {
+      const result = {
+        state,
+        version: '10.0.0',
+        global: '8.134.0',
+        expected: '10.0.0',
+        reason: 'npm ls -g failed',
+        prefix: '/opt/node24',
+      };
+
+      expect(describeInstallFreshness(result)).toContain('prefix: /opt/node24');
+    }
+  );
+
   it('names both versions when behind', () => {
     const line = describeInstallFreshness({ state: 'behind', global: '4.3.1', expected: '4.14.1' });
 
@@ -206,6 +222,48 @@ describe('describeInstallFreshness (#4767)', () => {
 });
 
 describe('readGlobalVersion (#4767)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('reads the running interpreter install when PATH selects another npm (#7159)', () => {
+    vi.stubEnv('PATH', '/opt/node22/bin');
+    vi.stubEnv('npm_config_prefix', '/opt/node22');
+    const exec = vi.fn((cmd: string, args: readonly string[]) => {
+      const usesRunningInstall =
+        cmd === '/opt/node24/bin/node' &&
+        args[0] === '/opt/node24/lib/node_modules/npm/bin/npm-cli.js' &&
+        args.includes('--prefix=/opt/node24');
+      return JSON.stringify({
+        dependencies: { 'nexus-agents': { version: usesRunningInstall ? '10.0.0' : '8.134.0' } },
+      });
+    });
+
+    const result = readGlobalVersion(exec, '/opt/node24/bin/node', 'linux');
+
+    expect(result).toEqual({ version: '10.0.0', reason: '', prefix: '/opt/node24' });
+    expect(assessInstallFreshness(result.version, '10.0.0').state).toBe('aligned');
+  });
+
+  it('uses the Windows npm layout without invoking a PATH shim (#7159)', () => {
+    const exec = vi.fn(() =>
+      JSON.stringify({ dependencies: { 'nexus-agents': { version: '10.0.0' } } })
+    );
+
+    const result = readGlobalVersion(exec, 'C:\\Program Files\\nodejs\\node.exe', 'win32');
+
+    expect(result).toEqual({ version: '10.0.0', reason: '', prefix: 'C:\\Program Files\\nodejs' });
+    expect(exec).toHaveBeenCalledWith('C:\\Program Files\\nodejs\\node.exe', [
+      'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+      'ls',
+      '-g',
+      'nexus-agents',
+      '--depth=0',
+      '--json',
+      '--prefix=C:\\Program Files\\nodejs',
+    ]);
+  });
+
   it('extracts the version from npm ls output', () => {
     const out = JSON.stringify({ dependencies: { 'nexus-agents': { version: '4.17.0' } } });
 
@@ -215,9 +273,10 @@ describe('readGlobalVersion (#4767)', () => {
   it('returns null with a reason when npm itself failed', () => {
     // Distinct from "not installed": the operator needs to know whether the
     // measurement failed or the package is absent.
-    expect(readGlobalVersion(() => null)).toEqual({
+    expect(readGlobalVersion(() => null, '/opt/node24/bin/node', 'linux')).toEqual({
       version: null,
       reason: 'npm ls -g failed',
+      prefix: '/opt/node24',
     });
   });
 
