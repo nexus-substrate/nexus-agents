@@ -1256,7 +1256,7 @@ describe('removed gateway env aliases (#6291 B1)', () => {
         'NEXUS_CUSTOM_API_KEY',
       ]);
       expect(result.invalidVars).toEqual([]);
-      expect(result.deprecatedVars).toEqual([]);
+      expect(result).not.toHaveProperty('deprecatedVars');
       for (const name of ['NEXUS_CUSTOM_API_BASE_URL', 'NEXUS_CUSTOM_API_KEY']) {
         expect(getKnownNexusVarNames().includes(name)).toBe(false);
         expect(
@@ -1274,18 +1274,18 @@ describe('removed gateway env aliases (#6291 B1)', () => {
     const result = validateNexusEnv();
     expect(result.unknownVars).toEqual([]);
     expect(result.invalidVars).toEqual([]);
-    expect(result.deprecatedVars).toEqual([]);
+    expect(result).not.toHaveProperty('deprecatedVars');
   });
 });
 
-describe('deprecated access-policy mode (#6319)', () => {
+describe('removed access-policy mode (#6319)', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     vi.stubEnv('NEXUS_ACCESS_POLICY_MODE', undefined);
   });
 
-  it.each(['off', 'audit', 'confirm_risky', 'enforce'])(
-    'reports the deprecation notice for %s without treating it as a typo or invalid value',
+  it.each(['off', 'audit', 'confirm_risky', 'enforce', '', 'invalid'])(
+    'reports the removed variable as unknown for value %j',
     (value) => {
       vi.stubEnv('NEXUS_ACCESS_POLICY_MODE', value);
       const warnings: string[] = [];
@@ -1297,38 +1297,23 @@ describe('deprecated access-policy mode (#6319)', () => {
       } as unknown as import('../core/index.js').ILogger;
 
       const result = validateNexusEnv(logger);
-      const notice =
-        'NEXUS_ACCESS_POLICY_MODE is deprecated, has no effect, and will be removed in 10.0. ' +
-        'Remove it from your environment.';
-
-      expect(result.deprecatedVars).toContainEqual({
-        name: 'NEXUS_ACCESS_POLICY_MODE',
-        replacement: '',
-        shadowed: false,
-        notice,
-      });
-      expect(warnings).toContain(notice);
-      expect(result.unknownVars.map((entry) => entry.name)).not.toContain(
-        'NEXUS_ACCESS_POLICY_MODE'
-      );
+      expect(result.unknownVars.map((entry) => entry.name)).toContain('NEXUS_ACCESS_POLICY_MODE');
       expect(result.invalidVars.map((entry) => entry.name)).not.toContain(
         'NEXUS_ACCESS_POLICY_MODE'
       );
+      expect(getKnownNexusVarNames()).not.toContain('NEXUS_ACCESS_POLICY_MODE');
+      expect(warnings).toContain('Unknown environment variable: NEXUS_ACCESS_POLICY_MODE');
+      expect(warnings.join('\n')).not.toContain('is deprecated');
+      // Its only producer is removed; retain no empty mechanism for hypothetical future use.
+      expect(result).not.toHaveProperty('deprecatedVars');
     }
   );
 
-  it('does not report a deprecation when the variable is unset', () => {
+  it('reports nothing for the removed variable when unset', () => {
     const result = validateNexusEnv();
-    expect(result.deprecatedVars?.map((entry) => entry.name)).not.toContain(
-      'NEXUS_ACCESS_POLICY_MODE'
-    );
-  });
-
-  it.each(['', 'invalid'])('still reports invalid value %j and its deprecation notice', (value) => {
-    vi.stubEnv('NEXUS_ACCESS_POLICY_MODE', value);
-    const result = validateNexusEnv();
-    expect(result.invalidVars.map((entry) => entry.name)).toContain('NEXUS_ACCESS_POLICY_MODE');
-    expect(result.deprecatedVars?.map((entry) => entry.name)).toContain('NEXUS_ACCESS_POLICY_MODE');
+    expect(result.unknownVars.map((entry) => entry.name)).not.toContain('NEXUS_ACCESS_POLICY_MODE');
+    expect(result.invalidVars.map((entry) => entry.name)).not.toContain('NEXUS_ACCESS_POLICY_MODE');
+    expect(result).not.toHaveProperty('deprecatedVars');
   });
 });
 

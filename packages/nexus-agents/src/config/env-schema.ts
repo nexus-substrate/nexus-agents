@@ -222,10 +222,6 @@ const NexusEnvSchema = z.object({
   // Paths, URLs, tokens and term lists: any non-empty string is legal, so
   // z.string() is the accurate type rather than a permissive stand-in.
   NEXUS_CODEPR_TOKEN: z.string().optional(),
-  // Deprecated no-op since #6321 removed the ClawGuard deriver. Keep the
-  // accept-set and registration for compatibility with the AGENTS.md table
-  // (#4722); report its use in deprecatedVars until removal in 10.0 (#6319).
-  NEXUS_ACCESS_POLICY_MODE: z.enum(['off', 'audit', 'confirm_risky', 'enforce']).optional(),
   NEXUS_CUSTOM_MODEL: z.string().optional(),
   // #6645: the OpenAI API surface the single-model custom-openai adapter calls.
   // Default `chat` (/chat/completions); `responses` opts into /responses. The
@@ -504,25 +500,11 @@ export interface IneffectiveVar {
   readonly reason: string;
 }
 
-/** A deprecated variable that is set, with its replacement or removal notice. */
-export type DeprecatedVar = {
-  readonly name: string;
-  readonly replacement: string;
-  readonly shadowed: boolean;
-  readonly notice?: string;
-};
-
 /** Result of validating NEXUS_* environment variables. */
 export interface EnvValidationResult {
   readonly unknownVars: readonly UnknownVar[];
   readonly invalidVars: readonly InvalidVar[];
   readonly ineffectiveVars: readonly IneffectiveVar[];
-  /**
-   * Deprecated names in use (#6319). Optional so a caller that
-   * builds this shape by hand keeps compiling; `validateNexusEnv` always
-   * fills it, empty when none is set.
-   */
-  readonly deprecatedVars?: readonly DeprecatedVar[];
 }
 
 // ============================================================================
@@ -563,15 +545,14 @@ function classifyEnvKeys(
 /**
  * Logs validation warnings via the provided logger.
  *
- * Unknown names, invalid values, ineffective settings and deprecated-variable
- * removal notices are reported here. Warnings never include unknown values.
+ * Unknown names, invalid values and ineffective settings are reported here.
+ * Warnings never include unknown values.
  */
 function logValidationWarnings(
   logger: ILogger,
   unknownVars: readonly UnknownVar[],
   invalidVars: readonly InvalidVar[],
-  ineffectiveVars: readonly IneffectiveVar[],
-  deprecatedVars: readonly DeprecatedVar[]
+  ineffectiveVars: readonly IneffectiveVar[]
 ): void {
   for (const u of unknownVars) {
     const hint = u.suggestion !== null ? ` (did you mean ${u.suggestion}?)` : '';
@@ -587,25 +568,6 @@ function logValidationWarnings(
         `${String(ineff.requestedMs)}ms, using ${String(ineff.effectiveMs)}ms. ${ineff.reason}`
     );
   }
-  for (const deprecated of deprecatedVars) {
-    if (deprecated.notice !== undefined) logger.warn(deprecated.notice);
-  }
-}
-
-/** Reports the retired access-policy mode, empty when unset. */
-function findDeprecatedVars(): DeprecatedVar[] {
-  const deprecatedVars: DeprecatedVar[] = [];
-  if (process.env['NEXUS_ACCESS_POLICY_MODE'] !== undefined) {
-    deprecatedVars.push({
-      name: 'NEXUS_ACCESS_POLICY_MODE',
-      replacement: '',
-      shadowed: false,
-      notice:
-        'NEXUS_ACCESS_POLICY_MODE is deprecated, has no effect, and will be removed in 10.0. ' +
-        'Remove it from your environment.',
-    });
-  }
-  return deprecatedVars;
 }
 
 /**
@@ -672,7 +634,6 @@ function ineffectiveReason(r: ClassGuardResolution): string {
  *
  * - Detects unknown vars (potential typos) with Levenshtein suggestions
  * - Detects invalid values for known vars
- * - Reports deprecated variables in use and logs their removal notices
  * - Warn-only: never throws, never blocks startup
  *
  * @param logger - Optional logger for direct warning output
@@ -699,13 +660,12 @@ export function validateNexusEnv(logger?: ILogger): EnvValidationResult {
   }
 
   const ineffectiveVars = findIneffectiveVars();
-  const deprecatedVars = findDeprecatedVars();
 
   if (logger !== undefined) {
-    logValidationWarnings(logger, unknownVars, invalidVars, ineffectiveVars, deprecatedVars);
+    logValidationWarnings(logger, unknownVars, invalidVars, ineffectiveVars);
   }
 
-  return { unknownVars, invalidVars, ineffectiveVars, deprecatedVars };
+  return { unknownVars, invalidVars, ineffectiveVars };
 }
 
 /**
