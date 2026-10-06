@@ -102,10 +102,10 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     // Previously `{ baseUrl, apiKey }` only; the config now carries the arm's
     // endpoint identity (#4392 inc 2 step 2), defaulted below, and the model
     // allowlist (#6600), empty when NEXUS_OPENAI_COMPAT_MODELS is unset.
+    // Alias-only API surface is omitted; discovered clients default to chat.
     expect(result).toEqual({
       baseUrl: 'https://gateway.example/v1',
       apiKey: 'sk-test',
-      apiSurface: 'chat',
       endpoint: 'openai-compat',
       modelAllowlist: [],
     });
