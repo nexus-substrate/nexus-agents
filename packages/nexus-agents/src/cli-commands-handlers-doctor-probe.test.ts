@@ -19,6 +19,7 @@ vi.mock('./cli/index.js', async (importOriginal) => ({
       allHealthy: true,
       nodeVersion: { supported: true },
       mcpServerReady: true,
+      configFile: { found: false, path: null },
       gateway: { state: 'not_configured' },
       installFreshness: { state: 'aligned', version: '1.0.0' },
       scratchSpace: [],

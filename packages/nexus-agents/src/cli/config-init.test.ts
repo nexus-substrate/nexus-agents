@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { writeFile, mkdir } from 'node:fs/promises';
 import * as yaml from 'yaml';
 import { runConfigInit, printConfigInitResult, configInitCommand } from './config-init.js';
@@ -50,7 +51,7 @@ describe('config-init', () => {
 
       expect(result.success).toBe(true);
       expect(result.created).toBe(true);
-      expect(result.path).toContain('nexus-agents.yaml');
+      expect(result.path).toBe(resolve('.nexus-agents/nexus-agents.yaml'));
       expect(writeFile).toHaveBeenCalledTimes(1);
     });
 

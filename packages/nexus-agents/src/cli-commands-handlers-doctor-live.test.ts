@@ -38,10 +38,11 @@ vi.mock('./cli/index.js', async (importOriginal) => {
     ...real,
     doctorCommand: vi.fn(
       (options: { onResult?: (result: DoctorResult) => void }): Promise<number> => {
-        // The handler reads only `clis`; the rest of the result is not part
-        // of this seam.
+        // Supply the checks read by the live handler's summary along with
+        // the CLI result used to compare admission and live availability.
         options.onResult?.({
           allHealthy: true,
+          configFile: { found: false, path: null },
           nodeVersion: { supported: true },
           mcpServerReady: true,
           gateway: { state: 'not_configured' },

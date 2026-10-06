@@ -703,6 +703,7 @@ describe('doctor --gateway on a gateway-only host (#6609)', () => {
     nodeSupported: true,
     hasAuthMethod: true,
     mcpServerReady: true,
+    configFile: { found: false, path: null },
     installFreshness: { state: 'aligned' as const, version: '1.0.0' },
     scratchSpace: [],
     clis: (['claude', 'gemini', 'codex', 'opencode'] as const).map(noCli),
