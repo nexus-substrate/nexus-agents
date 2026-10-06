@@ -255,7 +255,7 @@ const CONFIG_HELP: CommandHelpEntry = {
     {
       flag: '-o, --output <path>',
       description: 'Output path for config init',
-      defaultValue: './nexus-agents.yaml',
+      defaultValue: './.nexus-agents/nexus-agents.yaml',
     },
     { flag: '-f, --force', description: 'Overwrite existing configuration file' },
   ],

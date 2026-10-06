@@ -66,6 +66,10 @@ describe('COMMAND_HELP', () => {
 // ============================================================================
 
 describe('formatCommandHelp', () => {
+  it('documents the dotdir output default for config init (#7158)', () => {
+    expect(formatCommandHelp('config')).toContain('(default: ./.nexus-agents/nexus-agents.yaml)');
+  });
+
   it('returns formatted help for known command', () => {
     const help = formatCommandHelp('orchestrate');
     expect(help).toBeDefined();
