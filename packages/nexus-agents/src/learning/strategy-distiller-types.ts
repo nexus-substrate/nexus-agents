@@ -13,7 +13,7 @@
 import type { CliName } from '../cli-adapters/types.js';
 
 /** Status lifecycle for a distilled rule. */
-export type RuleStatus = 'draft' | 'active' | 'promoted' | 'expired';
+export type RuleStatus = 'draft' | 'active' | 'expired';
 
 /** The type of pattern detected from outcomes. */
 export type PatternType = 'failure-rate' | 'success-rate' | 'latency-spike';
@@ -77,15 +77,6 @@ export interface DistillerConfig {
   readonly minObservationsForDraft: number;
   /** Minimum observations before activating a rule (default: 5) */
   readonly minObservationsForActive: number;
-  /**
-   * Confidence threshold for promotion to RoutingMemory (default: 0.7).
-   *
-   * @deprecated Only read by `StrategyDistiller.promote()`, which has no
-   * production caller — `DistilledRuleStage` is the single channel by which
-   * distilled rules reach routing (#5004 finding 4). Removal is tracked in
-   * #5467. The gate compares `confidence`, which is now `support × effect`.
-   */
-  readonly promotionConfidence: number;
   /** Failure rate above which a failure pattern is detected (default: 0.6) */
   readonly failureRateThreshold: number;
   /** Success rate above which a success pattern is detected (default: 0.8) */
@@ -109,7 +100,6 @@ export const DEFAULT_DISTILLER_CONFIG: DistillerConfig = {
   triggerThreshold: 50,
   minObservationsForDraft: 3,
   minObservationsForActive: 5,
-  promotionConfidence: 0.7,
   failureRateThreshold: 0.6,
   successRateThreshold: 0.8,
   latencyRatioThreshold: 2.0,

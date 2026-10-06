@@ -5,8 +5,8 @@
  * routing rules. Three pattern detectors identify failure rates,
  * success rates, and latency spikes per (cli, category) group.
  *
- * Rules progress through a lifecycle: draft -> active -> promoted -> expired.
- * Tainted rules (from untrusted input) never promote.
+ * Rules progress through a lifecycle: draft -> active -> expired.
+ * DistilledRuleStage applies active rules to routing scores.
  *
  * @module learning/strategy-distiller
  * (Source: Issue #999 - Automatic Strategy Distillation)
@@ -17,7 +17,6 @@ import { createLogger, getTimeProvider } from '../core/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
-import type { IRoutingMemory, ModelPerformance } from '../context/routing-memory.js';
 import type {
   DistilledRule,
   DistillerConfig,
@@ -331,7 +330,6 @@ export class StrategyDistiller {
     const countByStatus: Record<RuleStatus, number> = {
       draft: 0,
       active: 0,
-      promoted: 0,
       expired: 0,
     };
     for (const rule of this.rules.values()) {
@@ -344,41 +342,6 @@ export class StrategyDistiller {
       outcomesSinceLastDistill: this.outcomeCounter,
       eligibleOutcomesAtLastDistill: this.eligibleAtLastDistill,
     };
-  }
-
-  /**
-   * Promote high-confidence rules to RoutingMemory.
-   * Rules must be active, with sufficient observations and confidence.
-   *
-   * @deprecated No production caller (#5004 finding 4). `DistilledRuleStage`
-   * is the single channel by which distilled rules reach routing; this
-   * second channel into `RoutingMemory` is kept only so the deprecation is
-   * non-breaking. Removal is tracked in #5467. Note the gate now compares
-   * `confidence = support × effect` against `promotionConfidence`, so a rule
-   * that would have promoted on sample size alone may no longer clear it.
-   */
-  promote(routingMemory: IRoutingMemory): number {
-    let promoted = 0;
-    for (const [id, rule] of this.rules) {
-      if (rule.status !== 'active') continue;
-      if (rule.observationCount < this.config.minObservationsForActive) continue;
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- deprecated together with this method (#5467)
-      if (rule.confidence < this.config.promotionConfidence) continue;
-
-      const performance = this.ruleToPerformance(rule);
-      routingMemory.storePreference(rule.cli, rule.category, performance);
-
-      this.rules.set(id, { ...rule, status: 'promoted', updatedAt: getTimeProvider().now() });
-      promoted++;
-
-      this.logger.info('Promoted distilled rule to RoutingMemory', {
-        ruleId: id,
-        cli: rule.cli,
-        category: rule.category,
-        confidence: rule.confidence,
-      });
-    }
-    return promoted;
   }
 
   // ==========================================================================
@@ -426,7 +389,7 @@ export class StrategyDistiller {
     const support = sigmoidConfidence(pattern.observationCount);
     const effect = effectFor(pattern.patternType, pattern.metric, this.config);
     const confidence = support * effect;
-    const status = this.computeStatus(pattern.observationCount, existing?.status);
+    const status = this.computeStatus(pattern.observationCount);
 
     if (existing !== undefined) {
       this.rules.set(id, {
@@ -459,16 +422,13 @@ export class StrategyDistiller {
     }
   }
 
-  private computeStatus(observations: number, existing?: RuleStatus): RuleStatus {
-    // Never downgrade promoted rules
-    if (existing === 'promoted') return 'promoted';
+  private computeStatus(observations: number): RuleStatus {
     if (observations >= this.config.minObservationsForActive) return 'active';
     return 'draft';
   }
 
   private expireRules(now: number): void {
     for (const [id, rule] of this.rules) {
-      if (rule.status === 'promoted') continue;
       if (now - rule.updatedAt > this.config.ruleExpiryMs) {
         this.rules.set(id, { ...rule, status: 'expired', updatedAt: now });
       }
@@ -496,18 +456,6 @@ export class StrategyDistiller {
         this.rules.delete(entry[0]);
       }
     }
-  }
-
-  /** Convert rule metrics into ModelPerformance for RoutingMemory. */
-  private ruleToPerformance(rule: DistilledRule): ModelPerformance {
-    const successRate = rule.patternType === 'success-rate' ? rule.metric : 1 - rule.metric;
-    return {
-      avgQuality: rule.confidence,
-      successRate: Math.max(0, Math.min(1, successRate)),
-      avgLatencyMs: 0,
-      avgTokens: 0,
-      observations: rule.observationCount,
-    };
   }
 }
 
