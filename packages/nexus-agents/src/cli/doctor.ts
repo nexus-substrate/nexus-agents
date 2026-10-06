@@ -958,7 +958,7 @@ export function checkSandbox(): SandboxCheck {
  * test, which the producer/consumer ratchet correctly rejects.
  */
 function checkInstallFreshness(): InstallFreshness {
-  const { version, reason } = readGlobalVersion((cmd, args) => {
+  const { version, reason, prefix } = readGlobalVersion((cmd, args) => {
     try {
       return execFileSync(cmd, [...args], {
         encoding: 'utf8',
@@ -968,7 +968,7 @@ function checkInstallFreshness(): InstallFreshness {
       return null;
     }
   });
-  return assessInstallFreshness(version, VERSION, reason);
+  return { ...assessInstallFreshness(version, VERSION, reason), prefix };
 }
 
 /** The environment sub-checks, grouped so `runDoctor` stays under its line cap. */
