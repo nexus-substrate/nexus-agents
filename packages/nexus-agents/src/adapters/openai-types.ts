@@ -21,7 +21,7 @@
  * a documented architectural exception in the allowlist.
  */
 
-import type { ModelCapability } from '../core/index.js';
+import type { ILogger, ModelCapability } from '../core/index.js';
 import { ModelCapability as MC } from '../core/index.js';
 import { getCliModelName } from '../config/model-config-helpers.js';
 
@@ -76,6 +76,14 @@ export interface OpenAIAdapterConfig {
   apiKey: string;
   /** Base URL for API (optional, defaults to OpenAI's API) */
   baseUrl?: string;
+  /** Gateway API surface; omitted uses Chat Completions. */
+  apiSurface?: 'chat' | 'responses';
+  /** Custom-openai compatibility: send a token cap only when explicitly requested. */
+  omitDefaultTokenCap?: boolean;
+  /** Fetch implementation, including the gateway's host guard. */
+  fetch?: typeof fetch;
+  /** Caller diagnostics, shared by direct and gateway adapter clients. */
+  logger?: ILogger;
   /** Request timeout in milliseconds (optional) */
   timeout?: number;
   /** Maximum retries for failed requests (optional) */

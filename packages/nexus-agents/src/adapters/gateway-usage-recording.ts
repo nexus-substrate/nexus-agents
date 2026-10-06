@@ -16,6 +16,9 @@ import type { EndpointArmId } from '../cli-adapters/types-core.js';
 import { gatewayCostDetail } from '../cli-adapters/budget-arm-cost.js';
 import { recordUsageEvent } from '../learning/usage-log.js';
 
+/** Recording wrappers are replaceable views, never nested writers. */
+const recordingSources = new WeakMap<IModelAdapter, IModelAdapter>();
+
 type UsageRecordingAdapter = IModelAdapter & { readonly gatewayArm: EndpointArmId };
 
 /**
@@ -30,16 +33,19 @@ type UsageRecordingAdapter = IModelAdapter & { readonly gatewayArm: EndpointArmI
  * an undeclared gateway records `priced: false`, never the model id's vendor
  * list price. Verification is captured at selection time: true only for a
  * discovery match, false after failed discovery, absent when unmeasured.
- * Shared by discovered models and the auto-adapter's single-model SDK fallback.
+ * Shared by discovered models and the custom-openai compatibility alias.
  */
 export function withGatewayUsageRecording(
   inner: IModelAdapter,
   gatewayArm: EndpointArmId,
-  modelVerified?: boolean
+  modelVerified?: boolean,
+  providerId?: string
 ): UsageRecordingAdapter {
+  inner = recordingSources.get(inner) ?? inner;
+  const recordedProviderId = providerId ?? inner.providerId;
   const wrapped: UsageRecordingAdapter = {
     gatewayArm,
-    providerId: inner.providerId,
+    providerId: recordedProviderId,
     modelId: inner.modelId,
     capabilities: inner.capabilities,
     countTokens: (text) => inner.countTokens(text),
@@ -63,7 +69,7 @@ export function withGatewayUsageRecording(
           recordUsageEvent({
             timestamp: new Date().toISOString(),
             modelId: inner.modelId,
-            providerId: inner.providerId,
+            providerId: recordedProviderId,
             inputTokens: u.inputTokens,
             outputTokens: u.outputTokens,
             usdCost: cost.costUsd,
@@ -74,7 +80,7 @@ export function withGatewayUsageRecording(
             ...(cost.priced ? { priceSource: cost.resolvedId } : {}),
           });
         } else {
-          recordFailedCall(inner, latencyMs, result.error.code, modelVerified);
+          recordFailedCall(inner, latencyMs, result.error.code, modelVerified, recordedProviderId);
         }
       } catch {
         // Telemetry must not break user calls.
@@ -82,6 +88,7 @@ export function withGatewayUsageRecording(
       return result;
     },
   };
+  recordingSources.set(wrapped, inner);
   attachListModels(wrapped, inner);
   return wrapped;
 }
@@ -91,12 +98,13 @@ function recordFailedCall(
   inner: IModelAdapter,
   latencyMs: number,
   errorCode: string,
-  modelVerified: boolean | undefined
+  modelVerified: boolean | undefined,
+  providerId: string
 ): void {
   recordUsageEvent({
     timestamp: new Date().toISOString(),
     modelId: inner.modelId,
-    providerId: inner.providerId,
+    providerId,
     inputTokens: 0,
     outputTokens: 0,
     usdCost: 0,

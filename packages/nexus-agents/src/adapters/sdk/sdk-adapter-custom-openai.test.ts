@@ -3,9 +3,8 @@
  * (#2120). The constructor validates the base URL immediately; these tests
  * confirm the validation short-circuits before any network/dependency load.
  *
- * Runtime tests (actual SDK calls against a mocked @ai-sdk/openai) are out
- * of scope here — they'd require mocking the dynamic import and the AI SDK
- * loader. The `custom-api-validation.test.ts` tests already cover the SSRF
+ * Runtime delegation is covered over HTTP in sdk-adapter-gateway.test.ts.
+ * The `custom-api-validation.test.ts` tests already cover the SSRF
  * classifier in detail; these tests cover the integration with
  * SdkAdapterConfig + env-var fallback.
  */

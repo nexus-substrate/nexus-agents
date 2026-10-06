@@ -3,10 +3,9 @@
  * (#6608): which header carries the key, extra static headers, and the proxy.
  *
  * Applies to the gateway path — model discovery and every per-model
- * completion built by `openai-compat-adapter.ts` — and to the single-model
- * `custom-openai` path (`sdk/sdk-adapter.ts`, #6629), which reads the same
- * gateway URL and key. Other in-process SDK clients (the direct vendor
- * adapters) are untouched.
+ * completion built by `openai-compat-adapter.ts` — including the
+ * `custom-openai` alias, which uses the same client path (#7150).
+ * Other in-process SDK clients (the direct vendor adapters) are untouched.
  *
  * **Proxy — measured, not assumed.** On Node 22.22.3, neither the global
  * `fetch` nor the `openai` SDK (which calls it) honours `HTTP_PROXY` /
@@ -41,6 +40,8 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 /** Transport options resolved from the environment for one gateway base URL. */
 export interface GatewayTransport {
+  /** Explicit API surface; the custom-openai alias resolves its own env setting. */
+  readonly apiSurface?: 'chat' | 'responses';
   /** Header carrying the key; absent means the SDK default, `Authorization: Bearer`. */
   readonly authHeader?: string;
   /** Static headers added to every request; absent means none. */
@@ -315,7 +316,10 @@ function proxyAgentFor(proxyUrl: string): FetchDispatcher {
 }
 
 /** The `openai` client options a gateway transport contributes. */
-export type GatewayClientOptions = Pick<OpenAIAdapterConfig, 'defaultHeaders' | 'fetchOptions'>;
+export type GatewayClientOptions = Pick<
+  OpenAIAdapterConfig,
+  'defaultHeaders' | 'fetchOptions' | 'apiSurface'
+>;
 
 /**
  * Client options for one gateway call site (discovery or a model adapter).
@@ -328,6 +332,7 @@ export function gatewayClientOptions(
 ): GatewayClientOptions {
   const headers = gatewayHeaders(transport);
   return {
+    ...(transport.apiSurface !== undefined && { apiSurface: transport.apiSurface }),
     ...(Object.keys(headers).length > 0 && { defaultHeaders: headers }),
     ...(transport.proxyUrl !== undefined && {
       fetchOptions: { dispatcher: proxyAgentFor(transport.proxyUrl) },
@@ -358,8 +363,8 @@ interface GatewayAiSdkOptions {
 }
 
 /**
- * The same transport as {@link gatewayClientOptions}, shaped for the AI-SDK
- * `createOpenAI` factory the single-model `custom-openai` path uses (#6629):
+ * The same transport as {@link gatewayClientOptions}, shaped for consumers
+ * of the AI-SDK `createOpenAI` factory (retained compatibility surface):
  * `headers` (a removed header is `undefined`, the AI SDK's spelling) and a
  * `fetch` that carries the proxy dispatcher. Only the keys that apply.
  */
