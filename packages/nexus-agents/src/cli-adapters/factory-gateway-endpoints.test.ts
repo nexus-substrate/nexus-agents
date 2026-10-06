@@ -28,6 +28,7 @@ import {
   getDefaultCliCircuitBreakerRegistry,
 } from './cli-circuit-breaker.js';
 import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
+import { CircuitError, CircuitErrorCode } from './circuit-breaker.js';
 
 const discovery = vi.hoisted(() => vi.fn());
 const binaryOnPath = vi.hoisted(() => vi.fn((cli: string) => cli === 'opencode'));
@@ -248,6 +249,68 @@ describe('opted-in endpoint arms through production wiring (#7151)', () => {
     expect(!result.ok && result.error.message).toContain('Circuit is open');
     expect(model.complete).not.toHaveBeenCalled();
     expect(breaker.getState()).toBe('open');
+  });
+
+  it('returns the original endpoint circuit refusal through the shared integration', async () => {
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    const endpoint = (await boot([model])).get(ARM);
+    if (endpoint === undefined) throw new Error('missing endpoint arm');
+    const breaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM);
+    const threshold = breaker.getSnapshot().config.failureThreshold;
+    for (let i = 0; i < threshold; i++) breaker.recordFailure('unknown');
+    const integration = new CliCircuitBreakerIntegration([endpoint]);
+
+    const result = await integration.execute(endpoint, TASK);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        circuitErrorCode: CircuitErrorCode.CIRCUIT_OPEN,
+        cliName: ARM,
+        armId: ARM,
+        circuitState: 'open',
+      },
+    });
+    if (!result.ok) expect(result.error).toBeInstanceOf(CircuitError);
+    expect(model.complete).not.toHaveBeenCalled();
+    expect(breaker.getSnapshot().failureCount).toBe(threshold);
+  });
+
+  it('falls back from an open endpoint to a healthy CLI and records the refusal', async () => {
+    vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', 'true');
+    const model = gatewayModel();
+    const arms = await boot([model]);
+    const endpoint = arms.get(ARM);
+    const fallback = arms.get('opencode');
+    if (endpoint === undefined || fallback === undefined) throw new Error('missing routing arm');
+    const execute = vi.spyOn(fallback, 'execute').mockResolvedValue(ok({ text: 'CLI fallback' }));
+    vi.spyOn(fallback, 'initialize').mockResolvedValue(undefined);
+    const refusalLog = vi.spyOn(logger, 'warn');
+    const integration = new CliCircuitBreakerIntegration([...arms.values()], undefined, logger);
+    const breaker = getDefaultCliCircuitBreakerRegistry().getArmBreaker(ARM);
+    const threshold = breaker.getSnapshot().config.failureThreshold;
+    for (let i = 0; i < threshold; i++) breaker.recordFailure('unknown');
+
+    const result = await integration.execute(endpoint, TASK);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        executedBy: 'opencode',
+        usedFallback: true,
+        fallbackAttempts: ['opencode'],
+        response: { text: 'CLI fallback' },
+      },
+    });
+    expect(execute).toHaveBeenCalledExactlyOnceWith(TASK);
+    expect(model.complete).not.toHaveBeenCalled();
+    expect(refusalLog).toHaveBeenCalledWith('Adapter circuit admission refused', {
+      armId: ARM,
+      circuitErrorCode: CircuitErrorCode.CIRCUIT_OPEN,
+      circuitState: 'open',
+    });
+    expect(breaker.getSnapshot().failureCount).toBe(threshold);
   });
 
   it('propagates caller cancellation to an in-flight endpoint request', async () => {

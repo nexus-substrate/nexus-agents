@@ -303,9 +303,20 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
     adapter: ICliAdapter,
     breaker: CliCircuitBreaker,
     execResult: Result<CliResponse, CliError>
-  ): Result<CliResponse, CliError> {
+  ): Result<CliResponse, CircuitError | CliError> {
     const recordsOutcome = this.ownsBreakerOutcome(adapter);
     if (!execResult.ok) {
+      // The endpoint owns admission, but its model-to-CLI bridge wraps the
+      // refusal. Restore the original breaker verdict for automatic fallback.
+      if (this.adapterOwnsAdmission(adapter) && execResult.error.cause instanceof CircuitError) {
+        const refusal = execResult.error.cause;
+        this.logger.warn('Adapter circuit admission refused', {
+          armId: refusal.armId,
+          circuitErrorCode: refusal.circuitErrorCode,
+          circuitState: refusal.circuitState,
+        });
+        return err(refusal);
+      }
       // #6613: caller-input errors (e.g. invalid model requested) must not count
       // against the breaker or exhaust half-open probe capacity. #6691: nor
       // must a call its caller cancelled.
