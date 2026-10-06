@@ -91,17 +91,29 @@ async function waitForFiles(paths: readonly string[], timeoutMs = 60_000): Promi
 /** Runs the real verify_audit_chain handler over `logDir`. */
 async function verifyDir(logDir: string): Promise<VerifyAuditChainResponse> {
   type Captured =
-    ((a: unknown, c: unknown) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+    | ((a: unknown, c: unknown) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>)
+    | undefined;
   let captured: Captured;
   const server = {
     registerTool: (_n: string, _s: unknown, h: unknown) => {
       captured = h as Captured;
     },
   };
-  registerVerifyAuditChainTool(server as never, {} as never);
+  // Explicitly allow this isolated fixture directory through the supported audit config.
+  registerVerifyAuditChainTool(
+    server as never,
+    {
+      security: { audit: { enabled: true, logDir } },
+    } as never
+  );
   const noop = (): void => undefined;
   const ctx = { logger: { warn: noop, info: noop, debug: noop, error: noop } };
   const res = await captured?.({ logDir }, ctx);
+  expect(res, 'verify_audit_chain must return a response').toBeDefined();
+  expect(res?.isError, `verify_audit_chain failed: ${res?.content[0]?.text ?? 'no text'}`).not.toBe(
+    true
+  );
+  expect(res?.content).toEqual([{ type: 'text', text: expect.any(String) }]);
   return JSON.parse(res?.content[0]?.text ?? '{}') as VerifyAuditChainResponse;
 }
 
