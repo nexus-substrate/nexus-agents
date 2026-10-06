@@ -104,7 +104,7 @@ describe('parseGatewayCostEnv — grammar', () => {
     const parsed = parseGatewayCostEnv('custom-openai=free');
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.error.message).toContain('reserved for the single-model NEXUS_CUSTOM_API_* path');
+    expect(parsed.error.message).toContain('reserved for the custom-openai compatibility arm');
   });
 
   it.each(['anthropic', 'openai', 'google'])(
@@ -294,7 +294,7 @@ describe('warnIfGatewayCostUndeclared', () => {
 describe('gatewayEndpointRejection', () => {
   it('refuses custom-openai (#6437)', () => {
     expect(gatewayEndpointRejection('custom-openai')).toBe(
-      'must not be custom-openai: reserved for the single-model NEXUS_CUSTOM_API_* path'
+      'must not be custom-openai: reserved for the custom-openai compatibility arm'
     );
   });
 });

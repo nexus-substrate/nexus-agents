@@ -1,6 +1,6 @@
 /* eslint max-lines: ["error", { "max": 500, "skipBlankLines": true, "skipComments": true }] */
-// ~475 lines as eslint counts them (blanks and comments skipped), inside the
-// 400-600 band .rules/governance.md preserves for a cohesive file — AI SDK model adapter lifecycle, response mapping, and error fidelity (#6618).
+// AI SDK model lifecycle, response mapping, and error fidelity remain cohesive
+// under the file's governance allowance (#6618).
 /**
  * nexus-agents/adapters/sdk - Base SDK Adapter
  *
@@ -20,6 +20,7 @@ import type {
   Result,
   ILogger,
   TokenUsage,
+  IModelAdapter,
 } from '../../core/index.js';
 import {
   ok,
@@ -44,12 +45,13 @@ import {
   readGatewayEnv,
   redactApiKey,
 } from './gateway-env.js';
-import { gatewayAiSdkOptions, readGatewayTransport } from '../gateway-http.js';
-import { planOptionalParams, type DroppedParam } from '../optional-params.js';
+import { readGatewayTransport } from '../gateway-http.js';
 import {
-  validateCustomApiBaseUrl,
-  assertCustomApiHostResolvesPublic,
-} from './custom-api-validation.js';
+  createOpenAICompatClient,
+  validateOpenAICompatBaseUrl,
+  type OpenAICompatConfig,
+} from '../openai-compat-adapter.js';
+import { planOptionalParams, type DroppedParam } from '../optional-params.js';
 
 /** Minimal AI SDK model interface (duck-typed for optional dependency). */
 interface AiSdkModel {
@@ -137,7 +139,6 @@ function modelOnSurface(
 function apiSurfaceFor(
   providerId: SdkProviderId
 ): ReturnType<typeof readCustomApiSurface> | undefined {
-  if (providerId === 'custom-openai') return readCustomApiSurface();
   if (providerId === 'openai') return readDirectOpenAiSurface();
   return undefined;
 }
@@ -231,20 +232,23 @@ function resolveApiKey(providerId: SdkProviderId, configKey?: string): string | 
   return process.env[PROVIDER_ENV_KEYS[providerId]];
 }
 
-/**
- * For the `custom-openai` provider only: resolve the base URL (config >
- * env, the env side via the gateway-env resolver) and run it through the
- * SSRF guard. Returns `undefined` for every other provider (the AI SDK's
- * built-in factories handle their own endpoints). Throws `ConfigError` at
- * construction time for invalid custom-openai setups — catching
- * misconfiguration immediately rather than on the first request.
- */
-function resolveAndValidateCustomBaseUrl(config: SdkAdapterConfig): string | undefined {
+/** Resolve the custom alias through the gateway's canonical validation and transport. */
+function gatewayConfigFor(
+  config: SdkAdapterConfig,
+  apiKey: string | undefined,
+  logger: ILogger
+): OpenAICompatConfig | undefined {
   if (config.providerId !== 'custom-openai') return undefined;
-  const raw = config.baseUrl ?? readGatewayEnv().baseUrl;
-  const validated = validateCustomApiBaseUrl(raw);
-  if (!validated.ok) throw validated.error;
-  return validated.value.toString();
+  const baseUrl = validateOpenAICompatBaseUrl(config.baseUrl ?? readGatewayEnv().baseUrl);
+  return {
+    baseUrl,
+    apiKey: apiKey ?? '',
+    logger,
+    ...readGatewayTransport(baseUrl, process.env, logger),
+    apiSurface: readCustomApiSurface(),
+    ...(config.timeout !== undefined && { timeout: config.timeout }),
+    ...(config.maxRetries !== undefined && { maxRetries: config.maxRetries }),
+  };
 }
 
 /**
@@ -355,31 +359,24 @@ function categorizeError(error: unknown): ErrorCode {
  * AI SDK adapter implementing IModelAdapter.
  *
  * Uses Vercel AI SDK (npm: ai) for model interaction instead of
- * CLI subprocess spawning. Supports any provider that has an
- * `@ai-sdk/*` package.
+ * CLI subprocess spawning. Built-in providers use their `@ai-sdk/*` package;
+ * the public custom-openai identifier delegates to the gateway HTTP adapter.
  */
 export class SdkAdapter extends BaseAdapter {
-  private readonly sdkProviderId: SdkProviderId;
+  private readonly sdkProviderId: Exclude<SdkProviderId, 'custom-openai'>;
   private model: AiSdkModel | undefined;
   private sdkFunctions: AiSdkFunctions | undefined;
   private readonly sdkConfig: SdkAdapterConfig;
-  /** Validated base URL for custom-openai provider; undefined for built-ins. */
-  private readonly customBaseUrl: string | undefined;
+  /** Compatibility-only custom provider delegates to the canonical gateway client. */
+  private readonly gatewayConfig: OpenAICompatConfig | undefined;
+  private gatewayAdapter: IModelAdapter | undefined;
   /**
-   * OpenAI API surface: always set for custom-openai (#6645); for the direct
-   * `openai` provider only when `OPENAI_BASE_URL` names a non-OpenAI host
+   * OpenAI API surface: for the direct `openai` provider only when `OPENAI_BASE_URL` names a non-OpenAI host
    * (#6654). `undefined` keeps the provider's default surface.
    */
   private readonly apiSurface: ReturnType<typeof readCustomApiSurface> | undefined;
   /** Inflight init promise for coalescing concurrent calls (Issue #1438). */
   private initPromise: Promise<void> | undefined;
-  /**
-   * Cached result of the DNS-resolve-time SSRF check for custom-openai
-   * (#3426). Resolved once on first init so we don't re-resolve the gateway
-   * hostname on every request. `undefined` until the check has run.
-   */
-  private resolveSsrfChecked = false;
-
   constructor(config: SdkAdapterConfig, logger?: ILogger) {
     const apiKey = resolveApiKey(config.providerId, config.apiKey);
     super({
@@ -391,10 +388,24 @@ export class SdkAdapter extends BaseAdapter {
       ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
       ...(config.maxRetries !== undefined ? { maxRetries: config.maxRetries } : {}),
     });
-    this.sdkProviderId = config.providerId;
+    this.sdkProviderId = config.providerId === 'custom-openai' ? 'openai' : config.providerId;
     this.sdkConfig = config;
-    this.customBaseUrl = resolveAndValidateCustomBaseUrl(config);
+    this.gatewayConfig = gatewayConfigFor(config, apiKey, this.logger);
     this.apiSurface = apiSurfaceFor(config.providerId);
+  }
+
+  /** Lazily acquire the B client, preserving missing-key failure at first use. */
+  private resolveGatewayAdapter(): IModelAdapter | undefined {
+    if (this.gatewayConfig === undefined) return undefined;
+    if (this.gatewayAdapter !== undefined) return this.gatewayAdapter;
+    const apiKey = resolveApiKey(this.sdkConfig.providerId, this.sdkConfig.apiKey);
+    if (apiKey === undefined) {
+      throw new AdapterModelError(`No API key for ${this.sdkConfig.providerId}`, {
+        code: ErrorCode.CONFIG_INVALID,
+      });
+    }
+    this.gatewayAdapter = createOpenAICompatClient(this.modelId, { ...this.gatewayConfig, apiKey });
+    return this.gatewayAdapter;
   }
 
   /**
@@ -418,20 +429,12 @@ export class SdkAdapter extends BaseAdapter {
   }
 
   private async doInitialize(): Promise<void> {
-    const apiKey = resolveApiKey(this.sdkProviderId, this.sdkConfig.apiKey);
+    const apiKey = resolveApiKey(this.sdkConfig.providerId, this.sdkConfig.apiKey);
     if (apiKey === undefined) {
       throw new AdapterModelError(`No API key for ${this.sdkProviderId}`, {
         code: ErrorCode.CONFIG_INVALID,
       });
     }
-
-    // DNS-resolve-time SSRF guard for custom-openai gateways (#3426). The
-    // construction-time guard is string-level only; this resolves the gateway
-    // hostname and rejects if it points at a private/loopback/link-local IP.
-    // Run BEFORE any model state is set so a rejection leaves the adapter
-    // uninitialized — a retry re-runs the guard rather than skipping it via the
-    // `this.model !== undefined` short-circuit in ensureInitialized().
-    await this.ensureCustomHostResolvesPublic();
 
     // Dynamic import — AI SDK is an optional peer dependency
     const providerModule = await this.loadProvider(apiKey);
@@ -440,32 +443,6 @@ export class SdkAdapter extends BaseAdapter {
     // AI SDK is an optional peer dependency — validate shape at runtime
     const aiModule = await import('ai');
     this.sdkFunctions = extractAiSdkFunctions(aiModule);
-  }
-
-  /**
-   * For custom-openai only: run the DNS-resolve-time SSRF check exactly once
-   * and throw if the gateway hostname resolves to a private address (#3426).
-   * Cached via `resolveSsrfChecked` so the hostname is not re-resolved on
-   * every request. No-op for non-custom providers (built-in endpoints are
-   * trusted) and when no custom base URL is configured.
-   */
-  private async ensureCustomHostResolvesPublic(): Promise<void> {
-    if (this.resolveSsrfChecked) return;
-    if (this.sdkProviderId !== 'custom-openai' || this.customBaseUrl === undefined) {
-      this.resolveSsrfChecked = true;
-      return;
-    }
-    const hostname = new URL(this.customBaseUrl).hostname;
-    const result = await assertCustomApiHostResolvesPublic(hostname);
-    if (!result.ok) {
-      // Do NOT cache a rejection (#3426 QA): leaving the flag false means a
-      // retry re-runs the guard rather than silently skipping it via the
-      // early-return above. The guard itself fails OPEN on transient resolver
-      // errors, so a flaky-DNS host still proceeds; only a confirmed private
-      // resolution throws here.
-      throw result.error;
-    }
-    this.resolveSsrfChecked = true;
   }
 
   /**
@@ -497,27 +474,6 @@ export class SdkAdapter extends BaseAdapter {
         const factory = extractProviderFactory(mod, 'createGoogleGenerativeAI');
         const provider = factory({ apiKey });
         return { model: provider(this.modelId) };
-      }
-      case 'custom-openai': {
-        // OpenAI-compatible gateway (multi-vendor proxies, self-hosted servers,
-        // corporate LLM gateways). Reuses @ai-sdk/openai with a configurable
-        // baseURL. See custom-api-validation.ts for the SSRF guard; the
-        // adapter constructor validates before this method is reached.
-        const mod = await import('@ai-sdk/openai');
-        const factory = extractProviderFactory(mod, 'createOpenAI');
-        const opts: Record<string, unknown> = { apiKey };
-        if (this.customBaseUrl !== undefined) {
-          opts['baseURL'] = this.customBaseUrl;
-          // Auth header, extra headers and proxy: the gateway's transport (#6629).
-          const transport = readGatewayTransport(this.customBaseUrl, process.env, this.logger);
-          Object.assign(opts, gatewayAiSdkOptions({ ...transport, apiKey }));
-        }
-        const provider = factory(opts);
-        // Chat completions unless NEXUS_CUSTOM_API_SURFACE=responses (#6645):
-        // the provider's default is the Responses API, which many gateways lack.
-        return {
-          model: modelOnSurface(provider, this.apiSurface ?? 'chat', this.modelId),
-        };
       }
     }
   }
@@ -628,6 +584,8 @@ export class SdkAdapter extends BaseAdapter {
 
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
     try {
+      const gateway = this.resolveGatewayAdapter();
+      if (gateway !== undefined) return await gateway.complete(request);
       await this.ensureInitialized();
       this.logRequest(request);
 
@@ -663,6 +621,11 @@ export class SdkAdapter extends BaseAdapter {
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<StreamChunk> {
+    const gateway = this.resolveGatewayAdapter();
+    if (gateway !== undefined) {
+      yield* gateway.stream(request);
+      return;
+    }
     // Ensure initialization and SDK readiness before entering the generator body.
     // Errors thrown before the first yield in an async generator bypass for-await-of
     // try/catch in callers, so we validate eagerly and wrap the body in try/catch.
@@ -719,7 +682,7 @@ export class SdkAdapter extends BaseAdapter {
    */
   private toErrorResult(error: unknown, code: ErrorCode): Result<CompletionResponse, ModelError> {
     if (error instanceof ModelError) {
-      this.logger.error(`SDK adapter error (${this.sdkProviderId})`, error);
+      this.logger.error(`SDK adapter error (${this.sdkConfig.providerId})`, error);
       return { ok: false, error };
     }
 
@@ -728,13 +691,13 @@ export class SdkAdapter extends BaseAdapter {
     // subprocess-adapter path. Audit #2824. The RESOLVED key is redacted by
     // exact match first (#4392 inc 3): a gateway key has no vendor shape the
     // pattern sanitizer knows, and a 401 body may echo the key it rejected.
-    const apiKey = resolveApiKey(this.sdkProviderId, this.sdkConfig.apiKey);
+    const apiKey = resolveApiKey(this.sdkConfig.providerId, this.sdkConfig.apiKey);
     const safeMessage = sanitizeOutput(redactApiKey(getErrorMessage(error), apiKey));
     // Never the original object: its message AND its stack's first line carry
     // the raw text. The name is kept so the log still says what was thrown.
     const errorObj = new Error(safeMessage);
     if (error instanceof Error) errorObj.name = error.name;
-    this.logger.error(`SDK adapter error (${this.sdkProviderId})`, errorObj);
+    this.logger.error(`SDK adapter error (${this.sdkConfig.providerId})`, errorObj);
     // #4606: this path builds the ModelError itself rather than going through
     // `BaseAdapter.transformError`, so it has to capture the horizon too. The
     // AI SDK's `APICallError` carries `responseHeaders` as a plain record;
@@ -744,12 +707,15 @@ export class SdkAdapter extends BaseAdapter {
     const retryAfterMs =
       code === ErrorCode.MODEL_RATE_LIMITED ? resolveRetryAfterMs(error, safeMessage) : undefined;
     // AdapterModelError extends ModelError — no cast needed
-    const modelError = new AdapterModelError(`${this.sdkProviderId} SDK error: ${safeMessage}`, {
-      code,
-      ...(retryAfterMs !== undefined
-        ? { context: { [RETRY_AFTER_CONTEXT_KEY]: retryAfterMs } }
-        : {}),
-    });
+    const modelError = new AdapterModelError(
+      `${this.sdkConfig.providerId} SDK error: ${safeMessage}`,
+      {
+        code,
+        ...(retryAfterMs !== undefined
+          ? { context: { [RETRY_AFTER_CONTEXT_KEY]: retryAfterMs } }
+          : {}),
+      }
+    );
     return { ok: false, error: modelError };
   }
 }

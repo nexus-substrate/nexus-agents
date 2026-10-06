@@ -1,7 +1,7 @@
 /**
- * Canonical env resolver for the single-model `custom-openai` gateway path.
+ * Canonical env resolver for the `custom-openai` gateway compatibility alias.
  *
- * The SDK path (`api:custom-openai`) and discovery path (`api:<endpoint>`)
+ * The alias (`api:custom-openai`) and discovered arms (`api:<endpoint>`)
  * both read `NEXUS_OPENAI_COMPAT_URL` / `NEXUS_OPENAI_COMPAT_KEY`.
  *
  * @module adapters/sdk/gateway-env
@@ -11,7 +11,7 @@ import { ConfigError } from '../../core/index.js';
 import { OPENAI_COMPAT_KEY_ENV, OPENAI_COMPAT_URL_ENV } from './types.js';
 import { redactGatewaySecrets } from '../gateway-redaction.js';
 
-/** The resolved mechanism-A gateway pair. */
+/** The resolved canonical gateway pair. */
 export interface GatewayEnv {
   /** `NEXUS_OPENAI_COMPAT_URL`, trimmed; empty is unset. */
   readonly baseUrl: string | undefined;
@@ -25,7 +25,7 @@ function readTrimmed(env: NodeJS.ProcessEnv, name: string): string | undefined {
   return value === undefined || value === '' ? undefined : value;
 }
 
-/** Resolve the canonical mechanism-A gateway pair without logging. */
+/** Resolve the canonical gateway pair without logging. */
 export function resolveGatewayEnv(env: NodeJS.ProcessEnv = process.env): GatewayEnv {
   return {
     baseUrl: readTrimmed(env, OPENAI_COMPAT_URL_ENV),
@@ -33,13 +33,13 @@ export function resolveGatewayEnv(env: NodeJS.ProcessEnv = process.env): Gateway
   };
 }
 
-/** The production reader for the canonical mechanism-A gateway pair. */
+/** The production reader for the canonical gateway pair. */
 export function readGatewayEnv(env: NodeJS.ProcessEnv = process.env): GatewayEnv {
   return resolveGatewayEnv(env);
 }
 
 /**
- * The OpenAI API surface the single-model `custom-openai` path calls (#6645):
+ * The OpenAI API surface gateway adapters and the custom-openai alias call:
  * `chat` is `POST <base>/chat/completions`, `responses` is `POST <base>/responses`.
  */
 type CustomApiSurface = 'chat' | 'responses';

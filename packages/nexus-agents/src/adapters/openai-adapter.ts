@@ -49,6 +49,12 @@ import {
 } from './openai-mappers.js';
 import { REDACTED_KEY_PLACEHOLDER, sanitizeErrorDetails } from '../security/output-sanitizer.js';
 import { redactGatewaySecrets, type GatewaySecretSource } from './gateway-redaction.js';
+import {
+  buildResponsesParams,
+  completeResponses,
+  responsesToChatCompletion,
+} from './openai-responses.js';
+import { mapResponsesStream } from './openai-responses-stream.js';
 
 // Re-export types and constants for public API
 export { OPENAI_MODELS, OPENAI_MODEL_ALIASES, type OpenAIAdapterConfig } from './openai-types.js';
@@ -139,6 +145,7 @@ const MAX_ERROR_BODY_CHARS = 600;
 export class OpenAIAdapter extends BaseAdapter {
   private readonly client: OpenAI;
   private readonly resolvedModelId: string;
+  private readonly apiSurface: 'chat' | 'responses';
   private readonly apiKey: string | undefined;
   /** Headers sent on every request; each value is redacted from error text. */
   private readonly headers: OpenAIAdapterConfig['defaultHeaders'];
@@ -159,6 +166,7 @@ export class OpenAIAdapter extends BaseAdapter {
       modelId: resolvedModelId,
       capabilities: getModelCapabilities(config.modelId),
       apiKey: config.apiKey,
+      ...(config.logger !== undefined && { logger: config.logger }),
     };
 
     // Only set optional properties if defined
@@ -177,6 +185,7 @@ export class OpenAIAdapter extends BaseAdapter {
     this.apiKey = config.apiKey;
     this.headers = config.defaultHeaders;
     this.resolvedModelId = resolvedModelId;
+    this.apiSurface = config.apiSurface ?? 'chat';
 
     // Validate API key presence
     requireApiKey(config.apiKey, 'OpenAI', config.modelId);
@@ -208,6 +217,7 @@ export class OpenAIAdapter extends BaseAdapter {
     if (config.fetchOptions !== undefined) {
       clientOptions.fetchOptions = config.fetchOptions;
     }
+    clientOptions.fetch = config.fetch;
 
     return new OpenAI(clientOptions);
   }
@@ -260,7 +270,14 @@ export class OpenAIAdapter extends BaseAdapter {
    * Applies to direct OpenAI and the compat gateway alike.
    */
   protected override transformError(error: unknown): ModelError {
+    const secrets = { apiKey: this.apiKey, headers: this.headers };
     if (error instanceof APIError) {
+      // The SDK wraps a guarded-fetch refusal as a connection error. Preserve
+      // its configuration classification and remedy instead of hiding both.
+      if (error.cause instanceof ConfigError) {
+        const message = redactErrorText(error.cause.message, secrets);
+        return new ModelError(message, { code: error.cause.code, cause: error.cause });
+      }
       const v = error as ApiErrorView;
       // Classify on the original SDK message + status/code/param only. #4069: thread
       // `param` so a param-naming 400 classifies as MODEL_PARAMETER_UNSUPPORTED and
@@ -276,11 +293,11 @@ export class OpenAIAdapter extends BaseAdapter {
       probe.cause = error;
       const classified = super.transformError(probe);
       // Surface the full diagnostic detail in the final message (code/cause kept).
-      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v, { apiKey: this.apiKey, headers: this.headers })}`;
+      classified.message = `${this.providerId}/${this.modelId}: ${describeOpenAIApiError(v, secrets)}`;
       return classified;
     }
     const err = super.transformError(error);
-    err.message = redactErrorText(err.message, { apiKey: this.apiKey, headers: this.headers });
+    err.message = redactErrorText(err.message, secrets);
     return err;
   }
 
@@ -320,6 +337,10 @@ export class OpenAIAdapter extends BaseAdapter {
    */
   private async executeCompletion(request: CompletionRequest): Promise<CompletionResponse> {
     const { params, dropped } = this.buildRequestParams(request);
+    if (this.apiSurface === 'responses') {
+      const result = await completeResponses(this.client, { params, dropped }, request.signal);
+      return this.mapResponse(result.response, result.dropped);
+    }
     // #3036: forward AbortSignal into the OpenAI SDK so withWatchdog
     // timeouts cancel the HTTP request instead of leaking it past the
     // Promise.race boundary. Branch on signal presence — vitest 4
@@ -346,6 +367,18 @@ export class OpenAIAdapter extends BaseAdapter {
   ): Promise<void> {
     try {
       const { params } = this.buildRequestParams(request);
+      if (this.apiSurface === 'responses') {
+        const stream = await this.client.responses.create(
+          { ...buildResponsesParams(params), stream: true },
+          { signal: request.signal }
+        );
+        for await (const chunk of mapResponsesStream(stream, (response) =>
+          this.mapResponse(responsesToChatCompletion(response))
+        ))
+          controller.push(chunk);
+        controller.complete();
+        return;
+      }
       const stream = await this.client.chat.completions.create({ ...params, stream: true });
 
       let contentIndex = 0;

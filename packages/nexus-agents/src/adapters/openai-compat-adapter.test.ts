@@ -44,7 +44,8 @@ const { mockReadOpencodeGateway } = vi.hoisted(() => ({
 const { mockAssertHostPublic } = vi.hoisted(() => ({
   mockAssertHostPublic: vi.fn(),
 }));
-vi.mock('./sdk/custom-api-validation.js', () => ({
+vi.mock('./sdk/custom-api-validation.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sdk/custom-api-validation.js')>()),
   assertCustomApiHostResolvesPublic: mockAssertHostPublic,
 }));
 
@@ -104,6 +105,7 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     expect(result).toEqual({
       baseUrl: 'https://gateway.example/v1',
       apiKey: 'sk-test',
+      apiSurface: 'chat',
       endpoint: 'openai-compat',
       modelAllowlist: [],
     });
@@ -174,7 +176,7 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
       ).toBe('openai-compat');
       expect(warn).toHaveBeenCalledTimes(1);
       const [customMsg, customCtx] = warn.mock.calls[0] as [string, Record<string, unknown>];
-      expect(customMsg).toContain('reserved for the single-model NEXUS_CUSTOM_API_* path');
+      expect(customMsg).toContain('reserved for the custom-openai compatibility arm');
       expect(customMsg).toContain('NEXUS_OPENAI_COMPAT_ENDPOINT');
       expect(JSON.stringify(customCtx)).not.toContain('"custom-openai"');
 

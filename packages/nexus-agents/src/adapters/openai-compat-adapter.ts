@@ -1,6 +1,6 @@
 /**
  * OpenAI-compatible gateway adapter — talk to any HTTP gateway that exposes
- * the OpenAI Chat Completions API. The gateway may itself be a multi-model
+ * the OpenAI Chat Completions API or the opt-in Responses API. The gateway may itself be a multi-model
  * router (Bedrock/Vertex/Azure proxy, OpenRouter, vLLM, etc.). nexus-agents
  * sees one adapter, the gateway exposes N models, and the existing routing
  * pipeline picks among them.
@@ -16,7 +16,7 @@
  * NEXUS_OPENAI_COMPAT_URL and already ends in `/v1` (the SDK appends only
  * `/models`, so a base without `/v1` probes the wrong path). Each model
  * the gateway exposes can be selected by ID; the adapter wraps the existing
- * `OpenAIAdapter` for the actual chat-completions request, so streaming +
+ * `OpenAIAdapter` for the actual chat or Responses request, so streaming +
  * tool use + the full IModelAdapter contract come for free.
  */
 
@@ -41,6 +41,8 @@ import {
   OPENAI_COMPAT_MODELS_ENV,
   OPENAI_COMPAT_URL_ENV,
 } from './sdk/types.js';
+import { guardedGatewayFetch, validateOpenAICompatBaseUrl } from './gateway-client-guard.js';
+export { validateOpenAICompatBaseUrl } from './gateway-client-guard.js';
 import { hostnameOf } from './sdk/gateway-env.js';
 import { redactGatewaySecrets } from './gateway-redaction.js';
 import { readModelAllowlist, refineGatewayCatalog } from './gateway-catalog-filter.js';
@@ -55,6 +57,12 @@ export interface OpenAICompatConfig extends GatewayTransport {
   readonly baseUrl: string;
   /** API key the gateway expects. */
   readonly apiKey: string;
+  /** Per-request timeout for an explicitly constructed gateway client. */
+  readonly timeout?: number;
+  /** SDK retries for an explicitly constructed gateway client. */
+  readonly maxRetries?: number;
+  /** Caller logger used by explicitly constructed compatibility clients. */
+  readonly logger?: ILogger;
   /**
    * Endpoint identity the gateway registers as — the `<endpoint>` of its
    * `api:<endpoint>` arm (#4392 increment 2, step 2). Always set by
@@ -127,13 +135,7 @@ export function readOpenAICompatEnv(): OpenAICompatConfig | null {
   return readGatewayFromOpencode();
 }
 
-/**
- * Reads the NEW names only. The deprecated `NEXUS_CUSTOM_API_*` pair is an
- * alias for the single-model `custom-openai` reader (`sdk/gateway-env.ts`)
- * and deliberately not for this one (#4392 increment 3, panel option C):
- * renaming is what opts an operator into discovery, in-process voters and
- * the `api:<endpoint>` arm, so the legacy pair alone must leave this null.
- */
+/** Read canonical URL/key names; the old alias pair was removed in 10.0 (#7144). */
 function readGatewayFromEnv(): OpenAICompatConfig | null {
   const envUrl = process.env[OPENAI_COMPAT_URL_ENV]?.trim();
   const envKey = process.env[OPENAI_COMPAT_KEY_ENV]?.trim();
@@ -350,7 +352,7 @@ function overCapError(
 
 /**
  * Create an OpenAIAdapter pointed at the gateway for a specific model ID,
- * wrapped with usage recording so every completion appends a UsageEvent
+ * wrapped with usage recording so eligible completions append a UsageEvent
  * to the JSONL log consumed by `nexus-agents usage`.
  *
  * The wrapper is transparent — same IModelAdapter contract, same fields,
@@ -372,19 +374,32 @@ export function createOpenAICompatAdapter(
   // adapter's alias table (`gpt-4o` -> a dated snapshot) names models the
   // gateway may not serve, and would make `NEXUS_VOTER_MODEL_*` pins miss
   // (#6605).
-  const inner = new OpenAIAdapter({
-    modelId,
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-    verbatimModelId: true,
-    ...gatewayClientOptions(config),
-  });
+  const inner = createOpenAICompatClient(modelId, config);
   const wrapped = withGatewayUsageRecording(
     inner,
     `api:${config.endpoint ?? DEFAULT_OPENAI_COMPAT_ENDPOINT}`,
     config.modelVerified
   );
   return created === undefined ? wrapped : Object.assign(wrapped, { created });
+}
+
+/** Construct the shared gateway client without adding a usage writer. */
+export function createOpenAICompatClient(
+  modelId: string,
+  config: OpenAICompatConfig
+): OpenAIAdapter {
+  const baseUrl = validateOpenAICompatBaseUrl(config.baseUrl);
+  return new OpenAIAdapter({
+    modelId,
+    apiKey: config.apiKey,
+    baseUrl,
+    verbatimModelId: true,
+    ...gatewayClientOptions(config),
+    fetch: guardedGatewayFetch(baseUrl),
+    ...(config.logger !== undefined && { logger: config.logger }),
+    ...(config.timeout !== undefined && { timeout: config.timeout }),
+    ...(config.maxRetries !== undefined && { maxRetries: config.maxRetries }),
+  });
 }
 
 /**

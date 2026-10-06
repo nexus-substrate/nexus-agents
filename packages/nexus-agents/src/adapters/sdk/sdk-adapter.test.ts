@@ -66,6 +66,64 @@ vi.mock('node:dns/promises', () => ({
   lookup: dnsLookupMock,
 }));
 
+interface GatewayHttpCall {
+  readonly url: string;
+  readonly headers: Headers;
+  readonly body: Record<string, unknown>;
+}
+
+// Custom-provider assertions inspect B's outbound HTTP boundary, rather than
+// an AI SDK factory that the compatibility alias no longer loads (#7150).
+const gatewayHttpCalls: GatewayHttpCall[] = [];
+function stubGatewayHttp(): ReturnType<typeof vi.fn> {
+  gatewayHttpCalls.length = 0;
+  const mock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const request = new Request(input, init);
+    const body = (await request.json()) as Record<string, unknown>;
+    gatewayHttpCalls.push({ url: request.url, headers: request.headers, body });
+    const model = body['model'];
+    const response = request.url.endsWith('/responses')
+      ? {
+          id: 'resp-test',
+          object: 'response',
+          created_at: 1,
+          model,
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              id: 'msg-test',
+              role: 'assistant',
+              status: 'completed',
+              content: [{ type: 'output_text', text: 'ok', annotations: [] }],
+            },
+          ],
+          usage: {
+            input_tokens: 1,
+            input_tokens_details: { cached_tokens: 0 },
+            output_tokens: 1,
+            output_tokens_details: { reasoning_tokens: 0 },
+            total_tokens: 2,
+          },
+        }
+      : {
+          id: 'chatcmpl-test',
+          object: 'chat.completion',
+          created: 1,
+          model,
+          choices: [
+            { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        };
+    return new Response(JSON.stringify(response), {
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+  vi.stubGlobal('fetch', mock);
+  return mock;
+}
+
 const TEST_REQUEST: CompletionRequest = {
   messages: [
     {
@@ -812,6 +870,10 @@ describe('SdkAdapter', () => {
   describe('custom-openai DNS-resolve-time SSRF guard (#3426)', () => {
     beforeEach(() => {
       dnsLookupMock.mockReset();
+      stubGatewayHttp();
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
     });
 
     it('rejects when the gateway hostname resolves to a private IP', async () => {
@@ -820,13 +882,14 @@ describe('SdkAdapter', () => {
         providerId: 'custom-openai',
         modelId: 'gpt-4o',
         apiKey: 'test-key',
+        maxRetries: 0,
         baseUrl: 'https://gateway.evil.test/v1',
       });
 
       const result = await adapter.complete(TEST_REQUEST);
       expect(result.ok).toBe(false);
       if (result.ok) return;
-      expect(result.error.message).toMatch(/SSRF/i);
+      expect(result.error.message).toMatch(/private|SSRF/i);
       expect(dnsLookupMock).toHaveBeenCalledTimes(1);
     });
 
@@ -834,18 +897,12 @@ describe('SdkAdapter', () => {
       // First resolution is private (rejected); the flag must stay unset so a
       // retry re-checks instead of silently skipping the guard.
       dnsLookupMock.mockResolvedValueOnce([{ address: '10.0.0.5', family: 4 }]);
-      const { generateText } = await import('ai');
-      vi.mocked(generateText).mockResolvedValueOnce({
-        text: 'ok',
-        finishReason: 'stop',
-        usage: { inputTokens: 1, outputTokens: 1 },
-        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
-      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'custom-openai',
         modelId: 'gpt-4o',
         apiKey: 'test-key',
+        maxRetries: 0,
         baseUrl: 'https://gateway.flaky.test/v1',
       });
 
@@ -861,18 +918,12 @@ describe('SdkAdapter', () => {
 
     it('allows a gateway hostname that resolves to a public IP', async () => {
       dnsLookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
-      const { generateText } = await import('ai');
-      vi.mocked(generateText).mockResolvedValueOnce({
-        text: 'ok',
-        finishReason: 'stop',
-        usage: { inputTokens: 1, outputTokens: 1 },
-        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
-      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'custom-openai',
         modelId: 'gpt-4o',
         apiKey: 'test-key',
+        maxRetries: 0,
         baseUrl: 'https://gateway.example.com/v1',
       });
 
@@ -882,18 +933,12 @@ describe('SdkAdapter', () => {
 
     it('resolves once and caches across multiple requests', async () => {
       dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
-      const { generateText } = await import('ai');
-      vi.mocked(generateText).mockResolvedValue({
-        text: 'ok',
-        finishReason: 'stop',
-        usage: { inputTokens: 1, outputTokens: 1 },
-        response: { id: 'r', timestamp: new Date(), modelId: 'gpt-4o' },
-      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'custom-openai',
         modelId: 'gpt-4o',
         apiKey: 'test-key',
+        maxRetries: 0,
         baseUrl: 'https://gateway.example.com/v1',
       });
 
@@ -934,6 +979,11 @@ describe('SdkAdapter', () => {
  * plain record, not a `Headers` instance.
  */
 describe('SdkAdapter retry-after capture (#4606)', () => {
+  beforeEach(async () => {
+    const { generateText } = await import('ai');
+    vi.mocked(generateText).mockReset();
+  });
+
   /** Longer than the CapacityTracker's 60s window: quota, not throttle. */
   const DURABLE_MS = 3_600_000;
 
@@ -1035,6 +1085,7 @@ describe('custom-openai canonical env (#6291 B1)', () => {
 
   beforeEach(() => {
     dnsLookupMock.mockReset();
+    stubGatewayHttp();
     dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
     for (const name of NAMES) {
       saved.set(name, process.env[name]);
@@ -1043,6 +1094,7 @@ describe('custom-openai canonical env (#6291 B1)', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     for (const name of NAMES) {
       const prev = saved.get(name);
       if (prev === undefined) Reflect.deleteProperty(process.env, name);
@@ -1050,16 +1102,9 @@ describe('custom-openai canonical env (#6291 B1)', () => {
     }
   });
 
-  it('hands the provider factory the key and base URL from the canonical names alone', async () => {
+  it('sends the canonical key and base URL through the gateway client', async () => {
     process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-new-NOT-REAL-0000';
-    const { generateText } = await import('ai');
-    vi.mocked(generateText).mockResolvedValueOnce({
-      text: 'ok',
-      finishReason: 'stop',
-      usage: { inputTokens: 1, outputTokens: 1 },
-      response: { id: 'r', timestamp: new Date(), modelId: 'gpt-5.5' },
-    } as unknown as Awaited<ReturnType<typeof generateText>>);
     const { createOpenAI } = await import('@ai-sdk/openai');
     vi.mocked(createOpenAI).mockClear();
 
@@ -1067,32 +1112,27 @@ describe('custom-openai canonical env (#6291 B1)', () => {
     const result = await adapter.complete(TEST_REQUEST);
 
     expect(result.ok).toBe(true);
-    expect(createOpenAI).toHaveBeenCalledWith({
-      apiKey: 'sk-TESTFAKE-new-NOT-REAL-0000',
-      baseURL: 'https://gateway.example.com/v1',
-    });
+    expect(gatewayHttpCalls[0]?.url).toBe('https://gateway.example.com/v1/chat/completions');
+    expect(gatewayHttpCalls[0]?.headers.get('authorization')).toBe(
+      'Bearer sk-TESTFAKE-new-NOT-REAL-0000'
+    );
+    expect(createOpenAI).not.toHaveBeenCalled();
   });
 
   it('uses the canonical key when a removed alias is also set', async () => {
     process.env['NEXUS_OPENAI_COMPAT_URL'] = 'https://gateway.example.com/v1';
     process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'sk-TESTFAKE-new-NOT-REAL-0000';
     process.env['NEXUS_CUSTOM_API_KEY'] = 'sk-TESTFAKE-old-NOT-REAL-0000';
-    const { generateText } = await import('ai');
-    vi.mocked(generateText).mockResolvedValueOnce({
-      text: 'ok',
-      finishReason: 'stop',
-      usage: { inputTokens: 1, outputTokens: 1 },
-      response: { id: 'r', timestamp: new Date(), modelId: 'gpt-5.5' },
-    } as unknown as Awaited<ReturnType<typeof generateText>>);
     const { createOpenAI } = await import('@ai-sdk/openai');
     vi.mocked(createOpenAI).mockClear();
 
     const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' });
     await adapter.complete(TEST_REQUEST);
 
-    expect(createOpenAI).toHaveBeenCalledWith(
-      expect.objectContaining({ apiKey: 'sk-TESTFAKE-new-NOT-REAL-0000' })
+    expect(gatewayHttpCalls[0]?.headers.get('authorization')).toBe(
+      'Bearer sk-TESTFAKE-new-NOT-REAL-0000'
     );
+    expect(createOpenAI).not.toHaveBeenCalled();
   });
 });
 
@@ -1122,6 +1162,7 @@ describe('toErrorResult redacts the resolved key (#4392 inc 3 review, MEDIUM 1)'
 
   beforeEach(() => {
     dnsLookupMock.mockReset();
+    stubGatewayHttp();
     dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
     for (const name of NAMES) {
       saved.set(name, process.env[name]);
@@ -1132,6 +1173,7 @@ describe('toErrorResult redacts the resolved key (#4392 inc 3 review, MEDIUM 1)'
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     for (const name of NAMES) {
       const prev = saved.get(name);
       if (prev === undefined) Reflect.deleteProperty(process.env, name);
@@ -1140,22 +1182,24 @@ describe('toErrorResult redacts the resolved key (#4392 inc 3 review, MEDIUM 1)'
   });
 
   it('keeps a 401 body that echoes the key out of both the log and the ModelError, via createAutoAdapter(api-only)', async () => {
-    const { generateText } = await import('ai');
-    vi.mocked(generateText).mockRejectedValueOnce(
-      Object.assign(
-        new Error(`401 Unauthorized: {"error":{"message":"invalid key ${KEY} rejected"}}`),
-        { statusCode: 401 }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: { message: `invalid key ${KEY} rejected` } }), {
+            status: 401,
+            headers: { 'content-type': 'application/json' },
+          })
+        )
       )
     );
     const logger = makeLogger();
-
     const selection = await createAutoAdapter({ priority: 'api-only', logger, enableCache: false });
     expect(selection.name).toBe('custom-openai');
     const result = await selection.adapter.complete(TEST_REQUEST);
-
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.message).toContain('401 Unauthorized');
+    expect(result.error.message).toContain('401');
     expect(result.error.message).not.toContain(KEY);
     const flat = JSON.stringify(
       [logger.debug, logger.info, logger.warn, logger.error].flatMap((fn) =>
@@ -1166,30 +1210,36 @@ describe('toErrorResult redacts the resolved key (#4392 inc 3 review, MEDIUM 1)'
         )
       )
     );
-    expect(flat).toContain('SDK adapter error');
     expect(flat).not.toContain(KEY);
   });
 
-  it('keeps the original error name on the logged error', async () => {
-    const { generateText } = await import('ai');
+  it('logs a sanitized custom-openai transport error to the caller logger', async () => {
     class GatewayAuthError extends Error {
       override readonly name = 'GatewayAuthError';
     }
-    vi.mocked(generateText).mockRejectedValueOnce(new GatewayAuthError(`denied ${KEY}`));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new GatewayAuthError(`denied ${KEY}`)))
+    );
     const logger = makeLogger();
-    const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' }, logger);
-
-    await adapter.complete(TEST_REQUEST);
-
+    const adapter = new SdkAdapter(
+      { providerId: 'custom-openai', modelId: 'gpt-5.5', maxRetries: 0 },
+      logger
+    );
+    const result = await adapter.complete(TEST_REQUEST);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).not.toContain(KEY);
+    expect(logger.error).toHaveBeenCalled();
     const logged = logger.error.mock.calls[0]?.[1] as Error | undefined;
-    expect(logged?.name).toBe('GatewayAuthError');
+    expect(logged).toBeInstanceOf(Error);
     expect(logged?.message).not.toContain(KEY);
-    expect(logged?.stack ?? '').not.toContain(KEY);
+    expect(logged?.stack).not.toContain(KEY);
   });
 });
 
 // #6645: OpenAI-spec gateways commonly serve /chat/completions only, so the
-// custom-openai path builds its model on the chat surface unless the operator
+// custom-openai compatibility alias calls the chat surface unless the operator
 // opts into the Responses API. The direct OpenAI adapter keeps the SDK default.
 describe('OpenAI API surface selection (#6645)', () => {
   const NAMES = ['NEXUS_OPENAI_COMPAT_URL', 'NEXUS_OPENAI_COMPAT_KEY', 'NEXUS_CUSTOM_API_SURFACE'];
@@ -1197,6 +1247,7 @@ describe('OpenAI API surface selection (#6645)', () => {
 
   beforeEach(async () => {
     dnsLookupMock.mockReset();
+    stubGatewayHttp();
     dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
     for (const name of NAMES) {
       saved.set(name, process.env[name]);
@@ -1214,6 +1265,7 @@ describe('OpenAI API surface selection (#6645)', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     for (const name of NAMES) {
       const prev = saved.get(name);
       if (prev === undefined) Reflect.deleteProperty(process.env, name);
@@ -1226,13 +1278,16 @@ describe('OpenAI API surface selection (#6645)', () => {
   async function surfaceUsed(adapter: SdkAdapter): Promise<unknown> {
     const result = await adapter.complete(TEST_REQUEST);
     expect(result.ok).toBe(true);
+    if (adapter.providerId === 'sdk-custom-openai') {
+      return gatewayHttpCalls.at(-1)?.url.endsWith('/responses') === true ? 'responses' : 'chat';
+    }
     const { generateText } = await import('ai');
     const options = vi.mocked(generateText).mock.calls.at(-1)?.[0] as
       { model?: { surface?: unknown } } | undefined;
     return options?.model?.surface;
   }
 
-  it('custom-openai builds its model on the chat-completions surface by default', async () => {
+  it('custom-openai calls the chat-completions surface by default', async () => {
     const adapter = new SdkAdapter({ providerId: 'custom-openai', modelId: 'gpt-5.5' });
     expect(await surfaceUsed(adapter)).toBe('chat');
   });

@@ -1,6 +1,6 @@
 ---
 title: Custom OpenAI-Compatible Endpoint Setup
-description: Configure nexus-agents to route through a custom OpenAI-compatible API gateway using OpenCode as the transport layer
+description: Configure nexus-agents to use an OpenAI-compatible gateway directly or through OpenCode
 tier: 2
 keywords: [custom, openai-compatible, gateway, opencode, endpoint, proxy]
 ---
@@ -9,28 +9,30 @@ keywords: [custom, openai-compatible, gateway, opencode, endpoint, proxy]
 
 Route nexus-agents tasks through a custom OpenAI-compatible API gateway. Two paths are supported — pick based on whether you want nexus-agents to hold the credentials directly.
 
-## Path A: Direct SDK (recommended for most cases, v2.54.2+)
+## Path A: Direct gateway adapter (recommended for most cases)
 
 ```
-nexus-agents → @ai-sdk/openai → Custom Gateway → Model Provider
-                (HTTP POST)      (OpenAI-compat)   (Claude, Gemini, etc.)
+nexus-agents → Gateway adapter → Custom Gateway → Model Provider
+                (HTTP POST)       (OpenAI-compat)   (Claude, Gemini, etc.)
 ```
 
-Set three env vars and any auto-adapter caller picks up the gateway:
+Set the URL and key; optionally pin the model:
 
 ```bash
 export NEXUS_OPENAI_COMPAT_URL="https://your-gateway.example.com/v1"
 export NEXUS_OPENAI_COMPAT_KEY="your-api-key"
-export NEXUS_CUSTOM_MODEL="claude-opus-4-5"   # optional; default: gpt-5.5
+export NEXUS_CUSTOM_MODEL="claude-opus-4-5"   # optional; without a catalogue, default: gpt-5.5
 ```
 
-The same URL/key pair also configures the gateway path — model discovery (`GET $NEXUS_OPENAI_COMPAT_URL/models`, so the URL must already end in `/v1`), in-process voter transport and the `api:<endpoint>` routing arm — so setting it opts you into both; `NEXUS_CUSTOM_MODEL` pins the single model this path dispatches to.
+The URL/key pair configures model discovery (`GET $NEXUS_OPENAI_COMPAT_URL/models`, so the URL must already end in `/v1`), in-process voters and the `api:<endpoint>` routing arm. Since #7150, the `custom-openai` auto-adapter is a thin alias over that gateway adapter, retaining `api:custom-openai` usage attribution. With a catalogue it uses the resolved gateway default: `NEXUS_CUSTOM_MODEL` pins a listed model, and an unavailable pin falls back to the catalogue default. Without a catalogue it sends `NEXUS_CUSTOM_MODEL` or `gpt-5.5`; failed discovery marks the model unverified.
 
-> **Removed in 10.0 (#6291):** `NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` are ignored and reported as unknown variables by environment validation. Rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`; normal startup validation warns about the old names. The canonical pair enables both paths described above. Other `NEXUS_CUSTOM_*` settings, including `NEXUS_CUSTOM_MODEL` and `NEXUS_CUSTOM_API_ALLOW_PRIVATE`, remain supported.
+> **Removed in 10.0 (#7144):** `NEXUS_CUSTOM_API_BASE_URL` and `NEXUS_CUSTOM_API_KEY` are ignored and reported as unknown variables by environment validation. Rename them to `NEXUS_OPENAI_COMPAT_URL` and `NEXUS_OPENAI_COMPAT_KEY`; normal startup validation warns about the old names. The canonical pair configures discovery and the direct gateway alias. Other `NEXUS_CUSTOM_*` settings, including `NEXUS_CUSTOM_MODEL` and `NEXUS_CUSTOM_API_ALLOW_PRIVATE`, remain supported.
 
 The adapter validates the base URL through an SSRF guard before making any request — loopback, RFC 1918 private ranges, and link-local (incl. AWS IMDS `169.254.169.254`) are rejected by default. Set `NEXUS_CUSTOM_API_ALLOW_PRIVATE=1` if your gateway runs on a trusted internal host.
 
-No CLI subprocess, no OpenCode in the chain. nexus-agents speaks OpenAI-compatible chat/completions directly. See [adapters/sdk/custom-api-validation.ts](../../packages/nexus-agents/src/adapters/sdk/custom-api-validation.ts) for the guard rules.
+Gateway calls default to `<base>/chat/completions`. Set `NEXUS_CUSTOM_API_SURFACE=responses` for a gateway that serves `<base>/responses`; the setting applies to discovered per-model clients as well as the alias. Both surfaces support streaming and tool calls. Auth headers (`NEXUS_OPENAI_COMPAT_AUTH_HEADER` and `NEXUS_OPENAI_COMPAT_EXTRA_HEADERS`) and proxy settings use the same client path; see [CORPORATE_GATEWAY.md](./CORPORATE_GATEWAY.md).
+
+No CLI subprocess or OpenCode is required for this path. The alias uses the same URL validation and bounded DNS/private-host guard as other gateway clients. See [gateway-client-guard.ts](../../packages/nexus-agents/src/adapters/gateway-client-guard.ts) for request-time guards and [openai-compat-adapter.ts](../../packages/nexus-agents/src/adapters/openai-compat-adapter.ts) for discovery.
 
 ## Path B: OpenCode transport (for environments already managing creds in OpenCode)
 

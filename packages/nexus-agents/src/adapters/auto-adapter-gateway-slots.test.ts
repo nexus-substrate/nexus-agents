@@ -6,7 +6,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SdkAdapter } from './sdk/index.js';
+import { OpenAIAdapter } from './openai-adapter.js';
 import { ok, err, ModelError } from '../core/index.js';
 import { loadUsageEvents } from '../learning/usage-log.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -178,23 +178,26 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
     [false, false],
     [true, true],
     [false, true],
-  ])('persists SDK fallback calls (success=%s, verified=%s)', async (success, modelVerified) => {
+  ])('persists alias fallback calls (success=%s, verified=%s)', async (success, modelVerified) => {
     vi.mocked(getAvailableClis).mockResolvedValueOnce([]);
     gatewayDiscovery.status.mockReturnValue(modelVerified ? 'discovered' : 'failed');
-    if (modelVerified) setGatewaySlotCatalog([fakeGatewayModel('custom-fallback-model')]);
+    const served = fakeGatewayModel('custom-fallback-model');
+    if (modelVerified) setGatewaySlotCatalog([served]);
     const dir = mkdtempSync(join(tmpdir(), 'unverified-model-'));
     const previous = process.env['NEXUS_DATA_DIR'];
     process.env['NEXUS_DATA_DIR'] = dir;
-    const complete = vi.spyOn(SdkAdapter.prototype, 'complete').mockResolvedValueOnce(
-      success
-        ? ok({
-            content: [],
-            model: 'custom-fallback-model',
-            stopReason: 'end_turn',
-            usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
-          })
-        : err(new ModelError('model not found'))
-    );
+    const complete = vi
+      .spyOn(modelVerified ? served : OpenAIAdapter.prototype, 'complete')
+      .mockResolvedValueOnce(
+        success
+          ? ok({
+              content: [],
+              model: 'custom-fallback-model',
+              stopReason: 'end_turn',
+              usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+            })
+          : err(new ModelError('model not found'))
+      );
     const proxy = createResilientAdapter();
     try {
       const result = await proxy.complete({ messages: [] });
@@ -260,7 +263,7 @@ describe('createAutoAdapter gateway family slots (#6604)', () => {
         resolve(response);
       };
     });
-    const complete = vi.spyOn(SdkAdapter.prototype, 'complete').mockReturnValueOnce(delayed);
+    const complete = vi.spyOn(OpenAIAdapter.prototype, 'complete').mockReturnValueOnce(delayed);
     const proxy = createResilientAdapter();
     try {
       const inFlight = proxy.complete({ messages: [] });
