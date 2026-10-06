@@ -31,7 +31,10 @@ type ReaskInput = Pick<
   | 'signal'
   | 'withinRoleRetry'
 >;
-const SelectionSchema = z.object({ selectedOption: z.string() });
+const SelectionSchema = z.object({
+  selectedOption: z.string(),
+  decision: z.literal('approve').optional(),
+});
 const SELECTION_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,

@@ -300,7 +300,6 @@ function voteBeforeDeadline(
   }
   const observer = observeLateVoter(adapter, role, input.logger);
   const collector = new VoterAttemptCollector();
-  const deadlineAtMs = Date.now() + remaining;
   const result = raceWithDeadline(
     (signal) => {
       observer.register(signal);
@@ -327,7 +326,7 @@ function voteBeforeDeadline(
     }
   );
   return result.then((vote) =>
-    finishOptionSelection(vote, input, { adapter, collector, deadlineAtMs })
+    withVoterAttemptTelemetry(vote, () => vote.attemptTelemetry ?? collector.snapshot())
   );
 }
 
@@ -335,14 +334,10 @@ function voteBeforeDeadline(
 function finishOptionSelection(
   vote: AgentVoteResult,
   input: LaunchVotesInput,
-  context: { adapter: IModelAdapter; collector: VoterAttemptCollector; deadlineAtMs: number }
+  context: { adapter: IModelAdapter; deadlineAtMs: number }
 ): Promise<AgentVoteResult> {
-  const seat = withVoterAttemptTelemetry(
-    vote,
-    () => vote.attemptTelemetry ?? context.collector.snapshot()
-  );
   const settings = input.voteOptions;
-  return reaskUnresolvedOption(seat, {
+  return reaskUnresolvedOption(vote, {
     adapter: context.adapter,
     proposal: input.proposal,
     logger: input.logger,
@@ -401,9 +396,11 @@ async function launchRoleVote(
   return stamp(preserveVoterAttemptTelemetry(recovered, { ...recovered, fallback }));
 }
 
-function createTimedVoteLauncher(input: LaunchVotesInput, deadlineAtMs: number): VoteOnAdapter {
-  const serialize = createKeyedSerializer();
-
+function createTimedVoteLauncher(
+  input: LaunchVotesInput,
+  deadlineAtMs: number,
+  serialize: ReturnType<typeof createKeyedSerializer>
+): VoteOnAdapter {
   // One serialized, deadline-bounded vote attempt on a specific adapter.
   // #6103: the attempt's timing rides on the result — queued (enqueue → start)
   // and ran (start → settle) — so a slow panel can be attributed to the lane
@@ -460,7 +457,8 @@ export async function launchVotesWithOverallDeadline(
   const { roles, logger, overallDeadlineMs } = input;
 
   const deadlineAtMs = input.deadlineAtMs ?? Date.now() + overallDeadlineMs;
-  const voteOnAdapter = createTimedVoteLauncher(input, deadlineAtMs);
+  const serialize = createKeyedSerializer();
+  const voteOnAdapter = createTimedVoteLauncher(input, deadlineAtMs, serialize);
 
   const wrapped = roles.map((role, index) =>
     launchRoleVote(role, index, input, voteOnAdapter, deadlineAtMs).then((result) => {
@@ -469,7 +467,20 @@ export async function launchVotesWithOverallDeadline(
     })
   );
 
-  const results = await Promise.all(wrapped);
+  const firstPass = await Promise.all(wrapped);
+  // Supplementary selections cannot hold a lane while any first-pass seat
+  // still needs its verdict. Reuse the lanes only after all verdicts settle.
+  const results = await Promise.all(
+    firstPass.map((vote) => {
+      const adapter =
+        vote.timing?.attempts.at(-1)?.fallback === true
+          ? input.fallbackAdapter
+          : (input.roleAdapters.get(vote.role) ?? input.fallbackAdapter);
+      return serialize(adapterCliKey(adapter), () =>
+        finishOptionSelection(vote, input, { adapter, deadlineAtMs })
+      );
+    })
+  );
 
   const expired = results.filter((r) => r.source === 'error' && r.error === DEADLINE_MESSAGE);
   if (expired.length > 0) {

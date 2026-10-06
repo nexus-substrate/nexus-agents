@@ -11,7 +11,7 @@ const FIRST = {
   decision: 'approve',
   reasoning: 'The split is justified by the artifact.',
   confidence: 0.8,
-};
+} satisfies AgentVoteResult['vote'];
 const QUIET = {
   debug: vi.fn(),
   info: vi.fn(),
@@ -28,7 +28,7 @@ function adapterFor(
     value: {
       content: JSON.stringify(value),
       model: 'test-model',
-      usage: { inputTokens: 10, outputTokens: 5 },
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
       stopReason: 'end_turn',
     },
   });
@@ -66,6 +66,108 @@ async function collect(
 }
 
 describe('bounded option re-ask (#4495)', () => {
+  it.each([false, true])(
+    're-asks the answering adapter with cross-CLI fallback %s',
+    async (crossCli) => {
+      const assigned = adapterFor({ selectedOption: 'split only' });
+      const fallback = {
+        ...adapterFor({ selectedOption: 'keep together' }),
+        providerId: 'other-cli',
+      };
+      const [seat] = await launchVotesWithOverallDeadline({
+        roles: ['architect'],
+        proposal: 'Choose the scope.',
+        roleAdapters: new Map([['architect', assigned]]),
+        fallbackAdapter: fallback,
+        logger: QUIET,
+        voteOptions: {
+          timeoutMs: 100,
+          maxRetries: 0,
+          allowSimulation: false,
+          declaredOptions: OPTIONS,
+        },
+        interDelay: 0,
+        overallDeadlineMs: 100,
+        voteFn: (role, _proposal, adapter) =>
+          Promise.resolve({
+            role,
+            vote: FIRST,
+            processingTimeMs: 0,
+            source: crossCli && adapter === assigned ? 'error' : 'llm',
+            ...(crossCli && adapter === assigned ? { error: 'capacity exhausted' } : {}),
+            // A primary CLI can also disclose substitution within its own model family.
+            fallback: { fromCli: assigned.providerId, fromModel: 'test-alias', reason: 'capacity' },
+          }),
+      });
+      expect(seat?.selectedOption).toBe(crossCli ? 'keep together' : 'split only');
+      expect(assigned.complete).toHaveBeenCalledTimes(crossCli ? 0 : 1);
+      expect(fallback.complete).toHaveBeenCalledTimes(crossCli ? 1 : 0);
+    }
+  );
+  it('a hanging re-ask cannot cost a second seat on the same lane its verdict', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = adapterFor(FIRST);
+      let firstPassCalls = 0;
+      vi.mocked(adapter.complete)
+        .mockReset()
+        .mockImplementation((request) => {
+          const reask = request.messages.some(
+            (message) =>
+              typeof message.content === 'string' &&
+              message.content.includes('OPTION SELECTION RE-ASK')
+          );
+          if (reask) return new Promise(() => undefined);
+          firstPassCalls += 1;
+          return Promise.resolve({
+            ok: true,
+            value: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    firstPassCalls === 1
+                      ? FIRST
+                      : { ...FIRST, decision: 'reject', reasoning: 'A real second verdict.' }
+                  ),
+                },
+              ],
+              model: adapter.modelId,
+              usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+              stopReason: 'end_turn',
+            },
+          });
+        });
+      const pending = launchVotesWithOverallDeadline({
+        roles: ['architect', 'security'],
+        proposal: 'Choose the scope.',
+        roleAdapters: new Map(),
+        fallbackAdapter: adapter,
+        logger: QUIET,
+        voteOptions: {
+          timeoutMs: 100,
+          maxRetries: 0,
+          allowSimulation: false,
+          declaredOptions: OPTIONS,
+        },
+        interDelay: 0,
+        overallDeadlineMs: 50,
+        voteFn: executeAgentVote,
+      });
+      await vi.advanceTimersByTimeAsync(50);
+      const [first, second] = await pending;
+      expect(second?.source).toBe('llm');
+      expect(second?.vote).toMatchObject({
+        decision: 'reject',
+        reasoning: 'A real second verdict.',
+      });
+      expect(first?.vote).toMatchObject(FIRST);
+      expect(first?.optionReask).toEqual({ resolved: false });
+      expect(firstPassCalls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('preserves the received approval when the panel deadline expires during the re-ask', async () => {
     vi.useFakeTimers();
     try {
@@ -183,17 +285,23 @@ describe('bounded option re-ask (#4495)', () => {
     expect(seat).not.toHaveProperty('optionReask');
   });
 
-  it('a returned reject cannot change the original approval or reasoning', async () => {
-    const adapter = adapterFor(FIRST, {
-      decision: 'reject',
-      reasoning: 'Changed my mind.',
-      confidence: 0.1,
-      selectedOption: 'split only',
-    });
-    const seat = await collect(adapter);
-    expect(seat.vote).toMatchObject(FIRST);
-    expect(seat.selectedOption).toBe('split only');
-  });
+  it.each(['reject', 'abstain'])(
+    'a returned %s leaves the re-ask unresolved and preserves approval',
+    async (decision) => {
+      const adapter = adapterFor(FIRST, {
+        decision,
+        reasoning: 'Changed my mind.',
+        confidence: 0.1,
+        selectedOption: 'split only',
+      });
+      const seat = await collect(adapter);
+      expect(seat.vote).toMatchObject(FIRST);
+      expect(seat.selectedOption).toBeUndefined();
+      expect(seat.vote.selectedOption).toBeUndefined();
+      expect(seat.optionReask).toEqual({ resolved: false });
+      expect(adapter.complete).toHaveBeenCalledTimes(2);
+    }
+  );
 
   it('adapter error on re-ask is unresolved, not thrown or retried', async () => {
     const adapter = adapterFor(FIRST, new Error('adapter unavailable'));
