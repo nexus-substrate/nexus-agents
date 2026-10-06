@@ -26,6 +26,11 @@
  * so two seats that answered with the same boilerplate do not reveal it
  * through equal digests.
  *
+ * Tier 1.15 (#7134) commits JSON.stringify({reasoning, conditions}) under
+ * the same per-entry nonce and digest. The full opening includes conditions;
+ * redaction removes them with the reasoning and nonce. 1.13/1.14 keep their
+ * original plain-reasoning preimages.
+ *
  * Split out of `vote-record.ts` when the tier pushed that file past the
  * line cap. Structural parameter types (not `VoterSummary`) so this module
  * imports nothing from the record module and there is no cycle.
@@ -51,11 +56,25 @@ export function mintReasoningNonce(): string {
  * `sha256(reasoningNonce ‖ reasoning)`, over the UTF-8 bytes of the 64-char
  * hex nonce followed by the UTF-8 bytes of the text AS STORED (already
  * clipped by `clipForRecord`), so anyone can re-open it from the record
- * alone: `printf '%s%s' "$nonce" "$reasoning" | sha256sum`. The nonce is
- * fixed-width, so the concatenation is unambiguous.
+ * alone on 1.13/1.14: `printf '%s%s' "$nonce" "$reasoning" | sha256sum`. The nonce is
+ * fixed-width, so the concatenation is unambiguous. On 1.15 callers pass
+ * the canonical JSON bundle from reasoningCommitmentText instead of plain text.
  */
 export function computeReasoningDigest(reasoningNonce: string, reasoning: string): string {
   return crypto.createHash('sha256').update(reasoningNonce).update(reasoning).digest('hex');
+}
+
+/**
+ * Canonical opening text: 1.15 bundles reasoning and conditions in fixed key
+ * order under the existing nonce/digest. Undefined conditions are omitted;
+ * [] stays explicit. Every older tier retains its plain-reasoning preimage.
+ */
+export function reasoningCommitmentText(
+  version: string,
+  reasoning: string,
+  conditions?: readonly string[]
+): string {
+  return version === '1.15' ? JSON.stringify({ reasoning, conditions }) : reasoning;
 }
 
 /**
@@ -73,17 +92,53 @@ export function isReasoningDigestTier(version: string): boolean {
   return REASONING_DIGEST_TIERS.has(version);
 }
 
-/** The three voter fields the commitment rule reads; every other field is irrelevant to it. */
+/** Construct a commitment to the stored, already-clipped reasoning and conditions. */
+export function buildReasoningCommitment(
+  clipped: { text: string; truncated?: true },
+  version: string,
+  conditions?: readonly string[]
+): {
+  reasoning: string;
+  reasoningTruncated?: true;
+  reasoningNonce: string;
+  reasoningDigest: string;
+} {
+  const reasoningNonce = mintReasoningNonce();
+  return {
+    reasoning: clipped.text,
+    ...(clipped.truncated === true ? { reasoningTruncated: true as const } : {}),
+    reasoningNonce,
+    reasoningDigest: computeReasoningDigest(
+      reasoningNonce,
+      reasoningCommitmentText(version, clipped.text, conditions)
+    ),
+  };
+}
+
+/**
+ * Opening fields stay outside digest-tier hashes; commitment fields stay
+ * outside older text-tier hashes. 1.15 adds conditions to the opening.
+ * The clipping marker stays hashed on every tier (#6274).
+ */
+export function isUnhashedReasoningField(version: string, key: string): boolean {
+  if (!isReasoningDigestTier(version)) return key === 'reasoningNonce' || key === 'reasoningDigest';
+  return (
+    key === 'reasoning' || key === 'reasoningNonce' || (version === '1.15' && key === 'conditions')
+  );
+}
+
+/** Voter fields read by the reasoning commitment (including conditions on 1.15). */
 export interface ReasoningCommitmentFields {
   readonly role: string;
   readonly reasoning?: string | undefined;
   readonly reasoningNonce?: string | undefined;
   readonly reasoningDigest?: string | undefined;
+  readonly conditions?: readonly string[] | undefined;
 }
 
 /** A broken commitment SHAPE, at the voter key that is wrong. */
 export interface ReasoningCommitmentShapeDefect {
-  readonly key: 'reasoning' | 'reasoningNonce' | 'reasoningDigest';
+  readonly key: 'reasoning' | 'reasoningNonce' | 'reasoningDigest' | 'conditions';
   readonly message: string;
 }
 
@@ -137,8 +192,12 @@ function digestTierShapeDefect(
  */
 export function reasoningCommitmentShapeDefect(
   digestTier: boolean,
-  v: ReasoningCommitmentFields
+  v: ReasoningCommitmentFields,
+  conditionsTier = false
 ): ReasoningCommitmentShapeDefect | null {
+  if (conditionsTier && v.conditions !== undefined && v.reasoning === undefined) {
+    return { key: 'conditions', message: 'conditions without the reasoning opening they share' };
+  }
   return digestTier ? digestTierShapeDefect(v) : textTierShapeDefect(v);
 }
 
@@ -148,7 +207,8 @@ export function reasoningCommitmentShapeDefect(
  *
  * Three checks per entry: the shape rule ({@link reasoningCommitmentShapeDefect});
  * when nonce and text are both present, the commitment itself,
- * `reasoningDigest === sha256(nonce ‖ reasoning)`; and when the digest is
+ * `reasoningDigest === sha256(nonce ‖ opening)` (plain reasoning before 1.15,
+ * bundled reasoning and conditions on 1.15); and when the digest is
  * present with NO opening, that `redactedRoles` names the entry's role —
  * the roles the redaction records in the set name on THIS record (#6264).
  * The last is the named empty case: an opening gone with nothing recording
@@ -176,7 +236,7 @@ export function findReasoningCommitmentDefect(
   const digestTier = isReasoningDigestTier(record.version);
   for (const [i, v] of record.voters.entries()) {
     const where = `voters[${String(i)}] (${v.role})`;
-    const shape = reasoningCommitmentShapeDefect(digestTier, v);
+    const shape = reasoningCommitmentShapeDefect(digestTier, v, record.version === '1.15');
     if (shape !== null) return `${where}: ${shape.message}`;
     if (v.reasoningNonce === undefined || v.reasoning === undefined) {
       if (v.reasoningDigest !== undefined && !redactedRoles.has(v.role)) {
@@ -184,11 +244,14 @@ export function findReasoningCommitmentDefect(
       }
       continue;
     }
-    const recomputed = computeReasoningDigest(v.reasoningNonce, v.reasoning);
+    const recomputed = computeReasoningDigest(
+      v.reasoningNonce,
+      reasoningCommitmentText(record.version, v.reasoning, v.conditions)
+    );
     if (recomputed !== v.reasoningDigest) {
       return (
         `${where}: stored reasoningDigest=${String(v.reasoningDigest)} does not match ` +
-        `sha256(reasoningNonce ‖ reasoning)=${recomputed} — the reasoning was edited without re-committing`
+        `sha256(reasoningNonce ‖ opening)=${recomputed} — the opening was edited without re-committing`
       );
     }
   }

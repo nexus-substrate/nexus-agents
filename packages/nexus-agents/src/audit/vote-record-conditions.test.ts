@@ -5,6 +5,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import type { ConsensusResult, Vote } from '../consensus/types.js';
+import {
+  buildRedactionRecord,
+  redactVoterOpenings,
+  findRedactionDefect,
+} from './redaction-record.js';
+import { computeReasoningDigest } from './reasoning-commitment.js';
 import { parseVoteResponse } from '../cli/voter-response.js';
 import { buildLlmVoteResult } from '../cli/voter-attempt-usage.js';
 import {
@@ -133,7 +139,12 @@ describe('vote record conditions (#7134)', () => {
     if (empty === undefined) throw new Error('Expected an empty-conditions record');
     const { conditions: _conditions, ...voter } = empty.voters[0]!;
     expect(_conditions).toEqual([]);
-    expect(computeVoteRecordHash({ ...empty, voters: [voter] })).not.toBe(empty.hash);
+    // The digest commits to presence; the opening itself remains outside the hash.
+    expect(computeVoteRecordHash({ ...empty, voters: [voter] })).toBe(empty.hash);
+    expect(verifyVoteRecordSet([{ ...empty, voters: [voter] }])).toMatchObject({
+      ok: false,
+      reason: 'hash_mismatch',
+    });
   });
 
   it('detects tampering with a condition as a hash mismatch', () => {
@@ -143,6 +154,80 @@ describe('vote record conditions (#7134)', () => {
     const tampered = { ...record, voters: [{ ...record.voters[0]!, conditions: ['Skip tests'] }] };
     expect(VoteRecordSchema.safeParse(tampered).success).toBe(true);
     expect(verifyVoteRecordSet([tampered])).toMatchObject({ ok: false, reason: 'hash_mismatch' });
+  });
+
+  it('commits reasoning and conditions under the same nonce on every seat in a 1.15 panel', () => {
+    const input = inputFor(['Add tests']);
+    const second = { ...inputFor().votes[0]!, role: 'security' as const };
+    const record = buildVoteRecord({
+      ...input,
+      votes: [...input.votes, second],
+      result: { ...RESULT, voteCounts: { ...RESULT.voteCounts, approve: 2, total: 2 } },
+    });
+    expect(record.voters).toHaveLength(2);
+    expect(record.version).toBe('1.15');
+    for (const voter of record.voters) {
+      expect(voter.reasoningDigest).toBe(
+        computeReasoningDigest(
+          voter.reasoningNonce!,
+          JSON.stringify({ reasoning: voter.reasoning, conditions: voter.conditions })
+        )
+      );
+    }
+    expect(verifyVoteRecordSet([record])).toEqual({ ok: true, recordCount: 1 });
+  });
+
+  it.each(['edited', 'reordered', 'removed', 'empty'] as const)(
+    'detects %s conditions through the commitment while the record hash is unchanged',
+    (change) => {
+      const record = buildVoteRecord(inputFor(['Add tests', 'Document changes']));
+      const voter = { ...record.voters[0]! };
+      if (change === 'edited') voter.conditions = ['Skip tests', 'Document changes'];
+      if (change === 'reordered') voter.conditions = ['Document changes', 'Add tests'];
+      if (change === 'removed') delete voter.conditions;
+      if (change === 'empty') voter.conditions = [];
+      const tampered = { ...record, voters: [voter] };
+      expect(computeVoteRecordHash(tampered)).toBe(record.hash);
+      expect(verifyVoteRecordSet([tampered])).toMatchObject({ ok: false, reason: 'hash_mismatch' });
+    }
+  );
+
+  it('redacts the complete 1.15 opening without changing the hash and requires a named redaction', () => {
+    const record = buildVoteRecord(inputFor(['Remove TESTFAKE private context']));
+    const voters = redactVoterOpenings(record.voters, new Set(['architect']), record.version);
+    const redacted = { ...record, voters };
+    const redaction = buildRedactionRecord({
+      id: 'redaction',
+      sequence: 1,
+      targetId: record.id,
+      targetVoterRoles: ['architect'],
+      at: record.recordedAt,
+      by: 'operator',
+      reason: 'private context',
+    });
+    expect(voters[0]).not.toHaveProperty('conditions');
+    expect(voters[0]).not.toHaveProperty('reasoning');
+    expect(voters[0]).not.toHaveProperty('reasoningNonce');
+    expect(voters[0]?.reasoningDigest).toBe(record.voters[0]?.reasoningDigest);
+    expect(computeVoteRecordHash(redacted)).toBe(record.hash);
+    expect(VoteRecordSchema.safeParse(redacted).success).toBe(true);
+    expect(verifyVoteRecordSet([redacted])).toMatchObject({ ok: false, reason: 'hash_mismatch' });
+    expect(verifyVoteRecordSet([redacted], [redaction])).toMatchObject({
+      ok: true,
+      redacted: [{ recordId: record.id }],
+    });
+    const partial = { ...record.voters[0]! };
+    delete partial.reasoning;
+    delete partial.reasoningNonce;
+    const incomplete = { ...record, voters: [partial] };
+    expect(VoteRecordSchema.safeParse(incomplete).success).toBe(false);
+    expect(verifyVoteRecordSet([incomplete], [redaction])).toMatchObject({
+      ok: false,
+      reason: 'hash_mismatch',
+    });
+    expect(findRedactionDefect([redaction], [incomplete])).toMatchObject({
+      reason: 'redaction_unbound',
+    });
   });
 
   it('verifies a pre-change 1.14 record with its exact original hash', () => {

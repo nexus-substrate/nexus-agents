@@ -76,6 +76,7 @@ import {
   HEX_256_PATTERN,
   findReasoningCommitmentDefect,
   isReasoningDigestTier,
+  isUnhashedReasoningField,
   reasoningCommitmentShapeDefect,
 } from './reasoning-commitment.js';
 import {
@@ -358,7 +359,8 @@ export const VoterSummarySchema = z
     reasoningNonce: z.string().regex(HEX_256_PATTERN).optional(),
     /**
      * `sha256(reasoningNonce ‖ reasoning)` as lowercase hex (#6263, schema
-     * 1.13) — see `computeReasoningDigest` in reasoning-commitment.ts. The
+     * 1.13) — see `computeReasoningDigest` in reasoning-commitment.ts. On
+     * 1.15 the preimage bundles reasoning and conditions via reasoningCommitmentText. The
      * commitment to the text: {@link verifyVoteRecordSet} re-opens it
      * whenever nonce and text are both present, so a text edited without
      * re-committing is a `hash_mismatch` exactly as it was when the text
@@ -376,6 +378,8 @@ export const VoterSummarySchema = z
      * an empty array means explicitly no conditions. Preserve prose, including
      * Unicode, within the caps: at most 20 strings of 2,000 UTF-16 code units
      * each. The response parser visibly marks clipped strings and dropped items.
+     * On 1.15 they share the reasoningNonce/reasoningDigest commitment and
+     * are removed with reasoning and nonce at sanctioned redaction.
      */
     conditions: z
       .array(z.string().max(MAX_VOTER_CONDITION_CHARS))
@@ -464,35 +468,9 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   // 1.14 (#4495): appended, present-only; historical hashes stay unchanged.
   'selectedOption',
   'optionReask',
-  // 1.15 (#7134): appended LAST, present-only; [] remains distinct from absent.
+  // 1.15 (#7134): conditions join the commitment opening; never folded on 1.15.
   'conditions',
 ] as const satisfies readonly (keyof VoterSummary)[]);
-
-/**
- * The 1.13 keys — outside the hash on every TEXT tier, where the schema
- * refuses them anyway (they would be unhashed decoration there).
- */
-const REASONING_TIER_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
-  'reasoningNonce',
-  'reasoningDigest',
-]);
-
-/**
- * The OPENING of the commitment — outside the hash on the DIGEST tier: the
- * raw text and its salt, `reasoningNonce`. Both, not the text alone (#6274
- * panel 1): the hash folds only `reasoningDigest`, so a redaction (#6264) can drop
- * text and nonce together while the hash and any signature over it verify
- * unchanged, and the unknown 256-bit salt keeps the digest an opaque
- * commitment rather than a dictionary target. The clip marker
- * `reasoningTruncated` is a boolean with no privacy content that redaction
- * keeps, so it stays folded on every tier like any other present-only key — an
- * unhashed marker would let "this argument was clipped" be erased from a
- * committed record without `hash_mismatch` (#6274 review).
- */
-const REASONING_OPENING_KEYS: ReadonlySet<keyof VoterSummary> = new Set([
-  'reasoning',
-  'reasoningNonce',
-]);
 
 /** The record's fallback shape; `VoterSummary['fallback']` minus its optionality. */
 type VoterSummaryFallback = NonNullable<VoterSummary['fallback']>;
@@ -554,9 +532,9 @@ export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetr
 
 /**
  * One voter field for the canonical hash. Nested evidence objects are rebuilt
- * by their own projectors; other values, including conditions, are carried as-is.
+ * by their own projectors; 1.15 conditions share the digest opening.
  *
- * `digestTier` (#6263) is the one place the fold depends on the record's
+ * `version` (#6263) is the one place the fold depends on the record's
  * tier: on the digest tier the opening keys (text and nonce) project to
  * ABSENT and the digest is carried; on every other tier the 1.13 keys project
  * to absent and the text is carried exactly as it was — the pinned 1.7–1.12
@@ -566,8 +544,8 @@ export function projectRetriedFrom(r: VoterSummaryRetriedFrom): VoterSummaryRetr
  * change what the hash covers (the schema refuses both shapes; this makes the
  * fold not depend on that refusal).
  */
-function projectVoterField(v: VoterSummary, key: keyof VoterSummary, digestTier: boolean): unknown {
-  if (digestTier ? REASONING_OPENING_KEYS.has(key) : REASONING_TIER_KEYS.has(key)) return undefined;
+function projectVoterField(v: VoterSummary, key: keyof VoterSummary, version: string): unknown {
+  if (isUnhashedReasoningField(version, key)) return undefined;
   if (key === 'fallback') {
     return v.fallback === undefined ? undefined : projectSeatFallback(v.fallback);
   }
@@ -588,10 +566,10 @@ function projectVoterField(v: VoterSummary, key: keyof VoterSummary, digestTier:
  * canonical string byte-identical. The optional flags are `literal(true)`,
  * so `!== undefined` is exactly the old `=== true`.
  */
-function projectVoterSummary(v: VoterSummary, digestTier: boolean): Partial<VoterSummary> {
+function projectVoterSummary(v: VoterSummary, version: string): Partial<VoterSummary> {
   const out: Record<string, unknown> = {};
   for (const key of VOTER_SUMMARY_KEYS) {
-    const value = projectVoterField(v, key, digestTier);
+    const value = projectVoterField(v, key, version);
     if (value !== undefined) out[key] = value;
   }
   return out;
@@ -876,7 +854,7 @@ export const VoteRecordSchema = z
   .superRefine((record, ctx) => {
     const digestTier = isReasoningDigestTier(record.version);
     for (const [i, v] of record.voters.entries()) {
-      const defect = reasoningCommitmentShapeDefect(digestTier, v);
+      const defect = reasoningCommitmentShapeDefect(digestTier, v, record.version === '1.15');
       if (defect !== null) {
         ctx.addIssue({ code: 'custom', path: ['voters', i, defect.key], message: defect.message });
       }
@@ -1008,9 +986,7 @@ export function computeVoteRecordHash(payload: VoteRecordPayload): string {
     // `reasoningNonce` stays outside the hash with the text (the clip marker
     // stays folded); the text is bound by the digest, which
     // `verifyVoteRecordSet` re-opens with the nonce.
-    voters: payload.voters.map((v) =>
-      projectVoterSummary(v, isReasoningDigestTier(payload.version))
-    ),
+    voters: payload.voters.map((v) => projectVoterSummary(v, payload.version)),
     correlationId: payload.correlationId ?? null,
   };
   const canonical = JSON.stringify(foldOptionalFields(base, payload));

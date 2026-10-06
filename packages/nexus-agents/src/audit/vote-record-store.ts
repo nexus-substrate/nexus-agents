@@ -63,11 +63,7 @@ import type {
   VoteRecordPrBinding,
   VoterSummary,
 } from './vote-record.js';
-import {
-  computeReasoningDigest,
-  isReasoningDigestTier,
-  mintReasoningNonce,
-} from './reasoning-commitment.js';
+import { isReasoningDigestTier, buildReasoningCommitment } from './reasoning-commitment.js';
 import type { RedactionRecord } from './redaction-record.js';
 import { RedactionRecordSchema } from './redaction-record.js';
 import {
@@ -206,9 +202,16 @@ function voterEvidence(
       ? { selectedOption: v.selectedOption }
       : {}),
     ...(v.optionReask !== undefined ? { optionReask: { resolved: v.optionReask.resolved } } : {}),
-    // ParsedVote -> result.vote already carries conditions. Preserve [], never clip.
+    // ParsedVote -> result.vote carries visibly bounded conditions. Preserve [].
     ...(v.vote.conditions !== undefined ? { conditions: [...v.vote.conditions] } : {}),
   };
+}
+
+/** Every responding seat shares the panel's commitment tier; no conditions means 1.13. */
+function voterCommitmentVersion(votes: readonly AgentVoteResult[]): '1.13' | '1.15' {
+  return votes.some((v) => v.source !== 'error' && v.vote.conditions !== undefined)
+    ? '1.15'
+    : '1.13';
 }
 
 /** Build the per-voter summary from the (real) agent votes, skipping errors. */
@@ -216,6 +219,7 @@ function toVoterSummaries(
   votes: readonly AgentVoteResult[],
   logger: ILogger | undefined
 ): VoterSummary[] {
+  const version = voterCommitmentVersion(votes);
   const summaries: VoterSummary[] = [];
   for (const v of votes) {
     // An errored voter has no entry here at all; `panelCoverage` names it
@@ -227,7 +231,7 @@ function toVoterSummaries(
       role: v.role,
       decision: vote.decision,
       confidence: vote.confidence,
-      ...reasoningFields(vote.reasoning),
+      ...buildReasoningCommitment(clipForRecord(vote.reasoning), version, vote.conditions),
       // #6050: carried, not dropped. `voter-retry.ts` has set this on every
       // recovered seat since it was written and nothing read it, so the record
       // said "7 of 7 answered cleanly" for a panel that needed a retry.
@@ -255,34 +259,6 @@ function toVoterSummaries(
     });
   }
   return summaries;
-}
-
-/**
- * The stored reasoning, clipped with a marker rather than silently (#5373),
- * and the salted commitment to it (#6263, schema 1.13).
- *
- * A truncated argument that does not say it was truncated is the failure this
- * field exists to fix — on #5228 a contrarian rejection was clipped
- * mid-sentence and its grounds were unrecoverable.
- *
- * The digest is over the text AS STORED — after the clip — so the commitment
- * re-opens from the record alone; a digest over the unclipped text could
- * never be verified once the tail is gone. One fresh nonce per entry.
- */
-function reasoningFields(reasoning: string): {
-  reasoning: string;
-  reasoningTruncated?: true;
-  reasoningNonce: string;
-  reasoningDigest: string;
-} {
-  const { text, truncated } = clipForRecord(reasoning);
-  const reasoningNonce = mintReasoningNonce();
-  return {
-    reasoning: text,
-    ...(truncated === true ? { reasoningTruncated: true as const } : {}),
-    reasoningNonce,
-    reasoningDigest: computeReasoningDigest(reasoningNonce, text),
-  };
 }
 
 /**
