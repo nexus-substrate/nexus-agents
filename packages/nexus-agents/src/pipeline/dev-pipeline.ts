@@ -74,7 +74,7 @@ const logger = createLogger({ component: 'dev-pipeline' });
 /** Agent roles used in the pipeline. */
 export type PipelineRole = 'researcher' | 'architect' | 'pm' | 'coder' | 'qa' | 'security';
 
-/** A task decomposed by the PM, potentially with conditional approval requirements. */
+/** A task decomposed by the PM. */
 export interface PipelineTask {
   readonly id: string;
   readonly title: string;
@@ -84,10 +84,6 @@ export interface PipelineTask {
   readonly feedback?: string;
   /** Implementation text from the code expert (surfaced for harness use). */
   readonly implementation?: string;
-  /** Conditions required for task completion (from conditional_go vote). */
-  readonly conditions?: readonly string[] | undefined;
-  /** Caveats/warnings associated with the task (from conditional_go vote). */
-  readonly caveats?: readonly string[] | undefined;
   /**
    * #3234: deterministic research-maturity `[0,1]` of the run that produced this
    * task, attached after decompose. RECORDED on the routing outcome and measured
@@ -96,43 +92,10 @@ export interface PipelineTask {
   readonly researchMaturity?: number | undefined;
 }
 
-/** Vote result from consensus — discriminated union with conditional approval support. */
+/** Vote result from consensus. */
 export type VoteResult =
   | { readonly kind: 'approved'; readonly approvalPercentage: number }
   | { readonly kind: 'rejected'; readonly feedback: string; readonly approvalPercentage: number }
-  // NO PRODUCTION PATH PRODUCES THIS, UNDER ANY CONFIGURATION (#5768). The only
-  // constructor is `createVoteResult` below, whose sole caller is
-  // dev-pipeline.test.ts; every production vote producer builds the literal
-  // inline and emits only `approved` / `rejected` (iterative-consensus.ts and
-  // agent-executor.ts). FOUR live-looking branches are therefore unreachable:
-  // `extractConditionalMeta`'s check, the plan-loop approval check further
-  // down this file, and the second disjunct of both `isApproved` here and
-  // `isVoteAccepted` in iterative-consensus.ts. `conditions`/`caveats` on a
-  // task are always absent.
-  //
-  // NOT the same kind of inert as `no_quorum` below, and an earlier version of
-  // this note said it was. `no_quorum` is inert under DEFAULT policies but
-  // genuinely reachable when a caller opts into `absolute_quorum` (#4132) — a
-  // real state with a real producer. This one has no producer under any policy.
-  //
-  // The producer side is half-built rather than absent, which is what makes it
-  // look wireable: per-voter `VoteSchema.conditions` exists
-  // (consensus/types-core.ts) and `cli/voter-response.ts` preserves it — but
-  // nothing in `src/consensus/` ever READS it, and 0 of 234 persisted vote
-  // records carry one. Wiring it needs a prompt change plus two governance
-  // decisions (how per-voter conditions aggregate; whether a conditional
-  // approval clears a supermajority bar), not a missing link.
-  //
-  // A 7-voter panel took REMOVE, 5 of 6 approvers (#5768). It is published type
-  // surface, so the deletion (#5969) is a breaking change and needs the
-  // breaking-change bar in .rules/governance.md: supermajority with no
-  // unresolved concrete-defect dissent (#6956).
-  | {
-      readonly kind: 'conditional_go';
-      readonly conditions: readonly string[];
-      readonly caveats: readonly string[];
-      readonly approvalPercentage: number;
-    }
   // #4135: the vote could not reach a valid quorum — a recoverable "re-run the
   // missing voice" state, DISTINCT from a rejection. Only produced when a caller
   // opts into the `absolute_quorum` error policy (or an error-policy short-circuit
@@ -142,40 +105,9 @@ export type VoteResult =
   // `getVoteFeedback` already treat it as not-approved / no-feedback.
   | { readonly kind: 'no_quorum'; readonly reason: string; readonly approvalPercentage: number };
 
-/**
- * Construct VoteResult from legacy approval flow.
- *
- * NO PRODUCTION CALLER (#5768) — only dev-pipeline.test.ts. Its two siblings
- * `isApproved` and `getVoteFeedback` ARE wired (stage-wrappers.ts:16), which is
- * what makes the asymmetry worth recording: this is the only thing that can
- * emit `conditional_go`, so the variant's branches are unreachable while it
- * stays uncalled.
- */
-export function createVoteResult(
-  approved: boolean,
-  feedback: string,
-  approvalPercentage: number,
-  conditions?: readonly string[]
-): VoteResult {
-  if (!approved) {
-    return { kind: 'rejected', feedback, approvalPercentage };
-  }
-  if (conditions !== undefined && conditions.length > 0) {
-    return { kind: 'conditional_go', conditions, caveats: [], approvalPercentage };
-  }
-  return { kind: 'approved', approvalPercentage };
-}
-
-/**
- * Check if vote result is approved (either explicit or conditional).
- *
- * The `conditional_go` disjunct cannot be true in production (#5768) — see the
- * note on `VoteResult`. It stays until the variant is removed in #5969, so that
- * the union and its readers go in one change rather than leaving a case the
- * compiler no longer checks.
- */
+/** Check if the vote result is approved. */
 export function isApproved(result: VoteResult): boolean {
-  return result.kind === 'approved' || result.kind === 'conditional_go';
+  return result.kind === 'approved';
 }
 
 /** Get feedback from vote result (only available for rejected). */
@@ -642,12 +574,7 @@ async function runDevPipelineInner(
   enforceConsensusExecutePolicy(sid, provenance, auditLogger);
 
   // Phase 3: Decompose
-  const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, {
-    conditional: planResult.conditional,
-    conditions: planResult.conditions,
-    caveats: planResult.caveats,
-    researchMaturity,
-  });
+  const tasks = await runOrResumeDecompose(prior, planResult.plan, stages, researchMaturity);
   if (sid !== undefined) saveStageCheckpoint(sid, 'decompose', { type: 'decompose', tasks });
 
   // HARNESS MODE: stop after decompose, return tasks for external implementation (#1704)
@@ -930,9 +857,6 @@ async function runPlanningPhase(
     saveStageCheckpoint(sid, 'vote', {
       type: 'vote',
       approved: true,
-      conditional: planResult.conditional,
-      conditions: planResult.conditions,
-      caveats: planResult.caveats,
       iterations: planResult.iterations,
     });
   }
@@ -1202,25 +1126,13 @@ async function runPlanOrResume(
     return {
       plan: prior.plan,
       iterations: prior.voteIterations ?? 0,
-      conditional: prior.voteConditional ?? false,
-      conditions: prior.voteConditions ?? [],
-      caveats: prior.voteCaveats ?? [],
     };
   }
   return planVoteLoop(task, research, stages, sessionId, limits);
 }
 
-/** Conditional vote metadata for task annotation. */
-interface ConditionalMeta {
-  readonly conditional: boolean;
-  readonly conditions: readonly string[];
-  readonly caveats: readonly string[];
-  /** #3234: research-maturity of the run, attached to each fresh task. */
-  readonly researchMaturity?: number | undefined;
-}
-
 /** Result of the plan/revision loop, including terminal gate evidence. */
-interface PlanVoteResult extends ConditionalMeta {
+interface PlanVoteResult {
   readonly plan: string;
   readonly iterations: number;
   readonly planStatus?: 'empty' | 'no_quorum' | 'unapproved';
@@ -1234,7 +1146,7 @@ async function runOrResumeDecompose(
   prior: PipelineCheckpointState | null,
   plan: string,
   stages: DevPipelineStages,
-  meta: ConditionalMeta
+  researchMaturity: number | undefined
 ): Promise<PipelineTask[]> {
   if (prior?.tasks !== undefined) {
     logger.info('Resuming from checkpoint', { stage: 'decompose' });
@@ -1246,21 +1158,11 @@ async function runOrResumeDecompose(
     return r;
   });
   // #3234: attach research-maturity to every FRESH task (the resume path above
-  // returns prior.tasks untouched, preserving the original maturity). Conditional
-  // fields are added only on a conditional_go vote, as before.
+  // returns prior.tasks untouched, preserving the original maturity).
   return tasks.map((t) => ({
     ...t,
-    ...(meta.conditional ? { conditions: meta.conditions, caveats: meta.caveats } : {}),
-    ...(meta.researchMaturity !== undefined ? { researchMaturity: meta.researchMaturity } : {}),
+    ...(researchMaturity !== undefined ? { researchMaturity } : {}),
   }));
-}
-
-/** Extract conditional metadata from an approved vote. */
-function extractConditionalMeta(vote: VoteResult): ConditionalMeta {
-  if (vote.kind === 'conditional_go') {
-    return { conditional: true, conditions: vote.conditions, caveats: vote.caveats };
-  }
-  return { conditional: false, conditions: [], caveats: [] };
 }
 
 /**
@@ -1294,9 +1196,6 @@ async function planVoteLoop(
       return {
         plan: '',
         iterations: i,
-        conditional: false,
-        conditions: [],
-        caveats: [],
         planStatus: 'empty',
       };
     }
@@ -1314,7 +1213,7 @@ async function planVoteLoop(
     // can correlate to checkpointed sessions on disk. The variable
     // was already in scope at the caller (#dev-pipeline runDevPipeline);
     // threaded through runPlanOrResume → planVoteLoop here.
-    if (vote.kind === 'approved' || vote.kind === 'conditional_go') {
+    if (vote.kind === 'approved') {
       return buildApprovedPlanResult(plan, i, vote, sessionId);
     }
 
@@ -1340,14 +1239,12 @@ function buildApprovedPlanResult(
   vote: Exclude<VoteResult, { kind: 'rejected' | 'no_quorum' }>,
   sessionId: string | undefined
 ): PlanVoteResult {
-  const meta = extractConditionalMeta(vote);
   logger.info('Plan approved', {
     iteration: iterations,
     approval: vote.approvalPercentage,
     sessionId,
-    ...meta,
   });
-  return { plan, iterations, ...meta };
+  return { plan, iterations };
 }
 
 /** Run one stage-aware plan vote so progress/outcome instrumentation remains intact. */
@@ -1392,9 +1289,6 @@ function buildNoQuorumPlanResult(
   return {
     plan,
     iterations,
-    conditional: false,
-    conditions: [],
-    caveats: [],
     planStatus: 'no_quorum',
     planVoteReason: vote.reason,
     planVoteApprovalPercentage: vote.approvalPercentage,
@@ -1418,9 +1312,6 @@ function buildUnapprovedPlanResult(
   return {
     plan,
     iterations,
-    conditional: false,
-    conditions: [],
-    caveats: [],
     planStatus: 'unapproved',
     planVoteApprovalPercentage: approvalPercentage,
     planVoteFeedback: feedback,

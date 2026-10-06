@@ -80,7 +80,7 @@ const DEFAULT_PREFIX = 'pipeline';
  * Run an iterative consensus vote with plan→vote→feedback loop.
  *
  * On rejection, calls `revisePlan` with feedback and re-votes.
- * Stops on approval, conditional_go, or iteration exhaustion.
+ * Stops on approval or iteration exhaustion.
  */
 /** Internal state for the consensus loop. */
 interface ConsensusLoopState {
@@ -210,15 +210,9 @@ async function runConsensusLoop(
 // Helpers
 // ============================================================================
 
-/**
- * Check if a vote result is accepted (approved or conditional_go).
- *
- * The `conditional_go` disjunct cannot be true in production — nothing
- * constructs that variant under any configuration (#5768). Removal is queued
- * as #5969; until then this predicate can only ever answer its first half.
- */
+/** Check if a vote result is approved. */
 function isVoteAccepted(vote: VoteResult): boolean {
-  return vote.kind === 'approved' || vote.kind === 'conditional_go';
+  return vote.kind === 'approved';
 }
 
 /** Extract feedback text from a vote (empty string if not rejected). */

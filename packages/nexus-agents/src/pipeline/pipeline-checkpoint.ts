@@ -41,9 +41,6 @@ export type PipelineStageData =
   | {
       readonly type: 'vote';
       readonly approved: boolean;
-      readonly conditional: boolean;
-      readonly conditions?: readonly string[];
-      readonly caveats?: readonly string[];
       readonly iterations: number;
     }
   | { readonly type: 'decompose'; readonly tasks: readonly PipelineTask[] }
@@ -55,9 +52,6 @@ export interface PipelineCheckpointState {
   readonly research?: string;
   readonly plan?: string;
   readonly voteIterations?: number;
-  readonly voteConditional?: boolean;
-  readonly voteConditions?: readonly string[];
-  readonly voteCaveats?: readonly string[];
   readonly tasks?: readonly PipelineTask[];
   readonly implementedTasks?: readonly PipelineTask[];
   readonly securityPassed?: boolean;
@@ -164,12 +158,10 @@ const PipelineStageSchema = z.enum([
 const PipelineStageDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('research'), text: z.string() }),
   z.object({ type: z.literal('plan'), text: z.string(), iterations: z.number() }),
+  // Unknown keys are stripped: 9.x conditional vote metadata remains loadable (#5969).
   z.object({
     type: z.literal('vote'),
     approved: z.boolean(),
-    conditional: z.boolean(),
-    conditions: z.array(z.string()).optional(),
-    caveats: z.array(z.string()).optional(),
     iterations: z.number(),
   }),
   // PipelineTask shape is loose at the persistence layer — capture as
@@ -255,21 +247,15 @@ function applyPlan(state: Record<string, unknown>, d: { text: string; iterations
   state['voteIterations'] = d.iterations;
 }
 
-/** Fix: vote conditional metadata was saved but never rehydrated (#1734). */
+/** Restore the vote iteration count. */
 function applyVote(
   state: Record<string, unknown>,
   d: {
     approved: boolean;
-    conditional: boolean;
-    conditions?: readonly string[];
-    caveats?: readonly string[];
     iterations: number;
   }
 ): void {
   state['voteIterations'] = d.iterations;
-  state['voteConditional'] = d.conditional;
-  if (d.conditions !== undefined) state['voteConditions'] = d.conditions;
-  if (d.caveats !== undefined) state['voteCaveats'] = d.caveats;
 }
 
 // ============================================================================

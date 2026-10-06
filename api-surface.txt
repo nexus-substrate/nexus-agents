@@ -6533,9 +6533,6 @@ InterfaceDeclaration PipelineCheckpointState
   readonly research?: string | undefined
   readonly securityPassed?: boolean | undefined
   readonly tasks?: readonly PipelineTask[] | undefined
-  readonly voteCaveats?: readonly string[] | undefined
-  readonly voteConditional?: boolean | undefined
-  readonly voteConditions?: readonly string[] | undefined
   readonly voteIterations?: number | undefined
 InterfaceDeclaration PipelineCompletedEvent
   extends BaseEvent
@@ -6631,7 +6628,7 @@ ClassDeclaration PipelineRunner
 TypeAliasDeclaration PipelineStage
   = 'compile' | 'decompose' | 'parse'
 TypeAliasDeclaration PipelineStageData
-  = { readonly approved: boolean; readonly caveats?: readonly string[]; readonly conditional: boolean; readonly conditions?: readonly string[]; readonly iterations: number; readonly type: 'vote'; } | { readonly iterations: number; readonly text: string; readonly type: 'plan'; } | { readonly passed: boolean; readonly type: 'security'; } | { readonly tasks: readonly PipelineTask[]; readonly type: 'decompose'; } | { readonly tasks: readonly PipelineTask[]; readonly type: 'implement'; } | { readonly text: string; readonly type: 'research'; }
+  = { readonly approved: boolean; readonly iterations: number; readonly type: 'vote'; } | { readonly iterations: number; readonly text: string; readonly type: 'plan'; } | { readonly passed: boolean; readonly type: 'security'; } | { readonly tasks: readonly PipelineTask[]; readonly type: 'decompose'; } | { readonly tasks: readonly PipelineTask[]; readonly type: 'implement'; } | { readonly text: string; readonly type: 'research'; }
 InterfaceDeclaration PipelineStartedEvent
   extends BaseEvent
   readonly executionId: string
@@ -6642,8 +6639,6 @@ InterfaceDeclaration PipelineStateSnapshot
   readonly trustTier?: string | undefined
 InterfaceDeclaration PipelineTask
   readonly assignedTo: PipelineRole
-  readonly caveats?: readonly string[] | undefined
-  readonly conditions?: readonly string[] | undefined
   readonly description: string
   readonly feedback?: string | undefined
   readonly id: string
@@ -10140,7 +10135,7 @@ InterfaceDeclaration VoteRejectedSignalEvent
   readonly rejectionRules?: readonly string[] | undefined
   readonly type: "signal.vote_rejected"
 TypeAliasDeclaration VoteResult
-  = { readonly approvalPercentage: number; readonly caveats: readonly string[]; readonly conditions: readonly string[]; readonly kind: 'conditional_go'; } | { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; } | { readonly approvalPercentage: number; readonly kind: 'approved'; } | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; }
+  = { readonly approvalPercentage: number; readonly feedback: string; readonly kind: 'rejected'; } | { readonly approvalPercentage: number; readonly kind: 'approved'; } | { readonly approvalPercentage: number; readonly kind: 'no_quorum'; readonly reason: string; }
 TypeAliasDeclaration VoterExpansionCallback
   = ( proposalId: ProposalId, currentVoterCount: number, requestedCount: number ) => Promise<readonly string[]>
 TypeAliasDeclaration VoterProjectSource
