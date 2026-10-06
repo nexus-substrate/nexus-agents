@@ -223,8 +223,7 @@ function isGenerateObjectResult(value: unknown): value is GenerateObjectResult {
 /**
  * Resolves the API key for a given provider.
  * Priority: explicit config > environment variable. The `custom-openai`
- * key goes through the gateway-env resolver, which honours the deprecated
- * `NEXUS_CUSTOM_API_KEY` alias (#4392 increment 3).
+ * key goes through the canonical gateway-env resolver.
  */
 function resolveApiKey(providerId: SdkProviderId, configKey?: string): string | undefined {
   if (configKey !== undefined) return configKey;

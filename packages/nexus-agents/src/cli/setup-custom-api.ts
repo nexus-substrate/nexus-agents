@@ -149,8 +149,7 @@ const defaultFetcher: HttpFetcher = async (url, init) => {
 
 /**
  * Resolves the API key in priority order: input → env var (the gateway-env
- * resolver: `NEXUS_OPENAI_COMPAT_KEY`, or its deprecated alias
- * `NEXUS_CUSTOM_API_KEY`, #4392 increment 3) → TTY prompt (unless
+ * resolver: `NEXUS_OPENAI_COMPAT_KEY`) → TTY prompt (unless
  * non-interactive, in which case the absence is a fail).
  */
 async function resolveApiKey(input: CustomApiSetupInput): Promise<Result<string, Error>> {

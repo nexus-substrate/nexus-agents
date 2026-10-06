@@ -7,9 +7,7 @@
  * + `NEXUS_OPENAI_COMPAT_KEY` are set, we discover the gateway's models
  * and produce a single `IModelAdapter` that orchestrator/expert tools can
  * use directly. In sandbox mode (#2501), we fail-fast on misconfiguration
- * because there's no human at a CLI prompt to recover. The deprecated
- * `NEXUS_CUSTOM_API_*` pair does NOT reach this path (#4392 increment 3,
- * panel option C): it aliases the single-model `custom-openai` reader only.
+ * because there's no human at a CLI prompt to recover.
  *
  * @module cli-server-gateway
  */
@@ -34,7 +32,7 @@ import {
   setGatewaySlotCatalog,
 } from './adapters/gateway-family-slots.js';
 import { gatewayEndpointRejection } from './adapters/sdk/gateway-cost.js';
-import { hostnameOf, warnDeprecatedGatewayEnvOnce } from './adapters/sdk/gateway-env.js';
+import { hostnameOf } from './adapters/sdk/gateway-env.js';
 import type { IResilientAdapter } from './adapters/resilient-adapter-types.js';
 import { getDefaultCliCircuitBreakerRegistry } from './cli-adapters/cli-circuit-breaker.js';
 import { isEndpointArmId, type EndpointArmId } from './cli-adapters/types-core.js';
@@ -82,10 +80,6 @@ interface WiringOutcome {
  * `retryable`.
  */
 async function wireGatewayOnce(logger: ILogger): Promise<WiringOutcome> {
-  // #4392 increment 3: the ONE deprecated-alias warn, at startup, from the
-  // gateway bootstrap — the operator who set the legacy pair expecting this
-  // path is told here that the rename is what opts in (option C).
-  warnDeprecatedGatewayEnvOnce(process.env, logger);
   const sandboxActive = detectSandbox().active;
   const env = readOpenAICompatEnv();
   if (env === null) {

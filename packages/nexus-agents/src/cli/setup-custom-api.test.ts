@@ -3,7 +3,7 @@ import { CUSTOM_API_DEFAULT_MODEL } from '../config/defaults.js';
 import { configureCustomApi, type HttpFetcher } from './setup-custom-api.js';
 
 describe('configureCustomApi (#2124)', () => {
-  // #4392 inc 3: the key resolves `NEXUS_OPENAI_COMPAT_KEY ?? NEXUS_CUSTOM_API_KEY`.
+  // Isolate the canonical key and the removed alias for negative regressions.
   const KEY_NAMES = ['NEXUS_OPENAI_COMPAT_KEY', 'NEXUS_CUSTOM_API_KEY'] as const;
   const originalKeys = new Map<string, string | undefined>();
 
@@ -121,16 +121,17 @@ describe('configureCustomApi (#2124)', () => {
       expect(result.value.shellFragment).toContain('from-new-env');
     });
 
-    it('still falls back to the deprecated NEXUS_CUSTOM_API_KEY env var', async () => {
-      process.env['NEXUS_CUSTOM_API_KEY'] = 'from-env';
+    it('rejects an old-only NEXUS_CUSTOM_API_KEY as a missing canonical key', async () => {
+      process.env['NEXUS_CUSTOM_API_KEY'] = 'test-from-old-env';
       const { apiKey: _apiKey, ...rest } = minimalInput();
       const result = await configureCustomApi(rest);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value.shellFragment).toContain('from-env');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('NEXUS_OPENAI_COMPAT_KEY');
+      expect(result.error.message).not.toContain('test-from-old-env');
     });
 
-    it('prefers the new key name over the deprecated one when both are set', async () => {
+    it('reads the canonical key and ignores the removed alias when both are set', async () => {
       process.env['NEXUS_OPENAI_COMPAT_KEY'] = 'from-new-env';
       process.env['NEXUS_CUSTOM_API_KEY'] = 'from-old-env';
       const { apiKey: _apiKey, ...rest } = minimalInput();

@@ -208,11 +208,7 @@ describe('readOpenAICompatEnv (#2468 + #2503)', () => {
     expect(result?.apiKey).toBe('sk-test');
   });
 
-  // #4392 inc 3, panel option C: the deprecated NEXUS_CUSTOM_API_* pair is an
-  // alias for the single-model `custom-openai` reader ONLY. This reader — the
-  // gateway path (discovery, in-process voters, the api:<endpoint> arm) — is
-  // reached through its own names, so renaming is what opts an operator in.
-  describe('legacy NEXUS_CUSTOM_API_* pair does not feed this reader (#4392 inc 3, option C)', () => {
+  describe('removed gateway aliases do not feed discovery (#6291 B1)', () => {
     const LEGACY = ['NEXUS_CUSTOM_API_BASE_URL', 'NEXUS_CUSTOM_API_KEY'] as const;
     const saved = new Map<string, string | undefined>();
 

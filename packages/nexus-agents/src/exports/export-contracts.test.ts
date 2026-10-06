@@ -165,7 +165,6 @@ import {
   CORE_PLUGINS,
   registerCorePlugins,
   createCorePluginRegistry,
-  createEventBusBridge,
   evaluatePipelinePolicy,
   getPolicyMode,
   orchestrateInputToTaskContract,
@@ -481,9 +480,12 @@ describe('Export contracts — pipeline V2 types', () => {
     expect(typeof createCorePluginRegistry).toBe('function');
   });
 
-  it('exports createEventBusBridge (Issue #922)', () => {
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- verify the public export retained until 10.0 (#6291)
-    expect(typeof createEventBusBridge).toBe('function');
+  it('removes the deprecated bridge from both pipeline barrels (#6291 B1)', async () => {
+    const publicPipeline = await import('./pipeline.js');
+    const internalPipeline = await import('../pipeline/index.js');
+    expect('createEventBusBridge' in publicPipeline).toBe(false);
+    expect('createEventBusBridge' in internalPipeline).toBe(false);
+    expect(typeof publicPipeline.EventBus.prototype.subscribe).toBe('function');
   });
 
   it('exports evaluatePipelinePolicy (Issue #923)', () => {
