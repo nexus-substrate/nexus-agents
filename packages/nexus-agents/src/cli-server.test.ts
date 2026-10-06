@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { ILogger } from './core/index.js';
+import { UnifiedAdapterRegistry } from './adapters/unified-registry.js';
 import type { ModeDetectionResult, ServerMode } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
 
@@ -516,10 +517,44 @@ describe('startServer', () => {
     const { startServer } = await import('./cli-server.js');
     await startServer(false, 'server', true);
     const { wireGateway } = await import('./cli-server-gateway.js');
-    const { getGlobalRegistry } = await import('./adapters/unified-registry.js');
-    expect(wireGateway).toHaveBeenCalledWith(expect.anything(), getGlobalRegistry());
+    const { resolveDefaultModelAdapter } = await import('./cli-server-gateway.js');
+    expect(wireGateway).toHaveBeenCalledOnce();
+    expect(resolveDefaultModelAdapter).toHaveBeenCalledOnce();
+    expect(vi.mocked(wireGateway).mock.calls[0]![1]).toBe(
+      vi.mocked(resolveDefaultModelAdapter).mock.calls[0]![1]
+    );
     expect(mcpModule.connectTransport).toHaveBeenCalledOnce();
   });
+
+  it.each(['false', 'true'])(
+    'retains both server timeout defaults with gateway routing %s',
+    async (flag) => {
+      vi.stubEnv('NEXUS_ROUTE_GATEWAY_ARMS', flag);
+      const { resetGlobalRegistry, getGlobalRegistry } =
+        await import('./adapters/unified-registry.js');
+      const adapters = await import('./adapters/resilient-adapter.js');
+      resetGlobalRegistry();
+      const created = vi.spyOn(adapters, 'createResilientAdapter');
+      const { startServer } = await import('./cli-server.js');
+
+      await startServer(false, 'server', true);
+      const { wireGateway } = await import('./cli-server-gateway.js');
+      const serverRegistry = vi.mocked(wireGateway).mock.calls[0]?.[1];
+      expect(serverRegistry).toBeInstanceOf(UnifiedAdapterRegistry);
+      expect(serverRegistry).not.toBe(getGlobalRegistry());
+      if (!(serverRegistry instanceof UnifiedAdapterRegistry)) throw new Error('Missing registry');
+      serverRegistry.getAdapterForCli('codex');
+
+      expect(created).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultCliTimeoutMs: 1_800_000 })
+      );
+      created.mockClear();
+      getGlobalRegistry().getAdapterForCli('codex');
+      expect(created.mock.calls[0]?.[0]).not.toHaveProperty('defaultCliTimeoutMs');
+      created.mockRestore();
+      resetGlobalRegistry();
+    }
+  );
 
   it('exits for mesh mode before doing other work', async () => {
     const { startServer } = await import('./cli-server.js');

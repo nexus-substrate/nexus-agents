@@ -38,6 +38,7 @@ import { getDefaultCliCircuitBreakerRegistry } from './cli-adapters/cli-circuit-
 import { isEndpointArmId, type EndpointArmId } from './cli-adapters/types-core.js';
 import { detectSandbox } from './config/sandbox-detection.js';
 import { getGlobalRegistry } from './adapters/unified-registry.js';
+import { parseBoolEnv } from './config/defaults-env.js';
 import { EXIT_CODES } from './cli-types.js';
 
 /**
@@ -215,8 +216,8 @@ export function registerGatewayArm(
       logger,
     })
   );
-  // AFTER registerApiArm: a re-registration disposes the earlier arm, and its
-  // dispose() clears the catalogue — set first, the new catalogue would go too.
+  // Publish only after registration succeeds. The new wrapper already retains
+  // the catalogue, so replacing an earlier wrapper cannot erase its metadata.
   setGatewayCatalog(
     armId,
     adapters.map((a) => a.modelId)
@@ -239,7 +240,17 @@ export async function wireGateway(
 ): Promise<readonly IModelAdapter[] | undefined> {
   const { adapters, retryable } = await wireGatewayOnce(logger);
   const endpoint = readOpenAICompatEndpoint(process.env, logger);
-  registerGatewayArm(adapters, endpoint, registry);
+  const registerArms = (found: readonly IModelAdapter[] | undefined): void => {
+    registerGatewayArm(found, endpoint, registry);
+    // The server's private registry retains its historical 30-minute default.
+    // Router arms live in the global registry, whose CLI timeouts stay per-complexity.
+    // Independent wrappers share the endpoint breaker and are disposed by their owners.
+    if (parseBoolEnv('NEXUS_ROUTE_GATEWAY_ARMS', false)) {
+      const global = getGlobalRegistry();
+      if (global !== registry) registerGatewayArm(found, endpoint, global);
+    }
+  };
+  registerArms(adapters);
   registerFamilySlots(adapters, logger);
   if (!retryable) return adapters;
   // #6608: a gateway that was down at boot is retried lazily. The tools get
@@ -255,7 +266,7 @@ export async function wireGateway(
       logger,
       discover: () => rediscoverGateway(logger),
       onDiscovered: (found) => {
-        registerGatewayArm(found, endpoint, registry);
+        registerArms(found);
         registerFamilySlots(found, logger);
       },
     })

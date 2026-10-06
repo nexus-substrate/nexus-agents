@@ -8,7 +8,7 @@
 
 import { createServer, connectTransport, type EventBusBridgeResult } from './mcp/index.js';
 import { initializeBuiltInTemplates } from './workflows/index.js';
-import { claimGlobalRegistry, type UnifiedAdapterRegistry } from './adapters/unified-registry.js';
+import { createUnifiedRegistry, type UnifiedAdapterRegistry } from './adapters/unified-registry.js';
 import { MCP_TIMEOUTS } from './config/timeouts.js';
 import { exitIfNestedSubprocessServer } from './cli-server-nesting-guard.js';
 import { registerMcpTools } from './cli-server-tools.js';
@@ -269,7 +269,10 @@ async function connectToStdioTransport(
  * (Source: Issue #1149 - Unified Adapter Registry)
  */
 function createAdapterRegistry(logger: ILogger): UnifiedAdapterRegistry {
-  return claimGlobalRegistry(logger, {
+  // The server default adapter has always used a flat orchestrate timeout.
+  // Global consumers keep their separate per-complexity CLI timeouts.
+  return createUnifiedRegistry({
+    logger,
     defaultCliTimeoutMs: MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
   });
 }

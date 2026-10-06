@@ -12,9 +12,9 @@
  *
  * Process-wide by design, like the adapter registry that holds the arm: set
  * once at server bootstrap (`cli-server-gateway.ts` `registerGatewayArm`),
- * read by the cost estimators, cleared when the arm is disposed. Absent is a
- * real value — "no catalogue" keeps the display-slot path — so a missing
- * entry is never synthesised.
+ * read by the cost estimators, cleared when its last wrapper is disposed.
+ * Absent is a real value: without a catalogue or resolved model, bare `priced`
+ * stays unresolved and admission fails closed; no CLI display slot substitutes.
  *
  * @module adapters/sdk/gateway-catalog
  */
@@ -22,6 +22,26 @@
 import type { EndpointArmId } from '../../cli-adapters/types-core.js';
 
 const catalogs = new Map<EndpointArmId, readonly string[]>();
+const owners = new Map<EndpointArmId, Set<object>>();
+
+/** Retain the catalogue for a live wrapper, including wrappers in separate registries. */
+export function retainGatewayCatalog(arm: EndpointArmId, owner: object): void {
+  let retained = owners.get(arm);
+  if (retained === undefined) {
+    retained = new Set<object>();
+    owners.set(arm, retained);
+  }
+  retained.add(owner);
+}
+
+/** Release only a known owner; stale or repeated disposals cannot erase a newer catalogue. */
+export function releaseGatewayCatalog(arm: EndpointArmId, owner: object): void {
+  const retained = owners.get(arm);
+  if (retained?.delete(owner) !== true) return;
+  if (retained.size > 0) return;
+  owners.delete(arm);
+  clearGatewayCatalog(arm);
+}
 
 /**
  * Record the model ids `arm` fronts, in the gateway's listing order (the
@@ -46,8 +66,8 @@ export function getGatewayCatalog(arm: EndpointArmId): readonly string[] | undef
 }
 
 /**
- * Forget `arm`'s catalogue. Called by the arm adapter's `dispose()`, so the
- * catalogue lives exactly as long as the arm it describes (#6403 review).
+ * Forget `arm`'s catalogue. The last live wrapper's release calls this, so
+ * independent registry disposal cannot erase another live wrapper's metadata.
  * Absent is already a real value here, so clearing an unknown arm is a no-op.
  */
 export function clearGatewayCatalog(arm: EndpointArmId): void {
@@ -57,4 +77,5 @@ export function clearGatewayCatalog(arm: EndpointArmId): void {
 /** Test-only: forget every catalogue so suites do not leak into each other. */
 export function _resetGatewayCatalogs(): void {
   catalogs.clear();
+  owners.clear();
 }

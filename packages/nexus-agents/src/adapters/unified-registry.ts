@@ -383,15 +383,13 @@ export function createUnifiedRegistry(config?: UnifiedRegistryConfig): UnifiedAd
 /**
  * Claim the global registry for a process entry point, choosing its logger
  * and initial settings (#6012, #7151). First claim wins; later claims reuse
- * that configuration silently. Unlike getGlobalRegistry(config), they do
- * not attempt reconfiguration.
+ * that configuration. Later non-empty settings are warned about because
+ * they cannot be applied; a logger-only claim remains silent and idempotent.
  *
  * That difference is the point. There is not exactly one composition root: the
  * bundled CLI enters through `cli.ts main()`, and an embedder can start the MCP
- * server directly without it. Both should be able to claim, first-one-wins,
- * without the second producing a warning an operator cannot act on — which is
- * what a config-passing `getGlobalRegistry` call does, and is the noise this
- * whole change removes.
+ * server directly without it. Roots may name a logger without reconfiguration;
+ * explicitly supplied settings must never be silently discarded.
  *
  * This does NOT provide per-caller log attribution: the singleton has one
  * logger. It makes that one logger a deliberate choice rather than a
@@ -401,7 +399,16 @@ export function claimGlobalRegistry(
   logger: ILogger,
   config?: Omit<UnifiedRegistryConfig, 'logger'>
 ): UnifiedAdapterRegistry {
-  globalRegistry ??= new UnifiedAdapterRegistry({ ...config, logger });
+  if (globalRegistry === undefined) {
+    globalRegistry = new UnifiedAdapterRegistry({ ...config, logger });
+  } else if (config !== undefined && Object.keys(config).length > 0) {
+    logger.warn(
+      'UnifiedAdapterRegistry claim ignored configuration: singleton already initialized',
+      {
+        providedKeys: Object.keys(config),
+      }
+    );
+  }
   return globalRegistry;
 }
 

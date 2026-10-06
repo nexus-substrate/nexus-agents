@@ -27,12 +27,11 @@ import type {
   CompletionResponse,
   IModelAdapter,
   ILogger,
-  ModelError,
   ModelMetadata,
   Result,
   StreamChunk,
 } from '../core/index.js';
-import { ConfigError, getTimeProvider } from '../core/index.js';
+import { ConfigError, ModelError, ErrorCode, err, ok, getTimeProvider } from '../core/index.js';
 import type { CircuitBreakerRegistry } from '../cli-adapters/circuit-breaker.js';
 import { mapModelErrorToCategory } from '../cli-adapters/circuit-breaker.js';
 import type { EndpointArmId } from '../cli-adapters/types-core.js';
@@ -43,7 +42,7 @@ import {
   toRateLimitError,
 } from './rate-limit-detector.js';
 import type { AdapterHealthInfo, IResilientAdapter } from './resilient-adapter-types.js';
-import { clearGatewayCatalog } from './sdk/gateway-catalog.js';
+import { releaseGatewayCatalog, retainGatewayCatalog } from './sdk/gateway-catalog.js';
 import { resolveGatewayDefault } from './gateway-family-slots.js';
 
 /** What the arm needs from its host: the SHARED breaker registry and a logger. */
@@ -78,12 +77,15 @@ export function createGatewayArmAdapter(
 
 class GatewayArmAdapter implements IResilientAdapter {
   private readonly selectedAt = new Date();
+  private resolvedDelegate: IModelAdapter | undefined;
 
   constructor(
     private readonly armId: EndpointArmId,
     private readonly models: readonly IModelAdapter[],
     private readonly deps: GatewayArmDeps
-  ) {}
+  ) {
+    retainGatewayCatalog(armId, this);
+  }
 
   /**
    * The gateway-arm marker (#4392 step 4, `isGatewayModelAdapter`): a
@@ -97,15 +99,15 @@ class GatewayArmAdapter implements IResilientAdapter {
   // --- IModelAdapter (forwarded to the delegate) ---
 
   get providerId(): string {
-    return this.delegate.providerId;
+    return this.requireDelegate().providerId;
   }
 
   get modelId(): string {
-    return this.delegate.modelId;
+    return this.requireDelegate().modelId;
   }
 
   get capabilities(): IModelAdapter['capabilities'] {
-    return this.delegate.capabilities;
+    return this.requireDelegate().capabilities;
   }
 
   /**
@@ -118,7 +120,11 @@ class GatewayArmAdapter implements IResilientAdapter {
    * sat half-open forever with any single error re-opening it.
    */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
-    const delegate = this.delegate;
+    const resolved = this.resolveDelegate();
+    if (!resolved.ok) {
+      return err(new ModelError(resolved.error.message, { code: ErrorCode.MODEL_UNAVAILABLE }));
+    }
+    const delegate = resolved.value;
     const result = await delegate.complete(request);
     if (result.ok) {
       this.deps.circuitBreakerRegistry.getArmBreaker(this.armId).recordSuccess();
@@ -129,15 +135,16 @@ class GatewayArmAdapter implements IResilientAdapter {
   }
 
   stream(request: CompletionRequest): AsyncIterable<StreamChunk> {
-    return this.delegate.stream(request);
+    return this.requireDelegate().stream(request);
   }
 
   countTokens(text: string): Promise<number> {
-    return this.delegate.countTokens(text);
+    return this.requireDelegate().countTokens(text);
   }
 
   validateConfig(): Result<void, ConfigError> {
-    return this.delegate.validateConfig();
+    const resolved = this.resolveDelegate();
+    return resolved.ok ? resolved.value.validateConfig() : resolved;
   }
 
   /** The whole catalogue, not the delegate alone — that is what the arm fronts. */
@@ -181,29 +188,37 @@ class GatewayArmAdapter implements IResilientAdapter {
 
   /**
    * No listeners or timers are held; the breaker outlives the arm on purpose
-   * (a re-registered gateway keeps its failure history). The catalogue does
-   * not: it describes THIS arm's models, so it goes when the arm goes
-   * (`UnifiedAdapterRegistry.dispose()`, or the re-registration that disposes
-   * the earlier adapter). The re-registering caller therefore sets the new
-   * catalogue AFTER `registerApiArm`, never before.
+   * (a re-registered gateway keeps its failure history). The shared catalogue
+   * stays while any registry owns a live wrapper for this endpoint. Repeated
+   * disposal is harmless, and a wrapper retained before replacement prevents
+   * disposal of the earlier wrapper from clearing the endpoint's metadata.
    */
   dispose(): void {
-    clearGatewayCatalog(this.armId);
+    releaseGatewayCatalog(this.armId, this);
   }
 
   // --- Private ---
 
-  /** Resolve lazily: wireGateway registers the family catalogue AFTER the arm. */
-  private get delegate(): IModelAdapter {
+  /** Resolve lazily after bootstrap, and pin a successful default to this arm. */
+  private resolveDelegate(): Result<IModelAdapter, ConfigError> {
+    if (this.resolvedDelegate !== undefined) return ok(this.resolvedDelegate);
     const resolved = resolveGatewayDefault(process.env, this.deps.logger);
     if (resolved.kind !== 'resolved') {
-      throw new ConfigError(`Gateway arm ${this.armId} has no chat default`);
+      return err(new ConfigError(`Gateway arm ${this.armId} has no chat default`));
     }
     const delegate = this.models.find((model) => model === resolved.adapter);
     if (delegate === undefined) {
-      throw new ConfigError(`Gateway default does not belong to arm ${this.armId}`);
+      return err(new ConfigError(`Gateway default does not belong to arm ${this.armId}`));
     }
-    return delegate;
+    this.resolvedDelegate = delegate;
+    return ok(delegate);
+  }
+
+  /** Metadata and streaming interfaces cannot carry a Result error. */
+  private requireDelegate(): IModelAdapter {
+    const resolved = this.resolveDelegate();
+    if (!resolved.ok) throw resolved.error;
+    return resolved.value;
   }
 
   /**

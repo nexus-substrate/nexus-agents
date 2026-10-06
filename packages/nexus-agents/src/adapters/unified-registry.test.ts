@@ -461,7 +461,7 @@ describe('UnifiedAdapterRegistry — routing re-resolves on read (#3185)', () =>
 
 describe('the registry singleton has a designated composition root (#6012)', () => {
   /** Files allowed to CLAIM the singleton (choose its logger), relative to src/. */
-  const COMPOSITION_ROOTS = ['cli.ts', 'cli-server.ts', 'mcp/server.ts'];
+  const COMPOSITION_ROOTS = ['cli.ts', 'mcp/server.ts'];
 
   function sourceFiles(dir: string, acc: string[] = []): string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -515,6 +515,24 @@ describe('the registry singleton has a designated composition root (#6012)', () 
         circuitBreakerRegistry: getDefaultCliCircuitBreakerRegistry(),
       })
     );
+    created.mockRestore();
+  });
+
+  it('warns when a later claim supplies configuration that cannot be applied', () => {
+    resetGlobalRegistry();
+    vi.clearAllMocks();
+    const first = claimGlobalRegistry(mockLogger);
+
+    const later = claimGlobalRegistry(mockLogger, { defaultCliTimeoutMs: 1_800_000 });
+
+    expect(later).toBe(first);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'UnifiedAdapterRegistry claim ignored configuration: singleton already initialized',
+      { providedKeys: ['defaultCliTimeoutMs'] }
+    );
+    const created = vi.spyOn(resilientAdapters, 'createResilientAdapter');
+    later.getAdapterForCli('codex');
+    expect(created.mock.calls[0]?.[0]).not.toHaveProperty('defaultCliTimeoutMs');
     created.mockRestore();
   });
 });

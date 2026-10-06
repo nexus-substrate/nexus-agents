@@ -23,7 +23,6 @@ import './cli/suppress-sqlite-warning.js';
 import { parseArgs } from 'node:util';
 import { createLogger } from './core/index.js';
 import { claimGlobalRegistry } from './adapters/unified-registry.js';
-import { MCP_TIMEOUTS } from './config/timeouts.js';
 import {
   EXIT_CODES,
   PARSE_ARGS_CONFIG,
@@ -166,9 +165,7 @@ async function main(): Promise<void> {
   // This does NOT give per-caller attribution — a singleton has one logger, and
   // that would need the logger passed per operation. What it buys is that the
   // one logger is chosen deliberately here rather than by a race.
-  claimGlobalRegistry(createLogger({ component: 'nexus-cli' }), {
-    defaultCliTimeoutMs: MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
-  });
+  claimGlobalRegistry(createLogger({ component: 'nexus-cli' }));
 
   let parsedArgs: ParsedCliArgs;
 
