@@ -202,23 +202,6 @@ export type {
   CompositeRouterStats,
 } from './composite-router.js';
 
-// Routing Memory types (moved from core/types - Issue #286)
-export { RoutingMemoryError } from './routing-memory-types.js';
-export type {
-  IRoutingMemory,
-  TaskProfileSummary,
-  RoutingDecisionRecord,
-  TaskOutcomeRecord,
-  PreferenceSignal,
-  PreferenceRecord,
-  PreferenceFilter,
-  ExperienceStep,
-  ExperienceRecord,
-  ActionRecord,
-  RoutingMemoryExport,
-  RoutingMemoryStats,
-} from './routing-memory-types.js';
-
 // PreferenceRouter - Preference-Trained Routing (Issue #148, arXiv:2406.18665)
 export {
   PreferenceRouter,
