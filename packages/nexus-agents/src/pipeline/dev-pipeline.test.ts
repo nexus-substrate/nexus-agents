@@ -3,8 +3,12 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { loadCheckpointState } from './pipeline-checkpoint.js';
 import { researchContextFromText } from './research-context.js';
-import { runDevPipeline, isApproved, createVoteResult, getVoteFeedback } from './dev-pipeline.js';
+import { runDevPipeline, isApproved, getVoteFeedback } from './dev-pipeline.js';
 import { getPipelineEventBus } from './event-bus.js';
 import { PolicyBlockedError } from './policy-evaluator.js';
 import type { PipelineStateSnapshot } from './policy-engine.js';
@@ -124,6 +128,60 @@ function createMockStages(overrides?: Partial<DevPipelineStages>): DevPipelineSt
 }
 
 describe('runDevPipeline', () => {
+  it('resumes a 9.x checkpoint containing voteConditions without conditional task fields (#5969)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pipeline-9x-resume-'));
+    vi.stubEnv('NEXUS_DATA_DIR', dir);
+    try {
+      const sessionId = 'legacy-9x';
+      const checkpointDir = join(dir, 'checkpoints');
+      mkdirSync(checkpointDir);
+      const entries = [
+        { type: 'research', text: 'Saved research' },
+        { type: 'plan', text: 'Saved 9.x plan', iterations: 2 },
+        {
+          type: 'vote',
+          approved: true,
+          conditional: true,
+          conditions: ['Add tests'],
+          caveats: ['Legacy warning'],
+          voteConditions: ['Add tests'],
+          voteCaveats: ['Legacy warning'],
+          voteConditional: true,
+          iterations: 2,
+        },
+      ].map((data) => ({ sessionId, stage: data.type, timestamp: '2026-10-01T00:00:00Z', data }));
+      writeFileSync(
+        join(checkpointDir, `pipeline-${sessionId}.jsonl`),
+        entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n'
+      );
+
+      const stages = createMockStages();
+      const result = await runDevPipeline('Resume feature', stages, { sessionId, mode: 'harness' });
+
+      expect(result.plan).toBe('Saved 9.x plan');
+      expect(result.voteIterations).toBe(2);
+      expect(stages.research).not.toHaveBeenCalled();
+      expect(stages.plan).not.toHaveBeenCalled();
+      expect(stages.vote).not.toHaveBeenCalled();
+      expect(stages.decompose).toHaveBeenCalledWith('Saved 9.x plan', expect.any(AbortSignal));
+      expect(result.tasks).toHaveLength(2);
+      for (const task of result.tasks) {
+        expect(task).not.toHaveProperty('conditions');
+        expect(task).not.toHaveProperty('caveats');
+      }
+      expect(loadCheckpointState(sessionId)).toEqual({
+        research: 'Saved research',
+        plan: 'Saved 9.x plan',
+        voteIterations: 2,
+        tasks: result.tasks,
+        lastCompletedStage: 'decompose',
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('completes full pipeline when all stages pass', async () => {
     const stages = createMockStages();
     const result = await runDevPipeline('Build feature X', stages);
@@ -1319,21 +1377,13 @@ describe('runDevPipeline — durable policy-audit persistence (#3710)', () => {
   });
 });
 
-describe('vote-verdict deciders (#4174) — isApproved / createVoteResult / getVoteFeedback', () => {
-  // These three gate pipeline progression (isApproved consumed at the vote
+describe('vote-verdict deciders (#4174) — isApproved / getVoteFeedback', () => {
+  // These helpers gate pipeline progression (isApproved consumed at the vote
   // stage); the #4135 contract — no_quorum is NOT an approval and carries no
   // reviewer feedback — was previously documented in a comment but unpinned.
 
-  it('isApproved: approved and conditional_go are approvals', () => {
+  it('isApproved: approved is an approval', () => {
     expect(isApproved({ kind: 'approved', approvalPercentage: 100 })).toBe(true);
-    expect(
-      isApproved({
-        kind: 'conditional_go',
-        conditions: ['add tests'],
-        caveats: [],
-        approvalPercentage: 80,
-      })
-    ).toBe(true);
   });
 
   it('isApproved: rejected is not an approval', () => {
@@ -1351,49 +1401,12 @@ describe('vote-verdict deciders (#4174) — isApproved / createVoteResult / getV
       getVoteFeedback({ kind: 'rejected', feedback: 'fix the API', approvalPercentage: 30 })
     ).toBe('fix the API');
     expect(getVoteFeedback({ kind: 'approved', approvalPercentage: 100 })).toBe('');
-    expect(
-      getVoteFeedback({
-        kind: 'conditional_go',
-        conditions: ['c'],
-        caveats: [],
-        approvalPercentage: 75,
-      })
-    ).toBe('');
   });
 
   it('getVoteFeedback: no_quorum carries NO feedback (#4135 — must not feed plan revision)', () => {
     expect(
       getVoteFeedback({ kind: 'no_quorum', reason: 'panel degraded', approvalPercentage: 0 })
     ).toBe('');
-  });
-
-  it('createVoteResult: not-approved maps to rejected with feedback preserved', () => {
-    const r = createVoteResult(false, 'needs rework', 40);
-    expect(r).toEqual({ kind: 'rejected', feedback: 'needs rework', approvalPercentage: 40 });
-  });
-
-  it('createVoteResult: approved with conditions maps to conditional_go', () => {
-    const r = createVoteResult(true, '', 85, ['pin versions']);
-    expect(r).toEqual({
-      kind: 'conditional_go',
-      conditions: ['pin versions'],
-      caveats: [],
-      approvalPercentage: 85,
-    });
-  });
-
-  it('createVoteResult: approved with empty/absent conditions maps to plain approved', () => {
-    expect(createVoteResult(true, '', 90)).toEqual({ kind: 'approved', approvalPercentage: 90 });
-    expect(createVoteResult(true, '', 90, [])).toEqual({
-      kind: 'approved',
-      approvalPercentage: 90,
-    });
-  });
-
-  it('createVoteResult can never manufacture no_quorum (only error policies produce it)', () => {
-    for (const approved of [true, false]) {
-      expect(createVoteResult(approved, 'x', 50).kind).not.toBe('no_quorum');
-    }
   });
 });
 

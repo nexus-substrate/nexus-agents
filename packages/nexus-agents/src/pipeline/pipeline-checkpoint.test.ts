@@ -73,28 +73,52 @@ describe('saveStageCheckpoint + loadCheckpointState', () => {
     expect(state?.lastCompletedStage).toBe('decompose');
   });
 
-  it('round-trips vote checkpoint with conditional metadata (#1734)', () => {
-    const sid = 'test-vote-conditional';
+  it('round-trips vote checkpoint without conditional metadata (#5969)', () => {
+    const sid = 'test-vote';
     saveStageCheckpoint(
       sid,
       'vote',
       {
         type: 'vote',
         approved: true,
-        conditional: true,
-        conditions: ['Must validate builds'],
-        caveats: ['High maintenance'],
         iterations: 2,
       },
       TEST_DIR
     );
 
     const state = loadCheckpointState(sid, TEST_DIR);
-    expect(state?.voteIterations).toBe(2);
-    expect(state?.voteConditional).toBe(true);
-    expect(state?.voteConditions).toEqual(['Must validate builds']);
-    expect(state?.voteCaveats).toEqual(['High maintenance']);
-    expect(state?.lastCompletedStage).toBe('vote');
+    expect(state).toEqual({ voteIterations: 2, lastCompletedStage: 'vote' });
+    const entry = JSON.parse(
+      fs.readFileSync(path.join(TEST_DIR, `pipeline-${sid}.jsonl`), 'utf-8')
+    ) as { data: unknown };
+    expect(entry.data).toEqual({ type: 'vote', approved: true, iterations: 2 });
+  });
+
+  it.each([false, true])('ignores 9.x conditional metadata (conditional=%s)', (conditional) => {
+    const sid = 'test-9x-vote';
+    fs.mkdirSync(TEST_DIR, { recursive: true });
+    const entry = {
+      sessionId: sid,
+      stage: 'vote',
+      timestamp: '2026-10-01T00:00:00Z',
+      data: {
+        type: 'vote',
+        approved: true,
+        conditional,
+        conditions: ['Must validate builds'],
+        caveats: ['High maintenance'],
+        voteConditional: conditional,
+        voteConditions: ['Must validate builds'],
+        voteCaveats: ['High maintenance'],
+        iterations: 2,
+      },
+    };
+    fs.writeFileSync(path.join(TEST_DIR, `pipeline-${sid}.jsonl`), JSON.stringify(entry) + '\n');
+
+    expect(loadCheckpointState(sid, TEST_DIR)).toEqual({
+      voteIterations: 2,
+      lastCompletedStage: 'vote',
+    });
   });
 
   it('returns null for non-existent session', () => {
