@@ -111,6 +111,65 @@ const votes: readonly AgentVoteResult[] = [
 ];
 
 describe('buildVoteRecord', () => {
+  it.each([true, false])(
+    'persists per-seat option re-ask resolution %s in schema 1.14, hash-covered',
+    (resolved) => {
+      const seat = {
+        ...agentVote('architect', 'approve'),
+        optionReask: { resolved },
+        ...(resolved ? { selectedOption: 'A' } : {}),
+      };
+      const record = buildVoteRecord({
+        id: 'option-reask',
+        proposal: 'Choose A or B',
+        strategy: 'simple_majority',
+        result: consensusResult(),
+        votes: [seat],
+        declaredOptions: ['A', 'B'],
+        resolvedDecision: resolved ? 'approved' : 'rejected',
+        sequence: 0,
+        previousHash: undefined,
+      });
+      expect(record.version).toBe('1.14');
+      expect(record.voters[0]).toHaveProperty('optionReask', { resolved });
+      if (resolved) expect(record.voters[0]).toHaveProperty('selectedOption', 'A');
+      else expect(record.voters[0]).not.toHaveProperty('selectedOption');
+      expect(record.optionCoverage).toEqual({
+        approverCount: 1,
+        selectedCount: resolved ? 1 : 0,
+        unattributedApprovals: resolved ? 0 : 1,
+      });
+      const read = parseVoteRecordsText(serializeValidatedRecord(VoteRecordSchema, record, 'vote'));
+      expect(read.records).toEqual([record]);
+      expect(read.invalidLines).toEqual([]);
+      expect(verifyVoteRecordSet(read.records)).toEqual({ ok: true, recordCount: 1 });
+      const tampered = {
+        ...record,
+        voters: [{ ...record.voters[0]!, optionReask: { resolved: !resolved } }],
+      };
+      expect(computeVoteRecordHash(tampered)).not.toBe(record.hash);
+    }
+  );
+
+  it('persists first-pass option selections with no re-ask marker', () => {
+    const record = buildVoteRecord({
+      id: 'first-option',
+      proposal: 'Choose A or B',
+      strategy: 'simple_majority',
+      result: consensusResult(),
+      votes: [{ ...agentVote('architect', 'approve'), selectedOption: 'A' }],
+      declaredOptions: ['A', 'B'],
+      resolvedDecision: 'approved',
+      sequence: 0,
+      previousHash: undefined,
+    });
+    expect(record.version).toBe('1.14');
+    expect(record.voters[0]).toHaveProperty('selectedOption', 'A');
+    expect(record.voters[0]).not.toHaveProperty('optionReask');
+    const tampered = { ...record, voters: [{ ...record.voters[0]!, selectedOption: 'B' }] };
+    expect(computeVoteRecordHash(tampered)).not.toBe(record.hash);
+  });
+
   it('carries the proposal hash, decision, counts, per-voter summary, and a sequence', () => {
     const record = buildVoteRecord({
       // #4986: these fixtures exercise the fallback derivation.
@@ -250,7 +309,7 @@ describe('buildVoteRecord', () => {
     });
     // #4472: a tally now always travels with its coverage, so a record
     // carrying one is 1.4. Historical 1.3 records still verify.
-    expect(record.version).toBe(BUILT_TIER); // the voter tier outranks 1.4
+    expect(record.version).toBe('1.14'); // per-seat selections outrank coverage
     // The fixture's third voter is catfish(reject) and was assigned 'C'. Only
     // approvers count — this expectation previously asserted `C: 1`, encoding
     // the very defect e2e validation later surfaced in a live record.
@@ -429,6 +488,9 @@ describe('persistVoteRecord', () => {
           model: 'codex-5.3',
           // #6967: the model the adapter reported serving.
           servedModel: 'codex-5.3-mini',
+          // #4495: supplementary option evidence on the maximal schema fixture.
+          selectedOption: 'A',
+          optionReask: { resolved: true },
           source: 'unverifiable',
           unverifiableSignal: 'stderr',
           // #6115: where the seat was assigned, and that it answered elsewhere.
@@ -461,6 +523,8 @@ describe('persistVoteRecord', () => {
       errorTruncated: true,
     });
     expect(entry.servedModel).toBe('codex-5.3-mini');
+    expect(entry.selectedOption).toBe('A');
+    expect(entry.optionReask).toEqual({ resolved: true });
     expect(Object.keys(entry).sort()).toEqual(Object.keys(VoterSummarySchema.shape).sort());
   });
 

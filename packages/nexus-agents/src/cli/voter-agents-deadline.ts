@@ -13,7 +13,12 @@
  * stays deterministic.
  */
 import type { IModelAdapter, ILogger } from '../core/index.js';
-import type { AgentVoteResult, SeatAttemptTiming, VoterRole } from './vote-types.js';
+import type {
+  AgentVoteResult,
+  SeatAttemptTiming,
+  VoterRole,
+  VoteExecutionOverrides,
+} from './vote-types.js';
 import { createErrorVoteResult, delay } from './voter-execution.js';
 import { crossCliFallback, withAssignedCli } from './voter-fallback.js';
 import { carryAttemptUsage } from './voter-attempt-usage.js';
@@ -25,6 +30,7 @@ import {
 } from './voter-attempt-events.js';
 import { observeLateVoter } from './voter-late-settlement.js';
 import { getMcpSafeDeadlineMs, VOTE_TIMEOUTS } from '../config/timeouts.js';
+import { reaskUnresolvedOption } from './voter-option-reask.js';
 
 /** Worst-case legitimate vote time plus stagger and buffer (#1871). */
 export function computeOverallConsensusDeadlineMs(
@@ -62,7 +68,10 @@ export function resolvePanelDeadline(
   return { overallDeadlineMs, deadlineAtMs: Date.now() + overallDeadlineMs };
 }
 
-export interface VoteOptions {
+export interface VoteOptions extends Pick<
+  VoteExecutionOverrides,
+  'declaredOptions' | 'project' | 'workspace' | 'workspaceSha'
+> {
   readonly timeoutMs: number;
   readonly maxRetries: number;
   readonly allowSimulation: boolean;
@@ -291,6 +300,7 @@ function voteBeforeDeadline(
   }
   const observer = observeLateVoter(adapter, role, input.logger);
   const collector = new VoterAttemptCollector();
+  const deadlineAtMs = Date.now() + remaining;
   const result = raceWithDeadline(
     (signal) => {
       observer.register(signal);
@@ -316,7 +326,34 @@ function voteBeforeDeadline(
       }
     }
   );
-  return result.then((vote) => withVoterAttemptTelemetry(vote, () => collector.snapshot()));
+  return result.then((vote) =>
+    finishOptionSelection(vote, input, { adapter, collector, deadlineAtMs })
+  );
+}
+
+/** The received verdict survives a supplementary selection timeout. */
+function finishOptionSelection(
+  vote: AgentVoteResult,
+  input: LaunchVotesInput,
+  context: { adapter: IModelAdapter; collector: VoterAttemptCollector; deadlineAtMs: number }
+): Promise<AgentVoteResult> {
+  const seat = withVoterAttemptTelemetry(
+    vote,
+    () => vote.attemptTelemetry ?? context.collector.snapshot()
+  );
+  const settings = input.voteOptions;
+  return reaskUnresolvedOption(seat, {
+    adapter: context.adapter,
+    proposal: input.proposal,
+    logger: input.logger,
+    timeoutMs: Math.min(settings.timeoutMs, Math.max(1, context.deadlineAtMs - Date.now())),
+    options: settings.declaredOptions,
+    project: settings.project,
+    workspace: settings.workspace,
+    workspaceSha: settings.workspaceSha,
+    signal: input.signal,
+    withinRoleRetry: settings.withinRoleRetry === true || settings.attemptKind === 'role_retry',
+  });
 }
 
 async function launchRoleVote(

@@ -214,6 +214,8 @@ export interface AgentVoteResult {
    * without parsing free-text `reasoning`.
    */
   readonly selectedOption?: string | undefined;
+  /** Present only after the single option-selection re-ask (#4495). */
+  readonly optionReask?: { readonly resolved: boolean } | undefined;
   /**
    * True when this vote came from the per-role retry of an errored seat
    * (#5578). A first-attempt vote never carries it.

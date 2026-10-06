@@ -360,6 +360,10 @@ export const VoterSummarySchema = z
      * cannot fail.
      */
     reasoningDigest: z.string().regex(HEX_256_PATTERN).optional(),
+    /** Declared option selected by this seat (#4495, schema 1.14). */
+    selectedOption: z.string().min(1).optional(),
+    /** Present only when the approving seat was re-asked once (#4495). */
+    optionReask: z.object({ resolved: z.boolean() }).strict().optional(),
   })
   .strict();
 export type VoterSummary = z.infer<typeof VoterSummarySchema>;
@@ -440,6 +444,9 @@ const VOTER_SUMMARY_KEYS = defineVoterKeys([
   'reasoningDigest',
   // #6951: appended and present-only, preserving hashes without a served model.
   'servedModel',
+  // 1.14 (#4495): appended, present-only; historical hashes stay unchanged.
+  'selectedOption',
+  'optionReask',
 ] as const satisfies readonly (keyof VoterSummary)[]);
 
 /**
@@ -547,6 +554,10 @@ function projectVoterField(v: VoterSummary, key: keyof VoterSummary, digestTier:
   }
   if (key === 'retriedFrom') {
     return v.retriedFrom === undefined ? undefined : projectRetriedFrom(v.retriedFrom);
+  }
+  if (key === 'optionReask' && v.optionReask !== undefined) {
+    const { resolved, ...rest } = v.optionReask;
+    return { resolved, ...noUnprojectedKeys(rest) };
   }
   return v[key];
 }
@@ -657,7 +668,8 @@ export const VoteRecordSchema = z
      * (#6246); '1.13' the per-voter `reasoningNonce` + `reasoningDigest`
      * and — the one tier that changes what an EXISTING key means to the
      * hash — folds those instead of `reasoning` (#6263; the clip marker
-     * `reasoningTruncated` stays folded). Every tier is accepted — a 1.1 record
+     * `reasoningTruncated` stays folded). '1.14' adds per-seat selections and
+     * re-ask outcomes (#4495), keeping the digest fold. Every tier is accepted — a 1.1 record
      * (no `ratifies`) verifies unchanged because each optional is folded into
      * the self-hash ONLY when present (see {@link computeVoteRecordHash}).
      * Tiers are labels, not ordered numbers: '1.10' follows '1.9' by
@@ -677,6 +689,7 @@ export const VoteRecordSchema = z
       '1.11',
       '1.12',
       '1.13',
+      '1.14',
     ]),
     /** Unique record id (also usable as a `ratificationVoteRef`). */
     id: z.string().min(1),
