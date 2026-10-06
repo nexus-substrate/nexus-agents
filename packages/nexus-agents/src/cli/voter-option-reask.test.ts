@@ -3,7 +3,11 @@ import { type CompletionRequest, type IModelAdapter, type ILogger } from '../cor
 import { ModelError } from '../core/index.js';
 import { tallyOptions } from '../consensus/option-tally.js';
 import { collectRealVotes, executeAgentVote } from './voter-agents.js';
-import { launchVotesWithOverallDeadline } from './voter-agents-deadline.js';
+import {
+  launchVotesWithOverallDeadline,
+  reaskUnresolvedOptions,
+  type LaunchVotesInput,
+} from './voter-agents-deadline.js';
 import type { AgentVoteResult } from './vote-types.js';
 
 const OPTIONS = ['split only', 'keep together'];
@@ -18,6 +22,13 @@ const QUIET = {
   warn: vi.fn(),
   error: vi.fn(),
 } as unknown as ILogger;
+
+/** Compose the verdict and final-selection stages with one shared deadline. */
+async function launchPanel(input: LaunchVotesInput): Promise<readonly AgentVoteResult[]> {
+  const deadlineAtMs = input.deadlineAtMs ?? Date.now() + input.overallDeadlineMs;
+  const votes = await launchVotesWithOverallDeadline({ ...input, deadlineAtMs });
+  return reaskUnresolvedOptions(votes, input, deadlineAtMs);
+}
 
 function adapterFor(
   first: object,
@@ -74,7 +85,7 @@ describe('bounded option re-ask (#4495)', () => {
         ...adapterFor({ selectedOption: 'keep together' }),
         providerId: 'other-cli',
       };
-      const [seat] = await launchVotesWithOverallDeadline({
+      const [seat] = await launchPanel({
         roles: ['architect'],
         proposal: 'Choose the scope.',
         roleAdapters: new Map([['architect', assigned]]),
@@ -138,7 +149,7 @@ describe('bounded option re-ask (#4495)', () => {
             },
           });
         });
-      const pending = launchVotesWithOverallDeadline({
+      const pending = launchPanel({
         roles: ['architect', 'security'],
         proposal: 'Choose the scope.',
         roleAdapters: new Map(),
@@ -173,7 +184,7 @@ describe('bounded option re-ask (#4495)', () => {
     try {
       const adapter = adapterFor(FIRST);
       vi.mocked(adapter.complete).mockImplementation(() => new Promise(() => undefined));
-      const pending = launchVotesWithOverallDeadline({
+      const pending = launchPanel({
         roles: ['architect'],
         proposal: 'Choose the scope.',
         roleAdapters: new Map(),

@@ -330,10 +330,15 @@ function voteBeforeDeadline(
   );
 }
 
+type ReaskVotesInput = Pick<
+  LaunchVotesInput,
+  'proposal' | 'roleAdapters' | 'fallbackAdapter' | 'logger' | 'voteOptions' | 'signal'
+>;
+
 /** The received verdict survives a supplementary selection timeout. */
 function finishOptionSelection(
   vote: AgentVoteResult,
-  input: LaunchVotesInput,
+  input: ReaskVotesInput,
   context: { adapter: IModelAdapter; deadlineAtMs: number }
 ): Promise<AgentVoteResult> {
   const settings = input.voteOptions;
@@ -347,7 +352,10 @@ function finishOptionSelection(
     workspace: settings.workspace,
     workspaceSha: settings.workspaceSha,
     signal: input.signal,
-    withinRoleRetry: settings.withinRoleRetry === true || settings.attemptKind === 'role_retry',
+    withinRoleRetry:
+      vote.retried === true ||
+      settings.withinRoleRetry === true ||
+      settings.attemptKind === 'role_retry',
   });
 }
 
@@ -451,6 +459,26 @@ function createTimedVoteLauncher(
   return voteOnAdapter;
 }
 
+/** Re-ask the final seat set once, after first-pass and retry verdicts settle. */
+export async function reaskUnresolvedOptions(
+  votes: readonly AgentVoteResult[],
+  input: ReaskVotesInput,
+  deadlineAtMs: number
+): Promise<readonly AgentVoteResult[]> {
+  const serialize = createKeyedSerializer();
+  return Promise.all(
+    votes.map((vote) => {
+      const adapter =
+        vote.timing?.attempts.at(-1)?.fallback === true
+          ? input.fallbackAdapter
+          : (input.roleAdapters.get(vote.role) ?? input.fallbackAdapter);
+      return serialize(adapterCliKey(adapter), () =>
+        finishOptionSelection(vote, input, { adapter, deadlineAtMs })
+      );
+    })
+  );
+}
+
 export async function launchVotesWithOverallDeadline(
   input: LaunchVotesInput
 ): Promise<readonly AgentVoteResult[]> {
@@ -467,20 +495,7 @@ export async function launchVotesWithOverallDeadline(
     })
   );
 
-  const firstPass = await Promise.all(wrapped);
-  // Supplementary selections cannot hold a lane while any first-pass seat
-  // still needs its verdict. Reuse the lanes only after all verdicts settle.
-  const results = await Promise.all(
-    firstPass.map((vote) => {
-      const adapter =
-        vote.timing?.attempts.at(-1)?.fallback === true
-          ? input.fallbackAdapter
-          : (input.roleAdapters.get(vote.role) ?? input.fallbackAdapter);
-      return serialize(adapterCliKey(adapter), () =>
-        finishOptionSelection(vote, input, { adapter, deadlineAtMs })
-      );
-    })
-  );
+  const results = await Promise.all(wrapped);
 
   const expired = results.filter((r) => r.source === 'error' && r.error === DEADLINE_MESSAGE);
   if (expired.length > 0) {

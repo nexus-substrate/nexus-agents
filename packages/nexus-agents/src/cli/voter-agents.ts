@@ -36,11 +36,7 @@ import { reportPanelIndependence, reportVoteIndependence } from './panel-indepen
 import { dealSeatsAcrossFamilies, warnIfSingleFamily } from './voter-family-dealing.js';
 import { DEFAULT_ERRORED_ROLE_BACKOFF_MS, retryErroredRoles } from './voter-retry.js';
 import { createVoterRetryState } from './voter-retry.js';
-import {
-  NoAdapterError,
-  resolveAdapterOrFail,
-  warnIfCodexConcurrencyExceeded,
-} from './voter-adapter-resolve.js';
+import { resolveAdapterOrFail, warnIfCodexConcurrencyExceeded } from './voter-adapter-resolve.js';
 import {
   classifyUnverifiable,
   markUnverifiable,
@@ -50,7 +46,7 @@ import { resolveAttemptCollector, withVoterAttemptTelemetry } from './voter-atte
 import { buildLlmVoteResult, carryAttemptUsage } from './voter-attempt-usage.js';
 
 // Re-exported: `exports/consensus.ts` and the voter tests import it from here (#5578 moved the class).
-export { NoAdapterError };
+export { NoAdapterError } from './voter-adapter-resolve.js';
 export type { VoteExecutionOverrides } from './vote-types.js';
 
 // Re-export prompts for backward compatibility
@@ -97,7 +93,7 @@ import {
   executeWithRetries,
 } from './voter-execution.js';
 import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
-import { launchVotesWithOverallDeadline, resolvePanelDeadline } from './voter-agents-deadline.js';
+import * as voterDeadline from './voter-agents-deadline.js';
 import { resolvePanelWorkspace } from './panel-workspace.js';
 import { ensureGatewayDiscovered } from '../adapters/gateway-rediscovery.js';
 
@@ -511,7 +507,7 @@ async function launchStaggeredVotes(
   // `StaggeredVoteInput` is `LaunchVotesInput` minus the deadline and the
   // launcher, so the input passes through whole — including `signal` (#5393)
   // and `onVoteCollected` (#6162).
-  return launchVotesWithOverallDeadline({
+  return voterDeadline.launchVotesWithOverallDeadline({
     ...input,
     overallDeadlineMs,
     deadlineAtMs,
@@ -544,13 +540,13 @@ export async function assignPanelSeats(
 
 async function collectPanelPasses(
   input: StaggeredVoteInput,
-  deadline: ReturnType<typeof resolvePanelDeadline>,
+  deadline: ReturnType<typeof voterDeadline.resolvePanelDeadline>,
   nonRetryableRoles: ReadonlySet<VoterRole>,
   backoffMs: number
 ): Promise<readonly AgentVoteResult[]> {
   const { overallDeadlineMs, deadlineAtMs } = deadline;
   const first = await launchStaggeredVotes(input, overallDeadlineMs, deadlineAtMs);
-  return retryErroredRoles(
+  const final = await retryErroredRoles(
     first,
     (roles) =>
       launchStaggeredVotes(
@@ -562,6 +558,8 @@ async function collectPanelPasses(
     backoffMs,
     { signal: input.signal, deadlineAtMs, nonRetryableRoles }
   );
+  // Supplementary selections cannot spend the shared retry window (#4495).
+  return voterDeadline.reaskUnresolvedOptions(final, input, deadlineAtMs);
 }
 
 export async function collectRealVotes(
@@ -611,7 +609,7 @@ export async function collectRealVotes(
     onVoteCollected: options.onVoteCollected,
   };
   // Clamp once, then share the same cutoff across both passes and backoff (#6811).
-  const { overallDeadlineMs, deadlineAtMs } = resolvePanelDeadline(
+  const { overallDeadlineMs, deadlineAtMs } = voterDeadline.resolvePanelDeadline(
     voteOptions.timeoutMs,
     voteOptions.maxRetries,
     roles.length,
