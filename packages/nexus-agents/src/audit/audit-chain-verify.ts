@@ -51,10 +51,6 @@ export function computeEventHash(event: AuditEvent): string {
 // ============================================================================
 
 /**
- * Discriminated result from `verifyChain()`. Either the chain validates cleanly,
- * or one of three named tampering signals fires at a specific event index.
- */
-/**
  * How much of a log a {@link ChainVerification} actually covers (#4805).
  *
  * `skipped: 0` is a positive statement of full coverage, distinct from an
@@ -67,67 +63,90 @@ export interface ChainCoverage {
   readonly unreadableFiles: number;
 }
 
-export type ChainVerification =
-  | {
-      ok: true;
-      eventCount: number;
-      /**
-       * Set when the chain's first event carries a `previousHash` (#4703):
-       * links verified, ORIGIN unverified. Rotation and front-truncation look
-       * identical here and the verifier cannot tell them apart, so it reports
-       * rather than judges — see T6 in the audit hash-chain threat model.
-       */
-      unanchoredHead?: { previousHash: string; detail: string };
-      /**
-       * Set when `ok: true` carries NO cryptographic assurance (#4768, #4660).
-       *
-       * - `'empty'` — zero events. Nothing was verified. Reported because
-       *   pointing the verifier at the wrong directory produces exactly this,
-       *   and a bare `ok: true` reads as "the chain is intact".
-       * - `'unchained'` — events exist but the first carries no `hash`, so the
-       *   whole batch is treated as un-hashed and no links are checked.
-       *
-       * Absent means links were actually verified. Callers deciding whether
-       * tamper-evidence holds MUST read this: `ok: true` alone does not
-       * distinguish a verified chain from an absent one, which is the
-       * "default reported as a measurement" shape the mission text rules out.
-       */
-      notVerified?: 'empty' | 'unchained';
-      /**
-       * Set when the verdict covers only PART of the log it was asked about
-       * (#4805, panel Option A 4-1).
-       *
-       * A different axis from {@link notVerified}, which says nothing was
-       * verified. Here real links WERE checked — just not over every line the
-       * loader saw. `skipped` counts the lines that never became events
-       * (unparseable, schema-rejected, or in a file that could not be read).
-       *
-       * The tool reports coverage as sibling fields too, but this type is the
-       * evidence artifact: it is serialized, persisted, and passed around
-       * without its siblings, and the doctrine is that provenance travels WITH
-       * the evidence rather than beside it.
-       *
-       * Absent means coverage is UNKNOWN, not complete — the verifier is given
-       * only the events, so a caller that did not supply coverage cannot be
-       * reported as having full coverage. {@link withCoverage} is how a caller
-       * that knows says so, including saying "nothing was skipped".
-       */
-      coverage?: ChainCoverage;
-    }
-  | {
-      ok: false;
-      reason: 'hash_mismatch' | 'previous_hash_mismatch' | 'missing_hash';
-      eventIndex: number;
-      eventId: string;
-      detail: string;
-    };
+/** Bounded diagnostics; counts include entries omitted from the arrays. */
+interface ChainDiagnostics {
+  eventCount: number;
+  breaks: Array<{ index: number; kind: 'restart' | 'fork' | 'mismatch' }>;
+  segments: ChainSegment[];
+  breakCount: number;
+  segmentCount: number;
+  tamperedCount: number;
+  breaksTruncated: boolean;
+  segmentsTruncated: boolean;
+}
+
+/** Inclusive, zero-based bounds; ok describes internal integrity, not the incoming link. */
+interface ChainSegment {
+  start: number;
+  end: number;
+  ok: boolean;
+  firstFailure?: { index: number; kind: 'tampered' | 'missing_hash' };
+}
+
+/** Keep legacy verdict construction compatible; verifyChain always supplies diagnostics. */
+export type ChainVerification = Partial<ChainDiagnostics> &
+  (
+    | {
+        ok: true;
+        eventCount: number;
+        /**
+         * Set when the chain's first event carries a `previousHash` (#4703):
+         * links verified, ORIGIN unverified. Rotation and front-truncation look
+         * identical here and the verifier cannot tell them apart, so it reports
+         * rather than judges — see T6 in the audit hash-chain threat model.
+         */
+        unanchoredHead?: { previousHash: string; detail: string };
+        /**
+         * Set when `ok: true` carries NO cryptographic assurance (#4768, #4660).
+         *
+         * - `'empty'` — zero events. Nothing was verified. Reported because
+         *   pointing the verifier at the wrong directory produces exactly this,
+         *   and a bare `ok: true` reads as "the chain is intact".
+         * - `'unchained'` — events exist but the first carries no `hash`, so the
+         *   whole batch is treated as un-hashed and no links are checked.
+         *
+         * Absent means links were actually verified. Callers deciding whether
+         * tamper-evidence holds MUST read this: `ok: true` alone does not
+         * distinguish a verified chain from an absent one, which is the
+         * "default reported as a measurement" shape the mission text rules out.
+         */
+        notVerified?: 'empty' | 'unchained';
+        /**
+         * Set when the verdict covers only PART of the log it was asked about
+         * (#4805, panel Option A 4-1).
+         *
+         * A different axis from {@link notVerified}, which says nothing was
+         * verified. Here real links WERE checked — just not over every line the
+         * loader saw. `skipped` counts the lines that never became events
+         * (unparseable, schema-rejected, or in a file that could not be read).
+         *
+         * The tool reports coverage as sibling fields too, but this type is the
+         * evidence artifact: it is serialized, persisted, and passed around
+         * without its siblings, and the doctrine is that provenance travels WITH
+         * the evidence rather than beside it.
+         *
+         * Absent means coverage is UNKNOWN, not complete — the verifier is given
+         * only the events, so a caller that did not supply coverage cannot be
+         * reported as having full coverage. {@link withCoverage} is how a caller
+         * that knows says so, including saying "nothing was skipped".
+         */
+        coverage?: ChainCoverage;
+      }
+    | {
+        ok: false;
+        reason: 'hash_mismatch' | 'previous_hash_mismatch' | 'missing_hash';
+        eventIndex: number;
+        eventId: string;
+        detail: string;
+      }
+  );
 
 /** Per-event check; null when the event passes. Extracted to keep verifyChain under the complexity cap. */
 export function verifyEvent(
   event: AuditEvent,
   index: number,
   priorHash: string | undefined
-): ChainVerification | null {
+): EventFailure | null {
   if (event.hash === undefined) {
     return {
       ok: false,
@@ -160,22 +179,6 @@ export function verifyEvent(
 }
 
 /**
- * Verify a hash-chained sequence of audit events. Walks the array in order and
- * checks (a) each event's `hash` field matches a recomputation of its content,
- * (b) each event's `previousHash` matches the prior event's `hash`, and (c) no
- * event in a hash-chained log is missing its `hash`. Returns the first
- * detected tampering signal — does NOT continue past the first failure, since
- * one tamper invalidates everything downstream.
- *
- * Backward compat: events written when `enableHashChain: false` carry no `hash`
- * field. If the FIRST event has no `hash`, the entire batch is treated as
- * un-chained and verification short-circuits to `{ok: true}`. If hash fields
- * appear partway through (mixed-mode log), `missing_hash` fires.
- *
- * @param events - Sequence of AuditEvent in append order
- * @returns ChainVerification result
- */
-/**
  * Attach coverage to a passing verdict — the caller that read the log is the
  * only one who knows what it skipped (#4805).
  *
@@ -190,34 +193,119 @@ export function withCoverage(
   return { ...verification, coverage };
 }
 
-export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
-  // Both early exits below are honest `ok: true` verdicts — there is nothing to
-  // contradict — but neither verified anything, so they say so. #4768: an empty
-  // log verified clean was indistinguishable from a correct one, including when
-  // the caller pointed at the wrong directory.
-  if (events.length === 0) return { ok: true, eventCount: 0, notVerified: 'empty' };
-  if (events[0]?.hash === undefined) {
-    return { ok: true, eventCount: events.length, notVerified: 'unchained' };
-  }
+/** Each response array retains at most this many entries, independently. */
+const DIAGNOSTIC_CAP = 100;
 
-  let priorHash: string | undefined = undefined;
-  for (let i = 0; i < events.length; i++) {
-    const event = events[i];
-    if (event === undefined) continue;
-    const failure = verifyEvent(event, i, priorHash);
-    if (failure !== null) return failure;
+type EventFailure = Extract<ChainVerification, { ok: false }>;
+
+function emptyDiagnostics(eventCount: number): ChainDiagnostics {
+  return {
+    eventCount,
+    breaks: [],
+    segments: [],
+    breakCount: 0,
+    segmentCount: 0,
+    tamperedCount: 0,
+    breaksTruncated: false,
+    segmentsTruncated: false,
+  };
+}
+
+function finishSegment(diagnostics: ChainDiagnostics, segment: ChainSegment): void {
+  diagnostics.segmentCount++;
+  if (diagnostics.segments.length < DIAGNOSTIC_CAP) diagnostics.segments.push(segment);
+  else diagnostics.segmentsTruncated = true;
+}
+
+function classifyLinkBreak(
+  event: AuditEvent,
+  priorHash: string | undefined,
+  index: number,
+  seenHashes: ReadonlySet<string>
+): ChainDiagnostics['breaks'][number]['kind'] | undefined {
+  if (index === 0) return undefined;
+  if (event.previousHash === undefined) return 'restart';
+  if (event.previousHash === priorHash) return undefined;
+  return seenHashes.has(event.previousHash) ? 'fork' : 'mismatch';
+}
+
+function recordBreak(
+  diagnostics: ChainDiagnostics,
+  index: number,
+  kind: ChainDiagnostics['breaks'][number]['kind']
+): void {
+  diagnostics.breakCount++;
+  if (diagnostics.breaks.length < DIAGNOSTIC_CAP) diagnostics.breaks.push({ index, kind });
+  else diagnostics.breaksTruncated = true;
+}
+
+function recordContentFailure(
+  diagnostics: ChainDiagnostics,
+  segment: ChainSegment,
+  failure: EventFailure
+): void {
+  segment.ok = false;
+  segment.firstFailure = {
+    index: failure.eventIndex,
+    kind: failure.reason === 'hash_mismatch' ? 'tampered' : 'missing_hash',
+  };
+  if (failure.reason === 'hash_mismatch') diagnostics.tamperedCount++;
+}
+
+/** Scan every event, even after failure and after the diagnostic arrays are full. */
+function scanSegments(
+  events: readonly AuditEvent[],
+  diagnostics: ChainDiagnostics
+): EventFailure | null {
+  const seenHashes = new Set<string>();
+  let priorHash: string | undefined;
+  let firstFailure: EventFailure | null = null;
+  let segment: ChainSegment = { start: 0, end: 0, ok: true };
+  for (const [index, event] of events.entries()) {
+    // Preserve legacy failure precedence: missing hash, link mismatch, then content.
+    firstFailure ??= verifyEvent(event, index, priorHash);
+    // Check content independently: a broken incoming link cannot mask tampering.
+    const contentFailure = verifyEvent(event, index, event.previousHash);
+    const linkKind = classifyLinkBreak(event, priorHash, index, seenHashes);
+    const breakKind = linkKind ?? (contentFailure === null ? undefined : 'mismatch');
+    if (breakKind !== undefined) {
+      if (index > 0) {
+        finishSegment(diagnostics, segment);
+        segment = { start: index, end: index, ok: true };
+      }
+      recordBreak(diagnostics, index, breakKind);
+    }
+    segment.end = index;
+    if (contentFailure !== null) recordContentFailure(diagnostics, segment, contentFailure);
+    if (event.hash !== undefined) seenHashes.add(event.hash);
     priorHash = event.hash;
   }
+  finishSegment(diagnostics, segment);
+  return firstFailure;
+}
 
-  // #4703: links verified — but did the chain START where it claims to?
-  // `verifyEvent` skips the previousHash comparison at index 0, so a
-  // front-truncated chain used to return a clean `ok: true` while its head
-  // still carried a live pointer to the deleted event.
+/**
+ * Verify all hashed events and links, retaining the first failure for compatibility.
+ * Every link or content break starts a segment; its incoming link is excluded
+ * from its internal verdict, but its first event's content is always checked.
+ * Any break keeps overall ok false. Diagnostics are capped, verification is not.
+ * Empty and legacy unchained batches explicitly report that nothing was verified.
+ */
+export function verifyChain(events: readonly AuditEvent[]): ChainVerification & ChainDiagnostics {
+  const diagnostics = emptyDiagnostics(events.length);
+  if (events.length === 0) return { ok: true, notVerified: 'empty', ...diagnostics };
+  if (events[0]?.hash === undefined) {
+    return { ok: true, notVerified: 'unchained', ...diagnostics };
+  }
+  const firstFailure = scanSegments(events, diagnostics);
+  if (firstFailure !== null) return { ...firstFailure, ...diagnostics };
+
+  // Rotation and front-truncation remain indistinguishable: origin is unverified.
   const headPreviousHash = events[0].previousHash;
   if (headPreviousHash !== undefined) {
     return {
       ok: true,
-      eventCount: events.length,
+      ...diagnostics,
       unanchoredHead: {
         previousHash: headPreviousHash,
         detail:
@@ -227,6 +315,5 @@ export function verifyChain(events: readonly AuditEvent[]): ChainVerification {
       },
     };
   }
-
-  return { ok: true, eventCount: events.length };
+  return { ok: true, ...diagnostics };
 }

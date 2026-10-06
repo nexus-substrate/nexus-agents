@@ -294,8 +294,9 @@ export function registerVerifyAuditChainTool(server: McpServer, deps: VerifyAudi
     'Verify the hash chain of a persisted FileAuditStorage audit log. ' +
     'Reads all `audit-*.jsonl` files in the given directory, parses events, ' +
     'and runs `verifyChain()` to detect tampering. Returns a structured ' +
-    'result with eventCount, fileCount, and one of three tamper signals if ' +
-    'detected (hash_mismatch, previous_hash_mismatch, missing_hash). ' +
+    'result with bounded break and segment diagnostics, full counts, and the first ' +
+    'failure (hash_mismatch, previous_hash_mismatch, missing_hash). Scans past ' +
+    'breaks to detect later tampering; any break keeps overall ok false. ' +
     'Reports skippedLines/unreadableFiles when part of the log could not be ' +
     'read, so a verdict over a partial log is never mistaken for a complete ' +
     'one. Read-only — never writes or deletes events.';

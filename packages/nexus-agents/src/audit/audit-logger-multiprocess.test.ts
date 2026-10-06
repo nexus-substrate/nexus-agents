@@ -184,7 +184,13 @@ describe('AuditLogger hash chain across processes (#6546)', () => {
     expect(events).toHaveLength(3);
     expect(events[0]?.previousHash).toBeUndefined();
     const body = await verifyDir(logDir);
-    expect(body.verification).toEqual({ ok: true, eventCount: 3, coverage: expect.anything() });
+    expect(body.verification).toMatchObject({
+      ok: true,
+      eventCount: 3,
+      coverage: expect.anything(),
+      breaks: [],
+      segments: [{ start: 0, end: 2, ok: true }],
+    });
   }, 60_000);
 
   it('a second process started after the first exits continues the same chain', async () => {

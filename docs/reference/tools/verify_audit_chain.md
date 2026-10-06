@@ -10,7 +10,7 @@ keywords: [mcp, tool, reference, verify_audit_chain]
 > Auto-generated from the registered MCP tool descriptions and input
 > schemas. Do not edit by hand — run `pnpm docs:tools` to regenerate.
 
-Verify the hash chain of a persisted FileAuditStorage audit log directory (#2281 follow-up). Reads all audit-*.jsonl files, parses events, runs verifyChain() to detect tampering. Returns eventCount, fileCount, and one of three tamper signals (hash_mismatch, previous_hash_mismatch, missing_hash) if detected. Read-only.
+Verify the hash chain of a persisted FileAuditStorage audit log directory (#2281 follow-up). Reads all audit-*.jsonl files, parses events, runs verifyChain() to detect tampering. Returns eventCount, fileCount, bounded break and segment diagnostics with full counts and truncation flags, and the first failure (hash_mismatch, previous_hash_mismatch, missing_hash). Scans past breaks to detect later tampering; any break keeps overall ok false. Read-only.
 
 ## Parameters
 
