@@ -138,7 +138,7 @@ interface DecisionEntry {
   /**
    * The DISTINCT routing arm (CLI slot or api:* arm) — kept un-collapsed so
    * `compositeRouter.recordOutcome(cliName, …)` updates the right bandit arm
-   * (#3422). Telemetry sinks collapse to the display slot at write time.
+   * (#3422). Telemetry sinks preserve endpoint identities at write time.
    */
   readonly cliName: RoutingArmId;
   readonly task: string;

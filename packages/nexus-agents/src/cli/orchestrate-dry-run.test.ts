@@ -1,7 +1,7 @@
 /**
  * Tests for enriched dry-run report generation.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildDryRunReport, renderDryRunText } from './orchestrate-dry-run.js';
 import type { CliTask } from '../cli-adapters/index.js';
 import type { CompositeRoutingDecision } from '../cli-adapters/index.js';
@@ -78,5 +78,41 @@ describe('renderDryRunText', () => {
       expect(text).toContain('Cost Estimate:');
       expect(text).toContain('Total:');
     }
+  });
+});
+
+describe('endpoint dry-run fidelity (#7151)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  function endpointDecision(): CompositeRoutingDecision {
+    return {
+      ...makeDecision('opencode'),
+      cliName: 'api:gw-prod',
+      adapter: {
+        getModelInfo: () => ({ id: 'gateway-chat', name: 'Gateway Chat', contextWindow: 8_192 }),
+      } as CompositeRoutingDecision['adapter'],
+    };
+  }
+
+  it('reports the resolved endpoint model and declared gateway cost', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'gw-prod=priced:2,10');
+    const report = buildDryRunReport(makeTask('Explain the parser'), endpointDecision());
+    expect(report.routing.modelId).toBe('gateway-chat');
+    expect(report.costEstimate?.model).toBe('gateway-chat');
+    expect(report.costEstimate?.inputUsd).toBeCloseTo(
+      (report.analysis.estimatedInputTokens * 2) / 1_000_000,
+      12
+    );
+    expect(report.costEstimate?.outputUsd).toBeCloseTo(
+      (report.analysis.estimatedOutputTokens * 10) / 1_000_000,
+      12
+    );
+  });
+
+  it('does not substitute a vendor price for an undeclared endpoint', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', undefined);
+    const report = buildDryRunReport(makeTask('Explain the parser'), endpointDecision());
+    expect(report.routing.modelId).toBe('gateway-chat');
+    expect(report.costEstimate).toBeUndefined();
   });
 });

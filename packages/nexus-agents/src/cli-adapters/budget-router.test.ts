@@ -8,7 +8,7 @@ import { BudgetRouter, createBudgetRouter, estimateRegistryCostUsd } from './bud
 import { estimateArmCostUsd } from './budget-arm-cost.js';
 import { estimateCost, estimateTokens } from './budget-utils.js';
 import { computeTokenCost } from '../learning/token-cost-core.js';
-import { routingArmDisplaySlot } from './types.js';
+import { routingArmCliSlot } from './types.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -628,7 +628,10 @@ describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
 
   function makeRouter(arms: readonly RoutingArmId[]): BudgetRouter {
     const adapters = new Map<RoutingArmId, ICliAdapter>(
-      arms.map((arm) => [arm, createMockAdapter(routingArmDisplaySlot(arm))])
+      arms.map((arm) => [
+        arm,
+        { ...createMockAdapter(routingArmCliSlot(arm) ?? 'opencode'), name: arm },
+      ])
     );
     return new BudgetRouter(adapters, {
       sessionBudget: { tokenBudget: 1_000_000, costBudgetUsd: 100, resetIntervalMs: 0 },
@@ -752,7 +755,7 @@ describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
     (arm) => {
       // Control: the pre-#6393 formula, `estimateCost(displaySlot, in, out)`,
       // must survive for every non-gateway arm — declared or not.
-      const before = estimateCost(routingArmDisplaySlot(arm), inputTokens, outputTokens);
+      const before = estimateCost(routingArmCliSlot(arm) ?? 'opencode', inputTokens, outputTokens);
       expect(before).toBeGreaterThan(0);
       for (const decl of [undefined, 'free']) {
         vi.stubEnv('NEXUS_GATEWAY_COST', decl);
@@ -765,4 +768,47 @@ describe('BudgetRouter checkBudget — gateway arms (#6393)', () => {
       }
     }
   );
+});
+
+describe('BudgetRouter endpoint metadata (#7151)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  function endpointRouter(contextWindow: number): BudgetRouter {
+    const adapter = createMockAdapter('opencode', { contextWindow });
+    return new BudgetRouter(new Map([['api:gw-prod', adapter]]), {
+      sessionBudget: { tokenBudget: 10_000_000, costBudgetUsd: 100, resetIntervalMs: 0 },
+    });
+  }
+
+  it('rejects a task exceeding the endpoint context even when opencode would admit it', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const router = endpointRouter(1_024);
+    const result = router.checkBudget({ content: 'explain parser', maxTokens: 2_048 });
+    expect(result.withinBudget).toBe(false);
+    expect(result.adapter).toBeNull();
+    router.dispose();
+  });
+
+  it('admits a task within the endpoint context even when opencode would reject it', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const router = endpointRouter(2_000_000);
+    const result = router.checkBudget(
+      { content: 'explain parser', maxTokens: 1_200_000 },
+      { maxTokens: 1_500_000 }
+    );
+    expect(result.withinBudget).toBe(true);
+    router.dispose();
+  });
+
+  it('reports endpoint latency as unmeasured rather than using opencode latency', () => {
+    vi.stubEnv('NEXUS_GATEWAY_COST', 'free');
+    const router = endpointRouter(1_024);
+    const result = router.checkBudget(
+      { content: 'explain parser', maxTokens: 32 },
+      { maxLatencyMs: 1 }
+    );
+    expect(result.withinBudget).toBe(true);
+    expect(result.estimatedLatencyMs).toBeUndefined();
+    router.dispose();
+  });
 });

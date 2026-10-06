@@ -449,3 +449,30 @@ describe('recordRoutingOutcome', () => {
     );
   });
 });
+
+describe('endpoint recommendations (#7151)', () => {
+  it('uses the endpoint model and capability profile rather than opencode defaults', () => {
+    const capabilities = {
+      reasoning: 6,
+      codeGeneration: 4,
+      contextWindow: 1_024,
+      speed: 8,
+      cost: 9,
+    };
+    const decision = makeDecision({
+      cliName: 'api:gw-prod',
+      adapter: { capabilities, getModelInfo: () => ({ id: 'gateway-chat' }) },
+    });
+    const output = mapCompositeDecisionToOutput(decision, 500);
+    expect(output.recommended_model).toBe('gateway-chat');
+    expect(output.capabilities).toEqual(capabilities);
+  });
+
+  it('excludes endpoint alternatives whose resolved model is unavailable on the decision', () => {
+    const output = mapCompositeDecisionToOutput(
+      makeDecision({ alternatives: ['api:gw-prod', 'codex'] }),
+      500
+    );
+    expect(output.alternatives.map((alternative) => alternative.model)).toEqual(['gpt-6.1-sol']);
+  });
+});

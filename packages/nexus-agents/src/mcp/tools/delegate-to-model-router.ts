@@ -17,7 +17,7 @@ import {
   FALLBACK_CONTEXT_WINDOW,
 } from '../../config/model-config-helpers.js';
 import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
-import { routingArmDisplaySlot } from '../../cli-adapters/types.js';
+import { isEndpointArmId, routingArmCliSlot } from '../../cli-adapters/types.js';
 import type { RoutingArmId } from '../../cli-adapters/types.js';
 // #5269: the same pure capability comparison the non-router path uses, so both
 // paths describe an alternative the same way.
@@ -51,19 +51,28 @@ export function mapCompositeDecisionToOutput(
 ): DelegateOutput {
   // #3394: prefer the route-time tier-selected model when present (opt-in);
   // otherwise fall back to the CLI default. Default-off → decision.model undefined.
-  // Model lookup is registry/slot-level; collapse api:* arms to their display
-  // slot for the default-model resolution (#3422).
-  const modelName = decision.model ?? cliNameToModel(routingArmDisplaySlot(decision.cliName));
-  const caps = MODEL_CAPABILITIES[modelName] ?? DEFAULT_CAPABILITIES;
+  const slot = routingArmCliSlot(decision.cliName);
+  const endpoint = slot === undefined && isEndpointArmId(decision.cliName);
+  const modelName = endpoint
+    ? decision.adapter.getModelInfo().id
+    : (decision.model ?? (slot === undefined ? decision.cliName : cliNameToModel(slot)));
+  const caps = endpoint
+    ? decision.adapter.capabilities
+    : (MODEL_CAPABILITIES[modelName] ?? DEFAULT_CAPABILITIES);
 
   return {
     recommended_model: modelName,
     reasoning: decision.reason,
     capabilities: caps,
     estimated_tokens: estimatedTokens,
+    // A decision has only the winner's adapter. Endpoint alternatives cannot
+    // be resolved here, so omit them instead of inventing an OpenCode model.
     alternatives: decision.alternatives
-      .slice(0, 3)
-      .map((alt) => describeAlternative(alt, decision, caps)),
+      .flatMap((alt) => {
+        const altSlot = routingArmCliSlot(alt);
+        return altSlot === undefined ? [] : [describeAlternative(alt, altSlot, decision, caps)];
+      })
+      .slice(0, 3),
   };
 }
 
@@ -82,10 +91,11 @@ export function mapCompositeDecisionToOutput(
  */
 function describeAlternative(
   alt: RoutingArmId,
+  slot: CliNameLiteral,
   decision: CompositeRoutingDecision,
   bestCaps: CapabilityProfile
 ): { model: string; score: number; tradeoff: string } {
-  const model = cliNameToModel(routingArmDisplaySlot(alt));
+  const model = cliNameToModel(slot);
   const altCaps = MODEL_CAPABILITIES[model] ?? DEFAULT_CAPABILITIES;
   const ranked = decision.alternativeScores?.get(alt);
 

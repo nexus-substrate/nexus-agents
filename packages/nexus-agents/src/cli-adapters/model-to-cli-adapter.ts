@@ -23,6 +23,7 @@ import type {
   ExecutionAccessMode,
 } from '../core/index.js';
 import { ok, err, ModelError } from '../core/index.js';
+import { getDefaultRegistry } from '../config/model-registry.js';
 import { FALLBACK_CONTEXT_WINDOW } from '../config/model-config-helpers.js';
 import {
   isRateLimitText,
@@ -53,7 +54,7 @@ import type {
   CapacityStatus,
   EndpointArmId,
 } from './types.js';
-import { isEndpointArmId } from './types.js';
+import { isEndpointArmId, routingArmCliSlot } from './types.js';
 
 /** Configuration for {@link ModelToCliAdapter}. */
 export interface ModelToCliAdapterConfig {
@@ -122,7 +123,16 @@ export class ModelToCliAdapter implements ICliAdapter {
   constructor(modelAdapter: IModelAdapter, config: ModelToCliAdapterConfig) {
     this.modelAdapter = modelAdapter;
     this.name = config.name;
-    this.capabilities = config.capabilities ?? NEUTRAL_CAPABILITIES;
+    // Dynamic endpoints resolve the model they send, never a CLI display slot.
+    const entry =
+      routingArmCliSlot(config.name) === undefined
+        ? getDefaultRegistry().getEntry(modelAdapter.modelId)
+        : undefined;
+    this.capabilities = config.capabilities ?? {
+      ...NEUTRAL_CAPABILITIES,
+      ...entry?.qualityScores,
+      contextWindow: entry?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+    };
     this.capacityTracker = createCapacityTracker(config.name);
   }
 
@@ -330,7 +340,10 @@ export class ModelToCliAdapter implements ICliAdapter {
     return {
       id: this.modelAdapter.modelId,
       name: this.modelAdapter.modelId,
-      contextWindow: DEFAULT_CONTEXT_WINDOW,
+      contextWindow:
+        routingArmCliSlot(this.name) === undefined
+          ? this.capabilities.contextWindow
+          : DEFAULT_CONTEXT_WINDOW,
     };
   }
 

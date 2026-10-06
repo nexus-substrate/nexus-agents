@@ -453,3 +453,13 @@ describe('gateway endpoint identity (#7151)', () => {
     expect(capacity.remainingTokens).toBe(Infinity);
   });
 });
+
+describe('endpoint model metadata (#7151)', () => {
+  it('resolves context and capabilities from the actual model rather than a CLI slot', () => {
+    const adapter = createModelToCliAdapter(makeModelAdapter({ modelId: 'gpt-4o-mini' }), {
+      name: 'api:gw-prod',
+    });
+    expect(adapter.capabilities.contextWindow).toBe(128_000);
+    expect(adapter.getModelInfo().contextWindow).toBe(128_000);
+  });
+});

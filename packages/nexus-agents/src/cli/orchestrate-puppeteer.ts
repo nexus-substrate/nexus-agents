@@ -17,7 +17,7 @@ import {
 } from '../agents/orchestration/index.js';
 import type { IAgent, Task as AgentTask } from '../core/types/agent.js';
 import type { RoutingArmId, ICliAdapter } from '../cli-adapters/index.js';
-import { routingArmDisplaySlot } from '../cli-adapters/index.js';
+import { routingArmCliSlot } from '../cli-adapters/types.js';
 import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 import { CliAdapterAgent } from './cli-adapter-agent.js';
 import { INTERNAL_TIMEOUTS } from '../config/timeouts.js';
@@ -66,9 +66,9 @@ export function savePolicyParameters(
 export function createAgentsFromAdapters(adapters: Map<RoutingArmId, ICliAdapter>): IAgent[] {
   const agents: IAgent[] = [];
   for (const [name, adapter] of adapters) {
-    // The puppeteer engine identifies agents by CLI slot; an api:* arm collapses
-    // to its display slot here (no distinct-arm learning in this path) (#3422).
-    agents.push(new CliAdapterAgent(routingArmDisplaySlot(name), adapter));
+    // Vendor API arms retain the existing slot identity. Endpoints keep their
+    // own identity in agent IDs and execution metadata, rather than opencode.
+    agents.push(new CliAdapterAgent(routingArmCliSlot(name) ?? name, adapter));
   }
   return agents;
 }

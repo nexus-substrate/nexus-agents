@@ -67,7 +67,7 @@ export function apiArmId(vendor: ApiVendor): ApiArmId {
  * distinct API arm to its attribution slot. The bandit keeps the distinct arm;
  * only slot-level surfaces collapse.
  */
-export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
+export function routingArmDisplaySlot(armId: CliName | ApiArmId): CliName {
   switch (armId) {
     case 'api:anthropic':
       return 'claude';
@@ -78,10 +78,7 @@ export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
     case 'api:custom-openai':
       return 'opencode';
     default:
-      // Only a gateway endpoint arm (`api:<endpoint>`) maps to the display slot.
-      // Anything else (a CLI name, or a sentinel such as 'unknown') passes
-      // through unchanged, as before #6291 B2, so callers keep their own fallback.
-      return armId.startsWith('api:') ? UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT : (armId as CliName);
+      return armId;
   }
 }
 
@@ -91,9 +88,9 @@ export function routingArmDisplaySlot(armId: RoutingArmId): CliName {
  * Gateway endpoint validation reserves those vendor names (#6409).
  */
 export function routingArmCliSlot(armId: RoutingArmId): CliName | undefined {
-  return isCliName(armId) || ApiArmIdSchema.safeParse(armId).success
-    ? routingArmDisplaySlot(armId)
-    : undefined;
+  if (isCliName(armId)) return armId;
+  const parsed = ApiArmIdSchema.safeParse(armId);
+  return parsed.success ? routingArmDisplaySlot(parsed.data) : undefined;
 }
 
 /**
@@ -140,21 +137,19 @@ export function isEndpointArmId(value: string): value is EndpointArmId {
 export type ObservedArmId = RoutingArmId | EndpointArmId;
 
 /**
- * Display slot for an endpoint arm that is not one of the built-in API arms
- * (#4392). `opencode` is the slot whose capability profile describes an
- * OpenAI-compatible endpoint of unknown model family, and the slot the only
- * pre-existing gateway arm (`api:custom-openai`) already collapses to. The
- * breaker keeps the distinct arm; only slot-level surfaces see this collapse.
+ * Legacy display-only fallback for an unknown endpoint (#4392). This label
+ * carries no evidence about the endpoint's model, capabilities or pricing.
+ * Records and routing measurements must use the arm or its resolved metadata.
  */
 const UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT: CliName = 'opencode';
 
 /**
- * Display slot for any observed arm (#4392). Delegates to the routing mapping
- * now that routing also admits endpoint arms (#6291). Circuit event/error
- * identities remain arm ids; use this helper only for slot-level attribution.
+ * Legacy display slot for any observed arm (#4392). Unknown endpoints use an
+ * explicit display-only fallback. Records, admission and model recommendations
+ * must preserve endpoint identity or use the endpoint's own metadata instead.
  */
 export function observedArmDisplaySlot(armId: ObservedArmId): CliName {
-  return routingArmDisplaySlot(armId);
+  return routingArmCliSlot(armId) ?? UNKNOWN_ENDPOINT_ARM_DISPLAY_SLOT;
 }
 
 /**

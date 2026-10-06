@@ -1158,7 +1158,7 @@ FunctionDeclaration calculateMinSampleSize
 FunctionDeclaration calculateRegret
   : (decisions: readonly { readonly actualReward: number; readonly chosenModel: string; readonly rewards: Record<string, number>; }[]) => RegretAnalysis
 FunctionDeclaration calculateRoutingDistribution
-  : (routingHistory: readonly RoutingDecision[]) => Record<"claude" | "codex" | "gemini" | "opencode", number>
+  : (routingHistory: readonly RoutingDecision[]) => Record<"claude" | "codex" | "gemini" | "opencode", number> & Partial<Record<import("src/cli-adapters/types-core").RoutingArmId, number>>
 FunctionDeclaration calculateTokenCost
   : (tokens: SessionTokenTotals, ratePerThousand: number) => number
 FunctionDeclaration calculateTokenMetrics
@@ -6169,7 +6169,7 @@ InterfaceDeclaration OrchestrationStats
   avgTaskDurationMs: number
   consensus: ConsensusStats
   eventsProcessed: number
-  routingDistribution: Record<"claude" | "codex" | "gemini" | "opencode", number>
+  routingDistribution: Record<"claude" | "codex" | "gemini" | "opencode", number> & Partial<Record<RoutingArmId, number>>
   successRate: number
   totalCostUsd: number
   totalSessions: number
@@ -7872,11 +7872,11 @@ InterfaceDeclaration RoutingContext
   readonly task: string
   readonly trace: StageTrace[]
 InterfaceDeclaration RoutingDecision @agents/observability/orchestration-observer-types
-  readonly alternatives: readonly ("claude" | "codex" | "gemini" | "opencode")[]
+  readonly alternatives: readonly RoutingArmId[]
   readonly confidence: number
   readonly decisionTimeMs: number
   readonly reason: string
-  readonly selectedCli: "claude" | "codex" | "gemini" | "opencode"
+  readonly selectedCli: RoutingArmId
   readonly stagesExecuted: readonly string[]
   readonly taskDescription: string
   readonly taskId: string
@@ -9006,14 +9006,14 @@ InterfaceDeclaration StoredReward
   readonly speedBonus: number
   readonly timestamp: string
 InterfaceDeclaration StoredRoutingDecision
-  readonly alternativeModels: readonly ("claude" | "codex" | "gemini" | "opencode")[]
+  readonly alternativeModels: readonly RoutingArmId[]
   readonly confidence: number
   readonly id: string
   readonly reason: string
   readonly requestId?: string | undefined
   readonly routerType: RouterType
   readonly routerTypeMeasured?: boolean | undefined
-  readonly selectedModel: "claude" | "codex" | "gemini" | "opencode"
+  readonly selectedModel: RoutingArmId
   readonly taskProfile: Record<string, unknown>
   readonly timestamp: string
   readonly traceId: string

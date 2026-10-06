@@ -9,7 +9,7 @@
 
 import type { Result } from '../core/result.js';
 import { err } from '../core/index.js';
-import type { CliName } from '../cli-adapters/types.js';
+import type { CliName, RoutingArmId } from '../cli-adapters/types.js';
 import { StoredRouterAttributionSchema } from './outcome-feedback-types.js';
 import type {
   ISQLiteDatabase,
@@ -136,10 +136,10 @@ export function createIndexes(db: ISQLiteDatabase): void {
  * readers as OutcomeStorageError. A corrupt row fails the collection read.
  */
 export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
-  let alternativeModels: CliName[] = [];
+  let alternativeModels: RoutingArmId[] = [];
   let taskProfile: Record<string, unknown> = {};
   try {
-    alternativeModels = JSON.parse(row.alternative_models) as CliName[];
+    alternativeModels = JSON.parse(row.alternative_models) as RoutingArmId[];
   } catch {
     // Corrupt row data — use empty fallback
   }
@@ -152,7 +152,7 @@ export function rowToDecision(row: RoutingDecisionRow): StoredRoutingDecision {
     id: row.id,
     traceId: row.trace_id,
     timestamp: new Date(row.timestamp).toISOString(),
-    selectedModel: row.selected_model as CliName,
+    selectedModel: row.selected_model as RoutingArmId,
     alternativeModels,
     confidence: row.confidence,
     reason: row.reason,
